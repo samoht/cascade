@@ -475,7 +475,8 @@ let should_use_typed_default ~kept visible vars =
    while still applying value-independent simplifications like calc identities,
    so the substituted declaration is always evaluated, kept var or not. *)
 let apply_substituted_components ctx decl ~original_components components =
-  if components = original_components then Some (Context.eval ctx decl)
+  if List.equal Component.equal components original_components then
+    Some (Context.eval ctx decl)
   else
     match declaration_with_components decl components with
     | None -> None
@@ -505,7 +506,7 @@ let fold_custom_value ~kept visible decl =
       match substitute_components ~kept visible ~visited:[] original with
       | Cycle -> Some decl
       | Components components -> (
-          if components = original then Some decl
+          if List.equal Component.equal components original then Some decl
           else
             match declaration_with_components decl components with
             | Some decl' -> Some decl'
@@ -582,6 +583,7 @@ let eval_page_declaration visible ctx decl =
         property = Properties.Margin_top as property;
         value = (Values.Var var : Values.length);
         important;
+        _;
       } ->
       Declaration.v ~important property (resolve_length_var var)
   | _ -> Context.eval ctx decl

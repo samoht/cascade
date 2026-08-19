@@ -583,3 +583,8 @@ type number =
   | Sin of angle
 
 type transition_behavior = Normal | Allow_discrete
+
+let equal_length (a : length) b = a = b
+let equal_length_percentage (a : length_percentage) b = a = b
+let equal_number_percentage (a : number_percentage) b = a = b
+let equal_color (a : color) b = a = b

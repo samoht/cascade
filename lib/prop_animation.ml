@@ -262,9 +262,11 @@ let rec pp_animation_range : animation_range Pp.t =
   | Range
       ( Named (start_name, Some start_offset),
         Some (Named (end_name, Some end_offset)) )
-    when start_name = end_name
-         && start_offset = (Pct 0. : length_percentage)
-         && end_offset = (Pct 100. : length_percentage) ->
+    when equal_animation_range_name start_name end_name
+         && Values.equal_length_percentage start_offset
+              (Pct 0. : length_percentage)
+         && Values.equal_length_percentage end_offset
+              (Pct 100. : length_percentage) ->
       pp_animation_range_item ctx (Named (start_name, Some start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;

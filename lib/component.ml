@@ -37,6 +37,8 @@ type rule = Qualified of qualified_rule | At of at_rule
 type declaration_body = { name : string; value : t list; important : bool }
 type declaration = declaration_body node
 
+let equal (a : t) b = a = b
+
 let source_loc : t -> Loc.t = function
   | Preserved tok -> tok.Token.loc
   | Block b -> b.loc

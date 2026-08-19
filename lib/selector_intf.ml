@@ -238,3 +238,8 @@ type t =
        :has() *)
   | List of t list
   | Nesting (* & - CSS nesting selector *)
+
+let equal (a : t) b = a = b
+let hash (selector : t) = Hashtbl.hash selector
+let equal_specificity (a : specificity) b = a = b
+let equal_combinator (a : combinator) b = a = b

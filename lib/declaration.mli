@@ -136,6 +136,15 @@ val property_name : declaration -> string
     serialising the name to a string. *)
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
+val equal_declaration : declaration -> declaration -> bool
+(** [equal_declaration a b] tests declarations for structural equality. *)
+
+val equal_prop_key : prop_key -> prop_key -> bool
+(** [equal_prop_key a b] tests property identities for equality. *)
+
+val hash_prop_key : prop_key -> int
+(** [hash_prop_key key] returns a hash consistent with {!equal_prop_key}. *)
+
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations
     have the same property name iff their keys are structurally equal. *)

@@ -24,7 +24,10 @@ let selector_size selector =
 let summary rule =
   Summary.v ~rule_size:(fun _ -> 123) ~decl_size ~selector_size rule
 
-let same a b = a == b || (Declaration.hash a = Declaration.hash b && a = b)
+let same a b =
+  a == b
+  || Declaration.hash a = Declaration.hash b
+     && Declaration.equal_declaration a b
 
 let custom_rule ?(selector = ".a") decls =
   rule (selector ^ "{" ^ String.concat ";" decls ^ "}")

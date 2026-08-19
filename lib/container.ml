@@ -187,7 +187,11 @@ let rec compare t1 t2 =
   | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
   | _ -> Stdlib.compare t1 t2
 
+let compare_scroll_state_query (a : scroll_state_query) b = Stdlib.compare a b
+
 type kind = Min_width | Other
+
+let equal_kind (a : kind) b = a = b
 
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Min_width

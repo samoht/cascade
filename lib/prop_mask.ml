@@ -726,14 +726,16 @@ end
 let read_mask_layer t : mask_layer =
   let apply acc upd =
     let next = upd acc in
-    if next = acc then Cursor.err t "Duplicate property in mask shorthand"
+    if equal_mask_layer next acc then
+      Cursor.err t "Duplicate property in mask shorthand"
     else next
   in
   let layer, _ =
     Cursor.fold_many Mask_shorthand.read_item ~init:Mask_shorthand.init ~f:apply
       t
   in
-  if layer = Mask_shorthand.init then Cursor.err_expected t "mask value";
+  if equal_mask_layer layer Mask_shorthand.init then
+    Cursor.err_expected t "mask value";
   layer
 
 let rec read_mask t : mask =

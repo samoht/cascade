@@ -19,7 +19,7 @@ let mix acc x = (acc * 31) + x
 let rule_hash (r : rule) =
   List.fold_left
     (fun acc d -> mix acc (Declaration.hash d))
-    (Hashtbl.hash r.Stylesheet_intf.selector)
+    (Selector.hash r.Stylesheet_intf.selector)
     r.Stylesheet_intf.declarations
 
 module Cache_tbl = Hashtbl.Make (struct

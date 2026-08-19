@@ -97,8 +97,9 @@ let test_negated_kind_invariant buf =
   | Css.Media.Cond c ->
       let query = Css.Media.Cond c in
       let twice = Css.Media.Cond (Css.Media.Not (Css.Media.Not c)) in
-      if Css.Media.kind query <> Css.Media.kind twice then
-        fail "double-negated media query changed kind bucket"
+      if
+        not (Css.Media.equal_kind (Css.Media.kind query) (Css.Media.kind twice))
+      then fail "double-negated media query changed kind bucket"
   | _ -> ()
 
 let test_media_context_shape buf =

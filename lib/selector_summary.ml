@@ -133,7 +133,7 @@ let rec fold_simple s (sel : Selector.t) =
       in
       match s.pseudo_element with
       | None -> { s with pseudo_element = Some canonical }
-      | Some prev when prev = canonical -> s
+      | Some prev when Selector.equal prev canonical -> s
       | Some _ -> mark_complex s)
   | Attribute (ns, attr_name, matcher, flag) ->
       {
@@ -248,7 +248,7 @@ let direct_facts_disjoint a b =
     match (a.pseudo_element, b.pseudo_element) with
     | None, None -> false
     | Some _, None | None, Some _ -> true
-    | Some x, Some y -> x <> y
+    | Some x, Some y -> not (Selector.equal x y)
   in
   if pe_disjoint then true
   else

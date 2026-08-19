@@ -58,12 +58,12 @@ let rec merge_lone (rule : rule) =
 
 let rec strip_prefix (parent : Selector.t) (child : Selector.t) =
   match (parent, child) with
-  | _, Selector.Combined (cp, comb, crest) when cp = parent ->
+  | _, Selector.Combined (cp, comb, crest) when Selector.equal cp parent ->
       Some
         (if comb = Selector.Descendant then crest
          else Selector.Relative (comb, crest))
   | Selector.Combined (pp, pcomb, prest), Selector.Combined (cp, ccomb, crest)
-    when pcomb = ccomb && pp = cp ->
+    when Selector.equal_combinator pcomb ccomb && Selector.equal pp cp ->
       strip_prefix prest crest
   | _, Selector.Compound cps -> (
       let pps =

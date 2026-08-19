@@ -29,7 +29,9 @@ let remember seen decl =
   Hashtbl.replace seen hash (decl :: bucket)
 
 let default_same a b =
-  a == b || (Declaration.hash a = Declaration.hash b && a = b)
+  a == b
+  || Declaration.hash a = Declaration.hash b
+     && Declaration.equal_declaration a b
 
 let v ?(same = default_same) ?(keep = fun (_ : Stylesheet.rule) -> true)
     (rules : Stylesheet.rule array) =

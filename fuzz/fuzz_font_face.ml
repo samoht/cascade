@@ -62,12 +62,15 @@ let test_metric_override_non_negative buf =
   match parse_metric buf with
   | None | Some Css.Font_face.Normal -> ()
   | Some (Css.Font_face.Percent p) ->
-      if p < 0. then fail "metric override parsed a negative percentage"
+      if Float.compare p 0. < 0 then
+        fail "metric override parsed a negative percentage"
 
 let test_size_adjust_non_negative buf =
   match parse_size_adjust buf with
   | None -> ()
-  | Some p -> if p < 0. then fail "size-adjust parsed a negative percentage"
+  | Some p ->
+      if Float.compare p 0. < 0 then
+        fail "size-adjust parsed a negative percentage"
 
 let test_metric_override_serialization_idempotent buf =
   match parse_metric buf with
@@ -125,7 +128,7 @@ let test_spec_src_vectors buf =
   | Some src ->
       let serialized = Css.Font_face.string_of_src src in
       let reparsed = Css.Font_face.src_of_string serialized in
-      if src <> reparsed then
+      if not (Css.Font_face.equal_src src reparsed) then
         failf "font-face src structure changed: %S -> %S" input serialized
 
 let test_invalid_src_vectors buf =
@@ -158,7 +161,7 @@ let test_spec_metric_vectors buf =
       buf 3
   in
   match parse_metric input with
-  | Some actual when actual = expected -> ()
+  | Some actual when Css.Font_face.equal_metric_override actual expected -> ()
   | Some actual ->
       failf "font metric structure changed: %S -> %S" input
         (Css.Font_face.string_of_metric_override actual)
@@ -177,7 +180,7 @@ let test_spec_size_adjust_vectors buf =
     pick [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5) ] buf 5
   in
   match parse_size_adjust input with
-  | Some actual when actual = expected -> ()
+  | Some actual when Css.Font_face.equal_size_adjust actual expected -> ()
   | Some actual ->
       failf "font size-adjust structure changed: %S -> %g" input actual
   | None -> failf "valid font size-adjust vector rejected: %S" input

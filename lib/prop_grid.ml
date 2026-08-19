@@ -86,12 +86,16 @@ let grid_area_default_from (line : grid_line) : grid_line =
 
 let grid_area_compact ~(row_start : grid_line) ~(column_start : grid_line)
     ~(row_end : grid_line) ~(column_end : grid_line) =
-  let drop_column_end = column_end = grid_area_default_from column_start in
+  let drop_column_end =
+    equal_grid_line column_end (grid_area_default_from column_start)
+  in
   let drop_row_end =
-    drop_column_end && row_end = grid_area_default_from row_start
+    drop_column_end
+    && equal_grid_line row_end (grid_area_default_from row_start)
   in
   let drop_column_start =
-    drop_row_end && column_start = grid_area_default_from row_start
+    drop_row_end
+    && equal_grid_line column_start (grid_area_default_from row_start)
   in
   match (drop_column_start, drop_row_end, drop_column_end) with
   | true, true, true -> [ row_start ]

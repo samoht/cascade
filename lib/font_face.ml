@@ -38,6 +38,11 @@ and src = src_entry list
 
 type t = src
 
+let equal_metric_override (a : metric_override) b = a = b
+let equal_size_adjust (a : size_adjust) b = Float.equal a b
+let compare_size_adjust (a : size_adjust) b = Float.compare a b
+let equal_src (a : src) b = a = b
+
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
    Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
    doesn't require whitespace between the function calls. *)

@@ -313,3 +313,6 @@ type t = stylesheet
 (** {1 Rendering} *)
 
 type mode = Variables | Inline  (** Rendering mode for CSS output *)
+
+let equal_cascade_origin (a : cascade_origin) b = a = b
+let equal (a : stylesheet) b = a = b

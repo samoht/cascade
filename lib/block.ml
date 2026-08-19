@@ -7,9 +7,9 @@ let list_filter_preserve = List.filter_preserve
 
 let media_feature_is name (f : Media.feature) =
   match f with
-  | Media.Plain (n, _) | Media.Boolean n -> n = name
-  | Media.Range (n, _, _) | Media.Range_rev (_, _, n) -> n = name
-  | Media.Interval (_, _, n, _, _) -> n = name
+  | Media.Plain (n, _) | Media.Boolean n -> Media.equal_name n name
+  | Media.Range (n, _, _) | Media.Range_rev (_, _, n) -> Media.equal_name n name
+  | Media.Interval (_, _, n, _, _) -> Media.equal_name n name
   | Media.General_enclosed _ -> false
 
 let rec condition_has_feature name (c : Media.condition) =

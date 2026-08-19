@@ -114,6 +114,8 @@ type value =
           captured as a function name plus its raw argument body for round-trip;
           cascade doesn't yet evaluate them at parse time. *)
 
+let equal_value (a : value) b = a = b
+
 type feature =
   | Plain of name * value
   | Boolean of name
@@ -133,6 +135,8 @@ type condition =
 
 type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
+
+let equal_name (a : name) b = a = b
 
 type t =
   | Cond of condition
@@ -1104,6 +1108,8 @@ type kind =
   | Preference_accessibility
   | Preference_appearance
   | Other
+
+let equal_kind (a : kind) b = a = b
 
 let length_sort_key (l : Values_intf.length) =
   match l with

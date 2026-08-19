@@ -666,7 +666,7 @@ let rec pp_gap : gap Pp.t =
   | Var v -> pp_var pp_gap ctx v
   | Lengths { row_gap; column_gap } -> (
       match (row_gap, column_gap) with
-      | Some row, Some col when row = col ->
+      | Some row, Some col when Values.equal_length row col ->
           (* Single value when both gaps are equal *)
           pp_length ctx row
       | Some row, Some col ->

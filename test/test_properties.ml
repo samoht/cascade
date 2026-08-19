@@ -162,11 +162,13 @@ let check_container_shorthand ?expected input =
   let expected_value = read_container_shorthand (Cursor.of_string expected) in
   Alcotest.(check bool)
     (Fmt.str "container structural expected %s" input)
-    true (value = expected_value);
+    true
+    (equal_container_shorthand value expected_value);
   let reparsed = read_container_shorthand (Cursor.of_string serialized) in
   Alcotest.(check bool)
     (Fmt.str "container structural roundtrip %s" input)
-    true (value = reparsed)
+    true
+    (equal_container_shorthand value reparsed)
 
 let check_contain = check_value_cursor "contain" read_contain pp_contain
 let check_isolation = check_value_cursor "isolation" read_isolation pp_isolation

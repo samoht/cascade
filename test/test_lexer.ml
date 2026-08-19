@@ -28,7 +28,7 @@ let check_first_hash input expected_value expected_flag =
       Alcotest.(check bool)
         (Fmt.str "hash flag for %S" input)
         true
-        (hash_flag = expected_flag)
+        (Token.equal_hash_flag hash_flag expected_flag)
   | kinds ->
       Alcotest.failf "tokenize %S: expected one hash token, got %s" input
         (pp_tokens kinds)
@@ -42,7 +42,7 @@ let check_first_number_flag input expected_repr expected_flag =
       Alcotest.(check bool)
         (Fmt.str "number flag for %S" input)
         true
-        (number_flag = expected_flag)
+        (Token.equal_number_flag number_flag expected_flag)
   | kinds ->
       Alcotest.failf "tokenize %S: expected one number token, got %s" input
         (pp_tokens kinds)

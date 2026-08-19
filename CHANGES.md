@@ -246,6 +246,7 @@
 
 ### Testing
 
+- CI rejects merlint findings and incomplete library record patterns (#310)
 - `dune test` renders a stylesheet and its optimized forms in a headless
   browser and compares the computed style of every element, on a document
   derived from the stylesheet's own selectors; it skips where no browser is

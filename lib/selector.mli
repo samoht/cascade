@@ -94,11 +94,29 @@ val to_string : ?minify:bool -> t -> string
 val to_buffer : ?minify:bool -> Buffer.t -> t -> unit
 (** [to_buffer ?minify buf sel] renders a selector into [buf]. *)
 
+val equal : t -> t -> bool
+(** [equal a b] tests selectors for structural equality. *)
+
+val compare : t -> t -> int
+(** [compare a b] totally orders selectors structurally. *)
+
+val hash : t -> int
+(** [hash selector] returns a hash consistent with {!equal}. *)
+
+val equal_specificity : specificity -> specificity -> bool
+(** [equal_specificity a b] tests specificity triples for equality. *)
+
+val equal_combinator : combinator -> combinator -> bool
+(** [equal_combinator a b] tests selector combinators for equality. *)
+
 val specificity : t -> specificity
 (** [specificity selector] computes Selectors specificity as
     [(ids, classes, elements)]. For selector-list-like pseudos such as [:is()],
     [:not()], and [:has()], the most specific argument is used; [:where()]
     contributes zero. *)
+
+val compare_specificity : specificity -> specificity -> int
+(** [compare_specificity a b] orders specificity triples lexicographically. *)
 
 val map : (t -> t) -> t -> t
 (** [map f selector] recursively applies [f] to all selectors in the tree. The

@@ -23,8 +23,6 @@
   prop_font
   prop_text
   prop_animation)
- (flags
-  (:standard -w -9))
  (libraries uutf uri psq logs unix))
 
 (mdx

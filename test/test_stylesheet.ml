@@ -155,7 +155,7 @@ let test_rule_creation () =
   (* Just check we can get selector back *)
   Alcotest.(check bool)
     "selector exists" true
-    (selector = Css.Selector.class_ "red");
+    (Css.Selector.equal selector (Css.Selector.class_ "red"));
   Alcotest.(check int)
     "rule declarations count" 1
     (List.length (declarations rule))

@@ -126,7 +126,8 @@ let test_deduplicate_declarations () =
 let test_deduplicate_declarations_physical_identity () =
   let no_op = [ custom_property "--a" "red"; custom_property "--b" "blue" ] in
   let result = deduplicate_declarations no_op in
-  check bool "no-op deduplicate is structurally unchanged" true (result = no_op);
+  check bool "no-op deduplicate is structurally unchanged" true
+    (List.equal Declaration.equal_declaration result no_op);
   check bool "no-op deduplicate preserves physical identity" true
     (result == no_op);
   let overriding =

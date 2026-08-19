@@ -991,10 +991,15 @@ type property_key = {
 let declaration_property_key decl : property_key =
   let prop = Declaration.property_key decl in
   let important = Declaration.is_important decl in
-  { prop; important; hash = mix_int (Hashtbl.hash prop) (hash_bool important) }
+  {
+    prop;
+    important;
+    hash = mix_int (Declaration.hash_prop_key prop) (hash_bool important);
+  }
 
 let property_key_equal left right =
-  Bool.equal left.important right.important && left.prop = right.prop
+  Bool.equal left.important right.important
+  && Declaration.equal_prop_key left.prop right.prop
 
 let property_key_hash key = key.hash
 

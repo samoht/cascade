@@ -107,3 +107,9 @@ val scroll_state : string -> string -> t
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)
+
+val compare_scroll_state_query : scroll_state_query -> scroll_state_query -> int
+(** [compare_scroll_state_query a b] totally orders scroll-state queries. *)
+
+val equal_kind : kind -> kind -> bool
+(** [equal_kind a b] tests container condition categories for equality. *)

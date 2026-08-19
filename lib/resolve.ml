@@ -302,7 +302,7 @@ module Make (N : NODE) = struct
             List.fold_left
               (fun acc b ->
                 let s = Selector.specificity b in
-                if compare s acc > 0 then s else acc)
+                if Selector.compare_specificity s acc > 0 then s else acc)
               (Selector.specificity b) rest)
     | None -> Selector.specificity sel
 
@@ -342,7 +342,11 @@ module Make (N : NODE) = struct
                   i,
                   ds ))
       |> List.stable_sort (fun (l1, s1, i1, _) (l2, s2, i2, _) ->
-          compare (l1, s1, i1) (l2, s2, i2))
+          let layer = Int.compare l1 l2 in
+          if layer <> 0 then layer
+          else
+            let specificity = Selector.compare_specificity s1 s2 in
+            if specificity <> 0 then specificity else Int.compare i1 i2)
       |> List.concat_map (fun (_, _, _, ds) -> ds)
     in
     (* normal first, then !important, last wins per property *)

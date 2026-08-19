@@ -42,6 +42,10 @@ type kind =
 
 type t = { kind : kind; loc : Loc.t }
 
+let equal_hash_flag (a : hash_flag) b = a = b
+let equal_number_flag (a : number_flag) b = a = b
+let equal_bracket (a : bracket) b = a = b
+let equal_kind (a : kind) b = a = b
 let v ~kind ~loc = { kind; loc }
 let synthetic kind = { kind; loc = Loc.dummy }
 

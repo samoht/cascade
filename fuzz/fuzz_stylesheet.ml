@@ -451,8 +451,8 @@ let invalid_platform_declaration_vector buf i =
    only for those two conditions. (--enforce-spec keeps the wrapper, but these
    invariants exercise the default optimizer.) *)
 let supports_is_baseline_true condition =
-  condition = Css.Supports.property "display" "grid"
-  || condition = Css.Supports.property "display" "flex"
+  Css.Supports.equal condition (Css.Supports.property "display" "grid")
+  || Css.Supports.equal condition (Css.Supports.property "display" "flex")
 
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
@@ -1269,8 +1269,12 @@ let test_property_value_context buf =
       ~viewport_width:(Px 1024.) ~viewport_height:(Px 768.)
       ~container_width:(Px 640.) ~container_height:(Px 480.) ()
   in
-  if Css.Context.custom_property name ctx <> Some custom_decl then
-    fail "property-value context lost custom property"
+  if
+    not
+      (Option.equal Css.Declaration.equal_declaration
+         (Css.Context.custom_property name ctx)
+         (Some custom_decl))
+  then fail "property-value context lost custom property"
 
 let test_recovery_keeps_rules buf =
   let bad_decl =

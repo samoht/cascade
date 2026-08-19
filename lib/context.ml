@@ -74,6 +74,8 @@ type property_registration = {
   initial_value : string option;
 }
 
+let equal_property_registration (a : property_registration) b = a = b
+
 type property_registry = { property_registrations : property_registration list }
 
 let empty =
@@ -1594,7 +1596,7 @@ module Match_container = struct
     List.exists
       (function
         | Container.Scroll_state { query = actual; _ } ->
-            Stdlib.compare actual query = 0
+            Container.compare_scroll_state_query actual query = 0
         | _ -> false)
       q.container_features
     || eval_scroll_state_query q query
@@ -3423,7 +3425,7 @@ let rec eval_typed ?layer_order ?layer ctx decl =
   | Declaration.Theme_guarded { var_name; decl; _ } ->
       Declaration.theme_guarded ~var_name
         (eval_typed ~layer_order ?layer ctx decl)
-  | Declaration.Declaration { property; value; important } -> (
+  | Declaration.Declaration { property; value; important; _ } -> (
       match Properties.property_value_kind property with
       | Some kind ->
           eval_kind ~layer_order ?layer ctx kind property important value

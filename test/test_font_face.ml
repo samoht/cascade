@@ -78,11 +78,11 @@ let expect_rejected_cases label parse render inputs =
 let test_spec_src_parser_vectors () =
   let check_src name input expected =
     let parsed = src_of_string input in
-    Alcotest.(check bool) name true (parsed = expected);
+    Alcotest.(check bool) name true (equal_src parsed expected);
     Alcotest.(check bool)
       (name ^ " serialization idempotent")
       true
-      (src_of_string (string_of_src parsed) = parsed)
+      (equal_src (src_of_string (string_of_src parsed)) parsed)
   in
   check_src "url format tech"
     "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)"

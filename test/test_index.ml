@@ -9,7 +9,11 @@ let rules css =
       |> Array.of_list
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
-let same a b = a == b || (Declaration.hash a = Declaration.hash b && a = b)
+let same a b =
+  a == b
+  || Declaration.hash a = Declaration.hash b
+     && Declaration.equal_declaration a b
+
 let decl css = Declaration.of_string css
 
 let test_rows_are_sorted_unique () =

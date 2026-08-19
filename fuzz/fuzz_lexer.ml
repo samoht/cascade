@@ -42,7 +42,7 @@ let test_peek_next_consistency buf =
   let lexer = Lexer.of_string (cssish buf) in
   let peeked = Lexer.peek lexer in
   let next = Lexer.next lexer in
-  if peeked.Token.kind <> next.Token.kind then
+  if not (Token.equal_kind peeked.Token.kind next.Token.kind) then
     fail "lexer peek and next returned different token kinds"
 
 let test_reconsume_returns_same_token buf =
@@ -50,7 +50,7 @@ let test_reconsume_returns_same_token buf =
   let tok = Lexer.next lexer in
   Lexer.reconsume lexer tok;
   let again = Lexer.next lexer in
-  if tok.Token.kind <> again.Token.kind then
+  if not (Token.equal_kind tok.Token.kind again.Token.kind) then
     fail "lexer reconsume did not replay the same token kind"
 
 let test_save_restore_replays_prefix buf =
@@ -60,7 +60,8 @@ let test_save_restore_replays_prefix buf =
   let first = take_kinds lexer 8 [] in
   Lexer.restore lexer;
   let second = take_kinds lexer 8 [] in
-  if first <> second then fail "lexer restore did not replay consumed tokens"
+  if not (List.equal Token.equal_kind first second) then
+    fail "lexer restore did not replay consumed tokens"
 
 let test_commit_preserves_outer_restore buf =
   let input = cssish buf in
@@ -72,7 +73,7 @@ let test_commit_preserves_outer_restore buf =
   Lexer.commit lexer;
   Lexer.restore lexer;
   let replayed = Lexer.next lexer in
-  if first.Token.kind <> replayed.Token.kind then
+  if not (Token.equal_kind first.Token.kind replayed.Token.kind) then
     fail "lexer commit did not fold replay log into outer save"
 
 let test_eof_stable buf =

@@ -88,13 +88,13 @@ let columns_value_of_longhands width count : Properties.columns_value =
 let synthesize_columns decls =
   let width_of d : (Properties.column_width * bool) option =
     match d with
-    | Declaration { property = Column_width; value; important } ->
+    | Declaration { property = Column_width; value; important; _ } ->
         Some (value, important)
     | _ -> None
   in
   let count_of d : (Properties.column_count * bool) option =
     match d with
-    | Declaration { property = Column_count; value; important } ->
+    | Declaration { property = Column_count; value; important; _ } ->
         Some (value, important)
     | _ -> None
   in
@@ -143,13 +143,13 @@ let synthesize_columns decls =
 let synthesize_position_try decls =
   let order_of d : (Properties.position_try_order * bool) option =
     match d with
-    | Declaration { property = Position_try_order; value; important } ->
+    | Declaration { property = Position_try_order; value; important; _ } ->
         Some (value, important)
     | _ -> None
   in
   let fallbacks_of d : (Properties.position_try_fallbacks * bool) option =
     match d with
-    | Declaration { property = Position_try_fallbacks; value; important } ->
+    | Declaration { property = Position_try_fallbacks; value; important; _ } ->
         Some (value, important)
     | _ -> None
   in

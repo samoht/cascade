@@ -97,6 +97,10 @@ type property_registration = {
     parser-visible data from an [@property] rule without creating live CSSOM
     registration state. *)
 
+val equal_property_registration :
+  property_registration -> property_registration -> bool
+(** [equal_property_registration a b] tests registrations structurally. *)
+
 type property_registry = { property_registrations : property_registration list }
 (** Explicit context for registration-aware custom property validation. *)
 
