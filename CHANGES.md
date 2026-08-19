@@ -15,6 +15,8 @@
   normalisation key and a blind spot in the walk both reading as success.
   ``Css_compare.equal ~mode:`Canonical`` answers on the same bytes, and
   `Css_compare.No_diff` no longer carries the two canonical forms (#290)
+- `Tree_diff.t` gains `layer_order`; record expressions must set it and record
+  patterns must bind it or use `; _` (#295)
 - Optimizer profiling is per run: `Css.optimize` and `Optimize.stylesheet` take
   `?stats:Stats.t` and `Stats.snapshot` reads back an immutable record.
   `Optimize.counters`, `Optimize.pass_times`, `Optimize.iteration_stats` and
