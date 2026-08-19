@@ -2,11 +2,7 @@
 
 open Cascade
 
-let read_file path =
-  let ic = open_in path in
-  let content = really_input_string ic (in_channel_length ic) in
-  close_in ic;
-  content
+let read_file path = In_channel.with_open_bin path In_channel.input_all
 
 let read_stdin () =
   let buf = Buffer.create 4096 in

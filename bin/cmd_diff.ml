@@ -10,12 +10,7 @@ let err_depth s =
        (Fmt.str "invalid depth %S: expected auto, max, or a positive integer" s))
 
 let read_file path =
-  try
-    let ic = open_in path in
-    let content = really_input_string ic (in_channel_length ic) in
-    close_in ic;
-    Ok content
-  with Sys_error msg -> err_read path msg
+  try Ok (Cli_io.read_file path) with Sys_error msg -> err_read path msg
 
 let no_color_var = "NO_COLOR"
 
