@@ -40,6 +40,8 @@
 
 ### Parsing
 
+- URL references use RFC 3986 resolution, preserving data, scheme-relative,
+  query-only and fragment-only URLs (#304)
 - Typed `-webkit-` and `-moz-` aliases use their standard value grammar.
 - `shape-outside` reads its whole grammar. Only `none`, `circle()`, a non-empty
   `inset()` and the CSS-wide keywords were accepted, so `margin-box`,

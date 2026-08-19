@@ -285,7 +285,7 @@ val matches_container : query -> ?name:string -> Container.t -> bool
 
 val resolve_url : loader -> string -> (string, string) result
 (** [resolve_url loader href] resolves [href] against
-    {!type-loader.field-base_url} using simple relative-URL handling. *)
+    {!type-loader.field-base_url} according to RFC 3986. *)
 
 val import_source : string -> loader -> string option
 (** [import_source url ctx] looks up imported stylesheet text. *)

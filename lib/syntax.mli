@@ -29,3 +29,10 @@ val strip_url_suffix : string -> string
 (** [strip_url_suffix url] strips a query string ([?...]) and fragment ([#...])
     from [url]. Used when resolving [@import] URLs against the host filesystem,
     where neither suffix is meaningful. *)
+
+val url_file_path : string -> string
+(** [url_file_path url] decodes the path component of [url] for a filesystem
+    lookup. *)
+
+val is_remote_url : string -> bool
+(** [is_remote_url url] is true when [url] has a scheme or authority. *)

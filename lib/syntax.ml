@@ -25,7 +25,10 @@ let split_top_level_colon cvs =
   loop [] cvs
 
 let strip_url_suffix url =
-  let cut_at c s =
-    match String.index_opt s c with Some i -> String.sub s 0 i | None -> s
-  in
-  url |> cut_at '?' |> cut_at '#'
+  Uri.of_string url |> Uri.with_uri ~query:None ~fragment:None |> Uri.to_string
+
+let url_file_path url = Uri.of_string url |> Uri.path |> Uri.pct_decode
+
+let is_remote_url url =
+  let uri = Uri.of_string url in
+  Option.is_some (Uri.scheme uri) || Option.is_some (Uri.host uri)

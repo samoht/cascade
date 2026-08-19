@@ -1744,73 +1744,13 @@ end
 (** {2 URL resolution (RFC 3986)} *)
 
 module Url = struct
-  let starts_with ~prefix s =
-    let n = String.length prefix in
-    String.length s >= n && String.sub s 0 n = prefix
-
-  let cut ?(rev = false) ~sep s =
-    let sep_len = String.length sep in
-    let len = String.length s in
-    let matches i = i + sep_len <= len && String.sub s i sep_len = sep in
-    let rec forward i =
-      if i + sep_len > len then None
-      else if matches i then Some i
-      else forward (i + 1)
-    in
-    let rec backward i =
-      if i < 0 then None else if matches i then Some i else backward (i - 1)
-    in
-    match if rev then backward (len - sep_len) else forward 0 with
-    | None -> None
-    | Some i ->
-        Some (String.sub s 0 i, String.sub s (i + sep_len) (len - i - sep_len))
-
-  (* Collapse a single [..]/[.] segment in [path]. Returns [None] when the path
-     has no segments left to normalise. *)
-  let normalise_path path =
-    let parts = String.split_on_char '/' path in
-    let rec loop acc = function
-      | [] -> List.rev acc
-      | "." :: rest -> loop acc rest
-      | ".." :: rest -> (
-          match acc with [] -> loop acc rest | _ :: tl -> loop tl rest)
-      | seg :: rest -> loop (seg :: acc) rest
-    in
-    String.concat "/" (loop [] parts)
-
-  let resolve_absolute base href =
-    match cut ~sep:"://" base with
-    | None -> Ok href
-    | Some (scheme, rest) -> (
-        match cut ~sep:"/" rest with
-        | None -> Ok (scheme ^ "://" ^ rest ^ href)
-        | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href))
-
-  let resolve_combined combined =
-    match cut ~sep:"://" combined with
-    | None -> Ok (normalise_path combined)
-    | Some (scheme, rest) -> (
-        match cut ~sep:"/" rest with
-        | None -> Ok (scheme ^ "://" ^ normalise_path rest)
-        | Some (host, path) ->
-            Ok (scheme ^ "://" ^ host ^ "/" ^ normalise_path path))
-
-  let resolve_relative base href =
-    match cut ~rev:true ~sep:"/" base with
-    | None -> Ok href
-    | Some (dir, _) -> resolve_combined (dir ^ "/" ^ href)
-
-  let is_absolute_url href =
-    starts_with ~prefix:"http://" href || starts_with ~prefix:"https://" href
-
   let resolve loader href =
-    if is_absolute_url href then Ok href
-    else
-      match loader.base_url with
-      | None -> Error ("no base URL to resolve " ^ href)
-      | Some base when starts_with ~prefix:"/" href ->
-          resolve_absolute base href
-      | Some base -> resolve_relative base href
+    let reference = Uri.of_string href in
+    match (Uri.scheme reference, loader.base_url) with
+    | Some _, _ -> Ok (Uri.to_string reference)
+    | None, None -> Error ("no base URL to resolve " ^ href)
+    | None, Some base ->
+        Ok (Uri.resolve "" (Uri.of_string base) reference |> Uri.to_string)
 end
 
 (** {2 [@import] loader (CSS Cascade 5 sec. 6)}
