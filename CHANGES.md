@@ -38,6 +38,7 @@
 
 ### Parsing
 
+- Typed `-webkit-` and `-moz-` aliases use their standard value grammar.
 - `shape-outside` reads its whole grammar. Only `none`, `circle()`, a non-empty
   `inset()` and the CSS-wide keywords were accepted, so `margin-box`,
   `circle(50%) content-box`, `url(shape.png)` and every other basic shape were
