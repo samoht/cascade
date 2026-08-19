@@ -220,6 +220,106 @@ let test_logical_physical_overlap () =
        (decl "border-inline-width:2px")
        (decl "border-left-color:red"))
 
+let test_logical_axis_overlap () =
+  (* CSS Logical 1 sec. 4.4: [inline-size] is [width] in a horizontal writing
+     mode and [height] in a vertical one, so it may write either slot. The
+     sizing family has no physical shorthand, which does not change the
+     aliasing. *)
+  Alcotest.(check bool)
+    "an inline size overlaps the physical width" true
+    (Shorthand.declarations_overlap (decl "inline-size:20px")
+       (decl "width:10px"));
+  Alcotest.(check bool)
+    "the relation is symmetric" true
+    (Shorthand.declarations_overlap (decl "width:10px")
+       (decl "inline-size:20px"));
+  Alcotest.(check bool)
+    "the same logical size overlaps the physical height too" true
+    (Shorthand.declarations_overlap (decl "inline-size:20px")
+       (decl "height:10px"));
+  Alcotest.(check bool)
+    "a block size overlaps the physical height" true
+    (Shorthand.declarations_overlap (decl "block-size:20px")
+       (decl "height:10px"));
+  Alcotest.(check bool)
+    "a logical minimum overlaps the physical minimum" true
+    (Shorthand.declarations_overlap
+       (decl "min-inline-size:20px")
+       (decl "min-width:10px"));
+  Alcotest.(check bool)
+    "a logical maximum overlaps the physical maximum" true
+    (Shorthand.declarations_overlap
+       (decl "max-block-size:20px")
+       (decl "max-height:10px"));
+  (* A recovered longhand keeps the aliasing: its value defeated the typed
+     reader, not the cascade slot it writes. *)
+  Alcotest.(check bool)
+    "a recovered logical size overlaps its physical property" true
+    (Shorthand.declarations_overlap
+       (decl "inline-size:var(--a) var(--b)")
+       (decl "width:10px"));
+  (* CSS Sizing 4 sec. 5.2 gives [contain-intrinsic-size] the same two axes. *)
+  Alcotest.(check bool)
+    "a logical intrinsic size overlaps the physical one" true
+    (Shorthand.declarations_overlap
+       (decl "contain-intrinsic-inline-size:20px")
+       (decl "contain-intrinsic-width:10px"));
+  (* CSS Overscroll Behavior 1 sec. 3: the [-inline] and [-block] longhands are
+     the flow-relative spellings of [-x] and [-y]. *)
+  Alcotest.(check bool)
+    "a logical overscroll behaviour overlaps the physical one" true
+    (Shorthand.declarations_overlap
+       (decl "overscroll-behavior-inline:contain")
+       (decl "overscroll-behavior-x:none"));
+  (* Aliasing is within a family: a size never resolves to a minimum, and the
+     two physical axes are two slots whatever the writing mode. *)
+  Alcotest.(check bool)
+    "a logical size and a physical minimum are disjoint" false
+    (Shorthand.declarations_overlap (decl "inline-size:20px")
+       (decl "min-width:10px"));
+  Alcotest.(check bool)
+    "the two physical sizes stay disjoint" false
+    (Shorthand.declarations_overlap (decl "width:10px") (decl "height:20px"));
+  Alcotest.(check bool)
+    "a logical size and an intrinsic size are disjoint" false
+    (Shorthand.declarations_overlap (decl "inline-size:20px")
+       (decl "contain-intrinsic-width:10px"))
+
+let test_logical_corner_overlap () =
+  (* CSS Logical 1 sec. 4.3: a flow-relative corner resolves to one of the four
+     physical corners, which one depending on the writing mode and the
+     direction. *)
+  Alcotest.(check bool)
+    "a start-start corner overlaps the top-left corner" true
+    (Shorthand.declarations_overlap
+       (decl "border-start-start-radius:2px")
+       (decl "border-top-left-radius:1px"));
+  Alcotest.(check bool)
+    "the relation is symmetric" true
+    (Shorthand.declarations_overlap
+       (decl "border-top-left-radius:1px")
+       (decl "border-start-start-radius:2px"));
+  Alcotest.(check bool)
+    "the same corner overlaps the opposite physical corner too" true
+    (Shorthand.declarations_overlap
+       (decl "border-start-start-radius:2px")
+       (decl "border-bottom-right-radius:1px"));
+  Alcotest.(check bool)
+    "an end-end corner overlaps the top-right corner" true
+    (Shorthand.declarations_overlap
+       (decl "border-end-end-radius:2px")
+       (decl "border-top-right-radius:1px"));
+  Alcotest.(check bool)
+    "a logical corner overlaps the radius shorthand" true
+    (Shorthand.declarations_overlap (decl "border-radius:4px")
+       (decl "border-start-end-radius:2px"));
+  (* A corner radius is not a border width, style or colour. *)
+  Alcotest.(check bool)
+    "a logical corner and a physical border width are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "border-end-start-radius:2px")
+       (decl "border-left-width:1px"))
+
 let test_intentionally_duplicated_properties () =
   Alcotest.(check bool)
     "content duplicates are preserved" true
@@ -446,6 +546,9 @@ let suite =
         test_shorthand_reset_boundaries;
       Alcotest.test_case "logical physical overlap" `Quick
         test_logical_physical_overlap;
+      Alcotest.test_case "logical axis overlap" `Quick test_logical_axis_overlap;
+      Alcotest.test_case "logical corner overlap" `Quick
+        test_logical_corner_overlap;
       Alcotest.test_case "intentionally duplicated properties" `Quick
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick

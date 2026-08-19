@@ -852,17 +852,36 @@ let property_slots : type a. a Properties.property -> overlap_key list =
 let logical_alias_families =
   Properties.
     [
-      ([ Prop Margin_inline; Prop Margin_block ], Prop Margin);
-      ([ Prop Padding_inline; Prop Padding_block ], Prop Padding);
-      ([ Prop Inset_inline; Prop Inset_block ], Prop Inset);
-      ([ Prop Border_inline_width; Prop Border_block_width ], Prop Border_width);
-      ([ Prop Border_inline_style; Prop Border_block_style ], Prop Border_style);
-      ([ Prop Border_inline_color; Prop Border_block_color ], Prop Border_color);
+      ([ Prop Margin_inline; Prop Margin_block ], [ Prop Margin ]);
+      ([ Prop Padding_inline; Prop Padding_block ], [ Prop Padding ]);
+      ([ Prop Inset_inline; Prop Inset_block ], [ Prop Inset ]);
+      ( [ Prop Border_inline_width; Prop Border_block_width ],
+        [ Prop Border_width ] );
+      ( [ Prop Border_inline_style; Prop Border_block_style ],
+        [ Prop Border_style ] );
+      ( [ Prop Border_inline_color; Prop Border_block_color ],
+        [ Prop Border_color ] );
       ( [ Prop Scroll_margin_inline; Prop Scroll_margin_block ],
-        Prop Scroll_margin );
+        [ Prop Scroll_margin ] );
       ( [ Prop Scroll_padding_inline; Prop Scroll_padding_block ],
-        Prop Scroll_padding );
-      ([ Prop Overflow_block; Prop Overflow_inline ], Prop Overflow);
+        [ Prop Scroll_padding ] );
+      ([ Prop Overflow_block; Prop Overflow_inline ], [ Prop Overflow ]);
+      ([ Prop Inline_size; Prop Block_size ], [ Prop Width; Prop Height ]);
+      ( [ Prop Min_inline_size; Prop Min_block_size ],
+        [ Prop Min_width; Prop Min_height ] );
+      ( [ Prop Max_inline_size; Prop Max_block_size ],
+        [ Prop Max_width; Prop Max_height ] );
+      ( [
+          Prop Border_start_start_radius;
+          Prop Border_start_end_radius;
+          Prop Border_end_start_radius;
+          Prop Border_end_end_radius;
+        ],
+        [ Prop Border_radius ] );
+      ( [ Prop Contain_intrinsic_inline_size; Prop Contain_intrinsic_block_size ],
+        [ Prop Contain_intrinsic_width; Prop Contain_intrinsic_height ] );
+      ( [ Prop Overscroll_behavior_inline; Prop Overscroll_behavior_block ],
+        [ Prop Overscroll_behavior_x; Prop Overscroll_behavior_y ] );
     ]
 
 (* Each logical slot paired with the physical slots it may alias, sorted for
@@ -873,7 +892,7 @@ let logical_alias_index =
     List.concat_map
       (fun (logical, physical) ->
         let physical_slots =
-          match physical with Properties.Prop p -> property_slots p
+          List.concat_map (fun (Properties.Prop p) -> property_slots p) physical
         in
         List.concat_map
           (fun l ->
