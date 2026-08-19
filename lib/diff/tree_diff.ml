@@ -2208,14 +2208,20 @@ let extract_items_with_positions extract_fn stmts =
     stmts
   |> List.filter_map (fun x -> x)
 
+let restore_group_order table =
+  Hashtbl.to_seq_keys table |> List.of_seq
+  |> List.iter (fun key ->
+      Hashtbl.replace table key (List.rev (Hashtbl.find table key)));
+  table
+
 let group_by_condition items =
   let tbl = Hashtbl.create 16 in
   List.iter
     (fun (pos, cond, rules) ->
       let existing = try Hashtbl.find tbl cond with Not_found -> [] in
-      Hashtbl.replace tbl cond (existing @ [ (pos, rules) ]))
+      Hashtbl.replace tbl cond ((pos, rules) :: existing))
     items;
-  tbl
+  restore_group_order tbl
 
 (* Two sides holding a different number of blocks under one condition split or
    merged them. Where those blocks sit is a separate question, and one
@@ -2631,9 +2637,9 @@ and media_diff items1 items2 =
     List.iter
       (fun (cond, rules) ->
         let existing = try Hashtbl.find tbl cond with Not_found -> [] in
-        Hashtbl.replace tbl cond (existing @ [ rules ]))
+        Hashtbl.replace tbl cond (rules :: existing))
       items;
-    tbl
+    restore_group_order tbl
   in
   let groups1 = group items1 in
   let groups2 = group items2 in
