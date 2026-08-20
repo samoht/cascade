@@ -55,7 +55,8 @@ val peek_utf8 : t -> (int * int) option
 
 val peek_utf8_at : t -> int -> (int * int) option
 (** [peek_utf8_at t off] decodes the UTF-8 code point at [position t + off],
-    without advancing. *)
+    without advancing. Returns [None] when [off] is negative or outside the
+    remaining input. *)
 
 val skip_utf8 : t -> unit
 (** [skip_utf8 t] advances past the next UTF-8 code point. If the lead byte is
