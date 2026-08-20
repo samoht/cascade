@@ -7307,6 +7307,9 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       (normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c)
   in
   match c with
+  | Oklab { l = Some l; a = None; b = None; alpha }
+    when pct_is_zero l && alpha_is_zero alpha ->
+      Transparent
   | Oklch { l = Some _; c = Some _; _ } -> static_fold ()
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
