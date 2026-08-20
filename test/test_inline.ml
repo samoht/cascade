@@ -244,16 +244,24 @@ let test_inline_runtime_var_metadata () =
       ~fallback:(Css.Values.syntax_fallback "var(--fallback)")
       "external"
   in
+  let runtime_cursor : Css.cursor Css.var =
+    Css.var_ref ~runtime:true
+      ~fallback:(Css.Values.syntax_fallback "var(--cursor-fallback)")
+      "cursor"
+  in
   let stylesheet =
     Css.v
       [
         Css.rule ~selector:(Css.Selector.class_ "x")
-          [ Css.padding [ Css.Var runtime_ref ] ];
+          [
+            Css.padding [ Css.Var runtime_ref ];
+            Css.cursor (Css.Var runtime_cursor);
+          ];
       ]
   in
   Alcotest.(check string)
-    "runtime var keeps its live fallback wrapper"
-    ".x{padding:var(--external,var(--fallback))}"
+    "runtime vars keep their live fallback wrappers"
+    ".x{padding:var(--external,var(--fallback));cursor:var(--cursor,var(--cursor-fallback))}"
     (stylesheet |> Css.inline_vars |> minified)
 
 let test_inline_across_layers () =
