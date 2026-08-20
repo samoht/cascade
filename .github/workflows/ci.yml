@@ -57,5 +57,6 @@ jobs:
 
       - uses: ocaml/setup-ocaml/lint-fmt@v3
       - run: opam repo add samoht https://tangled.org/gazagnaire.org/opam-overlay.git
-      - run: opam install . --deps-only --with-test --with-dev-setup
+      - run: opam install . --deps-only --with-test
+      - run: opam install merlint
       - run: opam exec -- merlint --build

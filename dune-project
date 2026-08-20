@@ -26,7 +26,6 @@
   (eio_main (and (>= 0.14) :with-test))
   lambdasoup
   (mdx :with-test)
-  (merlint :with-dev-setup)
   (re :with-test)
   (fmt (>= 0.10.0))
   base-unix
