@@ -861,7 +861,12 @@ module Var_residual = struct
       | Values.Empty2 | Values.None ->
           ops.of_var (simplify_var_record ~simplify ~visited var)
     and on_var ~visited (var : a Values.var) =
-      if List.mem var.name visited then
+      if var.runtime || List.mem var.name cascade.runtime_vars then
+        (* A runtime var remains a live browser-time reference, including its
+           fallback. Treating it like an ordinary unresolved variable would
+           select a typed [Fallback] here and erase the override point. *)
+        ops.of_var (simplify_var_record ~simplify ~visited var)
+      else if List.mem var.name visited then
         (* A var() forming a cycle is invalid at computed-value time; its own
            fallback does not rescue it (CSS Variables L1 sec 3). Leave it as an
            unresolved residual so an outer consumer's fallback can apply. *)
@@ -3404,6 +3409,9 @@ let simplify_float_side ~layer_order ?layer ctx (value : Properties.float_side)
 let simplify_lengths_value ~layer_order ?layer ctx length_ctx value =
   let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
   match value with
+  | [ (Values.Var var : Values.length) ]
+    when var.Values.runtime || List.mem var.Values.name ctx.runtime_vars ->
+      [ simplify_one (Values.Var var) ]
   | [ (Values.Var var : Values.length) ] -> (
       match
         Option.bind
