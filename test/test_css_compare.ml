@@ -264,6 +264,24 @@ let canonical_custom_color_function_alpha () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
        ".a { --c: #0000 }")
 
+let canonical_fully_transparent_missing_oklab () =
+  let equivalent property =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical
+      (Fmt.str ".a { %s: oklab(0%% none none / 0) }" property)
+      (Fmt.str ".a { %s: #0000 }" property)
+  in
+  Alcotest.(check bool)
+    "fully transparent missing-component oklab equals #0000 in a colour property"
+    true (equivalent "background-color");
+  Alcotest.(check bool)
+    "fully transparent missing-component oklab equals #0000 in a custom property"
+    true (equivalent "--tw-gradient-via");
+  Alcotest.(check bool)
+    "non-transparent missing-component oklab stays distinct from #0000" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { background-color: oklab(0% none none / .5) }"
+       ".a { background-color: #0000 }")
+
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
      identically into font-family, so canonical comparison equates them inside a
@@ -1209,6 +1227,8 @@ let suite =
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom color-function alpha" `Quick
         canonical_custom_color_function_alpha;
+      Alcotest.test_case "canonical fully transparent missing oklab" `Quick
+        canonical_fully_transparent_missing_oklab;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
