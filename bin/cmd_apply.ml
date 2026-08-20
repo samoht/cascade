@@ -110,11 +110,7 @@ let inline_html ~minimal ~filename ~html ~extra =
 
 (* ---------- cmdliner ---------- *)
 let read_file path =
-  try
-    let ic = open_in_bin path in
-    let s = really_input_string ic (in_channel_length ic) in
-    close_in ic;
-    Ok s
+  try Ok (Cli_io.read_file path)
   with Sys_error msg -> err_msg "Error reading %s: %s" path msg
 
 (* Cmdliner's [file] conv only checks that the path exists, so a directory or a

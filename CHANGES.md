@@ -313,6 +313,8 @@ library, then stabilised over several internal milestones.
 
 ### CLI tools
 
+- CLI commands share one binary file reader that closes its descriptor when a
+  read fails (#309)
 - `cascade` -- pretty-print and minify CSS files. It accepts stdin via `-`
   or a missing file argument, and writes output to stdout.
 - `cascade --minify` applies the standard safe transforms, including
