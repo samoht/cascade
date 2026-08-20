@@ -403,28 +403,33 @@ let rec style_query_components components =
   if components_empty components then failwith "empty style() container query";
   match split_top_level_colon components with
   | Some _ -> style_leaf_components components
-  | None -> (
-      let level, unwrapped =
-        match single_paren_body components with
-        | Some body -> (trim_components body, true)
-        | None -> (components, false)
-      in
-      if has_keyword "and" level && has_keyword "or" level then
-        failwith "mixed style() operators require grouping"
-      else
-        match split_keyword "or" level with
-        | Some (lhs, rhs) ->
-            Any (style_query_components lhs, style_query_components rhs)
-        | None -> (
-            match split_keyword "and" level with
-            | Some (lhs, rhs) ->
-                All (style_query_components lhs, style_query_components rhs)
-            | None -> (
-                match level with
-                | first :: rest when ident_is "not" first ->
-                    Neg (style_query_components rest)
-                | _ when unwrapped -> style_query_components level
-                | _ -> style_leaf_components components)))
+  | None -> style_query_operator components
+
+and style_query_operator components =
+  let level, unwrapped =
+    match single_paren_body components with
+    | Some body -> (trim_components body, true)
+    | None -> (components, false)
+  in
+  if has_keyword "and" level && has_keyword "or" level then
+    failwith "mixed style() operators require grouping"
+  else
+    match split_keyword "or" level with
+    | Some (lhs, rhs) ->
+        Any (style_query_components lhs, style_query_components rhs)
+    | None -> style_query_conjunction ~components ~level ~unwrapped
+
+and style_query_conjunction ~components ~level ~unwrapped =
+  match split_keyword "and" level with
+  | Some (lhs, rhs) ->
+      All (style_query_components lhs, style_query_components rhs)
+  | None -> style_query_unary ~components ~level ~unwrapped
+
+and style_query_unary ~components ~level ~unwrapped =
+  match level with
+  | first :: rest when ident_is "not" first -> Neg (style_query_components rest)
+  | _ when unwrapped -> style_query_components level
+  | _ -> style_leaf_components components
 
 let style_body ~uppercase components =
   let body = string_of_components components in
@@ -485,32 +490,35 @@ let rec scroll_state_query_components components =
     failwith "empty scroll-state() container query";
   match split_top_level_colon components with
   | Some _ -> scroll_state_query_leaf components
-  | None -> (
-      let level, unwrapped =
-        match single_paren_body components with
-        | Some body -> (trim_components body, true)
-        | None -> (components, false)
-      in
-      if has_keyword "and" level && has_keyword "or" level then
-        failwith "mixed scroll-state() operators require grouping"
-      else
-        match split_keyword "or" level with
-        | Some (lhs, rhs) ->
-            Either
-              ( scroll_state_query_components lhs,
-                scroll_state_query_components rhs )
-        | None -> (
-            match split_keyword "and" level with
-            | Some (lhs, rhs) ->
-                Both
-                  ( scroll_state_query_components lhs,
-                    scroll_state_query_components rhs )
-            | None -> (
-                match level with
-                | first :: rest when ident_is "not" first ->
-                    Negated (scroll_state_query_components rest)
-                | _ when unwrapped -> scroll_state_query_components level
-                | _ -> scroll_state_query_leaf components)))
+  | None -> scroll_state_query_operator components
+
+and scroll_state_query_operator components =
+  let level, unwrapped =
+    match single_paren_body components with
+    | Some body -> (trim_components body, true)
+    | None -> (components, false)
+  in
+  if has_keyword "and" level && has_keyword "or" level then
+    failwith "mixed scroll-state() operators require grouping"
+  else
+    match split_keyword "or" level with
+    | Some (lhs, rhs) ->
+        Either
+          (scroll_state_query_components lhs, scroll_state_query_components rhs)
+    | None -> scroll_state_query_conjunction ~components ~level ~unwrapped
+
+and scroll_state_query_conjunction ~components ~level ~unwrapped =
+  match split_keyword "and" level with
+  | Some (lhs, rhs) ->
+      Both (scroll_state_query_components lhs, scroll_state_query_components rhs)
+  | None -> scroll_state_query_unary ~components ~level ~unwrapped
+
+and scroll_state_query_unary ~components ~level ~unwrapped =
+  match level with
+  | first :: rest when ident_is "not" first ->
+      Negated (scroll_state_query_components rest)
+  | _ when unwrapped -> scroll_state_query_components level
+  | _ -> scroll_state_query_leaf components
 
 let scroll_state_body ~uppercase components =
   let body = string_of_components components in
@@ -677,22 +685,24 @@ let rec unnamed_of_components components =
   in
   if has_keyword "and" level && has_keyword "or" level then
     failwith "mixed container query operators require grouping"
-  else
-    match split_keyword "or" level with
-    | Some (lhs, rhs) ->
-        Or (unnamed_of_components lhs, unnamed_of_components rhs)
-    | None -> (
-        match split_keyword "and" level with
-        | Some (lhs, rhs) ->
-            And (unnamed_of_components lhs, unnamed_of_components rhs)
-        | None -> (
-            match level with
-            | first :: rest when ident_is "not" first ->
-                if not (is_query_operand rest) then
-                  failwith
-                    "container query: 'not' requires a query-in-parens operand";
-                Not (unnamed_of_components rest)
-            | _ -> atom_of_components components))
+  else unnamed_or_components ~components level
+
+and unnamed_or_components ~components level =
+  match split_keyword "or" level with
+  | Some (lhs, rhs) -> Or (unnamed_of_components lhs, unnamed_of_components rhs)
+  | None -> unnamed_and_components ~components level
+
+and unnamed_and_components ~components level =
+  match split_keyword "and" level with
+  | Some (lhs, rhs) -> And (unnamed_of_components lhs, unnamed_of_components rhs)
+  | None -> unnamed_unary_components ~components level
+
+and unnamed_unary_components ~components = function
+  | first :: rest when ident_is "not" first ->
+      if not (is_query_operand rest) then
+        failwith "container query: 'not' requires a query-in-parens operand";
+      Not (unnamed_of_components rest)
+  | _ -> atom_of_components components
 
 let of_components components =
   match split_named_components components with

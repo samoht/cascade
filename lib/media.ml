@@ -533,7 +533,7 @@ let non_whitespace_components = List.filter (Fun.negate is_whitespace_component)
 let components_empty components =
   match trim_components components with [] -> true | _ :: _ -> false
 
-let components_to_string components =
+let string_of_components components =
   Cursor.string_of_components ~trim:true components
 
 let ident_component = function
@@ -636,7 +636,7 @@ let value_of_components_opt components =
   ] -> (
       match typed_function_value component with
       | Some _ as value -> value
-      | Option.None -> Some (Function (name, components_to_string arguments)))
+      | Option.None -> Some (Function (name, string_of_components arguments)))
   | _ -> Option.None
 
 let value_of_string s =
@@ -807,36 +807,40 @@ let name_first_range name op components =
       else Option.None
   | Some _, _ | Option.None, Option.None -> Option.None
 
+let range_rev_of_components lower op1 = function
+  | [ name_component ] -> (
+      match ident_component name_component with
+      | Some name ->
+          let name = name_of_string name in
+          if validate_range_feature name lower then
+            Some (Range_rev (lower, op1, name))
+          else Option.None
+      | Option.None -> Option.None)
+  | _ -> Option.None
+
+let interval_of_components lower op1 name_components op2 upper_components =
+  match (name_components, value_of_components_opt upper_components) with
+  | [ name_component ], Some upper -> (
+      match ident_component name_component with
+      | Some name ->
+          let name = name_of_string name in
+          if
+            interval_ops_compatible op1 op2
+            && validate_range_feature name lower
+            && validate_range_feature name upper
+          then Some (Interval (lower, op1, name, op2, upper))
+          else Option.None
+      | Option.None -> Option.None)
+  | _ -> Option.None
+
 let value_first_range_or_interval lhs op1 rhs =
   match value_of_components_opt lhs with
   | Option.None -> Option.None
   | Some lower -> (
       match split_cmp rhs with
-      | Option.None -> (
-          match rhs with
-          | [ name_component ] -> (
-              match ident_component name_component with
-              | Some name ->
-                  let name = name_of_string name in
-                  if validate_range_feature name lower then
-                    Some (Range_rev (lower, op1, name))
-                  else Option.None
-              | Option.None -> Option.None)
-          | _ -> Option.None)
-      | Some (name_components, op2, upper_components) -> (
-          match (name_components, value_of_components_opt upper_components) with
-          | [ name_component ], Some upper -> (
-              match ident_component name_component with
-              | Some name ->
-                  let name = name_of_string name in
-                  if
-                    interval_ops_compatible op1 op2
-                    && validate_range_feature name lower
-                    && validate_range_feature name upper
-                  then Some (Interval (lower, op1, name, op2, upper))
-                  else Option.None
-              | Option.None -> Option.None)
-          | _ -> Option.None))
+      | Option.None -> range_rev_of_components lower op1 rhs
+      | Some (name_components, op2, upper_components) ->
+          interval_of_components lower op1 name_components op2 upper_components)
 
 let parse_feature_components components =
   let components = non_whitespace_components components in
@@ -889,13 +893,13 @@ and condition_in_parens component : condition =
       match parse_feature_components value with
       | Valid_feature feature -> Feature feature
       | Invalid_feature ->
-          failwith ("invalid media feature: " ^ components_to_string value)
+          failwith ("invalid media feature: " ^ string_of_components value)
       | Not_feature -> condition_of_components value)
   | Component.Block { node = { opening = Token.Paren; closed = false; _ }; _ }
     ->
       failwith "unmatched parenthesis in @media condition"
   | Component.Func { node = { terminated = true; _ }; _ } ->
-      Feature (General_enclosed (components_to_string [ component ]))
+      Feature (General_enclosed (string_of_components [ component ]))
   | Component.Func { node = { terminated = false; _ }; _ } ->
       failwith "unmatched function in @media condition"
   | Component.Block _ | Component.Preserved _ ->
