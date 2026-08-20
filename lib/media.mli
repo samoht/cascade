@@ -132,10 +132,18 @@ val of_string : string -> t
 val of_string_strict : string -> t
 (** [of_string_strict s] parses [s] as a media query without branch recovery. *)
 
+val of_components : ?recover:bool -> Component.t list -> t
+(** [of_components components] parses an already-tokenized media query. Invalid
+    branches recover to [not all] unless [recover] is [false]. *)
+
 val of_function_body : string -> t
 (** [of_function_body s] parses the body of a conditional [media(...)] function.
     Unlike a standalone media query, a single feature appears without its outer
     parentheses in this grammar. *)
+
+val of_function_components : Component.t list -> t
+(** [of_function_components components] parses an already-tokenized conditional
+    [media(...)] body. *)
 
 val value_of_string : string -> value
 (** [value_of_string s] parses [s] as a media-feature value. *)

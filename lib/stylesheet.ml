@@ -1529,22 +1529,37 @@ let read_import_supports (r : Cursor.t) =
    position still holding one means a duplicate or a misordered prelude. They
    are function tokens, so the media grammar would otherwise take them as a
    [<general-enclosed>] query and quietly accept the rule. *)
-let starts_with_import_keyword raw =
-  let lower = String.lowercase_ascii raw in
-  List.exists
-    (fun k -> String.starts_with ~prefix:k lower)
-    [ "layer("; "supports("; "layer " ]
+let starts_with_import_keyword components =
+  let cursor = Cursor.of_components components in
+  match Cursor.peek cursor with
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      let name = String.lowercase_ascii name in
+      String.equal name "layer" || String.equal name "supports"
+  | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
+      String.equal (String.lowercase_ascii name) "layer"
+  | Some (Component.Block _ | Component.Preserved _) | None -> false
+
+let drain_until_semicolon r =
+  let rec loop acc =
+    match Cursor.peek_raw r with
+    | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+        List.rev acc
+    | Some component ->
+        ignore (Cursor.next_raw r);
+        loop (component :: acc)
+  in
+  loop []
 
 let read_import_media (r : Cursor.t) : Media.t option =
   if Cursor.peek_semicolon r || Cursor.is_done r then None
   else
     let loc = Cursor.position r in
-    let raw = Cursor.consume_until_semicolon ~trim:true r in
-    if starts_with_import_keyword raw then
+    let components = drain_until_semicolon r in
+    if starts_with_import_keyword components then
       Error.fail_bad_condition loc ~at_rule:"@media"
         ~reason:"layer()/supports() must precede the media query, and once only"
     else
-      match Media.of_string_strict raw with
+      match Media.of_components ~recover:false components with
       | media -> Some media
       | exception Failure reason ->
           Error.fail_bad_condition loc ~at_rule:"@media" ~reason
@@ -2824,9 +2839,14 @@ let conditional_args (fn : Component.func Component.node) =
   if not fn.node.terminated then failwith "unterminated conditional function";
   Cursor.string_of_components ~trim:true fn.node.arguments
 
+let conditional_arguments (fn : Component.func Component.node) =
+  if not fn.node.terminated then failwith "unterminated conditional function";
+  fn.node.arguments
+
 let conditional_atom (fn : Component.func Component.node) =
   match String.lowercase_ascii fn.Component.node.name with
-  | "media" -> Media_condition (Media.of_function_body (conditional_args fn))
+  | "media" ->
+      Media_condition (Media.of_function_components (conditional_arguments fn))
   | "supports" ->
       Supports_condition_test
         (Supports.of_string ~allow_unwrapped_decl:true (conditional_args fn))
@@ -2923,10 +2943,10 @@ let read_supports_condition (r : Cursor.t) : statement =
 
 let read_layer_name (r : Cursor.t) : string = read_layer_name_component r
 
-let read_nested_media_condition condition_str =
-  if String.length condition_str = 0 then Media.List []
+let read_nested_media_condition components =
+  if Cursor.of_components components |> Cursor.is_done then Media.List []
   else
-    try Media.of_string_strict condition_str
+    try Media.of_components ~recover:false components
     with Failure _ -> Media.of_string "not all"
 
 let read_rule_selector ?(nested = false) r =
@@ -3172,12 +3192,13 @@ and read_else (r : Cursor.t) : statement =
 and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let condition_components = Cursor.drain_until_block r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
-    if String.length condition_str = 0 then Media.List []
+    if Cursor.of_components condition_components |> Cursor.is_done then
+      Media.List []
     else
-      try Media.of_string_strict condition_str
+      try Media.of_components ~recover:false condition_components
       with Failure reason ->
         Cursor.err_invalid r ("invalid @media condition: " ^ reason)
   in
@@ -3378,9 +3399,9 @@ and read_nested_supports_rule r =
   Supports (supports_condition ~loc:cond_loc condition, content)
 
 and read_nested_media_rule r =
-  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let condition_components = Cursor.drain_until_block r in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-  Media (read_nested_media_condition condition_str, content)
+  Media (read_nested_media_condition condition_components, content)
 
 and read_nested_scope_rule r =
   let prelude_components = Cursor.drain_until_block r in

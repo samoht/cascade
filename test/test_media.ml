@@ -278,6 +278,26 @@ let general_enclosed_is_not_a_media_type () =
     "print and feature" "print and (min-width: 30em)"
     (to_string (of_string "print and (min-width: 30em)"))
 
+let component_parser_edges () =
+  let check name expected input =
+    Alcotest.(check string) name expected (to_string (of_string input))
+  in
+  check "escaped feature value" "(prefers-color-scheme: dark)"
+    "(prefers-color-scheme: d\\61 rk)";
+  check "escaped conjunction" "screen and (width >= 40em)"
+    "screen \\61 nd (width >= 40em)";
+  check "parenthesis in a string" "theme(\") and (\")" "theme(\") and (\")";
+  let source =
+    "@media screen \\61 nd (prefers-color-scheme:d\\61 rk){a{color:red}}"
+  in
+  match Css.of_string ~strict:false source with
+  | Error error -> Alcotest.fail (Cascade.Error.to_string error)
+  | Ok parsed ->
+      Alcotest.(check string)
+        "stylesheet prelude"
+        "@media screen and (prefers-color-scheme:dark){a{color:red}}"
+        (Css.to_string ~minify:true parsed.stylesheet)
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -301,4 +321,5 @@ let suite =
       test_case "general-enclosed in context" `Quick general_enclosed_in_context;
       test_case "general-enclosed is not a media type" `Quick
         general_enclosed_is_not_a_media_type;
+      test_case "component parser edges" `Quick component_parser_edges;
     ] )
