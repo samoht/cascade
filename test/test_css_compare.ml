@@ -271,11 +271,15 @@ let canonical_fully_transparent_missing_oklab () =
       (Fmt.str ".a { %s: #0000 }" property)
   in
   Alcotest.(check bool)
-    "fully transparent missing-component oklab equals #0000 in a colour property"
-    true (equivalent "background-color");
+    "fully transparent missing-component oklab equals #0000 in a colour \
+     property"
+    true
+    (equivalent "background-color");
   Alcotest.(check bool)
-    "fully transparent missing-component oklab equals #0000 in a custom property"
-    true (equivalent "--tw-gradient-via");
+    "fully transparent missing-component oklab equals #0000 in a custom \
+     property"
+    true
+    (equivalent "--tw-gradient-via");
   Alcotest.(check bool)
     "non-transparent missing-component oklab stays distinct from #0000" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
