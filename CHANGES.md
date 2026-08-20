@@ -42,6 +42,8 @@
 
 - URL references use RFC 3986 resolution, preserving data, scheme-relative,
   query-only and fragment-only URLs (#304)
+- Container conditions parse component values directly, so strings and escaped
+  or case-insensitive boolean keywords keep their CSS meaning (#305)
 - Typed `-webkit-` and `-moz-` aliases use their standard value grammar.
 - `shape-outside` reads its whole grammar. Only `none`, `circle()`, a non-empty
   `inset()` and the CSS-wide keywords were accepted, so `margin-box`,

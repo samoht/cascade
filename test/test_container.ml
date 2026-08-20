@@ -49,6 +49,39 @@ let test_string_output () =
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
     (to_string (of_string "(aspect-ratio > 1/1)"))
 
+let component_parser_edges () =
+  let open Css.Container in
+  Alcotest.(check string)
+    "quoted operators stay in declaration values" "style(--x: \"() and y\")"
+    (to_string (of_string "style(--x: \"() and y\")"));
+  Alcotest.(check string)
+    "keyword values stay in declarations" "style(--x: red and blue)"
+    (to_string (of_string "style(--x: red and blue)"));
+  Alcotest.(check string)
+    "condition keywords are case-insensitive" "style(--x) and style(--y)"
+    (to_string ~minify:true (of_string "style(--x) AND style(--y)"));
+  Alcotest.(check string)
+    "escaped condition keyword is decoded" "style(--x) and style(--y)"
+    (to_string ~minify:true (of_string "style(--x) \\61 nd style(--y)"));
+  Alcotest.(check string)
+    "named compound query" "card (width>1px) and (height>1px)"
+    (to_string ~minify:true (of_string "card (width > 1px) AND (height > 1px)"))
+
+let stylesheet_component_parser_edges () =
+  let render css =
+    match Css.of_string css with
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet
+    | Error error -> Alcotest.fail (Error.to_string error)
+  in
+  Alcotest.(check string)
+    "quoted operator survives stylesheet parsing"
+    "@container style(--x:\"() and y\"){a{color:red}}"
+    (render "@container style(--x: \"() and y\") { a { color: red } }");
+  Alcotest.(check string)
+    "case-insensitive operator survives stylesheet parsing"
+    "@container style(--x) and style(--y){a{color:red}}"
+    (render "@container style(--x) AND style(--y) { a { color: red } }")
+
 let spec_container_l3_vectors () =
   let open Css.Container in
   let check_raw name input =
@@ -154,6 +187,9 @@ let tests =
   Alcotest.
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "component parser edges" `Quick component_parser_edges;
+      test_case "stylesheet component parser edges" `Quick
+        stylesheet_component_parser_edges;
       test_case "spec container query level 3 vectors" `Quick
         spec_container_l3_vectors;
       test_case "compare" `Quick test_compare;
