@@ -1914,15 +1914,39 @@ let drop_function_arguments wrapped =
   Component.Func
     { wrapped with node = { wrapped.Component.node with arguments = [] } }
 
+let rec normalize_shadow_colors ~lossless (shadow : shadow) =
+  let normalize_body (body : shadow_body) : shadow_body =
+    {
+      body with
+      color =
+        option_map_preserve
+          (Values.normalize_color ~lossless ~in_feature_query:false)
+          body.color;
+    }
+  in
+  match shadow with
+  | Shadow body -> preserve_if_equal shadow (Shadow (normalize_body body))
+  | Inset (Body body) ->
+      preserve_if_equal shadow (Inset (Body (normalize_body body)) : shadow)
+  | Inset (Toggle ({ body; _ } as toggle)) ->
+      preserve_if_equal shadow
+        (Inset (Toggle { toggle with body = normalize_body body }) : shadow)
+  | List shadows ->
+      preserve_if_equal shadow
+        (List (map_preserve (normalize_shadow_colors ~lossless) shadows))
+  | other -> other
+
 (* A complete shadow token stream is self-typing: its length sequence and
    optional final <color> are parsed together, so a bare colour keyword cannot
    be mistaken for a custom-ident at another substitution site. Canonicalise
-   that typed colour while keeping unrelated opaque custom values untouched. *)
+   only that typed colour while preserving the authored shadow shape; applying
+   the full shadow optimiser here would also drop explicit default lengths from
+   an otherwise opaque custom-property token stream. *)
 let canonicalize_custom_shadow_components ~lossless components =
   let t = Cursor.of_string (Parser.to_string_custom components) in
   match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
   | Some shadow when Cursor.is_done t -> (
-      let shadow = normalize_shadow ~lossless shadow in
+      let shadow = normalize_shadow_colors ~lossless shadow in
       let canonical = Pp.to_string ~minify:true pp_shadow shadow in
       match read_custom_property_value (Cursor.of_string canonical) with
       | Tokens components -> components
