@@ -844,8 +844,13 @@ let record_keyframe_decls ~record_decl ~at_path ~sel frames =
 let collect_scoped_refs stylesheet =
   let consumers = ref [] in
   let customs = ref [] in
+  let runtime_refs = ref [] in
   let record_decl ~at_path ~selector decl =
     let refs = refs_of_declaration decl in
+    Variables.vars_of_declarations [ decl ]
+    |> List.iter (fun (Variables.V var) ->
+        if var.Values.runtime then
+          runtime_refs := ("--" ^ var.Values.name) :: !runtime_refs);
     match custom_name decl with
     | Some name -> customs := (at_path, selector, name, refs) :: !customs
     | None -> consumers := (at_path, selector, refs) :: !consumers
@@ -875,7 +880,7 @@ let collect_scoped_refs stylesheet =
     | _ -> ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
-  (!consumers, !customs)
+  (!consumers, !customs, List.sort_uniq compare !runtime_refs)
 
 (* Closure: a custom-prop declaration is live iff some consumer at a compatible
    at-rule path (any [@media]/[@layer]/[@supports] chain that contains the
@@ -1275,7 +1280,11 @@ let collapse_layer_decided ~keep stylesheet =
     List.map map_stmt stylesheet
 
 let vars ?(keep_vars = []) ?(warn = fun _ -> ()) stylesheet =
-  let keep = List.map normalise_var_name keep_vars in
+  let _, _, runtime_refs = collect_scoped_refs stylesheet in
+  let keep =
+    List.map normalise_var_name keep_vars @ runtime_refs
+    |> List.sort_uniq compare
+  in
   let stylesheet = collapse_layer_decided ~keep stylesheet in
   let counts, referenced = var_census stylesheet in
   let inlinable name =
@@ -1298,14 +1307,16 @@ let vars ?(keep_vars = []) ?(warn = fun _ -> ()) stylesheet =
       then warn name)
     counts;
   let scopes = collect_scopes ~kept stylesheet in
-  let original_consumers, original_customs = collect_scoped_refs stylesheet in
+  let original_consumers, original_customs, _ =
+    collect_scoped_refs stylesheet
+  in
   let cyclic_live_set =
     cyclic_live_customs ~consumers:original_consumers ~customs:original_customs
   in
   let substituted =
     substitute ~kept ~scopes ~parents:[] ~at_path:[] stylesheet
   in
-  let consumers, customs = collect_scoped_refs substituted in
+  let consumers, customs, _ = collect_scoped_refs substituted in
   let live_set = live_customs ~consumers ~customs @ cyclic_live_set in
   (* Keep every definition of a kept variable (including a cross-scope override
      like an @media one), so the live chain stays complete; single-def
