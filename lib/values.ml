@@ -7160,15 +7160,15 @@ let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
   in
   match l with
   | Some (Pct f) ->
-      (* On an equal-length spelling, keep the percentage. A trailing [%] can
-         also terminate the token before an unsigned following axis, so
-         [oklab(25%20 50)] is one byte shorter than [oklab(.25 20 50)]. Choosing
-         the number on a tie made relative-color origin canonicalisation regress
-         the minifier's shortest-output invariant. *)
+      (* Preserve the node's representation on an equal-length spelling. A
+         trailing [%] can terminate the token before an unsigned following axis,
+         so an authored [oklab(25% 20 50)] stays [oklab(25%20 50)]. *)
       if num_len (f *. pct_scale) < pct_len f then Some (num (f *. pct_scale))
       else Some (pct f)
   | Some (Num f) ->
-      if pct_len (f /. pct_scale) <= num_len f then Some (pct (f /. pct_scale))
+      (* A computed lightness is numeric. Keeping [Num] on a tie avoids turning
+         a colour-mix result such as [.54] into [54%]. *)
+      if pct_len (f /. pct_scale) < num_len f then Some (pct (f /. pct_scale))
       else Some (num f)
   | other -> other
 
