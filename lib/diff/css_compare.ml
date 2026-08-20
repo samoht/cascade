@@ -135,14 +135,20 @@ let sig_of_decls decls =
       let c = String.compare a1 a2 in
       if c <> 0 then c else String.compare b1 b2)
 
+let restore_group_order table =
+  Hashtbl.to_seq_keys table |> List.of_seq
+  |> List.iter (fun key ->
+      Hashtbl.replace table key (List.rev (Hashtbl.find table key)));
+  table
+
 let group_into_table rules =
   let tbl = Hashtbl.create 128 in
   List.iter
     (fun (k, d) ->
       let lst = match Hashtbl.find_opt tbl k with Some l -> l | None -> [] in
-      Hashtbl.replace tbl k (lst @ [ d ]))
+      Hashtbl.replace tbl k (d :: lst))
     rules;
-  tbl
+  restore_group_order tbl
 
 (* Compare two declaration lists with the same key and emit diffs *)
 let diff_same_key_pair key d1 d2 =

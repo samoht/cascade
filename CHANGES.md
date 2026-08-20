@@ -173,6 +173,8 @@
 
 ### Diff report
 
+- Grouping repeated selectors and conditions is linear in the number of rules
+  while preserving source order (#307)
 - The cascade layer order the two sheets declare is compared, and the report
   names the layer pairs that swapped. Dropping an `@layer a;` pin, which makes
   the other layer the weaker one, read as no difference at all
