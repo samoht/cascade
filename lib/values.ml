@@ -7318,6 +7318,28 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
           normalize_color ~lossless ~in_feature_query d )
   | Contrast_color inner ->
       Contrast_color (normalize_color ~lossless ~in_feature_query inner)
+  | Relative_color (name, body) -> (
+      (* The [from] production fixes the origin's type to <color>. Re-read that
+         one component so equivalent spellings canonicalise even though the
+         channel tail remains verbatim until Cascade models relative channels
+         structurally. *)
+      let t = Cursor.of_string body in
+      match
+        try
+          Cursor.ws t;
+          Cursor.expect_string "from" t;
+          Cursor.ws t;
+          let origin = read_color t in
+          Cursor.ws t;
+          let tail = Cursor.consume_remaining_as_string ~trim:true t in
+          Some (origin, tail)
+        with Cursor.Parse_error _ -> None
+      with
+      | Some (origin, tail) when tail <> "" ->
+          let origin = normalize_color ~lossless ~in_feature_query origin in
+          let origin = Pp.to_string ~minify:true pp_color origin in
+          Relative_color (name, "from " ^ origin ^ " " ^ tail)
+      | _ -> c)
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
