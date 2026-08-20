@@ -238,6 +238,24 @@ let test_inline_vars_runtime_boundaries () =
     ":root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}"
     ":root{--bp:30em}@container(min-width:var(--bp)){.x{color:red}}"
 
+let test_inline_runtime_var_metadata () =
+  let runtime_ref : Css.length Css.var =
+    Css.var_ref ~runtime:true
+      ~fallback:(Css.Values.syntax_fallback "var(--fallback)")
+      "external"
+  in
+  let stylesheet =
+    Css.v
+      [
+        Css.rule ~selector:(Css.Selector.class_ "x")
+          [ Css.padding [ Css.Var runtime_ref ] ];
+      ]
+  in
+  Alcotest.(check string)
+    "runtime var keeps its live fallback wrapper"
+    ".x{padding:var(--external,var(--fallback))}"
+    (stylesheet |> Css.inline_vars |> minified)
+
 let test_inline_across_layers () =
   (* A cascade layer never scopes custom-property visibility: layers only order
      competing declarations, so a variable defined in one @layer resolves for a
@@ -329,6 +347,8 @@ let suite =
         test_inline_shorthand_functions;
       Alcotest.test_case "inline vars runtime boundaries" `Quick
         test_inline_vars_runtime_boundaries;
+      Alcotest.test_case "inline vars honour runtime metadata" `Quick
+        test_inline_runtime_var_metadata;
       Alcotest.test_case "inline vars substitute across cascade layers" `Quick
         test_inline_across_layers;
       Alcotest.test_case
