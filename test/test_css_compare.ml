@@ -268,11 +268,27 @@ let canonical_relative_color_origin () =
   (* A relative colour function fixes its origin's type to <color>, so
      equivalent spellings of that origin must compare equal, including when the
      whole function sits inside an otherwise opaque custom-property value. *)
+  let parsed =
+    Cascade.Css.Values.read_color
+      (Cascade.Cursor.of_string "oklab(from red l a b / var(--x))")
+  in
+  Alcotest.(check bool)
+    "relative-colour parser retains a typed origin" true
+    (match parsed with
+    | Cascade.Css.Relative_color
+        ("oklab", Cascade.Css.Named Cascade.Css.Red, "l a b/var(--x)") ->
+        true
+    | _ -> false);
   Alcotest.(check bool)
     "named and hex relative-colour origins compare equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { color: oklab(from red l a b / var(--x)) }"
        ".a { color: oklab(from #f00 l a b / var(--x)) }");
+  Alcotest.(check bool)
+    "named and hex relative-rgb origins compare equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { color: rgb(from red r g b / var(--x)) }"
+       ".a { color: rgb(from #f00 r g b / var(--x)) }");
   Alcotest.(check bool)
     "relative-colour origins compare equal inside a custom property" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical

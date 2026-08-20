@@ -2159,9 +2159,8 @@ and pp_generic_length_calc ~always ctx cv =
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
 
-(* The body of a [Relative_rgb] is stored as a verbatim string of the form
-   ["from <origin> r g b/<alpha>"], because the channels and alpha are part of
-   the [<calc>]-derived expression. To match the typed-color path's alpha
+(* Relative-colour channel and alpha expressions remain an opaque tail because
+   they are [<calc>]-derived. To match the typed-color path's alpha
    canonicalisation under [~minify:true], rewrite a trailing ["/<n>%"] alpha
    suffix to its decimal equivalent. *)
 let minify_relative_color_alpha body =
@@ -4285,15 +4284,6 @@ let rec pp_rgb_as_color : rgb Pp.t =
   | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
   | Var v -> pp_var pp_rgb_as_color ctx v
 
-let pp_relative_color_call ctx name body =
-  let body =
-    if Pp.minified ctx then
-      body |> minify_relative_color_alpha |> minify_relative_color_numbers
-      |> minify_relative_color_spaces
-    else body
-  in
-  Pp.call name (fun ctx body -> Pp.string ctx body) ctx body
-
 let canonical_color_name = function
   | Grey -> Gray
   | Dark_grey -> Dark_gray
@@ -4381,6 +4371,22 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
     ctx
     (in_space, hue, color1, percent1, color2, percent2)
 
+and pp_typed_relative_color_call ctx name origin tail =
+  let tail =
+    if Pp.minified ctx then
+      tail |> minify_relative_color_alpha |> minify_relative_color_numbers
+      |> minify_relative_color_spaces
+    else tail
+  in
+  Pp.call name
+    (fun ctx (origin, tail) ->
+      Pp.string ctx "from";
+      Pp.space ctx ();
+      pp_color ctx origin;
+      Pp.space ctx ();
+      Pp.string ctx tail)
+    ctx (origin, tail)
+
 and pp_rgb_color ctx = function
   | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
   (* keep the [rgb()] wrapper: a bare [var(--x)] assumes [--x] is a whole
@@ -4455,8 +4461,10 @@ and pp_color_default : color Pp.t =
   | Hsl { h; s; l; a } -> pp_hsl_color ctx h s l a
   | Hwb { h; w; b; a } -> pp_hwb_color ctx h w b a
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
-  | Relative_rgb body -> pp_relative_color_call ctx "rgb" body
-  | Relative_color (name, body) -> pp_relative_color_call ctx name body
+  | Relative_rgb (origin, tail) ->
+      pp_typed_relative_color_call ctx "rgb" origin tail
+  | Relative_color (name, origin, tail) ->
+      pp_typed_relative_color_call ctx name origin tail
   | Contrast_color color -> Pp.call "contrast-color" pp_color ctx color
   | Light_dark (light, dark) -> pp_light_dark_color ctx light dark
   | Attribute (name, fallback) -> pp_color_attr ctx name fallback
@@ -6455,8 +6463,7 @@ and read_relative_rgb t : color =
   if tail = "" then Cursor.err_expected t "relative rgb channels";
   if relative_color_channel_count tail_components <> 3 then
     Cursor.err_expected t "relative rgb channels";
-  let origin = Pp.to_string ~minify:true pp_color origin in
-  Relative_rgb ("from " ^ origin ^ " " ^ tail)
+  Relative_rgb (origin, tail)
 
 and read_contrast_color t : color =
   Cursor.ws t;
@@ -6499,8 +6506,9 @@ and read_color_attr t : color =
 
 and read_relative_color name t : color =
   (* CSS Color 5 sec. 2: any colour function may take [from <origin> <c1> <c2>
-     <c3> [/ <alpha>]?]. We capture the body verbatim so the printer re-emits
-     the function name + parenthesised tail unchanged. *)
+     <c3> [/ <alpha>]?]. The origin has a fixed <color> type, so retain the
+     parsed node while keeping the not-yet-modelled channel expression
+     opaque. *)
   Cursor.ws t;
   Cursor.expect_string "from" t;
   Cursor.ws t;
@@ -6518,9 +6526,7 @@ and read_relative_color name t : color =
       if tail = "" then Cursor.err_expected t (name ^ " channels");
       match fold_relative_color_pass_through name origin tail with
       | Some color -> color
-      | None ->
-          let origin = Pp.to_string ~minify:true pp_color origin in
-          Relative_color (name, "from " ^ origin ^ " " ^ tail))
+      | None -> Relative_color (name, origin, tail))
 
 (* CSS Color 5 sec. 4.1: [color(from <origin> srgb r g b [/ <alpha>]?)] is a
    self-substitution of the origin's sRGB channels. Static folding requires the
@@ -6606,6 +6612,8 @@ let rec color_has_specified_hue = function
   | Mix { hue = Specified; _ } -> true
   | Mix { color1; color2; _ } ->
       color_has_specified_hue color1 || color_has_specified_hue color2
+  | Relative_rgb (origin, _) -> color_has_specified_hue origin
+  | Relative_color (_, origin, _) -> color_has_specified_hue origin
   | Contrast_color color -> color_has_specified_hue color
   | Light_dark (a, b) -> color_has_specified_hue a || color_has_specified_hue b
   | Attribute (_, Some color) -> color_has_specified_hue color
@@ -6620,6 +6628,8 @@ let color_exists p =
     ||
     match c with
     | Mix { color1; color2; _ } -> go color1 || go color2
+    | Relative_rgb (origin, _) -> go origin
+    | Relative_color (_, origin, _) -> go origin
     | Light_dark (a, b) -> go a || go b
     | Contrast_color c -> go c
     | Attribute (_, Some c) -> go c
@@ -7323,28 +7333,11 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
           normalize_color ~lossless ~in_feature_query d )
   | Contrast_color inner ->
       Contrast_color (normalize_color ~lossless ~in_feature_query inner)
-  | Relative_color (name, body) -> (
-      (* The [from] production fixes the origin's type to <color>. Re-read that
-         one component so equivalent spellings canonicalise even though the
-         channel tail remains verbatim until Cascade models relative channels
-         structurally. *)
-      let t = Cursor.of_string body in
-      match
-        try
-          Cursor.ws t;
-          Cursor.expect_string "from" t;
-          Cursor.ws t;
-          let origin = read_color t in
-          Cursor.ws t;
-          let tail = Cursor.consume_remaining_as_string ~trim:true t in
-          Some (origin, tail)
-        with Cursor.Parse_error _ -> None
-      with
-      | Some (origin, tail) when tail <> "" ->
-          let origin = normalize_color ~lossless ~in_feature_query origin in
-          let origin = Pp.to_string ~minify:true pp_color origin in
-          Relative_color (name, "from " ^ origin ^ " " ^ tail)
-      | _ -> c)
+  | Relative_rgb (origin, tail) ->
+      Relative_rgb (normalize_color ~lossless ~in_feature_query origin, tail)
+  | Relative_color (name, origin, tail) ->
+      Relative_color
+        (name, normalize_color ~lossless ~in_feature_query origin, tail)
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /

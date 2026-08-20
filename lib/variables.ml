@@ -476,7 +476,8 @@ let rec vars_of_color (value : Values.color) : any_var list =
       @ vars_of_alpha a
   | Color { components; alpha; _ } ->
       List.concat_map vars_of_component components @ vars_of_alpha alpha
-  | Relative_rgb _ -> []
+  | Relative_rgb (origin, _) -> vars_of_color origin
+  | Relative_color (_, origin, _) -> vars_of_color origin
   | Contrast_color color -> vars_of_color color
   | Light_dark (light, dark) -> vars_of_color light @ vars_of_color dark
   | Attribute (_, fallback) -> Option.fold ~none:[] ~some:vars_of_color fallback
