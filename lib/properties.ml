@@ -1914,6 +1914,21 @@ let drop_function_arguments wrapped =
   Component.Func
     { wrapped with node = { wrapped.Component.node with arguments = [] } }
 
+(* A complete shadow token stream is self-typing: its length sequence and
+   optional final <color> are parsed together, so a bare colour keyword cannot
+   be mistaken for a custom-ident at another substitution site. Canonicalise
+   that typed colour while keeping unrelated opaque custom values untouched. *)
+let canonicalize_custom_shadow_components ~lossless components =
+  let t = Cursor.of_string (Parser.to_string_custom components) in
+  match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
+  | Some shadow when Cursor.is_done t -> (
+      let shadow = normalize_shadow ~lossless shadow in
+      let canonical = Pp.to_string ~minify:true pp_shadow shadow in
+      match read_custom_property_value (Cursor.of_string canonical) with
+      | Tokens components -> components
+      | Typed _ -> components)
+  | _ -> components
+
 let rec canonicalize_custom_colors_components ~lossless comps =
   let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
   List.concat_map
@@ -2526,6 +2541,7 @@ let normalize_property_value : type a.
       | Custom_value ({ value = Tokens components; _ } as r) ->
           let components' =
             components
+            |> canonicalize_custom_shadow_components ~lossless
             |> canonicalize_custom_colors_components ~lossless
             |> canonicalize_math_whitespace_components
           in
@@ -2599,7 +2615,8 @@ let normalize_custom_property_value ?(lossless = false)
   | Tokens components ->
       Tokens
         (canonicalize_math_whitespace_components
-           (canonicalize_custom_colors_components ~lossless components))
+           (canonicalize_custom_colors_components ~lossless
+              (canonicalize_custom_shadow_components ~lossless components)))
   | Typed _ as other -> other
 
 let pp_property_value : type a. (a property * a) Pp.t =

@@ -392,7 +392,7 @@ let semantic_custom_var_fallback () =
     ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
   in
   Alcotest.(check bool)
-    "custom property var fallback token streams stay opaque" false
+    "shadow colour var fallbacks compare after typed canonicalization" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_custom_nested_functions () =
