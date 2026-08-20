@@ -264,6 +264,21 @@ let canonical_custom_color_function_alpha () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
        ".a { --c: #0000 }")
 
+let canonical_relative_color_origin () =
+  (* A relative colour function fixes its origin's type to <color>, so
+     equivalent spellings of that origin must compare equal, including when the
+     whole function sits inside an otherwise opaque custom-property value. *)
+  Alcotest.(check bool)
+    "named and hex relative-colour origins compare equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { color: oklab(from red l a b / var(--x)) }"
+       ".a { color: oklab(from #f00 l a b / var(--x)) }");
+  Alcotest.(check bool)
+    "relative-colour origins compare equal inside a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { --s: 0 0 8px oklab(from red l a b / var(--x)) }"
+       ".a { --s: 0 0 8px oklab(from #f00 l a b / var(--x)) }")
+
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
      identically into font-family, so canonical comparison equates them inside a
@@ -1209,6 +1224,8 @@ let suite =
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom color-function alpha" `Quick
         canonical_custom_color_function_alpha;
+      Alcotest.test_case "canonical relative-colour origin" `Quick
+        canonical_relative_color_origin;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
