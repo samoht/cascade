@@ -834,13 +834,13 @@ let rec fold_double_position_stops stops =
   | Color_percentage (c1, Option.Some p1, Option.None)
     :: Color_percentage (c2, Option.Some p2, Option.None)
     :: rest
-    when c1 = c2 ->
+    when Values.equal_color c1 c2 ->
       Color_percentage (c1, Option.Some p1, Option.Some p2)
       :: fold_double_position_stops rest
   | Color_length (c1, Option.Some l1, Option.None)
     :: Color_length (c2, Option.Some l2, Option.None)
     :: rest
-    when c1 = c2 ->
+    when Values.equal_color c1 c2 ->
       Color_length (c1, Option.Some l1, Option.Some l2)
       :: fold_double_position_stops rest
   | stop :: rest ->

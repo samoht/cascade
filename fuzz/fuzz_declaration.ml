@@ -183,8 +183,12 @@ let test_custom_cycle_context buf =
   if not (starts_with ~prefix:(name ^ ":var(") serialized) then
     failf "custom property var() shape changed: %S" serialized;
   let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
-  if Css.Context.custom_property name ctx <> Some decl then
-    fail "custom property context lost var() value"
+  if
+    not
+      (Option.equal Css.Declaration.equal_declaration
+         (Css.Context.custom_property name ctx)
+         (Some decl))
+  then fail "custom property context lost var() value"
 
 let feature_decl_vector buf =
   pick

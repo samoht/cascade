@@ -1218,7 +1218,7 @@ let collapse_box_by same = function
 (* Both sides are the same [length] type, so structural equality is the
    minified-equality test once lengths are canonical - no need to render and
    compare text. *)
-let same_minified_length (a : Values.length) (b : Values.length) = a = b
+let same_minified_length = Values.equal_length
 let collapse_box_lengths vs = collapse_box_by same_minified_length vs
 
 type sides = Values.length * Values.length * Values.length * Values.length
@@ -1238,16 +1238,16 @@ let sides_have_runtime_subst ((top, right, bottom, left) : sides) =
 let absorb_margin_corner ~important ((top, right, bottom, left) : sides) d :
     sides option =
   match d with
-  | Declaration { property = Margin_top; value = v; important = i }
+  | Declaration { property = Margin_top; value = v; important = i; _ }
     when i = important ->
       Some (v, right, bottom, left)
-  | Declaration { property = Margin_right; value = v; important = i }
+  | Declaration { property = Margin_right; value = v; important = i; _ }
     when i = important ->
       Some (top, v, bottom, left)
-  | Declaration { property = Margin_bottom; value = v; important = i }
+  | Declaration { property = Margin_bottom; value = v; important = i; _ }
     when i = important ->
       Some (top, right, v, left)
-  | Declaration { property = Margin_left; value = v; important = i }
+  | Declaration { property = Margin_left; value = v; important = i; _ }
     when i = important ->
       Some (top, right, bottom, v)
   | _ -> None
@@ -1255,16 +1255,16 @@ let absorb_margin_corner ~important ((top, right, bottom, left) : sides) d :
 let absorb_padding_corner ~important ((top, right, bottom, left) : sides) d :
     sides option =
   match d with
-  | Declaration { property = Padding_top; value = v; important = i }
+  | Declaration { property = Padding_top; value = v; important = i; _ }
     when i = important ->
       Some (v, right, bottom, left)
-  | Declaration { property = Padding_right; value = v; important = i }
+  | Declaration { property = Padding_right; value = v; important = i; _ }
     when i = important ->
       Some (top, v, bottom, left)
-  | Declaration { property = Padding_bottom; value = v; important = i }
+  | Declaration { property = Padding_bottom; value = v; important = i; _ }
     when i = important ->
       Some (top, right, v, left)
-  | Declaration { property = Padding_left; value = v; important = i }
+  | Declaration { property = Padding_left; value = v; important = i; _ }
     when i = important ->
       Some (top, right, bottom, v)
   | _ -> None
@@ -1348,14 +1348,14 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
    side is later shadowed within the same block, fold them into [overflow] -
    single value when the two axes match, two values otherwise. *)
 let combined_overflow v_x v_y : Properties.overflow =
-  if v_x = v_y then v_x else Overflow_pair (v_x, v_y)
+  if Properties.equal_overflow v_x v_y then v_x else Overflow_pair (v_x, v_y)
 
 let try_take_overflow_y ~important rest =
   let rec loop acc :
       (int * declaration) list ->
       (Properties.overflow * (int * declaration) list) option = function
     | [] -> None
-    | (_, Declaration { property = Overflow_y; value = v_y; important = i' })
+    | (_, Declaration { property = Overflow_y; value = v_y; important = i'; _ })
       :: rest
       when i' = important ->
         Some (v_y, List.rev_append acc rest)
@@ -1371,7 +1371,7 @@ let try_take_overflow_x ~important rest =
       (int * declaration) list ->
       (Properties.overflow * (int * declaration) list) option = function
     | [] -> None
-    | (_, Declaration { property = Overflow_x; value = v_x; important = i' })
+    | (_, Declaration { property = Overflow_x; value = v_x; important = i'; _ })
       :: rest
       when i' = important ->
         Some (v_x, List.rev_append acc rest)
@@ -1385,8 +1385,8 @@ let try_take_overflow_x ~important rest =
 let merge_overflow_longhands decls =
   let rec go acc = function
     | [] -> List.rev acc
-    | ((idx, Declaration { property = Overflow_x; value = v_x; important }) as
-       item)
+    | ((idx, Declaration { property = Overflow_x; value = v_x; important; _ })
+       as item)
       :: rest -> (
         match try_take_overflow_y ~important rest with
         | None -> go (item :: acc) rest
@@ -1395,8 +1395,8 @@ let merge_overflow_longhands decls =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
             go ((idx, merged) :: acc) rest')
-    | ((idx, Declaration { property = Overflow_y; value = v_y; important }) as
-       item)
+    | ((idx, Declaration { property = Overflow_y; value = v_y; important; _ })
+       as item)
       :: rest -> (
         match try_take_overflow_x ~important rest with
         | None -> go (item :: acc) rest
@@ -1417,25 +1417,25 @@ type box_side = Top | Right | Bottom | Left
 
 let extract_margin_side :
     declaration -> (box_side * Values.length * bool) option = function
-  | Declaration { property = Margin_top; value; important } ->
+  | Declaration { property = Margin_top; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Margin_right; value; important } ->
+  | Declaration { property = Margin_right; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Margin_bottom; value; important } ->
+  | Declaration { property = Margin_bottom; value; important; _ } ->
       Some (Bottom, value, important)
-  | Declaration { property = Margin_left; value; important } ->
+  | Declaration { property = Margin_left; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
 let extract_padding_side :
     declaration -> (box_side * Values.length * bool) option = function
-  | Declaration { property = Padding_top; value; important } ->
+  | Declaration { property = Padding_top; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Padding_right; value; important } ->
+  | Declaration { property = Padding_right; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Padding_bottom; value; important } ->
+  | Declaration { property = Padding_bottom; value; important; _ } ->
       Some (Bottom, value, important)
-  | Declaration { property = Padding_left; value; important } ->
+  | Declaration { property = Padding_left; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
@@ -1444,25 +1444,26 @@ let extract_padding_side :
    carry exactly one length per side. *)
 let extract_inset_side : declaration -> (box_side * Values.length * bool) option
     = function
-  | Declaration { property = Top; value = [ v ]; important } ->
+  | Declaration { property = Top; value = [ v ]; important; _ } ->
       Some (Top, v, important)
-  | Declaration { property = Right; value = [ v ]; important } ->
+  | Declaration { property = Right; value = [ v ]; important; _ } ->
       Some (Right, v, important)
-  | Declaration { property = Bottom; value = [ v ]; important } ->
+  | Declaration { property = Bottom; value = [ v ]; important; _ } ->
       Some (Bottom, v, important)
-  | Declaration { property = Left; value = [ v ]; important } ->
+  | Declaration { property = Left; value = [ v ]; important; _ } ->
       Some (Left, v, important)
   | _ -> None
 
 let extract_border_radius_corner :
     declaration -> (box_side * Values.length * bool) option = function
-  | Declaration { property = Border_top_left_radius; value; important } ->
+  | Declaration { property = Border_top_left_radius; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Border_top_right_radius; value; important } ->
+  | Declaration { property = Border_top_right_radius; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Border_bottom_right_radius; value; important } ->
+  | Declaration { property = Border_bottom_right_radius; value; important; _ }
+    ->
       Some (Bottom, value, important)
-  | Declaration { property = Border_bottom_left_radius; value; important } ->
+  | Declaration { property = Border_bottom_left_radius; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
@@ -1647,9 +1648,9 @@ type pair_side = Row | Column
 
 let extract_gap_side : declaration -> (pair_side * Values.length * bool) option
     = function
-  | Declaration { property = Row_gap; value; important } ->
+  | Declaration { property = Row_gap; value; important; _ } ->
       Some (Row, value, important)
-  | Declaration { property = Column_gap; value; important } ->
+  | Declaration { property = Column_gap; value; important; _ } ->
       Some (Column, value, important)
   | _ -> None
 
@@ -1701,56 +1702,58 @@ let try_compose_axis_pair_at idx ~extract ~build i =
         let v_start = List.assoc Start pair in
         let v_end = List.assoc End pair in
         let value =
-          if v_start = v_end then [ v_start ] else [ v_start; v_end ]
+          if Values.equal_length v_start v_end then [ v_start ]
+          else [ v_start; v_end ]
         in
         Some (build ~important:imp1 ~value)
     | _ -> None
 
 let extract_margin_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Margin_inline_start; value; important } ->
+  | Declaration { property = Margin_inline_start; value; important; _ } ->
       Some (Start, value, important)
-  | Declaration { property = Margin_inline_end; value; important } ->
+  | Declaration { property = Margin_inline_end; value; important; _ } ->
       Some (End, value, important)
   | _ -> None
 
 let extract_margin_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Margin_block_start; value; important } ->
+  | Declaration { property = Margin_block_start; value; important; _ } ->
       Some (Start, value, important)
-  | Declaration { property = Margin_block_end; value; important } ->
+  | Declaration { property = Margin_block_end; value; important; _ } ->
       Some (End, value, important)
   | _ -> None
 
 let extract_padding_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Padding_inline_start; value; important } ->
+  | Declaration { property = Padding_inline_start; value; important; _ } ->
       Some (Start, value, important)
-  | Declaration { property = Padding_inline_end; value; important } ->
+  | Declaration { property = Padding_inline_end; value; important; _ } ->
       Some (End, value, important)
   | _ -> None
 
 let extract_padding_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Padding_block_start; value; important } ->
+  | Declaration { property = Padding_block_start; value; important; _ } ->
       Some (Start, value, important)
-  | Declaration { property = Padding_block_end; value; important } ->
+  | Declaration { property = Padding_block_end; value; important; _ } ->
       Some (End, value, important)
   | _ -> None
 
 let extract_inset_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Inset_inline_start; value = [ v ]; important } ->
+  | Declaration { property = Inset_inline_start; value = [ v ]; important; _ }
+    ->
       Some (Start, v, important)
-  | Declaration { property = Inset_inline_end; value = [ v ]; important } ->
+  | Declaration { property = Inset_inline_end; value = [ v ]; important; _ } ->
       Some (End, v, important)
   | _ -> None
 
 let extract_inset_block_side :
     declaration -> (axis_side * Values.length * bool) option = function
-  | Declaration { property = Inset_block_start; value = [ v ]; important } ->
+  | Declaration { property = Inset_block_start; value = [ v ]; important; _ } ->
       Some (Start, v, important)
-  | Declaration { property = Inset_block_end; value = [ v ]; important } ->
+  | Declaration { property = Inset_block_end; value = [ v ]; important; _ } ->
       Some (End, v, important)
   | _ -> None
 
@@ -1769,36 +1772,37 @@ let try_compose_place_at idx i =
     let d1 = Rule_index.decl_at idx i in
     let d2 = Rule_index.decl_at idx (i + 1) in
     match (d1, d2) with
-    | ( Declaration { property = Align_items; value = a; important = i1 },
-        Declaration { property = Justify_items; value = j; important = i2 } )
+    | ( Declaration { property = Align_items; value = a; important = i1; _ },
+        Declaration { property = Justify_items; value = j; important = i2; _ } )
       when i1 = i2 ->
         Some
           (Declaration.v ~important:i1 Place_items
              (Align_justify (a, j) : Properties.place_items))
-    | ( Declaration { property = Justify_items; value = j; important = i1 },
-        Declaration { property = Align_items; value = a; important = i2 } )
+    | ( Declaration { property = Justify_items; value = j; important = i1; _ },
+        Declaration { property = Align_items; value = a; important = i2; _ } )
       when i1 = i2 ->
         Some
           (Declaration.v ~important:i1 Place_items
              (Align_justify (a, j) : Properties.place_items))
-    | ( Declaration { property = Align_content; value = a; important = i1 },
-        Declaration { property = Justify_content; value = j; important = i2 } )
+    | ( Declaration { property = Align_content; value = a; important = i1; _ },
+        Declaration { property = Justify_content; value = j; important = i2; _ }
+      )
       when i1 = i2 ->
         Some
           (Declaration.v ~important:i1 Place_content
              (Align_justify (a, j) : Properties.place_content))
-    | ( Declaration { property = Justify_content; value = j; important = i1 },
-        Declaration { property = Align_content; value = a; important = i2 } )
+    | ( Declaration { property = Justify_content; value = j; important = i1; _ },
+        Declaration { property = Align_content; value = a; important = i2; _ } )
       when i1 = i2 ->
         Some
           (Declaration.v ~important:i1 Place_content
              (Align_justify (a, j) : Properties.place_content))
-    | ( Declaration { property = Align_self; value = a; important = i1 },
-        Declaration { property = Justify_self; value = j; important = i2 } )
+    | ( Declaration { property = Align_self; value = a; important = i1; _ },
+        Declaration { property = Justify_self; value = j; important = i2; _ } )
       when i1 = i2 ->
         Some (Declaration.v ~important:i1 Place_self (a, j))
-    | ( Declaration { property = Justify_self; value = j; important = i1 },
-        Declaration { property = Align_self; value = a; important = i2 } )
+    | ( Declaration { property = Justify_self; value = j; important = i1; _ },
+        Declaration { property = Align_self; value = a; important = i2; _ } )
       when i1 = i2 ->
         Some (Declaration.v ~important:i1 Place_self (a, j))
     | _ -> None
@@ -2261,37 +2265,37 @@ let compose_text_decoration_via_index idx =
    value would change the resolved shape. *)
 let border_width_of :
     declaration -> (box_side * Properties.border_width * bool) option = function
-  | Declaration { property = Border_top_width; value; important } ->
+  | Declaration { property = Border_top_width; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Border_right_width; value; important } ->
+  | Declaration { property = Border_right_width; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Border_bottom_width; value; important } ->
+  | Declaration { property = Border_bottom_width; value; important; _ } ->
       Some (Bottom, value, important)
-  | Declaration { property = Border_left_width; value; important } ->
+  | Declaration { property = Border_left_width; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
 let border_style_of :
     declaration -> (box_side * Properties.border_style * bool) option = function
-  | Declaration { property = Border_top_style; value; important } ->
+  | Declaration { property = Border_top_style; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Border_right_style; value; important } ->
+  | Declaration { property = Border_right_style; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Border_bottom_style; value; important } ->
+  | Declaration { property = Border_bottom_style; value; important; _ } ->
       Some (Bottom, value, important)
-  | Declaration { property = Border_left_style; value; important } ->
+  | Declaration { property = Border_left_style; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
 let border_color_of : declaration -> (box_side * Values.color * bool) option =
   function
-  | Declaration { property = Border_top_color; value; important } ->
+  | Declaration { property = Border_top_color; value; important; _ } ->
       Some (Top, value, important)
-  | Declaration { property = Border_right_color; value; important } ->
+  | Declaration { property = Border_right_color; value; important; _ } ->
       Some (Right, value, important)
-  | Declaration { property = Border_bottom_color; value; important } ->
+  | Declaration { property = Border_bottom_color; value; important; _ } ->
       Some (Bottom, value, important)
-  | Declaration { property = Border_left_color; value; important } ->
+  | Declaration { property = Border_left_color; value; important; _ } ->
       Some (Left, value, important)
   | _ -> None
 
@@ -3409,8 +3413,8 @@ let merge_box_shorthand_longhands source decls =
      with its index - the head stays physically shared on a no-op. *)
   let rec go acc = function
     | [] -> List.rev acc
-    | ((idx, (Declaration { property = Margin; value = vs; important } as d)) as
-       item)
+    | ((idx, (Declaration { property = Margin; value = vs; important; _ } as d))
+       as item)
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
@@ -3420,7 +3424,7 @@ let merge_box_shorthand_longhands source decls =
         in
         let head = if merged == d then item else (idx, merged) in
         go (head :: acc) rest
-    | ((idx, (Declaration { property = Padding; value = vs; important } as d))
+    | ((idx, (Declaration { property = Padding; value = vs; important; _ } as d))
        as item)
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
@@ -3458,7 +3462,8 @@ let rec without_importance = function
    first, so the two declarations share a value type and this is a structural
    value comparison: on canonical ASTs it matches minified-text equality without
    rendering. *)
-let same_value a b = without_importance a = without_importance b
+let same_value a b =
+  Declaration.equal_declaration (without_importance a) (without_importance b)
 
 (* Two declarations minify to the same text exactly when their canonical ASTs
    are equal (property, value, and importance). After the optimizer's
@@ -3473,7 +3478,9 @@ let same_value a b = without_importance a = without_importance b
    compare without walking the AST; we only fall through to structural equality
    on a hash collision. *)
 let same_minified_declaration (a : declaration) (b : declaration) =
-  a == b || (Declaration.hash a = Declaration.hash b && a = b)
+  a == b
+  || Declaration.hash a = Declaration.hash b
+     && Declaration.equal_declaration a b
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
@@ -3559,104 +3566,125 @@ let deduplicate_step kept (idx, decl) =
 (* WebKit animation longhand vendor-alias pairs ([-webkit-] vs unprefixed). *)
 let vendor_alias_redundant_webkit_animation vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_animation; value = v1; important = i1 },
-      Declaration { property = Animation; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_animation; value = v1; important = i1; _ },
+      Declaration { property = Animation; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_animation_delay; value = v1; important = i1 },
-      Declaration { property = Animation_delay; value = v2; important = i2 } )
-    ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_animation_duration; value = v1; important = i1 },
-      Declaration { property = Animation_duration; value = v2; important = i2 }
+        { property = Webkit_animation_delay; value = v1; important = i1; _ },
+      Declaration { property = Animation_delay; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_animation_direction; value = v1; important = i1 },
-      Declaration { property = Animation_direction; value = v2; important = i2 }
-    ) ->
+        { property = Webkit_animation_duration; value = v1; important = i1; _ },
+      Declaration
+        { property = Animation_duration; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_animation_direction; value = v1; important = i1; _ },
+      Declaration
+        { property = Animation_direction; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
         {
           property = Webkit_animation_iteration_count;
           value = v1;
           important = i1;
+          _;
         },
       Declaration
-        { property = Animation_iteration_count; value = v2; important = i2 } )
-    ->
+        { property = Animation_iteration_count; value = v2; important = i2; _ }
+    ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_animation_name; value = v1; important = i1 },
-      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
+        { property = Webkit_animation_name; value = v1; important = i1; _ },
+      Declaration { property = Animation_name; value = v2; important = i2; _ } )
+    ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
         {
           property = Webkit_animation_timing_function;
           value = v1;
           important = i1;
+          _;
         },
       Declaration
-        { property = Animation_timing_function; value = v2; important = i2 } )
-    ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_animation_fill_mode; value = v1; important = i1 },
-      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+        { property = Animation_timing_function; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_animation_play_state; value = v1; important = i1 },
+        { property = Webkit_animation_fill_mode; value = v1; important = i1; _ },
       Declaration
-        { property = Animation_play_state; value = v2; important = i2 } ) ->
+        { property = Animation_fill_mode; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_animation_play_state;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
 (* Mozilla animation longhand vendor-alias pairs ([-moz-] vs unprefixed). *)
 let vendor_alias_redundant_moz_animation vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Moz_animation; value = v1; important = i1 },
-      Declaration { property = Animation; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_animation_delay; value = v1; important = i1 },
-      Declaration { property = Animation_delay; value = v2; important = i2 } )
-    ->
+  | ( Declaration { property = Moz_animation; value = v1; important = i1; _ },
+      Declaration { property = Animation; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_animation_duration; value = v1; important = i1 },
-      Declaration { property = Animation_duration; value = v2; important = i2 }
+        { property = Moz_animation_delay; value = v1; important = i1; _ },
+      Declaration { property = Animation_delay; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_animation_direction; value = v1; important = i1 },
-      Declaration { property = Animation_direction; value = v2; important = i2 }
+        { property = Moz_animation_duration; value = v1; important = i1; _ },
+      Declaration
+        { property = Animation_duration; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_direction; value = v1; important = i1; _ },
+      Declaration
+        { property = Animation_direction; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Moz_animation_iteration_count;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Animation_iteration_count; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_animation_iteration_count; value = v1; important = i1 },
-      Declaration
-        { property = Animation_iteration_count; value = v2; important = i2 } )
-    ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_animation_name; value = v1; important = i1 },
-      Declaration { property = Animation_name; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Moz_animation_timing_function; value = v1; important = i1 },
-      Declaration
-        { property = Animation_timing_function; value = v2; important = i2 } )
+        { property = Moz_animation_name; value = v1; important = i1; _ },
+      Declaration { property = Animation_name; value = v2; important = i2; _ } )
     ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_animation_fill_mode; value = v1; important = i1 },
-      Declaration { property = Animation_fill_mode; value = v2; important = i2 }
+        {
+          property = Moz_animation_timing_function;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Animation_timing_function; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_animation_play_state; value = v1; important = i1 },
+        { property = Moz_animation_fill_mode; value = v1; important = i1; _ },
       Declaration
-        { property = Animation_play_state; value = v2; important = i2 } ) ->
+        { property = Animation_fill_mode; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_animation_play_state; value = v1; important = i1; _ },
+      Declaration
+        { property = Animation_play_state; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
@@ -3668,63 +3696,66 @@ let vendor_alias_redundant_animation vendor twin =
    unprefixed). *)
 let vendor_alias_redundant_transition vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_transition; value = v1; important = i1 },
-      Declaration { property = Transition; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_transition; value = v1; important = i1; _ },
+      Declaration { property = Transition; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_transition_delay; value = v1; important = i1 },
-      Declaration { property = Transition_delay; value = v2; important = i2 } )
-    ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_transition_duration; value = v1; important = i1 },
-      Declaration { property = Transition_duration; value = v2; important = i2 }
+        { property = Webkit_transition_delay; value = v1; important = i1; _ },
+      Declaration { property = Transition_delay; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_transition_property; value = v1; important = i1 },
-      Declaration { property = Transition_property; value = v2; important = i2 }
-    ) ->
+        { property = Webkit_transition_duration; value = v1; important = i1; _ },
+      Declaration
+        { property = Transition_duration; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_transition_property; value = v1; important = i1; _ },
+      Declaration
+        { property = Transition_property; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
         {
           property = Webkit_transition_timing_function;
           value = v1;
           important = i1;
+          _;
         },
       Declaration
-        { property = Transition_timing_function; value = v2; important = i2 } )
-    ->
+        { property = Transition_timing_function; value = v2; important = i2; _ }
+    ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_transition; value = v1; important = i1 },
-      Declaration { property = Transition; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_transition_delay; value = v1; important = i1 },
-      Declaration { property = Transition_delay; value = v2; important = i2 } )
-    ->
+  | ( Declaration { property = Moz_transition; value = v1; important = i1; _ },
+      Declaration { property = Transition; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_transition_duration; value = v1; important = i1 },
-      Declaration { property = Transition_duration; value = v2; important = i2 }
+        { property = Moz_transition_delay; value = v1; important = i1; _ },
+      Declaration { property = Transition_delay; value = v2; important = i2; _ }
     ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Moz_transition_property; value = v1; important = i1 },
-      Declaration { property = Transition_property; value = v2; important = i2 }
-    ) ->
+        { property = Moz_transition_duration; value = v1; important = i1; _ },
+      Declaration
+        { property = Transition_duration; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Moz_transition_property; value = v1; important = i1; _ },
+      Declaration
+        { property = Transition_property; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
         {
           property = Moz_transition_timing_function;
           value = v1;
           important = i1;
+          _;
         },
       Declaration
-        { property = Transition_timing_function; value = v2; important = i2 } )
-    ->
+        { property = Transition_timing_function; value = v2; important = i2; _ }
+    ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = O_transition; value = v1; important = i1 },
-      Declaration { property = Transition; value = v2; important = i2 } ) ->
+  | ( Declaration { property = O_transition; value = v1; important = i1; _ },
+      Declaration { property = Transition; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
@@ -3732,84 +3763,92 @@ let vendor_alias_redundant_transition vendor twin =
 let vendor_alias_redundant_flex vendor twin =
   match (vendor, twin) with
   | ( Declaration
-        { property = Webkit_flex_direction; value = v1; important = i1 },
-      Declaration { property = Flex_direction; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_flex_wrap; value = v1; important = i1 },
-      Declaration { property = Flex_wrap; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_flex_flow; value = v1; important = i1 },
-      Declaration { property = Flex_flow; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_justify_content; value = v1; important = i1 },
-      Declaration { property = Justify_content; value = v2; important = i2 } )
+        { property = Webkit_flex_direction; value = v1; important = i1; _ },
+      Declaration { property = Flex_direction; value = v2; important = i2; _ } )
     ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_align_items; value = v1; important = i1 },
-      Declaration { property = Align_items; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_flex_wrap; value = v1; important = i1; _ },
+      Declaration { property = Flex_wrap; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_align_content; value = v1; important = i1 },
-      Declaration { property = Align_content; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_flex_flow; value = v1; important = i1; _ },
+      Declaration { property = Flex_flow; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_align_self; value = v1; important = i1 },
-      Declaration { property = Align_self; value = v2; important = i2 } ) ->
+  | ( Declaration
+        { property = Webkit_justify_content; value = v1; important = i1; _ },
+      Declaration { property = Justify_content; value = v2; important = i2; _ }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_align_items; value = v1; important = i1; _ },
+      Declaration { property = Align_items; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_align_content; value = v1; important = i1; _ },
+      Declaration { property = Align_content; value = v2; important = i2; _ } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_align_self; value = v1; important = i1; _ },
+      Declaration { property = Align_self; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
 (* Border-radius / box-shadow / background-size / filter vendor-alias pairs. *)
 let vendor_alias_redundant_visual vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_border_radius; value = v1; important = i1 },
-      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_border_radius; value = v1; important = i1 },
-      Declaration { property = Border_radius; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_box_shadow; value = v1; important = i1 },
-      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_box_shadow; value = v1; important = i1 },
-      Declaration { property = Box_shadow; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_background_size; value = v1; important = i1 },
-      Declaration { property = Background_size; value = v2; important = i2 } )
+        { property = Webkit_border_radius; value = v1; important = i1; _ },
+      Declaration { property = Border_radius; value = v2; important = i2; _ } )
     ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_filter; value = v1; important = i1 },
-      Declaration { property = Filter; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Moz_border_radius; value = v1; important = i1; _ },
+      Declaration { property = Border_radius; value = v2; important = i2; _ } )
+    ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_box_shadow; value = v1; important = i1; _ },
+      Declaration { property = Box_shadow; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_shadow; value = v1; important = i1; _ },
+      Declaration { property = Box_shadow; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_backdrop_filter; value = v1; important = i1 },
-      Declaration { property = Backdrop_filter; value = v2; important = i2 } )
-    ->
+        { property = Webkit_background_size; value = v1; important = i1; _ },
+      Declaration { property = Background_size; value = v2; important = i2; _ }
+    ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_filter; value = v1; important = i1; _ },
+      Declaration { property = Filter; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_backdrop_filter; value = v1; important = i1; _ },
+      Declaration { property = Backdrop_filter; value = v2; important = i2; _ }
+    ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
 let vendor_alias_redundant vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_transform; value = v1; important = i1 },
-      Declaration { property = Transform; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_user_select; value = v1; important = i1 },
-      Declaration { property = User_select; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_user_select; value = v1; important = i1 },
-      Declaration { property = User_select; value = v2; important = i2 } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_hyphens; value = v1; important = i1 },
-      Declaration { property = Hyphens; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_transform; value = v1; important = i1; _ },
+      Declaration { property = Transform; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_text_size_adjust; value = v1; important = i1 },
-      Declaration { property = Text_size_adjust; value = v2; important = i2 } )
-    ->
+        { property = Webkit_user_select; value = v1; important = i1; _ },
+      Declaration { property = User_select; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_user_select; value = v1; important = i1; _ },
+      Declaration { property = User_select; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_hyphens; value = v1; important = i1; _ },
+      Declaration { property = Hyphens; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
-        { property = Webkit_print_color_adjust; value = v1; important = i1 },
-      Declaration { property = Print_color_adjust; value = v2; important = i2 }
+        { property = Webkit_text_size_adjust; value = v1; important = i1; _ },
+      Declaration { property = Text_size_adjust; value = v2; important = i2; _ }
     ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        { property = Webkit_print_color_adjust; value = v1; important = i1; _ },
+      Declaration
+        { property = Print_color_adjust; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ ->
       vendor_alias_redundant_animation vendor twin
@@ -3847,9 +3886,9 @@ let strip_vendor_prefix name =
 let text_vendor_alias_redundant vendor twin =
   match (vendor, twin) with
   | ( Declaration
-        { property = Unknown_property vname; value = vv; important = vi },
+        { property = Unknown_property vname; value = vv; important = vi; _ },
       Declaration
-        { property = Unknown_property tname; value = tv; important = ti } )
+        { property = Unknown_property tname; value = tv; important = ti; _ } )
     when Bool.equal vi ti -> (
       match strip_vendor_prefix vname with
       | Some modern -> String.equal tname modern && vv = tv
@@ -3861,11 +3900,11 @@ let text_vendor_alias_redundant vendor twin =
    need are target-dependent and only drop under the opt-in targets axis. *)
 let vendor_alias_redundant_targeted vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1 },
-      Declaration { property = Box_sizing; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1; _ },
+      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1 },
-      Declaration { property = Box_sizing; value = v2; important = i2 } ) ->
+  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
+      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 

@@ -494,7 +494,9 @@ let rec read_text_emphasis_skip t : text_emphasis_skip =
       let duplicate =
         List.exists
           (fun keyword ->
-            List.length (List.filter (( = ) keyword) keywords) > 1)
+            List.length
+              (List.filter (equal_text_emphasis_skip_keyword keyword) keywords)
+            > 1)
           keywords
       in
       if duplicate then Cursor.err_invalid t "text-emphasis-skip"
@@ -1671,7 +1673,8 @@ let rec read_ruby_position t : ruby_position =
           read_ruby_position_keyword t
       in
       let duplicate keyword =
-        List.length (List.filter (( = ) keyword) keywords) > 1
+        List.length (List.filter (equal_ruby_position_keyword keyword) keywords)
+        > 1
       in
       let valid =
         match keywords with
@@ -1992,7 +1995,11 @@ let rec read_initial_letter_align t : initial_letter_align =
       let duplicate =
         List.exists
           (fun keyword ->
-            List.length (List.filter (( = ) keyword) keywords) > 1)
+            List.length
+              (List.filter
+                 (equal_initial_letter_align_keyword keyword)
+                 keywords)
+            > 1)
           keywords
       in
       let valid_pair =

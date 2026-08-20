@@ -3970,4 +3970,4 @@ let read_import_rule (r : Cursor.t) : import_rule =
 let rule_hash (r : rule) =
   List.fold_left
     (fun acc d -> (acc * 31) + Declaration.hash d)
-    (Hashtbl.hash r.selector) r.declarations
+    (Selector.hash r.selector) r.declarations

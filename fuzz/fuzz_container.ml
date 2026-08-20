@@ -48,8 +48,11 @@ let test_non_empty_string_output buf =
 let test_named_kind_matches_inner buf =
   let inner = condition buf 3 in
   let named = Css.Container.Named (name buf 0, inner) in
-  if Css.Container.kind named <> Css.Container.kind inner then
-    fail "named container query changed kind bucket"
+  if
+    not
+      (Css.Container.equal_kind (Css.Container.kind named)
+         (Css.Container.kind inner))
+  then fail "named container query changed kind bucket"
 
 let test_compare_antisymmetric buf =
   let a = condition buf 0 in

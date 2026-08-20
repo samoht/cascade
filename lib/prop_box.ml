@@ -519,7 +519,8 @@ let rec pp_overflow : overflow Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Overflow_pair (x, y) when Pp.minified ctx && x = y -> pp_overflow ctx x
+  | Overflow_pair (x, y) when Pp.minified ctx && equal_overflow x y ->
+      pp_overflow ctx x
   | Overflow_pair (x, y) ->
       pp_overflow ctx x;
       Pp.space ctx ();
@@ -958,7 +959,9 @@ let rec read_min_intrinsic_sizing t : min_intrinsic_sizing =
           read_min_intrinsic_sizing_keyword t
       in
       let duplicate keyword =
-        List.length (List.filter (( = ) keyword) keywords) > 1
+        List.length
+          (List.filter (equal_min_intrinsic_sizing_keyword keyword) keywords)
+        > 1
       in
       if List.exists duplicate keywords then
         Cursor.err_invalid t "min-intrinsic-sizing";

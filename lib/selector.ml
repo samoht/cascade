@@ -2643,3 +2643,4 @@ let modifier_prefix sel =
 
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2
+let compare (a : t) b = Stdlib.compare a b

@@ -386,7 +386,12 @@ let pp_content_changed_body ~style ~child_prefix buf ~old_declarations
   pp_property_diffs ~style ~parent_prefix:child_prefix buf property_changes;
   pp_reorder ~style ~parent_prefix:child_prefix old_declarations
     new_declarations buf;
-  if (not has_any_changes) && old_declarations <> new_declarations then
+  if
+    (not has_any_changes)
+    && not
+         (List.equal Declaration.equal_declaration old_declarations
+            new_declarations)
+  then
     let old_count = List.length old_declarations in
     let new_count = List.length new_declarations in
     if old_count <> new_count then
@@ -407,7 +412,11 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
   let has_any_changes =
     property_changes <> [] || added_properties <> [] || removed_properties <> []
   in
-  if (not has_any_changes) && old_declarations = new_declarations then ()
+  if
+    (not has_any_changes)
+    && List.equal Declaration.equal_declaration old_declarations
+         new_declarations
+  then ()
   else if selector = "" then
     (* The parent already named the subject, as it does for an [@property] whose
        descriptors changed. Repeating it as a child label reads as two entries
@@ -561,7 +570,8 @@ let meaningful_rules (rules : rule_diff list) =
             new_declarations;
             _;
           }
-        when old_declarations = new_declarations ->
+        when List.equal Declaration.equal_declaration old_declarations
+               new_declarations ->
           (* Filter out rules that moved to different nesting but have no
              changes *)
           false
@@ -1108,8 +1118,17 @@ let decl_to_prop_value decl =
   in
   (name, value)
 
+let compare_prop_value (name1, value1) (name2, value2) =
+  let by_name = String.compare name1 name2 in
+  if by_name <> 0 then by_name else String.compare value1 value2
+
+let equal_prop_value (name1, value1) (name2, value2) =
+  String.equal name1 name2 && String.equal value1 value2
+
 let decls_signature (decls : Css.declaration list) =
-  List.map decl_to_prop_value decls |> List.sort compare
+  List.map decl_to_prop_value decls |> List.sort compare_prop_value
+
+let equal_decls_signature = List.equal equal_prop_value
 
 (* Normalize a selector string by sorting comma-separated selector items. This
    ensures we consider ".a,.b" equivalent to ".b,.a" when matching.
@@ -1130,7 +1149,9 @@ let rule_selector stmt =
    structural equality + [Hashtbl.hash]. Avoids serialising through
    [Pp.to_string] for every comparison. *)
 let selector_key_of_selector (sel : Css.Selector.t) : Css.Selector.t =
-  match sel with List subs -> List (List.sort compare subs) | _ -> sel
+  match sel with
+  | List subs -> List (List.sort Selector.compare subs)
+  | _ -> sel
 
 let selector_key_of_stmt stmt = selector_key_of_selector (rule_selector stmt)
 
@@ -1246,8 +1267,8 @@ let try_exact_match rules2_by_key used_rules r1 key1 d1 =
     List.find_opt
       (fun r ->
         (not (Hashtbl.mem used_rules r))
-        && rule_declarations r = d1
-        && rule_nested r = rule_nested r1)
+        && List.equal Declaration.equal_declaration (rule_declarations r) d1
+        && Stylesheet.equal (rule_nested r) (rule_nested r1))
       candidates
   with
   | Some exact ->
@@ -1480,13 +1501,17 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
   (* Prefer an exact declaration match for the same selector key if available *)
   match
     List.find_opt
-      (fun (s, d) -> selector_key_of_selector s = sel1_key && d = decls1)
+      (fun (s, d) ->
+        Selector.equal (selector_key_of_selector s) sel1_key
+        && List.equal Declaration.equal_declaration d decls1)
       map2
   with
   | Some (s, d) -> (d, Some s)
   | None -> (
       match
-        List.find_opt (fun (s, _) -> selector_key_of_selector s = sel1_key) map2
+        List.find_opt
+          (fun (s, _) -> Selector.equal (selector_key_of_selector s) sel1_key)
+          map2
       with
       | Some (s, d) -> (d, Some s)
       | None -> (decls2, None))
@@ -1494,11 +1519,12 @@ let matching_decls_in_map2 sel1_key decls1 map2 decls2 =
 let add_ordering_issue ~moved map2 acc sel1 decls1 sel2 decls2 =
   let sel1_key = selector_key_of_selector sel1 in
   let sel2_key = selector_key_of_selector sel2 in
-  if sel1_key = sel2_key then
+  if Selector.equal sel1_key sel2_key then
     (* Same selector at this position: a difference only when its declarations
        differ, i.e. same-selector rules were reordered so the cascade winner
        flips. *)
-    if decls_signature decls1 = decls_signature decls2 then acc
+    if equal_decls_signature (decls_signature decls1) (decls_signature decls2)
+    then acc
     else (sel1, sel2, decls1, decls2) :: acc
   else if selector_moved moved sel1_key then
     (* Report the selector that moved, not the ones it displaced: a rule pulled
@@ -1581,7 +1607,7 @@ let selector_changes all_added_candidates all_removed_candidates =
         List.find_opt
           (fun added_rule ->
             let added_sel = rule_selector added_rule in
-            removed_sel <> added_sel
+            (not (Selector.equal removed_sel added_sel))
             && selectors_share_parent_ast removed_sel added_sel)
           (added_with_props_sig removed_props)
       in
@@ -1707,13 +1733,16 @@ let detect_pure_regroups added removed =
         | Some (_, subs, _) -> List.map selector_key_of_selector subs
         | None -> [])
       rules
-    |> List.sort compare
+    |> List.sort Selector.compare
   in
   List.filter_map rule_sig (added @ removed)
   |> List.sort_uniq compare
   |> List.filter_map (fun s ->
       let radd = with_sig s added and rrem = with_sig s removed in
-      if radd <> [] && rrem <> [] && single_keys radd = single_keys rrem then
+      if
+        radd <> [] && rrem <> []
+        && List.equal Selector.equal (single_keys radd) (single_keys rrem)
+      then
         Some
           ( s,
             (Regrouped
@@ -1734,6 +1763,19 @@ let reconcile_selector_grouping added removed =
   let removed = List.filter (fun r -> not (in_pure r)) removed in
   let added, removed = partial_trim added removed in
   (added, removed, List.map snd pure)
+
+(* Key reorder detection uses both selector and declarations: two same-selector
+   rules with conflicting declarations cascade last-wins. *)
+let order_signature stmts =
+  List.map
+    (fun stmt ->
+      (selector_key_of_stmt stmt, decls_signature (rule_declarations stmt)))
+    stmts
+
+let equal_order_signature =
+  List.equal (fun (selector1, declarations1) (selector2, declarations2) ->
+      Selector.equal selector1 selector2
+      && equal_decls_signature declarations1 declarations2)
 
 let handle_structural_diff rules1 rules2 =
   let all_added_candidates = rules_added_diff rules1 rules2 in
@@ -1763,18 +1805,12 @@ let handle_structural_diff rules1 rules2 =
   let has_structural_changes =
     added <> [] || removed <> [] || modified <> [] || regrouped <> []
   in
-  (* Key reorder detection on the (selector, declarations) sequence, not the
-     selector alone: two same-selector rules with conflicting declarations
-     cascade last-wins, so swapping them is a real change. *)
-  let order_signature stmts =
-    List.map
-      (fun s -> (selector_key_of_stmt s, decls_signature (rule_declarations s)))
-      stmts
-  in
   let has_ordering_changes =
     (not has_structural_changes)
     && has_same_selectors rules1 rules2
-    && order_signature rules1 <> order_signature rules2
+    && not
+         (equal_order_signature (order_signature rules1)
+            (order_signature rules2))
   in
 
   let modified_with_order =
@@ -1871,7 +1907,9 @@ let selector_position sel rules =
   List.mapi
     (fun i stmt ->
       match Css.as_rule stmt with
-      | Some (s, _, _) when selector_key_of_selector s = sel_key -> Some i
+      | Some (s, _, _) when Selector.equal (selector_key_of_selector s) sel_key
+        ->
+          Some i
       | _ -> None)
     rules
   |> List.find_map Fun.id |> Option.value ~default:(-1)
@@ -1918,7 +1956,7 @@ let is_pure_decl_reordering decls1 decls2 =
   in
   let pure =
     property_changes = [] && added_props = [] && removed_props = []
-    && decls_signature decls1 = decls_signature decls2
+    && equal_decls_signature (decls_signature decls1) (decls_signature decls2)
   in
   (pure, property_changes, added_props, removed_props)
 
@@ -1962,7 +2000,8 @@ let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
              new_selector = sel2_str;
              declarations = decls2;
            })
-  | _, _ when decls1 = decls2 -> reorder_or_content sel1_str decls1 decls2
+  | _, _ when List.equal Declaration.equal_declaration decls1 decls2 ->
+      reorder_or_content sel1_str decls1 decls2
   | _, _ ->
       let pure, property_changes, added_props, removed_props =
         is_pure_decl_reordering decls1 decls2
@@ -2024,8 +2063,10 @@ let declarations_of_selector sel stmts =
 let merge_selector_group ~rules1 ~rules2 sel peers =
   let old_all = declarations_of_selector sel rules1
   and new_all = declarations_of_selector sel rules2 in
-  if old_all <> [] && decls_signature old_all = decls_signature new_all then
-    Rearranged { selector = sel; declarations = new_all }
+  if
+    old_all <> []
+    && equal_decls_signature (decls_signature old_all) (decls_signature new_all)
+  then Rearranged { selector = sel; declarations = new_all }
   else
     content_changed sel
       (List.concat_map (fun d -> fst (change_sides d)) peers)
@@ -2461,7 +2502,7 @@ let keyframe_frames_diff frames1 frames2 =
   let key_equal = Css.Keyframe.selector_equal in
   let is_empty_diff (f1 : Css.keyframe) (f2 : Css.keyframe) =
     Css.Keyframe.selector_equal f1.selector f2.selector
-    && f1.declarations = f2.declarations
+    && List.equal Declaration.equal_declaration f1.declarations f2.declarations
   in
   let added, removed, modified_pairs =
     diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
@@ -2485,7 +2526,11 @@ let keyframe_frames_diff frames1 frames2 =
   let modified_changes =
     List.filter_map
       (fun ((f1 : Css.keyframe), (f2 : Css.keyframe)) ->
-        if f1.declarations <> f2.declarations then
+        if
+          not
+            (List.equal Declaration.equal_declaration f1.declarations
+               f2.declarations)
+        then
           Some
             (Content_changed
                {
@@ -2877,7 +2922,7 @@ and process_nested_rules stmts1 stmts2 =
   List.iter
     (fun (sel1, nested1) ->
       match List.find_opt (fun (s, _) -> s = sel1) items2 with
-      | Some (_, nested2) when nested1 <> nested2 ->
+      | Some (_, nested2) when not (Stylesheet.equal nested1 nested2) ->
           let rule_changes = to_rule_changes nested1 nested2 in
           let nested_containers = nested_differences nested1 nested2 in
           if rule_changes <> [] || nested_containers <> [] then

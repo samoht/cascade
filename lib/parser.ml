@@ -34,7 +34,7 @@ and consume_simple_block lexer opening ~start_loc :
     | Token.Eof ->
         let loc = Loc.union start_loc tok.loc in
         { node = { opening; value = List.rev acc; closed = false }; loc }
-    | Token.Close b when b = opening ->
+    | Token.Close b when Token.equal_bracket b opening ->
         let loc = Loc.union start_loc tok.loc in
         { node = { opening; value = List.rev acc; closed = true }; loc }
     | _ ->

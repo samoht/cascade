@@ -193,7 +193,9 @@ let rec pp_position_area : position_area Pp.t =
   (* CSS Anchor Positioning 1 sec. 6: the second axis defaults to [center], so
      [X center] minifies to [X]; both axes equal also collapse. *)
   | Area (first, Some second)
-    when Pp.minified ctx && (first = second || second = Center) ->
+    when Pp.minified ctx
+         && (equal_position_area_keyword first second
+            || equal_position_area_keyword second Center) ->
       pp_position_area_keyword ctx first
   | Area (first, second) ->
       pp_position_area_keyword ctx first;
@@ -790,7 +792,11 @@ let rec read_position_visibility t : position_visibility =
         Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_condition t
       in
       let duplicate condition =
-        List.length (List.filter (( = ) condition) conditions) > 1
+        List.length
+          (List.filter
+             (equal_position_visibility_condition condition)
+             conditions)
+        > 1
       in
       if List.exists duplicate conditions then
         Cursor.err_invalid t "position-visibility";

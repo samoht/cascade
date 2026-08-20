@@ -588,7 +588,7 @@ let bool t =
 let bool_token (k : Token.kind) t =
   drop_ws t;
   match t.cvs with
-  | Component.Preserved tok :: _ when tok.kind = k ->
+  | Component.Preserved tok :: _ when Token.equal_kind tok.kind k ->
       let _ = next t in
       true
   | _ -> false
@@ -630,7 +630,7 @@ let consume_if c t =
 
 let try_kind k t =
   match peek t with
-  | Some (Component.Preserved tok) when tok.kind = k ->
+  | Some (Component.Preserved tok) when Token.equal_kind tok.kind k ->
       let _ = next t in
       true
   | _ -> false
@@ -680,10 +680,10 @@ let looking_at t s =
 let try_kind_pair k1 k2 t =
   let snap = save t in
   match peek t with
-  | Some (Component.Preserved tok) when tok.kind = k1 -> (
+  | Some (Component.Preserved tok) when Token.equal_kind tok.kind k1 -> (
       let _ = next t in
       match peek_raw t with
-      | Some (Component.Preserved tok2) when tok2.kind = k2 ->
+      | Some (Component.Preserved tok2) when Token.equal_kind tok2.kind k2 ->
           let _ = next_raw t in
           true
       | _ ->

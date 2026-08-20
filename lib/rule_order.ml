@@ -545,7 +545,10 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
 let canonical_color_spelling decl =
   let folded = Declaration.normalize ~lossless:true ~exact_srgb:true decl in
   if folded == decl then decl
-  else if folded = Declaration.normalize ~lossless:true decl then decl
+  else if
+    Declaration.equal_declaration folded
+      (Declaration.normalize ~lossless:true decl)
+  then decl
   else folded
 
 let rec canonical_color_spellings (stmts : statement list) : statement list =

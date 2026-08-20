@@ -669,6 +669,7 @@ let promote_registered_custom_decl ~lossless registry decl =
         property = Custom_property name;
         value = Custom_value { value = Tokens components; layer; meta };
         important;
+        _;
       } -> (
       match Hashtbl.find_opt registry name with
       | None -> decl
@@ -784,6 +785,7 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
         property = Position_try_fallbacks;
         value = (Fallbacks items : Properties.position_try_fallbacks);
         important;
+        _;
       } -> (
       let keep = function
         | (Properties.Name s : Properties.position_try_fallback) ->
@@ -1046,7 +1048,7 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
     else
       let next = statements_top_level ~factor_cache ~ctx ~enforce_spec stmts in
       if next == stmts then stmts
-      else if next = stmts then stmts
+      else if Stylesheet.equal next stmts then stmts
       else
         let next_key = stylesheet_key next in
         if String.equal key next_key then next else loop (n - 1) next_key next

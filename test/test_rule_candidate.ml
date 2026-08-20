@@ -30,7 +30,7 @@ let large_normal_css prefix =
 let has_candidate ~kind ~produce candidates =
   List.exists
     (fun candidate ->
-      candidate.Rule_rewrite.kind = kind
+      Rule_rewrite.equal_kind candidate.Rule_rewrite.kind kind
       && String.equal produce (render candidate.produce))
     candidates
 

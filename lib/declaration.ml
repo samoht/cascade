@@ -472,6 +472,10 @@ let rec property_name decl =
    property name" directly - no [Pp], no [Obj.repr]. *)
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
+let equal_declaration (a : declaration) b = a = b
+let equal_prop_key (a : prop_key) b = a = b
+let hash_prop_key (key : prop_key) = Hashtbl.hash key
+
 let rec property_key decl =
   match decl with
   | Declaration { property; _ } -> Key property
@@ -2348,6 +2352,7 @@ let rec pp_declaration : declaration Pp.t =
         property = Custom_property name;
         value = Custom_value { value; layer; _ };
         important;
+        _;
       } ->
       Pp.string ctx name;
       Pp.string ctx ":";
@@ -2360,7 +2365,7 @@ let rec pp_declaration : declaration Pp.t =
             (Custom_property name, Custom_value { value; layer; meta = None }));
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
-  | Declaration { property; value; important } ->
+  | Declaration { property; value; important; _ } ->
       pp_property ctx property;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();

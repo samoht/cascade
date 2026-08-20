@@ -14,7 +14,11 @@ let rule css =
   | rs -> Alcotest.failf "expected one rule, got %d" (List.length rs)
 
 let decl css = Declaration.of_string css
-let same_decl a b = a == b || (Declaration.hash a = Declaration.hash b && a = b)
+
+let same_decl a b =
+  a == b
+  || Declaration.hash a = Declaration.hash b
+     && Declaration.equal_declaration a b
 
 let safe =
   Factor_safe.v ~same_minified_declaration:same_decl

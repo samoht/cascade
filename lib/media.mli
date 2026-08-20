@@ -96,6 +96,9 @@ type value =
   | Ident of ident
   | Function of string * string
 
+val equal_value : value -> value -> bool
+(** [equal_value a b] tests media feature values structurally. *)
+
 (** Media Queries 4 sec. 3.1 [<general-enclosed>]: a grammatical but
     unrecognised query, kept verbatim. Its result is [unknown], which becomes
     false wherever a boolean is expected. *)
@@ -115,6 +118,9 @@ type condition =
 
 type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
+
+val equal_name : name -> name -> bool
+(** [equal_name a b] tests media feature names for equality. *)
 
 (** Comma-separated media query list. *)
 type t =
@@ -219,6 +225,9 @@ type kind =
   | Preference_accessibility
   | Preference_appearance
   | Other
+
+val equal_kind : kind -> kind -> bool
+(** [equal_kind a b] tests media query categories for equality. *)
 
 val kind : t -> kind
 (** [kind t] classifies [t] for grouping and ordering. *)

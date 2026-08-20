@@ -42,7 +42,7 @@ let check_eval_shape label input actual =
   check_same_decl (label ^ " roundtrip") actual reparsed
 
 let check_same_stylesheet label expected actual =
-  if expected <> actual then
+  if not (Css.Stylesheet.equal expected actual) then
     failf "%s: expected %S, got %S" label (pp_stylesheet expected)
       (pp_stylesheet actual)
 
@@ -373,33 +373,57 @@ let test_empty_contexts _buf =
 
 let assert_property_value_lookups ctx custom custom_decl property inherited_decl
     =
-  if Css.Context.custom_property custom ctx <> Some custom_decl then
-    fail "custom property lookup changed";
-  if Css.Context.inherited_value property ctx <> Some inherited_decl then
-    fail "inherited value lookup changed";
+  if
+    not
+      (Option.equal Css.Declaration.equal_declaration
+         (Css.Context.custom_property custom ctx)
+         (Some custom_decl))
+  then fail "custom property lookup changed";
+  if
+    not
+      (Option.equal Css.Declaration.equal_declaration
+         (Css.Context.inherited_value property ctx)
+         (Some inherited_decl))
+  then fail "inherited value lookup changed";
   if Css.Context.custom_property (custom ^ "-missing") ctx <> None then
     fail "custom property lookup stopped being exact";
   if Css.Context.inherited_value (property ^ "-missing") ctx <> None then
     fail "inherited value lookup stopped being exact"
 
 let assert_initial_and_urls (ctx : Css.Context.t) initial_decl =
-  if Css.Context.initial_value "display" ctx <> Some initial_decl then
-    fail "initial value lookup changed";
+  if
+    not
+      (Option.equal Css.Declaration.equal_declaration
+         (Css.Context.initial_value "display" ctx)
+         (Some initial_decl))
+  then fail "initial value lookup changed";
   if ctx.base_url <> Some "https://example.test/a.css" then
     fail "base URL context changed"
 
 let assert_context_dimensions (ctx : Css.Context.t) =
   let open Css.Values in
   if
-    ctx.root_font_size <> Some (Px 16.) || ctx.parent_font_size <> Some (Px 14.)
+    (not
+       (Option.equal Css.Values.equal_length ctx.root_font_size (Some (Px 16.))))
+    || not
+         (Option.equal Css.Values.equal_length ctx.parent_font_size
+            (Some (Px 14.)))
   then fail "font-size context changed";
   if
-    ctx.viewport_width <> Some (Px 1024.)
-    || ctx.viewport_height <> Some (Px 768.)
+    (not
+       (Option.equal Css.Values.equal_length ctx.viewport_width
+          (Some (Px 1024.))))
+    || not
+         (Option.equal Css.Values.equal_length ctx.viewport_height
+            (Some (Px 768.)))
   then fail "viewport context changed";
   if
-    ctx.container_width <> Some (Px 640.)
-    || ctx.container_height <> Some (Px 480.)
+    (not
+       (Option.equal Css.Values.equal_length ctx.container_width
+          (Some (Px 640.))))
+    || not
+         (Option.equal Css.Values.equal_length ctx.container_height
+            (Some (Px 480.)))
   then fail "container dimension context changed"
 
 let test_property_value_context buf =
@@ -488,10 +512,18 @@ let query_context media feature_value inline_size =
     ()
 
 let assert_query_lookup ctx media feature_value inline_size =
-  if Css.Context.media_feature media ctx <> Some feature_value then
-    fail "query context lost media feature";
-  if Css.Context.container_feature "inline-size" ctx <> Some inline_size then
-    fail "query context lost container feature";
+  if
+    not
+      (Option.equal Css.Media.equal_value
+         (Css.Context.media_feature media ctx)
+         (Some feature_value))
+  then fail "query context lost media feature";
+  if
+    not
+      (Option.equal Css.Media.equal_value
+         (Css.Context.container_feature "inline-size" ctx)
+         (Some inline_size))
+  then fail "query context lost container feature";
   if Css.Context.media_feature (media ^ "-missing") ctx <> None then
     fail "query context media lookup stopped being exact";
   if Css.Context.container_feature "block-size" ctx <> None then
@@ -578,8 +610,12 @@ let test_property_registration_context buf =
   let registry =
     Css.Context.property_registry ~property_registrations:[ registration ] ()
   in
-  if Css.Context.registered_property name registry <> Some registration then
-    fail "property registry lost registration";
+  if
+    not
+      (Option.equal Css.Context.equal_property_registration
+         (Css.Context.registered_property name registry)
+         (Some registration))
+  then fail "property registry lost registration";
   let valid_decl = Css.Declaration.of_string (name ^ ": " ^ valid_value) in
   (match
      Css.Context.validate_registered_custom_property registry valid_decl

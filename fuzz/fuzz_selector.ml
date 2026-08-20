@@ -30,7 +30,7 @@ let assert_stable input =
       | Some reparsed ->
           let before = Css.Selector.specificity sel in
           let after = Css.Selector.specificity reparsed in
-          if before <> after then
+          if not (Css.Selector.equal_specificity before after) then
             failf "specificity changed: %S -> %S" input output)
 
 let assert_reject input =
@@ -111,7 +111,7 @@ let test_specificity_roundtrip buf =
       | Some reparsed ->
           let before = Css.Selector.specificity sel in
           let after = Css.Selector.specificity reparsed in
-          if before <> after then
+          if not (Css.Selector.equal_specificity before after) then
             failf "specificity changed across serialization: %S -> %S" buf
               serialized)
 
@@ -172,7 +172,7 @@ let test_canonicalize_preserves_physical_identity buf =
   let canon = Css.Selector.canonicalize sel in
   let again = Css.Selector.canonicalize canon in
   if again == canon then ()
-  else if again = canon then
+  else if Css.Selector.equal again canon then
     fail
       "canonicalize reallocated an already-canonical selector instead of \
        returning it unchanged (x = canonicalize x but not x == canonicalize x)"
@@ -188,7 +188,7 @@ let test_list_canon_identity buf =
   let canon = Css.Selector.canonicalize selectors in
   let again = Css.Selector.canonicalize canon in
   if again == canon then ()
-  else if again = canon then
+  else if Css.Selector.equal again canon then
     fail
       "canonicalize reallocated an already-canonical selector list instead of \
        returning it unchanged (x = canonicalize x but not x == canonicalize x)"
@@ -314,7 +314,11 @@ let test_selector_specificity_minify buf =
       | None ->
           failf "specificity vector did not reparse after minify: %S" serialized
       | Some reparsed ->
-          if Css.Selector.specificity sel <> Css.Selector.specificity reparsed
+          if
+            not
+              (Css.Selector.equal_specificity
+                 (Css.Selector.specificity sel)
+                 (Css.Selector.specificity reparsed))
           then
             failf "selector minification changed specificity: %S -> %S" input
               serialized)
@@ -407,8 +411,10 @@ let test_selector_l4_serialization_matrix buf =
             serialized
       | Some reparsed ->
           if
-            Css.Selector.specificity selector
-            <> Css.Selector.specificity reparsed
+            not
+              (Css.Selector.equal_specificity
+                 (Css.Selector.specificity selector)
+                 (Css.Selector.specificity reparsed))
           then
             failf "selector L4 serialization changed specificity: %S -> %S"
               input serialized)

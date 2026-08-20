@@ -17,6 +17,8 @@ type kind =
   | Selector_branch_inline
   | Default_factoring
 
+let equal_kind (a : kind) b = a = b
+
 type candidate = {
   generation : int;
   kind : kind;

@@ -154,7 +154,11 @@ let group_into_table rules =
 let diff_same_key_pair key d1 d2 =
   let sig1 = sig_of_decls d1 in
   let sig2 = sig_of_decls d2 in
-  if sig1 = sig2 && d1 <> d2 && D.reorder_is_significant d1 d2 then
+  if
+    sig1 = sig2
+    && (not (List.equal Declaration.equal_declaration d1 d2))
+    && D.reorder_is_significant d1 d2
+  then
     Some
       (D.Reordered
          {

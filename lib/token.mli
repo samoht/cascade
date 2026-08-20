@@ -73,6 +73,18 @@ type kind =
 type t = { kind : kind; loc : Loc.t }
 (** A located token: the section 4.2 payload plus the source range it covers. *)
 
+val equal_hash_flag : hash_flag -> hash_flag -> bool
+(** [equal_hash_flag a b] tests hash token flags for equality. *)
+
+val equal_number_flag : number_flag -> number_flag -> bool
+(** [equal_number_flag a b] tests number token flags for equality. *)
+
+val equal_bracket : bracket -> bracket -> bool
+(** [equal_bracket a b] tests bracket kinds for equality. *)
+
+val equal_kind : kind -> kind -> bool
+(** [equal_kind a b] tests token payloads for structural equality. *)
+
 val v : kind:kind -> loc:Loc.t -> t
 (** [v ~kind ~loc] is a token with the given payload and location. *)
 

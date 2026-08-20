@@ -47,8 +47,11 @@ let normalize_paint_order (value : paint_order) : paint_order =
         if n > List.length full then value
         else
           let prefix = List.filteri (fun i _ -> i < n) full in
-          if paint_order_expand prefix = full then
-            if prefix = [] then (Normal : paint_order) else Order prefix
+          if
+            List.equal equal_paint_order_keyword
+              (paint_order_expand prefix)
+              full
+          then if prefix = [] then (Normal : paint_order) else Order prefix
           else shortest (n + 1)
       in
       shortest 0

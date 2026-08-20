@@ -44,7 +44,8 @@ let check_minified_to expected input =
   let expected_ast = of_string expected in
   Alcotest.(check bool)
     ("minified selector reparses to expected AST: " ^ input)
-    true (reparsed = expected_ast);
+    true
+    (equal reparsed expected_ast);
   check_spec_tuple
     ("specificity preserved: " ^ input)
     (specificity original) (specificity reparsed)

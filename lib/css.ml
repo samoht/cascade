@@ -627,7 +627,7 @@ let v = Stylesheet.v
 let theme_guarded = Declaration.theme_guarded
 
 let as_theme_guarded = function
-  | Theme_guarded { var_name; decl } -> Some (var_name, decl)
+  | Theme_guarded { var_name; decl; _ } -> Some (var_name, decl)
   | _ -> None
 
 (* Override to return statements instead of rules *)
@@ -948,7 +948,7 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
   | Option.Some set ->
       List.filter_map
         (function
-          | Declaration.Theme_guarded { var_name; decl } ->
+          | Declaration.Theme_guarded { var_name; decl; _ } ->
               if Pp.String_set.mem var_name set then Option.Some decl
               else Option.None
           | d -> Option.Some d)

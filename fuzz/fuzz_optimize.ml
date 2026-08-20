@@ -216,8 +216,8 @@ let first_index ~needle haystack =
    directly - independent of the code under test - and admits a dropped wrapper
    only for those two conditions. *)
 let baseline_true_supports condition =
-  condition = Css.Supports.property "display" "grid"
-  || condition = Css.Supports.property "display" "flex"
+  Css.Supports.equal condition (Css.Supports.property "display" "grid")
+  || Css.Supports.equal condition (Css.Supports.property "display" "flex")
 
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
@@ -732,7 +732,7 @@ let test_optimize_preserves_physical_identity buf =
   let canon = Css.Optimize.stylesheet (generated_stylesheet buf) in
   let again = Css.Optimize.stylesheet canon in
   if again == canon then ()
-  else if again = canon then
+  else if Css.Stylesheet.equal again canon then
     fail
       "optimize reallocated an already-optimized stylesheet instead of \
        returning it unchanged (x = optimize x but not x == optimize x)"
@@ -755,7 +755,7 @@ let test_dedup_decls_identity buf =
   let canon = Css.Optimize.deduplicate_declarations props in
   let again = Css.Optimize.deduplicate_declarations canon in
   if again == canon then ()
-  else if again = canon then
+  else if List.equal Css.Declaration.equal_declaration again canon then
     fail
       "deduplicate_declarations reallocated an already-deduplicated list \
        instead of returning it unchanged (x = dedup x but not x == dedup x)"

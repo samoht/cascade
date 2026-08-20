@@ -9,6 +9,9 @@ type kind =
   | Selector_branch_inline
   | Default_factoring
 
+val equal_kind : kind -> kind -> bool
+(** [equal_kind a b] tests rewrite families for equality. *)
+
 type candidate = {
   generation : int;
   kind : kind;

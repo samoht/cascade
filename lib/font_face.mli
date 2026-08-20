@@ -38,6 +38,18 @@ and src = src_entry list
 type t = src
 (** Font source list. *)
 
+val equal_metric_override : metric_override -> metric_override -> bool
+(** [equal_metric_override a b] tests metric overrides for equality. *)
+
+val equal_size_adjust : size_adjust -> size_adjust -> bool
+(** [equal_size_adjust a b] tests size adjustments for equality. *)
+
+val compare_size_adjust : size_adjust -> size_adjust -> int
+(** [compare_size_adjust a b] orders size adjustments. *)
+
+val equal_src : src -> src -> bool
+(** [equal_src a b] tests font source lists for structural equality. *)
+
 val pp : t Pp.t
 (** [pp] renders a font source list. *)
 

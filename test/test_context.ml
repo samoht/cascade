@@ -644,7 +644,7 @@ let declaration_value_source decl =
 let scope_selector_matches (document : Css.Context.document) = function
   | None -> true
   | Some selector ->
-      document.scope = Some selector
+      Option.equal Css.Selector.equal document.scope (Some selector)
       || Css.Context.matches_selector document selector
 
 let scope_boundary_allows document start boundary =
@@ -839,7 +839,8 @@ let same_layer_candidate (c : Css.Stylesheet.cascade_candidate)
 
 let same_origin_candidate (c : Css.Stylesheet.cascade_candidate)
     (l : Css.Stylesheet.cascade_origin_candidate) =
-  l.origin = c.origin && l.important = c.important
+  Css.Stylesheet.equal_cascade_origin l.origin c.origin
+  && l.important = c.important
   && l.source_order = c.source_order
 
 let lower_layer_candidates ~layer_order

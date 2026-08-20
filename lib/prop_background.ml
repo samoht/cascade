@@ -757,7 +757,7 @@ let rec pp_logical_border_width : logical_border_width Pp.t =
 
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
-  | Lengths [ a; b ] when a = b -> pp_length ctx a
+  | Lengths [ a; b ] when Values.equal_length a b -> pp_length ctx a
   | (Lengths lengths : border_spacing) ->
       Pp.list ~sep:Pp.space pp_length ctx lengths
   | Var v -> pp_var pp_border_spacing ctx v
@@ -1611,7 +1611,7 @@ let read_background_shorthand t : background_shorthand =
   let apply acc upd =
     let new_acc = upd acc in
     (* Check if the update actually changed anything *)
-    if new_acc = acc then
+    if equal_background_shorthand new_acc acc then
       (* Nothing changed, meaning we tried to set a duplicate property *)
       Cursor.err t "Duplicate property in background shorthand"
     else new_acc
@@ -1619,7 +1619,8 @@ let read_background_shorthand t : background_shorthand =
   let acc, _ =
     Cursor.fold_many Background_shorthand.read_item ~init ~f:apply t
   in
-  if acc = init then Cursor.err_expected t "background value";
+  if equal_background_shorthand acc init then
+    Cursor.err_expected t "background value";
   acc
 
 let read_background_vars read_self t =

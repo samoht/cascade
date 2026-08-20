@@ -387,7 +387,7 @@ let canonicalise_transform : transform -> transform = function
   | Translate_x x -> Translate (x, None)
   | Scale (x, Some (Num 1.)) -> Scale_x x
   | Scale (Num 1., Some y) -> Scale_y y
-  | Scale (x, Some y) when x = y -> Scale (x, None)
+  | Scale (x, Some y) when Values.equal_number_percentage x y -> Scale (x, None)
   | Scale_3d (x, y, Num 1.) -> Scale (x, Some y)
   | Rotate_z a -> Rotate a
   | Rotate_3d (1., 0., 0., a) -> Rotate_x a

@@ -5036,3 +5036,26 @@ type _ property_value_kind =
   | Background_images : background_image list property_value_kind
   | Font_src : Font_face.src property_value_kind
   | Font_family : font_family property_value_kind
+
+let equal_overflow (a : overflow) b = a = b
+let equal_grid_line (a : grid_line) b = a = b
+let equal_text_emphasis_skip_keyword (a : text_emphasis_skip_keyword) b = a = b
+
+let equal_min_intrinsic_sizing_keyword (a : min_intrinsic_sizing_keyword) b =
+  a = b
+
+let equal_initial_letter_align_keyword (a : initial_letter_align_keyword) b =
+  a = b
+
+let equal_ruby_position_keyword (a : ruby_position_keyword) b = a = b
+let equal_background_shorthand (a : background_shorthand) b = a = b
+let equal_mask_layer (a : mask_layer) b = a = b
+let equal_position_area_keyword (a : position_area_keyword) b = a = b
+
+let equal_position_visibility_condition (a : position_visibility_condition) b =
+  a = b
+
+let equal_animation_range_name (a : animation_range_name) b = a = b
+let equal_container_shorthand (a : container_shorthand) b = a = b
+let equal_paint_order_keyword (a : paint_order_keyword) b = a = b
+let equal_paint_order (a : paint_order) b = a = b
