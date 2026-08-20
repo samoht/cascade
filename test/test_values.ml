@@ -1161,8 +1161,7 @@ let test_system_color () =
 let spec_values_color_current () =
   check_color ~expected:"oklch(50%.2 none)" ~optimized:"oklch(.5 .2 none)"
     "oklch(50% 0.2 none)";
-  check_color ~optimized:"rgb(from rebeccapurple r g b)"
-    "rgb(from rebeccapurple r g b)";
+  check_color ~optimized:"rgb(from #639 r g b)" "rgb(from rebeccapurple r g b)";
   check_color ~expected:"contrast-color(white)"
     ~optimized:"contrast-color(#fff)" "contrast-color(white)";
   check_color ~expected:"light-dark(black,white)"

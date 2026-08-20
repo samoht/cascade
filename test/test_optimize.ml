@@ -2390,6 +2390,10 @@ let target_minify_enforce_spec_split () =
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
     ~spec:"a{color:color-mix(in oklab,var(--a),var(--b))}";
+  check_modes "computed oklch lightness keeps its numeric form"
+    "a { color: color-mix(in oklch, red 50%, blue 50%) }"
+    ~default:"a{color:oklch(.54 .285 326.643)}"
+    ~spec:"a{color:oklch(.54 .285 326.643)}";
   (* oklch/oklab chroma takes <number> | <percentage>, exactly interchangeable
      (CSS Color 4: 100% = 0.4 on this axis). Default minify picks the shorter
      spelling per axis - .304 becomes 76%, but .1 stays because 25% is longer.

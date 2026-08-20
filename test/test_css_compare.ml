@@ -264,6 +264,37 @@ let canonical_custom_color_function_alpha () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
        ".a { --c: #0000 }")
 
+let canonical_relative_color_origin () =
+  (* A relative colour function fixes its origin's type to <color>, so
+     equivalent spellings of that origin must compare equal, including when the
+     whole function sits inside an otherwise opaque custom-property value. *)
+  let parsed =
+    Cascade.Css.Values.read_color
+      (Cascade.Cursor.of_string "oklab(from red l a b / var(--x))")
+  in
+  Alcotest.(check bool)
+    "relative-colour parser retains a typed origin" true
+    (match parsed with
+    | Cascade.Css.Relative_color
+        ("oklab", Cascade.Css.Named Cascade.Css.Red, "l a b/var(--x)") ->
+        true
+    | _ -> false);
+  Alcotest.(check bool)
+    "named and hex relative-colour origins compare equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { color: oklab(from red l a b / var(--x)) }"
+       ".a { color: oklab(from #f00 l a b / var(--x)) }");
+  Alcotest.(check bool)
+    "named and hex relative-rgb origins compare equal" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { color: rgb(from red r g b / var(--x)) }"
+       ".a { color: rgb(from #f00 r g b / var(--x)) }");
+  Alcotest.(check bool)
+    "relative-colour origins compare equal inside a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a { --s: 0 0 8px oklab(from red l a b / var(--x)) }"
+       ".a { --s: 0 0 8px oklab(from #f00 l a b / var(--x)) }")
+
 let canonical_fully_transparent_missing_oklab () =
   let equivalent property =
     Cascade_diff.Css_compare.equal ~mode:`Canonical
@@ -1231,6 +1262,8 @@ let suite =
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom color-function alpha" `Quick
         canonical_custom_color_function_alpha;
+      Alcotest.test_case "canonical relative-colour origin" `Quick
+        canonical_relative_color_origin;
       Alcotest.test_case "canonical fully transparent missing oklab" `Quick
         canonical_fully_transparent_missing_oklab;
       Alcotest.test_case "canonical custom font-family quotes" `Quick

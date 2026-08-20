@@ -509,12 +509,15 @@ type color =
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
-  | Relative_rgb of string
-  | Relative_color of string * string
+  | Relative_rgb of color * string
+      (** [rgb(from <origin> <channels> [/ <alpha>]?)] with a parsed origin and
+          an opaque channel-expression tail. *)
+  | Relative_color of string * color * string
       (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for any color
           function other than [rgb()] (CSS Color 5 sec. 2). The first string is
           the function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb],
-          [color]), the second is the parenthesised body verbatim. *)
+          [color]), the [color] is the parsed origin, and the final string is
+          the channel-expression tail. *)
   | Contrast_color of color
   | Light_dark of color * color
   | Attribute of string * color option
