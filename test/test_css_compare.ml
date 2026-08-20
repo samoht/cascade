@@ -264,6 +264,21 @@ let canonical_custom_color_function_alpha () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --c: transparent }"
        ".a { --c: #0000 }")
 
+let canonical_custom_shadow_color () =
+  (* A complete shadow grammar fixes its final keyword's type to <color>, even
+     when the shadow is carried through an unregistered custom property. *)
+  Alcotest.(check bool)
+    "named and hex shadow colours compare equal in a custom property" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ":root { --drop-shadow-glow: 0 0 8px red }"
+       ":root { --drop-shadow-glow: 0 0 8px #f00 }");
+  (* An arbitrary identifier after the lengths is not a valid shadow colour and
+     must remain opaque. *)
+  Alcotest.(check bool)
+    "a non-colour custom identifier stays distinct" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a { --x: 0 0 8px red }"
+       ".a { --x: 0 0 8px custom-ident }")
+
 let canonical_relative_color_origin () =
   (* A relative colour function fixes its origin's type to <color>, so
      equivalent spellings of that origin must compare equal, including when the
@@ -1262,6 +1277,8 @@ let suite =
         canonical_custom_color_mix_tokens;
       Alcotest.test_case "canonical custom color-function alpha" `Quick
         canonical_custom_color_function_alpha;
+      Alcotest.test_case "canonical custom shadow colour" `Quick
+        canonical_custom_shadow_color;
       Alcotest.test_case "canonical relative-colour origin" `Quick
         canonical_relative_color_origin;
       Alcotest.test_case "canonical fully transparent missing oklab" `Quick
