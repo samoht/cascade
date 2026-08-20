@@ -1,3 +1,27 @@
+## Unreleased
+
+### Custom properties
+
+- `Css.inline_vars` preserves runtime-marked `var()` references, including
+  typed fallbacks simplified through scalar values or shorthands, instead of
+  replacing browser-time override points with compile-time defaults
+  ([#315](https://github.com/samoht/cascade/pull/315))
+
+### Canonical diff
+
+- A fully transparent missing-axis `oklab()` colour, such as
+  `oklab(0% none none / 0)`, canonicalises to transparent black while
+  non-transparent forms remain distinct
+  ([#312](https://github.com/samoht/cascade/pull/312))
+- Relative-colour functions retain their origin as a typed colour, so
+  equivalent spellings such as `red` and `#f00` compare equal in `rgb()`,
+  `oklab()` and the other relative functions, including inside custom
+  properties ([#313](https://github.com/samoht/cascade/pull/313))
+- A complete shadow value in an unregistered custom property types its colour
+  slot, so named and hex colours and typed `var()` fallbacks compare
+  canonically while non-colour identifiers remain opaque
+  ([#314](https://github.com/samoht/cascade/pull/314))
+
 ## 1.1.0
 
 ### Breaking
