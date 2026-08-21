@@ -276,10 +276,6 @@ let read_svg_paint t : svg_paint =
     ]
     t
 
-(* SVG 2 sec. 13.3: "A value of zero is invalid; a negative value is an error".
-   The limit is a ratio of miter length to stroke width, and that ratio is 1 at
-   its smallest, so anything below 1 is out of range. Only a literal can be
-   checked here; calc() and var() resolve later. *)
 let vector_effect_keyword_of = function
   | "non-scaling-stroke" -> Some (Non_scaling_stroke : vector_effect_keyword)
   | "non-scaling-size" -> Some Non_scaling_size
@@ -443,13 +439,17 @@ let rec read_stroke_dasharray t : stroke_dasharray =
       (Dashes (go []) : stroke_dasharray))
     t
 
+(* SVG 2 sec. 13.5.5: "A negative value for stroke-miterlimit must be treated as
+   an illegal value". SVG 1.1 sec. 11.4 also required at least 1, but SVG 2
+   dropped that because CSS parsers never enforced it. Only a literal can be
+   checked here; calc() and var() resolve later. *)
 let read_miterlimit_number t =
   let value =
     match (Values.read_number t : Values.number) with
     | Values.Num value -> value
     | _ -> Cursor.err_invalid t "stroke-miterlimit must resolve to a number"
   in
-  if value < 1. then Cursor.err_invalid t "stroke-miterlimit below 1";
+  if value < 0. then Cursor.err_invalid t "negative stroke-miterlimit";
   value
 
 let rec read_stroke_miterlimit t : stroke_miterlimit =

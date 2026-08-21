@@ -3921,7 +3921,7 @@ type stroke_linejoin =
   | Var of stroke_linejoin var
 
 (** SVG 2 sec. 13.5.5 [stroke-miterlimit]: the ratio at which a miter join is
-    converted to a bevel. The specification makes a value below 1 invalid. *)
+    converted to a bevel. Only a negative value is illegal. *)
 type stroke_miterlimit =
   | Number of float
   | Calc of stroke_miterlimit calc
