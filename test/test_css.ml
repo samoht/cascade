@@ -671,6 +671,55 @@ let public_theme_edges () =
     |> Css.resolve_theme ~theme:brand_theme
     |> Css.optimize |> to_string ~minify:true)
 
+(* A theme guard is a compile-time filter on the declaration it wraps, so the
+   keep-set decides its fate wherever that declaration sits. [@keyframes],
+   [@page], [@position-try] and [@supports-condition] hold declarations directly
+   rather than in a nested block, so a walk that only descends through blocks
+   never reaches their guards and prints them as declarations the theme never
+   selected. *)
+let public_theme_guards_in_declaration_at_rules () =
+  let guarded () = theme_guarded ~var_name:"brand" (color (hex "#ff0000")) in
+  let resolved stmts =
+    v stmts
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
+    |> to_string ~minify:true
+  in
+  let frame : Stylesheet.keyframe =
+    {
+      selector = Keyframe.Positions [ Keyframe.From ];
+      declarations = [ guarded () ];
+    }
+  in
+  let margin : Stylesheet.page_margin_rule =
+    { name = "top-left"; descriptors = [ guarded () ] }
+  in
+  let cases =
+    [
+      ("@keyframes", [ Stylesheet.keyframes "k" [ frame ] ]);
+      ("@-webkit-keyframes", [ Stylesheet.Webkit_keyframes ("k", [ frame ]) ]);
+      ("@-moz-keyframes", [ Stylesheet.Moz_keyframes ("k", [ frame ]) ]);
+      ("@page", [ Stylesheet.Page ([], [ guarded () ]) ]);
+      ("@page margin box", [ Stylesheet.Page_with_margins ([], [], [ margin ]) ]);
+      ("@position-try", [ Stylesheet.Position_try ("--pt", [ guarded () ]) ]);
+      ( "@supports-condition",
+        [ Stylesheet.Supports_condition ("--sc", [ guarded () ]) ] );
+    ]
+  in
+  match
+    List.filter_map
+      (fun (name, stmts) ->
+        let printed = resolved stmts in
+        if Astring.String.is_infix ~affix:"color" printed then
+          Fmt.kstr Option.some "%s kept the guarded declaration: %S" name
+            printed
+        else Option.none)
+      cases
+  with
+  | [] -> ()
+  | kept ->
+      Alcotest.failf "theme guards left unresolved:\n%s"
+        (String.concat "\n" kept)
+
 let public_value_combinator_edges () =
   let _spacing_decl, spacing = var "spacing" Length (Rem 0.25) in
   let check_padding_calc ?optimized label expected calc =
@@ -1097,6 +1146,8 @@ let suite =
       Alcotest.test_case "public property introspection" `Quick
         public_property_edges;
       Alcotest.test_case "public theme guards" `Quick public_theme_edges;
+      Alcotest.test_case "public theme guards in declaration at-rules" `Quick
+        public_theme_guards_in_declaration_at_rules;
       Alcotest.test_case "public value combinators" `Quick
         public_value_combinator_edges;
       Alcotest.test_case "public theme var rendering" `Quick
