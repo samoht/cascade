@@ -267,6 +267,10 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- Merging same-selector rules keeps a later declaration behind a nested
+  conditional group that sets the same property. The safety check saw a nested
+  style rule only, so `@media`, `@container` and friends let the merge hoist
+  the declaration past them and hand the conditional the win (#352)
 - A `font-family` name that cannot be spelled as an identifier keeps its
   quotes. The unquoting guard checked which characters a name is made of but
   not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
