@@ -183,8 +183,9 @@ val pp : t Pp.t
 val lower_for_minify : t -> t
 (** [lower_for_minify t] applies the target-fact grammar upgrades used under
     minify: [min-X]/[max-X] plain features become the range form [X>=V]/[X<=V],
-    and a lower bound paired with an upper bound on the same feature across an
-    [and] collapses into the two-sided interval [V<=name<=V]. *)
+    a lower bound paired with an upper bound on the same feature across an [and]
+    collapses into the two-sided interval [V<=name<=V], and [not all and (X)]
+    becomes the Level 4 [not (X)]. *)
 
 val pp_condition : condition Pp.t
 (** Pretty-printer for media query conditions. *)

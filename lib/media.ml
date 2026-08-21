@@ -1098,6 +1098,11 @@ let rec lower_for_minify : t -> t = function
   | Cond c as query ->
       let c' = lower_condition c in
       if c' == c then query else Cond c'
+  (* CSS Media Queries 4 sec. 2.1: [all] is the identity media type, so [not all
+     and (X)] is the Level 3 spelling of [not (X)]. Bare [not all] has no
+     condition form and stays. *)
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
+      Cond (Not (lower_condition c))
   | Type ({ trailing; _ } as r) as query -> (
       match trailing with
       | None -> query

@@ -630,10 +630,10 @@ let rec sort_property_runs (stmts : statement list) : statement list =
    condition form - it matches nothing - so it stays, and the unnegated [all and
    (X)] never reaches here because {!Optimize} already drops it.
 
-   Projection only. The Level 4 form is eight characters shorter, but a Level 3
-   parser rejects a [not] with no media type and an unrecognised query never
-   matches, so rewriting one to the other on output would silently drop the
-   block in those browsers. *)
+   Default minify emits the Level 4 form itself ({!Media.lower_for_minify}), so
+   this fires on the input that pass leaves alone: statements a caller projects
+   without optimizing, and [--enforce-spec] output, which keeps the Level 3
+   spelling. *)
 let rec canonical_media (query : Media.t) : Media.t =
   match query with
   | Media.Type { prefix = Some Media.Not; type_ = Media.All; trailing = Some c }

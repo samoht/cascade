@@ -15,6 +15,15 @@
   since `Css.inline_vars` resolves those references at build time
   ([#322](https://github.com/samoht/cascade/pull/322))
 
+### Minification
+
+- `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
+  the identity media type (Media Queries 4 sec. 2.1), so the two spell the same
+  query, and default minify already spends Level 3 compatibility by lowering
+  `min-width` to range syntax inside that very query. `--enforce-spec` keeps
+  both Level 3 spellings
+  ([#323](https://github.com/samoht/cascade/pull/323))
+
 ### Custom properties
 
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
