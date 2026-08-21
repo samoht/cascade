@@ -122,7 +122,22 @@ let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
         ( (Scope (a, b) : at_node),
           body,
           fun body -> Stylesheet.Scope (a, b, body) )
-  | _ -> None
+  (* Listed rather than closed with a wildcard: a statement that grows a block
+     later has to be classified here before it compiles, so it cannot fall
+     through the path-tracking walks as a leaf. [Rule] is a block too, but its
+     selector is a scope boundary rather than an at-rule wrapper, so the callers
+     descend into it themselves. *)
+  | Stylesheet.Rule _ | Stylesheet.Property _ | Stylesheet.Declarations _
+  | Stylesheet.Bang_comment _ | Stylesheet.Charset _ | Stylesheet.Import _
+  | Stylesheet.Namespace _ | Stylesheet.Layer_decl _
+  | Stylesheet.Supports_condition _ | Stylesheet.Keyframes _
+  | Stylesheet.Webkit_keyframes _ | Stylesheet.Moz_keyframes _
+  | Stylesheet.Font_face _ | Stylesheet.Counter_style _ | Stylesheet.Page _
+  | Stylesheet.Page_with_margins _ | Stylesheet.Font_palette_values _
+  | Stylesheet.Font_feature_values _ | Stylesheet.View_transition _
+  | Stylesheet.Position_try _ | Stylesheet.Viewport _
+  | Stylesheet.Unknown_at_rule _ ->
+      None
 
 (** {1 Scope record} *)
 
