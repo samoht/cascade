@@ -808,6 +808,25 @@ let page_removed_reported () =
     "a dropped @page is a difference" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* An at-rule that carries no condition still has an identity of its own, and
+   the ordering comparison reads it as a position marker. Describing every one
+   of them the same way collapsed [@page] and [@starting-style] onto a single
+   key, and a [@media] that moved between them read as no change - the very
+   collapse the [@charset] versus [@namespace] naming above avoids. *)
+let selectorless_at_rules_key_the_ordering () =
+  let d =
+    diff_of
+      ~expected:
+        "@page{margin:1cm}@media \
+         print{a{color:red}}@starting-style{b{color:red}}"
+      ~actual:
+        "@page{margin:1cm}@starting-style{b{color:red}}@media \
+         print{a{color:red}}"
+  in
+  Alcotest.(check bool)
+    "a @media that moved between two of them is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 let font_face_added_reported () =
   let d =
     diff_of ~expected:".a{color:red}"
@@ -1228,6 +1247,8 @@ let suite =
       Alcotest.test_case "repeated @font-face change reported" `Quick
         repeated_font_face_change_reported;
       Alcotest.test_case "@page removed reported" `Quick page_removed_reported;
+      Alcotest.test_case "selectorless at-rules key the ordering" `Quick
+        selectorless_at_rules_key_the_ordering;
       Alcotest.test_case "@font-face added reported" `Quick
         font_face_added_reported;
       Alcotest.test_case "repeated property pairs by occurrence" `Quick
