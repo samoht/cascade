@@ -82,6 +82,11 @@
 
 ### CLI tools
 
+- `cascade apply` keeps a declaration in the sheet when a kept rule can write
+  the same cascade slot under another property name. `p{margin:0}` was
+  projected into a style attribute while the `.my-7{margin-top:1.75rem}` it
+  loses to stayed behind, and a style attribute outranks every selector, so the
+  paragraph rendered with no margin (#340)
 - `cascade apply` empties the `<style>` blocks it projects instead of removing
   them. A `<style>` element is a sibling like any other, so unlinking it stops
   a kept rule such as `.navbox + style + .portal-bar` from matching what it
