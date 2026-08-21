@@ -377,6 +377,49 @@ let non_competing_scoped_rule_still_inlines () =
     ~keep:"@scope(.root){.x{margin:0}}" ~kept:1
     (node ~classes:[ "x" ] "p")
 
+(* A kept rule and an inlinable one can compete under different property names:
+   [margin] resets [margin-right] (css-box-4 sec. 4.2), so a kept rule setting
+   the longhand is one the shorthand can overwrite. Inlining the shorthand puts
+   it in a style attribute, which css-cascade-5 sec. 6.3 ranks above every
+   selector, and the kept rule loses a fight it wins in the browser. *)
+let keeps_shorthand_a_kept_longhand_writes () =
+  check_split "shorthand over kept longhand"
+    ~css:
+      "ul{margin:0}.m{margin-right:20px}@media(min-width:1px){.q{margin-right:0}}"
+    ~inline:""
+    ~keep:
+      "ul{margin:0}.m{margin-right:20px}@media(min-width:1px){.q{margin-right:0}}"
+    ~kept:3
+    (node ~classes:[ "m" ] "ul")
+
+(* The same the other way round: a kept shorthand can overwrite an inlinable
+   longhand, so the longhand has to stay in the sheet too. *)
+let keeps_longhand_a_kept_shorthand_writes () =
+  check_split "longhand under kept shorthand"
+    ~css:".x{margin-top:1px}@media(min-width:1px){.q{margin:0}}" ~inline:""
+    ~keep:".x{margin-top:1px}@media(min-width:1px){.q{margin:0}}" ~kept:2
+    (node ~classes:[ "x" ] "p")
+
+(* A flow-relative property and its physical twin write one slot once the
+   writing mode is known (css-logical-1 sec. 2), and the stylesheet does not
+   know it, so [margin-inline-end] and [margin-right] have to be treated as the
+   same competition. *)
+let keeps_logical_a_kept_physical_writes () =
+  check_split "logical under kept physical"
+    ~css:".x{margin-inline-end:30px}@media(min-width:1px){.q{margin-right:0}}"
+    ~inline:""
+    ~keep:".x{margin-inline-end:30px}@media(min-width:1px){.q{margin-right:0}}"
+    ~kept:2
+    (node ~classes:[ "x" ] "p")
+
+(* The control: a kept rule that writes another family competes with nothing, so
+   the shorthand still projects onto the element. *)
+let unrelated_kept_property_still_inlines () =
+  check_split "shorthand, unrelated kept property"
+    ~css:"ul{margin:0}@media(min-width:1px){.q{color:red}}" ~inline:"margin:0"
+    ~keep:"@media(min-width:1px){.q{color:red}}" ~kept:1
+    (node ~classes:[ "m" ] "ul")
+
 (* The matcher compares attribute values verbatim, so it cannot represent the
    [i] case flag. A selector it cannot represent has to stay in the sheet:
    inlining it drops it from the sheet, and it then matches nobody, so the
@@ -516,6 +559,14 @@ let suite =
         keeps_property_a_starting_style_rule_sets;
       Alcotest.test_case "non-competing scoped rule still inlines" `Quick
         non_competing_scoped_rule_still_inlines;
+      Alcotest.test_case "keeps a shorthand a kept longhand writes" `Quick
+        keeps_shorthand_a_kept_longhand_writes;
+      Alcotest.test_case "keeps a longhand a kept shorthand writes" `Quick
+        keeps_longhand_a_kept_shorthand_writes;
+      Alcotest.test_case "keeps a logical property a kept physical one writes"
+        `Quick keeps_logical_a_kept_physical_writes;
+      Alcotest.test_case "unrelated kept property still inlines" `Quick
+        unrelated_kept_property_still_inlines;
       Alcotest.test_case "keeps a rule with an attribute case flag" `Quick
         keeps_rule_with_attribute_case_flag;
       Alcotest.test_case "projects an attribute rule to inline style" `Quick
