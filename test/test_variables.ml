@@ -211,6 +211,35 @@ let spec_theme_binding_for_logical_property () =
     ":root{--w:10px}.a{inline-size:var(--w)}"
     (render ".a { inline-size: var(--w) }")
 
+(* CSS Animations L1 sec. 3: a keyframe block holds ordinary property
+   declarations. CSS Custom Properties L1 sec. 3: var() in one is substituted
+   against the animated element, so a name referenced only from a keyframe needs
+   the same root binding as one referenced from a rule. *)
+let spec_theme_binding_inside_keyframes () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.singleton "w" in
+  let theme_defaults = function "w" -> Some "10px" | _ -> None in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme ~theme_defaults
+    |> Css.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "rule emits the theme binding" ":root{--w:10px}.a{width:var(--w)}"
+    (render ".a { width: var(--w) }");
+  Alcotest.(check string)
+    "keyframe block emits the theme binding"
+    ":root{--w:10px}@keyframes k{0%{width:var(--w)}}"
+    (render "@keyframes k { from { width: var(--w) } }");
+  Alcotest.(check string)
+    "keyframes in a layer emits the theme binding"
+    ":root{--w:10px}@layer l{@keyframes k{0%{width:var(--w)}}}"
+    (render "@layer l { @keyframes k { from { width: var(--w) } } }")
+
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
@@ -485,6 +514,9 @@ let tests =
     ( "spec theme binding for logical property",
       `Quick,
       spec_theme_binding_for_logical_property );
+    ( "spec theme binding inside keyframes",
+      `Quick,
+      spec_theme_binding_inside_keyframes );
     ("vars of declarations", `Quick, test_vars_of_declarations);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);
