@@ -1,9 +1,11 @@
 #!/bin/sh
 # Download a few real pages into test/inline/pages/ so run.sh can run the
 # differential test against them. Each page is made self-contained (its external
-# stylesheets are fetched and inlined into a <style> block) so the inliner has
-# CSS to project and the page renders without network access. The downloaded
-# files are large and change upstream, so they are gitignored, never committed.
+# stylesheets are fetched and inlined into a <style> block) and then frozen
+# (scripts, web fonts and remote images removed, see freeze_page.js), so it
+# renders offline and its computed styles are reproducible run to run. The
+# downloaded files are large and change upstream, so they are gitignored, never
+# committed; re-run this script to reproduce them.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 out="$dir/pages"
 mkdir -p "$out"
@@ -13,12 +15,17 @@ fetch() { # name url
   url="$2"
   echo "$name <- $url"
   if curl -sL --max-time 60 -A "Mozilla/5.0" "$url" -o "$out/$name.raw.html"; then
-    node "$dir/inline_css.js" "$url" "$out/$name.raw.html" "$out/$name.html" ||
+    if node "$dir/inline_css.js" "$url" "$out/$name.raw.html" "$out/$name.in.html"
+    then
+      node "$dir/freeze_page.js" "$out/$name.in.html" "$out/$name.html" ||
+        echo "  freeze failed"
+    else
       echo "  inline-css failed"
+    fi
   else
     echo "  download failed"
   fi
-  rm -f "$out/$name.raw.html"
+  rm -f "$out/$name.raw.html" "$out/$name.in.html"
 }
 
 fetch wikipedia https://en.wikipedia.org/wiki/Cascading_Style_Sheets
