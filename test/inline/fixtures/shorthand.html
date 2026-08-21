@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head><style>
+  /* Every group writes the same text on an ancestor and a descendant, so
+     --minimal sees a restatement, and puts an element in between that sets one
+     of the longhands the restatement resets. The restatement is what puts that
+     longhand back, so it has to survive. */
+  #fw          { font: 16px serif }
+  #fw .m       { font-weight: bold }
+  #fw .d       { font: 16px serif }
+  #lh          { font: 16px serif }
+  #lh .m       { line-height: 48px }
+  #lh .d       { font: 16px serif }
+  #fs          { font: 16px serif }
+  #fs .m       { font-style: italic }
+  #fs .d       { font: 16px serif }
+  #ls          { list-style: square }
+  #ls .m       { list-style-image: url(data:image/gif;base64,R0lGODlhAQABAAAAACw=) }
+  #ls .d       { list-style: square }
+  #fv          { font-variant: normal }
+  #fv .m       { font-variant-caps: small-caps }
+  #fv .d       { font-variant: normal }
+  #ws          { white-space: pre-wrap }
+  #ws .m       { text-wrap-mode: nowrap }
+  #ws .d       { white-space: pre-wrap }
+  /* The other way round: the shorthand in between resets the longhand the
+     descendant restates. */
+  #rev         { font-weight: 700 }
+  #rev .m      { font: 16px serif }
+  #rev .d      { font-weight: 700 }
+  /* A shorthand with no typed reset set, and the one that resets the lot. */
+  #fvsh        { font: 16px serif }
+  #fvsh .m     { font-variant: small-caps }
+  #fvsh .d     { font: 16px serif }
+  #all         { color: red }
+  #all .m      { all: initial }
+  #all .d      { color: red }
+  /* Controls: nothing in between touches a slot the restatement writes, so
+     --minimal may drop it. */
+  #ctl         { font: 16px serif; color: red }
+  #ctl .m      { text-align: right }
+  #ctl .d      { font: 16px serif; color: red }
+</style></head>
+<body>
+  <p id="fw">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="lh">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="fs">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="ls">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="fv">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="ws">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="rev">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="fvsh">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="all">a <span class="m">c <span class="d">b</span></span></p>
+  <p id="ctl">a <span class="m">c <span class="d">b</span></span></p>
+</body>
+</html>
