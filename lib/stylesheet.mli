@@ -241,6 +241,21 @@ val statement_declarations : statement -> declaration list
     declaration-carrying at-rule added to the AST later does not compile until
     it is listed here. *)
 
+val map_statement_children : (block -> block) -> statement -> statement
+(** [map_statement_children f stmt] rebuilds [stmt] with [f] applied to the
+    block {!statement_children} reads, and returns a statement that holds no
+    block unchanged. It is the rebuilding counterpart of {!statement_children},
+    for a walk that rewrites the tree rather than only reading it. *)
+
+val map_statement_declarations :
+  (declaration list -> declaration list) -> statement -> statement
+(** [map_statement_declarations f stmt] rebuilds [stmt] with [f] applied to the
+    declarations it holds directly, and returns a statement that holds none
+    unchanged. It is the rebuilding counterpart of {!statement_declarations},
+    with one difference: [f] sees each declaration list as its own list rather
+    than the concatenation, so every frame of [@keyframes] and every margin rule
+    of [@page] keeps its own block. *)
+
 (** {1 Reading/Parsing} *)
 
 val read_rule : ?nested:bool -> Cursor.t -> rule

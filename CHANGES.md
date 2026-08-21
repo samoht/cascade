@@ -48,6 +48,9 @@
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults (#315)
+- A registered `<color>` custom property is promoted and fills the colour slot
+  of a `box-shadow` inside `@keyframes`, so the same declaration minifies the
+  same way wherever it sits (#337)
 
 ### Canonical diff
 
@@ -73,6 +76,9 @@
 - `Css.Stylesheet.statement_declarations` returns the declarations a statement
   holds directly; paired with `statement_children` it reaches every declaration
   in a stylesheet (#317)
+- `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
+  rebuild a statement with a function applied to the block or the declarations
+  it holds, the rebuilding counterparts of the two readers (#337)
 
 ### CLI tools
 
