@@ -739,7 +739,8 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
   (* A descending font-stretch range is kept like the font-weight / oblique
-     ranges below: browsers do not enforce CSS Fonts 4 sec. 4.4. *)
+     ranges below: CSS Fonts 4 sec. 4.4 swaps the endpoints for font matching
+     and leaves the descriptor as it was written. *)
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:200% 50%}"
@@ -1153,6 +1154,18 @@ let spec_strict_accepts_valid_stylesheets () =
       ( "font-face wildcard unicode range",
         "@font-face { font-family: Icons; src: url(icons.woff2); \
          unicode-range: U+4?? }" );
+      (* CSS Fonts 4 sec. 4.4 makes a descending descriptor range well defined
+         rather than an error: the user agent swaps the two endpoints. Only
+         [unicode-range] keeps an ordering rule. *)
+      ( "font-face descending font-weight range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+         900 100 }" );
+      ( "font-face descending oblique angle range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+         oblique 20deg 10deg }" );
+      ( "font-face descending font-stretch range",
+        "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+         200% 50% }" );
       ( "counter-style cyclic",
         "@counter-style thumbs { system: cyclic; symbols: \"*\" \"x\"; suffix: \
          \" \" }" );
@@ -1263,18 +1276,6 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "font-face unicode-range descending range",
         "@font-face { font-family: Brand; src: url(font.woff2); unicode-range: \
          U+20-10 }" );
-      (* Browsers keep a descending font-weight / oblique-angle range, so the
-         lenient parse keeps it with a warning; strict turns that into an error
-         (CSS Fonts 4 sec. 4.4 wants the first bound <= the second). *)
-      ( "font-face descending font-weight range",
-        "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
-         900 100 }" );
-      ( "font-face descending oblique angle range",
-        "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
-         oblique 20deg 10deg }" );
-      ( "font-face descending font-stretch range",
-        "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
-         200% 50% }" );
       ( "font-face invalid font-display list",
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }" );

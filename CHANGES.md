@@ -16,6 +16,11 @@
   only a negative value illegal, having dropped SVG 1.1's "at least 1" rule
   because CSS parsers never enforced it, and `stroke-miterlimit: 0.5` was
   rejected outright (#334)
+- A descending `@font-face` descriptor range such as `font-weight: 700 400`
+  parses without a warning and `Css.of_string ~strict:true` accepts it. CSS
+  Fonts 4 sec. 4.4 has the user agent swap the endpoints for font matching, so
+  the range is well defined rather than an error, and only `unicode-range`
+  keeps an ordering rule (#335)
 
 ### Minification
 
