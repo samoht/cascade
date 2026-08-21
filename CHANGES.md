@@ -6,6 +6,10 @@
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults
   ([#315](https://github.com/samoht/cascade/pull/315))
+- `Css.resolve_theme` emits the theme binding for a `var()` referenced only
+  from inside `@keyframes`, `@page`, `@position-try` or `@supports-condition`,
+  instead of leaving the name undefined in the emitted sheet
+  ([#317](https://github.com/samoht/cascade/pull/317))
 
 ### Canonical diff
 
@@ -21,6 +25,12 @@
   slot, so named and hex colours and typed `var()` fallbacks compare
   canonically while non-colour identifiers remain opaque
   ([#314](https://github.com/samoht/cascade/pull/314))
+
+### Library
+
+- `Css.Stylesheet.statement_declarations` returns the declarations a statement
+  holds directly; paired with `statement_children` it reaches every declaration
+  in a stylesheet ([#317](https://github.com/samoht/cascade/pull/317))
 
 ## 1.1.0
 

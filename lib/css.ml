@@ -912,29 +912,11 @@ let collect_var_names stylesheet =
         | _ -> ())
       (Variables.vars_of_declarations decls)
   in
-  let rec walk = function
-    | [] -> ()
-    | stmt :: rest ->
-        (match stmt with
-        | Stylesheet.Rule r ->
-            record_decls r.declarations;
-            walk r.nested
-        | Declarations decls -> record_decls decls
-        | Media (_, b)
-        | Supports (_, b)
-        | Container (_, _, b)
-        | Layer (_, b)
-        | Origin (_, b)
-        | Scope (_, _, b)
-        | Starting_style b
-        | Moz_document (_, b)
-        | When (_, b)
-        | Else (_, b) ->
-            walk b
-        | _ -> ());
-        walk rest
+  let rec walk stmt =
+    record_decls (Stylesheet.statement_declarations stmt);
+    List.iter walk (Stylesheet.statement_children stmt)
   in
-  walk stylesheet;
+  List.iter walk stylesheet;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
 
 (* Resolve [Theme_guarded { var_name; decl }] declarations against the theme
@@ -1009,23 +991,8 @@ let structural_var_refs (stmts : Stylesheet.statement list) : string list =
     acc := List.rev_append (var_names_in_theme_value (declaration_value d)) !acc
   in
   let rec scan (stmt : Stylesheet.statement) =
-    match stmt with
-    | Stylesheet.Rule r ->
-        List.iter note r.declarations;
-        List.iter scan r.nested
-    | Stylesheet.Declarations decls -> List.iter note decls
-    | Stylesheet.Media (_, b)
-    | Stylesheet.Supports (_, b)
-    | Stylesheet.Container (_, _, b)
-    | Stylesheet.Layer (_, b)
-    | Stylesheet.Origin (_, b)
-    | Stylesheet.Scope (_, _, b)
-    | Stylesheet.Starting_style b
-    | Stylesheet.Moz_document (_, b)
-    | Stylesheet.When (_, b)
-    | Stylesheet.Else (_, b) ->
-        List.iter scan b
-    | _ -> ()
+    List.iter note (Stylesheet.statement_declarations stmt);
+    List.iter scan (Stylesheet.statement_children stmt)
   in
   List.iter scan stmts;
   !acc
@@ -1090,23 +1057,8 @@ let declared_custom_prop_names (stmts : Stylesheet.statement list) :
       decls
   in
   let rec scan (stmt : Stylesheet.statement) =
-    match stmt with
-    | Stylesheet.Rule r ->
-        note r.declarations;
-        List.iter scan r.nested
-    | Stylesheet.Declarations decls -> note decls
-    | Stylesheet.Media (_, b)
-    | Stylesheet.Supports (_, b)
-    | Stylesheet.Container (_, _, b)
-    | Stylesheet.Layer (_, b)
-    | Stylesheet.Origin (_, b)
-    | Stylesheet.Scope (_, _, b)
-    | Stylesheet.Starting_style b
-    | Stylesheet.Moz_document (_, b)
-    | Stylesheet.When (_, b)
-    | Stylesheet.Else (_, b) ->
-        List.iter scan b
-    | _ -> ()
+    note (Stylesheet.statement_declarations stmt);
+    List.iter scan (Stylesheet.statement_children stmt)
   in
   List.iter scan stmts;
   tbl
@@ -1126,23 +1078,8 @@ let referenced_var_names (stmts : Stylesheet.statement list) : string list =
     | Option.None -> ()
   in
   let rec scan (stmt : Stylesheet.statement) =
-    match stmt with
-    | Stylesheet.Rule r ->
-        List.iter note r.declarations;
-        List.iter scan r.nested
-    | Stylesheet.Declarations decls -> List.iter note decls
-    | Stylesheet.Media (_, b)
-    | Stylesheet.Supports (_, b)
-    | Stylesheet.Container (_, _, b)
-    | Stylesheet.Layer (_, b)
-    | Stylesheet.Origin (_, b)
-    | Stylesheet.Scope (_, _, b)
-    | Stylesheet.Starting_style b
-    | Stylesheet.Moz_document (_, b)
-    | Stylesheet.When (_, b)
-    | Stylesheet.Else (_, b) ->
-        List.iter scan b
-    | _ -> ()
+    List.iter note (Stylesheet.statement_declarations stmt);
+    List.iter scan (Stylesheet.statement_children stmt)
   in
   List.iter scan stmts;
   List.map bare_theme_name (collect_var_names stmts @ !opaque)
