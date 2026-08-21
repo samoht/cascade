@@ -9,7 +9,7 @@
   cascade_spec_inventory
   fuzz_helpers))
 
-; Property-based testing — runs with dune test
+; Property-based testing -- runs with dune test
 
 (rule
  (alias runtest)
@@ -19,7 +19,7 @@
  (action
   (run %{exe:fuzz.exe})))
 
-; AFL campaign — only runs under --profile=afl. Generates the seed corpus
+; AFL campaign -- only runs under --profile=afl. Generates the seed corpus
 ; via fuzz.exe --gen-corpus before handing off to AFL.
 
 (rule
