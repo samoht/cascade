@@ -6877,6 +6877,62 @@ let v4107_math_product_reduction () =
         ".x{width:2px}" );
     ]
 
+(* CSS Values 4 sec. 10.13 leaves numeric precision implementation-defined, so
+   the budget is Cascade's own: six significant figures for a value Cascade
+   computes, and every digit the author wrote for one it did not. The two are
+   different values - at a [14px] font [.4285714em] is [6px] while [.428571em]
+   is [5.999994px] - so the reduction happens at the fold that produces the
+   irrational, never at print time. *)
+let authored_precision_preserved () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [idempotent]") expected (normalize expected))
+    [
+      (* Authored dimensions past six significant figures. *)
+      ( "authored em keeps its digits",
+        ".x { padding-left: .4285714em }",
+        ".x{padding-left:.4285714em}" );
+      ( "authored px keeps its magnitude",
+        ".x { width: 999999999px }",
+        ".x{width:999999999px}" );
+      ( "authored time keeps its digits",
+        ".x { transition-duration: 1.2345678s }",
+        ".x{transition-duration:1.2345678s}" );
+      ( "authored angle keeps its digits",
+        ".x { transform: rotate(1.2345678deg) }",
+        ".x{transform:rotate(1.2345678deg)}" );
+      ( "min() keeps the authored operand it selects",
+        ".x { width: min(1.41421356px, 2px) }",
+        ".x{width:1.41421356px}" );
+      (* A folded irrational carries the digits Cascade commits to. *)
+      ( "calc(2px * pi) rounds at the fold",
+        ".x { width: calc(2px * pi) }",
+        ".x{width:6.28319px}" );
+      ( "calc(2px / pi) rounds at the fold",
+        ".x { width: calc(2px / pi) }",
+        ".x{width:.63662px}" );
+      ( "calc(1px * sqrt(2)) rounds at the fold",
+        ".x { width: calc(1px * sqrt(2)) }",
+        ".x{width:1.41421px}" );
+      ( "hypot() on lengths rounds at the fold",
+        ".x { width: hypot(1px, 1px) }",
+        ".x{width:1.41421px}" );
+      (* [<number>] is untouched in both directions. *)
+      ( "authored line-height keeps its digits",
+        ".x { line-height: 1.4285714 }",
+        ".x{line-height:1.4285714}" );
+      ( "authored opacity keeps its digits",
+        ".x { opacity: .12345678 }",
+        ".x{opacity:.12345678}" );
+    ]
+
 let v4107_mod_rem () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -8365,6 +8421,9 @@ let additional_tests =
     ( "spec values 4 10.7 length times math reduction",
       `Quick,
       v4107_math_product_reduction );
+    ( "authored numeric precision preserved",
+      `Quick,
+      authored_precision_preserved );
     ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
