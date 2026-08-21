@@ -6889,6 +6889,23 @@ let authored_precision_preserved () =
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
+  (* An [@property --n] registration, and the minified form it prints as, so the
+     [--n] declaration under it is read as a typed [<number>]. *)
+  let registered decl =
+    String.concat ""
+      [
+        "@property --n { syntax: \"<number>\"; inherits: false; initial-value: \
+         0 }";
+        decl;
+      ]
+  in
+  let registered_min decl =
+    String.concat ""
+      [
+        "@property --n{syntax:\"<number>\";inherits:false;initial-value:0}";
+        decl;
+      ]
+  in
   List.iter
     (fun (name, input, expected) ->
       Alcotest.(check string) name expected (normalize input);
@@ -6931,6 +6948,30 @@ let authored_precision_preserved () =
       ( "authored opacity keeps its digits",
         ".x { opacity: .12345678 }",
         ".x{opacity:.12345678}" );
+      ( "authored unregistered custom property keeps its digits",
+        ".x { --raw: 1.4285714 }",
+        ".x{--raw:1.4285714}" );
+      (* CSS Properties and Values API 1 sec. 2: an [@property] registration
+         lifts a [--name] use into the typed [<number>] shape, which must not
+         change the author's digits either. *)
+      ( "registered <number> keeps its digits",
+        registered ".x { --n: 1.4285714 }",
+        registered_min ".x{--n:1.4285714}" );
+      ( "registered <number> keeps its magnitude",
+        registered ".x { --n: 999999999999 }",
+        registered_min ".x{--n:999999999999}" );
+      ( "registered <number> shortens the fold the printer runs",
+        registered ".x { --n: calc(1 / 3) }",
+        registered_min ".x{--n:.333333}" );
+      (* A [calc()] the optimizer already collapsed reaches the printer as a
+         bare coefficient, where the registered shape has to print what an
+         untyped [<number>] prints. *)
+      ( "registered <number> prints a collapsed fold like an untyped one",
+        registered ".x { --n: calc(2 * pi) }",
+        registered_min ".x{--n:6.28318531}" );
+      ( "untyped <number> prints the same collapsed fold",
+        ".x { line-height: calc(2 * pi) }",
+        ".x{line-height:6.28318531}" );
     ]
 
 let v4107_mod_rem () =
