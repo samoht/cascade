@@ -228,6 +228,61 @@ let minimal_keeps_what_a_ua_rule_would_win () =
   Alcotest.(check string)
     "the control: no UA rule sets a paragraph's colour" "" (style p)
 
+(* [minimal] compares the value as written, but a relative one resolves against
+   the element it lands on, so the same text one level down is a different
+   computed value. css-values-4 sec. 6.1 makes a font-relative unit a multiple
+   of the element's own font, and [rem] a multiple of the root's - which the
+   ancestor holding the value may itself be, where [font-size] instead resolves
+   against the initial value. Sec. 6.4 makes a container unit a fraction of the
+   query container, which an element in between can become. A percentage
+   resolves against a per-property basis, and css-fonts-4 sec. 3.5 reads the
+   parent outright for [larger] and [bolder]. A [var()] reads a custom property
+   an element in between can redefine, [light-dark()] reads the inherited
+   [color-scheme], and [currentColor] inside [color-mix()] is resolved at
+   computed-value time rather than carried through.
+
+   Chrome 146 on [div{font-size:2em}div p{font-size:2em}]: the paragraph
+   computes 64px, and 32px once the declaration is dropped. *)
+let minimal_keeps_a_relative_value () =
+  let projected ?(parent = "div") decl =
+    let child = node "p" in
+    let root = node ~children:[ child ] parent in
+    let css =
+      String.concat "" [ parent; "{"; decl; "}"; parent; " p{"; decl; "}" ]
+    in
+    let result = A.compute ~minimal:true ~sheet:(parse css) [ root ] in
+    match List.find_opt (fun (m, _) -> Node.equal m child) result.styles with
+    | Some (_, decls) -> inline_style decls
+    | None -> Alcotest.failf "no assignment for the child of %s" parent
+  in
+  let kept ?parent decl =
+    Alcotest.(check string) decl decl (projected ?parent decl)
+  in
+  let dropped ?parent decl =
+    Alcotest.(check string) decl "" (projected ?parent decl)
+  in
+  kept "font-size:2em";
+  kept "font-size:150%";
+  kept "font-size:larger";
+  kept "font-weight:bolder";
+  kept "letter-spacing:1ex";
+  kept "letter-spacing:calc(1em + 2px)";
+  kept "text-indent:5cqw";
+  kept "color:var(--tone)";
+  kept "color:light-dark(black,white)";
+  kept "color:color-mix(in srgb,currentcolor,white)";
+  (* [rem] on the root: [html{font-size:2rem}] is twice the initial font size, a
+     descendant's [2rem] twice that. *)
+  kept ~parent:"html" "font-size:2rem";
+  (* Nothing left to resolve, so the restatement goes. A percentage inside a
+     colour function is a channel coordinate, not a fraction of the element. *)
+  dropped "font-size:16px";
+  dropped "font-weight:700";
+  dropped "line-height:1.5";
+  dropped "letter-spacing:normal";
+  dropped "color:hsl(210 40% 96%)";
+  dropped "color:#f1f5f9"
+
 (* The whole split of [css] over [roots]: the style attribute written onto [n],
    the <style> body kept beside it, and the count of kept rules. *)
 let check_split name ?roots ~css ~inline ~keep ~kept n =
@@ -397,6 +452,8 @@ let suite =
         malformed_style_attribute_is_dropped;
       Alcotest.test_case "minimal keeps what a UA rule would win" `Quick
         minimal_keeps_what_a_ua_rule_would_win;
+      Alcotest.test_case "minimal keeps a relative value" `Quick
+        minimal_keeps_a_relative_value;
       Alcotest.test_case "keeps the property a scoped rule sets" `Quick
         keeps_property_a_scoped_rule_sets;
       Alcotest.test_case "keeps the property a starting-style rule sets" `Quick

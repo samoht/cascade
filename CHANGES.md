@@ -99,6 +99,13 @@
   a synthetic rule. `style="color:red}p{color:lime"` applied `color:red`,
   where the whole attribute is one invalid declaration a browser drops
   ([#326](https://github.com/samoht/cascade/pull/326))
+- `cascade apply --minimal` keeps an inherited declaration whose value resolves
+  against the element it lands on, instead of dropping it as a restatement of
+  the ancestor's identical text. A font-relative unit, a percentage,
+  `larger`/`bolder`, a container unit, `var()`, `light-dark()` and
+  `currentColor` inside `color-mix()` each name two values across two elements,
+  so `div{font-size:2em}div p{font-size:2em}` halved the paragraph
+  ([#329](https://github.com/samoht/cascade/pull/329))
 
 ## 1.1.0
 
