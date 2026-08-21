@@ -2311,14 +2311,14 @@ let c61_conditional_competitor_order () =
      media condition would change the winning declaration. *)
   Alcotest.(check string)
     "overlapping media competitors preserve authored order"
-    "@media not all and (width>=1024px){.u{display:flex}}@media not all and \
+    "@media not (width>=1024px){.u{display:flex}}@media not \
      (width>=640px){.u{display:grid}}"
     (optimized_string
        "@media not all and (min-width:1024px){.u{display:flex}}@media not all \
         and (min-width:640px){.u{display:grid}}");
   Alcotest.(check string)
     "reverse authored order is also preserved"
-    "@media not all and (width>=640px){.u{display:grid}}@media not all and \
+    "@media not (width>=640px){.u{display:grid}}@media not \
      (width>=1024px){.u{display:flex}}"
     (optimized_string
        "@media not all and (min-width:640px){.u{display:grid}}@media not all \
@@ -2415,7 +2415,7 @@ let target_minify_enforce_spec_split () =
     ~spec:"@media(min-width:700px){a{color:red}}";
   check_modes "media not all min-width grammar"
     "@media not all and (min-width: 700px) { a { color: red } }"
-    ~default:"@media not all and (width>=700px){a{color:red}}"
+    ~default:"@media not (width>=700px){a{color:red}}"
     ~spec:"@media not all and (min-width:700px){a{color:red}}";
   check_modes "media interval grammar"
     "@media (min-width: 768px) and (max-width: 1024px) { a { color: red } }"
