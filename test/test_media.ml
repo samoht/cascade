@@ -143,6 +143,63 @@ let test_kind () =
     | Preference_accessibility -> true
     | _ -> false)
 
+let pp_kind ppf : kind -> unit = function
+  | Hover -> Fmt.string ppf "interaction"
+  | Responsive (unit_ord, v) ->
+      Fmt.pf ppf "lower width bound (%d, %g)" unit_ord v
+  | Responsive_max (unit_ord, v) ->
+      Fmt.pf ppf "upper width bound (%d, %g)" unit_ord v
+  | Preference_accessibility -> Fmt.string ppf "accessibility preference"
+  | Preference_appearance -> Fmt.string ppf "appearance preference"
+  | Other -> Fmt.string ppf "other"
+
+let kind_testable = Alcotest.testable pp_kind equal_kind
+
+(* Media Queries 4 sec. 2.1 and sec. 3: [all] is the identity media type and
+   [not] negates the condition it wraps, so [not all and (X)] and [not (X)]
+   match the same viewports and a doubled [not] cancels. The bucket a query
+   sorts into follows what it matches, never how it is spelled: [not (min-width:
+   640px)] matches viewports narrower than 640px, bounding width from above like
+   [(max-width: 640px)] rather than from below. *)
+let kind_follows_meaning_not_spelling () =
+  let kind_of source = kind (of_string source) in
+  let check name expected source =
+    Alcotest.check kind_testable name expected (kind_of source)
+  in
+  let bounds name side source =
+    Alcotest.(check bool) name true (side (kind_of source))
+  in
+  let from_below = function Responsive _ -> true | _ -> false in
+  let from_above = function Responsive_max _ -> true | _ -> false in
+  (* Guards: the un-negated forms fix which constructor each side of a bound is,
+     so the negated cases can be stated against them and a fix that flips every
+     width query fails here. *)
+  bounds "(min-width: 640px) bounds from below" from_below "(min-width: 640px)";
+  bounds "(max-width: 640px) bounds from above" from_above "(max-width: 640px)";
+  bounds "(width >= 640px) bounds from below" from_below "(width >= 640px)";
+  bounds "(width < 640px) bounds from above" from_above "(width < 640px)";
+  check "(hover) bounds no width" Hover "(hover)";
+  check "print bounds no width" Other "print";
+  let lower_640 = kind_of "(min-width: 640px)" in
+  let upper_640 = kind_of "(width < 640px)" in
+  (* One query, two spellings. *)
+  check "not (min-width: 640px) matches width < 640px" upper_640
+    "not (min-width: 640px)";
+  check "not all and (min-width: 640px) matches width < 640px" upper_640
+    "not all and (min-width: 640px)";
+  (* Two negations cancel, leaving the lower bound they wrap. *)
+  check "not (not (min-width: 640px)) matches width >= 640px" lower_640
+    "not (not (min-width: 640px))";
+  check "not all and not (min-width: 640px) matches width >= 640px" lower_640
+    "not all and not (min-width: 640px)";
+  (* A sort consumes [group_order], which reads the kind, so a query classified
+     by spelling is grouped with the queries it is the complement of. *)
+  let group source = fst (group_order (kind_of source)) in
+  Alcotest.(check int)
+    "not (min-width: 640px) groups with (max-width: 640px)"
+    (group "(max-width: 640px)")
+    (group "not (min-width: 640px)")
+
 let test_compare () =
   let cmp = compare (min_width 640.) (min_width 768.) in
   Alcotest.(check bool) "640 < 768" true (cmp < 0)
@@ -382,6 +439,8 @@ let suite =
       test_case "spec media query error recovery vectors" `Quick
         spec_media_error_recovery_vectors;
       test_case "kind" `Quick test_kind;
+      test_case "kind follows meaning not spelling" `Quick
+        kind_follows_meaning_not_spelling;
       test_case "compare" `Quick test_compare;
       test_case "sort_key" `Quick test_sort_key;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
