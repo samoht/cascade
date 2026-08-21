@@ -1893,8 +1893,8 @@ let matrix =
       };
       {
         property = "stroke-miterlimit";
-        positives = [ "1"; "4"; "10.5"; "calc(2 * 3)" ];
-        negatives = [ ".5"; "-1"; "4px"; "4 4" ];
+        positives = [ "0"; ".5"; "1"; "4"; "10.5"; "calc(2 * 3)" ];
+        negatives = [ "-1"; "4px"; "4 4" ];
       };
       {
         property = "stroke-dashoffset";

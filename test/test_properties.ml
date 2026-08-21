@@ -2880,9 +2880,10 @@ let test_stroke_miterlimit () =
   check_stroke_miterlimit "4";
   check_stroke_miterlimit "10.5";
   check_stroke_miterlimit "var(--m)";
-  (* The limit is a ratio of miter length to stroke width, which is 1 at its
-     smallest, so the specification makes anything below that invalid. *)
-  neg_cursor read_stroke_miterlimit ".5";
+  (* SVG 2 sec. 13.5.5 makes only a negative miter limit illegal; the SVG 1.1
+     "at least 1" rule went because CSS parsers never enforced it. *)
+  check_stroke_miterlimit "0";
+  check_stroke_miterlimit ~expected:".5" "0.5";
   neg_cursor read_stroke_miterlimit "-1";
   neg_cursor read_stroke_miterlimit "4px"
 
