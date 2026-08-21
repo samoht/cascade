@@ -320,6 +320,8 @@ let spec_fontface_var_descriptor_edges () =
     in
     lenient @ strict
   in
+  (* [unicode-range] is exempt for the same reason as [src]: [--inline-vars]
+     resolves its var() at build time, so cascade keeps it. *)
   match
     List.concat_map mismatches
       [
@@ -329,7 +331,6 @@ let spec_fontface_var_descriptor_edges () =
         "line-gap-override";
         "font-display";
         "font-weight";
-        "unicode-range";
         "font-style";
         "font-stretch";
       ]
