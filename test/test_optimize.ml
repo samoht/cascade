@@ -731,7 +731,40 @@ let test_prune_unused_custom_props () =
   Alcotest.(check string)
     "opt-in: a var() inside a string is not a reference"
     ".a{width:var(--x)}:root{--x:\"var(--y)\"}"
-    (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}")
+    (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}");
+  (* An at-rule that holds declarations outside a nested block references a
+     binding like any rule does, so pruning must leave such a sheet alone. *)
+  let unchanged name css =
+    Alcotest.(check string) name (opt css) (opt ~prune:true css)
+  in
+  unchanged "a keyframe frame reference keeps its binding"
+    ":root{--c:red}@keyframes k{from{color:var(--c)}}";
+  unchanged "a @page reference keeps its binding"
+    ":root{--m:1cm}@page{margin:var(--m)}";
+  unchanged "a page margin box reference keeps its binding"
+    ":root{--t:\"x\"}@page{@top-center{content:var(--t)}}";
+  unchanged "a @position-try reference keeps its binding"
+    ":root{--t:10px}@position-try --p{top:var(--t)}";
+  unchanged "a @supports-condition reference keeps its binding"
+    ":root{--c:red}@supports-condition --x{color:var(--c)}"
+
+(* [drop_invalid] is spec recovery rather than optimisation: a browser discards
+   a declaration whose value it cannot parse wherever that declaration sits, so
+   a [@keyframes] frame is no different from a style rule. *)
+let test_drop_invalid_reaches_keyframe_frames () =
+  let recovered css =
+    Css.of_string_exn css |> Css.Optimize.drop_invalid
+    |> Css.Stylesheet.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "a style rule drops the invalid declaration" "a{opacity:0}"
+    (recovered "a{width:asin(sin(45deg));opacity:0}");
+  Alcotest.(check string)
+    "a keyframe frame drops it too" "@keyframes k{0%{opacity:0}}"
+    (recovered "@keyframes k{from{width:asin(sin(45deg));opacity:0}}");
+  Alcotest.(check string)
+    "so does a vendor-prefixed one" "@-webkit-keyframes k{0%{opacity:0}}"
+    (recovered "@-webkit-keyframes k{from{width:asin(sin(45deg));opacity:0}}")
 
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
@@ -1293,6 +1326,9 @@ let optimize_tests =
     ( "opt-in prune unused custom properties",
       `Quick,
       test_prune_unused_custom_props );
+    ( "drop_invalid reaches keyframe frames",
+      `Quick,
+      test_drop_invalid_reaches_keyframe_frames );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
