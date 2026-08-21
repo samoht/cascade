@@ -146,8 +146,8 @@ let complex_values () =
      five. *)
   check_declaration ~expected:"stroke-linecap:square" "stroke-linecap: square;";
   check_declaration ~expected:"stroke-linejoin:arcs" "stroke-linejoin: arcs;";
-  (* SVG 2 sec. 13.5.5 makes the miter limit a <number> that cannot go below 1,
-     so it minifies like one and a constant calc() folds. *)
+  (* SVG 2 sec. 13.5.5 makes the miter limit a plain <number>, so it minifies
+     like one and a constant calc() folds. *)
   check_declaration ~expected:"stroke-miterlimit:4" "stroke-miterlimit: 4.0;";
   decl_optimizes ~prop:"stroke-miterlimit" ~into:"6" "calc(2 * 3)";
   (* SVG 2 sec. 13.5.6 separates dashes by comma and/or whitespace and the

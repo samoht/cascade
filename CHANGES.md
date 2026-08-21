@@ -12,6 +12,10 @@
   property values only (CSS Variables 1), so no descriptor grammar accepts one
   and browsers drop the declaration. `src` and `unicode-range` keep theirs,
   since `Css.inline_vars` resolves those references at build time (#322)
+- `stroke-miterlimit` accepts a value between 0 and 1. SVG 2 sec. 13.5.5 makes
+  only a negative value illegal, having dropped SVG 1.1's "at least 1" rule
+  because CSS parsers never enforced it, and `stroke-miterlimit: 0.5` was
+  rejected outright (#334)
 
 ### Minification
 
