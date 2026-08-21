@@ -8,12 +8,29 @@ const EXTRACTOR = '<script>(function(){var s=' + JSON.stringify(SKIP) +
   // real properties, which are already resolved and compared below.
   'var c=getComputedStyle(x),r={_tag:x.tagName};for(var j=0;j<c.length;j++){var p=c[j];if(p.indexOf("--")===0)continue;r[p]=c.getPropertyValue(p);}o.push(r);}' +
   'document.body.setAttribute("data-xtest",btoa(unescape(encodeURIComponent(JSON.stringify(o)))));})();</script>';
+// Rendering has to be a pure function of the page: a computed style that
+// depends on when the network gave up, how wide the window is or what the
+// display scale is makes the difference list change run to run. The pages
+// themselves are frozen by freeze_page.js at fetch time; these pin the browser.
+//   host-resolver-rules   nothing resolves, so a stray remote URL fails at once
+//   window-size, scale    viewport units and device pixels are fixed
+//   hide-scrollbars       a scrollbar does not eat viewport width
+const FLAGS = '--headless --disable-gpu --no-sandbox' +
+  ' --host-resolver-rules="MAP * ~NOTFOUND" --window-size=1280,900' +
+  ' --force-device-scale-factor=1 --hide-scrollbars --virtual-time-budget=4000';
 function computed(path){
-  let h = fs.readFileSync(path,'utf8');
-  h = h.includes('</body>') ? h.replace('</body>', EXTRACTOR+'</body>') : h+EXTRACTOR;
-  const tmp = '/tmp/xt_'+path.replace(/\W/g,'_')+'.html';
+  // Appended, not spliced in at </body>: a page can carry that text inside an
+  // attribute value (wikipedia's CSS article quotes a whole HTML document in
+  // one), and splicing there puts the extractor somewhere it never runs. The
+  // parser reparents trailing content into the body, so the end of the file
+  // reaches the same place.
+  const h = fs.readFileSync(path,'utf8') + EXTRACTOR;
+  const tmp = '/tmp/xt_'+process.pid+'_'+path.replace(/\W/g,'_')+'.html';
   fs.writeFileSync(tmp,h);
-  const dom = execSync(`"${CHROME}" --headless --disable-gpu --no-sandbox --virtual-time-budget=2000 --dump-dom "file://${tmp}"`,{encoding:'utf8',maxBuffer:1e8});
+  // Chrome's stderr is console chatter from the page (a blocked preload, a
+  // CORS notice); dropping it keeps a caller's failure report readable. A
+  // browser that fails outright still shows up: there is no data-xtest.
+  const dom = execSync(`"${CHROME}" ${FLAGS} --dump-dom "file://${tmp}"`,{encoding:'utf8',maxBuffer:1e8,stdio:['ignore','pipe','ignore']});
   const m = dom.match(/data-xtest="([^"]*)"/);
   if(!m) throw new Error('no data-xtest for '+path);
   return JSON.parse(Buffer.from(m[1],'base64').toString('utf8'));
@@ -38,4 +55,5 @@ const diffs = lines.map(l=>{const f=l.split('\t');return '['+f[0]+' '+f[1]+'] '+
 if (a.length !== b.length) diffs.unshift('element count '+a.length+' vs '+b.length);
 console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length+(CANON?' (canonical compare)':''));
 if (!diffs.length) console.log('RESULT: IDENTICAL computed styles (inlining preserves the render)');
-else { console.log('RESULT: '+diffs.length+' difference(s):'); diffs.slice(0,40).forEach(d=>console.log('  '+d)); }
+// The whole list, not a sample: it is the artifact you diff between runs.
+else { console.log('RESULT: '+diffs.length+' difference(s):'); diffs.forEach(d=>console.log('  '+d)); }
