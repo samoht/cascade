@@ -171,6 +171,11 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- An authored coefficient keeps every digit under `--minify`. Any dimension was
+  rounded to six significant figures at print time, so `.4285714em` came out as
+  `.428571em`, which is `5.99999px` rather than `6px` at a `14px` font size, and
+  `999999999px` came out a pixel wider. The six-figure budget now belongs to the
+  fold that computes a value, so `calc(2px * pi)` is still `6.28319px` (#350)
 - An empty `@layer name` inside a style rule keeps its block form. The
   statement form is a layer-order declaration, which no style rule accepts, so
   `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor
