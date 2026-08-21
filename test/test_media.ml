@@ -335,6 +335,41 @@ let media_not_takes_media_in_parens () =
     ~default:"@media not (width>=1px){a{color:red}}"
     ~spec:"@media not (min-width:1px){a{color:red}}"
 
+(* Media Queries 4 sec. 2.1: [all] is the identity media type, so [not all and
+   (X)] and [not (X)] are the same query. Default minify already spends Level 3
+   compatibility by lowering [min-width] to range syntax, so it takes the
+   shorter Level 4 [not] as well; [--enforce-spec] keeps both Level 3
+   spellings. *)
+let negated_all_is_level4_not () =
+  let minified ?(enforce_spec = false) css =
+    match Css.of_string css with
+    | Error error -> Alcotest.fail (Cascade.Error.to_string error)
+    | Ok parsed ->
+        Css.optimize ~enforce_spec parsed.stylesheet
+        |> Css.to_string ~minify:true ~enforce_spec
+        |> String.trim
+  in
+  let check_modes name input ~default ~spec =
+    Alcotest.(check string) (name ^ " default") default (minified input);
+    Alcotest.(check string)
+      (name ^ " enforce-spec") spec
+      (minified ~enforce_spec:true input)
+  in
+  check_modes "negated feature"
+    "@media not all and (min-width:100px){a{color:red}}"
+    ~default:"@media not (width>=100px){a{color:red}}"
+    ~spec:"@media not all and (min-width:100px){a{color:red}}";
+  (* [<media-type> and <media-condition-without-or>] forbids a top-level [or],
+     so the inner parentheses are what keeps the moved condition grammatical
+     under a bare [not]. *)
+  check_modes "negated or condition"
+    "@media not all and ((min-width:1px) or (max-width:2px)){a{color:red}}"
+    ~default:"@media not ((width>=1px)or (width<=2px)){a{color:red}}"
+    ~spec:"@media not all and ((min-width:1px)or (max-width:2px)){a{color:red}}";
+  (* Bare [not all] has no condition form and matches nothing: verbatim. *)
+  check_modes "bare not all" "@media not all{a{color:red}}"
+    ~default:"@media not all{a{color:red}}" ~spec:"@media not all{a{color:red}}"
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -361,4 +396,5 @@ let suite =
       test_case "component parser edges" `Quick component_parser_edges;
       test_case "media-not takes a media-in-parens" `Quick
         media_not_takes_media_in_parens;
+      test_case "negated all is level 4 not" `Quick negated_all_is_level4_not;
     ] )
