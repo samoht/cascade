@@ -283,6 +283,60 @@ let minimal_keeps_a_relative_value () =
   dropped "color:hsl(210 40% 96%)";
   dropped "color:#f1f5f9"
 
+(* [minimal] drops a restated inherited declaration because the same text is
+   already in force from an ancestor, but a shorthand also resets every longhand
+   it does not mention, and an element in between can set one of those: the
+   restatement is then the thing that puts it back. css-cascade-5 sec. 6.1 lets
+   the middle element's declaration cascade onto the descendant by inheritance,
+   so dropping the descendant's shorthand changes the render. The reset sets:
+   css-fonts-4 sec. 2.7 for [font], sec. 6.10 for [font-variant], css-lists-3
+   sec. 3.4 for [list-style], css-text-4 sec. 3 for [white-space], and
+   css-cascade-5 sec. 3.2 for [all], which resets every property there is. A
+   property cascade does not type carries no reset set at all, so it counts as
+   resetting everything.
+
+   Chrome 146 on [#p{font:16px serif}#mid{font-weight:bold}#c{font:16px serif}]:
+   the innermost element computes font-weight 700, and 400 once the [font]
+   declaration is dropped. *)
+let minimal_keeps_a_restatement_that_resets_a_longhand () =
+  let projected ~middle decl =
+    let c = node ~id:"c" "span" in
+    let mid = node ~id:"mid" ~children:[ c ] "span" in
+    let root = node ~id:"p" ~children:[ mid ] "div" in
+    let css =
+      String.concat "" [ "#p{"; decl; "}#mid{"; middle; "}#c{"; decl; "}" ]
+    in
+    let result = A.compute ~minimal:true ~sheet:(parse css) [ root ] in
+    match List.find_opt (fun (m, _) -> Node.equal m c) result.styles with
+    | Some (_, decls) -> inline_style decls
+    | None -> Alcotest.fail "no assignment for the innermost element"
+  in
+  let case expected ~middle decl =
+    Alcotest.(check string)
+      (decl ^ " under " ^ middle)
+      expected (projected ~middle decl)
+  in
+  let kept ~middle decl = case decl ~middle decl in
+  let dropped ~middle decl = case "" ~middle decl in
+  (* A longhand in between, and the shorthand restated below it. *)
+  kept ~middle:"font-weight:bold" "font:16px serif";
+  kept ~middle:"line-height:48px" "font:16px serif";
+  kept ~middle:"font-style:italic" "font:16px serif";
+  kept ~middle:"list-style-image:url(a.gif)" "list-style:square";
+  kept ~middle:"font-variant-caps:small-caps" "font-variant:normal";
+  kept ~middle:"text-wrap-mode:nowrap" "white-space:pre-wrap";
+  (* The other way round: the shorthand in between resets the longhand the
+     descendant restates. *)
+  kept ~middle:"font:16px serif" "font-weight:700";
+  (* A shorthand cascade does not type, and the one that resets everything. *)
+  kept ~middle:"font-variant:small-caps" "font:16px serif";
+  kept ~middle:"all:initial" "color:red";
+  (* The controls: nothing in between touches a slot the restatement writes, so
+     the restatement still goes. *)
+  dropped ~middle:"color:red" "font:16px serif";
+  dropped ~middle:"font-weight:700" "color:red";
+  dropped ~middle:"font-style:italic" "color:red"
+
 (* The whole split of [css] over [roots]: the style attribute written onto [n],
    the <style> body kept beside it, and the count of kept rules. *)
 let check_split name ?roots ~css ~inline ~keep ~kept n =
@@ -454,6 +508,8 @@ let suite =
         minimal_keeps_what_a_ua_rule_would_win;
       Alcotest.test_case "minimal keeps a relative value" `Quick
         minimal_keeps_a_relative_value;
+      Alcotest.test_case "minimal keeps a restatement that resets a longhand"
+        `Quick minimal_keeps_a_restatement_that_resets_a_longhand;
       Alcotest.test_case "keeps the property a scoped rule sets" `Quick
         keeps_property_a_scoped_rule_sets;
       Alcotest.test_case "keeps the property a starting-style rule sets" `Quick

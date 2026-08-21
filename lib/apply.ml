@@ -220,6 +220,37 @@ let element_independent v =
   in
   scan []
 
+(* The cascade slots a declaration writes, as {!Shorthand} models them for the
+   optimizer's conflict graph. A shorthand names every longhand it resets there
+   - [font] names [font-weight] and [line-height] (css-fonts-4 sec. 2.7),
+   [list-style] names [list-style-image] (css-lists-3 sec. 3.4), [white-space]
+   names [text-wrap-mode] (css-text-4 sec. 3) - which is exactly what the
+   restatement check needs, so the reset sets come from that model rather than
+   from a second table beside it. [all] resets every property (css-cascade-5
+   sec. 3.2), and a property cascade does not type carries no reset set at all -
+   [font-variant] is one - so both count as writing every slot. *)
+type footprint = Every_slot | Slots of Shorthand.overlap_key list
+
+let rec footprint = function
+  | Declaration.Theme_guarded { decl; _ } -> footprint decl
+  | Declaration.Declaration { property = All; _ } -> Every_slot
+  | Declaration.Declaration { property = Unknown_property _; _ } -> Every_slot
+  | d -> Slots (Shorthand.declaration_overlap_keys d)
+
+(* Whether [v] only restates the value the ancestors have in force for [p]. *)
+let restates p v ctx =
+  match List.assoc_opt p ctx with
+  | Some (w, _) -> String.equal w v
+  | None -> false
+
+(* Drop every context entry [keys] can write: a value the ancestors put in force
+   stops being in force as soon as something on the way down resets one of its
+   slots. *)
+let forget keys ctx =
+  List.filter
+    (fun (_, (_, k)) -> not (Shorthand.overlap_keys_intersect keys k))
+    ctx
+
 let add_props acc ds =
   List.fold_left
     (fun acc d ->
@@ -367,8 +398,10 @@ module Make (Node : Resolve.NODE) = struct
     | Some _ -> SSet.add "direction" named
     | None -> named
 
-  (* [ctx] maps each inherited property to the value in force from the
-     ancestors, so [minimal] can drop a declaration that only restates it. *)
+  (* [ctx] maps each inherited property to the value in force from the ancestors
+     and the slots that value covers, so [minimal] can drop a declaration that
+     only restates it, and can tell when something on the way down has reset one
+     of those slots. *)
   let rec walk ~minimal sheet ctx node acc =
     let is_no_style =
       match Node.name node with
@@ -382,24 +415,29 @@ module Make (Node : Resolve.NODE) = struct
     else begin
       let decls = resolved sheet node in
       let ua = ua_props node in
+      (* Without [minimal] nothing is dropped, so no context is needed. *)
       let kept, ctx' =
-        List.fold_left
-          (fun (kept, ctx) d ->
-            let p = String.lowercase_ascii (Declaration.property_name d) in
-            if not (minimal && is_inherited p) then (d :: kept, ctx)
-            else
-              let v = decl_value d in
-              (* Inheritance only reaches a property nothing declares, so a
-                 value the UA would win back is not a restatement, and equal
-                 text is only equal computed values where nothing in it resolves
-                 against the element. *)
-              if
-                (not (SSet.mem p ua))
-                && List.assoc_opt p ctx = Some v
-                && element_independent v
-              then (kept, ctx)
-              else (d :: kept, (p, v) :: List.remove_assoc p ctx))
-          ([], ctx) decls
+        if not minimal then (List.rev decls, ctx)
+        else
+          List.fold_left
+            (fun (kept, ctx) d ->
+              let p = String.lowercase_ascii (Declaration.property_name d) in
+              match footprint d with
+              | Every_slot -> (d :: kept, [])
+              | Slots keys when not (is_inherited p) ->
+                  (d :: kept, forget keys ctx)
+              | Slots keys ->
+                  let v = decl_value d in
+                  (* Inheritance only reaches a property nothing declares, so a
+                     value the UA would win back is not a restatement, and equal
+                     text is only equal computed values where nothing in it
+                     resolves against the element. *)
+                  if
+                    (not (SSet.mem p ua))
+                    && restates p v ctx && element_independent v
+                  then (kept, ctx)
+                  else (d :: kept, (p, (v, keys)) :: forget keys ctx))
+            ([], ctx) decls
       in
       (* A UA declaration the element does not override is what its children
          inherit, so the ancestors' value stops here. *)
