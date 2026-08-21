@@ -5,7 +5,7 @@ Two transforms must leave the rendered page unchanged: for every element, the
 before and after.
 
 - **`cascade apply`** resolves the stylesheet into each element's `style`
-  attribute and drops the `<style>` blocks, in both the default (full) and
+  attribute and empties the `<style>` blocks, in both the default (full) and
   `--minimal` modes.
 - **`cascade --minify`** rewrites each `<style>` block in place (via
   `minify_page.js`). Idempotence, size and reparse checks all pass on output

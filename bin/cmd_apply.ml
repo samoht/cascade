@@ -90,12 +90,15 @@ let inline_html ~minimal ~filename ~html ~extra =
     Apply.compute ~minimal ~sheet roots
   in
   List.iter (fun (node, decls) -> style_node node decls) styles;
-  (* The static rules now live on the elements, so the blocks they came from go.
-     A block the parser could not use stays exactly where it was: deleting it
-     would ship a page with neither the inline styles it should have had nor the
-     CSS text a browser might still make something of. *)
+  (* The static rules now live on the elements, so the CSS the blocks they came
+     from held goes. The element itself stays, emptied: a [<style>] is a sibling
+     like any other, and [.navbox + style + .portal-bar] is a real selector on a
+     real page, so unlinking the node would stop a kept rule from matching what
+     it matches in the browser. A block the parser could not use keeps its text
+     too: emptying it would ship a page with neither the inline styles it should
+     have had nor the CSS text a browser might still make something of. *)
   List.iter
-    (fun (node, sheet) -> if Option.is_some sheet then Soup.delete node)
+    (fun (node, sheet) -> if Option.is_some sheet then Soup.clear node)
     blocks;
   (if keep_css <> "" then
      let style = Soup.create_element ~inner_text:keep_css "style" in
@@ -176,9 +179,10 @@ let cmd =
          pseudo-elements, $(b,@keyframes)) cannot be projected onto an element \
          and are kept in a single $(b,<style>) block.";
       `P
-        "A $(b,<style>) block the parser cannot use is left in the page \
-         exactly as it was, rather than deleted along with the blocks that \
-         were projected.";
+        "A projected $(b,<style>) block is emptied rather than removed: the \
+         element is a sibling like any other, and a kept rule may select \
+         across it. A block the parser cannot use keeps its text as well, \
+         rather than being emptied along with the blocks that were projected.";
       `S Manpage.s_exit_status;
       `P "$(tname) exits with:";
       `I ("0", "on success, including a parse that recovered some of the input");
