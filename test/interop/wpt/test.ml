@@ -6,7 +6,7 @@
     loops, [document.querySelector] checks, etc.) have dedicated per-file ports
     at the bottom of this module that re-encode the test logic in OCaml.
 
-    Static extraction uses {!Soup.parse}, so we pick up:
+    Static extraction folds over the markup.ml signal stream, so we pick up:
 
     - [<style>] element bodies.
     - [style="..."] attributes on any element.
@@ -70,7 +70,7 @@ let extract_template_args ~call_name s =
   in
   loop [] 0
 
-(** {1 HTML-level extraction via lambdasoup} *)
+(** {1 HTML-level extraction} *)
 
 type case = {
   source_file : string;
@@ -79,73 +79,97 @@ type case = {
   kind : [ `Stylesheet | `Inline_declarations ];
 }
 
+(* What a vector can hold, in document order. Extraction needs no tree: a fold
+   over the signal stream sees each element with its attributes, and the body of
+   a raw-text element is the text between its start and end tags. *)
+type found =
+  | Style of string
+  | Inline of string
+  | Link of string
+  | Script of string
+
+let attribute name attributes =
+  List.find_map
+    (fun ((_, n), v) -> if n = name then Some v else None)
+    attributes
+
+(* The body of a <style> or <script>: each text chunk trimmed, the empty ones
+   dropped, and the whole trimmed again. *)
+let body chunks =
+  List.rev chunks |> List.map String.trim
+  |> List.filter (fun s -> s <> "")
+  |> String.concat "" |> String.trim
+
+let found_in contents =
+  let close kind chunks =
+    match kind with
+    | `Style -> Style (body chunks)
+    | `Script -> Script (body chunks)
+  in
+  let step (acc, raw) signal =
+    match (signal, raw) with
+    | `Text ss, Some (kind, chunks) ->
+        (acc, Some (kind, String.concat "" ss :: chunks))
+    | `End_element, Some (kind, chunks) -> (close kind chunks :: acc, None)
+    | `Start_element ((_, name), attributes), _ ->
+        let raw =
+          match name with
+          | "style" -> Some (`Style, [])
+          | "script" -> Some (`Script, [])
+          | _ -> raw
+        in
+        let acc =
+          match attribute "style" attributes with
+          | Some v -> Inline (String.trim v) :: acc
+          | None -> acc
+        in
+        let stylesheet_link =
+          name = "link" && attribute "rel" attributes = Some "stylesheet"
+        in
+        let acc =
+          match attribute "href" attributes with
+          | Some h when stylesheet_link -> Link h :: acc
+          | Some _ | None -> acc
+        in
+        (acc, raw)
+    | _ -> (acc, raw)
+  in
+  Markup.string contents |> Markup.parse_html |> Markup.signals
+  |> Markup.fold step ([], None)
+  |> fst |> List.rev
+
 let cases_of_html ~source_file contents : case list =
-  let soup = Soup.parse contents in
+  let found = found_in contents in
+  let pick f = List.filter_map f found in
+  let case origin css kind = { source_file; origin; css; kind } in
   let style_cases =
-    Soup.(soup $$ "style")
-    |> Soup.to_list
-    |> List.mapi (fun i node ->
-        let body = Soup.trimmed_texts node |> String.concat "" |> String.trim in
-        {
-          source_file;
-          origin = Fmt.str "<style>[%d]" i;
-          css = body;
-          kind = `Stylesheet;
-        })
-    |> List.filter (fun c -> c.css <> "")
+    pick (function Style b -> Some b | _ -> None)
+    |> List.mapi (fun i css -> case (Fmt.str "<style>[%d]" i) css `Stylesheet)
   in
   let inline_cases =
-    Soup.(soup $$ "[style]")
-    |> Soup.to_list
-    |> List.mapi (fun i node ->
-        let body =
-          match Soup.attribute "style" node with
-          | Some v -> String.trim v
-          | None -> ""
-        in
-        {
-          source_file;
-          origin = Fmt.str "[style][%d]" i;
-          css = body;
-          kind = `Inline_declarations;
-        })
-    |> List.filter (fun c -> c.css <> "")
+    pick (function Inline v -> Some v | _ -> None)
+    |> List.mapi (fun i css ->
+        case (Fmt.str "[style][%d]" i) css `Inline_declarations)
   in
   let link_cases =
-    Soup.(soup $$ "link[rel=stylesheet]")
-    |> Soup.to_list
-    |> List.filter_map (fun node ->
-        match Soup.attribute "href" node with None -> None | Some h -> Some h)
-    |> List.mapi (fun i href ->
+    pick (function Link h -> Some h | _ -> None)
+    |> List.mapi (fun i href -> (i, href))
+    |> List.filter_map (fun (i, href) ->
         let resolved = Filename.concat vectors_dir href in
         if not (Sys.file_exists resolved) then None
         else
           Some
-            {
-              source_file;
-              origin = Fmt.str "<link href=%S>[%d]" href i;
-              css = read_file resolved;
-              kind = `Stylesheet;
-            })
-    |> List.filter_map (fun x -> x)
-    |> List.filter (fun c -> c.css <> "")
+            (case
+               (Fmt.str "<link href=%S>[%d]" href i)
+               (read_file resolved) `Stylesheet))
   in
   let script_cases =
-    Soup.(soup $$ "script")
-    |> Soup.to_list
-    |> List.concat_map (fun node ->
-        let js = Soup.trimmed_texts node |> String.concat "" |> String.trim in
-        extract_template_args ~call_name:"parseRule" js)
-    |> List.mapi (fun i body ->
-        {
-          source_file;
-          origin = Fmt.str "parseRule[%d]" i;
-          css = body;
-          kind = `Stylesheet;
-        })
-    |> List.filter (fun c -> c.css <> "")
+    pick (function Script b -> Some b | _ -> None)
+    |> List.concat_map (extract_template_args ~call_name:"parseRule")
+    |> List.mapi (fun i css -> case (Fmt.str "parseRule[%d]" i) css `Stylesheet)
   in
   style_cases @ inline_cases @ link_cases @ script_cases
+  |> List.filter (fun c -> c.css <> "")
 
 let cases_of_css ~source_file contents =
   [ { source_file; origin = "<file>"; css = contents; kind = `Stylesheet } ]

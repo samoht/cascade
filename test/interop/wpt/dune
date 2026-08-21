@@ -2,7 +2,7 @@
  (name test)
  (deps
   (source_tree traces))
- (libraries cascade alcotest fmt lambdasoup))
+ (libraries cascade alcotest fmt markup))
 
 ; Refresh traces/css-syntax from the WPT repo at the pinned commit.
 
