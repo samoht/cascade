@@ -3554,17 +3554,27 @@ let deduplicate_step kept (idx, decl) =
     if is_all_declaration decl then add_all_declaration_rev idx decl kept
     else (idx, decl) :: kept
 
-(* [vendor_alias_redundant vendor twin] is [true] when [vendor] is a
-   vendor-prefixed declaration made redundant by its unprefixed [twin] carrying
-   the same value and importance. Each pair is matched on both property
-   constructors so the two values share a type and compare with a typed (=) - no
-   rendering. [-webkit-appearance] is intentionally absent: its value type
-   [webkit_appearance] is a superset of [appearance] (extra non-standard values
-   like [listbox]/[checkbox]/[radio]), so there is no typed equality between the
-   two. [text-decoration] is also absent because dropping the WebKit copy
-   regresses documented inheritance quirks. *)
+(* [vendor_alias_twin vendor twin] is [true] when [vendor] is the
+   vendor-prefixed spelling of its unprefixed [twin], carrying the same value
+   and importance. Each pair is matched on both property constructors so the two
+   values share a type and compare with a typed (=) - no rendering. This
+   relation records only which constructors alias each other; whether the prefix
+   is then dead is a Baseline question, answered in [drop_vendor_aliases].
+
+   Absent on purpose:
+   - [-webkit-appearance]: its value type [webkit_appearance] is a superset of
+     [appearance] (extra non-standard values like [listbox]/[checkbox]/[radio]),
+     so there is no typed equality between the two.
+   - [-webkit-text-decoration]: dropping the WebKit copy regresses documented
+     inheritance quirks.
+   - [-webkit-background-clip]: its prefix is value-dependent, not
+     property-dependent. web-features tracks [background-clip-text] as its own
+     feature, so [background-clip] reads widely available at property
+     granularity while [-webkit-background-clip: text] is still the spelling
+     WebKit honours. Baseline cannot see that at property granularity, so the
+     pair stays out of the relation. *)
 (* WebKit animation longhand vendor-alias pairs ([-webkit-] vs unprefixed). *)
-let vendor_alias_redundant_webkit_animation vendor twin =
+let vendor_alias_twin_webkit_animation vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_animation; value = v1; important = i1; _ },
       Declaration { property = Animation; value = v2; important = i2; _ } ) ->
@@ -3629,7 +3639,7 @@ let vendor_alias_redundant_webkit_animation vendor twin =
   | _ -> false
 
 (* Mozilla animation longhand vendor-alias pairs ([-moz-] vs unprefixed). *)
-let vendor_alias_redundant_moz_animation vendor twin =
+let vendor_alias_twin_moz_animation vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Moz_animation; value = v1; important = i1; _ },
       Declaration { property = Animation; value = v2; important = i2; _ } ) ->
@@ -3688,13 +3698,13 @@ let vendor_alias_redundant_moz_animation vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
-let vendor_alias_redundant_animation vendor twin =
-  vendor_alias_redundant_webkit_animation vendor twin
-  || vendor_alias_redundant_moz_animation vendor twin
+let vendor_alias_twin_animation vendor twin =
+  vendor_alias_twin_webkit_animation vendor twin
+  || vendor_alias_twin_moz_animation vendor twin
 
 (* Transition longhand vendor-alias pairs ([-webkit-]/[-moz-]/[-o-] vs
    unprefixed). *)
-let vendor_alias_redundant_transition vendor twin =
+let vendor_alias_twin_transition vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transition; value = v1; important = i1; _ },
       Declaration { property = Transition; value = v2; important = i2; _ } ) ->
@@ -3760,7 +3770,7 @@ let vendor_alias_redundant_transition vendor twin =
   | _ -> false
 
 (* Modern flexbox alignment vendor-alias pairs (-webkit- vs unprefixed). *)
-let vendor_alias_redundant_flex vendor twin =
+let vendor_alias_twin_flex vendor twin =
   match (vendor, twin) with
   | ( Declaration
         { property = Webkit_flex_direction; value = v1; important = i1; _ },
@@ -3793,7 +3803,7 @@ let vendor_alias_redundant_flex vendor twin =
   | _ -> false
 
 (* Border-radius / box-shadow / background-size / filter vendor-alias pairs. *)
-let vendor_alias_redundant_visual vendor twin =
+let vendor_alias_twin_visual vendor twin =
   match (vendor, twin) with
   | ( Declaration
         { property = Webkit_border_radius; value = v1; important = i1; _ },
@@ -3825,10 +3835,29 @@ let vendor_alias_redundant_visual vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
-let vendor_alias_redundant vendor twin =
+let vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transform; value = v1; important = i1; _ },
       Declaration { property = Transform; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1; _ },
+      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
+      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration
+        {
+          property = Webkit_text_decoration_color;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Text_decoration_color; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_mask_image; value = v1; important = i1; _ },
+      Declaration { property = Mask_image; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | ( Declaration
         { property = Webkit_user_select; value = v1; important = i1; _ },
@@ -3851,10 +3880,10 @@ let vendor_alias_redundant vendor twin =
         { property = Print_color_adjust; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
   | _ ->
-      vendor_alias_redundant_animation vendor twin
-      || vendor_alias_redundant_transition vendor twin
-      || vendor_alias_redundant_flex vendor twin
-      || vendor_alias_redundant_visual vendor twin
+      vendor_alias_twin_animation vendor twin
+      || vendor_alias_twin_transition vendor twin
+      || vendor_alias_twin_flex vendor twin
+      || vendor_alias_twin_visual vendor twin
 
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
    [-o-]) return the unprefixed remainder; otherwise [None]. *)
@@ -3883,7 +3912,7 @@ let strip_vendor_prefix name =
    vendor [Unknown_property "-webkit-animation-delay"] + modern
    [Animation_delay]) needs typed vendor longhand properties to compare
    structurally; that remains a follow-up. *)
-let text_vendor_alias_redundant vendor twin =
+let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
         { property = Unknown_property vname; value = vv; important = vi; _ },
@@ -3895,36 +3924,31 @@ let text_vendor_alias_redundant vendor twin =
       | None -> false)
   | _ -> false
 
-(* Vendor aliases whose unprefixed form is universally understood is a
-   pure-alias drop (always safe); pairs whose prefix an older browser may still
-   need are target-dependent and only drop under the opt-in targets axis. *)
-let vendor_alias_redundant_targeted vendor twin =
-  match (vendor, twin) with
-  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1; _ },
-      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
-      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | _ -> false
+(* An unprefixed property supersedes its prefix only once every maintained
+   browser reads it. {!Baseline.greenfield_properties}, generated from
+   web-features, lists the properties that are not yet Baseline "widely
+   available", which is exactly the set whose prefix is still load-bearing:
+   Safari reads only [-webkit-backdrop-filter] up to 17.6, and
+   [-webkit-text-size-adjust] has no unprefixed Safari support at all. *)
+let unprefixed_is_widely_available twin =
+  let name = String.lowercase_ascii_preserve (property_name twin) in
+  not (List.mem name Baseline.greenfield_properties)
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
-   same rule with the same value and importance. The unprefixed form supersedes
-   in modern browsers, so the vendor copy is dead under the recent-browser
-   policy. *)
+   same rule with the same value and importance and is widely available. The
+   name is only rendered once the cheap typed twin match has fired. *)
 let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
     (int * declaration) list =
   if Ctx.enforce_spec ctx then kept (* spec-literal: keep every vendor prefix *)
   else
-    let has_unprefixed_twin (_, decl) =
+    let has_dead_prefix (_, decl) =
       List.exists
         (fun (_, other) ->
-          vendor_alias_redundant decl other
-          || text_vendor_alias_redundant decl other
-          || vendor_alias_redundant_targeted decl other)
+          (vendor_alias_twin decl other || text_vendor_alias_twin decl other)
+          && unprefixed_is_widely_available other)
         kept
     in
-    filter_preserve (fun item -> not (has_unprefixed_twin item)) kept
+    filter_preserve (fun item -> not (has_dead_prefix item)) kept
 
 (* Run every index-based composer against the same Rule_index so we pay one
    [build] + [to_list] per rule for the whole group. *)
