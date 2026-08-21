@@ -7791,7 +7791,7 @@ val flatten_nesting : t -> t
 (** {2 Closed-world inlining}
 
     Transforms that assume the caller controls properties the open web cannot
-    guarantee (no runtime variable mutation, full file resolution). *)
+    guarantee (no undeclared runtime mutation, full file resolution). *)
 
 val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
 (** [inline_vars ?keep_vars ?warn stylesheet] substitutes [var(--name)]
@@ -7800,7 +7800,9 @@ val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
     variable in [keep_vars], or one redefined in a different scope (a real
     cascade override such as dark mode), keeps its definition and stays a live
     [var()] reference; [warn] is called with each such name. The transform
-    assumes no runtime mutation of custom properties. *)
+    assumes no runtime mutation of the variables it inlines: a reference marked
+    [~runtime] on {!var_ref} also stays live, fallback included, so a
+    browser-time override point survives. *)
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t

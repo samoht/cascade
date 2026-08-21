@@ -2,8 +2,8 @@
 
     Lives one layer above {!Context}: drives the typed-evaluator primitives
     ({!Context.eval}, custom-property lookup) and threads scope through the AST.
-    Both transforms assume a closed world (no runtime mutation, full file
-    resolution). *)
+    Both transforms assume a closed world (no undeclared runtime mutation, full
+    file resolution). *)
 
 val vars :
   ?keep_vars:string list ->
