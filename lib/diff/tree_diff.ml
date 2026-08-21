@@ -641,6 +641,39 @@ let container_label container_type condition =
   | "" -> condition
   | prefix -> prefix ^ " " ^ condition
 
+(* The statements that carry neither a selector nor a block. Naming them apart
+   also keeps them apart in the order keys, where one shared "(other statement)"
+   made a [@charset] and a [@namespace] the same statement. *)
+let describe_prelude_statement (s : Css.statement) =
+  match s with
+  | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
+  | Namespace (prefix, _) ->
+      Some
+        ("@namespace"
+        ^ (match prefix with Some p -> " " ^ p | None -> "")
+        ^ ";")
+  (* The semicolon is what tells a layer-order pin from the block of the same
+     name: [@layer a;] ahead of [@layer a { ... }] is a second statement, not
+     the block again. *)
+  | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
+  | _ -> None
+
+(* A statement's own text, split at its block: the head names it, the body is
+   what a descriptor-only at-rule is compared on. *)
+let statement_text_split stmt =
+  let text = Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) in
+  match String.index_opt text '{' with
+  | None -> (String.trim text, "")
+  | Some i ->
+      let head = String.sub text 0 i in
+      let last = String.length text - 1 in
+      let body =
+        if last > i && text.[last] = '}' then
+          String.sub text (i + 1) (last - i - 1)
+        else String.sub text (i + 1) (last - i)
+      in
+      (String.trim head, body)
+
 let describe_statement stmt =
   let try_desc f = f stmt in
   let matchers =
@@ -673,27 +706,19 @@ let describe_statement stmt =
       (fun s ->
         Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
       (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
-      (* The statements that carry neither a selector nor a block. Naming them
-         apart also keeps them apart in the order keys, where one shared "(other
-         statement)" made a [@charset] and a [@namespace] the same statement. *)
-      (fun (s : Css.statement) ->
-        match s with
-        | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
-        | Namespace (prefix, _) ->
-            Some
-              ("@namespace"
-              ^ (match prefix with Some p -> " " ^ p | None -> "")
-              ^ ";")
-        (* The semicolon is what tells a layer-order pin from the block of the
-           same name: [@layer a;] ahead of [@layer a { ... }] is a second
-           statement, not the block again. *)
-        | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
-        | _ -> None);
+      describe_prelude_statement;
     ]
   in
   match List.find_map try_desc matchers with
   | Some desc -> Some desc
-  | None -> Some "(other statement)"
+  (* Everything left names itself by the head it prints to, for the same reason
+     [@charset] and [@namespace] are named apart above: one shared description
+     is one shared order key, and [@page] swapped with [@starting-style] then
+     reads as no change at all. *)
+  | None -> (
+      match fst (statement_text_split stmt) with
+      | "" -> Some "(other statement)"
+      | head -> Some head)
 
 (* The body of a container that was added or removed wholesale. Every statement
    gets a line, including the ones [Css.as_rule] cannot see: a statement the
@@ -2158,22 +2183,6 @@ let is_reported_by_own_processor stmt =
   || Css.as_property stmt <> None
   || Css.as_keyframes stmt <> None
 
-(* The at-rule text split at its block: the head keys the statement, the body is
-   what a descriptor-only at-rule is compared on. *)
-let at_rule_text stmt =
-  let text = Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) in
-  match String.index_opt text '{' with
-  | None -> (String.trim text, "")
-  | Some i ->
-      let head = String.sub text 0 i in
-      let last = String.length text - 1 in
-      let body =
-        if last > i && text.[last] = '}' then
-          String.sub text (i + 1) (last - i - 1)
-        else String.sub text (i + 1) (last - i)
-      in
-      (String.trim head, body)
-
 (* A stylesheet may repeat one at-rule (several [@font-face] blocks, several
    [@page] rules), so the head alone does not name a block. Number the blocks
    that share a head and pair them in order. *)
@@ -2184,7 +2193,7 @@ let at_rule_items stmts =
       match at_rule_body stmt with
       | None -> None
       | Some body ->
-          let head, text = at_rule_text stmt in
+          let head, text = statement_text_split stmt in
           let n = Option.value ~default:0 (Hashtbl.find_opt seen head) in
           Hashtbl.replace seen head (n + 1);
           Some ((head, n), (head, body, text)))

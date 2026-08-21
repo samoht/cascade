@@ -163,6 +163,10 @@
   element's width; licence headers and conditional comments went missing
   outright. The page is parsed and printed with markup.ml, which carries
   comments, in place of lambdasoup, which discards them (#346)
+- `cascade diff` names an at-rule that carries no condition of its own by the
+  head it prints to, rather than describing every one of them identically. That
+  description keys the ordering comparison, so a `@media` that moved between a
+  `@page` and a `@starting-style` was reported as no change (#345)
 - `cascade apply` keeps a declaration in the sheet when a kept rule can write
   the same cascade slot under another property name. `p{margin:0}` was
   projected into a style attribute while the `.my-7{margin-top:1.75rem}` it
