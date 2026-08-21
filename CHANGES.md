@@ -34,6 +34,10 @@
   from inside `@keyframes`, `@page`, `@position-try` or `@supports-condition`,
   instead of leaving the name undefined in the emitted sheet
   ([#317](https://github.com/samoht/cascade/pull/317))
+- `Css.resolve_theme` drops a theme guard the keep-set rejects from
+  `@keyframes`, `@page`, `@position-try` and `@supports-condition`, instead of
+  printing it as a declaration the theme never selected
+  ([#324](https://github.com/samoht/cascade/pull/324))
 
 ### Canonical diff
 
