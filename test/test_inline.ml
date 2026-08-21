@@ -75,6 +75,34 @@ let test_inline_fold_deletes_defs () =
   Alcotest.(check (list string))
     "an overridden variable is reported via warn" [ "--palette-red" ] !warned
 
+(* An at-rule that carries declarations outside a nested block consumes a
+   [var()] like any rule does. Whatever the substitution manages to resolve
+   there, a reference left in the output must keep the definition it names, or
+   the sheet ships a name nothing defines. *)
+let test_inline_at_rule_reference_keeps_its_binding () =
+  let same name css =
+    Alcotest.(check string) name css (minified (Css.inline_vars (parse css)))
+  in
+  same "a page margin box reference keeps its definition"
+    ":root{--t:\"x\"}@page{@top-center{content:var(--t)}}";
+  (* A [@supports-condition] body is a feature test rather than applied style
+     (CSS Conditional 5 sec. 3), so the reference stays as authored. *)
+  same "a @supports-condition reference keeps its definition"
+    ":root{--c:red}@supports-condition --x{color:var(--c)}"
+
+(* The census decides which overridden variable to report, so it has to see a
+   reference wherever declarations live. *)
+let test_inline_warns_for_an_at_rule_reference () =
+  let warned = ref [] in
+  ignore
+    (parse
+       ":root{--c:red}@media print{:root{--c:blue}}@keyframes \
+        k{from{color:var(--c)}}"
+    |> Css.inline_vars ~warn:(fun n -> warned := n :: !warned));
+  Alcotest.(check (list string))
+    "an override referenced only from a keyframe frame is reported" [ "--c" ]
+    !warned
+
 let test_inline_keep_vars_calc_identity () =
   (* A kept theme var stays a live reference, but the value-independent calc
      identities still simplify: [p-1] expands to [calc(var(--spacing) * 1)],
@@ -332,6 +360,10 @@ let suite =
         test_inline_keep_vars;
       Alcotest.test_case "inline vars fold and delete non-kept definitions"
         `Quick test_inline_fold_deletes_defs;
+      Alcotest.test_case "inline vars keep an at-rule reference's binding"
+        `Quick test_inline_at_rule_reference_keeps_its_binding;
+      Alcotest.test_case "inline vars warn for an at-rule reference" `Quick
+        test_inline_warns_for_an_at_rule_reference;
       Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
         test_inline_keep_vars_calc_identity;
       Alcotest.test_case "inline vars collapse a literal zero times a kept var"
