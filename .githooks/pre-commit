@@ -2,6 +2,7 @@
 # pre-commit hook for cascade.
 #
 # Runs:
+#   0. scripts/check_ascii.sh -- on the staged content, so the commit stays 7-bit.
 #   1. dune fmt -- if it rewrites a staged file, aborts so the change is staged.
 #   2. merlint   -- across the whole project (not only the staged files), so a
 #                   change in one module that breaks a lint elsewhere is caught
@@ -11,41 +12,23 @@
 #
 #   git config core.hooksPath .githooks
 #
-# The hook does nothing when no OCaml or dune files are staged.
+# Every check here has a CI counterpart, so a clone without the hook is still
+# gated; the hook only moves the failure earlier.
 
 set -eu
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(\.(ml|mli|mll|mly)|(^|/)dune(-project)?)$' || true)
-[ -n "$STAGED" ] || exit 0
+CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -n "$CHANGED" ] || exit 0
 
-# 0. ASCII only. Source stays 7-bit: write "sec." not the section sign, "--"
-#    not the em dash, and \u{XXXX} escapes for a glyph a string must emit
-#    (e.g. the diff tree connectors). Checks the staged content, not the
-#    worktree. The class spells out the printable range instead of using
-#    [:print:], which a Unicode-aware grep reads as all of Unicode -- the
-#    complement is then empty and the pattern is rejected. An exit status
-#    above 1 is such a rejection, not a clean file, so it aborts the commit.
-NONASCII=""
-for f in $STAGED; do
-    rc=0
-    git show ":$f" | LC_ALL=C grep -q '[^ -~[:cntrl:]]' || rc=$?
-    case $rc in
-    0) NONASCII="$NONASCII $f" ;;
-    1) ;;
-    *)
-        echo "error: the ASCII check could not run on $f (grep exit $rc)" >&2
-        exit 1
-        ;;
-    esac
-done
-if [ -n "$NONASCII" ]; then
-    echo "error: non-ASCII byte in staged source:" >&2
-    for f in $NONASCII; do
-        git show ":$f" | LC_ALL=C grep -n '[^ -~[:cntrl:]]' | sed "s|^|  $f:|" >&2
-    done
-    echo "use ASCII in comments and \\u{XXXX} escapes in string literals." >&2
-    exit 1
-fi
+# 0. ASCII only, on the staged content rather than the worktree. The script
+#    owns the filter, so what CI covers and what the commit is held to are the
+#    same set by construction.
+printf '%s\n' "$CHANGED" | "$(dirname "$0")/../scripts/check_ascii.sh" --staged
+
+# The fast path below only decides whether dune fmt and merlint are worth
+# running; the ASCII rule above has already seen every staged file.
+STAGED=$(printf '%s\n' "$CHANGED" | grep -E '(\.(ml|mli|mll|mly)|(^|/)dune(-project)?)$' || true)
+[ -n "$STAGED" ] || exit 0
 
 # 1. dune fmt
 if ! dune fmt 2>/dev/null; then

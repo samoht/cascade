@@ -45,6 +45,19 @@ jobs:
       - run: opam exec -- dune build
       - run: opam exec -- dune test
 
+  ascii:
+    name: ASCII source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same script the pre-commit hook runs, on the tracked files rather
+      # than the index. Kept out of the lint job so the rule reports in seconds
+      # instead of waiting on an opam switch it does not need. [shell: bash]
+      # turns on pipefail, so a failing [git ls-files] cannot read as clean.
+      - shell: bash
+        run: git ls-files | scripts/check_ascii.sh
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
