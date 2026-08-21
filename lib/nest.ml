@@ -36,10 +36,10 @@ let substitute ?(leftmost = true) ~parent sel =
   let parent = if verbatim then parent else Selector.Is [ parent ] in
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
 
-(* CSS Nesting 1 §2: a nested selector list is relative to the parent branch by
-   branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent with
-   the list as a whole would put the combinator on the first branch only and let
-   the rest escape as top-level selectors. *)
+(* CSS Nesting 1 sec. 2: a nested selector list is relative to the parent branch
+   by branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent
+   with the list as a whole would put the combinator on the first branch only
+   and let the rest escape as top-level selectors. *)
 let rec combine parent child =
   match child with
   | Selector.List branches -> Selector.List (List.map (combine parent) branches)

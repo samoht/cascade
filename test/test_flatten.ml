@@ -91,10 +91,10 @@ let test_nesting_wraps_complex_parent () =
   check ".a .b{&:hover{color:red}}" ".a .b:hover{color:red}";
   check ".a .b{& .c{color:red}}" ".a .b .c{color:red}"
 
-(* CSS Nesting 1 §2: a nested selector list is relative to the parent branch by
-   branch. Combining the parent with the list as a whole put the combinator on
-   the first branch only, and every later branch escaped as a top-level selector
-   — [.p { a, b { ... } }] matched every [b] on the page. *)
+(* CSS Nesting 1 sec. 2: a nested selector list is relative to the parent branch
+   by branch. Combining the parent with the list as a whole put the combinator
+   on the first branch only, and every later branch escaped as a top-level
+   selector -- [.p { a, b { ... } }] matched every [b] on the page. *)
 let test_nested_selector_list_keeps_parent () =
   let check src expected =
     Alcotest.(check string) src expected (render (Flatten.block (block src)))
