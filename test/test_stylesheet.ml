@@ -882,6 +882,40 @@ let spec_keyframes_selector_matrix () =
   check_stylesheet ~expected:"@keyframes bad{}"
     "@keyframes bad { from, 120% { opacity: 1 } }"
 
+(* CSS Properties and Values API 1 sec. 2: an [@property] registration is
+   document-global, so [var(--ring)] carries a [<color>] wherever it is
+   referenced. In [box-shadow: 0 0 var(--ring)] the reference therefore fills
+   the colour slot, not the blur slot, and a [@keyframes] frame is an ordinary
+   declaration block (CSS Animations 1 sec. 3), so the same declaration
+   normalises the same way inside one. *)
+let spec_keyframes_shadow_color_var () =
+  let sheet css =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.stylesheet; _ } -> stylesheet
+    | Error e -> Alcotest.failf "parse failed: %s" (Cascade.Error.to_string e)
+  in
+  let registration =
+    "@property --ring{syntax:\"<color>\";inherits:false;initial-value:red}"
+  in
+  Alcotest.(check string)
+    "a registered colour var fills the shadow colour slot inside @keyframes"
+    (registration
+   ^ ":root{--ring:red}@keyframes glow{to{box-shadow:0 0 0 var(--ring)}}")
+    (minify
+       (sheet
+          (registration
+         ^ ":root{--ring:rgb(255 0 0)}@keyframes glow{to{box-shadow:0 0 \
+            var(--ring)}}")));
+  Alcotest.(check string)
+    "a colour var declared only inside @keyframes is still a colour var"
+    (registration
+   ^ "@keyframes glow{0%{--ring:red}}.a{box-shadow:0 0 0 var(--ring)}")
+    (minify
+       (sheet
+          (registration
+         ^ "@keyframes glow{from{--ring:rgb(255 0 0)}}.a{box-shadow:0 0 \
+            var(--ring)}")))
+
 let spec_page_margin_descriptor_matrix () =
   check_stylesheet
     ~expected:
@@ -1374,6 +1408,7 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
+    ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);
     ("page margin edges", `Quick, page_margin_edges);
     ( "spec page margin descriptor matrix",
