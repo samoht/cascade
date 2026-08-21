@@ -67,6 +67,10 @@
 
 ### CLI tools
 
+- `cascade apply` empties the `<style>` blocks it projects instead of removing
+  them. A `<style>` element is a sibling like any other, so unlinking it stops
+  a kept rule such as `.navbox + style + .portal-bar` from matching what it
+  matches in the browser (#339)
 - `cascade apply` reads a `style` attribute as a declaration list in source
   order. The declarations came out reversed, so a longhand beat the shorthand
   it was written after, and an empty attribute was enough to trigger it. A `}`
