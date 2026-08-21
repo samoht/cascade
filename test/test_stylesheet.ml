@@ -7834,4 +7834,63 @@ let additional_tests =
         | _ -> Alcotest.fail "expected one warning" );
   ]
 
-let suite = ("stylesheet", stylesheet_tests @ additional_tests)
+(* Every shape a statement can take, so the walkers are exercised on the block
+   at-rules and on the at-rules that hold declarations outside a block. *)
+let every_statement_shape =
+  "@charset \"utf-8\";\n\
+   @import url(a.css);\n\
+   @namespace svg url(http://www.w3.org/2000/svg);\n\
+   @property --p { syntax: \"<color>\"; inherits: false; initial-value: red }\n\
+   @layer base, theme;\n\
+   @layer base { .a { color: red; & .b { color: blue } } }\n\
+   @media print { .c { color: red } }\n\
+   @container card (width > 10px) { .d { color: red } }\n\
+   @supports (display: grid) { .e { color: red } }\n\
+   @-moz-document url-prefix(\"http://x\") { .f { color: red } }\n\
+   @starting-style { .g { color: red } }\n\
+   @scope (.h) to (.i) { .j { color: red } }\n\
+   @keyframes k { from { color: red } to { color: blue } }\n\
+   @-webkit-keyframes wk { from { color: red } }\n\
+   @font-face { font-family: F; src: url(f.woff2) }\n\
+   @counter-style cs { system: cyclic; symbols: a }\n\
+   @page { margin: 1cm }\n\
+   @page :first { margin: 1cm; @top-left { content: \"x\" } }\n\
+   @font-palette-values --fp { font-family: F }\n\
+   @view-transition { navigation: auto }\n\
+   @position-try --pt { top: 1px }\n\
+   @viewport { width: device-width }\n\
+   .k { color: red }\n"
+
+let parse_shapes () =
+  match Css.of_string every_statement_shape with
+  | Ok { Css.stylesheet; _ } -> stylesheet
+  | Error err ->
+      Alcotest.failf "shape corpus did not parse: %s"
+        (Cascade.Error.to_string err)
+
+let walker_tests =
+  [
+    ( "map_statement_children keeps an unchanged statement",
+      `Quick,
+      fun () ->
+        (* A rewriting walk short-circuits on physical equality, so a map that
+           reallocates a statement it did not change costs the caller the
+           sharing its fixed point converges on. *)
+        List.iter
+          (fun stmt ->
+            if not (map_statement_children Fun.id stmt == stmt) then
+              Alcotest.failf "children map rebuilt %s"
+                (Css.to_string ~minify:true [ stmt ]))
+          (parse_shapes ()) );
+    ( "map_statement_declarations keeps an unchanged statement",
+      `Quick,
+      fun () ->
+        List.iter
+          (fun stmt ->
+            if not (map_statement_declarations Fun.id stmt == stmt) then
+              Alcotest.failf "declaration map rebuilt %s"
+                (Css.to_string ~minify:true [ stmt ]))
+          (parse_shapes ()) );
+  ]
+
+let suite = ("stylesheet", stylesheet_tests @ additional_tests @ walker_tests)
