@@ -48,6 +48,9 @@
 - `--minify` optimises the body of `@-moz-document`, `@starting-style`,
   `@when` and `@else`, which it walked past: rules inside one of them kept
   whatever the author wrote (#343)
+- `--flatten-nesting` treats `@-moz-document` as the grouping at-rule it is:
+  nesting inside one flattens, and a rule wrapping one keeps its selector
+  instead of emitting the at-rule at top level under no parent (#344)
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering
