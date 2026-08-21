@@ -160,10 +160,6 @@ val statement_selector : statement -> Selector.t option
 (** [statement_selector stmt] returns [Some selector] if the statement is a
     rule, {!constructor-None} otherwise. *)
 
-val statement_declarations : statement -> declaration list option
-(** [statement_declarations stmt] returns [Some declarations] if the statement
-    is a rule, {!constructor-None} otherwise. *)
-
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the

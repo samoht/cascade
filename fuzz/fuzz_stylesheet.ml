@@ -1354,10 +1354,9 @@ let test_random_stylesheet_contract buf =
 let count_important sheet =
   Css.fold
     (fun acc stmt ->
-      match Css.statement_declarations stmt with
-      | None -> acc
-      | Some decls ->
-          acc + List.length (List.filter Css.declaration_is_important decls))
+      Css.Stylesheet.statement_declarations stmt
+      |> List.filter Css.declaration_is_important
+      |> List.length |> ( + ) acc)
     0 sheet
 
 (* [!important] preservation: round-tripping must not lose, gain, or

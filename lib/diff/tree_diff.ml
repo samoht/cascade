@@ -1140,9 +1140,7 @@ let strings_of_rule stmt =
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None ->
-      ( statement_head stmt,
-        Option.value ~default:[] (Css.statement_declarations stmt) )
+  | None -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt)
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
@@ -1188,9 +1186,7 @@ let selector_key_of_selector (sel : Css.Selector.t) : Css.Selector.t =
   | _ -> sel
 
 let selector_key_of_stmt stmt = selector_key_of_selector (rule_selector stmt)
-
-let rule_declarations stmt =
-  match Css.statement_declarations stmt with Some d -> d | None -> []
+let rule_declarations = Css.Stylesheet.statement_declarations
 
 let rule_nested stmt =
   match Css.as_rule stmt with Some (_, _, nested) -> nested | None -> []

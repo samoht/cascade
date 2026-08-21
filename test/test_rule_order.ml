@@ -59,7 +59,7 @@ let custom_property_layer_and_meta_survive () =
     Rule_order.canonicalize
       [ Css.rule ~selector:(Selector.of_string ":root") [ decl ] ]
   in
-  match List.filter_map Css.statement_declarations projected with
+  match List.map Css.Stylesheet.statement_declarations projected with
   | [ [ d ] ] ->
       Alcotest.(check (option string))
         "layer survives" (Some "theme")

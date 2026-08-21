@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Breaking
+
+- `Css.statement_declarations` is gone. It answered for a rule and a bare
+  nesting block only, sharing its name with the exhaustive
+  `Css.Stylesheet.statement_declarations`, which reaches every declaration a
+  statement holds; call that one instead (#348)
+
 ### Parsing
 
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps the

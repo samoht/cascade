@@ -422,11 +422,6 @@ let statement_selector = function
   | Rule r -> Some (Stylesheet.selector r)
   | _ -> None
 
-let statement_declarations = function
-  | Rule r -> Some (Stylesheet.declarations r)
-  | Declarations decls -> Some decls
-  | _ -> None
-
 let as_rule = function
   | Rule r ->
       Some
