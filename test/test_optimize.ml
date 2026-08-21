@@ -766,6 +766,25 @@ let test_drop_invalid_reaches_keyframe_frames () =
     "so does a vendor-prefixed one" "@-webkit-keyframes k{0%{opacity:0}}"
     (recovered "@-webkit-keyframes k{from{width:asin(sin(45deg));opacity:0}}")
 
+(* Every conditional group wraps ordinary rules, so the optimizer's main
+   recursion has to descend into all of them: a body it walks past keeps
+   whatever the author wrote, and [--minify] silently does nothing there. *)
+let test_optimize_descends_into_every_conditional_group () =
+  let check name css expected =
+    Alcotest.(check string) name expected (minify (Css.of_string_exn css))
+  in
+  check "@media" "@media print{a{color:#f00}a{color:#f00}}"
+    "@media print{a{color:red}}";
+  check "@-moz-document"
+    "@-moz-document url-prefix(){a{color:#f00}a{color:#f00}}"
+    "@-moz-document url-prefix(){a{color:red}}";
+  check "@starting-style" "@starting-style{a{color:#f00}a{color:#f00}}"
+    "@starting-style{a{color:red}}";
+  check "@when and @else"
+    "@when \
+     media(print){a{color:#f00}a{color:#f00}}@else{b{color:#f00}b{color:#f00}}"
+    "@when media(print){a{color:red}}@else{b{color:red}}"
+
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
    known until substitution, so minify+optimize must keep it verbatim - never
@@ -1329,6 +1348,9 @@ let optimize_tests =
     ( "drop_invalid reaches keyframe frames",
       `Quick,
       test_drop_invalid_reaches_keyframe_frames );
+    ( "optimize descends into every conditional group",
+      `Quick,
+      test_optimize_descends_into_every_conditional_group );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
