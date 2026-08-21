@@ -127,9 +127,14 @@ let test_length () =
   check_length "-999999px";
   check_length ~expected:".000001em" "0.000001em";
   check_length ~expected:".0000001rem" "0.0000001rem";
-  (* CSS Values leaves numeric precision/range implementation-defined; the
-     printer rounds this edge value to the nearest representable decimal. *)
-  check_length ~expected:"1000000000px" "999999999px";
+  (* A coefficient is part of the length's value, not its spelling: minify
+     shortens how a number is written, never what it means. Rounding
+     [999999999px] to six significant digits moves the box a whole pixel, and
+     [.4285714em] read back as [.428571em] is a different padding. *)
+  check_length "999999999px";
+  check_length ".4285714em";
+  check_length "1.5714286em";
+  check_length "1.0000001px";
   check_length "-999px";
   check_length ".5px";
 
