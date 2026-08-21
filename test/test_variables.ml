@@ -240,6 +240,42 @@ let spec_theme_binding_inside_keyframes () =
     ":root{--w:10px}@layer l{@keyframes k{0%{width:var(--w)}}}"
     (render "@layer l { @keyframes k { from { width: var(--w) } } }")
 
+(* CSS Cascading 5 sec. 6.1: a declaration inside [@keyframes] belongs to the
+   animation origin and one inside [@position-try] to the position fallback
+   origin, so neither applies to an element that merely references the name.
+   Only a style rule declares a custom property for ordinary matching, so those
+   at-rules must not suppress the root binding: suppressed, the reference is
+   left free and the property falls back to its initial value. *)
+let spec_theme_binding_past_non_cascading_declaration () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme_defaults = function "w" -> Some "10px" | _ -> None in
+  let render css =
+    parse css
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty ~theme_defaults
+    |> Css.to_string ~minify:true
+  in
+  let bound = ".a{width:10px}" in
+  Alcotest.(check string)
+    "no declaration anywhere" bound
+    (render ".a { width: var(--w) }");
+  Alcotest.(check string)
+    "keyframe declaration does not suppress the binding"
+    ("@keyframes k{0%{--w:1px}}" ^ bound)
+    (render "@keyframes k { from { --w: 1px } } .a { width: var(--w) }");
+  Alcotest.(check string)
+    "position-try declaration does not suppress the binding"
+    ("@position-try --pt{--w:1px}" ^ bound)
+    (render "@position-try --pt { --w: 1px } .a { width: var(--w) }");
+  (* A style rule does declare the name for ordinary matching, so the reference
+     stays live for the elements the cascade may reach. *)
+  Alcotest.(check string)
+    "rule declaration keeps the reference live" ".b{--w:1px}.a{width:var(--w)}"
+    (render ".b { --w: 1px } .a { width: var(--w) }")
+
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
@@ -517,6 +553,9 @@ let tests =
     ( "spec theme binding inside keyframes",
       `Quick,
       spec_theme_binding_inside_keyframes );
+    ( "spec theme binding past non-cascading declaration",
+      `Quick,
+      spec_theme_binding_past_non_cascading_declaration );
     ("vars of declarations", `Quick, test_vars_of_declarations);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);
