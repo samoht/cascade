@@ -304,6 +304,67 @@ let statement_declarations = function
   | Viewport _ | Unknown_at_rule _ ->
       []
 
+(* The rebuilding counterparts of the two readers above. A read-only walk can be
+   written on [statement_children] and [statement_declarations] alone; one that
+   rewrites the tree needs to put the result back, and hand-rolling that half is
+   how a block at-rule ends up read but not written. Exhaustive for the same
+   reason as the readers. *)
+let map_statement_children f = function
+  | Rule rule -> Rule { rule with nested = f rule.nested }
+  | Layer (name, block) -> Layer (name, f block)
+  | Media (query, block) -> Media (query, f block)
+  | Container (name, query, block) -> Container (name, query, f block)
+  | Supports (condition, block) -> Supports (condition, f block)
+  | Moz_document (condition, block) -> Moz_document (condition, f block)
+  | When (condition, block) -> When (condition, f block)
+  | Else (condition, block) -> Else (condition, f block)
+  | Starting_style block -> Starting_style (f block)
+  | Origin (origin, block) -> Origin (origin, f block)
+  | Scope (start, end_, block) -> Scope (start, end_, f block)
+  | ( Property _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+    | Namespace _ | Layer_decl _ | Supports_condition _ | Keyframes _
+    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+    | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ) as stmt ->
+      stmt
+
+let map_frame_declarations f frames =
+  List.map
+    (fun (frame : keyframe) ->
+      { frame with declarations = f frame.declarations })
+    frames
+
+(* [f] sees each declaration list the statement holds as its own list, not the
+   concatenation [statement_declarations] returns: the frames of [@keyframes]
+   and the margin rules of [@page] each keep their own block. *)
+let map_statement_declarations f = function
+  | Rule rule -> Rule { rule with declarations = f rule.declarations }
+  | Declarations decls -> Declarations (f decls)
+  | Supports_condition (name, decls) -> Supports_condition (name, f decls)
+  | Page (selector, decls) -> Page (selector, f decls)
+  | Position_try (name, decls) -> Position_try (name, f decls)
+  | Keyframes (name, frames) -> Keyframes (name, map_frame_declarations f frames)
+  | Webkit_keyframes (name, frames) ->
+      Webkit_keyframes (name, map_frame_declarations f frames)
+  | Moz_keyframes (name, frames) ->
+      Moz_keyframes (name, map_frame_declarations f frames)
+  | Page_with_margins (selector, descriptors, margins) ->
+      Page_with_margins
+        ( selector,
+          f descriptors,
+          List.map
+            (fun (margin : page_margin_rule) ->
+              { margin with descriptors = f margin.descriptors })
+            margins )
+  | ( Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+    | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
+    | Moz_document _ | When _ | Else _ | Starting_style _ | Origin _ | Scope _
+    | Font_face _ | Counter_style _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
+      ) as stmt ->
+      stmt
+
 (** {1 Pretty Printing} *)
 
 let pp_property_rule : 'a property_rule Pp.t =
@@ -569,32 +630,11 @@ let color_custom_property_names stylesheet =
         String_set.add (var_name_of_custom_property name) names
     | _ -> names
   in
-  let declarations names decls = List.fold_left declaration names decls in
-  let rec statement names = function
-    | Rule rule ->
-        let names = declarations names rule.declarations in
-        List.fold_left statement names rule.nested
-    | Declarations decls -> declarations names decls
-    | Layer (_, block)
-    | Media (_, block)
-    | Container (_, _, block)
-    | Supports (_, block)
-    | Moz_document (_, block)
-    | When (_, block)
-    | Else (_, block)
-    | Starting_style block
-    | Origin (_, block)
-    | Scope (_, _, block) ->
-        List.fold_left statement names block
-    | Page (_, decls) | Position_try (_, decls) | Supports_condition (_, decls)
-      ->
-        declarations names decls
-    | Page_with_margins (_, descs, margins) ->
-        let names = declarations names descs in
-        List.fold_left
-          (fun names margin -> declarations names margin.descriptors)
-          names margins
-    | _ -> names
+  let rec statement names stmt =
+    let names =
+      List.fold_left declaration names (statement_declarations stmt)
+    in
+    List.fold_left statement names (statement_children stmt)
   in
   List.fold_left statement String_set.empty stylesheet
 
@@ -682,41 +722,10 @@ let normalise_shadows stylesheet =
   if String_set.is_empty color_vars then stylesheet
   else
     let declarations = List.map (rewrite_shadow_decl color_vars) in
-    let rec statement = function
-      | Rule rule ->
-          Rule
-            {
-              rule with
-              declarations = declarations rule.declarations;
-              nested = List.map statement rule.nested;
-            }
-      | Declarations decls -> Declarations (declarations decls)
-      | Layer (name, block) -> Layer (name, List.map statement block)
-      | Media (query, block) -> Media (query, List.map statement block)
-      | Container (name, query, block) ->
-          Container (name, query, List.map statement block)
-      | Supports (query, block) -> Supports (query, List.map statement block)
-      | Moz_document (query, block) ->
-          Moz_document (query, List.map statement block)
-      | When (query, block) -> When (query, List.map statement block)
-      | Else (query, block) -> Else (query, List.map statement block)
-      | Starting_style block -> Starting_style (List.map statement block)
-      | Origin (origin, block) -> Origin (origin, List.map statement block)
-      | Scope (start, end_, block) ->
-          Scope (start, end_, List.map statement block)
-      | Page (selector, decls) -> Page (selector, declarations decls)
-      | Page_with_margins (selector, descs, margins) ->
-          Page_with_margins
-            ( selector,
-              declarations descs,
-              List.map
-                (fun margin ->
-                  { margin with descriptors = declarations margin.descriptors })
-                margins )
-      | Position_try (name, decls) -> Position_try (name, declarations decls)
-      | Supports_condition (name, decls) ->
-          Supports_condition (name, declarations decls)
-      | other -> other
+    let rec statement stmt =
+      stmt
+      |> map_statement_declarations declarations
+      |> map_statement_children (List.map statement)
     in
     List.map statement stylesheet
 
