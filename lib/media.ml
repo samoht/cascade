@@ -453,20 +453,33 @@ let merge_interval_bounds (a : feature) (b : feature) : feature option =
       Some (Interval (lv, lop, n1, uop, uv))
   | _ -> None
 
+(* CSS Media Queries 4 sec. 3: every operand of [not], [and] and [or] is a
+   [<media-in-parens>], so a compound operand keeps its wrapper. A feature is
+   already parenthesised and a [<general-enclosed>] is its own block, so both
+   stand alone. The left of a chain is the exception: [<media-in-parens>
+   <media-and>*] lets a same-operator chain continue unwrapped. *)
 let rec pp_condition : condition Pp.t =
  fun ctx -> function
   | Feature f -> pp_feature ctx f
   | Not c ->
       Pp.string ctx "not ";
-      pp_condition ctx c
+      pp_in_parens ctx c
   | And (a, b) ->
-      pp_condition ctx a;
+      (match a with And _ -> pp_condition ctx a | _ -> pp_in_parens ctx a);
       Pp.string ctx (if Pp.minified ctx then "and " else " and ");
-      pp_condition ctx b
+      pp_in_parens ctx b
   | Or (a, b) ->
-      pp_condition ctx a;
+      (match a with Or _ -> pp_condition ctx a | _ -> pp_in_parens ctx a);
       Pp.string ctx (if Pp.minified ctx then "or " else " or ");
-      pp_condition ctx b
+      pp_in_parens ctx b
+
+and pp_in_parens : condition Pp.t =
+ fun ctx -> function
+  | Feature f -> pp_feature ctx f
+  | (Not _ | And _ | Or _) as c ->
+      Pp.char ctx '(';
+      pp_condition ctx c;
+      Pp.char ctx ')'
 
 let rec pp : t Pp.t =
  fun ctx -> function
@@ -489,11 +502,8 @@ let rec pp : t Pp.t =
           (* CSS Media Queries 4 sec. 3 [media-condition-without-or]: Or
              sub-expressions need explicit parens in this context. *)
           match c with
-          | Or _ ->
-              Pp.char ctx '(';
-              pp_condition ctx c;
-              Pp.char ctx ')'
-          | _ -> pp_condition ctx c))
+          | Or _ -> pp_in_parens ctx c
+          | Feature _ | Not _ | And _ -> pp_condition ctx c))
   | List qs ->
       let rec loop = function
         | [] -> ()

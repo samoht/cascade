@@ -2,6 +2,12 @@
 
 ### Parsing
 
+- A compound operand of `not`, `and` or `or` in a `@media` condition keeps the
+  parentheses Media Queries 4 sec. 3 requires around a `<media-in-parens>`:
+  `not ((min-width:1px) or (max-width:2px))` printed as
+  `not (min-width:1px)or (max-width:2px)`, which browsers and cascade's own
+  reader reject, losing the whole block
+  ([#319](https://github.com/samoht/cascade/pull/319))
 - An `@font-face` descriptor whose value holds a `var()` is dropped with a
   warning, and `Css.of_string ~strict:true` rejects it. `var()` substitutes in
   property values only (CSS Variables 1), so no descriptor grammar accepts one

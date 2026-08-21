@@ -298,6 +298,43 @@ let component_parser_edges () =
         "@media screen and (prefers-color-scheme:dark){a{color:red}}"
         (Css.to_string ~minify:true parsed.stylesheet)
 
+(* Media Queries 4 sec. 3 [<media-not> = not <media-in-parens>]: the operand of
+   [not] is one parenthesised block, and nothing may follow it at that level. A
+   negated disjunction therefore keeps the wrapper the author wrote; without it
+   the query no longer reads back. *)
+let media_not_takes_media_in_parens () =
+  let minified ?(enforce_spec = false) source =
+    match Css.of_string ~strict:false source with
+    | Error error -> Alcotest.fail (Cascade.Error.to_string error)
+    | Ok parsed ->
+        Css.optimize ~enforce_spec parsed.stylesheet
+        |> Css.to_string ~minify:true ~enforce_spec
+  in
+  let check_modes name input ~default ~spec =
+    Alcotest.(check string) (name ^ " default") default (minified input);
+    Alcotest.(check string)
+      (name ^ " enforce-spec") spec
+      (minified ~enforce_spec:true input)
+  in
+  let negated_or =
+    "@media not ((min-width:1px) or (max-width:2px)){a{color:red}}"
+  in
+  check_modes "negated disjunction" negated_or
+    ~default:"@media not ((width>=1px)or (width<=2px)){a{color:red}}"
+    ~spec:"@media not ((min-width:1px)or (max-width:2px)){a{color:red}}";
+  (* Losing the wrapper costs the whole block: the reader rejects trailing
+     content after [not <media-in-parens>]. *)
+  Alcotest.(check string)
+    "negated disjunction reparses"
+    "@media not ((width>=1px)or (width<=2px)){a{color:red}}"
+    (minified (minified negated_or));
+  (* A single [<media-in-parens>] operand is already wrapped, so no second pair
+     of parentheses appears. *)
+  check_modes "negated single condition"
+    "@media not (min-width:1px){a{color:red}}"
+    ~default:"@media not (width>=1px){a{color:red}}"
+    ~spec:"@media not (min-width:1px){a{color:red}}"
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -322,4 +359,6 @@ let suite =
       test_case "general-enclosed is not a media type" `Quick
         general_enclosed_is_not_a_media_type;
       test_case "component parser edges" `Quick component_parser_edges;
+      test_case "media-not takes a media-in-parens" `Quick
+        media_not_takes_media_in_parens;
     ] )
