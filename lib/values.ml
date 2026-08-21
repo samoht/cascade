@@ -896,6 +896,31 @@ let exact_div (a : float) (b : float) : float option =
       Option.some r
     else Option.none
 
+(* Scale the coefficient [v] of a typed leaf by [n], rebuilding the leaf in its
+   own type. Multiplication folds whenever the product stays finite; division
+   folds only on an exact quotient, unless [~exact:false] accepts the rounded
+   one. *)
+let scale_leaf ~exact (op : calc_op) n rebuild v =
+  match op with
+  | Mul ->
+      let r = v *. n in
+      if Float.is_finite r then Option.some (rebuild r) else Option.none
+  | Div ->
+      if exact then Option.map rebuild (exact_div v n)
+      else if n = 0. then Option.none
+      else
+        let r = v /. n in
+        if Float.is_finite r then Option.some (rebuild r) else Option.none
+  | Add | Sub -> Option.none
+
+(* Combine the coefficients of two same-unit typed leaves: [*] and [/] of two
+   typed operands is not a typed value, so only [+] and [-] fold. *)
+let combine_leaf (op : calc_op) x y =
+  match op with
+  | Add -> Option.some (x +. y)
+  | Sub -> Option.some (x -. y)
+  | Mul | Div -> Option.none
+
 let numeric_leaf_value : type a. a calc -> float option = function
   | Num n -> Some n
   | Math_const c -> Some (math_const_value c)
@@ -3553,31 +3578,14 @@ let rec normalize_number ?(ctx = default_calc_ctx) (n : number) : number =
 let pct_scale ?(exact = true) op (p : percentage) n : percentage option =
   if not (Float.is_finite n) then Option.none
   else
-    let scaled rebuild v =
-      match op with
-      | Mul ->
-          let r = v *. n in
-          if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Div ->
-          if exact then Option.map rebuild (exact_div v n)
-          else if n = 0. then Option.none
-          else
-            let r = v /. n in
-            if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Add | Sub -> Option.none
-    in
+    let scaled = scale_leaf ~exact op n in
     match p with
     | Pct v -> scaled (fun x -> (Pct x : percentage)) v
     | Num v -> scaled (fun x -> (Num x : percentage)) v
     | _ -> Option.none
 
 let pct_combine op (a : percentage) (b : percentage) : percentage option =
-  let f x y =
-    match op with
-    | Add -> Option.some (x +. y)
-    | Sub -> Option.some (x -. y)
-    | Mul | Div -> Option.none
-  in
+  let f = combine_leaf op in
   match (a, b) with
   | Pct x, Pct y -> Option.map (fun r -> (Pct r : percentage)) (f x y)
   | Num x, Num y -> Option.map (fun r -> (Num r : percentage)) (f x y)
@@ -3613,31 +3621,14 @@ let normalize_percentage ?(ctx = default_calc_ctx) (p : percentage) : percentage
 let time_scale ?(exact = true) op (d : duration) n : duration option =
   if not (Float.is_finite n) then Option.none
   else
-    let scaled rebuild v =
-      match op with
-      | Mul ->
-          let r = v *. n in
-          if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Div ->
-          if exact then Option.map rebuild (exact_div v n)
-          else if n = 0. then Option.none
-          else
-            let r = v /. n in
-            if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Add | Sub -> Option.none
-    in
+    let scaled = scale_leaf ~exact op n in
     match d with
     | S v -> scaled (fun x -> S x) v
     | Ms v -> scaled (fun x -> Ms x) v
     | _ -> Option.none
 
 let time_combine op (a : duration) (b : duration) : duration option =
-  let f x y =
-    match op with
-    | Add -> Option.some (x +. y)
-    | Sub -> Option.some (x -. y)
-    | Mul | Div -> Option.none
-  in
+  let f = combine_leaf op in
   match (a, b) with
   | S x, S y -> Option.map (fun r -> S r) (f x y)
   | Ms x, Ms y -> Option.map (fun r -> Ms r) (f x y)
@@ -3671,19 +3662,7 @@ let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
 let angle_scale ?(exact = true) op (a : angle) n : angle option =
   if not (Float.is_finite n) then Option.none
   else
-    let scaled rebuild v =
-      match op with
-      | Mul ->
-          let r = v *. n in
-          if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Div ->
-          if exact then Option.map rebuild (exact_div v n)
-          else if n = 0. then Option.none
-          else
-            let r = v /. n in
-            if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Add | Sub -> Option.none
-    in
+    let scaled = scale_leaf ~exact op n in
     match a with
     | Deg v -> scaled (fun x -> Deg x) v
     | Rad v -> scaled (fun x -> Rad x) v
@@ -3700,12 +3679,7 @@ let angle_is_zero : angle -> bool = function
    90deg]) stay unfolded; [normalize_angle] picks the shortest spelling of a
    single folded operand, not across a mixed sum. *)
 let angle_combine op (a : angle) (b : angle) : angle option =
-  let f x y =
-    match op with
-    | Add -> Option.some (x +. y)
-    | Sub -> Option.some (x -. y)
-    | Mul | Div -> Option.none
-  in
+  let f = combine_leaf op in
   match (a, b) with
   | Deg x, Deg y -> Option.map (fun r -> Deg r) (f x y)
   | Rad x, Rad y -> Option.map (fun r -> Rad r) (f x y)
@@ -3840,19 +3814,7 @@ let np_scale ?(exact = true) op (np : number_percentage) n :
     number_percentage option =
   if not (Float.is_finite n) then Option.none
   else
-    let scaled rebuild v =
-      match op with
-      | Mul ->
-          let r = v *. n in
-          if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Div ->
-          if exact then Option.map rebuild (exact_div v n)
-          else if n = 0. then Option.none
-          else
-            let r = v /. n in
-            if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Add | Sub -> Option.none
-    in
+    let scaled = scale_leaf ~exact op n in
     match np with
     | Pct v -> scaled (fun x -> (Pct x : number_percentage)) v
     | Num v -> scaled (fun x -> (Num x : number_percentage)) v
@@ -3860,12 +3822,7 @@ let np_scale ?(exact = true) op (np : number_percentage) n :
 
 let np_combine op (a : number_percentage) (b : number_percentage) :
     number_percentage option =
-  let f x y =
-    match op with
-    | Add -> Option.some (x +. y)
-    | Sub -> Option.some (x -. y)
-    | Mul | Div -> Option.none
-  in
+  let f = combine_leaf op in
   match (a, b) with
   | Pct x, Pct y -> Option.map (fun r -> (Pct r : number_percentage)) (f x y)
   | Num x, Num y -> Option.map (fun r -> (Num r : number_percentage)) (f x y)
@@ -7051,31 +7008,14 @@ let canonical_color_of_hex r g b a : color =
 let alpha_scale ?(exact = true) op (a : alpha) n : alpha option =
   if not (Float.is_finite n) then Option.none
   else
-    let scaled rebuild v =
-      match op with
-      | Mul ->
-          let r = v *. n in
-          if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Div ->
-          if exact then Option.map rebuild (exact_div v n)
-          else if n = 0. then Option.none
-          else
-            let r = v /. n in
-            if Float.is_finite r then Option.some (rebuild r) else Option.none
-      | Add | Sub -> Option.none
-    in
+    let scaled = scale_leaf ~exact op n in
     match a with
     | Num v -> scaled (fun x -> (Num x : alpha)) v
     | Pct v -> scaled (fun x -> (Pct x : alpha)) v
     | _ -> Option.none
 
 let alpha_combine op (a : alpha) (b : alpha) : alpha option =
-  let f x y =
-    match op with
-    | Add -> Option.some (x +. y)
-    | Sub -> Option.some (x -. y)
-    | Mul | Div -> Option.none
-  in
+  let f = combine_leaf op in
   match (a, b) with
   | Num x, Num y -> Option.map (fun r -> (Num r : alpha)) (f x y)
   | Pct x, Pct y -> Option.map (fun r -> (Pct r : alpha)) (f x y)
