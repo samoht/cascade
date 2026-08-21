@@ -72,7 +72,7 @@ let complex_values () =
   decl_optimizes ~prop:"background" ~into:"linear-gradient(90deg,red,#00f)"
     "linear-gradient(to right, red, blue)";
 
-  (* CSS Images 4 section 3.4.1 defines [<color> <p1> <p2>] as exactly [<color>
+  (* CSS Images 4 section 3.5.1 defines [<color> <p1> <p2>] as exactly [<color>
      <p1>, <color> <p2>], so adjacent stops of one colour fold into a
      double-position stop. pp holds the pair; the fold is an optimize step. *)
   check_declaration
@@ -122,9 +122,9 @@ let complex_values () =
      longer. *)
   decl_optimizes ~prop:"flood-opacity" ~into:".5" "50%";
 
-  (* SVG 2 sec. 13.4 and Filter Effects 1 sec. 9.13.1 / 11.5 make each of these
-     a plain <color>, so they shorten like any other colour-valued property
-     instead of surviving as opaque unknown-property text. *)
+  (* SVG 2 sec. 14.2.4.2 and Filter Effects 1 sec. 9.13.1 / 11.5 make each of
+     these a plain <color>, so they shorten like any other colour-valued
+     property instead of surviving as opaque unknown-property text. *)
   check_declaration ~expected:"stop-color:#fff" "stop-color: #ffffff;";
   check_declaration ~expected:"lighting-color:currentColor"
     "lighting-color: currentColor;";
@@ -135,21 +135,22 @@ let complex_values () =
   decl_optimizes ~prop:"flood-color" ~into:"red" "rgb(255, 0, 0)";
   decl_optimizes ~prop:"stop-color" ~into:"#0000" "rgba(0, 0, 0, 0)";
 
-  (* SVG 2 sec. 13.5 and 14.4 give [fill-rule] and [clip-rule] the same
-     <fill-rule>, which is the keyword pair alone: the argument form inside
-     polygon() is a different production. *)
+  (* SVG 2 sec. 13.4.2 and CSS Masking 1 sec. 6.2 give [fill-rule] and
+     [clip-rule] the same <fill-rule>, which is the keyword pair alone: the
+     argument form inside polygon() is a different production. *)
   check_declaration ~expected:"fill-rule:evenodd" "fill-rule: evenodd;";
   check_declaration ~expected:"clip-rule:nonzero" "clip-rule: nonzero;";
   check_declaration ~expected:"fill-rule:var(--r)" "fill-rule: var(--r);";
-  (* SVG 2 sec. 13.3. [miter-clip] and [arcs] are the Level 2 additions to
-     [stroke-linejoin]; a reader that takes the grammar takes all five. *)
+  (* SVG 2 sec. 13.5.4 and 13.5.5. [miter-clip] and [arcs] are the Level 2
+     additions to [stroke-linejoin]; a reader that takes the grammar takes all
+     five. *)
   check_declaration ~expected:"stroke-linecap:square" "stroke-linecap: square;";
   check_declaration ~expected:"stroke-linejoin:arcs" "stroke-linejoin: arcs;";
-  (* SVG 2 sec. 13.3 makes the miter limit a <number> that cannot go below 1, so
-     it minifies like one and a constant calc() folds. *)
+  (* SVG 2 sec. 13.5.5 makes the miter limit a <number> that cannot go below 1,
+     so it minifies like one and a constant calc() folds. *)
   check_declaration ~expected:"stroke-miterlimit:4" "stroke-miterlimit: 4.0;";
   decl_optimizes ~prop:"stroke-miterlimit" ~into:"6" "calc(2 * 3)";
-  (* SVG 2 sec. 13.3 separates dashes by comma and/or whitespace and the
+  (* SVG 2 sec. 13.5.6 separates dashes by comma and/or whitespace and the
      rendered pattern is the flat sequence either way, so both spellings read to
      one list and print with the shorter separator. *)
   check_declaration ~expected:"stroke-dasharray:4 2" "stroke-dasharray: 4, 2;";
@@ -160,7 +161,7 @@ let complex_values () =
   decl_optimizes ~prop:"stroke-dasharray" ~into:"0 4px" "0px 4px";
   check_declaration ~expected:"stroke-dashoffset:.5px"
     "stroke-dashoffset: 0.50px;";
-  (* SVG 2 sec. 13.7: a keyword left out is painted last, in the order [normal]
+  (* SVG 2 sec. 13.8: a keyword left out is painted last, in the order [normal]
      would use, so the specification's own example is that [paint-order: stroke]
      equals [paint-order: stroke fill markers]. The shortest spelling is the
      shortest prefix that expands back to the same order. *)
@@ -169,14 +170,14 @@ let complex_values () =
   decl_optimizes ~prop:"paint-order" ~into:"normal" "fill";
   (* Reordering the tail is load-bearing, so this one keeps both keywords. *)
   decl_optimizes ~prop:"paint-order" ~into:"markers stroke" "markers stroke";
-  (* SVG 2 sec. 7.10 makes [viewport] what an omitted host space means, so
+  (* SVG 2 sec. 8.13 makes [viewport] what an omitted host space means, so
      writing it is redundant; [screen] is not. *)
   decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke"
     "non-scaling-stroke viewport";
   decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke screen"
     "non-scaling-stroke screen";
 
-  (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
+  (* Complex nested functions. Per CSS Values 4 section 10.10.1 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions
      to a single value. Calcs containing [var()] cannot reduce at syntax time
      and are preserved. *)
@@ -395,7 +396,7 @@ let error_unclosed_block () =
   ignore (read_block r : Css.Declaration.declaration list)
 
 let special_cases () =
-  (* Per CSS Values 4 section 10.7 the inner all-constant calc reduces to
+  (* Per CSS Values 4 section 10.10.1 the inner all-constant calc reduces to
      [60px], leaving the mixed-unit outer calc preserved. *)
   check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
     "width: calc(100% - calc(50px + 10px));";
@@ -519,7 +520,7 @@ let position () =
   c ~expected:"position:sticky" "position: sticky"
 
 let font_properties () =
-  (* Font weight. Per CSS Fonts 4 section 5.1.2 the keywords [normal] and [bold]
+  (* Font weight. Per CSS Fonts 4 section 2.2 the keywords [normal] and [bold]
      map to [400] / [700]; the printer canonicalizes to the numeric form under
      minify. *)
   check_declaration ~expected:"font-weight:400" "font-weight: normal";
@@ -778,7 +779,7 @@ let animations_timing () =
     ~expected:"animation-timing-function:cubic-bezier(.4,0,.2,1)"
     "animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1)";
 
-  (* Per CSS Values 4 section 6.6 the time unit ([s] or [ms]) is required for
+  (* Per CSS Values 4 section 7.2 the time unit ([s] or [ms]) is required for
      [<time>]. [0s] does not drop the unit. *)
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
@@ -834,7 +835,7 @@ let transforms () =
   check_declaration ~expected:"transform:matrix(1,0,0,1,0,0)"
     "transform: matrix(1, 0, 0, 1, 0, 0)";
 
-  (* Multiple transforms. Per CSS Transforms 1 section 11 the printer drops
+  (* Multiple transforms. Per CSS Transforms 1 section 8 the printer drops
      whitespace between back-to-back transform functions under minify, matching
      Lightning CSS. *)
   check_declaration ~expected:"transform:translateX(10px)rotate(45deg)"
@@ -843,7 +844,7 @@ let transforms () =
     "transform: scale(2) translateY(20px) rotate(180deg)";
 
   (* Transform origin *)
-  (* Per CSS Transforms 1 sec. 6 [center] is shorthand for [50% 50%] and the
+  (* Per CSS Transforms 1 sec. 4 [center] is shorthand for [50% 50%] and the
      keyword pair [top left] is [0 0]. A single [0] would mean [0 50%], so the
      two-value form must be preserved. *)
   check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
@@ -910,7 +911,7 @@ let grid () =
     "grid-auto-flow: row dense";
   check_declaration ~expected:"grid-auto-flow:column dense"
     "grid-auto-flow: column dense";
-  (* CSS Grid 2 sec. 7.6 gives [ row | column ] || dense with [row] as the
+  (* CSS Grid 2 sec. 7.7 gives [ row | column ] || dense with [row] as the
      omitted axis, so [row dense] and [dense] are one value and the optimizer
      picks the shorter. The axis is load-bearing on [column dense]. *)
   decl_optimizes_to ~held:"grid-auto-flow:row dense"
@@ -1378,7 +1379,7 @@ let edge_cases () =
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
 
-  (* Per CSS Values 4 section 10.7 the printer fully simplifies all-constant
+  (* Per CSS Values 4 section 10.10.1 the printer fully simplifies all-constant
      calcs and reduces multiplicative subexpressions against same-unit
      operands. *)
   check_declaration ~expected:"width:calc((10px + 5px)*2)"
@@ -2131,8 +2132,8 @@ let test_declaration () =
   check "color:red!important";
   check "--custom:value!important";
 
-  (* Complex values. Per CSS Transforms 1 section 11 the printer drops
-     whitespace between back-to-back transform functions under minify. *)
+  (* Complex values. Per CSS Transforms 1 section 8 the printer drops whitespace
+     between back-to-back transform functions under minify. *)
   check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background:linear-gradient(to right,red,blue)";
   decl_optimizes ~prop:"background" ~into:"linear-gradient(90deg,red,#00f)"
@@ -2535,7 +2536,7 @@ let check_sheet_roundtrip name css =
         (String.trim (Css.to_string ~minify:true stylesheet))
   | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
 
-(* CSS Shapes 1 sec. 2: [shape-outside] is [none | [<basic-shape> ||
+(* CSS Shapes 1 sec. 6.1: [shape-outside] is [none | [<basic-shape> ||
    <shape-box>] | <image>]. The reader only looked at the first component and
    only knew [none], [circle()] and [inset()] there, so a reference box, a
    box/shape pair, the other basic shapes and an image were all rejected and the

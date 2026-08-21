@@ -583,7 +583,7 @@ let read_text_decoration_lines t =
   if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
   lines
 
-(* CSS Shapes 1 sec. 2.2: [<shape-box>] is [<visual-box> | margin-box], so the
+(* CSS Shapes 1 sec. 5: [<shape-box>] is [<visual-box> | margin-box], so the
    three SVG boxes [<geometry-box>] adds are not valid here. *)
 let check_shape_box t (box : clip_geometry_box) =
   match box with
@@ -593,7 +593,7 @@ let check_shape_box t (box : clip_geometry_box) =
 
 (* [read_clip_path] reads [<basic-shape> || <geometry-box>], the same double-bar
    pair shape-outside uses, along with [none], [url()] and the CSS-wide
-   keywords. Shapes 1 sec. 2 differs on two points, checked here: the box is a
+   keywords. Shapes 1 sec. 6.1 differs on two points, checked here: the box is a
    [<shape-box>], and everything outside [<basic-shape>] is an alternative to
    the pair rather than a member of it. *)
 let check_shape_outside_shape t =
@@ -616,7 +616,7 @@ let check_shape_outside_shape t =
       Cursor.err_invalid t "shape-outside pairs a <shape-box> with a shape"
   | _ -> ()
 
-(* CSS Shapes 1 sec. 2: [shape-outside] is [none | [<basic-shape> ||
+(* CSS Shapes 1 sec. 6.1: [shape-outside] is [none | [<basic-shape> ||
    <shape-box>] | <image>]. The value is the raw source text ([Shape_outside :
    string property]): typing it would mean a sum of the [clip_path] shapes and
    the whole [background_image] type for [<image>], so the reader validates the
@@ -682,9 +682,8 @@ let read_nn_length_or_global t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
-(* CSS Text 3 section 10: [letter-spacing] is [normal | <length>],
-   [word-spacing] is [normal | <length-percentage>]; both accept negative
-   values. *)
+(* CSS Text 3 section 7: [letter-spacing] is [normal | <length>], [word-spacing]
+   is [normal | <length-percentage>]; both accept negative values. *)
 let read_normal_or_length name t =
   Cursor.enum name
     [
@@ -713,7 +712,7 @@ let read_perspective_value t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
-(* CSS Text Decoration 4 sec. 5: [text-underline-offset] is [auto |
+(* CSS Text Decoration 4 sec. 2.8: [text-underline-offset] is [auto |
    <length-percentage>], and unlike the lengths above it may be negative. *)
 let read_underline_offset t =
   Cursor.enum "text-underline-offset"
@@ -847,7 +846,7 @@ let read_border_radius_vertical t =
       Some (read_border_radius_radii t)
   | _ -> None
 
-(* CSS Backgrounds and Borders 3 sec. 5: [border-radius =
+(* CSS Backgrounds and Borders 3 sec. 4.1: [border-radius =
    <length-percentage>{1,4} [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal
    radii then, after [/], 1-4 vertical radii. *)
 let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
@@ -959,7 +958,7 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
   | Color -> Some (v Color (read_color t))
   | Background_color -> Some (v Background_color (read_color t))
   | Border_color ->
-      (* CSS Backgrounds 3 sec. 4.4: [border-color] is a 1-4 value box shorthand
+      (* CSS Backgrounds 3 sec. 3.1: [border-color] is a 1-4 value box shorthand
          (top / right / bottom / left). *)
       Some (v Border_color (Cursor.list ~at_least:1 ~at_most:4 read_color t))
   | Outline_color -> Some (v Outline_color (read_color t))
@@ -2143,7 +2142,7 @@ let read_typed_property_declaration t start =
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  (* CSS Syntax 3 sec. 5.3.7 / sec. 4.3.5 auto-close unterminated functions,
+  (* CSS Syntax 3 sec. 2.2 / sec. 4.3.5 auto-close unterminated functions,
      brackets and strings at EOF. Typed readers consume the spec-recovered
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
@@ -2245,7 +2244,7 @@ let read_declaration t : declaration option =
 
 (* Skip from the current cursor position to just past the next top-level [;], or
    stop at EOF. Used to recover from a failed declaration inside a block: per
-   CSS Syntax section 5.4.4 ("consume a list of declarations"), an invalid
+   CSS Syntax section 5.5.5 ("consume a block's contents"), an invalid
    declaration is dropped, parsing resumes at the next [;], and the surrounding
    rule survives. *)
 let skip_to_next_declaration t =

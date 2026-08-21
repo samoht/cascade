@@ -1,8 +1,8 @@
 (** Static colour-space conversion arithmetic for the optimiser.
 
-    Implements the matrices and gamma-correction functions in CSS Color 4
-    sections 8-16. All functions operate on [float] triples where each component
-    is the canonical floating-point representation for the named space (sRGB /
+    Implements the matrices and gamma-correction functions in CSS Color 4 sec.
+    19. All functions operate on [float] triples where each component is the
+    canonical floating-point representation for the named space (sRGB /
     Display-P3 in [[0, 1]], XYZ in tristimulus units, Lab L* in [[0, 100]],
     OKLab L in [[0, 1]], hue in degrees, ...).
 
@@ -18,7 +18,7 @@ type lch = float * float * float
 (** {1 sRGB} *)
 
 val linear_of_srgb : float -> float
-(** CSS Color 4 sec. 11.5.1: [<R G B>] in [[0, 1]] linearised via the standard
+(** CSS Color 4 sec. 10.2: [<R G B>] in [[0, 1]] linearised via the standard
     [(v + 0.055) / 1.055)^2.4] curve below the toe at [0.04045]. *)
 
 val srgb_of_linear : float -> float
@@ -135,7 +135,7 @@ val srgb_bytes_of_linear : ?budget:float -> rgb -> (int * int * int) option
 (** {1 Hue interpolation} *)
 
 type hue_interpolation =
-  | Shorter  (** Default per CSS Color 4 sec. 12.4. *)
+  | Shorter  (** Default per CSS Color 4 sec. 13.4. *)
   | Longer
   | Increasing
   | Decreasing

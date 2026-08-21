@@ -98,7 +98,7 @@ let rec pp_animation_name : animation_name Pp.t =
   | Name name -> Pp.string ctx name
   | Ambiguous name -> Pp.string ctx name
   | Quoted name ->
-      (* CSS Animations 1 sec. 3.3: [<keyframes-name>] excludes [none], the
+      (* CSS Animations 1 sec. 3: [<keyframes-name>] excludes [none], the
          CSS-wide keywords, and [default]. A source [animation-name: "none"]
          therefore can't refer to a real [@keyframes none] - it's invalid input
          that browsers tolerate. Minified output drops the quotes so the value
@@ -410,8 +410,8 @@ let rec pp_timing_function : timing_function Pp.t =
   | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
       Pp.string ctx "ease-in-out"
   | Cubic_bezier (0.0, 0.0, 1.0, 1.0) when Pp.minified ctx ->
-      (* CSS Easing 1 sec. 3: [cubic-bezier(0, 0, 1, 1)] is the identity curve,
-         equivalent to the [linear] keyword. *)
+      (* CSS Easing 1 sec. 2.2: [cubic-bezier(0, 0, 1, 1)] is the identity
+         curve, equivalent to the [linear] keyword. *)
       Pp.string ctx "linear"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
   | Timing_functions timings ->
@@ -1287,7 +1287,7 @@ module Animation = struct
 
   let apply_iteration t state acc ic =
     if !(state.iteration_seen) then
-      (* CSS Animations 1 section 8.5: [<single-animation-iteration-count>] is
+      (* CSS Animations 1 section 4.4: [<single-animation-iteration-count>] is
          [infinite | <number>]; [infinite] is a reserved keyword that cannot be
          a [<custom-ident>] animation name. Reject the duplicate rather than
          coercing it into the name slot. *)

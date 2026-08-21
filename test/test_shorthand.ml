@@ -67,7 +67,7 @@ let test_unknown_property_overlap () =
     "a recovered longhand of another family is disjoint" false
     (Shorthand.declarations_overlap (decl "padding:0")
        (decl "margin-top:var(--a) var(--b)"));
-  (* CSS Cascade 5 sec. 7.2: [all] resets unknown properties. *)
+  (* CSS Cascade 5 sec. 3.2: [all] resets unknown properties. *)
   Alcotest.(check bool)
     "all overlaps an unknown property" true
     (Shorthand.declarations_overlap (decl "all:initial")
@@ -98,7 +98,7 @@ let test_vendor_alias_overlap () =
        (decl "text-decoration-color:red"))
 
 let test_shorthand_reset_boundaries () =
-  (* CSS UI 4 sec. 6.4: [outline] resets width, style and colour, and leaves
+  (* CSS UI 4 sec. 3.1: [outline] resets width, style and colour, and leaves
      [outline-offset] alone. *)
   Alcotest.(check bool)
     "outline overlaps its colour longhand" true
@@ -116,7 +116,7 @@ let test_shorthand_reset_boundaries () =
     "text-emphasis and its position longhand are disjoint" false
     (Shorthand.declarations_overlap (decl "text-emphasis:dot")
        (decl "text-emphasis-position:over"));
-  (* CSS Grid 1 sec. 7.4: [grid] resets the template and auto tracks, not the
+  (* CSS Grid 1 sec. 7.8: [grid] resets the template and auto tracks, not the
      placement longhands. *)
   Alcotest.(check bool)
     "grid overlaps a template longhand" true
@@ -221,7 +221,7 @@ let test_logical_physical_overlap () =
        (decl "border-left-color:red"))
 
 let test_logical_axis_overlap () =
-  (* CSS Logical 1 sec. 4.4: [inline-size] is [width] in a horizontal writing
+  (* CSS Logical 1 sec. 4.1: [inline-size] is [width] in a horizontal writing
      mode and [height] in a vertical one, so it may write either slot. The
      sizing family has no physical shorthand, which does not change the
      aliasing. *)

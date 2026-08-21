@@ -655,7 +655,7 @@ type calc_op = Values.calc_op = Add | Sub | Mul | Div
     [calc(6.28318530718)]. *)
 type math_const = Values.math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 sec. 10.7 numeric math function arguments. *)
+(** CSS Values 4 sec. 9.1 numeric math function arguments. *)
 type math_arg = Values.math_arg =
   | Lit of float
   | Dim of float * string  (** A dimension argument (e.g. [1vw], [1%]). *)
@@ -665,7 +665,7 @@ type math_arg = Values.math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 sec. 10.7 numeric math functions. *)
+(** CSS Values 4 sec. 9.1 numeric math functions. *)
 and math_fn = Values.math_fn =
   | Sin of angle_arg
   | Cos of angle_arg
@@ -707,8 +707,7 @@ type 'a calc = 'a Values.calc =
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
-  | Math_fn of math_fn
-      (** CSS Values 4 sec. 10.7 numeric math function call. *)
+  | Math_fn of math_fn  (** CSS Values 4 sec. 9.1 numeric math function call. *)
 
 type component_values = Component.t list
 (** Parsed CSS component values preserved for fallback and invalid-value
@@ -859,7 +858,7 @@ type length = Values.length =
   | Anchor of string option * string * length option
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
-      (** CSS [attr()] in typed value contexts (CSS Values 5 sec. 10). *)
+      (** CSS [attr()] in typed value contexts (CSS Values 5 sec. 8.7). *)
   | Env of length env  (** CSS [env()] reference. *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
@@ -2075,7 +2074,7 @@ type break_inside_value = Properties.break_inside_value =
 val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the break-inside property. *)
 
-(** CSS Fragmentation 3 sec. 6 deprecated [page-break-before / -after] alias
+(** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-before / -after] alias
     vocabulary; the shorter value list makes these their own type rather than
     overload {!type-break_value}. *)
 type page_break_value = Properties.page_break_value =
@@ -2086,8 +2085,8 @@ type page_break_value = Properties.page_break_value =
   | Right
   | Inherit
   | Var of page_break_value var
-      (** CSS Fragmentation 3 sec. 6 deprecated [page-break-inside] vocabulary.
-      *)
+      (** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-inside]
+          vocabulary. *)
 
 type page_break_inside_value = Properties.page_break_inside_value =
   | Auto
@@ -2799,8 +2798,8 @@ type background_attachment = Properties.background_attachment =
   | Revert_layer
   | Var of background_attachment var
 
-(** CSS Color 5 section 12: hue-interpolation method for polar color spaces (lch
-    / oklch / hsl / hwb). *)
+(** CSS Color 5 section 9.1: hue-interpolation method for polar color spaces
+    (lch / oklch / hsl / hwb). *)
 type hue_interpolation_method = Properties.hue_interpolation_method =
   | Shorter
   | Longer
@@ -2918,7 +2917,7 @@ val conic_gradient_config :
 (** [conic_gradient_config ?angle ?position ?interpolation ()] builds a
     conic-gradient prefix. *)
 
-(** Per CSS Backgrounds and Borders 3 sec. 5. *)
+(** Per CSS Backgrounds and Borders 3 sec. 4.1. *)
 type border_radius = Properties.border_radius =
   | Radius of {
       horizontal : length_percentage list;

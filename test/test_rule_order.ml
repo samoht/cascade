@@ -72,7 +72,7 @@ let custom_property_layer_and_meta_survive () =
         (List.length ds)
 
 let custom_property_font_name_quoting_converges () =
-  (* CSS Fonts 4 sec. 15.3: a multi-word family name spells the same family
+  (* CSS Fonts 4 sec. 2.1.1: a multi-word family name spells the same family
      quoted or as the ident sequence it unquotes to, and a custom property
      holding a font stack substitutes either form identically into
      [font-family]. Emission keeps whichever the author wrote, so only the

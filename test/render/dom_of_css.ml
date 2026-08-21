@@ -170,7 +170,7 @@ let attribute_value = function
   | Selector.Substring v | Selector.Substring_quoted (v, _) -> "zz" ^ v ^ "yy"
 
 (* The empty operand of [~=], [|=], [^=], [$=] and [*=] matches nothing, per
-   Selectors 4 sec. 6.2. *)
+   Selectors 4 sec. 6.1 and 6.2. *)
 let attribute_matchable = function
   | Selector.Whitespace_list ""
   | Selector.Whitespace_list_quoted ("", _)

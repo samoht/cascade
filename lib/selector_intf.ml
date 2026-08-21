@@ -56,7 +56,7 @@ type nth =
   | An_plus_b of int * int (* An+B: a is coefficient, b is offset *)
 
 type vt_class_selector = { name : string option; classes : string list }
-(** CSS View Transitions 2 sec. 3.4.1 [<vt-class-selector>]: an optional vt-name
+(** CSS View Transitions 2 sec. 10.4 [<vt-class-selector>]: an optional vt-name
     ([<custom-ident>] or [*]) followed by zero or more [.<custom-ident>] class
     qualifiers. The empty case (no name and no classes) does not appear in
     cascade output - the parser always reads at least one component. *)

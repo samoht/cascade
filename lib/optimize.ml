@@ -116,7 +116,7 @@ let factor_rules_incremental ?cache ~ctx rules =
 let canonicalize_scope_selector sel = Selector.canonicalize sel
 
 (* Nested rule selectors are implicitly relative to the parent [&], so drop a
-   redundant leading [& <combinator>] (CSS Nesting 1 sec. 2). *)
+   redundant leading [& <combinator>] (CSS Nesting 1 sec. 3). *)
 let drop_nesting_prefix (stmt : statement) : statement =
   match stmt with
   | Rule nr ->
@@ -389,7 +389,7 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec (rules : rule list) : rule list =
      skipped the run or the transfer gate discarded its result. *)
   Rule.merge_adjacent_identical ~ctx factored
 
-(* CSS Animations 2 sec. 4.1: [@keyframes name] re-declaration overrides the
+(* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
    later one wins. Vendor-prefixed [-webkit-] / [-moz-] variants are separate
    namespaces, so they are not dedup'd against the unprefixed form. *)
@@ -650,7 +650,7 @@ let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
 
 (* Does the registered syntax somewhere accept a [<custom-ident>] (possibly
    under [+] / [#] / [|] modifiers)? When yes, a [<string>] whose content is a
-   multi-word identifier sequence is spec-equivalent (CSS Fonts 4 sec. 15.3 for
+   multi-word identifier sequence is spec-equivalent (CSS Fonts 4 sec. 2.1.1 for
    font-family-shaped registrations), so the promotion pass rewrites it to the
    equivalent ident sequence before parsing. *)
 let rec syntax_accepts_ident_sequence : type a. a Variables.syntax -> bool =

@@ -331,7 +331,7 @@ let read_lang_content t =
   Lang langs
 
 let read_dir_content t =
-  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 sec. 6.5.1. *)
+  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 sec. 7.1. *)
   let dir = Cursor.ident t in
   if dir <> "ltr" && dir <> "rtl" then
     Cursor.err_invalid t (":dir() expects ltr or rtl, got: " ^ dir);
@@ -362,7 +362,7 @@ let read_active_view_transition_type t =
     read_active_view_transition_content
 
 let read_part_content t =
-  (* CSS Shadow Parts section 3 [::part()]: a whitespace-separated list of ident
+  (* CSS Shadow 1 section 5.4 [::part()]: a whitespace-separated list of ident
      tokens, *not* comma-separated. *)
   let rec read_idents acc =
     Cursor.ws t;
@@ -453,7 +453,7 @@ let read_class t =
      including parser-valid double-dash identifiers such as .--x. *)
   Class name
 
-(** Parse an ID selector ([#id]). Per CSS Selectors sec. 6.6, an ID must be an
+(** Parse an ID selector ([#id]). Per CSS Selectors sec. 6.7, an ID must be an
     ident-type hash; unrestricted hashes such as digit-only [#123] are not valid
     IDs. *)
 let read_id t =
@@ -661,12 +661,12 @@ let read_attribute t =
       Attribute (ns, attr_name, matcher, flag))
     t
 
-(** Parse the An+B microsyntax (Selectors 4 section 9.2 / CSS Syntax 3 section
-    6) as shape patterns over the component stream: [odd]/[even], bare
+(** Parse the An+B microsyntax (Selectors 4 section 13.3.1 / CSS Syntax 3
+    section 6) as shape patterns over the component stream: [odd]/[even], bare
     [<integer>], [<n-dimension>] with optional offset, the [5n-5]/[5n-] token
     variants, and the [n]/[-n]/[n-5]/... ident forms with an optional leading
-    [+]. Idents are case-insensitive (section 3.3); [+ n] (whitespace after [+])
-    is invalid since [+] is lexically part of the ident form. *)
+    [+]. Idents are case-insensitive (CSS Values 4 sec. 4.1); [+ n] (whitespace
+    after [+]) is invalid since [+] is lexically part of the ident form. *)
 
 (* Numeric helpers: split an arbitrary ident's tail into an optional [-digits]
    suffix, for ndashdigit / ndash / n patterns. *)
@@ -765,7 +765,7 @@ let ensure_no_ws_after_plus t =
   | _ -> ()
 
 (* Dimension forms [<n-dimension>, <ndashdigit-dimension>, <ndash-dimension>]
-   from Selectors Level 4 section 9.2. Assumes the cursor is positioned on a
+   from CSS Syntax 3 section 6.2. Assumes the cursor is positioned on a
    [Dimension] component. *)
 let read_nth_dimension t number unit_ =
   if is_n_unit unit_ then (
@@ -1093,9 +1093,9 @@ let rec matches_nothing = function
   | List xs -> List.for_all matches_nothing xs
   | _ -> false
 
-(* CSS Pseudo-Elements 4 sec. 3.5 / Selectors 4 sec. 3.6.4: a pseudo-element
-   compound may only be followed by pseudo-classes. Class/id/type/attribute
-   selectors after the pseudo-element still make the compound invalid. *)
+(* CSS Selectors 4 sec. 3.6.3: a pseudo-element compound may only be followed by
+   pseudo-classes. Class/id/type/attribute selectors after the pseudo-element
+   still make the compound invalid. *)
 let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element_selector sel)
@@ -1191,7 +1191,7 @@ let read_highlight_content t =
   Highlight [ name ]
 
 let read_vt_class_selector t : vt_class_selector =
-  (* CSS View Transitions 2 sec. 3.4.1 [<vt-class-selector>] = [<vt-name>?
+  (* CSS View Transitions 2 sec. 10.4 [<vt-class-selector>] = [<vt-name>?
      [.<custom-ident>]*]. The name is [<custom-ident> | *]; either the name or
      at least one class must be present. *)
   Cursor.ws t;
@@ -1283,7 +1283,7 @@ and read_nth_selector t : nth * t list option =
         Cursor.list ~sep:Cursor.comma ~at_least:1 read_complex t)
       t
   in
-  (* Per Selectors Level 4 section 9.2, the An+B (plus optional [of S]) must
+  (* Per Selectors Level 4 section 13.3.1, the An+B (plus optional [of S]) must
      consume the entire [<nth-child>] argument list. Leftover tokens (e.g.
      [:nth-child(1 - n)] or [:nth-child(2 n + 2)]) are a parse error, not a
      silently-dropped tail. *)
@@ -1332,7 +1332,7 @@ and read_has_content t =
 
 and read_not_content t =
   let selectors = read_complex_list t in
-  (* CSS Selectors 4 sec. 6.2: [:not()] is non-forgiving, so an unknown selector
+  (* CSS Selectors 4 sec. 4.3: [:not()] is non-forgiving, so an unknown selector
      inside it invalidates the whole rule. Top-level lists keep unknown
      pseudo-classes for forward compatibility. *)
   List.iter
@@ -1391,7 +1391,7 @@ and read_current t = Cursor.call "current" t read_current_content
 
 (* Helper readers for pseudo-element functions that need recursion *)
 and read_slotted_content t =
-  (* CSS Shadow Parts section 4 [::slotted()] takes a single compound selector;
+  (* CSS Shadow 1 section 3.2.4 [::slotted()] takes a single compound selector;
      comma-separated lists are a syntax error. *)
   let sel = read_complex t in
   Cursor.ws t;
@@ -1596,7 +1596,7 @@ and read_complex t =
         combine left Descendant (read_complex t)
       else left
 
-(* CSS Selectors 4 section 3.5: the top-level rule selector list is an
+(* CSS Selectors 4 section 3.9: the top-level rule selector list is an
    unforgiving site. [read_compound] keeps [Unknown_pseudo_class] so vendor and
    forward-compat pseudos round-trip, but one at top level is a spec deviation;
    raise so [Selector.of_string ".ok,:future-pseudo"] surfaces a
@@ -1649,7 +1649,7 @@ let read_relative t =
     Cursor.err t "unexpected characters after selector";
   match selectors with [ s ] -> s | _ -> List selectors
 
-(* CSS Nesting 1 sec. 2: a nested selector is implicitly relative to [&], so a
+(* CSS Nesting 1 sec. 3: a nested selector is implicitly relative to [&], so a
    leading [& <combinator>] is redundant: [& .bar] -> [.bar], [& > .bar] -> [>
    .bar]. Only a leading [&] that is the whole left operand of a combinator is
    removed; [&.bar] (compound) and a deeper [&] stay. *)
@@ -1733,7 +1733,7 @@ let elem ctx name = Pp.string ctx ("::" ^ name)
 let vendor ctx name = Pp.string ctx (":-" ^ name)
 let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
-(* CSS Selectors 4 sec. 3.7 keeps [:before] (CSS 2.1) as a deprecated
+(* CSS Selectors 4 sec. 3.6.1 keeps [:before] (CSS 2.1) as a deprecated
    compatibility spelling for the four original pseudo-elements. Minified output
    uses the shorter valid alias; pretty output preserves the parsed colon form
    so the authored spelling round-trips. *)
@@ -2166,13 +2166,13 @@ and pp : t Pp.t =
   (* Functional pseudo-classes *)
   | Is selectors
     when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
-      (* CSS Selectors 4 sec. 8.2: [:any-link] is defined as equivalent to
+      (* CSS Selectors 4 sec. 8.1: [:any-link] is defined as equivalent to
          [:is(:link, :visited)], same specificity and shorter. *)
       pp ctx Any_link
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
   | Not [ Not [ inner ] ] when Pp.minified ctx ->
-      (* CSS Selectors 4 sec. 5: double negation [:not(:not(X))] is
+      (* CSS Selectors 4 sec. 4.3: double negation [:not(:not(X))] is
          spec-equivalent to [X] (and shorter under minify). *)
       pp ctx inner
   | Not [ Enabled ] when Pp.minified ctx -> pseudo ctx "disabled"
@@ -2182,7 +2182,7 @@ and pp : t Pp.t =
   | Not [ Required ] when Pp.minified ctx -> pseudo ctx "optional"
   | Not [ Optional ] when Pp.minified ctx -> pseudo ctx "required"
   | Not [ Dir "ltr" ] when Pp.minified ctx ->
-      (* CSS Selectors 4 sec. 6.5.1: directionality is binary, so
+      (* CSS Selectors 4 sec. 7.1: directionality is binary, so
          [:not(:dir(ltr))] is spec-equivalent to [:dir(rtl)] (and shorter). *)
       func ctx "dir" Pp.string "rtl"
   | Not [ Dir "rtl" ] when Pp.minified ctx -> func ctx "dir" Pp.string "ltr"
@@ -2335,7 +2335,7 @@ let canonicalize sel =
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> (
-          (* CSS Selectors 4 sec. 17: a single-argument [:is(s)] matches the
+          (* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the
              same elements as [s] with the same specificity, so it reduces to
              [s]. Sound only when [s] is a single compound: a combinator
              ([Combined] / [Relative]) or a [List] makes [:is()] a grouping
@@ -2477,7 +2477,7 @@ let rec specificity = function
   | List xs -> xs |> List.map specificity |> max_specificity
 
 (* Unwrap [:is(s1, s2, ...)] to a selector list only when every argument has the
-   same specificity AND is structurally simple. Selectors 4 sec. 17 gives [:is]
+   same specificity AND is structurally simple. Selectors 4 sec. 4.2 gives [:is]
    the [max] specificity of its arguments, so unwrapping changes specificity
    unless all are already equal. *)
 let rec is_unwrap_safe_is_arg : t -> bool = function

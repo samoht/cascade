@@ -40,7 +40,7 @@ let rec pp_color_interpolation : color_interpolation Pp.t =
   | In_lab -> Pp.string ctx "in lab"
   | In_lch hue -> pp_polar_with_hue ctx "lch" hue
 
-(* CSS Color 5 section 12: after a polar color space (lch / oklch / hsl / hwb),
+(* CSS Color 5 section 9.1: after a polar color space (lch / oklch / hsl / hwb),
    the [<color-interpolation-method>] may carry a trailing
    [<hue-interpolation-method>] followed by [hue]. *)
 let read_hue_interpolation_method t =
@@ -454,7 +454,7 @@ let pp_conic_gradient_named name ctx (config, stops) =
 let pp_linear_gradient_named name ctx (dir, stops) =
   Pp.call name
     (fun ctx (dir, stops) ->
-      (* CSS Images 4 sec. 5.1: the default linear-gradient direction is [to
+      (* CSS Images 4 sec. 3.1: the default linear-gradient direction is [to
          bottom], equivalent to [180deg]; both spellings can be elided. *)
       let is_default_direction = function
         | Default_direction -> true
@@ -714,7 +714,7 @@ let normalize_webkit_gradient ?(lossless = false) :
       in
       if stops == r.stops then value else Radial { r with stops }
 
-(* [<position>] spelling canonicalization. CSS Values 4 sec. 6.1: the edge
+(* [<position>] spelling canonicalization. CSS Values 4 sec. 8.3: the edge
    keywords are percentage synonyms ([left] = [top] = [0%], [center] = [50%],
    [right] = [bottom] = [100%]), a percentage offset of [0%] and the length [0]
    resolve to the same point, and a single value defaults the vertical component
@@ -799,7 +799,7 @@ let normalize_position_value ?(strip = true) : position_value -> position_value
       | other -> other)
 
 let normalize_radial_config (c : radial_gradient_config) =
-  (* CSS Images 4 section 3.1: inside a radial-gradient() prelude the default
+  (* CSS Images 4 section 3.2: inside a radial-gradient() prelude the default
      shape (ellipse), size (farthest-corner) and position (center) are implied,
      so the canonical form drops them. pp stays faithful to the AST; this
      elision is an optimize-side rewrite. *)
@@ -823,7 +823,7 @@ let normalize_conic_config (c : conic_gradient_config) =
   if angle == c.angle && position == c.position then c
   else { c with angle; position }
 
-(* CSS Images 4 sec. 3.4.1: [<color> <p1> <p2>] is defined as exactly [<color>
+(* CSS Images 4 sec. 3.5.1: [<color> <p1> <p2>] is defined as exactly [<color>
    <p1>, <color> <p2>], so two adjacent stops of one colour, each carrying a
    single position, are one stop carrying both. Left to right, so a longer run
    folds pairwise; a stop already holding two positions has nothing left to
@@ -1458,7 +1458,7 @@ module Radial_config = struct
     read_position_value t
 
   let read t : radial_gradient_config =
-    (* CSS Images 4 section 6.2: the [radial-gradient] prelude is
+    (* CSS Images 4 section 3.2: the [radial-gradient] prelude is
        [<ending-shape> || <size> || at <position> ||
        <color-interpolation-method>]? - the [||] combinator allows any order.
        Loop trying each missing slot until no progress is made. *)
@@ -1506,7 +1506,7 @@ let read_radial_gradient_config t : radial_gradient_config =
   Radial_config.read t
 
 let read_conic_gradient_config t : conic_gradient_config =
-  (* CSS Images 4 section 3.5.1: the [conic-gradient] prelude is [[from
+  (* CSS Images 4 section 3.3.1: the [conic-gradient] prelude is [[from
      <angle>]? || [at <position>]? || <color-interpolation-method>]? - the [||]
      combinator allows any order. Loop trying each missing slot until no
      progress is made. *)
@@ -1553,7 +1553,7 @@ let read_conic_gradient_config t : conic_gradient_config =
   then Cursor.err_invalid t "conic-gradient config";
   { angle = !angle; position = !position; interpolation = !interpolation }
 
-(* CSS Images 4 sec. 6.1 [linear-gradient] prelude: [ <angle> | to
+(* CSS Images 4 sec. 3.1 [linear-gradient] prelude: [ <angle> | to
    <side-or-corner> ]? || <color-interpolation-method> A bare interpolation, a
    bare direction, or both in either order are all valid. Returns [None] when
    the prelude consumed no tokens. *)

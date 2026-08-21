@@ -271,7 +271,7 @@ let scan_ident_slow r src buf =
   loop ();
   Buffer.contents buf
 
-(* 4.3.8 Consume an ident sequence, at the code-point level (section 4.2, see
+(* 4.3.12 Consume an ident sequence, at the code-point level (section 4.2, see
    [is_name_at]). Fast path (no [\] escape) returns [String.sub] of the source
    with no Buffer; the slow path seeds a Buffer with the copied prefix. *)
 let consume_ident_sequence r =

@@ -200,7 +200,7 @@ let custom_properties_integration () =
     (minify stylesheet)
 
 (* Regression: a custom property name starting with a digit after the -- is a
-   valid dashed-ident per CSS Syntax sec. 4.3.11. Tailwind emits these for
+   valid dashed-ident per CSS Values 4 sec. 4.3. Tailwind emits these for
    arbitrary-value classes like text-[1A202C]. *)
 let var_digit_after_dashes () =
   let css = ".x{font-size:var(--1A202C)}" in

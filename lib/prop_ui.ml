@@ -1098,7 +1098,7 @@ let color_scheme_of_idents t names : color_scheme =
   | [ "revert-layer" ] -> Revert_layer
   | [] -> Cursor.err t "empty color-scheme"
   | _ ->
-      (* CSS Color Adjust 1 section 2.1: [color-scheme] is [normal | [light |
+      (* CSS Color Adjust 1 section 2.2: [color-scheme] is [normal | [light |
          dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive with
          the list form; [only] is a modifier that must accompany a non-empty
          list; CSS-wide keywords can only stand alone. *)

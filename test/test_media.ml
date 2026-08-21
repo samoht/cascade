@@ -417,7 +417,7 @@ let media_not_takes_media_in_parens () =
     ~default:"@media not (width>=1px){a{color:red}}"
     ~spec:"@media not (min-width:1px){a{color:red}}"
 
-(* Media Queries 4 sec. 2.1: [all] is the identity media type, so [not all and
+(* Media Queries 4 sec. 2.3: [all] is the identity media type, so [not all and
    (X)] and [not (X)] are the same query. Default minify already spends Level 3
    compatibility by lowering [min-width] to range syntax, so it takes the
    shorter Level 4 [not] as well; [--enforce-spec] keeps both Level 3

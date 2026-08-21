@@ -769,7 +769,7 @@ let enum ?default label table t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (Syntax section 3.3). *)
+      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
       match List.assoc_opt (String.lowercase_ascii_preserve s) table with
       | Some v ->
           let _ = next t in
@@ -807,7 +807,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (Syntax section 3.3). *)
+      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
       match List.assoc_opt (String.lowercase_ascii_preserve s) idents with
       | Some v ->
           let _ = next t in

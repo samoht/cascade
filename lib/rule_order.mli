@@ -37,13 +37,13 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     order carries no meaning. Every block body is its own run context.
 
     A [@media] query of the Level 3 form [not all and (X)] is rewritten to the
-    Level 4 [not (X)] it is equal to under Media Queries 4 sec. 2.1, since [all]
+    Level 4 [not (X)] it is equal to under Media Queries 4 sec. 2.3, since [all]
     is the identity media type. That direction loses support in a Level 3
     parser, so it belongs to the projection rather than to emission.
 
     A custom property holding a font stack has each quoted multi-word family
     name rewritten as the [<ident>] sequence it unquotes to, which CSS Fonts 4
-    sec. 15.3 makes the same family name. Emission keeps whichever spelling the
+    sec. 2.1.1 makes the same family name. Emission keeps whichever spelling the
     author wrote, since unquoting an opaque token stream could corrupt a
     [content] use, so again only the projection can bring the two together.
 

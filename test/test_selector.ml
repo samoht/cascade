@@ -53,7 +53,7 @@ let check_minified_to expected input =
 (* Extra minifier invariant: minify is idempotent (a second pass produces no
    further change), and specificity is preserved. Strict AST equality between
    [original] and [reparsed] does not hold for inputs the minifier rewrites
-   (e.g. CSS Selectors 4 sec. 3.5 lets the printer drop a redundant [*] from a
+   (e.g. CSS Selectors 4 sec. 5.2 lets the printer drop a redundant [*] from a
    compound), so we compare the minified form against itself after re-parsing
    and re-minifying. *)
 let check_minified_equiv input =
@@ -159,13 +159,13 @@ let pseudo_class_cases () =
   check_construct ":last-child" Last_child;
   check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
   check_construct ":nth-child(odd)" (nth_child Odd);
-  (* Per CSS Selectors 4 section 14 the printer canonicalizes [even] to [2n] and
-     [2n+1] to [odd] under minify. *)
+  (* Per CSS Selectors 4 section 13.3.1 the printer canonicalizes [even] to [2n]
+     and [2n+1] to [odd] under minify. *)
   check_construct ":nth-child(2n)" (nth_child Even);
   check_construct ":nth-child(odd)" (nth_child (An_plus_b (2, 1)));
-  (* nth with Index and of clause. Per CSS Selectors 4 section 14 the printer
-     canonicalizes [<an+b>] to the shortest equivalent spelling - [(0n+5)] ->
-     [(5)] / [(1)] -> [:first-child]. *)
+  (* nth with Index and of clause. Per CSS Selectors 4 section 13.3.1 the
+     printer canonicalizes [<an+b>] to the shortest equivalent spelling -
+     [(0n+5)] -> [(5)] / [(1)] -> [:first-child]. *)
   check ~expected:":first-child" ":nth-child(1)";
   check ":nth-child(5)";
   check ~expected:":nth-child(odd of.item)" ":nth-child( odd of .item )";
@@ -372,7 +372,7 @@ let attribute_cases () =
   check_construct "[ns|attr]" (attribute ~ns:(Prefix "ns") "attr" Presence);
   check_construct "[*|attr]" (attribute ~ns:Any "attr" Presence);
 
-  (* Negative cases: CSS Syntax sec. 5.3.7 / sec. 4.3.5 mandate recovery for
+  (* Negative cases: CSS Syntax sec. 2.2 / sec. 4.3.5 mandate recovery for
      unterminated brackets (['\[']) and strings at EOF, so those are spec-valid
      and not tested here. *)
   neg_cursor read "[attr=]";
@@ -490,8 +490,9 @@ let roundtrip () =
   check "#id";
   check "*";
 
-  (* Pseudo-classes. Per CSS Selectors 4 section 14 the printer canonicalizes
-     [:nth-child] formulas to the shortest spec-equivalent spelling. *)
+  (* Pseudo-classes. Per CSS Selectors 4 section 13.3.1 the printer
+     canonicalizes [:nth-child] formulas to the shortest spec-equivalent
+     spelling. *)
   check ":hover";
   check ":nth-child(2)";
   check ~expected:":nth-child(odd)" ":nth-child(2n+1)";
@@ -1306,7 +1307,7 @@ let test_spec_forgiving_selector_lists () =
   check_minified_to ":is(.valid,#id)" ":is(.valid,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)" ":where(.valid,:future-pseudo,#id)";
   (* Single-argument [:is(.item)] is spec-equivalent to bare [.item] (same match
-     set and specificity per Selectors L4 sec. 17), but unwrapping it is a node
+     set and specificity per Selectors L4 sec. 4.2), but unwrapping it is a node
      change reserved for the optimizer's [Selector.canonicalize]; pp is
      lexical-only and holds the [:is()]. [:where()] holds too (and could not
      unwrap regardless, contributing zero specificity). *)
@@ -1389,7 +1390,7 @@ let spec_selector_scope_pseudo_edges () =
     "input:not([type], [type=hidden])";
   check_minified_to "a:before" "a::before";
   check_minified_to ".a:before:hover" ".a::before:hover";
-  (* CSS Selectors 4 section 3.5: [*] in a non-solitary compound is redundant,
+  (* CSS Selectors 4 section 5.2: [*] in a non-solitary compound is redundant,
      but dropping it is a node change reserved for the optimizer's
      [Selector.canonicalize]; pp is lexical-only and holds it. *)
   check_minified_to "::slotted(*:not([hidden]))" "::slotted(*:not([hidden]))";

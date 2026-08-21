@@ -18,7 +18,7 @@
 ### Minification
 
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
-  the identity media type (Media Queries 4 sec. 2.1), so the two spell the same
+  the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering
   `min-width` to range syntax inside that very query. `--enforce-spec` keeps
   both Level 3 spellings
@@ -273,7 +273,7 @@
   the flag identical (#271)
 - It rewrites a quoted multi-word font name in a custom property as the
   `<ident>` sequence it unquotes to, the same family name under CSS Fonts 4
-  sec. 15.3: `--font-sans: ui-sans-serif, "Noto Color Emoji"` and
+  sec. 2.1.1: `--font-sans: ui-sans-serif, "Noto Color Emoji"` and
   `--font-sans: ui-sans-serif, Noto Color Emoji` reach one form. The structural
   comparator already folded the two together; the projection did not (#290)
 - Under `--lossless` it keys a `color(srgb ...)` whose channels land on whole

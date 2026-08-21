@@ -1651,7 +1651,7 @@ type list_style_image =
   | Revert_layer
   | Var of list_style_image var
 
-(* CSS Lists 3 sec. 4.1: [list-style] is the shorthand for [list-style-type],
+(* CSS Lists 3 sec. 3.6: [list-style] is the shorthand for [list-style-type],
    [list-style-position], and [list-style-image]. All components are optional;
    omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
    single bare [none] keyword in the source sets both [type_] and [image] to
@@ -2506,7 +2506,7 @@ type background_size =
   | Revert_layer
   | Var of background_size var
 
-(** CSS Color 5 section 12: optional hue-interpolation method that follows a
+(** CSS Color 5 section 9.1: optional hue-interpolation method that follows a
     polar color space (lch / oklch / hsl / hwb). *)
 type hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
 
@@ -2599,7 +2599,7 @@ type border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 sec. 5. *)
+  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 sec. 4.1. *)
 
 type conic_gradient_config = {
   angle : angle option;  (** [from <angle>] starting angle *)
@@ -2855,7 +2855,7 @@ type border_image_width_item =
 type border_image_outset_item = Number of float | Length of length
 type border_image_repeat_keyword = Stretch | Repeat | Round | Space
 
-(* CSS Backgrounds 3 sec. 6.3: [border-image-repeat] is one or two keywords
+(* CSS Backgrounds 3 sec. 5.5: [border-image-repeat] is one or two keywords
    (block then inline); the longhand also takes the CSS-wide keywords. *)
 type border_image_repeat =
   | Repeats of border_image_repeat_keyword list
@@ -2866,7 +2866,7 @@ type border_image_repeat =
   | Revert_layer
   | Var of border_image_repeat var
 
-(* CSS Backgrounds 3 sec. 6.2: [border-image-width] is one to four items; the
+(* CSS Backgrounds 3 sec. 5.3: [border-image-width] is one to four items; the
    longhand also takes the CSS-wide keywords. *)
 type border_image_width =
   | Widths of border_image_width_item list
@@ -2877,7 +2877,7 @@ type border_image_width =
   | Revert_layer
   | Var of border_image_width var
 
-(* CSS Backgrounds 3 sec. 6.4: [border-image-outset] is one to four items; the
+(* CSS Backgrounds 3 sec. 5.4: [border-image-outset] is one to four items; the
    longhand also takes the CSS-wide keywords. *)
 type border_image_outset =
   | Outsets of border_image_outset_item list
@@ -2888,7 +2888,7 @@ type border_image_outset =
   | Revert_layer
   | Var of border_image_outset var
 
-(** CSS Masking 1 sec. 6 [<mask-border-mode>]: shared with the [border_image]
+(** CSS Masking 1 sec. 8.2 [<mask-border-mode>]: shared with the [border_image]
     record because [mask-border] is otherwise the same shorthand as
     [border-image] (the mode is always [None] for the latter). *)
 type mask_border_mode = Alpha | Luminance
@@ -3283,8 +3283,8 @@ type position_try_order =
   | Revert_layer
   | Var of position_try_order var
 
-(* CSS Anchor Positioning 1 sec. 4: [position-try] is [<'position-try-order'> ||
-   <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
+(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
+   || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
    omitted from the serialisation. *)
 type position_try =
   | Try of position_try_order * position_try_fallbacks
@@ -3645,9 +3645,9 @@ type break_inside_value =
   | Revert_layer
   | Var of break_inside_value var
 
-(* CSS Fragmentation 3 sec. 6 deprecated [page-break-before / -after / -inside]
-   aliases. The shorter value vocabulary makes them their own type rather than
-   overload [break_value]. *)
+(* CSS Fragmentation 3 sec. 3.4 deprecated [page-break-before / -after /
+   -inside] aliases. The shorter value vocabulary makes them their own type
+   rather than overload [break_value]. *)
 type page_break_value =
   | Auto
   | Always (* maps to [break-before/after: page] *)
@@ -3663,7 +3663,7 @@ type page_break_inside_value =
   | Inherit
   | Var of page_break_inside_value var
 
-(* CSS Paged Media 3 sec. 6.1 [size] descriptor: optional page size keyword
+(* CSS Paged Media 3 sec. 7.1 [size] descriptor: optional page size keyword
    (paper sheet name), explicit dimensions, [auto], or a page size combined with
    an orientation. *)
 type page_size_name =
@@ -3700,7 +3700,7 @@ type columns_value =
   | Count of int
   | Width of length
   | Both of length * int
-      (** [<column-width> <column-count>] per CSS Multicol 2 sec. 6.1. The two
+      (** [<column-width> <column-count>] per CSS Multicol 2 sec. 4.5. The two
           components can appear in either order in the source; we canonicalise
           to [<width>, <count>] internally so the printer always emits the width
           first. *)
@@ -3715,7 +3715,7 @@ type columns_value =
   | Revert_layer
   | Var of columns_value var
 
-(* CSS Multicol 2 sec. 4: [column-width] is [auto | <length [0,inf]>]. *)
+(* CSS Multicol 2 sec. 4.1: [column-width] is [auto | <length [0,inf]>]. *)
 type column_width =
   | Auto
   | Width of length
@@ -3726,7 +3726,7 @@ type column_width =
   | Revert_layer
   | Var of column_width var
 
-(* CSS Multicol 2 sec. 3: [column-count] is [auto | <integer [1,inf]>]. *)
+(* CSS Multicol 2 sec. 4.3: [column-count] is [auto | <integer [1,inf]>]. *)
 type column_count =
   | Auto
   | Count of int
@@ -3872,16 +3872,16 @@ type svg_paint =
   | Color of color
   | Url of string * svg_paint option
   | Context_fill
-      (** SVG2 sec. 11.2 [context-fill] - inherits the fill paint of the context
+      (** SVG2 sec. 13.2 [context-fill] - inherits the fill paint of the context
           element, used in marker / pattern / use trees. *)
   | Context_stroke
-      (** SVG2 sec. 11.2 [context-stroke] - mirror of [Context_fill]. *)
+      (** SVG2 sec. 13.2 [context-stroke] - mirror of [Context_fill]. *)
   | Var of svg_paint var
 
-(** SVG 2 sec. 13.5 / 14.4 [<fill-rule>]: which points count as inside a shape
-    when its subpaths overlap. Shared by [fill-rule] and [clip-rule]; the
-    argument form inside [polygon()] is {!clip_path_fill_rule}, which carries no
-    CSS-wide keywords. *)
+(** SVG 2 sec. 13.4.2 and CSS Masking 1 sec. 6.2 [<fill-rule>]: which points
+    count as inside a shape when its subpaths overlap. Shared by [fill-rule] and
+    [clip-rule]; the argument form inside [polygon()] is {!clip_path_fill_rule},
+    which carries no CSS-wide keywords. *)
 type fill_rule =
   | Nonzero
   | Evenodd
@@ -3892,7 +3892,7 @@ type fill_rule =
   | Revert_layer
   | Var of fill_rule var
 
-(** SVG 2 sec. 13.3 [stroke-linecap]: the shape drawn at the ends of an open
+(** SVG 2 sec. 13.5.4 [stroke-linecap]: the shape drawn at the ends of an open
     subpath and at the ends of each dash. *)
 type stroke_linecap =
   | Butt
@@ -3905,7 +3905,7 @@ type stroke_linecap =
   | Revert_layer
   | Var of stroke_linecap var
 
-(** SVG 2 sec. 13.3 [stroke-linejoin]: the shape drawn where two path segments
+(** SVG 2 sec. 13.5.5 [stroke-linejoin]: the shape drawn where two path segments
     meet. [miter_clip] and [arcs] are the Level 2 additions. *)
 type stroke_linejoin =
   | Miter
@@ -3920,7 +3920,7 @@ type stroke_linejoin =
   | Revert_layer
   | Var of stroke_linejoin var
 
-(** SVG 2 sec. 13.3 [stroke-miterlimit]: the ratio at which a miter join is
+(** SVG 2 sec. 13.5.5 [stroke-miterlimit]: the ratio at which a miter join is
     converted to a bevel. The specification makes a value below 1 invalid. *)
 type stroke_miterlimit =
   | Number of float
@@ -3932,11 +3932,11 @@ type stroke_miterlimit =
   | Revert_layer
   | Var of stroke_miterlimit var
 
-(** SVG 2 sec. 13.3: one dash length. A bare [<number>] is in user units, which
-    is why this is not plain [length_percentage]. *)
+(** SVG 2 sec. 13.5.6: one dash length. A bare [<number>] is in user units,
+    which is why this is not plain [length_percentage]. *)
 type dash_length = Number of float | Length of length_percentage
 
-(** SVG 2 sec. 13.3 [stroke-dashoffset]. *)
+(** SVG 2 sec. 13.5.6 [stroke-dashoffset]. *)
 type stroke_dashoffset =
   | Dash of dash_length
   | Inherit
@@ -3946,7 +3946,7 @@ type stroke_dashoffset =
   | Revert_layer
   | Var of stroke_dashoffset var
 
-(** SVG 2 sec. 13.3 [stroke-dasharray]: [none] or a dash pattern. The grammar
+(** SVG 2 sec. 13.5.6 [stroke-dasharray]: [none] or a dash pattern. The grammar
     separates entries by comma and/or whitespace and the rendered pattern is the
     flat sequence either way, so both spellings read to one list. *)
 type stroke_dasharray =
@@ -3959,10 +3959,10 @@ type stroke_dasharray =
   | Revert_layer
   | Var of stroke_dasharray var
 
-(** SVG 2 sec. 13.7 [paint-order] operand. *)
+(** SVG 2 sec. 13.8 [paint-order] operand. *)
 type paint_order_keyword = Fill | Stroke | Markers
 
-(** SVG 2 sec. 13.7 [paint-order]: [normal | [ fill || stroke || markers ]]. The
+(** SVG 2 sec. 13.8 [paint-order]: [normal | [ fill || stroke || markers ]]. The
     written order is the paint order, and any keyword left out is painted last
     in the order [normal] would use, so a trailing run that already matches
     [normal] is redundant. Entries are distinct: [||] takes each operand at most
@@ -3977,18 +3977,18 @@ type paint_order =
   | Revert_layer
   | Var of paint_order var
 
-(** SVG 2 sec. 7.10 [vector-effect] operand. *)
+(** SVG 2 sec. 8.13 [vector-effect] operand. *)
 type vector_effect_keyword =
   | Non_scaling_stroke
   | Non_scaling_size
   | Non_rotation
   | Fixed_position
 
-(** SVG 2 sec. 7.10 host coordinate space for a vector effect. [viewport] is
+(** SVG 2 sec. 8.13 host coordinate space for a vector effect. [viewport] is
     what an omitted space means. *)
 type vector_effect_space = Viewport | Screen
 
-(** SVG 2 sec. 7.10 [vector-effect]:
+(** SVG 2 sec. 8.13 [vector-effect]:
     [none | [ non-scaling-stroke | non-scaling-size | non-rotation |
      fixed-position ]+ [ viewport | screen ]?]. *)
 type vector_effect =
@@ -4308,7 +4308,7 @@ type clip =
   | Revert_layer
   | Var of clip var
 
-(** CSS Masking 1 sec. 3.6 [<geometry-box>] reference box for [clip-path]: the
+(** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
     [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
 type clip_geometry_box =
   | Margin_box
@@ -4570,7 +4570,7 @@ type 'a property =
   | Grid_template_areas : grid_template_areas property
   | Grid_template : grid_template property
   | Grid : grid_template property
-      (** CSS Grid 1 sec. 8 [grid] shorthand. Cascade treats it as a free-form
+      (** CSS Grid 1 sec. 7.8 [grid] shorthand. Cascade treats it as a free-form
           [grid_template] for now: the simple cases (track-list, grid-template
           syntax with area strings) round-trip through the same AST as
           [grid-template], and inputs that exercise the auto-flow branches fall

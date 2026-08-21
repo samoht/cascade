@@ -2464,7 +2464,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_inline, value -> vars_of_border value
   | Border_inline_start, value -> vars_of_border value
   | Border_inline_end, value -> vars_of_border value
-  (* Logical sizing longhands (CSS Logical 1 sec. 4.2): the same
+  (* Logical sizing longhands (CSS Logical 1 sec. 4.1): the same
      <length-percentage> as the physical property each maps to. *)
   | Inline_size, value -> vars_of_length_percentage value
   | Min_inline_size, value -> vars_of_length_percentage value
@@ -2505,11 +2505,11 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Line_height_step, value -> vars_of_length value
   | Offset_distance, value -> vars_of_length_percentage value
   | Transition_property, value -> vars_of_transition_property_list value
-  (* CSS Box Alignment 3 sec. 6.5: a one-value [place-self] sets both, so the
+  (* CSS Box Alignment 3 sec. 6.3: a one-value [place-self] sets both, so the
      reader stores the [var()] in each half; the dedup collapses them. *)
   | Place_self, (align, justify) ->
       vars_of_align_self align @ vars_of_justify_self justify
-  (* CSS Backgrounds 3 sec. 6.2: [border-image-slice] is numbers, percentages
+  (* CSS Backgrounds 3 sec. 5.2: [border-image-slice] is numbers, percentages
      and the [fill] keyword, none of which carries a var handle. *)
   | Border_image_slice, _ -> []
   (* [shape-outside] and an unrecognised property are held as raw text and an

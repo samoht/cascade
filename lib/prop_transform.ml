@@ -369,7 +369,7 @@ let pp_matrix_3d : _ Pp.t =
    normal transform functions. This helper determines if a transform is a Var *)
 let is_transform_var : transform -> bool = function Var _ -> true | _ -> false
 
-(* CSS Transforms 1 sec. 11: collapse a transform function to a shorter
+(* CSS Transforms 1 sec. 12: collapse a transform function to a shorter
    equivalent when an axis is zero / unity / matches another. Spec-equivalent in
    every case - they all map to the same matrix. *)
 let canonicalise_transform : transform -> transform = function
@@ -828,7 +828,7 @@ let rec pp_translate_value : translate_value Pp.t =
   | Var v -> pp_var pp_translate_value ctx v
 
 let rec read_translate_value t : translate_value =
-  (* Per CSS Transforms 2 sec. 3.5: [<length-percentage> <length-percentage>?
+  (* Per CSS Transforms 2 sec. 5: [<length-percentage> <length-percentage>?
      <length>?]. Same two [var()] shapes as [read_scale]:
 
      - [translate: var(--t)] is a whole-value [var()] -- produce [Var _]. -
@@ -869,7 +869,7 @@ let rec read_translate_value t : translate_value =
     ~calls:[ ("var", read_var_or_components) ]
     ~default:read_lengths t
 
-(* CSS Transforms 2 sec. 3.3: the standalone [rotate] / individual transform
+(* CSS Transforms 2 sec. 5: the standalone [rotate] / individual transform
    properties accept [<angle>] but reject the bare [0] from the CSS Values
    [<zero>] token shortcut (browsers don't apply the parse-time fallback). Emit
    the unit even on zero so [rotate: 0deg] survives minification. *)
@@ -907,9 +907,9 @@ let rec pp_rotate_value : rotate_value Pp.t =
   | Axis (0., 1., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (Y a)
   | Axis (0., 0., 1., a) when Pp.minified ctx -> pp_rotate_value ctx (Z a)
   | Axis (x, y, z, a) ->
-      (* CSS Transforms 2 sec. 3.3 [rotate] [<angle> <number>{3}] is shorter
-         under minify when the angle leads (csso convention) and the second /
-         third numbers drop the separator if they start with a sign. *)
+      (* CSS Transforms 2 sec. 5 [rotate] [<angle> <number>{3}] is shorter under
+         minify when the angle leads (csso convention) and the second / third
+         numbers drop the separator if they start with a sign. *)
       let pp_sep ctx (next : float) =
         if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
       in
@@ -972,7 +972,7 @@ let read_rotate_angle_axis_tail angle t =
       let third = Cursor.number t in
       (Axis (first, second, third, angle) : rotate_value)
 
-(* CSS Transforms 2 sec. 3.3 [rotate] also accepts angle then axis: [<angle>
+(* CSS Transforms 2 sec. 5 [rotate] also accepts angle then axis: [<angle>
    x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
    consume the angle, then look for a trailing axis. *)
 let read_rotate_angle_then_axis t : rotate_value =
@@ -1037,8 +1037,8 @@ let rec read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  (* CSS Transforms 2 sec. 3.6: [<number-percentage>{1,3}]. Two [var()] shapes
-     to keep distinct: [scale: var(--s)] is a whole-value var (produce [Var _]);
+  (* CSS Transforms 2 sec. 5: [<number-percentage>{1,3}]. Two [var()] shapes to
+     keep distinct: [scale: var(--s)] is a whole-value var (produce [Var _]);
      [scale: var(--x) var(--y)] is per-slot (produce [XY _]). They are
      indistinguishable until a second component appears, so peel the first
      [var()] as a whole-value [Var]; if another follows, the saved snapshot
@@ -1103,7 +1103,7 @@ module Transform_origin = struct
         match Cursor.option read_length t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
-    (* CSS Transforms 1 sec. 3: a single <length-percentage> sets the X origin
+    (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin
        and defaults Y to [center] ([50%]); it is not duplicated into Y. *)
     | None -> X x
 

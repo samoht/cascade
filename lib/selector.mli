@@ -81,12 +81,12 @@ val pp : t Pp.t
 (** [pp] pretty-prints selectors. *)
 
 val top_level_is_unwrap : t -> t
-(** [top_level_is_unwrap sel] applies the CSS Selectors 4 sec. 17 [:is()] unwrap
-    at the top level of a rule selector: a whole-selector [:is(s1, s2, ...)] or
-    [:is] members of a top-level list flatten into the enclosing selector list
-    when each argument is a structurally simple selector ([Element] / [Class] /
-    [Id] / [Universal] / [Attribute], or a [Compound] of those). Returns [sel]
-    unchanged otherwise. *)
+(** [top_level_is_unwrap sel] applies the CSS Selectors 4 sec. 4.2 [:is()]
+    unwrap at the top level of a rule selector: a whole-selector
+    [:is(s1, s2, ...)] or [:is] members of a top-level list flatten into the
+    enclosing selector list when each argument is a structurally simple selector
+    ([Element] / [Class] / [Id] / [Universal] / [Attribute], or a [Compound] of
+    those). Returns [sel] unchanged otherwise. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ?minify sel] renders a selector to a string. *)
@@ -184,7 +184,7 @@ val read_relative : Cursor.t -> t
 val drop_redundant_nesting_prefix : t -> t
 (** [drop_redundant_nesting_prefix sel] removes a redundant leading [&] from a
     nested-rule selector: [& .bar] -> [.bar], [& > .bar] -> [> .bar]. A nested
-    selector is implicitly relative to the parent [&] (CSS Nesting 1 sec. 2), so
+    selector is implicitly relative to the parent [&] (CSS Nesting 1 sec. 3), so
     this is shape-preserving for selectors used in a nested position. *)
 
 val read_combinator : Cursor.t -> combinator

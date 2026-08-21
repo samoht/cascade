@@ -488,7 +488,7 @@ let trim_unknown_at_prelude prelude =
   String.sub prelude 0 (trim_end (n - 1))
 
 let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
-  (* CSS Syntax 3 section 5.4.2: an at-rule terminates on [;], [}], or EOF. When
+  (* CSS Syntax 3 section 5.5.2: an at-rule terminates on [;], [}], or EOF. When
      the Parser captures an unterminated nested block ([(...], [[...], [{...])
      its source slice can include the at-rule terminator or the enclosing
      block's close - don't echo them as part of the prelude or each round-trip
@@ -531,7 +531,7 @@ let printable_statements ctx statements =
 module String_set = Pp.String_set
 
 let normalise_charset statements =
-  (* CSS Syntax 3 sec. 2.2: [@charset] is an encoding-declaration byte pattern
+  (* CSS Syntax 3 sec. 8.3: [@charset] is an encoding-declaration byte pattern
      recognised before tokenization, not a stylesheet at-rule after parsing. In
      minified output the serializer emits UTF-8, so [@charset "UTF-8"] is
      redundant; keep at most the first non-UTF-8 declaration for byte-level
@@ -1502,12 +1502,12 @@ let read_layer_name_component (r : Cursor.t) : string =
   extend ();
   Buffer.contents buf
 
-(* CSS Conditional Rules section 3 [@import] prelude: [<url> [layer |
-   layer(<layer-name>)]? [supports(<supports-condition>)]? <media-query-list>?].
-   The [~keep_url_repr] flavour preserves the original quote / [url(...)] form
-   in [url] so the at-rule dispatch can round-trip author input verbatim; the
-   canonical flavour ([keep_url_repr=false]) stores the decoded string for the
-   top-level [read_import_rule] reader. *)
+(* CSS Cascade 5 sec. 2 [@import] prelude: [<url> [layer | layer(<layer-name>)]?
+   [supports(<supports-condition>)]? <media-query-list>?]. The [~keep_url_repr]
+   flavour preserves the original quote / [url(...)] form in [url] so the
+   at-rule dispatch can round-trip author input verbatim; the canonical flavour
+   ([keep_url_repr=false]) stores the decoded string for the top-level
+   [read_import_rule] reader. *)
 let read_import_url ~keep_url_repr (r : Cursor.t) =
   let pos = Cursor.position r in
   let value = Cursor.one_of [ Cursor.url; Cursor.string ] r in
@@ -1786,7 +1786,7 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
-(* CSS Fonts 4 sec. 11.2 wants the first bound of a descriptor range <= the
+(* CSS Fonts 4 sec. 4.4 wants the first bound of a descriptor range <= the
    second. Browsers keep a descending range, so the readers accept it but record
    a warning here; [Css.of_string ~strict] then turns the warning into an
    error. *)
@@ -2103,7 +2103,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         if Cursor.peek_semicolon r then Cursor.skip r;
         Some descriptor
     | exception Error.Parse_error e ->
-        (* CSS Fonts 4 sec. 11.2 / CSS Syntax 3 sec. 5.4.4: a descriptor that
+        (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 sec. 5.5.5: a descriptor that
            does not parse - an unknown name (Fontsource's [font-named-instance])
            or an invalid value of a known one ([font-display:maybe]) - is
            dropped and the rest of the @font-face is kept, matching browsers. *)
@@ -2131,9 +2131,9 @@ let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
-  (* CSS Fonts 4 sec. 11.2.1: missing [font-family] / [src] is a semantic
-     mismatch, not a syntax one. [validate_partial_statement] flags it; the
-     syntactic reader accepts. *)
+  (* CSS Fonts 4 sec. 4.1: missing [font-family] / [src] is a semantic mismatch,
+     not a syntax one. [validate_partial_statement] flags it; the syntactic
+     reader accepts. *)
   let descriptors = Cursor.braces read_font_face_block r in
   Font_face descriptors
 
@@ -2305,7 +2305,7 @@ let read_counter_style (r : Cursor.t) : statement =
   counter_style_validate r descriptors;
   Counter_style (name, descriptors)
 
-(* CSS Paged Media 3 sec. 3.1: a page selector is an optional page name followed
+(* CSS Paged Media 3 sec. 4.2: a page selector is an optional page name followed
    by zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
 let page_selector_error r s =
   Cursor.err_invalid r ("invalid @page selector: " ^ s)
@@ -2330,7 +2330,7 @@ let rec page_selector_skip_ws s len i =
     page_selector_skip_ws s len (i + 1)
   else i
 
-(* CSS Paged Media 3 section 3.1: [<page-selector-list> = <page-selector>#],
+(* CSS Paged Media 3 section 4.3: [<page-selector-list> = <page-selector>#],
    [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
    the closed set [first | left | right | blank], so [@page invoice:blank:first]
    is well-formed. *)
@@ -2840,7 +2840,7 @@ let unknown_block_body slice value =
       in
       slice first.Loc.start_pos last.Loc.end_pos |> trim_unknown_block_body
 
-(* CSS Syntax 3 sec. 5.4.2 "consume an at-rule": after the at-keyword has been
+(* CSS Syntax 3 sec. 5.5.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
    prelude/block strings are sliced from the original source so the at-rule
    round-trips byte-for-byte even when its grammar is unknown. *)
@@ -2861,7 +2861,7 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
         ignore (Cursor.next_raw r)
     | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
       ->
-        (* CSS Syntax 3 section 5.4.2: when an unterminated nested block
+        (* CSS Syntax 3 section 5.5.2: when an unterminated nested block
            ([(...], [[...]) inside the at-rule's body extends to EOF, the
            Parser's source slice carries the close [}] and any trailing
            whitespace from outside the block - trim them so the serializer
@@ -3029,7 +3029,7 @@ let read_rule_selector ?(nested = false) r =
   let c = Cursor.sub ?eof_loc r prelude in
   (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
      caller intact, rather than rewrapping (which erases the structured error
-     and relocates it). CSS Nesting 1 sec. 2: a nested rule's prelude is a
+     and relocates it). CSS Nesting 1 sec. 3: a nested rule's prelude is a
      [<relative-selector-list>], so it may start with a combinator ([> .bar])
      implicitly relative to the parent [&]. *)
   Cursor.with_context c "selector" (fun () ->
@@ -3296,8 +3296,8 @@ and read_moz_document (r : Cursor.t) : statement =
   Moz_document (conditions, content)
 
 and read_scope (r : Cursor.t) : statement =
-  (* CSS Scoping section 3: [@scope <start> to <end> { ... }]. The two selectors
-     are kept as raw strings; the block is consumed normally. *)
+  (* CSS Cascade 6 sec. 3.5.2: [@scope <start> to <end> { ... }]. The two
+     selectors are kept as raw strings; the block is consumed normally. *)
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
   let prelude_components = Cursor.drain_until_block r in
@@ -3523,7 +3523,7 @@ and read_rule_decl_or_nested selector inner decls nested =
       if Cursor.peek_semicolon inner then Cursor.skip inner;
       `Continue (d :: decls, nested)
   | None -> read_nested_rule_or_done selector inner decls nested
-  (* CSS Nesting 1 sec. 2 lets a nested rule start with an identifier, so
+  (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
      as one. *)
@@ -3637,7 +3637,7 @@ let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
         match block with
         | Some b -> [ Component.Block b ]
         | None ->
-            (* Section 5.4.2 "consume an at-rule" terminates on [;] or EOF and
+            (* Section 5.5.2 "consume an at-rule" terminates on [;] or EOF and
                drops the terminator. Readers like [read_layer] and
                [read_charset] then expect a trailing semicolon; synthesize one
                so the replayed cursor matches the original token shape
@@ -3839,8 +3839,8 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
   let validate_prelude = validate_partial_prelude () in
-  (* CSS Conditional Rules 5 section 4.6: [@else] is a continuation rule and
-     must follow [@when] or another [@else]. A bare top-level [@else] is a parse
+  (* CSS Conditional Rules 5 section 4: [@else] is a continuation rule and must
+     follow [@when] or another [@else]. A bare top-level [@else] is a parse
      error. *)
   let previous : statement option ref = ref Option.None in
   let statements =

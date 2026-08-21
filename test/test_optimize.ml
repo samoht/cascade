@@ -1356,7 +1356,7 @@ let test_merge_consecutive_identical () =
 
 let test_combine_identical_oklab_none () =
   (* A [none] channel in oklab() is a missing component that matters only for
-     color interpolation (CSS Color 4 sec. 4.2.3): color-mix, gradients, and
+     color interpolation (CSS Color 4 sec. 4.4): color-mix, gradients, and
      transitions carry it forward. It does not affect rule grouping, which is
      set union (Selectors 4 sec. 4.2) and never interpolates. So two rules with
      byte-identical oklab-none declarations combine into one comma-selector rule
@@ -2962,11 +2962,11 @@ let c61_no_merge_starting_style () =
 
 let c61_import_substitution_point () =
   (* A misplaced @import - one that follows a style rule - is invalid, and every
-     browser ignores it (CSS Cascade 5 section 3.5, CSS 2.1 section 6.3). It is
-     a no-op, not a cascade boundary and not a live substitution point: an
-     invalid import is never resolved, even under inline-imports. So the
-     optimizer drops it, and the now-adjacent same-selector rules merge. Matches
-     browsers and csso, and stays idempotent in a single pass. *)
+     browser ignores it (CSS Cascade 5 section 2, CSS 2.1 section 6.3). It is a
+     no-op, not a cascade boundary and not a live substitution point: an invalid
+     import is never resolved, even under inline-imports. So the optimizer drops
+     it, and the now-adjacent same-selector rules merge. Matches browsers and
+     csso, and stays idempotent in a single pass. *)
   let stylesheet =
     match
       Css.of_string ~strict:false
@@ -4015,7 +4015,7 @@ let c64_child_layer_one_anonymous () =
   let optimized = Css.Optimize.stylesheet input in
   (* Per shortest-wins, two adjacent [@layer foo] blocks inside the same
      anonymous parent merge into one - they refer to the same nested layer per
-     Cascade L6 sec. 6.4.2.1, so collapsing is spec-allowed. *)
+     Cascade L5 sec. 6.4.2.1, so collapsing is spec-allowed. *)
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check bool)
     "anonymous parent preserved" true

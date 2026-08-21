@@ -403,7 +403,7 @@ let assert_color_branch input =
             serialized
       | Some reparsed ->
           (* After one minification pass the color is in its canonical short
-             form (CSS Color 4 section 12.1 hex shortening, etc.), so further
+             form (CSS Color 4 section 5.2 hex shortening, etc.), so further
              passes must be idempotent at the string level. Direct AST equality
              with [color] does not hold for shortenable inputs like "#112233" ->
              "#123". *)
@@ -680,10 +680,10 @@ let calc_identity_targets =
     ("flex-grow", "var(--a)", Some "0");
   ]
 
-(* CSS Values 4 sec. 10.7 identity law: wrapping a value in a value-independent
-   identity ([x * 1], [1 * x], [x / 1], [x + 0], [0 + x], [x - 0]) and
-   optimising lands on the same normal form as optimising the bare value - the
-   [var()] reference and the [calc()] wrapper survive, only the redundant
+(* CSS Values 4 sec. 10.10.1 identity law: wrapping a value in a
+   value-independent identity ([x * 1], [1 * x], [x / 1], [x + 0], [0 + x], [x -
+   0]) and optimising lands on the same normal form as optimising the bare value
+   - the [var()] reference and the [calc()] wrapper survive, only the redundant
    arithmetic folds. Drives the shared [Values.calc_identity] through every
    evaluator the optimize pass reaches, so the generic and per-type folds cannot
    drift. *)

@@ -190,7 +190,7 @@ let rec read_break_value t : break_value =
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
       ("all", All);
-      (* CSS Fragmentation 3 sec. 6: legacy [page-break-*: always] maps to
+      (* CSS Fragmentation 3 sec. 3.4: legacy [page-break-*: always] maps to
          [break-*: page]. The reader accepts the legacy spelling so the
          page-break alias dispatch (which routes to [Break_before/after]) can
          keep using this reader. *)
@@ -291,7 +291,7 @@ let read_columns_components t : columns_value =
   | None -> columns_value_of_component first
 
 let rec read_columns_value t : columns_value =
-  (* CSS Multicol 2 sec. 6.1: [<'column-width'> || <'column-count'>], where
+  (* CSS Multicol 2 sec. 4.5: [<'column-width'> || <'column-count'>], where
      column-width is [auto | <length>] and column-count is [auto | <integer>].
      Read up to two space-separated components in any order, then assign the
      length to the width slot and the integer to the count slot. An explicit

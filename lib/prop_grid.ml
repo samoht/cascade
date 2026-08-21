@@ -16,7 +16,7 @@ open Properties_intf
 open Prop_common
 open Prop_align
 
-(* CSS Grid 2 sec. 7.6: [grid-auto-flow] is [ row | column ] || dense, and an
+(* CSS Grid 2 sec. 7.7: [grid-auto-flow] is [ row | column ] || dense, and an
    omitted axis means [row], so [row dense] and [dense] are one value. *)
 let normalize_grid_auto_flow : grid_auto_flow -> grid_auto_flow =
  fun value -> match value with Row_dense -> Dense | other -> other
@@ -159,7 +159,7 @@ let rec pp_grid_template : grid_template Pp.t =
   | Vmax f -> Pp.unit ctx f "vmax"
   | Zero -> Pp.char ctx '0'
   | Length l -> pp_length ctx l
-  (* CSS Grid 2 sec. 7.2: [<flex>] is [<number>fr]; the unit-drop rule is for
+  (* CSS Grid 2 sec. 7.2.4: [<flex>] is [<number>fr]; the unit-drop rule is for
      [<length>] only. [0fr] is a zero flex factor, distinct from a [0]
      [<length>] in [grid-template]'s union grammar. *)
   | Fr f ->
@@ -426,7 +426,7 @@ let rec pp_place_items : place_items Pp.t =
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_items a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
-      (* CSS Align 3 sec. 6.1: when align and justify render to the same token,
+      (* CSS Align 3 sec. 7.3: when align and justify render to the same token,
          the single-value spelling is canonical. *)
       if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
       else (
@@ -985,7 +985,7 @@ let rec read_grid t : grid_template =
   if Cursor.looking_at_func "var" t then
     (Var (Values.read_var read_grid t) : grid_template)
   else if grid_template_needs_raw_template (Cursor.remaining t) then
-    (* CSS Grid 1 sec. 10.1 [<'grid-template'>] form of [grid]: when the input
+    (* CSS Grid 1 sec. 7.8 [<'grid-template'>] form of [grid]: when the input
        contains a [<string>] token, the value is the [<line-names>? <string>
        <track-size>? <line-names>?]+ form, which [read_grid_template] already
        handles. *)

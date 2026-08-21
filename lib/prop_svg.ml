@@ -22,7 +22,7 @@ let rec numeric_miterlimit_calc_leaves :
           numeric_miterlimit_calc_leaves right )
   | other -> other
 
-(* SVG 2 sec. 13.7: keywords left out are painted last, in the order [normal]
+(* SVG 2 sec. 13.8: keywords left out are painted last, in the order [normal]
    would use. So a value denotes the full order [written @ missing-in-normal-
    order], and the shortest spelling is the shortest prefix of that order which
    expands back to it. [fill stroke markers] expands from nothing, so it is
@@ -32,7 +32,7 @@ let paint_order_normal : paint_order_keyword list = [ Fill; Stroke; Markers ]
 let paint_order_expand (written : paint_order_keyword list) =
   written @ List.filter (fun k -> not (List.mem k written)) paint_order_normal
 
-(* SVG 2 sec. 7.10: [viewport] is what an omitted space means, so writing it is
+(* SVG 2 sec. 8.13: [viewport] is what an omitted space means, so writing it is
    redundant. *)
 let normalize_vector_effect (value : vector_effect) : vector_effect =
   match value with
@@ -234,7 +234,7 @@ let rec pp_svg_paint : svg_paint Pp.t =
       match fallback with
       | None -> ()
       | Some fb ->
-          (* CSS Syntax 3 sec. 5.4.6: a [url(...)] token closes with [)], so the
+          (* CSS Syntax 3 sec. 9: a [url(...)] token closes with [)], so the
              whitespace before a fallback keyword/colour can be elided under
              minify. *)
           Pp.sp ctx ();

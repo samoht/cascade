@@ -286,7 +286,7 @@ let spec_fontface_metric_numeric_edges () =
 (* CSS Custom Properties 1 sec. 3 substitutes var() in properties only, and
    @font-face descriptors are not properties: no descriptor grammar accepts it.
    Every one of them is therefore dropped with a warning while the rest of the
-   block is kept (CSS Fonts 4 sec. 11.2, CSS Syntax 3 sec. 5.4.4), and
+   block is kept (CSS Fonts 4 sec. 4.1, CSS Syntax 3 sec. 5.5.5), and
    ~strict:true turns that warning into an error. *)
 let spec_fontface_var_descriptor_edges () =
   let kept = "@font-face{font-family:Brand;src:url(font.woff2)}" in

@@ -1656,7 +1656,7 @@ let test_transforms () =
       "var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
        var(--tw-skew-x,) var(--tw-skew-y,)"
     "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)";
-  (* Per CSS Transforms 1 section 11 the printer drops whitespace between
+  (* Per CSS Transforms 1 section 8 the printer drops whitespace between
      back-to-back transform functions under minify. *)
   check_transforms ~expected:"translateX(10px)var(--my-rotate)"
     "translateX(10px) var(--my-rotate)";
@@ -1753,7 +1753,7 @@ let test_background () =
   neg_cursor read_background "10px 20px 30px 40px 50px"
 
 let test_font_weight () =
-  (* CSS Fonts 4 section 5.1.2: [normal] and [bold] canonicalize to the numeric
+  (* CSS Fonts 4 section 2.2: [normal] and [bold] canonicalize to the numeric
      forms [400] and [700] under minify. *)
   check_font_weight ~expected:"400" "normal";
   check_font_weight ~expected:"700" "bold";
@@ -2137,9 +2137,9 @@ let test_font_family () =
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)
   neg_cursor read_font_family "";
-  (* Default minify unquotes a multi-word [<family-name>] (CSS Fonts 4 sec. 4.1:
-     an ident sequence is a valid family name and the unquoted form is shorter).
-     [enforce_spec] keeps the quotes, matching the CSSOM-canonical
+  (* Default minify unquotes a multi-word [<family-name>] (CSS Fonts 4 sec.
+     2.1.1: an ident sequence is a valid family name and the unquoted form is
+     shorter). [enforce_spec] keeps the quotes, matching the CSSOM-canonical
      serialization, so a font stack stored verbatim in a custom property keeps
      its authored quoting. *)
   let stack =
@@ -2158,7 +2158,7 @@ let test_font_stretch () =
   check_font_stretch "50%";
   check_font_stretch "inherit";
   neg_cursor read_font_stretch "invalid-stretch";
-  (* CSS Fonts 4 sec. 5.3 defines each keyword as a percentage, never longer, so
+  (* CSS Fonts 4 sec. 2.3 defines each keyword as a percentage, never longer, so
      minified output uses it, but only for the standalone property: the [font]
      shorthand's stretch component takes the keyword alone. *)
   check_font_stretch ~expected:"100%" "normal";
@@ -2343,7 +2343,7 @@ let test_background_repeat () =
   check_background_repeat "repeat-x";
   check_background_repeat "repeat-y";
   check_background_repeat "inherit";
-  (* CSS Backgrounds 3 sec. 3.6: the longhand is a comma-separated layer
+  (* CSS Backgrounds 3 sec. 2.6: the longhand is a comma-separated layer
      list. *)
   decl_optimizes ~prop:"background-repeat" ~into:"no-repeat,repeat-y,no-repeat"
     "no-repeat,repeat-y,no-repeat";
@@ -2366,7 +2366,7 @@ let test_background_size () =
   check_background_size "var(--s)";
   check_background_size "calc(50% + 10px)";
   check_background_size "calc(50% + 10px) auto";
-  (* Comma-separated layer list (CSS Backgrounds 3 sec. 3.9). *)
+  (* Comma-separated layer list (CSS Backgrounds 3 sec. 2.9). *)
   decl_optimizes ~prop:"background-size" ~into:"cover,contain" "cover,contain";
   decl_optimizes ~prop:"background-size" ~into:"100px 200px,auto"
     "100px 200px,auto";
@@ -2618,7 +2618,7 @@ let test_radial_gradient_config () =
   check_radial_gradient_config "circle at center";
   neg_cursor read_radial_gradient_config "invalid-config";
   (* pp holds the authored defaults; the optimizer elides them (CSS Images 4
-     section 3.1: ellipse / farthest-corner / center are implied). *)
+     section 3.2: ellipse / farthest-corner / center are implied). *)
   decl_optimizes ~prop:"background"
     ~held:"radial-gradient(circle at center,red,#123456)"
     ~into:"radial-gradient(circle,red,#123456)"
@@ -3049,7 +3049,7 @@ let test_text_decoration_skip_ink () =
   neg_cursor read_text_decoration_skip_ink "invalid-skip"
 
 let test_transform_origin () =
-  (* Per CSS Transforms 1 sec. 6 the keyword [center] is shorthand for [50%] and
+  (* Per CSS Transforms 1 sec. 4 the keyword [center] is shorthand for [50%] and
      matched-pair shorthand collapses to a single value. Per shortest- wins
      (Lightning CSS) the printer emits the numeric form. *)
   check_transform_origin ~expected:"50%" "center";
@@ -3057,7 +3057,7 @@ let test_transform_origin () =
   (* A single value sets the X origin; Y defaults to center (50%), so it must
      not be duplicated onto the Y axis: [100%] means [100% 50%], not [100%
      100%], and [0] means [0 50%], not [0 0]. Only [50%] coincides with center.
-     CSS Transforms 1 section 6; lightningcss and csso keep the single value. *)
+     CSS Transforms 1 section 4; lightningcss and csso keep the single value. *)
   check_transform_origin "100%";
   check_transform_origin "0";
   check_transform_origin "50% 25%";
@@ -4196,10 +4196,10 @@ let test_clip_path () =
   check_clip_path "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
   check_clip_path "inset(0px 10px 20px 30px)";
-  (* CSS Values L4 sec. 6.1: a zero in <length>/<length-percentage> position
-     drops its unit under canonical minification; the fold is a node-changing
-     rewrite (Length{Px,0} -> Length{None,0}) and so lives in normalize, not pp.
-     The held (~held) form stays pp-faithful with the unit; only the canonical
+  (* CSS Values L4 sec. 6: a zero in <length>/<length-percentage> position drops
+     its unit under canonical minification; the fold is a node-changing rewrite
+     (Length{Px,0} -> Length{None,0}) and so lives in normalize, not pp. The
+     held (~held) form stays pp-faithful with the unit; only the canonical
      (~into) form drops it. Same fold applies recursively inside basic shapes
      (inset, polygon, rect, etc.) - all <length-percentage> arg positions, none
      of them inside a math context. *)

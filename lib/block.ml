@@ -356,7 +356,7 @@ let rec collect_empty_layer_names names remaining =
 
 (* Merge consecutive Layer_decl statements *)
 let merge_layer_declarations (stmts : statement list) : statement list =
-  (* CSS Cascade 5 sec. 6.6.2: [@layer A, B;] declares layers in source order;
+  (* CSS Cascade 5 sec. 6.4.4.2: [@layer A, B;] declares layers in source order;
      re-declaring a layer name is a no-op for cascade order. Merge consecutive
      [@layer ...;] statements and dedupe repeated names so [@layer u; @layer u]
      emits one [@layer u]. *)
@@ -479,10 +479,10 @@ let drop_empty_rules stmts =
       | _ -> true)
     stmts
 
-(* CSS Cascade 5 sec. 6.6.3: a [@layer <name>;] declaration form is
-   prelude-friendly and may interleave with [@charset] / [@import] /
-   [@namespace], so a [Layer_decl] before [@import] / [@namespace] must not flip
-   [seen_body] - otherwise the following [@import] gets dropped as misplaced. *)
+(* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
+   and may interleave with [@charset] / [@import] / [@namespace], so a
+   [Layer_decl] before [@import] / [@namespace] must not flip [seen_body] -
+   otherwise the following [@import] gets dropped as misplaced. *)
 let drop_misplaced_imports stmts =
   let seen_body = ref false in
   let seen_import_or_namespace = ref false in

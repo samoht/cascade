@@ -25,7 +25,7 @@ let srgb_blue = (0.0, 0.0, 1.0)
 let srgb_green = (0.0, 1.0, 0.0)
 let srgb_white = (1.0, 1.0, 1.0)
 
-(* CSS Color 4 sec. 11.5.1 reference values for sRGB / linear sRGB. *)
+(* CSS Color 4 sec. 10.2 reference values for sRGB / linear sRGB. *)
 let test_srgb_linearise () =
   Alcotest.(check approx_float) "0 -> 0" 0.0 (Color_space.linear_of_srgb 0.0);
   Alcotest.(check approx_float) "1 -> 1" 1.0 (Color_space.linear_of_srgb 1.0);
@@ -43,8 +43,8 @@ let test_srgb_roundtrip () =
   Alcotest.(check approx_float) "0.5" 0.5 (roundtrip 0.5);
   Alcotest.(check approx_float) "1" 1.0 (roundtrip 1.0)
 
-(* CSS Color 4 sec. 9.1: D65 white in XYZ should land at [(0.9505, 1.0, 1.0890)]
-   (CIE 1931 D65 with Y = 1). *)
+(* CSS Color 4 sec. 10.9: D65 white in XYZ should land at [(0.9505, 1.0,
+   1.0890)] (CIE 1931 D65 with Y = 1). *)
 let test_xyz65_of_linear_srgb () =
   let xyz_white = Color_space.xyz65_of_linear_srgb (1.0, 1.0, 1.0) in
   Alcotest.(check triplet)

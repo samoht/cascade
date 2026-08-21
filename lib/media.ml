@@ -420,10 +420,10 @@ let pp_feature : feature Pp.t =
       pp_value ctx b;
       Pp.char ctx ')'
 
-(* CSS Media Queries 4 sec. 3.3: a lower and an upper bound on the same feature
-   combine into the two-sided [<value> <op> <name> <op> <value>] interval.
-   [feature_bound] normalises a single-bound feature into a [(name, side, op,
-   value)] view so two bounds can be paired. *)
+(* CSS Media Queries 4 sec. 2.4.3: a lower and an upper bound on the same
+   feature combine into the two-sided [<value> <op> <name> <op> <value>]
+   interval. [feature_bound] normalises a single-bound feature into a [(name,
+   side, op, value)] view so two bounds can be paired. *)
 type bound_side = Lower | Upper
 
 let feature_bound (f : feature) : (name * bound_side * cmp * value) option =
@@ -1061,10 +1061,10 @@ let feature name value : t =
 
 let boolean name : t = Cond (Feature (Boolean (name_of_string name)))
 
-(* CSS Media Queries 4 sec. 3.4 / 3.3: the optimizer rewrites [min-X]/[max-X]
-   into the range form and pairs a lower and upper bound into the two-sided
-   interval. Target-fact grammar upgrades, so they live in optimize (gated by
-   [~enforce_spec]), not the printer. *)
+(* CSS Media Queries 4 sec. 2.4.4 / 2.4.3: the optimizer rewrites
+   [min-X]/[max-X] into the range form and pairs a lower and upper bound into
+   the two-sided interval. Target-fact grammar upgrades, so they live in
+   optimize (gated by [~enforce_spec]), not the printer. *)
 let lower_feature : feature -> feature = function
   | Plain (Min base, v) -> Range (base, Ge, v)
   | Plain (Max base, v) -> Range (base, Le, v)
@@ -1098,7 +1098,7 @@ let rec lower_for_minify : t -> t = function
   | Cond c as query ->
       let c' = lower_condition c in
       if c' == c then query else Cond c'
-  (* CSS Media Queries 4 sec. 2.1: [all] is the identity media type, so [not all
+  (* CSS Media Queries 4 sec. 2.3: [all] is the identity media type, so [not all
      and (X)] is the Level 3 spelling of [not (X)]. Bare [not all] has no
      condition form and stays. *)
   | Type { prefix = Some Not; type_ = All; trailing = Some c } ->

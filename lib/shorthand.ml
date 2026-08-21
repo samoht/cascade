@@ -88,7 +88,7 @@ let covers_longhand : type a b.
   | Inset_inline, Inset_inline_end -> true
   | Inset_block, Inset_block_start -> true
   | Inset_block, Inset_block_end -> true
-  (* CSS Backgrounds 3 sec. 4: [border] resets every per-side longhand and the
+  (* CSS Backgrounds 3 sec. 3.4: [border] resets every per-side longhand and the
      per-axis [width / style / color] groupings; the transitive closure is
      listed explicitly so the match is one-shot. *)
   | Border, Border_width -> true
@@ -135,13 +135,13 @@ let covers_longhand : type a b.
   | Border_left, Border_left_style -> true
   | Border_left, Border_left_color -> true
   | Border, Border_image -> true
-  (* CSS Logical 1 sec. 4.2: [border-block] / [border-inline] reset their two
+  (* CSS Logical 1 sec. 4.5.4: [border-block] / [border-inline] reset their two
      flow-relative middle-tier longhands. *)
   | Border_block, Border_block_start -> true
   | Border_block, Border_block_end -> true
   | Border_inline, Border_inline_start -> true
   | Border_inline, Border_inline_end -> true
-  (* CSS Masking 1 sec. 6.1: [mask] resets every mask layer longhand and
+  (* CSS Masking 1 sec. 7.9: [mask] resets every mask layer longhand and
      [mask-border]. *)
   | Mask, Mask_image -> true
   | Mask, Mask_repeat -> true
@@ -176,7 +176,7 @@ let covers_longhand : type a b.
   | Font, Font_optical_sizing -> true
   | _ -> false
 
-(* CSS Cascade 5 sec. 7.2: [all] resets every property except [direction],
+(* CSS Cascade 5 sec. 3.2: [all] resets every property except [direction],
    [unicode-bidi], and custom properties. [Unknown_property _] is reset by [all]
    (an unrecognised non-custom property is still a CSS property). *)
 let is_excluded_from_all_reset : type a. a Properties.property -> bool =
@@ -190,7 +190,7 @@ let rec unwrap_theme_guard = function
   | Theme_guarded { decl; _ } -> unwrap_theme_guard decl
   | d -> d
 
-(* CSS Cascade 5 sec. 7.2: [direction] and [unicode-bidi] keep their relative
+(* CSS Cascade 5 sec. 3.2: [direction] and [unicode-bidi] keep their relative
    position after an [all] declaration; partition uses this to anchor them. *)
 let is_all_preserved_reorder : type a. a Properties.property -> bool = function
   | Direction -> true
@@ -281,8 +281,8 @@ let border_inline_end_keys =
     key "border-inline-end-color";
   ]
 
-(* CSS Backgrounds 3 sec. 6.1: [border-image] resets the five image longhands,
-   and sec. 4.5 makes [border] reset [border-image] in turn. *)
+(* CSS Backgrounds 3 sec. 5.7: [border-image] resets the five image longhands,
+   and sec. 3.4 makes [border] reset [border-image] in turn. *)
 let border_image_keys =
   [
     key "border-image-source";
@@ -300,17 +300,17 @@ let border_radius_keys =
     key "border-bottom-left-radius";
   ]
 
-(* CSS Box Alignment 3 sec. 8.3. The legacy [grid-row-gap] / [grid-column-gap]
-   spellings name the same cascade slots as the modern ones, so each axis
-   carries both names. [grid-gap] itself is deliberately absent: it has no typed
-   spelling, and leaving its name out of every footprint keeps it in the
-   conservative [Unknown_property] path. *)
+(* CSS Gaps 1 sec. 2.4. The legacy [grid-row-gap] / [grid-column-gap] spellings
+   name the same cascade slots as the modern ones, so each axis carries both
+   names. [grid-gap] itself is deliberately absent: it has no typed spelling,
+   and leaving its name out of every footprint keeps it in the conservative
+   [Unknown_property] path. *)
 let row_gap_keys = [ key "row-gap"; key "grid-row-gap" ]
 let column_gap_keys = [ key "column-gap"; key "grid-column-gap" ]
 
-(* CSS Animations 2 sec. 4 plus Scroll-driven Animations 1 sec. 4.3, which makes
-   [animation] reset [animation-timeline]. [animation-composition] and the
-   [animation-range-*] longhands are not part of the shorthand. *)
+(* CSS Animations 2 sec. 4.11 and 4.12, which make [animation] reset
+   [animation-timeline]. [animation-composition] and the [animation-range-*]
+   longhands are not part of the shorthand. *)
 let animation_keys =
   [
     key "animation-name";
@@ -333,7 +333,7 @@ let transition_keys =
     key "transition-behavior";
   ]
 
-(* CSS Grid 1 sec. 7.4 and 8.1: [grid-template] resets the three template
+(* CSS Grid 1 sec. 7.4 and 7.8: [grid-template] resets the three template
    longhands, and [grid] resets those plus the three [grid-auto-*] ones. *)
 let grid_template_keys =
   [
@@ -348,7 +348,7 @@ let grid_auto_keys =
 let grid_row_keys = [ key "grid-row-start"; key "grid-row-end" ]
 let grid_column_keys = [ key "grid-column-start"; key "grid-column-end" ]
 
-(* CSS Text Decoration 4 sec. 2.5. [text-underline-offset] and the
+(* CSS Text Decoration 4 sec. 2.6. [text-underline-offset] and the
    [text-decoration-skip-*] longhands are outside the shorthand. *)
 let text_decoration_keys =
   [
@@ -667,7 +667,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Font_optical_sizing -> [ key "font-optical-sizing" ]
   | Font_language_override -> [ key "font-language-override" ]
   | Font_palette -> [ key "font-palette" ]
-  (* CSS Fonts 4 sec. 6.6: [font-synthesis] is its own shorthand, outside the
+  (* CSS Fonts 4 sec. 2.8.5: [font-synthesis] is its own shorthand, outside the
      set [font] resets. *)
   | Font_synthesis ->
       [
@@ -683,7 +683,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Gap -> row_gap_keys @ column_gap_keys
   | Row_gap -> row_gap_keys
   | Column_gap -> column_gap_keys
-  (* CSS UI 4 sec. 6.4: [outline] resets width, style and colour. It leaves
+  (* CSS UI 4 sec. 3.1: [outline] resets width, style and colour. It leaves
      [outline-offset] alone - that one is a sibling, not a longhand. *)
   | Outline -> [ key "outline-width"; key "outline-style"; key "outline-color" ]
   | Outline_width -> [ key "outline-width" ]
@@ -706,7 +706,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Grid_row_end -> [ key "grid-row-end" ]
   | Grid_column_start -> [ key "grid-column-start" ]
   | Grid_column_end -> [ key "grid-column-end" ]
-  (* CSS Box Alignment 3 sec. 4.5, 5.5 and 6.5. *)
+  (* CSS Box Alignment 3 sec. 5.2, 6.3 and 7.3. *)
   | Place_content -> [ key "align-content"; key "justify-content" ]
   | Place_items -> [ key "align-items"; key "justify-items" ]
   | Place_self -> [ key "align-self"; key "justify-self" ]
@@ -719,7 +719,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Webkit_flex_flow -> [ key "flex-direction"; key "flex-wrap" ]
   | Webkit_flex_direction -> [ key "flex-direction" ]
   | Webkit_flex_wrap -> [ key "flex-wrap" ]
-  (* CSS Overflow 3 sec. 3.3. *)
+  (* CSS Overflow 3 sec. 3.1. *)
   | Overflow -> [ key "overflow-x"; key "overflow-y" ]
   | Overflow_x -> [ key "overflow-x" ]
   | Overflow_y -> [ key "overflow-y" ]
@@ -729,7 +729,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Columns -> [ key "column-width"; key "column-count" ]
   | Column_width -> [ key "column-width" ]
   | Column_count -> [ key "column-count" ]
-  (* CSS Lists 3 sec. 3.4. *)
+  (* CSS Lists 3 sec. 3.6. *)
   | List_style ->
       [
         key "list-style-type"; key "list-style-position"; key "list-style-image";
@@ -743,8 +743,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Text_decoration_color | Webkit_text_decoration_color ->
       [ key "text-decoration-color" ]
   | Text_decoration_thickness -> [ key "text-decoration-thickness" ]
-  (* CSS Text Decoration 4 sec. 2.7: [text-decoration-skip] is its own shorthand
-     over the five skip longhands. *)
+  (* CSS Text Decoration 4 sec. 2.10: [text-decoration-skip] is its own
+     shorthand over the five skip longhands. *)
   | Text_decoration_skip ->
       [
         key "text-decoration-skip-self";
@@ -768,7 +768,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
       [ key "contain-intrinsic-width"; key "contain-intrinsic-height" ]
   | Contain_intrinsic_width -> [ key "contain-intrinsic-width" ]
   | Contain_intrinsic_height -> [ key "contain-intrinsic-height" ]
-  (* CSS Scroll Snap 1 sec. 5 and 6. *)
+  (* CSS Scroll Snap 1 sec. 4.2 and 5.1. *)
   | Scroll_margin -> scroll_margin_keys
   | Scroll_margin_top -> [ key "scroll-margin-top" ]
   | Scroll_margin_right -> [ key "scroll-margin-right" ]
@@ -804,8 +804,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Container -> [ key "container-name"; key "container-type" ]
   | Container_name -> [ key "container-name" ]
   | Container_type -> [ key "container-type" ]
-  (* Scroll-driven Animations 1 sec. 4.1 and 4.2. [view-timeline-inset] is not
-     part of [view-timeline]. *)
+  (* Scroll-driven Animations 1 sec. 2.3.3 and 3.4.4. [view-timeline-inset] is
+     not part of [view-timeline]. *)
   | Scroll_timeline ->
       [ key "scroll-timeline-name"; key "scroll-timeline-axis" ]
   | Scroll_timeline_name -> [ key "scroll-timeline-name" ]
@@ -813,7 +813,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | View_timeline -> [ key "view-timeline-name"; key "view-timeline-axis" ]
   | View_timeline_name -> [ key "view-timeline-name" ]
   | View_timeline_axis -> [ key "view-timeline-axis" ]
-  (* CSS UI 4 sec. 7.4. *)
+  (* CSS UI 4 sec. 5.2.4. *)
   | Caret -> [ key "caret-color"; key "caret-animation"; key "caret-shape" ]
   | Caret_color -> [ key "caret-color" ]
   | Caret_animation -> [ key "caret-animation" ]
@@ -821,7 +821,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Interest_delay -> [ key "interest-delay-start"; key "interest-delay-end" ]
   | Interest_delay_start -> [ key "interest-delay-start" ]
   | Interest_delay_end -> [ key "interest-delay-end" ]
-  (* CSS Inline 3 sec. 5.3. *)
+  (* CSS Inline 3 sec. 6.1. *)
   | Text_box -> [ key "text-box-trim"; key "text-box-edge" ]
   | Text_box_trim -> [ key "text-box-trim" ]
   | Text_box_edge -> [ key "text-box-edge" ]
@@ -831,7 +831,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Text_wrap -> [ key "text-wrap-mode"; key "text-wrap-style" ]
   | Text_wrap_mode -> [ key "text-wrap-mode" ]
   | Text_wrap_style -> [ key "text-wrap-style" ]
-  (* CSS Anchor Positioning 1 sec. 5.4. *)
+  (* CSS Anchor Positioning 1 sec. 6.3. *)
   | Position_try -> [ key "position-try-order"; key "position-try-fallbacks" ]
   | Position_try_order -> [ key "position-try-order" ]
   | Position_try_fallbacks -> [ key "position-try-fallbacks" ]
@@ -1757,10 +1757,10 @@ let extract_inset_block_side :
       Some (End, v, important)
   | _ -> None
 
-(* CSS Align 3 sec. 6.1: [place-items] / [place-content] / [place-self] are the
-   [<align> <justify>] shorthands. When the two longhands appear contiguously
-   with matching importance, fold them; the per-property printer then collapses
-   matching pairs to a single value. *)
+(* CSS Align 3 sec. 5.2, 6.3 and 7.3: [place-items] / [place-content] /
+   [place-self] are the [<align> <justify>] shorthands. When the two longhands
+   appear contiguously with matching importance, fold them; the per-property
+   printer then collapses matching pairs to a single value. *)
 let try_compose_place_at idx i =
   let n = Rule_index.length idx in
   if
@@ -2056,7 +2056,7 @@ let reorder_font_resets_before_font decls =
   in
   go [] decls
 
-(* CSS Lists 3 sec. 1.2: [list-style: <position> <image> <type>] in any order,
+(* CSS Lists 3 sec. 3.6: [list-style: <position> <image> <type>] in any order,
    any subset of components. Cascade stores [List_style] as a string. Drop
    defaults ([outside] / [none] / [disc]) on emit; if all three are defaulted,
    leave a single [outside] - never an empty value. *)
@@ -2258,7 +2258,7 @@ let compose_text_decoration_via_index idx =
         i := !i + 3
   done
 
-(* CSS Backgrounds 3 sec. 4.1: [border] is the shorthand for [border-{top,
+(* CSS Backgrounds 3 sec. 3.4: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
    longhands appear in a contiguous run with matching importance, every width /
    style / color is uniform across the four sides, and no runtime-substitution
@@ -2564,7 +2564,7 @@ let drop_bimg_shadowed_by_border kept =
   in
   List.filteri (fun i item -> not (is_bimg item && dead i)) kept
 
-(* CSS Backgrounds 3 sec. 6.1: compose [border-image] from a contiguous run of
+(* CSS Backgrounds 3 sec. 5.7: compose [border-image] from a contiguous run of
    its longhands ([source] / [slice] [/ width [/ outset]] / [repeat]). The
    longhands are unknown properties, so the shorthand value is rebuilt from
    their text and re-parsed. The shorthand resets any longhand the run omits, so
@@ -2691,7 +2691,7 @@ let compose_border_image_shorthand ~ctx decls =
   compose_border_image_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-(* CSS Backgrounds 3 sec. 3.10: [background] is the shorthand for the eight
+(* CSS Backgrounds 3 sec. 2.10: [background] is the shorthand for the eight
    per-layer longhands. Cascade composes when a contiguous run of bg-* longhands
    covers a single layer: every longhand carries a single-layer value, no entry
    uses a CSS-wide keyword or [var()], and all share the same importance. *)
@@ -2907,7 +2907,7 @@ let compose_background_shorthand ~ctx decls =
   compose_background_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-(* CSS Masking 1 sec. 6.1: [mask] is the layer shorthand for [mask-image] /
+(* CSS Masking 1 sec. 7.9: [mask] is the layer shorthand for [mask-image] /
    [mask-position] / [mask-size] / [mask-repeat] / [mask-origin] / [mask-clip] /
    [mask-mode] / [mask-composite] (analogous to [background]). Compose a
    contiguous run that carries a [mask-image]; like [border], [mask] resets
@@ -3056,7 +3056,7 @@ let is_mask_layer_longhand d =
       true
   | _ -> false
 
-(* The [mask] shorthand resets [mask-border] (CSS Masking 1 sec. 6.1), so a
+(* The [mask] shorthand resets [mask-border] (CSS Masking 1 sec. 7.9), so a
    [mask-border] that precedes a run of mask layer longhands can move after them
    without changing any property's cascade: the synthesised [mask] resets
    [mask-border], but the now-trailing [mask-border] overrides that reset back.

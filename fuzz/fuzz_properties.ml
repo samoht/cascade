@@ -491,7 +491,7 @@ let property_grammar_animation_vectors =
       Css.Properties.pp_overscroll_behavior
       [ "auto"; "contain"; "none" ]
       (* [overscroll-behavior] shorthand allows 1-2 axis values per CSS
-         Overscroll Behavior 1 section 5.1; [contain auto none] is the
+         Overscroll Behavior 1 section 4.1; [contain auto none] is the
          three-value invalid form, [hidden] is not a valid value. *)
       [ "contain auto none"; "hidden" ];
   ]

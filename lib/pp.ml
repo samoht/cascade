@@ -140,7 +140,7 @@ let hex_escape_byte ctx ~next c =
   | Some c when is_hex_digit c -> char ctx ' '
   | _ -> ()
 
-(* Output a string literal with CSS section 9.2 escaping: backslash for the
+(* Output a string literal with CSSOM 1 sec. 2.1 escaping: backslash for the
    delimiter and for '\', hex escapes for control bytes (U+0000..U+001F, U+007F)
    so the serialized form parses back to the same string. *)
 let quoted_string ?(quote = '"') ctx s =
@@ -409,7 +409,7 @@ let unit ctx f suffix =
   string ctx suffix
 
 let pct ctx f =
-  (* CSS Values 4 sec. 6.5 only allows the unit to drop on a zero [<length>]; a
+  (* CSS Values 4 sec. 6 only allows the unit to drop on a zero [<length>]; a
      zero [<percentage>] keeps the [%] (otherwise [opacity:0] vs [opacity:0%]
      are no longer equivalent, and dimension/percentage-typed grammars reject a
      bare [0]). The coefficient prints in full, like [float]: rounding it

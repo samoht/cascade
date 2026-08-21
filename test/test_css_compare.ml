@@ -78,7 +78,7 @@ let equal_canonical_ignores_property_order () =
        "@property --a{syntax:\"*\";inherits:false}.x{top:0}@property \
         --z{syntax:\"*\";inherits:false}")
 
-(* Media Queries 4 sec. 2.1: [all] matches every media type, so [not all and
+(* Media Queries 4 sec. 2.3: [all] matches every media type, so [not all and
    (X)] and [not (X)] are the same query. Equating them is projection-only - a
    Level 3 parser rejects the shorter form, so emission keeps what it read. *)
 let equal_canonical_media_not_all () =
@@ -99,7 +99,7 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
-(* CSS Color 4 sec. 10: [color(srgb r g b)] scales each channel by 255, so
+(* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
    [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour in two spellings.
    [--lossless] keeps a modern colour function on output, which leaves the
    projection reading the spelling as a difference. The fold is exact-only: a
@@ -645,7 +645,7 @@ let canonical_calc_plus_minus_whitespace_distinct () =
     "calc(...) + and - whitespace stays distinct (required for parse)" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-(* Fonts L4 sec. 15.3: a font family name is either a <string> or a sequence of
+(* Fonts L4 sec. 2.1.1: a font family name is either a <string> or a sequence of
    <custom-ident>s joined with single spaces; the two forms are equivalent for
    matching whenever the unquoted form would be valid identifiers. The
    equivalence is consumer-dependent (it only holds in font-family-typed

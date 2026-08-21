@@ -292,9 +292,9 @@ and pp_and_branch ctx = function
 
 and pp_and ctx a b =
   pp_and_branch ctx a;
-  (* CSS Conditional 5 sec. 4.4: a [)and ] sequence is unambiguous so the
-     leading space is droppable under minify; the trailing space is required to
-     keep [and(] from re-tokenising as a function call. *)
+  (* CSS Conditional 3 sec. 6: a [)and ] sequence is unambiguous so the leading
+     space is droppable under minify; the trailing space is required to keep
+     [and(] from re-tokenising as a function call. *)
   Pp.sp ctx ();
   Pp.string ctx "and ";
   pp_and_branch ctx b
