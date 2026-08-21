@@ -257,10 +257,10 @@ let add_props acc ds =
       SSet.add (String.lowercase_ascii (Declaration.property_name d)) acc)
     acc ds
 
-(* Every property a kept (conditional / stateful) rule can set. The descent goes
-   through {!Stylesheet.statement_children}, so every block at-rule is covered:
-   a property missed here is one an inline style could override, and the kept
-   rule would lose a fight it wins in the browser.
+(* Every declaration a kept (conditional / stateful) rule can set. The descent
+   goes through {!Stylesheet.statement_children}, so every block at-rule is
+   covered: a declaration missed here is one an inline style could override, and
+   the kept rule would lose a fight it wins in the browser.
 
    The declarations come off [Rule] and [Declarations] alone, not through
    {!Stylesheet.statement_declarations}. This set decides which declarations may
@@ -272,31 +272,61 @@ let add_props acc ds =
    [@supports-condition] is never applied to a box. Widening it forces
    [transform], [opacity] and [color] back into [<style>] on any page that has a
    spinner keyframe. *)
-let rec props_of_stmts acc stmts =
+let rec decls_of_stmts acc stmts =
   List.fold_left
     (fun acc s ->
       let acc =
         match s with
-        | Stylesheet.Rule r -> add_props acc (Stylesheet.declarations r)
-        | Stylesheet.Declarations ds -> add_props acc ds
+        | Stylesheet.Rule r -> List.rev_append (Stylesheet.declarations r) acc
+        | Stylesheet.Declarations ds -> List.rev_append ds acc
         | _ -> acc
       in
-      props_of_stmts acc (Stylesheet.statement_children s))
+      decls_of_stmts acc (Stylesheet.statement_children s))
     acc stmts
 
 (* A [@layer] block applies unconditionally: it only orders competing
    declarations, it does not gate them behind a condition the way
-   @media/@supports/@container do. So the properties its rules can override are
-   those of its own un-inlinable rules, exactly as at the top level, while a
+   @media/@supports/@container do. So the declarations its rules can override
+   are those of its own un-inlinable rules, exactly as at the top level, while a
    conditional block contributes all of them. *)
-let rec dynamic_props acc stmts =
+let rec dynamic_decls acc stmts =
   List.fold_left
     (fun acc s ->
       match s with
       | Stylesheet.Rule r when inlinable (Stylesheet.selector r) -> acc
-      | Stylesheet.Layer (_, b) -> dynamic_props acc b
-      | s -> props_of_stmts acc [ s ])
+      | Stylesheet.Layer (_, b) -> dynamic_decls acc b
+      | s -> decls_of_stmts acc [ s ])
     acc stmts
+
+(* The kept declarations to test an inlinable one against, one per property
+   name: {!Shorthand.declarations_overlap} reads the property, never the value,
+   so a second declaration of the same property answers exactly as the first.
+   Each keeps its precomputed footprint, since the test runs once per property
+   for every declaration in the sheet. *)
+let overlap_probes ds =
+  let seen = Hashtbl.create 64 in
+  List.filter_map
+    (fun d ->
+      let name = String.lowercase_ascii (Declaration.property_name d) in
+      if Hashtbl.mem seen name then None
+      else begin
+        Hashtbl.add seen name ();
+        Some (d, Shorthand.declaration_overlap_keys d)
+      end)
+    ds
+
+(* Whether a kept rule can overwrite what [d] sets. Matching property names is
+   not enough: [margin] and [margin-top] write a common cascade slot under
+   different names, so a kept [.mt-6{margin-top}] and an inlinable [p{margin:0}]
+   compete. Inlining the shorthand there puts it in a style attribute, which
+   outranks every selector, and the kept rule loses a fight it wins in the
+   browser. *)
+let overlaps_kept probes d =
+  let keys = Shorthand.declaration_overlap_keys d in
+  List.exists
+    (fun (kept, kept_keys) ->
+      Shorthand.declarations_overlap_with_keys d keys kept kept_keys)
+    probes
 
 (* Split each statement into the part with no inline form and the part that
    projects onto elements. A [@layer] block splits like the top level, but the
@@ -471,11 +501,9 @@ module Make (Node : Resolve.NODE) = struct
     (* Flatten nesting up front, so the split and {!R.resolve} see the same flat
        rules. *)
     let stmts = Flatten.block sheet in
-    (* Properties a kept rule can override must stay in the cascade. *)
-    let dyn = dynamic_props SSet.empty stmts in
-    let is_dyn d =
-      SSet.mem (String.lowercase_ascii (Declaration.property_name d)) dyn
-    in
+    (* Declarations a kept rule can override must stay in the cascade. *)
+    let dyn = overlap_probes (dynamic_decls [] stmts) in
+    let is_dyn d = overlaps_kept dyn d in
     let keep, inline = split ~is_dyn stmts in
     let keep_css =
       if keep = [] then "" else Css.to_string ~minify:true (Stylesheet.v keep)
