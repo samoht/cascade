@@ -134,7 +134,7 @@ let equal_canonical_lossless_exact_srgb () =
     "an off-grid channel keeps its function" false
     (equal ".a{color:color(srgb .501 0 0)}" ".a{color:maroon}")
 
-(* Filter Effects 1 sec. 8.5 makes an omitted [hue-rotate()] argument 0, and
+(* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
    are one value wherever the stream is substituted. *)
 let canonical_custom_hue_rotate_zero () =

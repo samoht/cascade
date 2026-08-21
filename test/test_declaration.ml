@@ -122,8 +122,8 @@ let complex_values () =
      longer. *)
   decl_optimizes ~prop:"flood-opacity" ~into:".5" "50%";
 
-  (* SVG 2 sec. 13.4 and Filter Effects 1 sec. 9.3 / 12.2 make each of these a
-     plain <color>, so they shorten like any other colour-valued property
+  (* SVG 2 sec. 13.4 and Filter Effects 1 sec. 9.13.1 / 11.5 make each of these
+     a plain <color>, so they shorten like any other colour-valued property
      instead of surviving as opaque unknown-property text. *)
   check_declaration ~expected:"stop-color:#fff" "stop-color: #ffffff;";
   check_declaration ~expected:"lighting-color:currentColor"
