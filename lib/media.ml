@@ -1210,10 +1210,28 @@ let feature_kind (f : feature) : kind =
           | Interval (lo, _, name, _, _) -> interval_feature_kind name lo
           | Range _ | Range_rev _ | General_enclosed _ -> Other))
 
+(* Media Queries 4 sec. 3: [not] matches the complement, so negating a width
+   bound swaps the side it bounds. Only [width] records a side; the other
+   buckets name a feature rather than a bound, so a negated query keeps the
+   bucket its feature picks. *)
+let negated_feature_kind (f : feature) : kind =
+  let flipped =
+    match feature_bound f with
+    | Some (name, Lower, _, value) -> width_bound_kind name Upper value
+    | Some (name, Upper, _, value) -> width_bound_kind name Lower value
+    | None -> None
+  in
+  Option.value flipped ~default:(feature_kind f)
+
 let rec condition_kind (c : condition) : kind =
   match c with
   | Feature f -> feature_kind f
-  | Not c -> condition_kind c
+  | Not (Not c) -> condition_kind c
+  (* The complement of a width range is the two ranges outside it, and an
+     [and]/[or] takes its kind from one operand, so the complement of that
+     leaves the other operand's range uncovered. Neither is a single bound. *)
+  | Not (Feature (Interval _)) | Not (And _ | Or _) -> Other
+  | Not (Feature f) -> negated_feature_kind f
   | And (a, b) | Or (a, b) -> (
       match (condition_kind a, condition_kind b) with
       | Other, other | other, Other -> other
@@ -1221,14 +1239,10 @@ let rec condition_kind (c : condition) : kind =
 
 let kind : t -> kind = function
   | Cond c -> condition_kind c
-  (* [not all and X] negates a single feature: a negated width lower bound
-     covers the complementary upper range, so it classifies as [Responsive_max]
-     and vice versa. *)
-  | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
-      match condition_kind c with
-      | Responsive (u, v) -> Responsive_max (u, v)
-      | Responsive_max (u, v) -> Responsive (u, v)
-      | other -> other)
+  (* [all] matches every medium, so [not all and X] matches the complement of
+     [X], exactly like the bare [not X]. *)
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
+      condition_kind (Not c)
   | Type _ | List _ -> Other
 
 let group_order = function
@@ -1283,21 +1297,18 @@ let preference_order : t -> int = function
   | Type { trailing = Some c; _ } -> condition_preference_order c
   | Type _ | List _ -> 30
 
-(* Within a responsive bucket, a negated lower bound sorts first, then an upper
-   bound, then a lower bound. *)
+(* Within a responsive bucket, an upper bound written as a negated lower bound
+   sorts first, then a plain upper bound, then a lower bound. *)
 let condition_subkind (c : condition) : int =
-  match condition_kind c with
-  | Responsive_max _ -> 1
-  | Responsive _ -> 2
+  match (c, condition_kind c) with
+  | Not _, Responsive_max _ -> 0
+  | _, Responsive_max _ -> 1
   | _ -> 2
 
 let responsive_subkind : t -> int = function
   | Cond c -> condition_subkind c
-  | Type { prefix = Some Not; type_ = All; trailing = Some c } -> (
-      (* [not all and (min-width)] is a negated lower-bound query. *)
-      match condition_kind c with
-      | Responsive _ -> 0
-      | _ -> 2)
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
+      condition_subkind (Not c)
   | Type { trailing = Some c; _ } -> condition_subkind c
   | Type _ | List _ -> 2
 

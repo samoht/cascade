@@ -67,6 +67,15 @@
 
 ### Library
 
+- `Css.Media.kind` classifies a negated width bound by the side it bounds, so
+  `not (min-width: 640px)` groups and sorts with the upper bounds it matches
+  instead of with the lower bound it negates, and a doubled `not` cancels.
+  `Css.Media.sort_key`, `group_order` and `compare` follow
+  ([#328](https://github.com/samoht/cascade/pull/328))
+- The negation of a width range, such as `not (640px <= width <= 1024px)`,
+  classifies as `Other`: it matches the viewports on either side of the range,
+  which no single bound describes
+  ([#328](https://github.com/samoht/cascade/pull/328))
 - `Css.Stylesheet.statement_declarations` returns the declarations a statement
   holds directly; paired with `statement_children` it reaches every declaration
   in a stylesheet ([#317](https://github.com/samoht/cascade/pull/317))
