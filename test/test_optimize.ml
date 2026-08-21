@@ -855,6 +855,76 @@ let test_vendor_prefix_strip () =
     ".a{-moz-box-sizing:content-box;box-sizing:border-box}"
     (opt ".a{-moz-box-sizing:content-box;box-sizing:border-box}")
 
+(* The evergreen-target vendor drop is a Baseline question, not a hand-kept pair
+   list: a prefixed declaration is dead when its unprefixed twin sits in the
+   same rule with the same value and importance AND that unprefixed property is
+   Baseline "widely available". [Baseline.greenfield_properties] holds the
+   properties that are not, which is exactly the set whose prefix a maintained
+   browser may still need. *)
+let test_vendor_prefix_baseline_gate () =
+  let opt ?(enforce_spec = false) css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~enforce_spec p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* Widely available: every maintained browser reads the unprefixed form, so
+     the WebKit copy is dead weight. *)
+  Alcotest.(check string)
+    "text-decoration-color prefix drops" ".a{text-decoration-color:red}"
+    (opt ".a{-webkit-text-decoration-color:red;text-decoration-color:red}");
+  Alcotest.(check string)
+    "mask-image prefix drops" ".a{mask-image:none}"
+    (opt ".a{-webkit-mask-image:none;mask-image:none}");
+  (* box-sizing is the same rule and already collapses; keep it pinned. *)
+  Alcotest.(check string)
+    "webkit box-sizing prefix drops" ".a{box-sizing:border-box}"
+    (opt ".a{-webkit-box-sizing:border-box;box-sizing:border-box}");
+  Alcotest.(check string)
+    "moz box-sizing prefix drops" ".a{box-sizing:border-box}"
+    (opt ".a{-moz-box-sizing:border-box;box-sizing:border-box}");
+  (* Not widely available: [backdrop-filter] and [user-select] are both in
+     [Baseline.greenfield_properties], so their prefix is still load-bearing
+     (Safari reads only -webkit-backdrop-filter up to 17.6) and stays. *)
+  Alcotest.(check string)
+    "backdrop-filter prefix kept"
+    ".a{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}"
+    (opt ".a{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}");
+  Alcotest.(check string)
+    "user-select prefix kept" ".a{-webkit-user-select:none;user-select:none}"
+    (opt ".a{-webkit-user-select:none;user-select:none}");
+  (* --enforce-spec drops the evergreen target, so every prefix survives. *)
+  Alcotest.(check string)
+    "enforce-spec keeps the text-decoration-color prefix"
+    ".a{-webkit-text-decoration-color:red;text-decoration-color:red}"
+    (opt ~enforce_spec:true
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:red}");
+  Alcotest.(check string)
+    "enforce-spec keeps the mask-image prefix"
+    ".a{-webkit-mask-image:none;mask-image:none}"
+    (opt ~enforce_spec:true ".a{-webkit-mask-image:none;mask-image:none}");
+  Alcotest.(check string)
+    "enforce-spec keeps the box-sizing prefix"
+    ".a{-webkit-box-sizing:border-box;box-sizing:border-box}"
+    (opt ~enforce_spec:true
+       ".a{-webkit-box-sizing:border-box;box-sizing:border-box}");
+  Alcotest.(check string)
+    "enforce-spec keeps the backdrop-filter prefix"
+    ".a{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}"
+    (opt ~enforce_spec:true
+       ".a{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}");
+  (* A twin only supersedes at the same value and the same importance, whatever
+     the Baseline status of the property. *)
+  Alcotest.(check string)
+    "differing value keeps the prefix"
+    ".a{-webkit-text-decoration-color:red;text-decoration-color:green}"
+    (opt ".a{-webkit-text-decoration-color:red;text-decoration-color:green}");
+  Alcotest.(check string)
+    "differing importance keeps the prefix"
+    ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}"
+    (opt ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}")
+
 let test_lossless_declaration_order () =
   let opt ?(lossless = false) css =
     match Css.of_string css with
@@ -1196,6 +1266,7 @@ let optimize_tests =
       `Quick,
       nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
+    ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "lossless keeps unknown property order",
       `Quick,

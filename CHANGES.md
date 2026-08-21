@@ -23,6 +23,12 @@
   `min-width` to range syntax inside that very query. `--enforce-spec` keeps
   both Level 3 spellings
   ([#323](https://github.com/samoht/cascade/pull/323))
+- A vendor prefix is dropped only when its unprefixed twin is Baseline "widely
+  available", so `--minify` keeps the prefix a maintained browser still reads:
+  `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
+  and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
+  shipping Safari understands
+  ([#325](https://github.com/samoht/cascade/pull/325))
 
 ### Custom properties
 

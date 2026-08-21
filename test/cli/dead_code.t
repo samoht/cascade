@@ -71,14 +71,24 @@ A later !important shadows an earlier !important of the same property.
   .x{color:#00f!important}
 
 A vendor-prefixed property followed by the unprefixed equivalent is
-NOT dead - the cascade picks whichever the browser understands. Both
-must round-trip.
+NOT dead while a maintained browser still reads only the prefix, which
+is what Baseline "widely available" decides. Safari reads only
+[-webkit-backdrop-filter] up to 17.6, so both must round-trip.
 
   $ cat > prefix.css <<EOF
-  > .x { -webkit-mask-image: url(a.png); mask-image: url(a.png) }
+  > .x { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px) }
   > EOF
   $ cascade --minify prefix.css
-  .x{-webkit-mask-image:url(a.png);mask-image:url(a.png)}
+  .x{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+
+The same pair is dead once the unprefixed property is widely available:
+no maintained browser reaches for the WebKit copy.
+
+  $ cat > prefix-dead.css <<EOF
+  > .x { -webkit-mask-image: url(a.png); mask-image: url(a.png) }
+  > EOF
+  $ cascade --minify prefix-dead.css
+  .x{mask-image:url(a.png)}
 
 
 # Rule-level dead code
