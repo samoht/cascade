@@ -229,7 +229,18 @@ let add_props acc ds =
 (* Every property a kept (conditional / stateful) rule can set. The descent goes
    through {!Stylesheet.statement_children}, so every block at-rule is covered:
    a property missed here is one an inline style could override, and the kept
-   rule would lose a fight it wins in the browser. *)
+   rule would lose a fight it wins in the browser.
+
+   The declarations come off [Rule] and [Declarations] alone, not through
+   {!Stylesheet.statement_declarations}. This set decides which declarations may
+   move into a [style] attribute, which shifts cascade position only against
+   author-origin rules of the same importance (css-cascade-5 sec. 6.1), and the
+   other declaration-carrying at-rules contribute none: [@keyframes] declares in
+   the animation origin, [@position-try] in the position fallback origin,
+   [@page] applies to a page box rather than an element, and
+   [@supports-condition] is never applied to a box. Widening it forces
+   [transform], [opacity] and [color] back into [<style>] on any page that has a
+   spinner keyframe. *)
 let rec props_of_stmts acc stmts =
   List.fold_left
     (fun acc s ->
