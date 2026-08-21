@@ -34,6 +34,11 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
+- A length keeps the coefficient it was written with. `--minify` rounded every
+  printed length to six significant digits, so `.4285714em` came back as
+  `.428571em` and `999999999px` as `1000000000px`, each a different length in
+  the browser; the six-digit budget now belongs to the `calc()` fold that gives
+  up exactness against a math constant (#351)
 
 ### Custom properties
 
