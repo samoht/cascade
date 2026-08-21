@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Parsing
+
+- An `@font-face` descriptor whose value holds a `var()` is dropped with a
+  warning, and `Css.of_string ~strict:true` rejects it. `var()` substitutes in
+  property values only (CSS Variables 1), so no descriptor grammar accepts one
+  and browsers drop the declaration. `src` and `unicode-range` keep theirs,
+  since `Css.inline_vars` resolves those references at build time
+  ([#322](https://github.com/samoht/cascade/pull/322))
+
 ### Custom properties
 
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
