@@ -32,6 +32,11 @@
 
 ### Custom properties
 
+- `Css.resolve_theme` emits the root theme binding for a name whose only
+  declaration sits in `@keyframes` or `@position-try`. Those belong to the
+  animation and position fallback origins, so they never defined the name for
+  the element referencing it, which was left with a free `var()`
+  ([#327](https://github.com/samoht/cascade/pull/327))
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults
