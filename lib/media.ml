@@ -1226,13 +1226,12 @@ let negated_feature_kind (f : feature) : kind =
 let rec condition_kind (c : condition) : kind =
   match c with
   | Feature f -> feature_kind f
-  | Not (Feature f) -> negated_feature_kind f
   | Not (Not c) -> condition_kind c
-  | Not ((And _ | Or _) as c) -> (
-      match condition_kind c with
-      | Responsive (u, v) -> Responsive_max (u, v)
-      | Responsive_max (u, v) -> Responsive (u, v)
-      | k -> k)
+  (* The complement of a width range is the two ranges outside it, and an
+     [and]/[or] takes its kind from one operand, so the complement of that
+     leaves the other operand's range uncovered. Neither is a single bound. *)
+  | Not (Feature (Interval _)) | Not (And _ | Or _) -> Other
+  | Not (Feature f) -> negated_feature_kind f
   | And (a, b) | Or (a, b) -> (
       match (condition_kind a, condition_kind b) with
       | Other, other | other, Other -> other
