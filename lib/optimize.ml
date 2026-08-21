@@ -533,50 +533,84 @@ let iter_statement_block f stmt =
       List.iter f block
   | _ -> ()
 
+(* The declaration counterpart of [map_statement_block_preserve]: rebuild [stmt]
+   with [f] applied to each declaration list it holds itself, leaving the
+   statements it wraps to that function. Every arm is listed rather than closed
+   with a wildcard, so an at-rule that grows a declaration list has to be
+   classified here before it compiles instead of quietly escaping the passes
+   built on this. Descriptor at-rules ([@font-face], [@counter-style], ...) hold
+   descriptor values rather than declarations, so they pass through.
+   {!Stylesheet.map_statement_declarations} classifies the same arms but
+   rebuilds every statement it is handed, which would cost this pass the
+   physical-equality short-circuit the rest of the optimizer runs on. *)
+let map_statement_declarations_preserve f stmt =
+  let frames =
+    list_map_preserve (fun (frame : keyframe) ->
+        let declarations = f frame.declarations in
+        if declarations == frame.declarations then frame
+        else { frame with declarations })
+  in
+  match stmt with
+  | Rule rule ->
+      let declarations = f rule.declarations in
+      if declarations == rule.declarations then stmt
+      else Rule { rule with declarations }
+  | Declarations decls ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Declarations decls'
+  | Page (selector, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Page (selector, decls')
+  | Position_try (name, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Position_try (name, decls')
+  | Supports_condition (name, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Supports_condition (name, decls')
+  | Page_with_margins (selector, descriptors, margins) ->
+      let descriptors' = f descriptors in
+      let margins' =
+        list_map_preserve
+          (fun (margin : page_margin_rule) ->
+            let descriptors = f margin.descriptors in
+            if descriptors == margin.descriptors then margin
+            else { margin with descriptors })
+          margins
+      in
+      if descriptors' == descriptors && margins' == margins then stmt
+      else Page_with_margins (selector, descriptors', margins')
+  | Keyframes (name, fs) ->
+      let fs' = frames fs in
+      if fs' == fs then stmt else Keyframes (name, fs')
+  | Webkit_keyframes (name, fs) ->
+      let fs' = frames fs in
+      if fs' == fs then stmt else Webkit_keyframes (name, fs')
+  | Moz_keyframes (name, fs) ->
+      let fs' = frames fs in
+      if fs' == fs then stmt else Moz_keyframes (name, fs')
+  | Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+  | When _ | Else _ | Starting_style _ | Origin _ | Scope _ | Font_face _
+  | Counter_style _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Viewport _ | Unknown_at_rule _ ->
+      stmt
+
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
-    nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
-    [@position-try]) and removes declarations whose typed value contains an
-    [Invalid] arm. *)
+    nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
+    [@position-try], [@supports-condition]) and removes declarations whose typed
+    value contains an [Invalid] arm. *)
 let drop_invalid (stylesheet : t) : t =
   let filter_decls =
     list_filter_preserve (fun d -> not (Declaration.is_invalid d))
   in
   let rec statement stmt =
+    let stmt = map_statement_declarations_preserve filter_decls stmt in
     match stmt with
     | Rule rule ->
-        let declarations = filter_decls rule.declarations in
         let nested = list_map_preserve statement rule.nested in
-        let rule' =
-          rule_with_declarations_and_nested rule declarations nested
-        in
+        let rule' = rule_with_nested rule nested in
         if rule' == rule then stmt else Rule rule'
-    | Declarations decls ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Declarations decls'
-    | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
-    | Else _ | Starting_style _ | Origin _ | Scope _ ->
-        map_statement_block_preserve statement stmt
-    | Page (sel, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Page (sel, decls')
-    | Page_with_margins (sel, descs, margins) ->
-        let descs' = filter_decls descs in
-        let margins' =
-          list_map_preserve
-            (fun (m : page_margin_rule) ->
-              let descriptors = filter_decls m.descriptors in
-              if descriptors == m.descriptors then m else { m with descriptors })
-            margins
-        in
-        if descs' == descs && margins' == margins then stmt
-        else Page_with_margins (sel, descs', margins')
-    | Position_try (name, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Position_try (name, decls')
-    | Supports_condition (name, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Supports_condition (name, decls')
-    | other -> other
+    | stmt -> map_statement_block_preserve statement stmt
   in
   list_map_preserve statement stylesheet
 
@@ -1094,13 +1128,12 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
           (Variables.var_refs_in_value_string
              (Declaration.string_of_declaration ~minify:true d)))
   in
+  (* Through the exhaustive pair rather than a local match: a reference the walk
+     cannot reach reads as no reference at all, and [@keyframes], [@page] and
+     [@position-try] hold their declarations outside any block. *)
   let rec walk stmt =
-    match stmt with
-    | Rule r ->
-        note_decls r.declarations;
-        List.iter walk r.nested
-    | Declarations decls -> note_decls decls
-    | _ -> iter_statement_block walk stmt
+    note_decls (Stylesheet.statement_declarations stmt);
+    List.iter walk (Stylesheet.statement_children stmt)
   in
   List.iter walk stmts;
   tbl

@@ -42,6 +42,9 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- A declaration whose value is spec-invalid is discarded inside a `@keyframes`
+  frame, matching what a browser does with it there and what cascade already
+  did in a style rule (#341)
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering
@@ -109,6 +112,10 @@
   which closes the rule around it. The declaration name, the `var()` reference
   and every shape of its fallback, the `@property` prelude and a `style()`
   container query all take the escaping (#429)
+- Pruning unreferenced custom properties counts a `var()` in a `@keyframes`
+  frame, `@page` and its margin boxes, `@position-try` or
+  `@supports-condition` as a reference, instead of deleting a binding those
+  at-rules still use (#341)
 
 ### Canonical diff
 
