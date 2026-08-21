@@ -245,7 +245,9 @@ val map_statement_children : (block -> block) -> statement -> statement
 (** [map_statement_children f stmt] rebuilds [stmt] with [f] applied to the
     block {!statement_children} reads, and returns a statement that holds no
     block unchanged. It is the rebuilding counterpart of {!statement_children},
-    for a walk that rewrites the tree rather than only reading it. *)
+    for a walk that rewrites the tree rather than only reading it. It preserves
+    physical identity: when [f] returns the block it was given, the result is
+    [stmt] itself. *)
 
 val map_statement_declarations :
   (declaration list -> declaration list) -> statement -> statement
@@ -254,7 +256,8 @@ val map_statement_declarations :
     unchanged. It is the rebuilding counterpart of {!statement_declarations},
     with one difference: [f] sees each declaration list as its own list rather
     than the concatenation, so every frame of [@keyframes] and every margin rule
-    of [@page] keeps its own block. *)
+    of [@page] keeps its own block. It preserves physical identity: when [f]
+    returns every list it was given, the result is [stmt] itself. *)
 
 (** {1 Reading/Parsing} *)
 

@@ -308,61 +308,109 @@ let statement_declarations = function
    written on [statement_children] and [statement_declarations] alone; one that
    rewrites the tree needs to put the result back, and hand-rolling that half is
    how a block at-rule ends up read but not written. Exhaustive for the same
-   reason as the readers. *)
-let map_statement_children f = function
-  | Rule rule -> Rule { rule with nested = f rule.nested }
-  | Layer (name, block) -> Layer (name, f block)
-  | Media (query, block) -> Media (query, f block)
-  | Container (name, query, block) -> Container (name, query, f block)
-  | Supports (condition, block) -> Supports (condition, f block)
-  | Moz_document (condition, block) -> Moz_document (condition, f block)
-  | When (condition, block) -> When (condition, f block)
-  | Else (condition, block) -> Else (condition, f block)
-  | Starting_style block -> Starting_style (f block)
-  | Origin (origin, block) -> Origin (origin, f block)
-  | Scope (start, end_, block) -> Scope (start, end_, f block)
-  | ( Property _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-    | Namespace _ | Layer_decl _ | Supports_condition _ | Keyframes _
-    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
-    | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-    | Unknown_at_rule _ ) as stmt ->
+   reason as the readers.
+
+   Both preserve physical identity: a statement whose lists [f] returns
+   physically unchanged is returned itself rather than rebuilt, so a pass built
+   on them keeps the subtree sharing its fixed point converges on. That only
+   pays off when [f] preserves identity too. *)
+let map_statement_children f stmt =
+  match stmt with
+  | Rule rule ->
+      let nested = f rule.nested in
+      if nested == rule.nested then stmt else Rule { rule with nested }
+  | Layer (name, block) ->
+      let block' = f block in
+      if block' == block then stmt else Layer (name, block')
+  | Media (query, block) ->
+      let block' = f block in
+      if block' == block then stmt else Media (query, block')
+  | Container (name, query, block) ->
+      let block' = f block in
+      if block' == block then stmt else Container (name, query, block')
+  | Supports (condition, block) ->
+      let block' = f block in
+      if block' == block then stmt else Supports (condition, block')
+  | Moz_document (condition, block) ->
+      let block' = f block in
+      if block' == block then stmt else Moz_document (condition, block')
+  | When (condition, block) ->
+      let block' = f block in
+      if block' == block then stmt else When (condition, block')
+  | Else (condition, block) ->
+      let block' = f block in
+      if block' == block then stmt else Else (condition, block')
+  | Starting_style block ->
+      let block' = f block in
+      if block' == block then stmt else Starting_style block'
+  | Origin (origin, block) ->
+      let block' = f block in
+      if block' == block then stmt else Origin (origin, block')
+  | Scope (start, end_, block) ->
+      let block' = f block in
+      if block' == block then stmt else Scope (start, end_, block')
+  | Property _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Layer_decl _ | Supports_condition _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
       stmt
 
 let map_frame_declarations f frames =
-  List.map
+  Common.List.map_preserve
     (fun (frame : keyframe) ->
-      { frame with declarations = f frame.declarations })
+      let declarations = f frame.declarations in
+      if declarations == frame.declarations then frame
+      else { frame with declarations })
     frames
 
 (* [f] sees each declaration list the statement holds as its own list, not the
    concatenation [statement_declarations] returns: the frames of [@keyframes]
    and the margin rules of [@page] each keep their own block. *)
-let map_statement_declarations f = function
-  | Rule rule -> Rule { rule with declarations = f rule.declarations }
-  | Declarations decls -> Declarations (f decls)
-  | Supports_condition (name, decls) -> Supports_condition (name, f decls)
-  | Page (selector, decls) -> Page (selector, f decls)
-  | Position_try (name, decls) -> Position_try (name, f decls)
-  | Keyframes (name, frames) -> Keyframes (name, map_frame_declarations f frames)
+let map_statement_declarations f stmt =
+  match stmt with
+  | Rule rule ->
+      let declarations = f rule.declarations in
+      if declarations == rule.declarations then stmt
+      else Rule { rule with declarations }
+  | Declarations decls ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Declarations decls'
+  | Supports_condition (name, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Supports_condition (name, decls')
+  | Page (selector, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Page (selector, decls')
+  | Position_try (name, decls) ->
+      let decls' = f decls in
+      if decls' == decls then stmt else Position_try (name, decls')
+  | Keyframes (name, frames) ->
+      let frames' = map_frame_declarations f frames in
+      if frames' == frames then stmt else Keyframes (name, frames')
   | Webkit_keyframes (name, frames) ->
-      Webkit_keyframes (name, map_frame_declarations f frames)
+      let frames' = map_frame_declarations f frames in
+      if frames' == frames then stmt else Webkit_keyframes (name, frames')
   | Moz_keyframes (name, frames) ->
-      Moz_keyframes (name, map_frame_declarations f frames)
+      let frames' = map_frame_declarations f frames in
+      if frames' == frames then stmt else Moz_keyframes (name, frames')
   | Page_with_margins (selector, descriptors, margins) ->
-      Page_with_margins
-        ( selector,
-          f descriptors,
-          List.map
-            (fun (margin : page_margin_rule) ->
-              { margin with descriptors = f margin.descriptors })
-            margins )
-  | ( Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
-    | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
-    | Moz_document _ | When _ | Else _ | Starting_style _ | Origin _ | Scope _
-    | Font_face _ | Counter_style _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
-      ) as stmt ->
+      let descriptors' = f descriptors in
+      let margins' =
+        Common.List.map_preserve
+          (fun (margin : page_margin_rule) ->
+            let descriptors = f margin.descriptors in
+            if descriptors == margin.descriptors then margin
+            else { margin with descriptors })
+          margins
+      in
+      if descriptors' == descriptors && margins' == margins then stmt
+      else Page_with_margins (selector, descriptors', margins')
+  | Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+  | When _ | Else _ | Starting_style _ | Origin _ | Scope _ | Font_face _
+  | Counter_style _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Viewport _ | Unknown_at_rule _ ->
       stmt
 
 (** {1 Pretty Printing} *)

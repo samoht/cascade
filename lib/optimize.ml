@@ -520,118 +520,6 @@ let apply_property_duplication (stylesheet : t) : t =
   in
   apply_to_statements stylesheet
 
-let map_statement_block_preserve f stmt =
-  let map block = list_map_preserve f block in
-  match stmt with
-  | Layer (name, block) ->
-      let block' = map block in
-      if block' == block then stmt else Layer (name, block')
-  | Media (m, block) ->
-      let block' = map block in
-      if block' == block then stmt else Media (m, block')
-  | Container (n, c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Container (n, c, block')
-  | Supports (s, block) ->
-      let block' = map block in
-      if block' == block then stmt else Supports (s, block')
-  | Moz_document (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Moz_document (c, block')
-  | When (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else When (c, block')
-  | Else (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Else (c, block')
-  | Starting_style block ->
-      let block' = map block in
-      if block' == block then stmt else Starting_style block'
-  | Origin (o, block) ->
-      let block' = map block in
-      if block' == block then stmt else Origin (o, block')
-  | Scope (a, b, block) ->
-      let block' = map block in
-      if block' == block then stmt else Scope (a, b, block')
-  | _ -> stmt
-
-let iter_statement_block f stmt =
-  match stmt with
-  | Layer (_, block)
-  | Media (_, block)
-  | Container (_, _, block)
-  | Supports (_, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block)
-  | Starting_style block
-  | Origin (_, block)
-  | Scope (_, _, block) ->
-      List.iter f block
-  | _ -> ()
-
-(* The declaration counterpart of [map_statement_block_preserve]: rebuild [stmt]
-   with [f] applied to each declaration list it holds itself, leaving the
-   statements it wraps to that function. Every arm is listed rather than closed
-   with a wildcard, so an at-rule that grows a declaration list has to be
-   classified here before it compiles instead of quietly escaping the passes
-   built on this. Descriptor at-rules ([@font-face], [@counter-style], ...) hold
-   descriptor values rather than declarations, so they pass through.
-   {!Stylesheet.map_statement_declarations} classifies the same arms but
-   rebuilds every statement it is handed, which would cost this pass the
-   physical-equality short-circuit the rest of the optimizer runs on. *)
-let map_statement_declarations_preserve f stmt =
-  let frames =
-    list_map_preserve (fun (frame : keyframe) ->
-        let declarations = f frame.declarations in
-        if declarations == frame.declarations then frame
-        else { frame with declarations })
-  in
-  match stmt with
-  | Rule rule ->
-      let declarations = f rule.declarations in
-      if declarations == rule.declarations then stmt
-      else Rule { rule with declarations }
-  | Declarations decls ->
-      let decls' = f decls in
-      if decls' == decls then stmt else Declarations decls'
-  | Page (selector, decls) ->
-      let decls' = f decls in
-      if decls' == decls then stmt else Page (selector, decls')
-  | Position_try (name, decls) ->
-      let decls' = f decls in
-      if decls' == decls then stmt else Position_try (name, decls')
-  | Supports_condition (name, decls) ->
-      let decls' = f decls in
-      if decls' == decls then stmt else Supports_condition (name, decls')
-  | Page_with_margins (selector, descriptors, margins) ->
-      let descriptors' = f descriptors in
-      let margins' =
-        list_map_preserve
-          (fun (margin : page_margin_rule) ->
-            let descriptors = f margin.descriptors in
-            if descriptors == margin.descriptors then margin
-            else { margin with descriptors })
-          margins
-      in
-      if descriptors' == descriptors && margins' == margins then stmt
-      else Page_with_margins (selector, descriptors', margins')
-  | Keyframes (name, fs) ->
-      let fs' = frames fs in
-      if fs' == fs then stmt else Keyframes (name, fs')
-  | Webkit_keyframes (name, fs) ->
-      let fs' = frames fs in
-      if fs' == fs then stmt else Webkit_keyframes (name, fs')
-  | Moz_keyframes (name, fs) ->
-      let fs' = frames fs in
-      if fs' == fs then stmt else Moz_keyframes (name, fs')
-  | Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
-  | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
-  | When _ | Else _ | Starting_style _ | Origin _ | Scope _ | Font_face _
-  | Counter_style _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Viewport _ | Unknown_at_rule _ ->
-      stmt
-
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
     [@position-try], [@supports-condition]) and removes declarations whose typed
@@ -641,13 +529,13 @@ let drop_invalid (stylesheet : t) : t =
     list_filter_preserve (fun d -> not (Declaration.is_invalid d))
   in
   let rec statement stmt =
-    let stmt = map_statement_declarations_preserve filter_decls stmt in
+    let stmt = map_statement_declarations filter_decls stmt in
     match stmt with
     | Rule rule ->
         let nested = list_map_preserve statement rule.nested in
         let rule' = rule_with_nested rule nested in
         if rule' == rule then stmt else Rule rule'
-    | stmt -> map_statement_block_preserve statement stmt
+    | stmt -> map_statement_children (list_map_preserve statement) stmt
   in
   list_map_preserve statement stylesheet
 
@@ -780,8 +668,7 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
     match stmt with
     | Property pr ->
         Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
-    | Rule r -> List.iter collect_stmt r.nested
-    | _ -> iter_statement_block collect_stmt stmt
+    | _ -> List.iter collect_stmt (statement_children stmt)
   in
   List.iter collect_stmt stmts;
   let promote_decls =
@@ -791,13 +678,13 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
      typed wherever it is written: through the declaration walker rather than a
      list of the at-rules that came to mind. *)
   let rec walk_stmt (stmt : statement) : statement =
-    let stmt = map_statement_declarations_preserve promote_decls stmt in
+    let stmt = map_statement_declarations promote_decls stmt in
     match stmt with
     | Rule r ->
         let nested = list_map_preserve walk_stmt r.nested in
         let r' = rule_with_nested r nested in
         if r' == r then stmt else Rule r'
-    | stmt -> map_statement_block_preserve walk_stmt stmt
+    | stmt -> map_statement_children (list_map_preserve walk_stmt) stmt
   in
   list_map_preserve walk_stmt stmts
 
@@ -812,10 +699,7 @@ let canonicalize_declaration_order stmts =
         let nested = list_map_preserve walk_stmt r.nested in
         let r' = rule_with_declarations_and_nested r declarations nested in
         if r' == r then stmt else Rule r'
-    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ ->
-        map_statement_block_preserve walk_stmt stmt
-    | _ -> stmt
+    | stmt -> map_statement_children (list_map_preserve walk_stmt) stmt
   in
   list_map_preserve walk_stmt stmts
 
@@ -903,7 +787,7 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
             if decls' == decls then stmt else Declarations decls'
         | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
         | Else _ | Starting_style _ | Origin _ | Scope _ ->
-            map_statement_block_preserve walk stmt
+            map_statement_children (list_map_preserve walk) stmt
         | Page (sel, decls) ->
             let decls' = prune_decls decls in
             if decls' == decls then stmt else Page (sel, decls')
@@ -981,8 +865,7 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
     | Property pr ->
         if syntax_is_single_valued pr.syntax then
           Hashtbl.replace tbl (bare pr.name) ()
-    | Rule r -> List.iter collect r.nested
-    | _ -> iter_statement_block collect stmt
+    | _ -> List.iter collect (statement_children stmt)
   in
   List.iter collect stmts;
   { Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name) }
@@ -1092,9 +975,9 @@ let rec statement_rule_count = function
   | Rule _ -> 1
   | stmt ->
       let count = ref 0 in
-      iter_statement_block
+      List.iter
         (fun stmt -> count := !count + statement_rule_count stmt)
-        stmt;
+        (statement_children stmt);
       !count
 
 let stylesheet_rule_count stmts =
@@ -1179,7 +1062,7 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
     | Declarations decls ->
         let decls' = list_filter_preserve keep_decl decls in
         if decls' == decls then stmt else Declarations decls'
-    | _ -> map_statement_block_preserve prune stmt
+    | _ -> map_statement_children (list_map_preserve prune) stmt
   in
   list_map_preserve prune stmts
 

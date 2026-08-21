@@ -165,6 +165,10 @@
 - `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
   rebuild a statement with a function applied to the block or the declarations
   it holds, the rebuilding counterparts of the two readers (#337)
+- `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
+  return the very statement they were given when the function they run leaves
+  every list physically unchanged. A pass that short-circuits on physical
+  equality can now call them instead of hand-rolling its own walk (#355)
 
 ### CLI tools
 
