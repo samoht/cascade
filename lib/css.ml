@@ -936,6 +936,28 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
           | d -> Option.Some d)
         decls
 
+let resolve_theme_guards_in_frames ~theme frames =
+  List.map
+    (fun (frame : Stylesheet.keyframe) ->
+      {
+        frame with
+        declarations = resolve_theme_guards_in_decls ~theme frame.declarations;
+      })
+    frames
+
+let resolve_theme_guards_in_margins ~theme margins =
+  List.map
+    (fun (margin : Stylesheet.page_margin_rule) ->
+      {
+        margin with
+        descriptors = resolve_theme_guards_in_decls ~theme margin.descriptors;
+      })
+    margins
+
+(* Listed one by one rather than closed with a wildcard, for the same reason as
+   [Stylesheet.statement_declarations]: a guard the keep-set rejects has to be
+   dropped wherever the declaration sits, and a wildcard would silently leak the
+   next declaration-carrying at-rule's guards into the output. *)
 let rec resolve_theme_guards_in_stmts ~theme = function
   | [] -> []
   | stmt :: rest ->
@@ -964,7 +986,29 @@ let rec resolve_theme_guards_in_stmts ~theme = function
             Moz_document (c, resolve_theme_guards_in_stmts ~theme b)
         | When (c, b) -> When (c, resolve_theme_guards_in_stmts ~theme b)
         | Else (c, b) -> Else (c, resolve_theme_guards_in_stmts ~theme b)
-        | other -> other
+        | Keyframes (n, frames) ->
+            Keyframes (n, resolve_theme_guards_in_frames ~theme frames)
+        | Webkit_keyframes (n, frames) ->
+            Webkit_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
+        | Moz_keyframes (n, frames) ->
+            Moz_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
+        | Page (sel, decls) ->
+            Page (sel, resolve_theme_guards_in_decls ~theme decls)
+        | Page_with_margins (sel, descriptors, margins) ->
+            Page_with_margins
+              ( sel,
+                resolve_theme_guards_in_decls ~theme descriptors,
+                resolve_theme_guards_in_margins ~theme margins )
+        | Position_try (n, decls) ->
+            Position_try (n, resolve_theme_guards_in_decls ~theme decls)
+        | Supports_condition (n, decls) ->
+            Supports_condition (n, resolve_theme_guards_in_decls ~theme decls)
+        | Property _ -> stmt
+        | Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _
+        | Font_face _ | Counter_style _ | Font_palette_values _
+        | Font_feature_values _ | View_transition _ | Viewport _
+        | Unknown_at_rule _ ->
+            stmt
       in
       stmt :: resolve_theme_guards_in_stmts ~theme rest
 
