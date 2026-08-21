@@ -1088,7 +1088,21 @@ let theme_defaults_source defaults =
   in
   ":root{" ^ body ^ "}"
 
-(* Names declared as a custom property anywhere in the tree (bare, no [--]). *)
+(* The declarations a statement contributes to ordinary element matching. Unlike
+   [Stylesheet.statement_declarations], which reaches every declaration in the
+   tree, this stops at the at-rules whose declarations belong to another cascade
+   origin or to no element at all (CSS Cascading 5 sec. 6.1): [@keyframes] is
+   the animation origin, [@position-try] the position fallback origin, [@page]
+   and its margin boxes are not elements, and [@supports-condition] is never
+   applied to a box. None of them declares a name for an element that merely
+   references it. *)
+let cascading_declarations (stmt : Stylesheet.statement) =
+  match stmt with
+  | Stylesheet.Rule rule -> rule.declarations
+  | Stylesheet.Declarations decls -> decls
+  | _ -> []
+
+(* Names a style rule declares as a custom property (bare, no [--]). *)
 let declared_custom_prop_names (stmts : Stylesheet.statement list) :
     (string, unit) Hashtbl.t =
   let tbl = Hashtbl.create 16 in
@@ -1101,7 +1115,7 @@ let declared_custom_prop_names (stmts : Stylesheet.statement list) :
       decls
   in
   let rec scan (stmt : Stylesheet.statement) =
-    note (Stylesheet.statement_declarations stmt);
+    note (cascading_declarations stmt);
     List.iter scan (Stylesheet.statement_children stmt)
   in
   List.iter scan stmts;
