@@ -6795,6 +6795,74 @@ let v4107_math_reduction () =
     "calc(max(1px, 2px, 3px)) -> 3px" ".x{width:3px}"
     (normalize ".x { width: calc(max(1px, 2px, 3px)) }")
 
+(* CSS Values 4 sec. 10.7: [abs()] and [hypot()] return their argument's type,
+   and sec. 10.9 gives the inverse trig functions an [<angle>]. A [calc()]
+   wrapper around one reduced it to a bare coefficient, so [calc(hypot(1px,
+   1px))] printed [1.41421356], which is not a [<length>] and is a declaration
+   the reader drops. Each expected form is reparsed to prove it survives. *)
+let v4107_typed_math_fn_units () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [reparses]") expected (normalize expected))
+    [
+      ( "calc(hypot(3px, 4px)) -> 5px",
+        ".x { width: calc(hypot(3px, 4px)) }",
+        ".x{width:5px}" );
+      ( "calc(hypot(1px, 1px)) -> 1.41421px",
+        ".x { width: calc(hypot(1px, 1px)) }",
+        ".x{width:1.41421px}" );
+      ( "calc(1px + hypot(3px, 4px)) -> 6px",
+        ".x { width: calc(1px + hypot(3px, 4px)) }",
+        ".x{width:6px}" );
+      ( "calc(hypot(3em, 4em)) -> 5em",
+        ".x { width: calc(hypot(3em, 4em)) }",
+        ".x{width:5em}" );
+      ( "calc(hypot(3%, 4%)) -> 5%",
+        ".x { width: calc(hypot(3%, 4%)) }",
+        ".x{width:5%}" );
+      (* Both arguments are a [<length>], so the call is well typed, but [px]
+         and [em] resolve against a font size only the browser knows. *)
+      ( "calc(hypot(1px, 1em)) keeps the call",
+        ".x { width: calc(hypot(1px, 1em)) }",
+        ".x{width:hypot(1px,1em)}" );
+      ( "calc(abs(-3px)) -> 3px",
+        ".x { width: calc(abs(-3px)) }",
+        ".x{width:3px}" );
+      (* A [<number>] argument keeps a [<number>] result, which scales a length
+         rather than becoming one. *)
+      ( "calc(hypot(3, 4) * 1px) -> 5px",
+        ".x { width: calc(hypot(3, 4) * 1px) }",
+        ".x{width:5px}" );
+      ( "calc(hypot(3s, 4s)) -> 5s",
+        ".x { transition-duration: calc(hypot(3s, 4s)) }",
+        ".x{transition-duration:5s}" );
+      ( "calc(abs(-3s)) -> 3s",
+        ".x { transition-duration: calc(abs(-3s)) }",
+        ".x{transition-duration:3s}" );
+      ( "calc(hypot(3deg, 4deg)) -> 5deg",
+        ".x { transform: rotate(calc(hypot(3deg, 4deg))) }",
+        ".x{transform:rotate(5deg)}" );
+      ( "calc(abs(-3deg)) -> 3deg",
+        ".x { transform: rotate(calc(abs(-3deg))) }",
+        ".x{transform:rotate(3deg)}" );
+      ( "calc(atan2(1, 1)) -> 45deg",
+        ".x { transform: rotate(calc(atan2(1, 1))) }",
+        ".x{transform:rotate(45deg)}" );
+      ( "calc(30deg + atan2(1, 1)) -> 75deg",
+        ".x { transform: rotate(calc(30deg + atan2(1, 1))) }",
+        ".x{transform:rotate(75deg)}" );
+      ( "calc(abs(-30%)) on an <alpha-value> -> .3",
+        ".x { opacity: calc(abs(-30%)) }",
+        ".x{opacity:.3}" );
+    ]
+
 let v4107_numeric_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -8459,6 +8527,9 @@ let additional_tests =
     ( "spec values 4 10.7 numeric math reduction",
       `Quick,
       v4107_numeric_reduction );
+    ( "spec values 4 10.7 typed math function units",
+      `Quick,
+      v4107_typed_math_fn_units );
     ( "spec values 4 10.7 length times math reduction",
       `Quick,
       v4107_math_product_reduction );
