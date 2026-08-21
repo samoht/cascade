@@ -885,6 +885,15 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
   in
   pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
 
+(* Six significant figures is the precision Cascade commits to in serialised
+   output, and CSS Values 4 sec. 10.13 leaves the choice to the implementation.
+   It applies to a coefficient Cascade computed itself - an irrational folded
+   out of [pi] or [sqrt()], a conversion between absolute units - which carries
+   digits that will never be printed. An authored coefficient is the author's
+   own digits and keeps every one of them: at a [14px] font [.4285714em] is
+   [6px] and [.428571em] is not. *)
+let round_computed (f : float) : float = Pp.round_sig 6 f
+
 (* Fold [a / b] only when the float quotient round-trips through multiplication:
    exact divisions like [100/4 = 25] survive but [100/3 = 33.333...] does not,
    so the calc wrapper stays and CSS Values 4 sec. 10.13's precision requirement
@@ -894,10 +903,9 @@ let exact_div (a : float) (b : float) : float option =
   else
     let r = a /. b in
     (* Round-trip alone is too lax under IEEE 754 (33.333... * 3 = 100.0 due to
-       multiplication rounding). Also require the quotient to survive the
-       6-sig-fig round used by [Pp.float], which is the precision Cascade
-       commits to in serialised output. *)
-    if Float.is_finite r && r *. b = a && Pp.round_sig 6 r = r then
+       multiplication rounding). Also require the quotient to survive
+       [round_computed]. *)
+    if Float.is_finite r && r *. b = a && round_computed r = r then
       Option.some r
     else Option.none
 
@@ -1040,64 +1048,114 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
               | Some zero -> zero
               | None -> Expr (l, op, r))))
 
+(* A subtree Cascade has to evaluate to a float of its own: a math constant or a
+   math function. A fold that consumes one lands a computed coefficient in the
+   typed leaf, so that leaf takes [round_computed]; a fold over authored
+   operands alone keeps their digits. *)
+let rec calc_is_computed : type a. a calc -> bool = function
+  | Math_const _ | Math_fn _ -> true
+  | Nested inner | Parens inner -> calc_is_computed inner
+  | Expr (left, _, right) -> calc_is_computed left || calc_is_computed right
+  | Num _ | Val _ | Var _ | Sibling_index | Sibling_count -> false
+
+(* Spend the [round] budget on a typed value Cascade computed, once nothing more
+   will fold it. A value the author wrote keeps its digits. *)
+let settle_computed : type a. (a -> a) -> a calc * bool -> a calc =
+ fun round (reduced, computed) ->
+  match reduced with Val v when computed -> Val (round v) | reduced -> reduced
+
+(* Fold one [Expr] over operands that are already reduced. [lf] / [rf] pair each
+   operand with its own provenance flag; the result carries the flag of the
+   typed value it produces, and an operand a kept [calc()] will print settles
+   here because nothing further will fold it. *)
+let fold_typed_expr : type a.
+    scale:(exact:bool -> calc_op -> a -> float -> a option) ->
+    combine:(calc_op -> a -> a -> a option) ->
+    round:(a -> a) ->
+    is_zero:(a -> bool) ->
+    zero:a calc ->
+    computed:bool ->
+    a calc * bool ->
+    calc_op ->
+    a calc * bool ->
+    a calc * bool =
+ fun ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
+  let l = fst lf and r = fst rf in
+  let lc = calc_operand_value l in
+  let rc = calc_operand_value r in
+  let keep () =
+    (Expr (settle_computed round lf, op, settle_computed round rf), false)
+  in
+  let value v = (Val v, computed) in
+  match (lc, op, rc) with
+  | Num a, Add, Num b -> (Num (a +. b), false)
+  | Num a, Sub, Num b -> (Num (a -. b), false)
+  | Num a, Mul, Num b -> (Num (a *. b), false)
+  | Num a, Div, Num b -> (
+      match exact_div a b with Some q -> (Num q, false) | None -> keep ())
+  | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
+      (Option.get (fold_zero_numeric_expr lc op rc), false)
+  | Val a, op, Val b -> (
+      match combine op a b with Some v -> value v | None -> keep ())
+  | Val _, Div, Num 0. -> keep ()
+  | Val a, ((Mul | Div) as op), Num n -> (
+      let exact = match r with Math_const _ -> false | _ -> true in
+      match scale ~exact op a n with Some v -> value v | None -> keep ())
+  | Num n, Mul, Val a -> (
+      match scale ~exact:true Mul a n with Some v -> value v | None -> keep ())
+  (* CSS Values 4 sec. 10.10.1: [1 / (1 / x)] cancels the double inversion. *)
+  | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> (x, false)
+  | Num 1., Div, Expr (Num 1., Div, x) -> (x, false)
+  | _ -> (
+      (* An identity returns one operand verbatim, so the surviving value keeps
+         that operand's provenance rather than the expression's. *)
+      match calc_identity ~zero ~is_zero l op r with
+      | Some folded -> (folded, snd lf || snd rf)
+      | None -> keep ())
+
 (* CSS Values 4 sec. 10.10.1 typed [calc()] reduction, shared by every
    dimensioned type: the [Expr] dispatch is identical, only the per-type leaves
-   differ and are passed in ([math_fn], [scale], [combine], [zero] / [is_zero]
-   for the identities). A shape with no [scale] / [combine] returns [None] and
-   the [calc()] is kept verbatim. *)
-let rec eval_typed_calc : type a.
+   differ and are passed in ([math_fn], [scale], [combine], [round], [zero] /
+   [is_zero] for the identities). A shape with no [scale] / [combine] returns
+   [None] and the [calc()] is kept verbatim. *)
+let eval_typed_calc : type a.
     math_fn:(math_fn -> a calc) ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
     combine:(calc_op -> a -> a -> a option) ->
+    round:(a -> a) ->
     is_zero:(a -> bool) ->
     zero:a calc ->
     ctx:calc_ctx ->
     a calc ->
     a calc =
- fun ~math_fn ~scale ~combine ~is_zero ~zero ~ctx calc ->
-  let recurse = eval_typed_calc ~math_fn ~scale ~combine ~is_zero ~zero ~ctx in
-  match calc with
-  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Math_const _ as leaf -> leaf
-  | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
-  | Math_fn fn -> math_fn fn
-  | Nested inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (recurse inner)
-  | Parens inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (recurse inner)
-  | Expr (l, op, r) -> (
-      let l = recurse l in
-      let r = recurse r in
-      let lc = calc_operand_value l in
-      let rc = calc_operand_value r in
-      match (lc, op, rc) with
-      | Num a, Add, Num b -> Num (a +. b)
-      | Num a, Sub, Num b -> Num (a -. b)
-      | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b -> (
-          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
-      | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
-          Option.get (fold_zero_numeric_expr lc op rc)
-      | Val a, op, Val b -> (
-          match combine op a b with Some v -> Val v | None -> Expr (l, op, r))
-      | Val _, Div, Num 0. -> Expr (l, op, r)
-      | Val a, ((Mul | Div) as op), Num n -> (
-          let exact = match r with Math_const _ -> false | _ -> true in
-          match scale ~exact op a n with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      | Num n, Mul, Val a -> (
-          match scale ~exact:true Mul a n with
-          | Some v -> Val v
-          | None -> Expr (l, op, r))
-      (* CSS Values 4 sec. 10.10.1: [1 / (1 / x)] cancels the double
-         inversion. *)
-      | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> x
-      | Num 1., Div, Expr (Num 1., Div, x) -> x
-      | _ -> (
-          match calc_identity ~zero ~is_zero l op r with
-          | Some folded -> folded
-          | None -> Expr (l, op, r)))
+ fun ~math_fn ~scale ~combine ~round ~is_zero ~zero ~ctx calc ->
+  (* [reduce] pairs the reduced tree with a flag: its root is a typed value
+     Cascade computed rather than one the author wrote. The budget is spent once
+     nothing more will fold that root - at the top, or where it is embedded in a
+     [calc()] that stays. Rounding an intermediate product instead feeds the
+     shortened coefficient back into the next fold and compounds the error:
+     [calc(100px * sqrt(2) * sqrt(2))] is still [200px]. *)
+  let rec reduce (calc : a calc) : a calc * bool =
+    match calc with
+    | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf ->
+        (leaf, false)
+    | Math_const _ as leaf -> (leaf, false)
+    | Math_fn fn when math_fn_contains_var fn -> (Math_fn fn, false)
+    | Math_fn fn -> (
+        match math_fn fn with
+        | Val _ as reduced -> (reduced, true)
+        | reduced -> (reduced, false))
+    | Nested inner -> wrap (fun r -> Nested r) inner
+    | Parens inner -> wrap (fun r -> Parens r) inner
+    | Expr (left, op, right) ->
+        let computed = calc_is_computed left || calc_is_computed right in
+        fold_typed_expr ~scale ~combine ~round ~is_zero ~zero ~computed
+          (reduce left) op (reduce right)
+  and wrap rewrap inner =
+    let reduced, computed = reduce inner in
+    (unwrap_grouping ~ctx ~rewrap reduced, computed)
+  in
+  settle_computed round (reduce calc)
 
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
@@ -1130,18 +1188,14 @@ let pp_unit ?always:_ ctx f suffix =
      top-level (a calc / function operand keeps its unit), so it is an AST
      rewrite in the optimize pass, not a printer choice. *)
   (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on fractional
-     values ([.25rem], not [0.25rem]) in both modes; under minify round to 6
-     significant digits so a [calc()]-folded result emits [70.7107px] rather
-     than an 8-decimal float. *)
+     values ([.25rem], not [0.25rem]) in both modes. The coefficient itself
+     prints in full, like [Pp.pct]: rounding it changes the value, so the
+     6-significant-figure budget ([round_computed]) belongs to the fold that
+     computes a coefficient, not to the printer that serialises one. *)
   if Float.is_nan f then Pp.nan_value ctx suffix
-  else
-    let rendered =
-      if Pp.minified ctx then
-        Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
-      else Pp.string_of_float ~drop_leading_zero:true f
-    in
-    Pp.string ctx rendered;
-    Pp.string ctx suffix
+  else (
+    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
+    Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
@@ -1351,7 +1405,10 @@ let length_combine op v1 v2 =
   | (Add | Sub), Some (unit1, a), Some (unit2, b) -> (
       match (absolute_unit_px_ratio unit1, absolute_unit_px_ratio unit2) with
       | Some r1, Some r2 ->
-          Some (length_from_calc_unit "px" (combine (a *. r1) (b *. r2)))
+          (* The px form is Cascade's own arithmetic, not the authored one. *)
+          Some
+            (length_from_calc_unit "px"
+               (round_computed (combine (a *. r1) (b *. r2))))
       | _ -> None)
   | _ -> None
 
@@ -1420,6 +1477,20 @@ and length_calc_has_runtime_subst : length calc -> bool = function
   | Expr (l, _, r) ->
       length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
 
+(* Reduce a computed coefficient to the serialised precision, returning the leaf
+   unchanged when every digit already prints. A [<percentage>] is left alone:
+   [Pp.pct] prints its coefficient in full in both modes, so there is no budget
+   to apply. *)
+let length_round (l : length) : length =
+  match l with
+  | Pct _ -> l
+  | _ -> (
+      match calc_length_unit l with
+      | Some (unit, value) ->
+          let rounded = round_computed value in
+          if rounded = value then l else length_from_calc_unit unit rounded
+      | None -> l)
+
 let length_calc_math_fn (fn : math_fn) : length calc =
   match length_of_math_fn fn with
   | Some l -> Val l
@@ -1429,7 +1500,8 @@ let length_calc_math_fn (fn : math_fn) : length calc =
 let eval_length_calc ?(ctx = default_calc_ctx) (c : length calc) : length calc =
   eval_typed_calc ~math_fn:length_calc_math_fn
     ~scale:(fun ~exact op v n -> length_scale ~exact op v n)
-    ~combine:length_combine ~is_zero:length_is_zero ~zero:(Val Zero) ~ctx c
+    ~combine:length_combine ~round:length_round ~is_zero:length_is_zero
+    ~zero:(Val Zero) ~ctx c
 
 type length_unit =
   | Px
@@ -1831,6 +1903,10 @@ let lp_is_zero : length_percentage -> bool = function
   | Pct f -> f = 0.
   | _ -> false
 
+let lp_round : length_percentage -> length_percentage = function
+  | Length l -> Length (length_round l)
+  | lp -> lp
+
 let lp_calc_math_fn (fn : math_fn) : length_percentage calc =
   match lp_of_math_fn fn with
   | Some lp -> Val lp
@@ -1841,7 +1917,8 @@ let eval_lp_calc ?(ctx = default_calc_ctx) (c : length_percentage calc) :
     length_percentage calc =
   eval_typed_calc ~math_fn:lp_calc_math_fn
     ~scale:(fun ~exact op v n -> lp_scale ~exact op v n)
-    ~combine:lp_combine ~is_zero:lp_is_zero ~zero:(Val (Length Zero)) ~ctx c
+    ~combine:lp_combine ~round:lp_round ~is_zero:lp_is_zero
+    ~zero:(Val (Length Zero)) ~ctx c
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (Pct, n)
@@ -3507,8 +3584,9 @@ let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
             match px_values xs with
             | Some (_ :: _ as vs) ->
                 Px
-                  (Float.sqrt
-                     (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs))
+                  (round_computed
+                     (Float.sqrt
+                        (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs)))
             | _ -> Hypot xs))
     | Abs v -> ( match nf v with Px x -> Px (Float.abs x) | v -> Abs v)
     | Sign v -> Sign (nf v)
@@ -3611,7 +3689,9 @@ let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
     ~math_fn:(fun fn ->
       match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> pct_scale ~exact op v n)
-    ~combine:pct_combine ~is_zero:pct_is_zero
+      (* [Pp.pct] / [Pp.float] print a [<percentage>] or [<number>] coefficient
+         in full in both modes, so there is no budget to apply here. *)
+    ~combine:pct_combine ~round:Fun.id ~is_zero:pct_is_zero
     ~zero:(Val (Pct 0.) : percentage calc)
     ~ctx c
 
@@ -3648,13 +3728,18 @@ let time_is_zero : duration -> bool = function
   | S f | Ms f -> f = 0.
   | _ -> false
 
+let time_round : duration -> duration = function
+  | S f -> S (round_computed f)
+  | Ms f -> Ms (round_computed f)
+  | d -> d
+
 let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     =
   eval_typed_calc
     ~math_fn:(fun fn ->
       match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
-    ~combine:time_combine ~is_zero:time_is_zero
+    ~combine:time_combine ~round:time_round ~is_zero:time_is_zero
     ~zero:(Val (S 0.) : duration calc)
     ~ctx c
 
@@ -3697,12 +3782,20 @@ let angle_combine op (a : angle) (b : angle) : angle option =
   | Grad x, Grad y -> Option.map (fun r -> Grad r) (f x y)
   | _ -> Option.none
 
+let angle_round : angle -> angle = function
+  | Deg f -> Deg (round_computed f)
+  | Rad f -> Rad (round_computed f)
+  | Turn f -> Turn (round_computed f)
+  | Grad f -> Grad (round_computed f)
+  | a -> a
+
 let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
   eval_typed_calc
     ~math_fn:(fun fn ->
       match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
-    ~combine:angle_combine ~is_zero:angle_is_zero ~zero:(Val (Deg 0.)) ~ctx c
+    ~combine:angle_combine ~round:angle_round ~is_zero:angle_is_zero
+    ~zero:(Val (Deg 0.)) ~ctx c
 
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
@@ -3714,16 +3807,10 @@ let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
    rejects such value changes. The original spelling seeds the fold; ties prefer
    deg. *)
 let angle_shortest (a : angle) : angle =
-  let render unit f =
-    String.length
-      (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
-    + String.length unit
-  in
+  let printed f = Pp.string_of_float ~drop_leading_zero:true f in
+  let render unit f = String.length (printed f) + String.length unit in
   let printed_deg unit f =
-    match
-      float_of_string_opt
-        (Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f))
-    with
+    match float_of_string_opt (printed f) with
     | Some v -> (
         match unit with "turn" -> v *. 360. | "grad" -> v *. 0.9 | _ -> v)
     | None -> Float.nan
@@ -3848,7 +3935,8 @@ let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
     ~math_fn:(fun fn ->
       match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> np_scale ~exact op v n)
-    ~combine:np_combine ~is_zero:np_is_zero
+      (* A [<number>] / [<percentage>] coefficient prints in full. *)
+    ~combine:np_combine ~round:Fun.id ~is_zero:np_is_zero
     ~zero:(Val (Num 0.) : number_percentage calc)
     ~ctx c
 
@@ -5923,7 +6011,7 @@ let read_angle_trig kind name t =
         | `Atan -> Atan arg
       in
       (Calc (Math_fn fn) : angle))
-    else Deg degrees
+    else (Deg (round_computed degrees) : angle)
   in
   match Cursor.try_typed_call typed t with
   | Ok value -> value
@@ -5945,7 +6033,8 @@ let read_angle_atan2 t =
         Cursor.expect_eof inner;
         match (y, x) with
         | (yk, yv), (xk, xv) when yk = xk ->
-            (Deg (Float.atan2 yv xv *. 180. /. Float.pi) : angle)
+            (Deg (round_computed (Float.atan2 yv xv *. 180. /. Float.pi))
+              : angle)
         | _ -> Cursor.err_invalid inner "atan2 arguments have mismatched types")
   in
   match Cursor.try_typed_call typed t with
@@ -7061,7 +7150,8 @@ let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
     ~math_fn:(fun fn ->
       match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> alpha_scale ~exact op v n)
-    ~combine:alpha_combine ~is_zero:alpha_is_zero
+      (* An alpha coefficient prints in full through [Pp.float] / [Pp.pct]. *)
+    ~combine:alpha_combine ~round:Fun.id ~is_zero:alpha_is_zero
     ~zero:(Val (Num 0.) : alpha calc)
     ~ctx c
 
