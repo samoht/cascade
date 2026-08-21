@@ -5656,10 +5656,13 @@ let rec read_channel t : channel =
         (* Clamp percentage to 0-100 per CSS spec *)
         Pct (max 0. (min 100. n))
     | None ->
-        (* CSS Color 4 sec. 15.1: when serialising an RGB channel back as an
-           integer, round to the nearest byte (not truncate); [rgb(127.6 ...)]
-           is [128], not [127]. Decimals in (0, 1) stay as [Num] so alpha
-           helpers can still see them as fractional. *)
+        (* CSS Color 4 sec. 5.1 rounds a channel that cannot be kept at full
+           precision "towards +infinity". Sec. 16.5's worked example reads that
+           as nearest-with-ties-up, not as a ceiling: 0.964 serialises as 0.96
+           and 0.787 as 0.79. [Float.round] is exactly that for a non-negative
+           channel, so [rgb(127.6 ...)] is [128] and [rgb(127.2 ...)] is [127],
+           matching Chrome. Decimals in (0, 1) stay as [Num] so alpha helpers
+           can still see them as fractional. *)
         if n <= 1.0 && n <> floor n then Num n
         else Int (int_of_float (max 0. (min 255. (Float.round n))))
     | Some _ -> Cursor.err_invalid t "channel value"

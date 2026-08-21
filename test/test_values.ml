@@ -1133,6 +1133,12 @@ let test_channel () =
   check_channel ~expected:"255" "256";
   check_channel ~expected:"0" "-1";
   check_channel ~expected:"100%" "150%";
+  (* CSS Color 4 sec. 5.1 rounds an out-of-precision channel towards +infinity,
+     which is nearest-with-ties-up rather than a ceiling. *)
+  check_channel ~expected:"127" "127.2";
+  check_channel ~expected:"128" "127.6";
+  check_channel ~expected:"128" "127.5";
+  check_channel ~expected:"127" "126.5";
   neg_cursor read_channel ""
 
 let test_rgb () =
