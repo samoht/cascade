@@ -133,6 +133,10 @@
   `@supports-condition` body as a reference, so it no longer emits a name whose
   definition it deleted, and reports an overridden variable referenced from any
   of those at-rules through `~warn` (#342)
+- A custom property registered by `@property` is typed wherever it is
+  declared, including inside `@keyframes`, `@position-try` and
+  `@supports-condition`, so the same registered value canonicalises the same
+  way in every one of them (#349)
 
 ### Canonical diff
 

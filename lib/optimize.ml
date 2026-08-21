@@ -770,14 +770,6 @@ let promote_registered_custom_decl ~lossless registry decl =
                 (Custom_value { value = Tokens components'; layer; meta })))
   | _ -> decl
 
-let promote_frames f frames =
-  list_map_preserve
-    (fun (frame : keyframe) ->
-      let declarations = list_map_preserve f frame.declarations in
-      if declarations == frame.declarations then frame
-      else { frame with declarations })
-    frames
-
 let promote_registered_custom_properties ~lossless (stmts : statement list) =
   let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
   (* An [@property] registration is document-global regardless of source order
@@ -792,34 +784,20 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
     | _ -> iter_statement_block collect_stmt stmt
   in
   List.iter collect_stmt stmts;
-  let promote_decl = promote_registered_custom_decl ~lossless registry in
+  let promote_decls =
+    list_map_preserve (promote_registered_custom_decl ~lossless registry)
+  in
+  (* A registration is document-global, so every declaration of that name is
+     typed wherever it is written: through the declaration walker rather than a
+     list of the at-rules that came to mind. *)
   let rec walk_stmt (stmt : statement) : statement =
+    let stmt = map_statement_declarations_preserve promote_decls stmt in
     match stmt with
-    | Property _ -> stmt
     | Rule r ->
-        let declarations = list_map_preserve promote_decl r.declarations in
         let nested = list_map_preserve walk_stmt r.nested in
-        let r' = rule_with_declarations_and_nested r declarations nested in
+        let r' = rule_with_nested r nested in
         if r' == r then stmt else Rule r'
-    | Declarations decls ->
-        let decls' = list_map_preserve promote_decl decls in
-        if decls' == decls then stmt else Declarations decls'
-    (* A keyframe frame declares registered custom properties like any other
-       block, and the registration is what the frame interpolates against (CSS
-       Properties and Values API 1 SS 2.4). *)
-    | Keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Keyframes (name, frames')
-    | Webkit_keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Webkit_keyframes (name, frames')
-    | Moz_keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Moz_keyframes (name, frames')
-    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ ->
-        map_statement_block_preserve walk_stmt stmt
-    | _ -> stmt
+    | stmt -> map_statement_block_preserve walk_stmt stmt
   in
   list_map_preserve walk_stmt stmts
 
