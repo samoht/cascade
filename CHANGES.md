@@ -116,6 +116,10 @@
   frame, `@page` and its margin boxes, `@position-try` or
   `@supports-condition` as a reference, instead of deleting a binding those
   at-rules still use (#341)
+- `Css.inline_vars` counts a `var()` in a page margin box or a
+  `@supports-condition` body as a reference, so it no longer emits a name whose
+  definition it deleted, and reports an overridden variable referenced from any
+  of those at-rules through `~warn` (#342)
 
 ### Canonical diff
 
