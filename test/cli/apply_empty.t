@@ -24,7 +24,7 @@ to U+00A0, which is not document white space, so that paragraph is not
 empty either.
 
   $ cascade apply empty.html
-  <html><head></head><body>
+  <html><head><style></style></head><body>
   <p style="color:red" id="void"></p>
   <p style="color:red" id="spaces">  </p>
   <p id="text">text</p>

@@ -32,7 +32,7 @@ exit status stays 0.
   > <html><head><style>p{color:red}p:hover{margin:0}</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply ok.html 2> /dev/null
-  <html><head><style>p:hover{margin:0}</style></head><body><p style="color:red">hi</p>
+  <html><head><style></style><style>p:hover{margin:0}</style></head><body><p style="color:red">hi</p>
   </body></html>
 
 A supplementary stylesheet that does not parse is an error too. There is no
