@@ -1573,7 +1573,7 @@ let read_any_property t =
   | "stroke-dasharray" -> Prop Stroke_dasharray
   | "paint-order" -> Prop Paint_order
   | "vector-effect" -> Prop Vector_effect
-  (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.3 and 12.2: each is a plain
+  (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.13.1 and 11.5: each is a plain
      <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
   | "flood-color" -> Prop Flood_color
@@ -1894,7 +1894,7 @@ let fold_custom_calc (c : Component.t) ~fallback =
   | Some cs -> cs
   | None -> fallback ()
 
-(* Filter Effects 1 sec. 8.5 gives [hue-rotate()] the argument [[ <angle> |
+(* Filter Effects 1 sec. 6.1 gives [hue-rotate()] the argument [[ <angle> |
    <zero> ]?] and 0 when omitted, so a zero argument is redundant. [hue-rotate]
    names a filter function and nothing else, so this holds wherever the stream
    is substituted, which is the same argument that lets a colour function fold
