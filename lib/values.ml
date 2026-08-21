@@ -890,8 +890,7 @@ let exact_div (a : float) (b : float) : float option =
     let r = a /. b in
     (* Round-trip alone is too lax under IEEE 754 (33.333... * 3 = 100.0 due to
        multiplication rounding). Also require the quotient to survive the
-       6-sig-fig round used by [Pp.float], which is the precision Cascade
-       commits to in serialised output. *)
+       6-significant-digit round, the budget an inexact fold commits to. *)
     if Float.is_finite r && r *. b = a && Pp.round_sig 6 r = r then
       Option.some r
     else Option.none
@@ -1082,7 +1081,8 @@ let rec eval_typed_calc : type a.
           | Some v -> Val v
           | None -> Expr (l, op, r))
       | Num n, Mul, Val a -> (
-          match scale ~exact:true Mul a n with
+          let exact = match l with Math_const _ -> false | _ -> true in
+          match scale ~exact Mul a n with
           | Some v -> Val v
           | None -> Expr (l, op, r))
       (* CSS Values 4 sec. 10.10.1: [1 / (1 / x)] cancels the double
@@ -1125,15 +1125,11 @@ let pp_unit ?always:_ ctx f suffix =
      top-level (a calc / function operand keeps its unit), so it is an AST
      rewrite in the optimize pass, not a printer choice. *)
   (* CSSOM serialization (CSS Values 4 6.7.2) drops a leading zero on fractional
-     values ([.25rem], not [0.25rem]) in both modes; under minify round to 6
-     significant digits so a [calc()]-folded result emits [70.7107px] rather
-     than an 8-decimal float. *)
-  let rendered =
-    if Pp.minified ctx then
-      Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
-    else Pp.string_of_float ~drop_leading_zero:true f
-  in
-  Pp.string ctx rendered;
+     values ([.25rem], not [0.25rem]) in both modes. The coefficient is the
+     node's value, not its spelling: [.4285714em] printed as [.428571em] is a
+     different length, so the precision an inexact [calc()] fold gives up is
+     that fold's to give, not the printer's. *)
+  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
   Pp.string ctx suffix
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -1348,17 +1344,22 @@ let length_combine op v1 v2 =
       | _ -> None)
   | _ -> None
 
+(* A math constant is irrational, so scaling by one is inexact however the
+   result is printed: the fold commits it to six significant digits. Only a
+   number the fold computed reaches here, never one the author wrote. *)
+let inexact_fold ~exact r = if exact then r else Pp.round_sig 6 r
+
 (* CSS Values 4 sec. 10.10.1: a unitless factor scales a typed length, unit
    unchanged. Division folds only when [exact_div] is exact, else the [calc()]
-   is kept to avoid precision loss. Exception: an irrational divisor (a math
-   constant [pi] / [e] / ...) can never be exact, and keeping [calc()] preserves
-   no more precision than the browser computes, so fold to the rounded value. *)
+   is kept to avoid precision loss. Exception: an irrational divisor can never
+   be exact, and keeping [calc()] preserves no more precision than the browser
+   computes, so fold to the rounded value. *)
 let length_scale ?(exact = true) op v n =
   if not (Float.is_finite n) then Option.none
   else
     match (op, calc_length_unit v) with
     | Mul, Some (unit, value) ->
-        let r = value *. n in
+        let r = inexact_fold ~exact (value *. n) in
         if Float.is_finite r then Option.some (length_from_calc_unit unit r)
         else Option.none
     | Div, Some (unit, value) ->
@@ -1366,7 +1367,7 @@ let length_scale ?(exact = true) op v n =
           Option.map (length_from_calc_unit unit) (exact_div value n)
         else if n = 0. then Option.none
         else
-          let r = value /. n in
+          let r = inexact_fold ~exact (value /. n) in
           if Float.is_finite r then Option.some (length_from_calc_unit unit r)
           else Option.none
     | _ -> Option.none
