@@ -273,6 +273,37 @@ let statement_children = function
   | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
       []
 
+(* The companion to [statement_children]: the declarations a statement holds
+   itself. At-rules like [@keyframes] and [@page] hold declarations without
+   wrapping them in a block, so a walk that only descends through
+   [statement_children] never sees them. Exhaustive for the same reason: a
+   wildcard would hide the next declaration-carrying at-rule from every caller.
+   Descriptor at-rules ([@font-face], [@counter-style], [@viewport], ...) hold
+   their own descriptor types rather than declarations. *)
+let statement_declarations = function
+  | Rule rule -> rule.declarations
+  | Declarations decls
+  | Supports_condition (_, decls)
+  | Page (_, decls)
+  | Position_try (_, decls) ->
+      decls
+  | Keyframes (_, frames)
+  | Webkit_keyframes (_, frames)
+  | Moz_keyframes (_, frames) ->
+      List.concat_map (fun (frame : keyframe) -> frame.declarations) frames
+  | Page_with_margins (_, descriptors, margins) ->
+      descriptors
+      @ List.concat_map
+          (fun (margin : page_margin_rule) -> margin.descriptors)
+          margins
+  | Property _ -> []
+  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _ | Layer _
+  | Media _ | Container _ | Supports _ | Moz_document _ | When _ | Else _
+  | Starting_style _ | Origin _ | Scope _ | Font_face _ | Counter_style _
+  | Font_palette_values _ | Font_feature_values _ | View_transition _
+  | Viewport _ | Unknown_at_rule _ ->
+      []
+
 (** {1 Pretty Printing} *)
 
 let pp_property_rule : 'a property_rule Pp.t =

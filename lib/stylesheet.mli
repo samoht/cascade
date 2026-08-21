@@ -227,6 +227,20 @@ val statement_children : statement -> block
     match is exhaustive, and a block at-rule added to the AST later does not
     compile until it is listed here. *)
 
+val statement_declarations : statement -> declaration list
+(** [statement_declarations stmt] is the declarations [stmt] holds directly: a
+    rule's or a bare [Declarations] block's own declarations, the descriptors of
+    [@page], [@position-try] and [@supports-condition], the margin-rule
+    descriptors of a [@page] with margins, and the concatenated declarations of
+    every frame of [@keyframes] (and its [-webkit-]/[-moz-] spellings). It is
+    [[]] for a grouping at-rule, whose declarations live in the block
+    {!statement_children} returns, and for a descriptor at-rule such as
+    [@font-face] or [@counter-style], which holds descriptor values rather than
+    declarations. Paired with {!statement_children} it visits every declaration
+    in a stylesheet, and it is exhaustive for the same reason: a
+    declaration-carrying at-rule added to the AST later does not compile until
+    it is listed here. *)
+
 (** {1 Reading/Parsing} *)
 
 val read_rule : ?nested:bool -> Cursor.t -> rule
