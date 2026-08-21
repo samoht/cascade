@@ -61,13 +61,93 @@ let inherited =
 
 let is_inherited p = List.mem (String.lowercase_ascii p) inherited
 
+module SMap = Map.Make (String)
+
+(* The font and text block a form control takes from the UA. The [font]
+   shorthand sits with its longhands because it is an inherited property in its
+   own right, so an author [font:] on a control has to survive too. *)
+let ua_control =
+  [
+    "color";
+    "cursor";
+    "font";
+    "font-family";
+    "font-feature-settings";
+    "font-size";
+    "font-stretch";
+    "font-style";
+    "font-variant";
+    "font-weight";
+    "letter-spacing";
+    "line-height";
+    "text-align";
+    "text-indent";
+    "text-shadow";
+    "text-transform";
+    "word-spacing";
+  ]
+
+(* The inherited properties the user-agent stylesheet declares for an element,
+   read off a browser in standards mode. css-cascade-5 sec. 6.1 sorts by origin
+   before anything else and sec. 6.2 puts the UA origin under the author one, so
+   a property the UA declares for the element is cascaded there and never
+   inherited: the author declaration covering it has to stay. Over-listing an
+   entry only keeps a redundant declaration; missing one changes the render,
+   which is what the differential test guards. *)
+let ua_groups =
+  [
+    ([ "a" ], [ "color"; "cursor" ]);
+    ([ "address"; "cite"; "dfn"; "em"; "i"; "var" ], [ "font"; "font-style" ]);
+    ([ "b"; "strong" ], [ "font"; "font-weight" ]);
+    ([ "bdi"; "bdo" ], [ "direction" ]);
+    ([ "big"; "small"; "sub"; "sup" ], [ "font"; "font-size" ]);
+    ([ "button"; "input" ], ua_control);
+    ([ "caption"; "center" ], [ "text-align" ]);
+    ([ "code"; "kbd"; "samp"; "tt" ], [ "font"; "font-family" ]);
+    ([ "dialog"; "hr"; "mark" ], [ "color" ]);
+    ([ "dir"; "menu"; "ol"; "ul" ], [ "list-style"; "list-style-type" ]);
+    ( [ "h1"; "h2"; "h3"; "h4"; "h5"; "h6" ],
+      [ "font"; "font-size"; "font-weight" ] );
+    ([ "label" ], [ "cursor" ]);
+    ( [ "listing"; "plaintext"; "pre"; "xmp" ],
+      [ "font"; "font-family"; "white-space" ] );
+    ([ "marquee" ], [ "text-align"; "white-space" ]);
+    ([ "nobr" ], [ "white-space" ]);
+    ([ "optgroup" ], [ "font"; "font-weight" ]);
+    ([ "option" ], [ "font"; "font-weight"; "white-space" ]);
+    ( [ "rt" ],
+      [ "font"; "font-size"; "line-height"; "text-align"; "text-indent" ] );
+    ([ "ruby" ], [ "text-indent" ]);
+    ([ "select" ], "white-space" :: ua_control);
+    ([ "summary" ], [ "list-style"; "list-style-image"; "list-style-type" ]);
+    ([ "table" ], [ "border-collapse"; "border-spacing"; "text-indent" ]);
+    ([ "textarea" ], "overflow-wrap" :: "white-space" :: ua_control);
+    ([ "th" ], [ "font"; "font-weight"; "text-align" ]);
+  ]
+
+let ua_declared =
+  List.fold_left
+    (fun m (names, props) ->
+      List.fold_left
+        (fun m name -> SMap.add name (SSet.of_list props) m)
+        m names)
+    SMap.empty ua_groups
+
+(* CSS Syntax 3 sec. 5.4: a style attribute is a declaration list, not a rule
+   body, so a declaration's value runs to the next top-level [;] or the end of
+   input, where only [{], [(] and [[] open a block. A [}] is then a preserved
+   token inside the value rather than a terminator, and splicing the attribute
+   into [a{...}] lets it close the rule instead, reviving a declaration no
+   browser applies. Recovery drops the invalid declaration and keeps the rest,
+   as the cascade does. *)
 let parse_inline s =
-  match Css.of_string ("a{" ^ s ^ "}") with
-  | Ok p -> (
-      match Stylesheet.rules p.Css.stylesheet with
-      | r :: _ -> Stylesheet.declarations r
-      | [] -> [])
-  | Error _ -> []
+  let cursor =
+    Cursor.of_string s |> Cursor.remaining
+    |> Cursor.of_components ~source:s ~recover:true
+  in
+  match Declaration.read_declarations cursor with
+  | decls -> decls
+  | exception Error.Parse_error _ -> []
 
 let decl_value d =
   let s =
@@ -187,9 +267,9 @@ module Make (Node : Resolve.NODE) = struct
      beats a normal inline declaration). *)
   let resolved sheet n =
     let author = R.resolve sheet n in
-    match Node.attribute n "style" with
-    | None -> author
-    | Some s ->
+    match Option.map parse_inline (Node.attribute n "style") with
+    | None | Some [] -> author
+    | Some inline ->
         let overlay map d =
           let k = Declaration.property_name d in
           match List.assoc_opt k map with
@@ -199,10 +279,30 @@ module Make (Node : Resolve.NODE) = struct
               map
           | _ -> (k, d) :: List.remove_assoc k map
         in
+        (* The overlay accumulates in reverse so the closing [rev_map] hands
+           back the author order: css-cascade-5 sec. 6.1 breaks a tie by order
+           of appearance, so a longhand written after its shorthand still wins.
+           An overlaid declaration conses onto the front and so lands last,
+           where it beats the selector it met. *)
         List.fold_left overlay
-          (List.map (fun d -> (Declaration.property_name d, d)) author)
-          (parse_inline s)
+          (List.rev_map (fun d -> (Declaration.property_name d, d)) author)
+          inline
         |> List.rev_map snd
+
+  (* The inherited properties the UA declares for [node]: the ones its element
+     name carries, plus the [direction] a [dir] attribute maps onto it. *)
+  let ua_props node =
+    let named =
+      match Node.name node with
+      | None -> SSet.empty
+      | Some n -> (
+          match SMap.find_opt (String.lowercase_ascii n) ua_declared with
+          | Some props -> props
+          | None -> SSet.empty)
+    in
+    match Node.attribute node "dir" with
+    | Some _ -> SSet.add "direction" named
+    | None -> named
 
   (* [ctx] maps each inherited property to the value in force from the
      ancestors, so [minimal] can drop a declaration that only restates it. *)
@@ -217,17 +317,32 @@ module Make (Node : Resolve.NODE) = struct
         (fun acc child -> walk ~minimal sheet ctx child acc)
         acc (Node.children node)
     else begin
+      let decls = resolved sheet node in
+      let ua = ua_props node in
       let kept, ctx' =
         List.fold_left
           (fun (kept, ctx) d ->
             let p = String.lowercase_ascii (Declaration.property_name d) in
-            if minimal && is_inherited p then
+            if not (minimal && is_inherited p) then (d :: kept, ctx)
+            else
               let v = decl_value d in
-              match List.assoc_opt p ctx with
-              | Some pv when pv = v -> (kept, ctx)
-              | _ -> (d :: kept, (p, v) :: List.remove_assoc p ctx)
-            else (d :: kept, ctx))
-          ([], ctx) (resolved sheet node)
+              (* Inheritance only reaches a property nothing declares, so a
+                 value the UA would win back is not a restatement. *)
+              if (not (SSet.mem p ua)) && List.assoc_opt p ctx = Some v then
+                (kept, ctx)
+              else (d :: kept, (p, v) :: List.remove_assoc p ctx))
+          ([], ctx) decls
+      in
+      (* A UA declaration the element does not override is what its children
+         inherit, so the ancestors' value stops here. *)
+      let ctx' =
+        if SSet.is_empty ua then ctx'
+        else
+          let own = add_props SSet.empty decls in
+          SSet.fold
+            (fun p ctx ->
+              if SSet.mem p own then ctx else List.remove_assoc p ctx)
+            ua ctx'
       in
       let acc = (node, List.rev kept) :: acc in
       List.fold_left

@@ -101,9 +101,11 @@ let keeps_stateful_rule_inside_layer_in_css () =
   Alcotest.(check int) "kept count" 1 result.kept
 
 (* The inline style [css] projects onto a single [p.x], as a minified
-   declaration list. *)
-let projected css =
-  let n = node ~classes:[ "x" ] "p" in
+   declaration list. [style] is the style attribute the element already
+   carries. *)
+let projected ?style css =
+  let attrs = match style with None -> [] | Some s -> [ ("style", s) ] in
+  let n = node ~classes:[ "x" ] ~attrs "p" in
   let result = A.compute ~sheet:(parse css) [ n ] in
   match result.styles with
   | [ (_, decls) ] -> inline_style decls
@@ -166,6 +168,65 @@ let non_competing_layers_both_project () =
   Alcotest.(check string)
     "both layers contribute" "color:red;margin:0"
     (projected "@layer a{.x{color:red}}@layer b{.x{margin:0}}")
+
+(* css-cascade-5 sec. 6.1: declarations that tie on origin, importance, layer
+   and specificity are sorted by order of appearance, the last one winning. The
+   style attribute is overlaid on top of the author cascade, it does not reorder
+   it: a longhand written after the shorthand it belongs to still wins, whether
+   or not the element carries a style attribute. *)
+let style_attribute_keeps_author_order () =
+  Alcotest.(check string)
+    "author order, then the attribute"
+    "margin:0;margin-top:5px;border:1px solid \
+     black;border-color:red;color:green"
+    (projected ~style:"color:green"
+       ".x{margin:0;margin-top:5px;border:1px solid black;border-color:red}");
+  Alcotest.(check string)
+    "the control: the same sheet with no attribute to overlay"
+    "margin:0;margin-top:5px;border:1px solid black;border-color:red"
+    (projected
+       ".x{margin:0;margin-top:5px;border:1px solid black;border-color:red}")
+
+(* CSS Syntax 3 sec. 5.4: consuming a declaration takes component values to the
+   end of the input, and only [{], [(] and [[] open a block there - a [}] is a
+   preserved token inside the value. A style attribute is one such list, so
+   [color:red}p{color:lime] is a single [color] declaration whose value is
+   invalid, and it is dropped. Splicing the attribute into [a{...}] instead lets
+   the [}] close the rule and revives a declaration no browser applies. *)
+let malformed_style_attribute_is_dropped () =
+  Alcotest.(check string)
+    "the whole attribute is one invalid declaration" "color:blue"
+    (projected ~style:"color:red}p{color:lime" ".x{color:blue}");
+  Alcotest.(check string)
+    "the control: the same attribute with nothing to escape from" "color:red"
+    (projected ~style:"color:red" ".x{color:blue}")
+
+(* [minimal] drops an inherited declaration that restates what the element
+   already inherits. That is only sound where nothing else declares the
+   property: css-cascade-5 sec. 6.1 sorts by origin before anything else and
+   sec. 6.2 puts the UA origin under the author one, so a property the UA
+   declares for the element is cascaded, never inherited. Dropping
+   [a{color:blue}] uncovers the UA link colour and dropping [h1{font-size}]
+   uncovers UA [font-size:2em]. *)
+let minimal_keeps_what_a_ua_rule_would_win () =
+  let a = node ~attrs:[ ("href", "#") ] "a" in
+  let h1 = node "h1" in
+  let p = node "p" in
+  let body = node ~children:[ a; h1; p ] "body" in
+  let css =
+    "body{color:blue;font-size:16px}a{color:blue}h1{font-size:16px}p{color:blue}"
+  in
+  let result = A.compute ~minimal:true ~sheet:(parse css) [ body ] in
+  let style n =
+    match List.find_opt (fun (m, _) -> Node.equal m n) result.styles with
+    | Some (_, decls) -> inline_style decls
+    | None -> Alcotest.fail "no assignment for the node"
+  in
+  Alcotest.(check string)
+    "the UA link colour is underneath" "color:blue" (style a);
+  Alcotest.(check string) "UA h1 is font-size:2em" "font-size:16px" (style h1);
+  Alcotest.(check string)
+    "the control: no UA rule sets a paragraph's colour" "" (style p)
 
 (* The whole split of [css] over [roots]: the style attribute written onto [n],
    the <style> body kept beside it, and the count of kept rules. *)
@@ -330,6 +391,12 @@ let suite =
         layer_outranks_specificity;
       Alcotest.test_case "non-competing layers both project" `Quick
         non_competing_layers_both_project;
+      Alcotest.test_case "style attribute keeps author order" `Quick
+        style_attribute_keeps_author_order;
+      Alcotest.test_case "malformed style attribute is dropped" `Quick
+        malformed_style_attribute_is_dropped;
+      Alcotest.test_case "minimal keeps what a UA rule would win" `Quick
+        minimal_keeps_what_a_ua_rule_would_win;
       Alcotest.test_case "keeps the property a scoped rule sets" `Quick
         keeps_property_a_scoped_rule_sets;
       Alcotest.test_case "keeps the property a starting-style rule sets" `Quick

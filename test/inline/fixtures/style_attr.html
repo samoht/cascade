@@ -1,0 +1,12 @@
+<!doctype html><html><head><style>
+  .shorthand { margin: 0; margin-top: 5px;
+               border: 1px solid black; border-color: red;
+               font: 12px/1 serif; font-size: 20px }
+  .inset     { position: relative; inset: 0; top: 4px }
+  .malformed { color: blue }
+</style></head>
+<body>
+  <p class="shorthand" style="color:green">longhand after shorthand</p>
+  <p class="inset" style="color:green">top after inset</p>
+  <p class="malformed" style="color:red}p{color:lime">malformed style attribute</p>
+</body></html>

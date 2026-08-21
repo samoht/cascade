@@ -60,6 +60,26 @@
   holds directly; paired with `statement_children` it reaches every declaration
   in a stylesheet ([#317](https://github.com/samoht/cascade/pull/317))
 
+### CLI tools
+
+- `cascade apply` keeps the author declarations in source order when the
+  element carries a `style` attribute, empty ones included. They came out
+  reversed, so a longhand no longer beat the shorthand it was written after
+  and the projected page rendered differently from its input
+  ([#326](https://github.com/samoht/cascade/pull/326))
+- `cascade apply --minimal` keeps an inherited declaration whose property the
+  user-agent stylesheet declares for the element or for one of its ancestors.
+  css-cascade-5 sec. 6.1 sorts by origin before anything else, so such a
+  property is cascaded rather than inherited, and dropping the declaration
+  uncovered the UA value: link colour, heading size, `b` weight, `em` style,
+  `pre` family and `ol` marker all changed
+  ([#326](https://github.com/samoht/cascade/pull/326))
+- `cascade apply` reads a `style` attribute as a declaration list, so a `}`
+  inside it stays a preserved token (CSS Syntax 3 sec. 5.4) instead of closing
+  a synthetic rule. `style="color:red}p{color:lime"` applied `color:red`,
+  where the whole attribute is one invalid declaration a browser drops
+  ([#326](https://github.com/samoht/cascade/pull/326))
+
 ## 1.1.0
 
 ### Breaking
