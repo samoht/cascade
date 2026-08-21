@@ -540,14 +540,27 @@ let as_origin = function
   | Origin (origin, content) -> Some (origin, content)
   | _ -> None
 
+(* The block at-rules [map] and [sort] rebuild. Listed one by one rather than
+   closed with a wildcard, so a statement that grows a block later has to be
+   classified here before it compiles. [Scope], [Starting_style],
+   [Moz_document], [When] and [Else] wrap rules too; whether the public
+   [map]/[sort] reach them is a contract question rather than a traversal one,
+   so they stay out until it is answered. *)
 let map_container_block f = function
-  | Media (condition, content) -> Some (media ~condition (f content))
-  | Supports (condition, content) -> Some (supports ~condition (f content))
-  | Layer (name, content) -> Some (layer ?name (f content))
+  | Media (condition, content) -> media ~condition (f content)
+  | Supports (condition, content) -> supports ~condition (f content)
+  | Layer (name, content) -> layer ?name (f content)
   | Container (name, condition, content) ->
-      Some (container ?name ?condition (f content))
-  | Origin (origin, content) -> Some (Origin (origin, f content))
-  | _ -> None
+      container ?name ?condition (f content)
+  | Origin (origin, content) -> Origin (origin, f content)
+  | ( Rule _ | Property _ | Declarations _ | Bang_comment _ | Charset _
+    | Import _ | Namespace _ | Layer_decl _ | Supports_condition _ | Scope _
+    | Starting_style _ | Moz_document _ | When _ | Else _ | Keyframes _
+    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+    | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ) as stmt ->
+      stmt
 
 let statement_children = Stylesheet.statement_children
 
@@ -566,10 +579,7 @@ let rec map f stmts =
               (* Callback supplied its own nested (or returned a non-Rule);
                  trust it and replace the original. *)
               other)
-      | None -> (
-          match map_container_block (map f) stmt with
-          | Some stmt -> stmt
-          | None -> stmt))
+      | None -> map_container_block (map f) stmt)
     stmts
 
 let rec sort cmp stmts =
@@ -579,10 +589,7 @@ let rec sort cmp stmts =
       (fun stmt ->
         match stmt with
         | Rule rule -> Rule { rule with nested = sort cmp rule.nested }
-        | _ -> (
-            match map_container_block (sort cmp) stmt with
-            | Some stmt -> stmt
-            | None -> stmt))
+        | stmt -> map_container_block (sort cmp) stmt)
       stmts
   in
 
