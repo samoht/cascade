@@ -283,6 +283,62 @@ let spec_fontface_metric_numeric_edges () =
       Alcotest.failf "accepted invalid font metric cases:\n%s"
         (String.concat "\n" accepted)
 
+(* CSS Custom Properties 1 sec. 3 substitutes var() in properties only, and
+   @font-face descriptors are not properties: no descriptor grammar accepts it.
+   Every one of them is therefore dropped with a warning while the rest of the
+   block is kept (CSS Fonts 4 sec. 11.2, CSS Syntax 3 sec. 5.4.4), and
+   ~strict:true turns that warning into an error. *)
+let spec_fontface_var_descriptor_edges () =
+  let kept = "@font-face{font-family:Brand;src:url(font.woff2)}" in
+  let source descriptor =
+    Fmt.str "@font-face{font-family:Brand;src:url(font.woff2);%s:var(--b)}"
+      descriptor
+  in
+  let mismatches descriptor =
+    let input = source descriptor in
+    let lenient =
+      match Css.of_string input with
+      | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" descriptor input ]
+      | Ok { Css.stylesheet; warnings } -> (
+          let printed = Css.to_string ~minify:true stylesheet |> String.trim in
+          (if String.equal printed kept then []
+           else
+             [ Fmt.str "%s: printed %S, expected %S" descriptor printed kept ])
+          @
+          match warnings with
+          | [ _ ] -> []
+          | _ ->
+              [
+                Fmt.str "%s: %d parse warnings, expected 1" descriptor
+                  (List.length warnings);
+              ])
+    in
+    let strict =
+      match Css.of_string ~strict:true input with
+      | Error _ -> []
+      | Ok _ -> [ Fmt.str "%s: strict parse accepted %S" descriptor input ]
+    in
+    lenient @ strict
+  in
+  match
+    List.concat_map mismatches
+      [
+        "size-adjust";
+        "ascent-override";
+        "descent-override";
+        "line-gap-override";
+        "font-display";
+        "font-weight";
+        "unicode-range";
+        "font-style";
+        "font-stretch";
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "@font-face descriptors keeping var():\n%s"
+        (String.concat "\n" mismatches)
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -307,4 +363,6 @@ let suite =
         spec_fontface_src_invalid_edges;
       test_case "spec font-face metric numeric edges" `Quick
         spec_fontface_metric_numeric_edges;
+      test_case "spec font-face var() descriptor edges" `Quick
+        spec_fontface_var_descriptor_edges;
     ] )
