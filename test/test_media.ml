@@ -200,6 +200,31 @@ let kind_follows_meaning_not_spelling () =
     (group "(max-width: 640px)")
     (group "not (min-width: 640px)")
 
+(* Media Queries 4 sec. 3: [not] matches the complement, and the complement of a
+   width range is not a range. [not ((min-width: 640px) and (max-width:
+   1024px))] matches the viewports narrower than 640px together with those wider
+   than 1024px, and the [or] form matches nothing at all; neither is a single
+   bound. Minification folds the two operands into the Level 4 interval and [not
+   all and X] into [not X], so every spelling has to agree. *)
+let negated_range_bounds_neither_side () =
+  let kind_of source = kind (of_string source) in
+  let bounds_neither name source =
+    Alcotest.check kind_testable name Other (kind_of source)
+  in
+  (* Guard: the range on its own is a bound, so [Other] below comes from the
+     negation and not from a shape the classifier never read. *)
+  Alcotest.check kind_testable "(640px <= width <= 1024px) bounds from below"
+    (kind_of "(min-width: 640px)")
+    (kind_of "(640px <= width <= 1024px)");
+  bounds_neither "not ((min-width: 640px) and (max-width: 1024px))"
+    "not ((min-width: 640px) and (max-width: 1024px))";
+  bounds_neither "not (640px <= width <= 1024px)"
+    "not (640px <= width <= 1024px)";
+  bounds_neither "not all and (min-width: 640px) and (max-width: 1024px)"
+    "not all and (min-width: 640px) and (max-width: 1024px)";
+  bounds_neither "not ((min-width: 640px) or (max-width: 1024px))"
+    "not ((min-width: 640px) or (max-width: 1024px))"
+
 let test_compare () =
   let cmp = compare (min_width 640.) (min_width 768.) in
   Alcotest.(check bool) "640 < 768" true (cmp < 0)
@@ -441,6 +466,8 @@ let suite =
       test_case "kind" `Quick test_kind;
       test_case "kind follows meaning not spelling" `Quick
         kind_follows_meaning_not_spelling;
+      test_case "negated range bounds neither side" `Quick
+        negated_range_bounds_neither_side;
       test_case "compare" `Quick test_compare;
       test_case "sort_key" `Quick test_sort_key;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
