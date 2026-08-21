@@ -61,13 +61,21 @@ let inherited =
 
 let is_inherited p = List.mem (String.lowercase_ascii p) inherited
 
+(* CSS Syntax 3 sec. 5.4: a style attribute is a declaration list, not a rule
+   body, so a declaration's value runs to the next top-level [;] or the end of
+   input, where only [{], [(] and [[] open a block. A [}] is then a preserved
+   token inside the value rather than a terminator, and splicing the attribute
+   into [a{...}] lets it close the rule instead, reviving a declaration no
+   browser applies. Recovery drops the invalid declaration and keeps the rest,
+   as the cascade does. *)
 let parse_inline s =
-  match Css.of_string ("a{" ^ s ^ "}") with
-  | Ok p -> (
-      match Stylesheet.rules p.Css.stylesheet with
-      | r :: _ -> Stylesheet.declarations r
-      | [] -> [])
-  | Error _ -> []
+  let cursor =
+    Cursor.of_string s |> Cursor.remaining
+    |> Cursor.of_components ~source:s ~recover:true
+  in
+  match Declaration.read_declarations cursor with
+  | decls -> decls
+  | exception Error.Parse_error _ -> []
 
 let decl_value d =
   let s =
