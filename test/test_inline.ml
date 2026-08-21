@@ -480,6 +480,22 @@ let test_inline_style_query_keeps_no_more () =
     ":root{--c:red}@container --c (min-width:1px){.z{color:green}}"
     "@container --c (min-width:1px){.z{color:green}}"
 
+(* Layers are ordered by first appearance (CSS Cascade 5 sec. 6.4.2), so where a
+   layer is first named decides which definition of a cross-layer custom
+   property wins. A conditional group only introduces its layers when its
+   condition holds, which cascade cannot decide, while a [@container] block
+   holds rules that always exist and is evaluated per element. *)
+let test_inline_layer_order_sites () =
+  check_inline_case "a layer first named inside @media leaves the order open"
+    "@media screen{@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}"
+    "@media screen{@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}";
+  check_inline_case "a layer first named inside @container orders the sheet"
+    "@container (min-width:1px){@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}"
+    "@container(min-width:1px){.z{outline-color:red}}.x{color:red}"
+
 let suite =
   ( "inline",
     [
@@ -540,4 +556,6 @@ let suite =
         test_inline_style_query_keeps_registration;
       Alcotest.test_case "inline vars keep no more than a style() query reads"
         `Quick test_inline_style_query_keeps_no_more;
+      Alcotest.test_case "inline vars order layers by where they are named"
+        `Quick test_inline_layer_order_sites;
     ] )
