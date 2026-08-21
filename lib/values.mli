@@ -542,7 +542,7 @@ val eval_numeric_calc : 'a calc -> float option
     non-numeric values. *)
 
 val eval_math_fn : math_fn -> float option
-(** [eval_math_fn fn] evaluates a CSS Values 4 sec. 10.7 numeric math function
+(** [eval_math_fn fn] evaluates a CSS Values 4 sec. 9.1 numeric math function
     call to a float. Returns [None] when an arg references an unresolved
     variable. *)
 
@@ -556,12 +556,12 @@ val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
     structure (operators, [Nested], [Parens], [Var] fallbacks). *)
 
 val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
-(** [eval_calc calc] applies CSS Values 4 sec. 10.7 structural simplification:
-    folds [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps
-    trivial [Nested] / [Parens] around leaves. [Val] / [Var] leaves and
-    mixed-type operands survive -- type-specific simplification (e.g., length
-    arithmetic) is the caller's job. With [~ctx], a [Nested] / [Parens] around a
-    single-valued [Var] leaf is also unwrapped (see {!calc_ctx}). *)
+(** [eval_calc calc] applies CSS Values 4 sec. 10.10.1 structural
+    simplification: folds [Expr (Num _, op, Num _)] subtrees into a single [Num]
+    and unwraps trivial [Nested] / [Parens] around leaves. [Val] / [Var] leaves
+    and mixed-type operands survive -- type-specific simplification (e.g.,
+    length arithmetic) is the caller's job. With [~ctx], a [Nested] / [Parens]
+    around a single-valued [Var] leaf is also unwrapped (see {!calc_ctx}). *)
 
 val calc_identity :
   zero:'a calc ->
@@ -571,9 +571,9 @@ val calc_identity :
   'a calc ->
   'a calc option
 (** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
-    Values 4 sec. 10.7 identities to one [Expr (l, op, r)] node, returning the
-    folded operand when one applies. These hold for any operand including a kept
-    [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
+    Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
+    the folded operand when one applies. These hold for any operand including a
+    kept [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
     [x / 1], [x + 0], [0 + x], [x - 0] keep [x]; [x * 0] / [0 * x] reduce to
     [zero]. [is_zero] recognises a typed zero leaf ([0px]). Numeric [op] numeric
     is the caller's job. *)

@@ -378,7 +378,7 @@ let rec read_flex_flow t : flex_flow =
       in
       let wrap : flex_wrap option ref = ref (None : flex_wrap option) in
       let seen = ref false in
-      (* CSS Flexbox 1 sec. 6.3: [flex-flow] is at most two values
+      (* CSS Flexbox 1 sec. 5.3: [flex-flow] is at most two values
          ([flex-direction] || [flex-wrap]). Stop once both slots are filled, and
          break on the first iteration where neither matches instead of letting
          [read_flex_flow_part] raise on the trailing [;] / [!important]. *)

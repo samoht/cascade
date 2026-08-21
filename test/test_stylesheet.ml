@@ -72,7 +72,7 @@ let test_rule () =
   neg_cursor read_stylesheet "{color:red}";
   (* Missing selector *)
   neg_cursor read_stylesheet ".btn";
-  (* Missing declarations. CSS Syntax sec. 5.3.7 auto-closes [.btn{] so it is
+  (* Missing declarations. CSS Syntax sec. 2.2 auto-closes [.btn{] so it is
      spec-valid and not asserted here. *)
   neg_cursor read_stylesheet ".btn{color}";
   (* Missing value *)
@@ -640,8 +640,8 @@ let namespace_case () =
 
 (** Test [@keyframes] rules *)
 let keyframes_case () =
-  (* CSS Animations 1 section 7.1: [from] and [to] are spec-equivalent to [0%]
-     and [100%]; under [~minify:true] the printer canonicalizes to the shorter
+  (* CSS Animations 1 section 3: [from] and [to] are spec-equivalent to [0%] and
+     [100%]; under [~minify:true] the printer canonicalizes to the shorter
      spelling - [0%] beats [from] and [to] beats [100%], matching cssnano and
      Lightning CSS. *)
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
@@ -731,7 +731,7 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Foo; src: url(foo.woff2); font-named-instance: \
      'Regular'; font-style: normal; }";
   (* An invalid value of a *known* descriptor drops just that descriptor and
-     keeps the rest of the @font-face, like browsers (CSS Fonts 4 sec. 11.2). *)
+     keeps the rest of the @font-face, like browsers (CSS Fonts 4 sec. 4.1). *)
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
      maybe; }";
@@ -739,7 +739,7 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
   (* A descending font-stretch range is kept like the font-weight / oblique
-     ranges below: browsers do not enforce CSS Fonts 4 sec. 11.2. *)
+     ranges below: browsers do not enforce CSS Fonts 4 sec. 4.4. *)
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:200% 50%}"
@@ -868,7 +868,7 @@ let spec_font_face_descriptor_matrix () =
      normal; }"
 
 let spec_keyframes_selector_matrix () =
-  (* CSS Animations 1 section 7.1: [from] / [to] / [0%] / [100%] are pairwise
+  (* CSS Animations 1 section 3: [from] / [to] / [0%] / [100%] are pairwise
      spec-equivalent. The printer canonicalizes to the shorter spelling - [0%]
      beats [from], [to] beats [100%]. *)
   check_stylesheet
@@ -1265,7 +1265,7 @@ let spec_strict_rejects_invalid_stylesheets () =
          U+20-10 }" );
       (* Browsers keep a descending font-weight / oblique-angle range, so the
          lenient parse keeps it with a warning; strict turns that into an error
-         (CSS Fonts 4 sec. 11.2 wants the first bound <= the second). *)
+         (CSS Fonts 4 sec. 4.4 wants the first bound <= the second). *)
       ( "font-face descending font-weight range",
         "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
          900 100 }" );
@@ -1585,7 +1585,7 @@ let test_invalid_properties () =
 
 (* Not a roundtrip test *)
 let test_invalid_syntax () =
-  (* CSS Syntax sec. 5.3.7: unclosed blocks auto-close at EOF and the inner
+  (* CSS Syntax sec. 2.2: unclosed blocks auto-close at EOF and the inner
      declaration is preserved. Verify the AST, don't just accept "didn't
      crash". *)
   check_stylesheet ~expected:".btn{color:red}" ".btn { color: red ";
@@ -3016,7 +3016,7 @@ let s3432_sourcemap_comment () =
       Alcotest.(check string) name expected printed)
     cases
 
-(* CSS Cascade Module Level 6, section 6.4.4.2 (The Layer Statement Rule): the
+(* CSS Cascade Module Level 5, section 6.4.4.2 (The Layer Statement Rule): the
    statement form [@layer foo, bar;] is defined as equivalent to declaring each
    named layer with an empty block in the same order. The two surface shapes
    must therefore parse to the same effective layer order and produce the same
@@ -3045,11 +3045,11 @@ let c6442_empty_blocks_equiv () =
     "subsequent block in a previously-declared layer is order-equivalent"
     statement_then_block two_blocks
 
-(* CSS Cascade Module Level 6, section 6.4.3 (Nesting Layers): a dotted layer
-   name is shorthand for nested layer blocks. The spec says [@layer foo.bar {
-   ... }] declares the same nested layer as [@layer foo { @layer bar { ... } }],
-   so the rule placed inside either form must end up in the same effective
-   cascade layer named [foo.bar]. *)
+(* CSS Cascade Module Level 5, section 6.4.2 (Layer Naming and Nesting): a
+   dotted layer name is shorthand for nested layer blocks. The spec says [@layer
+   foo.bar { ... }] declares the same nested layer as [@layer foo { @layer bar {
+   ... } }], so the rule placed inside either form must end up in the same
+   effective cascade layer named [foo.bar]. *)
 let c643_dotted_nested_layer () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -3104,8 +3104,8 @@ let s3432_no_sourcemap_print () =
         (Astring.String.is_infix ~affix:"sourceURL" printed))
     inputs
 
-(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): "A 0
-   length is unitless and may be substituted for 0px or 0em (etc.) in any
+(* CSS Values and Units Module Level 4, section 6 (Distance Units): "A 0 length
+   is unitless and may be substituted for 0px or 0em (etc.) in any
    length-accepting context." Two property values that differ only in the
    spelling of a zero length are spec-equivalent, so the optimizer is free to
    pick any of them - but parsing two equivalent forms must produce the same
@@ -3127,7 +3127,7 @@ let v461_zero_length_equiv () =
   Alcotest.(check string)
     "0 and 0rem are spec-equivalent for <length>" zero_unitless zero_rem
 
-(* CSS Color Module Level 4, section 12.1 (Hex Notation): a 6-digit hex color
+(* CSS Color Module Level 4, section 5.2 (Hex Notation): a 6-digit hex color
    [#rrggbb] and the equivalent 3-digit shorthand [#rgb] (where each pair is the
    same character) denote the identical sRGB color. They are spec- equivalent
    forms; the optimizer may choose either, but a round trip must yield the same
@@ -3155,7 +3155,7 @@ let color4121_hex_equiv () =
         long_form short_form)
     pairs
 
-(* CSS Cascade and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+(* CSS Cascade and Inheritance Module Level 5, section 6.1 (Cascade Sorting
    Order): when all higher-priority criteria tie, declarations are ordered by
    source order, with later declarations winning. The optimizer is free to merge
    or rewrite rules, but it MUST NOT reorder declarations of the same property
@@ -3194,12 +3194,12 @@ let c61_keeps_winner () =
     (Some "#00f")
     (winning_color ".a { color: red } .a { color: blue }")
 
-(* CSS Color Module Level 4, section 1.4 (Notational Conventions): the named
-   color [red], the hex notations [#f00] and [#ff0000], and the rgb function
-   [rgb(255, 0, 0)] all denote the same sRGB color. Under industry-standard
-   minification (cssnano / Lightning CSS / clean-css) the printer canonicalizes
-   to the shortest equivalent form, so all of these resolve to the same
-   serialized output. *)
+(* CSS Color Module Level 4, section 5.1 (The RGB functions): the named color
+   [red], the hex notations [#f00] and [#ff0000], and the rgb function [rgb(255,
+   0, 0)] all denote the same sRGB color. Under industry-standard minification
+   (cssnano / Lightning CSS / clean-css) the printer canonicalizes to the
+   shortest equivalent form, so all of these resolve to the same serialized
+   output. *)
 let color414_form_equiv () =
   (* These forms parse to distinct color nodes; collapsing them to the shortest
      spelling is an optimize transform, not a pp same-node choice. Canonicalize
@@ -3260,7 +3260,7 @@ let color4_hex_tie_policy () =
       Alcotest.(check string) name expected (normalize css))
     cases
 
-(* CSS Values and Units Module Level 4, section 6.5 only allows dropping units
+(* CSS Values and Units Module Level 4, section 6 only allows dropping units
    from zero lengths. Percentages keep their percent sign because [0%] is still
    a percentage token, not the bare number [0]. *)
 let v465_zero_percentage_equiv () =
@@ -3280,11 +3280,11 @@ let v465_zero_percentage_equiv () =
     "0 and 0% stay distinct for width" false
     (String.equal zero zero_pct)
 
-(* CSSOM Level 1, section 6.6.2 (Serialize a CSS declaration): the serialized
-   form puts ":" between property name and value with no surrounding spaces in
+(* CSSOM Level 1, section 6.6 (Serialize a CSS declaration): the serialized form
+   puts ":" between property name and value with no surrounding spaces in
    minified mode, and "!important" follows the value with no extra whitespace.
    The property name is serialized as-is (already lowercased by the syntax layer
-   per CSS Syntax sec. 3.3) regardless of input case. *)
+   per CSS Syntax sec. 8.1) regardless of input case. *)
 let cssom662_decl_serialization () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -3305,10 +3305,10 @@ let cssom662_decl_serialization () =
     "important whitespace after ! collapsed" ".a{color:red!important}"
     (normalize ".a { color: red !  IMPORTANT }")
 
-(* CSS Color Module Level 4, section 6.4 (The "transparent" color keyword): the
+(* CSS Color Module Level 4, section 6.3 (The "transparent" color keyword): the
    [transparent] keyword is defined as equivalent to [rgba(0, 0, 0, 0)]. The
    8-digit hex [#00000000] (or its 4-digit shorthand [#0000]) is also equivalent
-   to that fully-transparent black per section 12.1. The optimizer may pick any
+   to that fully-transparent black per section 5.2. The optimizer may pick any
    spec-equivalent form; the test asserts the parsed colors denote the same
    value via the canonical printer. *)
 let color4_6_4_transparent_equivalence () =
@@ -3358,7 +3358,7 @@ let color461_named_case () =
         (canonical lower) (canonical mixed))
     cases
 
-(* CSS Values and Units Module Level 4, section 8.1 (Numbers and Numeric Data
+(* CSS Values and Units Module Level 4, section 5.3 (Numbers and Numeric Data
    Types): [<number>] tokens accept several syntactic spellings of the same
    numeric value. [.5], [0.5] and [0.50] all denote 0.5; [1.0] and [1] denote
    the integer 1. The optimizer is free to pick the shortest spelling, but a
@@ -3383,7 +3383,7 @@ let v481_number_format () =
         a_form b_form)
     pairs
 
-(* CSS Selectors Module Level 4, section 3.5 (The Universal Selector): "If the
+(* CSS Selectors Module Level 4, section 5.2 (The Universal Selector): "If the
    universal selector is not the only component of a compound selector, the [*]
    may be omitted." So [*.foo] and [.foo] are spec-equivalent compound
    selectors, and [*#id] and [#id] are equivalent. *)
@@ -3459,12 +3459,12 @@ let scope_selector_list_canonical () =
     ~minified:"@scope(.b,.a)to (.d,.c){.x{color:red}}"
     ~optimized:"@scope(.a,.b)to (.c,.d){.x{color:red}}"
 
-(* CSS Color Module Level 4, section 3 (Color Syntax): the [<hue>] component
-   accepts angles or numbers and is normalised modulo 360deg. So [hsl(360 100%
-   50%)] denotes the same color as [hsl(0 100% 50%)] and as the named color
-   [red]; [hsl(720 ...)] is also red. Hue values outside [0, 360) must reduce,
-   and the fully-saturated red hue must canonicalize to the named color under
-   industry-standard minification. *)
+(* CSS Color Module Level 4, section 4.3 (the <hue> syntax): the [<hue>]
+   component accepts angles or numbers and is normalised modulo 360deg. So
+   [hsl(360 100% 50%)] denotes the same color as [hsl(0 100% 50%)] and as the
+   named color [red]; [hsl(720 ...)] is also red. Hue values outside [0, 360)
+   must reduce, and the fully-saturated red hue must canonicalize to the named
+   color under industry-standard minification. *)
 let color4_3_hue_modulo_canonicalization () =
   (* Hue-modulo reduction and hsl -> named are optimize transforms, not pp
      same-node spellings; route each form through optimize+minify. *)
@@ -3489,7 +3489,7 @@ let color4_3_hue_modulo_canonicalization () =
     "hsl(-360 100% 50%) reduces modulo 360" red
     (canonical "hsl(-360 100% 50%)")
 
-(* CSS Color Module Level 4, section 1.3 (Color Component Values): an alpha
+(* CSS Color Module Level 4, section 4.2 (the <alpha-value> syntax): an alpha
    value may be expressed as a [<number>] in the closed interval [\[0, 1\]] or
    as a [<percentage>] in [\[0%, 100%\]]; the two forms are spec-equivalent.
    [rgb(255 0 0 / .5)] and [rgb(255 0 0 / 50%)] denote the identical color. *)
@@ -3513,7 +3513,7 @@ let color413_alpha_equiv () =
         (canonical number_form) (canonical percent_form))
     pairs
 
-(* CSS Animations Module Level 1, section 7.1 (Keyframe Selectors): the keyframe
+(* CSS Animations Module Level 1, section 3 (Keyframe Selectors): the keyframe
    selectors [from] and [to] are defined as equivalent to [0%] and [100%]
    respectively. A round trip through the parser and printer therefore places
    the rule in the same logical keyframe regardless of which spelling was used
@@ -3551,7 +3551,7 @@ let color4_12_rgb_clamp_canonicalization () =
     "rgb(-10, 0, 0) clamps to black and canonicalizes to #000" ".x{color:#000}"
     (normalize ".x { color: rgb(-10, 0, 0) }")
 
-(* CSS Color Module Level 4, section 1.3 (Color Component Values): an alpha
+(* CSS Color Module Level 4, section 4.2 (the <alpha-value> syntax): an alpha
    value of [1] (or [100%]) means fully opaque, which is by definition the same
    color as the form without an alpha channel. So [rgba(255, 0, 0, 1)] is
    spec-equivalent to [rgb(255, 0, 0)] and to [red]. Both Lightning CSS and
@@ -3572,7 +3572,7 @@ let color413_opaque_alpha_collapse () =
     "rgba(0, 0, 0, 100%) collapses to #000" ".x{color:#000}"
     (normalize ".x { color: rgba(0, 0, 0, 100%) }")
 
-(* CSS Values and Units Module Level 4, section 8.1 (Numbers): [<number>] tokens
+(* CSS Values and Units Module Level 4, section 5.3 (Numbers): [<number>] tokens
    with trailing zeroes after a decimal point ([1.000], [1.500]) are equivalent
    to the same value without the trailing zeroes ([1], [1.5]). Both Lightning
    CSS and cssnano normalise these. *)
@@ -3592,7 +3592,7 @@ let v481_trailing_zero () =
     "0.500 loses both leading and trailing zero" ".x{opacity:.5}"
     (normalize ".x { opacity: 0.500 }")
 
-(* CSS Fonts Module Level 4, section 5.1.2 (Common Weight Name Mapping): the
+(* CSS Fonts Module Level 4, section 2.2 (Common Weight Name Mapping): the
    keywords [normal] and [bold] for [font-weight] are defined as numeric values
    [400] and [700] respectively. Both Lightning CSS and cssnano canonicalize to
    the numeric form. *)
@@ -3634,7 +3634,7 @@ let box4_margin_shorthand_collapse () =
     (normalize ".x { padding: 1px 2px }")
     (normalize ".x { padding: 1px 2px 1px 2px }")
 
-(* CSS Color Module Level 4, section 6.4 (The transparent keyword): all forms of
+(* CSS Color Module Level 4, section 6.3 (The transparent keyword): all forms of
    fully-transparent black ([transparent], [rgba(0, 0, 0, 0)], [#00000000],
    [#0000]) denote the same color. The spec leaves the canonical serialized form
    to implementations; the printer canonicalizes to the shortest spec-equivalent
@@ -3656,7 +3656,7 @@ let color464_transparent_shortest () =
     "#00000000 canonicalizes to #0000" canonical
     (normalize ".x { color: #00000000 }")
 
-(* CSS Values and Units Module Level 4, section 6.5 lets zero lengths drop their
+(* CSS Values and Units Module Level 4, section 6 lets zero lengths drop their
    unit. It does not turn zero percentages into numbers. *)
 let v465_zero_length_shortest () =
   let normalize css =
@@ -3678,7 +3678,7 @@ let v465_zero_length_shortest () =
     "0vh canonicalizes to 0" canonical
     (normalize ".x { width: 0vh }")
 
-(* CSS Backgrounds and Borders Module Level 3, section 5 (Border Radius):
+(* CSS Backgrounds and Borders Module Level 3, section 4.1 (Border Radius):
    [border-radius] takes one to four [<length-percentage>] values. When all four
    sides are equal, the shorthand collapses to a single value. The spec does not
    mandate the collapsed form; the printer takes the freedom and picks the
@@ -3717,7 +3717,7 @@ let v410_calc_add_zero () =
     "calc(1px + 0px) simplifies to 1px" ".x{width:1px}"
     (normalize ".x { width: calc(1px + 0px) }")
 
-(* CSS Backgrounds and Borders Module Level 3, section 3.6
+(* CSS Backgrounds and Borders Module Level 3, section 2.6
    (background-position): the two-value form [<x> <y>] collapses to the
    single-value form when [x = y]. The single-value form is the shortest
    spec-equivalent spelling that Lightning CSS picks. *)
@@ -3771,7 +3771,7 @@ let pretty_preserves css fragments =
             (Astring.String.is_infix ~affix:fragment printed))
         fragments
 
-(* CSS Color 4 section 12.1 + cascade convention: authored hex colours decode to
+(* CSS Color 4 section 5.2 + cascade convention: authored hex colours decode to
    sRGB bytes but keep their source spelling for pretty-printing, while
    minify+optimize emits the shorter equivalent spelling. *)
 (* The pretty printer formats every braced at-rule body with the same line
@@ -3823,7 +3823,7 @@ let fidelity_hex_form_preserved () =
   assert_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
     ~optimized:".x{color:red}"
 
-(* CSS Color 4 section 1.4 + cascade convention: under non-minified output, the
+(* CSS Color 4 section 5.1 + cascade convention: under non-minified output, the
    named-color and rgb() forms are preserved as written - no cross-form
    canonicalization. *)
 let fidelity_color_form_preserved () =
@@ -3838,7 +3838,7 @@ let fidelity_color_form_preserved () =
   pretty_preserves ".x { color: rgba(0, 0, 0, 0) }" [ "rgb(0 0 0 / 0)" ];
   pretty_preserves ".x { color: #0000 }" [ "#0000" ]
 
-(* CSS Animations 1 section 7.1 + cascade convention: [from] / [to] are
+(* CSS Animations 1 section 3 + cascade convention: [from] / [to] are
    canonicalized to [0%] / [100%] only under minify; the pretty printer keeps
    the source keyword. *)
 let fidelity_keyframe_selector_preserved () =
@@ -3847,7 +3847,7 @@ let fidelity_keyframe_selector_preserved () =
   pretty_preserves "@keyframes fade { 0% { opacity: 0 } 100% { opacity: 1 } }"
     [ "0%"; "100%" ]
 
-(* CSS Selectors 4 section 3.5 + cascade convention: stripping [*] in a
+(* CSS Selectors 4 section 5.2 + cascade convention: stripping [*] in a
    non-solitary compound is a minify-only optimization; the pretty printer keeps
    the universal selector as written. *)
 let fidelity_universal_in_compound_preserved () =
@@ -3855,7 +3855,7 @@ let fidelity_universal_in_compound_preserved () =
   pretty_preserves "*#main { color: red }" [ "*#main" ];
   pretty_preserves "*[data-x] { color: red }" [ "*[data-x]" ]
 
-(* CSS Color 4 section 1.3 + cascade convention: alpha unit form is preserved in
+(* CSS Color 4 section 4.2 + cascade convention: alpha unit form is preserved in
    pretty output, while numeric spelling follows the shared shortest decimal
    convention. *)
 let fidelity_alpha_form_preserved () =
@@ -3876,7 +3876,7 @@ let fidelity_percentage_precision_preserved () =
           (Css.to_string ~minify:true parsed.stylesheet)
     | Error _ -> false)
 
-(* CSS Values 4 section 6.1 + cascade convention: dropping the unit on a zero
+(* CSS Values 4 section 6 + cascade convention: dropping the unit on a zero
    length is a minify-only optimization; the pretty printer keeps the source
    spelling. *)
 let fidelity_zero_length_preserved () =
@@ -3885,7 +3885,7 @@ let fidelity_zero_length_preserved () =
   pretty_preserves ".x { width: 0% }" [ "0%" ];
   pretty_preserves ".x { margin: 0px 0px 0px 0px }" [ "0px 0px 0px 0px" ]
 
-(* CSS Animations 1 section 7.1 + cascade convention: shorthand collapses
+(* CSS Animations 1 section 3 + cascade convention: shorthand collapses
    ([margin: 1px 1px 1px 1px] -> [margin: 1px], [border-radius: 0 0 0 0] -> [0])
    are minify-only optimizations; the pretty printer keeps the source
    spelling. *)
@@ -3895,14 +3895,14 @@ let fidelity_shorthand_form_preserved () =
   pretty_preserves ".x { border-radius: 0 0 0 0 }" [ "0 0 0 0" ];
   pretty_preserves ".x { background-position: 50% 50% }" [ "50% 50%" ]
 
-(* CSS Fonts 4 section 5.1.2 + cascade convention: mapping the [normal] / [bold]
+(* CSS Fonts 4 section 2.2 + cascade convention: mapping the [normal] / [bold]
    keywords to the numeric weights [400] / [700] is a minify-only optimization;
    the pretty printer keeps the keyword. *)
 let fidelity_font_weight_keyword_preserved () =
   pretty_preserves ".x { font-weight: normal }" [ "normal" ];
   pretty_preserves ".x { font-weight: bold }" [ "bold" ]
 
-(* CSS Selectors Level 4, section 14 (The :nth-child() Pseudo-class): the
+(* CSS Selectors Level 4, section 13.3.1 (The :nth-child() Pseudo-class): the
    [<an+b>] microsyntax has multiple spec-equivalent spellings - [2n+1] is the
    same set as [odd]; [2n+0] equals [2n] (matches even); a constant b like
    [(0n+5)] equals [(5)]; and [(1)] is equivalent to the [:first-child]
@@ -3927,7 +3927,7 @@ let s4_14_nth_child_canonicalization () =
     (normalize ".x :first-child { color: red }")
     (normalize ".x :nth-child(1) { color: red }")
 
-(* CSS Selectors Level 4, section 6.2 (Attribute selectors): the value in
+(* CSS Selectors Level 4, section 6.1 (Attribute selectors): the value in
    [\[attr=value\]] may be an identifier or a string. When the value matches the
    [<ident-token>] grammar, the quotes are redundant and may be dropped; both
    single and double quotes are equivalent. Both minifiers strip redundant
@@ -3947,7 +3947,7 @@ let s462_attr_quote_canonical () =
     (normalize ".x [data-x=hello] { color: red }")
     (normalize ".x [data-x='hello'] { color: red }")
 
-(* CSS Values and Units Module Level 4, section 8.1 (Numbers): scientific
+(* CSS Values and Units Module Level 4, section 5.3 (Numbers): scientific
    notation [<number>] tokens like [1e3] and [1.5e2] are spec-equivalent to
    their decimal expansion. Both minifiers expand these to the decimal form when
    shorter. *)
@@ -3964,7 +3964,7 @@ let v481_scientific_notation () =
     "1.5e2px expands to 150px" ".x{width:150px}"
     (normalize ".x { width: 1.5e2px }")
 
-(* CSS Values and Units Module Level 4, section 8.1 (Numbers): negative zero is
+(* CSS Values and Units Module Level 4, section 5.3 (Numbers): negative zero is
    the same value as zero; [-0px] is the same length as [0]. Both minifiers
    normalise. *)
 let v481_negative_zero () =
@@ -3980,7 +3980,7 @@ let v481_negative_zero () =
     "-0 canonicalizes to 0" ".x{width:0}"
     (normalize ".x { width: -0 }")
 
-(* CSS Values and Units Module Level 4, section 7 (URLs): the [<url>] type
+(* CSS Values and Units Module Level 4, section 4.5 (URLs): the [<url>] type
    accepts both quoted strings and unquoted token sequences when the URL does
    not contain whitespace, parentheses, or non-printable characters. Both
    minifiers drop the quotes when not needed. *)
@@ -4014,7 +4014,7 @@ let v410_calc_nested_constant () =
     "calc(1px + 2px) simplifies to 3px" ".x{width:3px}"
     (normalize ".x { width: calc(1px + 2px) }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+(* CSS Cascading and Inheritance Module Level 5, section 6.1 (Cascade Sorting
    Order): consecutive rules with the same condition (same [@media], same
    [@layer]) may be merged into one block, since the cascade evaluates them
    identically. The merge is spec-allowed when no rule with conflicting
@@ -4084,7 +4084,7 @@ let fidelity_calc_form_preserved () =
   pretty_preserves ".x { width: calc(calc(1px + 2px)) }"
     [ "calc(calc(1px + 2px))" ]
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+(* CSS Cascading and Inheritance Module Level 5, section 6.1 (Cascade Sorting
    Order): when two declarations of the same property tie on every higher-
    priority criterion, only the later wins. The earlier declaration is dead and
    may be removed. Both Lightning CSS and cssnano drop dead duplicates for
@@ -4103,7 +4103,7 @@ let c6_1_dead_shorthand_removed () =
     "exact duplicate property collapsed" ".x{color:red}"
     (normalize ".x { color: red; color: red }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.1: an empty
+(* CSS Cascading and Inheritance Module Level 5, section 6.1: an empty
    declaration block contributes no declared values to the cascade. The rule may
    be removed entirely as a no-op. Both minifiers drop empty rules. *)
 let c6_1_empty_rule_removed () =
@@ -4119,11 +4119,11 @@ let c6_1_empty_rule_removed () =
     "empty rule after populated rule is dropped" ".y{color:red}"
     (normalize ".y { color: red } .x { }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 7 (CSS-Wide Keywords):
-   the keywords [initial], [inherit], [unset], [revert], and [revert-layer] are
-   valid for every property. Implementations must preserve them through
-   serialization since they have observable cascade semantics that no shorter
-   spelling captures. *)
+(* CSS Cascading and Inheritance Module Level 5, section 7.3 (CSS-Wide
+   Keywords): the keywords [initial], [inherit], [unset], [revert], and
+   [revert-layer] are valid for every property. Implementations must preserve
+   them through serialization since they have observable cascade semantics that
+   no shorter spelling captures. *)
 let c67_css_wide_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4157,7 +4157,7 @@ let c67_bad_css_wide_list () =
     "invalid CSS-wide list item drops under minify" ".y{color:red}"
     (minified ".x { font-family: Arial, inherit }.y { color: red }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 3.2 (The all
+(* CSS Cascading and Inheritance Module Level 5, section 3.2 (The all
    Shorthand): the [all] property is a shorthand that sets every CSS-wide
    keyword for all properties. It only accepts CSS-wide keywords as values and
    must round-trip through the printer unchanged. *)
@@ -4177,7 +4177,7 @@ let c632_all_shorthand_kept () =
     "all: initial preserved" ".x{all:initial}"
     (normalize ".x { all: initial }")
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.4 (Cascade Layers):
+(* CSS Cascading and Inheritance Module Level 5, section 6.4 (Cascade Layers):
    named layers preserve their declared order. Two non-adjacent [@layer base]
    blocks separated by an [@layer theme] block still contribute to the same
    layer, so they may be serialized in one [base] block at the first [base]
@@ -4209,7 +4209,7 @@ let c64_named_layers_order () =
      | Some r, Some t, Some p -> r < p && p < t
      | _ -> false)
 
-(* CSS Cascade L6 section 2.4 (Conditional @import) and CSS Custom Properties L1
+(* CSS Cascade L5 section 2.1 (Conditional @import) and CSS Custom Properties L1
    section 2 (var()): a [var()] reference with a fallback must be preserved
    end-to-end. The optimizer cannot resolve [var(--undef, red)] to [red] without
    a context that says [--undef] is undefined - that's a cascade-time fact, not
@@ -4227,7 +4227,7 @@ let css_var_fallback_preserved () =
     "nested var() preserved" ".x{color:var(--a,var(--b,red))}"
     (normalize ".x { color: var(--a, var(--b, red)) }")
 
-(* CSS Cascade L6 section 6.4.4 (anonymous @layer): two anonymous layers are
+(* CSS Cascade L5 section 6.4.2.1 (anonymous @layer): two anonymous layers are
    distinct - they must NOT merge, because the spec states that each [@layer {
    ... }] without a name creates a new, independent layer. *)
 let c644_anonymous_layers_distinct () =
@@ -4275,7 +4275,7 @@ let fidelity_css_wide_keywords_preserved () =
   pretty_preserves ".x { color: unset }" [ "unset" ];
   pretty_preserves ".x { all: initial }" [ "all"; "initial" ]
 
-(* CSS Backgrounds and Borders Module Level 3, section 3.6
+(* CSS Backgrounds and Borders Module Level 3, section 2.6
    (background-position): the keyword pairs [top left] / [left top] denote the
    same position as [0% 0%], and [bottom right] denotes [100% 100%]. Both
    Lightning CSS and cssnano canonicalize the keyword form to the numeric
@@ -4286,7 +4286,7 @@ let bg336_position_keyword () =
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  (* Per CSS Backgrounds L3 sec. 3.6 [top left], [left top], and [0% 0%] all
+  (* Per CSS Backgrounds L3 sec. 2.6 [top left], [left top], and [0% 0%] all
      denote position [0 0]. *)
   Alcotest.(check string)
     "background-position: top left -> 0 0" ".x{background-position:0 0}"
@@ -4299,7 +4299,7 @@ let bg336_position_keyword () =
     ".x{background-position:100% 100%}"
     (normalize ".x { background-position: bottom right }")
 
-(* CSS Cascade L6 section 6.1: when two rules with different selectors share the
+(* CSS Cascade L5 section 6.1: when two rules with different selectors share the
    same declaration block, they may be grouped into a selector list with one
    block. The cascade evaluates the grouped form identically because each
    selector contributes the same declared values at its own specificity. Both
@@ -4326,10 +4326,11 @@ let c6_1_selector_grouping () =
      in
      count 0 0 = 1)
 
-(* CSS Syntax L3 section 4.3.10 (Identifier escapes): vendor-prefixed properties
-   such as [-webkit-transform] and [-moz-user-select] use the dashed-ident
-   escape hatch and are unknown to the CSS spec. The printer must round-trip
-   them unchanged - both Lightning CSS and cssnano keep vendor prefixes. *)
+(* CSS Syntax L3 section 4.3.9 (Check if three code points would start an ident
+   sequence): vendor-prefixed properties such as [-webkit-transform] and
+   [-moz-user-select] use the dashed-ident escape hatch and are unknown to the
+   CSS spec. The printer must round-trip them unchanged - both Lightning CSS and
+   cssnano keep vendor prefixes. *)
 let vendor_prefix_preservation () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4442,7 +4443,7 @@ let fidelity_not_form_preserved () =
   pretty_preserves ".x :not(.a, .b) { color: red }" [ ":not(.a, .b)" ];
   pretty_preserves ".x :not(.a):not(.b) { color: red }" [ ":not(.a):not(.b)" ]
 
-(* CSS Values and Units Module Level 4, section 6.6 (Time Units): [s] and [ms]
+(* CSS Values and Units Module Level 4, section 7.2 (Time Units): [s] and [ms]
    are the two units of [<time>], with [1s = 1000ms]. Both minifiers
    canonicalize to the shorter spelling - [0s] for any zero, [1s] over [1000ms],
    [.1s] over [100ms]. *)
@@ -4465,7 +4466,7 @@ let v466_time_unit_canonical () =
     "500ms canonicalizes to .5s" ".x{transition-duration:.5s}"
     (normalize ".x { transition-duration: 500ms }")
 
-(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): absolute
+(* CSS Values and Units Module Level 4, section 6.2 (Absolute Lengths): absolute
    lengths ([in], [cm], [mm], [pt], [pc], [q]) are mathematically
    inter-convertible to [px] but the conversion produces non-terminating
    decimals or longer spellings in most cases. Industry minifiers (Lightning CSS
@@ -4493,7 +4494,7 @@ let v461_absolute_units_minify () =
     "25.4mm preserved" ".x{width:25.4mm}"
     (normalize ".x { width: 25.4mm }")
 
-(* CSS Values and Units Module Level 4, section 8.1 (Numbers): negative lengths
+(* CSS Values and Units Module Level 4, section 5.3 (Numbers): negative lengths
    and percentages are valid in many contexts (margin, transform translate,
    etc.) and must round-trip preserved. The leading [-] is part of the value,
    not a separate token. *)
@@ -4516,7 +4517,7 @@ let v481_negative_units_kept () =
     "negative angle -90deg preserved" ".x{transform:rotate(-90deg)}"
     (normalize ".x { transform: rotate(-90deg) }")
 
-(* CSS Values and Units Module Level 4, section 8 (Numeric Data Types): trailing
+(* CSS Values and Units Module Level 4, section 5 (Numeric Data Types): trailing
    zeros after a decimal point are not significant - [10.0px] is the same number
    as [10px], [10.50px] is [10.5px]. Both minifiers normalise to drop trailing
    zeros. *)
@@ -4536,7 +4537,7 @@ let v4_8_trailing_zero_drop () =
     "1.0 line-height drops trailing zero to 1" ".x{line-height:1}"
     (normalize ".x { line-height: 1.0 }")
 
-(* CSS Sizing Module Level 4, section 5 (aspect-ratio): the [aspect-ratio]
+(* CSS Sizing Module Level 4, section 4.1 (aspect-ratio): the [aspect-ratio]
    property accepts [<ratio>] which is two [<number>]s separated by [/]. Both
    minifiers preserve [16/9] (with whitespace dropped) and the single-value form
    [1] (which is shorthand for [1/1]). *)
@@ -4553,7 +4554,7 @@ let sizing4_5_aspect_ratio_preservation () =
     "aspect-ratio: 1 preserved" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: 1 }")
 
-(* CSS Values and Units Module Level 4, section 8.1 + spec rejection: a bare
+(* CSS Values and Units Module Level 4, section 6 + spec rejection: a bare
    number without a unit is not a valid [<length>] outside of zero. Both parsers
    reject [width: 10] (no unit), [margin: 5] (no unit). *)
 let v481_negative_unit_length () =
@@ -4573,7 +4574,7 @@ let v481_negative_unit_length () =
     | Error _ -> true
     | _ -> false)
 
-(* CSS Values and Units Module Level 4, section 6.6 + spec rejection: a bare
+(* CSS Values and Units Module Level 4, section 7.2 + spec rejection: a bare
    number is not a valid [<time>] - units [s] or [ms] are required. Exception:
    [0] is valid as zero in some contexts but [transition-duration: 1] (no unit)
    must be rejected. *)
@@ -4589,7 +4590,7 @@ let v466_time_unit_required () =
     | Error _ -> true
     | _ -> false)
 
-(* CSS Values and Units Module Level 4, section 6.1 + spec rejection: unknown
+(* CSS Values and Units Module Level 4, section 6 + spec rejection: unknown
    length units like [10pp], [10foo] must be rejected as parse errors. *)
 let v461_unknown_length_unit () =
   Alcotest.(check bool)
@@ -4632,12 +4633,12 @@ let fidelity_aspect_ratio_preserved () =
   pretty_preserves ".x { aspect-ratio: 16 / 9 }" [ "16 / 9" ];
   pretty_preserves ".x { aspect-ratio: 1 }" [ "1" ]
 
-(* CSS Values and Units Module Level 4, section 10.2 (Computed Value of calc()):
-   calc() simplifies under spec rules - a single-operand calc collapses to the
-   operand; multiplication/division/addition with constants in the same unit
-   fold to the result; calc() with a [var()] reference must be preserved because
-   the value is unknown at parse time. Both Lightning CSS and cssnano agree on
-   these simplifications. *)
+(* CSS Values and Units Module Level 4, section 10.10.1 (Simplification): calc()
+   simplifies under spec rules - a single-operand calc collapses to the operand;
+   multiplication/division/addition with constants in the same unit fold to the
+   result; calc() with a [var()] reference must be preserved because the value
+   is unknown at parse time. Both Lightning CSS and cssnano agree on these
+   simplifications. *)
 let v4102_calc_single () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -4720,7 +4721,7 @@ let v4102_calc_percentage () =
     "calc(100% * 2) -> 200%" ".x{width:200%}"
     (normalize ".x { width: calc(100% * 2) }")
 
-(* CSS Values and Units Module Level 4, section 10.2: calc() with mixed units
+(* CSS Values and Units Module Level 4, section 10.10.1: calc() with mixed units
    that cannot be reduced at parse time must be preserved. Examples are
    [calc(100vh - 50px)] (mixed viewport + absolute), [calc(100% - 10px)] (mixed
    percentage + absolute), and any expression containing [var()] - their values
@@ -4774,7 +4775,7 @@ let fidelity_calc_mixed_unit_preserved () =
   pretty_preserves ".x { width: calc(var(--x) + 10px) }"
     [ "calc(var(--x) + 10px)" ]
 
-(* CSS Values L4 section 10.2: nested calc() collapses to a single calc() and
+(* CSS Values L4 section 10.10.1: nested calc() collapses to a single calc() and
    all-constant nested forms reduce to a single value. Both minifiers fully
    unwrap. *)
 let v4102_calc_nested () =
@@ -4793,7 +4794,7 @@ let v4102_calc_nested () =
     "calc(calc(1px + 2px) * 2) -> 6px" ".x{width:6px}"
     (normalize ".x { width: calc(calc(1px + 2px) * 2) }")
 
-(* CSS Values L4 section 10.7 (min(), max()): when all arguments are constants
+(* CSS Values L4 section 10.2 (min(), max()): when all arguments are constants
    reducible at parse time the result is a single value. Per shortest-wins
    cascade picks the reduced form. *)
 let v4107_minmax_reduction () =
@@ -4828,12 +4829,12 @@ let v4107_minmax_reduction () =
     "font-size folds a constant clamp too" ".x{font-size:2rem}"
     (normalize ".x { font-size: clamp(1rem, 2rem, 3rem) }")
 
-(* CSS Selectors L4 section 17 (:is()): a single-argument [:is(.x)] matches the
+(* CSS Selectors L4 section 4.2 (:is()): a single-argument [:is(.x)] matches the
    same elements as bare [.x] with the same specificity. Per shortest-wins
    cascade picks the unwrapped form. *)
 let s417_is_unwrap () =
-  (* CSS Selectors L4 sec. 17: a single-argument [:is(.a)] is spec-equivalent to
-     bare [.a] (same match set, same specificity). Under [~minify:true] the
+  (* CSS Selectors L4 sec. 4.2: a single-argument [:is(.a)] is spec-equivalent
+     to bare [.a] (same match set, same specificity). Under [~minify:true] the
      printer picks the shortest spec-equivalent spelling - the unwrapped form,
      matching Lightning CSS. Non-minified output preserves the wrapper (see
      fidelity_nested_is_preserved). *)
@@ -4855,7 +4856,7 @@ let s417_is_unwrap () =
     (normalize ".x .a.b { color: red }")
     (normalize ".x :is(.a):is(.b) { color: red }")
 
-(* CSS Selectors L4 section 6.2: attribute compound selectors drop quotes per
+(* CSS Selectors L4 section 6.1: attribute compound selectors drop quotes per
    attribute when the value is a valid identifier. *)
 let s462_compound_attr () =
   let normalize css =
@@ -4868,7 +4869,7 @@ let s462_compound_attr () =
     ".x [data-x=a][data-y=b]{color:red}"
     (normalize ".x [data-x=\"a\"][data-y=\"b\"] { color: red }")
 
-(* CSS Selectors L4 section 4.2 (compound selector): chained pseudo- classes
+(* CSS Selectors L4 section 3.1 (compound selector): chained pseudo- classes
    preserve their order and do not deduplicate. *)
 let s442_compound_pseudo_kept () =
   let normalize css =
@@ -4880,7 +4881,7 @@ let s442_compound_pseudo_kept () =
     ":hover:focus:active preserved" ".x :hover:focus:active{color:red}"
     (normalize ".x :hover:focus:active { color: red }")
 
-(* CSS Transforms L1 section 11: multiple transform functions stack in source
+(* CSS Transforms L1 section 8: multiple transform functions stack in source
    order; whitespace between them is optional for parsing. Lightning CSS drops
    it; per shortest-wins cascade follows. *)
 let transforms1_11_chain_whitespace_dropped () =
@@ -4899,10 +4900,10 @@ let transforms1_11_chain_whitespace_dropped () =
    optimizer cannot inline a variable without a context that resolves it (a
    [theme] map keyed on custom property names), so the [var()] reference and its
    [calc()] wrapper round-trip preserved. The value-independent CSS Values 4
-   sec. 10.7 identities ([x * 1], [x + 0], ...) still fold: they hold for every
-   possible substitution because the [var()] stays inside calc()'s grammar, so
-   [calc(var(--x) * 1)] shortens to [calc(var(--x))] (not to bare [var(--x)],
-   which sec. 10.10 forbids without knowing the value). *)
+   sec. 10.10.1 identities ([x * 1], [x + 0], ...) still fold: they hold for
+   every possible substitution because the [var()] stays inside calc()'s
+   grammar, so [calc(var(--x) * 1)] shortens to [calc(var(--x))] (not to bare
+   [var(--x)], which sec. 10.10 forbids without knowing the value). *)
 let customprops12_inlining () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -5026,7 +5027,7 @@ let customprops12_text_payload () =
      Astring.String.is_infix ~affix:"var(--brand)" out
      && not (Astring.String.is_infix ~affix:"red" out))
 
-(* CSS Custom Properties L1 section 5 (Resolving Dependency Cycles): a variable
+(* CSS Custom Properties L1 section 3 (Resolving Dependency Cycles): a variable
    that references itself directly or indirectly is invalid at computed time. At
    syntax time the chain is preserved - the cycle detection happens in the
    cascade. *)
@@ -5359,9 +5360,9 @@ let fidelity_logical_property_preserved () =
   pretty_preserves ".x { margin-inline-start: 10px }" [ "margin-inline-start" ];
   pretty_preserves ".x { padding-block: 5px 10px }" [ "padding-block" ]
 
-(* {2 Container Queries (CSS Containment L3 sec. 6)} *)
+(* {2 Container Queries (CSS Containment L3 sec. 4.4)} *)
 
-(* CSS Containment Module Level 3, section 6 (Container Queries): the
+(* CSS Containment Module Level 3, section 4.4 (Container Queries): the
    [@container] rule supports an optional name and a query expression. Both
    forms round-trip preserved, including the named form [@container card
    (...)]. *)
@@ -5390,11 +5391,11 @@ let fidelity_container_query_preserved () =
   pretty_preserves "@container card (inline-size > 30em) { .x { color: red } }"
     [ "card"; "inline-size > 30em" ]
 
-(* {2 Font shorthand (CSS Fonts L4 sec. 6.5)} *)
+(* {2 Font shorthand (CSS Fonts L4 sec. 2.7)} *)
 
-(* CSS Fonts Module Level 4, section 6.5 (Shorthand font property): the [font]
+(* CSS Fonts Module Level 4, section 2.7 (Shorthand font property): the [font]
    shorthand expands to several longhands; the keyword [bold] inside the
-   shorthand canonicalizes to [700] under minify per sec. 5.1.2. System font
+   shorthand canonicalizes to [700] under minify per sec. 2.2. System font
    keywords ([caption], [icon], [menu]) round-trip preserved. *)
 let fonts4_6_5_font_shorthand () =
   let normalize css =
@@ -5429,9 +5430,9 @@ let fidelity_font_shorthand_preserved () =
     [ "italic"; "small-caps"; "bold" ];
   pretty_preserves ".x { font: caption }" [ "caption" ]
 
-(* {2 List-style shorthand (CSS Lists L3 sec. 3)} *)
+(* {2 List-style shorthand (CSS Lists L3 sec. 3.6)} *)
 
-(* CSS Lists Module Level 3, section 3 (list-style shorthand): the shorthand
+(* CSS Lists Module Level 3, section 3.6 (list-style shorthand): the shorthand
    sets [list-style-type], [list-style-position], and [list- style-image].
    Default values may be elided per shortest-wins. *)
 let lists3_list_style_shorthand () =
@@ -5455,9 +5456,9 @@ let fidelity_list_style_preserved () =
   pretty_preserves ".x { list-style: disc inside }" [ "disc"; "inside" ];
   pretty_preserves ".x { list-style-type: none }" [ "list-style-type" ]
 
-(* {2 Cascade origin + !important interaction (Cascade L6 sec. 6.3)} *)
+(* {2 Cascade origin + !important interaction (Cascade L5 sec. 6.3)} *)
 
-(* CSS Cascading and Inheritance Module Level 6, section 6.3 (Importance): for
+(* CSS Cascading and Inheritance Module Level 5, section 6.3 (Importance): for
    important declarations the origin precedence is inverted - user-agent
    !important > user !important > author !important. The cascade test surface
    validates that important declarations preserve their authored !important
@@ -5961,7 +5962,7 @@ let normalize_minified css =
    declarations as opaque token streams. CSS Properties and Values API 1 section
    2 lifts a custom property into a typed value only after an @property
    registration for that name. *)
-(* CSS Scroll Snap 1 section 6.2: [scroll-snap-align] takes one or two
+(* CSS Scroll Snap 1 section 5.2: [scroll-snap-align] takes one or two
    keywords; the reader must stop at the end of the value, not consume the
    declaration's trailing semicolon as a missing second keyword. *)
 let scroll_snap_align_trailing_semicolon () =
@@ -6545,12 +6546,12 @@ let theme_chain_resolution () =
     ".x{text-shadow:0 0 2px red}"
     (render_optimized ".x { text-shadow: 0 0 2px var(--shadow-color) }")
 
-(* CSS Custom Properties L1 section 2.3: a real per-element dependency cycle
-   makes the variables in that cycle invalid at computed-value time. A
-   caller-provided theme resolver is not that full computed-value graph, so a
-   cycle in resolver output should stop resolution and preserve the authored
-   runtime expression at the boundary instead of looping or guessing that the
-   fallback is safe to select statically. *)
+(* CSS Custom Properties L1 section 3: a real per-element dependency cycle makes
+   the variables in that cycle invalid at computed-value time. A caller-provided
+   theme resolver is not that full computed-value graph, so a cycle in resolver
+   output should stop resolution and preserve the authored runtime expression at
+   the boundary instead of looping or guessing that the fallback is safe to
+   select statically. *)
 let theme_cycle_preserved () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -7556,7 +7557,7 @@ let additional_tests =
     ( "semicolon-terminated at-rule survives partial parse",
       `Quick,
       fun () ->
-        (* [@layer base;] parses through section 5.4.2 to an at-rule with [block
+        (* [@layer base;] parses through section 5.5.2 to an at-rule with [block
            = None]. The replay cursor must still present a terminating [;] to
            [read_layer], otherwise the at-rule is silently dropped. *)
         let { Css.stylesheet; warnings } =

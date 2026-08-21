@@ -179,7 +179,7 @@ let read_function_arg name t =
     | None -> (Cursor.consume_remaining_as_string ~trim:true inner, false)
   in
   Cursor.expect_eof inner;
-  (* CSS Fonts 4 sec. 11.1: each of [local()] / [format()] / [tech()] takes
+  (* CSS Fonts 4 sec. 4.3: each of [local()] / [format()] / [tech()] takes
      exactly one argument, so an empty body ([format()], [local()]) is invalid.
      The one exception browsers accept is [local("")] - an explicit empty
      <string> family name - so keep that. *)

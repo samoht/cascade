@@ -20,8 +20,8 @@ let read_vertical_align_length t : vertical_align =
   | Some "rem" -> Rem n
   | Some "em" -> Em n
   | Some "%" -> Pct n
-  (* A unitless [0] is the valid zero <length> (CSS Values 4 sec. 6.1); any
-     other unitless number is not a length and is rejected. *)
+  (* A unitless [0] is the valid zero <length> (CSS Values 4 sec. 6); any other
+     unitless number is not a length and is rejected. *)
   | None when n = 0. -> Zero
   | None -> Cursor.err_invalid t "vertical-align requires a unit"
   | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)

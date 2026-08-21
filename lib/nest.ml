@@ -3,11 +3,11 @@ open Stylesheet
 let contains sel =
   Selector.any (function Selector.Nesting -> true | _ -> false) sel
 
-(* CSS Nesting 1 sec. 2.1: [&] stands for [:is(<parent selector list>)]. A
-   parent that carries a combinator or lists alternatives needs that wrapper, or
-   its own structure escapes: dropping it turns [.dark &] over parent [.a .b]
-   into [.dark .a .b], which demands that [.a] itself sit inside [.dark]. Where
-   [&] heads the selector nothing can escape to its left, so the wrapper is
+(* CSS Nesting 1 sec. 4: [&] stands for [:is(<parent selector list>)]. A parent
+   that carries a combinator or lists alternatives needs that wrapper, or its
+   own structure escapes: dropping it turns [.dark &] over parent [.a .b] into
+   [.dark .a .b], which demands that [.a] itself sit inside [.dark]. Where [&]
+   heads the selector nothing can escape to its left, so the wrapper is
    redundant there and the parent goes in verbatim. *)
 let complex = function
   | Selector.List _ | Selector.Combined _ | Selector.Relative _ -> true
@@ -36,7 +36,7 @@ let substitute ?(leftmost = true) ~parent sel =
   let parent = if verbatim then parent else Selector.Is [ parent ] in
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
 
-(* CSS Nesting 1 sec. 2: a nested selector list is relative to the parent branch
+(* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent
    with the list as a whole would put the combinator on the first branch only
    and let the rest escape as top-level selectors. *)

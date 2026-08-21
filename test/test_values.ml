@@ -147,7 +147,7 @@ let test_length () =
   check_length ~expected:".5rem" "0.5rem";
   check_length "-.5rem";
 
-  (* CSS Values 4 sec. 6.1: a signed zero is the same value as unsigned zero, so
+  (* CSS Values 4 sec. 5.3: a signed zero is the same value as unsigned zero, so
      any zero collapses to the canonical 0 (the unit is kept). *)
   check_length ~expected:"0px" "-0px";
   check_length ~expected:"0px" "+0px";
@@ -239,7 +239,7 @@ let test_length () =
   neg_cursor (read_calc read_length) "calc(10px +)"
 
 let test_color () =
-  (* Hex colors with #. Per CSS Color 4 section 12.1 the printer canonicalizes
+  (* Hex colors with #. Per CSS Color 4 section 5.2 the printer canonicalizes
      [#rrggbb] to [#rgb] under [~minify:true] when each channel pair matches,
      and lowercases the digits to match the consensus across Lightning CSS,
      esbuild, csso, cssnano, and clean-css. *)
@@ -289,7 +289,7 @@ let test_color () =
   check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a" "hwb(90 10% 20%)";
   check_color ~expected:"hwb(90 10% 20%/.25)" ~optimized:"#73cc1a40"
     "hwb(90 10% 20% / 0.25)";
-  (* CSS Color 4 section 1.3: alpha [<percentage>] is spec-equivalent to the
+  (* CSS Color 4 section 4.2: alpha [<percentage>] is spec-equivalent to the
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
   check_color ~expected:"hsl(180 50% 25%/30%)" ~optimized:"#2060604d"
@@ -304,7 +304,7 @@ let test_color () =
   (* Additional color functions and forms *)
   check_color ~expected:"oklch(50%.2 30)" ~optimized:"#ba0d01"
     "oklch(50% 0.2 30)";
-  (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
+  (* Per CSS Color 4 section 5.1 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
   check_color ~expected:"rgb(100% 0% 0%)" ~optimized:"red" "rgb(100% 0% 0%)";
   check_color ~expected:"oklab(50%.1-.05)" ~optimized:"#88497e"
@@ -313,7 +313,7 @@ let test_color () =
   check_color ~expected:"rgb(255 0 0/50%)" ~optimized:"#ff000080"
     "rgb(255 0 0 / 50%)";
 
-  (* Mixed channel formats in modern rgb() syntax. Per CSS Color 4 section 1.4
+  (* Mixed channel formats in modern rgb() syntax. Per CSS Color 4 section 5.1
      the printer canonicalizes a fully-opaque rgb() to the equivalent named/hex
      form when shorter, regardless of input channel format. *)
   check_color ~optimized:"olive" "rgb(50% 128 0)";
@@ -348,7 +348,7 @@ let test_color () =
   check_color "teal";
   check_color ~optimized:"#0ff" "aqua";
 
-  (* Special keywords. Per CSS Color 4 section 6.4 [transparent] canonicalizes
+  (* Special keywords. Per CSS Color 4 section 6.3 [transparent] canonicalizes
      to the shortest spec-equivalent spelling [#0000] under minify. *)
   check_color ~optimized:"#0000" "transparent";
   check_color ~expected:"currentColor" "currentcolor";
@@ -374,7 +374,7 @@ let test_color () =
   check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
     ~optimized:"var(--accent,#ff0080cc)" "var(--accent, rgb(255 0 128 / 80%))";
 
-  (* RGB functions - various formats. Per CSS Color 4 section 1.4 the printer
+  (* RGB functions - various formats. Per CSS Color 4 section 5.1 the printer
      canonicalizes a fully-opaque rgb() to the named-or-hex equivalent when
      shorter. *)
   check_color ~expected:"rgb(255 0 0)" ~optimized:"red" "rgb(255, 0, 0)";
@@ -507,9 +507,10 @@ let test_angle () =
     "0.000001deg";
   decl_optimizes ~prop:"rotate" ~held:".0001deg" ~into:".0001deg" "0.0001deg";
 
-  (* CSS Values 4 sec. 10.7: scaling a typed <angle> by a unitless number folds
-     to a concrete angle (then picks the shortest unit), so calc(1deg * -45) ->
-     -45deg matches what the browser computes. Both operand orders fold. *)
+  (* CSS Values 4 sec. 10.10.1: scaling a typed <angle> by a unitless number
+     folds to a concrete angle (then picks the shortest unit), so calc(1deg *
+     -45) -> -45deg matches what the browser computes. Both operand orders
+     fold. *)
   decl_optimizes ~prop:"rotate" ~held:"calc(1deg*-45)" ~into:"-45deg"
     "calc(1deg * -45)";
   decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2)" ~into:"90deg"
@@ -530,8 +531,8 @@ let test_angle () =
     ~into:"calc(var(--x)*1deg)" "calc(var(--x) * 1deg)";
   decl_optimizes ~prop:"rotate" ~held:"calc(45deg*2*var(--x))"
     ~into:"calc(90deg*var(--x))" "calc(45deg * 2 * var(--x))";
-  (* Same-unit add/sub of two angles combines into one (CSS Values 4 sec. 10.7);
-     cross-unit operands stay unfolded. *)
+  (* Same-unit add/sub of two angles combines into one (CSS Values 4 sec.
+     10.10.1); cross-unit operands stay unfolded. *)
   decl_optimizes ~prop:"rotate" ~held:"calc(45deg + 45deg)" ~into:"90deg"
     "calc(45deg + 45deg)";
   decl_optimizes ~prop:"rotate" ~held:"calc(90deg - 45deg)" ~into:"45deg"
@@ -551,7 +552,7 @@ let test_angle () =
   neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
-  (* CSS Values 4 section 6.6: [<time>] requires a unit. s and ms convert
+  (* CSS Values 4 section 7.2: [<time>] requires a unit. s and ms convert
      exactly (1s = 1000ms), so a duration decodes to one canonical magnitude and
      pp prints its shortest spelling - whichever of s/ms is shorter - as a
      same-node choice. (Contrast <angle>, where rad does not convert exactly, so
@@ -573,7 +574,7 @@ let test_duration () =
   check_duration ~expected:".15s" "150ms";
   check_duration "1.5s";
 
-  (* CSS Values 4 sec. 10.7: a typed <time> scales by a number and same-unit
+  (* CSS Values 4 sec. 10.10.1: a typed <time> scales by a number and same-unit
      operands combine. s and ms stay distinct, and an inexact division keeps the
      calc() so no precision is lost. *)
   decl_optimizes ~prop:"transition-duration" ~held:"calc(1s*2)" ~into:"2s"
@@ -601,7 +602,7 @@ let test_duration () =
 let test_percentage () =
   check_percentage "50%";
   check_percentage "100%";
-  (* CSS Values 4 sec. 6.5 only lets a [<length>] zero drop the unit; a zero
+  (* CSS Values 4 sec. 6 only lets a [<length>] zero drop the unit; a zero
      [<percentage>] keeps the [%] (otherwise it would type as a [<number>] and
      the dimension/percentage grammars would reject it). *)
   check_percentage "0%";
@@ -1062,8 +1063,8 @@ let test_alpha () =
   check_alpha ~expected:"0" "-0.5";
   check_alpha ~expected:"100%" "150%";
   decl_optimizes ~prop:"color" ~into:"#000" "rgb(0 0 0 / 150%)";
-  (* CSS Values 4 sec. 10.7: an alpha calc() resolves - a scaled or added alpha
-     folds, and a percentage alpha that reaches 100% drops the channel. *)
+  (* CSS Values 4 sec. 10.10.1: an alpha calc() resolves - a scaled or added
+     alpha folds, and a percentage alpha that reaches 100% drops the channel. *)
   decl_optimizes ~prop:"color" ~into:"#ff000080" "rgb(255 0 0 / calc(0.5 * 1))";
   decl_optimizes ~prop:"color" ~into:"#ff00004d"
     "rgb(255 0 0 / calc(0.2 + 0.1))";
@@ -1080,7 +1081,7 @@ let test_hue_interpolation () =
   neg_cursor read_hue_interpolation ""
 
 let test_calc_op () =
-  (* Per CSS Values 4 section 10.7 the [+] and [-] operators require surrounding
+  (* Per CSS Values 4 section 10.8 the [+] and [-] operators require surrounding
      whitespace; [*] and [/] do not. Per shortest-wins the printer omits the
      spaces around [*] and [/] (matches cssnano). *)
   check_calc_op ~expected:" + " "+";
@@ -1264,7 +1265,7 @@ let spec_color5_function_edges () =
     "color-mix(in oklch, oklch(0.7 0.15 350), oklch(0.7 0.15 10))";
   check_color ~expected:"color-mix(in lch,lch(70 50 350),lch(70 50 10))"
     ~optimized:"#fc84ae" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
-  (* CSS Color 4 sec. 12.3: [color-mix(in srgb, ...)] interpolates premultiplied
+  (* CSS Color 4 sec. 13.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
   (* Opaque 50/50: straight average. *)
@@ -1278,7 +1279,7 @@ let spec_color5_function_edges () =
     "color-mix(in srgb, #0000, red)";
   check_color ~expected:"color-mix(in srgb,transparent,red)"
     ~optimized:"#ff000080" "color-mix(in srgb, transparent, red)";
-  (* Sec. 12.3 premultiplication applies in every interpolation space, not just
+  (* Sec. 13.3 premultiplication applies in every interpolation space, not just
      sRGB. Mixing #0088cc 50% with transparent must restore #0088cc at half
      alpha in oklab/oklch/lab/lch too, never bleed transparent's zero
      coordinates in and darken the result. *)
@@ -1295,7 +1296,7 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in oklab,#08c,transparent)"
     ~optimized:"#0088cc80" "color-mix(in oklab, #0088cc, transparent)";
   (* A zero-chroma operand (transparent) has a powerless hue in the polar spaces
-     (sec. 12.2): it carries the opaque operand's hue over instead of
+     (sec. 4.4.1): it carries the opaque operand's hue over instead of
      interpolating toward an undefined angle, so red at half alpha stays red. *)
   check_color ~expected:"color-mix(in oklch,red 50%,transparent)"
     ~optimized:"#ff000080" "color-mix(in oklch, red 50%, transparent)";

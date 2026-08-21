@@ -655,7 +655,7 @@ let media_queries t =
 
 (* AST Introspection Helpers *)
 
-(* CSS Cascade 6 sec. 6.4.3: a dotted layer name [foo.bar] is shorthand for the
+(* CSS Cascade 5 sec. 6.4.2: a dotted layer name [foo.bar] is shorthand for the
    nested [@layer foo { @layer bar { ... } }]. Walk the @layer tree once,
    expanding dotted names and prefixing each block with its parent's path, so
    [foo.bar] is reachable under one canonical name whatever the input shape. *)

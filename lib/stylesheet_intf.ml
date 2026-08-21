@@ -186,7 +186,7 @@ and statement =
       prelude : string;
       block : string option;
     }
-      (** CSS Syntax 3 sec. 5.4.2 "consume an at-rule" preserves any
+      (** CSS Syntax 3 sec. 5.5.2 "consume an at-rule" preserves any
           unrecognised at-rule as raw text so authors can ship unknown vendor or
           future at-rules without dropping the whole stylesheet. *)
 

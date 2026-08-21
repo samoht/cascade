@@ -83,7 +83,7 @@ let rec read_font_style t : font_style =
         Cursor.ws t;
         if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
         else
-          (* CSS Fonts 4 sec. 11.2 wants the first oblique angle <= the second.
+          (* CSS Fonts 4 sec. 4.4 wants the first oblique angle <= the second.
              Browsers keep a descending range ([oblique 20deg 10deg]), so accept
              it but warn, leaving [Css.of_string ~strict] free to reject it. *)
           let second = read_angle t in
@@ -551,7 +551,7 @@ let pp_font_family_name ctx s =
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
-      (* CSS Fonts 4 sec. 4.1: a [<family-name>] formed of two or more
+      (* CSS Fonts 4 sec. 2.1.1: a [<family-name>] formed of two or more
          [<custom-ident>]s is unambiguous - none of its words can be picked up
          as a property-level CSS-wide keyword once the parser has committed to a
          multi-token value. So [inherit test] / [revert serif] etc. round-trip
@@ -564,7 +564,7 @@ let can_unquote_font_family_name s =
    an explicit [<ident>] sequence. Used by the [@property]-registered custom
    property promotion path when the registered syntax accepts [<custom-ident>+]
    - the two forms ([custom-ident>+] vs [<string>]) are spec-equivalent there
-   (CSS Fonts 4 sec. 15.3), so the rewrite produces a single canonical AST. The
+   (CSS Fonts 4 sec. 2.1.1), so the rewrite produces a single canonical AST. The
    guard's "two or more words" rule avoids the CSS-wide-keyword trap (a quoted
    ["inherit"] never collapses to the bare keyword). *)
 let unquote_font_family_strings components =
@@ -652,7 +652,7 @@ let rec pp_font_family : font_family Pp.t =
   | Mulish -> Pp.string ctx "Mulish"
   | Josefin_sans -> Pp.string ctx "\"Josefin Sans\""
   (* Platform-specific fonts. Multi-word names emit unquoted under minify (CSS
-     Fonts 4 sec. 4.1: a [<family-name>] of two or more [<custom-ident>] words
+     Fonts 4 sec. 2.1.1: a [<family-name>] of two or more [<custom-ident>] words
      parses without quotes and is the shorter spelling). Pretty mode keeps the
      quoted form for readability. *)
   | Helvetica -> Pp.string ctx "Helvetica"
@@ -747,7 +747,7 @@ let rec pp_font_family : font_family Pp.t =
       let level_chars =
         match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
       in
-      (* CSS Fonts 4 sec. 4.1: [font-family] is a fallback list, so a duplicate
+      (* CSS Fonts 4 sec. 2.1: [font-family] is a fallback list, so a duplicate
          entry never wins under cascade resolution - drop it under minify (the
          first occurrence keeps the source position). A bare generic keyword
          (notably [monospace]) takes the UA generic-font size, so the
@@ -902,7 +902,7 @@ let rec pp_font_synthesis : font_synthesis Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* CSS Fonts 4 sec. 5.3 defines each keyword as a percentage, and the percentage
+(* CSS Fonts 4 sec. 2.3 defines each keyword as a percentage, and the percentage
    is never longer, so minified output uses it. *)
 let font_stretch_pct = function
   | Ultra_condensed -> Some 50.
@@ -1540,7 +1540,7 @@ let font_family_of_quoted_name name =
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
-  (* CSS Fonts 4 sec. 2.1 / CSS Cascade 5 sec. 7.3: the CSS-wide keywords and
+  (* CSS Fonts 4 sec. 2.1.1 / CSS Cascade 5 sec. 7.3: the CSS-wide keywords and
      the reserved [default] are excluded from [<custom-ident>], so none may
      appear as any word of an unquoted family name. *)
   let is_reserved_word word =
@@ -1565,7 +1565,7 @@ let rec read_font_family_single t : font_family =
        ~calls:[ ("var", read_var) ]
        ~default:(fun t ->
          let name = Cursor.ident ~keep_case:true t in
-         (* CSS Fonts 4 sec. 2.1: [default] is reserved and is not a valid
+         (* CSS Fonts 4 sec. 2.1.1: [default] is reserved and is not a valid
             unquoted [<custom-ident>] family name; it must be quoted. *)
          if String.lowercase_ascii name = "default" then
            Cursor.err_invalid t
@@ -1820,7 +1820,7 @@ let rec read_font t : font =
 let rec read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
     let n = Cursor.pct t in
-    (* CSS Fonts 4 sec. 6.1.2: font-stretch percentage is non-negative. *)
+    (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. *)
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
@@ -1950,7 +1950,7 @@ let read_font_variant_numeric_tokens t : font_variant_numeric =
   match tokens with
   | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
   | tokens ->
-      (* CSS Fonts 4 section 6.6: [normal] resets all sub-properties and must
+      (* CSS Fonts 4 section 6.7: [normal] resets all sub-properties and must
          stand alone; it can't be mixed with other numeric tokens. *)
       if List.exists numeric_token_is_normal tokens && List.length tokens > 1
       then

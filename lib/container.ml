@@ -381,7 +381,7 @@ let style_leaf_boolean components =
   match style_strip_ws components with
   | [ name_component ] -> (
       match ident_component name_component with
-      (* CSS Conditional Rules 5 section 4.4: a boolean [style()] query tests
+      (* CSS Conditional Rules 5 section 6.2: a boolean [style()] query tests
          whether a custom property has any value, so the ident must start with
          [--]. A bare property name like [style(color)] is not a valid boolean
          form. *)

@@ -71,7 +71,7 @@ let single ~ctx (rule : rule) : rule =
   in
   with_declarations rule declarations
 
-(* CSS Multicol 2 sec. 6.1: [column-width] + [column-count] collapse to
+(* CSS Multicol 2 sec. 4.5: [column-width] + [column-count] collapse to
    [columns], which resets exactly those two longhands, so the rewrite is
    cascade-safe with no closed-world assumption. The longhands are unknown
    properties, so their values are re-parsed here. *)

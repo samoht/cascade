@@ -45,7 +45,7 @@ type calc_op = Add | Sub | Mul | Div
 *)
 type math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 sec. 10.7 numeric math function arguments. Self-recursive so
+(** CSS Values 4 sec. 9.1 numeric math function arguments. Self-recursive so
     nested calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants
     stays as a tree ([(e - exp(1))]). *)
 type math_arg =
@@ -60,7 +60,7 @@ type math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 sec. 10.7 numeric math functions. Each arm preserves its source
+(** CSS Values 4 sec. 9.1 numeric math functions. Each arm preserves its source
     arg shape so pretty pp re-emits [name(args)]; the optimizer evaluates to
     [Num] under minify. *)
 and math_fn =
@@ -102,7 +102,7 @@ type 'a calc =
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
   | Math_fn of math_fn
-(* CSS Values 4 sec. 10.7 numeric math functions ([sin], [cos], [hypot], ...).
+(* CSS Values 4 sec. 9.1 numeric math functions ([sin], [cos], [hypot], ...).
    Pretty pp emits [name(args)] preserving source shape; minify pp / optimizer
    evaluates to [Num]. *)
 
@@ -215,8 +215,8 @@ type length =
   | Anchor_size of string
   | Anchor of string option * string * length option
   | Attr of length attr_call
-      (** CSS Values 5 sec. 10 [attr(<attr-name> <attr-type>?, <fallback>?)] for
-          typed-value contexts. *)
+      (** CSS Values 5 sec. 8.7 [attr(<attr-name> <attr-type>?, <fallback>?)]
+          for typed-value contexts. *)
   | Env of length env
   | Var of length var
   | Calc of length calc
@@ -394,7 +394,7 @@ type channel =
   | Pct of float
   | Var of channel var
   | None
-      (** CSS Color 4 sec. 4.2.3 [none] sentinel. Carries through to the
+      (** CSS Color 4 sec. 4.4 [none] sentinel. Carries through to the
           serialised output as the [none] keyword and participates in
           [color-mix] / relative-color substitution by adopting the other
           operand's analogous channel instead of being treated as a zero. *)
@@ -514,8 +514,8 @@ type color =
           an opaque channel-expression tail. *)
   | Relative_color of string * color * string
       (** [<fn>(from <origin> <c1> <c2> <c3> [/ <alpha>]?)] for any color
-          function other than [rgb()] (CSS Color 5 sec. 2). The first string is
-          the function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb],
+          function other than [rgb()] (CSS Color 5 sec. 4.2). The first string
+          is the function name ([lab], [lch], [oklab], [oklch], [hsl], [hwb],
           [color]), the [color] is the parsed origin, and the final string is
           the channel-expression tail. *)
   | Contrast_color of color

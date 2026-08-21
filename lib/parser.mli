@@ -127,7 +127,7 @@ val list_of_declarations :
   ?meta:Loc.meta_level ->
   Reader.t ->
   [ `Decl of Component.declaration | `At of Component.at_rule ] list output
-(** [list_of_declarations ?meta r] runs section 5.4.8. *)
+(** [list_of_declarations ?meta r] runs section 5.4.5. *)
 
 val component_value : Reader.t -> Component.t option output
 (** [component_value r] runs section 5.4.8: discard surrounding whitespace,

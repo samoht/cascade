@@ -179,7 +179,7 @@ let option_is_phys_same a b =
   | Option.Some a, Option.Some b -> a == b
   | _ -> false
 
-(* CSS Lists 3 sec. 4.1: under minify, drop components equal to their longhand
+(* CSS Lists 3 sec. 3.6: under minify, drop components equal to their longhand
    initial ([type_: Disc], [position: Outside], [image: None]). When both
    [type_] and [image] are [None] and [position] is omitted, emit the single
    [none] keyword. If every component is defaulted, leave [outside] so the value

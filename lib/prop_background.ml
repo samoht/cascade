@@ -680,7 +680,7 @@ let pp_border_shorthand : border_shorthand Pp.t =
         (None : border_style option)
     | style, _, _ -> style
   in
-  (* CSS Backgrounds 3 sec. 4.4: [<border-width>] defaults to [medium]. When the
+  (* CSS Backgrounds 3 sec. 3.3: [<border-width>] defaults to [medium]. When the
      user spelled it explicitly and another slot is non-default, the keyword is
      redundant - drop it. *)
   let width : border_width option =
@@ -785,7 +785,7 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | No_repeat -> Pp.string ctx "no-repeat"
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
-  (* CSS Backgrounds 3 sec. 3.6.1: the two-value forms collapse when both axes
+  (* CSS Backgrounds 3 sec. 2.6.1: the two-value forms collapse when both axes
      match ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
      no-repeat] -> [repeat-x], [no-repeat repeat] -> [repeat-y]). *)
   | Repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat"
@@ -848,7 +848,7 @@ let rec pp_background_size : background_size Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_background_size ctx v
 
-(* CSS Backgrounds 3 sec. 3.6: the value is one position per background layer,
+(* CSS Backgrounds 3 sec. 2.6: the value is one position per background layer,
    comma-separated. It is not a box shorthand, so the layers neither join with
    spaces nor collapse the way margins do. *)
 let pp_background_position : background_position Pp.t =
@@ -936,7 +936,7 @@ let pp_mask_border_mode ctx = function
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->
   let first = ref true in
-  (* CSS Syntax 3 sec. 5.4.6: tokens ending with [)] are self-delimiting, so the
+  (* CSS Syntax 3 sec. 9: tokens ending with [)] are self-delimiting, so the
      inter-slot space after [url(...)] / [<image>] can be elided under
      minify. *)
   let last_is_self_delim () =
@@ -962,8 +962,8 @@ let pp_border_image : border_image Pp.t =
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat;
-  (* CSS Masking 1 sec. 6: [alpha] is the default mode, so drop it under minify;
-     [luminance] always prints. *)
+  (* CSS Masking 1 sec. 8.2: [alpha] is the default mode, so drop it under
+     minify; [luminance] always prints. *)
   let mode =
     match mode with
     | Some Alpha when Pp.minified ctx -> (None : mask_border_mode option)
@@ -981,7 +981,7 @@ let position_is_default_origin (p : position_value) =
   | Left_top | Top_left -> true
   | _ -> false
 
-(* CSS Backgrounds 3 sec. 3.10: under minify, drop a longhand whose value equals
+(* CSS Backgrounds 3 sec. 2.10: under minify, drop a longhand whose value equals
    its [background] shorthand initial. The resolved cascade is unchanged because
    the omitted slot inherits that same initial. *)
 let drop_initial_when_minified : 'a. Pp.ctx -> 'a -> 'a option -> 'a option =
@@ -1042,7 +1042,7 @@ let rec pp_background : background Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | None ->
-      (* CSS Backgrounds 3 sec. 3.10: [background: none] and [background: 0 0]
+      (* CSS Backgrounds 3 sec. 2.10: [background: none] and [background: 0 0]
          are computed-value-equivalent (both clear the image and set position to
          [0 0]). Pick the shorter form under minify. *)
       Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
@@ -1433,7 +1433,7 @@ let rec read_background_repeat t : background_repeat =
     ~default:read_repeats t
 
 (* The standalone [background-repeat] / [mask-repeat] longhand is a
-   comma-separated layer list (CSS Backgrounds 3 sec. 3.6); the [background] /
+   comma-separated layer list (CSS Backgrounds 3 sec. 2.6); the [background] /
    [mask] shorthand reuses the single-value [read_background_repeat] so it does
    not eat the layer comma. Same split for the box / size / composite readers
    below. *)
@@ -1936,7 +1936,7 @@ let read_mask_border_mode t =
 let read_border_image t : border_image =
   let source = Cursor.option read_background_image t in
   Cursor.ws t;
-  (* CSS Masking 1 sec. 6 [mask-border-mode] is in [&&] juxtaposition with the
+  (* CSS Masking 1 sec. 8.7 [mask-border-mode] is in [&&] juxtaposition with the
      other slots, so the keyword may appear after [<source>] (before the slice)
      or after [<repeat>]. Try the early slot first; combine with the trailing
      slot below. *)

@@ -241,7 +241,7 @@ let normalize_expected ~category ~id expected =
         ~upstream:"a{color:color(srgb-linear .2159 .0451 1.5312/.877)}"
         ~cascade:"a{color:color(srgb-linear .216 .045 1.531/.877)}" upstream
   | "colors", "0053" ->
-      (* CSS Color 4 sec. 10.1: [xyz] and [xyz-d65] are spec-equivalent aliases.
+      (* CSS Color 4 sec. 10.9: [xyz] and [xyz-d65] are spec-equivalent aliases.
          The shorter alias is the better minified spelling. The rounded
          3-decimal channels stay below the documented Oklab perceptual error
          budget. *)

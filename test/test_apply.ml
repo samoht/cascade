@@ -111,7 +111,7 @@ let projected ?style css =
   | [ (_, decls) ] -> inline_style decls
   | _ -> Alcotest.fail "expected one inline assignment"
 
-(* css-cascade-5 sec. 6.4.4: among normal declarations an unlayered one beats
+(* css-cascade-5 sec. 6.4.3: among normal declarations an unlayered one beats
    every layer, whatever the source order. *)
 let unlayered_beats_layer () =
   Alcotest.(check string)

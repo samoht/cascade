@@ -60,7 +60,7 @@ val unquote_font_family_strings : custom_value -> custom_value
     whose content is a multi-word identifier sequence as the equivalent
     [<ident> <whitespace> <ident> ...] component sequence. Used by the
     [@property]-registered custom-property promotion when the registered syntax
-    accepts [<custom-ident>+] (CSS Fonts 4 sec. 15.3 makes the two forms
+    accepts [<custom-ident>+] (CSS Fonts 4 sec. 2.1.1 makes the two forms
     equivalent in font-family-typed positions). Single-word strings and any
     token that isn't a [<string>] pass through unchanged. *)
 

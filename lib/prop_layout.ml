@@ -190,7 +190,7 @@ let rec pp_position_area : position_area Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_area ctx v
   | None -> Pp.string ctx "none"
-  (* CSS Anchor Positioning 1 sec. 6: the second axis defaults to [center], so
+  (* CSS Anchor Positioning 1 sec. 3.1: the second axis defaults to [center], so
      [X center] minifies to [X]; both axes equal also collapse. *)
   | Area (first, Some second)
     when Pp.minified ctx

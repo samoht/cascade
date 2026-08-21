@@ -264,7 +264,7 @@ let spec12_tokenization_checklist () =
   check "U+26 u+a" "<unicode-range U+26> <ws> <unicode-range U+A>"
 
 let spec_token_boundary_edges () =
-  (* CSS Syntax Level 3 section 9.4 serialization constraints are driven by
+  (* CSS Syntax Level 3 section 9 serialization constraints are driven by
      tokenizer ambiguities. These vectors pin down pairs that must remain
      distinct after any serializer inserts a boundary. *)
   check "a b" "<ident a> <ws> <ident b>";

@@ -504,7 +504,7 @@ let normalize_custom_value v =
   Buffer.contents buf
 
 (* A multi-word font name spells the same family quoted or as the bare ident
-   sequence it unquotes to (CSS Fonts 4 sec. 15.3), and a custom property
+   sequence it unquotes to (CSS Fonts 4 sec. 2.1.1), and a custom property
    holding a font stack substitutes either form identically into [font-family].
    Emission keeps whichever the author wrote, so the projection folds the quoted
    form onto the ident sequence - the same normalisation the structural
@@ -531,7 +531,7 @@ let rec normalize_custom_values (stmts : statement list) : statement list =
       | other -> other)
     stmts
 
-(* CSS Color 4 sec. 10: [color(srgb r g b)] scales each channel by 255, so
+(* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
    [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour written two ways. Under
    [--lossless] the optimizer keeps whichever function the author used, which
    leaves the projection reading the spelling as a difference. Fold the
@@ -624,7 +624,7 @@ let rec sort_property_runs (stmts : statement list) : statement list =
   in
   go [] stmts
 
-(* Media Queries 4 sec. 2.1: [all] matches every media type, so it is the
+(* Media Queries 4 sec. 2.3: [all] matches every media type, so it is the
    identity in [<media-type> and <condition>] and the Level 3 spelling [not all
    and (X)] is the same query as the Level 4 [not (X)]. Bare [not all] has no
    condition form - it matches nothing - so it stays, and the unnegated [all and

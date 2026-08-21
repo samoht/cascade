@@ -210,7 +210,7 @@ let css2_chapter_matrix () =
     [
       ( "html, body { display: block; min-height: 100% }",
         "body,html{display:block;min-height:100%}" );
-      (* CSS Selectors 4 section 3.5: [*] in a non-solitary compound is
+      (* CSS Selectors 4 section 5.2: [*] in a non-solitary compound is
          redundant, so [*[lang|=en]] serializes as [[lang|=en]]. *)
       ( "body *[lang|=\"en\"] + p:first-line { text-transform: uppercase }",
         "body [lang|=en]+p:first-line{text-transform:uppercase}" );
@@ -284,7 +284,7 @@ let syntax_escapes () =
 (* SS 5.3.7 / 5.4 - Parse errors recover locally *)
 let syntax_recovery () =
   recover ".a { color: invalid; color: red }" ".a{color:red}" 1;
-  (* CSS Selectors 4 section 3.5: an unknown pseudo-class at an unforgiving site
+  (* CSS Selectors 4 section 3.9: an unknown pseudo-class at an unforgiving site
      is a spec deviation. Lenient mode preserves it for forward compatibility
      and warns; strict mode escalates (pinned by [cross_mode_pinning]). *)
   recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:#00f}"
@@ -338,8 +338,8 @@ let selectors_pseudo_classes () =
   roundtrip ":hover { color: red }" ":hover{color:red}";
   roundtrip ":first-child { color: red }" ":first-child{color:red}";
   roundtrip ":last-child { margin: 0 }" ":last-child{margin:0}";
-  (* CSS Selectors 4 section 14: the printer canonicalizes [:nth-child(<an+b>)]
-     to the shortest spec-equivalent spelling. *)
+  (* CSS Selectors 4 section 13.3.1: the printer canonicalizes
+     [:nth-child(<an+b>)] to the shortest spec-equivalent spelling. *)
   roundtrip ":nth-child(2n+1) { color: red }" ":nth-child(odd){color:red}";
   roundtrip ":nth-child(even) { color: blue }" ":nth-child(2n){color:#00f}";
   roundtrip ":nth-child(odd) { color: red }" ":nth-child(odd){color:red}";
@@ -379,7 +379,7 @@ let selectors_where_is () =
   (* Forgiving-parse drops the invalid branch, leaving a single-argument
      [:is(.a)]. Per shortest-wins (Lightning CSS) the single-argument [:is()]
      unwraps to the bare selector, since [:is(.a)] is spec- equivalent to [.a]
-     (same match set, same specificity per Selectors L4 sec. 17). [:where()]
+     (same match set, same specificity per Selectors L4 sec. 4.2). [:where()]
      cannot unwrap the same way because it contributes zero specificity. *)
   roundtrip ":is(:future-pseudo, .a) { color: red }" ".a{color:red}";
   roundtrip ":where(:future-pseudo, .a) { color: red }" ":where(.a){color:red}"
@@ -409,7 +409,7 @@ let values_relative_lengths () =
   roundtrip ".x { height: 100vh }" ".x{height:100vh}";
   roundtrip ".x { width: 50% }" ".x{width:50%}"
 
-(* SS 10.1 - calc() expressions. Per CSS Values 4 section 10.7 the printer
+(* SS 10.1 - calc() expressions. Per CSS Values 4 section 10.10.1 the printer
    simplifies all-constant calc subexpressions and reduces a single
    multiplicative operand to its product. Mixed-unit forms that cannot reduce at
    parse time still drop redundant nested calc() under minify when doing so is
@@ -441,12 +441,12 @@ let color_named () =
   (* SS 6.1 - rebeccapurple *)
   roundtrip ".x { color: rebeccapurple }" ".x{color:#639}"
 
-(* SS 5.1 - Hex notation. Per CSS Color 4 section 12.1, [#rrggbb] and the
-   3-digit shorthand [#rgb] (and likewise [#rrggbbaa]/[#rgba]) denote the
-   identical color, and a fully-opaque alpha channel ([f]/[ff]) is equivalent to
-   omitting alpha. Under [~minify:true] the printer canonicalizes to the
-   shortest equivalent form, including the CSS-named color when shorter (cssnano
-   / Lightning CSS / clean-css conventions). *)
+(* SS 5.1 - Hex notation. Per CSS Color 4 section 5.2, [#rrggbb] and the 3-digit
+   shorthand [#rgb] (and likewise [#rrggbbaa]/[#rgba]) denote the identical
+   color, and a fully-opaque alpha channel ([f]/[ff]) is equivalent to omitting
+   alpha. Under [~minify:true] the printer canonicalizes to the shortest
+   equivalent form, including the CSS-named color when shorter (cssnano /
+   Lightning CSS / clean-css conventions). *)
 let color_hex () =
   (* All these forms denote pure red; the shortest spelling is the named color
      [red]. *)
@@ -458,15 +458,15 @@ let color_hex () =
 (* SS 5.2.3 - rgb() function *)
 let color_rgb () =
   roundtrip ".x { color: rgb(255 0 0) }" ".x{color:red}";
-  (* CSS Color 4 section 1.3: alpha as [<number>] in [\[0, 1\]] is
+  (* CSS Color 4 section 4.2: alpha as [<number>] in [\[0, 1\]] is
      spec-equivalent to [<percentage>] in [\[0%, 100%\]]; the printer
      canonicalizes to the [<number>] form per cssnano. *)
   roundtrip ".x { color: rgb(255 0 0 / 50%) }" ".x{color:#ff000080}";
-  (* CSS Color 4 section 1.4: rgb() with all-percent channels denotes the same
+  (* CSS Color 4 section 5.1: rgb() with all-percent channels denotes the same
      color as the equivalent named/hex form; rgb(100% 0% 0%) is red. *)
   roundtrip ".x { color: rgb(100% 0% 0%) }" ".x{color:red}"
 
-(* SS 5.2.4 - hsl() function. Per CSS Color 4 section 1.4 the hsl() form denotes
+(* SS 5.2.4 - hsl() function. Per CSS Color 4 section 7 the hsl() form denotes
    the same color as a named color or hex when applicable; minified output
    canonicalizes to the shortest equivalent spelling. Equal-length named/hex
    ties use the hex spelling, matching the Lightning CSS oracle in
@@ -492,7 +492,7 @@ let color_mix () =
 
 (* SS 5.3 - transparent and currentcolor keywords *)
 let color_keywords () =
-  (* Per CSS Color 4 section 6.4 the printer canonicalizes the fully-transparent
+  (* Per CSS Color 4 section 6.3 the printer canonicalizes the fully-transparent
      color to the shortest equivalent spelling [#0000]. *)
   roundtrip ".x { color: transparent }" ".x{color:#0000}";
   (* currentColor preserves its camelCase form *)
@@ -637,7 +637,7 @@ let font_face () =
 
 (* {2 CSS Animations Level 1} https://www.w3.org/TR/css-animations-1/ *)
 
-(* SS 7 - @keyframes rule. CSS Animations 1 section 7.1: [from] / [to] are
+(* SS 7 - @keyframes rule. CSS Animations 1 section 3: [from] / [to] are
    spec-equivalent to [0%] / [100%]. The printer canonicalizes to the shorter
    spelling per cssnano / Lightning CSS - [0%] beats [from], [to] beats
    [100%]. *)

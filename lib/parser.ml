@@ -374,7 +374,7 @@ let rec cv_to_buffer buf : Component.t -> unit = function
       cvs_to_buffer buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
-      (* Always emit the closing [)]: section 5.4.6 still produces the function
+      (* Always emit the closing [)]: section 5.5.10 still produces the function
          token on EOF, so the round-trip should match the lexer, not the
          truncated bytes. [terminated] is left for typed validators to
          reject. *)
@@ -428,11 +428,11 @@ let word_like_end : Component.t -> bool = function
       } ->
       false
   | Preserved _ -> true
-  (* CSS Color 4 sec. 11.1 relative colour needs whitespace between a [var()]
-     (or other function) [<color>] arg and the following channel ident:
-     [oklab(from var(--c) l a b)] tokenises fine as [var(--c)l] but spec-strict
-     parsers expect the separator. So [Func]/Paren [Block] count as
-     word-like-end to keep the [Func] + [Ident] boundary. *)
+  (* CSS Color 5 sec. 4.2 relative colour needs whitespace between a [var()] (or
+     other function) [<color>] arg and the following channel ident: [oklab(from
+     var(--c) l a b)] tokenises fine as [var(--c)l] but spec-strict parsers
+     expect the separator. So [Func]/Paren [Block] count as word-like-end to
+     keep the [Func] + [Ident] boundary. *)
   | Func _ -> true
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
@@ -618,7 +618,7 @@ let url_string_can_unquote s =
 
 (* If [args] is a single [<string-token>] argument we can fold it into the
    bare-URL form [url(X)] when X has no special characters - per CSS Values L4
-   sec. 3.4 the two notations are equivalent and the bare form is shorter. *)
+   sec. 4.5 the two notations are equivalent and the bare form is shorter. *)
 let url_args_as_bare_string args =
   let stripped =
     List.filter
@@ -695,7 +695,7 @@ let custom_min_item_separator buf prev separated cv =
       Buffer.add_char buf ' '
   | _ -> ()
 
-(* Idents are ASCII-case-insensitive per CSS Syntax 3 sec. 3, but the parser
+(* Idents are ASCII-case-insensitive per CSS Values 4 sec. 4.1, but the parser
    keeps source case so selectors stay case-sensitive. In a custom-property
    value only these keywords have a canonical lower-case spelling, so fold them
    ([--c:currentColor] == [--c:currentcolor]). Kept conservative: an

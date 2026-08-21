@@ -966,7 +966,7 @@ let rec read_list_style_image t : list_style_image =
 
 (* Parse the [list-style] shorthand into a typed [list_style_shorthand] record.
    Each slot is recognised by the longhand reader; a single bare [none]
-   populates both [type_] and [image] per CSS Lists 3 sec. 4.1. *)
+   populates both [type_] and [image] per CSS Lists 3 sec. 3.6. *)
 let try_list_style_slot r read_fn (slot : 'a option ref) =
   if !slot <> Option.None then false
   else
@@ -1212,7 +1212,7 @@ let rec read_quotes t : quotes =
     ~default:read_pairs t
 
 let read_any_property t =
-  (* CSS property names are case-insensitive per Syntax sec. 3.3. *)
+  (* CSS property names are case-insensitive per Syntax sec. 8.1. *)
   let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
@@ -1328,8 +1328,8 @@ let read_any_property t =
   | "align-items" -> Prop Align_items
   | "justify-content" -> Prop Justify_content
   | "opacity" -> Prop Opacity
-  (* SVG 1.1 sec. 11.4 / Filter Effects 1: each is an <alpha-value>, the same
-     number-or-percentage as [opacity]. *)
+  (* SVG 2 sec. 13.4.3, 13.5.2 and 14.2.4.2 / Filter Effects 1 sec. 9.13.2: each
+     is an <alpha-value>, the same number-or-percentage as [opacity]. *)
   | "fill-opacity" -> Prop Fill_opacity
   | "stroke-opacity" -> Prop Stroke_opacity
   | "stop-opacity" -> Prop Stop_opacity
@@ -1474,9 +1474,10 @@ let read_any_property t =
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
   | "size" -> Prop Page_size
-  (* CSS Fragmentation 3 sec. 6 page-break-* aliases. Keep them as typed legacy
-     properties so pretty output preserves the authored property name; minified
-     output still serializes through the shorter modern break-* spelling. *)
+  (* CSS Fragmentation 3 sec. 3.4 page-break-* aliases. Keep them as typed
+     legacy properties so pretty output preserves the authored property name;
+     minified output still serializes through the shorter modern break-*
+     spelling. *)
   | "page-break-before" -> Prop Page_break_before
   | "page-break-after" -> Prop Page_break_after
   | "page-break-inside" -> Prop Page_break_inside
@@ -1563,7 +1564,8 @@ let read_any_property t =
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
   | "fill" -> Prop Fill
-  (* SVG 2 sec. 13.5 and 14.4: both take the same <fill-rule>. *)
+  (* SVG 2 sec. 13.4.2 and CSS Masking 1 sec. 6.2: both take the same
+     <fill-rule>. *)
   | "fill-rule" -> Prop Fill_rule
   | "clip-rule" -> Prop Clip_rule
   | "stroke-linecap" -> Prop Stroke_linecap
@@ -1573,8 +1575,8 @@ let read_any_property t =
   | "stroke-dasharray" -> Prop Stroke_dasharray
   | "paint-order" -> Prop Paint_order
   | "vector-effect" -> Prop Vector_effect
-  (* SVG 2 sec. 13.4 / Filter Effects 1 sec. 9.13.1 and 11.5: each is a plain
-     <color>, so they minify like any other colour-valued property. *)
+  (* SVG 2 sec. 14.2.4.2 / Filter Effects 1 sec. 9.13.1 and 11.5: each is a
+     plain <color>, so they minify like any other colour-valued property. *)
   | "stop-color" -> Prop Stop_color
   | "flood-color" -> Prop Flood_color
   | "lighting-color" -> Prop Lighting_color
@@ -2172,7 +2174,7 @@ let components_of_custom_property_value = function
 let pp_custom_property ctx (Custom_value { value; _ }) =
   pp_custom_property_value ctx value
 
-(* CSS Values 4 sec. 6.5: the [initial] keyword resolves to the property's
+(* CSS Values 4 sec. 4.1.1: the [initial] keyword resolves to the property's
    spec-defined initial value at computed time. Under [--minify] swap the
    keyword for that value when its serialization is shorter (or the same length
    but a more canonical spelling that cleancss / csso emit). *)

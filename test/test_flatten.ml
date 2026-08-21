@@ -39,7 +39,7 @@ let test_empty_block_is_empty () =
     "empty input yields empty output" 0
     (List.length (Flatten.block stmts))
 
-(* CSS Nesting 1 sec. 2 lets a nested rule start with an identifier, so its
+(* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so its
    prelude is ambiguous with a declaration until the block appears:
    [h2:where(...)] reads as the property [h2] with value [where(...)]. Parsing
    has to fall back to a rule, or the whole nested block is dropped. *)
@@ -70,7 +70,7 @@ let test_bad_declaration_still_a_declaration () =
     "the invalid declaration drops, the good one stays" ".a{width:1px}"
     (render stmts)
 
-(* CSS Nesting 1 sec. 2.1: [&] stands for [:is(<parent selector list>)]. The
+(* CSS Nesting 1 sec. 4: [&] stands for [:is(<parent selector list>)]. The
    wrapper is load-bearing whenever the parent carries a combinator and [&] does
    not head the selector, since the parent's own structure would otherwise
    escape into the surrounding context. *)
@@ -91,7 +91,7 @@ let test_nesting_wraps_complex_parent () =
   check ".a .b{&:hover{color:red}}" ".a .b:hover{color:red}";
   check ".a .b{& .c{color:red}}" ".a .b .c{color:red}"
 
-(* CSS Nesting 1 sec. 2: a nested selector list is relative to the parent branch
+(* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch. Combining the parent with the list as a whole put the combinator
    on the first branch only, and every later branch escaped as a top-level
    selector -- [.p { a, b { ... } }] matched every [b] on the page. *)

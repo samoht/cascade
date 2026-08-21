@@ -618,7 +618,7 @@ let spec_arbitrary_value_productions () =
     (parse_any "url(foo\"bar)" = None)
 
 let spec_serialization_string_escaping () =
-  (* CSS Syntax Level 3 section 9.2: strings are serialized in a form that
+  (* CSS Syntax Level 3 section 9: strings are serialized in a form that
      round-trips, escaping quote and backslash characters and not emitting raw
      newlines inside the string token. *)
   let parse_one css = (Parser.component_value (Reader.of_string css)).value in

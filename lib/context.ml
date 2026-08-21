@@ -673,7 +673,7 @@ let kind_equal : type a b.
   | Properties.Font_src, Properties.Font_src -> Some Refl
   | _ -> None
 
-(* CSS Cascade 5 sec. 6.4 lists inherited properties; the rest default to the
+(* CSS Cascade 5 sec. 7.2 lists inherited properties; the rest default to the
    property's initial value when no value is supplied. *)
 let property_is_inherited = function
   | "color" | "cursor" | "direction" | "font-family" | "font-feature-settings"
@@ -1432,7 +1432,7 @@ module Media_value = struct
         | _ -> None)
 end
 
-(** {2 [@supports] evaluation (CSS Conditional 4 sec. 3)}
+(** {2 [@supports] evaluation (CSS Conditional 3 sec. 6)}
 
     Each [Supports.t] constructor has a dedicated evaluator. The structural
     cases ([Not]/[And]/[Or]) recurse into [eval]; the leaves ([Property]/[Func])
@@ -1530,7 +1530,7 @@ module Match_media = struct
     | List qs -> List.exists (eval q) qs
 end
 
-(** {2 Container-query evaluation (CSS Containment 3 sec. 3.4)}
+(** {2 Container-query evaluation (CSS Conditional 5 sec. 5.4)}
 
     Container queries reuse the media-feature evaluator applied to the container
     feature table; they additionally guard on the container name (when supplied)
@@ -1760,7 +1760,7 @@ module Url = struct
         Ok (Uri.resolve "" (Uri.of_string base) reference |> Uri.to_string)
 end
 
-(** {2 [@import] loader (CSS Cascade 5 sec. 6)}
+(** {2 [@import] loader (CSS Cascade 5 sec. 2)}
 
     Resolves the import URL through {!Url}, looks up the body in
     [loader.imports], parses it, and applies any media/supports/layer guards on
