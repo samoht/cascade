@@ -45,6 +45,9 @@
 - A declaration whose value is spec-invalid is discarded inside a `@keyframes`
   frame, matching what a browser does with it there and what cascade already
   did in a style rule (#341)
+- `--minify` optimises the body of `@-moz-document`, `@starting-style`,
+  `@when` and `@else`, which it walked past: rules inside one of them kept
+  whatever the author wrote (#343)
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering

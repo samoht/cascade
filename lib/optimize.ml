@@ -220,23 +220,60 @@ and process_statements ?factor_cache ~ctx ~enforce_spec
       process_statements ?factor_cache ~ctx ~enforce_spec ~pending
         (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
-      let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
-      let optimized =
-        if optimized_block == block then stmt
-        else Origin (origin, optimized_block)
-      in
-      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
-        (optimized :: acc) rest
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Origin (origin, block))
+        rest
+  (* The wrapper is opaque but its body is an ordinary block, so it optimises
+     like [@media]'s: a group left out here keeps whatever the author wrote and
+     [--minify] does nothing inside it. *)
+  | (Moz_document (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Moz_document (cond, block))
+        rest
+  | (When (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> When (cond, block))
+        rest
+  | (Else (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Else (cond, block))
+        rest
+  | (Starting_style block as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Starting_style block)
+        rest
   | (Layer (name, block) as stmt) :: rest ->
       process_layer_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
         name block rest
   | (Import import as stmt) :: rest ->
       process_import_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
         stmt import rest
-  | hd :: rest ->
-      (* Other statement types - keep as-is *)
+  (* Listed rather than closed with a wildcard: everything left holds no block,
+     so a statement that grows one has to be classified above before it
+     compiles. *)
+  | (( Declarations _ | Property _ | Bang_comment _ | Charset _ | Namespace _
+     | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+     | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+     | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+     | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ) as
+     hd)
+    :: rest ->
       process_statements ?factor_cache ~ctx ~enforce_spec ~pending (hd :: acc)
         rest
+
+and process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+    block rebuild rest =
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
+  let optimized =
+    if optimized_block == block then stmt else rebuild optimized_block
+  in
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+    (optimized :: acc) rest
 
 and process_rule_run ?factor_cache ~ctx ~enforce_spec ~pending acc stmt r rest =
   let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
