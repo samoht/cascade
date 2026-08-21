@@ -37,3 +37,11 @@ over one unchanged pair of pages reported 14, 410, 14 and 14 differences.
 Freezing happens at fetch time, before `cascade apply` ever sees the page, so
 the document cascade resolves is the document the browser lays out. Pages live
 in the gitignored `pages/`; re-run `fetch.sh` to rebuild them.
+
+## Coverage
+
+`fixtures/` is committed and always runs. `pages/` holds real sites downloaded
+by `fetch.sh`, and they gate the run in the same way: a surviving difference is
+a defect in a transform, whichever page found it. A failure that starts the day
+a site is redesigned is still a defect, but re-run `fetch.sh` before reading it
+as a regression in the working tree.
