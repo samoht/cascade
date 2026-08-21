@@ -1,34 +1,30 @@
 (* [cascade apply <page.html> [extra.css]]: resolve a stylesheet against the
    HTML, write each element's winning declarations into its style attribute, and
    keep the rules with no inline form (:hover, @media, ...) in a <style>. The
-   projection lives in {!Cascade.Apply}; this command is the lambdasoup glue:
-   parse the HTML, hand the element tree to the library, and write the result
-   back. *)
+   projection lives in {!Cascade.Apply}; this command is the HTML glue: parse
+   the page into an {!Html} tree, hand the element tree to the library, and
+   write the result back. *)
 
 open Cmdliner
 module Sheet = Cascade.Stylesheet
 module Css = Cascade.Css
 
-(* ---------- the tree: lambdasoup element nodes ---------- *)
+(* ---------- the tree ---------- *)
 module Node = struct
-  type t = Soup.element Soup.node
+  type t = Html.element
 
   let equal = ( == )
-  let name n = Some (Soup.name n)
-  let id = Soup.id
-  let classes = Soup.classes
-  let attribute n k = Soup.attribute k n
-  let parent = Soup.parent
-  let children n = Soup.children n |> Soup.elements |> Soup.to_list
+  let name (n : t) = Some n.tag
+  let id n = Html.attribute n "id"
+  let classes = Html.classes
+  let attribute = Html.attribute
+  let parent (n : t) = n.parent
 
   (* [children] is the element children the structural selectors count; text is
-     reported apart because [:empty] counts that too. [Soup.texts] of a text
-     node is its own data and of a comment is nothing, so skipping the element
-     children leaves exactly the text that bears on emptiness. *)
-  let text_children n =
-    Soup.children n |> Soup.to_list
-    |> List.concat_map (fun c ->
-        match Soup.element c with Some _ -> [] | None -> Soup.texts c)
+     reported apart because [:empty] counts that too, and a comment counts for
+     neither. *)
+  let children = Html.element_children
+  let text_children = Html.text_children
 end
 
 module Apply = Cascade.Apply.Make (Node)
@@ -42,9 +38,8 @@ let style_node node = function
          properties are resolved onto it too, so the browser still resolves
          them. The [Inline] mode would substitute a var() with its fallback,
          dropping the reference and changing the render. *)
-      Soup.set_attribute "style"
+      Html.set_attribute node "style"
         (Sheet.inline_style_of_declarations ~minify:true ~mode:Variables decls)
-        node
 
 (* Prefix every line of a multi-line diagnostic so a downstream [grep -v
    "warning"] filters the whole entry, not just the first line. *)
@@ -72,20 +67,20 @@ let parse_source ~filename ~note css =
       else Some stylesheet
 
 let inline_html ~minimal ~filename ~html ~extra =
-  let soup = Soup.parse html in
+  let doc = Html.parse html in
   (* Each <style> block parses on its own, which is how a browser reads them
      too, so a block the parser cannot use is known apart from the rest. *)
   let blocks =
-    Soup.select "style" soup |> Soup.to_list
+    Html.find_all "style" doc
     |> List.mapi (fun i node ->
         let filename = Fmt.str "%s:<style>#%d" filename (i + 1) in
-        let css = String.concat "" (Soup.texts node) in
+        let css = Html.text node in
         (node, parse_source ~filename ~note:"; keeping the block verbatim" css))
   in
   let sheet =
     List.concat_map (fun (_, s) -> Option.value s ~default:[]) blocks @ extra
   in
-  let roots = Soup.children soup |> Soup.elements |> Soup.to_list in
+  let roots = Html.roots doc in
   let { Cascade.Apply.styles; keep_css; kept } =
     Apply.compute ~minimal ~sheet roots
   in
@@ -98,18 +93,18 @@ let inline_html ~minimal ~filename ~html ~extra =
      too: emptying it would ship a page with neither the inline styles it should
      have had nor the CSS text a browser might still make something of. *)
   List.iter
-    (fun (node, sheet) -> if Option.is_some sheet then Soup.clear node)
+    (fun (node, sheet) -> if Option.is_some sheet then Html.clear node)
     blocks;
   (if keep_css <> "" then
-     let style = Soup.create_element ~inner_text:keep_css "style" in
-     match Soup.select_one "head" soup with
-     | Some head -> Soup.append_child head style
+     let style = Html.element "style" ~text:keep_css in
+     match Html.find "head" doc with
+     | Some head -> Html.append_child head style
      | None -> (
-         match Soup.select_one "html" soup with
-         | Some h -> Soup.prepend_child h style
+         match Html.find "html" doc with
+         | Some h -> Html.prepend_child h style
          | None -> ()));
   let lost = List.exists (fun (_, s) -> Option.is_none s) blocks in
-  (Soup.to_string soup, kept, lost)
+  (Html.to_string doc, kept, lost)
 
 (* ---------- cmdliner ---------- *)
 let read_file path =
