@@ -11,27 +11,37 @@
 #
 #   git config core.hooksPath .githooks
 #
-# The hook does nothing when no OCaml files are staged.
+# The hook does nothing when no OCaml or dune files are staged.
 
 set -eu
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ml|mli|mll|mly)$' || true)
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(\.(ml|mli|mll|mly)|(^|/)dune(-project)?)$' || true)
 [ -n "$STAGED" ] || exit 0
 
 # 0. ASCII only. Source stays 7-bit: write "sec." not the section sign, "--"
 #    not the em dash, and \u{XXXX} escapes for a glyph a string must emit
 #    (e.g. the diff tree connectors). Checks the staged content, not the
-#    worktree.
+#    worktree. The class spells out the printable range instead of using
+#    [:print:], which a Unicode-aware grep reads as all of Unicode -- the
+#    complement is then empty and the pattern is rejected. An exit status
+#    above 1 is such a rejection, not a clean file, so it aborts the commit.
 NONASCII=""
 for f in $STAGED; do
-    if git show ":$f" | LC_ALL=C grep -n '[^[:print:][:cntrl:]]' >/dev/null 2>&1; then
-        NONASCII="$NONASCII $f"
-    fi
+    rc=0
+    git show ":$f" | LC_ALL=C grep -q '[^ -~[:cntrl:]]' || rc=$?
+    case $rc in
+    0) NONASCII="$NONASCII $f" ;;
+    1) ;;
+    *)
+        echo "error: the ASCII check could not run on $f (grep exit $rc)" >&2
+        exit 1
+        ;;
+    esac
 done
 if [ -n "$NONASCII" ]; then
-    echo "error: non-ASCII byte in staged OCaml source:" >&2
+    echo "error: non-ASCII byte in staged source:" >&2
     for f in $NONASCII; do
-        git show ":$f" | LC_ALL=C grep -n '[^[:print:][:cntrl:]]' | sed "s|^|  $f:|" >&2
+        git show ":$f" | LC_ALL=C grep -n '[^ -~[:cntrl:]]' | sed "s|^|  $f:|" >&2
     done
     echo "use ASCII in comments and \\u{XXXX} escapes in string literals." >&2
     exit 1
