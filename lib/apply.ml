@@ -157,6 +157,69 @@ let decl_value d =
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s
 
+(* Colour functions (css-color-4 sec. 4 to 12, css-color-5 sec. 3): their
+   arguments are channel coordinates, so a percentage or an angle inside one is
+   not a fraction of anything the element decides. [light-dark()] is absent on
+   purpose - it reads the inherited [color-scheme]. *)
+let color_functions =
+  [
+    "rgb";
+    "rgba";
+    "hsl";
+    "hsla";
+    "hwb";
+    "lab";
+    "lch";
+    "oklab";
+    "oklch";
+    "color";
+    "color-mix";
+  ]
+
+(* css-values-4 sec. 5.2: the absolute length units. Every other unit resolves
+   against something the declaration does not carry - the element's own font
+   (sec. 6.1), the root's, the viewport (sec. 6.2), the query container (sec.
+   6.4) - so a unit this list does not name counts as relative, and so does one
+   CSS grows later. *)
+let absolute_units = [ "px"; "cm"; "mm"; "q"; "in"; "pt"; "pc" ]
+
+(* Keywords that read a value off another element: css-fonts-4 sec. 3.5 scales
+   [larger]/[smaller] off the parent font size and sec. 3.2 steps
+   [bolder]/[lighter] off the parent weight. css-color-4 sec. 15 resolves
+   [currentcolor] against the element's own [color], which [color-mix()] then
+   bakes into the computed value. *)
+let relative_keywords =
+  [ "larger"; "smaller"; "bolder"; "lighter"; "currentcolor" ]
+
+(* Whether the value [v] computes to the same thing wherever it lands. The
+   restatement check below compares an ancestor's value with a descendant's as
+   written, and the two elements differ in font, in query container and in the
+   custom properties in scope, so [2em], [5cqw] and [var(--x)] each name two
+   values. The scan whitelists: a shape it does not recognise is relative. *)
+let element_independent v =
+  let lexer = Lexer.of_string v in
+  (* [stack] holds, per open paren, whether it is a colour function's. *)
+  let rec scan stack =
+    let in_color = match stack with c :: _ -> c | [] -> false in
+    match (Lexer.next lexer).Token.kind with
+    | Token.Eof -> true
+    | Token.Function f ->
+        List.mem (String.lowercase_ascii f) color_functions
+        && scan (true :: stack)
+    | Token.Open Token.Paren -> scan (in_color :: stack)
+    | Token.Close Token.Paren ->
+        scan (match stack with _ :: rest -> rest | [] -> [])
+    | Token.Percentage _ -> in_color && scan stack
+    | Token.Dimension { unit_; _ } ->
+        (in_color || List.mem (String.lowercase_ascii unit_) absolute_units)
+        && scan stack
+    | Token.Ident i ->
+        (not (List.mem (String.lowercase_ascii i) relative_keywords))
+        && scan stack
+    | _ -> scan stack
+  in
+  scan []
+
 let add_props acc ds =
   List.fold_left
     (fun acc d ->
@@ -327,9 +390,14 @@ module Make (Node : Resolve.NODE) = struct
             else
               let v = decl_value d in
               (* Inheritance only reaches a property nothing declares, so a
-                 value the UA would win back is not a restatement. *)
-              if (not (SSet.mem p ua)) && List.assoc_opt p ctx = Some v then
-                (kept, ctx)
+                 value the UA would win back is not a restatement, and equal
+                 text is only equal computed values where nothing in it resolves
+                 against the element. *)
+              if
+                (not (SSet.mem p ua))
+                && List.assoc_opt p ctx = Some v
+                && element_independent v
+              then (kept, ctx)
               else (d :: kept, (p, v) :: List.remove_assoc p ctx))
           ([], ctx) decls
       in
