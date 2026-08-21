@@ -2216,7 +2216,19 @@ let same_selector_merge_past_nested () =
   Alcotest.(check string)
     "a nested child setting the same property keeps its place"
     ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}"
-    (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}")
+    (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}");
+  (* A nested conditional group sets properties just as a nested rule does:
+     hoisting [padding:1rem] ahead of it hands the conditional the win wherever
+     it applies, which is a different rendered padding. *)
+  Alcotest.(check string)
+    "a nested @media setting the same property blocks it"
+    ".a{color:red;@media(width>=1px){padding:2rem}}.a{padding:1rem}"
+    (canon ".a{color:red;@media (min-width:1px){padding:2rem}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "a nested @container setting the same property blocks it"
+    ".a{color:red;@container(width>=1px){padding:2rem}}.a{padding:1rem}"
+    (canon
+       ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}")
 
 (* A run of declarations written after a nested statement (CSS Nesting 1 sec.
    3.4) is a declaration list like any other, with nothing between two writes
