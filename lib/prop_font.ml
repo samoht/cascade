@@ -83,18 +83,10 @@ let rec read_font_style t : font_style =
         Cursor.ws t;
         if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
         else
-          (* CSS Fonts 4 sec. 4.4 wants the first oblique angle <= the second.
-             Browsers keep a descending range ([oblique 20deg 10deg]), so accept
-             it but warn, leaving [Css.of_string ~strict] free to reject it. *)
+          (* CSS Fonts 4 sec. 4.4 swaps the endpoints of a descending [oblique
+             <angle> <angle>] range rather than rejecting it, so the reader
+             keeps the order it was written in. *)
           let second = read_angle t in
-          (match (angle_degrees_opt first, angle_degrees_opt second) with
-          | Some a, Some b when a > b ->
-              Cursor.push_warning t
-                (Error.bad_value (Cursor.position t) ~property:"font-style"
-                   ~reason:
-                     "oblique angle range must run from the smaller angle to \
-                      the larger (CSS Fonts 4 \u{00a7}11.2)")
-          | _ -> ());
           Oblique_range (first, second))
     t
 

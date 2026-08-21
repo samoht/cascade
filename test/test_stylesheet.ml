@@ -739,7 +739,8 @@ let spec_fontface_descriptors () =
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
   (* A descending font-stretch range is kept like the font-weight / oblique
-     ranges below: browsers do not enforce CSS Fonts 4 sec. 4.4. *)
+     ranges below: CSS Fonts 4 sec. 4.4 swaps the endpoints for font matching
+     and leaves the descriptor as it was written. *)
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:200% 50%}"

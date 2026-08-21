@@ -1786,23 +1786,10 @@ let read_descriptor_block normalize inner =
   in
   loop []
 
-(* CSS Fonts 4 sec. 4.4 wants the first bound of a descriptor range <= the
-   second. Browsers keep a descending range, so the readers accept it but record
-   a warning here; [Css.of_string ~strict] then turns the warning into an
-   error. *)
-let warn_descending_range r property =
-  Cursor.push_warning r
-    (Error.bad_value (Cursor.position r) ~property
-       ~reason:
-         "range must run from the smaller value to the larger (CSS Fonts 4 \
-          \u{00a7}11.2)")
-
-let font_weight_num = function
-  | (Properties.Weight n : Properties.font_weight) -> Some n
-  | Properties.Normal -> Some 400
-  | Properties.Bold -> Some 700
-  | _ -> None
-
+(* CSS Fonts 4 sec. 4.4: a descriptor range whose startpoint is larger than its
+   endpoint is well defined, the user agent swapping the two endpoints for font
+   matching. The swap is on the computed value, so the descriptor keeps the
+   order it was written in. *)
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -1814,9 +1801,6 @@ let read_font_weight_descriptor r =
         let second = Properties.read_font_weight c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        (match (font_weight_num first, font_weight_num second) with
-        | Some a, Some b when a > b -> warn_descending_range r "font-weight"
-        | _ -> ());
         Font_weight_range (first, second))
     r
 
@@ -1826,18 +1810,12 @@ let read_font_style_descriptor r =
       let c = Cursor.of_string value in
       let first = Properties.read_font_style c in
       Cursor.ws c;
-      let descriptor =
-        if Cursor.is_done c then Font_style first
-        else
-          let second = Properties.read_font_style c in
-          Cursor.ws c;
-          Cursor.expect_eof c;
-          Font_style_range (first, second)
-      in
-      (* [read_font_style] warns on a descending oblique range; the value is
-         parsed in [c], so surface its warnings on the drained cursor [r]. *)
-      List.iter (Cursor.push_warning r) (Cursor.drain_warnings c);
-      descriptor)
+      if Cursor.is_done c then Font_style first
+      else
+        let second = Properties.read_font_style c in
+        Cursor.ws c;
+        Cursor.expect_eof c;
+        Font_style_range (first, second))
     r
 
 let validate_nonempty_descriptor r name value =
@@ -1857,19 +1835,6 @@ let read_font_family_descriptor r =
     (fun v -> Font_family v)
     r
 
-let font_stretch_pct_opt = function
-  | (Properties.Pct value : Properties.font_stretch) -> Some value
-  | Properties.Ultra_condensed -> Some 50.
-  | Properties.Extra_condensed -> Some 62.5
-  | Properties.Condensed -> Some 75.
-  | Properties.Semi_condensed -> Some 87.5
-  | Properties.Normal -> Some 100.
-  | Properties.Semi_expanded -> Some 112.5
-  | Properties.Expanded -> Some 125.
-  | Properties.Extra_expanded -> Some 150.
-  | Properties.Ultra_expanded -> Some 200.
-  | _ -> None
-
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -1878,12 +1843,11 @@ let read_font_stretch_descriptor r =
       Cursor.ws c;
       if Cursor.is_done c then Font_stretch first
       else begin
-        let second = Properties.read_font_stretch c in
+        (* The endpoint is parsed for validation only: the range keeps the raw
+           [value], which already carries both bounds. *)
+        ignore (Properties.read_font_stretch c : Properties.font_stretch);
         Cursor.ws c;
         Cursor.expect_eof c;
-        (match (font_stretch_pct_opt first, font_stretch_pct_opt second) with
-        | Some a, Some b when a > b -> warn_descending_range r "font-stretch"
-        | _ -> ());
         Font_stretch_range value
       end)
     r
