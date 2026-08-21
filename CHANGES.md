@@ -85,6 +85,13 @@
   `var()`, `light-dark()` or `currentColor` inside `color-mix()` names two
   values across two elements, so `div{font-size:2em}div p{font-size:2em}`
   halved the paragraph (#326, #329)
+- `cascade apply --minimal` keeps a restated inherited shorthand when an
+  element in between sets one of the longhands it resets. A shorthand resets
+  every longhand it does not mention (css-fonts-4 sec. 2.7 for `font`), so the
+  restatement is what puts that longhand back, and
+  `#p{font:16px serif}#mid{font-weight:bold}#c{font:16px serif}` left `#c`
+  bold. `all` and a property cascade does not type reset everything, so neither
+  is dropped either (#332)
 
 ## 1.1.0
 
