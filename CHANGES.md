@@ -82,6 +82,12 @@
 
 ### CLI tools
 
+- `cascade apply` keeps the comments a page holds. React writes an empty
+  comment between two adjacent text nodes to keep them apart, and a browser
+  measures and rounds each text run on its own, so merging them moved the
+  element's width; licence headers and conditional comments went missing
+  outright. The page is parsed and printed with markup.ml, which carries
+  comments, in place of lambdasoup, which discards them (#346)
 - `cascade apply` keeps a declaration in the sheet when a kept rule can write
   the same cascade slot under another property name. `p{margin:0}` was
   projected into a style attribute while the `.my-7{margin-top:1.75rem}` it
