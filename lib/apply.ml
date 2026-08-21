@@ -195,9 +195,9 @@ module Make (Node : Resolve.NODE) = struct
      beats a normal inline declaration). *)
   let resolved sheet n =
     let author = R.resolve sheet n in
-    match Node.attribute n "style" with
-    | None -> author
-    | Some s ->
+    match Option.map parse_inline (Node.attribute n "style") with
+    | None | Some [] -> author
+    | Some inline ->
         let overlay map d =
           let k = Declaration.property_name d in
           match List.assoc_opt k map with
@@ -207,9 +207,14 @@ module Make (Node : Resolve.NODE) = struct
               map
           | _ -> (k, d) :: List.remove_assoc k map
         in
+        (* The overlay accumulates in reverse so the closing [rev_map] hands
+           back the author order: css-cascade-5 sec. 6.1 breaks a tie by order
+           of appearance, so a longhand written after its shorthand still wins.
+           An overlaid declaration conses onto the front and so lands last,
+           where it beats the selector it met. *)
         List.fold_left overlay
-          (List.map (fun d -> (Declaration.property_name d, d)) author)
-          (parse_inline s)
+          (List.rev_map (fun d -> (Declaration.property_name d, d)) author)
+          inline
         |> List.rev_map snd
 
   (* [ctx] maps each inherited property to the value in force from the
