@@ -785,6 +785,27 @@ let test_optimize_descends_into_every_conditional_group () =
      media(print){a{color:#f00}a{color:#f00}}@else{b{color:#f00}b{color:#f00}}"
     "@when media(print){a{color:red}}@else{b{color:red}}"
 
+(* An [@property] registration is document-global (CSS Properties and Values API
+   1 sec. 2), so a declaration of that name is typed wherever it is written.
+   Promotion has to reach the at-rules that hold declarations outside a nested
+   block, or the same registered value canonicalises one way in a rule and
+   another inside one of them. *)
+let test_promote_registered_reaches_at_rule_declarations () =
+  let registration =
+    "@property --c{syntax:\"<color>\";inherits:false;initial-value:red}"
+  in
+  let check name body expected =
+    Alcotest.(check string)
+      name (registration ^ expected)
+      (minify (Css.of_string_exn ~strict:false (registration ^ body)))
+  in
+  check "a style rule types the declaration" "a{--c:rgb(255 0 0)}" "a{--c:red}";
+  check "@position-try types it too" "@position-try --p{--c:rgb(255 0 0)}"
+    "@position-try --p{--c:red}";
+  check "@supports-condition types it too"
+    "@supports-condition --x{--c:rgb(255 0 0)}"
+    "@supports-condition --x{--c:red}"
+
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
    known until substitution, so minify+optimize must keep it verbatim - never
@@ -1351,6 +1372,9 @@ let optimize_tests =
     ( "optimize descends into every conditional group",
       `Quick,
       test_optimize_descends_into_every_conditional_group );
+    ( "promote registered reaches at-rule declarations",
+      `Quick,
+      test_promote_registered_reaches_at_rule_declarations );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
