@@ -6,14 +6,12 @@
   parentheses Media Queries 4 sec. 3 requires around a `<media-in-parens>`:
   `not ((min-width:1px) or (max-width:2px))` printed as
   `not (min-width:1px)or (max-width:2px)`, which browsers and cascade's own
-  reader reject, losing the whole block
-  ([#319](https://github.com/samoht/cascade/pull/319))
+  reader reject, losing the whole block (#319)
 - An `@font-face` descriptor whose value holds a `var()` is dropped with a
   warning, and `Css.of_string ~strict:true` rejects it. `var()` substitutes in
   property values only (CSS Variables 1), so no descriptor grammar accepts one
   and browsers drop the declaration. `src` and `unicode-range` keep theirs,
-  since `Css.inline_vars` resolves those references at build time
-  ([#322](https://github.com/samoht/cascade/pull/322))
+  since `Css.inline_vars` resolves those references at build time (#322)
 
 ### Minification
 
@@ -21,91 +19,72 @@
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering
   `min-width` to range syntax inside that very query. `--enforce-spec` keeps
-  both Level 3 spellings
-  ([#323](https://github.com/samoht/cascade/pull/323))
+  both Level 3 spellings (#323)
 - A vendor prefix is dropped only when its unprefixed twin is Baseline "widely
   available", so `--minify` keeps the prefix a maintained browser still reads:
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
-  shipping Safari understands
-  ([#325](https://github.com/samoht/cascade/pull/325))
+  shipping Safari understands (#325)
 
 ### Custom properties
 
-- `Css.resolve_theme` emits the root theme binding for a name whose only
-  declaration sits in `@keyframes` or `@position-try`. Those belong to the
-  animation and position fallback origins, so they never defined the name for
-  the element referencing it, which was left with a free `var()`
-  ([#327](https://github.com/samoht/cascade/pull/327))
+- `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
+  `@position-try` and `@supports-condition` carry. A `var()` referenced only
+  from inside one of them keeps its theme binding instead of leaving the name
+  undefined in the emitted sheet; a name whose only declaration sits in
+  `@keyframes` or `@position-try` keeps the root binding, since the animation
+  and position fallback origins never defined it for the element referencing
+  it; and a theme guard the keep-set rejects is dropped instead of printed as
+  a declaration the theme never selected (#317, #324, #327)
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
-  replacing browser-time override points with compile-time defaults
-  ([#315](https://github.com/samoht/cascade/pull/315))
-- `Css.resolve_theme` emits the theme binding for a `var()` referenced only
-  from inside `@keyframes`, `@page`, `@position-try` or `@supports-condition`,
-  instead of leaving the name undefined in the emitted sheet
-  ([#317](https://github.com/samoht/cascade/pull/317))
-- `Css.resolve_theme` drops a theme guard the keep-set rejects from
-  `@keyframes`, `@page`, `@position-try` and `@supports-condition`, instead of
-  printing it as a declaration the theme never selected
-  ([#324](https://github.com/samoht/cascade/pull/324))
+  replacing browser-time override points with compile-time defaults (#315)
 
 ### Canonical diff
 
 - A fully transparent missing-axis `oklab()` colour, such as
   `oklab(0% none none / 0)`, canonicalises to transparent black while
-  non-transparent forms remain distinct
-  ([#312](https://github.com/samoht/cascade/pull/312))
+  non-transparent forms remain distinct (#312)
 - Relative-colour functions retain their origin as a typed colour, so
   equivalent spellings such as `red` and `#f00` compare equal in `rgb()`,
   `oklab()` and the other relative functions, including inside custom
-  properties ([#313](https://github.com/samoht/cascade/pull/313))
+  properties (#313)
 - A complete shadow value in an unregistered custom property types its colour
   slot, so named and hex colours and typed `var()` fallbacks compare
-  canonically while non-colour identifiers remain opaque
-  ([#314](https://github.com/samoht/cascade/pull/314))
+  canonically while non-colour identifiers remain opaque (#314)
 
 ### Library
 
 - `Css.Media.kind` classifies a negated width bound by the side it bounds, so
   `not (min-width: 640px)` groups and sorts with the upper bounds it matches
-  instead of with the lower bound it negates, and a doubled `not` cancels.
-  `Css.Media.sort_key`, `group_order` and `compare` follow
-  ([#328](https://github.com/samoht/cascade/pull/328))
-- The negation of a width range, such as `not (640px <= width <= 1024px)`,
-  classifies as `Other`: it matches the viewports on either side of the range,
-  which no single bound describes
-  ([#328](https://github.com/samoht/cascade/pull/328))
+  instead of with the lower bound it negates, and a doubled `not` cancels. The
+  negation of a range, such as `not (640px <= width <= 1024px)`, is `Other`:
+  it matches the viewports on either side of the range, which no single bound
+  describes. `Css.Media.sort_key`, `group_order` and `compare` follow (#328)
 - `Css.Stylesheet.statement_declarations` returns the declarations a statement
   holds directly; paired with `statement_children` it reaches every declaration
-  in a stylesheet ([#317](https://github.com/samoht/cascade/pull/317))
+  in a stylesheet (#317)
 
 ### CLI tools
 
-- `cascade apply` keeps the author declarations in source order when the
-  element carries a `style` attribute, empty ones included. They came out
-  reversed, so a longhand no longer beat the shorthand it was written after
-  and the projected page rendered differently from its input
-  ([#326](https://github.com/samoht/cascade/pull/326))
-- `cascade apply --minimal` keeps an inherited declaration whose property the
-  user-agent stylesheet declares for the element or for one of its ancestors.
-  css-cascade-5 sec. 6.1 sorts by origin before anything else, so such a
-  property is cascaded rather than inherited, and dropping the declaration
-  uncovered the UA value: link colour, heading size, `b` weight, `em` style,
-  `pre` family and `ol` marker all changed
-  ([#326](https://github.com/samoht/cascade/pull/326))
-- `cascade apply` reads a `style` attribute as a declaration list, so a `}`
-  inside it stays a preserved token (CSS Syntax 3 sec. 5.4) instead of closing
-  a synthetic rule. `style="color:red}p{color:lime"` applied `color:red`,
-  where the whole attribute is one invalid declaration a browser drops
-  ([#326](https://github.com/samoht/cascade/pull/326))
-- `cascade apply --minimal` keeps an inherited declaration whose value resolves
-  against the element it lands on, instead of dropping it as a restatement of
-  the ancestor's identical text. A font-relative unit, a percentage,
-  `larger`/`bolder`, a container unit, `var()`, `light-dark()` and
-  `currentColor` inside `color-mix()` each name two values across two elements,
-  so `div{font-size:2em}div p{font-size:2em}` halved the paragraph
-  ([#329](https://github.com/samoht/cascade/pull/329))
+- `cascade apply` reads a `style` attribute as a declaration list in source
+  order. The declarations came out reversed, so a longhand beat the shorthand
+  it was written after, and an empty attribute was enough to trigger it. A `}`
+  inside the attribute closed the list early instead of staying a preserved
+  token (CSS Syntax 3 sec. 5.4), so `style="color:red}p{color:lime"` applied
+  `color:red`, where the whole attribute is one invalid declaration a browser
+  drops. Both made the projected page render differently from its input (#326)
+- `cascade apply --minimal` drops an inherited declaration only when it truly
+  restates the value the element would inherit. Two kinds of declaration it
+  dropped are not restatements: one whose property a user-agent rule declares
+  for the element or for one of its ancestors, which css-cascade-5 sec. 6.1
+  sorts by origin before inheritance, so the drop uncovered the UA value for
+  link colour, heading size, `b` weight, `em` style, `pre` family and `ol`
+  marker; and one whose value resolves against the element it lands on, where
+  a font-relative unit, a percentage, `larger`/`bolder`, a container unit,
+  `var()`, `light-dark()` or `currentColor` inside `color-mix()` names two
+  values across two elements, so `div{font-size:2em}div p{font-size:2em}`
+  halved the paragraph (#326, #329)
 
 ## 1.1.0
 
