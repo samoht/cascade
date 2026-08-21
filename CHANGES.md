@@ -176,6 +176,10 @@
   `.428571em`, which is `5.99999px` rather than `6px` at a `14px` font size, and
   `999999999px` came out a pixel wider. The six-figure budget now belongs to the
   fold that computes a value, so `calc(2px * pi)` is still `6.28319px` (#350)
+- A `--name` registered by `@property` as a `<number>` keeps the digits it was
+  written with: `--n: 1.4285714` came out as `1.42857`. The six-figure budget
+  stays on the `calc()` the printer folds itself, so `calc(1 / 3)` is still
+  `.333333` (#354)
 - An empty `@layer name` inside a style rule keeps its block form. The
   statement form is a layer-order declaration, which no style rule accepts, so
   `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor

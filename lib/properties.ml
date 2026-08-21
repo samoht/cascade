@@ -2038,12 +2038,14 @@ let try_read_custom_time components =
   read_custom_value_as Duration read_duration components
 
 let pp_number_value ctx (value : number) =
-  let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
   match value with
-  | Num f when Pp.minified ctx -> pp_rounded f
   | Calc c when Pp.minified ctx -> (
+      (* [eval_numeric_calc] is Cascade's own arithmetic, so its result takes
+         the six significant figures Cascade commits to in serialised output. An
+         authored coefficient is the author's digits and keeps every one of
+         them, so it falls through to [pp_number]. *)
       match eval_numeric_calc c with
-      | Some f -> pp_rounded f
+      | Some f -> Pp.float ctx (Pp.round_sig 6 f)
       | None -> pp_number ctx (Calc (eval_calc c)))
   | _ -> pp_number ctx value
 
