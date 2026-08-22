@@ -2418,20 +2418,6 @@ let parse_page_selectors r selector =
   in
   consume_selectors [] 0
 
-let page_descriptor_order =
-  [
-    "size";
-    "margin";
-    "margin-left";
-    "margin-right";
-    "margin-top";
-    "margin-bottom";
-    "bleeds";
-    "marks";
-  ]
-
-let allowed_page_descriptors = page_descriptor_order
-
 let allowed_page_margin_names =
   [
     "top-left";
@@ -2448,35 +2434,22 @@ let allowed_page_margin_names =
     "left-top";
   ]
 
-let replace_page_descriptor r desc acc =
-  if List.mem (Declaration.property_name desc) allowed_page_descriptors then
-    replace_descriptor desc acc
-  else
-    Cursor.err_invalid r
-      ("invalid @page descriptor: " ^ Declaration.property_name desc)
-
-let allowed_page_margin_descriptors = "content" :: allowed_page_descriptors
-
-let replace_page_margin_descriptor r desc acc =
-  if List.mem (Declaration.property_name desc) allowed_page_margin_descriptors
-  then replace_descriptor desc acc
-  else
-    Cursor.err_invalid r
-      ("invalid page margin descriptor: " ^ Declaration.property_name desc)
-
+(* CSS Paged Media 3 sec. 6: Appendix A lists the CSS 2.1 properties that apply
+   in a page and in a margin context, and behaviour for a property outside CSS
+   2.1 is left undefined "to allow the gradual addition of appropriate CSS3
+   properties as they emerge" - undefined, not invalid. Blink 146 duly keeps
+   every property it knows in both contexts. A name filter here would drop text
+   browsers keep, so the page contexts take the declarations a style rule takes:
+   a value its property's grammar rejects is still rejected, and so is an item
+   that is no declaration at all. *)
 let read_page_margin_rule r =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; _ })
     when List.mem name allowed_page_margin_names ->
       Cursor.skip r;
       Cursor.ws r;
-      (* CSS Paged Media sec. 5: a page-margin box accepts every descriptor
-         valid in [@page] plus [content]. *)
       let descriptors =
-        Cursor.braces
-          (fun inner ->
-            read_descriptor_block (replace_page_margin_descriptor inner) inner)
-          r
+        Cursor.braces (read_descriptor_block replace_descriptor) r
       in
       if descriptors = [] then
         Cursor.err_invalid r "page margin rule requires descriptors";
@@ -2495,8 +2468,8 @@ let read_page_step inner (descriptors, margins) =
       match read_descriptor_item inner with
       | `Done -> `Done (List.rev descriptors, List.rev margins)
       | `Skip -> `More (descriptors, margins)
-      | `Descriptor desc ->
-          `More (replace_page_descriptor inner desc descriptors, margins))
+      | `Descriptor desc -> `More (replace_descriptor desc descriptors, margins)
+      )
 
 let read_page_body inner = read_items_with_recovery read_page_step inner ([], [])
 
@@ -3816,16 +3789,6 @@ let validate_partial_statement loc = function
            ~reason:"forbidden keyframes name")
   | _ -> None
 
-(* @page / @font-face descriptors flow through [Declaration.read_declaration]
-   like ordinary declarations and show up as [Unknown_property "marks"] / "src".
-   The reader already enforces each at-rule's allowed-descriptor list, so an
-   [Unknown_property] in a descriptor block is by construction a known
-   descriptor - skip the [is_invalid] check that would flag it. *)
-let descriptor_has_typed_invalid_value = function
-  | Declaration.Declaration { property = Properties.Unknown_property _; _ } ->
-      false
-  | decl -> Declaration.is_invalid decl
-
 let rec statement_has_invalid_declaration = function
   | Rule { declarations; nested; _ } ->
       List.exists Declaration.is_invalid declarations
@@ -3842,15 +3805,15 @@ let rec statement_has_invalid_declaration = function
   | Origin (_, block)
   | Scope (_, _, block) ->
       List.exists statement_has_invalid_declaration block
-  | Page (_, decls) -> List.exists descriptor_has_typed_invalid_value decls
+  | Page (_, decls) -> List.exists Declaration.is_invalid decls
   | Page_with_margins (_, descs, margins) ->
-      List.exists descriptor_has_typed_invalid_value descs
+      List.exists Declaration.is_invalid descs
       || List.exists
            (fun { descriptors; _ } ->
-             List.exists descriptor_has_typed_invalid_value descriptors)
+             List.exists Declaration.is_invalid descriptors)
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
-      List.exists descriptor_has_typed_invalid_value decls
+      List.exists Declaration.is_invalid decls
   | _ -> false
 
 let validate_partial_invalid_declarations loc stmt =
