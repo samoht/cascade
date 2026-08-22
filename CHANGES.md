@@ -100,6 +100,15 @@
   both. Tokens left after a descriptor's value, such as a trailing `!important`,
   now invalidate the declaration they follow rather than the leftover alone
   (#399)
+- A rule a grouping at-rule's block rejects is discarded to the end of that rule
+  rather than to the first block of any kind in its prelude. In
+  `@media screen { @supports (display: grid) bogus { a { color: red } } }` the
+  discard stopped at `(display: grid)`, so `bogus { a { color: red } }` came back
+  as a rule of its own, and a `[]` in a bad selector cost a second warning for
+  one dropped rule. CSS Syntax 3 sec. 5.4.2 ends an at-rule at its block or its
+  `;` and sec. 5.4.3 ends a qualified rule at its block, so a `(` or a `[`
+  written before that block is part of what is discarded, and Blink 146 keeps no
+  such rule (#402)
 
 ### Minification
 
