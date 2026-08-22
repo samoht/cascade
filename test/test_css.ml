@@ -897,6 +897,112 @@ let public_layers_conditional_groups () =
             Stylesheet.Layer (Some "third", [ styled ]);
           ]))
 
+(* [Stylesheet.layers] and [Css.layers] answer one question, so they answer it
+   the same way: two functions in one library disagreeing about what a sheet
+   declares makes the answer depend on which one a caller happened to reach
+   for. *)
+let stylesheet_layers_agree_with_css () =
+  let styled = rule ~selector:(Selector.class_ "a") [ color (hex "#111111") ] in
+  let sheets =
+    [
+      ("dotted name", v [ Stylesheet.Layer (Some "foo.bar", [ styled ]) ]);
+      ( "layer in a group",
+        v
+          [
+            Stylesheet.Media
+              ( Media.of_string "screen",
+                [ Stylesheet.Layer (Some "inner", [ styled ]) ] );
+          ] );
+      ( "layer in a rule",
+        v
+          [
+            rule ~selector:(Selector.class_ "b")
+              ~nested:[ Stylesheet.Layer (Some "deep", [ styled ]) ]
+              [];
+          ] );
+      ("statement form", v [ Stylesheet.Layer_decl [ "one"; "two.three" ] ]);
+    ]
+  in
+  List.iter
+    (fun (label, sheet) ->
+      Alcotest.(check (list string))
+        (label ^ ": Stylesheet.layers matches Css.layers")
+        (layers sheet)
+        (Css.Stylesheet.layers sheet))
+    sheets
+
+(* A [@media] or [@container] is the same at-rule whether or not a group sits
+   above it, and the rules it holds are the ones below its brace, not the ones
+   that happen to be direct children. A walk that stops at the top level reports
+   neither, so a caller gets a wrong answer rather than a partial one. *)
+let stylesheet_queries_reach_nested () =
+  let styled sel =
+    rule ~selector:(Selector.class_ sel) [ color (hex "#111111") ]
+  in
+  let screen = Media.of_string "screen" in
+  let wide = Container.of_string "(width > 10px)" in
+  let selectors_of rules =
+    List.map (fun (r : Stylesheet.rule) -> Selector.to_string r.selector) rules
+  in
+  (* The at-rule sits under a group. *)
+  let grouped wrap =
+    v [ Stylesheet.Supports (Supports.of_string "(top: 0)", [ wrap ]) ]
+  in
+  let media_in_group = grouped (Stylesheet.Media (screen, [ styled "a" ])) in
+  Alcotest.(check (list string))
+    "@media under @supports is still a media query" [ ".a" ]
+    (List.concat_map
+       (fun (_, rules) -> selectors_of rules)
+       (Css.Stylesheet.media_queries media_in_group));
+  let container_in_group =
+    grouped (Stylesheet.Container (Some "card", Some wide, [ styled "a" ]))
+  in
+  Alcotest.(check (list string))
+    "@container under @supports is still a container query" [ ".a" ]
+    (List.concat_map
+       (fun (_, _, rules) -> selectors_of rules)
+       (Css.Stylesheet.container_queries container_in_group));
+  (* The rules sit under something inside the at-rule. *)
+  let deep_body =
+    [
+      rule ~selector:(Selector.class_ "outer")
+        ~nested:[ styled "nested" ]
+        [ color (hex "#111111") ];
+      Stylesheet.Layer (Some "l", [ styled "layered" ]);
+    ]
+  in
+  Alcotest.(check (list string))
+    "a media query holds every rule below its brace"
+    [ ".outer"; ".nested"; ".layered" ]
+    (List.concat_map
+       (fun (_, rules) -> selectors_of rules)
+       (Css.Stylesheet.media_queries
+          (v [ Stylesheet.Media (screen, deep_body) ])));
+  Alcotest.(check (list string))
+    "a container query holds every rule below its brace"
+    [ ".outer"; ".nested"; ".layered" ]
+    (List.concat_map
+       (fun (_, _, rules) -> selectors_of rules)
+       (Css.Stylesheet.container_queries
+          (v [ Stylesheet.Container (None, Some wide, deep_body) ])));
+  (* [Css.media_queries] is the same walk with the rules wrapped back up as
+     statements, so it reaches what the one below it reaches. *)
+  let statement_selectors =
+    List.concat_map
+      (fun (_, stmts) ->
+        List.filter_map
+          (fun stmt ->
+            match as_rule stmt with
+            | Some (sel, _, _) -> Some (Selector.to_string sel)
+            | None -> None)
+          stmts)
+      (media_queries (grouped (Stylesheet.Media (screen, deep_body))))
+  in
+  Alcotest.(check (list string))
+    "Css.media_queries reaches the same rules"
+    [ ".outer"; ".nested"; ".layered" ]
+    statement_selectors
+
 (* [vars_of_rules] answers the same question as [vars_of_stylesheet] over the
    statements it is given, so it reports a reference wherever a declaration
    sits: nested in a rule, inside any grouping at-rule, and in an at-rule that
@@ -1496,6 +1602,10 @@ let suite =
         public_custom_props_declaration_sites;
       Alcotest.test_case "public layers in conditional groups" `Quick
         public_layers_conditional_groups;
+      Alcotest.test_case "stylesheet layers agree with css layers" `Quick
+        stylesheet_layers_agree_with_css;
+      Alcotest.test_case "stylesheet queries reach nested" `Quick
+        stylesheet_queries_reach_nested;
       Alcotest.test_case "public var declaration sites" `Quick
         public_vars_declaration_sites;
       Alcotest.test_case "public property introspection" `Quick

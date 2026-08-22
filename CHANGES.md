@@ -210,6 +210,15 @@
   rule or inside any at-rule is reported instead of only one a top-level rule
   holds. Both fold over every declaration site, which also adds the references
   an animation frame and a page margin box hold (#382)
+- `Css.Stylesheet.layers` is what `Css.layers` calls, so the two no longer give
+  different answers to the same question: the lower one reported neither a
+  layer declared inside a grouping at-rule nor the sublayer a dotted name
+  declares. `Css.Stylesheet.layer_block` is exposed alongside it (#389)
+- `Css.Stylesheet.media_queries`, `container_queries` and `Css.media_queries`
+  report a query written inside a grouping at-rule, and pair each query with
+  every rule below its brace rather than the ones sitting directly under it, so
+  a rule nested in another rule or held by an inner group is no longer missing
+  from the query it is written in (#389)
 
 ### CLI tools
 

@@ -1560,30 +1560,103 @@ let rec extract_rules = function
   | Rule r :: rest -> r :: extract_rules rest
   | _ :: rest -> extract_rules rest
 
-let rec extract_layer_names = function
-  | [] -> []
-  | Layer (Some name, _) :: rest -> name :: extract_layer_names rest
-  | Layer_decl names :: rest -> names @ extract_layer_names rest
-  | _ :: rest -> extract_layer_names rest
+(* Every rule below a brace, not the ones that happen to sit directly under it:
+   a rule nested in another rule and a rule inside an inner group are both under
+   the query, and a walk that stopped at the direct children would report the
+   query with a body it does not have. A nested rule keeps the relative selector
+   it was written with. *)
+let rules_below block =
+  List.rev
+    (fold_statements
+       (fun acc stmt -> match stmt with Rule r -> r :: acc | _ -> acc)
+       [] block)
 
-let rec extract_media_queries = function
-  | [] -> []
-  | Media (condition, content) :: rest ->
-      (condition, extract_rules content) :: extract_media_queries rest
-  | _ :: rest -> extract_media_queries rest
+(* CSS Cascade 5 sec. 6.4.2: a dotted layer name [foo.bar] is shorthand for the
+   nested [@layer foo { @layer bar { ... } }]. Walk the sheet once through
+   [statement_children], expanding dotted names and prefixing each name with its
+   parent's path, so a layer is reachable under one canonical name whatever the
+   input shape and an [@layer] inside a conditional group counts like any other:
+   the group decides whether its contents apply, not whether the layer exists.
+   Each entry carries the block the name opens, or [None] for a name declared by
+   a layer statement that opens none, so a statement never shadows the block
+   that fills the layer in. A sublayer of an anonymous layer has no name a
+   caller could ask for, so the walk stops there. *)
+let layer_declarations sheet =
+  let prefix_with parent name =
+    if String.equal parent "" then name else parent ^ "." ^ name
+  in
+  let rec emit_dotted parent segments (inner : block option) acc =
+    match segments with
+    | [] -> acc
+    | [ leaf ] -> (
+        let qualified = prefix_with parent leaf in
+        let acc = (qualified, inner) :: acc in
+        match inner with None -> acc | Some block -> walk qualified acc block)
+    | head :: tail ->
+        (* An intermediate segment names a layer that exists but opens no block
+           of its own. *)
+        let qualified = prefix_with parent head in
+        let stub = Option.map (fun _ -> []) inner in
+        emit_dotted qualified tail inner ((qualified, stub) :: acc)
+  and walk parent acc statements =
+    List.fold_left
+      (fun acc s ->
+        match s with
+        | Layer (Some name, inner) ->
+            emit_dotted parent (String.split_on_char '.' name) (Some inner) acc
+        | Layer_decl names ->
+            List.fold_left
+              (fun acc name ->
+                emit_dotted parent (String.split_on_char '.' name) None acc)
+              acc names
+        | Layer (None, _) -> acc
+        | s -> walk parent acc (statement_children s))
+      acc statements
+  in
+  List.rev (walk "" [] sheet)
 
-let rec extract_container_queries = function
-  | [] -> []
-  | Container (name, condition, content) :: rest ->
-      (name, condition, extract_rules content) :: extract_container_queries rest
-  | _ :: rest -> extract_container_queries rest
+let layer_block name sheet =
+  List.find_map
+    (fun (declared, block) ->
+      if String.equal declared name then block else None)
+    (layer_declarations sheet)
+
+let layers sheet =
+  let seen = Hashtbl.create 16 in
+  List.filter_map
+    (fun (name, _) ->
+      if Hashtbl.mem seen name then None
+      else (
+        Hashtbl.add seen name ();
+        Some name))
+    (layer_declarations sheet)
+
+(* A group at-rule above the query is not a reason to report nothing: it decides
+   whether its contents apply, not whether the query exists. *)
+let queries_of pick block =
+  List.rev
+    (fold_statements
+       (fun acc stmt -> match pick stmt with Some q -> q :: acc | None -> acc)
+       [] block)
 
 (* Legacy compatibility functions *)
 let empty = empty_stylesheet
 let rules t = extract_rules t
-let layers t = extract_layer_names t
-let media_queries t = extract_media_queries t
-let container_queries t = extract_container_queries t
+
+let media_queries t =
+  queries_of
+    (function
+      | Media (condition, block) -> Some (condition, rules_below block)
+      | _ -> None)
+    t
+
+let container_queries t =
+  queries_of
+    (function
+      | Container (name, condition, block) ->
+          Some (name, condition, rules_below block)
+      | _ -> None)
+    t
 
 (** {1 Reading/Parsing} *)
 

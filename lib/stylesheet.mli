@@ -427,14 +427,29 @@ val rules : t -> rule list
 (** [rules t] returns the top-level rules from the stylesheet. *)
 
 val layers : t -> string list
-(** [layers t] returns the layer names from the stylesheet. *)
+(** [layers t] is every cascade layer [t] declares, one dotted path per layer
+    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
+    sheet first names them. A layer named inside a conditional group counts: the
+    group decides whether its contents apply, not whether the layer exists. A
+    sublayer of an anonymous [@layer { ... }] has no name to report. *)
+
+val layer_block : string -> t -> block option
+(** [layer_block name t] is the statements of the layer [name], wherever it is
+    declared and whatever form declares it: a dotted name, a nested block, or a
+    block inside a conditional group. It is [None] when no [@layer] block opens
+    that layer, so a name only an [@layer a, b;] statement declares is [None] as
+    well. *)
 
 val media_queries : t -> (Media.t * rule list) list
-(** [media_queries t] returns the media queries from the stylesheet. *)
+(** [media_queries t] is every [@media] in [t], at any depth, paired with every
+    rule below its brace. A query inside a group at-rule counts, and a rule
+    nested in another rule or held by an inner group is one of the query's
+    rules; a nested rule keeps the relative selector it was written with. *)
 
 val container_queries :
   t -> (string option * Container.t option * rule list) list
-(** [container_queries t] returns the container queries from the stylesheet. *)
+(** [container_queries t] is every [@container] in [t], paired with every rule
+    below its brace, on the same terms as {!media_queries}. *)
 
 (** {1 Parsing and Pretty-printing} *)
 

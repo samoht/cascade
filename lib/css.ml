@@ -522,64 +522,8 @@ let media_queries t =
 
 (* AST Introspection Helpers *)
 
-(* CSS Cascade 5 sec. 6.4.2: a dotted layer name [foo.bar] is shorthand for the
-   nested [@layer foo { @layer bar { ... } }]. Walk the sheet once through
-   [statement_children], expanding dotted names and prefixing each name with its
-   parent's path, so a layer is reachable under one canonical name whatever the
-   input shape and an [@layer] inside a conditional group counts like any other:
-   the group decides whether its contents apply, not whether the layer exists.
-   Each entry carries the block the name opens, or [None] for a name declared by
-   a layer statement that opens none, so a statement never shadows the block
-   that fills the layer in. A sublayer of an anonymous layer has no name a
-   caller could ask for, so the walk stops there. *)
-let layer_declarations sheet =
-  let prefix_with parent name =
-    if parent = "" then name else parent ^ "." ^ name
-  in
-  let rec emit_dotted parent segments (inner : statement list option) acc =
-    match segments with
-    | [] -> acc
-    | [ leaf ] -> (
-        let qualified = prefix_with parent leaf in
-        let acc = (qualified, inner) :: acc in
-        match inner with None -> acc | Some block -> walk qualified acc block)
-    | head :: tail ->
-        (* An intermediate segment names a layer that exists but opens no block
-           of its own. *)
-        let qualified = prefix_with parent head in
-        let stub = Option.map (fun _ -> []) inner in
-        emit_dotted qualified tail inner ((qualified, stub) :: acc)
-  and walk parent acc statements =
-    List.fold_left
-      (fun acc s ->
-        match s with
-        | Layer (Some name, inner) ->
-            emit_dotted parent (String.split_on_char '.' name) (Some inner) acc
-        | Layer_decl names ->
-            List.fold_left
-              (fun acc name ->
-                emit_dotted parent (String.split_on_char '.' name) None acc)
-              acc names
-        | Layer (None, _) -> acc
-        | s -> walk parent acc (statement_children s))
-      acc statements
-  in
-  List.rev (walk "" [] sheet)
-
-let layer_block name sheet =
-  List.find_map
-    (fun (declared, block) -> if declared = name then block else None)
-    (layer_declarations sheet)
-
-let layers t =
-  let seen = Hashtbl.create 16 in
-  List.filter_map
-    (fun (name, _) ->
-      if Hashtbl.mem seen name then None
-      else (
-        Hashtbl.add seen name ();
-        Some name))
-    (layer_declarations t)
+let layer_block = Stylesheet.layer_block
+let layers = Stylesheet.layers
 
 let rules_of_statements stmts =
   List.filter_map

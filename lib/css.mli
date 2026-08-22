@@ -486,9 +486,11 @@ val statements : t -> statement list
 (** [statements t] returns all top-level statements from the stylesheet. *)
 
 val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
-(** [fold f acc css] folds over all statements in [css], recursively descending
-    into nested structures (layers, media queries, containers, and supports
-    rules). The function [f] is called for each statement in depth-first order.
+(** [fold f acc css] folds [f] over every statement in [css] and over every
+    statement reachable from one, in source order: a rule nested in a rule, a
+    block at-rule inside a group, and whatever those hold in turn. The walk
+    descends through {!Stylesheet.statement_children}, so it reaches every
+    statement the AST can hold rather than a listed set of at-rules.
 
     Example: Collect all selectors from all rules (including nested ones):
     {[
@@ -504,7 +506,11 @@ val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
     ]} *)
 
 val media_queries : t -> (Media.t * statement list) list
-(** [media_queries t] returns media queries and their rule statements. *)
+(** [media_queries t] is every [@media] in [t], at any depth, paired with the
+    rule statements below its brace. A query inside a group at-rule counts, and
+    a rule nested in another rule or held by an inner group is one of the
+    query's rules; a nested rule keeps the relative selector it was written
+    with. *)
 
 val layers : t -> string list
 (** [layers t] is every cascade layer [t] declares, one dotted path per layer
