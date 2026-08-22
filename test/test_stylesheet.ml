@@ -7893,4 +7893,141 @@ let walker_tests =
           (parse_shapes ()) );
   ]
 
-let suite = ("stylesheet", stylesheet_tests @ additional_tests @ walker_tests)
+(* One declaration per place a statement can hold one, each under a property
+   name that names only that place, so a walk that misses a place is a missing
+   name rather than a smaller count. *)
+let every_declaration_place =
+  ".el { color: red }\n\
+   @media print { .m { display: none } }\n\
+   @layer l { .l { float: left } }\n\
+   @container (width > 1px) { .c { clear: both } }\n\
+   @supports (display: grid) { .s { z-index: 1 } }\n\
+   @-moz-document url-prefix(\"x\") { .d { direction: rtl } }\n\
+   @starting-style { .ss { opacity: 0 } }\n\
+   @scope (.a) to (.b) { .sc { visibility: hidden } }\n\
+   @when media(print) { .w { order: 1 } }\n\
+   @else { .e { order: 2 } }\n\
+   .parent { & .nested { overflow: hidden } }\n\
+   @keyframes k { from { rotate: 0deg } }\n\
+   @page { size: a4 }\n\
+   @page :first { @top-left { content: \"tl\" } }\n\
+   @position-try --pt { inset: 1px }\n\
+   @supports-condition --sc { padding: 1px }\n"
+
+let parsed source =
+  match Css.of_string source with
+  | Ok { Css.stylesheet; _ } -> stylesheet
+  | Error err ->
+      Alcotest.failf "declaration-place corpus did not parse: %s"
+        (Cascade.Error.to_string err)
+
+let places () =
+  (* [Origin] has no CSS syntax, so it can only be built. *)
+  parsed every_declaration_place
+  @ [ with_origin Author (parsed ".o { top: 1px }") ]
+
+let properties_folded ?sites () =
+  List.sort compare
+    (fold_declarations ?sites
+       (fun acc decls ->
+         List.rev_append (List.map Css.Declaration.property_name decls) acc)
+       [] (places ()))
+
+let element_places =
+  [
+    "clear";
+    "color";
+    "direction";
+    "display";
+    "float";
+    "opacity";
+    "order";
+    "order";
+    "overflow";
+    "top";
+    "visibility";
+    "z-index";
+  ]
+
+let other_places = [ "content"; "inset"; "padding"; "rotate"; "size" ]
+
+let deep_walker_tests =
+  [
+    ( "fold_declarations reaches every place a declaration sits",
+      `Quick,
+      fun () ->
+        Alcotest.(check (list string))
+          "every property"
+          (List.sort compare (element_places @ other_places))
+          (properties_folded ()) );
+    ( "fold_declarations keeps to the sites it is given",
+      `Quick,
+      fun () ->
+        (* The narrow walk names the places it wants rather than the statements
+           it expects to meet, so leaving one out is a stated choice. *)
+        let sites =
+          {
+            element_rule = true;
+            animation_frame = false;
+            page_box = false;
+            position_fallback = false;
+            condition_test = false;
+          }
+        in
+        Alcotest.(check (list string))
+          "element declarations only"
+          (List.sort compare element_places)
+          (properties_folded ~sites ()) );
+    ( "map_declarations rewrites every place a declaration sits",
+      `Quick,
+      fun () ->
+        let emptied = map_declarations (fun _ -> []) (places ()) in
+        Alcotest.(check (list string))
+          "nothing left" []
+          (fold_declarations
+             (fun acc decls ->
+               List.rev_append
+                 (List.map Css.Declaration.property_name decls)
+                 acc)
+             [] emptied) );
+    ( "map_declarations keeps an unchanged tree",
+      `Quick,
+      fun () ->
+        let block = places () in
+        if not (map_declarations Fun.id block == block) then
+          Alcotest.fail "declaration map rebuilt an unchanged stylesheet" );
+    ( "iter_statements reaches a statement inside every at-rule",
+      `Quick,
+      fun () ->
+        let seen = ref [] in
+        iter_statements
+          (fun stmt ->
+            match stmt with
+            | Rule r ->
+                seen := Selector.to_string ~minify:true r.selector :: !seen
+            | _ -> ())
+          (places ());
+        Alcotest.(check (list string))
+          "every rule"
+          (List.sort compare
+             [
+               ".el";
+               ".m";
+               ".l";
+               ".c";
+               ".s";
+               ".d";
+               ".ss";
+               ".sc";
+               ".w";
+               ".e";
+               ".parent";
+               "& .nested";
+               ".o";
+             ])
+          (List.sort compare !seen) );
+  ]
+
+let suite =
+  ( "stylesheet",
+    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests )

@@ -169,6 +169,12 @@
   return the very statement they were given when the function they run leaves
   every list physically unchanged. A pass that short-circuits on physical
   equality can now call them instead of hand-rolling its own walk (#355)
+- `Css.Stylesheet.fold_statements`, `iter_statements`, `fold_declarations`,
+  `iter_declarations` and `map_declarations` walk a whole block: every statement
+  a rule nests, and every declaration an at-rule holds outside a block. The
+  declaration walks take `?sites` to name the places a narrow walk wants, so a
+  place added to `declaration_sites` stops every walk that made a choice from
+  compiling (#356)
 
 ### CLI tools
 

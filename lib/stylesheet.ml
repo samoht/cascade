@@ -413,6 +413,82 @@ let map_statement_declarations f stmt =
   | View_transition _ | Viewport _ | Unknown_at_rule _ ->
       stmt
 
+(* Where in a stylesheet a declaration sits. This is the one classification of
+   the declaration-carrying statements: [statement_declarations] extracts the
+   lists, this says what they are, and the walks below filter on it. Exhaustive
+   for the same reason as the extractors. *)
+type declaration_site =
+  | No_declarations
+  | Element_rule
+  | Animation_frame
+  | Page_box
+  | Position_fallback
+  | Condition_test
+
+let declaration_site = function
+  | Rule _ | Declarations _ -> Element_rule
+  | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> Animation_frame
+  | Page _ | Page_with_margins _ -> Page_box
+  | Position_try _ -> Position_fallback
+  | Supports_condition _ -> Condition_test
+  | Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+  | When _ | Else _ | Starting_style _ | Origin _ | Scope _ | Font_face _
+  | Counter_style _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Viewport _ | Unknown_at_rule _ ->
+      No_declarations
+
+type declaration_sites = {
+  element_rule : bool;
+  animation_frame : bool;
+  page_box : bool;
+  position_fallback : bool;
+  condition_test : bool;
+}
+
+let every_site =
+  {
+    element_rule = true;
+    animation_frame = true;
+    page_box = true;
+    position_fallback = true;
+    condition_test = true;
+  }
+
+let site_selected sites = function
+  | No_declarations -> false
+  | Element_rule -> sites.element_rule
+  | Animation_frame -> sites.animation_frame
+  | Page_box -> sites.page_box
+  | Position_fallback -> sites.position_fallback
+  | Condition_test -> sites.condition_test
+
+let rec fold_statements f acc block =
+  List.fold_left
+    (fun acc stmt -> fold_statements f (f acc stmt) (statement_children stmt))
+    acc block
+
+let iter_statements f block = fold_statements (fun () stmt -> f stmt) () block
+
+let fold_declarations ?(sites = every_site) f acc block =
+  fold_statements
+    (fun acc stmt ->
+      if site_selected sites (declaration_site stmt) then
+        f acc (statement_declarations stmt)
+      else acc)
+    acc block
+
+let iter_declarations ?sites f block =
+  fold_declarations ?sites (fun () decls -> f decls) () block
+
+let map_declarations f block =
+  let rec statement stmt =
+    map_statement_children
+      (Common.List.map_preserve statement)
+      (map_statement_declarations f stmt)
+  in
+  Common.List.map_preserve statement block
+
 (** {1 Pretty Printing} *)
 
 let pp_property_rule : 'a property_rule Pp.t =

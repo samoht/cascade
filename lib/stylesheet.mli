@@ -259,6 +259,65 @@ val map_statement_declarations :
     of [@page] keeps its own block. It preserves physical identity: when [f]
     returns every list it was given, the result is [stmt] itself. *)
 
+type declaration_sites = {
+  element_rule : bool;
+      (** A style rule or a bare nesting block: declarations that apply to an
+          element. *)
+  animation_frame : bool;
+      (** A frame of [@keyframes] (and of its [-webkit-] / [-moz-] spellings):
+          declarations in the animation origin. *)
+  page_box : bool;
+      (** [@page] and its margin boxes: declarations that apply to a page box
+          rather than to an element. *)
+  position_fallback : bool;
+      (** [@position-try]: declarations in the position fallback origin. *)
+  condition_test : bool;
+      (** [@supports-condition]: declarations that are tested rather than
+          applied. *)
+}
+(** The places a stylesheet holds declarations, grouped by what the declarations
+    there mean rather than by which at-rule spells them. A walk that wants only
+    some of them says so with this record instead of matching on the statements
+    it expects to meet, which separates a narrow walk from one that forgot an
+    at-rule, and makes a place added here a compile error in every walk that
+    made a choice. *)
+
+val fold_statements : ('a -> statement -> 'a) -> 'a -> block -> 'a
+(** [fold_statements f acc block] folds [f] over [block] and over every
+    statement reachable from it through {!statement_children}, in source order,
+    a statement before the statements it holds. *)
+
+val iter_statements : (statement -> unit) -> block -> unit
+(** [iter_statements f block] applies [f] to every statement {!fold_statements}
+    reaches. *)
+
+val fold_declarations :
+  ?sites:declaration_sites ->
+  ('a -> declaration list -> 'a) ->
+  'a ->
+  block ->
+  'a
+(** [fold_declarations f acc block] folds [f] over the declarations of every
+    statement {!fold_statements} reaches, so a rule nested in a rule and an
+    at-rule that holds declarations outside a block are both covered. [f] sees
+    one statement's declarations at a time, as {!statement_declarations} returns
+    them. [sites] defaults to every place a declaration sits; pass it to fold
+    over some of them, and write the record out in full so that a place added to
+    it does not compile until this walk has been read again. *)
+
+val iter_declarations :
+  ?sites:declaration_sites -> (declaration list -> unit) -> block -> unit
+(** [iter_declarations f block] applies [f] to the declaration lists
+    {!fold_declarations} folds over. *)
+
+val map_declarations : (declaration list -> declaration list) -> block -> block
+(** [map_declarations f block] rewrites the declarations of every statement
+    {!fold_statements} reaches. [f] sees each declaration list as its own list,
+    as {!map_statement_declarations} hands them over, so every frame of
+    [@keyframes] and every margin rule of [@page] keeps its own block. It
+    preserves physical identity: when [f] returns every list it was given, the
+    result is [block] itself. *)
+
 (** {1 Reading/Parsing} *)
 
 val read_rule : ?nested:bool -> Cursor.t -> rule
