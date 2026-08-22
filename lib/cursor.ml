@@ -455,6 +455,11 @@ let is_bang_cv = function
 let consume_until_semicolon ?(trim = false) t =
   string_of_components ~trim (drain_until_raw is_semicolon_cv t)
 
+let rec skip_past_semicolon t =
+  match next_raw t with
+  | None -> ()
+  | Some cv -> if not (is_semicolon_cv cv) then skip_past_semicolon t
+
 let consume_to_decl_end ?(trim = false) t =
   string_of_components ~trim
     (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)

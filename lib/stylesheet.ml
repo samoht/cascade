@@ -1783,15 +1783,6 @@ let read_descriptor_value read_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
-(* CSS Syntax 3 sec. 5.4.4: a declaration that fails to parse ends at the next
-   top-level [;]; a [{}] met on the way is one component value of the value
-   being skipped, not a stopping point. *)
-let rec skip_bad_rule_item inner =
-  match Cursor.next_raw inner with
-  | None -> ()
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-  | Some _ -> skip_bad_rule_item inner
-
 (* CSS Syntax 3 sec. 5.4.2: an at-rule ends at its block or at its [;].
    Discarding an invalid one consumes exactly that far, so the declarations
    written after it stay in the rule. *)
@@ -1812,7 +1803,7 @@ let skip_invalid_item r =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
       skip_at_rule r
-  | _ -> skip_bad_rule_item r
+  | _ -> Cursor.skip_past_semicolon r
 
 (* Read a body one item at a time, [step] committing each item to the
    accumulator before the next is read, so an item dropped in recovery costs
@@ -2158,13 +2149,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
            or an invalid value of a known one ([font-display:maybe]) - is
            dropped and the rest of the @font-face is kept, matching browsers. *)
         Cursor.push_warning r e;
-        let rec skip_to_semicolon () =
-          match Cursor.next_raw r with
-          | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-              ()
-          | Some _ -> skip_to_semicolon ()
-        in
-        skip_to_semicolon ();
+        Cursor.skip_past_semicolon r;
         None
 
 let read_font_face_block inner =
@@ -2654,14 +2639,6 @@ let read_font_feature_value_entry outer inner : (string * int list) option =
 let replace_font_feature_value ((name, _) as entry) acc =
   entry :: List.filter (fun (existing, _) -> existing <> name) acc
 
-let skip_semicolon_tail inner =
-  let rec loop () =
-    match Cursor.next_raw inner with
-    | None | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-    | Some _ -> loop ()
-  in
-  loop ()
-
 let read_font_feature_values_entries outer =
   let rec loop inner acc =
     match read_font_feature_value_entry outer inner with
@@ -2671,7 +2648,7 @@ let read_font_feature_values_entries outer =
         if Cursor.is_done inner then List.rev acc else loop inner acc
     | exception Error.Parse_error e ->
         Cursor.push_warning inner e;
-        skip_semicolon_tail inner;
+        Cursor.skip_past_semicolon inner;
         loop inner acc
   in
   Cursor.braces (fun inner -> loop inner []) outer
@@ -3484,7 +3461,7 @@ and read_nesting_block (r : Cursor.t) : block =
     | item -> add_item acc item
     | exception Error.Parse_error e ->
         Cursor.push_warning r e;
-        skip_bad_rule_item r;
+        Cursor.skip_past_semicolon r;
         read_items acc
   and add_item acc = function
     | `Done -> List.rev (seal_declaration_run acc)
@@ -3673,7 +3650,7 @@ and read_recovering_rule_item selector inner loop decls nested =
   | `Continue (decls, nested) -> loop decls nested
   | exception Error.Parse_error e ->
       Cursor.push_warning inner e;
-      skip_bad_rule_item inner;
+      Cursor.skip_past_semicolon inner;
       loop decls nested
 
 and read_rule ?(nested = false) (r : Cursor.t) : rule =
