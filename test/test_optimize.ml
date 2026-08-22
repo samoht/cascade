@@ -2228,7 +2228,24 @@ let same_selector_merge_past_nested () =
     "a nested @container setting the same property blocks it"
     ".a{color:red;@container(width>=1px){padding:2rem}}.a{padding:1rem}"
     (canon
-       ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}")
+       ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}");
+  (* The merged rule replays every declaration ahead of every nested block, so
+     no order of the rules rescues a merge a later declaration would have to
+     cross: [color:green] wins over the [@media] wherever it applies, and
+     merging hands the win back to the [@media]. *)
+  Alcotest.(check string)
+    "a later declaration overriding a nested @media blocks the merge"
+    ".a{padding:1rem;@media(width>=1px){color:#00f}}.a{color:green}"
+    (canon ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{color:green}");
+  (* Two nested blocks setting a common property race in the order the merged
+     rule replays them, which stays the order they were written in. *)
+  Alcotest.(check string)
+    "nested blocks setting a common property keep their order"
+    ".a{padding:1rem;margin:1rem;@media(width>=1px){color:#00f}@media(width>=2px){color:green}}"
+    (canon
+       ".a{padding:1rem;@media \
+        (min-width:1px){color:blue}}.a{margin:1rem;@media \
+        (min-width:2px){color:green}}")
 
 (* A run of declarations written after a nested statement (CSS Nesting 1 sec.
    3.4) is a declaration list like any other, with nothing between two writes
