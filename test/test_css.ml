@@ -388,6 +388,28 @@ let test_map_nested () =
     "map descends into media" true
     (Astring.String.is_infix ~affix:"color:#00f" css)
 
+(* Every conditional group at-rule holding [body]. [map] and [sort] speak of
+   "all rules at all nesting levels", so each of these has to give the same
+   answer as [@media]: they all wrap style rules, and which one wraps them is
+   not something a caller rewriting or reordering rules asked about. *)
+let conditional_groups body =
+  [
+    ("@media", Stylesheet.Media (Media.of_string "screen", body));
+    ("@supports", Stylesheet.Supports (Supports.of_string "(top: 0)", body));
+    ("@container", Stylesheet.Container (None, None, body));
+    ("@layer", Stylesheet.Layer (Some "a", body));
+    ("@origin", Stylesheet.Origin (Stylesheet.Author, body));
+    ("@scope", Stylesheet.Scope (Some (Selector.class_ "card"), None, body));
+    ("@starting-style", Stylesheet.Starting_style body);
+    ( "@-moz-document",
+      Stylesheet.Moz_document
+        ([ Stylesheet.Url_prefix (Some "https://example.com/") ], body) );
+    ( "@when",
+      Stylesheet.When
+        (Stylesheet.Media_condition (Media.of_string "screen"), body) );
+    ("@else", Stylesheet.Else (None, body));
+  ]
+
 let test_spec_map_conditional_boundaries () =
   let recolor sel _decls =
     rule ~selector:sel [ color (Css.Values.hex "0000ff") ]
@@ -419,7 +441,20 @@ let test_spec_map_conditional_boundaries () =
     "map preserves condition boundaries" true
     (Astring.String.is_infix ~affix:"@supports" css
     && Astring.String.is_infix ~affix:"@container" css
-    && Astring.String.is_infix ~affix:"@layer" css)
+    && Astring.String.is_infix ~affix:"@layer" css);
+  let missed =
+    List.filter_map
+      (fun (label, stmt) ->
+        let mapped = Css.map recolor [ stmt ] in
+        let css = Css.to_string ~minify:true (v mapped) in
+        if Astring.String.is_infix ~affix:"color:#00f" css then None
+        else Some label)
+      (conditional_groups
+         [ rule ~selector:(Selector.class_ "a") [ color (hex "#ff0000") ] ])
+  in
+  if missed <> [] then
+    Alcotest.failf "map did not reach the rules of: %s"
+      (String.concat ", " missed)
 
 (* Test Css.sort - sorts rules by custom comparison *)
 let test_sort () =
@@ -511,7 +546,65 @@ let test_spec_sort_conditional_boundaries () =
   let bbb = Astring.String.find_sub ~sub:".bbb" css |> Option.get in
   let yyy = Astring.String.find_sub ~sub:".yyy" css |> Option.get in
   Alcotest.(check bool) "sort descends into container" true (aaa < zzz);
-  Alcotest.(check bool) "sort descends into layer" true (bbb < yyy)
+  Alcotest.(check bool) "sort descends into layer" true (bbb < yyy);
+  let unsorted =
+    List.filter_map
+      (fun (label, stmt) ->
+        let css = Css.to_string ~minify:true (v (Css.sort cmp [ stmt ])) in
+        let at sub = Astring.String.find_sub ~sub css in
+        match (at ".aaa", at ".zzz") with
+        | Some a, Some z when a < z -> None
+        | _ -> Some label)
+      (conditional_groups
+         [
+           rule ~selector:(Selector.class_ "zzz") [ color (hex "#ff0000") ];
+           rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ];
+         ])
+  in
+  if unsorted <> [] then
+    Alcotest.failf "sort did not reach the rules of: %s"
+      (String.concat ", " unsorted)
+
+(* An [@else] answers the [@when] before it, so a chain is one unit: sorting may
+   not put a rule between its links nor swap them. [sort] moves rules ahead of
+   the at-rules they sit among and leaves the at-rules in source order, which
+   holds the chain together wherever it sits, including in a block [sort] only
+   reaches by descending. *)
+let test_spec_sort_when_else_chain () =
+  let cmp (sel1, _) (sel2, _) =
+    String.compare (Selector.to_string sel1) (Selector.to_string sel2)
+  in
+  let when_link =
+    Stylesheet.When
+      ( Stylesheet.Media_condition (Media.of_string "screen"),
+        [ rule ~selector:(Selector.class_ "w") [ color (hex "#ff0000") ] ] )
+  in
+  let else_link =
+    Stylesheet.Else
+      (None, [ rule ~selector:(Selector.class_ "e") [ color (hex "#00ff00") ] ])
+  in
+  let chain = [ when_link; else_link ] in
+  let zzz = rule ~selector:(Selector.class_ "zzz") [ color (hex "#ff0000") ] in
+  let aaa = rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ] in
+  let check label stmts =
+    let css = Css.to_string ~minify:true (v (Css.sort cmp stmts)) in
+    Alcotest.(check bool)
+      (label ^ ": @else still answers its @when")
+      true
+      (Astring.String.is_infix
+         ~affix:"@when media(screen){.w{color:#f00}}@else{.e{color:#0f0}}" css)
+  in
+  check "top level" chain;
+  check "rules around the chain" ((zzz :: chain) @ [ aaa ]);
+  check "rule between the links" [ when_link; aaa; else_link ];
+  check "inside @media" [ Stylesheet.Media (Media.of_string "print", chain) ];
+  check "inside @scope"
+    [ Stylesheet.Scope (Some (Selector.class_ "card"), None, chain) ];
+  check "inside @when"
+    [
+      Stylesheet.When
+        (Stylesheet.Media_condition (Media.of_string "print"), chain);
+    ]
 
 let public_fold_edges () =
   let title = Selector.class_ "title" in
@@ -1223,6 +1316,8 @@ let suite =
       Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
       Alcotest.test_case "spec sort conditional boundaries" `Quick
         test_spec_sort_conditional_boundaries;
+      Alcotest.test_case "spec sort keeps a when/else chain" `Quick
+        test_spec_sort_when_else_chain;
       Alcotest.test_case "public fold edge traversal" `Quick public_fold_edges;
       Alcotest.test_case "public custom property scoping" `Quick
         public_custom_props_edges;
