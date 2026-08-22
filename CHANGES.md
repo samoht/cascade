@@ -414,6 +414,11 @@
 
 ### Canonical diff
 
+- `Css_compare.equivalent_value ~property` spells the property name the way the
+  printer spells it before giving the two values that declaration context. A
+  name carrying a `}` (CSS Syntax 3 sec. 4.3.7 puts one there through an escape)
+  closed the rule and took both values with it, so any two values under such a
+  name compared equal (#440)
 - A fully transparent missing-axis `oklab()` colour, such as
   `oklab(0% none none / 0)`, canonicalises to transparent black while
   non-transparent forms remain distinct (#312)
