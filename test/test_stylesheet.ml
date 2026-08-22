@@ -2122,6 +2122,79 @@ let spec_descriptor_recovery_warns_once_per_descriptor () =
   warns_exactly "@font-feature-values Xf { @swash { s: 1 } }" 0;
   warns_exactly "@font-feature-values Xf { ;; @swash { s: 1 } }" 0
 
+(* CSS Animations 1 sec. 3 fills a [@keyframes] body with keyframe rules, so it
+   is a list of rules: an at-rule has no place there, and CSS Syntax 3 sec.
+   5.4.2 ends the one being discarded at its own [{}] block or at its [;],
+   leaving the keyframes written around it in the animation. A [(] or a [[] met
+   in the prelude on the way is a component value of that prelude, not an end.
+   Blink 146 keeps both neighbours in every case below. *)
+let spec_lenient_recovery_keyframes_at_rule () =
+  let recovered = "@keyframes k{0%{color:red}50%{background:#0f0}}" in
+  let body rest = "@keyframes k { " ^ rest ^ " }" in
+  lenient_recover "at-rule first in @keyframes"
+    (body
+       "@media print { to { color: pink } } from { color: red } 50% { \
+        background: lime }")
+    recovered 1;
+  lenient_recover "at-rule mid-body in @keyframes"
+    (body
+       "from { color: red } @media print { to { color: pink } } 50% { \
+        background: lime }")
+    recovered 1;
+  lenient_recover "at-rule last in @keyframes"
+    (body
+       "from { color: red } 50% { background: lime } @media print { to { \
+        color: pink } }")
+    recovered 1;
+  lenient_recover "at-rule with no block in @keyframes ends at its semicolon"
+    (body "from { color: red } @zzz; 50% { background: lime }")
+    recovered 1;
+  lenient_recover "a paren in the prelude of a dropped @keyframes at-rule"
+    (body
+       "from { color: red } @media (min-width: 1px) { to { color: pink } } 50% \
+        { background: lime }")
+    recovered 1;
+  lenient_recover "a bracket in the prelude of a dropped @keyframes at-rule"
+    (body
+       "from { color: red } @zzz [a] { to { color: pink } } 50% { background: \
+        lime }")
+    recovered 1;
+  lenient_recover "two at-rules in @keyframes are dropped one at a time"
+    (body
+       "from { color: red } @media print { a: b } @supports (display: grid) { \
+        b: c } 50% { background: lime }")
+    recovered 2;
+  (* The animation outlives its only item, as it does in Blink 146: what is left
+     is a [@keyframes] that animates nothing. *)
+  lenient_recover "at-rule alone in @keyframes"
+    (body "@media print { to { color: pink } }")
+    "@keyframes k{}" 1;
+  lenient_recover "a dropped at-rule in @keyframes keeps the sheet whole"
+    (".a { color: red } "
+    ^ body
+        "from { color: red } @media print { to { color: pink } } 50% { \
+         background: lime }"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* Each dropped keyframe rule reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. *)
+let spec_keyframes_recovery_warns_once_per_rule () =
+  let body rest = "@keyframes k { " ^ rest ^ " }" in
+  warns_exactly
+    (body
+       "from { color: red } @media print { to { color: pink } } 50% { \
+        background: lime }")
+    1;
+  warns_exactly
+    (body
+       "from { color: red } @media print { a: b } @supports (display: grid) { \
+        b: c } 50% { background: lime }")
+    2;
+  warns_exactly (body "from { color: red } @zzz; 50% { background: lime }") 1;
+  warns_exactly (body "from { color: red } 50% { background: lime }") 0
+
 let stylesheet_tests =
   [
     (* Core type tests *)
@@ -2251,6 +2324,12 @@ let stylesheet_tests =
     ( "spec descriptor recovery warns once per dropped descriptor",
       `Quick,
       spec_descriptor_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in a @keyframes body",
+      `Quick,
+      spec_lenient_recovery_keyframes_at_rule );
+    ( "spec keyframes recovery warns once per dropped rule",
+      `Quick,
+      spec_keyframes_recovery_warns_once_per_rule );
   ]
 
 (* Tests for newly added check functions *)
