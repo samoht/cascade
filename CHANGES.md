@@ -126,6 +126,14 @@
   declaration above a normal one whatever their order, and Blink 146 reads the
   important one back in a page body and in a margin box alike. Two declarations
   of the same importance still keep the last (#404)
+- A page-margin box with an empty block is read instead of erroring under
+  `~strict:true` and being dropped with a warning otherwise, so
+  `@page { @top-center { } }` no longer takes its `@page` with it. CSS Paged
+  Media 3 sec. 5 gives a margin at-rule a `<declaration-list>`, which CSS Syntax
+  3 sec. 5.4.4 consumes even when it holds nothing, and Blink 146 keeps the box.
+  Sec. 5 generates the box only where `content` computes away from `none`, so an
+  empty one is elided on output like an empty style rule and an empty `@page`
+  already are (#405)
 
 ### Minification
 

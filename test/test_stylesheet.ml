@@ -1705,8 +1705,9 @@ let spec_lenient_recovery_page_margin_box () =
   lenient_recover "selector-shaped item in a margin box with a semicolon"
     "@page { @top-center { content: \"x\"; .a { b: c }; margin: 0 } }" recovered
     1;
-  (* [read_page_margin_rule] rejects a box left with no descriptor, so the box
-     goes with its only item; Blink 146 keeps an empty [@top-center { }]. *)
+  (* The box outlives its only item, as it does in Blink 146, and what is left
+     is an empty box: nothing to paint, so it is elided on output like any other
+     block that applies nothing, and the page it empties goes with it. *)
   lenient_recover "selector-shaped item alone in a page margin box"
     "@page { @top-center { .a { b: c } } }" "" 1
 

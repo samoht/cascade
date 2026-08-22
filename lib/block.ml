@@ -517,6 +517,22 @@ let is_empty_statement ~chained = function
   | Position_try _ | Viewport _ | Unknown_at_rule _ ->
       false
 
+(* CSS Paged Media 3 sec. 5 generates a page-margin box only where its [content]
+   computes away from [none], so a box holding no descriptor generates nothing.
+   Stripping those first lets [is_empty_statement] drop the page they leave with
+   neither descriptor nor box. *)
+let drop_empty_margin_boxes stmt =
+  match stmt with
+  | Page_with_margins (selector, descriptors, margins) ->
+      let kept =
+        list_filter_preserve
+          (fun (m : page_margin_rule) -> m.descriptors <> [])
+          margins
+      in
+      if kept == margins then stmt
+      else Page_with_margins (selector, descriptors, kept)
+  | stmt -> stmt
+
 (* The tail is filtered first, so a branch is judged against the [@else] that
    survives rather than the one written: an empty [@when] whose only [@else] is
    itself empty goes with it in one pass. *)
@@ -525,12 +541,13 @@ let rec drop_empty_rules stmts =
   | [] -> []
   | stmt :: rest ->
       let rest' = drop_empty_rules rest in
+      let stmt' = drop_empty_margin_boxes stmt in
       let chained =
         match rest' with Else _ :: _ -> true | [] | _ :: _ -> false
       in
-      if is_empty_statement ~chained stmt then rest'
-      else if rest' == rest then stmts
-      else stmt :: rest'
+      if is_empty_statement ~chained stmt' then rest'
+      else if rest' == rest && stmt' == stmt then stmts
+      else stmt' :: rest'
 
 (* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
    and may interleave with [@charset] / [@import] / [@namespace], so a
