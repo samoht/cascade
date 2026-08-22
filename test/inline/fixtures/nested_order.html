@@ -8,6 +8,7 @@
   .n6 { --w: 40px; & b { --w: 50px } width: var(--w) }
   .n7 { @media (min-width: 1px) { color: blue } color: green !important }
   .n8 { color: red; @media (min-width: 1px) { padding: 3px } color: green; & i { width: 8px } font-size: 20px }
+  .n9 { @media (min-width: 1px) { color: blue } color: red; color: green }
 </style></head><body>
 <div class="n1">a<b>x</b></div>
 <div class="n2">b</div>
@@ -17,4 +18,5 @@
 <div class="n6">f<b>z</b></div>
 <div class="n7">g</div>
 <div class="n8">h<i>w</i></div>
+<div class="n9">i</div>
 </body></html>
