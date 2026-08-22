@@ -488,56 +488,19 @@ let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
 
+(* A WebKit workaround is a property of the declaration, so it applies wherever
+   the declaration sits. *)
 let apply_property_duplication (stylesheet : t) : t =
-  (* Apply only property duplication without other optimizations. Each level
-     keeps its node when nothing below changed, so an untouched subtree stays
-     physically shared (no whole-tree rebuild on a no-op). *)
-  let rec apply_to_statements stmts =
-    list_map_preserve
-      (fun stmt ->
-        match stmt with
-        | Rule rule ->
-            let declarations = duplicate_buggy_properties rule.declarations in
-            if declarations == rule.declarations then stmt
-            else Rule { rule with declarations }
-        | Media (cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Media (cond, inner')
-        | Layer (name, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Layer (name, inner')
-        | Container (name, cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Container (name, cond, inner')
-        | Supports (cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Supports (cond, inner')
-        | Origin (origin, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Origin (origin, inner')
-        | other -> other)
-      stmts
-  in
-  apply_to_statements stylesheet
+  map_declarations duplicate_buggy_properties stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
     [@position-try], [@supports-condition]) and removes declarations whose typed
     value contains an [Invalid] arm. *)
 let drop_invalid (stylesheet : t) : t =
-  let filter_decls =
-    list_filter_preserve (fun d -> not (Declaration.is_invalid d))
-  in
-  let rec statement stmt =
-    let stmt = map_statement_declarations filter_decls stmt in
-    match stmt with
-    | Rule rule ->
-        let nested = list_map_preserve statement rule.nested in
-        let rule' = rule_with_nested rule nested in
-        if rule' == rule then stmt else Rule rule'
-    | stmt -> map_statement_children (list_map_preserve statement) stmt
-  in
-  list_map_preserve statement stylesheet
+  map_declarations
+    (list_filter_preserve (fun d -> not (Declaration.is_invalid d)))
+    stylesheet
 
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
     depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
@@ -664,29 +627,20 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
      (CSS Properties and Values API 1 SS 2). Tailwind emits its [@property]
      rules after the [@layer] that uses them, so collect every registration in a
      first pass before promoting any declaration. *)
-  let rec collect_stmt (stmt : statement) : unit =
-    match stmt with
-    | Property pr ->
-        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
-    | _ -> List.iter collect_stmt (statement_children stmt)
-  in
-  List.iter collect_stmt stmts;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr ->
+          Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
+      | _ -> ())
+    stmts;
   let promote_decls =
     list_map_preserve (promote_registered_custom_decl ~lossless registry)
   in
   (* A registration is document-global, so every declaration of that name is
      typed wherever it is written: through the declaration walker rather than a
      list of the at-rules that came to mind. *)
-  let rec walk_stmt (stmt : statement) : statement =
-    let stmt = map_statement_declarations promote_decls stmt in
-    match stmt with
-    | Rule r ->
-        let nested = list_map_preserve walk_stmt r.nested in
-        let r' = rule_with_nested r nested in
-        if r' == r then stmt else Rule r'
-    | stmt -> map_statement_children (list_map_preserve walk_stmt) stmt
-  in
-  list_map_preserve walk_stmt stmts
+  map_declarations promote_decls stmts
 
 (* Compressibility pass: put each rule's declarations in a deterministic
    cross-rule order so gzip back-references line up, keeping cascade-significant
@@ -710,24 +664,12 @@ let canonicalize_declaration_order stmts =
    initial). *)
 let collect_position_try_names stylesheet =
   let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Position_try (name, _) -> Hashtbl.replace known name ()
-    | Rule rule -> List.iter collect rule.nested
-    | Layer (_, b)
-    | Media (_, b)
-    | Container (_, _, b)
-    | Supports (_, b)
-    | Moz_document (_, b)
-    | When (_, b)
-    | Else (_, b)
-    | Starting_style b
-    | Origin (_, b)
-    | Scope (_, _, b) ->
-        List.iter collect b
-    | _ -> ()
-  in
-  List.iter collect stylesheet;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Position_try (name, _) -> Hashtbl.replace known name ()
+      | _ -> ())
+    stylesheet;
   known
 
 let rec prune_position_try_decl known (decl : Declaration.declaration) :
@@ -807,35 +749,24 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
    longhands. *)
 let registered_foldable (stylesheet : t) : string -> bool =
   let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Property pr -> (
-        match pr.initial_value with
-        | Some _ ->
-            (* [@property] names carry the [--] prefix; [var()] references store
-               the bare name, so normalise to the bare form for lookup. *)
-            let key =
-              if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
-              then String.sub pr.name 2 (String.length pr.name - 2)
-              else pr.name
-            in
-            Hashtbl.replace tbl key ()
-        | None -> ())
-    | Rule rule -> List.iter collect rule.nested
-    | Layer (_, b)
-    | Media (_, b)
-    | Container (_, _, b)
-    | Supports (_, b)
-    | Moz_document (_, b)
-    | When (_, b)
-    | Else (_, b)
-    | Starting_style b
-    | Origin (_, b)
-    | Scope (_, _, b) ->
-        List.iter collect b
-    | _ -> ()
-  in
-  List.iter collect stylesheet;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr -> (
+          match pr.initial_value with
+          | Some _ ->
+              (* [@property] names carry the [--] prefix; [var()] references
+                 store the bare name, so normalise to the bare form for
+                 lookup. *)
+              let key =
+                if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
+                then String.sub pr.name 2 (String.length pr.name - 2)
+                else pr.name
+              in
+              Hashtbl.replace tbl key ()
+          | None -> ())
+      | _ -> ())
+    stylesheet;
   fun name -> Hashtbl.mem tbl name
 
 (* CSS Properties and Values API 1: a custom property registered with a
@@ -860,14 +791,14 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
       String.sub name 2 (String.length name - 2)
     else name
   in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Property pr ->
-        if syntax_is_single_valued pr.syntax then
-          Hashtbl.replace tbl (bare pr.name) ()
-    | _ -> List.iter collect (statement_children stmt)
-  in
-  List.iter collect stmts;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr ->
+          if syntax_is_single_valued pr.syntax then
+            Hashtbl.replace tbl (bare pr.name) ()
+      | _ -> ())
+    stmts;
   { Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name) }
 
 let normalize_live_declarations ~ctx ~lossless decls =
@@ -1026,14 +957,10 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
           (Variables.var_refs_in_value_string
              (Declaration.string_of_declaration ~minify:true d)))
   in
-  (* Through the exhaustive pair rather than a local match: a reference the walk
+  (* Through the exhaustive walk rather than a local match: a reference it
      cannot reach reads as no reference at all, and [@keyframes], [@page] and
      [@position-try] hold their declarations outside any block. *)
-  let rec walk stmt =
-    note_decls (Stylesheet.statement_declarations stmt);
-    List.iter walk (Stylesheet.statement_children stmt)
-  in
-  List.iter walk stmts;
+  iter_declarations note_decls stmts;
   tbl
 
 (* Drop custom-property bindings referenced by no [var()] - a dead binding has
