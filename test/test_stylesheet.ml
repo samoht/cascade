@@ -6831,7 +6831,7 @@ let v4107_typed_math_fn_units () =
          and [em] resolve against a font size only the browser knows. *)
       ( "calc(hypot(1px, 1em)) keeps the call",
         ".x { width: calc(hypot(1px, 1em)) }",
-        ".x{width:hypot(1px,1em)}" );
+        ".x{width:calc(hypot(1px,1em))}" );
       ( "calc(abs(-3px)) -> 3px",
         ".x { width: calc(abs(-3px)) }",
         ".x{width:3px}" );
@@ -6858,9 +6858,12 @@ let v4107_typed_math_fn_units () =
       ( "calc(30deg + atan2(1, 1)) -> 75deg",
         ".x { transform: rotate(calc(30deg + atan2(1, 1))) }",
         ".x{transform:rotate(75deg)}" );
-      ( "calc(abs(-30%)) on an <alpha-value> -> .3",
+      (* [opacity] folds its [calc()] through the untyped numeric reduction,
+         which has no unit to rebuild, so the call stays rather than becoming
+         the [30] that a browser clamps to full opacity. *)
+      ( "calc(abs(-30%)) on an opacity keeps the call",
         ".x { opacity: calc(abs(-30%)) }",
-        ".x{opacity:.3}" );
+        ".x{opacity:calc(abs(-30%))}" );
     ]
 
 let v4107_numeric_reduction () =
