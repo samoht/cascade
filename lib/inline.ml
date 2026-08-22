@@ -63,7 +63,7 @@ let selector_covers ~ancestor ~consumer =
 
 type at_node =
   | Media of Media.t
-  | Layer of string option
+  | Layer of Stylesheet.layer_name option
   | Supports of Supports.t
   | Moz_document of moz_document_condition list
   | Container of string option * Container.t option
@@ -1181,37 +1181,36 @@ let var_census stylesheet =
 
 (* Document-order cascade layer names (dotted for nesting), low precedence
    first: the order in which layers are first introduced (css-cascade-5 sec.
-   6.4.2). [None] when a layer sits where cascade cannot place it: a conditional
-   group introduces its layers only when its condition holds, and an [Origin]
-   block carries its own layer stack. What a [@container], [@scope] or
-   [@starting-style] block holds, and what a rule nests, always exists, so a
-   layer named there counts where it is written. *)
+   6.4.2). Keyed by the CSS text of the whole path, so a [.] one ident carries
+   is not the separator between two (sec. 6.4.1). [None] when a layer sits where
+   cascade cannot place it: a conditional group introduces its layers only when
+   its condition holds, and an [Origin] block carries its own layer stack. What
+   a [@container], [@scope] or [@starting-style] block holds, and what a rule
+   nests, always exists, so a layer named there counts where it is written. *)
 let layer_order stylesheet : string list option =
   let seen = Hashtbl.create 16 in
   let order = ref [] in
   let undecided = ref false in
-  let add name =
+  let add path =
+    let name = Stylesheet.string_of_layer_name path in
     if not (Hashtbl.mem seen name) then begin
       Hashtbl.add seen name ();
       order := name :: !order
     end
-  in
-  let dotted prefix name =
-    if prefix = "" then name else String.concat "." [ prefix; name ]
   in
   let rec walk ~placed prefix stmts = List.iter (statement ~placed prefix) stmts
   and statement ~placed prefix stmt =
     match stmt with
     | Stylesheet.Layer_decl names ->
         if not placed then undecided := true;
-        List.iter (fun n -> add (dotted prefix n)) names
+        List.iter (fun n -> add (prefix @ n)) names
     | Stylesheet.Layer (name, body) ->
         if not placed then undecided := true;
         let prefix =
           match name with
           | None -> prefix
           | Some n ->
-              let full = dotted prefix n in
+              let full = prefix @ n in
               add full;
               full
         in
@@ -1225,7 +1224,7 @@ let layer_order stylesheet : string list option =
         walk ~placed:false prefix body
     | stmt -> walk ~placed prefix (Stylesheet.statement_children stmt)
   in
-  walk ~placed:true "" stylesheet;
+  walk ~placed:true [] stylesheet;
   if !undecided then None else Some (List.rev !order)
 
 module Slot_table = Hashtbl.Make (struct
@@ -1325,18 +1324,16 @@ let layer_claims ~ranks ~unlayered stylesheet =
   let reaches = ref true in
   let position = ref 0 in
   let index = ref 0 in
-  let dotted prefix name =
-    if prefix = "" then name else String.concat "." [ prefix; name ]
-  in
   let rec walk ~layer ~rank stmts = List.iter (statement ~layer ~rank) stmts
   and statement ~layer ~rank stmt =
     match stmt with
     | Stylesheet.Layer (None, _) | Stylesheet.Origin _ | Stylesheet.Scope _ ->
         reaches := false
     | Stylesheet.Layer (Some name, body) ->
-        let layer = dotted layer name in
+        let layer = layer @ name in
         let rank =
-          Option.value ~default:unlayered (Hashtbl.find_opt ranks layer)
+          Option.value ~default:unlayered
+            (Hashtbl.find_opt ranks (Stylesheet.string_of_layer_name layer))
         in
         walk ~layer ~rank body
     | Stylesheet.Layer_decl _ -> ()
@@ -1363,7 +1360,7 @@ let layer_claims ~ranks ~unlayered stylesheet =
         walk ~layer ~rank body
     | _ -> if rank <> unlayered then reaches := false
   in
-  walk ~layer:"" ~rank:unlayered stylesheet;
+  walk ~layer:[] ~rank:unlayered stylesheet;
   if !reaches then Some slots else None
 
 (* Whether dropping every [@layer] wrapper leaves the same declaration winning
@@ -1388,12 +1385,12 @@ let flattening_layers_is_safe stylesheet =
    the dotted layer), [None] when the path is conditional or holds an anonymous
    layer - those are not statically foldable. *)
 let foldable_layer_of_at_path at_path : string option option =
-  let rec go names : at_node list -> string option option = function
+  let rec go path : at_node list -> string option option = function
     | [] -> (
-        match List.rev names with
+        match List.rev path with
         | [] -> Some None
-        | ns -> Some (Some (String.concat "." ns)))
-    | Layer (Some n) :: rest -> go (n :: names) rest
+        | ns -> Some (Some (Stylesheet.string_of_layer_name (List.concat ns))))
+    | Layer (Some n) :: rest -> go (n :: path) rest
     | Layer None :: _ -> None
     | _ :: _ -> None
   in
@@ -1584,7 +1581,7 @@ let wrap_import_body (ir : import_rule) body =
   in
   match ir.layer with
   | None -> body
-  | Some "" -> [ Stylesheet.Layer (None, body) ]
+  | Some [] -> [ Stylesheet.Layer (None, body) ]
   | Some n -> [ Stylesheet.Layer (Some n, body) ]
 
 (* Layer/supports/media guard checks. When [layer_order] is empty, every layer
@@ -1593,9 +1590,9 @@ let wrap_import_body (ir : import_rule) body =
    through and survive as wrapping at-rules in the inlined body; when a query is
    supplied the guard is evaluated and the import is dropped on rejection. *)
 let layer_guard_passes ~(layer_order : string list) (rule : import_rule) =
-  match ((rule.layer : string option), layer_order) with
+  match ((rule.layer : Stylesheet.layer_name option), layer_order) with
   | None, _ | _, [] -> true
-  | Some name, order -> List.mem name order
+  | Some name, order -> List.mem (Stylesheet.string_of_layer_name name) order
 
 let supports_guard_passes ~(query : Context.query option) (rule : import_rule) =
   match ((rule.supports : Supports.t option), query) with

@@ -12,6 +12,11 @@ let rule ~selector ?(nested = []) ?merge_key declarations : rule =
 let property ~syntax ?initial_value ?(inherits = false) name =
   Property { name; syntax; inherits; initial_value }
 
+(* Two layers are the same layer when they name the same idents: a [.] one of
+   them carries is not the separator between two (CSS Cascade 5 sec. 6.4.1). *)
+let equal_layer_name : layer_name -> layer_name -> bool =
+  List.equal String.equal
+
 let layer_decl names = Layer_decl names
 let layer ?name content = Layer (name, content)
 let media ~condition content = Media (condition, content)
@@ -39,7 +44,7 @@ let import_layer_name ({ layer; _ } : import_rule) = layer
 
 let layer_block_name = function
   | Layer (Some name, _) -> Some name
-  | Layer (None, _) -> Some ""
+  | Layer (None, _) -> Some []
   | _ -> None
 
 let layer_statement_name_list = function
@@ -933,21 +938,18 @@ let pp_import_url ctx url =
   else Pp.quoted_string ctx url
 
 (* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so
-   the escapes CSS Syntax 3 sec. 4.3.7 needs go on each dot-separated part while
-   the [.] separators stay bare (see [Properties.pp_property]). *)
-let escape_layer_name name =
-  if String.contains name '.' then
-    String.split_on_char '.' name
-    |> List.map Parser.escape_ident
-    |> String.concat "."
-  else Parser.escape_ident name
+   each ident takes the escapes CSS Syntax 3 sec. 4.3.7 needs (see
+   [Properties.pp_property]) and the [.] separators stay bare. A [.] an ident
+   carries is escaped, and so never reads back as a separator. *)
+let string_of_layer_name name =
+  String.concat "." (List.map Parser.escape_ident name)
 
-let pp_layer_name : string Pp.t =
- fun ctx name -> Pp.string ctx (escape_layer_name name)
+let pp_layer_name : layer_name Pp.t =
+ fun ctx name -> Pp.string ctx (string_of_layer_name name)
 
 let pp_import_layer ctx layer =
   Pp.sp ctx ();
-  if layer = "" then Pp.string ctx "layer"
+  if layer = [] then Pp.string ctx "layer"
   else (
     Pp.string ctx "layer(";
     pp_layer_name ctx layer;
@@ -985,7 +987,7 @@ let pp_import_components ctx { url; layer; supports; media } =
       (match supports with
       | Some supports when import_supports_media_needs_space supports media ->
           Pp.space ctx ()
-      | None when layer = Some "" -> Pp.space ctx ()
+      | None when layer = Some [] -> Pp.space ctx ()
       | _ -> Pp.sp ctx ());
       Media.pp ctx media)
     media
@@ -1598,43 +1600,40 @@ let rules_below block =
    that fills the layer in. A sublayer of an anonymous layer has no name a
    caller could ask for, so the walk stops there. *)
 let layer_declarations sheet =
-  let prefix_with parent name =
-    if String.equal parent "" then name else parent ^ "." ^ name
-  in
-  let rec emit_dotted parent segments (inner : block option) acc =
+  (* A [<layer-name>] is already its idents (CSS Cascade 5 sec. 6.4.1), so a
+     path extends by appending them: a [.] one ident carries never splits it. *)
+  let rec emit_parts parent segments (inner : block option) acc =
     match segments with
     | [] -> acc
     | [ leaf ] -> (
-        let qualified = prefix_with parent leaf in
+        let qualified = parent @ [ leaf ] in
         let acc = (qualified, inner) :: acc in
         match inner with None -> acc | Some block -> walk qualified acc block)
     | head :: tail ->
         (* An intermediate segment names a layer that exists but opens no block
            of its own. *)
-        let qualified = prefix_with parent head in
+        let qualified = parent @ [ head ] in
         let stub = Option.map (fun _ -> []) inner in
-        emit_dotted qualified tail inner ((qualified, stub) :: acc)
+        emit_parts qualified tail inner ((qualified, stub) :: acc)
   and walk parent acc statements =
     List.fold_left
       (fun acc s ->
         match s with
-        | Layer (Some name, inner) ->
-            emit_dotted parent (String.split_on_char '.' name) (Some inner) acc
+        | Layer (Some name, inner) -> emit_parts parent name (Some inner) acc
         | Layer_decl names ->
             List.fold_left
-              (fun acc name ->
-                emit_dotted parent (String.split_on_char '.' name) None acc)
+              (fun acc name -> emit_parts parent name None acc)
               acc names
         | Layer (None, _) -> acc
         | s -> walk parent acc (statement_children s))
       acc statements
   in
-  List.rev (walk "" [] sheet)
+  List.rev (walk [] [] sheet)
 
 let layer_block name sheet =
   List.find_map
     (fun (declared, block) ->
-      if String.equal declared name then block else None)
+      if equal_layer_name declared name then block else None)
     (layer_declarations sheet)
 
 let layers sheet =
@@ -1725,19 +1724,20 @@ let supports_condition ~loc condition =
 
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
    with no whitespace around the dot. CSS-wide keywords are reserved. *)
-let read_layer_name_component (r : Cursor.t) : string =
+let read_layer_name_component (r : Cursor.t) : layer_name =
   let reserved = function
     | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
     | _ -> false
   in
-  let buf = Buffer.create 16 in
-  let add_part part =
-    if reserved (String.lowercase_ascii part) then
-      Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ part);
-    Buffer.add_string buf part
+  let part p =
+    if reserved (String.lowercase_ascii p) then
+      Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ p);
+    p
   in
-  add_part (Cursor.ident ~keep_case:true r);
-  let rec extend () =
+  let first = part (Cursor.ident ~keep_case:true r) in
+  (* Only a [.] delimiter separates two idents. One an ident carries arrives as
+     part of that ident's own token, so it never reaches here. *)
+  let rec extend acc =
     match Cursor.peek_raw r with
     | Some (Component.Preserved { kind = Token.Delim "."; _ }) ->
         Cursor.skip r;
@@ -1748,13 +1748,10 @@ let read_layer_name_component (r : Cursor.t) : string =
               s
           | _ -> Cursor.err_expected r "ident after '.' in layer name"
         in
-        Buffer.add_char buf '.';
-        add_part next;
-        extend ()
-    | _ -> ()
+        extend (part next :: acc)
+    | _ -> List.rev acc
   in
-  extend ();
-  Buffer.contents buf
+  extend [ first ]
 
 (* CSS Cascade 5 sec. 2 [@import] prelude: [<url> [layer | layer(<layer-name>)]?
    [supports(<supports-condition>)]? <media-query-list>?]. The [~keep_url_repr]
@@ -1782,7 +1779,7 @@ let read_import_layer (r : Cursor.t) =
     Cursor.function_call "layer"
       (fun inner ->
         Cursor.ws inner;
-        if Cursor.is_done inner then ""
+        if Cursor.is_done inner then []
         else
           let name = read_layer_name_component inner in
           Cursor.ws inner;
@@ -1795,7 +1792,7 @@ let read_import_layer (r : Cursor.t) =
       match Cursor.peek_ident r with
       | Some s when String.lowercase_ascii s = "layer" ->
           let _ = Cursor.ident r in
-          Some ""
+          Some []
       | _ -> None)
 
 let read_import_supports (r : Cursor.t) =
@@ -3258,7 +3255,7 @@ let read_supports_condition (r : Cursor.t) : statement =
   let declarations = Cursor.braces Declaration.read_declarations r in
   Supports_condition (name, declarations)
 
-let read_layer_name (r : Cursor.t) : string = read_layer_name_component r
+let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 
 let read_nested_media_condition components =
   if Cursor.of_components components |> Cursor.is_done then Media.List []
@@ -3770,7 +3767,7 @@ and read_nested_layer_rule r =
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
       Layer (None, Cursor.braces (fun inner -> read_nesting_block inner) r)
   | _ ->
-      let name = Cursor.ident ~keep_case:true r in
+      let name = read_layer_name r in
       Cursor.ws r;
       Layer (Some name, Cursor.braces (fun inner -> read_nesting_block inner) r)
 

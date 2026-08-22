@@ -507,9 +507,15 @@ let rec statement_shape stmt =
   | Import _ -> [ "import:" ^ sheet_source stmt ]
   | Namespace _ -> [ "namespace:" ^ sheet_source stmt ]
   | Property _ -> [ "property:" ^ sheet_source stmt ]
-  | Layer_decl names -> [ "layer-decl:" ^ String.concat "." names ]
+  | Layer_decl names ->
+      [
+        "layer-decl:"
+        ^ String.concat "." (List.map Css.Stylesheet.string_of_layer_name names);
+      ]
   | Layer (name, block) ->
-      ("layer:" ^ Option.value ~default:"" name) :: block_lines block
+      ("layer:"
+      ^ Option.fold ~none:"" ~some:Css.Stylesheet.string_of_layer_name name)
+      :: block_lines block
   | Media (condition, block) ->
       ("media:" ^ Css.Pp.to_string ~minify:true Css.Media.pp condition)
       :: block_lines block
@@ -741,8 +747,9 @@ and collect_rule_like_statement ~source_order ~property ~document ~query ~origin
          else (acc, None))
   | Layer (name, block) ->
       Some
-        ( collect_matching_block ~source_order ~property ~document ~query
-            ~origin ~layer:name ~current_specificity ~scope_hops acc block,
+        ( collect_matching_block ~source_order ~property ~document ~query ~origin
+            ~layer:(Option.map Css.Stylesheet.string_of_layer_name name)
+            ~current_specificity ~scope_hops acc block,
           None )
   | Starting_style block ->
       Some

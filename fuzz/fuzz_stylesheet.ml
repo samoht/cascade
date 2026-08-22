@@ -188,11 +188,10 @@ let segment buf i =
 
 let layer_name buf i =
   match byte_at buf i mod 4 with
-  | 0 -> segment buf (i + 1)
-  | 1 -> segment buf (i + 1) ^ "." ^ segment buf (i + 2)
-  | 2 ->
-      segment buf (i + 1) ^ "." ^ segment buf (i + 2) ^ "." ^ segment buf (i + 3)
-  | _ -> "framework.theme"
+  | 0 -> [ segment buf (i + 1) ]
+  | 1 -> [ segment buf (i + 1); segment buf (i + 2) ]
+  | 2 -> [ segment buf (i + 1); segment buf (i + 2); segment buf (i + 3) ]
+  | _ -> [ "framework"; "theme" ]
 
 let selector buf i =
   Css.Selector.class_ (pick [ "card"; "title"; "button"; "inside" ] buf i)
@@ -216,7 +215,7 @@ let generated_layer_stylesheet buf =
   [
     Css.Stylesheet.Layer_decl [ primary; secondary ];
     import_rule ~layer:secondary "theme.css";
-    import_rule ~layer:"" "anonymous-layer.css";
+    import_rule ~layer:[] "anonymous-layer.css";
     import_rule "plain.css";
     Css.Stylesheet.Layer
       ( Some primary,
@@ -229,11 +228,11 @@ let generated_layer_stylesheet buf =
     Css.Stylesheet.Layer
       ( None,
         [
-          Css.Stylesheet.Layer (Some "foo", [ rule buf 20 ]);
-          Css.Stylesheet.Layer (Some "foo", [ rule buf 24 ]);
+          Css.Stylesheet.Layer (Some [ "foo" ], [ rule buf 20 ]);
+          Css.Stylesheet.Layer (Some [ "foo" ], [ rule buf 24 ]);
         ] );
     Css.Stylesheet.Layer
-      (None, [ Css.Stylesheet.Layer (Some "foo", [ rule buf 28 ]) ]);
+      (None, [ Css.Stylesheet.Layer (Some [ "foo" ], [ rule buf 28 ]) ]);
     rule buf 32;
   ]
 
@@ -457,7 +456,12 @@ let supports_is_baseline_true condition =
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
-  | Import { layer; _ } -> [ "import:" ^ Option.value ~default:"<none>" layer ]
+  | Import { layer; _ } ->
+      [
+        "import:"
+        ^ Option.fold ~none:"<none>" ~some:Css.Stylesheet.string_of_layer_name
+            layer;
+      ]
   | Namespace _ -> [ "namespace" ]
   | Layer_decl names ->
       (* Naming an already-declared layer adds nothing - layer order follows the
@@ -468,9 +472,16 @@ let rec boundary_shape = function
         | n :: rest when List.mem n seen -> dedup seen rest
         | n :: rest -> n :: dedup (n :: seen) rest
       in
-      [ "layer-decl:" ^ String.concat "," (dedup [] names) ]
+      [
+        "layer-decl:"
+        ^ String.concat ","
+            (List.map Css.Stylesheet.string_of_layer_name (dedup [] names));
+      ]
   | Layer (name, block) ->
-      let name = Option.value ~default:"<anonymous>" name in
+      let name =
+        Option.fold ~none:"<anonymous>"
+          ~some:Css.Stylesheet.string_of_layer_name name
+      in
       ("layer:" ^ name)
       :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
       @ [ "/layer" ]
@@ -546,7 +557,7 @@ let rec merge_adjacent_layers = function
   | Css.Stylesheet.Layer (Some a, ba)
     :: Css.Stylesheet.Layer (Some b, bb)
     :: rest
-    when a = b ->
+    when Css.Stylesheet.equal_layer_name a b ->
       merge_adjacent_layers (Css.Stylesheet.Layer (Some a, ba @ bb) :: rest)
   | stmt :: rest -> normalize_blocks stmt :: merge_adjacent_layers rest
   | [] -> []

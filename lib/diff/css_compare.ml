@@ -47,7 +47,9 @@ let media_path_and_inner stmt =
 let layer_path_and_inner stmt =
   match Css.as_layer stmt with
   | Some (name_opt, inner) ->
-      let name = match name_opt with Some n -> n | None -> "" in
+      let name =
+        Option.fold ~none:"" ~some:Css.Stylesheet.string_of_layer_name name_opt
+      in
       Some ("@layer " ^ name, inner)
   | None -> None
 

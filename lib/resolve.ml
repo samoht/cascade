@@ -65,36 +65,50 @@ let attr_key : Selector.attr_name -> string = function
 
 (* Cascade layers. Layer names form a tree: [@layer a.b] names the sublayer [b]
    of [a], and so does [@layer a { @layer b { ... } }]. The cascade only needs
-   the flattened pre-order of that tree, so a layer is keyed by its dotted path
-   and the order is a list of paths, oldest first (css-cascade-5 sec. 6.4.2). *)
+   the flattened pre-order of that tree, so a layer is keyed by its path - the
+   idents from the root down - and the order is a list of paths, oldest first
+   (css-cascade-5 sec. 6.4.2). *)
 
-let parent_layer name =
-  match String.rindex_opt name '.' with
-  | None -> None
-  | Some i -> Some (String.sub name 0 i)
+let parent_layer path =
+  match List.rev path with [] | [ _ ] -> None | _ :: up -> Some (List.rev up)
 
 (* Each unnamed [@layer { }] block is a layer of its own, distinct from every
    other one, so key it by a counter behind a prefix no author can write: NUL
    never survives tokenisation, css-syntax-3 sec. 3.3 turns it into U+FFFD. *)
-let anonymous_layer n = "\000" ^ string_of_int n
+let anonymous_layer n = [ "\000" ^ string_of_int n ]
+let is_anonymous_ident p = p <> "" && p.[0] = '\000'
 
-let qualify parent name =
-  match parent with None -> name | Some p -> p ^ "." ^ name
+(* A layer is keyed by the CSS text of its path: each ident with the escapes
+   that read it back (css-syntax-3 sec. 2.1), joined by the [.] separators of
+   css-cascade-5 sec. 6.4.1. A [.] an ident carries is escaped, so it never
+   passes for a separator and the layer named [a.b] stays apart from the
+   sublayer [a.b]. An anonymous layer's ident is left as it is: escaping its NUL
+   would only hide the marker a caller looks for. *)
+let layer_key path =
+  let ident p = if is_anonymous_ident p then p else Parser.escape_ident p in
+  String.concat "." (List.map ident path)
+
+let qualify parent name = match parent with None -> name | Some p -> p @ name
+
+let rec is_ancestor p n =
+  match (p, n) with
+  | [], _ -> true
+  | _ :: _, [] -> false
+  | x :: xs, y :: ys -> String.equal x y && is_ancestor xs ys
 
 (* A sublayer is ordered inside its parent, not at the end of the sheet: in
    [@layer a.b {} @layer c {} @layer a.d {}] the layer [a.d] joins [a]'s subtree
    and so still precedes [c]. *)
 let insert_layer order name =
-  if List.mem name order then order
+  if List.exists (Stylesheet.equal_layer_name name) order then order
   else
     match parent_layer name with
     | None -> order @ [ name ]
     | Some p ->
-        let inside n = n = p || starts n (p ^ ".") in
         (* [p]'s subtree is contiguous, so the insertion point is just past its
            last member; [entered] says the scan has reached it. *)
         let rec insert entered = function
-          | x :: rest when inside x -> x :: insert true rest
+          | x :: rest when is_ancestor p x -> x :: insert true rest
           | rest when entered -> name :: rest
           | [] -> [ name ]
           | x :: rest -> x :: insert entered rest
@@ -168,7 +182,7 @@ let layered_rules stmts =
   let order, rules = go None ([], []) stmts in
   (order, List.rev rules)
 
-let layer_order stmts = fst (layered_rules stmts)
+let layer_order stmts = List.map layer_key (fst (layered_rules stmts))
 
 module Make (N : NODE) = struct
   let preceding_siblings n =
@@ -339,14 +353,18 @@ module Make (N : NODE) = struct
       let k = Declaration.property_name d in
       (k, d) :: List.remove_assoc k acc
     in
-    let layer_order, rules = layered_rules (Flatten.block sheet) in
+    let paths, rules = layered_rules (Flatten.block sheet) in
+    let layer_order = List.map layer_key paths in
     let matched =
       rules
       |> List.mapi (fun i (layer, r) ->
           let sel = Stylesheet.selector r in
           if matches sel node then
             Some
-              (layer, matched_specificity sel node, i, Stylesheet.declarations r)
+              ( Option.map layer_key layer,
+                matched_specificity sel node,
+                i,
+                Stylesheet.declarations r )
           else None)
       |> List.filter_map Fun.id
     in

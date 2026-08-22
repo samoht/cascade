@@ -71,6 +71,15 @@ let layer_known ~layer_order = function
   | None -> true
   | Some name -> List.exists (String.equal name) layer_order
 
+(* The layer a [Context] keys a declaration by: the CSS text of the [@layer]
+   name entered here, or the layer already entered when the block is anonymous.
+   Two names never share their text (CSS Cascade 5 sec. 6.4.1), so the key tells
+   the layer named [a.b] from the sublayer [b] of [a]. *)
+let entered_layer name outer =
+  match name with
+  | Some name -> Some (Stylesheet.string_of_layer_name name)
+  | None -> outer
+
 (* The places a declaration contributes to ordinary element matching. The other
    declaration sites belong to another cascade origin or to no element at all
    (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
@@ -110,7 +119,9 @@ let collect_cascade_rules ~layer_order stylesheet =
   let rec statement current_layer acc stmt =
     let open Stylesheet in
     let current_layer =
-      match stmt with Layer ((Some _ as name), _) -> name | _ -> current_layer
+      match stmt with
+      | Layer (name, _) -> entered_layer name current_layer
+      | _ -> current_layer
     in
     let acc =
       if at_declaration_site element_matching_sites stmt then
@@ -142,9 +153,7 @@ and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
   let open Stylesheet in
   match statement with
   | Layer (name, block) ->
-      let current_layer =
-        match name with Some _ -> name | None -> context_layer
-      in
+      let current_layer = entered_layer name context_layer in
       let ctx =
         match ctx_for_layer with Some f -> f current_layer | None -> ctx
       in
@@ -551,7 +560,7 @@ let custom_props ?layer sheet =
       | Layer (Some name, _) -> (
           match layer with
           | None -> true
-          | Some target -> in_layer || name = target)
+          | Some target -> in_layer || Stylesheet.equal_layer_name name target)
       | _ -> in_layer
     in
     let acc =

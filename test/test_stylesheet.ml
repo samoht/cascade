@@ -24,6 +24,9 @@ let decl_t : Css.Declaration.declaration Alcotest.testable =
 let check_import_rule =
   check_value_cursor "import_rule" read_import_rule pp_import_rule
 
+let check_layer_name =
+  check_value_cursor "layer_name" read_layer_name pp_layer_name
+
 let check_declaration =
   check_value_cursor "declaration" Css.Declaration.read_declaration
     (Css.Pp.option Css.Declaration.pp_declaration)
@@ -277,7 +280,7 @@ let test_property_rule_creation () =
 let test_layer_rule_creation () =
   let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule ] in
+  let layer_stmt = layer ~name:[ "utilities" ] [ statement_of_rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   (* Both paths for the same node. minify (pp) does the shortest same-node
      spelling: Hex ff0000 -> #f00. minify+optimize cross-folds to the shortest
@@ -555,7 +558,7 @@ let test_property_spec_syntax_vectors () =
 let test_layer_pp () =
   let decl = Css.Declaration.color (Css.Values.hex "0000ff") in
   let rule_obj = rule ~selector:(Selector.class_ "blue") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule_obj ] in
+  let layer_stmt = layer ~name:[ "utilities" ] [ statement_of_rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true sheet in
@@ -564,7 +567,7 @@ let test_layer_pp () =
 
   (* Test empty layer - per CSS spec, empty @layer statements end with
      semicolon *)
-  let empty_layer = layer ~name:"base" [] in
+  let empty_layer = layer ~name:[ "base" ] [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output = Css.Stylesheet.pp ~minify:true empty_sheet in
   Alcotest.(check string) "empty layer" "@layer base;" empty_output
@@ -2358,6 +2361,22 @@ let test_import_rule () =
      token-level failure), so [\@import 'test.css] parses as a valid import. *)
   check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css"
 
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*]. The
+   idents are the name; a [.] one of them carries is written back escaped (CSS
+   Syntax 3 sec. 2.1) and only a bare [.] separates two. A CSS-wide keyword is
+   reserved, in any ident of the name. *)
+let test_layer_name () =
+  check_layer_name ~roundtrip:true "a";
+  check_layer_name ~roundtrip:true "a.b";
+  check_layer_name ~roundtrip:true ~expected:"a\\.b" "a\\2e b";
+  check_layer_name ~roundtrip:true ~expected:"a\\.b.c" "a\\2e b.c";
+  check_layer_name ~roundtrip:true ~expected:"a.b\\.c" "a.b\\2e c";
+  check_layer_name ~roundtrip:true ~expected:"a\\;b" "a\\3b b";
+  neg_cursor read_layer_name "initial";
+  neg_cursor read_layer_name "a.revert-layer";
+  neg_cursor read_layer_name ".a";
+  neg_cursor read_layer_name "a."
+
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
   assert_minify_and_optimize ".btn:hover { color: blue; }"
@@ -2869,56 +2888,57 @@ let c64_invalid_layer_names () =
 (* Not a roundtrip test *)
 let c8_layer_api () =
   (* CSS Cascade section 8: CSSOM exposes the declared layer name on imports and
-     layer block rules, and the declared name list on layer statement rules.
-     Nested block rule names are the at-rule's own name, not parent-prefixed. *)
+     layer block rules, and the declared name list on layer statement rules. A
+     name is its idents, so [framework.theme] is two of them; nested block rule
+     names are the at-rule's own name, not parent-prefixed. *)
+  let name = Alcotest.(option (list string)) in
   let import_named =
     {
       url = "theme.css";
-      layer = Some "framework.theme";
+      layer = Some [ "framework"; "theme" ];
       supports = None;
       media = None;
     }
   in
   let import_anonymous =
-    { url = "private.css"; layer = Some ""; supports = None; media = None }
+    { url = "private.css"; layer = Some []; supports = None; media = None }
   in
   let import_plain =
     { url = "plain.css"; layer = None; supports = None; media = None }
   in
-  Alcotest.(check (option string))
-    "named import layerName" (Some "framework.theme")
+  Alcotest.check name "named import layerName"
+    (Some [ "framework"; "theme" ])
     (Css.Stylesheet.import_layer_name import_named);
-  Alcotest.(check (option string))
-    "anonymous import layerName is empty string" (Some "")
+  Alcotest.check name "anonymous import layerName is the empty name" (Some [])
     (Css.Stylesheet.import_layer_name import_anonymous);
-  Alcotest.(check (option string))
-    "unlayered import layerName is null" None
+  Alcotest.check name "unlayered import layerName is null" None
     (Css.Stylesheet.import_layer_name import_plain);
-  Alcotest.(check (option string))
-    "named layer block API name" (Some "framework.theme")
+  Alcotest.check name "named layer block API name"
+    (Some [ "framework"; "theme" ])
     (Css.Stylesheet.layer_block_name
-       (Css.Stylesheet.Layer (Some "framework.theme", [])));
-  Alcotest.(check (option string))
-    "anonymous layer block API name is empty string" (Some "")
+       (Css.Stylesheet.Layer (Some [ "framework"; "theme" ], [])));
+  Alcotest.check name "anonymous layer block API name is the empty name"
+    (Some [])
     (Css.Stylesheet.layer_block_name (Css.Stylesheet.Layer (None, [])));
   (match
      Css.Stylesheet.Layer
-       (Some "outer", [ Css.Stylesheet.Layer (Some "foo.bar", []) ])
+       (Some [ "outer" ], [ Css.Stylesheet.Layer (Some [ "foo"; "bar" ], []) ])
    with
   | Css.Stylesheet.Layer (_, [ inner ]) ->
-      Alcotest.(check (option string))
-        "inner layer block API name is not parent-prefixed" (Some "foo.bar")
+      Alcotest.check name "inner layer block API name is not parent-prefixed"
+        (Some [ "foo"; "bar" ])
         (Css.Stylesheet.layer_block_name inner)
   | _ -> Alcotest.fail "expected nested layer block");
-  Alcotest.(check (option (list string)))
+  Alcotest.(check (option (list (list string))))
     "layer statement API nameList"
-    (Some [ "reset"; "framework.theme"; "components" ])
+    (Some [ [ "reset" ]; [ "framework"; "theme" ]; [ "components" ] ])
     (Css.Stylesheet.layer_statement_name_list
-       (Css.Stylesheet.Layer_decl [ "reset"; "framework.theme"; "components" ]));
-  Alcotest.(check (option (list string)))
+       (Css.Stylesheet.Layer_decl
+          [ [ "reset" ]; [ "framework"; "theme" ]; [ "components" ] ]));
+  Alcotest.(check (option (list (list string))))
     "non-statement layer has no nameList" None
     (Css.Stylesheet.layer_statement_name_list
-       (Css.Stylesheet.Layer (Some "reset", [])))
+       (Css.Stylesheet.Layer (Some [ "reset" ], [])))
 
 (* Not a roundtrip test *)
 let c41_declared_values () =
@@ -3236,16 +3256,16 @@ let fetch_url_boundary () =
     [
       ( "@import url(base.css) layer(reset) supports(display: grid) screen;",
         "base.css",
-        Some "reset" );
+        Some [ "reset" ] );
       ("@import \"print.css\" print;", "print.css", None);
-      ("@import url(theme.css) layer();", "theme.css", Some "");
+      ("@import url(theme.css) layer();", "theme.css", Some []);
       ( "@import url(theme.css) layer(theme) supports(selector(:has(img))) \
          screen and (width >= 40em);",
         "theme.css",
-        Some "theme" );
+        Some [ "theme" ] );
       ( "@import url(\"../fonts/brand.woff2\") layer(fonts);",
         "../fonts/brand.woff2",
-        Some "fonts" );
+        Some [ "fonts" ] );
     ]
   in
   List.iter
@@ -3253,7 +3273,7 @@ let fetch_url_boundary () =
       let r = Cursor.of_string input in
       let rule = Css.Stylesheet.read_import_rule r in
       Alcotest.(check string) "import url" url rule.url;
-      Alcotest.(check (option string)) "import layer" layer rule.layer)
+      Alcotest.(check (option (list string))) "import layer" layer rule.layer)
     import_cases;
   check_declaration ~expected:"background-image:url(../img/logo.svg)"
     "background-image: url(../img/logo.svg);";
@@ -4187,9 +4207,9 @@ let c643_dotted_nested_layer () =
   in
   Alcotest.(check string)
     "the inner rule appears in the foo.bar layer regardless of input form"
-    (inner_rule_text (Css.layer_block "foo.bar" dotted))
-    (inner_rule_text (Css.layer_block "foo.bar" nested));
-  Alcotest.(check (list string))
+    (inner_rule_text (Css.layer_block [ "foo"; "bar" ] dotted))
+    (inner_rule_text (Css.layer_block [ "foo"; "bar" ] nested));
+  Alcotest.(check (list (list string)))
     "both forms expose the same set of declared layers" (Css.layers dotted)
     (Css.layers nested)
 
@@ -8455,6 +8475,7 @@ let additional_tests =
   [
     ("check function", `Quick, test_check);
     ("import_rule", `Quick, test_import_rule);
+    ("layer_name", `Quick, test_layer_name);
     (* Positive tests *)
     ("advanced selectors", `Quick, test_advanced_selectors);
     ("advanced properties", `Quick, test_advanced_properties);

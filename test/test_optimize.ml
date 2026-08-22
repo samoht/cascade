@@ -306,7 +306,7 @@ let layers () =
   in
 
   let layer_stmt =
-    Css.Stylesheet.Layer (Some "utilities", [ statement_of_rule rule ])
+    Css.Stylesheet.Layer (Some [ "utilities" ], [ statement_of_rule rule ])
   in
 
   let stylesheet = [ layer_stmt ] in
@@ -532,7 +532,9 @@ let test_media_merge_in_layers () =
     ]
   in
 
-  let stylesheet = [ Css.Stylesheet.Layer (Some "utilities", layer_content) ] in
+  let stylesheet =
+    [ Css.Stylesheet.Layer (Some [ "utilities" ], layer_content) ]
+  in
 
   let optimized = Css.Optimize.stylesheet stylesheet in
 
@@ -554,10 +556,10 @@ let test_empty_layers_statement () =
      represented by the statement form from CSS Cascade 5. *)
   let stylesheet =
     [
-      Css.Stylesheet.Layer (Some "reset", []);
-      Css.Stylesheet.Layer (Some "theme", []);
+      Css.Stylesheet.Layer (Some [ "reset" ], []);
+      Css.Stylesheet.Layer (Some [ "theme" ], []);
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")
@@ -577,8 +579,8 @@ let test_tw_empty_layers_statement () =
      the shortest faithful spelling combines adjacent declarations. *)
   let input =
     [
-      Css.Stylesheet.Layer (Some "components", []);
-      Css.Stylesheet.Layer (Some "utilities", []);
+      Css.Stylesheet.Layer (Some [ "components" ], []);
+      Css.Stylesheet.Layer (Some [ "utilities" ], []);
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -2818,7 +2820,7 @@ let c61_no_layer_media_merge () =
   let input =
     [
       media_rule "a" "ff0000";
-      Css.Stylesheet.Layer_decl [ "theme" ];
+      Css.Stylesheet.Layer_decl [ [ "theme" ] ];
       media_rule "b" "0000ff";
     ]
   in
@@ -2883,14 +2885,14 @@ let c61_no_merge_layer () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
               [ Css.Declaration.display Block ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -2914,7 +2916,7 @@ let c64_layer_order_boundary () =
       Css.rule
         ~selector:(Css.Selector.class_ "theme")
         [ Css.Declaration.color (hex_color "ff0000") ];
-      Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+      Css.Stylesheet.Layer_decl [ [ "reset" ]; [ "components" ] ];
       Css.rule
         ~selector:(Css.Selector.class_ "theme")
         [ Css.Declaration.display Flex ];
@@ -2933,7 +2935,7 @@ let c61_unlayered_outside_layer () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "audio")
@@ -2957,7 +2959,7 @@ let c61_important_layer_order () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -2967,7 +2969,7 @@ let c61_important_layer_order () =
               ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -3922,16 +3924,16 @@ let c64_statement_layer_order () =
      rules appear later. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "default"; "theme"; "components" ];
+      Css.Stylesheet.Layer_decl [ [ "default" ]; [ "theme" ]; [ "components" ] ];
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "widget")
               [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "default",
+        ( Some [ "default" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "widget")
@@ -4035,7 +4037,7 @@ let c64_unlayered_final_layer () =
         ~selector:(Css.Selector.element "audio")
         [ Css.Declaration.display Flex ];
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:
@@ -4059,9 +4061,9 @@ let c64_important_layers_reverse () =
      but earlier layers win for important declarations. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "defaults"; "overrides" ];
+      Css.Stylesheet.Layer_decl [ [ "defaults" ]; [ "overrides" ] ];
       Css.Stylesheet.Layer
-        ( Some "defaults",
+        ( Some [ "defaults" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "notice")
@@ -4071,7 +4073,7 @@ let c64_important_layers_reverse () =
               ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "overrides",
+        ( Some [ "overrides" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "notice")
@@ -4137,16 +4139,16 @@ let c64_nested_layer_distinct () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule ~selector:(Css.Selector.element "p")
               [ Css.Declaration.max_width (Ch 70.) ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "framework",
+        ( Some [ "framework" ],
           [
             Css.Stylesheet.Layer
-              ( Some "base",
+              ( Some [ "base" ],
                 [
                   Css.rule ~selector:(Css.Selector.element "p")
                     [ Css.Declaration.margin_block (Em 0.75) ];
@@ -4157,10 +4159,10 @@ let c64_nested_layer_distinct () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Layer (Some "base", [ base_stmt ]);
+   Css.Stylesheet.Layer (Some [ "base" ], [ base_stmt ]);
    Css.Stylesheet.Layer
-     ( Some "framework",
-       [ Css.Stylesheet.Layer (Some "base", [ framework_base_stmt ]) ] );
+     ( Some [ "framework" ],
+       [ Css.Stylesheet.Layer (Some [ "base" ], [ framework_base_stmt ]) ] );
   ] ->
       let base_rule = rule_of_statement base_stmt in
       let framework_base_rule = rule_of_statement framework_base_stmt in
@@ -4189,16 +4191,16 @@ let c64_keyframe_name_layers () =
   in
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "framework"; "override" ];
+      Css.Stylesheet.Layer_decl [ [ "framework" ]; [ "override" ] ];
       Css.Stylesheet.Layer
-        ( Some "override",
+        ( Some [ "override" ],
           [
             Css.Stylesheet.Keyframes
               ( "slide-left",
                 [ frame (Css.Declaration.opacity (Opacity_number 0.)) ] );
           ] );
       Css.Stylesheet.Layer
-        ( Some "framework",
+        ( Some [ "framework" ],
           [
             Css.Stylesheet.Keyframes
               ("slide-left", [ frame (Css.Declaration.margin_left (Pct 0.)) ]);
@@ -4221,17 +4223,17 @@ let c64_layer_decls_import_cross () =
      declarations across an import. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "default" ];
+      Css.Stylesheet.Layer_decl [ [ "default" ] ];
       Css.Stylesheet.Import
         {
           url = "url(\"theme.css\")";
-          layer = Some "theme";
+          layer = Some [ "theme" ];
           supports = None;
           media = None;
         };
-      Css.Stylesheet.Layer_decl [ "components" ];
+      Css.Stylesheet.Layer_decl [ [ "components" ] ];
       Css.Stylesheet.Layer
-        ( Some "default",
+        ( Some [ "default" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "audio")
@@ -4254,21 +4256,21 @@ let c64_repeated_layer_blocks_ordered () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
               [ Css.Declaration.color (hex_color "ff0000") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
               [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
@@ -4294,14 +4296,14 @@ let c64_child_layer_one_anonymous () =
         ( None,
           [
             Css.Stylesheet.Layer
-              ( Some "foo",
+              ( Some [ "foo" ],
                 [
                   Css.rule
                     ~selector:(Css.Selector.class_ "inside")
                     [ Css.Declaration.color (hex_color "ff0000") ];
                 ] );
             Css.Stylesheet.Layer
-              ( Some "foo",
+              ( Some [ "foo" ],
                 [
                   Css.rule
                     ~selector:(Css.Selector.class_ "inside")
@@ -4339,7 +4341,7 @@ let c64_child_layer_distinct_anonymous () =
       ( None,
         [
           Css.Stylesheet.Layer
-            ( Some "foo",
+            ( Some [ "foo" ],
               [
                 Css.rule
                   ~selector:(Css.Selector.class_ "inside")
@@ -4357,9 +4359,9 @@ let c64_child_layer_distinct_anonymous () =
   match optimized with
   | [
    Css.Stylesheet.Layer
-     (None, [ Css.Stylesheet.Layer (Some "foo", [ first_stmt ]) ]);
+     (None, [ Css.Stylesheet.Layer (Some [ "foo" ], [ first_stmt ]) ]);
    Css.Stylesheet.Layer
-     (None, [ Css.Stylesheet.Layer (Some "foo", [ second_stmt ]) ]);
+     (None, [ Css.Stylesheet.Layer (Some [ "foo" ], [ second_stmt ]) ]);
   ] ->
       let first = rule_of_statement first_stmt in
       let second = rule_of_statement second_stmt in
@@ -4385,7 +4387,7 @@ let c64_conditional_layer_decls_nested () =
       Css.media
         ~condition:(Css.Media.of_string "(min-width:30em)")
         [
-          Css.layer ~name:"layout"
+          Css.layer ~name:[ "layout" ]
             [
               Css.rule
                 ~selector:(Css.Selector.class_ "title")
@@ -4395,15 +4397,15 @@ let c64_conditional_layer_decls_nested () =
       Css.supports
         ~condition:(Css.Supports.property "display" "grid")
         [
-          Css.Stylesheet.Layer_decl [ "grid" ];
-          Css.layer ~name:"grid"
+          Css.Stylesheet.Layer_decl [ [ "grid" ] ];
+          Css.layer ~name:[ "grid" ]
             [
               Css.rule
                 ~selector:(Css.Selector.class_ "title")
                 [ Css.Declaration.display Grid ];
             ];
         ];
-      Css.Stylesheet.Layer_decl [ "theme"; "layout" ];
+      Css.Stylesheet.Layer_decl [ [ "theme" ]; [ "layout" ] ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -4420,16 +4422,16 @@ let c64_empty_layer_before_block () =
      before a later block assigns style rules to that layer. *)
   let input =
     [
-      Css.Stylesheet.Layer (Some "reset", []);
+      Css.Stylesheet.Layer (Some [ "reset" ], []);
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")
               [ Css.Declaration.display Flex ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")

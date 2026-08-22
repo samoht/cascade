@@ -41,9 +41,9 @@ val is_layer_empty : Stylesheet.statement list -> bool
 (** Whether a layer block has no cascade-contributing statements. *)
 
 val collect_empty_layer_names :
-  string list ->
+  Stylesheet.layer_name list ->
   Stylesheet.statement list ->
-  string list * Stylesheet.statement list
+  Stylesheet.layer_name list * Stylesheet.statement list
 (** Collect consecutive empty named layers into layer declaration names. *)
 
 val merge_layer_declarations :

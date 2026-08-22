@@ -2,11 +2,24 @@
 
 (** {1 Core Types} *)
 
+(** {2 Layer Name} *)
+
+type layer_name = string list
+(** A CSS [\@layer] name: the idents of [<ident> ['.' <ident>]*] (CSS Cascade 5
+    sec. 6.4.1), outermost first. The separators are not part of any ident, so
+    they are not stored: an escape can carry a [.] into an ident (CSS Syntax 3
+    sec. 4.3.7), and one string would make [\@layer a\2e b], the layer named
+    [a.b], the same value as [\@layer a.b], the sublayer [b] of [a]. The empty
+    list is not a name; where an anonymous layer is admissible it is spelled
+    that way. *)
+
 (** {2 Import Rule} *)
 
 type import_rule = {
   url : string;  (** URL or string to import *)
-  layer : string option;  (** Optional layer name *)
+  layer : layer_name option;
+      (** The layer this import declares: {!constructor-None} for none,
+          [Some []] for the anonymous [layer] keyword. *)
   supports : Supports.t option;  (** Optional supports condition *)
   media : Media.t option;  (** Optional media query *)
 }
@@ -137,8 +150,8 @@ and statement =
   | Import of import_rule  (** [@import url(...) layer(...) supports(...);] *)
   | Namespace of string option * namespace_url  (** [@namespace prefix? url;] *)
   | Property : 'a property_rule -> statement  (** [@property --name { ... }] *)
-  | Layer_decl of string list  (** [@layer theme, base, utilities;] *)
-  | Layer of string option * block  (** [@layer name? { ... }] *)
+  | Layer_decl of layer_name list  (** [@layer theme, base, utilities;] *)
+  | Layer of layer_name option * block  (** [@layer name? { ... }] *)
   | Media of Media.t * block  (** [@media (...) { ... }] *)
   | Container of string option * Container.t option * block
       (** [@container name? (...) { ... }] *)

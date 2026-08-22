@@ -94,7 +94,7 @@ let generated_import =
   Css.Stylesheet.Import
     {
       url = "theme.css";
-      layer = Some "theme";
+      layer = Some [ "theme" ];
       supports = Some (Css.Supports.property "display" "grid");
       media = Some (Css.Media.of_string "(width >= 40em)");
     }
@@ -152,7 +152,7 @@ let generated_keyframes =
 let generated_sheet_prelude =
   [
     Css.Stylesheet.Charset "UTF-8";
-    Css.Stylesheet.Layer_decl [ "reset"; "theme"; "components" ];
+    Css.Stylesheet.Layer_decl [ [ "reset" ]; [ "theme" ]; [ "components" ] ];
     generated_import;
     generated_namespace;
     Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
@@ -169,7 +169,7 @@ let generated_stylesheet buf =
       Css.Stylesheet.Supports_condition
         ("--fuzz-condition", [ declaration buf 12 ]);
       Css.Stylesheet.Layer
-        ( Some (pick [ "base"; "theme"; "components" ] buf 12),
+        ( Some (pick [ [ "base" ]; [ "theme" ]; [ "components" ] ] buf 12),
           [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
       Css.Stylesheet.Scope
         ( Some (Css.Selector.of_string ".card"),
@@ -222,11 +222,23 @@ let baseline_true_supports condition =
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
-  | Import { layer; _ } -> [ "import:" ^ Option.value ~default:"<none>" layer ]
+  | Import { layer; _ } ->
+      [
+        "import:"
+        ^ Option.fold ~none:"<none>" ~some:Css.Stylesheet.string_of_layer_name
+            layer;
+      ]
   | Namespace _ -> [ "namespace" ]
-  | Layer_decl names -> [ "layer-decl:" ^ String.concat "," names ]
+  | Layer_decl names ->
+      [
+        "layer-decl:"
+        ^ String.concat "," (List.map Css.Stylesheet.string_of_layer_name names);
+      ]
   | Layer (name, block) ->
-      let name = Option.value ~default:"<anonymous>" name in
+      let name =
+        Option.fold ~none:"<anonymous>"
+          ~some:Css.Stylesheet.string_of_layer_name name
+      in
       ("layer:" ^ name)
       :: Fuzz_helpers.shapes_with_rule_runs ~boundary_shape block
       @ [ "/layer" ]
@@ -463,14 +475,14 @@ let cascade_merge_vectors =
       Css.rule
         ~selector:(Css.Selector.class_ "box")
         [ Css.Declaration.color (Css.Values.hex "#ff0000") ];
-      Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+      Css.Stylesheet.Layer_decl [ [ "reset" ]; [ "components" ] ];
       Css.rule
         ~selector:(Css.Selector.class_ "box")
         [ Css.Declaration.display Css.Properties.Flex ];
     ];
     [
       media_rule "a" "#ff0000";
-      Css.Stylesheet.Layer_decl [ "theme" ];
+      Css.Stylesheet.Layer_decl [ [ "theme" ] ];
       media_rule "b" "#0000ff";
     ];
   ]
@@ -643,8 +655,9 @@ let test_smt_property_order_vectors buf =
 let test_positive_layer_statement_vectors buf =
   let input =
     [
-      Css.Stylesheet.Layer (Some (pick [ "reset"; "base" ] buf 0), []);
-      Css.Stylesheet.Layer (Some (pick [ "theme"; "components" ] buf 1), []);
+      Css.Stylesheet.Layer (Some (pick [ [ "reset" ]; [ "base" ] ] buf 0), []);
+      Css.Stylesheet.Layer
+        (Some (pick [ [ "theme" ]; [ "components" ] ] buf 1), []);
       Css.rule
         ~selector:(Css.Selector.class_ "card")
         [ Css.Declaration.display Css.Properties.Flex ];

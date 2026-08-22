@@ -51,6 +51,11 @@
   The reader demanded a property name that re-tokenizes from its own bytes,
   which holds only while the printer writes that name raw; Chrome and
   lightningcss both accept the escaped name (#437)
+- A `@layer` name is read as the idents CSS Cascade 5 sec. 6.4.1 makes it, so
+  `@layer a\2e b`, the layer named `a.b`, is no longer the same value as
+  `@layer a.b`, the sublayer `b` of `a`. Both printed `@layer a.b` and the
+  minifier merged the two blocks into one layer, moving declarations into a
+  layer the input never wrote them in (#442)
 - An `@layer` block inside a style rule holds nesting content, so
   `.a { @layer n { color: red } }` keeps its declaration instead of reading the
   body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested

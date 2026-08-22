@@ -167,7 +167,8 @@ val as_rule :
     run written before the first nested statement; a run written after one is a
     nested declarations rule inside [nested], at the position it was written. *)
 
-val as_layer : statement -> (string option * statement list) option
+val as_layer :
+  statement -> (Stylesheet.layer_name option * statement list) option
 (** [as_layer stmt] returns [Some (name, statements)] if the statement is a
     layer, {!constructor-None} otherwise. *)
 
@@ -247,16 +248,16 @@ val eval_stylesheet :
 (** [eval_stylesheet ctx stylesheet] evaluates every declaration in
     [stylesheet]. *)
 
-val import_layer_name : Stylesheet.import_rule -> string option
+val import_layer_name : Stylesheet.import_rule -> Stylesheet.layer_name option
 (** [import_layer_name rule] returns the layer name declared by an [@import]
-    rule: {!constructor-None} means no layer, [Some ""] means an anonymous
+    rule: {!constructor-None} means no layer, [Some []] means an anonymous
     layer, and [Some name] is a named layer. *)
 
-val layer_block_name : statement -> string option
+val layer_block_name : statement -> Stylesheet.layer_name option
 (** [layer_block_name stmt] returns the declared name of an [@layer] block rule.
-    Anonymous layer blocks return [Some ""]. *)
+    Anonymous layer blocks return [Some []]. *)
 
-val layer_statement_name_list : statement -> string list option
+val layer_statement_name_list : statement -> Stylesheet.layer_name list option
 (** [layer_statement_name_list stmt] returns the declared name list for
     statement-form [@layer] rules. *)
 
@@ -514,12 +515,13 @@ val media_queries : t -> (Media.t * statement list) list
     query's rules; a nested rule keeps the relative selector it was written
     with. *)
 
-val layers : t -> string list
-(** [layers t] is every cascade layer [t] declares, one dotted path per layer
-    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
-    sheet first names them. A layer named inside a conditional group counts: the
-    group decides whether its contents apply, not whether the layer exists. A
-    sublayer of an anonymous [@layer { ... }] has no name to report.
+val layers : t -> Stylesheet.layer_name list
+(** [layers t] is every cascade layer [t] declares, one path per layer ([a.b] is
+    the sublayer [b] of [a], however it was written), in the order the sheet
+    first names them. Each path is its idents, so a [.] one ident carries is not
+    the separator between two. A layer named inside a conditional group counts:
+    the group decides whether its contents apply, not whether the layer exists.
+    A sublayer of an anonymous [@layer { ... }] has no name to report.
 
     This is what a sheet declares, not the order a cascade resolves in.
     {!Resolve.layer_order} answers that, and leaves out a layer named inside any
@@ -528,7 +530,7 @@ val layers : t -> string list
 
 (** {3 AST Introspection Helpers} *)
 
-val layer_block : string -> t -> statement list option
+val layer_block : Stylesheet.layer_name -> t -> statement list option
 (** [layer_block name sheet] is the statements of the layer [name], wherever it
     is declared and whatever form declares it: a dotted name, a nested block, or
     a block inside a conditional group. It is {!constructor-None} when no
@@ -556,7 +558,7 @@ val custom_props_of_rules : (Selector.t * declaration list) list -> string list
 (** [custom_props_of_rules rules] extracts all custom property names from the
     declarations in the rules. *)
 
-val custom_props : ?layer:string -> t -> string list
+val custom_props : ?layer:Stylesheet.layer_name -> t -> string list
 (** [custom_props ?layer sheet] is the name of every custom property [sheet]
     declares for an element: the ones in a style rule or a bare nesting block,
     at the top level and inside a conditional group at-rule such as [@media],
@@ -579,16 +581,16 @@ val declarations : declaration list -> statement
 (** [declarations decls] creates a bare declarations block (used in CSS
     nesting). *)
 
-val layer : ?name:string -> statement list -> statement
+val layer : ?name:Stylesheet.layer_name -> statement list -> statement
 (** [layer ?name statements] creates a [@layer] statement with the given
     statements. *)
 
-val layer_decl : string list -> statement
+val layer_decl : Stylesheet.layer_name list -> statement
 (** [layer_decl names] creates a [@layer] declaration statement that declares
     layer names without any content (e.g.,
     [@layer theme, base, components, utilities;]). *)
 
-val layer_of : ?name:string -> t -> t
+val layer_of : ?name:Stylesheet.layer_name -> t -> t
 (** [layer_of ?name stylesheet] wraps an entire stylesheet in [@layer],
     preserving [@supports] and other at-rules within it. *)
 

@@ -1769,7 +1769,7 @@ end
 module Import = struct
   let layer_known ~layer_order = function
     | None -> true
-    | Some name -> List.mem name layer_order
+    | Some name -> List.mem (Stylesheet.string_of_layer_name name) layer_order
 
   let supports_ok ?query rule =
     match ((rule : Stylesheet.import_rule).supports, query) with
@@ -1805,7 +1805,10 @@ module Import = struct
   let guards_ok ?query ~layer_order rule =
     let layer_name = (rule : Stylesheet.import_rule).layer in
     if not (layer_known ~layer_order layer_name) then
-      Error ("unknown layer " ^ Option.value layer_name ~default:"")
+      Error
+        ("unknown layer "
+        ^ Option.fold ~none:"" ~some:Stylesheet.string_of_layer_name layer_name
+        )
     else if not (supports_ok ?query rule) then
       Error "supports() guard rejected the import"
     else if not (media_ok ?query rule) then
