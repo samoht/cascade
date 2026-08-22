@@ -672,33 +672,10 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
             | None -> List.Drop)
           decls
       in
-      let rec walk (stmt : statement) : statement =
-        match stmt with
-        | Rule rule ->
-            let declarations = prune_decls rule.declarations in
-            let nested = list_map_preserve walk rule.nested in
-            let rule' =
-              rule_with_declarations_and_nested rule declarations nested
-            in
-            if rule' == rule then stmt else Rule rule'
-        | Declarations decls ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Declarations decls'
-        | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
-        | Else _ | Starting_style _ | Origin _ | Scope _ ->
-            map_statement_children (list_map_preserve walk) stmt
-        | Page (sel, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Page (sel, decls')
-        | Position_try (n, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Position_try (n, decls')
-        | Supports_condition (n, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Supports_condition (n, decls')
-        | other -> other
-      in
-      list_map_preserve walk stylesheet
+      (* A name with no [@position-try] rule cannot match wherever it is
+         written, so this goes through the declaration walker rather than a list
+         of the at-rules that came to mind. *)
+      map_declarations prune_decls stylesheet
 
 (* Collect the custom properties registered with an [@property] initial-value.
    Such a property is never invalid at computed-value time, so folding its

@@ -52,6 +52,10 @@
 - A declaration whose value is spec-invalid is discarded inside a `@keyframes`
   frame, matching what a browser does with it there and what cascade already
   did in a style rule (#341)
+- Under `--scope=stylesheet` a `position-try-fallbacks` name with no
+  `@position-try` rule is dropped inside a `@keyframes` frame, as it already
+  was in a style rule. The name cannot match at runtime wherever the
+  declaration is written (#372)
 - `--minify` optimises the body of `@-moz-document`, `@starting-style`,
   `@when` and `@else`, which it walked past: rules inside one of them kept
   whatever the author wrote (#343)
