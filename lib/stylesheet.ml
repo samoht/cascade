@@ -3374,6 +3374,12 @@ let seal_declaration_run = function
   | Declarations run :: rest -> Declarations (List.rev run) :: rest
   | nested -> nested
 
+(* Add one declaration to the run being read, which is the head of the
+   accumulator and holds its declarations reversed until it is sealed. *)
+let add_to_declaration_run decl = function
+  | Declarations run :: rest -> Declarations (decl :: run) :: rest
+  | nested -> Declarations [ decl ] :: nested
+
 let read_starting_style ~body (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "starting-style" r;
   Cursor.ws r;
@@ -3630,10 +3636,26 @@ and read_layer (r : Cursor.t) : statement =
 and read_nesting_block (r : Cursor.t) : block =
   let rec read_items acc =
     Cursor.ws r;
+    if Cursor.recover r then read_recovering_item acc
+    else add_item acc (read_nesting_item ~prev:acc r)
+  (* CSS Syntax 3 sec. 5.4.4: a declaration that fails to parse is dropped and
+     reading resumes past the next top-level [;], a [{}] met on the way counting
+     as one component value of the value being skipped. A nested at-rule's body
+     is <block-contents> like a style rule's, so it recovers the same way and
+     one bad declaration takes neither the group rule holding it nor the rest of
+     the sheet. Strict mode ([not (Cursor.recover r)]) still raises. *)
+  and read_recovering_item acc =
     match read_nesting_item ~prev:acc r with
-    | `Done -> List.rev acc
+    | item -> add_item acc item
+    | exception Error.Parse_error e ->
+        Cursor.push_warning r e;
+        skip_bad_rule_item r;
+        read_items acc
+  and add_item acc = function
+    | `Done -> List.rev (seal_declaration_run acc)
     | `Skip -> read_items acc
-    | `Stmt stmt -> read_items (stmt :: acc)
+    | `Decl decl -> read_items (add_to_declaration_run decl acc)
+    | `Stmt stmt -> read_items (stmt :: seal_declaration_run acc)
   in
   read_items []
 
@@ -3650,30 +3672,21 @@ and read_nesting_item ~prev r =
   | _ -> read_nesting_declaration_or_statement r
 
 and read_nesting_declaration_or_statement r =
+  let start = Cursor.save r in
   match Declaration.read_declaration r with
   | Some decl ->
       Cursor.ws r;
-      `Stmt (Declarations (read_more_nested_decls r [ decl ]))
+      if Cursor.peek_semicolon r then Cursor.skip r;
+      `Decl decl
   | None -> `Stmt (read_statement r)
-
-and read_more_nested_decls r acc =
-  match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-      Cursor.skip r;
-      Cursor.ws r;
-      read_nested_decl_after_semicolon r acc
-  | _ -> List.rev acc
-
-and read_nested_decl_after_semicolon r acc =
-  match Cursor.peek r with
-  | None | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      List.rev acc
-  | _ -> (
-      match Declaration.read_declaration r with
-      | Some d ->
-          Cursor.ws r;
-          read_more_nested_decls r (d :: acc)
-      | None -> List.rev acc)
+  (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
+     [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
+     take it as a rule; a genuine bad declaration has no block and still reports
+     as one. *)
+  | exception Error.Parse_error _
+    when Cursor.restore r start;
+         item_opens_block r ->
+      `Stmt (read_statement r)
 
 (* Helper: Read nested at-rule with declarations content *)
 and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
