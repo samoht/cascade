@@ -1691,6 +1691,76 @@ let spec_property_recovery_warns_once_per_descriptor () =
   warns_exactly (body "inherits: false; initial-value: 0px") 0;
   warns_exactly (body ";; inherits: false; initial-value: 0px") 0
 
+(* A rule that fails to parse inside a grouping at-rule's block ends where CSS
+   Syntax 3 says its kind ends: an at-rule at its block or its [;] (sec. 5.4.2),
+   a qualified rule at its block (sec. 5.4.3). A [(] or a [[] met before that
+   block is a component value of the prelude, so the rule being discarded runs
+   on past it. Stopping there instead would leave the tail of the prelude to be
+   read as a rule of its own, and Blink 146 keeps no such rule: for each input
+   below it reads back only the rule named in the expectation. *)
+let spec_lenient_recovery_block_statements () =
+  lenient_recover "bad @supports prelude in @media ends at its block"
+    "@media screen { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad @supports prelude in @layer ends at its block"
+    "@layer base { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    "@layer base{b{color:#00f}}" 1;
+  lenient_recover "bad @supports prelude in @supports ends at its block"
+    "@supports (color: red) { @supports (display: grid) bogus { a { color: red \
+     } } b { color: blue } }"
+    "b{color:#00f}" 1;
+  lenient_recover "bad @media prelude in @media ends at its block"
+    "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad @container prelude in @media ends at its block"
+    "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "at-rule with no block in @media ends at its semicolon"
+    "@media screen { @supports (display: grid) bogus; b { color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad selector holding a [] in @media ends at its block"
+    "@media screen { a[href=] { color: red } p { color: blue } }"
+    "@media screen{p{color:#00f}}" 1;
+  lenient_recover "bad selector holding a [] in @layer ends at its block"
+    "@layer base { a[href=] { color: red } p { color: blue } }"
+    "@layer base{p{color:#00f}}" 1;
+  lenient_recover "bad selector opening on a () in @media ends at its block"
+    "@media screen { (foo) bar { a { color: red } } b { color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "two bad statements in one block cost only themselves"
+    "@media screen { @supports (display: grid) bogus { a { color: red } } \
+     @container (min-width: 1px) !! { c { color: lime } } b { color: blue } }"
+    "@media screen{b{color:#00f}}" 2
+
+(* Each statement dropped from a grouping at-rule's block reports once: the tail
+   of its prelude is part of what is discarded, not a second rule to be read and
+   rejected on its own. *)
+let spec_block_recovery_warns_once_per_statement () =
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    1;
+  warns_exactly
+    "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
+     color: blue } }"
+    1;
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus; b { color: blue } }" 1;
+  warns_exactly "@media screen { a[href=] { color: red } p { color: blue } }" 1;
+  warns_exactly "@layer base { a[href=] { color: red } p { color: blue } }" 1;
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus { a { color: red } } \
+     @container (min-width: 1px) !! { c { color: lime } } b { color: blue } }"
+    2;
+  warns_exactly
+    "@media screen { @supports (display: grid) { a { color: red } } b { color: \
+     blue } }"
+    0
+
 let stylesheet_tests =
   [
     (* Core type tests *)
@@ -1796,6 +1866,12 @@ let stylesheet_tests =
     ( "spec property recovery warns once per dropped descriptor",
       `Quick,
       spec_property_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in a grouping at-rule block",
+      `Quick,
+      spec_lenient_recovery_block_statements );
+    ( "spec block recovery warns once per dropped statement",
+      `Quick,
+      spec_block_recovery_warns_once_per_statement );
   ]
 
 (* Tests for newly added check functions *)
