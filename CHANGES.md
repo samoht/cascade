@@ -147,6 +147,15 @@
   `@view-transition` or `@counter-style` descriptor value, such as a trailing
   `!important`, now invalidate the declaration they follow rather than the
   leftover alone (#419)
+- An at-rule inside a `@keyframes` body is dropped on its own rather than taking
+  the animation and the stylesheet holding it, so
+  `@keyframes k { from { color: red } @media print { to { color: pink } } 50%
+  { background: lime } }` keeps both keyframes where it parsed to nothing. The
+  rejection was raised around the loop rather than inside it, so it unwound past
+  the recovery the loop already ran for a keyframe selector it rejects. CSS
+  Syntax 3 sec. 5.4.2 ends the at-rule being discarded at its own block, past
+  any `(` or `[` in its prelude, and Blink 146 keeps the keyframes written
+  around it (#420)
 
 ### Minification
 

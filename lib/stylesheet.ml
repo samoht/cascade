@@ -1893,48 +1893,89 @@ let read_namespace (r : Cursor.t) : statement =
   if Cursor.peek_semicolon r then Cursor.skip r;
   Namespace (prefix, uri)
 
-let rec skip_bad_keyframe inner =
-  match Cursor.peek_raw inner with
+(* Discard the rule the cursor sits on, stopping at its [{}] block or at a
+   top-level [;]: CSS Syntax 3 sec. 5.4.2 ends an at-rule at whichever comes
+   first, and sec. 5.4.3 ends a qualified rule at its block. Consuming exactly
+   that far leaves what was written after the rule - the declarations around it,
+   or the next rule - to be read on its own. A [(] or a [[] met before the block
+   is a component value of the prelude being discarded, so stopping there would
+   offer the tail of that prelude as a rule of its own. *)
+let rec skip_past_rule r =
+  match Cursor.next_raw r with
   | None -> ()
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-      ignore (Cursor.next_raw inner : Component.t option)
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-      ignore (Cursor.next_raw inner : Component.t option)
-  | Some _ ->
-      ignore (Cursor.next_raw inner : Component.t option);
-      skip_bad_keyframe inner
+      ()
+  | Some _ -> skip_past_rule r
 
+(* Discard the item the cursor sits on. A body that holds declarations and
+   at-rules alike has to pick by what the item starts with: the two ends differ,
+   and taking an at-rule for a declaration would eat the item written after it.
+   The caller rewinds first, so a reader that already consumed part of the item
+   is skipped from its start. *)
+let skip_invalid_item r =
+  match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      skip_past_rule r
+  | _ -> Cursor.skip_past_semicolon r
+
+(* Read a body one item at a time, [step] committing each item to the
+   accumulator before the next is read, so an item dropped in recovery costs
+   only itself and the items around it are kept. CSS Syntax 3 sec. 5.4.3 keeps
+   what a block's contents already yielded when one item fails to parse, and CSS
+   Paged Media 3 sec. 6 says as much of a page or a margin context in so many
+   words: "valid declarations within the block are applied". Strict mode ([not
+   (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
+   lenient parse warns about. [skip] discards the item that failed, and which
+   one it is depends on the body: {!skip_invalid_item} for a body of
+   declarations, {!skip_past_rule} for a body of rules, where an item that opens
+   a block ends at that block rather than at a [;] it does not have. *)
+let read_items_with_recovery ~skip step r init =
+  let rec loop state =
+    if Cursor.recover r then recovering state else continue (step r state)
+  and recovering state =
+    let start = Cursor.save r in
+    match step r state with
+    | committed -> continue committed
+    | exception Error.Parse_error e ->
+        Cursor.push_warning r e;
+        Cursor.restore r start;
+        skip r;
+        loop state
+  and continue = function
+    | `Done result -> result
+    | `More state -> loop state
+  in
+  loop init
+
+(* A selector that is no keyframe selector - the [to] of [entry to], which is no
+   [<length-percentage>] - drops its rule and the block keeps parsing. *)
 let read_keyframe_or_skip inner acc =
   let snap = Cursor.save inner in
   match read_keyframe inner with
-  | frame -> `Frame frame
+  | frame -> frame :: acc
   | exception Cursor.Parse_error e ->
-      (* Invalid keyframe rules are ignored, but the surrounding block keeps
-         parsing. *)
       Cursor.restore inner snap;
       Cursor.push_warning inner e;
-      skip_bad_keyframe inner;
-      `Skip acc
+      skip_past_rule inner;
+      acc
 
+(* One item of the body: a keyframe rule, or the end of it. CSS Animations 1
+   sec. 3 fills a [@keyframes] body with keyframe rules, so an at-rule has no
+   place there; rejecting it here rather than around the loop leaves the
+   rejection inside the recovery the loop runs, which costs the at-rule alone
+   instead of the animation and the sheet holding it. *)
 let read_keyframes_step inner acc =
-  match Cursor.peek inner with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-      Cursor.err_invalid inner ("@keyframes nested @" ^ name)
-  | _ -> (
-      match read_keyframe_or_skip inner acc with
-      | `Frame frame -> frame :: acc
-      | `Skip acc -> acc)
+  Cursor.ws inner;
+  if Cursor.is_done inner then `Done (List.rev acc)
+  else
+    match Cursor.peek inner with
+    | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
+        Cursor.err_invalid inner ("@keyframes nested @" ^ name)
+    | _ -> `More (read_keyframe_or_skip inner acc)
 
 let read_keyframes_block inner =
-  (* CSS Syntax 5.4.4: a [@keyframes] block lists keyframe rules; an invalid
-     selector (e.g. [entry to] - [to] is not a [<length-percentage>]) only drops
-     that rule, the surrounding block keeps parsing. *)
-  let rec read_frames acc =
-    Cursor.ws inner;
-    if Cursor.is_done inner then List.rev acc
-    else read_frames (read_keyframes_step inner acc)
-  in
-  read_frames []
+  read_items_with_recovery ~skip:skip_past_rule read_keyframes_step inner []
 
 (* CSS Animations 1 sec. 3: [@keyframes <keyframes-name>], [<keyframes-name> =
    <custom-ident> | <string>]. The reserved spellings ([none], CSS-wide
@@ -2000,61 +2041,6 @@ let read_descriptor_value read_fn constructor r =
     let value = read_fn r in
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
-
-(* Discard the rule the cursor sits on, stopping at its [{}] block or at a
-   top-level [;]: CSS Syntax 3 sec. 5.4.2 ends an at-rule at whichever comes
-   first, and sec. 5.4.3 ends a qualified rule at its block. Consuming exactly
-   that far leaves what was written after the rule - the declarations around it,
-   or the next rule - to be read on its own. A [(] or a [[] met before the block
-   is a component value of the prelude being discarded, so stopping there would
-   offer the tail of that prelude as a rule of its own. *)
-let rec skip_past_rule r =
-  match Cursor.next_raw r with
-  | None -> ()
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-      ()
-  | Some _ -> skip_past_rule r
-
-(* Discard the item the cursor sits on. A body that holds declarations and
-   at-rules alike has to pick by what the item starts with: the two ends differ,
-   and taking an at-rule for a declaration would eat the item written after it.
-   The caller rewinds first, so a reader that already consumed part of the item
-   is skipped from its start. *)
-let skip_invalid_item r =
-  match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      skip_past_rule r
-  | _ -> Cursor.skip_past_semicolon r
-
-(* Read a body one item at a time, [step] committing each item to the
-   accumulator before the next is read, so an item dropped in recovery costs
-   only itself and the items around it are kept. CSS Syntax 3 sec. 5.4.3 keeps
-   what a block's contents already yielded when one item fails to parse, and CSS
-   Paged Media 3 sec. 6 says as much of a page or a margin context in so many
-   words: "valid declarations within the block are applied". Strict mode ([not
-   (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
-   lenient parse warns about. [skip] discards the item that failed, and which
-   one it is depends on the body: {!skip_invalid_item} for a body of
-   declarations, {!skip_past_rule} for a body of rules, where an item that opens
-   a block ends at that block rather than at a [;] it does not have. *)
-let read_items_with_recovery ~skip step r init =
-  let rec loop state =
-    if Cursor.recover r then recovering state else continue (step r state)
-  and recovering state =
-    let start = Cursor.save r in
-    match step r state with
-    | committed -> continue committed
-    | exception Error.Parse_error e ->
-        Cursor.push_warning r e;
-        Cursor.restore r start;
-        skip r;
-        loop state
-  and continue = function
-    | `Done result -> result
-    | `More state -> loop state
-  in
-  loop init
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
    sec. 5.4.3 discards with no declaration to validate, or the end of the body.
