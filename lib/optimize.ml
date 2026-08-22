@@ -61,6 +61,7 @@ let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let deduplicate_declarations = Shorthand.deduplicate_declarations
 let single_rule_without_nested = Rule.single
+let declaration_run = Rule.declaration_run
 let finalize_rule_without_nested = Rule.finalize
 
 (** {1 Statement Optimization} *)
@@ -241,6 +242,15 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
   | (Import import as stmt) :: rest ->
       process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting
         ~pending acc stmt import rest
+  | (Declarations decls as stmt) :: rest ->
+      (* A run of declarations is a declaration list wherever it sits, and
+         nothing comes between two writes inside one, so the same deduplication
+         a rule body gets applies (CSS Cascade 5 sec. 6.4.4: the later write
+         wins). *)
+      let decls' = declaration_run ~ctx decls in
+      let stmt = if decls' == decls then stmt else Declarations decls' in
+      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+        (stmt :: acc) rest
   | hd :: rest ->
       (* Other statement types - keep as-is *)
       process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
