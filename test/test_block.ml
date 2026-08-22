@@ -53,6 +53,57 @@ let test_drop_empty_rules () =
   let out = render (Block.drop_empty_rules stmts) in
   Alcotest.(check string) "empty rules removed" ".b{color:red}" out
 
+(* CSS Conditional 3 sec. 3: a conditional group rule applies its contents when
+   its condition holds, so one with no contents applies nothing whatever the
+   condition, and dropping it changes no cascade. That covers [@-moz-document]
+   alongside the conditional groups already dropped. *)
+let test_drop_empty_moz_document () =
+  let stmts = block "@-moz-document url-prefix(){}.b{color:red}" in
+  Alcotest.(check string)
+    "an empty @-moz-document is dropped" ".b{color:red}"
+    (render (Block.drop_empty_rules stmts))
+
+(* css-conditional-5 sec. 3 binds an [@else] to the [@when] or [@else] before
+   it, so an empty one of those is only inert when nothing chains onto it.
+   Dropping an antecedent leaves a bare [@else], which cascade's own reader and
+   a browser both reject, and the branch that followed stops applying. *)
+let test_drop_empty_when_and_else () =
+  Alcotest.(check string)
+    "an empty @when with nothing after it is dropped" ".b{color:red}"
+    (render
+       (Block.drop_empty_rules (block "@when media(width>0px){}.b{color:red}")));
+  Alcotest.(check string)
+    "an empty @else closing a chain is dropped"
+    "@when media(width>0px){.x{color:red}}"
+    (render
+       (Block.drop_empty_rules
+          (block "@when media(width>0px){.x{color:red}}@else{}")))
+
+let test_keep_empty_branch_with_a_chained_else () =
+  let chained = "@when media(width>0px){}@else{.z{color:green}}" in
+  Alcotest.(check string)
+    "an empty @when keeps the @else that binds to it" chained
+    (render (Block.drop_empty_rules (block chained)));
+  let middle =
+    String.concat ""
+      [
+        "@when media(width>0px){.x{color:red}}";
+        "@else supports(color:red){}";
+        "@else{.z{color:green}}";
+      ]
+  in
+  Alcotest.(check string)
+    "an empty @else in the middle of a chain stays" middle
+    (render (Block.drop_empty_rules (block middle)))
+
+(* An origin wrapper has no CSS syntax and gates nothing: it records where a
+   block came from, which an empty one still does. *)
+let test_keep_empty_origin () =
+  let stmts = [ Stylesheet.Origin (Author, []) ] in
+  Alcotest.(check int)
+    "an empty origin wrapper survives" 1
+    (List.length (Block.drop_empty_rules stmts))
+
 let test_is_layer_empty () =
   let stmts = block "@layer a{}" in
   match stmts with
@@ -92,6 +143,14 @@ let suite =
       Alcotest.test_case "merge same-condition @media" `Quick
         test_merge_media_combines_same_condition;
       Alcotest.test_case "drop empty rules" `Quick test_drop_empty_rules;
+      Alcotest.test_case "drop empty @-moz-document" `Quick
+        test_drop_empty_moz_document;
+      Alcotest.test_case "drop empty @when and @else" `Quick
+        test_drop_empty_when_and_else;
+      Alcotest.test_case "keep an empty branch a later @else binds to" `Quick
+        test_keep_empty_branch_with_a_chained_else;
+      Alcotest.test_case "keep an empty origin wrapper" `Quick
+        test_keep_empty_origin;
       Alcotest.test_case "is_layer_empty" `Quick test_is_layer_empty;
       Alcotest.test_case "is_layer_empty sees nested rules" `Quick
         test_is_layer_not_empty_with_nested;
