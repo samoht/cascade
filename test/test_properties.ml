@@ -2188,6 +2188,79 @@ let test_font_family () =
   check_font_family ~roundtrip:true ~expected:"\"serif\"" "\"serif\"";
   check_font_family ~roundtrip:true ~expected:"\"inherit\"" "\"inherit\"";
   check_font_family ~roundtrip:true ~expected:"\"default\"" "\"default\"";
+  (* CSS Fonts 4 sec. 2.1.1 states the exclusion per identifier, not per name:
+     "any identifier which could be misinterpreted as a pre-defined keyword in
+     the font-family value definition, or the CSS-wide keywords, is not
+     allowed". A word of a [<custom-ident>+] sequence is such an identifier, so
+     the rule reaches the first, a middle and the last word alike, and a name
+     carrying one has no unquoted spelling at all. *)
+  check_font_family ~roundtrip:true ~expected:"\"inherit test\""
+    "\"inherit test\"";
+  check_font_family ~roundtrip:true ~expected:"\"test inherit\""
+    "\"test inherit\"";
+  check_font_family ~roundtrip:true ~expected:"\"a initial b\""
+    "\"a initial b\"";
+  check_font_family ~roundtrip:true ~expected:"\"unset Sans\"" "\"unset Sans\"";
+  check_font_family ~roundtrip:true ~expected:"\"Brand revert\""
+    "\"Brand revert\"";
+  check_font_family ~roundtrip:true ~expected:"\"revert-layer x\""
+    "\"revert-layer x\"";
+  check_font_family ~roundtrip:true ~expected:"\"a revert-layer b\""
+    "\"a revert-layer b\"";
+  (* CSS Values 4 sec. 4.2 reserves [default] alongside the CSS-wide keywords
+     and excludes it from [<custom-ident>] in every position. *)
+  check_font_family ~roundtrip:true ~expected:"\"default x\"" "\"default x\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo default Bar\""
+    "\"Foo default Bar\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo default\""
+    "\"Foo default\"";
+  (* Sec. 4.2 excludes the keywords "in all ASCII case permutations". *)
+  check_font_family ~roundtrip:true ~expected:"\"INHERIT test\""
+    "\"INHERIT test\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo Default\""
+    "\"Foo Default\"";
+  (* The pre-defined keywords of the [font-family] value definition are the
+     [<generic-font-family>] names, and sec. 2.1.1 adds that a UA "must not
+     consider these keywords as matching the <font-family-name> type", so a
+     sequence word may not be one either. *)
+  check_font_family ~roundtrip:true ~expected:"\"Foo serif\"" "\"Foo serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"serif Foo\"" "\"serif Foo\"";
+  check_font_family ~roundtrip:true ~expected:"\"a sans-serif b\""
+    "\"a sans-serif b\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo monospace\""
+    "\"Foo monospace\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo cursive\""
+    "\"Foo cursive\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo fantasy\""
+    "\"Foo fantasy\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo system-ui\""
+    "\"Foo system-ui\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo math\"" "\"Foo math\"";
+  check_font_family ~roundtrip:true ~expected:"\"Cambria Math\""
+    "\"Cambria Math\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-serif\""
+    "\"Foo ui-serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-sans-serif\""
+    "\"Foo ui-sans-serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-monospace\""
+    "\"Foo ui-monospace\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-rounded\""
+    "\"Foo ui-rounded\"";
+  (* Sec. 2.1.2 keeps the script-specific generics functional, so bare
+     [fangsong] and [emoji] are not pre-defined keywords of the value definition
+     and are ordinary [<custom-ident>]s inside a sequence. *)
+  check_font_family ~roundtrip:true ~expected:"Foo emoji" "\"Foo emoji\"";
+  check_font_family ~roundtrip:true ~expected:"Foo fangsong" "\"Foo fangsong\"";
+  check_font_family ~roundtrip:true ~expected:"Noto Color Emoji"
+    "\"Noto Color Emoji\"";
+  (* The exclusion is on the whole identifier, so a word that merely contains a
+     keyword is an ordinary [<custom-ident>] and still unquotes. *)
+  check_font_family ~roundtrip:true ~expected:"inherited test"
+    "\"inherited test\"";
+  check_font_family ~roundtrip:true ~expected:"Foo serifs" "\"Foo serifs\"";
+  check_font_family ~roundtrip:true ~expected:"Foo sans" "\"Foo sans\"";
+  check_font_family ~roundtrip:true ~expected:"Times New Roman"
+    "\"Times New Roman\"";
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)

@@ -403,32 +403,30 @@ let spec_fontface_family_descriptor_verbatim () =
    does not start an ident sequence, so it has no [<custom-ident>] spelling and
    CSS Fonts 4 sec. 2.1.1 leaves only the [<string>] one. Each output is re-read
    in strict mode: what the printer emits names the same family. *)
+let check_family_name_minify (name, input, expected) =
+  let fail fmt = Fmt.kstr (fun s -> Some s) fmt in
+  match Css.of_string ~strict:false input with
+  | Error _ -> fail "%s: parse rejected %S" name input
+  | Ok { Css.stylesheet; _ } -> (
+      let actual = Css.to_string ~minify:true stylesheet |> String.trim in
+      if not (String.equal actual expected) then
+        fail "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
+          expected actual
+      else
+        match Css.of_string ~strict:true actual with
+        | Error e ->
+            fail "%s: output does not read back: %S\n  %s" name actual
+              (Error.to_string e)
+        | Ok { Css.stylesheet; _ } ->
+            let again = Css.to_string ~minify:true stylesheet |> String.trim in
+            if String.equal again actual then None
+            else
+              fail "%s: not a fixpoint\n  once:  %S\n  twice: %S" name actual
+                again)
+
 let spec_family_name_ident_start () =
-  let check (name, input, expected) =
-    let fail fmt = Fmt.kstr (fun s -> Some s) fmt in
-    match Css.of_string ~strict:false input with
-    | Error _ -> fail "%s: parse rejected %S" name input
-    | Ok { Css.stylesheet; _ } -> (
-        let actual = Css.to_string ~minify:true stylesheet |> String.trim in
-        if not (String.equal actual expected) then
-          fail "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
-            expected actual
-        else
-          match Css.of_string ~strict:true actual with
-          | Error e ->
-              fail "%s: output does not read back: %S\n  %s" name actual
-                (Error.to_string e)
-          | Ok { Css.stylesheet; _ } ->
-              let again =
-                Css.to_string ~minify:true stylesheet |> String.trim
-              in
-              if String.equal again actual then None
-              else
-                fail "%s: not a fixpoint\n  once:  %S\n  twice: %S" name actual
-                  again)
-  in
   match
-    List.filter_map check
+    List.filter_map check_family_name_minify
       [
         ( "a name starting with a digit stays quoted in the descriptor",
           "@font-face{font-family:\"2Brand\";src:url(a.woff2)}",
@@ -461,6 +459,68 @@ let spec_family_name_ident_start () =
       Alcotest.failf "family names spelled as invalid idents:\n%s"
         (String.concat "\n" mismatches)
 
+(* CSS Fonts 4 sec. 2.1.1: in an unquoted [<font-family-name>], "any identifier
+   which could be misinterpreted as a pre-defined keyword in the font-family
+   value definition, or the CSS-wide keywords, is not allowed", and CSS Values 4
+   sec. 4.2 reserves [default] on top. The exclusion is stated per identifier,
+   so it reaches every word of a [<custom-ident>+] sequence and such a name has
+   no unquoted spelling at all. All four routes into the family-name printer -
+   the property, the [font] shorthand, the [@font-face] descriptor and
+   [@font-feature-values] - are checked, and each output is re-read in strict
+   mode and re-printed. *)
+let spec_family_name_reserved_words () =
+  match
+    List.filter_map check_family_name_minify
+      [
+        ( "a CSS-wide keyword as the first word keeps the quotes",
+          ".a{font-family:\"inherit test\"}",
+          ".a{font-family:\"inherit test\"}" );
+        ( "a CSS-wide keyword as the last word keeps the quotes",
+          ".a{font-family:\"test inherit\"}",
+          ".a{font-family:\"test inherit\"}" );
+        ( "a CSS-wide keyword in the middle keeps the quotes",
+          ".a{font-family:\"a unset b\"}",
+          ".a{font-family:\"a unset b\"}" );
+        ( "revert-layer keeps the quotes",
+          ".a{font-family:\"revert-layer x\",sans-serif}",
+          ".a{font-family:\"revert-layer x\",sans-serif}" );
+        ( "the reserved default keeps the quotes",
+          ".a{font-family:\"default x\"}",
+          ".a{font-family:\"default x\"}" );
+        ( "a keyword word is excluded in every ASCII case permutation",
+          ".a{font-family:\"Foo INITIAL\"}",
+          ".a{font-family:\"Foo INITIAL\"}" );
+        ( "a generic family name as a sequence word keeps the quotes",
+          ".a{font-family:\"Foo serif\",serif}",
+          ".a{font-family:\"Foo serif\",serif}" );
+        ( "a generic family name as the first word keeps the quotes",
+          ".a{font-family:\"monospace Foo\"}",
+          ".a{font-family:\"monospace Foo\"}" );
+        ( "a reserved word keeps the quotes in the font shorthand",
+          ".a{font:12px/1.5 \"inherit test\"}",
+          ".a{font:12px/1.5 \"inherit test\"}" );
+        ( "a reserved word keeps the quotes in the @font-face descriptor",
+          "@font-face{font-family:\"revert serif\";src:url(a.woff2)}",
+          "@font-face{font-family:\"revert serif\";src:url(a.woff2)}" );
+        ( "a reserved word keeps the quotes in @font-feature-values",
+          "@font-feature-values \"default x\"{@styleset{x:1}}",
+          "@font-feature-values \"default x\"{@styleset{x:1}}" );
+        ( "a bare emoji is no generic in the grammar and still unquotes",
+          ".a{font-family:\"Noto Color Emoji\"}",
+          ".a{font-family:Noto Color Emoji}" );
+        ( "a word that merely contains a keyword still unquotes",
+          ".a{font-family:\"inherited serifs\"}",
+          ".a{font-family:inherited serifs}" );
+        ( "an ordinary multi-word name still unquotes",
+          ".a{font-family:\"Times New Roman\",serif}",
+          ".a{font-family:Times New Roman,serif}" );
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "family names spelled with a reserved word:\n%s"
+        (String.concat "\n" mismatches)
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -491,4 +551,6 @@ let suite =
         spec_fontface_family_descriptor_verbatim;
       test_case "spec family name ident start" `Quick
         spec_family_name_ident_start;
+      test_case "spec family name reserved words" `Quick
+        spec_family_name_reserved_words;
     ] )
