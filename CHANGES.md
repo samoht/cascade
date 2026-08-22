@@ -176,6 +176,12 @@
 
 ### Library
 
+- `Cascade.Resolve.Make.resolve` and `Cascade.Resolve.layer_order` document
+  every block they leave out, not just conditional groups: `@starting-style`
+  declares a before-change style, `@scope` brings a scoping root and the
+  proximity criterion, and an origin wrapper carries an origin that outranks
+  the layer. `Css.layers` remains the exhaustive count of what a sheet declares
+  (#394)
 - `Css.Media.kind` classifies a negated width bound by the side it bounds, so
   `not (min-width: 640px)` groups and sorts with the upper bounds it matches
   instead of with the lower bound it negates, and a doubled `not` cancels. The

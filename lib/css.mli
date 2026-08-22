@@ -520,8 +520,9 @@ val layers : t -> string list
     sublayer of an anonymous [@layer { ... }] has no name to report.
 
     This is what a sheet declares, not the order a cascade resolves in.
-    {!Resolve.layer_order} answers that, and leaves out a layer named inside a
-    conditional group because the resolver does not enter one. *)
+    {!Resolve.layer_order} answers that, and leaves out a layer named inside any
+    block the resolver does not enter: a conditional group rule,
+    [@starting-style], [@scope] or an origin wrapper. *)
 
 (** {3 AST Introspection Helpers} *)
 

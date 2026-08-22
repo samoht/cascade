@@ -110,8 +110,8 @@ type layer_order_diff = {
     whose conflicts the two sheets resolve differently. It is never empty.
 
     The order compared is the sheet's own, so a layer declared inside a
-    conditional group is not part of it, as in {!Cascade.Resolve.layer_order}.
-*)
+    conditional group rule, [@starting-style], [@scope] or an origin wrapper is
+    not part of it, as in {!Cascade.Resolve.layer_order}. *)
 
 type t = {
   rules : rule_diff list;
