@@ -2395,6 +2395,39 @@ let c61_conditional_competitor_order () =
        "@media not all and (min-width:640px){.u{display:grid}}@media not all \
         and (min-width:1024px){.u{display:flex}}")
 
+(* CSS Syntax 3 sec. 5.4.4/5.4.5: a declaration inside a nested block runs to
+   the next [;] or to the block's [}]. Unwrapping a baseline-true [@supports]
+   inside a style rule leaves its declarations as siblings of whatever followed
+   the wrapper, so the serializer owes them a separator; without one the last
+   declaration runs on into the next sibling and the reader drops the rule.
+   [Css.of_string ~strict:true] is the gate: it turns any recovery warning into
+   an error. *)
+let nested_folded_block_separator () =
+  let check name input expected =
+    let output = optimized_string input in
+    Alcotest.(check string) name expected output;
+    match Css.of_string ~strict:true output with
+    | Ok _ -> ()
+    | Error e ->
+        Alcotest.failf "%s: emitted CSS %S is rejected by the reader: %s" name
+          output (Error.to_string e)
+  in
+  check "folded block before another folded block"
+    ".a{@supports (color:red){color:red}@supports (color:red){top:0}}"
+    ".a{color:red;top:0}";
+  check "three folded blocks in a row"
+    ".a{@supports (color:red){color:red}@supports (color:red){top:0}@supports \
+     (color:red){left:0}}"
+    ".a{color:red;top:0;left:0}";
+  check "folded block before a nested rule"
+    ".a{@supports (color:red){color:red}.b{top:0}}" ".a{color:red;.b{top:0}}";
+  check "folded block before a kept at-rule"
+    ".a{@supports (color:red){color:red}@media print{top:0}}"
+    ".a{color:red;@media print{top:0}}";
+  check "declarations then folded block then nested rule"
+    ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
+    ".a{top:0;color:red;.b{left:0}}"
+
 let target_minify_enforce_spec_split () =
   let check_modes name input ~default ~spec =
     Alcotest.(check string) (name ^ " default") default (optimized_string input);
@@ -4518,6 +4551,9 @@ let selector_merging_tests =
     ( "target minify and enforce-spec split",
       `Quick,
       target_minify_enforce_spec_split );
+    ( "folded nested block keeps its declaration separator",
+      `Quick,
+      nested_folded_block_separator );
     ( "spec cascade 6.1 no media merge across layer statement",
       `Quick,
       c61_no_layer_media_merge );
