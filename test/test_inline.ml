@@ -362,6 +362,63 @@ let test_inline_cleanup_inside_a_rule () =
   check_inline_case "a nested @property registration is dropped"
     ".b{color:red;@property --y{syntax:\"*\";inherits:false}}" ".b{color:red}"
 
+(* CSS Properties and Values API 1 sec. 2: a registration gives its property an
+   [initial-value], used as the computed value wherever no declaration wins, and
+   an [inherits] descriptor deciding whether it inherits at all. Both change
+   computed values, so a registration is dead only once nothing is left for it
+   to govern: no declaration of the property, and no live [var()] reading it. *)
+let test_inline_property_registration_kept () =
+  check_inline_case "a registration for a kept-live property survives with it"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check_inline_case "an inheriting registration is kept on the same terms"
+    "@property \
+     --c{syntax:\"<color>\";inherits:true;initial-value:red}a{--c:#00f}b{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:true;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check_inline_case
+    "a registration for a declaration the cascade cannot see is kept"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}.theme{--c:#00f}.other{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}.theme{--c:#00f}.other{color:var(--c)}";
+  check_inline_case
+    "a registration whose declaration survives unreferenced is kept"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}"
+
+let test_inline_property_registration_dropped () =
+  check_inline_case "a resolved-away property takes its registration with it"
+    "@property \
+     --gap{syntax:\"<length>\";inherits:false;initial-value:16px}.a{padding:var(--gap)}"
+    ".a{padding:16px}";
+  check_inline_case
+    "a registration nothing declares and nothing reads has nothing to govern"
+    "@property --y{syntax:\"*\";inherits:false}.b{color:red}" ".b{color:red}"
+
+(* Inlining is a rewrite to a fixpoint: running it on its own output must change
+   nothing. A pass that keeps a declaration because a registration made its
+   property look multi-defined, then deletes that registration, contradicts
+   itself - the next pass sees a single-definition variable and prunes it. *)
+let test_inline_property_idempotent () =
+  let check name input =
+    let once = minified (Css.inline_vars (parse input)) in
+    let twice = minified (Css.inline_vars (parse once)) in
+    Alcotest.(check string) name once twice
+  in
+  check "a kept-live registered property is a fixpoint"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check "an unreferenced registered declaration is a fixpoint"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}";
+  check "an unused registration is a fixpoint"
+    "@property --y{syntax:\"*\";inherits:false}.b{color:red}"
+
 let suite =
   ( "inline",
     [
@@ -407,4 +464,12 @@ let suite =
         test_inline_layer_winner;
       Alcotest.test_case "inline vars clean up inside a rule too" `Quick
         test_inline_cleanup_inside_a_rule;
+      Alcotest.test_case
+        "inline vars keep the registration of a property they keep" `Quick
+        test_inline_property_registration_kept;
+      Alcotest.test_case
+        "inline vars drop the registration of a property they remove" `Quick
+        test_inline_property_registration_dropped;
+      Alcotest.test_case "inline vars reach a fixpoint on registrations" `Quick
+        test_inline_property_idempotent;
     ] )

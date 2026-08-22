@@ -126,13 +126,17 @@ for f in "$dir"/fixtures/*.html; do
     rm -f "$tmp"
   done
 done
-# cascade --minify preserves the render too: minify each <style> block in place
-# and compare computed styles against the original page.
-for f in "$dir"/fixtures/*.html; do
-  tmp=$(mktemp)
-  node "$dir/minify_page.js" "$f" > "$tmp" 2>/dev/null
-  check "$(basename "$f") minify" "$f" "$tmp"
-  rm -f "$tmp"
+# cascade --minify preserves the render too, and so does the closed-world
+# --inline-vars cleanup layered on it: rewrite each <style> block in place and
+# compare computed styles against the original page.
+for flags in "" "--inline-vars"; do
+  for f in "$dir"/fixtures/*.html; do
+    tmp=$(mktemp)
+    # shellcheck disable=SC2086 # an empty $flags must vanish, not pass ""
+    node "$dir/minify_page.js" "$f" $flags > "$tmp" 2>/dev/null
+    check "$(basename "$f") minify${flags:+ $flags}" "$f" "$tmp"
+    rm -f "$tmp"
+  done
 done
 # Real pages downloaded by fetch.sh (gitignored, so absent until it is run).
 # They gate like the fixtures do: a surviving difference is a defect in the

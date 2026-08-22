@@ -1,0 +1,10 @@
+<!doctype html><html><head><style>
+  @property --tint { syntax: "<color>"; inherits: false; initial-value: red }
+  @property --pad { syntax: "<length>"; inherits: true; initial-value: 7px }
+  .outer { --tint: blue; --pad: 3px; color: var(--tint); padding: var(--pad) }
+  .inner { color: var(--tint); padding: var(--pad) }
+  .away { color: var(--tint); padding: var(--pad) }
+</style></head><body>
+<div class="outer">outer<span class="inner">inner</span></div>
+<p class="away">away</p>
+</body></html>
