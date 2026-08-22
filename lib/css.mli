@@ -507,14 +507,24 @@ val media_queries : t -> (Media.t * statement list) list
 (** [media_queries t] returns media queries and their rule statements. *)
 
 val layers : t -> string list
-(** [layers t] returns the layer names from the stylesheet. *)
+(** [layers t] is every cascade layer [t] declares, one dotted path per layer
+    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
+    sheet first names them. A layer named inside a conditional group counts: the
+    group decides whether its contents apply, not whether the layer exists. A
+    sublayer of an anonymous [@layer { ... }] has no name to report.
+
+    This is what a sheet declares, not the order a cascade resolves in.
+    {!Resolve.layer_order} answers that, and leaves out a layer named inside a
+    conditional group because the resolver does not enter one. *)
 
 (** {3 AST Introspection Helpers} *)
 
 val layer_block : string -> t -> statement list option
-(** [layer_block name sheet] extracts the statements from the named layer
-    [@layer name] in the stylesheet. Returns {!constructor-None} if the layer is
-    not found. *)
+(** [layer_block name sheet] is the statements of the layer [name], wherever it
+    is declared and whatever form declares it: a dotted name, a nested block, or
+    a block inside a conditional group. It is {!constructor-None} when no
+    [@layer] block opens that layer, so a name only an [@layer a, b;] statement
+    declares is {!constructor-None} as well. *)
 
 val rules_of_statements : statement list -> (Selector.t * declaration list) list
 (** [rules_of_statements stmts] extracts all CSS rules (selector + declarations)
@@ -623,16 +633,18 @@ val with_fallback : 'a var -> 'a -> 'a var
 type any_var = Variables.any_var = V : 'a var -> any_var
 
 val vars_of_rules : statement list -> any_var list
-(** [vars_of_rules statements] extracts all CSS variables referenced in rule
-    statements' declarations, returning them sorted and deduplicated. *)
+(** [vars_of_rules statements] is {!vars_of_stylesheet} of [statements]: a
+    statement list is a stylesheet, and the two answer the same question. *)
 
 val vars_of_declarations : declaration list -> any_var list
 (** [vars_of_declarations decls] extracts all CSS variables referenced in the
     declarations list. *)
 
 val vars_of_stylesheet : t -> any_var list
-(** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
-    entire stylesheet, returning them sorted and deduplicated. *)
+(** [vars_of_stylesheet stylesheet] is every variable [stylesheet] references,
+    from the declarations of every statement it holds: a rule nested in a rule,
+    a rule inside any grouping at-rule, and an at-rule carrying declarations of
+    its own such as [@keyframes] or [@page]. Deduplicated, in source order. *)
 
 val any_var_name : any_var -> string
 (** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)

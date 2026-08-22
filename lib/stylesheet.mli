@@ -387,8 +387,10 @@ val pp_stylesheet : stylesheet Pp.t
 (** {1 Variable Extraction} *)
 
 val vars_of_stylesheet : stylesheet -> Variables.any_var list
-(** [vars_of_stylesheet ss] extracts all variables referenced in a stylesheet.
-*)
+(** [vars_of_stylesheet ss] is every variable [ss] references, from the
+    declarations {!fold_declarations} reaches, so a rule nested in a rule and an
+    at-rule carrying declarations of its own are both covered. Deduplicated, in
+    source order. *)
 
 (** {1 Rendering} *)
 

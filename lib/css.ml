@@ -523,55 +523,63 @@ let media_queries t =
 (* AST Introspection Helpers *)
 
 (* CSS Cascade 5 sec. 6.4.2: a dotted layer name [foo.bar] is shorthand for the
-   nested [@layer foo { @layer bar { ... } }]. Walk the @layer tree once,
-   expanding dotted names and prefixing each block with its parent's path, so
-   [foo.bar] is reachable under one canonical name whatever the input shape. *)
-let qualified_layer_blocks sheet =
+   nested [@layer foo { @layer bar { ... } }]. Walk the sheet once through
+   [statement_children], expanding dotted names and prefixing each name with its
+   parent's path, so a layer is reachable under one canonical name whatever the
+   input shape and an [@layer] inside a conditional group counts like any other:
+   the group decides whether its contents apply, not whether the layer exists.
+   Each entry carries the block the name opens, or [None] for a name declared by
+   a layer statement that opens none, so a statement never shadows the block
+   that fills the layer in. A sublayer of an anonymous layer has no name a
+   caller could ask for, so the walk stops there. *)
+let layer_declarations sheet =
   let prefix_with parent name =
     if parent = "" then name else parent ^ "." ^ name
   in
-  let rec emit_dotted parent rest inner acc =
-    match rest with
+  let rec emit_dotted parent segments (inner : statement list option) acc =
+    match segments with
     | [] -> acc
-    | [ leaf ] ->
+    | [ leaf ] -> (
         let qualified = prefix_with parent leaf in
-        walk qualified ((qualified, inner) :: acc) inner
+        let acc = (qualified, inner) :: acc in
+        match inner with None -> acc | Some block -> walk qualified acc block)
     | head :: tail ->
+        (* An intermediate segment names a layer that exists but opens no block
+           of its own. *)
         let qualified = prefix_with parent head in
-        emit_dotted qualified tail inner ((qualified, []) :: acc)
+        let stub = Option.map (fun _ -> []) inner in
+        emit_dotted qualified tail inner ((qualified, stub) :: acc)
   and walk parent acc statements =
     List.fold_left
       (fun acc s ->
-        match as_layer s with
-        | Some (Some name, inner) ->
-            let segments = String.split_on_char '.' name in
-            emit_dotted parent segments inner acc
-        | _ -> acc)
+        match s with
+        | Layer (Some name, inner) ->
+            emit_dotted parent (String.split_on_char '.' name) (Some inner) acc
+        | Layer_decl names ->
+            List.fold_left
+              (fun acc name ->
+                emit_dotted parent (String.split_on_char '.' name) None acc)
+              acc names
+        | Layer (None, _) -> acc
+        | s -> walk parent acc (statement_children s))
       acc statements
   in
   List.rev (walk "" [] sheet)
 
-let layer_block name sheet = List.assoc_opt name (qualified_layer_blocks sheet)
+let layer_block name sheet =
+  List.find_map
+    (fun (declared, block) -> if declared = name then block else None)
+    (layer_declarations sheet)
 
 let layers t =
-  (* Derive the layer set from the canonical [@layer] block walk plus any
-     explicit [@layer a, b, c;] forward declarations. Going through
-     [qualified_layer_blocks] alone keeps dotted and nested input forms
-     producing the same result. *)
-  let from_blocks = List.map fst (qualified_layer_blocks t) in
-  let from_decls =
-    List.concat_map
-      (fun s -> match s with Stylesheet.Layer_decl names -> names | _ -> [])
-      t
-  in
   let seen = Hashtbl.create 16 in
-  let dedup name : string option =
-    if Hashtbl.mem seen name then None
-    else (
-      Hashtbl.add seen name ();
-      Some name)
-  in
-  List.filter_map dedup (from_blocks @ from_decls)
+  List.filter_map
+    (fun (name, _) ->
+      if Hashtbl.mem seen name then None
+      else (
+        Hashtbl.add seen name ();
+        Some name))
+    (layer_declarations t)
 
 let rules_of_statements stmts =
   List.filter_map
@@ -638,13 +646,10 @@ let property ~name syntax ?initial_value ?(inherits = false) () =
 
 let vars_of_declarations = Variables.vars_of_declarations
 
-let vars_of_rules statements =
-  let decls =
-    List.concat_map
-      (fun stmt -> match stmt with Rule r -> r.declarations | _ -> [])
-      statements
-  in
-  vars_of_declarations decls
+(* Same question as [vars_of_stylesheet], differing only in what it is handed: a
+   statement list is a stylesheet. Two walks would answer differently the moment
+   one of them met a construct the other knew. *)
+let vars_of_rules = vars_of_stylesheet
 
 type parse = { stylesheet : t; warnings : Error.t list }
 

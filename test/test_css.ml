@@ -860,6 +860,28 @@ let public_layers_conditional_groups () =
   Alcotest.(check (list string))
     "anonymous layer hides its sublayers" []
     (layers (v [ Stylesheet.Layer (None, [ block ]) ]));
+  (* A layer statement declares a name without opening a block, so it must not
+     stand in for the block that fills the layer in later. *)
+  let forward_declared =
+    v
+      [
+        Stylesheet.Layer_decl [ "one"; "two" ];
+        Stylesheet.Layer (Some "one", [ styled ]);
+      ]
+  in
+  Alcotest.(check (list string))
+    "statement declares the order" [ "one"; "two" ] (layers forward_declared);
+  let block_text name sheet =
+    match layer_block name sheet with
+    | None -> "<no block>"
+    | Some stmts -> to_string ~minify:true (v stmts)
+  in
+  Alcotest.(check string)
+    "statement does not shadow the block" ".a{color:#111}"
+    (block_text "one" forward_declared);
+  Alcotest.(check string)
+    "a name only declared opens no block" "<no block>"
+    (block_text "two" forward_declared);
   (* Names come in source order, so a caller reading them reads the order the
      sheet introduces its layers in. *)
   Alcotest.(check (list string))

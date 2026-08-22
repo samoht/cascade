@@ -201,6 +201,15 @@
   `@supports`. Those at-rules group style rules like any other conditional
   group, and a caller rewriting or reordering "all rules at all nesting levels"
   got a sheet with five of them silently untouched (#381)
+- `Css.layers` and `Css.layer_block` find a layer declared inside `@media`,
+  `@supports`, `@container`, `@scope` or any other grouping at-rule. Such a
+  block declares a real layer, so a caller asking which layers a sheet declares
+  was given a wrong answer rather than a partial one; `layers` reports every
+  name it finds in source order (#382)
+- `Css.vars_of_rules` is `Css.vars_of_stylesheet`, so a `var()` inside a nested
+  rule or inside any at-rule is reported instead of only one a top-level rule
+  holds. Both fold over every declaration site, which also adds the references
+  an animation frame and a page margin box hold (#382)
 
 ### CLI tools
 

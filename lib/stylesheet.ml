@@ -4108,40 +4108,14 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
 
 (** {1 Variable extraction from stylesheets} *)
 
-let rec vars_of_statement (stmt : statement) : Variables.any_var list =
-  match stmt with
-  | Rule rule ->
-      Variables.vars_of_declarations rule.declarations
-      @ vars_of_block rule.nested
-  | Declarations decls -> Variables.vars_of_declarations decls
-  | Media (_, block)
-  | Container (_, _, block)
-  | Supports (_, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block)
-  | Layer (_, block)
-  | Starting_style block
-  | Origin (_, block)
-  | Scope (_, _, block) ->
-      vars_of_block block
-  | Font_face _ | Counter_style _ ->
-      [] (* At-rule descriptors don't contribute CSS variables *)
-  | Page (_, decls) -> Variables.vars_of_declarations decls
-  | Page_with_margins (_, _, _) -> []
-  | Position_try (_, decls) | Supports_condition (_, decls) ->
-      Variables.vars_of_declarations decls
-  | Viewport _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-  | Unknown_at_rule _ | Bang_comment _ ->
-      []
-
-and vars_of_block (block : block) : Variables.any_var list =
-  List.concat_map vars_of_statement block
-
+(* A [var()] is a reference wherever the declaration holding it sits, so this is
+   [fold_declarations] over every site rather than a list of the at-rules that
+   came to mind: an animation frame and a page margin box read a variable like a
+   style rule does. Gathering the declarations first and extracting once dedupes
+   across statements, which per-statement extraction cannot. *)
 let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
-  vars_of_block ss
+  fold_declarations (fun acc decls -> List.rev_append decls acc) [] ss
+  |> List.rev |> Variables.vars_of_declarations
 
 (* Alias for API consistency *)
 let read = read_stylesheet
