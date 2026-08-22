@@ -146,10 +146,17 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
     merge_media_blocks ~optimize_merged_block stmts
   else stmts
 
-(* Leaf rules reachable from a statement, descending into nested blocks. *)
-let rec leaf_rules stmt =
+(* Leaf rules reachable from a statement, descending into nested blocks. A
+   nested declarations run (CSS Nesting 1 sec. 3.4) sets properties on the rule
+   it sits in, so it reads as one more rule with that selector; missed, it is a
+   conflict the hoisting analysis below never sees. *)
+let rec leaf_rules ?parent stmt =
   match stmt with
-  | Rule r -> r :: List.concat_map leaf_rules r.nested
+  | Rule r -> r :: List.concat_map (leaf_rules ~parent:r) r.nested
+  | Declarations decls -> (
+      match parent with
+      | Some (p : rule) -> [ { p with declarations = decls; nested = [] } ]
+      | None -> [])
   | Media (_, b)
   | Supports (_, b)
   | Layer (_, b)
@@ -160,7 +167,7 @@ let rec leaf_rules stmt =
   | Scope (_, _, b)
   | When (_, b)
   | Else (_, b) ->
-      List.concat_map leaf_rules b
+      List.concat_map (fun s -> leaf_rules ?parent s) b
   | _ -> []
 
 (* Two declarations an element computes differently once they swap order: they

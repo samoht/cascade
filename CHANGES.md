@@ -61,6 +61,11 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
+- A rule that carries nested content stays out of the same-selector merge, the
+  distant `@media` hoist and the shadowed-rule drop. A rule's declarations are
+  only the run written before its first nested statement (CSS Nesting 1
+  sec. 3.4), so a pass reading them as the whole body moves or drops content it
+  never looked at (#376)
 - `--minify` is faster on a stylesheet the optimizer factors heavily, for the
   same output. The rule graph's cycle check, topological order and
   selector-branch index each probed a generic `Hashtbl` once per edge or per
