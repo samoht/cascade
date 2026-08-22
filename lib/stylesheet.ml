@@ -3332,6 +3332,15 @@ let item_opens_block inner =
   Cursor.restore inner start;
   found
 
+(* CSS Nesting 1 sec. 3.4 wraps a run of declarations written after a nested
+   statement in a nested declarations rule, so it keeps its place among them.
+   The run a rule body is reading is the head of its [nested] accumulator and
+   holds its declarations reversed, like [decls]; sealing it puts them back in
+   source order. *)
+let seal_declaration_run = function
+  | Declarations run :: rest -> Declarations (List.rev run) :: rest
+  | nested -> nested
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -3715,10 +3724,10 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
 
 and read_rule_item selector inner decls nested =
   match Cursor.peek inner with
-  | None -> `Done (List.rev decls, List.rev nested)
+  | None -> `Done (List.rev decls, List.rev (seal_declaration_run nested))
   | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
       let stmt = read_nested_at_within_rule inner selector in
-      `Continue (decls, stmt :: nested)
+      `Continue (decls, stmt :: seal_declaration_run nested)
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip inner;
       `Continue (decls, nested)
@@ -3727,10 +3736,16 @@ and read_rule_item selector inner decls nested =
 and read_rule_decl_or_nested selector inner decls nested =
   let start = Cursor.save inner in
   match Declaration.read_declaration inner with
-  | Some d ->
+  | Some d -> (
       Cursor.ws inner;
       if Cursor.peek_semicolon inner then Cursor.skip inner;
-      `Continue (d :: decls, nested)
+      (* Only the run written before the first nested statement is the rule's
+         own; a later one joins the block it follows. *)
+      match nested with
+      | [] -> `Continue (d :: decls, nested)
+      | Declarations run :: rest ->
+          `Continue (decls, Declarations (d :: run) :: rest)
+      | _ -> `Continue (decls, Declarations [ d ] :: nested))
   | None -> read_nested_rule_or_done selector inner decls nested
   (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
@@ -3742,11 +3757,12 @@ and read_rule_decl_or_nested selector inner decls nested =
       read_nested_rule_or_done selector inner decls nested
 
 and read_nested_rule_or_done selector inner decls nested =
-  if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
+  if Cursor.is_done inner then
+    `Done (List.rev decls, List.rev (seal_declaration_run nested))
   else
     let nr = read_rule ~nested:true inner in
     validate_nested_rule_selector inner selector nr.selector;
-    `Continue (decls, Rule nr :: nested)
+    `Continue (decls, Rule nr :: seal_declaration_run nested)
 
 and read_rule_body selector inner =
   let rec loop decls nested =

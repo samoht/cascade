@@ -45,6 +45,12 @@
   body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested
   at-rules, and `@layer` was the only one still read as a stylesheet block
   (#374)
+- A declaration written after a nested rule keeps its place instead of being
+  hoisted to the top of the block. CSS Nesting 1 sec. 3.4 wraps such a run in a
+  nested declarations rule, and its worked example names the hoisted spelling as
+  not equivalent, so `.a { @supports (color: red) { color: blue } color: green }`
+  now computes green as Blink and WebKit do, where cascade printed a sheet that
+  computed blue (#380)
 
 ### Minification
 

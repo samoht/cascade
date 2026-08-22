@@ -212,7 +212,11 @@ val selector : rule -> Selector.t
 (** [selector rule] returns the selector of a rule. *)
 
 val declarations : rule -> declaration list
-(** [declarations rule] returns the declarations of a rule. *)
+(** [declarations rule] returns the run of declarations written before the
+    rule's first nested statement. CSS Nesting 1 sec. 3.4 wraps a run written
+    after one in a nested declarations rule, so it stays in {!nested} at the
+    position it was written; this is the whole body only for a rule that nests
+    nothing. *)
 
 val nested : rule -> statement list
 (** [nested rule] returns the nested statements of a rule. *)

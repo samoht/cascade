@@ -163,7 +163,9 @@ val statement_selector : statement -> Selector.t option
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
-    statement is a rule, {!constructor-None} otherwise. *)
+    statement is a rule, {!constructor-None} otherwise. The declarations are the
+    run written before the first nested statement; a run written after one is a
+    nested declarations rule inside [nested], at the position it was written. *)
 
 val as_layer : statement -> (string option * statement list) option
 (** [as_layer stmt] returns [Some (name, statements)] if the statement is a
