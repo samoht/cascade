@@ -1783,16 +1783,20 @@ let read_descriptor_value read_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
-(* CSS Syntax 3 sec. 5.4.2: an at-rule ends at its block or at its [;].
-   Discarding an invalid one consumes exactly that far, so the declarations
-   written after it stay in the rule. *)
-let rec skip_at_rule r =
+(* Discard the rule the cursor sits on, stopping at its [{}] block or at a
+   top-level [;]: CSS Syntax 3 sec. 5.4.2 ends an at-rule at whichever comes
+   first, and sec. 5.4.3 ends a qualified rule at its block. Consuming exactly
+   that far leaves what was written after the rule - the declarations around it,
+   or the next rule - to be read on its own. A [(] or a [[] met before the block
+   is a component value of the prelude being discarded, so stopping there would
+   offer the tail of that prelude as a rule of its own. *)
+let rec skip_past_rule r =
   match Cursor.next_raw r with
   | None -> ()
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       ()
-  | Some _ -> skip_at_rule r
+  | Some _ -> skip_past_rule r
 
 (* Discard the item the cursor sits on. A body that holds declarations and
    at-rules alike has to pick by what the item starts with: the two ends differ,
@@ -1802,7 +1806,7 @@ let rec skip_at_rule r =
 let skip_invalid_item r =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      skip_at_rule r
+      skip_past_rule r
   | _ -> Cursor.skip_past_semicolon r
 
 (* Read a body one item at a time, [step] committing each item to the
@@ -3173,7 +3177,7 @@ let item_opens_block inner =
    item, the recovery CSS Syntax 3 sec. 5.4.4 describes. The warning is what
    [~strict:true] turns into an error. *)
 let drop_nested_at_rule r ~loc reason : statement option =
-  skip_at_rule r;
+  skip_past_rule r;
   Cursor.push_warning r (Error.bad_value loc ~property:"rule" ~reason);
   None
 
@@ -3292,16 +3296,6 @@ let rec read_statement (r : Cursor.t) : statement =
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =
-  (* Skip a statement that failed to parse: consume to the end of its block
-     ([{...}]) or its terminating [;], leaving the cursor at the next rule. *)
-  let rec skip_bad_statement () =
-    match Cursor.next_raw r with
-    | None -> ()
-    | Some (Component.Block _)
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-        ()
-    | Some _ -> skip_bad_statement ()
-  in
   let rec read_statements acc =
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
@@ -3316,7 +3310,7 @@ and read_block (r : Cursor.t) : block =
       | exception Error.Parse_error e when Cursor.recover r ->
           Cursor.restore r snap;
           Cursor.push_warning r e;
-          skip_bad_statement ();
+          skip_past_rule r;
           read_statements acc
       | Import _ ->
           (* CSS Cascade L6 sec. 2: @import is only valid at the top of the
