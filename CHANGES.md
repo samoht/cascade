@@ -327,6 +327,11 @@
   footprint, so the optimizer read the pair as commutative: two rules writing
   the colour merged across `column-rule: 1px solid red`, and an element
   matching both painted the rule red (#447)
+- A single-argument `:is()` and a double `:not()` keep their wrapper around a
+  type or universal selector. Selectors 4 sec. 3.5 puts such a selector first
+  in its compound, and both rewrites are node-local, so splicing fused the two
+  names: `.a:is(code)` printed `.acode` and `:is(.a *):is(code)` printed
+  `:is(.a *)code`, which browsers drop (#377)
 - A single-argument `:is()` keeps its wrapper after a pseudo-element that
   cannot take its argument, so `.a::before:is(.b)` minifies to
   `.a:before:is(.b)` rather than the `.a:before.b` that cascade's own reader,
