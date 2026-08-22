@@ -7045,6 +7045,62 @@ let authored_precision_preserved () =
         ".x{line-height:6.28318531}" );
     ]
 
+(* The six-significant-figure budget buys a fractional tail, and past 10^6 it
+   stops reaching one: the only digits left to spend are integer ones the
+   arithmetic got right. [1in] is exactly [96px] and [1pt] exactly [4/3px] (CSS
+   Values 4 sec. 6.2), so [calc(1in + 999999999px)] is [1000000095px] and
+   rounding it to [1000000000px] moves the box by 95px. A value small enough for
+   the budget to reach its fraction still pays it: [1cm] is [4800/127px], whose
+   tail is Cascade's own noise. *)
+let computed_precision_keeps_integer_digits () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [idempotent]") expected (normalize expected))
+    [
+      (* An absolute-unit combine past 10^6 keeps every digit. *)
+      ( "in + px keeps the whole magnitude",
+        ".x { width: calc(1in + 999999999px) }",
+        ".x{width:1000000095px}" );
+      ( "in + px keeps a mid-range magnitude",
+        ".x { width: calc(1in + 12345678px) }",
+        ".x{width:12345774px}" );
+      ( "pc + px keeps the whole magnitude",
+        ".x { width: calc(1pc + 1000000px) }",
+        ".x{width:1000016px}" );
+      ( "pt + px keeps the third of a pixel",
+        ".x { width: calc(1pt + 1000000px) }",
+        ".x{width:1000001.33333333px}" );
+      ( "hypot() past 10^6 keeps the whole magnitude",
+        ".x { width: hypot(999999999px, 1px) }",
+        ".x{width:999999999px}" );
+      ( "a folded irrational past 10^6 keeps its integer digits",
+        ".x { width: calc(1000000px * pi) }",
+        ".x{width:3141592.65358979px}" );
+      (* Under 10^6 the budget still spends the tail. *)
+      ( "cm + px spends the tail",
+        ".x { width: calc(1cm + 1px) }",
+        ".x{width:38.7953px}" );
+      ( "mm + px spends the tail",
+        ".x { width: calc(1mm + 1px) }",
+        ".x{width:4.77953px}" );
+      ( "q + px spends the tail",
+        ".x { width: calc(1q + 1px) }",
+        ".x{width:1.94488px}" );
+      ( "a non-Pythagorean hypot() spends the tail",
+        ".x { width: hypot(1px, 2px) }",
+        ".x{width:2.23607px}" );
+      ( "a Pythagorean hypot() has no tail to spend",
+        ".x { width: hypot(3px, 4px) }",
+        ".x{width:5px}" );
+    ]
+
 let v4107_mod_rem () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -8539,6 +8595,9 @@ let additional_tests =
     ( "authored numeric precision preserved",
       `Quick,
       authored_precision_preserved );
+    ( "computed numeric precision keeps integer digits",
+      `Quick,
+      computed_precision_keeps_integer_digits );
     ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
