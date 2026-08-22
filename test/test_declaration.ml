@@ -1587,6 +1587,87 @@ let parse_custom_property_guard () =
       ("color", "<rejected>");
     ]
 
+(* [custom_property] takes authored CSS text, so a pair it accepts has to write
+   back as the one declaration it names. CSS Variables 1 sec. 2 gives a custom
+   property the value grammar [<declaration-value>?] and a [<dashed-ident>]
+   name; a top-level [;] or [}], an unterminated function, block or string, or
+   an unmatched closing bracket all stop being part of the declaration as soon
+   as the text is read back, so they are not a pair this library can write. *)
+let custom_property_guard () =
+  (* Build the declaration, print it into a rule and read the rule back. The
+     answer is derived from the round-trip, not from a pinned spelling. *)
+  let build name value =
+    match custom_property name value with
+    | exception Failure _ -> "<refused>"
+    | d -> (
+        let text = to_string ~minify:true d in
+        let back =
+          match
+            Css.of_string ~strict:false
+              (String.concat "" [ ":root{"; text; "}" ])
+          with
+          | Ok { Css.stylesheet = [ Css.Stylesheet.Rule r ]; _ } ->
+              List.map (to_string ~minify:true) r.declarations
+          | Ok { Css.stylesheet; _ } ->
+              [
+                String.concat ""
+                  [
+                    "<"; string_of_int (List.length stylesheet); " statements>";
+                  ];
+              ]
+          | Error _ -> [ "<unparsable>" ]
+        in
+        match back with
+        | [ text' ] when String.equal text text' -> "<round-trips>"
+        | back ->
+            String.concat ""
+              [ text; " reads back as "; String.concat " + " back ])
+  in
+  List.iter
+    (fun (value, expected) ->
+      Alcotest.(check string)
+        (String.concat "" [ "--x:"; value ])
+        expected (build "--x" value))
+    [
+      (* A [<declaration-value>], and the empty value CSS Variables 1 allows. *)
+      ("red", "<round-trips>");
+      ("", "<round-trips>");
+      (" ", "<round-trips>");
+      ("0 0 var(--spacing) black", "<round-trips>");
+      ("\"a;b\"", "<round-trips>");
+      ("{a:b;}", "<round-trips>");
+      ("red/*", "<round-trips>");
+      (* CSS Syntax 3 sec. 4.3.6 returns the [<url-token>] at end of input, so
+         [url(foo] is the same token [url(foo)] is. *)
+      ("url(foo", "<round-trips>");
+      (* Not a [<declaration-value>]: a second declaration, a closed rule, an
+         unterminated function, block or string, an unmatched bracket. *)
+      ("red;--b:blue", "<refused>");
+      ("red} .evil{color:lime", "<refused>");
+      ("red}", "<refused>");
+      ("rgb(1,2,3", "<refused>");
+      ("url(foo bar)", "<refused>");
+      ("{a:b", "<refused>");
+      ("\"abc", "<refused>");
+      ("red)", "<refused>");
+      ("red]", "<refused>");
+    ];
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check string)
+        (String.concat "" [ name; ":red" ])
+        expected (build name "red"))
+    [
+      ("--x", "<round-trips>");
+      ("--color-red-500", "<round-trips>");
+      ("--x}y", "<refused>");
+      ("--x;y", "<refused>");
+      ("--x y", "<refused>");
+      ("--", "<refused>");
+      ("-x", "<refused>");
+      ("color", "<refused>");
+    ]
+
 let spec_custom_tokens () =
   check_specified_value "custom property token stream specified"
     "--tokens: [a, b] (c) { d: e; }" "[a, b] (c) { d: e; }";
@@ -2826,6 +2907,8 @@ let declaration_tests =
     test_case "custom property values" `Quick custom_property_values;
     test_case "parse_custom_property rejects an escaping pair" `Quick
       parse_custom_property_guard;
+    test_case "custom_property refuses an escaping pair" `Quick
+      custom_property_guard;
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
     test_case "vendor prefixes" `Quick vendor_prefixes;
