@@ -67,15 +67,6 @@ let eval_declaration ?layer_order ?layer ctx decl =
 let eval_value ?layer_order ?layer ctx property value =
   eval_declaration ?layer_order ?layer ctx (Declaration.v property value)
 
-let eval_page_margin_rule ~layer_order ?layer ctx rule =
-  {
-    rule with
-    Stylesheet.descriptors =
-      List.map
-        (eval_declaration ~layer_order ?layer ctx)
-        rule.Stylesheet.descriptors;
-  }
-
 let layer_known ~layer_order = function
   | None -> true
   | Some name -> List.exists (String.equal name) layer_order
@@ -138,94 +129,18 @@ let collect_cascade_rules ~layer_order stylesheet =
 let eval_declarations ~layer_order ?layer ctx declarations =
   List.map (eval_declaration ~layer_order ?layer ctx) declarations
 
-let eval_keyframes ~layer_order ?layer ctx frames =
-  let eval_frame (frame : Stylesheet.keyframe) =
-    {
-      frame with
-      Stylesheet.declarations =
-        eval_declarations ~layer_order ?layer ctx frame.declarations;
-    }
-  in
-  List.map eval_frame frames
-
-let eval_declaration_statement ~layer_order ?layer:context_layer ctx =
-  let open Stylesheet in
-  function
-  | Keyframes (name, frames) ->
-      Some
-        (Keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Webkit_keyframes (name, frames) ->
-      Some
-        (Webkit_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Moz_keyframes (name, frames) ->
-      Some
-        (Moz_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Page (selector, declarations) ->
-      Some
-        (Page
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Position_try (name, declarations) ->
-      Some
-        (Position_try
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Supports_condition (name, declarations) ->
-      Some
-        (Supports_condition
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Page_with_margins (selector, descriptors, margins) ->
-      Some
-        (Page_with_margins
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx descriptors,
-             List.map
-               (eval_page_margin_rule ~layer_order ?layer:context_layer ctx)
-               margins ))
-  | _ -> None
-
 let rec eval_block ?ctx_for_layer ~layer_order ?layer ctx block =
   List.map (eval_statement ?ctx_for_layer ~layer_order ?layer ctx) block
 
-and eval_nested_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer
-    ctx =
+(* [@layer] is the one statement named here: it sets the layer the declarations
+   below it sit in, and [ctx_for_layer] hands back the context that layer
+   resolves in. Every other statement is evaluated the same way, its own
+   declarations and then the block it nests, so the shared rebuilders reach an
+   at-rule added later without a word here. *)
+and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
+    statement =
   let open Stylesheet in
-  let eval block =
-    eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx block
-  in
-  function
-  | Media (condition, block) -> Some (Media (condition, eval block))
-  | Container (name, condition, block) ->
-      Some (Container (name, condition, eval block))
-  | Supports (condition, block) -> Some (Supports (condition, eval block))
-  | Moz_document (conditions, block) ->
-      Some (Moz_document (conditions, eval block))
-  | When (condition, block) -> Some (When (condition, eval block))
-  | Else (condition, block) -> Some (Else (condition, eval block))
-  | Starting_style block -> Some (Starting_style (eval block))
-  | Origin (origin, block) -> Some (Origin (origin, eval block))
-  | Scope (start, end_, block) -> Some (Scope (start, end_, eval block))
-  | _ -> None
-
-and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
-  let open Stylesheet in
-  function
-  | Rule rule ->
-      Some
-        (Rule
-           (eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer
-              ctx rule))
-  | Declarations declarations ->
-      Some
-        (Declarations
-           (eval_declarations ~layer_order ?layer:context_layer ctx declarations))
+  match statement with
   | Layer (name, block) ->
       let current_layer =
         match name with Some _ -> name | None -> context_layer
@@ -233,50 +148,26 @@ and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
       let ctx =
         match ctx_for_layer with Some f -> f current_layer | None -> ctx
       in
-      Some
-        (Layer
-           ( name,
-             eval_block ?ctx_for_layer ~layer_order ?layer:current_layer ctx
-               block ))
+      Layer
+        ( name,
+          eval_block ?ctx_for_layer ~layer_order ?layer:current_layer ctx block
+        )
   | statement ->
-      eval_nested_block_statement ?ctx_for_layer ~layer_order
-        ?layer:context_layer ctx statement
-
-and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-    statement =
-  match
-    eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
       statement
-  with
-  | Some statement -> statement
-  | None -> (
-      match
-        eval_declaration_statement ~layer_order ?layer:context_layer ctx
-          statement
-      with
-      | Some statement -> statement
-      | None -> statement)
+      |> map_statement_declarations
+           (eval_declarations ~layer_order ?layer:context_layer ctx)
+      |> map_statement_children
+           (eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
 
-and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer ctx rule
-    =
-  {
-    rule with
-    Stylesheet.declarations =
-      List.map
-        (eval_declaration ~layer_order ?layer:context_layer ctx)
-        rule.Stylesheet.declarations;
-    nested =
-      List.map
-        (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
-        rule.nested;
-  }
-
-let eval_rule ?layer_order ?layer ctx rule =
+let eval_rule ?layer_order ?layer ctx (rule : Stylesheet.rule) =
   let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
   let layer = match layer with Some _ -> layer | None -> ctx.Context.layer in
-  eval_rule_with_ctx ~layer_order ?layer
-    { ctx with Context.layer_order; layer }
-    rule
+  let ctx = { ctx with Context.layer_order; layer } in
+  {
+    rule with
+    declarations = eval_declarations ~layer_order ?layer ctx rule.declarations;
+    nested = eval_block ~layer_order ?layer ctx rule.nested;
+  }
 
 let eval_stylesheet ?layer_order ?layer ctx stylesheet =
   let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
