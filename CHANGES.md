@@ -175,6 +175,10 @@
   declaration walks take `?sites` to name the places a narrow walk wants, so a
   place added to `declaration_sites` stops every walk that made a choice from
   compiling (#356)
+- `Css.Stylesheet.edit_statements` rewrites a whole block: the walk hands each
+  statement to a function that keeps, replaces or drops it, and descends into
+  what survives, so a pass that drops a statement no longer carries its own
+  list of the at-rules that nest (#363)
 
 ### CLI tools
 

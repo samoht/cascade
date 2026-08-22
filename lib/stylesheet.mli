@@ -291,6 +291,17 @@ val iter_statements : (statement -> unit) -> block -> unit
 (** [iter_statements f block] applies [f] to every statement {!fold_statements}
     reaches. *)
 
+val edit_statements :
+  (statement -> statement Common.List.edit) -> block -> block
+(** [edit_statements f block] rewrites the statements {!fold_statements}
+    reaches: [f] keeps, replaces or drops each one, and the walk descends
+    through {!map_statement_children} into what survives, so a caller names only
+    the statements it acts on rather than the at-rules they nest inside.
+    Dropping a statement drops what it holds. [f] sees a statement before the
+    statements it holds, and the walk continues into a replacement rather than
+    into the statement it replaced. It preserves physical identity: when [f]
+    keeps every statement, the result is [block] itself. *)
+
 val fold_declarations :
   ?sites:declaration_sites ->
   ('a -> declaration list -> 'a) ->

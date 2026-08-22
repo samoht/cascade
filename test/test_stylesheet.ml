@@ -8026,6 +8026,48 @@ let deep_walker_tests =
                ".o";
              ])
           (List.sort compare !seen) );
+    ( "edit_statements drops a statement inside every at-rule",
+      `Quick,
+      fun () ->
+        let dropped =
+          edit_statements
+            (function Rule _ -> Common.List.Drop | _ -> Common.List.Keep)
+            (places ())
+        in
+        Alcotest.(check (list string))
+          "no rule left" []
+          (fold_statements
+             (fun acc stmt ->
+               match stmt with
+               | Rule r -> Selector.to_string ~minify:true r.selector :: acc
+               | _ -> acc)
+             [] dropped) );
+    ( "edit_statements walks into a replacement",
+      `Quick,
+      fun () ->
+        (* The nested rule is reachable only through the rule that was replaced,
+           so it is marked when the walk continues into the replacement rather
+           than into the statement it replaced. *)
+        let mark = function
+          | Rule r -> Common.List.Replace (Rule { r with merge_key = Some "k" })
+          | _ -> Common.List.Keep
+        in
+        Alcotest.(check (list string))
+          "every rule marked" []
+          (fold_statements
+             (fun acc stmt ->
+               match stmt with
+               | Rule r when r.merge_key = None ->
+                   Selector.to_string ~minify:true r.selector :: acc
+               | _ -> acc)
+             []
+             (edit_statements mark (places ()))) );
+    ( "edit_statements keeps an unchanged tree",
+      `Quick,
+      fun () ->
+        let block = places () in
+        if not (edit_statements (fun _ -> Common.List.Keep) block == block) then
+          Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
   ]
 
 let suite =

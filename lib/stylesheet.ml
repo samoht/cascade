@@ -470,6 +470,26 @@ let rec fold_statements f acc block =
 
 let iter_statements f block = fold_statements (fun () stmt -> f stmt) () block
 
+(* The rewriting counterpart of [iter_statements]. [f] decides each statement's
+   fate; the descent into what it holds is [map_statement_children]'s, so a
+   caller that only cares about one statement kind does not enumerate the ones
+   it nests inside. Applied to a statement before the statements it holds, and
+   to the replacement rather than the original, so a rewrite and the walk below
+   it compose. *)
+let edit_statements f block =
+  let rec statement stmt =
+    match f stmt with
+    | Common.List.Drop -> Common.List.Drop
+    | Keep -> descend stmt stmt
+    | Replace stmt' -> descend stmt stmt'
+  and descend stmt stmt' =
+    let stmt' =
+      map_statement_children (Common.List.edit_preserve statement) stmt'
+    in
+    if stmt' == stmt then Common.List.Keep else Common.List.Replace stmt'
+  in
+  Common.List.edit_preserve statement block
+
 let fold_declarations ?(sites = every_site) f acc block =
   fold_statements
     (fun acc stmt ->
