@@ -630,6 +630,89 @@ let public_custom_props_edges () =
     "theme props exclude siblings" false
     (has "--outside" theme_props || has "--space" theme_props)
 
+(* [custom_props] reports a custom property wherever it is declared for an
+   element: every conditional group that holds style rules, and a bare nesting
+   block, whose declarations apply to the enclosing rule's subject. The other
+   declaration sites belong to another cascade origin or to no element at all
+   (CSS Cascading 5 sec. 6.1), so a name declared only there is not declared for
+   the element that reads it. *)
+let public_custom_props_declaration_sites () =
+  let decl = custom_property "--x" "1" in
+  let styled = rule ~selector:(Selector.class_ "a") [ decl ] in
+  let frame : Stylesheet.keyframe =
+    { selector = Keyframe.Positions [ Keyframe.From ]; declarations = [ decl ] }
+  in
+  let margin : Stylesheet.page_margin_rule =
+    { name = "top-left"; descriptors = [ decl ] }
+  in
+  let reported =
+    [
+      ("@media", Stylesheet.Media (Media.of_string "screen", [ styled ]));
+      ( "@supports",
+        Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
+      ("@container", Stylesheet.Container (None, None, [ styled ]));
+      ("@layer", Stylesheet.Layer (Some "a", [ styled ]));
+      ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
+      ( "@scope",
+        Stylesheet.Scope (Some (Selector.class_ "card"), None, [ styled ]) );
+      ("@starting-style", Stylesheet.Starting_style [ styled ]);
+      ( "@-moz-document",
+        Stylesheet.Moz_document
+          ([ Stylesheet.Url_prefix (Some "https://example.com/") ], [ styled ])
+      );
+      ( "@when",
+        Stylesheet.When
+          (Stylesheet.Media_condition (Media.of_string "screen"), [ styled ]) );
+      ("@else", Stylesheet.Else (None, [ styled ]));
+      ( "nesting block",
+        rule ~selector:(Selector.class_ "a")
+          ~nested:[ Stylesheet.Declarations [ decl ] ]
+          [] );
+    ]
+  in
+  let hidden =
+    [
+      ("@keyframes", Stylesheet.keyframes "k" [ frame ]);
+      ("@page", Stylesheet.Page ([], [ decl ]));
+      ("@page margin box", Stylesheet.Page_with_margins ([], [], [ margin ]));
+      ("@position-try", Stylesheet.Position_try ("--pt", [ decl ]));
+      ("@supports-condition", Stylesheet.Supports_condition ("--sc", [ decl ]));
+    ]
+  in
+  let missing =
+    List.filter_map
+      (fun (label, stmt) ->
+        if custom_props (v [ stmt ]) = [ "--x" ] then None else Some label)
+      reported
+  in
+  if missing <> [] then
+    Alcotest.failf "custom property not reported in: %s"
+      (String.concat ", " missing);
+  let leaked =
+    List.filter_map
+      (fun (label, stmt) ->
+        if custom_props (v [ stmt ]) = [] then None else Some label)
+      hidden
+  in
+  if leaked <> [] then
+    Alcotest.failf "custom property reported outside element matching: %s"
+      (String.concat ", " leaked);
+  (* A layer holds whatever the conditional groups below it hold, so [layer]
+     selects a name declared inside one of them and nothing beside it. *)
+  let layered =
+    v
+      [
+        Stylesheet.Layer
+          (Some "a", [ Stylesheet.Scope (None, None, [ styled ]) ]);
+        rule ~selector:(Selector.class_ "b") [ custom_property "--out" "2" ];
+      ]
+  in
+  Alcotest.(check (list string))
+    "layer selects through @scope" [ "--x" ]
+    (custom_props ~layer:"a" layered);
+  Alcotest.(check (list string))
+    "unlayered sibling still reported" [ "--x"; "--out" ] (custom_props layered)
+
 let public_property_edges () =
   let sheet =
     property ~name:"--gap" Length ~initial_value:(Px 1.) ~inherits:false ()
@@ -1143,6 +1226,8 @@ let suite =
       Alcotest.test_case "public fold edge traversal" `Quick public_fold_edges;
       Alcotest.test_case "public custom property scoping" `Quick
         public_custom_props_edges;
+      Alcotest.test_case "public custom property declaration sites" `Quick
+        public_custom_props_declaration_sites;
       Alcotest.test_case "public property introspection" `Quick
         public_property_edges;
       Alcotest.test_case "public theme guards" `Quick public_theme_edges;
