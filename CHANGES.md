@@ -34,6 +34,12 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
+- Unwrapping a baseline-true `@supports` nested in a style rule keeps the `;`
+  separating its declarations from the sibling that follows. CSS Syntax 3 sec.
+  5.4.4 runs a declaration to the next `;` or to the block's `}`, so
+  `.a{@supports (color:red){color:blue}@supports (color:red){color:green}}`
+  minified to `.a{color:#00fcolor:green}`, which browsers and cascade's own
+  reader reject, losing the declaration (#370)
 
 ### Custom properties
 
