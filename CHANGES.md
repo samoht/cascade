@@ -108,6 +108,11 @@
   `.a{color:red;b{width:1px}}` and `--diff=canonical` stops reporting it as
   different from `.a { color: red; & b { width: 1px } }`. A declaration that
   does clash keeps the place CSS Nesting 1 sec. 3.4 gives it (#383)
+- A run of declarations written after a nested statement is deduplicated like
+  any other declaration list, so `.a { & b { color: red } color: blue;
+  color: green }` minifies to `.a{b{color:red}color:green}` rather than keeping
+  a write nothing can read. Nothing sits between two writes inside one run, so
+  the later wins (CSS Cascade 5 sec. 6.4.4) (#386)
 - `--minify` is faster on a stylesheet the optimizer factors heavily, for the
   same output. The rule graph's cycle check, topological order and
   selector-branch index each probed a generic `Hashtbl` once per edge or per

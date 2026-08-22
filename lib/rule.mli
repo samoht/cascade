@@ -3,6 +3,11 @@
 val single : ctx:Ctx.t -> Stylesheet.rule -> Stylesheet.rule
 (** Optimize one rule without descending into nested statements. *)
 
+val declaration_run :
+  ctx:Ctx.t -> Declaration.declaration list -> Declaration.declaration list
+(** Declaration cleanup for a body that has no rule of its own: a nested
+    declarations run or a bare [Declarations] block. *)
+
 val finalize :
   ?canonicalize_selector:bool -> ctx:Ctx.t -> Stylesheet.rule -> Stylesheet.rule
 (** Final declaration cleanup before a rule leaves the fixpoint. *)

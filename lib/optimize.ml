@@ -61,6 +61,7 @@ let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let deduplicate_declarations = Shorthand.deduplicate_declarations
 let single_rule_without_nested = Rule.single
+let declaration_run = Rule.declaration_run
 let finalize_rule_without_nested = Rule.finalize
 
 (** {1 Statement Optimization} *)
@@ -259,18 +260,30 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
   | (Import import as stmt) :: rest ->
       process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting
         ~pending acc stmt import rest
+  | (Declarations decls as stmt) :: rest ->
+      process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+        ~pending acc stmt decls rest
   (* Listed rather than closed with a wildcard: everything left holds no block,
      so a statement that grows one has to be classified above before it
      compiles. *)
-  | (( Declarations _ | Property _ | Bang_comment _ | Charset _ | Namespace _
-     | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
-     | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
-     | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-     | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ) as
-     hd)
+  | (( Property _ | Bang_comment _ | Charset _ | Namespace _ | Layer_decl _
+     | Supports_condition _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+     | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+     | Font_palette_values _ | Font_feature_values _ | View_transition _
+     | Position_try _ | Viewport _ | Unknown_at_rule _ ) as hd)
     :: rest ->
       process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
         (hd :: acc) rest
+
+(* A run of declarations is a declaration list wherever it sits, and nothing
+   comes between two writes inside one, so the same deduplication a rule body
+   gets applies (CSS Cascade 5 sec. 6.4.4: the later write wins). *)
+and process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+    ~pending acc stmt decls rest =
+  let decls' = declaration_run ~ctx decls in
+  let stmt = if decls' == decls then stmt else Declarations decls' in
+  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+    (stmt :: acc) rest
 
 and process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
     acc stmt block rebuild rest =
