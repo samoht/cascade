@@ -2256,20 +2256,6 @@ let read_declaration t : declaration option =
          next [;]) is a nested rule. *)
       if is_nested_rule t then None else Some (read_one ())
 
-(* Skip from the current cursor position to just past the next top-level [;], or
-   stop at EOF. Used to recover from a failed declaration inside a block: per
-   CSS Syntax section 5.5.5 ("consume a block's contents"), an invalid
-   declaration is dropped, parsing resumes at the next [;], and the surrounding
-   rule survives. *)
-let skip_to_next_declaration t =
-  let rec loop () =
-    match Cursor.next_raw t with
-    | None -> ()
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-    | Some _ -> loop ()
-  in
-  loop ()
-
 type parse_step =
   | Done of declaration list
   | Continue of declaration list
@@ -2305,9 +2291,12 @@ let read_declaration_step t acc =
   if Cursor.recover t then read_declaration_with_recovery t acc
   else read_declaration_no_recovery t acc
 
+(* CSS Syntax 3 sec. 5.5.5 ("consume a block's contents"): the invalid
+   declaration is dropped, reading resumes past the next [;], and the
+   surrounding rule survives. *)
 let recover_declaration_step t acc e =
   Cursor.push_warning t e;
-  skip_to_next_declaration t;
+  Cursor.skip_past_semicolon t;
   acc
 
 let rec read_declarations_loop t acc =
