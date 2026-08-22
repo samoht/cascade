@@ -131,6 +131,9 @@ let test_length () =
      magnitude is not Cascade's to pick: [1000000000px] is a pixel away from
      what the author wrote. *)
   check_length "999999999px";
+  check_length ".4285714em";
+  check_length "1.5714286em";
+  check_length "1.0000001px";
   check_length "-999px";
   check_length ".5px";
 
