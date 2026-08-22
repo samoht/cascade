@@ -36,7 +36,19 @@ function computed(path){
   return JSON.parse(Buffer.from(m[1],'base64').toString('utf8'));
 }
 const a = computed(process.argv[2]), b = computed(process.argv[3]);
-const n = Math.min(a.length,b.length);
+// The two lists line up by position, so the comparison is only meaningful up to
+// the first place the trees disagree. Past a dropped or added element every
+// later index compares two different elements, and one structural change
+// reports as thousands, which makes the total say nothing about the transform.
+// Stop there and name the position instead.
+let n = Math.min(a.length,b.length), split = null;
+for (let i=0;i<n;i++) if (a[i]._tag !== b[i]._tag) {
+  split = 'element trees diverge at index '+i+': '+a[i]._tag+' vs '+b[i]._tag+
+    ' ('+(Math.max(a.length,b.length)-i)+' element(s) past it not compared)';
+  n = i; break;
+}
+if (split === null && a.length !== b.length)
+  split = 'element count '+a.length+' vs '+b.length;
 // Candidate differences: any property whose getComputedStyle string differs.
 const cand = [];
 for (let i=0;i<n;i++) for (const p in a[i]) if (a[i][p]!==b[i][p])
@@ -52,7 +64,7 @@ if (CANON && cand.length) {
   lines = execSync(`"${CANON}" < "${tmp}"`,{encoding:'utf8',maxBuffer:1e8}).split('\n').filter(Boolean);
 }
 const diffs = lines.map(l=>{const f=l.split('\t');return '['+f[0]+' '+f[1]+'] '+f[2]+': "'+f[3]+'" vs "'+f[4]+'"';});
-if (a.length !== b.length) diffs.unshift('element count '+a.length+' vs '+b.length);
+if (split !== null) diffs.unshift(split);
 // Say which comparison produced the count. Without the filter every
 // equivalent spelling counts, so the total is inflated and is not the number
 // run.sh reports: label it loudly rather than let it pass for the real one.
