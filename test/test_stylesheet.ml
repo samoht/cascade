@@ -6463,6 +6463,30 @@ let s4370_property_value_name_escapes () =
       (".a{anchor-name:--a}", ".a{anchor-name:--a}");
     ]
 
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so a
+   dot inside an ident and a dot between two idents name different layers.
+   [@layer a\2e b] is one layer, [@layer a.b] is the sublayer [b] of [a], and
+   the printed name says which: a dot an ident carries is written back escaped
+   (CSS Syntax 3 sec. 2.1), the separators stay bare. *)
+let s641_layer_name_parts () =
+  check_escape_roundtrips
+    [
+      (* One ident holding a dot, against the two idents it would pass for. *)
+      ("@layer a\\2e b;", "@layer a\\.b;");
+      ("@layer a.b;", "@layer a.b;");
+      ("@layer a\\2e b{.x{color:red}}", "@layer a\\.b{.x{color:red}}");
+      ("@layer a.b{.x{color:red}}", "@layer a.b{.x{color:red}}");
+      ("@layer a\\2e b,a.b;", "@layer a\\.b,a.b;");
+      (* A sublayer of the layer named [a.b], and the layer named [a.b.c]. *)
+      ("@layer a\\2e b.c;", "@layer a\\.b.c;");
+      ("@layer a\\2e b\\2e c;", "@layer a\\.b\\.c;");
+      (* The [@import] prelude names a layer the same way. *)
+      ("@import\"a.css\"layer(a\\2e b);", "@import\"a.css\"layer(a\\.b);");
+      ("@import\"a.css\"layer(a.b);", "@import\"a.css\"layer(a.b);");
+      (* Each part still takes the escaping of every other code point. *)
+      ("@layer a\\3b b.c\\3b d;", "@layer a\\;b.c\\;d;");
+    ]
+
 (* CSS Conditional 3 sec. 2.2: a [<supports-decl>] holds a declaration, and a
    custom property's name can carry a [;] or a [}] through an escape (CSS Syntax
    3 sec. 4.3.7). The condition is a capability predicate for that exact name,
@@ -8668,6 +8692,7 @@ let additional_tests =
     ( "spec conditional 3 2.2 supports property name escapes",
       `Quick,
       s4370_supports_property_name_escapes );
+    ("spec cascade 5 6.4.1 layer name parts", `Quick, s641_layer_name_parts);
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );

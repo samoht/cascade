@@ -276,6 +276,47 @@ let test_apply_keeps_the_blocks_resolve_skips () =
     "the @scope block is kept in the stylesheet" true
     (String.length result.keep_css > 0)
 
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so
+   [@layer a\2e b] names one layer whose single ident holds a dot, and [@layer
+   a.b] names the sublayer [b] of [a]. They are two layers, each ordered by its
+   own first declaration (sec. 6.4.2), and [a] is the parent of the second only.
+   Chrome answers each of these the same way. *)
+let test_resolve_escaped_dot_layers () =
+  Alcotest.(check (option string))
+    "the layer named a.b is declared after the sublayer" (Some "color:red")
+    (resolved_color
+       "@layer a.b,a\\2e b;@layer a\\2e b{span{color:red}}@layer \
+        a.b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "the sublayer is declared after the layer named a.b" (Some "color:blue")
+    (resolved_color
+       "@layer a\\2e b,a.b;@layer a\\2e b{span{color:red}}@layer \
+        a.b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "a.b joins a's subtree, which precedes z" (Some "color:green")
+    (resolved_color
+       "@layer a,z;@layer z{span{color:green}}@layer a.b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "the layer named a.b joins no subtree, so it follows z" (Some "color:blue")
+    (resolved_color
+       "@layer a,z;@layer z{span{color:green}}@layer a\\2e b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "two spellings of one ident are one layer" (Some "color:green")
+    (resolved_color
+       "@layer a\\2e b,w;@layer w{span{color:green}}@layer \
+        a\\.b{span{color:blue}}")
+
+(* The same two names in {!Resolve.layer_order}: each part of a path is written
+   with the escapes that read it back (CSS Syntax 3 sec. 2.1), so the dot inside
+   an ident cannot pass for the separator between two. *)
+let test_layer_order_escaped_dot () =
+  Alcotest.(check (list string))
+    "a dot inside an ident is not a path separator" [ "a"; "a.b"; "a\\.b" ]
+    (Resolve.layer_order (sheet_of "@layer a.b;@layer a\\2e b;"));
+  Alcotest.(check (list string))
+    "a sublayer of the layer named a.b" [ "a\\.b"; "a\\.b.c" ]
+    (Resolve.layer_order (sheet_of "@layer a\\2e b.c;"))
+
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
    the element, a rule with no inline form ([:hover]) stays in a <style>
    block. *)
@@ -329,6 +370,10 @@ let suite =
         test_layer_order_counts_the_blocks_resolve_walks;
       Alcotest.test_case "apply keeps the blocks resolve skips" `Quick
         test_apply_keeps_the_blocks_resolve_skips;
+      Alcotest.test_case "an escaped dot is not a layer separator" `Quick
+        test_resolve_escaped_dot_layers;
+      Alcotest.test_case "layer_order keeps the two apart" `Quick
+        test_layer_order_escaped_dot;
       Alcotest.test_case "apply projects a static rule, keeps a dynamic one"
         `Quick test_apply_compute;
     ] )
