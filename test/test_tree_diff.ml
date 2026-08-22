@@ -1119,6 +1119,44 @@ let nested_layer_order_pin_is_reported () =
     "and the report names them by their dotted paths" true
     (string_contains ~needle:"a.c now precedes a.b" s)
 
+(* A block added or dropped wholesale is rendered from its own body, and the
+   header claims children the reader then has to find. Reading the body through
+   a private list of at-rules left a [@scope], a [@starting-style] and a nested
+   rule printing a header with nothing under it, which reads as an empty block
+   rather than one whose contents the report failed to walk. *)
+let wholesale_block_shows_every_child () =
+  let cases =
+    [
+      ( "@scope inside an added @media",
+        "@media print{@scope(.card){.x{color:blue}.y{color:green}}}",
+        [ "@scope(.card)"; ".x"; ".y" ] );
+      ( "@starting-style inside an added @layer",
+        "@layer l{@starting-style{.x{color:blue}}}",
+        [ "@starting-style"; ".x" ] );
+      ( "a nested rule inside an added @media",
+        "@media print{.x{color:blue;.y{color:green}}}",
+        [ ".x"; ".y" ] );
+      ( "@when inside an added @supports",
+        "@supports (top:0){@when media(screen){.x{color:blue}}}",
+        [ ".x" ] );
+    ]
+  in
+  List.iter
+    (fun (name, added, wanted) ->
+      let out =
+        render
+          (diff_of ~expected:".keep{color:red}"
+             ~actual:(".keep{color:red}" ^ added))
+      in
+      List.iter
+        (fun affix ->
+          Alcotest.(check bool)
+            (name ^ ": the tree names " ^ affix)
+            true
+            (Astring.String.is_infix ~affix out))
+        wanted)
+    cases
+
 let suite =
   ( "tree_diff",
     [
@@ -1265,6 +1303,8 @@ let suite =
         deeply_nested_leaf_change_named;
       Alcotest.test_case "deeply nested identical is empty" `Quick
         deeply_nested_identical_is_empty;
+      Alcotest.test_case "wholesale block shows every child" `Quick
+        wholesale_block_shows_every_child;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

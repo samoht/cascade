@@ -723,20 +723,10 @@ let describe_statement stmt =
 (* The body of a container that was added or removed wholesale. Every statement
    gets a line, including the ones [Css.as_rule] cannot see: a statement the
    tree drops silently leaves the reader counting fewer entries than the header
-   claims, and shifts the last-child connector onto the wrong one. *)
-let statement_children stmt =
-  match Css.as_media stmt with
-  | Some (_, body) -> body
-  | None -> (
-      match Css.as_supports stmt with
-      | Some (_, body) -> body
-      | None -> (
-          match Css.as_layer stmt with
-          | Some (_, body) -> body
-          | None -> (
-              match Css.as_container stmt with
-              | Some (_, _, body) -> body
-              | None -> [])))
+   claims, and shifts the last-child connector onto the wrong one. The body
+   comes from the shared reader, so a header never stands over children the walk
+   could not name. *)
+let statement_children = Css.Stylesheet.statement_children
 
 let rec pp_container_rules ~style ~parent_prefix ~label buf rules =
   let count = List.length rules in
