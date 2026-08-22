@@ -587,6 +587,33 @@ let test_tw_empty_layers_statement () =
     "empty components/utilities collapse to one layer statement"
     "@layer components,utilities;" output
 
+(* A rule that writes no declarations of its own but nests rules that do is a
+   rule with contents, so the layer holding it is not an empty layer. Collapsing
+   it to the statement form deleted every declaration below the brace. *)
+let test_layer_keeps_nested_only_rule () =
+  let cases =
+    [
+      ( "a rule nesting two rules",
+        "@layer a{.x{.y{color:red}.z{margin:0}}}",
+        "@layer a{.x{.y{color:red}.z{margin:0}}}" );
+      ( "a selector list nesting a rule",
+        "@layer a{.w,.x{.y{color:red}}}",
+        "@layer a{.w,.x{.y{color:red}}}" );
+      ( "a rule nesting an at-rule",
+        "@layer a{.x{@media print{color:red}}}",
+        "@layer a{.x{@media print{color:red}}}" );
+    ]
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      let optimized =
+        Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string input))
+      in
+      Alcotest.(check string)
+        name expected
+        (Css.Stylesheet.to_string ~minify:true optimized |> String.trim))
+    cases
+
 let test_tw_conditionals_layer () =
   (* Tailwind emits utility rules inside @layer utilities. Cascade owns the
      generic CSS optimization: adjacent identical conditions merge inside that
@@ -1424,6 +1451,9 @@ let optimize_tests =
     ( "tailwind empty components/utilities layers to statement",
       `Quick,
       test_tw_empty_layers_statement );
+    ( "layer keeps a rule that only nests",
+      `Quick,
+      test_layer_keeps_nested_only_rule );
     ( "tailwind conditionals merge inside layer",
       `Quick,
       test_tw_conditionals_layer );

@@ -324,12 +324,13 @@ let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
     in
     merge [] None stmts
 
-(* Check if a layer block contains only empty rules or no statements *)
+(* Whether a layer block holds nothing the cascade can act on. A rule that
+   writes no declarations of its own still carries whatever it nests, so reading
+   only the declarations called a layer empty and deleted the CSS under it. *)
 let is_layer_empty (block : statement list) : bool =
   List.for_all
-    (function Rule { declarations = []; _ } -> true | _ -> false)
+    (function Rule { declarations = []; nested = []; _ } -> true | _ -> false)
     block
-  || block = []
 
 (* Collect consecutive empty named layers and merge them into a Layer_decl *)
 let rec collect_empty_layer_names names remaining =

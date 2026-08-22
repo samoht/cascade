@@ -59,6 +59,10 @@
 - `--minify` optimises the body of `@-moz-document`, `@starting-style`,
   `@when` and `@else`, which it walked past: rules inside one of them kept
   whatever the author wrote (#343)
+- `--minify` keeps a `@layer` whose rules write no declarations of their own
+  but nest rules that do. The emptiness test read only the declarations, so
+  `@layer a { .x { .y { color: red } } }` collapsed to `@layer a;` and every
+  declaration below the brace was deleted (#389)
 - `--flatten-nesting` treats `@-moz-document` as the grouping at-rule it is:
   nesting inside one flattens, and a rule wrapping one keeps its selector
   instead of emitting the at-rule at top level under no parent (#344)

@@ -100,7 +100,8 @@ val drop_unknown_at_rules : t -> t
 
 val drop_empty_rules : t -> t
 (** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
-    is empty (no declarations and no nested rules). *)
+    is empty (no declarations and no nested rules), and rules whose selector
+    {!Selector.matches_nothing}, which no element can ever be styled by. *)
 
 (** {1 Edge Model} *)
 

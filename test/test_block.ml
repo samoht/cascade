@@ -60,6 +60,28 @@ let test_is_layer_empty () =
       Alcotest.(check bool) "empty layer body" true (Block.is_layer_empty body)
   | _ -> Alcotest.fail "expected one layer statement"
 
+(* A rule with no declarations of its own still carries whatever it nests, so a
+   layer holding one is a layer with contents. Reading only the declarations
+   turned the block into a bare [@layer a;] and deleted the CSS under it. *)
+let test_is_layer_not_empty_with_nested () =
+  let cases =
+    [
+      ("a rule nesting two rules", "@layer a{.x{.y{color:red}.z{color:blue}}}");
+      ("a selector list nesting a rule", "@layer a{.x,.w{.y{color:red}}}");
+      ("a rule nesting an at-rule", "@layer a{.x{@media print{color:red}}}");
+    ]
+  in
+  List.iter
+    (fun (name, css) ->
+      match block css with
+      | [ Stylesheet.Layer (_, body) ] ->
+          Alcotest.(check bool)
+            (name ^ ": the layer has contents")
+            false
+            (Block.is_layer_empty body)
+      | _ -> Alcotest.fail "expected one layer statement")
+    cases
+
 let suite =
   ( "block",
     [
@@ -71,4 +93,6 @@ let suite =
         test_merge_media_combines_same_condition;
       Alcotest.test_case "drop empty rules" `Quick test_drop_empty_rules;
       Alcotest.test_case "is_layer_empty" `Quick test_is_layer_empty;
+      Alcotest.test_case "is_layer_empty sees nested rules" `Quick
+        test_is_layer_not_empty_with_nested;
     ] )
