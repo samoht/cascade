@@ -233,6 +233,19 @@ let spec_fontface_src_minify_edges () =
       ( "unknown format string stays quoted",
         "url(\"brand.font\") format(\"my-format\")",
         "url(brand.font)format(\"my-format\")" );
+      (* CSS Fonts 4 sec. 4.3.1 lists [format("truetype-variations")] as
+         equivalent to [format(truetype) tech(variations)], not to a
+         [<font-format>] keyword, so the string form has no bare spelling and
+         stays quoted. *)
+      ( "variations back-compat format string stays quoted",
+        "url(\"brand.ttf\") format(\"truetype-variations\")",
+        "url(brand.ttf)format(\"truetype-variations\")" );
+      ( "svg format keyword unquotes",
+        "url(\"brand.svg\") format(\"svg\")",
+        "url(brand.svg)format(svg)" );
+      ( "embedded-opentype format keyword unquotes",
+        "url(\"brand.eot\") format(\"embedded-opentype\")",
+        "url(brand.eot)format(embedded-opentype)" );
       ( "tech before format serializes in canonical modifier order",
         "url(\"color.woff2\") tech(color-COLRv1) format(\"woff2\")",
         "url(color.woff2)format(woff2)tech(color-COLRv1)" );
@@ -340,6 +353,49 @@ let spec_fontface_var_descriptor_edges () =
       Alcotest.failf "@font-face descriptors keeping var():\n%s"
         (String.concat "\n" mismatches)
 
+(* CSS Fonts 4 sec. 4.2: the [font-family] descriptor *defines* the name used in
+   all font family matching and hides any same-named installed family, so a
+   rewrite here is not a spelling choice but a redefinition. Sec. 5.1 matches
+   family names caselessly and nothing more: [open-sans] stays [open-sans] on
+   both the defining and the referencing side. *)
+let spec_fontface_family_descriptor_verbatim () =
+  let check (name, input, expected) =
+    match Css.of_string ~strict:false input with
+    | Error _ -> Fmt.kstr (fun s -> Some s) "%s: parse rejected %S" name input
+    | Ok { Css.stylesheet; _ } ->
+        let actual = Css.to_string ~minify:true stylesheet |> String.trim in
+        if String.equal actual expected then None
+        else
+          Fmt.kstr
+            (fun s -> Some s)
+            "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
+            expected actual
+  in
+  match
+    List.filter_map check
+      [
+        ( "descriptor keeps the authored family name",
+          "@font-face{font-family:open-sans;src:url(a.woff2)}",
+          "@font-face{font-family:open-sans;src:url(a.woff2)}" );
+        ( "descriptor keeps the authored case",
+          "@font-face{font-family:inter;src:url(a.woff2)}",
+          "@font-face{font-family:inter;src:url(a.woff2)}" );
+        ( "reference keeps the authored family name",
+          ".a{font-family:open-sans,sans-serif}",
+          ".a{font-family:open-sans,sans-serif}" );
+        ( "font shorthand keeps the authored family name",
+          ".a{font:12px/1.5 open-sans}",
+          ".a{font:12px/1.5 open-sans}" );
+        ( "@font-feature-values keeps the authored family name",
+          "@font-feature-values open-sans{@styleset{x:1}}",
+          "@font-feature-values open-sans{@styleset{x:1}}" );
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "@font-face family name rewrites:\n%s"
+        (String.concat "\n" mismatches)
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -366,4 +422,6 @@ let suite =
         spec_fontface_metric_numeric_edges;
       test_case "spec font-face var() descriptor edges" `Quick
         spec_fontface_var_descriptor_edges;
+      test_case "spec font-face family descriptor verbatim" `Quick
+        spec_fontface_family_descriptor_verbatim;
     ] )
