@@ -530,16 +530,6 @@ let is_font_family_ident_word s =
   && (not (len >= 2 && s.[0] = '-' && is_digit s.[1]))
   && String.for_all is_ident_char s
 
-let pp_font_family_name ctx s =
-  (* A multi-word named family unquotes under minify (shorter, valid), but the
-     CSSOM-canonical serialization quotes it, so enforce_spec keeps the
-     quotes. *)
-  if Pp.minified ctx && not ctx.Pp.enforce_spec then Pp.string ctx s
-  else (
-    Pp.char ctx '"';
-    Pp.string ctx s;
-    Pp.char ctx '"')
-
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
@@ -585,6 +575,52 @@ let unquote_font_family_strings components =
   in
   if !changed then result else components
 
+(* CSS Fonts 4 sec. 2.1: a [<family-name>] is a [<string>] or a
+   [<custom-ident>+], and the two spell the same name. Emit the bare ident
+   sequence when it reads back as that same name and quote otherwise; a single
+   word colliding with a generic family or a CSS-wide keyword must stay quoted,
+   since dropping the quotes turns the name into the keyword. The unquoted
+   multi-word form is shorter but is not the CSSOM-canonical serialization, so
+   [enforce_spec] keeps the quotes. *)
+let pp_family_name ctx s =
+  let safe_ident_char = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+    | _ -> false
+  in
+  let collides_with_keyword =
+    List.mem (String.lowercase_ascii s)
+      [
+        "serif";
+        "sans-serif";
+        "monospace";
+        "cursive";
+        "fantasy";
+        "system-ui";
+        "ui-serif";
+        "ui-sans-serif";
+        "ui-monospace";
+        "ui-rounded";
+        "emoji";
+        "math";
+        "fangsong";
+        "inherit";
+        "initial";
+        "unset";
+        "revert";
+        "revert-layer";
+        "none";
+        "default";
+      ]
+  in
+  if
+    Pp.minified ctx && (not ctx.Pp.enforce_spec)
+    && can_unquote_font_family_name s
+  then Pp.string ctx s
+  else if
+    s = "" || (not (String.for_all safe_ident_char s)) || collides_with_keyword
+  then Pp.quoted_string ctx s
+  else Pp.string ctx s
+
 let is_generic_family : font_family -> bool = function
   | Sans_serif | Serif | Monospace | Cursive | Fantasy | System_ui
   | Ui_sans_serif | Ui_serif | Ui_monospace | Ui_rounded | Emoji | Math
@@ -609,131 +645,85 @@ let rec pp_font_family : font_family Pp.t =
   | Math -> Pp.string ctx "math"
   | Fangsong -> Pp.string ctx "fangsong"
   (* Popular web fonts *)
-  | Inter -> Pp.string ctx "Inter"
-  | Roboto -> Pp.string ctx "Roboto"
-  | Open_sans -> Pp.string ctx "\"Open Sans\""
-  | Lato -> Pp.string ctx "Lato"
-  | Montserrat -> Pp.string ctx "Montserrat"
-  | Poppins -> Pp.string ctx "Poppins"
-  | Source_sans_pro -> Pp.string ctx "\"Source Sans Pro\""
-  | Raleway -> Pp.string ctx "Raleway"
-  | Oswald -> Pp.string ctx "Oswald"
-  | Noto_sans -> Pp.string ctx "\"Noto Sans\""
-  | Ubuntu -> Pp.string ctx "Ubuntu"
-  | Playfair_display -> Pp.string ctx "\"Playfair Display\""
-  | Merriweather -> Pp.string ctx "Merriweather"
-  | Lora -> Pp.string ctx "Lora"
-  | PT_sans -> Pp.string ctx "\"PT Sans\""
-  | PT_serif -> Pp.string ctx "\"PT Serif\""
-  | Nunito -> Pp.string ctx "Nunito"
-  | Nunito_sans -> Pp.string ctx "\"Nunito Sans\""
-  | Work_sans -> Pp.string ctx "\"Work Sans\""
-  | Rubik -> Pp.string ctx "Rubik"
-  | Fira_sans -> Pp.string ctx "\"Fira Sans\""
-  | Fira_code -> Pp.string ctx "\"Fira Code\""
-  | JetBrains_mono -> Pp.string ctx "\"JetBrains Mono\""
-  | IBM_plex_sans -> Pp.string ctx "\"IBM Plex Sans\""
-  | IBM_plex_serif -> Pp.string ctx "\"IBM Plex Serif\""
-  | IBM_plex_mono -> Pp.string ctx "\"IBM Plex Mono\""
-  | Source_code_pro -> Pp.string ctx "\"Source Code Pro\""
-  | Space_mono -> Pp.string ctx "\"Space Mono\""
-  | DM_sans -> Pp.string ctx "\"DM Sans\""
-  | DM_serif_display -> Pp.string ctx "\"DM Serif Display\""
-  | Bebas_neue -> Pp.string ctx "\"Bebas Neue\""
-  | Barlow -> Pp.string ctx "Barlow"
-  | Mulish -> Pp.string ctx "Mulish"
-  | Josefin_sans -> Pp.string ctx "\"Josefin Sans\""
-  (* Platform-specific fonts. Multi-word names emit unquoted under minify (CSS
-     Fonts 4 sec. 2.1.1: a [<family-name>] of two or more [<custom-ident>] words
-     parses without quotes and is the shorter spelling). Pretty mode keeps the
-     quoted form for readability. *)
-  | Helvetica -> Pp.string ctx "Helvetica"
-  | Helvetica_neue -> pp_font_family_name ctx "Helvetica Neue"
-  | Arial -> Pp.string ctx "Arial"
-  | Verdana -> Pp.string ctx "Verdana"
-  | Tahoma -> Pp.string ctx "Tahoma"
-  | Trebuchet_ms -> pp_font_family_name ctx "Trebuchet MS"
-  | Times_new_roman -> pp_font_family_name ctx "Times New Roman"
-  | Times -> Pp.string ctx "Times"
-  | Georgia -> Pp.string ctx "Georgia"
-  | Cambria -> Pp.string ctx "Cambria"
-  | Garamond -> Pp.string ctx "Garamond"
-  | Courier_new -> pp_font_family_name ctx "Courier New"
-  | Courier -> Pp.string ctx "Courier"
-  | Lucida_console -> pp_font_family_name ctx "Lucida Console"
-  | SF_pro -> pp_font_family_name ctx "SF Pro"
-  | SF_pro_display -> pp_font_family_name ctx "SF Pro Display"
-  | SF_pro_text -> pp_font_family_name ctx "SF Pro Text"
-  | SF_mono -> pp_font_family_name ctx "SF Mono"
-  | NY -> pp_font_family_name ctx "New York"
-  | Segoe_ui -> pp_font_family_name ctx "Segoe UI"
-  | Segoe_ui_emoji -> pp_font_family_name ctx "Segoe UI Emoji"
-  | Segoe_ui_symbol -> pp_font_family_name ctx "Segoe UI Symbol"
-  | Apple_color_emoji -> pp_font_family_name ctx "Apple Color Emoji"
-  | Noto_color_emoji -> pp_font_family_name ctx "Noto Color Emoji"
-  | Android_emoji -> pp_font_family_name ctx "Android Emoji"
-  | Twemoji_mozilla -> pp_font_family_name ctx "Twemoji Mozilla"
+  | Inter -> pp_family_name ctx "Inter"
+  | Roboto -> pp_family_name ctx "Roboto"
+  | Open_sans -> pp_family_name ctx "Open Sans"
+  | Lato -> pp_family_name ctx "Lato"
+  | Montserrat -> pp_family_name ctx "Montserrat"
+  | Poppins -> pp_family_name ctx "Poppins"
+  | Source_sans_pro -> pp_family_name ctx "Source Sans Pro"
+  | Raleway -> pp_family_name ctx "Raleway"
+  | Oswald -> pp_family_name ctx "Oswald"
+  | Noto_sans -> pp_family_name ctx "Noto Sans"
+  | Ubuntu -> pp_family_name ctx "Ubuntu"
+  | Playfair_display -> pp_family_name ctx "Playfair Display"
+  | Merriweather -> pp_family_name ctx "Merriweather"
+  | Lora -> pp_family_name ctx "Lora"
+  | PT_sans -> pp_family_name ctx "PT Sans"
+  | PT_serif -> pp_family_name ctx "PT Serif"
+  | Nunito -> pp_family_name ctx "Nunito"
+  | Nunito_sans -> pp_family_name ctx "Nunito Sans"
+  | Work_sans -> pp_family_name ctx "Work Sans"
+  | Rubik -> pp_family_name ctx "Rubik"
+  | Fira_sans -> pp_family_name ctx "Fira Sans"
+  | Fira_code -> pp_family_name ctx "Fira Code"
+  | JetBrains_mono -> pp_family_name ctx "JetBrains Mono"
+  | IBM_plex_sans -> pp_family_name ctx "IBM Plex Sans"
+  | IBM_plex_serif -> pp_family_name ctx "IBM Plex Serif"
+  | IBM_plex_mono -> pp_family_name ctx "IBM Plex Mono"
+  | Source_code_pro -> pp_family_name ctx "Source Code Pro"
+  | Space_mono -> pp_family_name ctx "Space Mono"
+  | DM_sans -> pp_family_name ctx "DM Sans"
+  | DM_serif_display -> pp_family_name ctx "DM Serif Display"
+  | Bebas_neue -> pp_family_name ctx "Bebas Neue"
+  | Barlow -> pp_family_name ctx "Barlow"
+  | Mulish -> pp_family_name ctx "Mulish"
+  | Josefin_sans -> pp_family_name ctx "Josefin Sans"
+  (* Platform-specific fonts *)
+  | Helvetica -> pp_family_name ctx "Helvetica"
+  | Helvetica_neue -> pp_family_name ctx "Helvetica Neue"
+  | Arial -> pp_family_name ctx "Arial"
+  | Verdana -> pp_family_name ctx "Verdana"
+  | Tahoma -> pp_family_name ctx "Tahoma"
+  | Trebuchet_ms -> pp_family_name ctx "Trebuchet MS"
+  | Times_new_roman -> pp_family_name ctx "Times New Roman"
+  | Times -> pp_family_name ctx "Times"
+  | Georgia -> pp_family_name ctx "Georgia"
+  | Cambria -> pp_family_name ctx "Cambria"
+  | Garamond -> pp_family_name ctx "Garamond"
+  | Courier_new -> pp_family_name ctx "Courier New"
+  | Courier -> pp_family_name ctx "Courier"
+  | Lucida_console -> pp_family_name ctx "Lucida Console"
+  | SF_pro -> pp_family_name ctx "SF Pro"
+  | SF_pro_display -> pp_family_name ctx "SF Pro Display"
+  | SF_pro_text -> pp_family_name ctx "SF Pro Text"
+  | SF_mono -> pp_family_name ctx "SF Mono"
+  | NY -> pp_family_name ctx "New York"
+  | Segoe_ui -> pp_family_name ctx "Segoe UI"
+  | Segoe_ui_emoji -> pp_family_name ctx "Segoe UI Emoji"
+  | Segoe_ui_symbol -> pp_family_name ctx "Segoe UI Symbol"
+  | Apple_color_emoji -> pp_family_name ctx "Apple Color Emoji"
+  | Noto_color_emoji -> pp_family_name ctx "Noto Color Emoji"
+  | Android_emoji -> pp_family_name ctx "Android Emoji"
+  | Twemoji_mozilla -> pp_family_name ctx "Twemoji Mozilla"
   (* Developer fonts *)
-  | Menlo -> Pp.string ctx "Menlo"
-  | Monaco -> Pp.string ctx "Monaco"
-  | Consolas -> Pp.string ctx "Consolas"
-  | Liberation_mono -> pp_font_family_name ctx "Liberation Mono"
-  | SFMono_regular -> Pp.string ctx "SFMono-Regular"
-  | Cascadia_code -> pp_font_family_name ctx "Cascadia Code"
-  | Cascadia_mono -> pp_font_family_name ctx "Cascadia Mono"
-  | Victor_mono -> pp_font_family_name ctx "Victor Mono"
-  | Inconsolata -> Pp.string ctx "Inconsolata"
-  | Hack -> Pp.string ctx "Hack"
+  | Menlo -> pp_family_name ctx "Menlo"
+  | Monaco -> pp_family_name ctx "Monaco"
+  | Consolas -> pp_family_name ctx "Consolas"
+  | Liberation_mono -> pp_family_name ctx "Liberation Mono"
+  | SFMono_regular -> pp_family_name ctx "SFMono-Regular"
+  | Cascadia_code -> pp_family_name ctx "Cascadia Code"
+  | Cascadia_mono -> pp_family_name ctx "Cascadia Mono"
+  | Victor_mono -> pp_family_name ctx "Victor Mono"
+  | Inconsolata -> pp_family_name ctx "Inconsolata"
+  | Hack -> pp_family_name ctx "Hack"
   (* CSS keywords *)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Name s ->
-      let safe_ident_char = function
-        | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-        | _ -> false
-      in
-      (* A single-word [Name] that matches a generic family / CSS-wide keyword
-         must stay quoted - dropping the quotes turns the [<family-name>] into
-         the generic keyword (different semantics in [@font-face] and in
-         [font-family] cascade). *)
-      let collides_with_keyword =
-        List.mem (String.lowercase_ascii s)
-          [
-            "serif";
-            "sans-serif";
-            "monospace";
-            "cursive";
-            "fantasy";
-            "system-ui";
-            "ui-serif";
-            "ui-sans-serif";
-            "ui-monospace";
-            "ui-rounded";
-            "emoji";
-            "math";
-            "fangsong";
-            "inherit";
-            "initial";
-            "unset";
-            "revert";
-            "revert-layer";
-            "none";
-            "default";
-          ]
-      in
-      if
-        Pp.minified ctx && (not ctx.Pp.enforce_spec)
-        && can_unquote_font_family_name s
-      then Pp.string ctx s
-      else if
-        s = ""
-        || (not (String.for_all safe_ident_char s))
-        || collides_with_keyword
-      then Pp.quoted_string ctx s
-      else Pp.string ctx s
+  | Name s -> pp_family_name ctx s
   | Var v -> pp_var pp_font_family ctx v
   | List fonts ->
       let level_chars =
@@ -1430,105 +1420,14 @@ let font_family_css_keywords : (string * font_family) list =
     ("revert-layer", Revert_layer);
   ]
 
-let font_family_popular_web =
-  [
-    ("inter", Inter);
-    ("roboto", Roboto);
-    ("open-sans", Open_sans);
-    ("lato", Lato);
-    ("montserrat", Montserrat);
-    ("poppins", Poppins);
-    ("source-sans-pro", Source_sans_pro);
-    ("raleway", Raleway);
-    ("oswald", Oswald);
-    ("noto-sans", Noto_sans);
-    ("ubuntu", Ubuntu);
-    ("playfair-display", Playfair_display);
-    ("merriweather", Merriweather);
-    ("lora", Lora);
-    ("pt-sans", PT_sans);
-    ("pt-serif", PT_serif);
-    ("nunito", Nunito);
-    ("nunito-sans", Nunito_sans);
-    ("work-sans", Work_sans);
-    ("rubik", Rubik);
-    ("fira-sans", Fira_sans);
-    ("fira-code", Fira_code);
-    ("jetbrains-mono", JetBrains_mono);
-    ("ibm-plex-sans", IBM_plex_sans);
-    ("ibm-plex-serif", IBM_plex_serif);
-    ("ibm-plex-mono", IBM_plex_mono);
-    ("source-code-pro", Source_code_pro);
-    ("space-mono", Space_mono);
-    ("dm-sans", DM_sans);
-    ("dm-serif-display", DM_serif_display);
-    ("bebas-neue", Bebas_neue);
-    ("barlow", Barlow);
-    ("mulish", Mulish);
-    ("josefin-sans", Josefin_sans);
-  ]
-
-let font_family_platform =
-  [
-    ("helvetica", Helvetica);
-    ("helvetica-neue", Helvetica_neue);
-    ("arial", Arial);
-    ("verdana", Verdana);
-    ("tahoma", Tahoma);
-    ("trebuchet-ms", Trebuchet_ms);
-    ("times-new-roman", Times_new_roman);
-    ("times", Times);
-    ("georgia", Georgia);
-    ("cambria", Cambria);
-    ("garamond", Garamond);
-    ("courier-new", Courier_new);
-    ("courier", Courier);
-    ("lucida-console", Lucida_console);
-    ("sf-pro", SF_pro);
-    ("sf-pro-display", SF_pro_display);
-    ("sf-pro-text", SF_pro_text);
-    ("sf-mono", SF_mono);
-    ("ny", NY);
-    ("segoe-ui", Segoe_ui);
-    ("segoe-ui-emoji", Segoe_ui_emoji);
-    ("segoe-ui-symbol", Segoe_ui_symbol);
-    ("apple-color-emoji", Apple_color_emoji);
-    ("noto-color-emoji", Noto_color_emoji);
-    ("android-emoji", Android_emoji);
-    ("twemoji-mozilla", Twemoji_mozilla);
-  ]
-
-let font_family_developer =
-  [
-    ("menlo", Menlo);
-    ("monaco", Monaco);
-    ("consolas", Consolas);
-    ("liberation-mono", Liberation_mono);
-    ("sfmono-regular", SFMono_regular);
-    ("cascadia-code", Cascadia_code);
-    ("cascadia-mono", Cascadia_mono);
-    ("victor-mono", Victor_mono);
-    ("inconsolata", Inconsolata);
-    ("hack", Hack);
-  ]
-
-let font_family_all_enums : (string * font_family) list =
-  font_family_generic_css @ font_family_css_keywords @ font_family_popular_web
-  @ font_family_platform @ font_family_developer
-
-let font_family_lookup_key name =
-  name |> String.lowercase_ascii |> String.map (function ' ' -> '-' | c -> c)
-
-(* The unquoted single-word lookup matches generic family keywords; a quoted
-   name is always a [<custom-ident>] by spec, so it preserves the user's intent
-   even when its text matches a generic keyword ([font-family: "serif"] is a
-   custom family named "serif", not the [serif] generic). Multi-word quoted
-   names still match the platform-name table since those entries are not
-   keywords. *)
-let font_family_of_quoted_name name =
-  match List.assoc_opt (font_family_lookup_key name) font_family_all_enums with
-  | Some family when String.contains name ' ' -> family
-  | _ -> Name name
+(* CSS Fonts 4 sec. 2.1: [font-family] has exactly two sets of keywords, the
+   generic families and the CSS-wide keywords. Every other name is an
+   author-chosen [<family-name>], and sec. 5.1 matches those with Default
+   Caseless Matching - a caseless string comparison, which folds no hyphen to a
+   space and no name to another - so a name is read verbatim and printed back as
+   authored. *)
+let font_family_keywords : (string * font_family) list =
+  font_family_generic_css @ font_family_css_keywords
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
@@ -1552,8 +1451,8 @@ let rec read_font_family_single t : font_family =
     else String.concat " " (List.rev acc)
   in
   let read_single_word t : font_family =
-    (* For single-word names, try enum match first *)
-    (Cursor.enum_or_calls "font-family" font_family_all_enums
+    (* A single word is a keyword before it is a name *)
+    (Cursor.enum_or_calls "font-family" font_family_keywords
        ~calls:[ ("var", read_var) ]
        ~default:(fun t ->
          let name = Cursor.ident ~keep_case:true t in
@@ -1568,7 +1467,7 @@ let rec read_font_family_single t : font_family =
   in
   Cursor.ws t;
   match Cursor.string_opt t with
-  | Some name -> font_family_of_quoted_name name
+  | Some name -> Name name
   | None when Cursor.looking_at_func "var" t -> read_var t
   | None when Option.is_some (Cursor.peek_ident t) ->
       (* Peek ahead to see if this is multi-word or single-word *)
@@ -1585,7 +1484,7 @@ let rec read_font_family_single t : font_family =
            reserved word in the sequence. *)
         Name (read_unquoted_name_words [])
       else
-        (* Single word - try enum match *)
+        (* Single word - try the keyword match *)
         read_single_word t
   | None -> Cursor.err t "expected font-family value"
 

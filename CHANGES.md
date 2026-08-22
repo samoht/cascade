@@ -171,6 +171,18 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- A `font-family` name keeps the spelling the author wrote. A table of known
+  font names matched an authored name case-insensitively with hyphens folded
+  to spaces and re-emitted the table's spelling, so `font-family: open-sans`
+  became `font-family: "Open Sans"` and `font-family: ny` became
+  `font-family: "New York"`. CSS Fonts 4 sec. 5.1 matches a `<family-name>`
+  with Default Caseless Matching, a caseless string comparison that folds
+  neither a hyphen to a space nor one name to another, so those rewrites named
+  a different family, in the `@font-face` descriptor that *defines* the name as
+  well as in the properties that reference it (#387)
+- A multi-word `<family-name>` unquotes under minify wherever it appears:
+  `"Source Code Pro"` and `"Fira Sans"` stayed quoted next to the `SF Mono` and
+  `Roboto Mono` in the same stack (#387)
 - An authored coefficient keeps every digit under `--minify`. Any dimension was
   rounded to six significant figures at print time, so `.4285714em` came out as
   `.428571em`, which is `5.99999px` rather than `6px` at a `14px` font size, and
