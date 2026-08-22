@@ -3087,6 +3087,23 @@ let spec_nesting_rejects_orphan_else () =
     ~expected:".a{@when media(width>0px){color:red}@else{color:green}}"
     ".a { @when media(width > 0px) { color: red } @else { color: green } }"
 
+(* A top-of-sheet rule is invalid in a style rule too, and Blink 146 drops it
+   the same way. Discarding it ends at the at-rule: [\@import url(x){}] carries
+   a block, and a skip to the next [;] runs past the end of the group rule
+   holding it. *)
+let spec_nesting_rejects_top_of_sheet_at_rules () =
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @charset \"utf-8\"; background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @import url(x.css); background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @import url(x.css) { color: pink } background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @namespace n url(http://e.com); background: blue }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @import url(x.css); background: blue } }"
+
 (* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
    wrapped in a nested declarations rule, which keeps its place among the nested
    rules. The spec's own worked example names the hoisted spelling as NOT
@@ -7238,6 +7255,9 @@ let additional_tests =
     ( "spec nesting rejects an orphan @else",
       `Quick,
       spec_nesting_rejects_orphan_else );
+    ( "spec nesting rejects a top-of-sheet at-rule",
+      `Quick,
+      spec_nesting_rejects_top_of_sheet_at_rules );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
