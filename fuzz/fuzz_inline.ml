@@ -22,7 +22,13 @@ let layer name body = String.concat "" [ "@layer "; name; "{"; body; "}" ]
    which layer - or none - holds its definition or its consumers. Build a set of
    single-def [:root] variables and one consumer each, place them across layers
    several ways, and assert every placement inlines identically to the fully
-   unlayered stylesheet (which never mishandled layers). *)
+   unlayered stylesheet (which never mishandled layers).
+
+   Every placement keeps the consumers in one layer, which is what lets the
+   whole sheet compare equal to the unlayered one. Spread them over two layers
+   and the layers order them against each other, so dropping the wrappers is a
+   different render rather than a different spelling, and the equality would be
+   asserting a bug. *)
 let test_layer_placement_invariant buf =
   let n = 1 + (byte_at buf 0 mod 4) in
   let root_block =
@@ -56,12 +62,9 @@ let test_layer_placement_invariant buf =
         String.concat ""
           [ root_block; layer "utilities" (String.concat "" consumers) ]
     | _ ->
-        (* definition layered, each consumer in an alternating layer *)
+        (* definition layered, consumers in one layer a block at a time *)
         String.concat ""
-          (layer "theme" root_block
-          :: List.mapi
-               (fun i c -> layer (if i land 1 = 0 then "a" else "b") c)
-               consumers)
+          (layer "theme" root_block :: List.map (layer "utilities") consumers)
   in
   match (inlined_min reference, inlined_min layered) with
   | Some r, Some l ->
