@@ -2142,26 +2142,31 @@ type at_rule_body =
   | Declarations of Css.declaration list  (** a rule body without a rule *)
   | Opaque  (** descriptors, compared as the text they print to *)
 
+(* Which of the three a statement is, is the only thing said here: the body
+   itself comes from the shared readers. Listed one by one rather than closed
+   with a wildcard, so an at-rule added to the AST does not compile until this
+   processor has claimed it or handed it to another. *)
 let at_rule_body (stmt : Css.statement) : at_rule_body option =
   match stmt with
-  | Starting_style block
-  | Scope (_, _, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block) ->
-      Some (Block block)
-  | Page (_, decls)
+  | Starting_style _ | Scope _ | Moz_document _ | When _ | Else _ ->
+      Some (Block (Css.Stylesheet.statement_children stmt))
   (* With margin rules the declarations are only part of the body, so the whole
      block is compared as text instead. *)
-  | Page_with_margins (_, decls, [])
-  | Position_try (_, decls)
-  | Supports_condition (_, decls) ->
-      Some (Declarations decls)
+  | Page _
+  | Page_with_margins (_, _, [])
+  | Position_try _ | Supports_condition _ ->
+      Some (Declarations (Css.Stylesheet.statement_declarations stmt))
   | Font_face _ | Counter_style _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Viewport _ | Webkit_keyframes _
   | Moz_keyframes _ | Unknown_at_rule _ ->
       Some Opaque
-  | _ -> None
+  (* Owned by another processor: a rule and a bare nesting block by the rule
+     matcher, a container by [moved_order_keys], [@keyframes] and [@property] by
+     their own, and the rest carry no body to compare. *)
+  | Rule _ | Declarations _ | Layer _ | Media _ | Container _ | Supports _
+  | Origin _ | Keyframes _ | Property _ | Layer_decl _ | Import _ | Charset _
+  | Namespace _ | Bang_comment _ ->
+      None
 
 (* [process_at_rules] owns these statements, so leaving them in the rule diff as
    well would report one change twice, once against the universal selector. *)
