@@ -151,6 +151,26 @@ let media_level_spelling_converges_under_every_wrapper () =
     "@media not all and (width>100px){.a{color:red}}"
     "@media not (width>100px){.a{color:red}}"
 
+let at_rule_block_takes_the_projection_folds () =
+  (* The projection's value folds apply to a declaration wherever it sits: an
+     at-rule that groups rules holds the same rules a caller could have written
+     at the top level, so two sheets differing only by a folded spelling inside
+     one still project alike. *)
+  Alcotest.(check string)
+    "a media query folds inside @-moz-document"
+    (canonical
+       "@-moz-document url-prefix(){@media not (min-width:1px){.a{color:red}}}")
+    (canonical
+       "@-moz-document url-prefix(){@media not all and \
+        (min-width:1px){.a{color:red}}}");
+  Alcotest.(check string)
+    "a font stack unquotes inside @scope"
+    (canonical
+       "@scope (.p){:root{--font-sans:ui-sans-serif,system-ui,Noto Color \
+        Emoji}}")
+    (canonical
+       {|@scope (.p){:root{--font-sans:ui-sans-serif,system-ui,"Noto Color Emoji"}}|})
+
 let media_and_independent_rule_converge () =
   (* A conditional block whose rules cannot conflict with a neighbouring rule
      reorders with it, so both source orderings reach one canonical form. *)
@@ -342,6 +362,8 @@ let suite =
         color_spelling_converges_under_every_wrapper;
       Alcotest.test_case "media level spelling converges under every wrapper"
         `Quick media_level_spelling_converges_under_every_wrapper;
+      Alcotest.test_case "at-rule block takes the projection folds" `Quick
+        at_rule_block_takes_the_projection_folds;
       Alcotest.test_case "media and independent rule converge" `Quick
         media_and_independent_rule_converge;
       Alcotest.test_case "media conflict keeps source order" `Quick
