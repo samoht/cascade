@@ -1224,6 +1224,41 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@namespace svg url(http://www.w3.org/2000/svg); @import url(late.css);"
       );
       ("import inside style rule", ".x { @import url(inner.css); color: red }");
+      (* CSS Nesting 1 sec. 3.3: an at-rule whose body holds no style rule does
+         not nest, so writing one inside a style rule is invalid. *)
+      ( "font-face inside style rule",
+        ".x { color: red; @font-face { font-family: F; src: url(f.woff2) } }" );
+      ( "keyframes inside style rule",
+        ".x { color: red; @keyframes k { to { opacity: 1 } } }" );
+      ( "webkit keyframes inside style rule",
+        ".x { color: red; @-webkit-keyframes k { to { opacity: 1 } } }" );
+      ( "moz keyframes inside style rule",
+        ".x { color: red; @-moz-keyframes k { to { opacity: 1 } } }" );
+      ( "property inside style rule",
+        ".x { color: red; @property --p { syntax: \"*\"; inherits: false } }" );
+      ("page inside style rule", ".x { color: red; @page { margin: 1cm } }");
+      ( "counter-style inside style rule",
+        ".x { color: red; @counter-style c { system: cyclic; symbols: \"x\" } }"
+      );
+      ( "position-try inside style rule",
+        ".x { color: red; @position-try --t { top: 1px } }" );
+      ( "font-palette-values inside style rule",
+        ".x { color: red; @font-palette-values --v { font-family: F; \
+         base-palette: 0 } }" );
+      ( "font-feature-values inside style rule",
+        ".x { color: red; @font-feature-values F { @styleset { s: 1 } } }" );
+      ( "viewport inside style rule",
+        ".x { color: red; @viewport { width: 1px } }" );
+      ( "ms-viewport inside style rule",
+        ".x { color: red; @-ms-viewport { width: 1px } }" );
+      ( "supports-condition inside style rule",
+        ".x { color: red; @supports-condition (color: red) { color: green } }"
+      );
+      (* CSS Conditional 5 sec. 4: an @else needs a preceding @when here too. *)
+      ( "orphan else inside style rule",
+        ".x { color: red; @else { color: green } }" );
+      ( "orphan else inside a nested group rule",
+        ".x { @media screen { color: red; @else { color: green } } }" );
       ("import inside media rule", "@media screen { @import url(inner.css); }");
       ("import with block", "@import url(theme.css) { .x { color: red } }");
       ( "import layer after condition",
@@ -1361,7 +1396,14 @@ let spec_lenient_recovery_stylesheets () =
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     ".ok{color:green}.next{color:#00f}" 1;
   lenient_recover "unclosed block auto-closes" ".btn { color: red;"
-    ".btn{color:red}" 0
+    ".btn{color:red}" 0;
+  lenient_recover "descriptor at-rule in a style rule keeps its neighbours"
+    ".a { color: red; @font-face { font-family: F; src: url(f.woff2) } \
+     background: blue }"
+    ".a{color:red;background:#00f}" 1;
+  lenient_recover "orphan else in a style rule keeps its neighbours"
+    ".a { color: red; @else { color: green } background: blue }"
+    ".a{color:red;background:#00f}" 1
 
 let stylesheet_tests =
   [
@@ -2970,6 +3012,80 @@ let spec_nesting_at_rule_inside_nested_group () =
     ~expected:".a{@media screen{@starting-style{color:red}}}"
     ".a { @media screen { @starting-style { color: red } } }";
   test_nesting_idempotent ".a { @layer n { @media screen { color: red } } }"
+
+(* CSS Nesting 1 sec. 3.3 nests "any at-rule whose body contains style rules"; a
+   descriptor rule, a keyframe list and a declaration-list rule contain none, so
+   inside a style rule they are invalid. Blink 146 drops each one and keeps the
+   declarations written around it, which is the recovery CSS Syntax 3 sec. 5.4.4
+   describes: discard the invalid construct, resume at the next one. *)
+let spec_nesting_rejects_non_group_at_rules () =
+  let drops at_rule =
+    test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+      (".a { color: red; " ^ at_rule ^ " background: blue }")
+  in
+  drops "@font-face { font-family: F; src: url(f.woff2) }";
+  drops "@keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@-webkit-keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@-moz-keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@property --p { syntax: \"<color>\"; inherits: false }";
+  drops "@page { margin: 1cm }";
+  drops "@counter-style c { system: cyclic; symbols: \"x\" }";
+  drops "@position-try --t { top: 1px }";
+  drops "@font-palette-values --v { font-family: F; base-palette: 0 }";
+  drops "@font-feature-values F { @styleset { s: 1 } }";
+  drops "@viewport { width: 100px }";
+  drops "@-ms-viewport { width: 100px }";
+  drops "@supports-condition (color: red) { color: green }"
+
+(* The same rejection inside every nesting context that a style rule opens: a
+   nested group rule's body, a nested style rule, and a rule reached through a
+   stylesheet-level group rule. *)
+let spec_nesting_rejects_non_group_at_rules_deep () =
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @font-face { font-family: F; src: \
+     url(f.woff2) } background: blue } }";
+  test_nesting_roundtrip ~expected:".a{& b{color:red;background:blue}}"
+    ".a { & b { color: red; @keyframes k { to { opacity: 1 } } background: \
+     blue } }";
+  test_nesting_roundtrip
+    ~expected:"@media screen{.a{color:red;background:blue}}"
+    "@media screen { .a { color: red; @page { margin: 1cm } background: blue } \
+     }"
+
+(* Dropping the invalid at-rule must not take a nested style rule written after
+   it, and the surviving text has to read back unchanged. *)
+let spec_nesting_rejection_keeps_the_rest () =
+  test_nesting_roundtrip ~expected:".a{color:red;& span{color:lime}b:2}"
+    ".a { color: red; @font-face { font-family: F; src: url(f.woff2) } & span \
+     { color: lime } b: 2 }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @font-face; background: blue }";
+  test_nesting_idempotent
+    ".a { color: red; @page { margin: 1cm } background: blue }"
+
+(* CSS View Transitions 2 gives [\@view-transition] a descriptor body, so CSS
+   Nesting 1 sec. 3.3 does not nest it either - but Blink 146 keeps it inside a
+   style rule, down to [&:hover], where every rule above is dropped. Dropping
+   what a shipping engine still reads is the one lossy direction, so cascade
+   keeps it. *)
+let spec_nesting_keeps_view_transition () =
+  test_nesting_roundtrip
+    ~expected:".a{color:red;@view-transition{navigation:auto}background:blue}"
+    ".a { color: red; @view-transition { navigation: auto } background: blue }"
+
+(* CSS Conditional 5 sec. 4: [\@else] is only valid after a [\@when] or another
+   [\@else], wherever it is written. *)
+let spec_nesting_rejects_orphan_else () =
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @else { color: green } background: blue }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @else { color: green } background: blue \
+     } }";
+  test_nesting_roundtrip
+    ~expected:".a{@when media(width>0px){color:red}@else{color:green}}"
+    ".a { @when media(width > 0px) { color: red } @else { color: green } }"
 
 (* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
    wrapped in a nested declarations rule, which keeps its place among the nested
@@ -7107,6 +7223,21 @@ let additional_tests =
     ( "spec nesting at-rule inside a nested group rule",
       `Quick,
       spec_nesting_at_rule_inside_nested_group );
+    ( "spec nesting rejects a non-group at-rule",
+      `Quick,
+      spec_nesting_rejects_non_group_at_rules );
+    ( "spec nesting rejects a non-group at-rule at every depth",
+      `Quick,
+      spec_nesting_rejects_non_group_at_rules_deep );
+    ( "spec nesting rejection keeps the rest of the rule",
+      `Quick,
+      spec_nesting_rejection_keeps_the_rest );
+    ( "spec nesting keeps @view-transition",
+      `Quick,
+      spec_nesting_keeps_view_transition );
+    ( "spec nesting rejects an orphan @else",
+      `Quick,
+      spec_nesting_rejects_orphan_else );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
