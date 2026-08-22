@@ -5209,6 +5209,74 @@ let s3437_string_escape () =
     "\\\\ preserved" ".x{content:\"\\\\\"}"
     (normalize ".x { content: \"\\\\\" }")
 
+(* CSS Syntax 3 sec. 4.3.7 reads an escape as the code point it names, so a
+   custom-property name can hold a [;] or a [}]. Serializing an ident writes
+   those back escaped (CSS Syntax 3 sec. 2.1): printed raw, the name ends its
+   own declaration or closes the rule around it, and cascade's reader stops
+   reading what the input meant. *)
+let s4370_custom_property_name_escapes () =
+  (* Print [css] and hold the printer to its own reader: the output parses in
+     strict mode, says what the input said, and printing it again is a byte
+     fixpoint. The tree comparison stands in for AST equality, which a token
+     carrying its source position makes sensitive to how long the escape was.
+     The minified output is what the spellings below are checked against. *)
+  let roundtrip css =
+    match Css.of_string ~strict:false css with
+    | Error e ->
+        Alcotest.failf "parse failed: %s (%s)" css (Cascade.Error.to_string e)
+    | Ok parsed ->
+        let check ~minify label out =
+          match Css.of_string ~strict:true out with
+          | Error e ->
+              Alcotest.failf "%s output is not readable: %s (%s)" label out
+                (Cascade.Error.to_string e)
+          | Ok again ->
+              Alcotest.(check bool)
+                (String.concat "" [ label; " says what "; css; " said" ])
+                true
+                (Cascade_diff.Css_compare.equal ~mode:`Tree css out);
+              Alcotest.(check string)
+                (String.concat "" [ label; " is a byte fixpoint: "; out ])
+                out
+                (Css.to_string ~minify again.Css.stylesheet)
+        in
+        let minified = Css.to_string ~minify:true parsed.Css.stylesheet in
+        check ~minify:true "minified" minified;
+        check ~minify:false "pretty" (Css.to_string parsed.Css.stylesheet);
+        minified
+  in
+  List.iter
+    (fun (css, expected) ->
+      Alcotest.(check string) css expected (roundtrip css))
+    [
+      (* The declaration name. *)
+      (":root{--x\\3b y:red}", ":root{--x\\;y:red}");
+      (":root{--x\\7d y:red}", ":root{--x\\}y:red}");
+      (":root{--x\\7b y:red}", ":root{--x\\{y:red}");
+      (":root{--x\\3a y:red}", ":root{--x\\:y:red}");
+      (":root{--x\\ y:red}", ":root{--x\\ y:red}");
+      (":root{--x\\22 y:red}", ":root{--x\\\"y:red}");
+      (":root{--x\\\\y:red}", ":root{--x\\\\y:red}");
+      (* The [var()] reference name, with each shape of fallback. *)
+      (".a{color:var(--x\\7d y)}", ".a{color:var(--x\\}y)}");
+      (".a{color:var(--a\\3b b,red)}", ".a{color:var(--a\\;b,red)}");
+      ( ".a{color:var(--a\\3b b,var(--c\\3b d))}",
+        ".a{color:var(--a\\;b,var(--c\\;d))}" );
+      (".a{color:var(--a\\3b b,)}", ".a{color:var(--a\\;b,)}");
+      (* The [@property] prelude and the [style()] container query. *)
+      ( "@property --x\\3b y{syntax:\"*\";inherits:false}",
+        "@property --x\\;y{syntax:\"*\";inherits:false}" );
+      ( "@container style(--x\\3b y:red){.a{color:red}}",
+        "@container style(--x\\;y:red){.a{color:red}}" );
+      (* A name needing no escape keeps its spelling: [--] takes a digit
+         straight after it, and a code point CSS Syntax 3 sec. 4.2 admits in an
+         ident is written as itself. *)
+      (":root{--x:red}.a{color:var(--x)}", ":root{--x:red}.a{color:var(--x)}");
+      (":root{--0:red}.a{color:var(--0)}", ":root{--0:red}.a{color:var(--0)}");
+      ( ":root{--\\e9 x:red}.a{color:var(--\\e9 x)}",
+        ":root{--\xc3\xa9x:red}.a{color:var(--\xc3\xa9x)}" );
+    ]
+
 let fidelity_string_escape_preserved () =
   pretty_preserves ".x { content: \"\\41\" }" [ "\\41" ];
   pretty_preserves ".x { content: \"hello\" }" [ "hello" ];
@@ -7102,6 +7170,9 @@ let additional_tests =
     ("spec bg 3 2.1 multi-layer preserved", `Quick, bg321_multi_layer_kept);
     ("fidelity background preserved", `Quick, fidelity_background_preserved);
     ("spec syntax 3 4.3.7 string escape decoding", `Quick, s3437_string_escape);
+    ( "spec syntax 3 4.3.7 custom-property name escapes",
+      `Quick,
+      s4370_custom_property_name_escapes );
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );
