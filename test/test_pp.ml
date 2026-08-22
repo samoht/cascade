@@ -92,8 +92,11 @@ let float_zero_and_nan_inf () =
   check_float infinity ~expected:"3.40282e38";
   check_float neg_infinity ~expected:"-3.40282e38";
 
-  (* NaN stays as NaN per CSS spec *)
-  check_float nan ~expected:"NaN"
+  (* A bare [NaN] is not a CSS token. CSS Values 4 sec. 10.7.2 puts the [NaN]
+     keyword in the math-function grammar and nowhere else, and sec. 10.13
+     serialises a NaN-valued number as [calc(NaN)]; Chrome drops [opacity: NaN]
+     and keeps [opacity: calc(NaN)]. *)
+  check_float nan ~expected:"calc(NaN)"
 
 let float_rounding_and_trim () =
   (* Rounding with float_n *)
@@ -146,6 +149,82 @@ let float_large_decimal_in_stylesheet () =
   check_sheet "scale" "a{transform:scale(123456789012.25)}"
     "a{transform:scale(123456789012)}";
   check_sheet "opacity" "b{opacity:calc(999999999999.75)}" "b{opacity:1e12}"
+
+(* CSS Values 4 sec. 10.7.2 puts the [NaN] keyword in the math-function grammar
+   and nowhere else, and sec. 10.9.2 keeps NaN inside a calculation tree, so a
+   value that is NaN has no bare spelling. Chrome drops [width: NaNpx],
+   [opacity: NaN] and [rotate: NaNdeg] as invalid, and computes each expected
+   form below to the same value as its input. Whatever cascade prints has to
+   survive its own reader unchanged. *)
+let nan_never_prints_as_a_bare_token () =
+  let check_sheet name input expected =
+    match of_string ~strict:true input with
+    | Error e -> failf "%s: %s" name (Pp.to_string Error.pp e)
+    | Ok { stylesheet; _ } -> (
+        let printed = to_string ~minify:true (optimize stylesheet) in
+        check string name expected printed;
+        match of_string ~strict:true printed with
+        | Error e ->
+            failf "%s: %S does not re-read: %s" name printed
+              (Pp.to_string Error.pp e)
+        | Ok { stylesheet = again; _ } ->
+            check string
+              (Fmt.str "%s is a fixpoint" name)
+              printed
+              (to_string ~minify:true (optimize again)))
+  in
+  check_sheet "length" ".a{width:calc(sqrt(-1) * 1px)}"
+    ".a{width:calc(NaN*1px)}";
+  check_sheet "relative length" ".a{width:calc(log(-1) * 1em)}"
+    ".a{width:calc(NaN*1em)}";
+  check_sheet "percentage" ".a{width:calc(sqrt(-1) * 1%)}"
+    ".a{width:calc(NaN*1%)}";
+  check_sheet "comparison function" ".a{opacity:min(sqrt(-1),1)}"
+    ".a{opacity:calc(NaN)}";
+  check_sheet "stepped value function" ".a{opacity:calc(rem(1,0))}"
+    ".a{opacity:calc(NaN)}";
+  (* A function the fold leaves alone keeps the form the author wrote, which is
+     the same calculation tree and the same value. *)
+  check_sheet "number" ".a{opacity:calc(sqrt(-1))}" ".a{opacity:calc(sqrt(-1))}";
+  check_sheet "time" ".a{transition-duration:calc(sqrt(-1) * 1s)}"
+    ".a{transition-duration:calc(sqrt(-1)*1s)}";
+  check_sheet "number in a function" ".a{transform:scale(calc(sqrt(-1)))}"
+    ".a{transform:scale(calc(sqrt(-1)))}";
+  check_sheet "inverse trigonometry" ".a{rotate:asin(-20)}"
+    ".a{rotate:asin(-20)}";
+  check_sheet "custom property" ".a{--x:calc(sqrt(-1))}"
+    ".a{--x:calc(sqrt(-1))}"
+
+(* A NaN reaching the printer from the typed API still has to come out as CSS.
+   Sec. 10.13 serialises it as [calc(NaN)], with [* 1<unit>] appended once the
+   value carries a unit. *)
+let nan_leaf_serializes_as_a_math_function () =
+  let check_decl name declaration expected =
+    let printed =
+      to_string ~minify:true
+        (v [ rule ~selector:(Selector.class_ "a") [ declaration ] ])
+    in
+    check string name expected printed;
+    match of_string ~strict:true printed with
+    | Error e ->
+        failf "%s: %S does not re-read: %s" name printed
+          (Pp.to_string Error.pp e)
+    | Ok { stylesheet; _ } ->
+        check string
+          (Fmt.str "%s is a fixpoint" name)
+          printed
+          (to_string ~minify:true stylesheet)
+  in
+  check_decl "length" (width (Px Float.nan)) ".a{width:calc(NaN*1px)}";
+  check_decl "relative length" (width (Em Float.nan)) ".a{width:calc(NaN*1em)}";
+  check_decl "percentage" (width (Pct Float.nan)) ".a{width:calc(NaN*1%)}";
+  check_decl "number"
+    (opacity (Opacity_number Float.nan))
+    ".a{opacity:calc(NaN)}";
+  check string "bare number" "calc(NaN)"
+    (Pp.to_string ~minify:true Pp.float Float.nan);
+  check string "angle" "calc(NaN*1deg)"
+    (Pp.to_string ~minify:true Css.pp_angle (Deg Float.nan))
 
 let cond_case () =
   let pp = Pp.cond (fun ctx -> not (Pp.minified ctx)) Pp.string Pp.nop in
@@ -202,6 +281,10 @@ let suite =
         float_large_decimal_reparses;
       Alcotest.test_case "float large decimal in stylesheet" `Quick
         float_large_decimal_in_stylesheet;
+      Alcotest.test_case "nan never prints as a bare token" `Quick
+        nan_never_prints_as_a_bare_token;
+      Alcotest.test_case "nan leaf serializes as a math function" `Quick
+        nan_leaf_serializes_as_a_math_function;
       Alcotest.test_case "cond" `Quick cond_case;
       Alcotest.test_case "space if pretty" `Quick space_if_pretty_case;
       Alcotest.test_case "combinations" `Quick combinations;
