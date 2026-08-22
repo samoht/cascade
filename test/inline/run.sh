@@ -3,61 +3,148 @@
 # complete computed style must be identical before and after a transform.
 # Covers `cascade apply` (both modes) and `cascade --minify` (each <style>
 # block minified in place). Skips cleanly with no browser or node (e.g. in CI).
+#
+# A difference list is a measurement, so the run says what produced it: the
+# binary under test and the browser version head the output, and each fetched
+# page carries the hash of the bytes actually measured. fetch.sh freezes every
+# downloaded page (freeze_page.js) and xtest.js pins the browser, leaving
+# computed style a function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
-export CASCADE=${CASCADE:-cascade}
+root=$(CDPATH= cd "$dir/../.." && pwd)
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
-[ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort | tail -1)
+# sort -V, not sort: the cache holds mac_arm-<version> directories, and in
+# lexical order a 99.x outranks a 146.x.
+[ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort -V | tail -1)
 if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
 export CHROME
+
+# Chrome versions do not agree on computed styles, so a count is comparable
+# only against another from the same engine. Reporting the version keeps a
+# number from being quoted without it; CHROME_VERSION demands a given build for
+# a comparison that has to cross machines, and is unset by default because
+# requiring one build outright would strand anyone who lacks it.
+browser=$("$CHROME" --version 2>/dev/null | tr -d '\r')
+[ -z "$browser" ] && browser="unknown ($CHROME)"
+if [ -n "$CHROME_VERSION" ] && ! printf '%s\n' "$browser" | grep -qF "$CHROME_VERSION"; then
+  echo "ERROR: CHROME_VERSION=$CHROME_VERSION, but the browser is $browser" >&2
+  exit 1
+fi
+
+# The binary under test is this working tree's, built here. Falling back to a
+# `cascade` off $PATH tests whichever release happens to be installed while
+# still printing a confident result, so the run says nothing about the code it
+# was pointed at. CASCADE still wins, for measuring a release on purpose.
+if [ -z "$CASCADE" ]; then
+  if ! (cd "$root" && "$root/scripts/with_switch.sh" dune build bin/main.exe); then
+    echo "ERROR: cannot build bin/main.exe, so there is nothing to test." >&2
+    echo "  Fix the build, or set CASCADE to the binary you mean to measure." >&2
+    exit 1
+  fi
+  CASCADE="$root/_build/default/bin/main.exe"
+fi
+case $CASCADE in
+  */*) ;;
+  *) CASCADE=$(command -v "$CASCADE" 2>/dev/null || echo "$CASCADE") ;;
+esac
+if [ ! -x "$CASCADE" ]; then
+  echo "ERROR: CASCADE is not an executable: $CASCADE" >&2
+  exit 1
+fi
+# Absolute, so the header names one file however the run was started.
+case $CASCADE in
+  /*) ;;
+  *) CASCADE=$(CDPATH= cd "$(dirname "$CASCADE")" && pwd)/$(basename "$CASCADE") ;;
+esac
+export CASCADE
+cascade_version=$("$CASCADE" --version 2>/dev/null | head -1)
+
 # Canonical-difference filter: compares values the way cascade does, so
 # render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
-# The filter is optional, so a build that cannot run leaves it unset rather
-# than stopping the sweep -- but it says why instead of discarding the reason.
-root=$(CDPATH= cd "$dir/../.." && pwd)
-if "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe; then
-  CANON_FILTER=$(cd "$root" && find _build -name canon_filter.exe | head -1)
-  [ -n "$CANON_FILTER" ] && export CANON_FILTER="$root/$CANON_FILTER"
+# Without it every such pair counts, and the run prints a number that looks
+# like a result but is an inflated one, which is worse than no number at all.
+# So a filter that is missing or does not work is fatal, not skipped.
+if [ -z "$CANON_FILTER" ]; then
+  # Not discarded: a swallowed build failure leaves the last binary in place,
+  # and the probe below passes it.
+  if ! (cd "$root" && "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe); then
+    echo "ERROR: cannot build test/inline/canon_filter.exe." >&2
+    exit 1
+  fi
+  CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
+# Prove it filters, rather than that a file exists: a stale or broken binary
+# passes an existence check and silently restores raw comparison. The first
+# line is one spelling of one value and must be dropped; the second is a real
+# change and must survive.
+canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\tcolor\tred\tblue\n' |
+  "$CANON_FILTER" 2>/dev/null)
+if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
+  echo "ERROR: canonical filter missing or not filtering: $CANON_FILTER" >&2
+  echo "  build it with: dune build test/inline/canon_filter.exe" >&2
+  echo "  (or point CANON_FILTER at one). Without it, equivalent spellings" >&2
+  echo "  count as differences and the reported total is not a result." >&2
+  exit 1
+fi
+export CANON_FILTER
+
+# Fetched pages are downloaded rather than committed, so record which bytes
+# produced a result: the hash moves when the site or its CDN does, and a count
+# that moved with it is explained instead of mysterious.
+sha() { # file -> first 12 hex of sha256
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1"
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/.*= //'
+  else echo nohash
+  fi | cut -c1-12
+}
+
+echo "cascade: $CASCADE (${cascade_version:-unknown version})"
+echo "browser: $browser"
+echo "compare: canonical"
 fail=0
+# xtest.js renders two pages, which is the whole cost of the run: keep its
+# report rather than paying for it a second time to print the failure.
+check() { # label before after
+  report=$(node "$dir/xtest.js" "$2" "$3" 2>&1)
+  case $report in
+    *IDENTICAL*) echo "ok   $1" ;;
+    *) echo "FAIL $1"
+       printf '%s\n' "$report" | head -8 | sed 's/^/     /'
+       fail=1 ;;
+  esac
+}
 for f in "$dir"/fixtures/*.html; do
   for mode in "" "--minimal"; do
-    out=$(mktemp)
-    "$CASCADE" apply $mode "$f" > "$out" 2>/dev/null
-    if node "$dir/xtest.js" "$f" "$out" 2>&1 | grep -q "IDENTICAL"; then
-      echo "ok   $(basename "$f") ${mode:-full}"
-    else
-      echo "FAIL $(basename "$f") ${mode:-full}"; node "$dir/xtest.js" "$f" "$out" 2>&1 | tail -6; fail=1
-    fi
-    rm -f "$out"
+    tmp=$(mktemp)
+    # shellcheck disable=SC2086 # an empty $mode must vanish, not pass ""
+    "$CASCADE" apply $mode "$f" > "$tmp" 2>/dev/null
+    check "$(basename "$f") ${mode:-full}" "$f" "$tmp"
+    rm -f "$tmp"
   done
 done
 # cascade --minify preserves the render too: minify each <style> block in place
 # and compare computed styles against the original page.
 for f in "$dir"/fixtures/*.html; do
-  out=$(mktemp)
-  node "$dir/minify_page.js" "$f" > "$out" 2>/dev/null
-  if node "$dir/xtest.js" "$f" "$out" 2>&1 | grep -q "IDENTICAL"; then
-    echo "ok   $(basename "$f") minify"
-  else
-    echo "FAIL $(basename "$f") minify"; node "$dir/xtest.js" "$f" "$out" 2>&1 | tail -6; fail=1
-  fi
-  rm -f "$out"
+  tmp=$(mktemp)
+  node "$dir/minify_page.js" "$f" > "$tmp" 2>/dev/null
+  check "$(basename "$f") minify" "$f" "$tmp"
+  rm -f "$tmp"
 done
-# Real pages downloaded by fetch.sh (gitignored): reported for coverage, but
-# they do not gate the run - they change upstream and exercise features still
-# being grown, so only the committed fixtures decide pass/fail.
-if [ -d "$dir/pages" ]; then
-  for f in "$dir"/pages/*.html; do
-    [ -e "$f" ] || continue
-    out=$(mktemp)
-    "$CASCADE" apply --minimal "$f" > "$out" 2>/dev/null
-    res=$(node "$dir/xtest.js" "$f" "$out" 2>/dev/null | grep RESULT)
-    echo "real $(basename "$f"): ${res:-no result}"
-    rm -f "$out"
-  done
-fi
+# Real pages downloaded by fetch.sh (gitignored, so absent until it is run).
+# They gate like the fixtures do: a surviving difference is a defect in the
+# transform, whichever page happened to find it. One that appears the day a
+# site is redesigned is still a defect, but re-run fetch.sh before reading it
+# as a regression in the working tree, and check the hash in the label first.
+for f in "$dir"/pages/*.html; do
+  [ -e "$f" ] || continue
+  page="$(basename "$f")@$(sha "$f")"
+  tmp=$(mktemp)
+  "$CASCADE" apply --minimal "$f" > "$tmp" 2>/dev/null
+  check "real $page minimal" "$f" "$tmp"
+  rm -f "$tmp"
+done
 exit $fail
