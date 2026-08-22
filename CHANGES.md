@@ -44,6 +44,14 @@
   not equivalent, so `.a { @supports (color: red) { color: blue } color: green }`
   now computes green as Blink and WebKit do, where cascade printed a sheet that
   computed blue (#380)
+- Every at-rule that nests inside a style rule reads its body as nesting
+  content. `.a { @starting-style { color: blue } }` kept the wrapper and dropped
+  the declaration, `@-moz-document`, `@when` and `@else` lost theirs the same
+  way, and an at-rule written inside a nested group rule, as in
+  `.a { @layer n { @media screen { color: red } } }`, reached the
+  stylesheet-level reader and lost its block too. CSS Nesting 1 sec. 3.3 nests
+  any at-rule whose body carries style rules, and Blink 146 keeps every one of
+  these shapes whole (#384)
 
 ### Minification
 
@@ -174,6 +182,9 @@
 - `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
   rebuild a statement with a function applied to the block or the declarations
   it holds, the rebuilding counterparts of the two readers (#337)
+- `Css.Flatten` carries the parent selector into an `@-moz-document` block, the
+  one group rule it did not descend into. A nested declaration run came out
+  bare at the top of the block, which no reader takes back (#384)
 
 ### CLI tools
 

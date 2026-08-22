@@ -3123,6 +3123,57 @@ let seal_declaration_run = function
   | Declarations run :: rest -> Declarations (List.rev run) :: rest
   | nested -> nested
 
+let read_starting_style ~body (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "starting-style" r;
+  Cursor.ws r;
+  Starting_style (Cursor.braces body r)
+
+let read_when ~body (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "when" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block r in
+  if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
+  then Cursor.err_invalid r "@when: missing condition";
+  let condition : conditional =
+    try conditional_components prelude
+    with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
+  in
+  When (condition, Cursor.braces body r)
+
+let read_else ~body (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "else" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block r in
+  let condition =
+    match
+      List.filter
+        (function
+          | Component.Preserved { kind = Token.Whitespace; _ } -> false
+          | _ -> true)
+        prelude
+    with
+    | [] -> Option.None
+    | _ -> (
+        match conditional_components prelude with
+        | condition -> Some condition
+        | exception Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
+  in
+  Else (condition, Cursor.braces body r)
+
+let read_moz_document ~body (r : Cursor.t) : statement =
+  Cursor.with_context r "@-moz-document" @@ fun () ->
+  Cursor.expect_at_keyword "-moz-document" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block_as_string ~trim:true r in
+  let prelude_cursor = Cursor.of_string prelude in
+  let conditions =
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_moz_document_condition
+      prelude_cursor
+  in
+  Cursor.ws prelude_cursor;
+  Cursor.expect_eof prelude_cursor;
+  Moz_document (conditions, Cursor.braces body r)
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -3134,11 +3185,11 @@ let rec read_statement (r : Cursor.t) : statement =
       ("media", read_media);
       ("container", read_container);
       ("supports", read_supports);
-      ("-moz-document", read_moz_document);
-      ("when", read_when);
-      ("else", read_else);
+      ("-moz-document", read_moz_document ~body:read_block);
+      ("when", read_when ~body:read_block);
+      ("else", read_else ~body:read_block);
       ("supports-condition", read_supports_condition);
-      ("starting-style", read_starting_style);
+      ("starting-style", read_starting_style ~body:read_block);
       ("scope", read_scope);
       ("keyframes", read_keyframes);
       ("-webkit-keyframes", read_webkit_keyframes);
@@ -3211,46 +3262,6 @@ and read_block (r : Cursor.t) : block =
   in
   read_statements []
 
-and read_starting_style (r : Cursor.t) : statement =
-  Cursor.expect_at_keyword "starting-style" r;
-  Cursor.ws r;
-  let content = Cursor.braces (fun inner -> read_block inner) r in
-  Starting_style content
-
-and read_when (r : Cursor.t) : statement =
-  Cursor.expect_at_keyword "when" r;
-  Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
-  if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
-  then Cursor.err_invalid r "@when: missing condition";
-  let condition : conditional =
-    try conditional_components prelude
-    with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
-  in
-  let content = Cursor.braces (fun inner -> read_block inner) r in
-  When (condition, content)
-
-and read_else (r : Cursor.t) : statement =
-  Cursor.expect_at_keyword "else" r;
-  Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
-  let condition =
-    match
-      List.filter
-        (function
-          | Component.Preserved { kind = Token.Whitespace; _ } -> false
-          | _ -> true)
-        prelude
-    with
-    | [] -> Option.None
-    | _ -> (
-        match conditional_components prelude with
-        | condition -> Some condition
-        | exception Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
-  in
-  let content = Cursor.braces (fun inner -> read_block inner) r in
-  Else (condition, content)
-
 and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
@@ -3275,21 +3286,6 @@ and read_supports (r : Cursor.t) : statement =
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Supports (supports_condition ~loc:cond_loc condition, content)
-
-and read_moz_document (r : Cursor.t) : statement =
-  Cursor.with_context r "@-moz-document" @@ fun () ->
-  Cursor.expect_at_keyword "-moz-document" r;
-  Cursor.ws r;
-  let prelude = Cursor.drain_until_block_as_string ~trim:true r in
-  let prelude_cursor = Cursor.of_string prelude in
-  let conditions =
-    Cursor.list ~sep:Cursor.comma ~at_least:1 read_moz_document_condition
-      prelude_cursor
-  in
-  Cursor.ws prelude_cursor;
-  Cursor.expect_eof prelude_cursor;
-  let content = Cursor.braces (fun inner -> read_block inner) r in
-  Moz_document (conditions, content)
 
 and read_scope (r : Cursor.t) : statement =
   (* CSS Cascade 6 sec. 3.5.2: [@scope <start> to <end> { ... }]. The two
@@ -3394,7 +3390,7 @@ and read_nesting_item r =
   match Cursor.peek r with
   | None -> `Done
   | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      `Stmt (read_statement r)
+      `Stmt (read_nested_at_within_rule r)
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip r;
       `Skip
@@ -3427,8 +3423,7 @@ and read_nested_decl_after_semicolon r acc =
       | None -> List.rev acc)
 
 (* Helper: Read nested at-rule with declarations content *)
-and read_nested_at_rule (r : Cursor.t) (at_rule : string)
-    (_selector : Selector.t) : statement =
+and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
   Cursor.with_context r at_rule @@ fun () ->
   let name = String.sub at_rule 1 (String.length at_rule - 1) in
   Cursor.expect_at_keyword name r;
@@ -3471,36 +3466,41 @@ and read_nested_scope_rule r =
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   Scope (scope_start, scope_end, content)
 
-and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
-    statement =
+and read_nested_layer_rule r =
+  Cursor.expect_at_keyword "layer" r;
+  Cursor.ws r;
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ })
-    when name = "supports" || name = "media" || name = "container"
-         || name = "scope" ->
-      read_nested_at_rule r ("@" ^ name) selector
-  | Some (Component.Preserved { kind = Token.At_keyword "layer"; _ }) -> (
-      Cursor.expect_at_keyword "layer" r;
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
+      Layer (None, Cursor.braces (fun inner -> read_nesting_block inner) r)
+  | _ ->
+      let name = Cursor.ident ~keep_case:true r in
       Cursor.ws r;
-      match Cursor.peek r with
-      | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-          let content =
-            Cursor.braces (fun inner -> read_nesting_block inner) r
-          in
-          Layer (None, content)
-      | _ ->
-          let name = Cursor.ident ~keep_case:true r in
-          Cursor.ws r;
-          let content =
-            Cursor.braces (fun inner -> read_nesting_block inner) r
-          in
-          Layer (Some name, content))
-  | Some
-      (Component.Preserved
-         {
-           kind =
-             Token.At_keyword (("charset" | "import" | "namespace") as name);
-           _;
-         }) ->
+      Layer (Some name, Cursor.braces (fun inner -> read_nesting_block inner) r)
+
+and read_nested_at_within_rule (r : Cursor.t) : statement =
+  match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
+      read_nested_at_keyword r name
+  | _ -> read_statement r
+
+(* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
+   nested inside of a style rule as well", which is every group rule cascade
+   models - the conditional group rules @media/@supports/@container, @when and
+   @else that generalise them (CSS Conditional 5 sec. 3, sec. 4),
+   @-moz-document, @layer, @scope, and @starting-style (CSS Transitions 2 sec.
+   3.3). Nested, the body is <block-contents>, so a bare declaration run in it
+   belongs to the parent selector. Everything else keeps its stylesheet-level
+   reading: a descriptor rule such as @font-face carries no style rule, and a
+   top-of-sheet rule is invalid here outright. *)
+and read_nested_at_keyword r = function
+  | ("supports" | "media" | "container" | "scope") as name ->
+      read_nested_at_rule r ("@" ^ name)
+  | "layer" -> read_nested_layer_rule r
+  | "starting-style" -> read_starting_style ~body:read_nesting_block r
+  | "-moz-document" -> read_moz_document ~body:read_nesting_block r
+  | "when" -> read_when ~body:read_nesting_block r
+  | "else" -> read_else ~body:read_nesting_block r
+  | ("charset" | "import" | "namespace") as name ->
       Cursor.err_invalid r ("Unexpected nested at-rule: @" ^ name)
   | _ -> read_statement r
 
@@ -3508,7 +3508,7 @@ and read_rule_item selector inner decls nested =
   match Cursor.peek inner with
   | None -> `Done (List.rev decls, List.rev (seal_declaration_run nested))
   | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      let stmt = read_nested_at_within_rule inner selector in
+      let stmt = read_nested_at_within_rule inner in
       `Continue (decls, stmt :: seal_declaration_run nested)
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip inner;

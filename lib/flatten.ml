@@ -65,6 +65,8 @@ and in_rule_context (parent : Selector.t) : statement -> statement list =
       [ Container (name, cond, List.concat_map (in_rule_context parent) block) ]
   | Supports (cond, block) ->
       [ Supports (cond, List.concat_map (in_rule_context parent) block) ]
+  | Moz_document (conds, block) ->
+      [ Moz_document (conds, List.concat_map (in_rule_context parent) block) ]
   | Layer (name, block) ->
       [ Layer (name, List.concat_map (in_rule_context parent) block) ]
   | Origin (origin, block) ->
@@ -99,6 +101,7 @@ let rec top_statement (stmt : statement) : statement list =
   | Container (name, cond, block) ->
       wrap block (fun b -> Container (name, cond, b))
   | Supports (cond, block) -> wrap block (fun b -> Supports (cond, b))
+  | Moz_document (conds, block) -> wrap block (fun b -> Moz_document (conds, b))
   | Layer (name, block) -> wrap block (fun b -> Layer (name, b))
   | Origin (origin, block) -> wrap block (fun b -> Origin (origin, b))
   | Starting_style block -> wrap block (fun b -> Starting_style b)
