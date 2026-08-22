@@ -1405,6 +1405,98 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: red; @else { color: green } background: blue }"
     ".a{color:red;background:#00f}" 1
 
+(* CSS Syntax 3 sec. 5.4.4 "consume a declaration" ends an invalid declaration
+   at the next top-level [;], and a [{}] met on the way is one component value
+   of the value being skipped, not a stopping point. A nested at-rule's body is
+   <block-contents> just like a style rule's (CSS Nesting 1 sec. 3.3), so the
+   same recovery applies inside it: Blink 146 drops the one declaration and
+   keeps every neighbour, the enclosing group rule and the rest of the sheet. *)
+let spec_lenient_recovery_nested_at_rule_declarations () =
+  let recovered = ".a{@media screen{color:red;background:#00f}}" in
+  lenient_recover "bad declaration first in a nested at-rule"
+    ".a { @media screen { width: 10; color: red; background: blue } }" recovered
+    1;
+  lenient_recover "bad declaration mid-run in a nested at-rule"
+    ".a { @media screen { color: red; width: 10; background: blue } }" recovered
+    1;
+  lenient_recover "bad declaration last in a nested at-rule"
+    ".a { @media screen { color: red; background: blue; width: 10 } }" recovered
+    1;
+  lenient_recover "sole declaration of a nested at-rule dropped"
+    ".a { @media screen { width: 10 } }" "" 1;
+  lenient_recover "bad declaration in a nested style rule"
+    ".a { & b { color: red; width: 10; margin: 0 } }" ".a b{color:red;margin:0}"
+    1;
+  lenient_recover "bad declaration in a style rule under a nested at-rule"
+    ".a { @media screen { & b { color: red; width: 10; margin: 0 } } }"
+    ".a{@media screen{& b{color:red;margin:0}}}" 1;
+  lenient_recover "bad declaration in a doubly nested at-rule"
+    ".a { @media screen { @container (width > 0px) { color: red; width: 10; \
+     background: blue } } }"
+    ".a{@media screen{@container(width>0px){color:red;background:#00f}}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @layer"
+    ".a { @layer x { color: red; width: 10; background: blue } }"
+    ".a{@layer x{color:red;background:#00f}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @scope"
+    ".a { @scope (.b) { color: red; width: 10; background: blue } }"
+    ".a{@scope(.b){color:red;background:#00f}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @starting-style"
+    ".a { @starting-style { color: red; width: 10; background: blue } }"
+    ".a{@starting-style{color:red;background:#00f}}" 1;
+  (* A [{}] in the dropped value is consumed with it; the run resumes at the [;]
+     after it. An unclosed function has no such [;] - the tokenizer closes it at
+     the end of the block, so it swallows the rest, as Blink does. *)
+  lenient_recover "curly block inside a dropped value is skipped with it"
+    ".a { @media screen { color: red; width: {1}; background: blue } }"
+    recovered 1;
+  lenient_recover "unclosed function swallows the rest of the block"
+    ".a { @media screen { color: red; width: calc(1px; background: blue } }"
+    ".a{@media screen{color:red}}" 1;
+  lenient_recover "a run of stray tokens is dropped like a bad declaration"
+    ".a { @media screen { color: red; !!!; background: blue } }" recovered 1
+
+(* A dropped declaration leaves no gap: the run written around it is one run, as
+   it is in Blink 146, the same way a dropped at-rule leaves one. *)
+let spec_lenient_recovery_nested_declaration_run () =
+  lenient_recover "bad declaration immediately before a nested rule"
+    ".a { @media screen { width: 10; & b { color: red } } }"
+    ".a{@media screen{& b{color:red}}}" 1;
+  lenient_recover "bad declaration immediately after a nested rule"
+    ".a { @media screen { & b { color: red } width: 10; background: blue } }"
+    ".a{@media screen{& b{color:red}background:#00f}}" 1;
+  lenient_recover "dropped declaration does not seal the run before a rule"
+    ".a { @media screen { color: red; width: 10; background: blue; & b { \
+     margin: 0 } } }"
+    ".a{@media screen{color:red;background:#00f;& b{margin:0}}}" 1;
+  lenient_recover "dropped declaration does not seal the run it opened"
+    ".a { @media screen { width: 10; color: red; & b { margin: 0 } background: \
+     blue } }"
+    ".a{@media screen{color:red;& b{margin:0}background:#00f}}" 1
+
+(* Each recovered declaration reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. *)
+let spec_recovery_warns_once_per_declaration () =
+  let check css expected =
+    let warnings =
+      match Css.of_string ~strict:false css with
+      | Ok { Css.warnings; _ } -> warnings
+      | Error err ->
+          Alcotest.failf "lenient parse rejected %S: %s" css
+            (Cascade.Error.to_string err)
+    in
+    Alcotest.(check int) ("warnings for " ^ css) expected (List.length warnings);
+    match (Css.of_string ~strict:true css, expected) with
+    | Ok _, 0 | Error _, _ -> ()
+    | Ok _, _ -> Alcotest.failf "strict parse accepted warned-about %S" css
+  in
+  check ".a { @media screen { color: red; width: 10; background: blue } }" 1;
+  check ".a { @media screen { width: 10; height: 20; color: red } }" 2;
+  check
+    ".a { @media screen { @container (width > 0px) { width: 10; color: red } } \
+     }"
+    1;
+  check ".a { @media screen { color: red; background: blue } }" 0
+
 let stylesheet_tests =
   [
     (* Core type tests *)
@@ -1480,6 +1572,15 @@ let stylesheet_tests =
     ( "spec lenient recovery stylesheets",
       `Quick,
       spec_lenient_recovery_stylesheets );
+    ( "spec lenient recovery in a nested at-rule",
+      `Quick,
+      spec_lenient_recovery_nested_at_rule_declarations );
+    ( "spec lenient recovery keeps a nested declaration run whole",
+      `Quick,
+      spec_lenient_recovery_nested_declaration_run );
+    ( "spec recovery warns once per dropped declaration",
+      `Quick,
+      spec_recovery_warns_once_per_declaration );
   ]
 
 (* Tests for newly added check functions *)
@@ -3103,6 +3204,31 @@ let spec_nesting_rejects_top_of_sheet_at_rules () =
   test_nesting_roundtrip
     ~expected:".a{@media screen{color:red;background:blue}}"
     ".a { @media screen { color: red; @import url(x.css); background: blue } }"
+
+(* CSS Nesting 1 sec. 3: a nested rule's prelude may start with an ident, so
+   [h2:where(.b) { ... }] is a rule and not a [h2] declaration, however much its
+   head looks like one. That holds in a nested at-rule's body as much as in a
+   style rule's, and Blink 146 reads both as rules. *)
+let spec_nesting_ident_prelude_in_nested_at_rule () =
+  test_nesting_roundtrip ~expected:".a{@media screen{h2:where(.b){color:red}}}"
+    ".a { @media screen { h2:where(.b) { color: red } } }";
+  test_nesting_idempotent ".a { @media screen { h2:where(.b) { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:
+      ".a{@media screen{color:red;h2:where(.b){margin:0}background:blue}}"
+    ".a { @media screen { color: red; h2:where(.b) { margin: 0 } background: \
+     blue } }"
+
+(* CSS Syntax 3 sec. 5.4.3 "consume a block's contents" drops a [;] that no
+   declaration precedes rather than validating one, so a stray semicolon in a
+   nested at-rule's body costs nothing. Blink 146 keeps both neighbours. *)
+let spec_nesting_skips_stray_semicolons () =
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red;; background: blue } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { ; color: red; background: blue } }"
 
 (* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
    wrapped in a nested declarations rule, which keeps its place among the nested
@@ -7258,6 +7384,12 @@ let additional_tests =
     ( "spec nesting rejects a top-of-sheet at-rule",
       `Quick,
       spec_nesting_rejects_top_of_sheet_at_rules );
+    ( "spec nesting reads an ident prelude in a nested at-rule",
+      `Quick,
+      spec_nesting_ident_prelude_in_nested_at_rule );
+    ( "spec nesting skips stray semicolons in a nested at-rule",
+      `Quick,
+      spec_nesting_skips_stray_semicolons );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
