@@ -701,6 +701,85 @@ let parse_errors_pseudo () =
   check_parse_error ".test:not()" "expected at least one selector";
   check_parse_error ".test:has()" "expected at least one selector"
 
+(* Every [::] spelling cascade parses, in the shortest form that reaches its own
+   constructor. The list is the pseudo-element inventory of CSS Pseudo-Elements
+   4, Selectors 4, CSS Highlight API 1, CSS Shadow Parts 1, WebVTT and CSS View
+   Transitions 1, plus the vendor names shipping engines expose, plus the two
+   kinds cascade cannot name: an unrecognised [::foo] and the framework-only
+   [::deep] / [::v-deep] / [::ng-deep]. *)
+let pseudo_element_spellings =
+  [
+    ":before";
+    ":after";
+    ":first-line";
+    ":first-letter";
+    "::before";
+    "::after";
+    "::first-line";
+    "::first-letter";
+    "::backdrop";
+    "::marker";
+    "::placeholder";
+    "::selection";
+    "::target-text";
+    "::spelling-error";
+    "::grammar-error";
+    "::file-selector-button";
+    "::details-content";
+    "::view-transition";
+    "::view-transition-group(*)";
+    "::view-transition-image-pair(*)";
+    "::view-transition-old(*)";
+    "::view-transition-new(*)";
+    "::part(tab)";
+    "::slotted(p)";
+    "::cue";
+    "::cue-region";
+    "::highlight(find)";
+    "::-moz-placeholder";
+    "::-webkit-input-placeholder";
+    "::-ms-input-placeholder";
+    "::-webkit-scrollbar";
+    "::-webkit-search-cancel-button";
+    "::-webkit-search-decoration";
+    "::-webkit-datetime-edit";
+    "::-webkit-date-and-time-value";
+    "::-webkit-inner-spin-button";
+    "::-webkit-outer-spin-button";
+    "::-webkit-calendar-picker-indicator";
+    "::-webkit-details-marker";
+    "::future-pseudo-element";
+    "::foo(bar)";
+    "::deep";
+    "::v-deep";
+    "::ng-deep";
+  ]
+
+(* Selectors 4 sec. 16: a complex selector unit is [<compound-selector>?
+   <pseudo-compound-selector>*] and a pseudo-compound is
+   [<pseudo-element-selector> <pseudo-class-selector>*], so a class, id or
+   attribute selector may never follow a pseudo-element; sec. 4.5 keeps
+   pseudo-elements out of [:has()] as well. Both rules key off the [::] form,
+   not off whether the name is one cascade knows, so an unrecognised [::foo] and
+   the framework-only [::deep] family are bound by them too. Cascade keeps a
+   bare pseudo-element it does not recognise, since the name may be one a
+   browser already ships, but the shape rules apply all the same. Chrome 151 and
+   WebKit 26.5 drop every rule the negatives below build. *)
+let pseudo_element_compound_guard () =
+  let parses input =
+    match Cursor.option read (Cursor.of_string input) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "pseudo-element selector should parse: %s" input
+  in
+  List.iter
+    (fun pe ->
+      parses (String.concat "" [ ".a"; pe ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; ".b" ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; "#c" ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; "[d]" ]);
+      neg_cursor read (String.concat "" [ ".a:has("; pe; ")" ]))
+    pseudo_element_spellings
+
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
      driving the per-level selector validation into super-linear time (a
@@ -1770,6 +1849,8 @@ let suite =
       test_case "parse errors - combinators" `Quick parse_errors_combinators;
       test_case "parse errors - starts" `Quick parse_errors_starts;
       test_case "parse errors - pseudo" `Quick parse_errors_pseudo;
+      test_case "pseudo-element compound guard" `Quick
+        pseudo_element_compound_guard;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
