@@ -337,6 +337,11 @@
   `inherits: false` that stops it inheriting, repainting the page; and the pass
   missed its own fixpoint, the second run pruning the declaration the first had
   kept (#416)
+- `Css.inline_vars` reads a `style()` container query as a reference to the
+  custom property it queries. CSS Conditional 5 sec. 6.2 evaluates the query
+  against that property's computed value, so deleting the declaration behind it,
+  or the `@property` registration standing in for one, leaves a block that no
+  longer matches (#423)
 - Pruning unreferenced custom properties counts a `var()` in a `@keyframes`
   frame, `@page` and its margin boxes, `@position-try` or
   `@supports-condition` as a reference, instead of deleting a binding those

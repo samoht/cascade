@@ -21,10 +21,10 @@ val vars :
 
 val mentioned_custom_names : Stylesheet.t -> string list
 (** [mentioned_custom_names stylesheet] is every custom-property name (leading
-    [--]) the stylesheet still mentions: declared by a declaration, or
-    referenced by a [var()] in a declaration or in an at-rule condition,
-    fallbacks included. A [@property] body is not a mention, so a registration
-    never keeps itself. *)
+    [--]) the stylesheet still mentions: declared by a declaration, referenced
+    by a [var()] in a declaration or in an at-rule condition (fallbacks
+    included), or queried by a [style()] container query. A [@property] body is
+    not a mention, so a registration never keeps itself. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

@@ -801,14 +801,29 @@ let rec refs_of_supports : Supports.t -> string list = function
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 
+(* A style() query names a property; only a custom one is at risk here, and a
+   real property like [style(color: red)] keeps its value through substitution.
+   The name is dashed as written, so it needs no normalisation. *)
+let refs_of_queried_name name =
+  if String.length name >= 2 && String.sub name 0 2 = "--" then [ name ] else []
+
+(* CSS Conditional 5 sec. 6.2: a [style()] query is evaluated against the
+   computed value the queried property has on the query container, its boolean
+   form against that property's initial value. The queried name is therefore a
+   reference to whatever supplies that value, exactly like a [var()]: drop the
+   declaration and the block stops matching. *)
 let rec refs_of_style_query : Container.style_query -> string list = function
-  | Boolean _ -> []
-  | Declaration { value; _ } -> refs_of_components value
-  | Range { lower; upper; _ } ->
-      refs_of_components lower @ refs_of_components upper
+  | Boolean name -> refs_of_queried_name name
+  | Declaration { name; value } ->
+      refs_of_queried_name name @ refs_of_components value
+  | Range { lower; name; upper; _ } ->
+      refs_of_queried_name name @ refs_of_components lower
+      @ refs_of_components upper
   | All (a, b) | Any (a, b) -> refs_of_style_query a @ refs_of_style_query b
   | Neg query -> refs_of_style_query query
 
+(* CSS Conditional 5 sec. 6.3: scroll-state features are a fixed keyword set, so
+   a scroll-state query reads no custom property. *)
 let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
   function
   | State _ -> []
@@ -818,6 +833,8 @@ let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
 
 let rec refs_of_container : Container.t -> string list = function
   | Min_width_rem _ | Min_width_px _ -> []
+  (* A container name is a [<custom-ident>], so one spelled [--name] selects a
+     container and reads no custom property. *)
   | Named (_, query) | Not query -> refs_of_container query
   | Style { query; _ } -> refs_of_style_query query
   | Scroll_state { query; _ } -> refs_of_scroll_state query
