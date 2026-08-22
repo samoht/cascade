@@ -558,16 +558,26 @@ let value_uses_greenfield value =
     (fun fn -> contains_sub ~needle:(fn ^ "(") v)
     Baseline.greenfield_value_functions
 
+(* A vendor prefix is the author saying support is not universal, and the
+   web-features dataset behind {!Baseline} tracks unprefixed features only, so
+   there is no fact either way and the guard stays. A custom property is not
+   that: CSS Conditional 4 sec. 2.5 makes every custom property declaration
+   supported, so [--x] is left to the Baseline path. *)
+let is_vendor_prefixed name =
+  String.length name > 1 && name.[0] = '-' && name.[1] <> '-'
+
 let is_greenfield_feature decl =
-  is_greenfield_property (Declaration.property_name decl)
+  let name = Declaration.property_name decl in
+  is_greenfield_property name
+  || is_vendor_prefixed name
   || value_uses_greenfield (Declaration.string_of_value ~minify:true decl)
 
 (* Baseline classification of one declaration feature. A [(prop: value)] test
    whose property and value Cascade recognizes as Baseline is treated as
-   Baseline-true; a not-yet-Baseline property or a greenfield value function
-   keeps its guard ([`Unknown]). Properties Cascade does not model parse as
-   [Unknown_property] and stay unknown, as do empty/unsupported/vendor-flag
-   features. *)
+   Baseline-true; a not-yet-Baseline property, a vendor-prefixed one or a
+   greenfield value function keeps its guard ([`Unknown]). Properties Cascade
+   does not model parse as [Unknown_property] and stay unknown, as do
+   empty/unsupported/vendor-flag features. *)
 let declaration_feature_truth = function
   | Declaration (Declaration.Declaration { property = Unknown_property _; _ })
     ->

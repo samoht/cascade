@@ -332,6 +332,11 @@
   in its compound, and both rewrites are node-local, so splicing fused the two
   names: `.a:is(code)` printed `.acode` and `:is(.a *):is(code)` printed
   `:is(.a *)code`, which browsers drop (#377)
+- A feature query on a vendor-prefixed property keeps its guard. The
+  web-features dataset behind the Baseline facts tracks unprefixed features
+  only, so a prefix is evidence of nothing and folding it to true flipped
+  Tailwind's legacy-browser reset on in Chrome, where
+  `@supports (-webkit-hyphens: none)` is false (#378)
 - A single-argument `:is()` keeps its wrapper after a pseudo-element that
   cannot take its argument, so `.a::before:is(.b)` minifies to
   `.a:before:is(.b)` rather than the `.a:before.b` that cascade's own reader,
