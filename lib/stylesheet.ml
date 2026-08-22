@@ -1086,6 +1086,15 @@ let pp_view_transition_descriptor : view_transition_descriptor Pp.t =
       Pp.space_if_pretty ctx ();
       Pp.list ~sep:Pp.space Pp.string ctx types
 
+(* Under minify a [Declarations] statement carries no trailing [;] of its own,
+   so whoever sequences the statements owes it a separator: CSS Syntax 3 sec.
+   5.4.4 runs a declaration to the next [;] or to the block's [}], and a sibling
+   that follows would otherwise be read as part of its value. *)
+let pp_declarations_sep ctx = function
+  | Declarations decls when decls <> [] && Pp.minified ctx ->
+      Pp.semicolon ctx ()
+  | _ -> ()
+
 let rec pp_rule : rule Pp.t =
  fun ctx rule ->
   Selector.pp ctx rule.selector;
@@ -1102,7 +1111,16 @@ let rec pp_rule : rule Pp.t =
           ctx decls
       in
       let pp_nested ctx () =
-        Pp.list ~sep:Pp.cut (Pp.indent pp_statement) ctx nested
+        let rec loop = function
+          | [] -> ()
+          | [ stmt ] -> Pp.indent pp_statement ctx stmt
+          | stmt :: rest ->
+              Pp.indent pp_statement ctx stmt;
+              pp_declarations_sep ctx stmt;
+              Pp.cut ctx ();
+              loop rest
+        in
+        loop nested
       in
       Pp.cut ctx ();
       (match (decls, nested) with
@@ -1327,11 +1345,6 @@ and pp_statement : statement Pp.t =
 and pp_block : block Pp.t =
  fun ctx statements ->
   let statements = printable_statements ctx statements in
-  let pp_statement_sep ctx = function
-    | Declarations decls when decls <> [] && Pp.minified ctx ->
-        Pp.semicolon ctx ()
-    | _ -> ()
-  in
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
      adds nest 1 and indent for the first item only. Subsequent items need
      explicit indentation and blank line separation to match Tailwind format. *)
@@ -1340,7 +1353,7 @@ and pp_block : block Pp.t =
   | [ s ] -> pp_statement ctx s
   | s :: rest ->
       pp_statement ctx s;
-      pp_statement_sep ctx s;
+      pp_declarations_sep ctx s;
       let rec pp_rest = function
         | [] -> ()
         | [ stmt ] ->
@@ -1351,7 +1364,7 @@ and pp_block : block Pp.t =
             Pp.cut ctx ();
             if not ctx.Pp.minify then Pp.cut ctx ();
             Pp.indent pp_statement ctx stmt;
-            pp_statement_sep ctx stmt;
+            pp_declarations_sep ctx stmt;
             pp_rest rest
       in
       pp_rest rest
@@ -1364,17 +1377,12 @@ let pp_stylesheet : stylesheet Pp.t =
     if Pp.minified ctx then normalise statements else statements
   in
   let statements = printable_statements ctx statements in
-  let pp_statement_sep ctx = function
-    | Declarations decls when decls <> [] && Pp.minified ctx ->
-        Pp.semicolon ctx ()
-    | _ -> ()
-  in
   let rec loop = function
     | [] -> ()
     | [ s ] -> pp_statement ctx s
     | s :: (next :: _ as rest) ->
         pp_statement ctx s;
-        pp_statement_sep ctx s;
+        pp_declarations_sep ctx s;
         Pp.cut ctx ();
         (* Add blank line between consecutive @layer { } blocks *)
         if (not (Pp.minified ctx)) && is_layer_block s && is_layer_block next
