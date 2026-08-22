@@ -72,6 +72,12 @@
   only the run written before its first nested statement (CSS Nesting 1
   sec. 3.4), so a pass reading them as the whole body moves or drops content it
   never looked at (#376)
+- A declaration written after a nested statement rejoins the rule's own run
+  when nothing it crosses writes the same property at the same importance, so
+  `.a { & b { width: 1px } color: red }` minifies to
+  `.a{color:red;b{width:1px}}` and `--diff=canonical` stops reporting it as
+  different from `.a { color: red; & b { width: 1px } }`. A declaration that
+  does clash keeps the place CSS Nesting 1 sec. 3.4 gives it (#383)
 - `--minify` is faster on a stylesheet the optimizer factors heavily, for the
   same output. The rule graph's cycle check, topological order and
   selector-branch index each probed a generic `Hashtbl` once per edge or per

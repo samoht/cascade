@@ -69,6 +69,14 @@ val same_minified_declaration :
   Declaration.declaration -> Declaration.declaration -> bool
 (** Same canonical minified declaration. *)
 
+val declarations_commute :
+  Declaration.declaration list -> Declaration.declaration list -> bool
+(** [declarations_commute a b] is [true] when running [a] before [b] and [b]
+    before [a] compute the same value for every property on every element: no
+    pair across the two writes a common cascade slot at the same importance with
+    a different value. Selectors are not read, so two runs that could never meet
+    on one element still count as constrained when their properties clash. *)
+
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 
