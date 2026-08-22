@@ -4325,6 +4325,11 @@ type font_family = Properties.font_family =
   | Emoji
   | Math
   | Fangsong
+  (* Named families, for building a font stack in OCaml. CSS Fonts 4 sec. 2.1
+     makes these [<custom-ident>]s rather than keywords, so the reader never
+     produces one: an authored name is read as [Name] and printed back
+     verbatim. Each constructor prints exactly as the [Name] carrying its
+     spelling. *)
   (* Popular web fonts *)
   | Inter
   | Roboto
