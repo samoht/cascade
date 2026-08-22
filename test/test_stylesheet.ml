@@ -777,7 +777,7 @@ let page_case () =
      counter(page) } }";
   neg_cursor read_stylesheet "@page : { margin: 1cm }";
   neg_cursor read_stylesheet "@page :unknown { margin: 1cm }";
-  neg_cursor read_stylesheet "@page { color: red }"
+  neg_cursor read_stylesheet "@page { color: notacolor }"
 
 let page_margin_edges () =
   check_stylesheet
@@ -798,7 +798,7 @@ let page_margin_edges () =
     "@page invoice:blank:first { margin: 1cm }";
   neg_cursor read_stylesheet "@page { @unknown { content: none } }";
   neg_cursor read_stylesheet "@page { @top-left; }";
-  neg_cursor read_stylesheet "@page { @top-left { color: red } }"
+  neg_cursor read_stylesheet "@page { @top-left { color: notacolor } }"
 
 let property_rule_edges () =
   check_stylesheet
@@ -926,11 +926,74 @@ let spec_page_margin_descriptor_matrix () =
      content: counter(page) } @bottom-center { content: \"Chapter\" } }";
   List.iter
     (neg_cursor read_stylesheet)
-    [ "@page { @top-center { display: block } }" ];
+    [ "@page { @top-center { display: 1px } }" ];
   check_stylesheet ~expected:"@page:first:left{margin:1cm}"
     "@page :first:left { margin: 1cm }";
   check_stylesheet ~expected:"@page:blank:first{margin:.5cm}"
     "@page :blank:first { margin: 0.5cm }"
+
+(* CSS Paged Media 3 sec. 6: Appendix A is the normative list of CSS 2.1
+   properties that apply in the page context and in the margin context, and
+   "behavior for properties not included in CSS 2.1 is undefined" - undefined,
+   not invalid, "to allow the gradual addition of appropriate CSS3 properties as
+   they emerge". Page-margin boxes inherit from the page context and the page
+   context inherits from the root element, so an inherited property set on the
+   page carries into every margin box. Blink 146 reads every declaration below
+   back out of [cssRules[0].cssText] unchanged, in the page body and in the
+   margin box alike. *)
+let spec_page_context_properties () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      (* Appendix A, page context. *)
+      ("@page{color:red}", "@page { color: red }");
+      ("@page{font-size:12pt}", "@page { font-size: 12pt }");
+      ("@page{direction:rtl}", "@page { direction: rtl }");
+      ("@page{text-align:center}", "@page { text-align: center }");
+      ("@page{padding:1cm}", "@page { padding: 1cm }");
+      ("@page{border:1px solid red}", "@page { border: 1px solid red }");
+      ("@page{visibility:hidden}", "@page { visibility: hidden }");
+      (* Sec. 6.1: page-based counters are defined in the page context. *)
+      ("@page{counter-increment:page 1}", "@page { counter-increment: page 1 }");
+      (* Sec. 7.1.2 and 7.3 descriptors of this same module. Blink 146 keeps
+         [page-orientation] and drops [bleed], which it does not implement;
+         [bleed] is the name the module defines. *)
+      ( "@page{page-orientation:rotate-left}",
+        "@page { page-orientation: rotate-left }" );
+      ("@page{bleed:6pt}", "@page { bleed: 6pt }");
+      (* Not in Appendix A, so undefined rather than invalid; Blink 146 keeps
+         both. Cascade formats CSS, so an undefined descriptor is carried
+         through rather than dropped. *)
+      ("@page{orphans:3;widows:3}", "@page { orphans: 3; widows: 3 }");
+      (* Blink 146 drops a custom property in a page context and no module
+         defines one there, so admissibility is open; carrying it costs nothing,
+         dropping it loses the author's text. *)
+      ("@page{--custom:1}", "@page { --custom: 1 }");
+      (* Appendix A, margin context: the page-context list plus [content]. *)
+      ( "@page{@top-center{color:red;font-size:9pt;content:\"x\"}}",
+        "@page { @top-center { color: red; font-size: 9pt; content: \"x\" } }"
+      );
+      ( "@page{@top-center{display:block}}",
+        "@page { @top-center { display: block } }" );
+      (* An inherited property on the page reaches the margin boxes. *)
+      ( "@page{color:red;@top-center{content:\"x\"}}",
+        "@page { color: red; @top-center { content: \"x\" } }" );
+    ];
+  (* What browsers still reject: a value the property's grammar does not admit,
+     and an item that is not a declaration at all. Blink 146 drops each of these
+     and keeps the rest of the block. *)
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@page { margin: notalength }";
+      "@page { color: notacolor }";
+      "@page { width: 10 }";
+      "@page { .a { b: c } }";
+      "@page { @media print { margin: 1cm } }";
+      "@page { @unknown { content: none } }";
+      "@page { @top-center { display: 1px } }";
+      "@page { @top-center { @media screen { .x { color: red } } } }";
+    ]
 
 let spec_property_descriptor_matrix () =
   List.iter
@@ -1354,8 +1417,7 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@counter-style thumbs { symbols: \"*\" }" );
       ( "counter-style cyclic missing symbols",
         "@counter-style thumbs { system: cyclic }" );
-      ( "page margin invalid declaration",
-        "@page { @top-left { display: block } }" );
+      ("page margin invalid declaration", "@page { @top-left { display: 1px } }");
       ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
       ("keyframes forbidden name none", "@keyframes none { to { opacity: 1 } }");
       ( "keyframes forbidden css-wide name",
@@ -1520,8 +1582,6 @@ let spec_lenient_recovery_page_descriptors () =
   lenient_recover "bad descriptor last in @page"
     "@page { margin: 1cm; margin-top: 2cm; width: 10 }" recovered 1;
   lenient_recover "sole descriptor of @page dropped" "@page { width: 10 }" "" 1;
-  lenient_recover "descriptor invalid in the page context is dropped alone"
-    "@page { margin: 1cm; zzz: 1; margin-top: 2cm }" recovered 1;
   lenient_recover "curly block inside a dropped page value is skipped with it"
     "@page { margin: 1cm; width: {1}; margin-top: 2cm }" recovered 1;
   lenient_recover "two curly blocks in a dropped page value are one skip"
@@ -1559,8 +1619,6 @@ let spec_lenient_recovery_page_margin_box () =
   let recovered = "@page{@top-center{content:\"x\";margin:0}}" in
   lenient_recover "bad descriptor in a page margin box"
     "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }" recovered 1;
-  lenient_recover "descriptor invalid in a margin box is dropped alone"
-    "@page { @top-center { content: \"x\"; zzz: 1; margin: 0 } }" recovered 1;
   lenient_recover "at-rule in a page margin box ends at its block"
     "@page { @top-center { @media screen { a: b } content: \"x\"; margin: 0 } }"
     recovered 1;
@@ -1601,7 +1659,12 @@ let spec_page_recovery_warns_once_per_descriptor () =
   warns_exactly "@page { margin: 1cm; margin-top: 2cm }" 0;
   warns_exactly "@page { margin: 1cm;; margin-top: 2cm }" 0;
   warns_exactly "@page { ; margin: 1cm }" 0;
-  warns_exactly "@page { @top-center { content: \"x\" } margin: 1cm }" 0
+  warns_exactly "@page { @top-center { content: \"x\" } margin: 1cm }" 0;
+  (* A name no module defines in a page context is undefined there, not invalid,
+     so it neither warns nor is dropped - the same treatment cascade gives an
+     unknown property name in a style rule. *)
+  warns_exactly "@page { margin: 1cm; zzz: 1; margin-top: 2cm }" 0;
+  warns_exactly "@page { @top-center { content: \"x\"; zzz: 1; margin: 0 } }" 0
 
 (* CSS Properties and Values API 1 sec. 2: [@property] holds the [syntax],
    [inherits] and [initial-value] descriptors, and "unknown descriptors are
@@ -1813,6 +1876,7 @@ let stylesheet_tests =
     ( "spec page margin descriptor matrix",
       `Quick,
       spec_page_margin_descriptor_matrix );
+    ("spec page context properties", `Quick, spec_page_context_properties);
     ("property rule edges", `Quick, property_rule_edges);
     ("spec property descriptor matrix", `Quick, spec_property_descriptor_matrix);
     ("sheet_item", `Quick, sheet_item_case);
@@ -3095,7 +3159,7 @@ let spec_at_rule_descriptor_matrix () =
       "@view-transition { @media screen { .x { color: red } } }";
       "@position-try --below { @supports (display: grid) { .x { color: red } } \
        }";
-      "@page { @top-center { display: block } }";
+      "@page { @top-center { @media screen { .x { color: red } } } }";
       "@keyframes fade { @media screen { opacity: 1 } }";
       "@media screen;";
       "@media screen and or (width) { .x { color: red } }";

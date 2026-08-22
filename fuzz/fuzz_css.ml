@@ -376,7 +376,7 @@ let test_css2_legacy_invalid_vectors buf =
         "h1::first-line::before { color: red }";
         "a + { color: red }";
         "table > > td { color: red }";
-        "@page { @top-center { display: block } }";
+        "@page { @top-center { display: 1px } }";
         "ol { list-style-position: center }";
         "p { vertical-align: left right }";
         "q { content: open-quote none }";

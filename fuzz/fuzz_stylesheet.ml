@@ -1046,7 +1046,7 @@ let test_invalid_atrule_descriptor buf =
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }";
         "@page :unknown { margin: 1cm }";
-        "@page { @top-center { display: block } }";
+        "@page { @top-center { display: 1px } }";
         "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
         "@font-palette-values --brand { override-colors: -1 red }";
         "@counter-style thumbs { system: cyclic }";
@@ -1153,7 +1153,7 @@ let test_invalid_page_margin buf =
     pick
       [
         "@page :unknown { margin: 1cm }";
-        "@page { @top-center { display: block } }";
+        "@page { @top-center { display: 1px } }";
       ]
       buf 0
   in
