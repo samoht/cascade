@@ -121,6 +121,17 @@ let equal_canonical_lossless_exact_srgb () =
   Alcotest.(check bool)
     "the alpha scales exactly too" true
     (equal ".a{color:color(srgb 1 0 0/.5)}" ".a{color:rgba(255,0,0,.5)}");
+  (* The spelling folds wherever the declaration sits: an at-rule that groups
+     rules holds the same declarations a caller could have written at the top
+     level. *)
+  Alcotest.(check bool)
+    "the fold reaches inside @starting-style" true
+    (equal "@starting-style{.a{color:color(srgb 1 0 0)}}"
+       "@starting-style{.a{color:#f00}}");
+  Alcotest.(check bool)
+    "the fold reaches inside @scope" true
+    (equal "@scope (.p){.a{color:color(srgb 1 0 0)}}"
+       "@scope (.p){.a{color:#f00}}");
   (* display-p3 red is a different colour, not a different spelling. *)
   Alcotest.(check bool)
     "color(display-p3 1 0 0) still differs from rgb(255 0 0)" false
