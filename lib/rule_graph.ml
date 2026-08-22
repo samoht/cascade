@@ -21,6 +21,8 @@ module Key_tbl = Hashtbl.Make (struct
   let hash = Shorthand.overlap_key_hash
 end)
 
+module String_table = Hashtbl.Make (String)
+
 module Node_id = struct
   type t = int
 
@@ -96,7 +98,7 @@ type t = {
           declaration (which never conflict). Mutable and shared across a
           graph's rewrites (a graph is consumed before the next is produced);
           never pruned, dead nodes are skipped at query time. *)
-  branch_index : (string, node_id list) Hashtbl.t;
+  branch_index : node_id list String_table.t;
       (** selector branch -> node ids that carry it; same role as [key_index]
           for the [share_branch] dimension. *)
 }
@@ -249,8 +251,6 @@ module Overlap_key_table = Hashtbl.Make (struct
   let hash = Shorthand.overlap_key_hash
 end)
 
-module String_table = Hashtbl.Make (String)
-
 let add_unique key keys =
   if List.exists (Shorthand.overlap_key_equal key) keys then keys
   else key :: keys
@@ -345,8 +345,8 @@ let source_order_edges t =
   Array.map List.rev succ
 
 let index_add tbl key node =
-  Hashtbl.replace tbl key
-    (node :: Option.value ~default:[] (Hashtbl.find_opt tbl key))
+  String_table.replace tbl key
+    (node :: Option.value ~default:[] (String_table.find_opt tbl key))
 
 let decl_index_add tbl key node =
   Decl_tbl.replace tbl key
@@ -404,7 +404,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       overlap_keys;
       succ = [||];
       key_index = Key_tbl.create (max 16 (n * 2));
-      branch_index = Hashtbl.create (max 16 (n * 2));
+      branch_index = String_table.create (max 16 (n * 2));
     }
   in
   for i = 0 to n - 1 do
@@ -462,22 +462,24 @@ let topo_priority rank node = { key = rank node; node }
 let topo_order_by t (rank : node_id -> int) : node_id array option =
   let live = live_nodes t in
   let n = List.length live in
-  let pred = Hashtbl.create (2 * n) in
-  List.iter (fun i -> Hashtbl.replace pred i 0) live;
+  (* Node ids are dense, so the in-degree and emitted marks are arrays over the
+     whole node space rather than generic tables keyed by id: both are read once
+     per edge, and a generic [Hashtbl] hashes and structurally compares the key
+     on every read. Dead ids are never looked at. *)
+  let slots = max (node_count t) 1 in
+  let pred = Array.make slots 0 in
   List.iter
     (fun i ->
       List.iter
-        (fun (j, _) ->
-          if t.live.(j) then Hashtbl.replace pred j (Hashtbl.find pred j + 1))
+        (fun (j, _) -> if t.live.(j) then pred.(j) <- pred.(j) + 1)
         t.succ.(i))
     live;
   let out = Array.make n 0 in
-  let emitted = Hashtbl.create (2 * n) in
+  let emitted = Array.make slots false in
   let queue =
     List.fold_left
       (fun queue i ->
-        if Hashtbl.find pred i = 0 then
-          Topo_queue.add i (topo_priority rank i) queue
+        if pred.(i) = 0 then Topo_queue.add i (topo_priority rank i) queue
         else queue)
       Topo_queue.empty live
   in
@@ -487,14 +489,14 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
       match Topo_queue.pop queue with
       | Option.None -> Option.None
       | Option.Some ((e, _), queue) ->
-          Hashtbl.replace emitted e ();
+          emitted.(e) <- true;
           out.(o) <- e;
           let queue =
             List.fold_left
               (fun queue (j, _) ->
-                if t.live.(j) && not (Hashtbl.mem emitted j) then begin
-                  let count = Hashtbl.find pred j - 1 in
-                  Hashtbl.replace pred j count;
+                if t.live.(j) && not emitted.(j) then begin
+                  let count = pred.(j) - 1 in
+                  pred.(j) <- count;
                   if count = 0 then
                     Topo_queue.add j (topo_priority rank j) queue
                   else queue
@@ -876,7 +878,7 @@ let external_candidates graph ~total ~consumed ~seen p =
     | None -> ());
     List.iter
       (fun b ->
-        match Hashtbl.find_opt graph.branch_index b with
+        match String_table.find_opt graph.branch_index b with
         | Some ids -> push_ids ids
         | None -> ())
       graph.branches.(p)
@@ -993,29 +995,37 @@ let rewrite_successors t ~consume ~consumed ~total graph :
       add_produced_edges t ~consume ~total ~produced_count graph succ
       |> Result.map (fun () -> succ)
 
+(* Visit marks for the cycle DFS below. *)
+let unvisited = '\000'
+let on_stack = '\001'
+let acyclic = '\002'
+
 (* The graph is acyclic before a rewrite and every new edge touches a produced
    node ([total..node_count)), so any new cycle passes through one. A forward
    DFS from the produced nodes detects it visiting only their reachable cone
    (O(reachable) per commit, not the O(n) [topo_order]); shared state across the
-   produced roots walks each node/edge at most once. *)
+   produced roots walks each node/edge at most once. The marks are a byte per
+   node, read once per edge of that cone: node ids are dense, and a generic
+   [Hashtbl] hashes and structurally compares the key on every probe. *)
 let rewrite_introduces_cycle graph ~total =
   let n = node_count graph in
-  let state = Hashtbl.create 64 in
+  let state = Bytes.make (max n 1) unvisited in
   let rec dfs i =
-    match Hashtbl.find_opt state i with
-    | Some true -> true (* back edge to a node still on the DFS stack *)
-    | Some false -> false (* already proven acyclic *)
-    | None ->
-        Hashtbl.replace state i true;
-        let cyclic =
-          List.exists
-            (fun (j, _) ->
-              let j = Node_id.to_int j in
-              graph.live.(j) && dfs j)
-            graph.succ.(i)
-        in
-        Hashtbl.replace state i false;
-        cyclic
+    let mark = Bytes.get state i in
+    if mark = on_stack then true (* back edge to a node still on the stack *)
+    else if mark = acyclic then false (* already proven acyclic *)
+    else begin
+      Bytes.set state i on_stack;
+      let cyclic =
+        List.exists
+          (fun (j, _) ->
+            let j = Node_id.to_int j in
+            graph.live.(j) && dfs j)
+          graph.succ.(i)
+      in
+      Bytes.set state i acyclic;
+      cyclic
+    end
   in
   let rec from_root p =
     p < n && ((graph.live.(p) && dfs p) || from_root (p + 1))
