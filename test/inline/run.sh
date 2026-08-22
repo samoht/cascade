@@ -68,7 +68,12 @@ cascade_version=$("$CASCADE" --version 2>/dev/null | head -1)
 # like a result but is an inflated one, which is worse than no number at all.
 # So a filter that is missing or does not work is fatal, not skipped.
 if [ -z "$CANON_FILTER" ]; then
-  (cd "$root" && "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe)
+  # Not discarded: a swallowed build failure leaves the last binary in place,
+  # and the probe below passes it.
+  if ! (cd "$root" && "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe); then
+    echo "ERROR: cannot build test/inline/canon_filter.exe." >&2
+    exit 1
+  fi
   CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
 # Prove it filters, rather than that a file exists: a stale or broken binary
