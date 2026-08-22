@@ -351,6 +351,17 @@ let test_inline_layer_winner () =
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
 
+(* The closed-world cleanup that follows substitution unwraps every [@layer] and
+   drops every [@property] registration. CSS nesting puts both inside a rule, so
+   the cleanup has to reach there as well or the same sheet comes out half
+   cleaned. *)
+let test_inline_cleanup_inside_a_rule () =
+  check_inline_case "a nested @layer wrapper is unwrapped"
+    ":root{--c:red}.a{@layer m{@media print{.n{color:var(--c)}}}}"
+    ".a{@media print{.n{color:red}}}";
+  check_inline_case "a nested @property registration is dropped"
+    ".b{color:red;@property --y{syntax:\"*\";inherits:false}}" ".b{color:red}"
+
 let suite =
   ( "inline",
     [
@@ -394,4 +405,6 @@ let suite =
       Alcotest.test_case
         "inline vars fold a layer-decided override to its winner" `Quick
         test_inline_layer_winner;
+      Alcotest.test_case "inline vars clean up inside a rule too" `Quick
+        test_inline_cleanup_inside_a_rule;
     ] )
