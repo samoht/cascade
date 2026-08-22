@@ -21,6 +21,12 @@
   Fonts 4 sec. 4.4 has the user agent swap the endpoints for font matching, so
   the range is well defined rather than an error, and only `unicode-range`
   keeps an ordering rule (#335)
+- The `round <'border-radius'>` suffix of a basic shape reads its radii through
+  the same reader as the `border-radius` property, so `clip-path`,
+  `shape-outside` and `object-view-box` stop accepting an intrinsic-sizing or
+  CSS-wide keyword as a corner radius. CSS Backgrounds 3 sec. 5.1 allows only a
+  non-negative `<length-percentage>` there, and Chrome and WebKit drop every
+  such declaration (#417)
 
 ### Minification
 
