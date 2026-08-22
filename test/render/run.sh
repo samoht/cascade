@@ -16,5 +16,6 @@ set -eu
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
 cd "$root"
-dune build test/render/render_diff.exe test/render/driver.js test/render/dom.js
+"$root/scripts/with_switch.sh" dune build test/render/render_diff.exe \
+  test/render/driver.js test/render/dom.js
 exec _build/default/test/render/render_diff.exe "$@"

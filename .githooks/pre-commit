@@ -13,9 +13,17 @@
 #   git config core.hooksPath .githooks
 #
 # Every check here has a CI counterpart, so a clone without the hook is still
-# gated; the hook only moves the failure earlier.
+# gated; the hook only moves the failure earlier. Both build steps go through
+# scripts/with_switch.sh, which is what CI's [opam exec] does: a dune taken
+# from PATH may carry a different compiler, and the artifacts it leaves in
+# _build make merlint report the whole project as unchecked.
 
 set -eu
+
+# Resolve everything from the top of the worktree rather than $PWD, so the
+# hook behaves the same run by hand as run by git.
+root=$(git rev-parse --show-toplevel)
+cd "$root"
 
 CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -n "$CHANGED" ] || exit 0
@@ -23,44 +31,59 @@ CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
 # 0. ASCII only, on the staged content rather than the worktree. The script
 #    owns the filter, so what CI covers and what the commit is held to are the
 #    same set by construction.
-printf '%s\n' "$CHANGED" | "$(dirname "$0")/../scripts/check_ascii.sh" --staged
+printf '%s\n' "$CHANGED" | "$root/scripts/check_ascii.sh" --staged
 
 # The fast path below only decides whether dune fmt and merlint are worth
 # running; the ASCII rule above has already seen every staged file.
 STAGED=$(printf '%s\n' "$CHANGED" | grep -E '(\.(ml|mli|mll|mly)|(^|/)dune(-project)?)$' || true)
 [ -n "$STAGED" ] || exit 0
 
-# 1. dune fmt
-if ! dune fmt 2>/dev/null; then
-    echo "error: dune fmt failed" >&2
-    exit 1
-fi
+run=$root/scripts/with_switch.sh
 
-REFORMATTED=$(git diff --name-only -- $STAGED 2>/dev/null || true)
+# 1. dune fmt. It exits non-zero whenever it rewrites a file, so the status on
+#    its own does not say whether formatting failed; digest the worktree diff
+#    either side of the run and let the two cases report separately. Nothing is
+#    redirected: the reason a format fails is the error ocamlformat prints.
+worktree_digest() { git diff | git hash-object --stdin; }
+
+before=$(worktree_digest)
+fmt=0
+"$run" dune fmt || fmt=$?
+after=$(worktree_digest)
+
+REFORMATTED=$(git diff --name-only -- $STAGED)
 if [ -n "$REFORMATTED" ]; then
     echo "error: dune fmt rewrote staged files:" >&2
-    echo "$REFORMATTED" >&2
-    echo "re-stage them and commit again." >&2
+    git diff --stat -- $STAGED >&2
+    echo "re-stage them and commit again -- after reading that diff. A rewrite" >&2
+    echo "far larger than a reformat is a stale _build promoting an old" >&2
+    echo ".corrected copy over the file, and [rm -rf _build] is the fix there," >&2
+    echo "not [git add]." >&2
+    exit 1
+elif [ "$after" != "$before" ]; then
+    # Formatting an unstaged file also makes dune fmt exit non-zero. The commit
+    # is unaffected, but the worktree just changed, so say so.
+    echo "note: dune fmt rewrote unstaged files; review with [git diff --stat]." >&2
+elif [ "$fmt" -ne 0 ]; then
+    echo "error: dune fmt could not run cleanly; the reason is above." >&2
     exit 1
 fi
 
-# 2. merlint -- prefer a project-local build if present, otherwise PATH.
-MERLINT=""
-if [ -x _build/default/merlint/bin/main.exe ]; then
-    MERLINT=_build/default/merlint/bin/main.exe
-elif command -v merlint >/dev/null 2>&1; then
-    MERLINT=merlint
+# 2. merlint, over the whole project. [--build] refreshes the .cmt files first:
+#    stale ones make merlint skip every typedtree rule and then fail on its own
+#    coverage gate, which is the same non-zero exit for a very different
+#    reason. It also picks up a format that failed on one file while others
+#    were promoted, which the step above lets past. CI runs the same command.
+if ! "$run" sh -c 'command -v merlint >/dev/null 2>&1'; then
+    echo "error: merlint is not installed in the switch, so the lint cannot run." >&2
+    echo "  opam repo add samoht https://tangled.org/gazagnaire.org/opam-overlay.git" >&2
+    echo "  opam install merlint" >&2
+    echo "CI runs the same lint, so skipping it here would only move the failure." >&2
+    exit 1
 fi
 
-if [ -n "$MERLINT" ]; then
-    # Scan the whole project. [--no-build] skips the [dune build @check] step
-    # so the commit stays fast; the typedtree-backed rules are silently
-    # skipped on any module whose .cmt is stale.
-    if ! "$MERLINT" --no-build; then
-        echo "" >&2
-        echo "merlint reported issues; fix them and commit again." >&2
-        exit 1
-    fi
-else
-    echo "warning: merlint not found on PATH; skipping lint" >&2
+if ! "$run" merlint --build; then
+    echo "" >&2
+    echo "merlint reported issues; fix them and commit again." >&2
+    exit 1
 fi

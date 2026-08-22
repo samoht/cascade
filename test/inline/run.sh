@@ -15,10 +15,12 @@ fi
 export CHROME
 # Canonical-difference filter: compares values the way cascade does, so
 # render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
-if command -v dune >/dev/null 2>&1; then
-  dune build test/inline/canon_filter.exe 2>/dev/null
-  CANON_FILTER=$(cd "$dir/../.." && find _build -name canon_filter.exe 2>/dev/null | head -1)
-  [ -n "$CANON_FILTER" ] && export CANON_FILTER="$(cd "$dir/../.." && pwd)/$CANON_FILTER"
+# The filter is optional, so a build that cannot run leaves it unset rather
+# than stopping the sweep -- but it says why instead of discarding the reason.
+root=$(CDPATH= cd "$dir/../.." && pwd)
+if "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe; then
+  CANON_FILTER=$(cd "$root" && find _build -name canon_filter.exe | head -1)
+  [ -n "$CANON_FILTER" ] && export CANON_FILTER="$root/$CANON_FILTER"
 fi
 fail=0
 for f in "$dir"/fixtures/*.html; do
