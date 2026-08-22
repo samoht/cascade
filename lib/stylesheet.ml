@@ -3755,7 +3755,8 @@ and read_nested_at_keyword r ~loc ~prev = function
       Some (read_else ~body:read_nesting_block r)
   | "else" -> drop_nested_at_rule r ~loc "@else without preceding @when"
   | ("charset" | "import" | "namespace") as name ->
-      Cursor.err_invalid r ("Unexpected nested at-rule: @" ^ name)
+      drop_nested_at_rule r ~loc
+        ("@" ^ name ^ " is only valid at the top of a stylesheet")
   | name when not (nests_in_style_rule name) ->
       drop_nested_at_rule r ~loc
         ("@" ^ name ^ " has no style rule in it, so it does not nest")
