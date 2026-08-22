@@ -47,6 +47,10 @@
   `@position-try`, `@font-palette-values`, `@container`, `@import layer()`, a
   `@font-feature-values` feature name and every name a declaration value
   carries, from `anchor-name` to `will-change`, all take the escaping (#436)
+- `@supports (--x\3b y: red)` is read instead of the whole rule being dropped.
+  The reader demanded a property name that re-tokenizes from its own bytes,
+  which holds only while the printer writes that name raw; Chrome and
+  lightningcss both accept the escaped name (#437)
 - An `@layer` block inside a style rule holds nesting content, so
   `.a { @layer n { color: red } }` keeps its declaration instead of reading the
   body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested

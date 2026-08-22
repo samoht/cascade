@@ -6473,20 +6473,20 @@ let s4370_supports_property_name_escapes () =
       (* The name a [<supports-decl>] tests, in each shape the feature takes: a
          declaration, an empty value, and an operand of [and]. *)
       ( "@supports (--x\\3b y:red){.a{color:red}}",
-        "@supports (--x\\;y:red){.a{color:red}}" );
+        "@supports(--x\\;y:red){.a{color:red}}" );
       ( "@supports (--x\\7d y:red){.a{color:red}}",
-        "@supports (--x\\}y:red){.a{color:red}}" );
+        "@supports(--x\\}y:red){.a{color:red}}" );
       ( "@supports (--x\\3b y:){.a{color:red}}",
-        "@supports (--x\\;y:){.a{color:red}}" );
+        "@supports(--x\\;y:){.a{color:red}}" );
       ( "@supports (--x\\3b y:red) and (color:red){.a{color:red}}",
-        "@supports (--x\\;y:red) and (color:red){.a{color:red}}" );
+        "@supports(--x\\;y:red)and (color:red){.a{color:red}}" );
       ( "@supports not (--x\\3b y:red){.a{color:red}}",
         "@supports not (--x\\;y:red){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
-        "@supports (--xy:red){.a{color:red}}" );
+        "@supports(--xy:red){.a{color:red}}" );
       ( "@supports (color:red){.a{color:red}}",
-        "@supports (color:red){.a{color:red}}" );
+        "@supports(color:red){.a{color:red}}" );
     ]
 
 let fidelity_string_escape_preserved () =

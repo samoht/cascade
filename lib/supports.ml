@@ -124,8 +124,13 @@ let starts_with ~prefix s =
   let prefix_len = String.length prefix in
   String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
 
+(* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;] or a [}] into a custom
+   property's name, so the name is checked against the spelling it serializes to
+   (CSS Syntax 3 sec. 2.1) rather than against its own bytes: read raw, such a
+   name ends the declaration early and never looks like the single ident it
+   is. *)
 let property_name name =
-  let reader = Cursor.of_string name in
+  let reader = Cursor.of_string (Parser.escape_ident name) in
   let parsed =
     try Cursor.ident ~keep_case:true reader
     with Cursor.Parse_error _ ->
@@ -147,7 +152,10 @@ let declaration_feature prop value =
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       let name = property_name prop in
-      try Declaration (Declaration.of_string (prop ^ ":" ^ value))
+      try
+        Declaration
+          (Declaration.of_string
+             (String.concat "" [ Parser.escape_ident prop; ":"; value ]))
       with Cursor.Parse_error _ | Failure _ ->
         Unsupported (name, String.trim value))
 
@@ -197,10 +205,13 @@ let func name args =
 
 (* ===== Pretty printing ===== *)
 
+let escaped_property_name name =
+  Parser.escape_ident (string_of_property_name name)
+
 let render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
-  | Empty name -> string_of_property_name name ^ ":"
-  | Unsupported (name, value) -> string_of_property_name name ^ ": " ^ value
+  | Empty name -> escaped_property_name name ^ ":"
+  | Unsupported (name, value) -> escaped_property_name name ^ ": " ^ value
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
 let render_function_feature = function
@@ -239,10 +250,10 @@ let pp_declaration_feature ctx = function
          suppress lossy value rewrites (e.g. static colour folding). *)
       Declaration.pp_declaration (Pp.enter_feature_query ctx) decl
   | Empty name ->
-      Pp.string ctx (string_of_property_name name);
+      Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':'
   | Unsupported (name, value) ->
-      Pp.string ctx (string_of_property_name name);
+      Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
       Pp.string ctx value
