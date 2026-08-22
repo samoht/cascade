@@ -2069,12 +2069,24 @@ let read_descriptor_item (r : Cursor.t) =
     | Some desc -> `Descriptor desc
     | None -> Cursor.err_expected r "descriptor"
 
+(* CSS Cascade 5 sec. 6.2 ranks an important author declaration above a normal
+   one whatever their order, and sec. 6.4 breaks a tie between two of the same
+   importance by order of appearance. A descriptor read later therefore takes
+   the slot one already read holds, unless the one held is important and it is
+   not: then the later declaration is the one that is dropped, and the survivor
+   keeps the place it was written in. *)
 let replace_descriptor desc acc =
-  desc
-  :: List.filter
-       (fun existing ->
-         Declaration.property_name existing <> Declaration.property_name desc)
-       acc
+  let same_slot held =
+    String.equal
+      (Declaration.property_name held)
+      (Declaration.property_name desc)
+  in
+  match List.find_opt same_slot acc with
+  | Some held
+    when Declaration.is_important held && not (Declaration.is_important desc) ->
+      acc
+  | Some _ -> desc :: List.filter (fun held -> not (same_slot held)) acc
+  | None -> desc :: acc
 
 let read_descriptor_step normalize inner acc =
   match read_descriptor_item inner with

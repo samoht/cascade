@@ -119,6 +119,13 @@
   `bleed`, the name sec. 7.3 defines, and `page-orientation`. A value the
   property's grammar rejects, and an item that is no declaration, are still
   rejected (#403)
+- A duplicate descriptor in a `@page` body or a page-margin box keeps the
+  important declaration rather than the one written last, so
+  `@page { margin: 1cm !important; margin: 2cm }` keeps `margin: 1cm !important`
+  where it kept `margin: 2cm`. CSS Cascade 5 sec. 6.2 ranks an important author
+  declaration above a normal one whatever their order, and Blink 146 reads the
+  important one back in a page body and in a margin box alike. Two declarations
+  of the same importance still keep the last (#404)
 
 ### Minification
 
