@@ -2191,6 +2191,35 @@ let same_selector_merge_past_nested () =
     ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}"
     (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}")
 
+(* A run of declarations written after a nested statement (CSS Nesting 1 sec.
+   3.4) is a declaration list like any other, with nothing between two writes
+   inside it, so the deduplication a rule body gets applies to it. *)
+let nested_declaration_run_dedupes () =
+  let of_string css =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Alcotest.failf "could not parse %s" css
+  in
+  let canon css =
+    Css.Optimize.stylesheet (Css.statements (of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  (* The run cannot move: [color] is what the nested rule sets too. *)
+  Alcotest.(check string)
+    "a repeated declaration inside a run collapses" ".a{b{color:red}color:#00f}"
+    (canon ".a{& b{color:red}color:blue;color:blue}");
+  Alcotest.(check string)
+    "a declaration the run itself overrides goes" ".a{b{color:red}color:green}"
+    (canon ".a{& b{color:red}color:blue;color:green}");
+  (* The crossed shorthand pins every one of the four longhands, so they compose
+     where they stand. *)
+  Alcotest.(check string)
+    "longhands inside a run compose" ".a{b{margin:9px}margin:1px}"
+    (canon
+       ".a{& \
+        b{margin:9px}margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}")
+
 (* A selector list holding a vendor pseudo-element is invalidated as a whole by
    a browser that does not know it, so the other selectors silently lose the
    declarations. The grouping passes refuse to build such a list; one the author
@@ -5393,6 +5422,8 @@ module Fuzz = struct
         fuzz_cascade_equivalent;
       Alcotest.test_case "same-selector merge past nested children" `Quick
         same_selector_merge_past_nested;
+      Alcotest.test_case "a nested declarations run is deduplicated" `Quick
+        nested_declaration_run_dedupes;
       Alcotest.test_case "vendor pseudo-element list is split" `Quick
         vendor_pseudo_list_is_split;
       Alcotest.test_case "cascade-neutral permutations stay equivalent" `Slow
