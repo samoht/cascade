@@ -2245,7 +2245,39 @@ let same_selector_merge_past_nested () =
     (canon
        ".a{padding:1rem;@media \
         (min-width:1px){color:blue}}.a{margin:1rem;@media \
-        (min-width:2px){color:green}}")
+        (min-width:2px){color:green}}");
+  (* A shorthand and a longhand of its family write a common cascade slot, so a
+     nested [margin] and a later [margin-top] compete: hoisting the longhand
+     ahead of the nested block hands [margin] the win, a different rendered
+     margin-top wherever the query applies. *)
+  Alcotest.(check string)
+    "a later longhand overriding a nested shorthand blocks the merge"
+    ".a{color:red;@media(width>=1px){margin:2rem}}.a{margin-top:1rem}"
+    (canon
+       ".a{color:red;@media (min-width:1px){margin:2rem}}.a{margin-top:1rem}");
+  (* The same slot written the other way round: a later shorthand resets the
+     longhand the nested block set. *)
+  Alcotest.(check string)
+    "a later shorthand overriding a nested longhand blocks the merge"
+    ".a{color:red;@media(width>=1px){margin-top:2rem}}.a{margin:1rem}"
+    (canon
+       ".a{color:red;@media (min-width:1px){margin-top:2rem}}.a{margin:1rem}");
+  (* Two properties of different families share no slot, so the merge stands:
+     the guard reads footprints, not the presence of a nested block. *)
+  Alcotest.(check string)
+    "a nested block of a disjoint family still merges"
+    ".a{color:red;padding:1rem;@media(width>=1px){margin:2rem}}"
+    (canon ".a{color:red;@media (min-width:1px){margin:2rem}}.a{padding:1rem}");
+  (* Nested blocks race in the order the merged rule replays them, and shorthand
+     against longhand is such a race: swapping these two blocks changes
+     margin-top wherever both queries apply. *)
+  Alcotest.(check string)
+    "nested blocks sharing a slot through a shorthand keep their order"
+    ".a{padding:1rem;color:red;@media(width>=1px){margin:2rem}@media(width>=2px){margin-top:3rem}}"
+    (canon
+       ".a{padding:1rem;@media \
+        (min-width:1px){margin:2rem}}.a{color:red;@media \
+        (min-width:2px){margin-top:3rem}}")
 
 (* A run of declarations written after a nested statement (CSS Nesting 1 sec.
    3.4) is a declaration list like any other, with nothing between two writes
