@@ -65,14 +65,19 @@ let is_identity order =
 
 (* Source-order-preserving edge count: [indeg.(j)] is the number of
    source-earlier declarations that overlap [j], which must all be emitted
-   before [j]. *)
-let overlap_indegrees (arr : Declaration.declaration array) : int array =
+   before [j]. [footprints] is the overlap key list of each declaration, hoisted
+   out of the pair loop: computing it names the property, which serializes the
+   declaration's property through a fresh buffer. *)
+let overlap_indegrees (arr : Declaration.declaration array) footprints :
+    int array =
   let n = Array.length arr in
   let indeg = Array.make n 0 in
   for j = 0 to n - 1 do
     for i = 0 to j - 1 do
-      if Shorthand.declarations_overlap arr.(i) arr.(j) then
-        indeg.(j) <- indeg.(j) + 1
+      if
+        Shorthand.declarations_overlap_with_keys arr.(i) footprints.(i) arr.(j)
+          footprints.(j)
+      then indeg.(j) <- indeg.(j) + 1
     done
   done;
   indeg
@@ -112,7 +117,8 @@ let canonical_declarations (decls : Declaration.declaration list) :
           (fun d -> Pp.to_string ~minify:true Declaration.pp_declaration d)
           arr
       in
-      let indeg = overlap_indegrees arr in
+      let footprints = Array.map Shorthand.declaration_overlap_keys arr in
+      let indeg = overlap_indegrees arr footprints in
       let emitted = Array.make n false in
       let order = Array.make n 0 in
       let changed = ref false in
@@ -122,7 +128,10 @@ let canonical_declarations (decls : Declaration.declaration list) :
         emitted.(b) <- true;
         order.(pos) <- b;
         for j = b + 1 to n - 1 do
-          if (not emitted.(j)) && Shorthand.declarations_overlap arr.(b) arr.(j)
+          if
+            (not emitted.(j))
+            && Shorthand.declarations_overlap_with_keys arr.(b) footprints.(b)
+                 arr.(j) footprints.(j)
           then indeg.(j) <- indeg.(j) - 1
         done
       done;

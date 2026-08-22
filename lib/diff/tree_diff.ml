@@ -338,15 +338,24 @@ let reorder_is_significant decls1 decls2 =
   ||
   let pos2 = Hashtbl.create 16 in
   List.iteri (fun i d -> Hashtbl.replace pos2 (name d) i) decls2;
-  let pos d = Option.value ~default:(-1) (Hashtbl.find_opt pos2 (name d)) in
   let arr = Array.of_list decls1 in
   let n = Array.length arr in
+  (* Both hoisted out of the pair loop: naming a declaration and reading its
+     overlap keys each serialize the property through a fresh buffer. *)
+  let pos =
+    Array.of_list
+      (List.map
+         (fun prop -> Option.value ~default:(-1) (Hashtbl.find_opt pos2 prop))
+         names1)
+  in
+  let footprints = Array.map Shorthand.declaration_overlap_keys arr in
   let flipped = ref false in
   for i = 0 to n - 1 do
     for j = i + 1 to n - 1 do
       if
-        Shorthand.declarations_overlap arr.(i) arr.(j)
-        && pos arr.(i) >= pos arr.(j)
+        Shorthand.declarations_overlap_with_keys arr.(i) footprints.(i) arr.(j)
+          footprints.(j)
+        && pos.(i) >= pos.(j)
       then flipped := true
     done
   done;

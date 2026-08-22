@@ -140,6 +140,11 @@
   `#p{font:16px serif}#mid{font-weight:bold}#c{font:16px serif}` left `#c`
   bold. `all` and a property cascade does not type reset everything, so neither
   is dropped either (#332)
+- `cascade diff` spends less time on a rule holding many declarations. Deciding
+  whether a reorder is significant asked each pair of declarations for its
+  overlap keys and for its position in the other rule, both of which name a
+  property through a fresh buffer, where each is a fact about one declaration.
+  `--minify` canonicalises a rule's declaration order the same way (#424)
 
 ## 1.1.0
 
