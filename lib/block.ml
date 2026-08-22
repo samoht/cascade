@@ -146,22 +146,13 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
     merge_media_blocks ~optimize_merged_block stmts
   else stmts
 
-(* Leaf rules reachable from a statement, descending into nested blocks. *)
-let rec leaf_rules stmt =
-  match stmt with
-  | Rule r -> r :: List.concat_map leaf_rules r.nested
-  | Media (_, b)
-  | Supports (_, b)
-  | Layer (_, b)
-  | Container (_, _, b)
-  | Starting_style b
-  | Origin (_, b)
-  | Moz_document (_, b)
-  | Scope (_, _, b)
-  | When (_, b)
-  | Else (_, b) ->
-      List.concat_map leaf_rules b
-  | _ -> []
+(* Leaf rules reachable from a statement, in source order, descending into
+   nested blocks. *)
+let leaf_rules stmt =
+  List.rev
+    (fold_statements
+       (fun acc stmt -> match stmt with Rule r -> r :: acc | _ -> acc)
+       [] [ stmt ])
 
 (* Two declarations an element computes differently once they swap order: they
    write a common longhand slot, and they are not the same declaration. Reading
