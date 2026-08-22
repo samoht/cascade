@@ -116,6 +116,22 @@ let test_flattens_inside_moz_document () =
   check ".a{@-moz-document url-prefix(){.b{color:red}}}"
     "@-moz-document url-prefix(){.a .b{color:red}}"
 
+(* CSS Nesting 1 sec. 3.3: any at-rule whose body carries style rules nests
+   inside a style rule, so flattening one has to carry the parent selector into
+   its declaration run. A group rule flatten does not know leaves the run bare
+   at the top of the block, which no reader takes back. *)
+let test_nested_group_rules_keep_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check ".a{@starting-style{color:red}}" "@starting-style{.a{color:red}}";
+  check ".a{@-moz-document url-prefix(){color:red}}"
+    "@-moz-document url-prefix(){.a{color:red}}";
+  check ".a{@when media(width>0px){color:red}}"
+    "@when media(width>0px){.a{color:red}}";
+  check ".a{@layer n{@media screen{color:red}}}"
+    "@layer n{@media screen{.a{color:red}}}"
+
 let suite =
   ( "flatten",
     [
@@ -135,4 +151,6 @@ let suite =
         test_nested_selector_list_keeps_parent;
       Alcotest.test_case "flattens inside @-moz-document" `Quick
         test_flattens_inside_moz_document;
+      Alcotest.test_case "nested group rules keep the parent" `Quick
+        test_nested_group_rules_keep_parent;
     ] )

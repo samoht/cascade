@@ -2930,6 +2930,47 @@ let spec_nesting_empty_layer_keeps_block () =
   test_nesting_idempotent ".a { @layer n { } }";
   test_nesting_roundtrip ~expected:"@layer n;" "@layer n { }"
 
+(* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
+   nested inside of a style rule as well", and its body is then read as nesting
+   content. [@starting-style] is a grouping rule over style rules (CSS
+   Transitions 2 sec. 3.3), and Blink 146 keeps the whole shape. *)
+let spec_nesting_starting_style () =
+  test_nesting_roundtrip ~expected:".a{@starting-style{color:red}}"
+    ".a { @starting-style { color: red } }";
+  test_nesting_roundtrip ~expected:".a{@starting-style{color:red}color:green}"
+    ".a { @starting-style { color: red } color: green }";
+  test_nesting_roundtrip ~expected:".a{@starting-style{& b{color:red}}}"
+    ".a { @starting-style { & b { color: red } } }";
+  test_nesting_idempotent ".a { @starting-style { color: red } color: green }"
+
+(* The same section covers every conditional group rule, not just the three
+   cascade already nested: [@-moz-document] carries style rules, and CSS
+   Conditional 5 sec. 3 and sec. 4 make [@when] and [@else] conditional group
+   rules over a rule list. *)
+let spec_nesting_other_group_rules () =
+  test_nesting_roundtrip ~expected:".a{@-moz-document url-prefix(){color:red}}"
+    ".a { @-moz-document url-prefix() { color: red } }";
+  test_nesting_roundtrip ~expected:".a{@when media(width>0px){color:red}}"
+    ".a { @when media(width > 0px) { color: red } }";
+  test_nesting_roundtrip
+    ~expected:".a{@when media(width>0px){color:red}@else{color:green}}"
+    ".a { @when media(width > 0px) { color: red } @else { color: green } }";
+  test_nesting_idempotent ".a { @-moz-document url-prefix() { color: red } }"
+
+(* A nested group rule's body is nesting content all the way down, so an at-rule
+   inside one is itself a nested group rule. Blink 146 keeps [.a{@layer n{@media
+   screen{color:red}}}] whole. *)
+let spec_nesting_at_rule_inside_nested_group () =
+  test_nesting_roundtrip ~expected:".a{@layer n{@media screen{color:red}}}"
+    ".a { @layer n { @media screen { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{@supports(foo:bar){color:red}}}"
+    ".a { @media screen { @supports (foo: bar) { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{@starting-style{color:red}}}"
+    ".a { @media screen { @starting-style { color: red } } }";
+  test_nesting_idempotent ".a { @layer n { @media screen { color: red } } }"
+
 (* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
    wrapped in a nested declarations rule, which keeps its place among the nested
    rules. The spec's own worked example names the hoisted spelling as NOT
@@ -7057,6 +7098,15 @@ let additional_tests =
     ( "spec nesting empty @layer keeps block form",
       `Quick,
       spec_nesting_empty_layer_keeps_block );
+    ( "spec nesting @starting-style holds nesting content",
+      `Quick,
+      spec_nesting_starting_style );
+    ( "spec nesting other group rules hold nesting content",
+      `Quick,
+      spec_nesting_other_group_rules );
+    ( "spec nesting at-rule inside a nested group rule",
+      `Quick,
+      spec_nesting_at_rule_inside_nested_group );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
