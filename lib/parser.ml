@@ -171,15 +171,27 @@ let escape_ident s =
     Uutf.String.fold_utf_8 (escape_ident_emit_item buf starts) () s;
     Buffer.contents buf
 
+(* Every code point of an all-ASCII name serialises to itself, so the buffer +
+   Uutf walk below would allocate nothing useful. *)
+let escape_name_needs_no_escape s n =
+  let rec loop i =
+    if i >= n then true
+    else if Syntax.is_ascii_ident_continue s.[i] then loop (i + 1)
+    else false
+  in
+  loop 0
+
 let escape_name s =
   let n = String.length s in
-  let buf = Buffer.create n in
-  let folder () _ = function
-    | `Uchar u -> escape_ident_emit_cp buf ~needs_leading_escape:false u
-    | `Malformed bs -> Buffer.add_string buf bs
-  in
-  Uutf.String.fold_utf_8 folder () s;
-  Buffer.contents buf
+  if escape_name_needs_no_escape s n then s
+  else
+    let buf = Buffer.create n in
+    let folder () _ = function
+      | `Uchar u -> escape_ident_emit_cp buf ~needs_leading_escape:false u
+      | `Malformed bs -> Buffer.add_string buf bs
+    in
+    Uutf.String.fold_utf_8 folder () s;
+    Buffer.contents buf
 
 let escape_string ~quote ~terminated s =
   let buf = Buffer.create (String.length s + 2) in

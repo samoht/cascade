@@ -394,12 +394,19 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
 
 (** Pretty-printing functions *)
 
+(* Opens [var(] and writes the referenced name. [name] is the custom property's
+   name without its [--] prefix, and CSS Syntax 3 sec. 4.3.7 lets an escape
+   carry a [;] or a [}] into it, so the tail is written with the escapes that
+   read the same name back. *)
+let pp_var_open ctx name =
+  Pp.string ctx "var(--";
+  Pp.string ctx (Parser.escape_name name)
+
 (* Prints the [var(--fallback_name)] used as another var's fallback, then the
    outer var's closing paren. Theme resolution is a transform, not a print
    concern, so the reference is emitted structurally. *)
 let pp_var_fallback ctx fallback_name =
-  Pp.string ctx "var(--";
-  Pp.string ctx fallback_name;
+  pp_var_open ctx fallback_name;
   Pp.string ctx "))"
 
 let pp_syntax_fallback ctx value =
@@ -410,31 +417,26 @@ let pp_syntax_fallback ctx value =
      else Parser.to_string_custom value)
 
 let pp_var_ref ctx name =
-  Pp.string ctx "var(--";
-  Pp.string ctx name;
+  pp_var_open ctx name;
   Pp.char ctx ')'
 
 let pp_empty_var ctx name =
-  Pp.string ctx "var(--";
-  Pp.string ctx name;
+  pp_var_open ctx name;
   Pp.char ctx ',';
   Pp.char ctx ')'
 
 let pp_empty2_var ctx name =
-  Pp.string ctx "var(--";
-  Pp.string ctx name;
+  pp_var_open ctx name;
   Pp.string ctx ",  )"
 
 let pp_typed_var_fallback pp_value ctx name value =
-  Pp.string ctx "var(--";
-  Pp.string ctx name;
+  pp_var_open ctx name;
   Pp.comma ctx ();
   pp_value { ctx with in_function = true } value;
   Pp.char ctx ')'
 
 let pp_syntax_var_fallback ctx name value =
-  Pp.string ctx "var(--";
-  Pp.string ctx name;
+  pp_var_open ctx name;
   Pp.comma ctx ();
   pp_syntax_fallback { ctx with in_function = true } value;
   Pp.char ctx ')'
@@ -483,8 +485,7 @@ let pp_stylesheet_var : type a. a Pp.t -> a var Pp.t =
   | Fallback value -> pp_typed_var_fallback pp_value ctx v.name value
   | Syntax_fallback value -> pp_syntax_var_fallback ctx v.name value
   | Var_fallback fallback_name ->
-      Pp.string ctx "var(--";
-      Pp.string ctx v.name;
+      pp_var_open ctx v.name;
       Pp.comma ctx ();
       pp_var_fallback ctx fallback_name
 
