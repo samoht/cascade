@@ -3041,6 +3041,31 @@ let rec skip_bad_rule_item inner =
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
   | Some _ -> skip_bad_rule_item inner
 
+(* CSS Syntax 3 sec. 5.4.2: an at-rule ends at its block or at its [;].
+   Discarding an invalid one consumes exactly that far, so the declarations
+   written after it stay in the rule. *)
+let rec skip_at_rule r =
+  match Cursor.next_raw r with
+  | None -> ()
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      ()
+  | Some _ -> skip_at_rule r
+
+(* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
+   nested inside of a style rule as well, unless otherwise specified". A
+   descriptor rule, a keyframe list and a declaration-list rule contain none, so
+   none of them nests, and Blink 146 drops each one. [\@view-transition] is a
+   descriptor rule too, yet Blink keeps it inside a style rule; dropping what a
+   shipping engine still reads is the one lossy direction, so it stays. *)
+let nests_in_style_rule = function
+  | "keyframes" | "-webkit-keyframes" | "-moz-keyframes" | "font-face"
+  | "counter-style" | "page" | "font-palette-values" | "font-feature-values"
+  | "position-try" | "viewport" | "-ms-viewport" | "property"
+  | "supports-condition" ->
+      false
+  | _ -> true
+
 let read_property_descriptors (r : Cursor.t) : property_reader_state =
   let state = ref { syntax = None; inherits = None; initial_value = None } in
   let rec loop () =
@@ -3113,6 +3138,14 @@ let item_opens_block inner =
   let found = scan () in
   Cursor.restore inner start;
   found
+
+(* Discard an at-rule that is invalid in a style rule and resume at the next
+   item, the recovery CSS Syntax 3 sec. 5.4.4 describes. The warning is what
+   [~strict:true] turns into an error. *)
+let drop_nested_at_rule r ~loc reason : statement option =
+  skip_at_rule r;
+  Cursor.push_warning r (Error.bad_value loc ~property:"rule" ~reason);
+  None
 
 (* CSS Nesting 1 sec. 3.4 wraps a run of declarations written after a nested
    statement in a nested declarations rule, so it keeps its place among them.
@@ -3379,18 +3412,20 @@ and read_layer (r : Cursor.t) : statement =
 and read_nesting_block (r : Cursor.t) : block =
   let rec read_items acc =
     Cursor.ws r;
-    match read_nesting_item r with
+    match read_nesting_item ~prev:acc r with
     | `Done -> List.rev acc
     | `Skip -> read_items acc
     | `Stmt stmt -> read_items (stmt :: acc)
   in
   read_items []
 
-and read_nesting_item r =
+and read_nesting_item ~prev r =
   match Cursor.peek r with
   | None -> `Done
-  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      `Stmt (read_nested_at_within_rule r)
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) -> (
+      match read_nested_at_within_rule ~prev r with
+      | Some stmt -> `Stmt stmt
+      | None -> `Skip)
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip r;
       `Skip
@@ -3477,11 +3512,11 @@ and read_nested_layer_rule r =
       Cursor.ws r;
       Layer (Some name, Cursor.braces (fun inner -> read_nesting_block inner) r)
 
-and read_nested_at_within_rule (r : Cursor.t) : statement =
+and read_nested_at_within_rule ~prev (r : Cursor.t) : statement option =
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-      read_nested_at_keyword r name
-  | _ -> read_statement r
+  | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) ->
+      read_nested_at_keyword r ~loc ~prev name
+  | _ -> Some (read_statement r)
 
 (* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
    nested inside of a style rule as well", which is every group rule cascade
@@ -3489,27 +3524,34 @@ and read_nested_at_within_rule (r : Cursor.t) : statement =
    @else that generalise them (CSS Conditional 5 sec. 3, sec. 4),
    @-moz-document, @layer, @scope, and @starting-style (CSS Transitions 2 sec.
    3.3). Nested, the body is <block-contents>, so a bare declaration run in it
-   belongs to the parent selector. Everything else keeps its stylesheet-level
-   reading: a descriptor rule such as @font-face carries no style rule, and a
-   top-of-sheet rule is invalid here outright. *)
-and read_nested_at_keyword r = function
+   belongs to the parent selector. An at-rule with no style rule in its body is
+   invalid here and dropped; a top-of-sheet rule is invalid here outright. *)
+and read_nested_at_keyword r ~loc ~prev = function
   | ("supports" | "media" | "container" | "scope") as name ->
-      read_nested_at_rule r ("@" ^ name)
-  | "layer" -> read_nested_layer_rule r
-  | "starting-style" -> read_starting_style ~body:read_nesting_block r
-  | "-moz-document" -> read_moz_document ~body:read_nesting_block r
-  | "when" -> read_when ~body:read_nesting_block r
-  | "else" -> read_else ~body:read_nesting_block r
+      Some (read_nested_at_rule r ("@" ^ name))
+  | "layer" -> Some (read_nested_layer_rule r)
+  | "starting-style" -> Some (read_starting_style ~body:read_nesting_block r)
+  | "-moz-document" -> Some (read_moz_document ~body:read_nesting_block r)
+  | "when" -> Some (read_when ~body:read_nesting_block r)
+  | "else" when List.exists follows_conditional prev ->
+      Some (read_else ~body:read_nesting_block r)
+  | "else" -> drop_nested_at_rule r ~loc "@else without preceding @when"
   | ("charset" | "import" | "namespace") as name ->
       Cursor.err_invalid r ("Unexpected nested at-rule: @" ^ name)
-  | _ -> read_statement r
+  | name when not (nests_in_style_rule name) ->
+      drop_nested_at_rule r ~loc
+        ("@" ^ name ^ " has no style rule in it, so it does not nest")
+  | _ -> Some (read_statement r)
 
 and read_rule_item selector inner decls nested =
   match Cursor.peek inner with
   | None -> `Done (List.rev decls, List.rev (seal_declaration_run nested))
-  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-      let stmt = read_nested_at_within_rule inner in
-      `Continue (decls, stmt :: seal_declaration_run nested)
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) -> (
+      match read_nested_at_within_rule ~prev:nested inner with
+      | Some stmt -> `Continue (decls, stmt :: seal_declaration_run nested)
+      (* A dropped at-rule leaves no gap: the declaration run written around it
+         is one run, as it is in Blink. *)
+      | None -> `Continue (decls, nested))
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
       Cursor.skip inner;
       `Continue (decls, nested)
