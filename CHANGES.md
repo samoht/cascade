@@ -396,6 +396,11 @@
 - A complete shadow value in an unregistered custom property types its colour
   slot, so named and hex colours and typed `var()` fallbacks compare
   canonically while non-colour identifiers remain opaque (#314)
+- The projection's value folds reach a declaration inside any grouping at-rule,
+  so two sheets differing only by a custom-property font quoting, an exact
+  `color(srgb ...)` spelling or a `@media not all and (X)` query inside
+  `@-moz-document`, `@scope`, `@starting-style`, `@when`, `@else` or a
+  `@container` no longer compare as different (#360)
 - The projection's value folds reach inside every block at-rule. A quoted
   multi-word family name in a custom property, a whole-byte `color(srgb ...)`
   and the Level 3 `not all and (...)` media spelling folded inside `@layer` and
