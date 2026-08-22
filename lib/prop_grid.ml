@@ -162,9 +162,7 @@ let rec pp_grid_template : grid_template Pp.t =
   (* CSS Grid 2 sec. 7.2.4: [<flex>] is [<number>fr]; the unit-drop rule is for
      [<length>] only. [0fr] is a zero flex factor, distinct from a [0]
      [<length>] in [grid-template]'s union grammar. *)
-  | Fr f ->
-      Pp.float ctx f;
-      Pp.string ctx "fr"
+  | Fr f -> Pp.unit ctx f "fr"
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"

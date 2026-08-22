@@ -984,18 +984,10 @@ let rec pp_image_rendering : image_rendering Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_resolution ctx = function
-  | Dpi f ->
-      Pp.float ctx f;
-      Pp.string ctx "dpi"
-  | Dpcm f ->
-      Pp.float ctx f;
-      Pp.string ctx "dpcm"
-  | Dppx f ->
-      Pp.float ctx f;
-      Pp.string ctx "dppx"
-  | X f ->
-      Pp.float ctx f;
-      Pp.char ctx 'x'
+  | Dpi f -> Pp.unit ctx f "dpi"
+  | Dpcm f -> Pp.unit ctx f "dpcm"
+  | Dppx f -> Pp.unit ctx f "dppx"
+  | X f -> Pp.unit ctx f "x"
 
 let rec pp_image_resolution : image_resolution Pp.t =
  fun ctx -> function

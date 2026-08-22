@@ -205,6 +205,11 @@ val string_of_float :
       instead of 0.5)
     - [max_decimals]: maximum decimal precision (default 8) *)
 
+val nan_value : ctx -> string -> unit
+(** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:
+    [calc(NaN)], or [calc(NaN * 1suffix)] when [suffix] is a unit. CSS Values 4
+    sec. 10.13. *)
+
 val float : float t
 (** [float] formats floating point numbers with CSS rules:
     - Always drops leading zero for 0 < |n| < 1 (outputs .5 not 0.5)

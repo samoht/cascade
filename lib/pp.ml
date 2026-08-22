@@ -340,6 +340,9 @@ let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
   match classify_float f with
   | FP_zero -> "0"
+  (* Raw float formatting, not a CSS value sink: [Context] round-trips a float
+     through this and back with [float_of_string]. The CSS spelling of a NaN is
+     [nan_value]'s. *)
   | FP_nan -> "NaN"
   | FP_infinite when f > 0.0 -> "3.40282e38"
   | FP_infinite -> "-3.40282e38"
@@ -374,15 +377,29 @@ let int ctx i =
 (* An integer-valued float prints as that integer (see [format_integer]); take
    the allocation-free [int] path instead of building a string via
    [string_of_float]. The bound mirrors [format_integer]'s own guard. *)
+(* CSS Values 4 sec. 10.7.2: [NaN] is a keyword of the math-function grammar and
+   exists nowhere else, so a NaN-valued number has no literal spelling. Sec.
+   10.13 serialises it as [calc(NaN)], with [* 1<unit>] appended once the value
+   carries a unit. A bare [NaN] token is not CSS: browsers drop [width: NaNpx]
+   and [opacity: NaN], and so does cascade's own reader. *)
+let nan_value ctx suffix =
+  string ctx "calc(NaN";
+  if suffix <> "" then (
+    string ctx (if ctx.minify then "*1" else " * 1");
+    string ctx suffix);
+  char ctx ')'
+
 let float ctx f =
-  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+  if Float.is_nan f then nan_value ctx ""
+  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
     int ctx (int_of_float f)
   else string ctx (string_of_float ~drop_leading_zero:true f)
 
 let float_compact = float
 
 let float_n n ctx f =
-  if Float.is_integer f && Float.abs f <= float_of_int max_int then
+  if Float.is_nan f then nan_value ctx ""
+  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
     int ctx (int_of_float f)
   else string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
@@ -405,8 +422,10 @@ let hex ctx i =
   string ctx (to_hex i)
 
 let unit ctx f suffix =
-  float ctx f;
-  string ctx suffix
+  if Float.is_nan f then nan_value ctx suffix
+  else (
+    float ctx f;
+    string ctx suffix)
 
 let pct ctx f =
   (* CSS Values 4 sec. 6 only allows the unit to drop on a zero [<length>]; a
@@ -416,8 +435,10 @@ let pct ctx f =
      changes the value (a repeating fraction such as [33.333333%] from [w-1/3]
      would lose digits), so any precision reduction belongs in the optimizer,
      not here. *)
-  float ctx f;
-  string ctx "%"
+  if Float.is_nan f then nan_value ctx "%"
+  else (
+    float ctx f;
+    string ctx "%")
 
 let sep ctx s =
   string ctx s;

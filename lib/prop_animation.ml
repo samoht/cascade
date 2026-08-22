@@ -365,7 +365,8 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_timing_float ctx f =
-  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
+  if Float.is_nan f then Pp.nan_value ctx ""
+  else Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
 
 let pp_cubic_bezier_args : (float * float * float * float) Pp.t =
  fun ctx (a, b, c, d) ->
