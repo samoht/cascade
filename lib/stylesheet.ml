@@ -2034,11 +2034,12 @@ let skip_invalid_item r =
 
 (* Read a body one item at a time, [step] committing each item to the
    accumulator before the next is read, so an item dropped in recovery costs
-   only itself. CSS Paged Media 3 sec. 6: "If an error is encountered during the
-   processing of a declaration block within a page or a margin context, the
-   Rules for handling parsing errors apply; that is, valid declarations within
-   the block are applied." Strict mode ([not (Cursor.recover r)]) still raises,
-   so [~strict:true] rejects exactly what the lenient parse warns about. *)
+   only itself and the items around it are kept. CSS Syntax 3 sec. 5.4.3 keeps
+   what a block's contents already yielded when one item fails to parse, and CSS
+   Paged Media 3 sec. 6 says as much of a page or a margin context in so many
+   words: "valid declarations within the block are applied". Strict mode ([not
+   (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
+   lenient parse warns about. *)
 let read_items_with_recovery step r init =
   let rec loop state =
     if Cursor.recover r then recovering state else continue (step r state)
@@ -3324,32 +3325,44 @@ let nests_in_style_rule = function
       false
   | _ -> true
 
-let read_property_descriptors (r : Cursor.t) : property_reader_state =
-  let state = ref { syntax = None; inherits = None; initial_value = None } in
-  let rec loop () =
-    Cursor.ws r;
-    if Cursor.is_done r then !state
-    else
-      let key = Cursor.ident ~keep_case:false r in
-      Cursor.ws r;
-      if not (Cursor.colon r) then Cursor.err_expected r "':'";
-      Cursor.ws r;
-      (match key with
-      | "syntax" ->
-          let syn = Variables.read_syntax r in
-          state := { !state with syntax = Some syn }
-      | "inherits" ->
-          let inherits_value = Cursor.bool r in
-          state := { !state with inherits = Some inherits_value }
-      | "initial-value" ->
-          let value_str = Cursor.consume_until_semicolon ~trim:true r in
-          state := { !state with initial_value = Some value_str }
-      | _ -> Cursor.err_invalid r "unknown property descriptor");
-      Cursor.ws r;
-      if Cursor.peek_semicolon r then Cursor.skip r;
-      loop ()
+(* One descriptor of an [@property] body. The state is returned rather than
+   assigned as the value is read, so a descriptor that fails leaves the ones
+   before it untouched. CSS Properties and Values API 1 sec. 2 gives each
+   descriptor a grammar of its own, and the declaration is the whole of it: a
+   trailing [!important] or a stray ident makes the declaration invalid rather
+   than the leftover alone, as it does in Blink 146. *)
+let read_property_descriptor (r : Cursor.t) state =
+  let key = Cursor.ident ~keep_case:false r in
+  Cursor.ws r;
+  if not (Cursor.colon r) then Cursor.err_expected r "':'";
+  Cursor.ws r;
+  let state =
+    match key with
+    | "syntax" -> { state with syntax = Some (Variables.read_syntax r) }
+    | "inherits" -> { state with inherits = Some (Cursor.bool r) }
+    | "initial-value" ->
+        {
+          state with
+          initial_value = Some (Cursor.consume_until_semicolon ~trim:true r);
+        }
+    | _ -> Cursor.err_invalid r "unknown property descriptor"
   in
-  loop ()
+  Cursor.ws r;
+  if not (Cursor.is_done r || Cursor.peek_semicolon r) then
+    Cursor.err_invalid r ("trailing tokens after @property " ^ key);
+  state
+
+let read_property_step r state =
+  Cursor.ws r;
+  if Cursor.is_done r then `Done state
+  else if Cursor.peek_semicolon r then (
+    Cursor.skip r;
+    `More state)
+  else `More (read_property_descriptor r state)
+
+let read_property_descriptors (r : Cursor.t) : property_reader_state =
+  read_items_with_recovery read_property_step r
+    { syntax = None; inherits = None; initial_value = None }
 
 let read_property_rule (r : Cursor.t) : statement =
   (* Read @property descriptors as a separate helper to keep the reader tidy. *)
