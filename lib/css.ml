@@ -557,8 +557,6 @@ let map_container_block f = function
     | Unknown_at_rule _ ) as stmt ->
       stmt
 
-let statement_children = Stylesheet.statement_children
-
 let rec map f stmts =
   List.map
     (fun stmt ->
@@ -639,15 +637,7 @@ let rule_statements t =
 
 (* Function to extract all statements, not just rules *)
 let statements t = t
-
-(* Fold over all statements recursively, descending into nested structures *)
-let rec fold f acc t =
-  List.fold_left
-    (fun acc stmt ->
-      let acc' = f acc stmt in
-      (* Recursively fold over nested statements *)
-      fold f acc' (statement_children stmt))
-    acc t
+let fold f acc t = Stylesheet.fold_statements f acc t
 
 let media_queries t =
   let raw_media = Stylesheet.media_queries t in
@@ -914,11 +904,7 @@ let collect_var_names stylesheet =
         | _ -> ())
       (Variables.vars_of_declarations decls)
   in
-  let rec walk stmt =
-    record_decls (Stylesheet.statement_declarations stmt);
-    List.iter walk (Stylesheet.statement_children stmt)
-  in
-  List.iter walk stylesheet;
+  Stylesheet.iter_declarations record_decls stylesheet;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
 
 (* Resolve [Theme_guarded { var_name; decl }] declarations against the theme
@@ -938,81 +924,11 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
           | d -> Option.Some d)
         decls
 
-let resolve_theme_guards_in_frames ~theme frames =
-  List.map
-    (fun (frame : Stylesheet.keyframe) ->
-      {
-        frame with
-        declarations = resolve_theme_guards_in_decls ~theme frame.declarations;
-      })
-    frames
-
-let resolve_theme_guards_in_margins ~theme margins =
-  List.map
-    (fun (margin : Stylesheet.page_margin_rule) ->
-      {
-        margin with
-        descriptors = resolve_theme_guards_in_decls ~theme margin.descriptors;
-      })
-    margins
-
-(* Listed one by one rather than closed with a wildcard, for the same reason as
-   [Stylesheet.statement_declarations]: a guard the keep-set rejects has to be
-   dropped wherever the declaration sits, and a wildcard would silently leak the
-   next declaration-carrying at-rule's guards into the output. *)
-let rec resolve_theme_guards_in_stmts ~theme = function
-  | [] -> []
-  | stmt :: rest ->
-      let stmt =
-        match stmt with
-        | Stylesheet.Rule r ->
-            Stylesheet.Rule
-              {
-                r with
-                declarations =
-                  resolve_theme_guards_in_decls ~theme r.declarations;
-                nested = resolve_theme_guards_in_stmts ~theme r.nested;
-              }
-        | Declarations decls ->
-            Declarations (resolve_theme_guards_in_decls ~theme decls)
-        | Media (c, b) -> Media (c, resolve_theme_guards_in_stmts ~theme b)
-        | Supports (c, b) -> Supports (c, resolve_theme_guards_in_stmts ~theme b)
-        | Container (n, c, b) ->
-            Container (n, c, resolve_theme_guards_in_stmts ~theme b)
-        | Layer (n, b) -> Layer (n, resolve_theme_guards_in_stmts ~theme b)
-        | Origin (o, b) -> Origin (o, resolve_theme_guards_in_stmts ~theme b)
-        | Scope (s, e, b) -> Scope (s, e, resolve_theme_guards_in_stmts ~theme b)
-        | Starting_style b ->
-            Starting_style (resolve_theme_guards_in_stmts ~theme b)
-        | Moz_document (c, b) ->
-            Moz_document (c, resolve_theme_guards_in_stmts ~theme b)
-        | When (c, b) -> When (c, resolve_theme_guards_in_stmts ~theme b)
-        | Else (c, b) -> Else (c, resolve_theme_guards_in_stmts ~theme b)
-        | Keyframes (n, frames) ->
-            Keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Webkit_keyframes (n, frames) ->
-            Webkit_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Moz_keyframes (n, frames) ->
-            Moz_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Page (sel, decls) ->
-            Page (sel, resolve_theme_guards_in_decls ~theme decls)
-        | Page_with_margins (sel, descriptors, margins) ->
-            Page_with_margins
-              ( sel,
-                resolve_theme_guards_in_decls ~theme descriptors,
-                resolve_theme_guards_in_margins ~theme margins )
-        | Position_try (n, decls) ->
-            Position_try (n, resolve_theme_guards_in_decls ~theme decls)
-        | Supports_condition (n, decls) ->
-            Supports_condition (n, resolve_theme_guards_in_decls ~theme decls)
-        | Property _ -> stmt
-        | Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _
-        | Font_face _ | Counter_style _ | Font_palette_values _
-        | Font_feature_values _ | View_transition _ | Viewport _
-        | Unknown_at_rule _ ->
-            stmt
-      in
-      stmt :: resolve_theme_guards_in_stmts ~theme rest
+(* A guard the keep-set rejects has to be dropped wherever the declaration sits,
+   so this goes through the exhaustive declaration walk rather than a local
+   match. *)
+let resolve_theme_guards_in_stmts ~theme stmts =
+  Stylesheet.map_declarations (resolve_theme_guards_in_decls ~theme) stmts
 
 let bare_theme_name raw_name =
   if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
@@ -1036,11 +952,7 @@ let structural_var_refs (stmts : Stylesheet.statement list) : string list =
   let note d =
     acc := List.rev_append (var_names_in_theme_value (declaration_value d)) !acc
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    List.iter note (Stylesheet.statement_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations (List.iter note) stmts;
   !acc
 
 let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
@@ -1110,19 +1022,21 @@ let root_theme_rule declarations =
       merge_key = None;
     }
 
-(* The declarations a statement contributes to ordinary element matching. Unlike
-   [Stylesheet.statement_declarations], which reaches every declaration in the
-   tree, this stops at the at-rules whose declarations belong to another cascade
-   origin or to no element at all (CSS Cascading 5 sec. 6.1): [@keyframes] is
-   the animation origin, [@position-try] the position fallback origin, [@page]
-   and its margin boxes are not elements, and [@supports-condition] is never
-   applied to a box. None of them declares a name for an element that merely
-   references it. *)
-let cascading_declarations (stmt : Stylesheet.statement) =
-  match stmt with
-  | Stylesheet.Rule rule -> rule.declarations
-  | Stylesheet.Declarations decls -> decls
-  | _ -> []
+(* The places a declaration contributes to ordinary element matching. The other
+   declaration sites belong to another cascade origin or to no element at all
+   (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
+   [@position-try] the position fallback origin, [@page] and its margin boxes
+   are not elements, and [@supports-condition] is never applied to a box. None
+   of them declares a name for an element that merely references it. Written out
+   in full so that a site added to the record has to be classified here. *)
+let element_matching_sites =
+  {
+    Stylesheet.element_rule = true;
+    animation_frame = false;
+    page_box = false;
+    position_fallback = false;
+    condition_test = false;
+  }
 
 (* Names a style rule declares as a custom property (bare, no [--]). *)
 let declared_custom_prop_names (stmts : Stylesheet.statement list) :
@@ -1136,11 +1050,7 @@ let declared_custom_prop_names (stmts : Stylesheet.statement list) :
         | None -> ())
       decls
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    note (cascading_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations ~sites:element_matching_sites note stmts;
   tbl
 
 (* Bare names of every [var()] reference. [collect_var_names] reads typed
@@ -1157,11 +1067,7 @@ let referenced_var_names (stmts : Stylesheet.statement list) : string list =
             !opaque
     | Option.None -> ()
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    List.iter note (Stylesheet.statement_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations (List.iter note) stmts;
   List.map bare_theme_name (collect_var_names stmts @ !opaque)
 
 (* [:root], [:host], or a comma list of only those. *)
