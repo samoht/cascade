@@ -766,6 +766,27 @@ let test_drop_invalid_reaches_keyframe_frames () =
     "so does a vendor-prefixed one" "@-webkit-keyframes k{0%{opacity:0}}"
     (recovered "@-webkit-keyframes k{from{width:asin(sin(45deg));opacity:0}}")
 
+(* Under closed-stylesheet scope a [position-try-fallbacks] name with no
+   [@position-try] rule can never match, and where the declaration is written
+   does not change that, so the prune reaches a keyframe frame as it does a
+   style rule. *)
+let test_position_try_prune_reaches_keyframe_frames () =
+  let pruned css =
+    Css.of_string_exn css
+    |> Css.Optimize.stylesheet ~scope:`Stylesheet
+    |> Css.Stylesheet.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "a style rule loses the unknown fallback"
+    "@position-try --k{top:1px}a{position-try-fallbacks:--k}"
+    (pruned "@position-try --k{top:1px}a{position-try-fallbacks:--k,--gone}");
+  Alcotest.(check string)
+    "a keyframe frame loses it too"
+    "@position-try --k{top:1px}@keyframes f{0%{position-try-fallbacks:--k}}"
+    (pruned
+       "@position-try --k{top:1px}@keyframes \
+        f{from{position-try-fallbacks:--k,--gone}}")
+
 (* Every conditional group wraps ordinary rules, so the optimizer's main
    recursion has to descend into all of them: a body it walks past keeps
    whatever the author wrote, and [--minify] silently does nothing there. *)
@@ -1369,6 +1390,9 @@ let optimize_tests =
     ( "drop_invalid reaches keyframe frames",
       `Quick,
       test_drop_invalid_reaches_keyframe_frames );
+    ( "position-try prune reaches keyframe frames",
+      `Quick,
+      test_position_try_prune_reaches_keyframe_frames );
     ( "optimize descends into every conditional group",
       `Quick,
       test_optimize_descends_into_every_conditional_group );
