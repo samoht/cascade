@@ -1,0 +1,11 @@
+<!doctype html><html><head><style>
+  :root { --theme: dark; --flag: on }
+  @property --tone { syntax: "<color>"; inherits: true; initial-value: teal }
+  .card { color: black; background: white; border: 2px solid black; outline: 2px solid black }
+  @container style(--theme: dark) { .card { color: lime; background: navy } }
+  @container style(--flag) { .card { border-color: orange } }
+  @container not style(--theme: dark) { .card { outline-color: fuchsia } }
+  @container style(--tone: teal) { .card { text-decoration-color: teal } }
+</style></head><body>
+<div class="wrap"><p class="card">card</p></div>
+</body></html>

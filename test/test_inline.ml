@@ -419,6 +419,67 @@ let test_inline_property_idempotent () =
   check "an unused registration is a fixpoint"
     "@property --y{syntax:\"*\";inherits:false}.b{color:red}"
 
+(* CSS Conditional 5 sec. 6.2 (style container features): a [style()] query is
+   evaluated against the computed value the queried custom property has on the
+   query container, and its boolean form against that property's initial value.
+   The queried name is a reference like any [var()]: whatever supplies that
+   computed value decides whether the block applies at all. Chrome 146 paints
+   [.z] green for [:root{--c:red}@container style(--c:red){.z{color:green}}] and
+   black once [:root] loses the declaration. *)
+let test_inline_style_query_keeps_queried_property () =
+  check_inline_case "a declaration style() query keeps the property it reads"
+    ":root{--c:red}@container style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container style(--c:red){.z{color:green}}";
+  check_inline_case "a boolean style() query keeps the property it tests"
+    ":root{--c:red}@container style(--c){.z{color:green}}"
+    ":root{--c:red}@container style(--c){.z{color:green}}";
+  check_inline_case "a queried property and the var() in its value both stay"
+    ":root{--c:red;--d:red}@container style(--c: var(--d)){.z{color:green}}"
+    ":root{--c:red;--d:red}@container style(--c:var(--d)){.z{color:green}}";
+  check_inline_case "a range style() query keeps the property it bounds"
+    ":root{--n:5}@container style(3 < --n < 10){.z{color:green}}"
+    ":root{--n:5}@container style(3<--n<10){.z{color:green}}";
+  check_inline_case "both sides of a combined style() query stay live"
+    ":root{--a:red;--b:blue}@container style(--a: red) and style(--b: \
+     blue){.z{color:green}}"
+    ":root{--a:red;--b:blue}@container style(--a:red) and \
+     style(--b:blue){.z{color:green}}";
+  (* Negation reverses which elements a lost declaration paints: with [--c] red
+     the block does not apply, without it the query is true and it does. *)
+  check_inline_case "a negated style() query keeps the property it tests"
+    ":root{--c:red}@container not style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container not style(--c:red){.z{color:green}}";
+  check_inline_case "a named container's style() query keeps its property"
+    ":root{--c:red}@container tall style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container tall style(--c:red){.z{color:green}}";
+  check_inline_case "a style() query nested under @media keeps its property"
+    ":root{--c:red}@media screen{@container style(--c: red){.z{color:green}}}"
+    ":root{--c:red}@media screen{@container style(--c:red){.z{color:green}}}"
+
+(* A style() query reads a computed value, so the [@property] registration that
+   supplies the initial value when nothing declares the property keeps the query
+   answerable. Chrome 146 paints [.z] green for the registration below and black
+   without it. *)
+let test_inline_style_query_keeps_registration () =
+  check_inline_case "a style() query keeps the registration it reads"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}@container \
+     style(--c: red){.z{color:green}}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}@container \
+     style(--c:red){.z{color:green}}"
+
+(* The other half of the guard: a style() query keeps the property it names, not
+   every property in sight, and a container name is a custom-ident that happens
+   to be spelled with two dashes, not a custom property. *)
+let test_inline_style_query_keeps_no_more () =
+  check_inline_case "a style() query keeps only the property it names"
+    ":root{--c:red;--other:blue}@container style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container style(--c:red){.z{color:green}}";
+  check_inline_case "a container name is not a reference to a custom property"
+    ":root{--c:red}@container --c (min-width:1px){.z{color:green}}"
+    "@container --c (min-width:1px){.z{color:green}}"
+
 let suite =
   ( "inline",
     [
@@ -472,4 +533,11 @@ let suite =
         test_inline_property_registration_dropped;
       Alcotest.test_case "inline vars reach a fixpoint on registrations" `Quick
         test_inline_property_idempotent;
+      Alcotest.test_case "inline vars keep the property a style() query reads"
+        `Quick test_inline_style_query_keeps_queried_property;
+      Alcotest.test_case
+        "inline vars keep the registration a style() query reads" `Quick
+        test_inline_style_query_keeps_registration;
+      Alcotest.test_case "inline vars keep no more than a style() query reads"
+        `Quick test_inline_style_query_keeps_no_more;
     ] )
