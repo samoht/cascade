@@ -1603,6 +1603,94 @@ let spec_page_recovery_warns_once_per_descriptor () =
   warns_exactly "@page { ; margin: 1cm }" 0;
   warns_exactly "@page { @top-center { content: \"x\" } margin: 1cm }" 0
 
+(* CSS Properties and Values API 1 sec. 2: [@property] holds the [syntax],
+   [inherits] and [initial-value] descriptors, and "unknown descriptors are
+   invalid and ignored". Dropping one costs that descriptor, not the
+   registration and not the sheet holding it. The discard follows CSS Syntax 3
+   sec. 5.4.4 for a declaration - up to the next top-level [;], a [{}] met on
+   the way counting as one component value of the value being skipped - and sec.
+   5.4.2 for an at-rule, which ends at its block or its [;]. Blink 146 keeps the
+   registration in every case below. *)
+let spec_lenient_recovery_property_descriptors () =
+  let registered =
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let body rest = "@property --x { syntax: \"<length>\"; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @property"
+    "@property --x { zzz: 1; syntax: \"<length>\"; inherits: false; \
+     initial-value: 0px }"
+    registered 1;
+  lenient_recover "unknown descriptor mid-body in @property"
+    (body "zzz: 1; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "unknown descriptor last in @property"
+    (body "inherits: false; initial-value: 0px; zzz: 1")
+    registered 1;
+  lenient_recover "curly block inside a dropped descriptor value"
+    (body "zzz: {1}; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "two curly blocks in a dropped descriptor value are one skip"
+    (body "zzz: {1}{2}; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "tokens after a curly block in a dropped descriptor value"
+    (body "zzz: {1} 2px; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "a run of stray tokens is dropped like a bad descriptor"
+    (body "!!!; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "selector-shaped item in @property is dropped alone"
+    (body ".a { b: c }; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "at-rule in @property ends at its block"
+    (body "@media screen { color: red } inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "at-rule with no block in @property ends at its semicolon"
+    (body "@media screen; inherits: false; initial-value: 0px")
+    registered 1;
+  (* A descriptor's value is its whole declaration, so anything left over makes
+     the declaration invalid rather than the leftover alone. Losing [inherits]
+     that way leaves the registration incomplete, which drops it - as it does in
+     Blink. *)
+  lenient_recover "trailing tokens invalidate the descriptor they follow"
+    (body "inherits: false bogus; initial-value: 0px")
+    "" 1;
+  lenient_recover "an important flag invalidates the descriptor it follows"
+    (body "inherits: false !important; initial-value: 0px")
+    "" 1;
+  lenient_recover "a later descriptor still overrides the one dropped"
+    (body "inherits: false !important; initial-value: 0px; inherits: true")
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}" 1
+
+(* CSS Syntax 3 sec. 5.4.3 "consume a block's contents" discards a [;] that no
+   declaration precedes rather than validating one, so a stray semicolon in an
+   [@property] body costs nothing. Blink 146 reads all three of these. *)
+let spec_property_skips_stray_semicolons () =
+  let registered =
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  lenient_recover "leading semicolon in @property"
+    "@property --x { ; syntax: \"<length>\"; inherits: false; initial-value: \
+     0px }"
+    registered 0;
+  lenient_recover "doubled semicolon in @property"
+    "@property --x { syntax: \"<length>\";; inherits: false; initial-value: \
+     0px }"
+    registered 0;
+  lenient_recover "trailing semicolon in @property"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: \
+     0px; }"
+    registered 0
+
+(* Each dropped [@property] descriptor reports once, and [~strict:true] rejects
+   exactly the inputs the lenient parse warned about. *)
+let spec_property_recovery_warns_once_per_descriptor () =
+  let body rest = "@property --x { syntax: \"<length>\"; " ^ rest ^ " }" in
+  warns_exactly (body "zzz: 1; inherits: false; initial-value: 0px") 1;
+  warns_exactly (body "zzz: {1}{2}; inherits: false; initial-value: 0px") 1;
+  warns_exactly (body "zzz: 1; yyy: 2; inherits: false; initial-value: 0px") 2;
+  warns_exactly (body "inherits: false; initial-value: 0px") 0;
+  warns_exactly (body ";; inherits: false; initial-value: 0px") 0
+
 let stylesheet_tests =
   [
     (* Core type tests *)
@@ -1699,6 +1787,15 @@ let stylesheet_tests =
     ( "spec page recovery warns once per dropped descriptor",
       `Quick,
       spec_page_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in an @property body",
+      `Quick,
+      spec_lenient_recovery_property_descriptors );
+    ( "spec @property skips stray semicolons",
+      `Quick,
+      spec_property_skips_stray_semicolons );
+    ( "spec property recovery warns once per dropped descriptor",
+      `Quick,
+      spec_property_recovery_warns_once_per_descriptor );
   ]
 
 (* Tests for newly added check functions *)
