@@ -17,9 +17,10 @@ CASCADE=_build/default/bin/main.exe sh test/inline/run.sh
 ```
 
 It looks for a headless Chrome on `PATH`, in `$CHROME`, or under the puppeteer
-cache, and skips cleanly if none is found (so it is a no-op in CI). `xtest.js`
-appends an extractor script, runs the browser with `--dump-dom`, and diffs the
-computed styles element by element.
+cache (highest version, ordered numerically), and skips cleanly if none is
+found (so it is a no-op in CI). `xtest.js` appends an extractor script, runs
+the browser with `--dump-dom`, and diffs the computed styles element by
+element.
 
 ## Reproducibility
 
@@ -37,6 +38,36 @@ over one unchanged pair of pages reported 14, 410, 14 and 14 differences.
 Freezing happens at fetch time, before `cascade apply` ever sees the page, so
 the document cascade resolves is the document the browser lays out. Pages live
 in the gitignored `pages/`; re-run `fetch.sh` to rebuild them.
+
+## What a count is comparable to
+
+Repeating on one machine is half of it. A count also has to say what produced
+it, and two of its three inputs sit outside the repository.
+
+The **browser** is one: Chrome versions disagree about computed styles, so a
+count is comparable only against another from the same engine. `run.sh` heads
+its output with the version it used. Set `CHROME_VERSION` to a substring of the
+expected version and the run stops unless the browser matches, which is how a
+comparison crosses machines; leaving it unset reports the version without
+demanding one, so a machine with a different build still runs.
+
+The **pages** are the other: `fetch.sh` downloads them live, and a CDN serves
+whatever it serves that day. Committing them would pin the bytes at the cost of
+about a megabyte of third-party CSS in every clone, kept fresh by hand, so the
+harness records them instead of pinning them. `fetch.sh` writes `pages/MANIFEST`
+with a sha256 per stage (the page off the wire, the CSS the CDN served, the
+frozen page), and `run.sh` prints the frozen page's hash in each real-page
+label. A count that moved because the site moved shows up as a changed hash
+next to it.
+
+The **canonical filter** is the third input, and it lives here. `canon_filter.exe`
+compares values the way cascade does, so `0%` against `0px`, or `red` against
+`rgb(255, 0, 0)`, is not reported. Comparing raw strings instead counts every
+such pair, which inflates the total into a number that reads like a result and
+is not one. `run.sh` therefore builds the filter through the checkout's own
+opam switch and proves it filters, on a pair that must be dropped and a pair
+that must survive, before measuring anything; a filter that is missing or wrong
+stops the run rather than downgrading it.
 
 ## Coverage
 

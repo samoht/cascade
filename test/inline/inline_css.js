@@ -4,6 +4,7 @@
 // in the headless browser without network access, so the differential test is
 // reproducible. Usage: node inline_css.js <page-url> <raw.html> <out.html>
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const [, , pageUrl, rawPath, outPath] = process.argv;
 
@@ -36,3 +37,7 @@ const style = '<style>' + css + '</style>';
 html = html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
 fs.writeFileSync(outPath, html);
 console.log('  wrote ' + outPath + ' (' + html.length + ' bytes, ' + hrefs.length + ' stylesheet(s))');
+// The stylesheet bytes are whatever the CDN served at this moment, and they
+// move independently of the page. Digest them on their own so fetch.sh can
+// record which CSS a later measurement was taken against.
+console.log('  css-sha256 ' + crypto.createHash('sha256').update(css).digest('hex'));
