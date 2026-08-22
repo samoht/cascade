@@ -7814,13 +7814,18 @@ val resolve_theme :
     [theme_defaults] resolves for it.
 
     [theme_defaults] maps a custom-property name to its value and is the source
-    of global theme-token definitions. Every [var()] reference that is undefined
-    in [stylesheet] and resolvable through [theme_defaults] - transitively, and
-    only when the whole chain closes without a cycle or dead end - is emitted as
-    a definition in the root-scope theme block: merged into an existing [:root]
-    / [:host] rule, or a fresh [:root]. A name with no [theme_defaults] value
-    (e.g. a runtime [--tw-*] variable) is left free, so non-theme variables are
-    gated out.
+    of global theme-token definitions. An answer binds only when the name and
+    the value make one custom-property declaration - a [<dashed-ident>] name and
+    a CSS Syntax 3 sec. 8.2 [<declaration-value>], as
+    {!Declaration.parse_custom_property} checks. Any other answer, such as one
+    carrying a [}] or a top-level [;], reads as no default at all and leaves the
+    reference live. Every [var()] reference that is undefined in [stylesheet]
+    and resolvable through [theme_defaults] - transitively, and only when the
+    whole chain closes without a cycle or dead end - is emitted as a definition
+    in the root-scope theme block: merged into an existing [:root] / [:host]
+    rule, or a fresh [:root]. A name with no [theme_defaults] value (e.g. a
+    runtime [--tw-*] variable) is left free, so non-theme variables are gated
+    out.
 
     Root scope is deliberate. Per CSS Custom Properties L1 a custom property is
     inherited and resolved per element at computed-value time, so [var(--x)]

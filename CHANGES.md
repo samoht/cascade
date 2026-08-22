@@ -69,6 +69,14 @@
   and position fallback origins never defined it for the element referencing
   it; and a theme guard the keep-set rejects is dropped instead of printed as
   a declaration the theme never selected (#317, #324, #327)
+- `Css.resolve_theme` binds a `theme_defaults` answer only when the name and
+  the value make one custom-property declaration. The resolver used to write
+  every answer into synthesised `:root { ... }` text and reparse it, so a value
+  carrying a `}`, a top-level `;` or an unterminated string could close the
+  block and add a rule, an at-rule or a second declaration to the output, or
+  take every other theme default down with it.
+  `Css.Declaration.parse_custom_property` is the checked constructor the
+  resolver builds each binding with (#421)
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults (#315)

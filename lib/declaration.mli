@@ -57,6 +57,18 @@ val parse_declaration : ?layer:string -> string -> string -> declaration option
     [layer] applies only to a custom property (a typed declaration has no
     layer). Unlike {!custom_property}, this parses the full property grammar. *)
 
+val parse_custom_property : string -> string -> declaration option
+(** [parse_custom_property name value] is {!parse_declaration} restricted to a
+    custom property whose [name] and [value] are safe to write into a rule
+    verbatim. It is [None] unless [name] is a [<dashed-ident>] that tokenizes
+    back to itself and [value] is one [<declaration-value>] (CSS Syntax 3 sec.
+    8.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched closing
+    bracket, no unterminated function or block, and no top-level [;].
+
+    Use it for a name or value that comes from outside the parser, where the
+    string may close the block it is placed in or start a second declaration.
+    {!custom_property} keeps such a string verbatim. *)
+
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 

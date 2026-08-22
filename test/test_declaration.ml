@@ -1538,6 +1538,55 @@ let custom_property_values () =
   check_declaration ~expected:"z-index:var(--spec-value,{color:red;})"
     "z-index: var(--spec-value, { color: red; })"
 
+(* [parse_custom_property] builds a declaration from a name and value that came
+   from outside the parser, so it takes only a pair that writes back as the one
+   declaration it claims to be: a [<dashed-ident>] name that tokenizes to
+   itself, and a CSS Syntax 3 sec. 8.2 [<declaration-value>]. *)
+let parse_custom_property_guard () =
+  let bind name value =
+    match parse_custom_property name value with
+    | Some d -> to_string ~minify:true d
+    | None -> "<rejected>"
+  in
+  List.iter
+    (fun (value, expected) ->
+      Alcotest.(check string) ("--x:" ^ value) expected (bind "--x" value))
+    [
+      (* One declaration value: a matched block, a [;] inside a string and a
+         comment all stay inside the declaration. *)
+      ("red", "--x:red");
+      ("0 0 var(--spacing) black", "--x:0 0 var(--spacing) black");
+      ("\"a;b\"", "--x:\"a;b\"");
+      ("{a:b;}", "--x:{a:b;}");
+      ("red/*", "--x:red");
+      (" ", "--x: ");
+      (* Not one declaration value: each of these closes the enclosing block,
+         starts a second declaration, or runs to end of input. *)
+      ("red}", "<rejected>");
+      ("red}.evil{color:lime", "<rejected>");
+      ("red}@media print{.x{color:red}", "<rejected>");
+      ("red;--y:lime", "<rejected>");
+      ("red)", "<rejected>");
+      ("red]", "<rejected>");
+      ("rgb(1,2,3", "<rejected>");
+      ("{a:b", "<rejected>");
+      ("\"abc", "<rejected>");
+      ("", "<rejected>");
+    ];
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check string) (name ^ ":red") expected (bind name "red"))
+    [
+      ("--x", "--x:red");
+      ("--color-red-500", "--color-red-500:red");
+      ("--x;y", "<rejected>");
+      ("--x}y", "<rejected>");
+      ("--x y", "<rejected>");
+      ("--", "<rejected>");
+      ("-x", "<rejected>");
+      ("color", "<rejected>");
+    ]
+
 let spec_custom_tokens () =
   check_specified_value "custom property token stream specified"
     "--tokens: [a, b] (c) { d: e; }" "[a, b] (c) { d: e; }";
@@ -2775,6 +2824,8 @@ let declaration_tests =
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
     test_case "custom property values" `Quick custom_property_values;
+    test_case "parse_custom_property rejects an escaping pair" `Quick
+      parse_custom_property_guard;
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
     test_case "vendor prefixes" `Quick vendor_prefixes;

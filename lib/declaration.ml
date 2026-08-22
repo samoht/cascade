@@ -2295,6 +2295,57 @@ let parse_declaration ?layer property value =
       try read_declaration (Cursor.of_string s)
       with Cursor.Parse_error _ -> None)
 
+(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
+   values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
+   closing bracket. A component breaking one of those does not stay inside the
+   declaration it is written into: it closes the enclosing block, or turns the
+   rest of the stylesheet into a string. *)
+let rec component_stays_in_declaration = function
+  | Component.Preserved
+      {
+        kind =
+          ( Token.Close _ | Token.Bad_string | Token.Bad_url
+          | Token.String { terminated = false; _ } );
+        _;
+      } ->
+      false
+  | Component.Preserved _ -> true
+  | Component.Block { node = { closed; value; _ }; _ } ->
+      closed && List.for_all component_stays_in_declaration value
+  | Component.Func { node = { terminated; arguments; _ }; _ } ->
+      terminated && List.for_all component_stays_in_declaration arguments
+
+(* A top-level [;] ends the declaration, so the tail becomes a second one. It is
+   only a stop at top level: [(a;b)] keeps it inside the block. *)
+let is_top_level_stop = function
+  | Component.Preserved { kind = Token.Semicolon; _ } -> true
+  | _ -> false
+
+let is_declaration_value value =
+  match Cursor.remaining (Cursor.of_string value) with
+  | [] -> false
+  | components ->
+      List.for_all
+        (fun c ->
+          (not (is_top_level_stop c)) && component_stays_in_declaration c)
+        components
+
+(* A name is written back verbatim, so it binds only when it tokenizes as the
+   single ident it claims to be. An escape (CSS Syntax 3 sec. 4.3.7) can carry a
+   [;] or a [}] into a name read from a [var()] reference. *)
+let is_writable_custom_property_name name =
+  is_custom_property_name name
+  &&
+  match Cursor.remaining (Cursor.of_string name) with
+  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
+      String.equal ident name
+  | _ -> false
+
+let parse_custom_property name value =
+  if is_writable_custom_property_name name && is_declaration_value value then
+    parse_declaration name value
+  else None
+
 let read t =
   match read_declaration t with
   | Some d -> d

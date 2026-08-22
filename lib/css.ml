@@ -1082,18 +1082,38 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
   | Option.None -> ());
   Hashtbl.fold (fun k v acc -> (bare_theme_name k, v) :: acc) resolved []
 
-let theme_defaults_source defaults =
-  let body =
-    defaults
-    |> List.map (fun (name, value) ->
-        let n =
-          if String.length name >= 2 && String.sub name 0 2 = "--" then name
-          else "--" ^ name
-        in
-        n ^ ":" ^ value)
-    |> String.concat ";"
+(* A theme default is CSS text the caller supplies, so a pair binds only when it
+   makes exactly one custom-property declaration. A name or value that would
+   escape it - a [}] closing the block, a top-level [;] starting a second
+   declaration, an unterminated string - is not a binding this library can
+   write, so the name stays unresolved and its [var()] reference stays live. *)
+let theme_default_declaration (name, value) =
+  let name =
+    if String.length name >= 2 && String.sub name 0 2 = "--" then name
+    else "--" ^ name
   in
-  ":root{" ^ body ^ "}"
+  Declaration.parse_custom_property name value
+
+(* [lookup] restricted to the answers that bind: anything else reads as [None],
+   the "no default for this name" answer the rest of the resolver
+   understands. *)
+let bindable_theme_defaults lookup name =
+  match lookup name with
+  | Option.Some value
+    when Option.is_some (theme_default_declaration (name, value)) ->
+      Option.Some value
+  | _ -> Option.None
+
+(* The fresh root-scope theme block, used when no [:root] / [:host] rule is
+   available to merge into. *)
+let root_theme_rule declarations =
+  Stylesheet.Rule
+    {
+      selector = Selector.of_string ":root";
+      declarations;
+      nested = [];
+      merge_key = None;
+    }
 
 (* The declarations a statement contributes to ordinary element matching. Unlike
    [Stylesheet.statement_declarations], which reaches every declaration in the
@@ -1227,20 +1247,11 @@ let emit_transitive_theme_refs ~theme_defaults stylesheet =
         resolve_theme_defaults ~declared ~lookup
           (referenced_var_names stylesheet)
       in
-      let injected =
-        if to_emit = [] then []
-        else
-          match of_string ~strict:false (theme_defaults_source to_emit) with
-          | Ok { stylesheet = root_stmts; _ } -> root_stmts
-          | Error _ -> []
-      in
-      let injected_decls =
-        match injected with [ Stylesheet.Rule r ] -> r.declarations | _ -> []
-      in
+      let injected_decls = List.filter_map theme_default_declaration to_emit in
       if injected_decls = [] then stylesheet
       else
         let result, merged = merge_into_root_scope injected_decls stylesheet in
-        if merged then result else injected @ stylesheet
+        if merged then result else root_theme_rule injected_decls :: stylesheet
 
 (* Inline only the theme defaults the resolver resolved, leaving every other
    [var()] live. [Inline.vars] alone would also collapse [var(--x, fallback)]
@@ -1276,17 +1287,15 @@ let inline_theme_defaults ?theme ?theme_defaults ~keep_set stylesheet =
     let inject =
       List.filter (fun (n, _) -> not (Hashtbl.mem declared n)) defaults
     in
-    if inject = [] then Inline.vars ~keep_vars stylesheet
-    else
-      match of_string ~strict:false (theme_defaults_source inject) with
-      | Ok { stylesheet = root_stmts; _ } ->
-          (* Do NOT run the closed-world [statements_for_inline] cleanup: this
-             is a partial inline, so it must preserve unrelated [@property]
-             registrations and [@layer] structure (the cleanup strips every
-             [@property] and flattens every [@layer], dropping author
-             registrations like an unrelated [@property --tw-foo]). *)
-          Inline.vars ~keep_vars (root_stmts @ stylesheet)
-      | Error _ -> stylesheet
+    match List.filter_map theme_default_declaration inject with
+    | [] -> Inline.vars ~keep_vars stylesheet
+    | decls ->
+        (* Do NOT run the closed-world [statements_for_inline] cleanup: this is
+           a partial inline, so it must preserve unrelated [@property]
+           registrations and [@layer] structure (the cleanup strips every
+           [@property] and flattens every [@layer], dropping author
+           registrations like an unrelated [@property --tw-foo]). *)
+        Inline.vars ~keep_vars (root_theme_rule decls :: stylesheet)
 
 (* Theme resolution as an explicit AST step. [theme] names the variables whose
    [var()] references should survive (handed to [Inline.vars]' keep-set) and
@@ -1296,6 +1305,7 @@ let inline_theme_defaults ?theme ?theme_defaults ~keep_set stylesheet =
    [emit_transitive_theme_refs] then injects root definitions for references the
    AST collector could not see. *)
 let resolve_theme ?theme ?theme_defaults stylesheet =
+  let theme_defaults = Option.map bindable_theme_defaults theme_defaults in
   let stylesheet = resolve_theme_guards_in_stmts ~theme stylesheet in
   let keep_set =
     match theme with None -> Pp.String_set.empty | Some set -> set
