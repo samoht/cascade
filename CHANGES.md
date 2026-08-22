@@ -91,6 +91,15 @@
   discarded to the end of its block rather than to the next `;`, and a
   selector-shaped item in a margin box, such as `@page { @top-center { .a { b:
   c } } }`, no longer loops forever (#398)
+- A descriptor an `@property` body rejects is dropped on its own rather than
+  taking the registration and the stylesheet holding it. `@property --x { syntax:
+  "<length>"; inherits: false; initial-value: 0px; zzz: 1 }` parsed to nothing,
+  and so did a stray `;` between two valid descriptors. CSS Properties and Values
+  API 1 sec. 2 ignores an unknown descriptor, CSS Syntax 3 sec. 5.4.3 discards a
+  `;` with no declaration to validate, and Blink 146 reads the registration in
+  both. Tokens left after a descriptor's value, such as a trailing `!important`,
+  now invalidate the declaration they follow rather than the leftover alone
+  (#399)
 
 ### Minification
 
