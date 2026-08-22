@@ -2930,6 +2930,22 @@ let spec_nesting_empty_layer_keeps_block () =
   test_nesting_idempotent ".a { @layer n { } }";
   test_nesting_roundtrip ~expected:"@layer n;" "@layer n { }"
 
+(* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
+   wrapped in a nested declarations rule, which keeps its place among the nested
+   rules. The spec's own worked example names the hoisted spelling as NOT
+   equivalent, and Blink and WebKit both compute the later declaration. *)
+let spec_nesting_declaration_after_nested_rule () =
+  test_nesting_roundtrip ~expected:".a{color:red;& b{color:blue}color:green}"
+    ".a { color: red; & b { color: blue } color: green }";
+  test_nesting_roundtrip
+    ~expected:".a{@supports(color:red){color:blue}color:green}"
+    ".a { @supports (color: red) { color: blue } color: green }";
+  test_nesting_roundtrip ~expected:".a{c:1;& b{d:2}e:3;f:4;& g{h:5}i:6}"
+    ".a { c: 1; & b { d: 2 } e: 3; f: 4; & g { h: 5 } i: 6 }";
+  test_nesting_idempotent ".a { color: red; & b { color: blue } color: green }";
+  test_nesting_idempotent
+    ".a { @media (min-width: 1px) { padding: 2rem } color: green }"
+
 let spec_nesting_selector_edges () =
   assert_minify_and_optimize
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
@@ -7032,6 +7048,9 @@ let additional_tests =
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
+    ( "spec nesting declaration after a nested rule keeps its place",
+      `Quick,
+      spec_nesting_declaration_after_nested_rule );
     ( "spec nesting @layer block holds nesting content",
       `Quick,
       spec_nesting_layer_block );
