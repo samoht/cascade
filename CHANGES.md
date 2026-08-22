@@ -180,6 +180,11 @@
   written with: `--n: 1.4285714` came out as `1.42857`. The six-figure budget
   stays on the `calc()` the printer folds itself, so `calc(1 / 3)` is still
   `.333333` (#354)
+- A math function inside `calc()` keeps the unit CSS Values 4 sec. 10.7 gives
+  it: `calc(hypot(1px, 1px))` came out as `1.41421356`, a declaration browsers
+  and cascade's own reader both drop. `abs()` and `hypot()` now carry their
+  arguments' unit out, the inverse trig functions carry `deg`, and a call whose
+  operands mix units keeps its spelling (#362)
 - An empty `@layer name` inside a style rule keeps its block form. The
   statement form is a layer-order declaration, which no style rule accepts, so
   `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor

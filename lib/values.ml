@@ -802,13 +802,111 @@ and eval_math_fn fn =
         a
   | Abs_n a -> unary Float.abs a
 
+(* What a static math function reduces to: a plain coefficient, or one that
+   carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
+   of their arguments, so a typed [calc()] that reduces one has to learn the
+   unit here; [eval_math_fn] answers with the coefficient alone, which is how
+   [calc(hypot(3px, 4px))] came out as a bare [5]. *)
+type math_result = Scalar of float | United of float * string
+
+let math_result_unit = function
+  | Scalar _ -> Option.none
+  | United (_, unit) -> Option.some unit
+
+let math_result_value = function Scalar v | United (v, _) -> v
+
+let math_result_op op a b =
+  match op with
+  | Add -> Option.some (a +. b)
+  | Sub -> Option.some (a -. b)
+  | Mul -> Option.some (a *. b)
+  | Div when b <> 0. -> Option.some (a /. b)
+  | Div -> Option.none
+
+let combine_math_result op l r =
+  let united unit = Option.map (fun v -> United (v, unit)) in
+  let scalar = Option.map (fun v -> Scalar v) in
+  match (l, op, r) with
+  | Scalar a, _, Scalar b -> scalar (math_result_op op a b)
+  | United (a, u), (Add | Sub), United (b, v) when String.equal u v ->
+      united u (math_result_op op a b)
+  | United (a, u), (Mul | Div), Scalar b -> united u (math_result_op op a b)
+  | Scalar a, Mul, United (b, u) -> united u (math_result_op Mul a b)
+  | _ -> Option.none
+
+(* CSS Values 4 sec. 10.11 types an operand tree: [+] and [-] need matching
+   units, [*] takes at most one dimensioned operand and [/] a unitless divisor.
+   Anything else is not an operand Cascade can reduce to a single value. *)
+let rec math_arg_result (arg : math_arg) : math_result option =
+  match arg with
+  | Lit f -> Option.some (Scalar f)
+  | Dim (f, unit) -> Option.some (United (f, String.lowercase_ascii unit))
+  | Const c -> Option.some (Scalar (math_const_value c))
+  | Var_arg _ -> Option.none
+  | Parens_arg inner -> math_arg_result inner
+  | Math_call fn -> math_fn_result fn
+  | Op (l, op, r) -> (
+      match (math_arg_result l, math_arg_result r) with
+      | Some l, Some r -> combine_math_result op l r
+      | _ -> Option.none)
+
+and math_fn_result (fn : math_fn) : math_result option =
+  match fn with
+  | Abs_n a -> (
+      match math_arg_result a with
+      | Some (Scalar v) -> Option.some (Scalar (Float.abs v))
+      | Some (United (v, unit)) -> Option.some (United (Float.abs v, unit))
+      | None -> Option.none)
+  | Hypot args -> (
+      let results = List.filter_map math_arg_result args in
+      match results with
+      | first :: rest
+        when List.compare_lengths results args = 0
+             && List.for_all
+                  (fun r ->
+                    Option.equal String.equal (math_result_unit r)
+                      (math_result_unit first))
+                  rest ->
+          let square acc r =
+            let v = math_result_value r in
+            acc +. (v *. v)
+          in
+          let root = Float.sqrt (List.fold_left square 0. results) in
+          Option.some
+            (match math_result_unit first with
+            | Some unit -> United (root, unit)
+            | None -> Scalar root)
+      | _ -> Option.none)
+  (* Every other math function is typed [<number>] in, [<number>] out, bar the
+     inverse trig functions, whose [<angle>] result only the angle evaluator can
+     place. *)
+  | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
+
 (* CSS Values 4 sec. 10.9.2: NaN belongs to a calculation tree and has no leaf
    spelling outside one, so folding a math function down to a NaN would lose the
    only form the value can take. Leave the function in place. *)
-let fold_math_fn fn =
-  match eval_math_fn fn with
-  | Some v when Float.is_nan v -> Option.None
+let fold_math_result = function
+  | Some r when Float.is_nan (math_result_value r) -> Option.none
   | result -> result
+
+(* A NaN coefficient may stay: it lands in the tree as a [Num], which sec.
+   10.7.2 spells [NaN]. One that has picked up a unit would rebuild a leaf
+   instead, and that leaf has no spelling, so the call keeps its own. *)
+let fold_united_nan = function
+  | Some (United (v, _)) when Float.is_nan v -> Option.none
+  | result -> result
+
+(* Reduce a math function inside a typed [calc()]: a result CSS types as the
+   arguments' own type rebuilds this type's leaf, a [<number>] result stays a
+   [Num] operand, and a call that does not reduce - or reduces to a unit this
+   type cannot hold - keeps its spelling rather than shedding the unit. *)
+let typed_math_fn : type a. (string -> float -> a option) -> math_fn -> a calc =
+ fun of_unit fn ->
+  match fold_math_result (math_fn_result fn) with
+  | Some (United (v, unit)) -> (
+      match of_unit unit v with Some leaf -> Val leaf | None -> Math_fn fn)
+  | Some (Scalar v) -> Num v
+  | None -> Math_fn fn
 
 let rec math_arg_contains_var = function
   | Lit _ | Dim _ | Const _ -> false
@@ -1018,7 +1116,12 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
   | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      (* This fold carries no type to rebuild a unit with, so a call CSS types
+         as its arguments ([abs()], [hypot()]) keeps its spelling rather than
+         collapsing to a coefficient the unit has fallen off. *)
+      match fold_math_result (math_fn_result fn) with
+      | Some (Scalar v) -> Num v
+      | Some (United _) | None -> Math_fn fn)
   | Nested inner ->
       unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_calc ~ctx inner)
   | Parens inner ->
@@ -1435,19 +1538,6 @@ let length_scale ?(exact = true) op v n =
           else Option.none
     | _ -> Option.none
 
-(* CSS Values 4 sec. 10.6: [abs()] preserves the input's type, so
-   [abs(<length>)] returns a [<length>]. The generic [Math_fn -> Num] reduction
-   strips the unit; reconstruct a length [Val] when the argument's [Dim] carries
-   one. *)
-let length_of_math_fn (fn : math_fn) : length option =
-  match fn with
-  | Abs_n (Dim (n, unit)) ->
-      Some (length_from_calc_unit (String.lowercase_ascii unit) (Float.abs n))
-  | _ -> None
-
-let length_math_fn_value (fn : math_fn) : float option =
-  match fn with Sin _ | Cos _ -> None | fn -> eval_math_fn fn
-
 (* CSS Values 4 sec. 10.10: identity-rule simplifications around a runtime
    substitution would change the substituted-grammar context. *)
 (* A [-webkit-] / [-moz-] intrinsic sizing keyword, the legacy fallback an
@@ -1491,11 +1581,17 @@ let length_round (l : length) : length =
           if rounded = value then l else length_from_calc_unit unit rounded
       | None -> l)
 
+(* CSS Values 4 sec. 10.6: [abs()] and [hypot()] preserve the input's type, so
+   [hypot(<length>, <length>)] returns a [<length>] and the [Val] is rebuilt
+   from the unit [math_fn_result] carries out. *)
 let length_calc_math_fn (fn : math_fn) : length calc =
-  match length_of_math_fn fn with
-  | Some l -> Val l
-  | None -> (
-      match length_math_fn_value fn with Some v -> Num v | None -> Math_fn fn)
+  match (fn, fold_united_nan (math_fn_result fn)) with
+  (* [sin()] / [cos()] reduce to a coefficient no shorter than the call, and it
+     is not a [<length>] either way, so the call stays. *)
+  | (Sin _ | Cos _), _ -> Math_fn fn
+  | _, Some (United (v, unit)) -> Val (length_from_calc_unit unit v)
+  | _, Some (Scalar v) -> Num v
+  | _, None -> Math_fn fn
 
 let eval_length_calc ?(ctx = default_calc_ctx) (c : length calc) : length calc =
   eval_typed_calc ~math_fn:length_calc_math_fn
@@ -1885,19 +1981,6 @@ let lp_scale ?(exact = true) op (v : length_percentage) n :
       else Some (Pct (a /. n) : length_percentage)
   | _ -> None
 
-(* Same unit-preserving trick as [length_of_math_fn] but for the
-   length-percentage type: [abs(-5%)] keeps the percentage shape. *)
-let lp_of_math_fn (fn : math_fn) : length_percentage option =
-  match fn with
-  | Abs_n (Dim (n, "%")) -> Some (Pct (Float.abs n))
-  | Abs_n (Dim (n, _)) ->
-      Option.map
-        (fun l -> (Length l : length_percentage))
-        (length_of_math_fn fn)
-      |> Option.value ~default:(Length (Px (Float.abs n)))
-      |> Option.some
-  | _ -> None
-
 let lp_is_zero : length_percentage -> bool = function
   | Length l -> length_is_zero l
   | Pct f -> f = 0.
@@ -1907,11 +1990,16 @@ let lp_round : length_percentage -> length_percentage = function
   | Length l -> Length (length_round l)
   | lp -> lp
 
+(* Same unit-preserving rule as [length_calc_math_fn], plus the percentage shape
+   [abs(-5%)] keeps. *)
 let lp_calc_math_fn (fn : math_fn) : length_percentage calc =
-  match lp_of_math_fn fn with
-  | Some lp -> Val lp
-  | None -> (
-      match length_math_fn_value fn with Some v -> Num v | None -> Math_fn fn)
+  match fold_united_nan (math_fn_result fn) with
+  | Some (United (v, "%")) -> Val (Pct v : length_percentage)
+  | _ -> (
+      match length_calc_math_fn fn with
+      | Val l -> Val (Length l : length_percentage)
+      | Num n -> Num n
+      | _ -> Math_fn fn)
 
 let eval_lp_calc ?(ctx = default_calc_ctx) (c : length_percentage calc) :
     length_percentage calc =
@@ -3683,11 +3771,16 @@ let pct_is_zero : percentage -> bool = function
   | Pct f | Num f -> f = 0.
   | _ -> false
 
+let pct_calc_math_fn (fn : math_fn) : percentage calc =
+  typed_math_fn
+    (fun unit v ->
+      if String.equal unit "%" then Option.some (Pct v : percentage)
+      else Option.none)
+    fn
+
 let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
     percentage calc =
-  eval_typed_calc
-    ~math_fn:(fun fn ->
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  eval_typed_calc ~math_fn:pct_calc_math_fn
     ~scale:(fun ~exact op v n -> pct_scale ~exact op v n)
       (* [Pp.pct] / [Pp.float] print a [<percentage>] or [<number>] coefficient
          in full in both modes, so there is no budget to apply here. *)
@@ -3733,11 +3826,18 @@ let time_round : duration -> duration = function
   | Ms f -> Ms (round_computed f)
   | d -> d
 
+let time_calc_math_fn (fn : math_fn) : duration calc =
+  typed_math_fn
+    (fun unit v ->
+      match unit with
+      | "s" -> Option.some (S v : duration)
+      | "ms" -> Option.some (Ms v : duration)
+      | _ -> Option.none)
+    fn
+
 let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     =
-  eval_typed_calc
-    ~math_fn:(fun fn ->
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  eval_typed_calc ~math_fn:time_calc_math_fn
     ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
     ~combine:time_combine ~round:time_round ~is_zero:time_is_zero
     ~zero:(Val (S 0.) : duration calc)
@@ -3789,10 +3889,27 @@ let angle_round : angle -> angle = function
   | Grad f -> Grad (round_computed f)
   | a -> a
 
+let angle_calc_math_fn (fn : math_fn) : angle calc =
+  match fn with
+  (* CSS Values 4 sec. 10.9: the inverse trig functions return an [<angle>],
+     which [eval_math_fn] reports in degrees. *)
+  | Asin _ | Acos _ | Atan _ | Atan2 _ -> (
+      match eval_math_fn fn with
+      | Some v when not (Float.is_nan v) -> Val (Deg v : angle)
+      | Some _ | None -> Math_fn fn)
+  | fn ->
+      typed_math_fn
+        (fun unit v ->
+          match unit with
+          | "deg" -> Option.some (Deg v : angle)
+          | "rad" -> Option.some (Rad v : angle)
+          | "turn" -> Option.some (Turn v : angle)
+          | "grad" -> Option.some (Grad v : angle)
+          | _ -> Option.none)
+        fn
+
 let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
-  eval_typed_calc
-    ~math_fn:(fun fn ->
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  eval_typed_calc ~math_fn:angle_calc_math_fn
     ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
     ~combine:angle_combine ~round:angle_round ~is_zero:angle_is_zero
     ~zero:(Val (Deg 0.)) ~ctx c
@@ -3929,11 +4046,16 @@ let np_is_zero : number_percentage -> bool = function
   | Pct f | Num f -> f = 0.
   | _ -> false
 
+let np_calc_math_fn (fn : math_fn) : number_percentage calc =
+  typed_math_fn
+    (fun unit v ->
+      if String.equal unit "%" then Option.some (Pct v : number_percentage)
+      else Option.none)
+    fn
+
 let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
     number_percentage calc =
-  eval_typed_calc
-    ~math_fn:(fun fn ->
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  eval_typed_calc ~math_fn:np_calc_math_fn
     ~scale:(fun ~exact op v n -> np_scale ~exact op v n)
       (* A [<number>] / [<percentage>] coefficient prints in full. *)
     ~combine:np_combine ~round:Fun.id ~is_zero:np_is_zero
@@ -7145,10 +7267,14 @@ let alpha_is_zero : alpha -> bool = function
   | Num f | Pct f -> f = 0.
   | _ -> false
 
+let alpha_calc_math_fn (fn : math_fn) : alpha calc =
+  typed_math_fn
+    (fun unit v ->
+      if String.equal unit "%" then Option.some (Pct v : alpha) else Option.none)
+    fn
+
 let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
-  eval_typed_calc
-    ~math_fn:(fun fn ->
-      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+  eval_typed_calc ~math_fn:alpha_calc_math_fn
     ~scale:(fun ~exact op v n -> alpha_scale ~exact op v n)
       (* An alpha coefficient prints in full through [Pp.float] / [Pp.pct]. *)
     ~combine:alpha_combine ~round:Fun.id ~is_zero:alpha_is_zero
