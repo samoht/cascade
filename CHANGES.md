@@ -63,6 +63,11 @@
   `.a{@supports (color:red){color:blue}@supports (color:red){color:green}}`
   minified to `.a{color:#00fcolor:green}`, which browsers and cascade's own
   reader reject, losing the declaration (#370)
+- `--minify` spends less time deciding whether two rules conflict, for the same
+  output. A rule's overlap keys are sorted and deduplicated once, so the
+  conflict test walks the two key lists in step instead of scanning one per
+  element of the other, and collecting them no longer rescans what it has
+  already collected (#422)
 
 ### Custom properties
 
