@@ -92,6 +92,11 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- An empty `@-moz-document`, `@when` or `@else` is dropped, as an empty
+  `@media` already was: a conditional group rule with no contents applies
+  nothing whatever its condition. An empty `@when` or `@else` stays while a
+  later `@else` binds to it, since dropping the antecedent would leave a bare
+  `@else` that no parser accepts (#396)
 
 ### Custom properties
 

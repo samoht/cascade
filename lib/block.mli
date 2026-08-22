@@ -51,7 +51,14 @@ val drop_redundant_layer_decls :
 (** Drop layer declarations whose ordering is already established. *)
 
 val drop_empty_rules : Stylesheet.statement list -> Stylesheet.statement list
-(** Drop empty rules and empty conditional wrappers. *)
+(** Drop the statements of a block that contribute nothing: a rule with no
+    declarations and no nested rules, a rule whose selector
+    {!Selector.matches_nothing}, a conditional group rule with an empty body,
+    and an empty [@scope], [@starting-style] or [@page] box. An empty [@when] or
+    [@else] goes only when no [@else] chains onto it, since css-conditional-5
+    sec. 3 binds an [@else] to the branch before it. An empty [@layer] stays,
+    the name still ordering the layer, and so does an empty origin wrapper,
+    which gates nothing. *)
 
 val drop_misplaced_imports :
   Stylesheet.statement list -> Stylesheet.statement list

@@ -447,26 +447,53 @@ let drop_redundant_layer_decls stmts =
   in
   loop [] [] stmts
 
-(* Main statement processing function with layer optimization *)
 (* CSS Cascade 6.1: an empty rule (no declarations, no nested rules) contributes
-   nothing, so drop it under [~optimize:true]; an empty [@media]/[@supports]/
-   [@container]/[@scope]/[@starting-style] body is likewise removed. An empty
-   named [@layer] survives as a [Layer_decl] since the name still orders the
-   layer (CSS Cascade L6 6.4). *)
-let drop_empty_rules stmts =
-  list_filter_preserve
-    (function
-      | Rule { declarations = []; nested = []; _ } -> false
-      | Rule { selector; _ } when Selector.matches_nothing selector -> false
-      | Media (_, []) -> false
-      | Supports (_, []) -> false
-      | Container (_, _, []) -> false
-      | Scope (_, _, []) -> false
-      | Starting_style [] -> false
-      | Page (_, []) -> false
-      | Page_with_margins (_, [], []) -> false
-      | _ -> true)
-    stmts
+   nothing, so drop it under [~optimize:true]. A conditional group rule applies
+   its contents when its condition holds (CSS Conditional 3 sec. 3), so an empty
+   one applies nothing whatever the condition and goes the same way, as does an
+   empty [@scope], [@starting-style] or [@page] box. An empty named [@layer]
+   survives as a [Layer_decl] since the name still orders the layer (CSS Cascade
+   L6 6.4), and an empty [Origin] survives because it gates nothing and records
+   where a block came from. *)
+let is_empty_statement ~chained = function
+  | Rule { declarations = []; nested = []; _ } -> true
+  | Rule { selector; _ } -> Selector.matches_nothing selector
+  | Media (_, []) -> true
+  | Supports (_, []) -> true
+  | Container (_, _, []) -> true
+  | Moz_document (_, []) -> true
+  | Scope (_, _, []) -> true
+  | Starting_style [] -> true
+  | Page (_, []) -> true
+  | Page_with_margins (_, [], []) -> true
+  (* css-conditional-5 sec. 3 binds an [@else] to the [@when] or [@else] before
+     it, so an empty branch is only inert when nothing chains onto it: dropping
+     an antecedent leaves a bare [@else] that no parser accepts, and the branch
+     that followed stops applying. *)
+  | (When (_, []) | Else (_, [])) when not chained -> true
+  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Property _ | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
+  | Moz_document _ | When _ | Else _ | Starting_style _ | Supports_condition _
+  | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+  | Font_palette_values _ | Font_feature_values _ | View_transition _
+  | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      false
+
+(* The tail is filtered first, so a branch is judged against the [@else] that
+   survives rather than the one written: an empty [@when] whose only [@else] is
+   itself empty goes with it in one pass. *)
+let rec drop_empty_rules stmts =
+  match stmts with
+  | [] -> []
+  | stmt :: rest ->
+      let rest' = drop_empty_rules rest in
+      let chained =
+        match rest' with Else _ :: _ -> true | [] | _ :: _ -> false
+      in
+      if is_empty_statement ~chained stmt then rest'
+      else if rest' == rest then stmts
+      else stmt :: rest'
 
 (* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
    and may interleave with [@charset] / [@import] / [@namespace], so a

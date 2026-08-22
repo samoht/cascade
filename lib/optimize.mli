@@ -101,7 +101,9 @@ val drop_unknown_at_rules : t -> t
 val drop_empty_rules : t -> t
 (** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
     is empty (no declarations and no nested rules), and rules whose selector
-    {!Selector.matches_nothing}, which no element can ever be styled by. *)
+    {!Selector.matches_nothing}, which no element can ever be styled by. An
+    empty [@when] or [@else] stays while a later [@else] binds to it, and an
+    empty [@layer] or origin wrapper always stays. *)
 
 (** {1 Edge Model} *)
 
