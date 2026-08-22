@@ -634,9 +634,10 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
 
    [keep_layers] leaves the [@layer] wrappers and declarations standing.
    Dropping them replays the layer stack as document order, which only preserves
-   the cascade once every layered competition has been resolved; when
-   {!Inline.layer_order} cannot say what that order is, none of them has
-   been. *)
+   the cascade once every layered competition has been resolved: the layered
+   custom properties by the fold {!Inline.vars} runs, and the rest by the stack
+   and document order already agreeing, which is what
+   {!Inline.flattening_layers_is_safe} answers. *)
 let rec statements_for_inline ~live ~keep_layers block =
   List.concat_map (statement_for_inline ~live ~keep_layers) block
 
@@ -706,7 +707,7 @@ let inline_vars ?keep_vars ?warn stylesheet =
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
   let live = Inline.mentioned_custom_names substituted in
-  let keep_layers = Option.is_none (Inline.layer_order stylesheet) in
+  let keep_layers = not (Inline.flattening_layers_is_safe substituted) in
   statements_for_inline ~live ~keep_layers substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a

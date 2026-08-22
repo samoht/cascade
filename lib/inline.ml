@@ -1228,6 +1228,162 @@ let layer_order stylesheet : string list option =
   walk ~placed:true "" stylesheet;
   if !undecided then None else Some (List.rev !order)
 
+module Slot_table = Hashtbl.Make (struct
+  type t = Shorthand.overlap_key
+
+  let equal = Shorthand.overlap_key_equal
+  let hash = Shorthand.overlap_key_hash
+end)
+
+(* One declaration's stake in one cascade slot: where the layer stack ranks it,
+   and where specificity and document order leave it once the wrappers are gone.
+   [index] keeps both orders total, so two claims a single rule writes never
+   compare equal. *)
+type layer_claim = {
+  rank : int;
+  position : int;
+  specificity : Selector.specificity;
+  important : bool;
+  index : int;
+}
+
+(* Where specificity and document order leave two claims once the wrappers are
+   gone. Ascending, so the last claim standing is the one that wins. *)
+let compare_flattened a b =
+  match Bool.compare a.important b.important with
+  | 0 -> (
+      match Selector.compare_specificity a.specificity b.specificity with
+      | 0 -> (
+          match Int.compare a.position b.position with
+          | 0 -> Int.compare a.index b.index
+          | order -> order)
+      | order -> order)
+  | order -> order
+
+(* And where the layer stack leaves them. Importance outranks the stack and
+   comes through flattening untouched, so it settles a pair either way; between
+   two layers the stack decides, reversed for important declarations (CSS
+   Cascade 5 sec. 6.4.2); inside one layer the same things decide as after. *)
+let compare_layered a b =
+  match Bool.compare a.important b.important with
+  | 0 ->
+      let rank =
+        if a.important then Int.compare b.rank a.rank
+        else Int.compare a.rank b.rank
+      in
+      if rank <> 0 then rank else compare_flattened a b
+  | order -> order
+
+(* Two total orders over the same claims are the same order exactly when one's
+   sequence is sorted under the other, so whatever subset of them an element
+   matches, it keeps the winner it had. *)
+let slot_survives_flattening claims =
+  let rec ascending = function
+    | a :: (b :: _ as rest) -> compare_flattened a b < 0 && ascending rest
+    | _ -> true
+  in
+  ascending (List.stable_sort compare_layered claims)
+
+(* A selector list matches an element through one branch at a time, and it is
+   that branch's specificity the cascade weighs. *)
+let selector_specificities selector =
+  match Selector.as_list selector with
+  | Some branches -> List.map Selector.specificity branches
+  | None -> [ Selector.specificity selector ]
+
+(* Record what one declaration stakes in every slot it writes. [false] when it
+   is broad enough that no footprint tells it apart from anything. *)
+let add_claim ~slots ~index ~rank ~position ~specificities decl =
+  if Shorthand.declaration_is_broad decl then false
+  else begin
+    let important = Declaration.is_important decl in
+    List.iter
+      (fun specificity ->
+        incr index;
+        let claim =
+          { rank; position; specificity; important; index = !index }
+        in
+        List.iter
+          (fun slot ->
+            let prev =
+              Option.value ~default:[] (Slot_table.find_opt slots slot)
+            in
+            Slot_table.replace slots slot (claim :: prev))
+          (Shorthand.declaration_overlap_keys decl))
+      specificities;
+    true
+  end
+
+(* Every declaration's stake in the slots it writes, indexed by slot, or [None]
+   for a sheet holding what this does not reach: an anonymous layer, another
+   origin's stack or a [@scope] block's proximity rule, a nested rule whose
+   subject it does not resolve, a declaration broad enough to write any slot at
+   all, or anything but a style rule inside a layer, [@keyframes] and friends
+   included, whose name resolution the stack also orders. *)
+let layer_claims ~ranks ~unlayered stylesheet =
+  let slots = Slot_table.create 64 in
+  let reaches = ref true in
+  let position = ref 0 in
+  let index = ref 0 in
+  let dotted prefix name =
+    if prefix = "" then name else String.concat "." [ prefix; name ]
+  in
+  let rec walk ~layer ~rank stmts = List.iter (statement ~layer ~rank) stmts
+  and statement ~layer ~rank stmt =
+    match stmt with
+    | Stylesheet.Layer (None, _) | Stylesheet.Origin _ | Stylesheet.Scope _ ->
+        reaches := false
+    | Stylesheet.Layer (Some name, body) ->
+        let layer = dotted layer name in
+        let rank =
+          Option.value ~default:unlayered (Hashtbl.find_opt ranks layer)
+        in
+        walk ~layer ~rank body
+    | Stylesheet.Layer_decl _ -> ()
+    | Stylesheet.Rule r ->
+        incr position;
+        if r.nested <> [] then reaches := false
+        else
+          let specificities = selector_specificities r.selector in
+          let position = !position in
+          List.iter
+            (fun decl ->
+              if
+                not
+                  (add_claim ~slots ~index ~rank ~position ~specificities decl)
+              then reaches := false)
+            r.declarations
+    | Stylesheet.Media (_, body)
+    | Stylesheet.Supports (_, body)
+    | Stylesheet.Container (_, _, body)
+    | Stylesheet.Moz_document (_, body)
+    | Stylesheet.When (_, body)
+    | Stylesheet.Else (_, body)
+    | Stylesheet.Starting_style body ->
+        walk ~layer ~rank body
+    | _ -> if rank <> unlayered then reaches := false
+  in
+  walk ~layer:"" ~rank:unlayered stylesheet;
+  if !reaches then Some slots else None
+
+(* Whether dropping every [@layer] wrapper leaves the same declaration winning
+   each cascade slot. Unwrapping replays the layer stack as document order and
+   hands the decision back to specificity, so it holds only where the two orders
+   already agree on every slot two layers write, and [layer_order] is what ranks
+   them: a sheet it cannot rank is one this cannot answer for. *)
+let flattening_layers_is_safe stylesheet =
+  match layer_order stylesheet with
+  | None -> false
+  | Some order -> (
+      let ranks = Hashtbl.create 16 in
+      List.iteri (fun rank name -> Hashtbl.replace ranks name rank) order;
+      match layer_claims ~ranks ~unlayered:(List.length order) stylesheet with
+      | None -> false
+      | Some slots ->
+          Slot_table.fold
+            (fun _ claims ok -> ok && slot_survives_flattening claims)
+            slots true)
+
 (* [Some layer] for a purely-layered path ([layer = None] unlayered, [Some name]
    the dotted layer), [None] when the path is conditional or holds an anonymous
    layer - those are not statically foldable. *)

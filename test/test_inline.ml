@@ -351,14 +351,17 @@ let test_inline_layer_winner () =
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
 
-(* The closed-world cleanup that follows substitution unwraps every [@layer] and
-   drops every [@property] registration. CSS nesting puts both inside a rule, so
-   the cleanup has to reach there as well or the same sheet comes out half
-   cleaned. *)
+(* The closed-world cleanup that follows substitution reaches inside a rule: CSS
+   nesting puts an [@layer] and a [@property] registration there, and a cleanup
+   that stops at the top level leaves the same sheet half cleaned. The [var()]
+   inside the nested [@media] is substituted either way; the wrapper itself
+   stays, since [Inline.flattening_layers_is_safe] cannot rank a sheet whose
+   rule carries nested content and unwrapping is only sound where the layer
+   stack and document order already agree. *)
 let test_inline_cleanup_inside_a_rule () =
-  check_inline_case "a nested @layer wrapper is unwrapped"
+  check_inline_case "a nested @layer wrapper keeps an order it cannot decide"
     ":root{--c:red}.a{@layer m{@media print{.n{color:var(--c)}}}}"
-    ".a{@media print{.n{color:red}}}";
+    ".a{@layer m{@media print{.n{color:red}}}}";
   check_inline_case "a nested @property registration is dropped"
     ".b{color:red;@property --y{syntax:\"*\";inherits:false}}" ".b{color:red}"
 

@@ -314,6 +314,13 @@
   holds. A layer first named inside a conditional group is introduced there only
   when the condition holds, so the order is not decidable and the layers are
   left standing rather than folded to a winner (#357)
+- `Css.inline_vars` unwraps an `@layer` only where the layer stack and document
+  order already pick the same winner for every slot two layers write. Unwrapping
+  replays the stack as document order and hands the decision back to
+  specificity, so a sheet whose layers order competing declarations came out
+  rendering a different value, with no custom property involved. It narrows the
+  unwrapping #373 added: a sheet holding a nested rule is one the check cannot
+  answer for, so an `@layer` written inside a rule stays standing (#371)
 
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry. A `var()` referenced only

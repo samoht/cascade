@@ -59,6 +59,12 @@ val declarations_overlap_with_keys :
 (** [declarations_overlap_with_keys a a_keys b b_keys] is
     {!val-declarations_overlap} using precomputed declaration footprints. *)
 
+val declaration_is_broad : Declaration.declaration -> bool
+(** [declaration_is_broad d] is [true] when [d] may write a cascade slot any
+    other declaration writes, so comparing footprints cannot tell the two apart:
+    the [all] shorthand, and a property outside the model, whose name does not
+    spell out what it expands to. *)
+
 val same_property : Declaration.declaration -> Declaration.declaration -> bool
 (** Same CSS property. *)
 

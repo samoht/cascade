@@ -1127,6 +1127,15 @@ let declarations_overlap a b =
     b
     (declaration_overlap_keys b)
 
+(* A declaration no footprint comparison separates from another: [all] resets
+   every non-exempt slot, and a property outside the model expands to slots its
+   name does not spell out. *)
+let declaration_is_broad decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = All; _ } -> true
+  | Declaration { property = Unknown_property _; _ } -> true
+  | _ -> false
+
 let display_value_is_vendor : Properties.display -> bool = function
   | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
   | Moz_inline_box ->
