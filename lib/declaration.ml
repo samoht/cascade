@@ -2369,7 +2369,7 @@ let rec pp_declaration : declaration Pp.t =
         important;
         _;
       } ->
-      Pp.string ctx name;
+      pp_property ctx (Custom_property name);
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
       (match (layer, value) with

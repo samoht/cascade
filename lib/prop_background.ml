@@ -152,7 +152,9 @@ let pp_shadow_body ctx { h_offset; v_offset; blur; spread; color } =
    separator after it is load-bearing. *)
 let pp_inset_toggle ctx ~name ~no_fallback =
   Pp.string ctx "var(--";
-  Pp.string ctx name;
+  (* [name] is the custom property's name without its [--] prefix; CSS Syntax 3
+     sec. 4.3.7 lets an escape carry a [;] or a [}] into it. *)
+  Pp.string ctx (Parser.escape_name name);
   if no_fallback then Pp.string ctx ")"
   else (
     (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified. *)

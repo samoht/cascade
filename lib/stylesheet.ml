@@ -393,7 +393,10 @@ let pp_property_rule : 'a property_rule Pp.t =
       match initial_value with None -> () | Some v -> pp_initial_value ctx v
   in
   Pp.string ctx "@property ";
-  Pp.string ctx name;
+  (* CSS Syntax 3 sec. 4.3.7: the prelude names the custom property this rule
+     registers, so it is written with the escapes that read the same name back
+     (see [Properties.pp_property]). *)
+  Pp.string ctx (Parser.escape_ident name);
   Pp.sp ctx ();
   Pp.braces
     (fun ctx () ->

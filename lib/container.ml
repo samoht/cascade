@@ -53,11 +53,15 @@ let string_of_range_operator = function
   | Gt -> ">"
   | Gte -> ">="
 
+(* CSS Syntax 3 sec. 4.3.7: a [style()] query names a custom property, and an
+   escape can carry a [;] or a [}] into that name, so it is written back with
+   the escapes that read the same name (see [Properties.pp_property]). *)
 let rec string_of_style_query ~minify = function
-  | Boolean name -> name
+  | Boolean name -> Parser.escape_ident name
   | Declaration { name; value } ->
       let sep = if minify then ":" else ": " in
-      String.concat "" [ name; sep; string_of_components value ]
+      String.concat ""
+        [ Parser.escape_ident name; sep; string_of_components value ]
   | Range { lower; lower_op; name; upper_op; upper } ->
       let sep = if minify then "" else " " in
       String.concat ""
@@ -66,7 +70,7 @@ let rec string_of_style_query ~minify = function
           sep;
           string_of_range_operator lower_op;
           sep;
-          name;
+          Parser.escape_ident name;
           sep;
           string_of_range_operator upper_op;
           sep;
