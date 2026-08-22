@@ -609,6 +609,12 @@ let pp_math_const ctx = function
   | Neg_infinity -> Pp.string ctx "-infinity"
   | Nan -> Pp.string ctx "NaN"
 
+(* Inside a math function [NaN] is a keyword of the grammar (CSS Values 4 sec.
+   10.7.2), so an operand spells a NaN with it; the [calc()] wrapper
+   {!Pp.nan_value} adds is for the positions outside one. *)
+let pp_calc_number ctx f =
+  if Float.is_nan f then pp_math_const ctx Nan else Pp.float ctx f
+
 let read_math_const t =
   match Cursor.ident_opt t with
   | Some name -> (
@@ -657,10 +663,8 @@ let rec minify_angle_arg : angle_arg -> angle_arg = function
   | arg -> arg
 
 let rec pp_math_arg ctx = function
-  | Lit f -> Pp.float ctx f
-  | Dim (f, unit_) ->
-      Pp.float ctx f;
-      Pp.string ctx unit_
+  | Lit f -> pp_calc_number ctx f
+  | Dim (f, unit_) -> Pp.unit ctx f unit_
   | Const c -> pp_math_const ctx c
   | Var_arg v -> pp_var pp_math_arg ctx v
   | Op (l, op, r) ->
@@ -708,18 +712,10 @@ and pp_math_fn ctx fn =
 
 and pp_angle_arg ctx arg =
   match if Pp.minified ctx then minify_angle_arg arg else arg with
-  | Deg f ->
-      Pp.float ctx f;
-      Pp.string ctx "deg"
-  | Rad f ->
-      Pp.float ctx f;
-      Pp.string ctx "rad"
-  | Turn f ->
-      Pp.float ctx f;
-      Pp.string ctx "turn"
-  | Grad f ->
-      Pp.float ctx f;
-      Pp.string ctx "grad"
+  | Deg f -> Pp.unit ctx f "deg"
+  | Rad f -> Pp.unit ctx f "rad"
+  | Turn f -> Pp.unit ctx f "turn"
+  | Grad f -> Pp.unit ctx f "grad"
   | Numeric_arg arg -> pp_math_arg ctx arg
   | Operation (l, op, r) ->
       pp_angle_arg ctx l;
@@ -806,6 +802,14 @@ and eval_math_fn fn =
         a
   | Abs_n a -> unary Float.abs a
 
+(* CSS Values 4 sec. 10.9.2: NaN belongs to a calculation tree and has no leaf
+   spelling outside one, so folding a math function down to a NaN would lose the
+   only form the value can take. Leave the function in place. *)
+let fold_math_fn fn =
+  match eval_math_fn fn with
+  | Some v when Float.is_nan v -> Option.None
+  | result -> result
+
 let rec math_arg_contains_var = function
   | Lit _ | Dim _ | Const _ -> false
   | Var_arg _ -> true
@@ -844,7 +848,7 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
   let rec pp_calc_inner ~parent_prec ~right_of_noncommut ctx = function
     | Val v -> pp_value ctx v
     | Var v -> pp_var pp_value ctx v
-    | Num n -> Pp.float ctx n
+    | Num n -> pp_calc_number ctx n
     | Math_const c -> pp_math_const ctx c
     | Math_fn fn -> pp_math_fn ctx fn
     | Sibling_index -> Pp.string ctx "sibling-index()"
@@ -1006,7 +1010,7 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
   | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
   | Math_fn fn -> (
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
   | Nested inner ->
       unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_calc ~ctx inner)
   | Parens inner ->
@@ -1129,13 +1133,15 @@ let pp_unit ?always:_ ctx f suffix =
      values ([.25rem], not [0.25rem]) in both modes; under minify round to 6
      significant digits so a [calc()]-folded result emits [70.7107px] rather
      than an 8-decimal float. *)
-  let rendered =
-    if Pp.minified ctx then
-      Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
-    else Pp.string_of_float ~drop_leading_zero:true f
-  in
-  Pp.string ctx rendered;
-  Pp.string ctx suffix
+  if Float.is_nan f then Pp.nan_value ctx suffix
+  else
+    let rendered =
+      if Pp.minified ctx then
+        Pp.string_of_float ~drop_leading_zero:true (Pp.round_sig 6 f)
+      else Pp.string_of_float ~drop_leading_zero:true f
+    in
+    Pp.string ctx rendered;
+    Pp.string ctx suffix
 
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
@@ -3359,6 +3365,9 @@ let rec pp_angle : angle Pp.t =
           Pp.comma ctx ();
           pp_angle ctx b)
         ctx (a, b)
+  (* A math function is itself an [<angle>] production, so the [calc()] around
+     one is redundant (CSS Values 4 sec. 10.8). *)
+  | Calc (Math_fn fn) -> pp_math_fn ctx fn
   | Calc c -> pp_calc_presolved pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
@@ -3408,10 +3417,8 @@ let rec pp_alpha : alpha Pp.t =
       let max_decimals =
         if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8
       in
-      Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
-  | Pct f ->
-      Pp.float ctx f;
-      Pp.char ctx '%'
+      Pp.float_n max_decimals ctx f
+  | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
 
@@ -3602,7 +3609,7 @@ let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
     percentage calc =
   eval_typed_calc
     ~math_fn:(fun fn ->
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> pct_scale ~exact op v n)
     ~combine:pct_combine ~is_zero:pct_is_zero
     ~zero:(Val (Pct 0.) : percentage calc)
@@ -3645,7 +3652,7 @@ let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     =
   eval_typed_calc
     ~math_fn:(fun fn ->
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
     ~combine:time_combine ~is_zero:time_is_zero
     ~zero:(Val (S 0.) : duration calc)
@@ -3693,7 +3700,7 @@ let angle_combine op (a : angle) (b : angle) : angle option =
 let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
   eval_typed_calc
     ~math_fn:(fun fn ->
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
     ~combine:angle_combine ~is_zero:angle_is_zero ~zero:(Val (Deg 0.)) ~ctx c
 
@@ -3839,7 +3846,7 @@ let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
     number_percentage calc =
   eval_typed_calc
     ~math_fn:(fun fn ->
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> np_scale ~exact op v n)
     ~combine:np_combine ~is_zero:np_is_zero
     ~zero:(Val (Num 0.) : number_percentage calc)
@@ -4146,7 +4153,7 @@ let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
     ~ 0.004 so 3 decimals is more than display-accurate. *)
 let pp_float_drop_zero ctx f =
   let max_decimals = if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8 in
-  Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true ~max_decimals f)
+  Pp.float_n max_decimals ctx f
 
 let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
@@ -4596,6 +4603,7 @@ and pp_duration_in_calc : duration Pp.t =
 
 let rec pp_number : number Pp.t =
  fun ctx -> function
+  | Num f when Float.is_nan f -> Pp.nan_value ctx ""
   | Num f ->
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
   | Var v -> pp_var pp_number ctx v
@@ -5888,17 +5896,34 @@ let angle_trig_function t =
 
 let read_angle_trig kind name t =
   let typed t =
-    Cursor.call name t (fun inner ->
-        let v = read_num_expr inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        let radians =
-          match kind with
-          | `Asin -> Float.asin v
-          | `Acos -> Float.acos v
-          | `Atan -> Float.atan v
-        in
-        (Deg (radians *. 180. /. Float.pi) : angle))
+    let snapshot = Cursor.save t in
+    let degrees =
+      Cursor.call name t (fun inner ->
+          let v = read_num_expr inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          let radians =
+            match kind with
+            | `Asin -> Float.asin v
+            | `Acos -> Float.acos v
+            | `Atan -> Float.atan v
+          in
+          radians *. 180. /. Float.pi)
+    in
+    if Float.is_nan degrees then (
+      (* CSS Values 4 sec. 10.9.2: NaN lives inside a calculation tree and
+         nowhere else, so it has no leaf spelling. Re-read the call and keep the
+         function the author wrote. *)
+      Cursor.restore t snapshot;
+      let arg = read_math_call_arg name t in
+      let fn : math_fn =
+        match kind with
+        | `Asin -> Asin arg
+        | `Acos -> Acos arg
+        | `Atan -> Atan arg
+      in
+      (Calc (Math_fn fn) : angle))
+    else Deg degrees
   in
   match Cursor.try_typed_call typed t with
   | Ok value -> value
@@ -7034,7 +7059,7 @@ let alpha_is_zero : alpha -> bool = function
 let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
   eval_typed_calc
     ~math_fn:(fun fn ->
-      match eval_math_fn fn with Some v -> Num v | None -> Math_fn fn)
+      match fold_math_fn fn with Some v -> Num v | None -> Math_fn fn)
     ~scale:(fun ~exact op v n -> alpha_scale ~exact op v n)
     ~combine:alpha_combine ~is_zero:alpha_is_zero
     ~zero:(Val (Num 0.) : alpha calc)

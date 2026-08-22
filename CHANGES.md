@@ -43,6 +43,12 @@
 
 ### Minification
 
+- A NaN-valued number prints as `calc(NaN)`, and a NaN-valued dimension as
+  `calc(NaN * 1unit)`, the forms CSS Values 4 sec. 10.13 defines. A bare `NaN`
+  is not a CSS token, so `width: calc(sqrt(-1) * 1px)` minifying to
+  `width: NaNpx` and `rotate: asin(-20)` to `rotate: NaNdeg` produced output
+  Chrome drops and cascade's own reader rejects. A math function whose value is
+  NaN keeps its function form instead of folding to a leaf (#425)
 - A same-condition `@media` block is no longer hoisted over a crossed rule
   whose shorthand writes a longhand the hoisted block also writes. The hoist
   tied two declarations by property name, so
