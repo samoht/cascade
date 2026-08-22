@@ -217,9 +217,12 @@ let drop_shadowed_rules (rules : rule list) : rule list =
   let changed = ref false in
   for i = len - 1 downto 0 do
     let rule = rules_arr.(i) in
+    (* [declarations] is only the run written before the first nested statement
+       (CSS Nesting 1 sec. 3.4), so covering it says nothing about what the rest
+       of the body sets: a rule with nested content stays. *)
     dropped.(i) <-
       (rule.declarations = [] && rule.nested = [])
-      || rule.declarations <> []
+      || rule.nested = [] && rule.declarations <> []
          && List.for_all
               (Cover.covered later_by_selector rule.Stylesheet_intf.selector)
               rule.declarations;

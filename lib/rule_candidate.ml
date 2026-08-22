@@ -100,23 +100,31 @@ end)
    rule's declarations ahead of any nested block an earlier one carries. That
    only matters for a property the nested block also sets, so a rule with nested
    children can still take part as long as those children and the declarations
-   that would move past them are disjoint. *)
+   that would move past them are disjoint.
+
+   Read through the exhaustive statement walks: every nested statement sets
+   properties, a nested declarations run as much as a nested style rule, and one
+   this walk cannot see is one the merge would happily hoist past. *)
 let rec nested_property_keys acc (stmts : statement list) =
   List.fold_left
     (fun acc stmt ->
-      match stmt with
-      | Rule r ->
-          let acc =
-            List.fold_left
-              (fun acc d -> Prop_set.add (Declaration.property_key d) acc)
-              acc r.declarations
-          in
-          nested_property_keys acc r.nested
-      | _ -> acc)
+      let acc =
+        List.fold_left
+          (fun acc d -> Prop_set.add (Declaration.property_key d) acc)
+          acc
+          (statement_declarations stmt)
+      in
+      nested_property_keys acc (statement_children stmt))
     acc stmts
 
+(* CSS Nesting 1 sec. 3.4 puts a declaration written after a nested rule behind
+   it, so a rule's body is not the run of declarations [declarations] holds:
+   merging a later same-selector rule into it moves that rule's declarations
+   ahead of everything nested. [nested_merge_is_safe] below decides that per
+   property; until it reads the whole body, keep a rule carrying nested content
+   out of the merge entirely, as [rule_eligible] already does. *)
 let same_selector_eligible (r : rule) =
-  r.merge_key = Option.None
+  r.nested = [] && r.merge_key = Option.None
   && (not (contains_vendor_pseudo_element r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
