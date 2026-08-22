@@ -149,10 +149,10 @@ type scope = {
 
 let custom_name = Variables.custom_declaration_name
 
-(* [Declaration.custom_property] refuses a name and value it cannot write back
-   as the one declaration they name. A parsed stylesheet can hold such a pair -
-   a name written with an escape, a value CSS Syntax 3 would drop - so a rewrite
-   that reaches one keeps what it started from instead of raising. *)
+(* [Declaration.custom_property] refuses a value it cannot write back as part of
+   the declaration it belongs to. A parsed stylesheet can hold such a value -
+   one CSS Syntax 3 would drop - so a rewrite that reaches one keeps what it
+   started from instead of raising. *)
 let rebuild_custom ?layer name value =
   try Some (Declaration.custom_property ?layer name value)
   with Failure _ -> None

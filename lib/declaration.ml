@@ -106,30 +106,20 @@ let is_declaration_value value =
   | [] -> false
   | components -> components_stay_in_declaration components
 
-(* A name is written back verbatim, so it binds only when it tokenizes as the
-   single ident it claims to be. An escape (CSS Syntax 3 sec. 4.3.7) can carry a
-   [;] or a [}] into a name read from a [var()] reference. *)
-let is_writable_custom_property_name name =
-  is_custom_property_name name
-  &&
-  match Cursor.remaining (Cursor.of_string name) with
-  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
-      String.equal ident name
-  | _ -> false
-
 let refuse name detail =
   failwith (String.concat "" [ "custom_property: "; name; ": "; detail ])
 
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* The pair is written back verbatim, so it binds only when the text reads
-     back as the one declaration it names: a [<dashed-ident>] name that
-     tokenizes to itself, and the [<declaration-value>?] CSS Variables 1 sec. 2
-     gives a custom property. A name or value outside that - a top-level [;] or
-     [}], an unmatched closing bracket, an unterminated function, block or
-     string - leaves the declaration as soon as the text is read back. *)
-  if not (is_writable_custom_property_name name) then
+  (* The pair binds only when it makes the one declaration it names: a
+     [<dashed-ident>] name, and the [<declaration-value>?] CSS Variables 1 sec.
+     2 gives a custom property. A value outside that - a top-level [;] or [}],
+     an unmatched closing bracket, an unterminated function, block or string -
+     leaves the declaration as soon as the text is read back. A name carrying
+     one of those is written back with the escapes that read it (CSS Syntax 3
+     sec. 4.3.7), so it stays the name of this declaration. *)
+  if not (is_custom_property_name name) then
     refuse name "not a custom-property name";
   if not (is_optional_declaration_value value) then
     refuse name (String.concat "" [ value; " is not a declaration value" ]);
@@ -2322,24 +2312,36 @@ let of_string s =
   | Some d -> d
   | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
 
+(* The declaration [property] and [value] name, as the tokens they are. The name
+   is one [<ident-token>] by construction and the value is parsed on its own, so
+   neither reaches the other's position: written into one text, a name carrying
+   a [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an escape)
+   would end its own declaration, and one carrying a [:] would name the property
+   in front of it. *)
+let name_value_components property value =
+  Component.Preserved (Token.synthetic (Token.Ident property))
+  :: Component.Preserved (Token.synthetic Token.Colon)
+  :: Cursor.remaining (Cursor.of_string value)
+
 let parse_declaration ?layer property value =
-  (* Parse [property:value] with the full declaration parser: a known property
-     (e.g. [mask-type], [display]) becomes a typed declaration, a custom
-     property ([--x]) or an unknown property keeps its parsed component stream
-     (so [vars_of_declarations] still finds its [var()] references), unlike
-     [custom_property] which forces an opaque [Tokens] value. A [layer] only
-     applies to a custom property; [custom_property] attaches it and yields the
-     same parsed token stream the declaration parser would. *)
+  (* Read [property] and [value] with the full declaration parser: a known
+     property (e.g. [mask-type], [display]) becomes a typed declaration, a
+     custom property ([--x]) or an unknown property keeps its parsed component
+     stream (so [vars_of_declarations] still finds its [var()] references),
+     unlike [custom_property] which forces an opaque [Tokens] value. A [layer]
+     only applies to a custom property; [custom_property] attaches it and yields
+     the same parsed token stream the declaration parser would. *)
   match layer with
   | Some _ when is_custom_property_name property -> (
       try Some (custom_property ?layer property value) with Failure _ -> None)
   | _ -> (
-      let s = String.concat "" [ property; ":"; value ] in
-      try read_declaration (Cursor.of_string s)
+      try
+        read_declaration
+          (Cursor.of_components (name_value_components property value))
       with Cursor.Parse_error _ -> None)
 
 let parse_custom_property name value =
-  if is_writable_custom_property_name name && is_declaration_value value then
+  if is_custom_property_name name && is_declaration_value value then
     parse_declaration name value
   else None
 

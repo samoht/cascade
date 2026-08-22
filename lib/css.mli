@@ -7599,24 +7599,26 @@ val custom_property : ?layer:string -> string -> string -> declaration
     API which provides compile-time checking and automatic variable management.
 
     @param layer Optional CSS layer name for the custom property
-    @param name
-      CSS custom property name: a [<dashed-ident>] that tokenizes to itself
+    @param name CSS custom property name: a [<dashed-ident>]
     @param value
       the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
       as CSS text
 
-    It raises [Failure] on a pair that does not write back as the one
-    declaration it names, such as a value carrying a top-level [;] or [}] or an
-    unterminated function, block or string. {!Declaration.parse_custom_property}
-    is the same check as an option.
+    It raises [Failure] on a pair that does not make the one declaration it
+    names, such as a value carrying a top-level [;] or [}] or an unterminated
+    function, block or string. A name holding a code point no bare ident carries
+    is written back with the escapes that read it.
+    {!Declaration.parse_custom_property} is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]
 
     See also {!val:var} (type-safe CSS variable API). *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
-(** [parse_declaration ?layer property value] parses ["property: value"] with
-    the full declaration parser:
+(** [parse_declaration ?layer property value] reads [property] and [value] with
+    the full declaration parser. The two are read as the tokens they are rather
+    than as one ["property: value"] text, so a [property] carrying a [;], a [}]
+    or a [:] names this declaration or names none:
     - a known property (e.g. [mask-type], {!val-display}) becomes a typed
       declaration;
     - a custom property ([--x]) or an unknown property keeps its parsed

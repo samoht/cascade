@@ -151,13 +151,13 @@ let declaration_feature prop value =
   | _, "" -> Empty (property_name prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
+      (* The name and the value stay apart: read as one text, a name carrying a
+         [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an
+         escape) would end its own declaration. *)
       let name = property_name prop in
-      try
-        Declaration
-          (Declaration.of_string
-             (String.concat "" [ Parser.escape_ident prop; ":"; value ]))
-      with Cursor.Parse_error _ | Failure _ ->
-        Unsupported (name, String.trim value))
+      match Declaration.parse_declaration prop value with
+      | Some decl -> Declaration decl
+      | None -> Unsupported (name, String.trim value))
 
 let property prop value = Property (declaration_feature prop value)
 

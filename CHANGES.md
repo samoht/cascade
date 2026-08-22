@@ -358,6 +358,15 @@
   around it. The pair it takes is a `<dashed-ident>` name and the
   `<declaration-value>?` CSS Variables 1 sec. 2 gives a custom property, the
   check `parse_custom_property` already made (#428)
+- A custom-property name that needs escaping binds instead of being refused.
+  `Css.Declaration.parse_declaration` read `property ":" value` back as one
+  text, so a name carrying a `;` or a `}` (CSS Syntax 3 sec. 4.3.7 puts either
+  there through an escape) ended its own declaration, and the guard on
+  `custom_property` and `parse_custom_property` was there only to keep such a
+  name out of that text. The name and the value are read as the tokens they
+  are, so a `theme_defaults` answer for `x;y` emits `:root{--x\;y:red}` and a
+  name carrying a `:` names no declaration at all. `@supports (--x\3b y: red)`
+  builds its declaration the same way (#439)
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults (#315)
