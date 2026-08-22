@@ -1,0 +1,12 @@
+<!doctype html><html><head><style>
+  .n1 { color: red; & b { width: 9px } color: green }
+  .n2 { @media (min-width: 1px) { color: blue } color: green }
+  .n3 { @supports (color: red) { color: blue } color: green }
+  .n4 { color: red; & b { width: 9px } color: blue }
+  .n4 { color: green }
+</style></head><body>
+<div class="n1">a<b>x</b></div>
+<div class="n2">b</div>
+<div class="n3">c</div>
+<div class="n4">d<b>y</b></div>
+</body></html>
