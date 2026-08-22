@@ -6301,40 +6301,45 @@ let s3437_string_escape () =
    those back escaped (CSS Syntax 3 sec. 2.1): printed raw, the name ends its
    own declaration or closes the rule around it, and cascade's reader stops
    reading what the input meant. *)
-let s4370_custom_property_name_escapes () =
-  (* Print [css] and hold the printer to its own reader: the output parses in
-     strict mode, says what the input said, and printing it again is a byte
-     fixpoint. The tree comparison stands in for AST equality, which a token
-     carrying its source position makes sensitive to how long the escape was.
-     The minified output is what the spellings below are checked against. *)
-  let roundtrip css =
-    match Css.of_string ~strict:false css with
-    | Error e ->
-        Alcotest.failf "parse failed: %s (%s)" css (Cascade.Error.to_string e)
-    | Ok parsed ->
-        let check ~minify label out =
-          match Css.of_string ~strict:true out with
-          | Error e ->
-              Alcotest.failf "%s output is not readable: %s (%s)" label out
-                (Cascade.Error.to_string e)
-          | Ok again ->
-              Alcotest.(check bool)
-                (String.concat "" [ label; " says what "; css; " said" ])
-                true
-                (Cascade_diff.Css_compare.equal ~mode:`Tree css out);
-              Alcotest.(check string)
-                (String.concat "" [ label; " is a byte fixpoint: "; out ])
-                out
-                (Css.to_string ~minify again.Css.stylesheet)
-        in
-        let minified = Css.to_string ~minify:true parsed.Css.stylesheet in
-        check ~minify:true "minified" minified;
-        check ~minify:false "pretty" (Css.to_string parsed.Css.stylesheet);
-        minified
-  in
+(* Print [css] and hold the printer to its own reader: the output parses in
+   strict mode, says what the input said, and printing it again is a byte
+   fixpoint. The tree comparison stands in for AST equality, which a token
+   carrying its source position makes sensitive to how long the escape was.
+   Returns the minified output, which is what a caller's spellings are checked
+   against. *)
+let escape_roundtrip css =
+  match Css.of_string ~strict:false css with
+  | Error e ->
+      Alcotest.failf "parse failed: %s (%s)" css (Cascade.Error.to_string e)
+  | Ok parsed ->
+      let check ~minify label out =
+        match Css.of_string ~strict:true out with
+        | Error e ->
+            Alcotest.failf "%s output is not readable: %s (%s)" label out
+              (Cascade.Error.to_string e)
+        | Ok again ->
+            Alcotest.(check bool)
+              (String.concat "" [ label; " says what "; css; " said" ])
+              true
+              (Cascade_diff.Css_compare.equal ~mode:`Tree css out);
+            Alcotest.(check string)
+              (String.concat "" [ label; " is a byte fixpoint: "; out ])
+              out
+              (Css.to_string ~minify again.Css.stylesheet)
+      in
+      let minified = Css.to_string ~minify:true parsed.Css.stylesheet in
+      check ~minify:true "minified" minified;
+      check ~minify:false "pretty" (Css.to_string parsed.Css.stylesheet);
+      minified
+
+let check_escape_roundtrips cases =
   List.iter
     (fun (css, expected) ->
-      Alcotest.(check string) css expected (roundtrip css))
+      Alcotest.(check string) css expected (escape_roundtrip css))
+    cases
+
+let s4370_custom_property_name_escapes () =
+  check_escape_roundtrips
     [
       (* The declaration name. *)
       (":root{--x\\3b y:red}", ":root{--x\\;y:red}");
@@ -6362,6 +6367,100 @@ let s4370_custom_property_name_escapes () =
       (":root{--0:red}.a{color:var(--0)}", ":root{--0:red}.a{color:var(--0)}");
       ( ":root{--\\e9 x:red}.a{color:var(--\\e9 x)}",
         ":root{--\xc3\xa9x:red}.a{color:var(--\xc3\xa9x)}" );
+    ]
+
+(* CSS Syntax 3 sec. 4.3.7 reads an escape as the code point it names, so any
+   ident cascade stores can hold a [;], a [}] or another code point CSS Syntax 3
+   sec. 4.2 keeps out of an ident. Serializing an ident writes those back
+   escaped (CSS Syntax 3 sec. 2.1), and every prelude below names something with
+   a [<custom-ident>] or a [<dashed-ident>]: printed raw the name ends the
+   at-rule or closes the block around it. *)
+let s4370_at_rule_prelude_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*],
+         so each dot-separated part takes the escapes and the [.] separators
+         stay bare. *)
+      ("@layer a\\3b b;", "@layer a\\;b;");
+      ("@layer a\\3b b{.x{color:red}}", "@layer a\\;b{.x{color:red}}");
+      ("@layer a\\3b b,c\\3b d;", "@layer a\\;b,c\\;d;");
+      ("@layer a.b\\3b c;", "@layer a.b\\;c;");
+      ("@import\"a.css\"layer(l\\3b x);", "@import\"a.css\"layer(l\\;x);");
+      (* CSS Counter Styles 3 sec. 2 [@counter-style <counter-style-name>], and
+         sec. 3.1.4 [system: extends <counter-style-name>]. *)
+      ( "@counter-style a\\3b b{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style a\\;b{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+      ( "@counter-style c{system:extends d\\3b y}",
+        "@counter-style c{system:extends d\\;y}" );
+      (* CSS Anchor Positioning 1 sec. 4.2 [@position-try <dashed-ident>] and
+         CSS Fonts 4 sec. 11.1 [@font-palette-values <dashed-ident>]. *)
+      ("@position-try --x\\3b y{top:0}", "@position-try --x\\;y{top:0}");
+      ( "@font-palette-values --x\\3b y{font-family:Foo;base-palette:1}",
+        "@font-palette-values --x\\;y{font-family:Foo;base-palette:1}" );
+      (* CSS Containment 3 sec. 5.2: [@container] names a [<custom-ident>], and
+         CSS Fonts 4 sec. 6.5 names a feature value the same way. *)
+      ( "@container n\\3b m (width>10px){.a{color:red}}",
+        "@container n\\;m (width>10px){.a{color:red}}" );
+      ( "@font-feature-values Foo{@styleset{s\\3b x:1}}",
+        "@font-feature-values Foo{@styleset{s\\;x:1}}" );
+      (* A name needing no escape keeps its spelling, and the leading-digit rule
+         of CSS Syntax 3 sec. 4.3.11 still applies. *)
+      ("@layer a.b{.x{color:red}}", "@layer a.b{.x{color:red}}");
+      ( "@counter-style \\31 a{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style \\31 a{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+      ( "@counter-style \\e9 x{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style \xc3\xa9x{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+    ]
+
+(* The same rule for a name a declaration's value carries: printed raw it ends
+   its own declaration, so it is written with the escapes CSS Syntax 3 sec.
+   4.3.7 reads back as the same name. *)
+let s4370_property_value_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* CSS Anchor Positioning 1 sec. 2.1 / 3.1 / 4.1 name
+         [<dashed-ident>]s. *)
+      (".a{anchor-name:--a\\3b b}", ".a{anchor-name:--a\\;b}");
+      (".a{position-anchor:--p\\3b q}", ".a{position-anchor:--p\\;q}");
+      ( ".a{position-try-fallbacks:--f\\3b g}",
+        ".a{position-try-fallbacks:--f\\;g}" );
+      (* CSS Scroll Animations 1 sec. 2.1 / 3.1 / 4 name [<dashed-ident>]s, and
+         CSS Fonts 4 sec. 2.7 [font-palette] takes one. *)
+      (".a{animation-timeline:--t\\3b u}", ".a{animation-timeline:--t\\;u}");
+      (".a{scroll-timeline-name:--s\\3b t}", ".a{scroll-timeline-name:--s\\;t}");
+      (".a{view-timeline-name:--v\\3b w}", ".a{view-timeline-name:--v\\;w}");
+      ( ".a{scroll-timeline:--s\\3b t block}",
+        ".a{scroll-timeline:--s\\;t block}" );
+      (".a{timeline-scope:--z\\3b y}", ".a{timeline-scope:--z\\;y}");
+      (".a{font-palette:--f\\3b g}", ".a{font-palette:--f\\;g}");
+      (* CSS Transitions 1 sec. 2.1: [transition-property] names a property, and
+         a custom property is a [<dashed-ident>]. *)
+      (".a{transition-property:--t\\3b x}", ".a{transition-property:--t\\;x}");
+      (* [<custom-ident>] names: CSS Containment 3 sec. 3.1, CSS Animations 1
+         sec. 4.1, CSS View Transitions 1 sec. 3.1 and 2 sec. 3.2, and CSS Will
+         Change 1 sec. 2. *)
+      (".a{container-name:c\\3b d}", ".a{container-name:c\\;d}");
+      (".a{animation-name:n\\3b m}", ".a{animation-name:n\\;m}");
+      (".a{view-transition-name:v\\3b w}", ".a{view-transition-name:v\\;w}");
+      (".a{view-transition-class:c\\3b d}", ".a{view-transition-class:c\\;d}");
+      (".a{will-change:w\\3b x}", ".a{will-change:w\\;x}");
+      (* CSS Lists 3 sec. 3 names a counter with a [<custom-ident>], both where
+         it is set and where [counter()] reads it, and sec. 4 names a string the
+         same way. *)
+      (".a{counter-reset:c\\3b d 1}", ".a{counter-reset:c\\;d 1}");
+      (".a{counter-increment:c\\3b d 1}", ".a{counter-increment:c\\;d 1}");
+      (".a{content:counter(c\\3b d)}", ".a{content:counter(c\\;d)}");
+      (".a{content:string(s\\3b t)}", ".a{content:string(s\\;t)}");
+      (* CSS Grid 2 sec. 8.1: a grid line is named by a [<custom-ident>], in a
+         placement property and in a track list. *)
+      (".a{grid-area:g\\3b h}", ".a{grid-area:g\\;h}");
+      (".a{grid-row-start:g\\3b h}", ".a{grid-row-start:g\\;h}");
+      (".a{grid-row-start:span g\\3b h}", ".a{grid-row-start:span g\\;h}");
+      ( ".a{grid-template-columns:[l\\3b m]1fr}",
+        ".a{grid-template-columns:[l\\;m]1fr}" );
+      (* A name needing no escape keeps its spelling. *)
+      (".a{grid-area:g}", ".a{grid-area:g}");
+      (".a{anchor-name:--a}", ".a{anchor-name:--a}");
     ]
 
 let fidelity_string_escape_preserved () =
@@ -8523,6 +8622,12 @@ let additional_tests =
     ( "spec syntax 3 4.3.7 custom-property name escapes",
       `Quick,
       s4370_custom_property_name_escapes );
+    ( "spec syntax 3 4.3.7 at-rule prelude name escapes",
+      `Quick,
+      s4370_at_rule_prelude_name_escapes );
+    ( "spec syntax 3 4.3.7 property value name escapes",
+      `Quick,
+      s4370_property_value_name_escapes );
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );
