@@ -1175,15 +1175,21 @@ let var_census stylesheet =
 (* A variable redefined across cascade layers on the same element is a real
    override, but - unlike an @media or dark-mode override - its winner is
    statically decidable, so it can be folded to that winner instead of kept
-   live. [statements_for_inline] later drops the [@layer] wrappers, which would
-   otherwise leave the losing definitions competing by document order and pick
-   the wrong value. Resolving the winner here keeps the folded value correct. *)
+   live. Resolving the winner here is what lets [statements_for_inline] drop the
+   [@layer] wrappers: flattened, the losing definitions would compete by
+   document order and pick the wrong value. *)
 
 (* Document-order cascade layer names (dotted for nesting), low precedence
-   first: the order in which layers are first introduced. *)
-let stylesheet_layer_order stylesheet =
+   first: the order in which layers are first introduced (css-cascade-5 sec.
+   6.4.2). [None] when a layer sits where cascade cannot place it: a conditional
+   group introduces its layers only when its condition holds, and an [Origin]
+   block carries its own layer stack. What a [@container], [@scope] or
+   [@starting-style] block holds, and what a rule nests, always exists, so a
+   layer named there counts where it is written. *)
+let layer_order stylesheet : string list option =
   let seen = Hashtbl.create 16 in
   let order = ref [] in
+  let undecided = ref false in
   let add name =
     if not (Hashtbl.mem seen name) then begin
       Hashtbl.add seen name ();
@@ -1193,22 +1199,34 @@ let stylesheet_layer_order stylesheet =
   let dotted prefix name =
     if prefix = "" then name else String.concat "." [ prefix; name ]
   in
-  let rec walk prefix = function
-    | [] -> ()
-    | stmt :: rest ->
-        (match stmt with
-        | Stylesheet.Layer_decl names ->
-            List.iter (fun n -> add (dotted prefix n)) names
-        | Stylesheet.Layer (Some n, body) ->
-            let full = dotted prefix n in
-            add full;
-            walk full body
-        | Stylesheet.Layer (None, body) -> walk prefix body
-        | _ -> ());
-        walk prefix rest
+  let rec walk ~placed prefix stmts = List.iter (statement ~placed prefix) stmts
+  and statement ~placed prefix stmt =
+    match stmt with
+    | Stylesheet.Layer_decl names ->
+        if not placed then undecided := true;
+        List.iter (fun n -> add (dotted prefix n)) names
+    | Stylesheet.Layer (name, body) ->
+        if not placed then undecided := true;
+        let prefix =
+          match name with
+          | None -> prefix
+          | Some n ->
+              let full = dotted prefix n in
+              add full;
+              full
+        in
+        walk ~placed prefix body
+    | Stylesheet.Media (_, body)
+    | Stylesheet.Supports (_, body)
+    | Stylesheet.Moz_document (_, body)
+    | Stylesheet.When (_, body)
+    | Stylesheet.Else (_, body)
+    | Stylesheet.Origin (_, body) ->
+        walk ~placed:false prefix body
+    | stmt -> walk ~placed prefix (Stylesheet.statement_children stmt)
   in
-  walk "" stylesheet;
-  List.rev !order
+  walk ~placed:true "" stylesheet;
+  if !undecided then None else Some (List.rev !order)
 
 (* [Some layer] for a purely-layered path ([layer = None] unlayered, [Some name]
    the dotted layer), [None] when the path is conditional or holds an anonymous
@@ -1251,52 +1269,57 @@ let annotate_every_layer entries =
    it resolves to no value). A single scope with repeated declarations is left
    alone: the census already treats it as one inlinable definition. *)
 let layer_decided_customs ~keep stylesheet =
-  let scopes = collect_scopes ~kept:keep stylesheet in
-  let by_name = Hashtbl.create 64 in
-  List.iter
-    (fun (s : scope) ->
-      let sel = Selector.to_string ~minify:true s.selector in
-      let fl = foldable_layer_of_at_path s.at_path in
-      List.iter
-        (fun d ->
-          match custom_name d with
-          | None -> ()
-          | Some name ->
-              let prev =
-                Option.value ~default:[] (Hashtbl.find_opt by_name name)
-              in
-              Hashtbl.replace by_name name ((sel, fl, d) :: prev))
-        s.customs)
-    scopes;
-  let layer_order = stylesheet_layer_order stylesheet in
   let fold = Hashtbl.create 16 in
-  Hashtbl.iter
-    (fun name entries ->
-      let entries = List.rev entries in
-      let unconditional =
-        List.for_all (fun (_, fl, _) -> Option.is_some fl) entries
-      in
-      let one_selector =
-        match entries with
-        | (sel0, _, _) :: rest -> List.for_all (fun (s, _, _) -> s = sel0) rest
-        | [] -> true
-      in
-      let distinct_layers =
-        entries
-        |> List.filter_map (fun (_, fl, _) -> fl)
-        |> List.sort_uniq compare |> List.length
-      in
-      if unconditional && one_selector && distinct_layers >= 2 then
-        match annotate_every_layer entries with
-        | Option.None -> ()
-        | Option.Some annotated -> (
-            match Context.winning_custom_declaration ~layer_order annotated with
-            | Some w ->
-                Hashtbl.replace fold name
-                  (`Value (Declaration.string_of_value ~minify:true w))
-            | None -> Hashtbl.replace fold name `Unset))
-    by_name;
-  fold
+  match layer_order stylesheet with
+  | None -> fold
+  | Some layer_order ->
+      let scopes = collect_scopes ~kept:keep stylesheet in
+      let by_name = Hashtbl.create 64 in
+      List.iter
+        (fun (s : scope) ->
+          let sel = Selector.to_string ~minify:true s.selector in
+          let fl = foldable_layer_of_at_path s.at_path in
+          List.iter
+            (fun d ->
+              match custom_name d with
+              | None -> ()
+              | Some name ->
+                  let prev =
+                    Option.value ~default:[] (Hashtbl.find_opt by_name name)
+                  in
+                  Hashtbl.replace by_name name ((sel, fl, d) :: prev))
+            s.customs)
+        scopes;
+      Hashtbl.iter
+        (fun name entries ->
+          let entries = List.rev entries in
+          let unconditional =
+            List.for_all (fun (_, fl, _) -> Option.is_some fl) entries
+          in
+          let one_selector =
+            match entries with
+            | (sel0, _, _) :: rest ->
+                List.for_all (fun (s, _, _) -> s = sel0) rest
+            | [] -> true
+          in
+          let distinct_layers =
+            entries
+            |> List.filter_map (fun (_, fl, _) -> fl)
+            |> List.sort_uniq compare |> List.length
+          in
+          if unconditional && one_selector && distinct_layers >= 2 then
+            match annotate_every_layer entries with
+            | Option.None -> ()
+            | Option.Some annotated -> (
+                match
+                  Context.winning_custom_declaration ~layer_order annotated
+                with
+                | Some w ->
+                    Hashtbl.replace fold name
+                      (`Value (Declaration.string_of_value ~minify:true w))
+                | None -> Hashtbl.replace fold name `Unset))
+        by_name;
+      fold
 
 (* Replace every layer-decided definition with a single unlayered definition of
    the winner (or drop it entirely when unset), so the census sees one inlinable

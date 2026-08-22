@@ -307,6 +307,13 @@
 
 ### Custom properties
 
+- `Css.inline_vars` resolves a custom property defined across cascade layers
+  against the order every `@layer` in the sheet gives it, counting the ones a
+  rule nests and the ones a `@container`, `@scope` or `@starting-style` block
+  holds. A layer first named inside a conditional group is introduced there only
+  when the condition holds, so the order is not decidable and the layers are
+  left standing rather than folded to a winner (#357)
+
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry. A `var()` referenced only
   from inside one of them keeps its theme binding instead of leaving the name

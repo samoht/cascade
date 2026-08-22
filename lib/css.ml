@@ -630,19 +630,27 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
    and its [inherits] descriptor decides whether the property inherits at all.
    Both change computed values, so the registration dies only with the property
    itself - once substitution has left neither a declaration of it nor a [var()]
-   reading it. *)
-let rec statements_for_inline ~live block =
-  List.concat_map (statement_for_inline ~live) block
+   reading it.
 
-and statement_for_inline ~live statement =
+   [keep_layers] leaves the [@layer] wrappers and declarations standing.
+   Dropping them replays the layer stack as document order, which only preserves
+   the cascade once every layered competition has been resolved; when
+   {!Inline.layer_order} cannot say what that order is, none of them has
+   been. *)
+let rec statements_for_inline ~live ~keep_layers block =
+  List.concat_map (statement_for_inline ~live ~keep_layers) block
+
+and statement_for_inline ~live ~keep_layers statement =
+  let inline_block = statements_for_inline ~live ~keep_layers in
   match statement with
-  | Layer (_, block) -> statements_for_inline ~live block
+  | Layer (name, block) when keep_layers -> [ Layer (name, inline_block block) ]
+  | Layer (_, block) -> inline_block block
   | Property rule -> if List.mem rule.name live then [ statement ] else []
+  | Layer_decl _ when keep_layers -> [ statement ]
   (* Every [@layer] wrapper is spliced into its parent above, so the layers an
      [@layer] statement orders no longer exist to be ordered. *)
   | Layer_decl _ -> []
-  | statement ->
-      [ map_statement_children (statements_for_inline ~live) statement ]
+  | statement -> [ map_statement_children inline_block statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
    rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
@@ -698,7 +706,8 @@ let inline_vars ?keep_vars ?warn stylesheet =
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
   let live = Inline.mentioned_custom_names substituted in
-  statements_for_inline ~live substituted
+  let keep_layers = Option.is_none (Inline.layer_order stylesheet) in
+  statements_for_inline ~live ~keep_layers substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a
    stylesheet. Used by [resolve_theme] to know which names to ask the
