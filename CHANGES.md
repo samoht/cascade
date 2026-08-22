@@ -65,6 +65,16 @@
   rather than at the next semicolon. `.a { @import url(x) { } color: red }` lost
   `color: red`, and an `@import` inside a nested group rule took the whole group
   with it (#388)
+- An invalid declaration inside a nested at-rule is dropped on its own rather
+  than taking the whole stylesheet. `.a { @media screen { color: red;
+  width: 10; background: blue } }` parsed to nothing, since the nested block had
+  no recovery and the error unwound past every enclosing block. CSS Syntax 3
+  sec. 5.4.4 ends a bad declaration at the next top-level `;`, counting a `{}`
+  met on the way as one component value of the value being skipped, and Blink
+  146 keeps both neighbours in one declaration run. A nested rule whose prelude
+  starts with an identifier, as in `.a { @media screen { h2:where(.b) { color:
+  red } } }`, and a stray `;` between two declarations there, were lost the same
+  way (#392)
 
 ### Minification
 
