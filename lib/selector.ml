@@ -1104,6 +1104,96 @@ let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element sel)
 
+(* CSS Selectors 4 sec. 9. *)
+let is_user_action_pseudo_class = function
+  | Hover | Active | Focus | Focus_visible | Focus_within -> true
+  | _ -> false
+
+(* CSS Selectors 4 sec. 13: the tree-structural pseudo-classes, the ones that
+   answer a question about the element's place among its siblings. *)
+let is_structural_pseudo_class = function
+  | Root | Empty | First_child | Last_child | Only_child | First_of_type
+  | Last_of_type | Only_of_type | Nth_child _ | Nth_last_child _ | Nth_of_type _
+  | Nth_last_of_type _ ->
+      true
+  | _ -> false
+
+(* Which pseudo-classes each pseudo-element takes after it. CSS Selectors 4 sec.
+   3.6.3 allows the logical combinations and hands the rest of the list to
+   "other specifications", so the rows below come from CSS Pseudo-Elements 4
+   sec. 5 for the element-backed pseudo-elements and, for the UA widgets whose
+   list only exists in the engines, from Chrome and WebKit, taking a
+   pseudo-class as allowed when either engine keeps the rule. *)
+let rec pseudo_element_allows pe pc =
+  match pe with
+  (* A name no engine recognises: cascade keeps it so a pseudo-element newer
+     than this list survives a format pass, and knows nothing about its rules,
+     so it keeps taking any pseudo-class after it. *)
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ | Moz_placeholder
+  | Ms_input_placeholder | Cue_region _ ->
+      true
+  | pe -> (
+      match pc with
+      (* Sec. 3.6.3 allows the logical combinations after every pseudo-element
+         and passes the row below on to their arguments; what an argument the
+         row refuses costs is the argument list's own business. [:is()] and
+         [:where()] take a [<forgiving-selector-list>] (sec. 4.1), which drops
+         it and leaves a selector that still parses and matches nothing, so both
+         engines keep the rule; the [:-moz-any()] / [:-webkit-any()] aliases
+         read back the same way. *)
+      | Is _ | Where _ | Moz_any_call _ | Webkit_any_call _ -> true
+      (* [:not()] takes an unforgiving list, so the refused argument takes the
+         compound down with it: both engines drop [::before:not(:hover)] and
+         keep [::part(p):not(:hover)]. *)
+      | Not args -> List.for_all (pseudo_element_allows_argument pe) args
+      (* Same forward-compatibility bargain as an unknown pseudo-element. *)
+      | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true
+      | pc -> (
+          match pe with
+          (* CSS Pseudo-Elements 4 sec. 5: an element-backed pseudo-element
+             takes what a real element takes, bar the pseudo-classes that would
+             report on the tree it sits in. *)
+          | Part _ | Details_content -> (
+              match pc with
+              | Has _ -> false
+              | pc -> not (is_structural_pseudo_class pc))
+          (* A scrollbar takes no focus, and reports its own state through the
+             vendor pseudo-classes, which reach here as unknown names. *)
+          | Webkit_scrollbar -> (
+              match pc with
+              | Hover | Active | Enabled | Disabled -> true
+              | _ -> false)
+          (* CSS View Transitions 1 sec. 3.1: [:only-child] matches a view
+             transition pseudo with no sibling in the pseudo-element tree. *)
+          | View_transition_group _ | View_transition_image_pair _
+          | View_transition_old _ | View_transition_new _ -> (
+              match pc with Only_child -> true | _ -> false)
+          (* The UA widgets that stand in for a real control. [::cue(...)]
+             selects inside the cue and takes none of them. *)
+          | Placeholder | File_selector_button | Webkit_input_placeholder
+          | Webkit_search_cancel_button | Webkit_search_decoration
+          | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
+          | Webkit_datetime_edit | Webkit_datetime_edit_year_field
+          | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
+          | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
+          | Webkit_datetime_edit_second_field
+          | Webkit_datetime_edit_millisecond_field
+          | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
+          | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
+          | Webkit_details_marker ->
+              is_user_action_pseudo_class pc
+          | _ -> false))
+
+(* An argument of a logical combination sits where the pseudo-element's own
+   pseudo-classes sit, so it reads as a pseudo-compound tail: pseudo-classes the
+   pseudo-element takes, and nothing else. A combinator or a selector list makes
+   the argument a whole complex selector, which no pseudo-element takes. *)
+and pseudo_element_allows_argument pe = function
+  | Compound components ->
+      List.for_all (pseudo_element_allows_argument pe) components
+  | Combined _ | Relative _ | List _ -> false
+  | c -> is_pe_action c && pseudo_element_allows pe c
+
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
    only happens once instead of per [:foo] / [::foo] pseudo read. *)
@@ -1560,9 +1650,12 @@ and read_compound t =
        [:not()]/[:has()] ([read_not_content]/[read_has_content]) and in the rule
        reader when a whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
-    if List.exists is_pseudo_element acc && not (is_pe_action s) then
-      Cursor.err t "pseudo-element must be last in compound selector"
-    else s :: acc
+    match List.find_opt is_pseudo_element acc with
+    | Some _ when not (is_pe_action s) ->
+        Cursor.err t "pseudo-element must be last in compound selector"
+    | Some pe when not (pseudo_element_allows pe s) ->
+        Cursor.err t "pseudo-class not allowed after this pseudo-element"
+    | _ -> s :: acc
   in
   let rec loop acc = if can_start () then loop (prepend_simple acc) else acc in
   match loop [] with

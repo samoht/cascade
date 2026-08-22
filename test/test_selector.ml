@@ -892,7 +892,6 @@ let pseudo_element_pseudo_class_rows =
     ( [
         "::placeholder";
         "::file-selector-button";
-        "::cue";
         "::-webkit-input-placeholder";
         "::-webkit-search-cancel-button";
         "::-webkit-search-decoration";
@@ -915,7 +914,8 @@ let pseudo_element_pseudo_class_rows =
       user_action_pseudo_classes );
     (* The scrollbar takes no focus, and reports its own state instead. *)
     ([ "::-webkit-scrollbar" ], [ ":hover"; ":active"; ":enabled"; ":disabled" ]);
-    (* CSS View Transitions 1 sec. 3.4: the group tree is one deep. *)
+    (* CSS View Transitions 1 sec. 3.1: [:only-child] matches a view transition
+       pseudo with no sibling in the pseudo-element tree. *)
     ( [
         "::view-transition-group(*)";
         "::view-transition-image-pair(*)";
@@ -924,12 +924,15 @@ let pseudo_element_pseudo_class_rows =
       ],
       [ ":only-child" ] );
     ([ "::part(tab)"; "::details-content" ], element_backed_pseudo_classes);
-    (* Names no shipping engine knows: cascade keeps them for forward
-       compatibility and cannot know their rules, so it keeps taking any
-       pseudo-class after them. *)
+    (* Names no shipping engine knows, plus the two WebVTT names cascade only
+       has a constructor for in their functional form, so that a bare [::cue] or
+       [::cue-region] reaches the reader as an unrecognised name: cascade keeps
+       all of these for forward compatibility and cannot know their rules, so it
+       keeps taking any pseudo-class after them. *)
     ( [
         "::-moz-placeholder";
         "::-ms-input-placeholder";
+        "::cue";
         "::cue-region";
         "::future-pseudo-element";
         "::foo(bar)";
@@ -1702,7 +1705,9 @@ let spec_selector_scope_pseudo_edges () =
   check_minified_to "input:not([type],[type=hidden])"
     "input:not([type], [type=hidden])";
   check_minified_to "a:before" "a::before";
-  check_minified_to ".a:before:hover" ".a::before:hover";
+  (* Chrome 151 and WebKit 26.5 drop [.a::before:hover], so the legacy fold is
+     pinned with the pseudo-class in the position both keep. *)
+  check_minified_to ".a:hover:before" ".a:hover::before";
   (* CSS Selectors 4 section 5.2: [*] in a non-solitary compound is redundant,
      but dropping it is a node change reserved for the optimizer's
      [Selector.canonicalize]; pp is lexical-only and holds it. *)

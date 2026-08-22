@@ -53,6 +53,19 @@
   by sec. 16 out of compound selectors with no pseudo-element among them, and
   the list is unforgiving, so Chrome and WebKit drop the whole rule where
   `:is()` and `:where()` drop only the offending item (#426)
+- Which pseudo-classes may follow a pseudo-element is read per pseudo-element,
+  so `::before:hover`, `::marker:hover`, `::selection:hover` and
+  `::spelling-error:hover` stop parsing while `::file-selector-button:hover`,
+  `::part(p):hover`, `::cue:hover` and `::-webkit-scrollbar:hover` keep
+  parsing. Selectors 4 sec. 3.6.3 makes the list per pseudo-element and calls
+  every other combination invalid, CSS Pseudo-Elements 4 sec. 5 gives the
+  element-backed pseudo-elements theirs, and Chrome and WebKit agree on the
+  rest. A pseudo-element cascade does not recognise still takes any
+  pseudo-class. A logical combination carries that list into its own argument:
+  `:is()` and `:where()` take a forgiving list, so `::before:is(.b)` still
+  parses and matches nothing, while the unforgiving `:not()` goes down with the
+  argument, so `::before:not(.b)` and `::part(p):not(.b)` stop parsing and
+  `::part(p):not(:hover)` keeps parsing (#430)
 - A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
   value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
   it back as the same name. `@layer a\3b b` printed `@layer a;b`, two
