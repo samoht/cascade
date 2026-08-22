@@ -730,6 +730,16 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Columns -> [ key "column-width"; key "column-count" ]
   | Column_width -> [ key "column-width" ]
   | Column_count -> [ key "column-count" ]
+  (* CSS Multicol 1 sec. 4.4: [column-rule] resets the rule width, style and
+     colour. Naming those three is what keeps [column-rule-color] from reading
+     as a slot of its own that [column-rule] never touches. *)
+  | Column_rule ->
+      [
+        key "column-rule-width";
+        key "column-rule-style";
+        key "column-rule-color";
+      ]
+  | Column_rule_color -> [ key "column-rule-color" ]
   (* CSS Lists 3 sec. 3.6. *)
   | List_style ->
       [
@@ -997,6 +1007,7 @@ let layout_footprint_family_heads =
       Prop Overflow;
       Prop Overscroll_behavior;
       Prop Columns;
+      Prop Column_rule;
       Prop Contain_intrinsic_size;
       Prop Container;
     ]

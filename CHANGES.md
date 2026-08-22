@@ -317,6 +317,16 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- `column-rule-color` and `-webkit-text-stroke-color` are typed as colours and
+  `-webkit-text-fill-color` joins the colour fold, so a colour-valued property
+  minifies to the same spelling whatever its name: `lab(1.90334 0.278696
+  -5.48866)` and `rgb(3, 7, 18)` both print `#030712` (#447)
+- A declaration writing `column-rule-color` keeps its place against one writing
+  `column-rule`. The shorthand resets the rule width, style and colour (CSS
+  Multicol 1 sec. 4.4), but the colour longhand sat outside its overlap
+  footprint, so the optimizer read the pair as commutative: two rules writing
+  the colour merged across `column-rule: 1px solid red`, and an element
+  matching both painted the rule red (#447)
 - A single-argument `:is()` keeps its wrapper after a pseudo-element that
   cannot take its argument, so `.a::before:is(.b)` minifies to
   `.a:before:is(.b)` rather than the `.a:before.b` that cascade's own reader,

@@ -447,6 +447,9 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Lighting_color -> p value
   | Webkit_tap_highlight_color -> p value
   | Webkit_text_decoration_color -> p value
+  | Webkit_text_fill_color -> p value
+  | Webkit_text_stroke_color -> p value
+  | Column_rule_color -> p value
   | Border_inline_color -> logical_color_uses p value
   | Border_block_color -> logical_color_uses p value
   | Box_shadow -> shadow_uses_color p value
@@ -1640,6 +1643,7 @@ let read_object_transition_value : type a.
   | Column_width -> Some (v Column_width (read_column_width t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
+  | Column_rule_color -> Some (v Column_rule_color (read_color t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 
@@ -1760,6 +1764,7 @@ let read_interaction_value : type a.
   | Webkit_user_select -> Some (v Webkit_user_select (read_user_select t))
   | Ms_user_select -> Some (v Ms_user_select (read_user_select t))
   | Webkit_text_fill_color -> Some (v Webkit_text_fill_color (read_color t))
+  | Webkit_text_stroke_color -> Some (v Webkit_text_stroke_color (read_color t))
   | Moz_user_select -> Some (v Moz_user_select (read_user_select t))
   | Pointer_events -> Some (v Pointer_events (read_pointer_events t))
   | Resize -> Some (v Resize (read_resize t))

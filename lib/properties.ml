@@ -430,6 +430,7 @@ let pp_property : type a. a property Pp.t =
   | Font_variation_settings -> Pp.string ctx "font-variation-settings"
   | Webkit_tap_highlight_color -> Pp.string ctx "-webkit-tap-highlight-color"
   | Webkit_text_fill_color -> Pp.string ctx "-webkit-text-fill-color"
+  | Webkit_text_stroke_color -> Pp.string ctx "-webkit-text-stroke-color"
   | Webkit_user_select -> Pp.string ctx "-webkit-user-select"
   | Ms_user_select -> Pp.string ctx "-ms-user-select"
   | Moz_user_select -> Pp.string ctx "-moz-user-select"
@@ -545,6 +546,7 @@ let pp_property : type a. a property Pp.t =
   | Column_width -> Pp.string ctx "column-width"
   | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
+  | Column_rule_color -> Pp.string ctx "column-rule-color"
   | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
@@ -1489,6 +1491,7 @@ let read_any_property t =
   | "column-width" -> Prop Column_width
   | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
+  | "column-rule-color" -> Prop Column_rule_color
   | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
@@ -1749,6 +1752,7 @@ let read_any_property t =
   | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
   | "-webkit-text-fill-color" -> Prop Webkit_text_fill_color
+  | "-webkit-text-stroke-color" -> Prop Webkit_text_stroke_color
   | "-webkit-user-select" -> Prop Webkit_user_select
   | "-ms-user-select" -> Prop Ms_user_select
   | "-moz-user-select" -> Prop Moz_user_select
@@ -2440,6 +2444,9 @@ let normalize_property_value : type a.
   | Border_block_color -> normalize_logical_border_color ~lossless value
   | Text_decoration_color -> normalize_color value
   | Webkit_text_decoration_color -> normalize_color value
+  | Webkit_text_fill_color -> normalize_color value
+  | Webkit_text_stroke_color -> normalize_color value
+  | Column_rule_color -> normalize_color value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -2787,6 +2794,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
   | Webkit_text_fill_color -> pp pp_color
+  | Webkit_text_stroke_color -> pp pp_color
+  | Column_rule_color -> pp pp_color
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -3438,6 +3447,9 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Outline_color -> Some Color
   | Webkit_tap_highlight_color -> Some Color
   | Webkit_text_decoration_color -> Some Color
+  | Webkit_text_fill_color -> Some Color
+  | Webkit_text_stroke_color -> Some Color
+  | Column_rule_color -> Some Color
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color
