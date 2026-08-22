@@ -80,6 +80,27 @@ let layer_known ~layer_order = function
   | None -> true
   | Some name -> List.exists (String.equal name) layer_order
 
+(* The places a declaration contributes to ordinary element matching. The other
+   declaration sites belong to another cascade origin or to no element at all
+   (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
+   [@position-try] the position fallback origin, [@page] and its margin boxes
+   are not elements, and [@supports-condition] is never applied to a box.
+   Written out in full so that a site added to the record has to be classified
+   here. *)
+let element_matching_sites =
+  {
+    Stylesheet.element_rule = true;
+    animation_frame = false;
+    page_box = false;
+    position_fallback = false;
+    condition_test = false;
+  }
+
+(* The layer a declaration sits in is carried down the tree and differs per
+   branch, which no accumulator can do, so this spells its own recursion rather
+   than calling [fold_declarations]. The descent is still [statement_children]'s
+   and the sites are still named, so a grouping at-rule or a declaration site
+   added later reaches this walk. *)
 let collect_cascade_rules ~layer_order stylesheet =
   let source_order = ref 0 in
   let add layer decl acc =
@@ -95,36 +116,20 @@ let collect_cascade_rules ~layer_order stylesheet =
     incr source_order;
     rule :: acc
   in
-  let rec statement current_layer acc =
+  let rec statement current_layer acc stmt =
     let open Stylesheet in
-    function
-    | Rule rule ->
-        let acc =
-          List.fold_left
-            (fun acc decl -> add current_layer decl acc)
-            acc rule.declarations
-        in
-        List.fold_left (statement current_layer) acc rule.nested
-    | Declarations declarations ->
+    let current_layer =
+      match stmt with Layer ((Some _ as name), _) -> name | _ -> current_layer
+    in
+    let acc =
+      if at_declaration_site element_matching_sites stmt then
         List.fold_left
           (fun acc decl -> add current_layer decl acc)
-          acc declarations
-    | Layer (name, block) ->
-        let current_layer =
-          match name with Some _ -> name | None -> current_layer
-        in
-        List.fold_left (statement current_layer) acc block
-    | Media (_, block)
-    | Supports (_, block)
-    | Moz_document (_, block)
-    | When (_, block)
-    | Else (_, block)
-    | Starting_style block
-    | Origin (_, block) ->
-        List.fold_left (statement current_layer) acc block
-    | Container (_, _, block) | Scope (_, _, block) ->
-        List.fold_left (statement current_layer) acc block
-    | _ -> acc
+          acc
+          (statement_declarations stmt)
+      else acc
+    in
+    List.fold_left (statement current_layer) acc (statement_children stmt)
   in
   List.fold_left (statement None) [] stylesheet
   |> List.filter (fun (rule : Context.cascade_rule) ->
@@ -1022,23 +1027,9 @@ let root_theme_rule declarations =
       merge_key = None;
     }
 
-(* The places a declaration contributes to ordinary element matching. The other
-   declaration sites belong to another cascade origin or to no element at all
-   (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
-   [@position-try] the position fallback origin, [@page] and its margin boxes
-   are not elements, and [@supports-condition] is never applied to a box. None
-   of them declares a name for an element that merely references it. Written out
-   in full so that a site added to the record has to be classified here. *)
-let element_matching_sites =
-  {
-    Stylesheet.element_rule = true;
-    animation_frame = false;
-    page_box = false;
-    position_fallback = false;
-    condition_test = false;
-  }
-
-(* Names a style rule declares as a custom property (bare, no [--]). *)
+(* Names a style rule declares as a custom property (bare, no [--]). Only the
+   element-matching sites count: a name written in another cascade origin is not
+   declared for the element that merely references it. *)
 let declared_custom_prop_names (stmts : Stylesheet.statement list) :
     (string, unit) Hashtbl.t =
   let tbl = Hashtbl.create 16 in
