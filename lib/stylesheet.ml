@@ -463,6 +463,8 @@ let site_selected sites = function
   | Position_fallback -> sites.position_fallback
   | Condition_test -> sites.condition_test
 
+let at_declaration_site sites stmt = site_selected sites (declaration_site stmt)
+
 let rec fold_statements f acc block =
   List.fold_left
     (fun acc stmt -> fold_statements f (f acc stmt) (statement_children stmt))
@@ -493,8 +495,7 @@ let edit_statements f block =
 let fold_declarations ?(sites = every_site) f acc block =
   fold_statements
     (fun acc stmt ->
-      if site_selected sites (declaration_site stmt) then
-        f acc (statement_declarations stmt)
+      if at_declaration_site sites stmt then f acc (statement_declarations stmt)
       else acc)
     acc block
 

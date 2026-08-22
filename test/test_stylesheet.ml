@@ -7978,6 +7978,36 @@ let deep_walker_tests =
           "element declarations only"
           (List.sort compare element_places)
           (properties_folded ~sites ()) );
+    ( "at_declaration_site makes the fold's choice outside the fold",
+      `Quick,
+      fun () ->
+        (* A walk that carries something down the tree recurses itself, so it
+           reads the sites rather than passing them; it must land on the same
+           declarations the fold does. *)
+        let sites =
+          {
+            element_rule = true;
+            animation_frame = false;
+            page_box = false;
+            position_fallback = false;
+            condition_test = false;
+          }
+        in
+        let rec walk acc stmt =
+          let acc =
+            if at_declaration_site sites stmt then
+              List.rev_append
+                (List.map Css.Declaration.property_name
+                   (statement_declarations stmt))
+                acc
+            else acc
+          in
+          List.fold_left walk acc (statement_children stmt)
+        in
+        Alcotest.(check (list string))
+          "the sites the fold folds over"
+          (properties_folded ~sites ())
+          (List.sort compare (List.fold_left walk [] (places ()))) );
     ( "map_declarations rewrites every place a declaration sits",
       `Quick,
       fun () ->

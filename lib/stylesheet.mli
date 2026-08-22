@@ -282,6 +282,15 @@ type declaration_sites = {
     at-rule, and makes a place added here a compile error in every walk that
     made a choice. *)
 
+val at_declaration_site : declaration_sites -> statement -> bool
+(** [at_declaration_site sites stmt] holds when the declarations [stmt] carries
+    sit in one of the places [sites] names. It is the test {!fold_declarations}
+    makes, exposed for a walk that carries something down the tree, such as the
+    cascade layer a declaration sits in or an [@supports] nesting depth. An
+    accumulator travels sideways rather than down, so such a walk cannot be a
+    fold and recurses on {!statement_children} instead; this keeps the sites it
+    reads as compile-checked as the fold's. *)
+
 val fold_statements : ('a -> statement -> 'a) -> 'a -> block -> 'a
 (** [fold_statements f acc block] folds [f] over [block] and over every
     statement reachable from it through {!statement_children}, in source order,

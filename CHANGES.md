@@ -179,6 +179,11 @@
   statement to a function that keeps, replaces or drops it, and descends into
   what survives, so a pass that drops a statement no longer carries its own
   list of the at-rules that nest (#363)
+- `Css.Stylesheet.at_declaration_site` answers whether a statement holds its
+  declarations in one of the places a `declaration_sites` record names. A walk
+  that carries a cascade layer or an `@supports` depth down the tree cannot be
+  a fold, and can now name the sites it reads instead of matching on the
+  statements it expects to meet (#368)
 
 ### CLI tools
 
