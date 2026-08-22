@@ -331,6 +331,12 @@
   which closes the rule around it. The declaration name, the `var()` reference
   and every shape of its fallback, the `@property` prelude and a `style()`
   container query all take the escaping (#429)
+- `Css.inline_vars` keeps the `@property` registration of a custom property it
+  keeps live. Every registration was dropped, so a property the pass could not
+  inline safely lost the `initial-value` its references fall back on and the
+  `inherits: false` that stops it inheriting, repainting the page; and the pass
+  missed its own fixpoint, the second run pruning the declaration the first had
+  kept (#416)
 - Pruning unreferenced custom properties counts a `var()` in a `@keyframes`
   frame, `@page` and its margin boxes, `@position-try` or
   `@supports-condition` as a reference, instead of deleting a binding those
