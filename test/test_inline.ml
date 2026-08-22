@@ -496,6 +496,27 @@ let test_inline_layer_order_sites () =
      a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}"
     "@container(min-width:1px){.z{outline-color:red}}.x{color:red}"
 
+(* Unwrapping a [@layer] replays the layer stack as document order and hands the
+   decision back to specificity, so it holds only where no cascade slot is
+   written from two layers at once (CSS Cascade 5 sec. 6.4.3). No custom
+   property has to be involved for the unwrapping to change the render. *)
+let test_inline_layer_flattening () =
+  check_inline_case "a declared layer order outranks document order"
+    "@layer a,b;@layer b{.x{color:blue}}@layer a{.x{color:red}}"
+    "@layer a,b;@layer b{.x{color:blue}}@layer a{.x{color:red}}";
+  check_inline_case "an unlayered declaration keeps its win over a layer"
+    ".x{color:red}@layer a{.x{color:blue}}"
+    ".x{color:red}@layer a{.x{color:blue}}";
+  check_inline_case "a layer outranks a more specific selector below it"
+    "@layer a,b;@layer a{#x{color:red}}@layer b{.x{color:blue}}"
+    "@layer a,b;@layer a{#x{color:red}}@layer b{.x{color:blue}}";
+  check_inline_case "a longhand in a weaker layer loses to a shorthand"
+    "@layer a,b;@layer b{.x{margin:0}}@layer a{.x{margin-left:5px}}"
+    "@layer a,b;@layer b{.x{margin:0}}@layer a{.x{margin-left:5px}}";
+  check_inline_case "layers writing disjoint slots still flatten"
+    "@layer b{.x{color:blue}}@layer a{.y{padding:1px}}"
+    ".x{color:blue}.y{padding:1px}"
+
 let suite =
   ( "inline",
     [
@@ -558,4 +579,6 @@ let suite =
         `Quick test_inline_style_query_keeps_no_more;
       Alcotest.test_case "inline vars order layers by where they are named"
         `Quick test_inline_layer_order_sites;
+      Alcotest.test_case "inline vars keep a layer that still decides a slot"
+        `Quick test_inline_layer_flattening;
     ] )
