@@ -77,10 +77,12 @@ if [ -z "$CANON_FILTER" ]; then
   CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
 # Prove it filters, rather than that a file exists: a stale or broken binary
-# passes an existence check and silently restores raw comparison. The first
-# line is one spelling of one value and must be dropped; the second is a real
-# change and must survive.
-canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\tcolor\tred\tblue\n' |
+# passes an existence check and silently restores raw comparison. The first two
+# lines each spell one value two ways and must be dropped; the third is a real
+# change and must survive. The prefixed line is there on purpose: cascade folds
+# a colour only for a property it types, and the prefixed colours are the ones
+# a real page carries by the thousand.
+canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\t-webkit-text-fill-color\tlab(1.90334 0.278696 -5.48866)\trgb(3, 7, 18)\n0\tX\tcolor\tred\tblue\n' |
   "$CANON_FILTER" 2>/dev/null)
 if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
   echo "ERROR: canonical filter missing or not filtering: $CANON_FILTER" >&2

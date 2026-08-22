@@ -72,9 +72,11 @@ compares values the way cascade does, so `0%` against `0px`, or `red` against
 `rgb(255, 0, 0)`, is not reported. Comparing raw strings instead counts every
 such pair, which inflates the total into a number that reads like a result and
 is not one. `run.sh` therefore builds the filter through the checkout's own
-opam switch and proves it filters, on a pair that must be dropped and a pair
+opam switch and proves it filters, on two pairs that must be dropped and one
 that must survive, before measuring anything; a filter that is missing or wrong
-stops the run rather than downgrading it.
+stops the run rather than downgrading it. One dropped pair is vendor-prefixed,
+because cascade folds a colour only for a property it types, and a real page's
+prefixed colours outnumber all its other differences.
 
 ## Coverage
 
