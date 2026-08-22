@@ -229,6 +229,7 @@ let declaration_covers covering covered =
 type overlap_key = int
 
 let overlap_key_equal = Int.equal
+let overlap_key_compare = Int.compare
 let overlap_key_hash key = key land max_int
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 
