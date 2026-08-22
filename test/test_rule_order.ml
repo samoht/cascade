@@ -93,6 +93,64 @@ let custom_property_font_name_quoting_converges () =
     "a single-word string stays opaque" true
     (canonical {|.a{--x:"foo"}|} <> canonical ".a{--x:foo}")
 
+(* Every block at-rule that holds a statement list, each as the CSS text that
+   opens and closes it. [@else] has no standalone form (css-conditional-5 sec. 3
+   binds it to the [@when] before it), so its opener carries the antecedent.
+   [Origin] has no CSS syntax at all and is exercised separately. *)
+let block_at_rules =
+  [
+    ("@layer", "@layer L{", "}");
+    ("@media", "@media (width>0px){", "}");
+    ("@container", "@container (width>0px){", "}");
+    ("@supports", "@supports (color:red){", "}");
+    ("@-moz-document", "@-moz-document url-prefix(){", "}");
+    ("@starting-style", "@starting-style{", "}");
+    ("@when", "@when media(width>0px){", "}");
+    ("@else", "@when media(width<0px){.z{color:red}}@else{", "}");
+    ("@scope", "@scope (.card){", "}");
+  ]
+
+(* A projection fold reads a declaration or a media prelude; neither depends on
+   the block at-rule the statement was written in, since a wrapper decides when
+   its contents apply and never what they mean. So a pair that converges at the
+   top level converges inside every wrapper - otherwise the canonical diff
+   answers differently for the same rule depending on what encloses it, which is
+   the phantom difference the projection exists to remove. *)
+let converges_everywhere name a b =
+  Alcotest.(check string)
+    (String.concat " " [ name; "at the top level" ])
+    (canonical b) (canonical a);
+  List.iter
+    (fun (label, before, after) ->
+      let wrap body = String.concat "" [ before; body; after ] in
+      Alcotest.(check string)
+        (String.concat " " [ name; "inside"; label ])
+        (canonical (wrap b))
+        (canonical (wrap a)))
+    block_at_rules;
+  let origin css =
+    render
+      (Rule_order.canonicalize [ Stylesheet.Origin (Author, statements css) ])
+  in
+  Alcotest.(check string)
+    (String.concat " " [ name; "inside an origin wrapper" ])
+    (origin b) (origin a)
+
+let custom_font_quoting_converges_under_every_wrapper () =
+  converges_everywhere "a quoted family name" {|.a{--f:"Fira Code",monospace}|}
+    ".a{--f:Fira Code,monospace}"
+
+let color_spelling_converges_under_every_wrapper () =
+  (* CSS Color 4 sec. 10.2 scales each [color(srgb ...)] channel by 255, so
+     [color(srgb 1 0 0)] is the sRGB red the keyword names. *)
+  converges_everywhere "a whole-byte color(srgb)" ".a{color:color(srgb 1 0 0)}"
+    ".a{color:red}"
+
+let media_level_spelling_converges_under_every_wrapper () =
+  converges_everywhere "the Level 3 negation"
+    "@media not all and (width>100px){.a{color:red}}"
+    "@media not (width>100px){.a{color:red}}"
+
 let media_and_independent_rule_converge () =
   (* A conditional block whose rules cannot conflict with a neighbouring rule
      reorders with it, so both source orderings reach one canonical form. *)
@@ -277,6 +335,13 @@ let suite =
         custom_property_layer_and_meta_survive;
       Alcotest.test_case "custom-property font-name quoting converges" `Quick
         custom_property_font_name_quoting_converges;
+      Alcotest.test_case
+        "custom-property font-name quoting converges under every wrapper" `Quick
+        custom_font_quoting_converges_under_every_wrapper;
+      Alcotest.test_case "color spelling converges under every wrapper" `Quick
+        color_spelling_converges_under_every_wrapper;
+      Alcotest.test_case "media level spelling converges under every wrapper"
+        `Quick media_level_spelling_converges_under_every_wrapper;
       Alcotest.test_case "media and independent rule converge" `Quick
         media_and_independent_rule_converge;
       Alcotest.test_case "media conflict keeps source order" `Quick
