@@ -4,20 +4,36 @@
 # Covers `cascade apply` (both modes) and `cascade --minify` (each <style>
 # block minified in place). Skips cleanly with no browser or node (e.g. in CI).
 #
-# A difference list is reproducible, so two runs can be diffed against each
-# other: fetch.sh freezes every downloaded page (freeze_page.js) and xtest.js
-# pins the browser, leaving computed style a function of the CSS alone.
+# A difference list is a measurement, so the run says what produced it: the
+# browser version heads the output, and each fetched page carries the hash of
+# the bytes actually measured. fetch.sh freezes every downloaded page
+# (freeze_page.js) and xtest.js pins the browser, leaving computed style a
+# function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
 export CASCADE=${CASCADE:-cascade}
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
-[ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort | tail -1)
+# sort -V, not sort: the cache holds mac_arm-<version> directories, and in
+# lexical order a 99.x outranks a 146.x.
+[ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort -V | tail -1)
 if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
 export CHROME
+
+# Chrome versions do not agree on computed styles, so a count is comparable
+# only against another from the same engine. Reporting the version keeps a
+# number from being quoted without it; CHROME_VERSION demands a given build for
+# a comparison that has to cross machines, and is unset by default because
+# requiring one build outright would strand anyone who lacks it.
+browser=$("$CHROME" --version 2>/dev/null | tr -d '\r')
+[ -z "$browser" ] && browser="unknown ($CHROME)"
+if [ -n "$CHROME_VERSION" ] && ! printf '%s\n' "$browser" | grep -qF "$CHROME_VERSION"; then
+  echo "ERROR: CHROME_VERSION=$CHROME_VERSION, but the browser is $browser" >&2
+  exit 1
+fi
 
 # Canonical-difference filter: compares values the way cascade does, so
 # render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
@@ -43,6 +59,18 @@ if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
 fi
 export CANON_FILTER
 
+# Fetched pages are downloaded rather than committed, so record which bytes
+# produced a result: the hash moves when the site or its CDN does, and a count
+# that moved with it is explained instead of mysterious.
+sha() { # file -> first 12 hex of sha256
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1"
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/.*= //'
+  else echo nohash
+  fi | cut -c1-12
+}
+
+echo "browser: $browser"
 echo "compare: canonical"
 fail=0
 # xtest.js renders two pages, which is the whole cost of the run: keep its
@@ -77,12 +105,13 @@ done
 # They gate like the fixtures do: a surviving difference is a defect in the
 # transform, whichever page happened to find it. One that appears the day a
 # site is redesigned is still a defect, but re-run fetch.sh before reading it
-# as a regression in the working tree.
+# as a regression in the working tree, and check the hash in the label first.
 for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
+  page="$(basename "$f")@$(sha "$f")"
   tmp=$(mktemp)
   "$CASCADE" apply --minimal "$f" > "$tmp" 2>/dev/null
-  check "real $(basename "$f") minimal" "$f" "$tmp"
+  check "real $page minimal" "$f" "$tmp"
   rm -f "$tmp"
 done
 exit $fail
