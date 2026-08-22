@@ -1905,6 +1905,223 @@ let spec_block_recovery_warns_once_per_statement () =
      blue } }"
     0
 
+(* CSS Counter Styles 3 sec. 3 gives [@counter-style] a block of descriptor
+   declarations, so CSS Syntax 3 sec. 5.4.3 keeps what that block already
+   yielded when one item fails to parse: a descriptor cascade rejects costs that
+   descriptor, not the [@counter-style] holding it and not the sheet holding
+   that. The discard follows sec. 5.4.4 for a declaration - up to the next
+   top-level [;], a [{}] met on the way counting as one component value of the
+   value being skipped - and sec. 5.4.2 for an at-rule, which ends at its block
+   or its [;]. Blink 146 keeps the rule in every case below. *)
+let spec_lenient_recovery_counter_style_descriptors () =
+  let recovered =
+    "@counter-style c{system:cyclic;symbols:\"a\";suffix:\" \"}"
+  in
+  let shorter = "@counter-style c{system:cyclic;symbols:\"a\"}" in
+  let body rest = "@counter-style c { system: cyclic; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @counter-style"
+    "@counter-style c { zzz: 1; system: cyclic; symbols: \"a\"; suffix: \" \" }"
+    recovered 1;
+  lenient_recover "unknown descriptor mid-body in @counter-style"
+    (body "zzz: 1; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover "unknown descriptor last in @counter-style"
+    (body "symbols: \"a\"; suffix: \" \"; zzz: 1")
+    recovered 1;
+  lenient_recover "bad value for a known @counter-style descriptor"
+    (body "symbols: \"a\"; suffix: !!!")
+    shorter 1;
+  lenient_recover "two curly blocks in a dropped counter-style value"
+    (body "zzz: {1}{2}; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  (* A descriptor's value is the whole of its declaration, and no descriptor
+     takes an [!important] flag, so the declaration it follows is invalid rather
+     than the flag alone. *)
+  lenient_recover "an important flag invalidates the counter-style descriptor"
+    (body "symbols: \"a\"; suffix: \" \" !important")
+    shorter 1;
+  lenient_recover "an important flag on an opaque counter-style descriptor"
+    (body "symbols: \"a\"; pad: 2 \"0\" !important; suffix: \" \"")
+    recovered 1;
+  lenient_recover "at-rule in @counter-style ends at its block"
+    (body "@media screen { color: red } symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @counter-style ends at its semicolon"
+    (body "@media screen; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover "selector-shaped item in @counter-style with a semicolon"
+    (body ".a { b: c }; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  (* Sec. 5.4.4 skips a bad declaration to the next top-level [;], and a
+     selector-shaped item has none of its own, so it takes the tail of the body
+     with it. Blink 146 splits the two the same way. *)
+  lenient_recover "selector-shaped item in @counter-style takes the tail"
+    (body "symbols: \"a\"; .a { b: c } suffix: \" \"")
+    shorter 1;
+  lenient_recover "a dropped counter-style descriptor keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "zzz: 1; symbols: \"a\"; suffix: \" \""
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS Fonts 4 sec. 12.1 gives [@font-palette-values] a block of descriptor
+   declarations, so one descriptor cascade rejects costs that descriptor alone.
+   A descriptor's value is the whole of its declaration: a trailing [!important]
+   or a stray ident makes the declaration invalid rather than the leftover
+   alone, as it does in Blink 146. *)
+let spec_lenient_recovery_font_palette_descriptors () =
+  let recovered = "@font-palette-values --p{font-family:X;base-palette:1}" in
+  let body rest = "@font-palette-values --p { font-family: X; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @font-palette-values"
+    "@font-palette-values --p { zzz: 1; font-family: X; base-palette: 1 }"
+    recovered 1;
+  lenient_recover "unknown descriptor mid-body in @font-palette-values"
+    (body "zzz: 1; base-palette: 1")
+    recovered 1;
+  lenient_recover "unknown descriptor last in @font-palette-values"
+    (body "base-palette: 1; zzz: 1")
+    recovered 1;
+  lenient_recover "bad value for a known @font-palette-values descriptor"
+    (body "base-palette: -1; base-palette: 1")
+    recovered 1;
+  lenient_recover "two curly blocks in a dropped font-palette value"
+    (body "zzz: {1}{2}; base-palette: 1")
+    recovered 1;
+  lenient_recover "trailing tokens invalidate the font-palette descriptor"
+    (body "base-palette: 2 bogus; base-palette: 1")
+    recovered 1;
+  lenient_recover "an important flag invalidates the font-palette descriptor"
+    (body "base-palette: 2 !important; base-palette: 1")
+    recovered 1;
+  lenient_recover "at-rule in @font-palette-values ends at its block"
+    (body "@media screen { color: red } base-palette: 1")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @font-palette-values ends at its semicolon"
+    (body "@media screen; base-palette: 1")
+    recovered 1;
+  lenient_recover
+    "selector-shaped item in @font-palette-values with a semicolon"
+    (body ".a { b: c }; base-palette: 1")
+    recovered 1;
+  lenient_recover "a dropped font-palette descriptor keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "zzz: 1; base-palette: 1"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS View Transitions 2 sec. 2.4 gives [@view-transition] a block of
+   descriptor declarations, so one descriptor cascade rejects costs that
+   descriptor alone. Blink 146 keeps the rule in every case below. *)
+let spec_lenient_recovery_view_transition_descriptors () =
+  let recovered = "@view-transition{navigation:auto}" in
+  let both = "@view-transition{navigation:auto;types:a}" in
+  lenient_recover "unknown descriptor first in @view-transition"
+    "@view-transition { zzz: 1; navigation: auto }" recovered 1;
+  lenient_recover "unknown descriptor mid-body in @view-transition"
+    "@view-transition { navigation: auto; zzz: 1; types: a }" both 1;
+  lenient_recover "unknown descriptor last in @view-transition"
+    "@view-transition { navigation: auto; zzz: 1 }" recovered 1;
+  lenient_recover "bad value for a known @view-transition descriptor"
+    "@view-transition { navigation: bogus; navigation: auto }" recovered 1;
+  lenient_recover "two curly blocks in a dropped view-transition value"
+    "@view-transition { zzz: {1}{2}; navigation: auto }" recovered 1;
+  lenient_recover "trailing tokens invalidate the view-transition descriptor"
+    "@view-transition { navigation: none bogus; navigation: auto }" recovered 1;
+  lenient_recover "an important flag invalidates the view-transition descriptor"
+    "@view-transition { navigation: none !important; navigation: auto }"
+    recovered 1;
+  lenient_recover "at-rule in @view-transition ends at its block"
+    "@view-transition { @media screen { color: red } navigation: auto }"
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @view-transition ends at its semicolon"
+    "@view-transition { @media screen; navigation: auto }" recovered 1;
+  lenient_recover "selector-shaped item in @view-transition with a semicolon"
+    "@view-transition { .a { b: c }; navigation: auto }" recovered 1;
+  lenient_recover "a dropped view-transition descriptor keeps the sheet whole"
+    ".a { color: red } @view-transition { zzz: 1; navigation: auto } .z { \
+     color: lime }"
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS Fonts 4 sec. 11.1 fills an [@font-feature-values] body with feature value
+   blocks, so it is a rule list: CSS Syntax 3 sec. 5.4.2 ends the block cascade
+   rejects at its own [{}] or [;], leaving the blocks written around it in the
+   rule. A [;] with no rule before it is discarded with nothing to validate
+   (sec. 5.4.3), so it costs nothing. *)
+let spec_lenient_recovery_font_feature_values_blocks () =
+  let recovered = "@font-feature-values Xf{@swash{s:1}@ornaments{o:2}}" in
+  let body rest = "@font-feature-values Xf { @swash { s: 1 } " ^ rest ^ " }" in
+  lenient_recover "unknown block first in @font-feature-values"
+    "@font-feature-values Xf { @zzz { a: 1 } @swash { s: 1 } @ornaments { o: 2 \
+     } }"
+    recovered 1;
+  lenient_recover "unknown block mid-body in @font-feature-values"
+    (body "@zzz { a: 1 } @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover "unknown block last in @font-feature-values"
+    (body "@ornaments { o: 2 } @zzz { a: 1 }")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @font-feature-values ends at its semicolon"
+    (body "@zzz; @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover
+    "selector-shaped item in @font-feature-values ends at its block"
+    (body ".a { b: c } @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover
+    "declaration in an @font-feature-values body ends at its semicolon"
+    (body "color: red; @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover "stray semicolon in @font-feature-values costs nothing"
+    (body "; @ornaments { o: 2 }")
+    recovered 0;
+  lenient_recover "leading semicolon in @font-feature-values costs nothing"
+    "@font-feature-values Xf { ; @swash { s: 1 } @ornaments { o: 2 } }"
+    recovered 0;
+  lenient_recover "a dropped feature block keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "@zzz { a: 1 } @ornaments { o: 2 }"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* Each dropped descriptor reports once, and [~strict:true] rejects exactly the
+   inputs the lenient parse warned about. *)
+let spec_descriptor_recovery_warns_once_per_descriptor () =
+  warns_exactly "@counter-style c { system: cyclic; zzz: 1; symbols: \"a\" }" 1;
+  warns_exactly
+    "@counter-style c { system: cyclic; zzz: {1}{2}; symbols: \"a\" }" 1;
+  warns_exactly
+    "@counter-style c { system: cyclic; zzz: 1; yyy: 2; symbols: \"a\" }" 2;
+  warns_exactly "@counter-style c { system: cyclic; symbols: \"a\" }" 0;
+  warns_exactly "@counter-style c { ;; system: cyclic; symbols: \"a\" }" 0;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: 1; base-palette: 1 }" 1;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: {1}{2}; base-palette: 1 }"
+    1;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: 1; yyy: 2; base-palette: \
+     1 }"
+    2;
+  warns_exactly "@font-palette-values --p { font-family: X; base-palette: 1 }" 0;
+  warns_exactly "@view-transition { zzz: 1; navigation: auto }" 1;
+  warns_exactly "@view-transition { zzz: {1}{2}; navigation: auto }" 1;
+  warns_exactly "@view-transition { zzz: 1; yyy: 2; navigation: auto }" 2;
+  warns_exactly "@view-transition { navigation: auto }" 0;
+  warns_exactly "@view-transition { ;; navigation: auto }" 0;
+  warns_exactly "@font-feature-values Xf { @zzz { a: 1 } @swash { s: 1 } }" 1;
+  warns_exactly
+    "@font-feature-values Xf { @zzz { a: 1 } @yyy { b: 2 } @swash { s: 1 } }" 2;
+  warns_exactly "@font-feature-values Xf { @swash { s: 1 } }" 0;
+  warns_exactly "@font-feature-values Xf { ;; @swash { s: 1 } }" 0
+
 let stylesheet_tests =
   [
     (* Core type tests *)
@@ -2019,6 +2236,21 @@ let stylesheet_tests =
     ( "spec block recovery warns once per dropped statement",
       `Quick,
       spec_block_recovery_warns_once_per_statement );
+    ( "spec lenient recovery in a @counter-style body",
+      `Quick,
+      spec_lenient_recovery_counter_style_descriptors );
+    ( "spec lenient recovery in a @font-palette-values body",
+      `Quick,
+      spec_lenient_recovery_font_palette_descriptors );
+    ( "spec lenient recovery in a @view-transition body",
+      `Quick,
+      spec_lenient_recovery_view_transition_descriptors );
+    ( "spec lenient recovery in a @font-feature-values body",
+      `Quick,
+      spec_lenient_recovery_font_feature_values_blocks );
+    ( "spec descriptor recovery warns once per dropped descriptor",
+      `Quick,
+      spec_descriptor_recovery_warns_once_per_descriptor );
   ]
 
 (* Tests for newly added check functions *)
