@@ -109,6 +109,16 @@
   `;` and sec. 5.4.3 ends a qualified rule at its block, so a `(` or a `[`
   written before that block is part of what is discarded, and Blink 146 keeps no
   such rule (#402)
+- A `@page` body and a page-margin box keep any property they are given, so
+  `@page { color: red }`, `@page { orphans: 3 }` and
+  `@page { @top-center { display: block } }` are read instead of erroring under
+  `~strict:true` and being dropped with a warning otherwise. CSS Paged Media 3
+  sec. 6 admits its Appendix A list of CSS 2.1 properties in both contexts and
+  leaves anything outside CSS 2.1 undefined rather than invalid, and Blink 146
+  keeps every property it knows there. The seven-name allowlist also rejected
+  `bleed`, the name sec. 7.3 defines, and `page-orientation`. A value the
+  property's grammar rejects, and an item that is no declaration, are still
+  rejected (#403)
 
 ### Minification
 
