@@ -7841,7 +7841,13 @@ val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
     [var()] reference; [warn] is called with each such name. The transform
     assumes no runtime mutation of the variables it inlines: a reference marked
     [~runtime] on {!var_ref} also stays live, fallback included, so a
-    browser-time override point survives. *)
+    browser-time override point survives.
+
+    Every [@layer] wrapper is spliced into its parent and the [@layer-decl]
+    rules ordering them go with it. A [@property] registration goes only when
+    the substitution left neither a declaration of its property nor a [var()]
+    reading it: its [initial-value] and [inherits] descriptors decide computed
+    values, so a property that stays live keeps its registration. *)
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t

@@ -621,14 +621,28 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
    which [edit_statements] cannot express and which does not need it: the splice
    is the [concat_map] over a block, and the descent below it is still
    [map_statement_children]'s, so an at-rule added later is walked without a
-   word here. *)
-let rec statements_for_inline block = List.concat_map statement_for_inline block
+   word here.
 
-and statement_for_inline statement =
+   [live] holds every custom-property name the substituted stylesheet still
+   mentions, with the leading [--]. A [@property] registration is not
+   scaffolding for the [var()] it feeds: CSS Properties and Values API 1 sec. 2
+   makes its [initial-value] the computed value wherever no declaration wins,
+   and its [inherits] descriptor decides whether the property inherits at all.
+   Both change computed values, so the registration dies only with the property
+   itself - once substitution has left neither a declaration of it nor a [var()]
+   reading it. *)
+let rec statements_for_inline ~live block =
+  List.concat_map (statement_for_inline ~live) block
+
+and statement_for_inline ~live statement =
   match statement with
-  | Layer (_, block) -> statements_for_inline block
-  | Layer_decl _ | Property _ -> []
-  | statement -> [ map_statement_children statements_for_inline statement ]
+  | Layer (_, block) -> statements_for_inline ~live block
+  | Property rule -> if List.mem rule.name live then [ statement ] else []
+  (* Every [@layer] wrapper is spliced into its parent above, so the layers an
+     [@layer] statement orders no longer exist to be ordered. *)
+  | Layer_decl _ -> []
+  | statement ->
+      [ map_statement_children (statements_for_inline ~live) statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
    rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
@@ -675,15 +689,16 @@ let canonicalize_rule_order = Rule_order.canonicalize
 
 (* Explicit AST step matching what [to_string ~mode:Inline] does internally:
    substitute every resolvable [var()] reference, then strip the now-empty
-   [@layer] wrappers and the [@property] / [@layer-decl] rules that only existed
-   to register the substituted variables. *)
+   [@layer] wrappers, the [@layer-decl] rules ordering them, and the [@property]
+   registrations whose property the substitution removed. *)
 let inline_vars ?keep_vars ?warn stylesheet =
   let substituted =
     match keep_vars with
     | None -> Inline.vars ?warn stylesheet
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
-  statements_for_inline substituted
+  let live = Inline.mentioned_custom_names substituted in
+  statements_for_inline ~live substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a
    stylesheet. Used by [resolve_theme] to know which names to ask the

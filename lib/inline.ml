@@ -1091,6 +1091,22 @@ let normalise_var_name name =
   if String.length name >= 2 && String.sub name 0 2 = "--" then name
   else String.concat "" [ "--"; name ]
 
+(* Every custom-property name the stylesheet still mentions: declared by a
+   declaration, or referenced by a [var()] in a declaration or in an at-rule
+   condition, fallbacks included. [collect_scoped_refs] never descends into a
+   [@property] body, so a registration is not a mention of the property it
+   registers and cannot keep itself. *)
+let mentioned_custom_names stylesheet =
+  let consumers, customs, _ = collect_scoped_refs stylesheet in
+  List.fold_left
+    (fun acc (_, _, refs) -> List.rev_append refs acc)
+    (List.fold_left
+       (fun acc (_, _, name, refs) ->
+         List.rev_append refs (normalise_var_name name :: acc))
+       [] customs)
+    consumers
+  |> List.sort_uniq compare
+
 (* Per custom-property name, how many definitions it has across the whole
    stylesheet, plus the set of names referenced anywhere. A variable is safe to
    inline and delete only when it has a single definition: its value is then
