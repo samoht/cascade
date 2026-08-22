@@ -1048,6 +1048,36 @@ let test_vendor_prefix_baseline_gate () =
     ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}"
     (opt ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}")
 
+(* A colour-valued property folds its colour whatever its name: CIE Lab
+   L=1.90334 a=0.278696 b=-5.48866 is sRGB 3,7,18, so both spellings print the
+   same hex. A property left out of the fold reports the two as different
+   values, which is what the browser-differential harness then counts as a
+   render change. *)
+let test_color_property_folds () =
+  let opt css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun property ->
+      let rule value = String.concat "" [ ".a{"; property; ":"; value; "}" ] in
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds lab() to hex" ])
+        (rule "#030712")
+        (opt (rule "lab(1.90334 0.278696 -5.48866)"));
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds rgb() to hex" ])
+        (rule "#030712")
+        (opt (rule "rgb(3, 7, 18)")))
+    [
+      "color";
+      "column-rule-color";
+      "-webkit-text-fill-color";
+      "-webkit-text-stroke-color";
+    ]
+
 let test_lossless_declaration_order () =
   let opt ?(lossless = false) css =
     match Css.of_string css with
@@ -1142,6 +1172,9 @@ let shorthand_longhand_order_cases =
     ( "columns",
       ".a{columns:2;column-width:10em}",
       ".a{columns:2;column-width:10em}" );
+    ( "column-rule",
+      ".a{column-rule:1px solid red;column-rule-color:green}",
+      ".a{column-rule:1px solid red;column-rule-color:green}" );
     ( "list-style",
       ".a{list-style:none;list-style-type:disc}",
       ".a{list-style:none;list-style-type:disc}" );
@@ -1214,6 +1247,25 @@ let test_lossless_keeps_shorthand_longhand_order () =
     (fun (name, input, expected) ->
       Alcotest.(check string) name expected (opt input))
     shorthand_longhand_order_cases
+
+(* The same relation across rules. Two rules writing one colour tempt the
+   optimizer to share a selector list, which puts the later one where the
+   earlier one sits; a rule writing the shorthand in between resets that colour,
+   so an element matching both would repaint. *)
+let test_shorthand_longhand_rule_order () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  Alcotest.(check string)
+    "a colour rule does not cross the shorthand that resets it"
+    ".a{column-rule-color:green}.b{column-rule:1px solid \
+     red}.c{column-rule-color:green}"
+    (opt
+       ".a{column-rule-color:green}.b{column-rule:1px solid \
+        red}.c{column-rule-color:green}")
 
 (* CSS Logical 1 sec. 2: a flow-relative longhand resolves to a physical side
    the writing mode picks, so a sheet on its own cannot say whether
@@ -1390,6 +1442,7 @@ let optimize_tests =
       nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
+    ("color property folds", `Quick, test_color_property_folds);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "lossless keeps unknown property order",
       `Quick,
@@ -1397,6 +1450,7 @@ let optimize_tests =
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );
+    ("shorthand longhand rule order", `Quick, test_shorthand_longhand_rule_order);
     ( "lossless keeps logical physical order",
       `Quick,
       test_lossless_keeps_logical_physical_order );

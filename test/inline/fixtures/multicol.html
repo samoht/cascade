@@ -1,0 +1,18 @@
+<!doctype html><html><head><style>
+  /* CSS Multicol 1 sec. 4.4: [column-rule] is a shorthand over the rule width,
+     style and colour, so a rule writing the colour and one writing the
+     shorthand are order-dependent for any element matching both. The two
+     colour rules say the same thing, which tempts the optimizer to merge them
+     into the first one's place - that moves the second one before the
+     shorthand and repaints the rule red. */
+  .a { column-rule-color: rgb(0, 0, 255) }
+  .b { column-rule: 3px solid rgb(255, 0, 0) }
+  .c { column-rule-color: rgb(0, 0, 255) }
+  /* The same pair inside one rule: the canonical declaration order has to keep
+     the colour after the shorthand that resets it. */
+  .d { column-rule: 3px solid rgb(255, 0, 0); column-rule-color: rgb(0, 128, 0) }
+</style></head><body>
+<div class="b c" style="columns: 2 auto">one two three four</div>
+<div class="d" style="columns: 2 auto">one two three four</div>
+<div class="a" style="columns: 2 auto">one two three four</div>
+</body></html>
