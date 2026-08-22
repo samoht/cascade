@@ -33,6 +33,7 @@ let ignored_types =
     "repeat_count";
     "stop";
     "point";
+    "scrollbar_state";
     (* Helper fragments parsed only inside their owning structured values. *)
     "colon_form";
     "vt_class_selector";

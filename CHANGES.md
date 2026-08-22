@@ -66,6 +66,13 @@
   parses and matches nothing, while the unforgiving `:not()` goes down with the
   argument, so `::before:not(.b)` and `::part(p):not(.b)` stop parsing and
   `::part(p):not(:hover)` keeps parsing (#430)
+- The eleven pseudo-classes WebKit's scrollbar parts report their state through
+  are read as pseudo-classes, so `::-webkit-scrollbar:vertical`,
+  `::-webkit-scrollbar-thumb:window-inactive` and the rest of that family keep
+  their rule instead of losing it at an unforgiving selector list. Chrome and
+  WebKit both read all eleven wherever a pseudo-class goes; after a
+  pseudo-element only a scrollbar part takes them, bar `:window-inactive`,
+  which reaches a `::selection` and a `::part()` as well (#441)
 - A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
   value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
   it back as the same name. `@layer a\3b b` printed `@layer a;b`, two

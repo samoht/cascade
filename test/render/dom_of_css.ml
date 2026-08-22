@@ -392,6 +392,7 @@ let rec add sp part =
       raise (Skip "view-transition pseudo-class")
   | Selector.Nth_col _ | Selector.Nth_last_col _ ->
       raise (Skip "column pseudo-class")
+  | Selector.Scrollbar_state _ -> raise (Skip "scrollbar pseudo-class")
   | Selector.Unknown_pseudo_class _ | Selector.Unknown_pseudo_class_call _
   | Selector.Webkit_any ->
       raise (Skip "unknown pseudo-class")

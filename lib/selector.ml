@@ -962,6 +962,39 @@ let pseudo_class_base_idents =
     ("active-view-transition", Active_view_transition);
   ]
 
+let scrollbar_state_ident = function
+  | Horizontal -> "horizontal"
+  | Vertical -> "vertical"
+  | Decrement -> "decrement"
+  | Increment -> "increment"
+  | Start -> "start"
+  | End -> "end"
+  | Double_button -> "double-button"
+  | Single_button -> "single-button"
+  | No_button -> "no-button"
+  | Corner_present -> "corner-present"
+  | Window_inactive -> "window-inactive"
+
+(* WebKit, "Styling Scrollbars". Both engines read these on any element, so they
+   are ordinary pseudo-classes here; which pseudo-elements take them is
+   [pseudo_element_allows]'s business. *)
+let pseudo_class_scrollbar_idents =
+  List.map
+    (fun state -> (scrollbar_state_ident state, Scrollbar_state state))
+    [
+      Horizontal;
+      Vertical;
+      Decrement;
+      Increment;
+      Start;
+      End;
+      Double_button;
+      Single_button;
+      No_button;
+      Corner_present;
+      Window_inactive;
+    ]
+
 let pseudo_element_legacy_idents form =
   [
     (* Legacy pseudo-elements: parser records [Single] or [Double] colon for
@@ -1146,6 +1179,17 @@ let rec pseudo_element_allows pe pc =
          compound down with it: both engines drop [::before:not(:hover)] and
          keep [::part(p):not(:hover)]. *)
       | Not args -> List.for_all (pseudo_element_allows_argument pe) args
+      (* WebKit, "Styling Scrollbars": a scrollbar part reports its own state,
+         and [:window-inactive] reaches past the scrollbar to a selection and to
+         a shadow part, where both engines take it. Past that they disagree one
+         cell each way (only WebKit takes the other ten after [::part()], only
+         Chrome takes [:window-inactive] after [::details-content]), so the list
+         stops where they agree. *)
+      | Scrollbar_state state -> (
+          match (pe, state) with
+          | Webkit_scrollbar, _ -> true
+          | (Selection | Part _), Window_inactive -> true
+          | _ -> false)
       (* Same forward-compatibility bargain as an unknown pseudo-element. *)
       | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true
       | pc -> (
@@ -1157,8 +1201,8 @@ let rec pseudo_element_allows pe pc =
               match pc with
               | Has _ -> false
               | pc -> not (is_structural_pseudo_class pc))
-          (* A scrollbar takes no focus, and reports its own state through the
-             vendor pseudo-classes, which reach here as unknown names. *)
+          (* A scrollbar takes no focus, and reports which part of which
+             scrollbar it is through the state pseudo-classes below. *)
           | Webkit_scrollbar -> (
               match pc with
               | Hover | Active | Enabled | Disabled -> true
@@ -1199,7 +1243,7 @@ and pseudo_element_allows_argument pe = function
    only happens once instead of per [:foo] / [::foo] pseudo read. *)
 let pseudo_class_all_idents_lazy =
   lazy
-    (pseudo_class_base_idents
+    (pseudo_class_base_idents @ pseudo_class_scrollbar_idents
     @ pseudo_element_legacy_idents Single
     @ pseudo_element_modern_idents @ pseudo_vendor_idents)
 
@@ -2226,6 +2270,7 @@ and pp : t Pp.t =
   | Webkit_autofill -> vendor ctx "webkit-autofill"
   | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
   | Moz_ui_valid -> vendor ctx "moz-ui-valid"
+  | Scrollbar_state state -> pseudo ctx (scrollbar_state_ident state)
   (* Vendor-specific pseudo-elements *)
   | Moz_placeholder -> vendor_elem ctx "moz-placeholder"
   | Webkit_input_placeholder -> vendor_elem ctx "webkit-input-placeholder"
@@ -2545,18 +2590,18 @@ let rec specificity = function
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
   | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_placeholder
   | Webkit_input_placeholder | Ms_input_placeholder | Moz_ui_invalid
-  | Moz_ui_valid | Webkit_scrollbar | Webkit_search_cancel_button
-  | Webkit_search_decoration | Webkit_datetime_edit_fields_wrapper
-  | Webkit_date_and_time_value | Webkit_datetime_edit
-  | Webkit_datetime_edit_year_field | Webkit_datetime_edit_month_field
-  | Webkit_datetime_edit_day_field | Webkit_datetime_edit_hour_field
-  | Webkit_datetime_edit_minute_field | Webkit_datetime_edit_second_field
-  | Webkit_datetime_edit_millisecond_field | Webkit_datetime_edit_meridiem_field
-  | Webkit_inner_spin_button | Webkit_outer_spin_button
-  | Webkit_calendar_picker_indicator | Webkit_details_marker | Details_content
-  | Nth_col _ | Nth_last_col _ | Dir _ | Lang _ | State _
-  | Active_view_transition | Active_view_transition_type _ | Heading
-  | Local_scope | Global_scope ->
+  | Moz_ui_valid | Scrollbar_state _ | Webkit_scrollbar
+  | Webkit_search_cancel_button | Webkit_search_decoration
+  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
+  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
+  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
+  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
+  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
+  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
+  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
+  | Webkit_details_marker | Details_content | Nth_col _ | Nth_last_col _ | Dir _
+  | Lang _ | State _ | Active_view_transition | Active_view_transition_type _
+  | Heading | Local_scope | Global_scope ->
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity

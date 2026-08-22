@@ -40,6 +40,22 @@ type specificity = { ids : int; classes : int; elements : int }
     canonical spelling. *)
 type colon_form = Single | Double
 
+(** WebKit's scrollbar pseudo-classes (WebKit, "Styling Scrollbars"): the state
+    a scrollbar part reports about itself, and the one the whole window reports.
+    Non-standard, and both Chrome and WebKit take them. *)
+type scrollbar_state =
+  | Horizontal
+  | Vertical
+  | Decrement
+  | Increment
+  | Start
+  | End
+  | Double_button
+  | Single_button
+  | No_button
+  | Corner_present
+  | Window_inactive
+
 type aria_attr = Aria.t
 (** ARIA attribute names for type-safe handling *)
 
@@ -168,6 +184,7 @@ type t =
   | Ms_input_placeholder
   | Moz_ui_invalid
   | Moz_ui_valid
+  | Scrollbar_state of scrollbar_state
   | Webkit_scrollbar
   | Webkit_search_cancel_button
   | Webkit_search_decoration
