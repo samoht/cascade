@@ -480,6 +480,57 @@ let count_containers_media () =
   let count = Cascade_diff.Tree_diff.count_containers_by_type `Media d in
   Alcotest.(check bool) "at least one media container" true (count >= 1)
 
+(* A container that survived is reported as [Modified] and carries the
+   containers that came and went inside it, so a container added one level down
+   is in the diff but not at its top level. [count_containers_by_type] descends
+   into [Modified], and the two existence queries name the same containers, so
+   they answer for the same set: a query that says no about a container the
+   count reports is answering about the shape of the diff rather than about the
+   stylesheets. *)
+let nested_container_added_is_found () =
+  let expected = parse "@media print { .a { color: red } }" in
+  let actual =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int)
+    "the nested @supports is counted" 1
+    (Cascade_diff.Tree_diff.count_containers_by_type `Supports d);
+  Alcotest.(check bool)
+    "and the same @supports is found as added" true
+    (Cascade_diff.Tree_diff.has_container_added_of_type `Supports d)
+
+let nested_container_removed_is_found () =
+  let expected =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let actual = parse "@media print { .a { color: red } }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int)
+    "the nested @supports is counted" 1
+    (Cascade_diff.Tree_diff.count_containers_by_type `Supports d);
+  Alcotest.(check bool)
+    "and the same @supports is found as removed" true
+    (Cascade_diff.Tree_diff.has_container_removed_of_type `Supports d)
+
+(* An added container is not a removed one and the reverse, however deep it
+   sits. *)
+let nested_container_added_is_not_removed () =
+  let expected = parse "@media print { .a { color: red } }" in
+  let actual =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the nested addition is not reported as a removal" false
+    (Cascade_diff.Tree_diff.has_container_removed_of_type `Supports d)
+
 let count_containers_zero () =
   let css = parse ".a { color: red }" in
   let d = Cascade_diff.Tree_diff.diff ~expected:css ~actual:css in
@@ -808,6 +859,25 @@ let page_removed_reported () =
     "a dropped @page is a difference" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* An at-rule that carries no condition still has an identity of its own, and
+   the ordering comparison reads it as a position marker. Describing every one
+   of them the same way collapsed [@page] and [@starting-style] onto a single
+   key, and a [@media] that moved between them read as no change - the very
+   collapse the [@charset] versus [@namespace] naming above avoids. *)
+let selectorless_at_rules_key_the_ordering () =
+  let d =
+    diff_of
+      ~expected:
+        "@page{margin:1cm}@media \
+         print{a{color:red}}@starting-style{b{color:red}}"
+      ~actual:
+        "@page{margin:1cm}@starting-style{b{color:red}}@media \
+         print{a{color:red}}"
+  in
+  Alcotest.(check bool)
+    "a @media that moved between two of them is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 let font_face_added_reported () =
   let d =
     diff_of ~expected:".a{color:red}"
@@ -1100,6 +1170,44 @@ let nested_layer_order_pin_is_reported () =
     "and the report names them by their dotted paths" true
     (string_contains ~needle:"a.c now precedes a.b" s)
 
+(* A block added or dropped wholesale is rendered from its own body, and the
+   header claims children the reader then has to find. Reading the body through
+   a private list of at-rules left a [@scope], a [@starting-style] and a nested
+   rule printing a header with nothing under it, which reads as an empty block
+   rather than one whose contents the report failed to walk. *)
+let wholesale_block_shows_every_child () =
+  let cases =
+    [
+      ( "@scope inside an added @media",
+        "@media print{@scope(.card){.x{color:blue}.y{color:green}}}",
+        [ "@scope(.card)"; ".x"; ".y" ] );
+      ( "@starting-style inside an added @layer",
+        "@layer l{@starting-style{.x{color:blue}}}",
+        [ "@starting-style"; ".x" ] );
+      ( "a nested rule inside an added @media",
+        "@media print{.x{color:blue;.y{color:green}}}",
+        [ ".x"; ".y" ] );
+      ( "@when inside an added @supports",
+        "@supports (top:0){@when media(screen){.x{color:blue}}}",
+        [ ".x" ] );
+    ]
+  in
+  List.iter
+    (fun (name, added, wanted) ->
+      let out =
+        render
+          (diff_of ~expected:".keep{color:red}"
+             ~actual:(".keep{color:red}" ^ added))
+      in
+      List.iter
+        (fun affix ->
+          Alcotest.(check bool)
+            (name ^ ": the tree names " ^ affix)
+            true
+            (Astring.String.is_infix ~affix out))
+        wanted)
+    cases
+
 let suite =
   ( "tree_diff",
     [
@@ -1184,6 +1292,12 @@ let suite =
         single_rule_diff_multiple_changes;
       Alcotest.test_case "count containers media" `Quick count_containers_media;
       Alcotest.test_case "count containers zero" `Quick count_containers_zero;
+      Alcotest.test_case "nested container added is found" `Quick
+        nested_container_added_is_found;
+      Alcotest.test_case "nested container removed is found" `Quick
+        nested_container_removed_is_found;
+      Alcotest.test_case "nested container added is not removed" `Quick
+        nested_container_added_is_not_removed;
       Alcotest.test_case "nesting modified" `Quick diff_nesting_modified;
       Alcotest.test_case "nesting identical" `Quick diff_nesting_identical;
       Alcotest.test_case "nesting child added" `Quick diff_nesting_child_added;
@@ -1228,6 +1342,8 @@ let suite =
       Alcotest.test_case "repeated @font-face change reported" `Quick
         repeated_font_face_change_reported;
       Alcotest.test_case "@page removed reported" `Quick page_removed_reported;
+      Alcotest.test_case "selectorless at-rules key the ordering" `Quick
+        selectorless_at_rules_key_the_ordering;
       Alcotest.test_case "@font-face added reported" `Quick
         font_face_added_reported;
       Alcotest.test_case "repeated property pairs by occurrence" `Quick
@@ -1244,6 +1360,8 @@ let suite =
         deeply_nested_leaf_change_named;
       Alcotest.test_case "deeply nested identical is empty" `Quick
         deeply_nested_identical_is_empty;
+      Alcotest.test_case "wholesale block shows every child" `Quick
+        wholesale_block_shows_every_child;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

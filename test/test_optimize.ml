@@ -587,6 +587,33 @@ let test_tw_empty_layers_statement () =
     "empty components/utilities collapse to one layer statement"
     "@layer components,utilities;" output
 
+(* A rule that writes no declarations of its own but nests rules that do is a
+   rule with contents, so the layer holding it is not an empty layer. Collapsing
+   it to the statement form deleted every declaration below the brace. *)
+let test_layer_keeps_nested_only_rule () =
+  let cases =
+    [
+      ( "a rule nesting two rules",
+        "@layer a{.x{.y{color:red}.z{margin:0}}}",
+        "@layer a{.x{.y{color:red}.z{margin:0}}}" );
+      ( "a selector list nesting a rule",
+        "@layer a{.w,.x{.y{color:red}}}",
+        "@layer a{.w,.x{.y{color:red}}}" );
+      ( "a rule nesting an at-rule",
+        "@layer a{.x{@media print{color:red}}}",
+        "@layer a{.x{@media print{color:red}}}" );
+    ]
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      let optimized =
+        Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string input))
+      in
+      Alcotest.(check string)
+        name expected
+        (Css.Stylesheet.to_string ~minify:true optimized |> String.trim))
+    cases
+
 let test_tw_conditionals_layer () =
   (* Tailwind emits utility rules inside @layer utilities. Cascade owns the
      generic CSS optimization: adjacent identical conditions merge inside that
@@ -731,7 +758,101 @@ let test_prune_unused_custom_props () =
   Alcotest.(check string)
     "opt-in: a var() inside a string is not a reference"
     ".a{width:var(--x)}:root{--x:\"var(--y)\"}"
-    (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}")
+    (opt ~prune:true ".a{width:var(--x)}:root{--x:\"var(--y)\";--y:1px}");
+  (* An at-rule that holds declarations outside a nested block references a
+     binding like any rule does, so pruning must leave such a sheet alone. *)
+  let unchanged name css =
+    Alcotest.(check string) name (opt css) (opt ~prune:true css)
+  in
+  unchanged "a keyframe frame reference keeps its binding"
+    ":root{--c:red}@keyframes k{from{color:var(--c)}}";
+  unchanged "a @page reference keeps its binding"
+    ":root{--m:1cm}@page{margin:var(--m)}";
+  unchanged "a page margin box reference keeps its binding"
+    ":root{--t:\"x\"}@page{@top-center{content:var(--t)}}";
+  unchanged "a @position-try reference keeps its binding"
+    ":root{--t:10px}@position-try --p{top:var(--t)}";
+  unchanged "a @supports-condition reference keeps its binding"
+    ":root{--c:red}@supports-condition --x{color:var(--c)}"
+
+(* [drop_invalid] is spec recovery rather than optimisation: a browser discards
+   a declaration whose value it cannot parse wherever that declaration sits, so
+   a [@keyframes] frame is no different from a style rule. *)
+let test_drop_invalid_reaches_keyframe_frames () =
+  let recovered css =
+    Css.of_string_exn css |> Css.Optimize.drop_invalid
+    |> Css.Stylesheet.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "a style rule drops the invalid declaration" "a{opacity:0}"
+    (recovered "a{width:asin(sin(45deg));opacity:0}");
+  Alcotest.(check string)
+    "a keyframe frame drops it too" "@keyframes k{0%{opacity:0}}"
+    (recovered "@keyframes k{from{width:asin(sin(45deg));opacity:0}}");
+  Alcotest.(check string)
+    "so does a vendor-prefixed one" "@-webkit-keyframes k{0%{opacity:0}}"
+    (recovered "@-webkit-keyframes k{from{width:asin(sin(45deg));opacity:0}}")
+
+(* Under closed-stylesheet scope a [position-try-fallbacks] name with no
+   [@position-try] rule can never match, and where the declaration is written
+   does not change that, so the prune reaches a keyframe frame as it does a
+   style rule. *)
+let test_position_try_prune_reaches_keyframe_frames () =
+  let pruned css =
+    Css.of_string_exn css
+    |> Css.Optimize.stylesheet ~scope:`Stylesheet
+    |> Css.Stylesheet.to_string ~minify:true
+  in
+  Alcotest.(check string)
+    "a style rule loses the unknown fallback"
+    "@position-try --k{top:1px}a{position-try-fallbacks:--k}"
+    (pruned "@position-try --k{top:1px}a{position-try-fallbacks:--k,--gone}");
+  Alcotest.(check string)
+    "a keyframe frame loses it too"
+    "@position-try --k{top:1px}@keyframes f{0%{position-try-fallbacks:--k}}"
+    (pruned
+       "@position-try --k{top:1px}@keyframes \
+        f{from{position-try-fallbacks:--k,--gone}}")
+
+(* Every conditional group wraps ordinary rules, so the optimizer's main
+   recursion has to descend into all of them: a body it walks past keeps
+   whatever the author wrote, and [--minify] silently does nothing there. *)
+let test_optimize_descends_into_every_conditional_group () =
+  let check name css expected =
+    Alcotest.(check string) name expected (minify (Css.of_string_exn css))
+  in
+  check "@media" "@media print{a{color:#f00}a{color:#f00}}"
+    "@media print{a{color:red}}";
+  check "@-moz-document"
+    "@-moz-document url-prefix(){a{color:#f00}a{color:#f00}}"
+    "@-moz-document url-prefix(){a{color:red}}";
+  check "@starting-style" "@starting-style{a{color:#f00}a{color:#f00}}"
+    "@starting-style{a{color:red}}";
+  check "@when and @else"
+    "@when \
+     media(print){a{color:#f00}a{color:#f00}}@else{b{color:#f00}b{color:#f00}}"
+    "@when media(print){a{color:red}}@else{b{color:red}}"
+
+(* An [@property] registration is document-global (CSS Properties and Values API
+   1 sec. 2), so a declaration of that name is typed wherever it is written.
+   Promotion has to reach the at-rules that hold declarations outside a nested
+   block, or the same registered value canonicalises one way in a rule and
+   another inside one of them. *)
+let test_promote_registered_reaches_at_rule_declarations () =
+  let registration =
+    "@property --c{syntax:\"<color>\";inherits:false;initial-value:red}"
+  in
+  let check name body expected =
+    Alcotest.(check string)
+      name (registration ^ expected)
+      (minify (Css.of_string_exn ~strict:false (registration ^ body)))
+  in
+  check "a style rule types the declaration" "a{--c:rgb(255 0 0)}" "a{--c:red}";
+  check "@position-try types it too" "@position-try --p{--c:rgb(255 0 0)}"
+    "@position-try --p{--c:red}";
+  check "@supports-condition types it too"
+    "@supports-condition --x{--c:rgb(255 0 0)}"
+    "@supports-condition --x{--c:red}"
 
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
@@ -1293,6 +1414,18 @@ let optimize_tests =
     ( "opt-in prune unused custom properties",
       `Quick,
       test_prune_unused_custom_props );
+    ( "drop_invalid reaches keyframe frames",
+      `Quick,
+      test_drop_invalid_reaches_keyframe_frames );
+    ( "position-try prune reaches keyframe frames",
+      `Quick,
+      test_position_try_prune_reaches_keyframe_frames );
+    ( "optimize descends into every conditional group",
+      `Quick,
+      test_optimize_descends_into_every_conditional_group );
+    ( "promote registered reaches at-rule declarations",
+      `Quick,
+      test_promote_registered_reaches_at_rule_declarations );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
@@ -1318,6 +1451,9 @@ let optimize_tests =
     ( "tailwind empty components/utilities layers to statement",
       `Quick,
       test_tw_empty_layers_statement );
+    ( "layer keeps a rule that only nests",
+      `Quick,
+      test_layer_keeps_nested_only_rule );
     ( "tailwind conditionals merge inside layer",
       `Quick,
       test_tw_conditionals_layer );

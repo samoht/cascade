@@ -245,7 +245,9 @@ val map_statement_children : (block -> block) -> statement -> statement
 (** [map_statement_children f stmt] rebuilds [stmt] with [f] applied to the
     block {!statement_children} reads, and returns a statement that holds no
     block unchanged. It is the rebuilding counterpart of {!statement_children},
-    for a walk that rewrites the tree rather than only reading it. *)
+    for a walk that rewrites the tree rather than only reading it. It preserves
+    physical identity: when [f] returns the block it was given, the result is
+    [stmt] itself. *)
 
 val map_statement_declarations :
   (declaration list -> declaration list) -> statement -> statement
@@ -254,7 +256,87 @@ val map_statement_declarations :
     unchanged. It is the rebuilding counterpart of {!statement_declarations},
     with one difference: [f] sees each declaration list as its own list rather
     than the concatenation, so every frame of [@keyframes] and every margin rule
-    of [@page] keeps its own block. *)
+    of [@page] keeps its own block. It preserves physical identity: when [f]
+    returns every list it was given, the result is [stmt] itself. *)
+
+type declaration_sites = {
+  element_rule : bool;
+      (** A style rule or a bare nesting block: declarations that apply to an
+          element. *)
+  animation_frame : bool;
+      (** A frame of [@keyframes] (and of its [-webkit-] / [-moz-] spellings):
+          declarations in the animation origin. *)
+  page_box : bool;
+      (** [@page] and its margin boxes: declarations that apply to a page box
+          rather than to an element. *)
+  position_fallback : bool;
+      (** [@position-try]: declarations in the position fallback origin. *)
+  condition_test : bool;
+      (** [@supports-condition]: declarations that are tested rather than
+          applied. *)
+}
+(** The places a stylesheet holds declarations, grouped by what the declarations
+    there mean rather than by which at-rule spells them. A walk that wants only
+    some of them says so with this record instead of matching on the statements
+    it expects to meet, which separates a narrow walk from one that forgot an
+    at-rule, and makes a place added here a compile error in every walk that
+    made a choice. *)
+
+val at_declaration_site : declaration_sites -> statement -> bool
+(** [at_declaration_site sites stmt] holds when the declarations [stmt] carries
+    sit in one of the places [sites] names. It is the test {!fold_declarations}
+    makes, exposed for a walk that carries something down the tree, such as the
+    cascade layer a declaration sits in or an [@supports] nesting depth. An
+    accumulator travels sideways rather than down, so such a walk cannot be a
+    fold and recurses on {!statement_children} instead; this keeps the sites it
+    reads as compile-checked as the fold's. *)
+
+val fold_statements : ('a -> statement -> 'a) -> 'a -> block -> 'a
+(** [fold_statements f acc block] folds [f] over [block] and over every
+    statement reachable from it through {!statement_children}, in source order,
+    a statement before the statements it holds. *)
+
+val iter_statements : (statement -> unit) -> block -> unit
+(** [iter_statements f block] applies [f] to every statement {!fold_statements}
+    reaches. *)
+
+val edit_statements :
+  (statement -> statement Common.List.edit) -> block -> block
+(** [edit_statements f block] rewrites the statements {!fold_statements}
+    reaches: [f] keeps, replaces or drops each one, and the walk descends
+    through {!map_statement_children} into what survives, so a caller names only
+    the statements it acts on rather than the at-rules they nest inside.
+    Dropping a statement drops what it holds. [f] sees a statement before the
+    statements it holds, and the walk continues into a replacement rather than
+    into the statement it replaced. It preserves physical identity: when [f]
+    keeps every statement, the result is [block] itself. *)
+
+val fold_declarations :
+  ?sites:declaration_sites ->
+  ('a -> declaration list -> 'a) ->
+  'a ->
+  block ->
+  'a
+(** [fold_declarations f acc block] folds [f] over the declarations of every
+    statement {!fold_statements} reaches, so a rule nested in a rule and an
+    at-rule that holds declarations outside a block are both covered. [f] sees
+    one statement's declarations at a time, as {!statement_declarations} returns
+    them. [sites] defaults to every place a declaration sits; pass it to fold
+    over some of them, and write the record out in full so that a place added to
+    it does not compile until this walk has been read again. *)
+
+val iter_declarations :
+  ?sites:declaration_sites -> (declaration list -> unit) -> block -> unit
+(** [iter_declarations f block] applies [f] to the declaration lists
+    {!fold_declarations} folds over. *)
+
+val map_declarations : (declaration list -> declaration list) -> block -> block
+(** [map_declarations f block] rewrites the declarations of every statement
+    {!fold_statements} reaches. [f] sees each declaration list as its own list,
+    as {!map_statement_declarations} hands them over, so every frame of
+    [@keyframes] and every margin rule of [@page] keeps its own block. It
+    preserves physical identity: when [f] returns every list it was given, the
+    result is [block] itself. *)
 
 (** {1 Reading/Parsing} *)
 
@@ -305,8 +387,10 @@ val pp_stylesheet : stylesheet Pp.t
 (** {1 Variable Extraction} *)
 
 val vars_of_stylesheet : stylesheet -> Variables.any_var list
-(** [vars_of_stylesheet ss] extracts all variables referenced in a stylesheet.
-*)
+(** [vars_of_stylesheet ss] is every variable [ss] references, from the
+    declarations {!fold_declarations} reaches, so a rule nested in a rule and an
+    at-rule carrying declarations of its own are both covered. Deduplicated, in
+    source order. *)
 
 (** {1 Rendering} *)
 
@@ -343,14 +427,29 @@ val rules : t -> rule list
 (** [rules t] returns the top-level rules from the stylesheet. *)
 
 val layers : t -> string list
-(** [layers t] returns the layer names from the stylesheet. *)
+(** [layers t] is every cascade layer [t] declares, one dotted path per layer
+    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
+    sheet first names them. A layer named inside a conditional group counts: the
+    group decides whether its contents apply, not whether the layer exists. A
+    sublayer of an anonymous [@layer { ... }] has no name to report. *)
+
+val layer_block : string -> t -> block option
+(** [layer_block name t] is the statements of the layer [name], wherever it is
+    declared and whatever form declares it: a dotted name, a nested block, or a
+    block inside a conditional group. It is [None] when no [@layer] block opens
+    that layer, so a name only an [@layer a, b;] statement declares is [None] as
+    well. *)
 
 val media_queries : t -> (Media.t * rule list) list
-(** [media_queries t] returns the media queries from the stylesheet. *)
+(** [media_queries t] is every [@media] in [t], at any depth, paired with every
+    rule below its brace. A query inside a group at-rule counts, and a rule
+    nested in another rule or held by an inner group is one of the query's
+    rules; a nested rule keeps the relative selector it was written with. *)
 
 val container_queries :
   t -> (string option * Container.t option * rule list) list
-(** [container_queries t] returns the container queries from the stylesheet. *)
+(** [container_queries t] is every [@container] in [t], paired with every rule
+    below its brace, on the same terms as {!media_queries}. *)
 
 (** {1 Parsing and Pretty-printing} *)
 

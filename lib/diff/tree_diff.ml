@@ -614,16 +614,35 @@ let rec count_containers_in_list container_type containers =
 let count_containers_by_type container_type (diff : t) =
   count_containers_in_list container_type diff.containers
 
-let has_container_added_of_type container_type (diff : t) =
+(* [Modified] holds the containers that came and went inside a container that
+   survived, so an existence query reads the same tree
+   [count_containers_in_list] counts: a flat [List.exists] would answer no about
+   a container the count reports, which is an answer about the shape of the diff
+   rather than about the stylesheets. *)
+let rec exists_container here containers =
   List.exists
+    (fun cont ->
+      here cont
+      ||
+      match cont with
+      | Modified { container_changes; _ } ->
+          exists_container here container_changes
+      | Added _ | Removed _ | Reordered _ | Block_structure_changed _ -> false)
+    containers
+
+let has_container_added_of_type container_type (diff : t) =
+  exists_container
     (function
-      | Added { container_type = ct; _ } -> ct = container_type | _ -> false)
+      | Added { container_type = ct; _ } -> ct = container_type
+      | Removed _ | Modified _ | Reordered _ | Block_structure_changed _ ->
+          false)
     diff.containers
 
 let has_container_removed_of_type container_type (diff : t) =
-  List.exists
+  exists_container
     (function
-      | Removed { container_type = ct; _ } -> ct = container_type | _ -> false)
+      | Removed { container_type = ct; _ } -> ct = container_type
+      | Added _ | Modified _ | Reordered _ | Block_structure_changed _ -> false)
     diff.containers
 
 let container_prefix = function
@@ -640,6 +659,39 @@ let container_label container_type condition =
   match container_prefix container_type with
   | "" -> condition
   | prefix -> prefix ^ " " ^ condition
+
+(* The statements that carry neither a selector nor a block. Naming them apart
+   also keeps them apart in the order keys, where one shared "(other statement)"
+   made a [@charset] and a [@namespace] the same statement. *)
+let describe_prelude_statement (s : Css.statement) =
+  match s with
+  | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
+  | Namespace (prefix, _) ->
+      Some
+        ("@namespace"
+        ^ (match prefix with Some p -> " " ^ p | None -> "")
+        ^ ";")
+  (* The semicolon is what tells a layer-order pin from the block of the same
+     name: [@layer a;] ahead of [@layer a { ... }] is a second statement, not
+     the block again. *)
+  | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
+  | _ -> None
+
+(* A statement's own text, split at its block: the head names it, the body is
+   what a descriptor-only at-rule is compared on. *)
+let statement_text_split stmt =
+  let text = Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) in
+  match String.index_opt text '{' with
+  | None -> (String.trim text, "")
+  | Some i ->
+      let head = String.sub text 0 i in
+      let last = String.length text - 1 in
+      let body =
+        if last > i && text.[last] = '}' then
+          String.sub text (i + 1) (last - i - 1)
+        else String.sub text (i + 1) (last - i)
+      in
+      (String.trim head, body)
 
 let describe_statement stmt =
   let try_desc f = f stmt in
@@ -673,45 +725,27 @@ let describe_statement stmt =
       (fun s ->
         Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
       (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
-      (* The statements that carry neither a selector nor a block. Naming them
-         apart also keeps them apart in the order keys, where one shared "(other
-         statement)" made a [@charset] and a [@namespace] the same statement. *)
-      (fun (s : Css.statement) ->
-        match s with
-        | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
-        | Namespace (prefix, _) ->
-            Some
-              ("@namespace"
-              ^ (match prefix with Some p -> " " ^ p | None -> "")
-              ^ ";")
-        (* The semicolon is what tells a layer-order pin from the block of the
-           same name: [@layer a;] ahead of [@layer a { ... }] is a second
-           statement, not the block again. *)
-        | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
-        | _ -> None);
+      describe_prelude_statement;
     ]
   in
   match List.find_map try_desc matchers with
   | Some desc -> Some desc
-  | None -> Some "(other statement)"
+  (* Everything left names itself by the head it prints to, for the same reason
+     [@charset] and [@namespace] are named apart above: one shared description
+     is one shared order key, and [@page] swapped with [@starting-style] then
+     reads as no change at all. *)
+  | None -> (
+      match fst (statement_text_split stmt) with
+      | "" -> Some "(other statement)"
+      | head -> Some head)
 
 (* The body of a container that was added or removed wholesale. Every statement
    gets a line, including the ones [Css.as_rule] cannot see: a statement the
    tree drops silently leaves the reader counting fewer entries than the header
-   claims, and shifts the last-child connector onto the wrong one. *)
-let statement_children stmt =
-  match Css.as_media stmt with
-  | Some (_, body) -> body
-  | None -> (
-      match Css.as_supports stmt with
-      | Some (_, body) -> body
-      | None -> (
-          match Css.as_layer stmt with
-          | Some (_, body) -> body
-          | None -> (
-              match Css.as_container stmt with
-              | Some (_, _, body) -> body
-              | None -> [])))
+   claims, and shifts the last-child connector onto the wrong one. The body
+   comes from the shared reader, so a header never stands over children the walk
+   could not name. *)
+let statement_children = Css.Stylesheet.statement_children
 
 let rec pp_container_rules ~style ~parent_prefix ~label buf rules =
   let count = List.length rules in
@@ -1115,9 +1149,7 @@ let strings_of_rule stmt =
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None ->
-      ( statement_head stmt,
-        Option.value ~default:[] (Css.statement_declarations stmt) )
+  | None -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt)
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
@@ -1163,9 +1195,7 @@ let selector_key_of_selector (sel : Css.Selector.t) : Css.Selector.t =
   | _ -> sel
 
 let selector_key_of_stmt stmt = selector_key_of_selector (rule_selector stmt)
-
-let rule_declarations stmt =
-  match Css.statement_declarations stmt with Some d -> d | None -> []
+let rule_declarations = Css.Stylesheet.statement_declarations
 
 let rule_nested stmt =
   match Css.as_rule stmt with Some (_, _, nested) -> nested | None -> []
@@ -2121,26 +2151,31 @@ type at_rule_body =
   | Declarations of Css.declaration list  (** a rule body without a rule *)
   | Opaque  (** descriptors, compared as the text they print to *)
 
+(* Which of the three a statement is, is the only thing said here: the body
+   itself comes from the shared readers. Listed one by one rather than closed
+   with a wildcard, so an at-rule added to the AST does not compile until this
+   processor has claimed it or handed it to another. *)
 let at_rule_body (stmt : Css.statement) : at_rule_body option =
   match stmt with
-  | Starting_style block
-  | Scope (_, _, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block) ->
-      Some (Block block)
-  | Page (_, decls)
+  | Starting_style _ | Scope _ | Moz_document _ | When _ | Else _ ->
+      Some (Block (Css.Stylesheet.statement_children stmt))
   (* With margin rules the declarations are only part of the body, so the whole
      block is compared as text instead. *)
-  | Page_with_margins (_, decls, [])
-  | Position_try (_, decls)
-  | Supports_condition (_, decls) ->
-      Some (Declarations decls)
+  | Page _
+  | Page_with_margins (_, _, [])
+  | Position_try _ | Supports_condition _ ->
+      Some (Declarations (Css.Stylesheet.statement_declarations stmt))
   | Font_face _ | Counter_style _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Viewport _ | Webkit_keyframes _
   | Moz_keyframes _ | Unknown_at_rule _ ->
       Some Opaque
-  | _ -> None
+  (* Owned by another processor: a rule and a bare nesting block by the rule
+     matcher, a container by [moved_order_keys], [@keyframes] and [@property] by
+     their own, and the rest carry no body to compare. *)
+  | Rule _ | Declarations _ | Layer _ | Media _ | Container _ | Supports _
+  | Origin _ | Keyframes _ | Property _ | Layer_decl _ | Import _ | Charset _
+  | Namespace _ | Bang_comment _ ->
+      None
 
 (* [process_at_rules] owns these statements, so leaving them in the rule diff as
    well would report one change twice, once against the universal selector. *)
@@ -2158,22 +2193,6 @@ let is_reported_by_own_processor stmt =
   || Css.as_property stmt <> None
   || Css.as_keyframes stmt <> None
 
-(* The at-rule text split at its block: the head keys the statement, the body is
-   what a descriptor-only at-rule is compared on. *)
-let at_rule_text stmt =
-  let text = Css.Stylesheet.to_string ~minify:true (Css.v [ stmt ]) in
-  match String.index_opt text '{' with
-  | None -> (String.trim text, "")
-  | Some i ->
-      let head = String.sub text 0 i in
-      let last = String.length text - 1 in
-      let body =
-        if last > i && text.[last] = '}' then
-          String.sub text (i + 1) (last - i - 1)
-        else String.sub text (i + 1) (last - i)
-      in
-      (String.trim head, body)
-
 (* A stylesheet may repeat one at-rule (several [@font-face] blocks, several
    [@page] rules), so the head alone does not name a block. Number the blocks
    that share a head and pair them in order. *)
@@ -2184,7 +2203,7 @@ let at_rule_items stmts =
       match at_rule_body stmt with
       | None -> None
       | Some body ->
-          let head, text = at_rule_text stmt in
+          let head, text = statement_text_split stmt in
           let n = Option.value ~default:0 (Hashtbl.find_opt seen head) in
           Hashtbl.replace seen head (n + 1);
           Some ((head, n), (head, body, text)))

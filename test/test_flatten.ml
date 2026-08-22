@@ -103,6 +103,18 @@ let test_nested_selector_list_keeps_parent () =
   check ".p{a::before,a::after{color:red}}" ".p a:before,.p a:after{color:red}";
   check ".p{& a,& b{color:red}}" ".p a,.p b{color:red}"
 
+(* [@-moz-document] groups rules like any other conditional at-rule, so nesting
+   inside one flattens and a rule wrapping one keeps its selector: emitting the
+   at-rule verbatim from inside a rule drops the parent it was written under. *)
+let test_flattens_inside_moz_document () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check "@-moz-document url-prefix(){.a{.b{color:red}}}"
+    "@-moz-document url-prefix(){.a .b{color:red}}";
+  check ".a{@-moz-document url-prefix(){.b{color:red}}}"
+    "@-moz-document url-prefix(){.a .b{color:red}}"
+
 let suite =
   ( "flatten",
     [
@@ -120,4 +132,6 @@ let suite =
         test_nesting_wraps_complex_parent;
       Alcotest.test_case "nested selector list keeps the parent" `Quick
         test_nested_selector_list_keeps_parent;
+      Alcotest.test_case "flattens inside @-moz-document" `Quick
+        test_flattens_inside_moz_document;
     ] )

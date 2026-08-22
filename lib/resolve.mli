@@ -74,9 +74,12 @@ val layer_order : Stylesheet.t -> string list
     (css-cascade-5 sec. 6.4.2), and an [@layer a, b;] statement declares its
     names there just as a block does. Every anonymous [@layer { ... }] block is
     a layer of its own, keyed by a path holding a U+0000 that no author can
-    write - a caller that prints these paths has to spell those out itself.
-    Layers declared inside a conditional group are not counted, as
-    {!Make.resolve} does not consider such groups either.
+    write - a caller that prints these paths has to spell those out itself. The
+    layers counted are those {!Make.resolve} ranks against, so a layer declared
+    inside one of the blocks it does not walk - a conditional group rule
+    ([@media], [@supports], [@container], [@-moz-document], [@when], [@else]),
+    [@starting-style], [@scope], or an origin wrapper - is not part of this
+    order.
 
     This is the [~layer_order] that {!Stylesheet.cascade_layer_precedence_rank}
     expects. *)
@@ -100,6 +103,18 @@ module Make (N : NODE) : sig
       order. [@layer] blocks and [@layer a, b;] statements order the layers by
       first appearance, sublayers included; among normal declarations the last
       layer wins and an unlayered declaration beats them all, and for
-      [!important] declarations that order reverses. Conditional groups
-      ([@media], [@supports], [@container]) are not considered. *)
+      [!important] declarations that order reverses.
+
+      Style rules and [@layer] are the only blocks walked. A rule inside a
+      conditional group rule ([@media], [@supports], [@container],
+      [@-moz-document], [@when], [@else]) contributes nothing, since the
+      condition needs a viewport, a UA feature table, a container layout or a
+      document URL that a {!NODE} does not carry. Nor does one inside
+      [@starting-style], which declares a before-change style rather than an
+      ordinary one (css-transitions-2 sec. 5); inside [@scope], whose scoping
+      root, scoping limit and proximity criterion (css-cascade-6) the matcher
+      does not model; or inside an origin wrapper, whose origin outranks the
+      layer in the cascade sorting order (css-cascade-5 sec. 6.1) and is not
+      weighed here. {!Apply.Make} keeps each of those blocks whole in the
+      stylesheet it emits rather than projecting it onto an element. *)
 end

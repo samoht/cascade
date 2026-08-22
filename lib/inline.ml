@@ -857,11 +857,6 @@ let record_at_node_refs consumers ~parents ~at_path node =
       let sel = selector_for_parents_universal parents in
       consumers := (at_path, sel, refs) :: !consumers
 
-let record_keyframe_decls ~record_decl ~at_path ~sel frames =
-  List.iter
-    (fun fr -> List.iter (record_decl ~at_path ~selector:sel) fr.declarations)
-    frames
-
 let collect_scoped_refs stylesheet =
   let consumers = ref [] in
   let customs = ref [] in
@@ -882,7 +877,8 @@ let collect_scoped_refs stylesheet =
         record_at_node_refs consumers ~parents ~at_path node;
         List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
     | None -> walk_non_at ~parents ~at_path stmt
-  and walk_non_at ~parents ~at_path = function
+  and walk_non_at ~parents ~at_path stmt =
+    match stmt with
     | Rule rule ->
         let eff = effective_selector ~parents rule.selector in
         List.iter (record_decl ~at_path ~selector:eff) rule.declarations;
@@ -890,15 +886,19 @@ let collect_scoped_refs stylesheet =
     | Declarations decls ->
         let sel = selector_for_parents_universal parents in
         List.iter (record_decl ~at_path ~selector:sel) decls
-    | Page (_, decls) | Position_try (_, decls) ->
-        let sel = Selector.Universal None in
-        List.iter (record_decl ~at_path ~selector:sel) decls
-    | Keyframes (_, frames)
-    | Webkit_keyframes (_, frames)
-    | Moz_keyframes (_, frames) ->
-        let sel = Selector.Universal None in
-        record_keyframe_decls ~record_decl ~at_path ~sel frames
-    | _ -> ()
+    (* Everything else that carries declarations - [@keyframes] frames, [@page]
+       and its margin boxes, [@position-try], [@supports-condition] - through
+       the exhaustive reader, so a reference cannot escape the census by sitting
+       in an at-rule this match never listed. They apply to no element in
+       particular, so a custom declared on [:root], [html] or [*] covers
+       them. *)
+    | stmt ->
+        List.iter
+          (record_decl ~at_path ~selector:(Selector.Universal None))
+          (Stylesheet.statement_declarations stmt);
+        List.iter
+          (walk_stmt ~parents ~at_path)
+          (Stylesheet.statement_children stmt)
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
   (!consumers, !customs, List.sort_uniq compare !runtime_refs)
@@ -1130,13 +1130,9 @@ let var_census stylesheet =
   let rec walk stmt =
     match at_wrapper stmt with
     | Some (_, body, _) -> List.iter walk body
-    | None -> (
-        match stmt with
-        | Rule r ->
-            add_refs r.declarations;
-            List.iter walk r.nested
-        | Declarations decls -> add_refs decls
-        | _ -> ())
+    | None ->
+        add_refs (Stylesheet.statement_declarations stmt);
+        List.iter walk (Stylesheet.statement_children stmt)
   in
   List.iter walk stylesheet;
   (counts, List.sort_uniq compare !referenced)

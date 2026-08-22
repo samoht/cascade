@@ -110,8 +110,8 @@ type layer_order_diff = {
     whose conflicts the two sheets resolve differently. It is never empty.
 
     The order compared is the sheet's own, so a layer declared inside a
-    conditional group is not part of it, as in {!Cascade.Resolve.layer_order}.
-*)
+    conditional group rule, [@starting-style], [@scope] or an origin wrapper is
+    not part of it, as in {!Cascade.Resolve.layer_order}. *)
 
 type t = {
   rules : rule_diff list;
@@ -166,19 +166,24 @@ val count_containers_by_type :
   [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   int
-(** [count_containers_by_type container_type diff] counts containers of the
-    given type in [diff]. *)
+(** [count_containers_by_type container_type diff] counts the containers of the
+    given type in [diff], at its top level and inside every container it reports
+    as modified. *)
 
 val has_container_added_of_type :
   [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   bool
-(** [has_container_added_of_type container_type diff] returns [true] if [diff]
-    contains added containers of the given type. *)
+(** [has_container_added_of_type container_type diff] is whether [diff] reports
+    a container of the given type as added, at its top level or inside a
+    container it reports as modified. It answers about the same containers
+    {!count_containers_by_type} counts. *)
 
 val has_container_removed_of_type :
   [ `At_rule | `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
   t ->
   bool
-(** [has_container_removed_of_type container_type diff] returns [true] if [diff]
-    contains removed containers of the given type. *)
+(** [has_container_removed_of_type container_type diff] is whether [diff]
+    reports a container of the given type as removed, at its top level or inside
+    a container it reports as modified. It answers about the same containers
+    {!count_containers_by_type} counts. *)

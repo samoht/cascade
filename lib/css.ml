@@ -67,19 +67,31 @@ let eval_declaration ?layer_order ?layer ctx decl =
 let eval_value ?layer_order ?layer ctx property value =
   eval_declaration ?layer_order ?layer ctx (Declaration.v property value)
 
-let eval_page_margin_rule ~layer_order ?layer ctx rule =
-  {
-    rule with
-    Stylesheet.descriptors =
-      List.map
-        (eval_declaration ~layer_order ?layer ctx)
-        rule.Stylesheet.descriptors;
-  }
-
 let layer_known ~layer_order = function
   | None -> true
   | Some name -> List.exists (String.equal name) layer_order
 
+(* The places a declaration contributes to ordinary element matching. The other
+   declaration sites belong to another cascade origin or to no element at all
+   (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
+   [@position-try] the position fallback origin, [@page] and its margin boxes
+   are not elements, and [@supports-condition] is never applied to a box.
+   Written out in full so that a site added to the record has to be classified
+   here. *)
+let element_matching_sites =
+  {
+    Stylesheet.element_rule = true;
+    animation_frame = false;
+    page_box = false;
+    position_fallback = false;
+    condition_test = false;
+  }
+
+(* The layer a declaration sits in is carried down the tree and differs per
+   branch, which no accumulator can do, so this spells its own recursion rather
+   than calling [fold_declarations]. The descent is still [statement_children]'s
+   and the sites are still named, so a grouping at-rule or a declaration site
+   added later reaches this walk. *)
 let collect_cascade_rules ~layer_order stylesheet =
   let source_order = ref 0 in
   let add layer decl acc =
@@ -95,36 +107,20 @@ let collect_cascade_rules ~layer_order stylesheet =
     incr source_order;
     rule :: acc
   in
-  let rec statement current_layer acc =
+  let rec statement current_layer acc stmt =
     let open Stylesheet in
-    function
-    | Rule rule ->
-        let acc =
-          List.fold_left
-            (fun acc decl -> add current_layer decl acc)
-            acc rule.declarations
-        in
-        List.fold_left (statement current_layer) acc rule.nested
-    | Declarations declarations ->
+    let current_layer =
+      match stmt with Layer ((Some _ as name), _) -> name | _ -> current_layer
+    in
+    let acc =
+      if at_declaration_site element_matching_sites stmt then
         List.fold_left
           (fun acc decl -> add current_layer decl acc)
-          acc declarations
-    | Layer (name, block) ->
-        let current_layer =
-          match name with Some _ -> name | None -> current_layer
-        in
-        List.fold_left (statement current_layer) acc block
-    | Media (_, block)
-    | Supports (_, block)
-    | Moz_document (_, block)
-    | When (_, block)
-    | Else (_, block)
-    | Starting_style block
-    | Origin (_, block) ->
-        List.fold_left (statement current_layer) acc block
-    | Container (_, _, block) | Scope (_, _, block) ->
-        List.fold_left (statement current_layer) acc block
-    | _ -> acc
+          acc
+          (statement_declarations stmt)
+      else acc
+    in
+    List.fold_left (statement current_layer) acc (statement_children stmt)
   in
   List.fold_left (statement None) [] stylesheet
   |> List.filter (fun (rule : Context.cascade_rule) ->
@@ -133,94 +129,18 @@ let collect_cascade_rules ~layer_order stylesheet =
 let eval_declarations ~layer_order ?layer ctx declarations =
   List.map (eval_declaration ~layer_order ?layer ctx) declarations
 
-let eval_keyframes ~layer_order ?layer ctx frames =
-  let eval_frame (frame : Stylesheet.keyframe) =
-    {
-      frame with
-      Stylesheet.declarations =
-        eval_declarations ~layer_order ?layer ctx frame.declarations;
-    }
-  in
-  List.map eval_frame frames
-
-let eval_declaration_statement ~layer_order ?layer:context_layer ctx =
-  let open Stylesheet in
-  function
-  | Keyframes (name, frames) ->
-      Some
-        (Keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Webkit_keyframes (name, frames) ->
-      Some
-        (Webkit_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Moz_keyframes (name, frames) ->
-      Some
-        (Moz_keyframes
-           (name, eval_keyframes ~layer_order ?layer:context_layer ctx frames))
-  | Page (selector, declarations) ->
-      Some
-        (Page
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Position_try (name, declarations) ->
-      Some
-        (Position_try
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Supports_condition (name, declarations) ->
-      Some
-        (Supports_condition
-           ( name,
-             eval_declarations ~layer_order ?layer:context_layer ctx
-               declarations ))
-  | Page_with_margins (selector, descriptors, margins) ->
-      Some
-        (Page_with_margins
-           ( selector,
-             eval_declarations ~layer_order ?layer:context_layer ctx descriptors,
-             List.map
-               (eval_page_margin_rule ~layer_order ?layer:context_layer ctx)
-               margins ))
-  | _ -> None
-
 let rec eval_block ?ctx_for_layer ~layer_order ?layer ctx block =
   List.map (eval_statement ?ctx_for_layer ~layer_order ?layer ctx) block
 
-and eval_nested_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer
-    ctx =
+(* [@layer] is the one statement named here: it sets the layer the declarations
+   below it sit in, and [ctx_for_layer] hands back the context that layer
+   resolves in. Every other statement is evaluated the same way, its own
+   declarations and then the block it nests, so the shared rebuilders reach an
+   at-rule added later without a word here. *)
+and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
+    statement =
   let open Stylesheet in
-  let eval block =
-    eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx block
-  in
-  function
-  | Media (condition, block) -> Some (Media (condition, eval block))
-  | Container (name, condition, block) ->
-      Some (Container (name, condition, eval block))
-  | Supports (condition, block) -> Some (Supports (condition, eval block))
-  | Moz_document (conditions, block) ->
-      Some (Moz_document (conditions, eval block))
-  | When (condition, block) -> Some (When (condition, eval block))
-  | Else (condition, block) -> Some (Else (condition, eval block))
-  | Starting_style block -> Some (Starting_style (eval block))
-  | Origin (origin, block) -> Some (Origin (origin, eval block))
-  | Scope (start, end_, block) -> Some (Scope (start, end_, eval block))
-  | _ -> None
-
-and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
-  let open Stylesheet in
-  function
-  | Rule rule ->
-      Some
-        (Rule
-           (eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer
-              ctx rule))
-  | Declarations declarations ->
-      Some
-        (Declarations
-           (eval_declarations ~layer_order ?layer:context_layer ctx declarations))
+  match statement with
   | Layer (name, block) ->
       let current_layer =
         match name with Some _ -> name | None -> context_layer
@@ -228,50 +148,26 @@ and eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx =
       let ctx =
         match ctx_for_layer with Some f -> f current_layer | None -> ctx
       in
-      Some
-        (Layer
-           ( name,
-             eval_block ?ctx_for_layer ~layer_order ?layer:current_layer ctx
-               block ))
+      Layer
+        ( name,
+          eval_block ?ctx_for_layer ~layer_order ?layer:current_layer ctx block
+        )
   | statement ->
-      eval_nested_block_statement ?ctx_for_layer ~layer_order
-        ?layer:context_layer ctx statement
-
-and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
-    statement =
-  match
-    eval_block_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
       statement
-  with
-  | Some statement -> statement
-  | None -> (
-      match
-        eval_declaration_statement ~layer_order ?layer:context_layer ctx
-          statement
-      with
-      | Some statement -> statement
-      | None -> statement)
+      |> map_statement_declarations
+           (eval_declarations ~layer_order ?layer:context_layer ctx)
+      |> map_statement_children
+           (eval_block ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
 
-and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer:context_layer ctx rule
-    =
-  {
-    rule with
-    Stylesheet.declarations =
-      List.map
-        (eval_declaration ~layer_order ?layer:context_layer ctx)
-        rule.Stylesheet.declarations;
-    nested =
-      List.map
-        (eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx)
-        rule.nested;
-  }
-
-let eval_rule ?layer_order ?layer ctx rule =
+let eval_rule ?layer_order ?layer ctx (rule : Stylesheet.rule) =
   let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
   let layer = match layer with Some _ -> layer | None -> ctx.Context.layer in
-  eval_rule_with_ctx ~layer_order ?layer
-    { ctx with Context.layer_order; layer }
-    rule
+  let ctx = { ctx with Context.layer_order; layer } in
+  {
+    rule with
+    declarations = eval_declarations ~layer_order ?layer ctx rule.declarations;
+    nested = eval_block ~layer_order ?layer ctx rule.nested;
+  }
 
 let eval_stylesheet ?layer_order ?layer ctx stylesheet =
   let layer_order = Option.value ~default:ctx.Context.layer_order layer_order in
@@ -422,11 +318,6 @@ let statement_selector = function
   | Rule r -> Some (Stylesheet.selector r)
   | _ -> None
 
-let statement_declarations = function
-  | Rule r -> Some (Stylesheet.declarations r)
-  | Declarations decls -> Some decls
-  | _ -> None
-
 let as_rule = function
   | Rule r ->
       Some
@@ -540,30 +431,9 @@ let as_origin = function
   | Origin (origin, content) -> Some (origin, content)
   | _ -> None
 
-(* The block at-rules [map] and [sort] rebuild. Listed one by one rather than
-   closed with a wildcard, so a statement that grows a block later has to be
-   classified here before it compiles. [Scope], [Starting_style],
-   [Moz_document], [When] and [Else] wrap rules too; whether the public
-   [map]/[sort] reach them is a contract question rather than a traversal one,
-   so they stay out until it is answered. *)
-let map_container_block f = function
-  | Media (condition, content) -> media ~condition (f content)
-  | Supports (condition, content) -> supports ~condition (f content)
-  | Layer (name, content) -> layer ?name (f content)
-  | Container (name, condition, content) ->
-      container ?name ?condition (f content)
-  | Origin (origin, content) -> Origin (origin, f content)
-  | ( Rule _ | Property _ | Declarations _ | Bang_comment _ | Charset _
-    | Import _ | Namespace _ | Layer_decl _ | Supports_condition _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ | Keyframes _
-    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
-    | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-    | Unknown_at_rule _ ) as stmt ->
-      stmt
-
-let statement_children = Stylesheet.statement_children
-
+(* [f] decides a rule's fate; the descent into what holds it is
+   [map_statement_children]'s, so every block at-rule is walked and one added
+   later is walked without a word here. *)
 let rec map f stmts =
   List.map
     (fun stmt ->
@@ -579,22 +449,20 @@ let rec map f stmts =
               (* Callback supplied its own nested (or returned a non-Rule);
                  trust it and replace the original. *)
               other)
-      | None -> map_container_block (map f) stmt)
+      | None -> map_statement_children (map f) stmt)
     stmts
 
 let rec sort cmp stmts =
-  (* First, recursively sort within containers and inside rule.nested. *)
+  (* Sort each block first, so the pass reaches a rule at any depth. The descent
+     is [map_statement_children]'s: an at-rule that grows a block later is
+     sorted inside without a word here, and a nesting block inside a rule is one
+     of them. *)
   let stmts_with_sorted_contents =
-    List.map
-      (fun stmt ->
-        match stmt with
-        | Rule rule -> Rule { rule with nested = sort cmp rule.nested }
-        | stmt -> map_container_block (sort cmp) stmt)
-      stmts
+    List.map (map_statement_children (sort cmp)) stmts
   in
-
-  (* Now sort the rules at this level *)
-  List.sort
+  (* [stable_sort], not [sort]: the comparison answers 0 for two non-rules, so
+     stability is what keeps an [@else] with the [@when] it answers. *)
+  List.stable_sort
     (fun stmt1 stmt2 ->
       match (as_rule stmt1, as_rule stmt2) with
       | Some (sel1, decls1, _), Some (sel2, decls2, _) ->
@@ -644,15 +512,7 @@ let rule_statements t =
 
 (* Function to extract all statements, not just rules *)
 let statements t = t
-
-(* Fold over all statements recursively, descending into nested structures *)
-let rec fold f acc t =
-  List.fold_left
-    (fun acc stmt ->
-      let acc' = f acc stmt in
-      (* Recursively fold over nested statements *)
-      fold f acc' (statement_children stmt))
-    acc t
+let fold f acc t = Stylesheet.fold_statements f acc t
 
 let media_queries t =
   let raw_media = Stylesheet.media_queries t in
@@ -662,56 +522,8 @@ let media_queries t =
 
 (* AST Introspection Helpers *)
 
-(* CSS Cascade 5 sec. 6.4.2: a dotted layer name [foo.bar] is shorthand for the
-   nested [@layer foo { @layer bar { ... } }]. Walk the @layer tree once,
-   expanding dotted names and prefixing each block with its parent's path, so
-   [foo.bar] is reachable under one canonical name whatever the input shape. *)
-let qualified_layer_blocks sheet =
-  let prefix_with parent name =
-    if parent = "" then name else parent ^ "." ^ name
-  in
-  let rec emit_dotted parent rest inner acc =
-    match rest with
-    | [] -> acc
-    | [ leaf ] ->
-        let qualified = prefix_with parent leaf in
-        walk qualified ((qualified, inner) :: acc) inner
-    | head :: tail ->
-        let qualified = prefix_with parent head in
-        emit_dotted qualified tail inner ((qualified, []) :: acc)
-  and walk parent acc statements =
-    List.fold_left
-      (fun acc s ->
-        match as_layer s with
-        | Some (Some name, inner) ->
-            let segments = String.split_on_char '.' name in
-            emit_dotted parent segments inner acc
-        | _ -> acc)
-      acc statements
-  in
-  List.rev (walk "" [] sheet)
-
-let layer_block name sheet = List.assoc_opt name (qualified_layer_blocks sheet)
-
-let layers t =
-  (* Derive the layer set from the canonical [@layer] block walk plus any
-     explicit [@layer a, b, c;] forward declarations. Going through
-     [qualified_layer_blocks] alone keeps dotted and nested input forms
-     producing the same result. *)
-  let from_blocks = List.map fst (qualified_layer_blocks t) in
-  let from_decls =
-    List.concat_map
-      (fun s -> match s with Stylesheet.Layer_decl names -> names | _ -> [])
-      t
-  in
-  let seen = Hashtbl.create 16 in
-  let dedup name : string option =
-    if Hashtbl.mem seen name then None
-    else (
-      Hashtbl.add seen name ();
-      Some name)
-  in
-  List.filter_map dedup (from_blocks @ from_decls)
+let layer_block = Stylesheet.layer_block
+let layers = Stylesheet.layers
 
 let rules_of_statements stmts =
   List.filter_map
@@ -726,50 +538,30 @@ let custom_prop_names decls = List.filter_map custom_declaration_name decls
 let custom_props_of_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
-let custom_props_nested_block stmt =
-  (* Block-container statements whose children continue the [in_layer] context
-     unchanged: walk into [@media], [@supports], [@container], [@origin] blocks;
-     [@layer] is handled by the caller because it adjusts [in_layer]. *)
-  let extractors =
-    [
-      (fun s -> Option.map snd (as_media s));
-      (fun s -> Option.map snd (as_supports s));
-      (fun s -> Option.map (fun (_, _, c) -> c) (as_container s));
-      (fun s -> Option.map snd (as_origin s));
-    ]
-  in
-  List.find_map (fun f -> f stmt) extractors
-
 let custom_props ?layer sheet =
-  (* Walk the statement tree directly so [in_layer] follows the structure: it is
-     set on entry to a [Layer] node and reset on exit, never persists into
-     sibling statements. *)
+  (* [in_layer] is set on entry to a named [@layer] and differs per branch,
+     never persisting into a sibling, which no accumulator can carry, so this
+     spells its own recursion rather than calling [fold_declarations]. The
+     descent is still [statement_children]'s and the sites are still
+     [element_matching_sites], so this reports a name wherever it is declared
+     for an element and a grouping at-rule added later reaches the walk. *)
   let rec walk in_layer acc stmt =
-    let acc =
-      match as_rule stmt with
-      | Some (_, decls, nested) when in_layer ->
-          let acc = custom_prop_names decls @ acc in
-          List.fold_left (walk in_layer) acc nested
-      | Some (_, _, nested) -> List.fold_left (walk in_layer) acc nested
-      | None -> acc
-    in
-    let descend block in_layer' = List.fold_left (walk in_layer') acc block in
-    match as_layer stmt with
-    | Some (Some name, content) ->
-        let in_layer' =
+    let in_layer =
+      match stmt with
+      | Layer (Some name, _) -> (
           match layer with
           | None -> true
-          | Some target -> in_layer || name = target
-        in
-        descend content in_layer'
-    | Some (None, content) -> descend content in_layer
-    | None -> (
-        match custom_props_nested_block stmt with
-        | Some content -> descend content in_layer
-        | None -> acc)
+          | Some target -> in_layer || name = target)
+      | _ -> in_layer
+    in
+    let acc =
+      if in_layer && at_declaration_site element_matching_sites stmt then
+        custom_prop_names (statement_declarations stmt) @ acc
+      else acc
+    in
+    List.fold_left (walk in_layer) acc (statement_children stmt)
   in
-  let initial = layer = None in
-  List.rev (List.fold_left (walk initial) [] sheet)
+  List.rev (List.fold_left (walk (layer = None)) [] sheet)
 
 let media ~condition statements = Media (condition, statements)
 
@@ -798,13 +590,10 @@ let property ~name syntax ?initial_value ?(inherits = false) () =
 
 let vars_of_declarations = Variables.vars_of_declarations
 
-let vars_of_rules statements =
-  let decls =
-    List.concat_map
-      (fun stmt -> match stmt with Rule r -> r.declarations | _ -> [])
-      statements
-  in
-  vars_of_declarations decls
+(* Same question as [vars_of_stylesheet], differing only in what it is handed: a
+   statement list is a stylesheet. Two walks would answer differently the moment
+   one of them met a construct the other knew. *)
+let vars_of_rules = vars_of_stylesheet
 
 type parse = { stylesheet : t; warnings : Error.t list }
 
@@ -828,23 +617,18 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
   | Ok { stylesheet; _ } -> stylesheet
   | Error error -> Error.fail error
 
-let rec statements_for_inline statement =
-  let inline_block block = List.concat_map statements_for_inline block in
+(* Splicing a [@layer] body into its parent replaces one statement with several,
+   which [edit_statements] cannot express and which does not need it: the splice
+   is the [concat_map] over a block, and the descent below it is still
+   [map_statement_children]'s, so an at-rule added later is walked without a
+   word here. *)
+let rec statements_for_inline block = List.concat_map statement_for_inline block
+
+and statement_for_inline statement =
   match statement with
-  | Layer (_, block) -> List.concat_map statements_for_inline block
+  | Layer (_, block) -> statements_for_inline block
   | Layer_decl _ | Property _ -> []
-  | Media (condition, block) -> [ Media (condition, inline_block block) ]
-  | Supports (condition, block) -> [ Supports (condition, inline_block block) ]
-  | Moz_document (conditions, block) ->
-      [ Moz_document (conditions, inline_block block) ]
-  | Container (name, condition, block) ->
-      [ Container (name, condition, inline_block block) ]
-  | Scope (start, end_, block) -> [ Scope (start, end_, inline_block block) ]
-  | Origin (origin, block) -> [ Origin (origin, inline_block block) ]
-  | When (condition, block) -> [ When (condition, inline_block block) ]
-  | Else (condition, block) -> [ Else (condition, inline_block block) ]
-  | Starting_style block -> [ Starting_style (inline_block block) ]
-  | statement -> [ statement ]
+  | statement -> [ map_statement_children statements_for_inline statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
    rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
@@ -899,7 +683,7 @@ let inline_vars ?keep_vars ?warn stylesheet =
     | None -> Inline.vars ?warn stylesheet
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
-  List.concat_map statements_for_inline substituted
+  statements_for_inline substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a
    stylesheet. Used by [resolve_theme] to know which names to ask the
@@ -919,11 +703,7 @@ let collect_var_names stylesheet =
         | _ -> ())
       (Variables.vars_of_declarations decls)
   in
-  let rec walk stmt =
-    record_decls (Stylesheet.statement_declarations stmt);
-    List.iter walk (Stylesheet.statement_children stmt)
-  in
-  List.iter walk stylesheet;
+  Stylesheet.iter_declarations record_decls stylesheet;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
 
 (* Resolve [Theme_guarded { var_name; decl }] declarations against the theme
@@ -943,81 +723,11 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
           | d -> Option.Some d)
         decls
 
-let resolve_theme_guards_in_frames ~theme frames =
-  List.map
-    (fun (frame : Stylesheet.keyframe) ->
-      {
-        frame with
-        declarations = resolve_theme_guards_in_decls ~theme frame.declarations;
-      })
-    frames
-
-let resolve_theme_guards_in_margins ~theme margins =
-  List.map
-    (fun (margin : Stylesheet.page_margin_rule) ->
-      {
-        margin with
-        descriptors = resolve_theme_guards_in_decls ~theme margin.descriptors;
-      })
-    margins
-
-(* Listed one by one rather than closed with a wildcard, for the same reason as
-   [Stylesheet.statement_declarations]: a guard the keep-set rejects has to be
-   dropped wherever the declaration sits, and a wildcard would silently leak the
-   next declaration-carrying at-rule's guards into the output. *)
-let rec resolve_theme_guards_in_stmts ~theme = function
-  | [] -> []
-  | stmt :: rest ->
-      let stmt =
-        match stmt with
-        | Stylesheet.Rule r ->
-            Stylesheet.Rule
-              {
-                r with
-                declarations =
-                  resolve_theme_guards_in_decls ~theme r.declarations;
-                nested = resolve_theme_guards_in_stmts ~theme r.nested;
-              }
-        | Declarations decls ->
-            Declarations (resolve_theme_guards_in_decls ~theme decls)
-        | Media (c, b) -> Media (c, resolve_theme_guards_in_stmts ~theme b)
-        | Supports (c, b) -> Supports (c, resolve_theme_guards_in_stmts ~theme b)
-        | Container (n, c, b) ->
-            Container (n, c, resolve_theme_guards_in_stmts ~theme b)
-        | Layer (n, b) -> Layer (n, resolve_theme_guards_in_stmts ~theme b)
-        | Origin (o, b) -> Origin (o, resolve_theme_guards_in_stmts ~theme b)
-        | Scope (s, e, b) -> Scope (s, e, resolve_theme_guards_in_stmts ~theme b)
-        | Starting_style b ->
-            Starting_style (resolve_theme_guards_in_stmts ~theme b)
-        | Moz_document (c, b) ->
-            Moz_document (c, resolve_theme_guards_in_stmts ~theme b)
-        | When (c, b) -> When (c, resolve_theme_guards_in_stmts ~theme b)
-        | Else (c, b) -> Else (c, resolve_theme_guards_in_stmts ~theme b)
-        | Keyframes (n, frames) ->
-            Keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Webkit_keyframes (n, frames) ->
-            Webkit_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Moz_keyframes (n, frames) ->
-            Moz_keyframes (n, resolve_theme_guards_in_frames ~theme frames)
-        | Page (sel, decls) ->
-            Page (sel, resolve_theme_guards_in_decls ~theme decls)
-        | Page_with_margins (sel, descriptors, margins) ->
-            Page_with_margins
-              ( sel,
-                resolve_theme_guards_in_decls ~theme descriptors,
-                resolve_theme_guards_in_margins ~theme margins )
-        | Position_try (n, decls) ->
-            Position_try (n, resolve_theme_guards_in_decls ~theme decls)
-        | Supports_condition (n, decls) ->
-            Supports_condition (n, resolve_theme_guards_in_decls ~theme decls)
-        | Property _ -> stmt
-        | Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _
-        | Font_face _ | Counter_style _ | Font_palette_values _
-        | Font_feature_values _ | View_transition _ | Viewport _
-        | Unknown_at_rule _ ->
-            stmt
-      in
-      stmt :: resolve_theme_guards_in_stmts ~theme rest
+(* A guard the keep-set rejects has to be dropped wherever the declaration sits,
+   so this goes through the exhaustive declaration walk rather than a local
+   match. *)
+let resolve_theme_guards_in_stmts ~theme stmts =
+  Stylesheet.map_declarations (resolve_theme_guards_in_decls ~theme) stmts
 
 let bare_theme_name raw_name =
   if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
@@ -1041,11 +751,7 @@ let structural_var_refs (stmts : Stylesheet.statement list) : string list =
   let note d =
     acc := List.rev_append (var_names_in_theme_value (declaration_value d)) !acc
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    List.iter note (Stylesheet.statement_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations (List.iter note) stmts;
   !acc
 
 let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
@@ -1115,21 +821,9 @@ let root_theme_rule declarations =
       merge_key = None;
     }
 
-(* The declarations a statement contributes to ordinary element matching. Unlike
-   [Stylesheet.statement_declarations], which reaches every declaration in the
-   tree, this stops at the at-rules whose declarations belong to another cascade
-   origin or to no element at all (CSS Cascading 5 sec. 6.1): [@keyframes] is
-   the animation origin, [@position-try] the position fallback origin, [@page]
-   and its margin boxes are not elements, and [@supports-condition] is never
-   applied to a box. None of them declares a name for an element that merely
-   references it. *)
-let cascading_declarations (stmt : Stylesheet.statement) =
-  match stmt with
-  | Stylesheet.Rule rule -> rule.declarations
-  | Stylesheet.Declarations decls -> decls
-  | _ -> []
-
-(* Names a style rule declares as a custom property (bare, no [--]). *)
+(* Names a style rule declares as a custom property (bare, no [--]). Only the
+   element-matching sites count: a name written in another cascade origin is not
+   declared for the element that merely references it. *)
 let declared_custom_prop_names (stmts : Stylesheet.statement list) :
     (string, unit) Hashtbl.t =
   let tbl = Hashtbl.create 16 in
@@ -1141,11 +835,7 @@ let declared_custom_prop_names (stmts : Stylesheet.statement list) :
         | None -> ())
       decls
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    note (cascading_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations ~sites:element_matching_sites note stmts;
   tbl
 
 (* Bare names of every [var()] reference. [collect_var_names] reads typed
@@ -1162,11 +852,7 @@ let referenced_var_names (stmts : Stylesheet.statement list) : string list =
             !opaque
     | Option.None -> ()
   in
-  let rec scan (stmt : Stylesheet.statement) =
-    List.iter note (Stylesheet.statement_declarations stmt);
-    List.iter scan (Stylesheet.statement_children stmt)
-  in
-  List.iter scan stmts;
+  Stylesheet.iter_declarations (List.iter note) stmts;
   List.map bare_theme_name (collect_var_names stmts @ !opaque)
 
 (* [:root], [:host], or a comma list of only those. *)

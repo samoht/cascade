@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Breaking
+
+- `Css.statement_declarations` is gone. It answered for a rule and a bare
+  nesting block only, sharing its name with the exhaustive
+  `Css.Stylesheet.statement_declarations`, which reaches every declaration a
+  statement holds; call that one instead (#348)
+
 ### Parsing
 
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps the
@@ -42,6 +49,23 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- A declaration whose value is spec-invalid is discarded inside a `@keyframes`
+  frame, matching what a browser does with it there and what cascade already
+  did in a style rule (#341)
+- Under `--scope=stylesheet` a `position-try-fallbacks` name with no
+  `@position-try` rule is dropped inside a `@keyframes` frame, as it already
+  was in a style rule. The name cannot match at runtime wherever the
+  declaration is written (#372)
+- `--minify` optimises the body of `@-moz-document`, `@starting-style`,
+  `@when` and `@else`, which it walked past: rules inside one of them kept
+  whatever the author wrote (#343)
+- `--minify` keeps a `@layer` whose rules write no declarations of their own
+  but nest rules that do. The emptiness test read only the declarations, so
+  `@layer a { .x { .y { color: red } } }` collapsed to `@layer a;` and every
+  declaration below the brace was deleted (#389)
+- `--flatten-nesting` treats `@-moz-document` as the grouping at-rule it is:
+  nesting inside one flattens, and a rule wrapping one keeps its selector
+  instead of emitting the at-rule at top level under no parent (#344)
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering
@@ -68,6 +92,11 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- An empty `@-moz-document`, `@when` or `@else` is dropped, as an empty
+  `@media` already was: a conditional group rule with no contents applies
+  nothing whatever its condition. An empty `@when` or `@else` stays while a
+  later `@else` binds to it, since dropping the antecedent would leave a bare
+  `@else` that no parser accepts (#396)
 
 ### Custom properties
 
@@ -109,6 +138,26 @@
   which closes the rule around it. The declaration name, the `var()` reference
   and every shape of its fallback, the `@property` prelude and a `style()`
   container query all take the escaping (#429)
+- Pruning unreferenced custom properties counts a `var()` in a `@keyframes`
+  frame, `@page` and its margin boxes, `@position-try` or
+  `@supports-condition` as a reference, instead of deleting a binding those
+  at-rules still use (#341)
+- `Css.inline_vars` counts a `var()` in a page margin box or a
+  `@supports-condition` body as a reference, so it no longer emits a name whose
+  definition it deleted, and reports an overridden variable referenced from any
+  of those at-rules through `~warn` (#342)
+- `Css.inline_vars` unwraps an `@layer` and drops an `@property` registration
+  written inside a rule, as it already did at top level. CSS nesting puts both
+  there, and a sheet using it came back half cleaned (#373)
+- `Css.custom_props` reports a name declared inside `@scope`,
+  `@starting-style`, `@-moz-document`, `@when`, `@else` or a bare nesting
+  block, as it already did for `@media` and `@supports`. Those declarations
+  reach the matching element just as an `@media` one does, and the names were
+  missing from an answer callers use to decide what a sheet defines (#375)
+- A custom property registered by `@property` is typed wherever it is
+  declared, including inside `@keyframes`, `@position-try` and
+  `@supports-condition`, so the same registered value canonicalises the same
+  way in every one of them (#349)
 
 ### Canonical diff
 
@@ -122,9 +171,26 @@
 - A complete shadow value in an unregistered custom property types its colour
   slot, so named and hex colours and typed `var()` fallbacks compare
   canonically while non-colour identifiers remain opaque (#314)
+- The projection's value folds reach inside every block at-rule. A quoted
+  multi-word family name in a custom property, a whole-byte `color(srgb ...)`
+  and the Level 3 `not all and (...)` media spelling folded inside `@layer` and
+  `@media` but not inside `@scope`, `@starting-style`, `@-moz-document`,
+  `@when`, `@else` or an origin wrapper, so the diff's verdict depended on
+  which at-rule enclosed the rule. A custom property in a `@keyframes` frame or
+  a `@page` box folds too (#393)
 
 ### Library
 
+- `Cascade_diff.Tree_diff.has_container_added_of_type` and
+  `has_container_removed_of_type` look inside a container reported as modified,
+  as `count_containers_by_type` already did. A `@supports` added inside an
+  existing `@media` was counted but not found (#395)
+- `Cascade.Resolve.Make.resolve` and `Cascade.Resolve.layer_order` document
+  every block they leave out, not just conditional groups: `@starting-style`
+  declares a before-change style, `@scope` brings a scoping root and the
+  proximity criterion, and an origin wrapper carries an origin that outranks
+  the layer. `Css.layers` remains the exhaustive count of what a sheet declares
+  (#394)
 - `Css.Media.kind` classifies a negated width bound by the side it bounds, so
   `not (min-width: 640px)` groups and sorts with the upper bounds it matches
   instead of with the lower bound it negates, and a doubled `not` cancels. The
@@ -137,6 +203,48 @@
 - `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
   rebuild a statement with a function applied to the block or the declarations
   it holds, the rebuilding counterparts of the two readers (#337)
+- `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
+  return the very statement they were given when the function they run leaves
+  every list physically unchanged. A pass that short-circuits on physical
+  equality can now call them instead of hand-rolling its own walk (#355)
+- `Css.Stylesheet.fold_statements`, `iter_statements`, `fold_declarations`,
+  `iter_declarations` and `map_declarations` walk a whole block: every statement
+  a rule nests, and every declaration an at-rule holds outside a block. The
+  declaration walks take `?sites` to name the places a narrow walk wants, so a
+  place added to `declaration_sites` stops every walk that made a choice from
+  compiling (#356)
+- `Css.Stylesheet.edit_statements` rewrites a whole block: the walk hands each
+  statement to a function that keeps, replaces or drops it, and descends into
+  what survives, so a pass that drops a statement no longer carries its own
+  list of the at-rules that nest (#363)
+- `Css.Stylesheet.at_declaration_site` answers whether a statement holds its
+  declarations in one of the places a `declaration_sites` record names. A walk
+  that carries a cascade layer or an `@supports` depth down the tree cannot be
+  a fold, and can now name the sites it reads instead of matching on the
+  statements it expects to meet (#368)
+- `Css.map` and `Css.sort` reach a rule inside `@scope`, `@starting-style`,
+  `@-moz-document`, `@when` or `@else`, as they already did for `@media` and
+  `@supports`. Those at-rules group style rules like any other conditional
+  group, and a caller rewriting or reordering "all rules at all nesting levels"
+  got a sheet with five of them silently untouched (#381)
+- `Css.layers` and `Css.layer_block` find a layer declared inside `@media`,
+  `@supports`, `@container`, `@scope` or any other grouping at-rule. Such a
+  block declares a real layer, so a caller asking which layers a sheet declares
+  was given a wrong answer rather than a partial one; `layers` reports every
+  name it finds in source order (#382)
+- `Css.vars_of_rules` is `Css.vars_of_stylesheet`, so a `var()` inside a nested
+  rule or inside any at-rule is reported instead of only one a top-level rule
+  holds. Both fold over every declaration site, which also adds the references
+  an animation frame and a page margin box hold (#382)
+- `Css.Stylesheet.layers` is what `Css.layers` calls, so the two no longer give
+  different answers to the same question: the lower one reported neither a
+  layer declared inside a grouping at-rule nor the sublayer a dotted name
+  declares. `Css.Stylesheet.layer_block` is exposed alongside it (#389)
+- `Css.Stylesheet.media_queries`, `container_queries` and `Css.media_queries`
+  report a query written inside a grouping at-rule, and pair each query with
+  every rule below its brace rather than the ones sitting directly under it, so
+  a rule nested in another rule or held by an inner group is no longer missing
+  from the query it is written in (#389)
 
 ### CLI tools
 
@@ -146,6 +254,14 @@
   element's width; licence headers and conditional comments went missing
   outright. The page is parsed and printed with markup.ml, which carries
   comments, in place of lambdasoup, which discards them (#346)
+- `cascade diff` names an at-rule that carries no condition of its own by the
+  head it prints to, rather than describing every one of them identically. That
+  description keys the ordering comparison, so a `@media` that moved between a
+  `@page` and a `@starting-style` was reported as no change (#345)
+- `cascade diff --diff=tree` shows the contents of a block added or removed
+  wholesale whatever the block holds. The report read the body through its own
+  list of at-rules, so a `@scope`, a `@starting-style` or a rule nested in
+  another rule printed a header with nothing beneath it and read as empty (#389)
 - `cascade apply` keeps a declaration in the sheet when a kept rule can write
   the same cascade slot under another property name. `p{margin:0}` was
   projected into a style attribute while the `.my-7{margin-top:1.75rem}` it

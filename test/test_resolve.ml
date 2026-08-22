@@ -198,6 +198,84 @@ let test_resolve_anonymous_layers () =
     (resolved_color
        "@layer{span{color:red!important}}@layer{span{color:blue!important}}")
 
+(* Every block at-rule {!Flatten.block} leaves standing around a rule, as the
+   CSS text that opens and closes it. [@else] binds to the [@when] before it
+   (css-conditional-5 sec. 3), so its opener carries an antecedent that cannot
+   match [s2]. *)
+let wrappers_resolve_skips =
+  [
+    ("@media", "@media (width>0px){", "}");
+    ("@supports", "@supports (color:red){", "}");
+    ("@container", "@container (width>0px){", "}");
+    ("@-moz-document", "@-moz-document url-prefix(){", "}");
+    ("@starting-style", "@starting-style{", "}");
+    ("@when", "@when media(width>0px){", "}");
+    ("@else", "@when media(width<0px){p{color:blue}}@else{", "}");
+    ("@scope", "@scope (.card){", "}");
+  ]
+
+(* [resolve] answers for the ordinary cascade of an element in a document it
+   cannot see: it has no viewport, no UA feature table, no container layout, no
+   document URL, and no scoping root, and [@starting-style] declares a
+   before-change style rather than an ordinary one. So a rule inside any of
+   these contributes nothing, and only [@layer], which gates nothing, does. This
+   is what {!Apply.Make} relies on: it keeps each of these blocks in the
+   stylesheet and inlines only what [resolve] returns, so a declaration counted
+   in both places would be applied twice. *)
+let test_resolve_skips_conditional_and_scoped_blocks () =
+  Alcotest.(check (option string))
+    "a bare rule resolves" (Some "color:red")
+    (resolved_color "span{color:red}");
+  Alcotest.(check (option string))
+    "a rule in @layer resolves" (Some "color:red")
+    (resolved_color "@layer L{span{color:red}}");
+  List.iter
+    (fun (label, before, after) ->
+      Alcotest.(check (option string))
+        (String.concat " " [ "a rule in"; label; "does not resolve" ])
+        None
+        (resolved_color (String.concat "" [ before; "span{color:red}"; after ])))
+    wrappers_resolve_skips;
+  Alcotest.(check (option string))
+    "a rule in an origin wrapper does not resolve" None
+    (List.find_map
+       (fun d ->
+         if Declaration.property_name d = "color" then
+           Some (Declaration.string_of_declaration ~minify:true d)
+         else None)
+       (R.resolve [ Stylesheet.Origin (Author, sheet_of "span{color:red}") ] s2))
+
+(* [layer_order] is the order [resolve] ranks against, so it counts a layer in
+   exactly the blocks [resolve] walks. A layer named inside one of the others is
+   not part of that order. *)
+let test_layer_order_counts_the_blocks_resolve_walks () =
+  Alcotest.(check (list string))
+    "a nested @layer block is counted" [ "a"; "a.b" ]
+    (Resolve.layer_order (sheet_of "@layer a{@layer b{span{color:red}}}"));
+  List.iter
+    (fun (label, before, after) ->
+      Alcotest.(check (list string))
+        (String.concat " " [ "a layer named inside"; label; "is not counted" ])
+        []
+        (Resolve.layer_order
+           (sheet_of
+              (String.concat "" [ before; "@layer a{span{color:red}}"; after ]))))
+    wrappers_resolve_skips
+
+(* The declarations [resolve] leaves out are not lost: {!Apply.Make} keeps the
+   block whole in the stylesheet it emits, so the browser applies it there. *)
+let test_apply_keeps_the_blocks_resolve_skips () =
+  let module A = Apply.Make (Node) in
+  let result : tree Apply.result =
+    A.compute ~sheet:(sheet_of "@scope (.card){span{color:red}}") [ section ]
+  in
+  Alcotest.(check bool)
+    "nothing is projected onto an element" true
+    (List.for_all (fun (_, decls) -> decls = []) result.styles);
+  Alcotest.(check bool)
+    "the @scope block is kept in the stylesheet" true
+    (String.length result.keep_css > 0)
+
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
    the element, a rule with no inline form ([:hover]) stays in a <style>
    block. *)
@@ -245,6 +323,12 @@ let suite =
         test_resolve_nested_layers;
       Alcotest.test_case "anonymous layers are distinct" `Quick
         test_resolve_anonymous_layers;
+      Alcotest.test_case "resolve skips conditional and scoped blocks" `Quick
+        test_resolve_skips_conditional_and_scoped_blocks;
+      Alcotest.test_case "layer order counts the blocks resolve walks" `Quick
+        test_layer_order_counts_the_blocks_resolve_walks;
+      Alcotest.test_case "apply keeps the blocks resolve skips" `Quick
+        test_apply_keeps_the_blocks_resolve_skips;
       Alcotest.test_case "apply projects a static rule, keeps a dynamic one"
         `Quick test_apply_compute;
     ] )

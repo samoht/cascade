@@ -220,23 +220,60 @@ and process_statements ?factor_cache ~ctx ~enforce_spec
       process_statements ?factor_cache ~ctx ~enforce_spec ~pending
         (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
-      let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
-      let optimized =
-        if optimized_block == block then stmt
-        else Origin (origin, optimized_block)
-      in
-      process_statements ?factor_cache ~ctx ~enforce_spec ~pending
-        (optimized :: acc) rest
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Origin (origin, block))
+        rest
+  (* The wrapper is opaque but its body is an ordinary block, so it optimises
+     like [@media]'s: a group left out here keeps whatever the author wrote and
+     [--minify] does nothing inside it. *)
+  | (Moz_document (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Moz_document (cond, block))
+        rest
+  | (When (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> When (cond, block))
+        rest
+  | (Else (cond, block) as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Else (cond, block))
+        rest
+  | (Starting_style block as stmt) :: rest ->
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+        block
+        (fun block -> Starting_style block)
+        rest
   | (Layer (name, block) as stmt) :: rest ->
       process_layer_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
         name block rest
   | (Import import as stmt) :: rest ->
       process_import_statement ?factor_cache ~ctx ~enforce_spec ~pending acc
         stmt import rest
-  | hd :: rest ->
-      (* Other statement types - keep as-is *)
+  (* Listed rather than closed with a wildcard: everything left holds no block,
+     so a statement that grows one has to be classified above before it
+     compiles. *)
+  | (( Declarations _ | Property _ | Bang_comment _ | Charset _ | Namespace _
+     | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+     | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+     | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+     | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ) as
+     hd)
+    :: rest ->
       process_statements ?factor_cache ~ctx ~enforce_spec ~pending (hd :: acc)
         rest
+
+and process_group_statement ?factor_cache ~ctx ~enforce_spec ~pending acc stmt
+    block rebuild rest =
+  let optimized_block = statements ?factor_cache ~ctx ~enforce_spec block in
+  let optimized =
+    if optimized_block == block then stmt else rebuild optimized_block
+  in
+  process_statements ?factor_cache ~ctx ~enforce_spec ~pending
+    (optimized :: acc) rest
 
 and process_rule_run ?factor_cache ~ctx ~enforce_spec ~pending acc stmt r rest =
   let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
@@ -451,186 +488,28 @@ let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
 
+(* A WebKit workaround is a property of the declaration, so it applies wherever
+   the declaration sits. *)
 let apply_property_duplication (stylesheet : t) : t =
-  (* Apply only property duplication without other optimizations. Each level
-     keeps its node when nothing below changed, so an untouched subtree stays
-     physically shared (no whole-tree rebuild on a no-op). *)
-  let rec apply_to_statements stmts =
-    list_map_preserve
-      (fun stmt ->
-        match stmt with
-        | Rule rule ->
-            let declarations = duplicate_buggy_properties rule.declarations in
-            if declarations == rule.declarations then stmt
-            else Rule { rule with declarations }
-        | Media (cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Media (cond, inner')
-        | Layer (name, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Layer (name, inner')
-        | Container (name, cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Container (name, cond, inner')
-        | Supports (cond, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Supports (cond, inner')
-        | Origin (origin, inner) ->
-            let inner' = apply_to_statements inner in
-            if inner' == inner then stmt else Origin (origin, inner')
-        | other -> other)
-      stmts
-  in
-  apply_to_statements stylesheet
-
-let map_statement_block_preserve f stmt =
-  let map block = list_map_preserve f block in
-  match stmt with
-  | Layer (name, block) ->
-      let block' = map block in
-      if block' == block then stmt else Layer (name, block')
-  | Media (m, block) ->
-      let block' = map block in
-      if block' == block then stmt else Media (m, block')
-  | Container (n, c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Container (n, c, block')
-  | Supports (s, block) ->
-      let block' = map block in
-      if block' == block then stmt else Supports (s, block')
-  | Moz_document (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Moz_document (c, block')
-  | When (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else When (c, block')
-  | Else (c, block) ->
-      let block' = map block in
-      if block' == block then stmt else Else (c, block')
-  | Starting_style block ->
-      let block' = map block in
-      if block' == block then stmt else Starting_style block'
-  | Origin (o, block) ->
-      let block' = map block in
-      if block' == block then stmt else Origin (o, block')
-  | Scope (a, b, block) ->
-      let block' = map block in
-      if block' == block then stmt else Scope (a, b, block')
-  | _ -> stmt
-
-let iter_statement_block f stmt =
-  match stmt with
-  | Layer (_, block)
-  | Media (_, block)
-  | Container (_, _, block)
-  | Supports (_, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block)
-  | Starting_style block
-  | Origin (_, block)
-  | Scope (_, _, block) ->
-      List.iter f block
-  | _ -> ()
+  map_declarations duplicate_buggy_properties stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
-    nesting blocks, [@page] / [@font-palette-values] / [@view-transition] /
-    [@position-try]) and removes declarations whose typed value contains an
-    [Invalid] arm. *)
+    nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
+    [@position-try], [@supports-condition]) and removes declarations whose typed
+    value contains an [Invalid] arm. *)
 let drop_invalid (stylesheet : t) : t =
-  let filter_decls =
-    list_filter_preserve (fun d -> not (Declaration.is_invalid d))
-  in
-  let rec statement stmt =
-    match stmt with
-    | Rule rule ->
-        let declarations = filter_decls rule.declarations in
-        let nested = list_map_preserve statement rule.nested in
-        let rule' =
-          rule_with_declarations_and_nested rule declarations nested
-        in
-        if rule' == rule then stmt else Rule rule'
-    | Declarations decls ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Declarations decls'
-    | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
-    | Else _ | Starting_style _ | Origin _ | Scope _ ->
-        map_statement_block_preserve statement stmt
-    | Page (sel, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Page (sel, decls')
-    | Page_with_margins (sel, descs, margins) ->
-        let descs' = filter_decls descs in
-        let margins' =
-          list_map_preserve
-            (fun (m : page_margin_rule) ->
-              let descriptors = filter_decls m.descriptors in
-              if descriptors == m.descriptors then m else { m with descriptors })
-            margins
-        in
-        if descs' == descs && margins' == margins then stmt
-        else Page_with_margins (sel, descs', margins')
-    | Position_try (name, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Position_try (name, decls')
-    | Supports_condition (name, decls) ->
-        let decls' = filter_decls decls in
-        if decls' == decls then stmt else Supports_condition (name, decls')
-    | other -> other
-  in
-  list_map_preserve statement stylesheet
+  map_declarations
+    (list_filter_preserve (fun d -> not (Declaration.is_invalid d)))
+    stylesheet
 
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
     depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
     emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
     sec. 5.4.1 (unknown at-rules are discarded). *)
 let drop_unknown_at_rules (stylesheet : t) : t =
-  let rec statement stmt =
-    match stmt with
-    | Rule rule ->
-        let nested = list_edit_preserve statement rule.nested in
-        let rule' = rule_with_nested rule nested in
-        if rule' == rule then List.Keep else List.Replace (Rule rule')
-    | Layer (name, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Layer (name, block'))
-    | Media (m, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Media (m, block'))
-    | Container (n, c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Container (n, c, block'))
-    | Supports (s, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Supports (s, block'))
-    | Moz_document (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Moz_document (c, block'))
-    | When (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (When (c, block'))
-    | Else (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Else (c, block'))
-    | Starting_style block ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Starting_style block')
-    | Origin (o, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Origin (o, block'))
-    | Scope (a, b, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Scope (a, b, block'))
-    | Unknown_at_rule _ -> List.Drop
-    | _ -> List.Keep
-  in
-  list_edit_preserve statement stylesheet
+  edit_statements
+    (function Unknown_at_rule _ -> List.Drop | _ -> List.Keep)
+    stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
    typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
@@ -699,58 +578,26 @@ let promote_registered_custom_decl ~lossless registry decl =
                 (Custom_value { value = Tokens components'; layer; meta })))
   | _ -> decl
 
-let promote_frames f frames =
-  list_map_preserve
-    (fun (frame : keyframe) ->
-      let declarations = list_map_preserve f frame.declarations in
-      if declarations == frame.declarations then frame
-      else { frame with declarations })
-    frames
-
 let promote_registered_custom_properties ~lossless (stmts : statement list) =
   let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
   (* An [@property] registration is document-global regardless of source order
      (CSS Properties and Values API 1 SS 2). Tailwind emits its [@property]
      rules after the [@layer] that uses them, so collect every registration in a
      first pass before promoting any declaration. *)
-  let rec collect_stmt (stmt : statement) : unit =
-    match stmt with
-    | Property pr ->
-        Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
-    | Rule r -> List.iter collect_stmt r.nested
-    | _ -> iter_statement_block collect_stmt stmt
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr ->
+          Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
+      | _ -> ())
+    stmts;
+  let promote_decls =
+    list_map_preserve (promote_registered_custom_decl ~lossless registry)
   in
-  List.iter collect_stmt stmts;
-  let promote_decl = promote_registered_custom_decl ~lossless registry in
-  let rec walk_stmt (stmt : statement) : statement =
-    match stmt with
-    | Property _ -> stmt
-    | Rule r ->
-        let declarations = list_map_preserve promote_decl r.declarations in
-        let nested = list_map_preserve walk_stmt r.nested in
-        let r' = rule_with_declarations_and_nested r declarations nested in
-        if r' == r then stmt else Rule r'
-    | Declarations decls ->
-        let decls' = list_map_preserve promote_decl decls in
-        if decls' == decls then stmt else Declarations decls'
-    (* A keyframe frame declares registered custom properties like any other
-       block, and the registration is what the frame interpolates against (CSS
-       Properties and Values API 1 SS 2.4). *)
-    | Keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Keyframes (name, frames')
-    | Webkit_keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Webkit_keyframes (name, frames')
-    | Moz_keyframes (name, frames) ->
-        let frames' = promote_frames promote_decl frames in
-        if frames' == frames then stmt else Moz_keyframes (name, frames')
-    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ ->
-        map_statement_block_preserve walk_stmt stmt
-    | _ -> stmt
-  in
-  list_map_preserve walk_stmt stmts
+  (* A registration is document-global, so every declaration of that name is
+     typed wherever it is written: through the declaration walker rather than a
+     list of the at-rules that came to mind. *)
+  map_declarations promote_decls stmts
 
 (* Compressibility pass: put each rule's declarations in a deterministic
    cross-rule order so gzip back-references line up, keeping cascade-significant
@@ -763,10 +610,7 @@ let canonicalize_declaration_order stmts =
         let nested = list_map_preserve walk_stmt r.nested in
         let r' = rule_with_declarations_and_nested r declarations nested in
         if r' == r then stmt else Rule r'
-    | Media _ | Container _ | Supports _ | Layer _ | Origin _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ ->
-        map_statement_block_preserve walk_stmt stmt
-    | _ -> stmt
+    | stmt -> map_statement_children (list_map_preserve walk_stmt) stmt
   in
   list_map_preserve walk_stmt stmts
 
@@ -777,24 +621,12 @@ let canonicalize_declaration_order stmts =
    initial). *)
 let collect_position_try_names stylesheet =
   let known : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Position_try (name, _) -> Hashtbl.replace known name ()
-    | Rule rule -> List.iter collect rule.nested
-    | Layer (_, b)
-    | Media (_, b)
-    | Container (_, _, b)
-    | Supports (_, b)
-    | Moz_document (_, b)
-    | When (_, b)
-    | Else (_, b)
-    | Starting_style b
-    | Origin (_, b)
-    | Scope (_, _, b) ->
-        List.iter collect b
-    | _ -> ()
-  in
-  List.iter collect stylesheet;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Position_try (name, _) -> Hashtbl.replace known name ()
+      | _ -> ())
+    stylesheet;
   known
 
 let rec prune_position_try_decl known (decl : Declaration.declaration) :
@@ -840,33 +672,10 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
             | None -> List.Drop)
           decls
       in
-      let rec walk (stmt : statement) : statement =
-        match stmt with
-        | Rule rule ->
-            let declarations = prune_decls rule.declarations in
-            let nested = list_map_preserve walk rule.nested in
-            let rule' =
-              rule_with_declarations_and_nested rule declarations nested
-            in
-            if rule' == rule then stmt else Rule rule'
-        | Declarations decls ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Declarations decls'
-        | Layer _ | Media _ | Container _ | Supports _ | Moz_document _ | When _
-        | Else _ | Starting_style _ | Origin _ | Scope _ ->
-            map_statement_block_preserve walk stmt
-        | Page (sel, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Page (sel, decls')
-        | Position_try (n, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Position_try (n, decls')
-        | Supports_condition (n, decls) ->
-            let decls' = prune_decls decls in
-            if decls' == decls then stmt else Supports_condition (n, decls')
-        | other -> other
-      in
-      list_map_preserve walk stylesheet
+      (* A name with no [@position-try] rule cannot match wherever it is
+         written, so this goes through the declaration walker rather than a list
+         of the at-rules that came to mind. *)
+      map_declarations prune_decls stylesheet
 
 (* Collect the custom properties registered with an [@property] initial-value.
    Such a property is never invalid at computed-value time, so folding its
@@ -874,35 +683,24 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
    longhands. *)
 let registered_foldable (stylesheet : t) : string -> bool =
   let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Property pr -> (
-        match pr.initial_value with
-        | Some _ ->
-            (* [@property] names carry the [--] prefix; [var()] references store
-               the bare name, so normalise to the bare form for lookup. *)
-            let key =
-              if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
-              then String.sub pr.name 2 (String.length pr.name - 2)
-              else pr.name
-            in
-            Hashtbl.replace tbl key ()
-        | None -> ())
-    | Rule rule -> List.iter collect rule.nested
-    | Layer (_, b)
-    | Media (_, b)
-    | Container (_, _, b)
-    | Supports (_, b)
-    | Moz_document (_, b)
-    | When (_, b)
-    | Else (_, b)
-    | Starting_style b
-    | Origin (_, b)
-    | Scope (_, _, b) ->
-        List.iter collect b
-    | _ -> ()
-  in
-  List.iter collect stylesheet;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr -> (
+          match pr.initial_value with
+          | Some _ ->
+              (* [@property] names carry the [--] prefix; [var()] references
+                 store the bare name, so normalise to the bare form for
+                 lookup. *)
+              let key =
+                if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
+                then String.sub pr.name 2 (String.length pr.name - 2)
+                else pr.name
+              in
+              Hashtbl.replace tbl key ()
+          | None -> ())
+      | _ -> ())
+    stylesheet;
   fun name -> Hashtbl.mem tbl name
 
 (* CSS Properties and Values API 1: a custom property registered with a
@@ -927,15 +725,14 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
       String.sub name 2 (String.length name - 2)
     else name
   in
-  let rec collect (stmt : statement) =
-    match stmt with
-    | Property pr ->
-        if syntax_is_single_valued pr.syntax then
-          Hashtbl.replace tbl (bare pr.name) ()
-    | Rule r -> List.iter collect r.nested
-    | _ -> iter_statement_block collect stmt
-  in
-  List.iter collect stmts;
+  iter_statements
+    (fun (stmt : statement) ->
+      match stmt with
+      | Property pr ->
+          if syntax_is_single_valued pr.syntax then
+            Hashtbl.replace tbl (bare pr.name) ()
+      | _ -> ())
+    stmts;
   { Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name) }
 
 let normalize_live_declarations ~ctx ~lossless decls =
@@ -947,85 +744,14 @@ let normalize_live_declarations ~ctx ~lossless decls =
       else List.Replace decl')
     decls
 
-let sanitize_keyframe ~ctx ~lossless (k : keyframe) : keyframe =
-  let declarations =
-    normalize_live_declarations ~ctx ~lossless k.declarations
-  in
-  if declarations == k.declarations then k else { k with declarations }
-
-let rec sanitize_block ~ctx ~lossless (b : statement list) : statement list =
-  list_edit_preserve (sanitize_statement ~ctx ~lossless) b
-
-and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
-  let nd = normalize_live_declarations ~ctx ~lossless in
+(* An [@property] registration holds a typed initial value rather than a
+   declaration, so it is the one statement whose value
+   [map_statement_declarations] does not reach; every other statement either is
+   an unknown at-rule, dropped per CSS Syntax 3 sec. 5.4.1, or has its
+   declarations normalised wherever that walk finds them. *)
+let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
   match s with
-  | Rule r ->
-      let declarations = nd r.declarations in
-      let nested = sanitize_block ~ctx ~lossless r.nested in
-      let r' = rule_with_declarations_and_nested r declarations nested in
-      if r' == r then List.Keep else List.Replace (Rule r')
-  | Declarations d ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Declarations d')
-  | Page (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Page (n, d'))
-  | Page_with_margins (n, descs, margins) ->
-      let descs' = nd descs in
-      let margins' =
-        list_map_preserve
-          (fun m ->
-            let descriptors = nd m.descriptors in
-            if descriptors == m.descriptors then m else { m with descriptors })
-          margins
-      in
-      if descs' == descs && margins' == margins then List.Keep
-      else List.Replace (Page_with_margins (n, descs', margins'))
-  | Position_try (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Position_try (n, d'))
-  | Supports_condition (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Supports_condition (n, d'))
-  | Keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Keyframes (n, ks'))
-  | Webkit_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Webkit_keyframes (n, ks'))
-  | Moz_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Moz_keyframes (n, ks'))
-  | Layer (n, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Layer (n, b'))
-  | Media (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Media (c, b'))
-  | Container (n, c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Container (n, c, b'))
-  | Supports (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Supports (c, b'))
-  | Moz_document (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Moz_document (c, b'))
-  | Starting_style b ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Starting_style b')
-  | When (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (When (c, b'))
-  | Else (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Else (c, b'))
-  | Origin (o, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Origin (o, b'))
-  | Scope (s1, s2, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Scope (s1, s2, b'))
+  | Unknown_at_rule _ -> List.Drop
   | Property r ->
       let initial_value =
         match r.initial_value with
@@ -1036,16 +762,24 @@ and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
       in
       if initial_value == r.initial_value then List.Keep
       else List.Replace (Property { r with initial_value })
-  | Unknown_at_rule _ -> List.Drop
-  | _ -> List.Keep
+  | _ ->
+      let s' =
+        map_statement_declarations
+          (normalize_live_declarations ~ctx ~lossless)
+          s
+      in
+      if s' == s then List.Keep else List.Replace s'
+
+let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
+  edit_statements (sanitize_statement ~ctx ~lossless) b
 
 let rec statement_rule_count = function
   | Rule _ -> 1
   | stmt ->
       let count = ref 0 in
-      iter_statement_block
+      List.iter
         (fun stmt -> count := !count + statement_rule_count stmt)
-        stmt;
+        (statement_children stmt);
       !count
 
 let stylesheet_rule_count stmts =
@@ -1094,15 +828,10 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
           (Variables.var_refs_in_value_string
              (Declaration.string_of_declaration ~minify:true d)))
   in
-  let rec walk stmt =
-    match stmt with
-    | Rule r ->
-        note_decls r.declarations;
-        List.iter walk r.nested
-    | Declarations decls -> note_decls decls
-    | _ -> iter_statement_block walk stmt
-  in
-  List.iter walk stmts;
+  (* Through the exhaustive walk rather than a local match: a reference it
+     cannot reach reads as no reference at all, and [@keyframes], [@page] and
+     [@position-try] hold their declarations outside any block. *)
+  iter_declarations note_decls stmts;
   tbl
 
 (* Drop custom-property bindings referenced by no [var()] - a dead binding has
@@ -1131,7 +860,7 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
     | Declarations decls ->
         let decls' = list_filter_preserve keep_decl decls in
         if decls' == decls then stmt else Declarations decls'
-    | _ -> map_statement_block_preserve prune stmt
+    | _ -> map_statement_children (list_map_preserve prune) stmt
   in
   list_map_preserve prune stmts
 

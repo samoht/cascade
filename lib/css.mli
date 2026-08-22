@@ -160,10 +160,6 @@ val statement_selector : statement -> Selector.t option
 (** [statement_selector stmt] returns [Some selector] if the statement is a
     rule, {!constructor-None} otherwise. *)
 
-val statement_declarations : statement -> declaration list option
-(** [statement_declarations stmt] returns [Some declarations] if the statement
-    is a rule, {!constructor-None} otherwise. *)
-
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
@@ -376,27 +372,32 @@ val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->
   statement list
-(** [map f stmts] applies [f] to all rules in [stmts], recursively descending
-    into nested containers (media, supports, layers, etc.).
+(** [map f stmts] applies [f] to every rule in [stmts]: the ones at the top
+    level, the ones inside a conditional group at-rule such as [@media],
+    [@supports], [@layer], [@container], [@scope] or [@starting-style], however
+    deeply nested, and the ones nested inside a rule.
 
-    - Rules are transformed while non-rule statements are preserved
-    - Traversal is depth-first, processing nested containers recursively
-    - Transformation is applied to all rules at all nesting levels
-    - Non-rule statements (at-rules without rule content) maintain their
-      relative order. *)
+    - Traversal is depth-first, and a statement that is not a rule is kept with
+      its block rewritten.
+    - Non-rule statements maintain their relative order.
+    - When [f] returns a rule holding no nested statements, the original nested
+      tree is kept with [map] applied to it; one holding its own replaces it. *)
 
 val sort :
   (Selector.t * declaration list -> Selector.t * declaration list -> int) ->
   statement list ->
   statement list
-(** [sort cmp stmts] sorts rules within [stmts] using the comparison function
-    [cmp], recursively descending into nested containers.
+(** [sort cmp stmts] reorders the rules of [stmts] with [cmp], and the rules of
+    every block below them: inside a conditional group at-rule such as [@media],
+    [@supports], [@layer], [@container], [@scope] or [@starting-style], however
+    deeply nested, and inside the nested statements of a rule.
 
-    - Sort is stable: equal elements maintain their relative order
-    - Non-rule statements are preserved in their original positions
-    - Sorting occurs independently within each container level
-    - Nested containers (media, supports, layers) have their rules sorted
-      recursively. *)
+    - Each block is sorted on its own, so a rule never leaves the block it sits
+      in.
+    - Sort is stable: rules [cmp] calls equal maintain their relative order.
+    - Non-rule statements sort after the rules of their block and maintain their
+      relative order among themselves, so an [@else] still follows the [@when]
+      it answers. *)
 
 (** Existential type for property information that preserves type safety *)
 type property_info =
@@ -485,9 +486,11 @@ val statements : t -> statement list
 (** [statements t] returns all top-level statements from the stylesheet. *)
 
 val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
-(** [fold f acc css] folds over all statements in [css], recursively descending
-    into nested structures (layers, media queries, containers, and supports
-    rules). The function [f] is called for each statement in depth-first order.
+(** [fold f acc css] folds [f] over every statement in [css] and over every
+    statement reachable from one, in source order: a rule nested in a rule, a
+    block at-rule inside a group, and whatever those hold in turn. The walk
+    descends through {!Stylesheet.statement_children}, so it reaches every
+    statement the AST can hold rather than a listed set of at-rules.
 
     Example: Collect all selectors from all rules (including nested ones):
     {[
@@ -503,17 +506,32 @@ val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
     ]} *)
 
 val media_queries : t -> (Media.t * statement list) list
-(** [media_queries t] returns media queries and their rule statements. *)
+(** [media_queries t] is every [@media] in [t], at any depth, paired with the
+    rule statements below its brace. A query inside a group at-rule counts, and
+    a rule nested in another rule or held by an inner group is one of the
+    query's rules; a nested rule keeps the relative selector it was written
+    with. *)
 
 val layers : t -> string list
-(** [layers t] returns the layer names from the stylesheet. *)
+(** [layers t] is every cascade layer [t] declares, one dotted path per layer
+    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
+    sheet first names them. A layer named inside a conditional group counts: the
+    group decides whether its contents apply, not whether the layer exists. A
+    sublayer of an anonymous [@layer { ... }] has no name to report.
+
+    This is what a sheet declares, not the order a cascade resolves in.
+    {!Resolve.layer_order} answers that, and leaves out a layer named inside any
+    block the resolver does not enter: a conditional group rule,
+    [@starting-style], [@scope] or an origin wrapper. *)
 
 (** {3 AST Introspection Helpers} *)
 
 val layer_block : string -> t -> statement list option
-(** [layer_block name sheet] extracts the statements from the named layer
-    [@layer name] in the stylesheet. Returns {!constructor-None} if the layer is
-    not found. *)
+(** [layer_block name sheet] is the statements of the layer [name], wherever it
+    is declared and whatever form declares it: a dotted name, a nested block, or
+    a block inside a conditional group. It is {!constructor-None} when no
+    [@layer] block opens that layer, so a name only an [@layer a, b;] statement
+    declares is {!constructor-None} as well. *)
 
 val rules_of_statements : statement list -> (Selector.t * declaration list) list
 (** [rules_of_statements stmts] extracts all CSS rules (selector + declarations)
@@ -537,10 +555,14 @@ val custom_props_of_rules : (Selector.t * declaration list) list -> string list
     declarations in the rules. *)
 
 val custom_props : ?layer:string -> t -> string list
-(** [custom_props ?layer sheet] recursively extracts all custom property names
-    from the stylesheet. If [layer] is provided, only properties from that layer
-    are extracted. Traverses nested [@supports], [@media], and other conditional
-    blocks. *)
+(** [custom_props ?layer sheet] is the name of every custom property [sheet]
+    declares for an element: the ones in a style rule or a bare nesting block,
+    at the top level and inside a conditional group at-rule such as [@media],
+    [@supports], [@container], [@scope] or [@starting-style], however deeply
+    nested. A name declared in [@keyframes], [@page], [@position-try] or
+    [@supports-condition] belongs to another cascade origin or to no element at
+    all (CSS Cascading 5 sec. 6.1) and is not among them. When [layer] is given,
+    the names are those declared inside the [@layer] of that name. *)
 
 val media : condition:Media.t -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
@@ -618,16 +640,18 @@ val with_fallback : 'a var -> 'a -> 'a var
 type any_var = Variables.any_var = V : 'a var -> any_var
 
 val vars_of_rules : statement list -> any_var list
-(** [vars_of_rules statements] extracts all CSS variables referenced in rule
-    statements' declarations, returning them sorted and deduplicated. *)
+(** [vars_of_rules statements] is {!vars_of_stylesheet} of [statements]: a
+    statement list is a stylesheet, and the two answer the same question. *)
 
 val vars_of_declarations : declaration list -> any_var list
 (** [vars_of_declarations decls] extracts all CSS variables referenced in the
     declarations list. *)
 
 val vars_of_stylesheet : t -> any_var list
-(** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
-    entire stylesheet, returning them sorted and deduplicated. *)
+(** [vars_of_stylesheet stylesheet] is every variable [stylesheet] references,
+    from the declarations of every statement it holds: a rule nested in a rule,
+    a rule inside any grouping at-rule, and an at-rule carrying declarations of
+    its own such as [@keyframes] or [@page]. Deduplicated, in source order. *)
 
 val any_var_name : any_var -> string
 (** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)

@@ -61,6 +61,8 @@ and in_rule_context (parent : Selector.t) : statement -> statement list =
       ]
   | Media (cond, block) ->
       [ Media (cond, List.concat_map (in_rule_context parent) block) ]
+  | Moz_document (cond, block) ->
+      [ Moz_document (cond, List.concat_map (in_rule_context parent) block) ]
   | Container (name, cond, block) ->
       [ Container (name, cond, List.concat_map (in_rule_context parent) block) ]
   | Supports (cond, block) ->
@@ -82,7 +84,17 @@ and in_rule_context (parent : Selector.t) : statement -> statement list =
             Option.map (scope_selector_in_context parent) e,
             List.concat_map (in_rule_context parent) block );
       ]
-  | other -> [ other ]
+  (* Listed rather than closed with a wildcard: a statement that grows a block
+     later has to be classified above before it compiles, or it escapes the
+     parent selector it was written under. Everything below carries no selector
+     context of its own, so it lifts out verbatim. *)
+  | ( Property _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+    | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+    | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+    | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+    | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ) as
+    other ->
+      [ other ]
 
 let rec top_statement (stmt : statement) : statement list =
   (* A flat rule with declarations is already in final form; a wrapper whose
@@ -96,6 +108,7 @@ let rec top_statement (stmt : statement) : statement list =
   | Rule { nested = []; declarations = _ :: _; _ } -> [ stmt ]
   | Rule rule -> flat_rule rule
   | Media (cond, block) -> wrap block (fun b -> Media (cond, b))
+  | Moz_document (cond, block) -> wrap block (fun b -> Moz_document (cond, b))
   | Container (name, cond, block) ->
       wrap block (fun b -> Container (name, cond, b))
   | Supports (cond, block) -> wrap block (fun b -> Supports (cond, b))
@@ -105,7 +118,13 @@ let rec top_statement (stmt : statement) : statement list =
   | When (cond, block) -> wrap block (fun b -> When (cond, b))
   | Else (cond, block) -> wrap block (fun b -> Else (cond, b))
   | Scope (s, e, block) -> wrap block (fun b -> Scope (s, e, b))
-  | other -> [ other ]
+  | ( Declarations _ | Property _ | Bang_comment _ | Charset _ | Import _
+    | Namespace _ | Layer_decl _ | Supports_condition _ | Keyframes _
+    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+    | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ) as other ->
+      [ other ]
 
 and block (block : statement list) : statement list =
   concat_map_preserve top_statement block

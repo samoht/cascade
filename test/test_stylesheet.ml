@@ -7834,4 +7834,272 @@ let additional_tests =
         | _ -> Alcotest.fail "expected one warning" );
   ]
 
-let suite = ("stylesheet", stylesheet_tests @ additional_tests)
+(* Every shape a statement can take, so the walkers are exercised on the block
+   at-rules and on the at-rules that hold declarations outside a block. *)
+let every_statement_shape =
+  "@charset \"utf-8\";\n\
+   @import url(a.css);\n\
+   @namespace svg url(http://www.w3.org/2000/svg);\n\
+   @property --p { syntax: \"<color>\"; inherits: false; initial-value: red }\n\
+   @layer base, theme;\n\
+   @layer base { .a { color: red; & .b { color: blue } } }\n\
+   @media print { .c { color: red } }\n\
+   @container card (width > 10px) { .d { color: red } }\n\
+   @supports (display: grid) { .e { color: red } }\n\
+   @-moz-document url-prefix(\"http://x\") { .f { color: red } }\n\
+   @starting-style { .g { color: red } }\n\
+   @scope (.h) to (.i) { .j { color: red } }\n\
+   @keyframes k { from { color: red } to { color: blue } }\n\
+   @-webkit-keyframes wk { from { color: red } }\n\
+   @font-face { font-family: F; src: url(f.woff2) }\n\
+   @counter-style cs { system: cyclic; symbols: a }\n\
+   @page { margin: 1cm }\n\
+   @page :first { margin: 1cm; @top-left { content: \"x\" } }\n\
+   @font-palette-values --fp { font-family: F }\n\
+   @view-transition { navigation: auto }\n\
+   @position-try --pt { top: 1px }\n\
+   @viewport { width: device-width }\n\
+   .k { color: red }\n"
+
+let parse_shapes () =
+  match Css.of_string every_statement_shape with
+  | Ok { Css.stylesheet; _ } -> stylesheet
+  | Error err ->
+      Alcotest.failf "shape corpus did not parse: %s"
+        (Cascade.Error.to_string err)
+
+let walker_tests =
+  [
+    ( "map_statement_children keeps an unchanged statement",
+      `Quick,
+      fun () ->
+        (* A rewriting walk short-circuits on physical equality, so a map that
+           reallocates a statement it did not change costs the caller the
+           sharing its fixed point converges on. *)
+        List.iter
+          (fun stmt ->
+            if not (map_statement_children Fun.id stmt == stmt) then
+              Alcotest.failf "children map rebuilt %s"
+                (Css.to_string ~minify:true [ stmt ]))
+          (parse_shapes ()) );
+    ( "map_statement_declarations keeps an unchanged statement",
+      `Quick,
+      fun () ->
+        List.iter
+          (fun stmt ->
+            if not (map_statement_declarations Fun.id stmt == stmt) then
+              Alcotest.failf "declaration map rebuilt %s"
+                (Css.to_string ~minify:true [ stmt ]))
+          (parse_shapes ()) );
+  ]
+
+(* One declaration per place a statement can hold one, each under a property
+   name that names only that place, so a walk that misses a place is a missing
+   name rather than a smaller count. *)
+let every_declaration_place =
+  ".el { color: red }\n\
+   @media print { .m { display: none } }\n\
+   @layer l { .l { float: left } }\n\
+   @container (width > 1px) { .c { clear: both } }\n\
+   @supports (display: grid) { .s { z-index: 1 } }\n\
+   @-moz-document url-prefix(\"x\") { .d { direction: rtl } }\n\
+   @starting-style { .ss { opacity: 0 } }\n\
+   @scope (.a) to (.b) { .sc { visibility: hidden } }\n\
+   @when media(print) { .w { order: 1 } }\n\
+   @else { .e { order: 2 } }\n\
+   .parent { & .nested { overflow: hidden } }\n\
+   @keyframes k { from { rotate: 0deg } }\n\
+   @page { size: a4 }\n\
+   @page :first { @top-left { content: \"tl\" } }\n\
+   @position-try --pt { inset: 1px }\n\
+   @supports-condition --sc { padding: 1px }\n"
+
+let parsed source =
+  match Css.of_string source with
+  | Ok { Css.stylesheet; _ } -> stylesheet
+  | Error err ->
+      Alcotest.failf "declaration-place corpus did not parse: %s"
+        (Cascade.Error.to_string err)
+
+let places () =
+  (* [Origin] has no CSS syntax, so it can only be built. *)
+  parsed every_declaration_place
+  @ [ with_origin Author (parsed ".o { top: 1px }") ]
+
+let properties_folded ?sites () =
+  List.sort compare
+    (fold_declarations ?sites
+       (fun acc decls ->
+         List.rev_append (List.map Css.Declaration.property_name decls) acc)
+       [] (places ()))
+
+let element_places =
+  [
+    "clear";
+    "color";
+    "direction";
+    "display";
+    "float";
+    "opacity";
+    "order";
+    "order";
+    "overflow";
+    "top";
+    "visibility";
+    "z-index";
+  ]
+
+let other_places = [ "content"; "inset"; "padding"; "rotate"; "size" ]
+
+let deep_walker_tests =
+  [
+    ( "fold_declarations reaches every place a declaration sits",
+      `Quick,
+      fun () ->
+        Alcotest.(check (list string))
+          "every property"
+          (List.sort compare (element_places @ other_places))
+          (properties_folded ()) );
+    ( "fold_declarations keeps to the sites it is given",
+      `Quick,
+      fun () ->
+        (* The narrow walk names the places it wants rather than the statements
+           it expects to meet, so leaving one out is a stated choice. *)
+        let sites =
+          {
+            element_rule = true;
+            animation_frame = false;
+            page_box = false;
+            position_fallback = false;
+            condition_test = false;
+          }
+        in
+        Alcotest.(check (list string))
+          "element declarations only"
+          (List.sort compare element_places)
+          (properties_folded ~sites ()) );
+    ( "at_declaration_site makes the fold's choice outside the fold",
+      `Quick,
+      fun () ->
+        (* A walk that carries something down the tree recurses itself, so it
+           reads the sites rather than passing them; it must land on the same
+           declarations the fold does. *)
+        let sites =
+          {
+            element_rule = true;
+            animation_frame = false;
+            page_box = false;
+            position_fallback = false;
+            condition_test = false;
+          }
+        in
+        let rec walk acc stmt =
+          let acc =
+            if at_declaration_site sites stmt then
+              List.rev_append
+                (List.map Css.Declaration.property_name
+                   (statement_declarations stmt))
+                acc
+            else acc
+          in
+          List.fold_left walk acc (statement_children stmt)
+        in
+        Alcotest.(check (list string))
+          "the sites the fold folds over"
+          (properties_folded ~sites ())
+          (List.sort compare (List.fold_left walk [] (places ()))) );
+    ( "map_declarations rewrites every place a declaration sits",
+      `Quick,
+      fun () ->
+        let emptied = map_declarations (fun _ -> []) (places ()) in
+        Alcotest.(check (list string))
+          "nothing left" []
+          (fold_declarations
+             (fun acc decls ->
+               List.rev_append
+                 (List.map Css.Declaration.property_name decls)
+                 acc)
+             [] emptied) );
+    ( "map_declarations keeps an unchanged tree",
+      `Quick,
+      fun () ->
+        let block = places () in
+        if not (map_declarations Fun.id block == block) then
+          Alcotest.fail "declaration map rebuilt an unchanged stylesheet" );
+    ( "iter_statements reaches a statement inside every at-rule",
+      `Quick,
+      fun () ->
+        let seen = ref [] in
+        iter_statements
+          (fun stmt ->
+            match stmt with
+            | Rule r ->
+                seen := Selector.to_string ~minify:true r.selector :: !seen
+            | _ -> ())
+          (places ());
+        Alcotest.(check (list string))
+          "every rule"
+          (List.sort compare
+             [
+               ".el";
+               ".m";
+               ".l";
+               ".c";
+               ".s";
+               ".d";
+               ".ss";
+               ".sc";
+               ".w";
+               ".e";
+               ".parent";
+               "& .nested";
+               ".o";
+             ])
+          (List.sort compare !seen) );
+    ( "edit_statements drops a statement inside every at-rule",
+      `Quick,
+      fun () ->
+        let dropped =
+          edit_statements
+            (function Rule _ -> Common.List.Drop | _ -> Common.List.Keep)
+            (places ())
+        in
+        Alcotest.(check (list string))
+          "no rule left" []
+          (fold_statements
+             (fun acc stmt ->
+               match stmt with
+               | Rule r -> Selector.to_string ~minify:true r.selector :: acc
+               | _ -> acc)
+             [] dropped) );
+    ( "edit_statements walks into a replacement",
+      `Quick,
+      fun () ->
+        (* The nested rule is reachable only through the rule that was replaced,
+           so it is marked when the walk continues into the replacement rather
+           than into the statement it replaced. *)
+        let mark = function
+          | Rule r -> Common.List.Replace (Rule { r with merge_key = Some "k" })
+          | _ -> Common.List.Keep
+        in
+        Alcotest.(check (list string))
+          "every rule marked" []
+          (fold_statements
+             (fun acc stmt ->
+               match stmt with
+               | Rule r when r.merge_key = None ->
+                   Selector.to_string ~minify:true r.selector :: acc
+               | _ -> acc)
+             []
+             (edit_statements mark (places ()))) );
+    ( "edit_statements keeps an unchanged tree",
+      `Quick,
+      fun () ->
+        let block = places () in
+        if not (edit_statements (fun _ -> Common.List.Keep) block == block) then
+          Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
+  ]
+
+let suite =
+  ( "stylesheet",
+    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests )

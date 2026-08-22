@@ -112,7 +112,22 @@ let declare_layer order name =
 (* [layered_rules stmts] is the sheet's layer order together with every rule
    paired with the layer it sits in ([None] for the unlayered ones), both in
    source order. An [@layer a, b;] statement declares its names without
-   contributing a rule. *)
+   contributing a rule.
+
+   The statements it does not walk into are listed one by one rather than closed
+   with a wildcard, since which ones those are is the contract of {!resolve} and
+   {!layer_order} both. A conditional group rule ([@media], [@supports],
+   [@container], [@-moz-document], [@when], [@else]) gates its contents on an
+   environment nothing here models: there is no viewport, no UA feature table,
+   no container layout and no document URL. [@starting-style] declares a
+   before-change style (css-transitions-2 sec. 5) rather than an ordinary one.
+   [@scope] adds a scoping root, a scoping limit and the proximity criterion
+   (css-cascade-6), none of which the matcher models. [Origin] carries the
+   origin that outranks the layer in the cascade sorting order (css-cascade-5
+   sec. 6.1), which the ranking below does not weigh. Each is left to the
+   browser instead: {!Apply.Make} keeps these blocks whole in the stylesheet it
+   emits and inlines only what [resolve] returns, so a rule counted in both
+   places would apply twice. *)
 let layered_rules stmts =
   let anon = ref 0 in
   let rec go parent acc stmts =
@@ -134,7 +149,20 @@ let layered_rules stmts =
                   qualify parent (anonymous_layer !anon)
             in
             go (Some name) (declare_layer order name, rules) body
-        | _ -> (order, rules))
+        | Stylesheet.Media _ | Stylesheet.Supports _ | Stylesheet.Container _
+        | Stylesheet.Moz_document _ | Stylesheet.When _ | Stylesheet.Else _
+        | Stylesheet.Starting_style _ | Stylesheet.Scope _ | Stylesheet.Origin _
+        | Stylesheet.Declarations _ | Stylesheet.Bang_comment _
+        | Stylesheet.Charset _ | Stylesheet.Import _ | Stylesheet.Namespace _
+        | Stylesheet.Property _ | Stylesheet.Supports_condition _
+        | Stylesheet.Keyframes _ | Stylesheet.Webkit_keyframes _
+        | Stylesheet.Moz_keyframes _ | Stylesheet.Font_face _
+        | Stylesheet.Counter_style _ | Stylesheet.Page _
+        | Stylesheet.Page_with_margins _ | Stylesheet.Font_palette_values _
+        | Stylesheet.Font_feature_values _ | Stylesheet.View_transition _
+        | Stylesheet.Position_try _ | Stylesheet.Viewport _
+        | Stylesheet.Unknown_at_rule _ ->
+            (order, rules))
       acc stmts
   in
   let order, rules = go None ([], []) stmts in
