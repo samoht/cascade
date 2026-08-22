@@ -5999,6 +5999,55 @@ let s417_is_unwrap () =
     (normalize ".x .a.b { color: red }")
     (normalize ".x :is(.a):is(.b) { color: red }")
 
+(* CSS Selectors L4 section 4.2 (compound selector): "if it contains a type
+   selector or universal selector, that selector must come first". So a
+   single-argument [:is(<type>)] unwraps only into a compound it leads: spliced
+   anywhere else the two names fuse, and [.a:is(code)] turns into [.acode],
+   which matches a class nobody wrote. Same for [:not(:not(<type>))]. *)
+let s442_compound_type_first () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ".a:is(code) keeps its wrapper" ".x .a:is(code){color:red}"
+    (normalize ".x .a:is(code) { color: red }");
+  Alcotest.(check string)
+    "div:is(code) keeps its wrapper" ".x div:is(code){color:red}"
+    (normalize ".x div:is(code) { color: red }");
+  Alcotest.(check string)
+    ":is(<ancestor> *):is(code) keeps its wrapper"
+    ":is(.a *):is(code){color:red}"
+    (normalize ":is(.a *):is(code) { color: red }");
+  Alcotest.(check string)
+    ":is(code.b) keeps its wrapper" ".a:is(code.b){color:red}"
+    (normalize ".a:is(code.b) { color: red }");
+  Alcotest.(check string)
+    "a namespaced universal keeps its wrapper" ".a:is(svg|*){color:red}"
+    (normalize ".a:is(svg|*) { color: red }");
+  Alcotest.(check string)
+    ":not(:not(code)) keeps its wrappers" ".a:not(:not(code)){color:red}"
+    (normalize ".a:not(:not(code)) { color: red }");
+  (* Leading its compound the type selector would be where it belongs, and
+     unwrapping there is sound - but the rewrite is node-local, so it declines
+     rather than guess at a position it cannot see. *)
+  Alcotest.(check string)
+    ":is(code) leading a compound keeps its wrapper too"
+    ".x :is(code).a{color:red}"
+    (normalize ".x :is(code).a { color: red }");
+  Alcotest.(check string)
+    ":is(*) keeps its wrapper" ".a:is(*){color:red}"
+    (normalize ".a:is(*) { color: red }");
+  (* An argument with no type selector is spliceable wherever the [:is()]
+     stands, so those keep unwrapping. *)
+  Alcotest.(check string)
+    ":is(.b) still unwraps" ".a.b{color:red}"
+    (normalize ".a:is(.b) { color: red }");
+  Alcotest.(check string)
+    ":not(:not(.b)) still folds" ".a.b{color:red}"
+    (normalize ".a:not(:not(.b)) { color: red }")
+
 (* CSS Selectors L4 section 6.1: attribute compound selectors drop quotes per
    attribute when the value is a valid identifier. *)
 let s462_compound_attr () =
@@ -8661,6 +8710,9 @@ let additional_tests =
       `Quick,
       v4107_minmax_reduction );
     ("spec selectors 4 17 :is single-argument unwrap", `Quick, s417_is_unwrap);
+    ( "spec selectors 4 4.2 compound type selector first",
+      `Quick,
+      s442_compound_type_first );
     ( "spec selectors 4 6.2 compound attribute canonicalization",
       `Quick,
       s462_compound_attr );
