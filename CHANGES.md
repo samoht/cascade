@@ -140,6 +140,11 @@
 - `Css.inline_vars` unwraps an `@layer` and drops an `@property` registration
   written inside a rule, as it already did at top level. CSS nesting puts both
   there, and a sheet using it came back half cleaned (#373)
+- `Css.custom_props` reports a name declared inside `@scope`,
+  `@starting-style`, `@-moz-document`, `@when`, `@else` or a bare nesting
+  block, as it already did for `@media` and `@supports`. Those declarations
+  reach the matching element just as an `@media` one does, and the names were
+  missing from an answer callers use to decide what a sheet defines (#375)
 - A custom property registered by `@property` is typed wherever it is
   declared, including inside `@keyframes`, `@position-try` and
   `@supports-condition`, so the same registered value canonicalises the same

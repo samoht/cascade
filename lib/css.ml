@@ -607,50 +607,30 @@ let custom_prop_names decls = List.filter_map custom_declaration_name decls
 let custom_props_of_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
-let custom_props_nested_block stmt =
-  (* Block-container statements whose children continue the [in_layer] context
-     unchanged: walk into [@media], [@supports], [@container], [@origin] blocks;
-     [@layer] is handled by the caller because it adjusts [in_layer]. *)
-  let extractors =
-    [
-      (fun s -> Option.map snd (as_media s));
-      (fun s -> Option.map snd (as_supports s));
-      (fun s -> Option.map (fun (_, _, c) -> c) (as_container s));
-      (fun s -> Option.map snd (as_origin s));
-    ]
-  in
-  List.find_map (fun f -> f stmt) extractors
-
 let custom_props ?layer sheet =
-  (* Walk the statement tree directly so [in_layer] follows the structure: it is
-     set on entry to a [Layer] node and reset on exit, never persists into
-     sibling statements. *)
+  (* [in_layer] is set on entry to a named [@layer] and differs per branch,
+     never persisting into a sibling, which no accumulator can carry, so this
+     spells its own recursion rather than calling [fold_declarations]. The
+     descent is still [statement_children]'s and the sites are still
+     [element_matching_sites], so this reports a name wherever it is declared
+     for an element and a grouping at-rule added later reaches the walk. *)
   let rec walk in_layer acc stmt =
-    let acc =
-      match as_rule stmt with
-      | Some (_, decls, nested) when in_layer ->
-          let acc = custom_prop_names decls @ acc in
-          List.fold_left (walk in_layer) acc nested
-      | Some (_, _, nested) -> List.fold_left (walk in_layer) acc nested
-      | None -> acc
-    in
-    let descend block in_layer' = List.fold_left (walk in_layer') acc block in
-    match as_layer stmt with
-    | Some (Some name, content) ->
-        let in_layer' =
+    let in_layer =
+      match stmt with
+      | Layer (Some name, _) -> (
           match layer with
           | None -> true
-          | Some target -> in_layer || name = target
-        in
-        descend content in_layer'
-    | Some (None, content) -> descend content in_layer
-    | None -> (
-        match custom_props_nested_block stmt with
-        | Some content -> descend content in_layer
-        | None -> acc)
+          | Some target -> in_layer || name = target)
+      | _ -> in_layer
+    in
+    let acc =
+      if in_layer && at_declaration_site element_matching_sites stmt then
+        custom_prop_names (statement_declarations stmt) @ acc
+      else acc
+    in
+    List.fold_left (walk in_layer) acc (statement_children stmt)
   in
-  let initial = layer = None in
-  List.rev (List.fold_left (walk initial) [] sheet)
+  List.rev (List.fold_left (walk (layer = None)) [] sheet)
 
 let media ~condition statements = Media (condition, statements)
 

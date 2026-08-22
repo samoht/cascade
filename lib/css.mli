@@ -533,10 +533,14 @@ val custom_props_of_rules : (Selector.t * declaration list) list -> string list
     declarations in the rules. *)
 
 val custom_props : ?layer:string -> t -> string list
-(** [custom_props ?layer sheet] recursively extracts all custom property names
-    from the stylesheet. If [layer] is provided, only properties from that layer
-    are extracted. Traverses nested [@supports], [@media], and other conditional
-    blocks. *)
+(** [custom_props ?layer sheet] is the name of every custom property [sheet]
+    declares for an element: the ones in a style rule or a bare nesting block,
+    at the top level and inside a conditional group at-rule such as [@media],
+    [@supports], [@container], [@scope] or [@starting-style], however deeply
+    nested. A name declared in [@keyframes], [@page], [@position-try] or
+    [@supports-condition] belongs to another cascade origin or to no element at
+    all (CSS Cascading 5 sec. 6.1) and is not among them. When [layer] is given,
+    the names are those declared inside the [@layer] of that name. *)
 
 val media : condition:Media.t -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
