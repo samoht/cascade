@@ -42,7 +42,15 @@ val to_string : ?minify:bool -> t -> string
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
-    authored CSS text. *)
+    authored CSS text.
+
+    @raise Failure
+      if the pair does not write back as the one declaration it names. [name]
+      has to be a [<dashed-ident>] that tokenizes to itself, and [value] the
+      [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property: no
+      top-level [;], no unmatched closing bracket, no unterminated function,
+      block or string. {!parse_custom_property} is the same check as an option.
+*)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] parses ["property: value"] with
@@ -67,7 +75,8 @@ val parse_custom_property : string -> string -> declaration option
 
     Use it for a name or value that comes from outside the parser, where the
     string may close the block it is placed in or start a second declaration.
-    {!custom_property} keeps such a string verbatim. *)
+    {!custom_property} takes the same pairs and raises on the rest, and also
+    takes the empty value CSS Variables 1 sec. 2 allows. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)

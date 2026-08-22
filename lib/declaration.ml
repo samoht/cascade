@@ -62,20 +62,77 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
       let decl = normalize ~lossless ~exact_srgb ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
+let is_custom_property_name name =
+  String.length name > 2 && name.[0] = '-' && name.[1] = '-'
+
+(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
+   values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
+   closing bracket. A component breaking one of those does not stay inside the
+   declaration it is written into: it closes the enclosing block, or turns the
+   rest of the stylesheet into a string. *)
+let rec component_stays_in_declaration = function
+  | Component.Preserved
+      {
+        kind =
+          ( Token.Close _ | Token.Bad_string | Token.Bad_url
+          | Token.String { terminated = false; _ } );
+        _;
+      } ->
+      false
+  | Component.Preserved _ -> true
+  | Component.Block { node = { closed; value; _ }; _ } ->
+      closed && List.for_all component_stays_in_declaration value
+  | Component.Func { node = { terminated; arguments; _ }; _ } ->
+      terminated && List.for_all component_stays_in_declaration arguments
+
+(* A top-level [;] ends the declaration, so the tail becomes a second one. It is
+   only a stop at top level: [(a;b)] keeps it inside the block. *)
+let is_top_level_stop = function
+  | Component.Preserved { kind = Token.Semicolon; _ } -> true
+  | _ -> false
+
+let components_stay_in_declaration components =
+  List.for_all
+    (fun c -> (not (is_top_level_stop c)) && component_stays_in_declaration c)
+    components
+
+(* CSS Variables 1 sec. 2 gives a custom property the value grammar
+   [<declaration-value>?], so the empty value is one of its values. *)
+let is_optional_declaration_value value =
+  components_stay_in_declaration (Cursor.remaining (Cursor.of_string value))
+
+let is_declaration_value value =
+  match Cursor.remaining (Cursor.of_string value) with
+  | [] -> false
+  | components -> components_stay_in_declaration components
+
+(* A name is written back verbatim, so it binds only when it tokenizes as the
+   single ident it claims to be. An escape (CSS Syntax 3 sec. 4.3.7) can carry a
+   [;] or a [}] into a name read from a [var()] reference. *)
+let is_writable_custom_property_name name =
+  is_custom_property_name name
+  &&
+  match Cursor.remaining (Cursor.of_string name) with
+  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
+      String.equal ident name
+  | _ -> false
+
+let refuse name detail =
+  failwith (String.concat "" [ "custom_property: "; name; ": "; detail ])
+
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* Validate that this is a proper CSS variable name. Custom-property names are
-     dashed idents starting with [--] and a non-empty name body. *)
-  if not (String.length name > 2 && String.sub name 0 2 = "--") then
-    failwith
-      (String.concat ""
-         [
-           "custom_property: ";
-           name;
-           " is not a valid CSS variable name (must start with -- and include \
-            a name)";
-         ]);
+  (* The pair is written back verbatim, so it binds only when the text reads
+     back as the one declaration it names: a [<dashed-ident>] name that
+     tokenizes to itself, and the [<declaration-value>?] CSS Variables 1 sec. 2
+     gives a custom property. A name or value outside that - a top-level [;] or
+     [}], an unmatched closing bracket, an unterminated function, block or
+     string - leaves the declaration as soon as the text is read back. *)
+  if not (is_writable_custom_property_name name) then
+    refuse name "not a custom-property name";
+  if not (is_optional_declaration_value value) then
+    refuse name (String.concat "" [ value; " is not a declaration value" ]);
   (* Parse the value into a CSS Syntax 3 component stream so the declaration
      never carries a raw author string; the printer can then re-serialise with
      the active [Pp] context (handles minification). *)
@@ -2276,9 +2333,6 @@ let of_string s =
   | Some d -> d
   | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
 
-let is_custom_property_name name =
-  String.length name > 2 && name.[0] = '-' && name.[1] = '-'
-
 let parse_declaration ?layer property value =
   (* Parse [property:value] with the full declaration parser: a known property
      (e.g. [mask-type], [display]) becomes a typed declaration, a custom
@@ -2294,52 +2348,6 @@ let parse_declaration ?layer property value =
       let s = String.concat "" [ property; ":"; value ] in
       try read_declaration (Cursor.of_string s)
       with Cursor.Parse_error _ -> None)
-
-(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
-   values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
-   closing bracket. A component breaking one of those does not stay inside the
-   declaration it is written into: it closes the enclosing block, or turns the
-   rest of the stylesheet into a string. *)
-let rec component_stays_in_declaration = function
-  | Component.Preserved
-      {
-        kind =
-          ( Token.Close _ | Token.Bad_string | Token.Bad_url
-          | Token.String { terminated = false; _ } );
-        _;
-      } ->
-      false
-  | Component.Preserved _ -> true
-  | Component.Block { node = { closed; value; _ }; _ } ->
-      closed && List.for_all component_stays_in_declaration value
-  | Component.Func { node = { terminated; arguments; _ }; _ } ->
-      terminated && List.for_all component_stays_in_declaration arguments
-
-(* A top-level [;] ends the declaration, so the tail becomes a second one. It is
-   only a stop at top level: [(a;b)] keeps it inside the block. *)
-let is_top_level_stop = function
-  | Component.Preserved { kind = Token.Semicolon; _ } -> true
-  | _ -> false
-
-let is_declaration_value value =
-  match Cursor.remaining (Cursor.of_string value) with
-  | [] -> false
-  | components ->
-      List.for_all
-        (fun c ->
-          (not (is_top_level_stop c)) && component_stays_in_declaration c)
-        components
-
-(* A name is written back verbatim, so it binds only when it tokenizes as the
-   single ident it claims to be. An escape (CSS Syntax 3 sec. 4.3.7) can carry a
-   [;] or a [}] into a name read from a [var()] reference. *)
-let is_writable_custom_property_name name =
-  is_custom_property_name name
-  &&
-  match Cursor.remaining (Cursor.of_string name) with
-  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
-      String.equal ident name
-  | _ -> false
 
 let parse_custom_property name value =
   if is_writable_custom_property_name name && is_declaration_value value then

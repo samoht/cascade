@@ -77,6 +77,15 @@
   take every other theme default down with it.
   `Css.Declaration.parse_custom_property` is the checked constructor the
   resolver builds each binding with (#421)
+- `Css.Declaration.custom_property` refuses a name and value it cannot write
+  back as the one declaration they name, instead of storing the token stream
+  unchecked: `custom_property "--a" "red;--b:blue"` wrote a second declaration,
+  `"red} .evil{color:lime"` closed the rule and opened another, `"rgb(1,2,3"`
+  gained a closing parenthesis it was never given, `"\"abc"` left a string open
+  across the rest of the sheet, and a name carrying a `}` destroyed the rule
+  around it. The pair it takes is a `<dashed-ident>` name and the
+  `<declaration-value>?` CSS Variables 1 sec. 2 gives a custom property, the
+  check `parse_custom_property` already made (#428)
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults (#315)

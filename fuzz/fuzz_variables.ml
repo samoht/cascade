@@ -74,11 +74,15 @@ let test_nested_fallback_stays_balanced buf =
 
 let test_custom_declaration_name_invariant buf =
   let name = "--" ^ var_name buf in
-  let decl = Css.Declaration.custom_property name (cssish buf) in
-  match Css.Variables.custom_declaration_name decl with
-  | Some parsed when parsed = name -> ()
-  | Some parsed -> failf "custom declaration name changed: %S" parsed
-  | None -> fail "custom property declaration was not recognized"
+  (* [custom_property] refuses a value it cannot write back as one declaration,
+     so the invariant holds over the pairs it accepts. *)
+  match Css.Declaration.custom_property name (cssish buf) with
+  | exception Failure _ -> ()
+  | decl -> (
+      match Css.Variables.custom_declaration_name decl with
+      | Some parsed when parsed = name -> ()
+      | Some parsed -> failf "custom declaration name changed: %S" parsed
+      | None -> fail "custom property declaration was not recognized")
 
 let test_var_compare_antisym buf =
   let _, a =

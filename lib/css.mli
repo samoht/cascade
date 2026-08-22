@@ -7568,8 +7568,16 @@ val custom_property : ?layer:string -> string -> string -> declaration
     API which provides compile-time checking and automatic variable management.
 
     @param layer Optional CSS layer name for the custom property
-    @param name CSS custom property name (must start with --)
-    @param value CSS value as string
+    @param name
+      CSS custom property name: a [<dashed-ident>] that tokenizes to itself
+    @param value
+      the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
+      as CSS text
+
+    It raises [Failure] on a pair that does not write back as the one
+    declaration it names, such as a value carrying a top-level [;] or [}] or an
+    unterminated function, block or string. {!Declaration.parse_custom_property}
+    is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]
 

@@ -117,15 +117,19 @@ let test_custom_property_serialization_shape buf =
     ^ string_of_int (if String.length buf = 0 then 0 else Char.code buf.[0])
   in
   let value = cssish buf in
-  let decl = Css.Declaration.custom_property name value in
-  let serialized = serialize decl in
-  if not (starts_with ~prefix:(name ^ ":") serialized) then
-    failf "custom property lost its name: %S" serialized;
-  match parse_declaration serialized with
-  | None -> ()
-  | Some reparsed ->
-      if Css.Declaration.property_name reparsed <> name then
-        fail "custom property name changed after reparse"
+  (* [custom_property] refuses a value it cannot write back as one declaration,
+     so the shape holds over the pairs it accepts. *)
+  match Css.Declaration.custom_property name value with
+  | exception Failure _ -> ()
+  | decl -> (
+      let serialized = serialize decl in
+      if not (starts_with ~prefix:(name ^ ":") serialized) then
+        failf "custom property lost its name: %S" serialized;
+      match parse_declaration serialized with
+      | None -> ()
+      | Some reparsed ->
+          if Css.Declaration.property_name reparsed <> name then
+            fail "custom property name changed after reparse")
 
 let test_block_declarations_serialize_individually buf =
   let middle =
