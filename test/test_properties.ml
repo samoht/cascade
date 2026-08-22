@@ -2133,6 +2133,22 @@ let test_font_family () =
   check_font_family "invalid-font";
   check_font_family ~expected:"Times New Roman" "\"Times New Roman\"";
   check_font_family "Arial";
+  (* CSS Fonts 4 sec. 5.1: a [<family-name>] is matched with Default Caseless
+     Matching, a caseless string comparison that folds neither a hyphen to a
+     space nor one name to another. [open-sans] names a different family from
+     [Open Sans] and [ny] a different family from [New York], so the author's
+     spelling survives verbatim - re-reading the output must be a fixpoint. *)
+  check_font_family ~roundtrip:true "inter";
+  check_font_family ~roundtrip:true "open-sans";
+  check_font_family ~roundtrip:true "ny";
+  check_font_family ~roundtrip:true "sf-pro";
+  check_font_family ~roundtrip:true "jetbrains-mono";
+  check_font_family ~roundtrip:true "SFMONO-REGULAR";
+  (* A [<string>] family name carries no case either; unquoting a single-word
+     name keeps its spelling, so the bare form re-reads to the same family. *)
+  check_font_family ~roundtrip:true ~expected:"inter" "\"inter\"";
+  check_font_family ~roundtrip:true ~expected:"OPEN SANS" "\"OPEN SANS\"";
+  check_font_family ~roundtrip:true ~expected:"Open Sans" "\"Open Sans\"";
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)
