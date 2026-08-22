@@ -42,7 +42,15 @@ val to_string : ?minify:bool -> t -> string
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
-    authored CSS text. *)
+    authored CSS text.
+
+    @raise Failure
+      if the pair does not write back as the one declaration it names. [name]
+      has to be a [<dashed-ident>] that tokenizes to itself, and [value] the
+      [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property: no
+      top-level [;], no unmatched closing bracket, no unterminated function,
+      block or string. {!parse_custom_property} is the same check as an option.
+*)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] parses ["property: value"] with
@@ -56,6 +64,19 @@ val parse_declaration : ?layer:string -> string -> string -> declaration option
 
     [layer] applies only to a custom property (a typed declaration has no
     layer). Unlike {!custom_property}, this parses the full property grammar. *)
+
+val parse_custom_property : string -> string -> declaration option
+(** [parse_custom_property name value] is {!parse_declaration} restricted to a
+    custom property whose [name] and [value] are safe to write into a rule
+    verbatim. It is [None] unless [name] is a [<dashed-ident>] that tokenizes
+    back to itself and [value] is one [<declaration-value>] (CSS Syntax 3 sec.
+    8.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched closing
+    bracket, no unterminated function or block, and no top-level [;].
+
+    Use it for a name or value that comes from outside the parser, where the
+    string may close the block it is placed in or start a second declaration.
+    {!custom_property} takes the same pairs and raises on the rest, and also
+    takes the empty value CSS Variables 1 sec. 2 allows. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)

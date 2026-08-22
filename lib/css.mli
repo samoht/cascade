@@ -7568,8 +7568,16 @@ val custom_property : ?layer:string -> string -> string -> declaration
     API which provides compile-time checking and automatic variable management.
 
     @param layer Optional CSS layer name for the custom property
-    @param name CSS custom property name (must start with --)
-    @param value CSS value as string
+    @param name
+      CSS custom property name: a [<dashed-ident>] that tokenizes to itself
+    @param value
+      the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
+      as CSS text
+
+    It raises [Failure] on a pair that does not write back as the one
+    declaration it names, such as a value carrying a top-level [;] or [}] or an
+    unterminated function, block or string. {!Declaration.parse_custom_property}
+    is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]
 
@@ -7814,13 +7822,18 @@ val resolve_theme :
     [theme_defaults] resolves for it.
 
     [theme_defaults] maps a custom-property name to its value and is the source
-    of global theme-token definitions. Every [var()] reference that is undefined
-    in [stylesheet] and resolvable through [theme_defaults] - transitively, and
-    only when the whole chain closes without a cycle or dead end - is emitted as
-    a definition in the root-scope theme block: merged into an existing [:root]
-    / [:host] rule, or a fresh [:root]. A name with no [theme_defaults] value
-    (e.g. a runtime [--tw-*] variable) is left free, so non-theme variables are
-    gated out.
+    of global theme-token definitions. An answer binds only when the name and
+    the value make one custom-property declaration - a [<dashed-ident>] name and
+    a CSS Syntax 3 sec. 8.2 [<declaration-value>], as
+    {!Declaration.parse_custom_property} checks. Any other answer, such as one
+    carrying a [}] or a top-level [;], reads as no default at all and leaves the
+    reference live. Every [var()] reference that is undefined in [stylesheet]
+    and resolvable through [theme_defaults] - transitively, and only when the
+    whole chain closes without a cycle or dead end - is emitted as a definition
+    in the root-scope theme block: merged into an existing [:root] / [:host]
+    rule, or a fresh [:root]. A name with no [theme_defaults] value (e.g. a
+    runtime [--tw-*] variable) is left free, so non-theme variables are gated
+    out.
 
     Root scope is deliberate. Per CSS Custom Properties L1 a custom property is
     inherited and resolved per element at computed-value time, so [var(--x)]

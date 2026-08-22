@@ -149,6 +149,14 @@ type scope = {
 
 let custom_name = Variables.custom_declaration_name
 
+(* [Declaration.custom_property] refuses a name and value it cannot write back
+   as the one declaration they name. A parsed stylesheet can hold such a pair -
+   a name written with an escape, a value CSS Syntax 3 would drop - so a rewrite
+   that reaches one keeps what it started from instead of raising. *)
+let rebuild_custom ?layer name value =
+  try Some (Declaration.custom_property ?layer name value)
+  with Failure _ -> None
+
 let local_customs ~kept decls =
   List.filter
     (fun d ->
@@ -160,11 +168,9 @@ let property_initial_custom_decl : type a.
  fun ~kept rule ->
   if List.mem rule.name kept then None
   else
-    Option.map
-      (fun value ->
-        Declaration.custom_property rule.name
+    Option.bind rule.initial_value (fun value ->
+        rebuild_custom rule.name
           (Pp.to_string ~minify:true (Variables.pp_value rule.syntax) value))
-      rule.initial_value
 
 (** {1 Pass 1 - collect every rule's scope} *)
 
@@ -1010,11 +1016,12 @@ let normalize_custom_value decl =
         let color = Values.read_color cursor in
         Cursor.ws cursor;
         Cursor.expect_eof cursor;
-        let decl =
-          Declaration.custom_property name
-            (Pp.to_string ~minify:true Values.pp_color color)
-        in
-        if important then Declaration.important decl else decl
+        match
+          rebuild_custom name (Pp.to_string ~minify:true Values.pp_color color)
+        with
+        | None -> decl
+        | Some normalized ->
+            if important then Declaration.important normalized else normalized
       with Cursor.Parse_error _ -> decl)
 
 let custom_is_live ~keep ~live_set ~at_path ~selector name =
@@ -1190,16 +1197,25 @@ let foldable_layer_of_at_path at_path : string option option =
   go [] at_path
 
 (* A copy of [d] tagged with [layer] and its own importance, for the cascade
-   resolver. *)
+   resolver, or [None] when [d] is not a pair this library writes back. *)
 let annotate_layer (layer : string option) d =
   let name = Declaration.property_name d in
   let value = Declaration.string_of_value ~minify:true d in
-  let base =
-    match layer with
-    | None -> Declaration.custom_property name value
-    | Some l -> Declaration.custom_property ~layer:l name value
-  in
-  if Declaration.is_important d then Declaration.important base else base
+  Option.map
+    (fun base ->
+      if Declaration.is_important d then Declaration.important base else base)
+    (rebuild_custom ?layer name value)
+
+(* Every definition of one name tagged with its layer, or [None] as soon as one
+   of them is not a pair this library writes back: resolving a subset would
+   resolve a different cascade. *)
+let annotate_every_layer entries =
+  List.fold_left
+    (fun acc (_, fl, d) ->
+      Option.bind acc (fun acc ->
+          Option.bind fl (fun l ->
+              Option.map (fun a -> a :: acc) (annotate_layer l d))))
+    (Option.Some []) entries
 
 (* Names whose every definition is unconditional, on one selector, and spread
    over two or more layers, mapped to the resolved cascade winner ([`Unset] when
@@ -1242,16 +1258,14 @@ let layer_decided_customs ~keep stylesheet =
         |> List.sort_uniq compare |> List.length
       in
       if unconditional && one_selector && distinct_layers >= 2 then
-        let annotated =
-          List.filter_map
-            (fun (_, fl, d) -> Option.map (fun l -> annotate_layer l d) fl)
-            entries
-        in
-        match Context.winning_custom_declaration ~layer_order annotated with
-        | Some w ->
-            Hashtbl.replace fold name
-              (`Value (Declaration.string_of_value ~minify:true w))
-        | None -> Hashtbl.replace fold name `Unset)
+        match annotate_every_layer entries with
+        | Option.None -> ()
+        | Option.Some annotated -> (
+            match Context.winning_custom_declaration ~layer_order annotated with
+            | Some w ->
+                Hashtbl.replace fold name
+                  (`Value (Declaration.string_of_value ~minify:true w))
+            | None -> Hashtbl.replace fold name `Unset))
     by_name;
   fold
 
@@ -1273,7 +1287,7 @@ let collapse_layer_decided ~keep stylesheet =
               | `Value _ when Hashtbl.mem emitted n -> None
               | `Value v ->
                   Hashtbl.add emitted n ();
-                  Some (Declaration.custom_property n v))
+                  Some (Option.value ~default:d (rebuild_custom n v)))
           | _ -> Some d)
         decls
     in

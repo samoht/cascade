@@ -6450,6 +6450,101 @@ let customprops1_transitive_merge () =
        ~theme_defaults:(fun _ -> None)
        ":root,:host{--shadow:0 0 var(--spacing) black}")
 
+(* CSS Custom Properties L1 sec. 2.1: a custom property's value is a
+   [<declaration-value>], and CSS Syntax 3 sec. 8.2 bars an unmatched [}] / [)],
+   a top-level [;], a [<bad-string-token>] and an unterminated function from
+   one. [theme_defaults] is caller-supplied CSS text, so an answer that breaks
+   those rules is not a value the name resolves to: the reference stays live,
+   the sibling default still binds, and no rule, at-rule or second declaration
+   reaches the output. *)
+let theme_defaults_reject_escaping_value () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let src = ".a{color:var(--brand);background-color:var(--ok)}" in
+  let defaults brand = function
+    | "brand" -> Some brand
+    | "ok" -> Some "blue"
+    | _ -> None
+  in
+  let emit brand =
+    parse src
+    |> Css.resolve_theme ~theme_defaults:(defaults brand)
+    |> Css.to_string ~minify:true
+  in
+  let inline brand =
+    parse src
+    |> Css.resolve_theme ~theme:Css.Pp.String_set.empty
+         ~theme_defaults:(defaults brand)
+    |> Css.to_string ~minify:true
+  in
+  let bound =
+    ":root{--ok:blue}.a{color:var(--brand);background-color:var(--ok)}"
+  in
+  let inlined = ".a{color:var(--brand);background-color:blue}" in
+  List.iter
+    (fun (what, brand) ->
+      Alcotest.(check string)
+        (what ^ " binds nothing and leaves the sibling default")
+        bound (emit brand);
+      Alcotest.(check string)
+        (what ^ " stays a live reference while the rest inlines")
+        inlined (inline brand))
+    [
+      ("a value closing the block", "red}");
+      ("a value starting a sibling rule", "red}.evil{color:red");
+      ("a value starting a rule after a [;]", "red};.evil{color:red");
+      ("a value starting an at-rule", "red}@media print{.x{color:red}");
+      ("a value carrying a second declaration", "red;--evil:lime");
+      ("a value with an unmatched [)]", "red)");
+      ("an unterminated function", "rgb(1,2,3");
+      ("an unterminated string", "\"abc");
+      ("an empty value", "");
+    ];
+  (* A comment is consumed by tokenization (CSS Syntax 3 sec. 4.3.2), so
+     ["red/*"] is the one-token value ["red"] and does bind. *)
+  Alcotest.(check string)
+    "an unterminated comment leaves a value that binds"
+    ":root{--ok:blue;--brand:red}.a{color:var(--brand);background-color:var(--ok)}"
+    (emit "red/*")
+
+(* CSS Syntax 3 sec. 4.3.7: a [\X] escape carries any code point into an ident,
+   so [var(--x\3b y)] references the theme name ["x;y"]. A name that cannot be
+   written back as a single ident cannot be bound - and must not turn into some
+   other declaration ([y:red]) at root scope. *)
+let theme_defaults_reject_escaping_name () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let declarations sheet =
+    Css.statements sheet
+    |> List.concat_map (fun stmt ->
+        Option.value ~default:[] (Css.statement_declarations stmt))
+  in
+  List.iter
+    (fun (what, src, name) ->
+      let resolved =
+        parse src
+        |> Css.resolve_theme ~theme_defaults:(fun n ->
+            if n = name then Some "red" else None)
+      in
+      Alcotest.(check int)
+        (what ^ ": no statement is added")
+        1
+        (List.length (Css.statements resolved));
+      Alcotest.(check int)
+        (what ^ ": no declaration is added")
+        1
+        (List.length (declarations resolved)))
+    [
+      ("a name carrying a [;]", ".a{color:var(--x\\3b y)}", "x;y");
+      ("a name carrying a [}]", ".a{color:var(--x\\7d y)}", "x}y");
+    ]
+
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
    ([var(--font, "Helvetica", sans-serif)]) inlines if the variable resolves,
    otherwise the fallback list is kept intact. *)
@@ -7196,6 +7291,12 @@ let additional_tests =
     ( "spec custom-properties 1 transitive theme var merges in place",
       `Quick,
       customprops1_transitive_merge );
+    ( "theme defaults reject a value that escapes its declaration",
+      `Quick,
+      theme_defaults_reject_escaping_value );
+    ( "theme defaults reject a name that escapes its declaration",
+      `Quick,
+      theme_defaults_reject_escaping_name );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
       customprops1_fallback_list );
