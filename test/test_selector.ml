@@ -753,6 +753,12 @@ let pseudo_element_spellings =
     "::deep";
     "::v-deep";
     "::ng-deep";
+    "::-webkit-scrollbar-thumb";
+    "::-webkit-scrollbar-track";
+    "::-webkit-scrollbar-track-piece";
+    "::-webkit-scrollbar-button";
+    "::-webkit-scrollbar-corner";
+    "::-webkit-resizer";
   ]
 
 (* Selectors 4 sec. 16: a complex selector unit is [<compound-selector>?
@@ -844,11 +850,29 @@ let element_backed_pseudo_classes =
       ":lang(en)";
     ]
 
+(* WebKit, "Styling Scrollbars": the state a scrollbar part reports about
+   itself. [:window-inactive] is the one that is about the window rather than
+   the scrollbar, and the one that reaches past the scrollbar. *)
+let scrollbar_state_pseudo_classes =
+  [
+    ":horizontal";
+    ":vertical";
+    ":decrement";
+    ":increment";
+    ":start";
+    ":end";
+    ":double-button";
+    ":single-button";
+    ":no-button";
+    ":corner-present";
+    ":window-inactive";
+  ]
+
 (* Each probe names a pseudo-class cascade recognises: an unrecognised one is
    already a parse error at an unforgiving site, whatever precedes it, so it
    would not tell us anything about the pseudo-element's own rules. *)
 let probe_pseudo_classes =
-  element_backed_pseudo_classes
+  element_backed_pseudo_classes @ scrollbar_state_pseudo_classes
   @ [
       ":root";
       ":empty";
@@ -878,7 +902,6 @@ let pseudo_element_pseudo_class_rows =
         "::first-letter";
         "::backdrop";
         "::marker";
-        "::selection";
         "::target-text";
         "::spelling-error";
         "::grammar-error";
@@ -913,7 +936,11 @@ let pseudo_element_pseudo_class_rows =
       ],
       user_action_pseudo_classes );
     (* The scrollbar takes no focus, and reports its own state instead. *)
-    ([ "::-webkit-scrollbar" ], [ ":hover"; ":active"; ":enabled"; ":disabled" ]);
+    ( [ "::-webkit-scrollbar" ],
+      [ ":hover"; ":active"; ":enabled"; ":disabled" ]
+      @ scrollbar_state_pseudo_classes );
+    (* WebKit's [::selection:window-inactive], and nothing else. *)
+    ([ "::selection" ], [ ":window-inactive" ]);
     (* CSS View Transitions 1 sec. 3.1: [:only-child] matches a view transition
        pseudo with no sibling in the pseudo-element tree. *)
     ( [
@@ -923,7 +950,12 @@ let pseudo_element_pseudo_class_rows =
         "::view-transition-new(*)";
       ],
       [ ":only-child" ] );
-    ([ "::part(tab)"; "::details-content" ], element_backed_pseudo_classes);
+    (* [:window-inactive] is about the window, so both engines take it after a
+       shadow part. The rows stop where the engines agree: only WebKit takes the
+       other ten after [::part()], and only Chrome takes [:window-inactive]
+       after [::details-content]. *)
+    ([ "::part(tab)" ], element_backed_pseudo_classes @ [ ":window-inactive" ]);
+    ([ "::details-content" ], element_backed_pseudo_classes);
     (* Names no shipping engine knows, plus the two WebVTT names cascade only
        has a constructor for in their functional form, so that a bare [::cue] or
        [::cue-region] reaches the reader as an unrecognised name: cascade keeps
@@ -939,6 +971,12 @@ let pseudo_element_pseudo_class_rows =
         "::deep";
         "::v-deep";
         "::ng-deep";
+        "::-webkit-scrollbar-thumb";
+        "::-webkit-scrollbar-track";
+        "::-webkit-scrollbar-track-piece";
+        "::-webkit-scrollbar-button";
+        "::-webkit-scrollbar-corner";
+        "::-webkit-resizer";
       ],
       probe_pseudo_classes );
   ]
@@ -1050,6 +1088,39 @@ let canonicalize_pseudo_compound_is () =
   canon ".x .a" ".x :is(:is(.a))";
   (* [:where()] never unwraps: it contributes zero specificity. *)
   canon ".a:before:where(.b)" ".a::before:where(.b)"
+
+(* WebKit, "Styling Scrollbars" defines eleven pseudo-classes for the state a
+   scrollbar part is in. They are not in any spec, and Chrome 151 and WebKit
+   26.5 both read them wherever a pseudo-class goes, so an unforgiving selector
+   list holding one keeps its rule. *)
+let scrollbar_state_pseudo_classes_read () =
+  let concat = String.concat "" in
+  let round_trips input =
+    match Cursor.option read (Cursor.of_string input) with
+    | None -> Alcotest.failf "selector should parse: %s" input
+    | Some sel ->
+        Alcotest.(check string)
+          ("round trip " ^ input) input
+          (to_string ~minify:true sel)
+  in
+  List.iter
+    (fun pc ->
+      (* On a plain element, where both engines read them. *)
+      round_trips (concat [ ".a"; pc ]);
+      (* And in the argument lists, forgiving and unforgiving alike. *)
+      round_trips (concat [ ".a:not("; pc; ")" ]);
+      round_trips (concat [ ".a:is("; pc; ")" ]);
+      round_trips (concat [ ".a:has("; pc; ")" ]);
+      (* Selectors 4 sec. 17: a pseudo-class weighs a class. *)
+      Alcotest.(check int)
+        ("specificity " ^ pc) 1 (specificity (of_string pc)).classes;
+      (* None of them is functional. *)
+      neg_cursor read (concat [ ".a"; pc; "(1)" ]))
+    scrollbar_state_pseudo_classes;
+  (* A scrollbar part reads any combination of them. *)
+  round_trips "::-webkit-scrollbar:vertical:hover";
+  round_trips "::-webkit-scrollbar:corner-present:window-inactive";
+  round_trips "::-webkit-scrollbar-button:start:decrement"
 
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
@@ -2128,6 +2199,8 @@ let suite =
         logical_combinator_pseudo_element;
       test_case "pseudo-element pseudo-classes" `Quick
         pseudo_element_pseudo_classes;
+      test_case "scrollbar state pseudo-classes" `Quick
+        scrollbar_state_pseudo_classes_read;
       test_case "canonicalize pseudo-compound :is()" `Quick
         canonicalize_pseudo_compound_is;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
