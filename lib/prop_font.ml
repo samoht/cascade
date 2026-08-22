@@ -887,7 +887,7 @@ let rec pp_font_palette : font_palette Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Light -> Pp.string ctx "light"
   | Dark -> Pp.string ctx "dark"
-  | Palette name -> Pp.string ctx name
+  | Palette name -> pp_ident ctx name
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"

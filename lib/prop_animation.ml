@@ -95,8 +95,8 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Name name -> Pp.string ctx name
-  | Ambiguous name -> Pp.string ctx name
+  | Name name -> pp_ident ctx name
+  | Ambiguous name -> pp_ident ctx name
   | Quoted name ->
       (* CSS Animations 1 sec. 3: [<keyframes-name>] excludes [none], the
          CSS-wide keywords, and [default]. A source [animation-name: "none"]
@@ -203,7 +203,7 @@ let rec pp_animation_timeline : animation_timeline Pp.t =
   | Var v -> pp_var pp_animation_timeline ctx v
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
-  | Name name -> Pp.string ctx name
+  | Name name -> pp_ident ctx name
   | Scroll args ->
       Pp.string ctx "scroll(";
       Pp.string ctx (canonical_scroll_timeline_args args);
@@ -283,7 +283,7 @@ let rec pp_view_transition_name : view_transition_name Pp.t =
   | Var v -> pp_var pp_view_transition_name ctx v
   | None -> Pp.string ctx "none"
   | Match_element -> Pp.string ctx "match-element"
-  | Name name -> Pp.string ctx name
+  | Name name -> pp_ident ctx name
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -294,7 +294,7 @@ let rec pp_view_transition_class : view_transition_class Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_view_transition_class ctx v
   | None -> Pp.string ctx "none"
-  | Classes classes -> Pp.list ~sep:Pp.space Pp.string ctx classes
+  | Classes classes -> Pp.list ~sep:Pp.space pp_ident ctx classes
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -318,7 +318,7 @@ let rec pp_timeline_name : timeline_name Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_timeline_name ctx v
   | None -> Pp.string ctx "none"
-  | Names names -> Pp.list ~sep:Pp.comma Pp.string ctx names
+  | Names names -> Pp.list ~sep:Pp.comma pp_ident ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -327,7 +327,7 @@ let rec pp_timeline_name : timeline_name Pp.t =
 
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
  fun ctx { name; axis } ->
-  Pp.string ctx name;
+  pp_ident ctx name;
   Pp.space ctx ();
   pp_timeline_axis ctx axis
 
@@ -432,7 +432,7 @@ let rec pp_transition_property_value : transition_property_value Pp.t =
  fun ctx -> function
   | All -> Pp.string ctx "all"
   | None -> Pp.string ctx "none"
-  | Property s -> Pp.string ctx s
+  | Property s -> pp_ident ctx s
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"

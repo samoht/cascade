@@ -349,7 +349,7 @@ let rec pp_color_scheme : color_scheme Pp.t =
       Pp.string ctx "dark";
       Pp.space ctx ();
       Pp.string ctx "only"
-  | Custom names -> Pp.list ~sep:Pp.space Pp.string ctx names
+  | Custom names -> Pp.list ~sep:Pp.space pp_ident ctx names
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"

@@ -769,11 +769,11 @@ let rec pp_content : content Pp.t =
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
-  | Counter name -> Pp.call "counter" Pp.string ctx name
-  | String_ref name -> Pp.call "string" Pp.string ctx name
+  | Counter name -> Pp.call "counter" pp_ident ctx name
+  | String_ref name -> Pp.call "string" pp_ident ctx name
   | Counters (name, separator) ->
       Pp.string ctx "counters(";
-      Pp.string ctx name;
+      pp_ident ctx name;
       Pp.char ctx ',';
       Pp.space ctx ();
       Pp.quoted_string ctx separator;
@@ -787,7 +787,7 @@ let rec pp_content : content Pp.t =
   | Var v -> pp_var pp_content ctx v
 
 let pp_counter_item ctx { name; value } =
-  Pp.string ctx name;
+  pp_ident ctx name;
   match value with
   | None -> ()
   | Some n ->

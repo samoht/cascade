@@ -86,6 +86,13 @@ let pp_opt_space pp ctx = function
 
 let pp_keyword s ctx = Pp.string ctx s
 
+(* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;], a [}] or any other code
+   point CSS Syntax 3 sec. 4.2 keeps out of an ident into a name, so a
+   [<custom-ident>] or [<dashed-ident>] is written back with the escapes that
+   read it as the same name (see [Properties.pp_property]). Printed raw it ends
+   its own declaration. *)
+let pp_ident : string Pp.t = fun ctx s -> Pp.string ctx (Parser.escape_ident s)
+
 let is_zero_length : length -> bool = function
   | Zero
   | Px 0.

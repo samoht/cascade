@@ -39,11 +39,11 @@ let rec pp_grid_line : grid_line Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Num n -> Pp.int ctx n
-  | Name s -> Pp.string ctx s
+  | Name s -> pp_ident ctx s
   | Num_name (n, name) ->
       Pp.int ctx n;
       Pp.char ctx ' ';
-      Pp.string ctx name
+      pp_ident ctx name
   | Span n ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
@@ -51,17 +51,17 @@ let rec pp_grid_line : grid_line Pp.t =
   | Span_name name ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
-      Pp.string ctx name
+      pp_ident ctx name
   | Span_num_name (1, name) when Pp.minified ctx ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
-      Pp.string ctx name
+      pp_ident ctx name
   | Span_num_name (n, name) ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
       Pp.int ctx n;
       Pp.char ctx ' ';
-      Pp.string ctx name
+      pp_ident ctx name
   | Calc c -> pp_calc pp_grid_line ctx c
   | Var v -> pp_var pp_grid_line ctx v
 
@@ -221,7 +221,7 @@ let rec pp_grid_template : grid_template Pp.t =
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
   | Line_names names ->
       Pp.char ctx '[';
-      Pp.list ~sep:Pp.space Pp.string ctx names;
+      Pp.list ~sep:Pp.space pp_ident ctx names;
       Pp.char ctx ']'
   | Template raw ->
       (* The complex grid-template syntax (with [<grid-template-areas>] string

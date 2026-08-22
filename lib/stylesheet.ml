@@ -932,12 +932,25 @@ let pp_import_url ctx url =
   then Pp.string ctx url
   else Pp.quoted_string ctx url
 
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so
+   the escapes CSS Syntax 3 sec. 4.3.7 needs go on each dot-separated part while
+   the [.] separators stay bare (see [Properties.pp_property]). *)
+let escape_layer_name name =
+  if String.contains name '.' then
+    String.split_on_char '.' name
+    |> List.map Parser.escape_ident
+    |> String.concat "."
+  else Parser.escape_ident name
+
+let pp_layer_name : string Pp.t =
+ fun ctx name -> Pp.string ctx (escape_layer_name name)
+
 let pp_import_layer ctx layer =
   Pp.sp ctx ();
   if layer = "" then Pp.string ctx "layer"
   else (
     Pp.string ctx "layer(";
-    Pp.string ctx layer;
+    pp_layer_name ctx layer;
     Pp.char ctx ')')
 
 let pp_import_supports ctx supports =
@@ -1153,7 +1166,7 @@ let pp_counter_style_system ctx = function
   | Extends name ->
       Pp.string ctx "extends";
       Pp.space ctx ();
-      Pp.string ctx name
+      Pp.string ctx (Parser.escape_ident name)
 
 let pp_counter_symbol ctx symbol = Pp.quoted_string ctx symbol
 
@@ -1213,7 +1226,7 @@ let pp_font_palette_descriptor : font_palette_descriptor Pp.t =
         ctx entries
 
 let pp_font_feature_value ctx (name, indexes) =
-  Pp.string ctx name;
+  Pp.string ctx (Parser.escape_ident name);
   Pp.char ctx ':';
   Pp.space_if_pretty ctx ();
   Pp.list ~sep:Pp.space Pp.int ctx indexes
@@ -1295,7 +1308,7 @@ and pp_layer_statement ctx name content =
   (match name with
   | Some n ->
       Pp.string ctx " ";
-      Pp.string ctx n
+      pp_layer_name ctx n
   | None -> ());
   (* For empty layers: use statement form when minifying (more concise), but
      preserve block form otherwise for roundtrip fidelity. A style rule accepts
@@ -1331,7 +1344,7 @@ and pp_container_statement ctx name condition content =
   (match name with
   | Some n ->
       Pp.char ctx ' ';
-      Pp.string ctx n
+      Pp.string ctx (Parser.escape_ident n)
   | None -> ());
   (match condition with
   | Some condition ->
@@ -1414,7 +1427,7 @@ and pp_statement : statement Pp.t =
   | Property r -> pp_property_rule ctx r
   | Layer_decl names ->
       Pp.string ctx "@layer ";
-      Pp.list ~sep:Pp.comma Pp.string ctx names;
+      Pp.list ~sep:Pp.comma pp_layer_name ctx names;
       Pp.semicolon ctx ()
   | Layer (name, content) -> pp_layer_statement ctx name content
   | Media (condition, content) -> pp_media_statement ctx condition content
@@ -1454,7 +1467,7 @@ and pp_statement : statement Pp.t =
       Pp.braced_semicolon_list pp_font_face_descriptor ctx descriptors
   | Counter_style (name, descriptors) ->
       Pp.string ctx "@counter-style ";
-      Pp.string ctx name;
+      Pp.string ctx (Parser.escape_ident name);
       Pp.sp ctx ();
       Pp.braced_semicolon_list pp_counter_style_descriptor ctx descriptors
   | Page (selector, raw_declarations) ->
@@ -1469,7 +1482,7 @@ and pp_statement : statement Pp.t =
       pp_page_with_margins_body ctx descriptors margins
   | Font_palette_values (name, descriptors) ->
       Pp.string ctx "@font-palette-values ";
-      Pp.string ctx name;
+      Pp.string ctx (Parser.escape_ident name);
       Pp.sp ctx ();
       Pp.braced_semicolon_list pp_font_palette_descriptor ctx descriptors
   | Font_feature_values (families, blocks) ->
@@ -1485,7 +1498,7 @@ and pp_statement : statement Pp.t =
       Pp.braced_semicolon_list pp_view_transition_descriptor ctx descriptors
   | Position_try (name, declarations) ->
       Pp.string ctx "@position-try ";
-      Pp.string ctx name;
+      Pp.string ctx (Parser.escape_ident name);
       Pp.sp ctx ();
       Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
   | Viewport (prefix, descriptors) ->

@@ -40,6 +40,13 @@
   CSS-wide keyword as a corner radius. CSS Backgrounds 3 sec. 5.1 allows only a
   non-negative `<length-percentage>` there, and Chrome and WebKit drop every
   such declaration (#417)
+- A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
+  value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
+  it back as the same name. `@layer a\3b b` printed `@layer a;b`, two
+  statements naming a layer the input never had. `@counter-style`,
+  `@position-try`, `@font-palette-values`, `@container`, `@import layer()`, a
+  `@font-feature-values` feature name and every name a declaration value
+  carries, from `anchor-name` to `will-change`, all take the escaping (#436)
 - An `@layer` block inside a style rule holds nesting content, so
   `.a { @layer n { color: red } }` keeps its declaration instead of reading the
   body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested
