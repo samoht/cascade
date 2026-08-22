@@ -2460,11 +2460,13 @@ let read_page_margin_rule r =
     when List.mem name allowed_page_margin_names ->
       Cursor.skip r;
       Cursor.ws r;
+      (* Sec. 5 gives the margin at-rule a [<declaration-list>], which CSS
+         Syntax 3 sec. 5.4.4 consumes even when it holds nothing, so an empty
+         box is valid and Blink 146 keeps one. That it paints nothing is
+         [Block.drop_empty_rules]'s call to make, not the reader's. *)
       let descriptors =
         Cursor.braces (read_descriptor_block replace_descriptor) r
       in
-      if descriptors = [] then
-        Cursor.err_invalid r "page margin rule requires descriptors";
       { name; descriptors }
   | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
       Cursor.err_invalid r ("unknown page margin rule: @" ^ name)

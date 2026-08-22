@@ -4,6 +4,7 @@ open Stylesheet
 open Common
 
 let list_filter_preserve = List.filter_preserve
+let list_edit_preserve = List.edit_preserve
 
 let media_feature_is name (f : Media.feature) =
   match f with
@@ -496,20 +497,32 @@ let drop_redundant_layer_decls stmts =
    nothing, so drop it under [~optimize:true]; an empty [@media]/[@supports]/
    [@container]/[@scope]/[@starting-style] body is likewise removed. An empty
    named [@layer] survives as a [Layer_decl] since the name still orders the
-   layer (CSS Cascade L6 6.4). *)
+   layer (CSS Cascade L6 6.4). CSS Paged Media 3 sec. 5 generates a page-margin
+   box only where its [content] computes away from [none], so a box with no
+   descriptor generates nothing and goes the same way, and the page it leaves
+   with neither descriptor nor box goes after it. *)
 let drop_empty_rules stmts =
-  list_filter_preserve
+  list_edit_preserve
     (function
-      | Rule { declarations = []; nested = []; _ } -> false
-      | Rule { selector; _ } when Selector.matches_nothing selector -> false
-      | Media (_, []) -> false
-      | Supports (_, []) -> false
-      | Container (_, _, []) -> false
-      | Scope (_, _, []) -> false
-      | Starting_style [] -> false
-      | Page (_, []) -> false
-      | Page_with_margins (_, [], []) -> false
-      | _ -> true)
+      | Rule { declarations = []; nested = []; _ } -> List.Drop
+      | Rule { selector; _ } when Selector.matches_nothing selector -> List.Drop
+      | Media (_, []) -> List.Drop
+      | Supports (_, []) -> List.Drop
+      | Container (_, _, []) -> List.Drop
+      | Scope (_, _, []) -> List.Drop
+      | Starting_style [] -> List.Drop
+      | Page (_, []) -> List.Drop
+      | Page_with_margins (selector, descriptors, margins) -> (
+          let kept =
+            list_filter_preserve
+              (fun (m : page_margin_rule) -> m.descriptors <> [])
+              margins
+          in
+          match (descriptors, kept) with
+          | [], [] -> List.Drop
+          | _ when kept == margins -> List.Keep
+          | _ -> List.Replace (Page_with_margins (selector, descriptors, kept)))
+      | _ -> List.Keep)
     stmts
 
 (* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
