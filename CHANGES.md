@@ -310,6 +310,11 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- A single-argument `:is()` keeps its wrapper after a pseudo-element that
+  cannot take its argument, so `.a::before:is(.b)` minifies to
+  `.a:before:is(.b)` rather than the `.a:before.b` that cascade's own reader,
+  Chrome and WebKit all drop. It still unwraps everywhere the compound can hold
+  the argument, `.a::part(p):is(:hover)` included (#431)
 - Merging same-selector rules keeps a later declaration behind a nested
   conditional group that sets the same property. The safety check saw a nested
   style rule only, so `@media`, `@container` and friends let the merge hoist

@@ -2414,6 +2414,29 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
+(* [map] rewrites a compound's components before the compound itself, so the
+   [Is] branch below has already spliced a single-argument [:is()] into this
+   list. A component the reader refuses after the pseudo-element can only have
+   arrived that way, so the compound puts the wrapper back: Selectors 4 sec. 16
+   builds a pseudo-compound out of [<pseudo-element-selector>
+   <pseudo-class-selector>*] and sec. 3.6.3 makes the pseudo-class list per
+   pseudo-element. *)
+let rewrap_pseudo_compound components =
+  let rec loop seen = function
+    | [] -> []
+    | c :: rest when is_pseudo_element c -> c :: loop (Some c) rest
+    | c :: rest ->
+        let c =
+          match seen with
+          | Some pe when not (is_pe_action c && pseudo_element_allows pe c) ->
+              Is [ c ]
+          | _ -> c
+        in
+        c :: loop seen rest
+  in
+  if List.exists is_pseudo_element components then loop None components
+  else components
+
 (* Canonicalise so selectors denoting the same thing are structurally equal:
    drop the implied [*] from a multi-part compound ([*.foo] -> [.foo]), collapse
    a one-part compound, and dedup/sort selector-list alternatives by printed
@@ -2429,7 +2452,9 @@ let canonicalize sel =
       in
       match node with
       | Compound components -> (
-          match drop_redundant_universal components with
+          match
+            rewrap_pseudo_compound (drop_redundant_universal components)
+          with
           | [ single ] -> single
           | components' ->
               if list_same components' components then node
