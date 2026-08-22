@@ -267,6 +267,14 @@ val has_newer_pseudo_class : t -> bool
     forgiving parsing). Newer pseudo-classes should not be combined in selector
     lists with group/peer variants to preserve browser compatibility. *)
 
+val is_pseudo_element : t -> bool
+(** [is_pseudo_element sel] is [true] when [sel] is one simple selector naming a
+    pseudo-element: a box other than the originating element, where an
+    element-tied pseudo-class such as [:hover] only narrows which elements
+    match. Every [::] form counts, including a name cascade does not recognise,
+    since Selectors 4 sec. 16 shapes a pseudo-compound around a pseudo-element
+    whatever its name. *)
+
 val has_pseudo_element : t -> bool
 (** [has_pseudo_element sel] returns [true] if selector contains a
     pseudo-element like ::before, ::after, ::marker, etc. *)

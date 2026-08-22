@@ -1021,29 +1021,33 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
-let is_deep_piercing_pseudo name =
-  match String.lowercase_ascii name with
-  | "deep" | "v-deep" | "ng-deep" -> true
-  | _ -> false
-
-let is_pseudo_element_selector = function
+(* Every [::] form, and only those: a pseudo-element names a box other than the
+   originating element, where an element-tied pseudo-class ([:hover], [:focus])
+   only narrows which elements match. An unrecognised [::foo] belongs here too.
+   Selectors 4 sec. 16 builds a pseudo-compound out of
+   [<pseudo-element-selector> <pseudo-class-selector>*] whatever the
+   pseudo-element's name is, so the shape rules that read this predicate cannot
+   wait for cascade to learn the name; the framework-only [::deep] / [::v-deep]
+   / [::ng-deep] are unknown [::] names like any other, since Selectors 4 has no
+   piercing combinator. *)
+let is_pseudo_element = function
   | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
-  | Placeholder | Selection | File_selector_button | Moz_placeholder
-  | Webkit_input_placeholder | Ms_input_placeholder | Webkit_scrollbar
-  | Webkit_search_cancel_button | Webkit_search_decoration
-  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
-  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
-  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
-  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
-  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
-  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
-  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
-  | Webkit_details_marker | Details_content | Part _ | Slotted _ | Cue _
-  | Cue_region _ | Highlight _ | View_transition | View_transition_group _
-  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
+  | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
+  | File_selector_button | Moz_placeholder | Webkit_input_placeholder
+  | Ms_input_placeholder | Webkit_scrollbar | Webkit_search_cancel_button
+  | Webkit_search_decoration | Webkit_datetime_edit_fields_wrapper
+  | Webkit_date_and_time_value | Webkit_datetime_edit
+  | Webkit_datetime_edit_year_field | Webkit_datetime_edit_month_field
+  | Webkit_datetime_edit_day_field | Webkit_datetime_edit_hour_field
+  | Webkit_datetime_edit_minute_field | Webkit_datetime_edit_second_field
+  | Webkit_datetime_edit_millisecond_field | Webkit_datetime_edit_meridiem_field
+  | Webkit_inner_spin_button | Webkit_outer_spin_button
+  | Webkit_calendar_picker_indicator | Webkit_details_marker | Details_content
+  | Part _ | Slotted _ | Cue _ | Cue_region _ | Highlight _ | View_transition
+  | View_transition_group _ | View_transition_image_pair _
+  | View_transition_old _ | View_transition_new _ | Unknown_pseudo_element _
   | Unknown_pseudo_element_call _ ->
       true
-  | Unknown_pseudo_element name -> not (is_deep_piercing_pseudo name)
   | _ -> false
 
 let rec any p = function
@@ -1072,7 +1076,7 @@ let rec any p = function
   | Part _ as sel -> p sel
   | s -> p s
 
-let has_pseudo_element sel = any is_pseudo_element_selector sel
+let has_pseudo_element sel = any is_pseudo_element sel
 
 let has_unknown_pseudo_class =
   any (function
@@ -1098,7 +1102,7 @@ let rec matches_nothing = function
    still make the compound invalid. *)
 let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
-  | sel -> not (is_pseudo_element_selector sel)
+  | sel -> not (is_pseudo_element sel)
 
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
@@ -1551,7 +1555,7 @@ and read_compound t =
        [:not()]/[:has()] ([read_not_content]/[read_has_content]) and in the rule
        reader when a whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
-    if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
+    if List.exists is_pseudo_element acc && not (is_pe_action s) then
       Cursor.err t "pseudo-element must be last in compound selector"
     else s :: acc
   in

@@ -40,6 +40,13 @@
   CSS-wide keyword as a corner radius. CSS Backgrounds 3 sec. 5.1 allows only a
   non-negative `<length-percentage>` there, and Chrome and WebKit drop every
   such declaration (#417)
+- The reader and the optimizer's selector summary answer "is this a
+  pseudo-element?" from one list, so `::target-text`, `::spelling-error`,
+  `::grammar-error` and the framework-only `::deep` family obey the compound
+  and `:has()` rules the rest already did. Selectors 4 sec. 16 admits nothing
+  but pseudo-classes after a pseudo-element and sec. 4.5 keeps pseudo-elements
+  out of `:has()`, whatever the pseudo-element's name, and Chrome and WebKit
+  drop every selector that breaks either rule (#418)
 - A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
   value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
   it back as the same name. `@layer a\3b b` printed `@layer a;b`, two
