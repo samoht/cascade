@@ -8015,35 +8015,46 @@ let theme_defaults_reject_escaping_value () =
     (emit "red/*")
 
 (* CSS Syntax 3 sec. 4.3.7: a [\X] escape carries any code point into an ident,
-   so [var(--x\3b y)] references the theme name ["x;y"]. A name that cannot be
-   written back as a single ident cannot be bound - and must not turn into some
-   other declaration ([y:red]) at root scope. *)
-let theme_defaults_reject_escaping_name () =
+   so [var(--x\3b y)] references the theme name ["x;y"]. The default binds under
+   that name, written back with the escapes that read it - the one spelling that
+   makes the declaration the name it references rather than some other
+   declaration ([y:red]) at root scope. *)
+let theme_defaults_escaping_name () =
   let parse css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   List.iter
-    (fun (what, src, name, expected) ->
-      let resolved =
+    (fun (what, src, name, bound, inlined) ->
+      let resolve ?theme () =
         parse src
-        |> Css.resolve_theme ~theme_defaults:(fun n ->
+        |> Css.resolve_theme ?theme ~theme_defaults:(fun n ->
             if n = name then Some "red" else None)
+        |> Css.to_string ~minify:true
       in
       Alcotest.(check string)
-        (what ^ ": nothing binds and the reference stays live")
-        expected
-        (Css.to_string ~minify:true resolved))
+        (what ^ ": binds under the name the reference spells")
+        bound (resolve ());
+      Alcotest.(check string)
+        (what ^ ": resolves the reference it binds")
+        inlined
+        (resolve ~theme:Css.Pp.String_set.empty ());
+      Alcotest.(check string)
+        (what ^ ": the binding reads back as itself")
+        bound
+        (Css.to_string ~minify:true (parse bound)))
     [
       ( "a name carrying a [;]",
         ".a{color:var(--x\\3b y)}",
         "x;y",
-        ".a{color:var(--x\\;y)}" );
+        ":root{--x\\;y:red}.a{color:var(--x\\;y)}",
+        ".a{color:red}" );
       ( "a name carrying a [}]",
         ".a{color:var(--x\\7d y)}",
         "x}y",
-        ".a{color:var(--x\\}y)}" );
+        ":root{--x\\}y:red}.a{color:var(--x\\}y)}",
+        ".a{color:red}" );
     ]
 
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
@@ -8858,9 +8869,9 @@ let additional_tests =
     ( "theme defaults reject a value that escapes its declaration",
       `Quick,
       theme_defaults_reject_escaping_value );
-    ( "theme defaults reject a name that escapes its declaration",
+    ( "theme defaults bind a name that needs escaping",
       `Quick,
-      theme_defaults_reject_escaping_name );
+      theme_defaults_escaping_name );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
       customprops1_fallback_list );
