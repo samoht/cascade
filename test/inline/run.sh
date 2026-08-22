@@ -119,12 +119,31 @@ check() { # label before after
        fail=1 ;;
   esac
 }
+# A transform that dies leaves an empty file, and an empty page differs from
+# the original in every computed style, so the run blames the transform for a
+# render change that never happened. Report the status, and the error the tool
+# printed with it.
+transform() { # label out cmd...
+  label=$1; out=$2; shift 2
+  err=$(mktemp)
+  "$@" > "$out" 2> "$err"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "CRASH $label (exit $status): $*"
+    head -8 "$err" | sed 's/^/     /'
+    fail=1
+  fi
+  rm -f "$err"
+  return "$status"
+}
 for f in "$dir"/fixtures/*.html; do
   for mode in "" "--minimal"; do
     tmp=$(mktemp)
+    label="$(basename "$f") ${mode:-full}"
     # shellcheck disable=SC2086 # an empty $mode must vanish, not pass ""
-    "$CASCADE" apply $mode "$f" > "$tmp" 2>/dev/null
-    check "$(basename "$f") ${mode:-full}" "$f" "$tmp"
+    if transform "$label" "$tmp" "$CASCADE" apply $mode "$f"; then
+      check "$label" "$f" "$tmp"
+    fi
     rm -f "$tmp"
   done
 done
@@ -134,9 +153,11 @@ done
 for flags in "" "--inline-vars"; do
   for f in "$dir"/fixtures/*.html; do
     tmp=$(mktemp)
+    label="$(basename "$f") minify${flags:+ $flags}"
     # shellcheck disable=SC2086 # an empty $flags must vanish, not pass ""
-    node "$dir/minify_page.js" "$f" $flags > "$tmp" 2>/dev/null
-    check "$(basename "$f") minify${flags:+ $flags}" "$f" "$tmp"
+    if transform "$label" "$tmp" node "$dir/minify_page.js" "$f" $flags; then
+      check "$label" "$f" "$tmp"
+    fi
     rm -f "$tmp"
   done
 done
@@ -149,8 +170,10 @@ for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
   page="$(basename "$f")@$(sha "$f")"
   tmp=$(mktemp)
-  "$CASCADE" apply --minimal "$f" > "$tmp" 2>/dev/null
-  check "real $page minimal" "$f" "$tmp"
+  label="real $page minimal"
+  if transform "$label" "$tmp" "$CASCADE" apply --minimal "$f"; then
+    check "$label" "$f" "$tmp"
+  fi
   rm -f "$tmp"
 done
 exit $fail
