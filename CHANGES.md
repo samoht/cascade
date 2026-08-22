@@ -16,6 +16,12 @@
   only a negative value illegal, having dropped SVG 1.1's "at least 1" rule
   because CSS parsers never enforced it, and `stroke-miterlimit: 0.5` was
   rejected outright (#334)
+- A media or container size feature takes the unitless zero CSS Values 4 sec. 5
+  allows for a zero `<length>`, which Media Queries 4 sec. 1.3 inherits.
+  `@media (min-width: 0)`, `(width >= 0)` and `@container (min-width: 0)` were
+  rejected, and the at-rule went down with the condition, taking every rule
+  inside it at exit 0. The allowance is `<length>`-only, so
+  `(min-resolution: 0)` stays invalid (#427)
 - A descending `@font-face` descriptor range such as `font-weight: 700 400`
   parses without a warning and `Css.of_string ~strict:true` accepts it. CSS
   Fonts 4 sec. 4.4 has the user agent swap the endpoints for font matching, so
