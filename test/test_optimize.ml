@@ -1595,7 +1595,34 @@ let test_distant_media_merge () =
     "@media(width>=1px){a{background-color:red}}a{background:#00f}@media(width>=1px){a{background-color:green}}"
     (minify_str
        "@media (width>=1px){a{background-color:red}}a{background:blue}@media \
-        (width>=1px){a{background-color:green}}")
+        (width>=1px){a{background-color:green}}");
+  (* CSS Nesting 1 sec. 3.4: a declaration written after a nested rule stays
+     behind it, so the run between the two blocks is one more rule with the
+     enclosing selector. Hoisting the second block over it would compute blue
+     where the source computes green. *)
+  Alcotest.(check string)
+    "keeps blocks apart across a conflicting nested declarations run"
+    ".a{@media(width>=1px){color:red}color:#00f;@media(width>=1px){color:green}}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}color:blue;@media \
+        (width>=1px){color:green}}");
+  (* The run sets another property, so nothing an element computes depends on
+     the order: the blocks still merge, and the disjoint run rejoins the rule's
+     own declarations. *)
+  Alcotest.(check string)
+    "merges across a nested declarations run that sets another property"
+    ".a{outline-color:#00f;@media(width>=1px){color:red;color:green}}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}outline-color:blue;@media \
+        (width>=1px){color:green}}");
+  (* Adjacent blocks cross nothing, so the run after them keeps its place and
+     the merge stands. *)
+  Alcotest.(check string)
+    "merges adjacent blocks inside a rule"
+    ".a{@media(width>=1px){color:red;color:green}color:#00f}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}@media \
+        (width>=1px){color:green}color:blue}")
 
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
