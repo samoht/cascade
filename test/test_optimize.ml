@@ -2197,7 +2197,9 @@ let c61_adjacent_later_dedup () =
 (* A rule's [declarations] is the run written before its first nested statement
    (CSS Nesting 1 sec. 3.4), not its whole body, so absorbing a later
    same-selector rule moves that rule's declarations ahead of body content the
-   merge never looked at. A rule carrying nested children stays out. *)
+   merge has to read for itself. It reads the whole body, so a rule carrying
+   nested children can still absorb a later one: the move is only observable for
+   a property that body also sets. *)
 let same_selector_merge_past_nested () =
   let of_string css =
     match Css.of_string css with
@@ -2210,8 +2212,8 @@ let same_selector_merge_past_nested () =
     |> String.trim
   in
   Alcotest.(check string)
-    "nested children keep the rule out of the merge"
-    ".a{color:red;&:hover{background:#00f}}.a{padding:1rem}"
+    "disjoint nested children do not block the merge"
+    ".a{color:red;padding:1rem;&:hover{background:#00f}}"
     (canon ".a{color:red;&:hover{background:blue}}.a{padding:1rem}");
   Alcotest.(check string)
     "a nested child setting the same property keeps its place"

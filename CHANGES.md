@@ -235,11 +235,12 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
-- A rule that carries nested content stays out of the same-selector merge, the
-  distant `@media` hoist and the shadowed-rule drop. A rule's declarations are
-  only the run written before its first nested statement (CSS Nesting 1
-  sec. 3.4), so a pass reading them as the whole body moves or drops content it
-  never looked at (#376)
+- A rule whose declarations a later rule all rewrites is dropped only when it
+  carries no nested content. A rule's declarations are only the run written
+  before its first nested statement (CSS Nesting 1 sec. 3.4), so covering them
+  says nothing about what the rest of the body sets, and
+  `.a { all: unset; @media (min-width: 1px) { width: 1px } } .a { all: initial }`
+  lost its nested block along with the rule (#376)
 - A declaration written after a nested statement rejoins the rule's own run
   when nothing it crosses writes the same property at the same importance, so
   `.a { & b { width: 1px } color: red }` minifies to
@@ -276,6 +277,11 @@
   whether a declaration crosses a nested block. The merge order could put the
   rule carrying the nested block last, leaving that check nothing to look at,
   so a nested `@media` won over a later declaration that overrode it (#364)
+- Merging same-selector rules weighs what a nested block sets against a later
+  declaration by cascade slot rather than by property name. A nested
+  `margin: 2rem` and a later `margin-top: 1rem` write one slot under two names,
+  so the merge read them as disjoint, hoisted the longhand ahead of the nested
+  block and handed the shorthand the win (#364)
 - A `font-family` name that cannot be spelled as an identifier keeps its
   quotes. The unquoting guard checked which characters a name is made of but
   not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
