@@ -431,28 +431,9 @@ let as_origin = function
   | Origin (origin, content) -> Some (origin, content)
   | _ -> None
 
-(* The block at-rules [map] and [sort] rebuild. Listed one by one rather than
-   closed with a wildcard, so a statement that grows a block later has to be
-   classified here before it compiles. [Scope], [Starting_style],
-   [Moz_document], [When] and [Else] wrap rules too; whether the public
-   [map]/[sort] reach them is a contract question rather than a traversal one,
-   so they stay out until it is answered. *)
-let map_container_block f = function
-  | Media (condition, content) -> media ~condition (f content)
-  | Supports (condition, content) -> supports ~condition (f content)
-  | Layer (name, content) -> layer ?name (f content)
-  | Container (name, condition, content) ->
-      container ?name ?condition (f content)
-  | Origin (origin, content) -> Origin (origin, f content)
-  | ( Rule _ | Property _ | Declarations _ | Bang_comment _ | Charset _
-    | Import _ | Namespace _ | Layer_decl _ | Supports_condition _ | Scope _
-    | Starting_style _ | Moz_document _ | When _ | Else _ | Keyframes _
-    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
-    | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-    | Unknown_at_rule _ ) as stmt ->
-      stmt
-
+(* [f] decides a rule's fate; the descent into what holds it is
+   [map_statement_children]'s, so every block at-rule is walked and one added
+   later is walked without a word here. *)
 let rec map f stmts =
   List.map
     (fun stmt ->
@@ -468,22 +449,20 @@ let rec map f stmts =
               (* Callback supplied its own nested (or returned a non-Rule);
                  trust it and replace the original. *)
               other)
-      | None -> map_container_block (map f) stmt)
+      | None -> map_statement_children (map f) stmt)
     stmts
 
 let rec sort cmp stmts =
-  (* First, recursively sort within containers and inside rule.nested. *)
+  (* Sort each block first, so the pass reaches a rule at any depth. The descent
+     is [map_statement_children]'s: an at-rule that grows a block later is
+     sorted inside without a word here, and a nesting block inside a rule is one
+     of them. *)
   let stmts_with_sorted_contents =
-    List.map
-      (fun stmt ->
-        match stmt with
-        | Rule rule -> Rule { rule with nested = sort cmp rule.nested }
-        | stmt -> map_container_block (sort cmp) stmt)
-      stmts
+    List.map (map_statement_children (sort cmp)) stmts
   in
-
-  (* Now sort the rules at this level *)
-  List.sort
+  (* [stable_sort], not [sort]: the comparison answers 0 for two non-rules, so
+     stability is what keeps an [@else] with the [@when] it answers. *)
+  List.stable_sort
     (fun stmt1 stmt2 ->
       match (as_rule stmt1, as_rule stmt2) with
       | Some (sel1, decls1, _), Some (sel2, decls2, _) ->

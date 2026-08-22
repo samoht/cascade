@@ -196,6 +196,11 @@
   that carries a cascade layer or an `@supports` depth down the tree cannot be
   a fold, and can now name the sites it reads instead of matching on the
   statements it expects to meet (#368)
+- `Css.map` and `Css.sort` reach a rule inside `@scope`, `@starting-style`,
+  `@-moz-document`, `@when` or `@else`, as they already did for `@media` and
+  `@supports`. Those at-rules group style rules like any other conditional
+  group, and a caller rewriting or reordering "all rules at all nesting levels"
+  got a sheet with five of them silently untouched (#381)
 
 ### CLI tools
 

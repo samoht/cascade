@@ -372,27 +372,32 @@ val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->
   statement list
-(** [map f stmts] applies [f] to all rules in [stmts], recursively descending
-    into nested containers (media, supports, layers, etc.).
+(** [map f stmts] applies [f] to every rule in [stmts]: the ones at the top
+    level, the ones inside a conditional group at-rule such as [@media],
+    [@supports], [@layer], [@container], [@scope] or [@starting-style], however
+    deeply nested, and the ones nested inside a rule.
 
-    - Rules are transformed while non-rule statements are preserved
-    - Traversal is depth-first, processing nested containers recursively
-    - Transformation is applied to all rules at all nesting levels
-    - Non-rule statements (at-rules without rule content) maintain their
-      relative order. *)
+    - Traversal is depth-first, and a statement that is not a rule is kept with
+      its block rewritten.
+    - Non-rule statements maintain their relative order.
+    - When [f] returns a rule holding no nested statements, the original nested
+      tree is kept with [map] applied to it; one holding its own replaces it. *)
 
 val sort :
   (Selector.t * declaration list -> Selector.t * declaration list -> int) ->
   statement list ->
   statement list
-(** [sort cmp stmts] sorts rules within [stmts] using the comparison function
-    [cmp], recursively descending into nested containers.
+(** [sort cmp stmts] reorders the rules of [stmts] with [cmp], and the rules of
+    every block below them: inside a conditional group at-rule such as [@media],
+    [@supports], [@layer], [@container], [@scope] or [@starting-style], however
+    deeply nested, and inside the nested statements of a rule.
 
-    - Sort is stable: equal elements maintain their relative order
-    - Non-rule statements are preserved in their original positions
-    - Sorting occurs independently within each container level
-    - Nested containers (media, supports, layers) have their rules sorted
-      recursively. *)
+    - Each block is sorted on its own, so a rule never leaves the block it sits
+      in.
+    - Sort is stable: rules [cmp] calls equal maintain their relative order.
+    - Non-rule statements sort after the rules of their block and maintain their
+      relative order among themselves, so an [@else] still follows the [@when]
+      it answers. *)
 
 (** Existential type for property information that preserves type safety *)
 type property_info =
