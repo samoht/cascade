@@ -43,8 +43,8 @@
 - An `@layer` block inside a style rule holds nesting content, so
   `.a { @layer n { color: red } }` keeps its declaration instead of reading the
   body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested
-  at-rules, and `@layer` was the only one still read as a stylesheet block
-  (#374)
+  at-rules, and `@layer` was the last of the at-rules cascade reads as a
+  nesting context still taking a stylesheet block (#374)
 - A declaration written after a nested rule keeps its place instead of being
   hoisted to the top of the block. CSS Nesting 1 sec. 3.4 wraps such a run in a
   nested declarations rule, and its worked example names the hoisted spelling as
