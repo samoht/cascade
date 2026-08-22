@@ -185,6 +185,13 @@
   and cascade's own reader both drop. `abs()` and `hypot()` now carry their
   arguments' unit out, the inverse trig functions carry `deg`, and a call whose
   operands mix units keeps its spelling (#362)
+- A computed dimension past a million units keeps every digit under `--minify`.
+  Six significant figures stop reaching its fraction there, so the budget was
+  paid in integer digits the arithmetic got right: `calc(1in + 999999999px)`
+  came out as `1000000000px`, 95px from the `1000000095px` an inch is worth (CSS
+  Values 4 sec. 6.2), and `hypot(999999999px, 1px)` a pixel wider than its own
+  longest side. A narrower value still pays the budget: `calc(1cm + 1px)` is
+  `38.7953px` (#367)
 - An empty `@layer name` inside a style rule keeps its block form. The
   statement form is a layer-order declaration, which no style rule accepts, so
   `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor

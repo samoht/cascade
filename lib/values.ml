@@ -989,8 +989,18 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    out of [pi] or [sqrt()], a conversion between absolute units - which carries
    digits that will never be printed. An authored coefficient is the author's
    own digits and keeps every one of them: at a [14px] font [.4285714em] is
-   [6px] and [.428571em] is not. *)
-let round_computed (f : float) : float = Pp.round_sig 6 f
+   [6px] and [.428571em] is not.
+
+   The budget buys a fractional tail, and six significant figures reach one only
+   while the magnitude stays under [10^6]. Wider than that the only digits left
+   to drop are integer ones the arithmetic got right: [1in] is exactly [96px]
+   and [1pt] exactly [4/3px] (CSS Values 4 sec. 6.2), so an inch added to
+   [999999999px] is [1000000095px], and [1000000000px] is 95px away from it. *)
+let round_computed (f : float) : float =
+  if Float.abs f < 1e6 then Pp.round_sig 6 f else f
+
+(* Whether every digit of [f] already prints within the budget. *)
+let fits_precision (f : float) : bool = Pp.round_sig 6 f = f
 
 (* Fold [a / b] only when the float quotient round-trips through multiplication:
    exact divisions like [100/4 = 25] survive but [100/3 = 33.333...] does not,
@@ -1001,10 +1011,10 @@ let exact_div (a : float) (b : float) : float option =
   else
     let r = a /. b in
     (* Round-trip alone is too lax under IEEE 754 (33.333... * 3 = 100.0 due to
-       multiplication rounding). Also require the quotient to survive
-       [round_computed]. *)
-    if Float.is_finite r && r *. b = a && round_computed r = r then
-      Option.some r
+       multiplication rounding). Also require the quotient to fit the serialised
+       precision, whatever its magnitude: an unfolded [calc()] keeps the digits
+       the quotient would otherwise drop. *)
+    if Float.is_finite r && r *. b = a && fits_precision r then Option.some r
     else Option.none
 
 (* Scale the coefficient [v] of a typed leaf by [n], rebuilding the leaf in its
