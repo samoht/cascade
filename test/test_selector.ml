@@ -1017,6 +1017,40 @@ let pseudo_element_pseudo_classes () =
         true (covered pe))
     pseudo_element_spellings
 
+(* [canonicalize] splices a single-argument [:is(s)] into the compound around
+   it, since [:is(s)] matches [s] with the same specificity (Selectors 4 sec.
+   4.2). A pseudo-compound is [<pseudo-element-selector>
+   <pseudo-class-selector>*] (sec. 16) and which pseudo-classes it takes is per
+   pseudo-element (sec. 3.6.3), so the splice would build a compound cascade's
+   own reader rejects. Chrome 151 and WebKit 26.5 keep every input below and
+   drop [.a::before.b] and [.a::before:hover]. *)
+let canonicalize_pseudo_compound_is () =
+  let canon expected input =
+    let actual = to_string ~minify:true (canonicalize (of_string input)) in
+    Alcotest.(check string) ("canonicalize " ^ input) expected actual;
+    match Cursor.option read (Cursor.of_string actual) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "canonicalized selector does not parse: %s" actual
+  in
+  (* The wrapper stays in a pseudo-compound. *)
+  canon ".a:before:is(.b)" ".a::before:is(.b)";
+  canon ".a:before:is(#c)" ".a::before:is(#c)";
+  canon ".a:before:is([d])" ".a::before:is([d])";
+  canon ".a:before:is(div)" ".a::before:is(div)";
+  canon ".a:before:is(.b.c)" ".a::before:is(.b.c)";
+  canon ".a:before:is(:hover)" ".a::before:is(:hover)";
+  canon ".a:before:is(.b)" ".a:before:is(.b)";
+  canon "div .a:before:is(.b)" "div .a::before:is(.b)";
+  (* [::part()] takes the user action pseudo-classes, so that one splices. *)
+  canon ".a::part(p):hover" ".a::part(p):is(:hover)";
+  (* Outside a pseudo-compound the splice stands. *)
+  canon ".a.b" ".a:is(.b)";
+  canon "div>.b" "div>:is(.b)";
+  canon ".b" ":is(.b)";
+  canon ".x .a" ".x :is(:is(.a))";
+  (* [:where()] never unwraps: it contributes zero specificity. *)
+  canon ".a:before:where(.b)" ".a::before:where(.b)"
+
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
      driving the per-level selector validation into super-linear time (a
@@ -2094,6 +2128,8 @@ let suite =
         logical_combinator_pseudo_element;
       test_case "pseudo-element pseudo-classes" `Quick
         pseudo_element_pseudo_classes;
+      test_case "canonicalize pseudo-compound :is()" `Quick
+        canonicalize_pseudo_compound_is;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
