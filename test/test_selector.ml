@@ -780,6 +780,46 @@ let pseudo_element_compound_guard () =
       neg_cursor read (String.concat "" [ ".a:has("; pe; ")" ]))
     pseudo_element_spellings
 
+(* Selectors 4 sec. 16 builds both argument lists of the logical combinations
+   out of [<complex-real-selector>], which is [<compound-selector> [
+   <combinator>? <compound-selector> ]*] and so has no room for a
+   [<pseudo-compound-selector>]: sec. 4.3 spells that out for [:not()]
+   ("Pseudo-elements cannot be represented by the negation pseudo-class; they
+   are not valid within :not()"), sec. 4.2 for [:is()], sec. 4.4 gives
+   [:where()] the syntax of [:is()], and sec. 4.5 keeps them out of [:has()] as
+   well.
+
+   What a caller sees differs, because [:is()] and [:where()] take a
+   [<forgiving-selector-list>] (sec. 16.1: parse each item, drop the ones that
+   fail) while [:not()] and [:has()] do not: the pseudo-element takes the item
+   with it in the first pair and the whole selector in the second. Chrome 151
+   and WebKit 26.5 agree on both halves - they drop every rule the negatives
+   build, and keep every rule the positives build (Chrome prunes the dead item
+   from its [cssRules] readback, WebKit leaves it in place). *)
+let logical_combinator_pseudo_element () =
+  let concat = String.concat "" in
+  List.iter
+    (fun pe ->
+      (* Unforgiving: the pseudo-element invalidates the whole selector,
+         wherever in the argument it sits and however the two nest. *)
+      neg_cursor read (concat [ ".a:not("; pe; ")" ]);
+      neg_cursor read (concat [ ".a:not("; pe; ",.b)" ]);
+      neg_cursor read (concat [ ".a:not(.b "; pe; ")" ]);
+      neg_cursor read (concat [ ".a:not(:not("; pe; "))" ]);
+      neg_cursor read (concat [ ".a:has("; pe; ",.b)" ]);
+      neg_cursor read (concat [ ".a:has(:not("; pe; "))" ]);
+      neg_cursor read (concat [ ".a:not(:has("; pe; "))" ]);
+      (* Forgiving: only the item carrying the pseudo-element goes. *)
+      check_minified_to ".a:is()" (concat [ ".a:is("; pe; ")" ]);
+      check_minified_to ".a:where()" (concat [ ".a:where("; pe; ")" ]);
+      check_minified_to ".a:is(.b)" (concat [ ".a:is("; pe; ",.b)" ]);
+      check_minified_to ".a:is()" (concat [ ".a:is(:not("; pe; "))" ]);
+      check_minified_to ".a:where()" (concat [ ".a:where(:not("; pe; "))" ]);
+      check_minified_to ".a:not(:is())" (concat [ ".a:not(:is("; pe; "))" ]);
+      check_minified_to ".a:not(:where())"
+        (concat [ ".a:not(:where("; pe; "))" ]))
+    pseudo_element_spellings
+
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
      driving the per-level selector validation into super-linear time (a
@@ -1851,6 +1891,8 @@ let suite =
       test_case "parse errors - pseudo" `Quick parse_errors_pseudo;
       test_case "pseudo-element compound guard" `Quick
         pseudo_element_compound_guard;
+      test_case "logical combinator pseudo-element" `Quick
+        logical_combinator_pseudo_element;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
