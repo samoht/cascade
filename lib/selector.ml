@@ -2117,6 +2117,16 @@ let drop_redundant_universal = function
       in
       if kept = [] then components else kept
 
+(* CSS Selectors 4 3.5: a compound selector that "contains a type selector or
+   universal selector [...] must come first in the sequence". So a rewrite that
+   splices a wrapped selector into the surrounding compound has to leave a
+   type-bearing argument wrapped: spliced, the two names fuse and [.a:is(code)]
+   reads as [.acode], a class nobody wrote. *)
+let rec carries_type_selector = function
+  | Element _ | Universal _ -> true
+  | Compound parts -> List.exists carries_type_selector parts
+  | _ -> false
+
 let rec pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
   Pp.string ctx name;
@@ -2318,9 +2328,12 @@ and pp : t Pp.t =
       pp ctx Any_link
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
-  | Not [ Not [ inner ] ] when Pp.minified ctx ->
+  | Not [ Not [ inner ] ]
+    when Pp.minified ctx && not (carries_type_selector inner) ->
       (* CSS Selectors 4 sec. 4.3: double negation [:not(:not(X))] is
-         spec-equivalent to [X] (and shorter under minify). *)
+         spec-equivalent to [X] (and shorter under minify). [X] is spliced into
+         whatever compound holds the [:not()], so a type-bearing one stays
+         wrapped (Selectors 4 3.5, [carries_type_selector]). *)
       pp ctx inner
   | Not [ Enabled ] when Pp.minified ctx -> pseudo ctx "disabled"
   | Not [ Disabled ] when Pp.minified ctx -> pseudo ctx "enabled"
@@ -2482,6 +2495,24 @@ let rewrap_pseudo_compound components =
   if List.exists is_pseudo_element components then loop None components
   else components
 
+(* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the same
+   elements as [s] with the same specificity, so it reduces to [s]. Sound only
+   when [s] is a single compound: a combinator ([Combined] / [Relative]) or a
+   [List] makes [:is()] a grouping boundary that cannot be spliced into the
+   surrounding compound. A type or universal selector cannot be spliced either:
+   this rewrite is node-local and cannot see whether the [:is()] heads its
+   compound, and only there may such a selector stand
+   ([carries_type_selector]). *)
+let canonicalize_is node selectors =
+  let sorted = canonicalize_unordered_list selectors in
+  match sorted with
+  | [ single ]
+    when match single with
+         | Combined _ | Relative _ | List _ -> false
+         | _ -> not (carries_type_selector single) ->
+      single
+  | _ -> if list_same sorted selectors then node else Is sorted
+
 (* Canonicalise so selectors denoting the same thing are structurally equal:
    drop the implied [*] from a multi-part compound ([*.foo] -> [.foo]), collapse
    a one-part compound, and dedup/sort selector-list alternatives by printed
@@ -2506,20 +2537,7 @@ let canonicalize sel =
               else Compound components')
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
-      | Is selectors -> (
-          (* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the
-             same elements as [s] with the same specificity, so it reduces to
-             [s]. Sound only when [s] is a single compound: a combinator
-             ([Combined] / [Relative]) or a [List] makes [:is()] a grouping
-             boundary that cannot be spliced into the surrounding compound. *)
-          let sorted = canonicalize_unordered_list selectors in
-          match sorted with
-          | [ single ]
-            when match single with
-                 | Combined _ | Relative _ | List _ -> false
-                 | _ -> true ->
-              single
-          | _ -> if list_same sorted selectors then node else Is sorted)
+      | Is selectors -> canonicalize_is node selectors
       | Not selectors -> canon (fun xs -> Not xs) selectors
       | Has selectors -> canon (fun xs -> Has xs) selectors
       | Moz_any_call selectors -> canon (fun xs -> Moz_any_call xs) selectors
