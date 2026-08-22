@@ -840,6 +840,25 @@ let semantically_equivalent_rejects_different_colors () =
     "different color values are not semantically equivalent" false
     (Cascade_diff.Css_compare.equivalent_value ~property:"color" "red" "blue")
 
+(* [equivalent_value] gives its two values the declaration context [property]
+   names. CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;] or a [}] into a
+   custom property's name, and written raw into that context such a name closes
+   the rule and takes both values with it, so any two of them read back the
+   same. *)
+let semantically_equivalent_escaping_property () =
+  List.iter
+    (fun property ->
+      Alcotest.(check bool)
+        (String.concat "" [ property; ": red and blue stay different" ])
+        false
+        (Cascade_diff.Css_compare.equivalent_value ~property "red" "blue");
+      Alcotest.(check bool)
+        (String.concat ""
+           [ property; ": the same colour spelled twice agrees" ])
+        true
+        (Cascade_diff.Css_compare.equivalent_value ~property "#ffffff" "#fff"))
+    [ "--x"; "--x;y"; "--x}y"; "--x y" ]
+
 (* ===== diff returning No_diff ===== *)
 
 let diff_no_diff () =
@@ -1396,6 +1415,8 @@ let suite =
         semantic_transparent_ident_boundary;
       Alcotest.test_case "semantically equivalent rejects different colors"
         `Quick semantically_equivalent_rejects_different_colors;
+      Alcotest.test_case "semantically equivalent under an escaping property"
+        `Quick semantically_equivalent_escaping_property;
       Alcotest.test_case "diff No_diff" `Quick diff_no_diff;
       Alcotest.test_case "diff No_diff empty" `Quick diff_no_diff_empty;
       Alcotest.test_case "diff Tree_diff" `Quick diff_tree_diff;
