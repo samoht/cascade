@@ -543,15 +543,61 @@ let is_font_family_ident_word s =
   in
   starts_ident && String.for_all is_name_char s
 
+(* CSS Fonts 4 sec. 2.1.1: in an unquoted [<font-family-name>] "any identifier
+   which could be misinterpreted as a pre-defined keyword in the font-family
+   value definition, or the CSS-wide keywords, is not allowed", and a user agent
+   "must not consider these keywords as matching the [<font-family-name>] type".
+   Sec. 2.1.2 spells the pre-defined keywords out: the bare
+   [<generic-font-family>] names listed below, the script-specific generics
+   being functional instead ([generic(fangsong)]). CSS Values 4 sec. 4.2 adds
+   the CSS-wide keywords and the reserved [default], and excludes every entry in
+   all ASCII case permutations. *)
+let font_family_reserved_words =
+  [
+    "serif";
+    "sans-serif";
+    "monospace";
+    "cursive";
+    "fantasy";
+    "system-ui";
+    "math";
+    "ui-serif";
+    "ui-sans-serif";
+    "ui-monospace";
+    "ui-rounded";
+    "inherit";
+    "initial";
+    "unset";
+    "revert";
+    "revert-layer";
+    "default";
+  ]
+
+let is_font_family_reserved_word w =
+  let w = String.lowercase_ascii w in
+  List.exists (String.equal w) font_family_reserved_words
+
+(* A lone word has to clear more than the excluded idents: [read_font_family]
+   below also maps a bare [emoji], [fangsong] or [none] to a keyword rather than
+   a name, so unquoting one changes the value. Inside a sequence they are
+   ordinary [<custom-ident>]s, which is what keeps [Noto Color Emoji]
+   unquoted. *)
+let is_font_family_keyword_name s =
+  let s = String.lowercase_ascii s in
+  is_font_family_reserved_word s
+  || List.exists (String.equal s) [ "emoji"; "fangsong"; "none" ]
+
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
   | _ :: _ :: _ as words ->
-      (* CSS Fonts 4 sec. 2.1.1: a [<family-name>] formed of two or more
-         [<custom-ident>]s is unambiguous - none of its words can be picked up
-         as a property-level CSS-wide keyword once the parser has committed to a
-         multi-token value. So [inherit test] / [revert serif] etc. round-trip
-         unquoted, just like [Times New Roman]. *)
-      List.for_all is_font_family_ident_word words
+      (* The exclusion is stated per identifier, so it holds at every word of a
+         [<custom-ident>+] sequence and not only at a lone one: [inherit test]
+         and [Foo serif] are no more valid family names than [inherit] and
+         [serif] are, and quoting is their only spelling. *)
+      List.for_all
+        (fun w ->
+          is_font_family_ident_word w && not (is_font_family_reserved_word w))
+        words
   | _ -> false
 
 (* Walk a component stream and rewrite each [<string>] token whose content is a
@@ -560,8 +606,8 @@ let can_unquote_font_family_name s =
    property promotion path when the registered syntax accepts [<custom-ident>+]
    - the two forms ([custom-ident>+] vs [<string>]) are spec-equivalent there
    (CSS Fonts 4 sec. 2.1.1), so the rewrite produces a single canonical AST. The
-   guard's "two or more words" rule avoids the CSS-wide-keyword trap (a quoted
-   ["inherit"] never collapses to the bare keyword). *)
+   guard keeps a name holding a reserved word quoted, so no rewrite turns a word
+   of the sequence into a keyword. *)
 let unquote_font_family_strings components =
   let changed = ref false in
   let words_of s =
@@ -591,43 +637,17 @@ let unquote_font_family_strings components =
 (* CSS Fonts 4 sec. 2.1: a [<family-name>] is a [<string>] or a
    [<custom-ident>+], and the two spell the same name. Emit the bare ident
    sequence when it reads back as that same name and quote otherwise: a name
-   that is no ident sequence at all keeps its quotes, and so does a single word
-   colliding with a generic family or a CSS-wide keyword, since dropping the
-   quotes there turns the name into the keyword. The unquoted multi-word form is
-   shorter but is not the CSSOM-canonical serialization, so [enforce_spec] keeps
-   the quotes. *)
+   that is no ident sequence at all keeps its quotes, and so does one whose
+   words include a reserved word, since dropping the quotes there turns the word
+   into the keyword. The unquoted multi-word form is shorter but is not the
+   CSSOM-canonical serialization, so [enforce_spec] keeps the quotes. *)
 let pp_family_name ctx s =
-  let collides_with_keyword =
-    List.mem (String.lowercase_ascii s)
-      [
-        "serif";
-        "sans-serif";
-        "monospace";
-        "cursive";
-        "fantasy";
-        "system-ui";
-        "ui-serif";
-        "ui-sans-serif";
-        "ui-monospace";
-        "ui-rounded";
-        "emoji";
-        "math";
-        "fangsong";
-        "inherit";
-        "initial";
-        "unset";
-        "revert";
-        "revert-layer";
-        "none";
-        "default";
-      ]
-  in
   if
     Pp.minified ctx && (not ctx.Pp.enforce_spec)
     && can_unquote_font_family_name s
   then Pp.string ctx s
-  else if collides_with_keyword || not (is_font_family_ident_word s) then
-    Pp.quoted_string ctx s
+  else if is_font_family_keyword_name s || not (is_font_family_ident_word s)
+  then Pp.quoted_string ctx s
   else Pp.string ctx s
 
 let is_generic_family : font_family -> bool = function
