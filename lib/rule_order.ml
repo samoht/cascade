@@ -522,22 +522,16 @@ let normalize_custom_declaration d =
   Declaration.unquote_custom_font_strings
     (Declaration.map_custom_value normalize_custom_value d)
 
-let rec normalize_custom_values (stmts : statement list) : statement list =
-  List.map
-    (fun stmt ->
-      match stmt with
-      | Rule r ->
-          Rule
-            {
-              r with
-              declarations =
-                List.map normalize_custom_declaration r.declarations;
-              nested = normalize_custom_values r.nested;
-            }
-      | Layer (n, inner) -> Layer (n, normalize_custom_values inner)
-      | Media (c, inner) -> Media (c, normalize_custom_values inner)
-      | Supports (c, inner) -> Supports (c, normalize_custom_values inner)
-      | other -> other)
+(* The fold reads one declaration, so it holds wherever the declaration sits: a
+   [@keyframes] frame and a [@page] box spell a custom property exactly as a
+   style rule does, and no block at-rule changes what the token stream means.
+   {!Stylesheet.map_declarations} reaches every one of those sites, so the pass
+   does not carry a list of the statements it descends through - the list is
+   what left [@scope] and [@starting-style] answering differently from
+   [@layer]. *)
+let normalize_custom_values (stmts : statement list) : statement list =
+  Stylesheet.map_declarations
+    (Common.List.map_preserve normalize_custom_declaration)
     stmts
 
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
@@ -560,23 +554,9 @@ let canonical_color_spelling decl =
   then decl
   else folded
 
-let rec canonical_color_spellings (stmts : statement list) : statement list =
-  List.map
-    (fun stmt ->
-      match stmt with
-      | Rule r ->
-          Rule
-            {
-              r with
-              declarations = List.map canonical_color_spelling r.declarations;
-              nested = canonical_color_spellings r.nested;
-            }
-      | Layer (n, inner) -> Layer (n, canonical_color_spellings inner)
-      | Media (c, inner) -> Media (c, canonical_color_spellings inner)
-      | Supports (c, inner) -> Supports (c, canonical_color_spellings inner)
-      | Container (n, c, inner) ->
-          Container (n, c, canonical_color_spellings inner)
-      | other -> other)
+let canonical_color_spellings (stmts : statement list) : statement list =
+  Stylesheet.map_declarations
+    (Common.List.map_preserve canonical_color_spelling)
     stmts
 
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
@@ -648,21 +628,26 @@ let rec canonical_media (query : Media.t) : Media.t =
   | Media.Type { prefix = Some Media.Not; type_ = Media.All; trailing = Some c }
     ->
       Media.Cond (Media.Not c)
-  | Media.List qs -> Media.List (List.map canonical_media qs)
+  | Media.List qs ->
+      let qs' = Common.List.map_preserve canonical_media qs in
+      if qs' == qs then query else Media.List qs'
   | query -> query
 
+(* [@media] is the only statement whose prelude this rewrites, so it is the only
+   one named; the descent below it is {!Stylesheet.map_statement_children}'s and
+   reaches every block at-rule, including the ones a [@media] can be written
+   inside. *)
 let rec canonical_media_queries (stmts : statement list) : statement list =
-  List.map
+  Common.List.map_preserve
     (fun stmt ->
-      match stmt with
-      | Rule r -> Rule { r with nested = canonical_media_queries r.nested }
-      | Media (q, inner) ->
-          Media (canonical_media q, canonical_media_queries inner)
-      | Layer (n, inner) -> Layer (n, canonical_media_queries inner)
-      | Supports (c, inner) -> Supports (c, canonical_media_queries inner)
-      | Container (n, c, inner) ->
-          Container (n, c, canonical_media_queries inner)
-      | other -> other)
+      let stmt =
+        match stmt with
+        | Media (q, inner) ->
+            let q' = canonical_media q in
+            if q' == q then stmt else Media (q', inner)
+        | stmt -> stmt
+      in
+      Stylesheet.map_statement_children canonical_media_queries stmt)
     stmts
 
 let canonicalize (stmts : statement list) : statement list =

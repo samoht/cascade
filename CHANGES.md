@@ -166,6 +166,13 @@
 - A complete shadow value in an unregistered custom property types its colour
   slot, so named and hex colours and typed `var()` fallbacks compare
   canonically while non-colour identifiers remain opaque (#314)
+- The projection's value folds reach inside every block at-rule. A quoted
+  multi-word family name in a custom property, a whole-byte `color(srgb ...)`
+  and the Level 3 `not all and (...)` media spelling folded inside `@layer` and
+  `@media` but not inside `@scope`, `@starting-style`, `@-moz-document`,
+  `@when`, `@else` or an origin wrapper, so the diff's verdict depended on
+  which at-rule enclosed the rule. A custom property in a `@keyframes` frame or
+  a `@page` box folds too (#393)
 
 ### Library
 
