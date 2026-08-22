@@ -134,6 +134,19 @@
   Sec. 5 generates the box only where `content` computes away from `none`, so an
   empty one is elided on output like an empty style rule and an empty `@page`
   already are (#405)
+- A descriptor a `@counter-style`, `@font-palette-values` or `@view-transition`
+  body rejects is dropped on its own, as is a feature block an
+  `@font-feature-values` body rejects, rather than taking the at-rule and the
+  stylesheet holding it. `@counter-style thumbs { system: cyclic; symbols: "x";
+  zzz: 1 }` parsed to nothing, and the other three lost their whole rule the
+  same way. CSS Syntax 3 sec. 5.4.3 keeps what a block's contents already
+  yielded when one item fails to parse, and Blink 146 keeps all four rules. An
+  `@font-feature-values` body is a list of rules, so an item discarded there
+  ends at its own block rather than at a `;` it has not got, and a `;` with
+  nothing before it costs nothing. Tokens left after a `@font-palette-values` or
+  `@view-transition` or `@counter-style` descriptor value, such as a trailing
+  `!important`, now invalidate the declaration they follow rather than the
+  leftover alone (#419)
 
 ### Minification
 
