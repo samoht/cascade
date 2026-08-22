@@ -31,6 +31,11 @@ val overlap_key_equal : overlap_key -> overlap_key -> bool
 val overlap_key_hash : overlap_key -> int
 (** [overlap_key_hash key] is consistent with {!val-overlap_key_equal}. *)
 
+val overlap_key_compare : overlap_key -> overlap_key -> int
+(** [overlap_key_compare a b] is a total order on overlap keys, consistent with
+    {!val-overlap_key_equal}. Sorting a footprint by it lets a caller merge-walk
+    two footprints instead of scanning one per element of the other. *)
+
 val broad_overlap_key : overlap_key
 (** Key for broad reset-like declarations, such as [all], that may overlap any
     other non-exempt declaration. *)

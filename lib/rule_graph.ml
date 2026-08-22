@@ -128,14 +128,25 @@ let rec decls_order_conflict d1 d2 =
   | [] -> false
   | a :: rest -> declaration_conflicts_with a d2 || decls_order_conflict rest d2
 
+(* [keys] comes from [rule_overlap_keys], which sorts, so the scan stops at the
+   first key past [key] rather than walking the whole list. *)
 let rec overlap_key_in key = function
   | [] -> false
-  | k :: rest -> Shorthand.overlap_key_equal key k || overlap_key_in key rest
+  | k :: rest ->
+      let c = Shorthand.overlap_key_compare key k in
+      c = 0 || (c > 0 && overlap_key_in key rest)
 
+(* Both arguments come from [rule_overlap_keys], which sorts, so this walks the
+   two in step rather than scanning one per element of the other: linear instead
+   of quadratic in the rules' distinct key counts. *)
 let rec overlap_keys_meet a b =
-  match a with
-  | [] -> false
-  | key :: rest -> overlap_key_in key b || overlap_keys_meet rest b
+  match (a, b) with
+  | [], _ | _, [] -> false
+  | x :: xs, y :: ys ->
+      let c = Shorthand.overlap_key_compare x y in
+      if c = 0 then true
+      else if c < 0 then overlap_keys_meet xs b
+      else overlap_keys_meet a ys
 
 let overlap_key_lists_intersect a b =
   let broad = Shorthand.broad_overlap_key in
@@ -251,10 +262,6 @@ module Overlap_key_table = Hashtbl.Make (struct
   let hash = Shorthand.overlap_key_hash
 end)
 
-let add_unique key keys =
-  if List.exists (Shorthand.overlap_key_equal key) keys then keys
-  else key :: keys
-
 let declaration_overlap decl =
   {
     decl;
@@ -265,11 +272,46 @@ let declaration_overlap decl =
 let rule_decl_overlaps (rule : rule) =
   List.map declaration_overlap rule.declarations
 
+(* Written as plain recursion rather than folds over closures, like the conflict
+   tests above: this runs once per rule of every stylesheet, and each closure is
+   allocated per call. *)
+let rec footprint_total n = function
+  | [] -> n
+  | (decl : decl_overlap) :: rest ->
+      footprint_total (n + List.length decl.footprint) rest
+
+let rec fill_keys keys next = function
+  | [] -> next
+  | key :: rest ->
+      keys.(next) <- key;
+      fill_keys keys (next + 1) rest
+
+let rec fill_footprints keys next = function
+  | [] -> ()
+  | (decl : decl_overlap) :: rest ->
+      fill_footprints keys (fill_keys keys next decl.footprint) rest
+
+(* The distinct keys of a sorted array, ascending. *)
+let rec distinct_keys keys i acc =
+  if i < 0 then acc
+  else if i > 0 && Shorthand.overlap_key_equal keys.(i) keys.(i - 1) then
+    distinct_keys keys (i - 1) acc
+  else distinct_keys keys (i - 1) (keys.(i) :: acc)
+
+(* A rule's distinct overlap keys, sorted: [overlap_key_in] and
+   [overlap_keys_meet] read this list once per candidate pair, and sorting is
+   what lets them stop early and merge-walk instead of scanning one list per
+   element of the other. Sorted in one array, since deduplicating against the
+   accumulator scanned it once per key, and [Array.sort] is in place. *)
 let rule_overlap_keys decls =
-  List.fold_left
-    (fun keys decl ->
-      List.fold_left (fun keys key -> add_unique key keys) keys decl.footprint)
-    [] decls
+  let total = footprint_total 0 decls in
+  if total = 0 then []
+  else begin
+    let keys = Array.make total Shorthand.broad_overlap_key in
+    fill_footprints keys 0 decls;
+    Array.sort Shorthand.overlap_key_compare keys;
+    distinct_keys keys (total - 1) []
+  end
 
 let add_bucket bucket key value =
   let prev =
@@ -313,11 +355,8 @@ let source_order_edges t =
   for j = 0 to n - 1 do
     let keys = t.overlap_keys.(j) in
     let candidates =
-      if
-        List.exists
-          (Shorthand.overlap_key_equal Shorthand.broad_overlap_key)
-          keys
-      then List.fold_left (add_candidate j seen) [] !prior_nodes
+      if overlap_key_in Shorthand.broad_overlap_key keys then
+        List.fold_left (add_candidate j seen) [] !prior_nodes
       else collect_bucket by_decl_key Shorthand.broad_overlap_key j seen []
     in
     let candidates =
@@ -847,8 +886,7 @@ let external_candidates graph ~total ~consumed ~seen p =
     end
   in
   let keys = graph.overlap_keys.(p) in
-  if List.exists (Shorthand.overlap_key_equal Shorthand.broad_overlap_key) keys
-  then
+  if overlap_key_in Shorthand.broad_overlap_key keys then
     for k = 0 to total - 1 do
       push k
     done
@@ -933,9 +971,8 @@ let add_produced_edge t graph consume succ left right reason =
 let collect_produced_candidates by_decl_key by_branch graph right seen keys
     prior_nodes =
   let candidates =
-    if
-      List.exists (Shorthand.overlap_key_equal Shorthand.broad_overlap_key) keys
-    then List.fold_left (add_candidate right seen) [] prior_nodes
+    if overlap_key_in Shorthand.broad_overlap_key keys then
+      List.fold_left (add_candidate right seen) [] prior_nodes
     else collect_bucket by_decl_key Shorthand.broad_overlap_key right seen []
   in
   let candidates =
