@@ -99,6 +99,12 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- A same-condition `@media` block is no longer hoisted over a declaration
+  written after a nested rule. CSS Nesting 1 sec. 3.4 keeps that run behind the
+  rule it follows, so it is one more rule the hoist reorders, and
+  `.a { @media (min-width: 1px) { color: red } color: blue; @media (min-width: 1px) { color: green } }`
+  minified to a sheet Chrome computes blue for where the source computes green
+  (#414)
 
 ### Custom properties
 
