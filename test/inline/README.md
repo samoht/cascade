@@ -8,9 +8,9 @@ before and after.
   attribute and empties the `<style>` blocks, in both the default (full) and
   `--minimal` modes.
 - **`cascade --minify`** rewrites each `<style>` block in place (via
-  `minify_page.js`). Idempotence, size and reparse checks all pass on output
-  that renders differently; only this catches a minification that changes the
-  computed style.
+  `minify_page.js`), on its own and again with `--inline-vars`. Idempotence,
+  size and reparse checks all pass on output that renders differently; only
+  this catches a rewrite that changes the computed style.
 
 ```sh
 sh test/inline/run.sh
