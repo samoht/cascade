@@ -24,7 +24,7 @@
   (astring :with-test)
   (eio (and (>= 0.14) :with-test))
   (eio_main (and (>= 0.14) :with-test))
-  lambdasoup
+  markup
   (mdx :with-test)
   (re :with-test)
   (fmt (>= 0.10.0))

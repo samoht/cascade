@@ -1,0 +1,12 @@
+<!doctype html><html><head><style>
+  .measure { display: inline-block; font-family: serif; font-size: 100px }
+  .note    { color: red }
+</style></head><body>
+<!-- A licence header is content: it has to reach the output page. -->
+<div class="measure">V<!-- -->A</div>
+<div class="measure">To<!-- -->wn</div>
+<div class="measure">W<!-- -->A<!-- -->V<!-- -->E</div>
+<p class="note">React writes <!-- --> between adjacent text nodes on purpose;
+each run is measured and rounded on its own, so merging them moves the width.</p>
+<p class="note"><!-- a comment does not stop :empty --></p>
+</body></html>
