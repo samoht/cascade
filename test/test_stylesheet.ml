@@ -6588,29 +6588,26 @@ let theme_defaults_reject_escaping_name () =
     | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  let declarations sheet =
-    Css.statements sheet
-    |> List.concat_map (fun stmt ->
-        Option.value ~default:[] (Css.statement_declarations stmt))
-  in
   List.iter
-    (fun (what, src, name) ->
+    (fun (what, src, name, expected) ->
       let resolved =
         parse src
         |> Css.resolve_theme ~theme_defaults:(fun n ->
             if n = name then Some "red" else None)
       in
-      Alcotest.(check int)
-        (what ^ ": no statement is added")
-        1
-        (List.length (Css.statements resolved));
-      Alcotest.(check int)
-        (what ^ ": no declaration is added")
-        1
-        (List.length (declarations resolved)))
+      Alcotest.(check string)
+        (what ^ ": nothing binds and the reference stays live")
+        expected
+        (Css.to_string ~minify:true resolved))
     [
-      ("a name carrying a [;]", ".a{color:var(--x\\3b y)}", "x;y");
-      ("a name carrying a [}]", ".a{color:var(--x\\7d y)}", "x}y");
+      ( "a name carrying a [;]",
+        ".a{color:var(--x\\3b y)}",
+        "x;y",
+        ".a{color:var(--x\\;y)}" );
+      ( "a name carrying a [}]",
+        ".a{color:var(--x\\7d y)}",
+        "x}y",
+        ".a{color:var(--x\\}y)}" );
     ]
 
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list

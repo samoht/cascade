@@ -83,6 +83,13 @@
 - A registered `<color>` custom property is promoted and fills the colour slot
   of a `box-shadow` inside `@keyframes`, so the same declaration minifies the
   same way wherever it sits (#337)
+- A custom-property name written with an escape is printed with the escapes
+  CSS Syntax 3 sec. 4.3.7 needs to read it back as the same name.
+  `:root{--x\3b y:red}` printed `:root{--x;y:red}`, which cascade's own reader
+  splits into two declarations, and a reference to it printed `var(--x}y)`,
+  which closes the rule around it. The declaration name, the `var()` reference
+  and every shape of its fallback, the `@property` prelude and a `style()`
+  container query all take the escaping (#429)
 
 ### Canonical diff
 

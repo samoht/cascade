@@ -69,6 +69,13 @@ val escape_ident : string -> string
     or hex-escaped per CSS Syntax 3 section 9.1, so that
     [Cursor.of_string (escape_ident s) |> Cursor.ident] yields [s] again. *)
 
+val escape_name : string -> string
+(** [escape_name s] escapes [s] as CSS Syntax 3 section 4.3.7 name code points,
+    with no ident-start rule applied to the first one. It is what serialises a
+    name written after a prefix the caller emits itself, such as the [#] of a
+    hash or the [--] of a dashed ident; {!escape_ident} serialises a whole
+    ident. *)
+
 (** {1 Entry points (section 5.4)} *)
 
 type 'a output = { value : 'a; warnings : Error.t list }
