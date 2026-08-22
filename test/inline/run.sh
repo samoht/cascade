@@ -5,13 +5,12 @@
 # block minified in place). Skips cleanly with no browser or node (e.g. in CI).
 #
 # A difference list is a measurement, so the run says what produced it: the
-# browser version heads the output, and each fetched page carries the hash of
-# the bytes actually measured. fetch.sh freezes every downloaded page
-# (freeze_page.js) and xtest.js pins the browser, leaving computed style a
-# function of the CSS alone.
+# binary under test and the browser version head the output, and each fetched
+# page carries the hash of the bytes actually measured. fetch.sh freezes every
+# downloaded page (freeze_page.js) and xtest.js pins the browser, leaving
+# computed style a function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
-export CASCADE=${CASCADE:-cascade}
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
@@ -34,6 +33,34 @@ if [ -n "$CHROME_VERSION" ] && ! printf '%s\n' "$browser" | grep -qF "$CHROME_VE
   echo "ERROR: CHROME_VERSION=$CHROME_VERSION, but the browser is $browser" >&2
   exit 1
 fi
+
+# The binary under test is this working tree's, built here. Falling back to a
+# `cascade` off $PATH tests whichever release happens to be installed while
+# still printing a confident result, so the run says nothing about the code it
+# was pointed at. CASCADE still wins, for measuring a release on purpose.
+if [ -z "$CASCADE" ]; then
+  if ! (cd "$root" && "$root/scripts/with_switch.sh" dune build bin/main.exe); then
+    echo "ERROR: cannot build bin/main.exe, so there is nothing to test." >&2
+    echo "  Fix the build, or set CASCADE to the binary you mean to measure." >&2
+    exit 1
+  fi
+  CASCADE="$root/_build/default/bin/main.exe"
+fi
+case $CASCADE in
+  */*) ;;
+  *) CASCADE=$(command -v "$CASCADE" 2>/dev/null || echo "$CASCADE") ;;
+esac
+if [ ! -x "$CASCADE" ]; then
+  echo "ERROR: CASCADE is not an executable: $CASCADE" >&2
+  exit 1
+fi
+# Absolute, so the header names one file however the run was started.
+case $CASCADE in
+  /*) ;;
+  *) CASCADE=$(CDPATH= cd "$(dirname "$CASCADE")" && pwd)/$(basename "$CASCADE") ;;
+esac
+export CASCADE
+cascade_version=$("$CASCADE" --version 2>/dev/null | head -1)
 
 # Canonical-difference filter: compares values the way cascade does, so
 # render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
@@ -70,6 +97,7 @@ sha() { # file -> first 12 hex of sha256
   fi | cut -c1-12
 }
 
+echo "cascade: $CASCADE (${cascade_version:-unknown version})"
 echo "browser: $browser"
 echo "compare: canonical"
 fail=0

@@ -13,8 +13,15 @@ before and after.
   computed style.
 
 ```sh
-CASCADE=_build/default/bin/main.exe sh test/inline/run.sh
+sh test/inline/run.sh
 ```
+
+The binary under test is the working tree's: `run.sh` builds `bin/main.exe`
+through the checkout's own opam switch and heads its output with the path and
+version it resolved. `CASCADE` overrides it with a path, to measure an
+installed release on purpose. There is no fallback to a `cascade` on `PATH`,
+which would report on whichever release is installed while reading as a result
+about the branch.
 
 It looks for a headless Chrome on `PATH`, in `$CHROME`, or under the puppeteer
 cache (highest version, ordered numerically), and skips cleanly if none is
