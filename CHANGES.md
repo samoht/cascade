@@ -272,6 +272,13 @@
   not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
   `"-2x"` and `"-"` came out bare in every mode and a browser dropped the whole
   declaration, taking the rest of the font stack with it (#390)
+- A multi-word `font-family` name holding a reserved word keeps its quotes.
+  `"inherit test"`, `"revert serif"` and `"default x"` came out bare under
+  `--minify`, and cascade's own reader then rejected the declaration it had
+  just written. CSS Fonts 4 sec. 2.1.1 excludes a pre-defined `font-family`
+  keyword and a CSS-wide keyword per identifier, and CSS Values 4 sec. 4.2 adds
+  the reserved `default`, so the exclusion reaches every word of a
+  `<custom-ident>+` sequence and the quoted form is the only valid one (#401)
 - A same-condition `@media` block is no longer hoisted over a declaration
   written after a nested rule. CSS Nesting 1 sec. 3.4 keeps that run behind the
   rule it follows, so it is one more rule the hoist reorders, and
