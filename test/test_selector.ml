@@ -820,6 +820,200 @@ let logical_combinator_pseudo_element () =
         (concat [ ".a:not(:where("; pe; "))" ]))
     pseudo_element_spellings
 
+(* CSS Selectors 4 sec. 9. Sec. 3.6.3 allows these after every pseudo-element;
+   the engines are narrower, and disagree with the spec on the four Level 2
+   pseudo-elements ([::first-line:hover] is the spec's own example and both
+   engines drop it), so the rows below follow the engines. *)
+let user_action_pseudo_classes =
+  [ ":hover"; ":active"; ":focus"; ":focus-visible"; ":focus-within" ]
+
+(* CSS Pseudo-Elements 4 sec. 5: an element-backed pseudo-element takes the
+   pseudo-classes a real element takes, bar the ones that would report on the
+   tree it sits in - the tree-structural pseudo-classes (Selectors 4 sec. 13)
+   and [:has()]. *)
+let element_backed_pseudo_classes =
+  user_action_pseudo_classes
+  @ [
+      ":enabled";
+      ":disabled";
+      ":checked";
+      ":defined";
+      ":link";
+      ":target";
+      ":dir(ltr)";
+      ":lang(en)";
+    ]
+
+(* Each probe names a pseudo-class cascade recognises: an unrecognised one is
+   already a parse error at an unforgiving site, whatever precedes it, so it
+   would not tell us anything about the pseudo-element's own rules. *)
+let probe_pseudo_classes =
+  element_backed_pseudo_classes
+  @ [
+      ":root";
+      ":empty";
+      ":first-child";
+      ":only-child";
+      ":nth-child(1)";
+      ":has(.b)";
+    ]
+
+(* What each pseudo-element accepts after it. Rows come from CSS Pseudo-Elements
+   4 sec. 5 for the element-backed ones and from Chrome 151 and WebKit 26.5
+   everywhere else, taking a pseudo-class as accepted when either engine keeps
+   the rule: Selectors 4 sec. 3.6.3 hands the per-pseudo-element list to "other
+   specifications", and for the UA widgets that list is only written down in the
+   engines. *)
+let pseudo_element_pseudo_class_rows =
+  [
+    (* Nothing beyond the logical combinations. *)
+    ( [
+        ":before";
+        ":after";
+        ":first-line";
+        ":first-letter";
+        "::before";
+        "::after";
+        "::first-line";
+        "::first-letter";
+        "::backdrop";
+        "::marker";
+        "::selection";
+        "::target-text";
+        "::spelling-error";
+        "::grammar-error";
+        "::highlight(find)";
+        "::view-transition";
+        "::slotted(p)";
+        "::cue(v)";
+      ],
+      [] );
+    (* The UA widgets that stand in for a real control. *)
+    ( [
+        "::placeholder";
+        "::file-selector-button";
+        "::cue";
+        "::-webkit-input-placeholder";
+        "::-webkit-search-cancel-button";
+        "::-webkit-search-decoration";
+        "::-webkit-datetime-edit";
+        "::-webkit-datetime-edit-fields-wrapper";
+        "::-webkit-datetime-edit-year-field";
+        "::-webkit-datetime-edit-month-field";
+        "::-webkit-datetime-edit-day-field";
+        "::-webkit-datetime-edit-hour-field";
+        "::-webkit-datetime-edit-minute-field";
+        "::-webkit-datetime-edit-second-field";
+        "::-webkit-datetime-edit-millisecond-field";
+        "::-webkit-datetime-edit-meridiem-field";
+        "::-webkit-date-and-time-value";
+        "::-webkit-inner-spin-button";
+        "::-webkit-outer-spin-button";
+        "::-webkit-calendar-picker-indicator";
+        "::-webkit-details-marker";
+      ],
+      user_action_pseudo_classes );
+    (* The scrollbar takes no focus, and reports its own state instead. *)
+    ([ "::-webkit-scrollbar" ], [ ":hover"; ":active"; ":enabled"; ":disabled" ]);
+    (* CSS View Transitions 1 sec. 3.4: the group tree is one deep. *)
+    ( [
+        "::view-transition-group(*)";
+        "::view-transition-image-pair(*)";
+        "::view-transition-old(*)";
+        "::view-transition-new(*)";
+      ],
+      [ ":only-child" ] );
+    ([ "::part(tab)"; "::details-content" ], element_backed_pseudo_classes);
+    (* Names no shipping engine knows: cascade keeps them for forward
+       compatibility and cannot know their rules, so it keeps taking any
+       pseudo-class after them. *)
+    ( [
+        "::-moz-placeholder";
+        "::-ms-input-placeholder";
+        "::cue-region";
+        "::future-pseudo-element";
+        "::foo(bar)";
+        "::deep";
+        "::v-deep";
+        "::ng-deep";
+      ],
+      probe_pseudo_classes );
+  ]
+
+(* CSS Selectors 4 sec. 3.6.3: "Certain pseudo-elements may be immediately
+   followed by any combination of certain pseudo-classes [...] Combinations that
+   are not explicitly allowed are invalid selectors." Which combinations those
+   are is per pseudo-element, so one predicate over all of them cannot answer
+   it: Chrome 151 and WebKit 26.5 keep [::file-selector-button:hover] and drop
+   [::before:hover], and agree on every row below. *)
+let pseudo_element_pseudo_classes () =
+  let concat = String.concat "" in
+  let parses input =
+    match Cursor.option read (Cursor.of_string input) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "selector should parse: %s" input
+  in
+  List.iter
+    (fun (spellings, allowed) ->
+      List.iter
+        (fun pe ->
+          List.iter
+            (fun pc ->
+              let sel = concat [ ".a"; pe; pc ] in
+              if List.mem pc allowed then parses sel else neg_cursor read sel)
+            probe_pseudo_classes;
+          (* Sec. 3.6.3 allows the logical combinations after any pseudo-element
+             and passes the row on to their arguments; what an argument the row
+             rules out costs is then the argument list's own business. [:is()]
+             and [:where()] take a [<forgiving-selector-list>] (sec. 4.1), which
+             drops it and leaves a selector that still parses and matches
+             nothing, so both engines keep the rule whatever the row says. *)
+          List.iter
+            (fun pc -> parses (concat [ ".a"; pe; pc ]))
+            [ ":is(.b)"; ":where(.b)"; ":is(:hover)"; ":not(:is(.b))" ];
+          (* [:not()] takes an unforgiving list, so it goes down with an
+             argument the row rules out. *)
+          List.iter
+            (fun pc ->
+              let sel = concat [ ".a"; pe; ":not("; pc; ")" ] in
+              if List.mem pc allowed then parses sel else neg_cursor read sel)
+            probe_pseudo_classes;
+          (* Only a pseudo-class may follow a pseudo-element at all, so a
+             [:not()] holding anything else goes down with it too - except after
+             a name cascade does not recognise, whose row takes every probe
+             because cascade knows none of its rules. *)
+          let knows_nothing =
+            List.for_all (fun pc -> List.mem pc allowed) probe_pseudo_classes
+          in
+          let sel = concat [ ".a"; pe; ":not(.b)" ] in
+          if knows_nothing then parses sel else neg_cursor read sel)
+        spellings)
+    pseudo_element_pseudo_class_rows;
+  (* The row reaches all the way down a nest of unforgiving lists, and stops at
+     the first forgiving one. *)
+  parses ".a::part(tab):not(:not(:hover))";
+  parses ".a::-webkit-scrollbar:not(:not(:hover))";
+  parses ".a::part(tab):not(:where(.b))";
+  neg_cursor read ".a::part(tab):not(:not(.b))";
+  neg_cursor read ".a::-webkit-scrollbar:not(:not(:focus))";
+  neg_cursor read ".a::before:not(:not(:hover))";
+  neg_cursor read ".a::marker:not(:not(:hover))";
+  (* A whole complex selector never fits where a pseudo-class goes. *)
+  neg_cursor read ".a::part(tab):not(div>.b)";
+  (* No pseudo-element is left to a default: every spelling the compound guard
+     covers names its own row. *)
+  let covered pe =
+    List.exists
+      (fun (spellings, _) -> List.mem pe spellings)
+      pseudo_element_pseudo_class_rows
+  in
+  List.iter
+    (fun pe ->
+      Alcotest.(check bool)
+        (String.concat "" [ "pseudo-class row for "; pe ])
+        true (covered pe))
+    pseudo_element_spellings
+
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
      driving the per-level selector validation into super-linear time (a
@@ -1893,6 +2087,8 @@ let suite =
         pseudo_element_compound_guard;
       test_case "logical combinator pseudo-element" `Quick
         logical_combinator_pseudo_element;
+      test_case "pseudo-element pseudo-classes" `Quick
+        pseudo_element_pseudo_classes;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
