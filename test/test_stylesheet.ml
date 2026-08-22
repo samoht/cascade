@@ -995,6 +995,53 @@ let spec_page_context_properties () =
       "@page { @top-center { @media screen { .x { color: red } } } }";
     ]
 
+(* CSS Cascade 5 sec. 6.2 puts an important author declaration above a normal
+   one whichever was written first, and sec. 6.4 breaks a tie between two of the
+   same importance by order of appearance. The page context cascades on those
+   rules like any other author context, so a duplicate name in a page body or a
+   margin box keeps the important declaration, and the last one when both carry
+   the same importance. Blink 146 reads exactly that back out of
+   [cssRules[0].cssText] in both contexts. Blink serializes the survivors with
+   the normal declarations before the important ones, a consequence of how it
+   builds its property set; cascade keeps the order the author wrote, which
+   names the same declarations. *)
+let spec_page_descriptor_importance () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@page{margin:1cm!important}",
+        "@page { margin: 1cm !important; margin: 2cm }" );
+      ( "@page{margin:2cm!important}",
+        "@page { margin: 1cm; margin: 2cm !important }" );
+      ("@page{margin:2cm}", "@page { margin: 1cm; margin: 2cm }");
+      ( "@page{margin:2cm!important}",
+        "@page { margin: 1cm !important; margin: 2cm !important }" );
+      ( "@page{color:red!important}",
+        "@page { color: red !important; color: blue; color: green }" );
+      (* The important declaration keeps the place it was written in. *)
+      ( "@page{margin:1cm!important;size:A4}",
+        "@page { margin: 1cm !important; size: a4; margin: 2cm }" );
+      (* Sec. 5: a margin box holds a declaration list of its own, and the same
+         cascade decides it. *)
+      ( "@page{@top-center{content:\"a\"!important}}",
+        "@page { @top-center { content: \"a\" !important; content: \"b\" } }" );
+      ( "@page{@top-center{content:\"b\"!important}}",
+        "@page { @top-center { content: \"a\"; content: \"b\" !important } }" );
+      ( "@page{@top-center{content:\"b\"}}",
+        "@page { @top-center { content: \"a\"; content: \"b\" } }" );
+      (* A longhand written after its shorthand is a different name, so neither
+         replaces the other and both stay. Blink expands the pair to longhands
+         and prints [margin: 2cm 1cm 1cm], the same four values. *)
+      ( "@page{margin:1cm;margin-top:2cm}",
+        "@page { margin: 1cm; margin-top: 2cm }" );
+      ( "@page{margin-top:2cm!important;margin:1cm}",
+        "@page { margin-top: 2cm !important; margin: 1cm }" );
+      (* Blink drops a custom property in a page context, so it gives no reading
+         here; the cascade rule that decides every other name decides this one
+         too. *)
+      ("@page{--x:1!important}", "@page { --x: 1 !important; --x: 2 }");
+    ]
+
 let spec_property_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
@@ -1877,6 +1924,7 @@ let stylesheet_tests =
       `Quick,
       spec_page_margin_descriptor_matrix );
     ("spec page context properties", `Quick, spec_page_context_properties);
+    ("spec page descriptor importance", `Quick, spec_page_descriptor_importance);
     ("property rule edges", `Quick, property_rule_edges);
     ("spec property descriptor matrix", `Quick, spec_property_descriptor_matrix);
     ("sheet_item", `Quick, sheet_item_case);
