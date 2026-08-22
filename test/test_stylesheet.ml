@@ -1042,6 +1042,38 @@ let spec_page_descriptor_importance () =
       ("@page{--x:1!important}", "@page { --x: 1 !important; --x: 2 }");
     ]
 
+(* CSS Paged Media 3 sec. 5 gives a margin at-rule a [<declaration-list>], which
+   CSS Syntax 3 sec. 5.4.4 consumes even when it holds nothing, so a margin box
+   with an empty block is valid and Blink 146 reads one back unchanged - a box
+   left empty by a stray [;] too, which sec. 5.4.3 discards with no declaration
+   to validate. Sec. 5 generates the box only where its [content] computes away
+   from [none], so an empty one paints nothing, and {!Css.to_string} elides what
+   paints nothing whether or not the sheet was optimized: an empty box goes the
+   way an empty style rule and an empty [@page] already go, and a page left with
+   neither descriptor nor box goes with it. *)
+let spec_page_margin_box_empty () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ("@page{@top-center{}}", "@page { @top-center { } }");
+      ("@page{@top-center{}}", "@page { @top-center {} }");
+      ("@page{@top-center{}}", "@page { @top-center { ; } }");
+      ( "@page{margin:1cm;@top-center{}}",
+        "@page { margin: 1cm; @top-center { } }" );
+      ( "@page{@top-center{}@bottom-center{content:\"x\"}}",
+        "@page { @top-center { } @bottom-center { content: \"x\" } }" );
+    ];
+  (* An empty block is not a missing one: sec. 5 still asks for a block. *)
+  neg_cursor read_stylesheet "@page { @top-left; }";
+  assert_minify_and_optimize "@page { @top-center { } }" ~minified:""
+    ~optimized:"";
+  assert_minify_and_optimize "@page { margin: 1cm; @top-center { } }"
+    ~minified:"@page{margin:1cm}" ~optimized:"@page{margin:1cm}";
+  assert_minify_and_optimize
+    "@page { @top-center { } @bottom-center { content: \"x\" } }"
+    ~minified:"@page{@bottom-center{content:\"x\"}}"
+    ~optimized:"@page{@bottom-center{content:\"x\"}}"
+
 let spec_property_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
@@ -1293,6 +1325,7 @@ let spec_strict_accepts_valid_stylesheets () =
         "@container sidebar (inline-size > 30em) { .x { display: grid } }" );
       (* Paged Media 3 SS 3.1 permits multiple page pseudo-classes; compound
          vectors are covered by the page descriptor matrix. *)
+      ("empty page margin box", "@page { @top-center { } }");
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
       ( "font-face wildcard unicode range",
@@ -1925,6 +1958,7 @@ let stylesheet_tests =
       spec_page_margin_descriptor_matrix );
     ("spec page context properties", `Quick, spec_page_context_properties);
     ("spec page descriptor importance", `Quick, spec_page_descriptor_importance);
+    ("spec page margin box empty", `Quick, spec_page_margin_box_empty);
     ("property rule edges", `Quick, property_rule_edges);
     ("spec property descriptor matrix", `Quick, spec_property_descriptor_matrix);
     ("sheet_item", `Quick, sheet_item_case);
