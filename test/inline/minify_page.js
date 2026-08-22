@@ -14,7 +14,10 @@ if (!CASCADE) {
 const src = fs.readFileSync(process.argv[2], 'utf8');
 const flags = process.argv.slice(3).join(' ');
 const out = src.replace(/<style([^>]*)>([\s\S]*?)<\/style>/gi, (_m, attrs, css) => {
-  const min = execSync(`"${CASCADE}" fmt --minify ${flags} -`, { input: css, encoding: 'utf8' });
+  // maxBuffer: a real page's <style> runs to megabytes, and the default 1MB
+  // makes execSync throw rather than return the minified sheet.
+  const min = execSync(`"${CASCADE}" fmt --minify ${flags} -`,
+    { input: css, encoding: 'utf8', maxBuffer: 1e9 });
   return `<style${attrs}>${min.trim()}</style>`;
 });
 process.stdout.write(out);

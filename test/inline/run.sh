@@ -166,12 +166,20 @@ done
 # transform, whichever page happened to find it. One that appears the day a
 # site is redesigned is still a defect, but re-run fetch.sh before reading it
 # as a regression in the working tree, and check the hash in the label first.
+#
+# Both transforms run: `apply` and `--minify` fail differently, and a real page
+# carries selectors and feature queries no fixture does, so a minify defect
+# that only a real page reaches goes unmeasured until the leg exists.
 for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
   page="$(basename "$f")@$(sha "$f")"
   tmp=$(mktemp)
   label="real $page minimal"
   if transform "$label" "$tmp" "$CASCADE" apply --minimal "$f"; then
+    check "$label" "$f" "$tmp"
+  fi
+  label="real $page minify"
+  if transform "$label" "$tmp" node "$dir/minify_page.js" "$f"; then
     check "$label" "$f" "$tmp"
   fi
   rm -f "$tmp"

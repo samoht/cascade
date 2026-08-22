@@ -85,3 +85,14 @@ by `fetch.sh`, and they gate the run in the same way: a surviving difference is
 a defect in a transform, whichever page found it. A failure that starts the day
 a site is redesigned is still a defect, but re-run `fetch.sh` before reading it
 as a regression in the working tree.
+
+Every page runs both transforms. `apply` and `--minify` fail differently, and a
+real page carries selectors, feature queries and at-rules no fixture does, so a
+minify defect only a real page reaches stays unmeasured until the leg exists.
+The four pages cost about 25 seconds between them.
+
+Positions are how the two element lists line up, so the comparison runs only as
+far as the first index whose tags disagree. Past a dropped or added element
+every later index compares two different elements, and one structural change
+would report as thousands: `xtest.js` names the index instead and says how many
+elements it did not compare.
