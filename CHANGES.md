@@ -267,6 +267,11 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- A `font-family` name that cannot be spelled as an identifier keeps its
+  quotes. The unquoting guard checked which characters a name is made of but
+  not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
+  `"-2x"` and `"-"` came out bare in every mode and a browser dropped the whole
+  declaration, taking the rest of the font stack with it (#390)
 - A same-condition `@media` block is no longer hoisted over a declaration
   written after a nested rule. CSS Nesting 1 sec. 3.4 keeps that run behind the
   rule it follows, so it is one more rule the hoist reorders, and

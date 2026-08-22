@@ -517,18 +517,31 @@ let rec read_font_variant_east_asian t : font_variant_east_asian =
       | features, _ -> (Features features : font_variant_east_asian))
     t
 
+(* CSS Syntax 3 sec. 4.3.9: an ident sequence starts with a name-start code
+   point, or with a [-] followed by a name-start code point or by a second [-].
+   Sec. 4.2 counts a letter, [_] and a non-ASCII code point as name-start, and
+   adds the digits and [-] to the name code points that may follow. A name
+   needing an escape has no plain ident spelling, so [\] and every other
+   non-name byte fails here and the name is written as a [<string>] instead.
+   Non-ASCII is held to the ASCII rule and stays quoted too. *)
 let is_font_family_ident_word s =
   let len = String.length s in
-  let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false in
-  let is_digit = function '0' .. '9' -> true | _ -> false in
-  let is_ident_char = function
+  let is_name_start = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+    | _ -> false
+  in
+  let is_name_char = function
     | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
     | _ -> false
   in
-  len > 0
-  && (is_alpha s.[0] || s.[0] = '_' || s.[0] = '-')
-  && (not (len >= 2 && s.[0] = '-' && is_digit s.[1]))
-  && String.for_all is_ident_char s
+  let starts_ident =
+    len > 0
+    && (is_name_start s.[0]
+       || Char.equal s.[0] '-'
+          && len >= 2
+          && (is_name_start s.[1] || Char.equal s.[1] '-'))
+  in
+  starts_ident && String.for_all is_name_char s
 
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
@@ -577,16 +590,13 @@ let unquote_font_family_strings components =
 
 (* CSS Fonts 4 sec. 2.1: a [<family-name>] is a [<string>] or a
    [<custom-ident>+], and the two spell the same name. Emit the bare ident
-   sequence when it reads back as that same name and quote otherwise; a single
-   word colliding with a generic family or a CSS-wide keyword must stay quoted,
-   since dropping the quotes turns the name into the keyword. The unquoted
-   multi-word form is shorter but is not the CSSOM-canonical serialization, so
-   [enforce_spec] keeps the quotes. *)
+   sequence when it reads back as that same name and quote otherwise: a name
+   that is no ident sequence at all keeps its quotes, and so does a single word
+   colliding with a generic family or a CSS-wide keyword, since dropping the
+   quotes there turns the name into the keyword. The unquoted multi-word form is
+   shorter but is not the CSSOM-canonical serialization, so [enforce_spec] keeps
+   the quotes. *)
 let pp_family_name ctx s =
-  let safe_ident_char = function
-    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-    | _ -> false
-  in
   let collides_with_keyword =
     List.mem (String.lowercase_ascii s)
       [
@@ -616,9 +626,8 @@ let pp_family_name ctx s =
     Pp.minified ctx && (not ctx.Pp.enforce_spec)
     && can_unquote_font_family_name s
   then Pp.string ctx s
-  else if
-    s = "" || (not (String.for_all safe_ident_char s)) || collides_with_keyword
-  then Pp.quoted_string ctx s
+  else if collides_with_keyword || not (is_font_family_ident_word s) then
+    Pp.quoted_string ctx s
   else Pp.string ctx s
 
 let is_generic_family : font_family -> bool = function
