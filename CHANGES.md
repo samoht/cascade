@@ -40,6 +40,11 @@
   CSS-wide keyword as a corner radius. CSS Backgrounds 3 sec. 5.1 allows only a
   non-negative `<length-percentage>` there, and Chrome and WebKit drop every
   such declaration (#417)
+- An `@layer` block inside a style rule holds nesting content, so
+  `.a { @layer n { color: red } }` keeps its declaration instead of reading the
+  body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested
+  at-rules, and `@layer` was the only one still read as a stylesheet block
+  (#374)
 
 ### Minification
 
@@ -55,6 +60,10 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- An empty `@layer name` inside a style rule keeps its block form. The
+  statement form is a layer-order declaration, which no style rule accepts, so
+  `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor
+  cascade's own reader takes back (#374)
 - A declaration whose value is spec-invalid is discarded inside a `@keyframes`
   frame, matching what a browser does with it there and what cascade already
   did in a style rule (#341)
