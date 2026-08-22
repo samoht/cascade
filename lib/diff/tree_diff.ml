@@ -656,9 +656,13 @@ let container_prefix = function
   | `At_rule -> ""
 
 let container_label container_type condition =
-  match container_prefix container_type with
-  | "" -> condition
-  | prefix -> prefix ^ " " ^ condition
+  match container_type with
+  | `At_rule -> condition
+  (* A nesting container is a rule's own block, and the condition names the rule
+     it belongs to. Prefixing it as the others are prints [& .a], which is a
+     selector matching a [.a] inside the parent, the one thing it is not. *)
+  | `Nesting -> condition ^ " { & }"
+  | container_type -> container_prefix container_type ^ " " ^ condition
 
 (* The statements that carry neither a selector nor a block. Naming them apart
    also keeps them apart in the order keys, where one shared "(other statement)"
@@ -1144,12 +1148,19 @@ let statement_head stmt =
   else head
 
 (* Helper to extract rule information from statements *)
-let strings_of_rule stmt =
+let strings_of_rule (stmt : Css.statement) =
   match Css.as_rule stmt with
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt)
+  (* CSS Nesting 1 sec. 3.4: a run written after a nested statement is a nested
+     declarations rule, which acts as [&]. It has no head to cut at, so the text
+     up to the first brace is its first declaration, which reads in the selector
+     column as a selector it is not. *)
+  | None -> (
+      match stmt with
+      | Declarations decls -> ("&", decls)
+      | _ -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt))
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in

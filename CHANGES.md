@@ -333,6 +333,11 @@
   overlap keys and for its position in the other rule, both of which name a
   property through a fresh buffer, where each is a fact about one declaration.
   `--minify` canonicalises a rule's declaration order the same way (#424)
+- `cascade diff` names a rule's nested block after the rule it belongs to. The
+  container printed as `& .a`, which is a selector matching a `.a` inside the
+  parent rather than the parent's own block, and a run of declarations written
+  after a nested statement was named by its first declaration instead of the
+  `&` that CSS Nesting 1 sec. 3.4 makes it (#385)
 
 ## 1.1.0
 
