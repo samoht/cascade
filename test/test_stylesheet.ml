@@ -1473,22 +1473,27 @@ let spec_lenient_recovery_nested_declaration_run () =
      blue } }"
     ".a{@media screen{color:red;& b{margin:0}background:#00f}}" 1
 
+(* [css] reports exactly [expected] warnings leniently, and [~strict:true]
+   rejects it exactly when the lenient parse warned. *)
+let warns_exactly css expected =
+  let warnings =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.warnings; _ } -> warnings
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" css
+          (Cascade.Error.to_string err)
+  in
+  Alcotest.(check int) ("warnings for " ^ css) expected (List.length warnings);
+  match (Css.of_string ~strict:true css, expected) with
+  | Ok _, 0 -> ()
+  | Error _, 0 -> Alcotest.failf "strict parse rejected warning-free %S" css
+  | Ok _, _ -> Alcotest.failf "strict parse accepted warned-about %S" css
+  | Error _, _ -> ()
+
 (* Each recovered declaration reports once, and [~strict:true] rejects exactly
    the inputs the lenient parse warned about. *)
 let spec_recovery_warns_once_per_declaration () =
-  let check css expected =
-    let warnings =
-      match Css.of_string ~strict:false css with
-      | Ok { Css.warnings; _ } -> warnings
-      | Error err ->
-          Alcotest.failf "lenient parse rejected %S: %s" css
-            (Cascade.Error.to_string err)
-    in
-    Alcotest.(check int) ("warnings for " ^ css) expected (List.length warnings);
-    match (Css.of_string ~strict:true css, expected) with
-    | Ok _, 0 | Error _, _ -> ()
-    | Ok _, _ -> Alcotest.failf "strict parse accepted warned-about %S" css
-  in
+  let check = warns_exactly in
   check ".a { @media screen { color: red; width: 10; background: blue } }" 1;
   check ".a { @media screen { width: 10; height: 20; color: red } }" 2;
   check
@@ -1496,6 +1501,107 @@ let spec_recovery_warns_once_per_declaration () =
      }"
     1;
   check ".a { @media screen { color: red; background: blue } }" 0
+
+(* CSS Paged Media 3 sec. 6: "If an error is encountered during the processing
+   of a declaration block within a page or a margin context, the Rules for
+   handling parsing errors apply; that is, valid declarations within the block
+   are applied." One bad descriptor therefore costs that descriptor, not the
+   [@page] holding it and not the sheet holding that. The discard follows CSS
+   Syntax 3 sec. 5.4.4 for a declaration - up to the next top-level [;], a [{}]
+   met on the way counting as one component value of the value being skipped -
+   and sec. 5.4.2 for an at-rule, which ends at its block or its [;]. Blink 146
+   keeps both neighbours in every case below. *)
+let spec_lenient_recovery_page_descriptors () =
+  let recovered = "@page{margin:1cm;margin-top:2cm}" in
+  lenient_recover "bad descriptor first in @page"
+    "@page { width: 10; margin: 1cm; margin-top: 2cm }" recovered 1;
+  lenient_recover "bad descriptor mid-body in @page"
+    "@page { margin: 1cm; width: 10; margin-top: 2cm }" recovered 1;
+  lenient_recover "bad descriptor last in @page"
+    "@page { margin: 1cm; margin-top: 2cm; width: 10 }" recovered 1;
+  lenient_recover "sole descriptor of @page dropped" "@page { width: 10 }" "" 1;
+  lenient_recover "descriptor invalid in the page context is dropped alone"
+    "@page { margin: 1cm; zzz: 1; margin-top: 2cm }" recovered 1;
+  lenient_recover "curly block inside a dropped page value is skipped with it"
+    "@page { margin: 1cm; width: {1}; margin-top: 2cm }" recovered 1;
+  lenient_recover "two curly blocks in a dropped page value are one skip"
+    "@page { margin: 1cm; width: {1}{2}; margin-top: 2cm }" recovered 1;
+  lenient_recover "tokens after a curly block in a dropped page value"
+    "@page { margin: 1cm; width: {1} 2px; margin-top: 2cm }" recovered 1;
+  (* An unclosed function has no top-level [;] left to stop at - the tokenizer
+     closes it at the end of the block - so it takes the rest of the body, as it
+     does in Blink. *)
+  lenient_recover "unclosed function swallows the rest of the page body"
+    "@page { margin: 1cm; width: calc(1px; margin-top: 2cm }"
+    "@page{margin:1cm}" 1;
+  (* A selector-shaped item is not a declaration, so sec. 5.4.4 skips it as a
+     bad one: with no [;] after its block it takes the body's tail with it, and
+     with a [;] it costs only itself. Blink 146 splits the two the same way. *)
+  lenient_recover "selector-shaped item without a semicolon takes the tail"
+    "@page { margin: 1cm; .a { b: c } margin-top: 2cm }" "@page{margin:1cm}" 1;
+  lenient_recover "selector-shaped item with a semicolon costs only itself"
+    "@page { margin: 1cm; .a { b: c }; margin-top: 2cm }" recovered 1;
+  (* An at-rule ends at its block, so discarding an invalid one leaves the
+     descriptor written after it in the page. *)
+  lenient_recover "unknown page margin rule is dropped alone"
+    "@page { @bogus-box { content: \"x\" } margin: 1cm; margin-top: 2cm }"
+    recovered 1;
+  lenient_recover "at-rule that is no page margin rule is dropped alone"
+    "@page { margin: 1cm; @media screen { color: red } margin-top: 2cm }"
+    recovered 1;
+  lenient_recover "page margin rule with no block ends at its semicolon"
+    "@page { margin: 1cm; @top-center; margin-top: 2cm }" recovered 1
+
+(* A page-margin box holds a declaration block of its own (CSS Paged Media 3
+   sec. 5), so sec. 6 applies inside it too: the descriptors written around a
+   bad one stay in the box, and the box stays in the [@page]. *)
+let spec_lenient_recovery_page_margin_box () =
+  let recovered = "@page{@top-center{content:\"x\";margin:0}}" in
+  lenient_recover "bad descriptor in a page margin box"
+    "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }" recovered 1;
+  lenient_recover "descriptor invalid in a margin box is dropped alone"
+    "@page { @top-center { content: \"x\"; zzz: 1; margin: 0 } }" recovered 1;
+  lenient_recover "at-rule in a page margin box ends at its block"
+    "@page { @top-center { @media screen { a: b } content: \"x\"; margin: 0 } }"
+    recovered 1;
+  lenient_recover "selector-shaped item in a margin box with a semicolon"
+    "@page { @top-center { content: \"x\"; .a { b: c }; margin: 0 } }" recovered
+    1;
+  (* [read_page_margin_rule] rejects a box left with no descriptor, so the box
+     goes with its only item; Blink 146 keeps an empty [@top-center { }]. *)
+  lenient_recover "selector-shaped item alone in a page margin box"
+    "@page { @top-center { .a { b: c } } }" "" 1
+
+(* A dropped descriptor leaves no gap: the page keeps the descriptors written
+   around it in source order, and its margin boxes keep theirs. *)
+let spec_lenient_recovery_page_body_order () =
+  lenient_recover "bad descriptor before a page margin box"
+    "@page { margin: 1cm; width: 10; @top-center { content: \"x\" } \
+     margin-top: 2cm }"
+    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+  lenient_recover "bad descriptor after a page margin box"
+    "@page { margin: 1cm; @top-center { content: \"x\" } width: 10; \
+     margin-top: 2cm }"
+    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+  lenient_recover "bad descriptor between two page margin boxes"
+    "@page { @top-center { content: \"x\" } width: 10; @bottom-center { \
+     content: \"y\" } margin: 1cm }"
+    "@page{margin:1cm;@top-center{content:\"x\"}@bottom-center{content:\"y\"}}"
+    1
+
+(* Each dropped page descriptor reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. A stray [;] is discarded without a
+   declaration to validate (CSS Syntax 3 sec. 5.4.3), so it costs nothing. *)
+let spec_page_recovery_warns_once_per_descriptor () =
+  warns_exactly "@page { margin: 1cm; width: 10; margin-top: 2cm }" 1;
+  warns_exactly "@page { margin: 1cm; width: {1}{2}; margin-top: 2cm }" 1;
+  warns_exactly "@page { width: 10; margin: 1cm; height: 20 }" 2;
+  warns_exactly "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }"
+    1;
+  warns_exactly "@page { margin: 1cm; margin-top: 2cm }" 0;
+  warns_exactly "@page { margin: 1cm;; margin-top: 2cm }" 0;
+  warns_exactly "@page { ; margin: 1cm }" 0;
+  warns_exactly "@page { @top-center { content: \"x\" } margin: 1cm }" 0
 
 let stylesheet_tests =
   [
@@ -1581,6 +1687,18 @@ let stylesheet_tests =
     ( "spec recovery warns once per dropped declaration",
       `Quick,
       spec_recovery_warns_once_per_declaration );
+    ( "spec lenient recovery in a @page body",
+      `Quick,
+      spec_lenient_recovery_page_descriptors );
+    ( "spec lenient recovery in a page margin box",
+      `Quick,
+      spec_lenient_recovery_page_margin_box );
+    ( "spec lenient recovery keeps a @page body in order",
+      `Quick,
+      spec_lenient_recovery_page_body_order );
+    ( "spec page recovery warns once per dropped descriptor",
+      `Quick,
+      spec_page_recovery_warns_once_per_descriptor );
   ]
 
 (* Tests for newly added check functions *)
