@@ -128,6 +128,9 @@ let same_selector_eligible (r : rule) =
   && (not (contains_vendor_pseudo_element r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
+(* [rules] in source order: whether a declaration ends up ahead of a nested
+   block it followed is a question about where the two were written, and the
+   merge order below answers a different one. *)
 let nested_merge_is_safe (rules : rule list) =
   let rec go = function
     | [] | [ _ ] -> true
@@ -304,17 +307,28 @@ let compare_rule_order_key (left_id, (left_rule : rule))
         (Rule_graph.Node_id.to_int right_id)
   | order -> order
 
+(* The precedence DAG holds every pair the merged rule replays in emission
+   order: its declarations, and its nested blocks, which follow all of them. A
+   pair that competes keeps the order it was written in; the rest is free for
+   [compare_rule_order_key] to canonicalise. *)
 let same_selector_merge_order
     (rules_with_ids : (Rule_graph.node_id * rule) list) =
   let rows = Array.of_list rules_with_ids in
   let n = Array.length rows in
+  let nested_keys =
+    Array.map
+      (fun (_, (r : rule)) -> nested_property_keys Prop_set.empty r.nested)
+      rows
+  in
   let succ = Array.make n [] in
   let pred = Array.make n 0 in
   for i = 0 to n - 1 do
     let _, left = rows.(i) in
     for j = i + 1 to n - 1 do
       let _, right = rows.(j) in
-      if not (declaration_blocks_commute left.declarations right.declarations)
+      if
+        (not (declaration_blocks_commute left.declarations right.declarations))
+        || not (Prop_set.disjoint nested_keys.(i) nested_keys.(j))
       then begin
         succ.(i) <- j :: succ.(i);
         pred.(j) <- pred.(j) + 1
@@ -672,14 +686,14 @@ let same_selector_groups g ids =
   |> List.map (fun (_, ids) -> List.rev ids)
 
 let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
-  let rules_with_ids =
-    ordered_ids g ids |> rules_with_ids g |> same_selector_merge_order
-  in
+  let source_order = ordered_ids g ids |> rules_with_ids g in
+  let safe = nested_merge_is_safe (List.map snd source_order) in
+  let rules_with_ids = same_selector_merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
   match rules with
   | [] | [ _ ] -> ()
-  | (first : rule) :: _ when nested_merge_is_safe rules -> (
+  | (first : rule) :: _ when safe -> (
       let merged =
         {
           first with

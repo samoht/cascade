@@ -271,6 +271,11 @@
   conditional group that sets the same property. The safety check saw a nested
   style rule only, so `@media`, `@container` and friends let the merge hoist
   the declaration past them and hand the conditional the win (#352)
+- Merging same-selector rules orders the rules by what their nested blocks set
+  as well as by their declarations, and reads the source order to decide
+  whether a declaration crosses a nested block. The merge order could put the
+  rule carrying the nested block last, leaving that check nothing to look at,
+  so a nested `@media` won over a later declaration that overrode it (#364)
 - A `font-family` name that cannot be spelled as an identifier keeps its
   quotes. The unquoting guard checked which characters a name is made of but
   not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
