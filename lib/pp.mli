@@ -43,6 +43,9 @@ type ctx = {
           feature test. The value is a capability predicate for that exact
           syntax, so lossy rewrites (e.g. static colour folding) are suppressed
           there. *)
+  in_style_rule : bool;
+      (** Set while serialising a style rule's contents, where CSS nesting
+          applies and a statement-form at-rule is not accepted. *)
   lossless : bool;
       (** Set under [--minify --lossless]: suppress colour-channel rounding and
           other colour approximations while keeping exact serialisation
@@ -269,6 +272,13 @@ val in_feature_query : ctx -> bool
 val enter_feature_query : ctx -> ctx
 (** [enter_feature_query ctx] marks [ctx] as inside an [@supports] feature-test
     value. *)
+
+val in_style_rule : ctx -> bool
+(** [in_style_rule ctx] is true while serialising the contents of a style rule,
+    where CSS nesting applies and statement-form at-rules are not accepted. *)
+
+val enter_style_rule : ctx -> ctx
+(** [enter_style_rule ctx] marks [ctx] as inside a style rule's contents. *)
 
 val cond : (ctx -> bool) -> 'a t -> 'a t -> 'a t
 (** [cond predicate then_fmt else_fmt] conditionally chooses formatter based on

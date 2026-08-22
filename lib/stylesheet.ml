@@ -1107,7 +1107,7 @@ let rec pp_rule : rule Pp.t =
   (match (decls, rule.nested) with
   | [], [] -> ()
   | decls, nested ->
-      let ctx = { ctx with level = ctx.level + 1 } in
+      let ctx = Pp.enter_style_rule { ctx with level = ctx.level + 1 } in
       let pp_declarations ctx () =
         Pp.list ~sep:Pp.semicolon_cut
           (Pp.indent Declaration.pp_declaration)
@@ -1153,8 +1153,11 @@ and pp_layer_statement ctx name content =
       Pp.string ctx n
   | None -> ());
   (* For empty layers: use statement form when minifying (more concise), but
-     preserve block form otherwise for roundtrip fidelity *)
-  if content = [] && Pp.minified ctx then Pp.semicolon ctx ()
+     preserve block form otherwise for roundtrip fidelity. A style rule accepts
+     no layer-order declaration, so inside one the block form is the only
+     spelling that survives a re-read. *)
+  if content = [] && Pp.minified ctx && not (Pp.in_style_rule ctx) then
+    Pp.semicolon ctx ()
   else (
     Pp.sp ctx ();
     Pp.braces pp_block ctx content)
@@ -3471,12 +3474,16 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
       Cursor.ws r;
       match Cursor.peek r with
       | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-          let content = Cursor.braces (fun inner -> read_block inner) r in
+          let content =
+            Cursor.braces (fun inner -> read_nesting_block inner) r
+          in
           Layer (None, content)
       | _ ->
           let name = Cursor.ident ~keep_case:true r in
           Cursor.ws r;
-          let content = Cursor.braces (fun inner -> read_block inner) r in
+          let content =
+            Cursor.braces (fun inner -> read_nesting_block inner) r
+          in
           Layer (Some name, content))
   | Some
       (Component.Preserved
