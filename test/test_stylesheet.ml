@@ -6463,6 +6463,32 @@ let s4370_property_value_name_escapes () =
       (".a{anchor-name:--a}", ".a{anchor-name:--a}");
     ]
 
+(* CSS Conditional 3 sec. 2.2: a [<supports-decl>] holds a declaration, and a
+   custom property's name can carry a [;] or a [}] through an escape (CSS Syntax
+   3 sec. 4.3.7). The condition is a capability predicate for that exact name,
+   so it survives the round trip with the escapes that read it back. *)
+let s4370_supports_property_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* The name a [<supports-decl>] tests, in each shape the feature takes: a
+         declaration, an empty value, and an operand of [and]. *)
+      ( "@supports (--x\\3b y:red){.a{color:red}}",
+        "@supports (--x\\;y:red){.a{color:red}}" );
+      ( "@supports (--x\\7d y:red){.a{color:red}}",
+        "@supports (--x\\}y:red){.a{color:red}}" );
+      ( "@supports (--x\\3b y:){.a{color:red}}",
+        "@supports (--x\\;y:){.a{color:red}}" );
+      ( "@supports (--x\\3b y:red) and (color:red){.a{color:red}}",
+        "@supports (--x\\;y:red) and (color:red){.a{color:red}}" );
+      ( "@supports not (--x\\3b y:red){.a{color:red}}",
+        "@supports not (--x\\;y:red){.a{color:red}}" );
+      (* A name needing no escape keeps its spelling. *)
+      ( "@supports (--xy:red){.a{color:red}}",
+        "@supports (--xy:red){.a{color:red}}" );
+      ( "@supports (color:red){.a{color:red}}",
+        "@supports (color:red){.a{color:red}}" );
+    ]
+
 let fidelity_string_escape_preserved () =
   pretty_preserves ".x { content: \"\\41\" }" [ "\\41" ];
   pretty_preserves ".x { content: \"hello\" }" [ "hello" ];
@@ -8628,6 +8654,9 @@ let additional_tests =
     ( "spec syntax 3 4.3.7 property value name escapes",
       `Quick,
       s4370_property_value_name_escapes );
+    ( "spec conditional 3 2.2 supports property name escapes",
+      `Quick,
+      s4370_supports_property_name_escapes );
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );
