@@ -276,6 +276,11 @@
   whether a declaration crosses a nested block. The merge order could put the
   rule carrying the nested block last, leaving that check nothing to look at,
   so a nested `@media` won over a later declaration that overrode it (#364)
+- Merging same-selector rules weighs what a nested block sets against a later
+  declaration by cascade slot rather than by property name. A nested
+  `margin: 2rem` and a later `margin-top: 1rem` write one slot under two names,
+  so the merge read them as disjoint, hoisted the longhand ahead of the nested
+  block and handed the shorthand the win (#364)
 - A `font-family` name that cannot be spelled as an identifier keeps its
   quotes. The unquoting guard checked which characters a name is made of but
   not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
