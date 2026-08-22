@@ -134,6 +134,35 @@ let equal_canonical_lossless_exact_srgb () =
     "an off-grid channel keeps its function" false
     (equal ".a{color:color(srgb .501 0 0)}" ".a{color:maroon}")
 
+(* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
+   the author wrote it, which only matters for a property the nested rule also
+   sets. Where nothing clashes across the boundary the two spellings compute the
+   same values on every element, so the projection has to bring them
+   together. *)
+let canonical_declaration_after_nested_rule () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a disjoint declaration agrees either side of a nested rule" true
+    (equal ".a{color:red;& b{width:1px}}" ".a{& b{width:1px}color:red}");
+  Alcotest.(check bool)
+    "so does one either side of a nested @media" true
+    (equal ".a{width:2px;@media (hover){color:blue}}"
+       ".a{@media (hover){color:blue}width:2px}");
+  (* A [var()] reader writes its own property, never the one it reads, so it
+     crosses a nested definition of that custom property freely. *)
+  Alcotest.(check bool)
+    "a var() reader crosses a nested definition of what it reads" true
+    (equal ".a{width:var(--x);& b{--x:1px}}" ".a{& b{--x:1px}width:var(--x)}");
+  (* The clashing pair is a real difference: hoisting [color] over the nested
+     rule is the miscompile the position exists to prevent. *)
+  Alcotest.(check bool)
+    "a clashing declaration still differs" false
+    (equal ".a{color:red;& b{color:blue}}" ".a{& b{color:blue}color:red}");
+  Alcotest.(check bool)
+    "a longhand still clashes with a crossed shorthand" false
+    (equal ".a{margin-top:2px;& b{margin:1px}}"
+       ".a{& b{margin:1px}margin-top:2px}")
+
 (* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
    are one value wherever the stream is substituted. *)
@@ -1416,6 +1445,8 @@ let suite =
         equal_prune_unused_custom_props;
       Alcotest.test_case "canonical folds a zero hue-rotate in a custom value"
         `Quick canonical_custom_hue_rotate_zero;
+      Alcotest.test_case "canonical folds a disjoint trailing declaration"
+        `Quick canonical_declaration_after_nested_rule;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
         canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
