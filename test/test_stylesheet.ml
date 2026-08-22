@@ -6661,6 +6661,48 @@ let fidelity_color_space_preserved () =
 
 (* {2 @supports (CSS Conditional L4 sec. 2)} *)
 
+(* CSS Conditional 4 sec. 2.5: a feature query asks the browser whether it
+   supports a declaration, and a vendor prefix is the author saying support is
+   not universal. The web-features dataset behind {!Baseline} tracks unprefixed
+   features only, so a prefixed property has no fact either way and its guard is
+   load-bearing: Chrome answers false to both [(-webkit-hyphens: none)] and
+   [(-moz-orient: inline)], which no unprefixed baseline predicts. A custom
+   property is a different case - sec. 2.5 makes every custom property
+   declaration supported - so [(--x: y)] still elides. *)
+let conditional4_2_vendor_prefixed_guard_kept () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed ->
+        parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "a prefixed feature query keeps its guard"
+    "@supports(-webkit-hyphens:none){.x{color:red}}"
+    (normalize "@supports (-webkit-hyphens: none) { .x { color: red } }");
+  Alcotest.(check string)
+    "a negated prefixed feature query keeps its rule"
+    "@supports not (-webkit-hyphens:none){.x{color:red}}"
+    (normalize "@supports not (-webkit-hyphens: none) { .x { color: red } }");
+  Alcotest.(check string)
+    "a prefixed property with a prefixed value keeps its guard"
+    "@supports(-webkit-appearance:-apple-pay-button){.x{color:red}}"
+    (normalize
+       "@supports (-webkit-appearance: -apple-pay-button) { .x { color: red } }");
+  Alcotest.(check bool)
+    "a prefixed conjunct survives a mixed condition" true
+    (Astring.String.is_infix ~affix:"-webkit-hyphens"
+       (normalize
+          "@supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) \
+           { .x { color: red } }"));
+  Alcotest.(check string)
+    "a custom property declaration is supported, so its guard goes"
+    ".x{color:red}"
+    (normalize "@supports (--x: y) { .x { color: red } }");
+  Alcotest.(check string)
+    "an unprefixed baseline guard still goes" ".x{display:grid}"
+    (normalize "@supports (display: grid) { .x { display: grid } }")
+
 (* CSS Conditional Rules Module Level 4, section 2 (The @supports rule): the
    rule body parses as a rule list (like a stylesheet) and round- trips
    preserved. The supports-condition grammar accepts declarations, [not], [and],
@@ -8779,6 +8821,9 @@ let additional_tests =
     ( "spec conditional 4 2 supports preserved",
       `Quick,
       conditional4_2_supports_preserved );
+    ( "spec conditional 4 2 vendor-prefixed guard kept",
+      `Quick,
+      conditional4_2_vendor_prefixed_guard_kept );
     ( "spec conditional 4 2 supports invalid (negative)",
       `Quick,
       conditional4_2_supports_invalid_rejected );
