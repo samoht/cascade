@@ -47,6 +47,12 @@
   but pseudo-classes after a pseudo-element and sec. 4.5 keeps pseudo-elements
   out of `:has()`, whatever the pseudo-element's name, and Chrome and WebKit
   drop every selector that breaks either rule (#418)
+- `:not()` rejects a pseudo-element in its argument, as `:has()` already did,
+  so `.a:not(::before)` no longer parses and prints back as `.a:not(:before)`.
+  Selectors 4 sec. 4.3 gives `:not()` a `<complex-real-selector-list>`, built
+  by sec. 16 out of compound selectors with no pseudo-element among them, and
+  the list is unforgiving, so Chrome and WebKit drop the whole rule where
+  `:is()` and `:where()` drop only the offending item (#426)
 - A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
   value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
   it back as the same name. `@layer a\3b b` printed `@layer a;b`, two

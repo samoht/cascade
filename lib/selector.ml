@@ -1336,11 +1336,16 @@ and read_has_content t =
 
 and read_not_content t =
   let selectors = read_complex_list t in
-  (* CSS Selectors 4 sec. 4.3: [:not()] is non-forgiving, so an unknown selector
-     inside it invalidates the whole rule. Top-level lists keep unknown
-     pseudo-classes for forward compatibility. *)
+  (* CSS Selectors 4 sec. 4.3: [:not()] takes a [<complex-real-selector-list>],
+     which sec. 16 builds out of [<compound-selector>]s alone, with no
+     [<pseudo-compound-selector>] and so no pseudo-element. It is also
+     non-forgiving, so a pseudo-element or an unknown selector anywhere in the
+     argument invalidates the whole rule instead of just its own item. Top-level
+     lists keep unknown pseudo-classes for forward compatibility. *)
   List.iter
     (fun sel ->
+      if has_pseudo_element sel then
+        Cursor.err t ":not() cannot contain pseudo-elements";
       if has_unknown_pseudo_class sel then
         Cursor.err t ":not() cannot contain an unknown pseudo-class")
     selectors;
