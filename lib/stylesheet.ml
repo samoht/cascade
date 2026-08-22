@@ -1816,8 +1816,11 @@ let skip_invalid_item r =
    Paged Media 3 sec. 6 says as much of a page or a margin context in so many
    words: "valid declarations within the block are applied". Strict mode ([not
    (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
-   lenient parse warns about. *)
-let read_items_with_recovery step r init =
+   lenient parse warns about. [skip] discards the item that failed, and which
+   one it is depends on the body: {!skip_invalid_item} for a body of
+   declarations, {!skip_past_rule} for a body of rules, where an item that opens
+   a block ends at that block rather than at a [;] it does not have. *)
+let read_items_with_recovery ~skip step r init =
   let rec loop state =
     if Cursor.recover r then recovering state else continue (step r state)
   and recovering state =
@@ -1827,7 +1830,7 @@ let read_items_with_recovery step r init =
     | exception Error.Parse_error e ->
         Cursor.push_warning r e;
         Cursor.restore r start;
-        skip_invalid_item r;
+        skip r;
         loop state
   and continue = function
     | `Done result -> result
@@ -1877,7 +1880,9 @@ let read_descriptor_step normalize inner acc =
   | `Descriptor desc -> `More (normalize desc acc)
 
 let read_descriptor_block normalize inner =
-  read_items_with_recovery (read_descriptor_step normalize) inner []
+  read_items_with_recovery ~skip:skip_invalid_item
+    (read_descriptor_step normalize)
+    inner []
 
 (* CSS Fonts 4 sec. 4.4: a descriptor range whose startpoint is larger than its
    endpoint is well defined, the user agent swapping the two endpoints for font
@@ -2249,33 +2254,34 @@ let read_counter_string_descriptor constructor r =
       value)
     constructor r
 
-let read_counter_style_descriptor (r : Cursor.t) :
-    counter_style_descriptor option =
+(* CSS Counter Styles 3 sec. 3: "unknown descriptors are invalid and ignored".
+   One descriptor of the body, the caller looping over the rest, so a descriptor
+   that fails leaves the ones already read untouched. The declaration is the
+   whole of the descriptor's value: an [!important] flag, which no descriptor
+   takes, invalidates the declaration it follows rather than being left over as
+   an item of its own, as it is in Blink 146. *)
+let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
+  let name = Cursor.ident ~keep_case:false r |> String.lowercase_ascii in
+  let descriptor =
+    match name with
+    | "system" -> read_counter_style_system_descriptor r
+    | "symbols" -> read_counter_symbols_descriptor r
+    | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
+    | "prefix" -> read_counter_symbol_descriptor (fun s -> Prefix s) r
+    | "fallback" -> read_counter_string_descriptor (fun s -> Fallback s) r
+    | "range" -> read_counter_string_descriptor (fun s -> Range s) r
+    | "pad" -> read_counter_string_descriptor (fun s -> Pad s) r
+    | "negative" -> read_counter_string_descriptor (fun s -> Negative s) r
+    | "additive-symbols" ->
+        read_counter_string_descriptor (fun s -> Additive_symbols s) r
+    | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
+    | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
+  in
   Cursor.ws r;
-  if Cursor.is_done r then None
-  else if Cursor.peek_semicolon r then (
-    Cursor.skip r;
-    None)
-  else
-    let name = Cursor.ident ~keep_case:false r |> String.lowercase_ascii in
-    let descriptor =
-      match name with
-      | "system" -> read_counter_style_system_descriptor r
-      | "symbols" -> read_counter_symbols_descriptor r
-      | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
-      | "prefix" -> read_counter_symbol_descriptor (fun s -> Prefix s) r
-      | "fallback" -> read_counter_string_descriptor (fun s -> Fallback s) r
-      | "range" -> read_counter_string_descriptor (fun s -> Range s) r
-      | "pad" -> read_counter_string_descriptor (fun s -> Pad s) r
-      | "negative" -> read_counter_string_descriptor (fun s -> Negative s) r
-      | "additive-symbols" ->
-          read_counter_string_descriptor (fun s -> Additive_symbols s) r
-      | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
-      | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
-    in
-    Cursor.ws r;
-    if Cursor.peek_semicolon r then Cursor.skip r;
-    Some descriptor
+  if not (Cursor.is_done r || Cursor.peek_semicolon r) then
+    Cursor.err_invalid r ("trailing tokens after @counter-style " ^ name);
+  if Cursor.peek_semicolon r then Cursor.skip r;
+  descriptor
 
 let counter_style_descriptor_rank = function
   | System _ -> 0
@@ -2297,19 +2303,24 @@ let replace_counter_style_descriptor desc acc =
          <> counter_style_descriptor_rank desc)
        acc
 
-let continue_descriptor_loop inner acc loop =
+(* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
+   sec. 5.4.3 discards with no declaration to validate, or the end of the
+   body. *)
+let read_descriptor_body_step read_one replace inner acc =
   Cursor.ws inner;
-  if Cursor.is_done inner then List.rev acc else loop acc
+  if Cursor.is_done inner then `Done (List.rev acc)
+  else if Cursor.peek_semicolon inner then (
+    Cursor.skip inner;
+    `More acc)
+  else `More (replace (read_one inner) acc)
 
 let read_counter_style_descriptors r =
   Cursor.braces
     (fun inner ->
-      let rec loop acc =
-        match read_counter_style_descriptor inner with
-        | Some desc -> loop (replace_counter_style_descriptor desc acc)
-        | None -> continue_descriptor_loop inner acc loop
-      in
-      loop [])
+      read_items_with_recovery ~skip:skip_invalid_item
+        (read_descriptor_body_step read_counter_style_descriptor
+           replace_counter_style_descriptor)
+        inner [])
     r
 
 let counter_style_system descriptors =
@@ -2485,7 +2496,8 @@ let read_page_step inner (descriptors, margins) =
       | `Descriptor desc -> `More (replace_descriptor desc descriptors, margins)
       )
 
-let read_page_body inner = read_items_with_recovery read_page_step inner ([], [])
+let read_page_body inner =
+  read_items_with_recovery ~skip:skip_invalid_item read_page_step inner ([], [])
 
 let read_page (r : Cursor.t) : statement =
   Cursor.with_context r "@page" @@ fun () ->
@@ -2537,44 +2549,45 @@ let read_override_color_entry c =
   Cursor.ws c;
   (Float.to_int index, color)
 
-let read_font_palette_descriptor outer inner : font_palette_descriptor option =
+(* CSS Fonts 4 sec. 12.1 gives each [@font-palette-values] descriptor a grammar
+   of its own, and the declaration is the whole of it: a trailing [!important]
+   or a stray ident makes the declaration invalid rather than the leftover
+   alone, as it does in Blink 146. *)
+let read_font_palette_descriptor outer inner : font_palette_descriptor =
+  let desc_name = Cursor.ident ~keep_case:false inner in
   Cursor.ws inner;
-  if Cursor.is_done inner then None
-  else if Cursor.peek_semicolon inner then (
-    Cursor.skip inner;
-    None)
-  else
-    let desc_name = Cursor.ident ~keep_case:false inner in
-    Cursor.ws inner;
-    if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
-    Cursor.ws inner;
-    let desc =
-      match desc_name with
-      | "font-family" ->
-          Palette_font_family
-            (Cursor.list ~sep:Cursor.comma Properties.read_font_family inner)
-      | "base-palette" -> Base_palette (read_base_palette_value inner)
-      | "override-colors" ->
-          Override_colors
-            (Cursor.list ~sep:Cursor.comma ~at_least:1 read_override_color_entry
-               inner)
-      | name ->
-          Cursor.err_invalid outer
-            ("unknown font-palette-values descriptor: " ^ name)
-    in
-    Cursor.ws inner;
-    if Cursor.peek_semicolon inner then Cursor.skip inner;
-    Some desc
+  if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+  Cursor.ws inner;
+  let desc =
+    match desc_name with
+    | "font-family" ->
+        Palette_font_family
+          (Cursor.list ~sep:Cursor.comma Properties.read_font_family inner)
+    | "base-palette" -> Base_palette (read_base_palette_value inner)
+    | "override-colors" ->
+        Override_colors
+          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_override_color_entry
+             inner)
+    | name ->
+        Cursor.err_invalid outer
+          ("unknown font-palette-values descriptor: " ^ name)
+  in
+  Cursor.ws inner;
+  if not (Cursor.is_done inner || Cursor.peek_semicolon inner) then
+    Cursor.err_invalid outer
+      ("trailing tokens after @font-palette-values " ^ desc_name);
+  if Cursor.peek_semicolon inner then Cursor.skip inner;
+  desc
 
 let read_font_palette_descriptors outer =
-  let rec loop inner acc =
-    match read_font_palette_descriptor outer inner with
-    | Some desc -> loop inner (replace_font_palette_descriptor desc acc)
-    | None ->
-        Cursor.ws inner;
-        if Cursor.is_done inner then List.rev acc else loop inner acc
-  in
-  Cursor.braces (fun inner -> loop inner []) outer
+  Cursor.braces
+    (fun inner ->
+      read_items_with_recovery ~skip:skip_invalid_item
+        (read_descriptor_body_step
+           (read_font_palette_descriptor outer)
+           replace_font_palette_descriptor)
+        inner [])
+    outer
 
 let font_palette_descriptor_rank = function
   | Palette_font_family _ -> 0
@@ -2645,7 +2658,6 @@ let read_font_feature_values_entries outer =
   Cursor.braces (fun inner -> loop inner []) outer
 
 let read_font_feature_values_block outer inner =
-  Cursor.ws inner;
   match Cursor.at_keyword_opt inner with
   | None -> Cursor.err_expected inner "@font-feature-values nested at-rule"
   | Some name ->
@@ -2654,13 +2666,26 @@ let read_font_feature_values_block outer inner =
         Cursor.err_invalid outer ("unknown @font-feature-values block: @" ^ name);
       (name, read_font_feature_values_entries inner)
 
+(* CSS Fonts 4 sec. 11.1 fills the body with feature value blocks, so it is a
+   list of rules rather than of declarations: a block the body rejects ends at
+   its own [{}] or at a [;] (CSS Syntax 3 sec. 5.4.2), which leaves the blocks
+   written around it in the rule. A [;] with nothing before it has no
+   declaration to validate and is discarded (sec. 5.4.3). *)
+let read_font_feature_values_step outer inner acc =
+  Cursor.ws inner;
+  if Cursor.is_done inner then `Done (List.rev acc)
+  else if Cursor.peek_semicolon inner then (
+    Cursor.skip inner;
+    `More acc)
+  else `More (read_font_feature_values_block outer inner :: acc)
+
 let read_font_feature_values_blocks outer =
-  let rec loop inner acc =
-    Cursor.ws inner;
-    if Cursor.is_done inner then List.rev acc
-    else loop inner (read_font_feature_values_block outer inner :: acc)
-  in
-  Cursor.braces (fun inner -> loop inner []) outer
+  Cursor.braces
+    (fun inner ->
+      read_items_with_recovery ~skip:skip_past_rule
+        (read_font_feature_values_step outer)
+        inner [])
+    outer
 
 let read_font_feature_values (r : Cursor.t) : statement =
   Cursor.with_context r "@font-feature-values" @@ fun () ->
@@ -2711,39 +2736,35 @@ let read_view_transition_types inner =
       in
       Types (Some (names [ first ]))
 
-let read_view_transition_descriptor outer inner :
-    view_transition_descriptor option =
+(* CSS View Transitions 2 sec. 2.4 gives each [@view-transition] descriptor a
+   grammar of its own, and the declaration is the whole of it. *)
+let read_view_transition_descriptor outer inner : view_transition_descriptor =
+  let desc_name = Cursor.ident ~keep_case:false inner in
   Cursor.ws inner;
-  if Cursor.is_done inner then None
-  else if Cursor.peek_semicolon inner then (
-    Cursor.skip inner;
-    None)
-  else
-    let desc_name = Cursor.ident ~keep_case:false inner in
-    Cursor.ws inner;
-    if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
-    Cursor.ws inner;
-    let desc =
-      match desc_name with
-      | "navigation" -> read_view_transition_navigation inner
-      | "types" -> read_view_transition_types inner
-      | name ->
-          Cursor.err_invalid outer
-            ("unknown @view-transition descriptor: " ^ name)
-    in
-    Cursor.ws inner;
-    if Cursor.peek_semicolon inner then Cursor.skip inner;
-    Some desc
+  if not (Cursor.colon inner) then Cursor.err_expected inner "':'";
+  Cursor.ws inner;
+  let desc =
+    match desc_name with
+    | "navigation" -> read_view_transition_navigation inner
+    | "types" -> read_view_transition_types inner
+    | name ->
+        Cursor.err_invalid outer ("unknown @view-transition descriptor: " ^ name)
+  in
+  Cursor.ws inner;
+  if not (Cursor.is_done inner || Cursor.peek_semicolon inner) then
+    Cursor.err_invalid outer
+      ("trailing tokens after @view-transition " ^ desc_name);
+  if Cursor.peek_semicolon inner then Cursor.skip inner;
+  desc
 
 let read_view_transition_descriptors outer =
   Cursor.braces
     (fun inner ->
-      let rec loop acc =
-        match read_view_transition_descriptor outer inner with
-        | Some desc -> loop (replace_view_transition_descriptor desc acc)
-        | None -> continue_descriptor_loop inner acc loop
-      in
-      loop [])
+      read_items_with_recovery ~skip:skip_invalid_item
+        (read_descriptor_body_step
+           (read_view_transition_descriptor outer)
+           replace_view_transition_descriptor)
+        inner [])
     outer
 
 let read_view_transition (r : Cursor.t) : statement =
@@ -3111,7 +3132,7 @@ let read_property_step r state =
   else `More (read_property_descriptor r state)
 
 let read_property_descriptors (r : Cursor.t) : property_reader_state =
-  read_items_with_recovery read_property_step r
+  read_items_with_recovery ~skip:skip_invalid_item read_property_step r
     { syntax = None; inherits = None; initial_value = None }
 
 let read_property_rule (r : Cursor.t) : statement =
