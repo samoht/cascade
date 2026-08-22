@@ -137,6 +137,9 @@
   `@supports-condition` body as a reference, so it no longer emits a name whose
   definition it deleted, and reports an overridden variable referenced from any
   of those at-rules through `~warn` (#342)
+- `Css.inline_vars` unwraps an `@layer` and drops an `@property` registration
+  written inside a rule, as it already did at top level. CSS nesting puts both
+  there, and a sheet using it came back half cleaned (#373)
 - A custom property registered by `@property` is typed wherever it is
   declared, including inside `@keyframes`, `@position-try` and
   `@supports-condition`, so the same registered value canonicalises the same

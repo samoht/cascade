@@ -709,23 +709,18 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
   | Ok { stylesheet; _ } -> stylesheet
   | Error error -> Error.fail error
 
-let rec statements_for_inline statement =
-  let inline_block block = List.concat_map statements_for_inline block in
+(* Splicing a [@layer] body into its parent replaces one statement with several,
+   which [edit_statements] cannot express and which does not need it: the splice
+   is the [concat_map] over a block, and the descent below it is still
+   [map_statement_children]'s, so an at-rule added later is walked without a
+   word here. *)
+let rec statements_for_inline block = List.concat_map statement_for_inline block
+
+and statement_for_inline statement =
   match statement with
-  | Layer (_, block) -> List.concat_map statements_for_inline block
+  | Layer (_, block) -> statements_for_inline block
   | Layer_decl _ | Property _ -> []
-  | Media (condition, block) -> [ Media (condition, inline_block block) ]
-  | Supports (condition, block) -> [ Supports (condition, inline_block block) ]
-  | Moz_document (conditions, block) ->
-      [ Moz_document (conditions, inline_block block) ]
-  | Container (name, condition, block) ->
-      [ Container (name, condition, inline_block block) ]
-  | Scope (start, end_, block) -> [ Scope (start, end_, inline_block block) ]
-  | Origin (origin, block) -> [ Origin (origin, inline_block block) ]
-  | When (condition, block) -> [ When (condition, inline_block block) ]
-  | Else (condition, block) -> [ Else (condition, inline_block block) ]
-  | Starting_style block -> [ Starting_style (inline_block block) ]
-  | statement -> [ statement ]
+  | statement -> [ map_statement_children statements_for_inline statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
    rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
@@ -780,7 +775,7 @@ let inline_vars ?keep_vars ?warn stylesheet =
     | None -> Inline.vars ?warn stylesheet
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
-  List.concat_map statements_for_inline substituted
+  statements_for_inline substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a
    stylesheet. Used by [resolve_theme] to know which names to ask the
