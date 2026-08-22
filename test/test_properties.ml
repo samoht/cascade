@@ -2149,6 +2149,45 @@ let test_font_family () =
   check_font_family ~roundtrip:true ~expected:"inter" "\"inter\"";
   check_font_family ~roundtrip:true ~expected:"OPEN SANS" "\"OPEN SANS\"";
   check_font_family ~roundtrip:true ~expected:"Open Sans" "\"Open Sans\"";
+  (* CSS Syntax 3 sec. 4.3.9 gates when a name may be spelled as an ident at
+     all: the first code point must be a name-start code point, or a [-]
+     followed by a name-start code point or by a second [-]. A name that fails
+     that test has no unquoted spelling - CSS Fonts 4 sec. 2.1.1 leaves only the
+     [<string>] arm of [<family-name>] - and emitting it bare makes the browser
+     drop the whole declaration. *)
+  check_font_family ~roundtrip:true ~expected:"\"2Brand\"" "\"2Brand\"";
+  check_font_family ~roundtrip:true ~expected:"\"9\"" "\"9\"";
+  check_font_family ~roundtrip:true ~expected:"\"-2x\"" "\"-2x\"";
+  check_font_family ~roundtrip:true ~expected:"\"-\"" "\"-\"";
+  (* The guard is not a minify choice: the unminified printer picks the same
+     spelling. *)
+  check_font_family ~minify:false ~roundtrip:true ~expected:"\"2Brand\""
+    "\"2Brand\"";
+  check_font_family ~minify:false ~roundtrip:true ~expected:"\"-2x\"" "\"-2x\"";
+  (* The other side of sec. 4.3.9: a second [-] starts an ident sequence, and
+     sec. 4.2 counts [_] as a name-start code point, so these do unquote. *)
+  check_font_family ~roundtrip:true ~expected:"--brand" "\"--brand\"";
+  check_font_family ~roundtrip:true ~expected:"--" "\"--\"";
+  check_font_family ~roundtrip:true ~expected:"-x" "\"-x\"";
+  check_font_family ~roundtrip:true ~expected:"_brand" "\"_brand\"";
+  check_font_family ~roundtrip:true ~expected:"_" "\"_\"";
+  (* Sec. 4.2: [.] is not a name code point, and sec. 4.3.7 reads [\] as the
+     start of an escape, so [a\b] would name the family [ab]. Both stay
+     quoted. *)
+  check_font_family ~roundtrip:true ~expected:"\"Foo.Bar\"" "\"Foo.Bar\"";
+  check_font_family ~roundtrip:true ~expected:"\"a\\\\b\"" "\"a\\\\b\"";
+  (* Every word of a [<custom-ident>+] sequence is an ident in its own right, so
+     the same start rule gates each of them. *)
+  check_font_family ~roundtrip:true ~expected:"\"Brand -\"" "\"Brand -\"";
+  check_font_family ~roundtrip:true ~expected:"\"3 Rounded\"" "\"3 Rounded\"";
+  (* CSS Fonts 4 sec. 2.1 spells [font-family] as [[ <family-name> |
+     <generic-family> ]#], so the bare keyword is the generic and only the
+     quoted form names a family; CSS Values 4 sec. 4.2 excludes the CSS-wide
+     keywords and the reserved [default] from [<custom-ident>]. Unquoting any of
+     these changes the meaning rather than the spelling. *)
+  check_font_family ~roundtrip:true ~expected:"\"serif\"" "\"serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"inherit\"" "\"inherit\"";
+  check_font_family ~roundtrip:true ~expected:"\"default\"" "\"default\"";
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)

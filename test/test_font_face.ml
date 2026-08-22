@@ -396,6 +396,71 @@ let spec_fontface_family_descriptor_verbatim () =
       Alcotest.failf "@font-face family name rewrites:\n%s"
         (String.concat "\n" mismatches)
 
+(* The [font-family] descriptor, every reference to it, and
+   [@font-feature-values] share one family-name printer, so one bad ident
+   spelling breaks all three at once. CSS Syntax 3 sec. 4.3.9: a name starting
+   with a digit, or with [-] followed by a digit, or consisting of a lone [-],
+   does not start an ident sequence, so it has no [<custom-ident>] spelling and
+   CSS Fonts 4 sec. 2.1.1 leaves only the [<string>] one. Each output is re-read
+   in strict mode: what the printer emits names the same family. *)
+let spec_family_name_ident_start () =
+  let check (name, input, expected) =
+    let fail fmt = Fmt.kstr (fun s -> Some s) fmt in
+    match Css.of_string ~strict:false input with
+    | Error _ -> fail "%s: parse rejected %S" name input
+    | Ok { Css.stylesheet; _ } -> (
+        let actual = Css.to_string ~minify:true stylesheet |> String.trim in
+        if not (String.equal actual expected) then
+          fail "%s\n  input:    %S\n  expected: %S\n  actual:   %S" name input
+            expected actual
+        else
+          match Css.of_string ~strict:true actual with
+          | Error e ->
+              fail "%s: output does not read back: %S\n  %s" name actual
+                (Error.to_string e)
+          | Ok { Css.stylesheet; _ } ->
+              let again =
+                Css.to_string ~minify:true stylesheet |> String.trim
+              in
+              if String.equal again actual then None
+              else
+                fail "%s: not a fixpoint\n  once:  %S\n  twice: %S" name actual
+                  again)
+  in
+  match
+    List.filter_map check
+      [
+        ( "a name starting with a digit stays quoted in the descriptor",
+          "@font-face{font-family:\"2Brand\";src:url(a.woff2)}",
+          "@font-face{font-family:\"2Brand\";src:url(a.woff2)}" );
+        ( "a name starting with a digit stays quoted in a reference",
+          ".a{font-family:\"2Brand\",sans-serif}",
+          ".a{font-family:\"2Brand\",sans-serif}" );
+        ( "a name starting with a digit stays quoted in the font shorthand",
+          ".a{font:12px/1.5 \"2Brand\"}",
+          ".a{font:12px/1.5 \"2Brand\"}" );
+        ( "a name starting with a digit stays quoted in @font-feature-values",
+          "@font-feature-values \"2Brand\"{@styleset{x:1}}",
+          "@font-feature-values \"2Brand\"{@styleset{x:1}}" );
+        ( "hyphen then digit stays quoted",
+          ".a{font-family:\"-2x\"}",
+          ".a{font-family:\"-2x\"}" );
+        ( "a lone hyphen stays quoted",
+          ".a{font-family:\"-\"}",
+          ".a{font-family:\"-\"}" );
+        ( "a lone hyphen keeps a multi-word name quoted",
+          ".a{font-family:\"Brand -\"}",
+          ".a{font-family:\"Brand -\"}" );
+        ( "a double hyphen starts an ident sequence and unquotes",
+          ".a{font-family:\"--brand\"}",
+          ".a{font-family:--brand}" );
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "family names spelled as invalid idents:\n%s"
+        (String.concat "\n" mismatches)
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -424,4 +489,6 @@ let suite =
         spec_fontface_var_descriptor_edges;
       test_case "spec font-face family descriptor verbatim" `Quick
         spec_fontface_family_descriptor_verbatim;
+      test_case "spec family name ident start" `Quick
+        spec_family_name_ident_start;
     ] )
