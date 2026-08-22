@@ -614,16 +614,35 @@ let rec count_containers_in_list container_type containers =
 let count_containers_by_type container_type (diff : t) =
   count_containers_in_list container_type diff.containers
 
-let has_container_added_of_type container_type (diff : t) =
+(* [Modified] holds the containers that came and went inside a container that
+   survived, so an existence query reads the same tree
+   [count_containers_in_list] counts: a flat [List.exists] would answer no about
+   a container the count reports, which is an answer about the shape of the diff
+   rather than about the stylesheets. *)
+let rec exists_container here containers =
   List.exists
+    (fun cont ->
+      here cont
+      ||
+      match cont with
+      | Modified { container_changes; _ } ->
+          exists_container here container_changes
+      | Added _ | Removed _ | Reordered _ | Block_structure_changed _ -> false)
+    containers
+
+let has_container_added_of_type container_type (diff : t) =
+  exists_container
     (function
-      | Added { container_type = ct; _ } -> ct = container_type | _ -> false)
+      | Added { container_type = ct; _ } -> ct = container_type
+      | Removed _ | Modified _ | Reordered _ | Block_structure_changed _ ->
+          false)
     diff.containers
 
 let has_container_removed_of_type container_type (diff : t) =
-  List.exists
+  exists_container
     (function
-      | Removed { container_type = ct; _ } -> ct = container_type | _ -> false)
+      | Removed { container_type = ct; _ } -> ct = container_type
+      | Added _ | Modified _ | Reordered _ | Block_structure_changed _ -> false)
     diff.containers
 
 let container_prefix = function

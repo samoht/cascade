@@ -176,6 +176,10 @@
 
 ### Library
 
+- `Cascade_diff.Tree_diff.has_container_added_of_type` and
+  `has_container_removed_of_type` look inside a container reported as modified,
+  as `count_containers_by_type` already did. A `@supports` added inside an
+  existing `@media` was counted but not found (#395)
 - `Cascade.Resolve.Make.resolve` and `Cascade.Resolve.layer_order` document
   every block they leave out, not just conditional groups: `@starting-style`
   declares a before-change style, `@scope` brings a scoping root and the
