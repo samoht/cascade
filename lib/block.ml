@@ -162,6 +162,25 @@ let rec leaf_rules ?parent stmt =
   | stmt ->
       List.concat_map (fun s -> leaf_rules ?parent s) (statement_children stmt)
 
+(* A declarations run outside any style rule: [leaf_rules] reports nothing for
+   it, so an analysis that must see every declaration refuses rather than read
+   that silence as "no conflict". *)
+let rec holds_unattributed_run stmt =
+  match stmt with
+  | Declarations _ -> true
+  | Media (_, b)
+  | Supports (_, b)
+  | Layer (_, b)
+  | Container (_, _, b)
+  | Starting_style b
+  | Origin (_, b)
+  | Moz_document (_, b)
+  | Scope (_, _, b)
+  | When (_, b)
+  | Else (_, b) ->
+      List.exists holds_unattributed_run b
+  | _ -> false
+
 (* Two declarations an element computes differently once they swap order: they
    write a common longhand slot, and they are not the same declaration. Reading
    the slots off the shorthand footprint rather than the property name is what
@@ -194,12 +213,21 @@ let needs_distant_media_merge stmts =
 
 (* CSS Conditional 3: same-condition [@media] blocks are spec-equivalent to one
    block. Merge a later block into the first occurrence when hoisting it past
-   the intervening statements cannot reorder a conflicting rule. *)
-let merge_distant_media ~optimize_merged_block stmts =
+   the intervening statements cannot reorder a conflicting rule.
+
+   [owner] is the style rule whose body [stmts] is, when it is one. A
+   declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
+   3.4), so the analysis below only sees it once it can name the rule the run
+   belongs to. *)
+let merge_distant_media ?owner ~optimize_merged_block stmts =
   if not (needs_distant_media_merge stmts) then stmts
   else
+    let leaves stmts = List.concat_map (leaf_rules ?parent:owner) stmts in
+    let unattributed stmts =
+      Option.is_none owner && List.exists holds_unattributed_run stmts
+    in
     let try_merge out cond block : statement list option =
-      let hoisted = List.concat_map leaf_rules block in
+      let hoisted = leaves block in
       let rec split before :
           statement list ->
           (statement list * statement list * statement list) option = function
@@ -218,11 +246,12 @@ let merge_distant_media ~optimize_merged_block stmts =
       match split [] out with
       | None -> None
       | Some (before, target, after) when List.for_all crossable after ->
-          let crossed = List.concat_map leaf_rules after in
+          let crossed = leaves after in
           if
-            List.exists
-              (fun h -> List.exists (rules_conflict h) crossed)
-              hoisted
+            unattributed block || unattributed after
+            || List.exists
+                 (fun h -> List.exists (rules_conflict h) crossed)
+                 hoisted
           then None
           else Some (before @ [ Media (cond, target @ block) ] @ after)
       | Some _ -> None

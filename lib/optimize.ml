@@ -152,13 +152,13 @@ let split_vendor_selector_lists (stmts : statement list) : statement list =
       | other -> [ other ])
     stmts
 
-let rec statements ?factor_cache ~ctx ~enforce_spec ~nesting
+let rec statements ?factor_cache ~ctx ~enforce_spec ~owner
     (stmts : statement list) : statement list =
   match stmts with
   | [] -> stmts
   | _ ->
       let optimize_merged_block =
-        statements ?factor_cache ~ctx ~enforce_spec ~nesting
+        statements ?factor_cache ~ctx ~enforce_spec ~owner
       in
       (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
          invalid and ignored by browsers, so it must not act as a cascade
@@ -171,7 +171,7 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~nesting
           |> merge_named_layers_by_name |> split_vendor_selector_lists
         in
         let stmts =
-          process_statements ?factor_cache ~ctx ~enforce_spec ~nesting [] stmts
+          process_statements ?factor_cache ~ctx ~enforce_spec ~owner [] stmts
         in
         let stmts =
           if Ctx.regroup ctx then synthesize_nesting_statements stmts else stmts
@@ -179,7 +179,7 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~nesting
         let stmts =
           stmts
           |> merge_consecutive_media ~optimize_merged_block
-          |> merge_distant_media ~optimize_merged_block
+          |> merge_distant_media ?owner ~optimize_merged_block
           |> merge_consecutive_supports ~optimize_merged_block
           |> merge_consecutive_containers ~optimize_merged_block
         in
@@ -191,7 +191,7 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~nesting
    popping the next pending segment when the list is exhausted. This lets
    [process_supports_statement] splice three segments without materialising
    their concatenation. *)
-and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
+and process_statements ?factor_cache ~ctx ~enforce_spec ~owner
     ?(pending : statement list list = []) (acc : statement list)
     (remaining : statement list) : statement list =
   match remaining with
@@ -199,35 +199,35 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
       match pending with
       | [] -> List.rev acc
       | next :: rest_pending ->
-          process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
+          process_statements ?factor_cache ~ctx ~enforce_spec ~owner
             ~pending:rest_pending acc next)
   | (Rule r as stmt) :: rest ->
-      process_rule_run ?factor_cache ~ctx ~enforce_spec ~nesting ~pending acc
-        stmt r rest
+      process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc stmt
+        r rest
   | (Media (cond, block) as stmt) :: rest ->
-      process_media_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_media_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt cond block rest
   | (Container (name, cond, block) as stmt) :: rest ->
-      process_container_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+      process_container_statement ?factor_cache ~ctx ~enforce_spec ~owner
         ~pending acc stmt name cond block rest
   | Supports (cond, block) :: rest ->
-      process_supports_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+      process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner
         ~pending acc cond block rest
   | (Scope (start, end_, block) as stmt) :: rest ->
       let start' = option_map_preserve canonicalize_scope_selector start in
       let end_' = option_map_preserve canonicalize_scope_selector end_ in
       let optimized_block =
-        statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+        statements ?factor_cache ~ctx ~enforce_spec ~owner block
       in
       let optimized =
         if start' == start && end_' == end_ && optimized_block == block then
           stmt
         else Scope (start', end_', optimized_block)
       in
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         (optimized :: acc) rest
   | (Origin (origin, block) as stmt) :: rest ->
-      process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt block
         (fun block -> Origin (origin, block))
         rest
@@ -235,33 +235,33 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
      like [@media]'s: a group left out here keeps whatever the author wrote and
      [--minify] does nothing inside it. *)
   | (Moz_document (cond, block) as stmt) :: rest ->
-      process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt block
         (fun block -> Moz_document (cond, block))
         rest
   | (When (cond, block) as stmt) :: rest ->
-      process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt block
         (fun block -> When (cond, block))
         rest
   | (Else (cond, block) as stmt) :: rest ->
-      process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt block
         (fun block -> Else (cond, block))
         rest
   | (Starting_style block as stmt) :: rest ->
-      process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt block
         (fun block -> Starting_style block)
         rest
   | (Layer (name, block) as stmt) :: rest ->
-      process_layer_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         acc stmt name block rest
   | (Import import as stmt) :: rest ->
-      process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting
-        ~pending acc stmt import rest
+      process_import_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
+        acc stmt import rest
   | (Declarations decls as stmt) :: rest ->
-      process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+      process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~owner
         ~pending acc stmt decls rest
   (* Listed rather than closed with a wildcard: everything left holds no block,
      so a statement that grows one has to be classified above before it
@@ -272,47 +272,47 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~nesting
      | Font_palette_values _ | Font_feature_values _ | View_transition _
      | Position_try _ | Viewport _ | Unknown_at_rule _ ) as hd)
     :: rest ->
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         (hd :: acc) rest
 
 (* A run of declarations is a declaration list wherever it sits, and nothing
    comes between two writes inside one, so the same deduplication a rule body
    gets applies (CSS Cascade 5 sec. 6.4.4: the later write wins). *)
-and process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~nesting
+and process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~owner
     ~pending acc stmt decls rest =
   let decls' = declaration_run ~ctx decls in
   let stmt = if decls' == decls then stmt else Declarations decls' in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (stmt :: acc) rest
 
-and process_group_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
-    acc stmt block rebuild rest =
+and process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
+    stmt block rebuild rest =
   let optimized_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+    statements ?factor_cache ~ctx ~enforce_spec ~owner block
   in
   let optimized =
     if optimized_block == block then stmt else rebuild optimized_block
   in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (optimized :: acc) rest
 
-and process_rule_run ?factor_cache ~ctx ~enforce_spec ~nesting ~pending acc stmt
-    r rest =
+and process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc stmt r
+    rest =
   let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
   let optimized = rules_aux ?factor_cache ~ctx ~enforce_spec plain_rules in
   let as_statements =
     if optimized == plain_rules then plain_stmts
     else List.map (fun r -> Rule r) optimized
   in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (List.rev_append as_statements acc)
     rest
 
-and process_media_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
-    acc stmt cond block rest =
+and process_media_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
+    stmt cond block rest =
   let cond = if enforce_spec then cond else Media.lower_for_minify cond in
   let optimized_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+    statements ?factor_cache ~ctx ~enforce_spec ~owner block
   in
   let optimized =
     if
@@ -321,17 +321,17 @@ and process_media_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
     then stmt
     else Media (cond, optimized_block)
   in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (optimized :: acc) rest
 
-and process_container_statement ?factor_cache ~ctx ~enforce_spec ~nesting
-    ~pending acc stmt name cond block rest =
+and process_container_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
+    acc stmt name cond block rest =
   let cond =
     if enforce_spec then cond
     else option_map_preserve Container.lower_for_minify cond
   in
   let optimized_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+    statements ?factor_cache ~ctx ~enforce_spec ~owner block
   in
   let optimized =
     if
@@ -340,20 +340,20 @@ and process_container_statement ?factor_cache ~ctx ~enforce_spec ~nesting
     then stmt
     else Container (name, cond, optimized_block)
   in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (optimized :: acc) rest
 
-and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~nesting
-    ~pending acc cond block rest =
+and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
+    acc cond block rest =
   let optimized_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+    statements ?factor_cache ~ctx ~enforce_spec ~owner block
   in
   let baseline =
     if enforce_spec then `Cond cond else Supports.simplify_baseline cond
   in
   match baseline with
   | `True when block_introduces_layer_order optimized_block ->
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         (Supports (cond, optimized_block) :: acc)
         rest
   | `True ->
@@ -363,48 +363,48 @@ and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~nesting
          adjacent rules across the segment boundary into one run - the whole
          point of unwrapping a baseline-true @supports. Tail-recursive
          [List.concat] so a long [optimized_block] cannot stack-overflow. *)
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending acc
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
         (List.concat [ trailing; optimized_block; rest ])
   | `False ->
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending acc
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
         rest
   | `Cond cond' ->
-      process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
         (Supports (cond', optimized_block) :: acc)
         rest
 
-and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
-    acc stmt name block rest =
+and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
+    stmt name block rest =
   let optimized_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting block
+    statements ?factor_cache ~ctx ~enforce_spec ~owner block
   in
   if is_layer_empty optimized_block then
     match name with
     (* A style rule holds no layer-order declaration, so inside one the empty
        block keeps its block form; folding it to [Layer_decl] emits CSS every
        engine drops. *)
-    | Some _ when nesting ->
-        process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+    | Some _ when Option.is_some owner ->
+        process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
           (Layer (name, optimized_block) :: acc)
           rest
     | Some layer_name ->
         let all_names, remaining =
           collect_empty_layer_names [ layer_name ] rest
         in
-        process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+        process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
           (Layer_decl all_names :: acc)
           remaining
     | None ->
-        process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
-          acc rest
+        process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending acc
+          rest
   else
     let optimized =
       if optimized_block == block then stmt else Layer (name, optimized_block)
     in
-    process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+    process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
       (optimized :: acc) rest
 
-and process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+and process_import_statement ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     acc stmt import rest =
   let stmt =
     match import.supports with
@@ -413,19 +413,20 @@ and process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
         Import { import with supports = None }
     | _ -> stmt
   in
-  process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~pending
     (stmt :: acc) rest
 
 (* Optimize one rule's nested statements recursively, then drop the redundant
    nesting prefix (see [drop_nesting_prefix]) and let a run written after them
-   rejoin the rule's own declarations wherever the cascade allows. *)
+   rejoin the rule's own declarations wherever the cascade allows. The body is
+   the rule's, so it optimizes with the rule as owner. *)
 and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec rule =
   let nested =
     match rule.nested with
     | [] -> []
     | nested ->
         let nested =
-          statements ?factor_cache ~ctx ~enforce_spec ~nesting:true nested
+          statements ?factor_cache ~ctx ~enforce_spec ~owner:(Some rule) nested
         in
         if enforce_spec then nested
         else list_map_preserve drop_nesting_prefix nested
@@ -508,10 +509,10 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
 let statements_top_level ?factor_cache ~ctx ~enforce_spec
     (stmts : statement list) : statement list =
   let optimize_merged_block =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting:false
+    statements ?factor_cache ~ctx ~enforce_spec ~owner:None
   in
   let stmts' =
-    statements ?factor_cache ~ctx ~enforce_spec ~nesting:false stmts
+    statements ?factor_cache ~ctx ~enforce_spec ~owner:None stmts
     |> merge_consecutive_layers ~optimize_merged_block
     |> drop_redundant_layer_decls |> drop_shadowed_keyframes
   in
@@ -523,7 +524,8 @@ let single_rule ?scope (rule : rule) : rule =
     hoist_declaration_runs
       {
         rule with
-        nested = statements ~ctx ~enforce_spec:false ~nesting:true rule.nested;
+        nested =
+          statements ~ctx ~enforce_spec:false ~owner:(Some rule) rule.nested;
       }
   in
   {
