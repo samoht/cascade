@@ -26,6 +26,16 @@ val mentioned_custom_names : Stylesheet.t -> string list
     included), or queried by a [style()] container query. A [@property] body is
     not a mention, so a registration never keeps itself. *)
 
+val layer_order : Stylesheet.t -> string list option
+(** [layer_order stylesheet] is the cascade layer order [stylesheet] declares,
+    weakest first, as one dotted path per layer, or [None] when the order
+    depends on something static analysis cannot settle: a layer first named
+    inside a conditional group is introduced there only when the condition
+    holds, and one named inside an {!Stylesheet.Origin} block belongs to that
+    origin's own stack. This is the order {!vars} resolves a custom property
+    defined across several layers against, and [None] is the answer that stops
+    it. *)
+
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
     quotes from an [@import] URL string as held in
