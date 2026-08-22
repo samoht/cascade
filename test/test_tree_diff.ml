@@ -480,6 +480,57 @@ let count_containers_media () =
   let count = Cascade_diff.Tree_diff.count_containers_by_type `Media d in
   Alcotest.(check bool) "at least one media container" true (count >= 1)
 
+(* A container that survived is reported as [Modified] and carries the
+   containers that came and went inside it, so a container added one level down
+   is in the diff but not at its top level. [count_containers_by_type] descends
+   into [Modified], and the two existence queries name the same containers, so
+   they answer for the same set: a query that says no about a container the
+   count reports is answering about the shape of the diff rather than about the
+   stylesheets. *)
+let nested_container_added_is_found () =
+  let expected = parse "@media print { .a { color: red } }" in
+  let actual =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int)
+    "the nested @supports is counted" 1
+    (Cascade_diff.Tree_diff.count_containers_by_type `Supports d);
+  Alcotest.(check bool)
+    "and the same @supports is found as added" true
+    (Cascade_diff.Tree_diff.has_container_added_of_type `Supports d)
+
+let nested_container_removed_is_found () =
+  let expected =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let actual = parse "@media print { .a { color: red } }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check int)
+    "the nested @supports is counted" 1
+    (Cascade_diff.Tree_diff.count_containers_by_type `Supports d);
+  Alcotest.(check bool)
+    "and the same @supports is found as removed" true
+    (Cascade_diff.Tree_diff.has_container_removed_of_type `Supports d)
+
+(* An added container is not a removed one and the reverse, however deep it
+   sits. *)
+let nested_container_added_is_not_removed () =
+  let expected = parse "@media print { .a { color: red } }" in
+  let actual =
+    parse
+      "@media print { .a { color: red } @supports (color: red) { .b { color: \
+       blue } } }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "the nested addition is not reported as a removal" false
+    (Cascade_diff.Tree_diff.has_container_removed_of_type `Supports d)
+
 let count_containers_zero () =
   let css = parse ".a { color: red }" in
   let d = Cascade_diff.Tree_diff.diff ~expected:css ~actual:css in
@@ -1241,6 +1292,12 @@ let suite =
         single_rule_diff_multiple_changes;
       Alcotest.test_case "count containers media" `Quick count_containers_media;
       Alcotest.test_case "count containers zero" `Quick count_containers_zero;
+      Alcotest.test_case "nested container added is found" `Quick
+        nested_container_added_is_found;
+      Alcotest.test_case "nested container removed is found" `Quick
+        nested_container_removed_is_found;
+      Alcotest.test_case "nested container added is not removed" `Quick
+        nested_container_added_is_not_removed;
       Alcotest.test_case "nesting modified" `Quick diff_nesting_modified;
       Alcotest.test_case "nesting identical" `Quick diff_nesting_identical;
       Alcotest.test_case "nesting child added" `Quick diff_nesting_child_added;
