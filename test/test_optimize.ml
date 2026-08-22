@@ -1586,7 +1586,16 @@ let test_distant_media_merge () =
      theme;@media(width>=1px){a{color:#00f}}"
     (minify_str
        "@media (width>=1px){a{color:red}}@layer theme;@media \
-        (width>=1px){a{color:blue}}")
+        (width>=1px){a{color:blue}}");
+  (* A crossed shorthand writes the longhand slot the hoisted block writes, so
+     the two do not commute even though no property name is shared: hoisting
+     computes blue where the source computes green. *)
+  Alcotest.(check string)
+    "keeps blocks apart when a crossed shorthand writes the same slot"
+    "@media(width>=1px){a{background-color:red}}a{background:#00f}@media(width>=1px){a{background-color:green}}"
+    (minify_str
+       "@media (width>=1px){a{background-color:red}}a{background:blue}@media \
+        (width>=1px){a{background-color:green}}")
 
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
