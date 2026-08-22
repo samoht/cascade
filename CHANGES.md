@@ -59,6 +59,19 @@
   stylesheet-level reader and lost its block too. CSS Nesting 1 sec. 3.3 nests
   any at-rule whose body carries style rules, and Blink 146 keeps every one of
   these shapes whole (#384)
+- An at-rule with no style rule in its body is rejected inside a style rule
+  instead of being kept. CSS Nesting 1 sec. 3.3 nests only an at-rule whose body
+  carries style rules, so `.a { @font-face { ... } }`, `@keyframes`, `@property`,
+  `@page`, `@counter-style`, `@position-try`, `@font-palette-values`,
+  `@font-feature-values`, `@viewport` and `@supports-condition` are invalid
+  there, as is an `@else` with no preceding `@when`; each is dropped with a
+  warning that `Css.of_string ~strict:true` turns into an error, and the
+  declarations written around it stay in the rule. `@view-transition` is kept,
+  since Blink 146 still reads it there (#388)
+- Discarding an at-rule that is invalid inside a style rule ends at the at-rule
+  rather than at the next semicolon. `.a { @import url(x) { } color: red }` lost
+  `color: red`, and an `@import` inside a nested group rule took the whole group
+  with it (#388)
 
 ### Minification
 
