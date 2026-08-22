@@ -2908,6 +2908,28 @@ let test_nesting_check_stylesheet () =
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
+(* A nested @layer holds nesting content: bare declarations belong to the parent
+   selector, exactly as in @media/@supports. Blink and WebKit both read
+   [.a{@layer n{color:red}}] as a layer block wrapping nested declarations. *)
+let spec_nesting_layer_block () =
+  test_nesting_roundtrip ~expected:".a{@layer n{color:red}}"
+    ".a { @layer n { color: red; } }";
+  test_nesting_roundtrip ~expected:".a{@layer{color:red}}"
+    ".a { @layer { color: red; } }";
+  test_nesting_roundtrip ~expected:".a{color:red;@layer n{color:blue}}"
+    ".a { color: red; @layer n { color: blue; } }";
+  test_nesting_roundtrip ~expected:".a{@layer n{& b{color:red}}}"
+    ".a { @layer n { & b { color: red; } } }";
+  test_nesting_idempotent ".a { @layer n { color: red; } }"
+
+(* The statement form [@layer n;] is only a layer-order declaration, which no
+   style rule can contain: both Blink and WebKit drop it. An empty nested layer
+   therefore keeps its block form so the output re-reads. *)
+let spec_nesting_empty_layer_keeps_block () =
+  test_nesting_roundtrip ~expected:".a{@layer n{}}" ".a { @layer n { } }";
+  test_nesting_idempotent ".a { @layer n { } }";
+  test_nesting_roundtrip ~expected:"@layer n;" "@layer n { }"
+
 let spec_nesting_selector_edges () =
   assert_minify_and_optimize
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
@@ -7010,6 +7032,12 @@ let additional_tests =
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
+    ( "spec nesting @layer block holds nesting content",
+      `Quick,
+      spec_nesting_layer_block );
+    ( "spec nesting empty @layer keeps block form",
+      `Quick,
+      spec_nesting_empty_layer_keeps_block );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
