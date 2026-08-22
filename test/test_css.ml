@@ -806,6 +806,155 @@ let public_custom_props_declaration_sites () =
   Alcotest.(check (list string))
     "unlayered sibling still reported" [ "--x"; "--out" ] (custom_props layered)
 
+(* A [@layer] inside a conditional group is ordinary CSS: the group decides
+   whether its contents apply, not whether the layer exists, and a layer named
+   there is the same layer a sibling block names (css-cascade-5 sec. 6.4). A
+   caller asking which layers a sheet declares gets a wrong answer, not a
+   conservative one, when such a block is skipped. *)
+let public_layers_conditional_groups () =
+  let styled = rule ~selector:(Selector.class_ "a") [ color (hex "#111111") ] in
+  let block = Stylesheet.Layer (Some "inner", [ styled ]) in
+  let decl = Stylesheet.Layer_decl [ "declared" ] in
+  let groups =
+    [
+      ("@media", fun b -> Stylesheet.Media (Media.of_string "screen", b));
+      ( "@supports",
+        fun b -> Stylesheet.Supports (Supports.of_string "(top: 0)", b) );
+      ("@container", fun b -> Stylesheet.Container (None, None, b));
+      ("@layer", fun b -> Stylesheet.Layer (Some "outer", b));
+      ("@origin", fun b -> Stylesheet.Origin (Stylesheet.Author, b));
+      ( "@scope",
+        fun b -> Stylesheet.Scope (Some (Selector.class_ "card"), None, b) );
+      ("@starting-style", fun b -> Stylesheet.Starting_style b);
+      ( "@-moz-document",
+        fun b ->
+          Stylesheet.Moz_document
+            ([ Stylesheet.Url_prefix (Some "https://example.com/") ], b) );
+      ( "@when",
+        fun b ->
+          Stylesheet.When
+            (Stylesheet.Media_condition (Media.of_string "screen"), b) );
+      ("@else", fun b -> Stylesheet.Else (None, b));
+      ("style rule", fun b -> rule ~selector:(Selector.class_ "b") ~nested:b []);
+    ]
+  in
+  let qualify label name = if label = "@layer" then "outer." ^ name else name in
+  let missing =
+    List.filter_map
+      (fun (label, group) ->
+        let sheet = v [ group [ block; decl ] ] in
+        let want_block = qualify label "inner" in
+        let want_decl = qualify label "declared" in
+        let names = layers sheet in
+        if
+          List.mem want_block names && List.mem want_decl names
+          && layer_block want_block sheet <> None
+        then None
+        else Some label)
+      groups
+  in
+  if missing <> [] then
+    Alcotest.failf "layer not reported inside: %s" (String.concat ", " missing);
+  (* A sublayer of an anonymous [@layer { }] has no name any caller can ask for,
+     so it is not one of the sheet's declared layers. *)
+  Alcotest.(check (list string))
+    "anonymous layer hides its sublayers" []
+    (layers (v [ Stylesheet.Layer (None, [ block ]) ]));
+  (* Names come in source order, so a caller reading them reads the order the
+     sheet introduces its layers in. *)
+  Alcotest.(check (list string))
+    "names in source order"
+    [ "first"; "second"; "third" ]
+    (layers
+       (v
+          [
+            Stylesheet.Layer_decl [ "first" ];
+            Stylesheet.Media
+              ( Media.of_string "screen",
+                [ Stylesheet.Layer (Some "second", [ styled ]) ] );
+            Stylesheet.Layer (Some "third", [ styled ]);
+          ]))
+
+(* [vars_of_rules] answers the same question as [vars_of_stylesheet] over the
+   statements it is given, so it reports a reference wherever a declaration
+   sits: nested in a rule, inside any grouping at-rule, and in an at-rule that
+   holds declarations without a block. A [var()] no walk reaches is a variable a
+   caller thinks nothing needs. *)
+let public_vars_declaration_sites () =
+  let decl = Declaration.of_string "color:var(--x)" in
+  let styled = rule ~selector:(Selector.class_ "a") [ decl ] in
+  let frame : Stylesheet.keyframe =
+    { selector = Keyframe.Positions [ Keyframe.From ]; declarations = [ decl ] }
+  in
+  let margin : Stylesheet.page_margin_rule =
+    { name = "top-left"; descriptors = [ decl ] }
+  in
+  let sites =
+    [
+      ("@media", Stylesheet.Media (Media.of_string "screen", [ styled ]));
+      ( "@supports",
+        Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
+      ("@container", Stylesheet.Container (None, None, [ styled ]));
+      ("@layer", Stylesheet.Layer (Some "a", [ styled ]));
+      ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
+      ( "@scope",
+        Stylesheet.Scope (Some (Selector.class_ "card"), None, [ styled ]) );
+      ("@starting-style", Stylesheet.Starting_style [ styled ]);
+      ( "@-moz-document",
+        Stylesheet.Moz_document
+          ([ Stylesheet.Url_prefix (Some "https://example.com/") ], [ styled ])
+      );
+      ( "@when",
+        Stylesheet.When
+          (Stylesheet.Media_condition (Media.of_string "screen"), [ styled ]) );
+      ("@else", Stylesheet.Else (None, [ styled ]));
+      ("nested rule", rule ~selector:(Selector.class_ "a") ~nested:[ styled ] []);
+      ( "nesting block",
+        rule ~selector:(Selector.class_ "a")
+          ~nested:[ Stylesheet.Declarations [ decl ] ]
+          [] );
+      ("@keyframes", Stylesheet.keyframes "k" [ frame ]);
+      ("@page", Stylesheet.Page ([], [ decl ]));
+      ("@page margin box", Stylesheet.Page_with_margins ([], [], [ margin ]));
+      ("@position-try", Stylesheet.Position_try ("--pt", [ decl ]));
+      ("@supports-condition", Stylesheet.Supports_condition ("--sc", [ decl ]));
+    ]
+  in
+  let names stmts = List.map any_var_name (vars_of_rules stmts) in
+  let missing =
+    List.filter_map
+      (fun (label, stmt) ->
+        if names [ stmt ] = [ "--x" ] then None else Some label)
+      sites
+  in
+  if missing <> [] then
+    Alcotest.failf "var() not reported in: %s" (String.concat ", " missing);
+  (* One question, one answer: the two entry points differ only in what they are
+     handed. *)
+  let disagree =
+    List.filter_map
+      (fun (label, stmt) ->
+        if
+          names [ stmt ]
+          = List.map any_var_name (vars_of_stylesheet (v [ stmt ]))
+        then None
+        else Some label)
+      sites
+  in
+  if disagree <> [] then
+    Alcotest.failf "vars_of_rules and vars_of_stylesheet disagree on: %s"
+      (String.concat ", " disagree);
+  (* Deduplicated across statements, in source order. *)
+  let y = Declaration.of_string "color:var(--y)" in
+  Alcotest.(check (list string))
+    "deduplicated in source order" [ "--x"; "--y" ]
+    (names
+       [
+         rule ~selector:(Selector.class_ "a") [ decl ];
+         Stylesheet.Media (Media.of_string "screen", [ styled ]);
+         rule ~selector:(Selector.class_ "b") [ y ];
+       ])
+
 let public_property_edges () =
   let sheet =
     property ~name:"--gap" Length ~initial_value:(Px 1.) ~inherits:false ()
@@ -1323,6 +1472,10 @@ let suite =
         public_custom_props_edges;
       Alcotest.test_case "public custom property declaration sites" `Quick
         public_custom_props_declaration_sites;
+      Alcotest.test_case "public layers in conditional groups" `Quick
+        public_layers_conditional_groups;
+      Alcotest.test_case "public var declaration sites" `Quick
+        public_vars_declaration_sites;
       Alcotest.test_case "public property introspection" `Quick
         public_property_edges;
       Alcotest.test_case "public theme guards" `Quick public_theme_edges;
