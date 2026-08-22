@@ -507,52 +507,9 @@ let drop_invalid (stylesheet : t) : t =
     emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
     sec. 5.4.1 (unknown at-rules are discarded). *)
 let drop_unknown_at_rules (stylesheet : t) : t =
-  let rec statement stmt =
-    match stmt with
-    | Rule rule ->
-        let nested = list_edit_preserve statement rule.nested in
-        let rule' = rule_with_nested rule nested in
-        if rule' == rule then List.Keep else List.Replace (Rule rule')
-    | Layer (name, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Layer (name, block'))
-    | Media (m, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Media (m, block'))
-    | Container (n, c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Container (n, c, block'))
-    | Supports (s, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Supports (s, block'))
-    | Moz_document (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Moz_document (c, block'))
-    | When (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (When (c, block'))
-    | Else (c, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Else (c, block'))
-    | Starting_style block ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Starting_style block')
-    | Origin (o, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep else List.Replace (Origin (o, block'))
-    | Scope (a, b, block) ->
-        let block' = list_edit_preserve statement block in
-        if block' == block then List.Keep
-        else List.Replace (Scope (a, b, block'))
-    | Unknown_at_rule _ -> List.Drop
-    | _ -> List.Keep
-  in
-  list_edit_preserve statement stylesheet
+  edit_statements
+    (function Unknown_at_rule _ -> List.Drop | _ -> List.Keep)
+    stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
    typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
@@ -810,85 +767,14 @@ let normalize_live_declarations ~ctx ~lossless decls =
       else List.Replace decl')
     decls
 
-let sanitize_keyframe ~ctx ~lossless (k : keyframe) : keyframe =
-  let declarations =
-    normalize_live_declarations ~ctx ~lossless k.declarations
-  in
-  if declarations == k.declarations then k else { k with declarations }
-
-let rec sanitize_block ~ctx ~lossless (b : statement list) : statement list =
-  list_edit_preserve (sanitize_statement ~ctx ~lossless) b
-
-and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
-  let nd = normalize_live_declarations ~ctx ~lossless in
+(* An [@property] registration holds a typed initial value rather than a
+   declaration, so it is the one statement whose value
+   [map_statement_declarations] does not reach; every other statement either is
+   an unknown at-rule, dropped per CSS Syntax 3 sec. 5.4.1, or has its
+   declarations normalised wherever that walk finds them. *)
+let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
   match s with
-  | Rule r ->
-      let declarations = nd r.declarations in
-      let nested = sanitize_block ~ctx ~lossless r.nested in
-      let r' = rule_with_declarations_and_nested r declarations nested in
-      if r' == r then List.Keep else List.Replace (Rule r')
-  | Declarations d ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Declarations d')
-  | Page (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Page (n, d'))
-  | Page_with_margins (n, descs, margins) ->
-      let descs' = nd descs in
-      let margins' =
-        list_map_preserve
-          (fun m ->
-            let descriptors = nd m.descriptors in
-            if descriptors == m.descriptors then m else { m with descriptors })
-          margins
-      in
-      if descs' == descs && margins' == margins then List.Keep
-      else List.Replace (Page_with_margins (n, descs', margins'))
-  | Position_try (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Position_try (n, d'))
-  | Supports_condition (n, d) ->
-      let d' = nd d in
-      if d' == d then List.Keep else List.Replace (Supports_condition (n, d'))
-  | Keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Keyframes (n, ks'))
-  | Webkit_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Webkit_keyframes (n, ks'))
-  | Moz_keyframes (n, ks) ->
-      let ks' = list_map_preserve (sanitize_keyframe ~ctx ~lossless) ks in
-      if ks' == ks then List.Keep else List.Replace (Moz_keyframes (n, ks'))
-  | Layer (n, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Layer (n, b'))
-  | Media (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Media (c, b'))
-  | Container (n, c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Container (n, c, b'))
-  | Supports (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Supports (c, b'))
-  | Moz_document (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Moz_document (c, b'))
-  | Starting_style b ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Starting_style b')
-  | When (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (When (c, b'))
-  | Else (c, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Else (c, b'))
-  | Origin (o, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Origin (o, b'))
-  | Scope (s1, s2, b) ->
-      let b' = sanitize_block ~ctx ~lossless b in
-      if b' == b then List.Keep else List.Replace (Scope (s1, s2, b'))
+  | Unknown_at_rule _ -> List.Drop
   | Property r ->
       let initial_value =
         match r.initial_value with
@@ -899,8 +785,16 @@ and sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
       in
       if initial_value == r.initial_value then List.Keep
       else List.Replace (Property { r with initial_value })
-  | Unknown_at_rule _ -> List.Drop
-  | _ -> List.Keep
+  | _ ->
+      let s' =
+        map_statement_declarations
+          (normalize_live_declarations ~ctx ~lossless)
+          s
+      in
+      if s' == s then List.Keep else List.Replace s'
+
+let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
+  edit_statements (sanitize_statement ~ctx ~lossless) b
 
 let rec statement_rule_count = function
   | Rule _ -> 1
