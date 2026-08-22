@@ -2401,7 +2401,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 452
+    "property grammar manifest covers every tracked spec property name" 455
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

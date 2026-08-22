@@ -34,6 +34,10 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
+- `column-rule-color` and `-webkit-text-stroke-color` are typed as colours and
+  `-webkit-text-fill-color` joins the colour fold, so a colour-valued property
+  minifies to the same spelling whatever its name: `lab(1.90334 0.278696
+  -5.48866)` and `rgb(3, 7, 18)` both print `#030712` (#365)
 
 ### Custom properties
 

@@ -4689,6 +4689,7 @@ type 'a property =
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
   | Webkit_text_fill_color : color property
+  | Webkit_text_stroke_color : color property
   | Text_indent : text_indent_value property
   | List_style : list_style property
   | Font : font property
@@ -4841,6 +4842,7 @@ type 'a property =
   | Column_width : column_width property
   | Column_count : column_count property
   | Column_rule : border property
+  | Column_rule_color : color property
   | Column_span : column_span property
   | Word_spacing : length property
   | Background_attachment : background_attachment property

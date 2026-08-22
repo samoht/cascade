@@ -925,6 +925,36 @@ let test_vendor_prefix_baseline_gate () =
     ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}"
     (opt ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}")
 
+(* A colour-valued property folds its colour whatever its name: CIE Lab
+   L=1.90334 a=0.278696 b=-5.48866 is sRGB 3,7,18, so both spellings print the
+   same hex. A property left out of the fold reports the two as different
+   values, which is what the browser-differential harness then counts as a
+   render change. *)
+let test_color_property_folds () =
+  let opt css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun property ->
+      let rule value = String.concat "" [ ".a{"; property; ":"; value; "}" ] in
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds lab() to hex" ])
+        (rule "#030712")
+        (opt (rule "lab(1.90334 0.278696 -5.48866)"));
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds rgb() to hex" ])
+        (rule "#030712")
+        (opt (rule "rgb(3, 7, 18)")))
+    [
+      "color";
+      "column-rule-color";
+      "-webkit-text-fill-color";
+      "-webkit-text-stroke-color";
+    ]
+
 let test_lossless_declaration_order () =
   let opt ?(lossless = false) css =
     match Css.of_string css with
@@ -1267,6 +1297,7 @@ let optimize_tests =
       nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
+    ("color property folds", `Quick, test_color_property_folds);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "lossless keeps unknown property order",
       `Quick,

@@ -2125,6 +2125,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Column_width, value -> vars_of_column_width value
   | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
+  | Column_rule_color, value -> vars_of_color value
   | Column_span, value -> vars_of_column_span value
   (* Contain *)
   | Contain, value -> vars_of_contain value
@@ -2406,6 +2407,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_user_select, value -> vars_of_user_select value
   | Ms_user_select, value -> vars_of_user_select value
   | Webkit_text_fill_color, value -> vars_of_color value
+  | Webkit_text_stroke_color, value -> vars_of_color value
   | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
   | Word_break, value -> vars_of_word_break value
