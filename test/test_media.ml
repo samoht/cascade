@@ -452,6 +452,36 @@ let negated_all_is_level4_not () =
   check_modes "bare not all" "@media not all{a{color:red}}"
     ~default:"@media not all{a{color:red}}" ~spec:"@media not all{a{color:red}}"
 
+(* CSS Values 4 sec. 5 writes a zero [<length>] as the unitless number [0], and
+   Media Queries 4 sec. 1.3 takes its units from CSS Values, so a length-typed
+   media feature accepts a bare zero. Chrome matches [@media (min-width: 0)],
+   [(min-height: 0)], [(width >= 0)], [(0 <= width)] and [@container (min-width:
+   0)] against a live document; it does not match [(min-resolution: 0)] or
+   [(min-width: 1)], where no unitless spelling exists. *)
+let spec_media_unitless_zero_length () =
+  let check_raw name input expected =
+    Alcotest.(check string) name expected (to_string (of_string input))
+  in
+  check_raw "plain prefixed feature" "(min-width: 0)" "(min-width: 0px)";
+  check_raw "plain height feature" "(min-height: 0)" "(min-height: 0px)";
+  check_raw "plain equality feature" "(width: 0)" "(width: 0px)";
+  check_raw "name-first range" "(width >= 0)" "(width >= 0px)";
+  check_raw "value-first range" "(0 <= width)" "(0px <= width)";
+  check_raw "interval range" "(0 <= width <= 60em)" "(0px <= width <= 60em)";
+  check_raw "fractional zero" "(min-width: 0.0)" "(min-width: 0px)";
+  check_raw "negative zero" "(min-width: -0)" "(min-width: 0px)";
+  Alcotest.(check bool)
+    "unitless zero is the zero length" true
+    (equal (of_string "(min-width: 0)") (min_width 0.));
+  (* The allowance is [<length>]-only: a [<resolution>] has no unitless zero,
+     and a non-zero number is not a length in any feature. *)
+  let check_recovers name input =
+    Alcotest.(check string) name "not all" (to_string (of_string input))
+  in
+  check_recovers "resolution has no unitless zero" "(min-resolution: 0)";
+  check_recovers "non-zero number is not a length" "(min-width: 1)";
+  check_recovers "non-zero number in a range" "(width >= 1)"
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -463,6 +493,8 @@ let suite =
         spec_media_structural_vectors;
       test_case "spec media query error recovery vectors" `Quick
         spec_media_error_recovery_vectors;
+      test_case "spec media unitless zero length" `Quick
+        spec_media_unitless_zero_length;
       test_case "kind" `Quick test_kind;
       test_case "kind follows meaning not spelling" `Quick
         kind_follows_meaning_not_spelling;

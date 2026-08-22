@@ -183,6 +183,20 @@ let spec_container_invalid_vectors () =
       rejects_invalid row.input)
     Cascade_spec_inventory.Query_grammar.container_negative
 
+(* A container size feature carries the same [<length>] as a media feature (CSS
+   Containment 3 sec. 4), so it takes the unitless zero CSS Values 4 sec. 5
+   allows. Chrome matches [@container (min-width: 0)] and [@container
+   (min-inline-size: 0)] against a live container. *)
+let spec_container_unitless_zero_length () =
+  let open Css.Container in
+  let check name input expected =
+    Alcotest.(check string) name expected (to_string (of_string input))
+  in
+  check "min-width" "(min-width: 0)" "(min-width:0px)";
+  check "min-inline-size" "(min-inline-size: 0)" "(min-inline-size: 0px)";
+  check "range" "(width >= 0)" "(width >= 0px)";
+  rejects_invalid "(min-width: 1)"
+
 let tests =
   Alcotest.
     [
@@ -202,6 +216,8 @@ let tests =
         spec_container_query_vectors;
       test_case "spec container invalid query vectors" `Quick
         spec_container_invalid_vectors;
+      test_case "spec container unitless zero length" `Quick
+        spec_container_unitless_zero_length;
     ]
 
 let suite = ("container", tests)

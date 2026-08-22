@@ -673,6 +673,27 @@ let range_feature_name (name : name) =
 let prefixed_range_feature_name name : name option =
   match name with Min base | Max base -> Some base | _ -> Option.None
 
+(* CSS Values 4 sec. 5 writes a zero [<length>] as the unitless number [0], and
+   Media Queries 4 sec. 1.3 takes its units from CSS Values, so a length-typed
+   feature accepts a bare zero. The allowance is [<length>]-only: a
+   [<resolution>] keeps its unit, which is why [(min-resolution: 0)] stays
+   invalid. *)
+let length_feature_name (name : name) =
+  match name with
+  | Width | Height | Inline_size | Block_size -> true
+  | _ -> false
+
+let unitless_zero_length (name : name) value =
+  let base =
+    match prefixed_range_feature_name name with
+    | Some base -> base
+    | None -> name
+  in
+  match value with
+  | (Integer 0 | Number 0.) when length_feature_name base ->
+      Length (Values_intf.Px 0.)
+  | _ -> value
+
 let validate_plain_feature (name : name) value =
   let plain_name =
     match prefixed_range_feature_name name with
@@ -805,6 +826,7 @@ let plain_feature_of_components name components =
   match value_of_components_opt components with
   | Some value ->
       let name = name_of_string name in
+      let value = unitless_zero_length name value in
       if validate_plain_feature name value then Some (plain_feature name value)
       else Option.None
   | Option.None -> Option.None
@@ -813,6 +835,7 @@ let name_first_range name op components =
   match (split_cmp components, value_of_components_opt components) with
   | Option.None, Some value ->
       let name = name_of_string name in
+      let value = unitless_zero_length name value in
       if validate_range_feature name value then Some (Range (name, op, value))
       else Option.None
   | Some _, _ | Option.None, Option.None -> Option.None
@@ -822,6 +845,7 @@ let range_rev_of_components lower op1 = function
       match ident_component name_component with
       | Some name ->
           let name = name_of_string name in
+          let lower = unitless_zero_length name lower in
           if validate_range_feature name lower then
             Some (Range_rev (lower, op1, name))
           else Option.None
@@ -834,6 +858,8 @@ let interval_of_components lower op1 name_components op2 upper_components =
       match ident_component name_component with
       | Some name ->
           let name = name_of_string name in
+          let lower = unitless_zero_length name lower in
+          let upper = unitless_zero_length name upper in
           if
             interval_ops_compatible op1 op2
             && validate_range_feature name lower
