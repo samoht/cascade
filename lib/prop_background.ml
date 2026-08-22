@@ -1688,15 +1688,24 @@ let rec read_background t : background =
 let read_backgrounds t : background list =
   Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
 
-(* Inline border-radius parser for the [round <border-radius>] suffix shared by
-   clip-path basic shapes. Cannot reuse [Declaration.read_border_radius] because
-   Declaration depends on Properties; the same grammar is small enough to inline
-   here. *)
+(* CSS Backgrounds 3 sec. 5.1: [border-radius = <length-percentage [0,inf]>{1,4}
+   [ / <length-percentage [0,inf]>{1,4} ]?]. Reads 1-4 horizontal radii then,
+   after [/], 1-4 vertical radii. No keyword is a radius: the intrinsic-sizing
+   keywords are no part of the grammar, and the CSS-wide keywords are only the
+   whole property value (CSS Cascade 5 sec. 6), which [read_border_radius] takes
+   before delegating here. Basic shapes spell their rounded-corner suffix [round
+   <'border-radius'>] (CSS Shapes 1 sec. 3.1), a reference to this same value
+   definition, so they read radii through [read_border_radius_inline] and get
+   the keyword exclusion with it. *)
 let read_border_radius_inline_radii t =
   let rec loop acc count =
     if count >= 4 then List.rev acc
     else
-      match Cursor.option (read_length_percentage ~allow_negative:false) t with
+      match
+        Cursor.option
+          (read_length_percentage ~allow_negative:false ~with_keywords:false)
+          t
+      with
       | None -> List.rev acc
       | Some lp -> loop (lp :: acc) (count + 1)
   in
