@@ -2587,6 +2587,82 @@ let shape_outside_sheet () =
       "a{shape-outside:url(shape.png)}";
     ]
 
+(* CSS Backgrounds 3 sec. 5.1: [border-radius] is [<length-percentage
+   [0,inf]>{1,4} [ / <length-percentage [0,inf]>{1,4} ]?], so an
+   intrinsic-sizing keyword ([auto], [max-content], [stretch], ...) is no part
+   of it. CSS Shapes 1 sec. 3.1 spells the rounded-corner suffix of a basic
+   shape [round <'border-radius'>], and [<'property'>] (CSS Values 4 sec. 2.2)
+   names that same value definition, so the keywords stay out there too. Chrome
+   151 and WebKit 26.5 drop every declaration below. *)
+let radius_keywords =
+  [
+    "auto";
+    "none";
+    "normal";
+    "size";
+    "max-content";
+    "min-content";
+    "fit-content";
+    "-webkit-max-content";
+    "-webkit-min-content";
+    "-webkit-fit-content";
+    "-moz-max-content";
+    "-moz-min-content";
+    "-moz-fit-content";
+    "contain";
+    "stretch";
+    "from-font";
+  ]
+
+let radius_shorthand_sites radius =
+  List.map
+    (fun property -> String.concat "" [ property; ":"; radius ])
+    [ "border-radius"; "-webkit-border-radius"; "-moz-border-radius" ]
+
+(* Every [round <'border-radius'>] site: the basic shapes behind [clip-path] and
+   [shape-outside], and the [rect()] / [xywh()] of [object-view-box]. *)
+let radius_nested_sites radius =
+  List.map
+    (fun (before, after) -> String.concat "" [ before; radius; after ])
+    [
+      ("clip-path:inset(0 round ", ")");
+      ("clip-path:rect(0 1px 1px 0 round ", ")");
+      ("clip-path:xywh(0 0 1px 1px round ", ")");
+      ("shape-outside:inset(0 round ", ")");
+      ("object-view-box:rect(0 1px 1px 0 round ", ")");
+      ("object-view-box:xywh(0 0 1px 1px round ", ")");
+    ]
+
+let border_radius_keyword_radii () =
+  List.iter
+    (fun radius ->
+      List.iter (neg_cursor read_declaration) (radius_shorthand_sites radius);
+      List.iter (neg_cursor read_declaration) (radius_nested_sites radius))
+    radius_keywords;
+  (* Controls: a length and a percentage are radii everywhere, a negative one is
+     a radius nowhere. *)
+  List.iter
+    (fun radius ->
+      List.iter
+        (fun css -> check_declaration ~roundtrip:true css)
+        (radius_shorthand_sites radius @ radius_nested_sites radius))
+    [ "10px"; "10%" ];
+  List.iter (neg_cursor read_declaration) (radius_shorthand_sites "-5px");
+  List.iter (neg_cursor read_declaration) (radius_nested_sites "-5px")
+
+(* CSS Cascade 5 sec. 6: a CSS-wide keyword is only valid "as the entire
+   property value", so it is a whole [border-radius] and never one radius inside
+   a basic shape. Chrome 151 and WebKit 26.5 keep the shorthand and drop the
+   nested form. *)
+let border_radius_css_wide_keywords () =
+  List.iter
+    (fun radius ->
+      List.iter
+        (fun css -> check_declaration ~roundtrip:true css)
+        (radius_shorthand_sites radius);
+      List.iter (neg_cursor read_declaration) (radius_nested_sites radius))
+    [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
+
 (* Vendor-prefixed properties with a typed constructor need a reader arm as
    well: without one the dispatch falls through to "unsupported property reader"
    and the declaration is dropped. Each takes the same value type as the
@@ -2748,6 +2824,9 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "shape-outside grammar" `Quick shape_outside_grammar;
     test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
+    test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
+    test_case "border-radius CSS-wide keywords" `Quick
+      border_radius_css_wide_keywords;
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
     test_case "spec cascade 3 shorthand properties" `Quick
