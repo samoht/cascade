@@ -1783,14 +1783,77 @@ let read_descriptor_value read_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
-let read_descriptor_declaration (r : Cursor.t) : Declaration.declaration option
-    =
+(* CSS Syntax 3 sec. 5.4.4: a declaration that fails to parse ends at the next
+   top-level [;]; a [{}] met on the way is one component value of the value
+   being skipped, not a stopping point. *)
+let rec skip_bad_rule_item inner =
+  match Cursor.next_raw inner with
+  | None -> ()
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+  | Some _ -> skip_bad_rule_item inner
+
+(* CSS Syntax 3 sec. 5.4.2: an at-rule ends at its block or at its [;].
+   Discarding an invalid one consumes exactly that far, so the declarations
+   written after it stay in the rule. *)
+let rec skip_at_rule r =
+  match Cursor.next_raw r with
+  | None -> ()
+  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      ()
+  | Some _ -> skip_at_rule r
+
+(* Discard the item the cursor sits on. A body that holds declarations and
+   at-rules alike has to pick by what the item starts with: the two ends differ,
+   and taking an at-rule for a declaration would eat the item written after it.
+   The caller rewinds first, so a reader that already consumed part of the item
+   is skipped from its start. *)
+let skip_invalid_item r =
+  match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      skip_at_rule r
+  | _ -> skip_bad_rule_item r
+
+(* Read a body one item at a time, [step] committing each item to the
+   accumulator before the next is read, so an item dropped in recovery costs
+   only itself. CSS Paged Media 3 sec. 6: "If an error is encountered during the
+   processing of a declaration block within a page or a margin context, the
+   Rules for handling parsing errors apply; that is, valid declarations within
+   the block are applied." Strict mode ([not (Cursor.recover r)]) still raises,
+   so [~strict:true] rejects exactly what the lenient parse warns about. *)
+let read_items_with_recovery step r init =
+  let rec loop state =
+    if Cursor.recover r then recovering state else continue (step r state)
+  and recovering state =
+    let start = Cursor.save r in
+    match step r state with
+    | committed -> continue committed
+    | exception Error.Parse_error e ->
+        Cursor.push_warning r e;
+        Cursor.restore r start;
+        skip_invalid_item r;
+        loop state
+  and continue = function
+    | `Done result -> result
+    | `More state -> loop state
+  in
+  loop init
+
+(* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
+   sec. 5.4.3 discards with no declaration to validate, or the end of the body.
+   [Declaration.read_declaration] answers [None] for an item that opens a block
+   instead; a descriptor body holds no rules, so that item is invalid and is
+   reported rather than left for the caller to loop on. *)
+let read_descriptor_item (r : Cursor.t) =
   Cursor.ws r;
-  if Cursor.is_done r then None
+  if Cursor.is_done r then `Done
   else if Cursor.peek_semicolon r then (
     Cursor.skip r;
-    None)
-  else Declaration.read_declaration r
+    `Skip)
+  else
+    match Declaration.read_declaration r with
+    | Some desc -> `Descriptor desc
+    | None -> Cursor.err_expected r "descriptor"
 
 let replace_descriptor desc acc =
   desc
@@ -1799,15 +1862,14 @@ let replace_descriptor desc acc =
          Declaration.property_name existing <> Declaration.property_name desc)
        acc
 
+let read_descriptor_step normalize inner acc =
+  match read_descriptor_item inner with
+  | `Done -> `Done (List.rev acc)
+  | `Skip -> `More acc
+  | `Descriptor desc -> `More (normalize desc acc)
+
 let read_descriptor_block normalize inner =
-  let rec loop acc =
-    match read_descriptor_declaration inner with
-    | Some desc -> loop (normalize desc acc)
-    | None ->
-        Cursor.ws inner;
-        if Cursor.is_done inner then List.rev acc else loop acc
-  in
-  loop []
+  read_items_with_recovery (read_descriptor_step normalize) inner []
 
 (* CSS Fonts 4 sec. 4.4: a descriptor range whose startpoint is larger than its
    endpoint is well defined, the user agent swapping the two endpoints for font
@@ -2396,15 +2458,12 @@ let allowed_page_margin_names =
     "left-top";
   ]
 
-let read_page_descriptor r =
-  match read_descriptor_declaration r with
-  | Some desc
-    when List.mem (Declaration.property_name desc) allowed_page_descriptors ->
-      desc
-  | Some desc ->
-      Cursor.err_invalid r
-        ("invalid @page descriptor: " ^ Declaration.property_name desc)
-  | None -> Cursor.err_expected r "@page descriptor"
+let replace_page_descriptor r desc acc =
+  if List.mem (Declaration.property_name desc) allowed_page_descriptors then
+    replace_descriptor desc acc
+  else
+    Cursor.err_invalid r
+      ("invalid @page descriptor: " ^ Declaration.property_name desc)
 
 let allowed_page_margin_descriptors = "content" :: allowed_page_descriptors
 
@@ -2436,22 +2495,20 @@ let read_page_margin_rule r =
       Cursor.err_invalid r ("unknown page margin rule: @" ^ name)
   | _ -> Cursor.err_expected r "page margin rule"
 
-let read_page_body inner =
-  let rec loop descriptors margins =
-    Cursor.ws inner;
-    match Cursor.peek inner with
-    | None -> (List.rev descriptors, List.rev margins)
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-        Cursor.skip inner;
-        loop descriptors margins
-    | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-        let margin = read_page_margin_rule inner in
-        loop descriptors (margin :: margins)
-    | Some _ ->
-        let desc = read_page_descriptor inner in
-        loop (replace_descriptor desc descriptors) margins
-  in
-  loop [] []
+(* CSS Paged Media 3 sec. 2: a [@page] body holds page properties and margin
+   at-rules, so its items end two different ways and are read apart. *)
+let read_page_step inner (descriptors, margins) =
+  match Cursor.peek inner with
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      `More (descriptors, read_page_margin_rule inner :: margins)
+  | _ -> (
+      match read_descriptor_item inner with
+      | `Done -> `Done (List.rev descriptors, List.rev margins)
+      | `Skip -> `More (descriptors, margins)
+      | `Descriptor desc ->
+          `More (replace_page_descriptor inner desc descriptors, margins))
+
+let read_page_body inner = read_items_with_recovery read_page_step inner ([], [])
 
 let read_page (r : Cursor.t) : statement =
   Cursor.with_context r "@page" @@ fun () ->
@@ -3034,23 +3091,6 @@ let validate_nested_rule_selector inner selector nested_selector =
   then
     Cursor.err_invalid inner
       "bare nesting selector cannot directly nest another bare nesting selector"
-
-let rec skip_bad_rule_item inner =
-  match Cursor.next_raw inner with
-  | None -> ()
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-  | Some _ -> skip_bad_rule_item inner
-
-(* CSS Syntax 3 sec. 5.4.2: an at-rule ends at its block or at its [;].
-   Discarding an invalid one consumes exactly that far, so the declarations
-   written after it stay in the rule. *)
-let rec skip_at_rule r =
-  match Cursor.next_raw r with
-  | None -> ()
-  | Some (Component.Block { node = { opening = Token.Curly; _ }; _ })
-  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-      ()
-  | Some _ -> skip_at_rule r
 
 (* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
    nested inside of a style rule as well, unless otherwise specified". A
