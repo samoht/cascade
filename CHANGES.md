@@ -24,6 +24,12 @@
 
 ### Minification
 
+- A same-condition `@media` block is no longer hoisted over a crossed rule
+  whose shorthand writes a longhand the hoisted block also writes. The hoist
+  tied two declarations by property name, so
+  `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
+  minified to a sheet Chrome computes blue for where the source computes green
+  (#415)
 - `@media not all and (X)` minifies to the Level 4 `@media not (X)`. `all` is
   the identity media type (Media Queries 4 sec. 2.3), so the two spell the same
   query, and default minify already spends Level 3 compatibility by lowering

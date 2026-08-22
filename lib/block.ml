@@ -163,27 +163,24 @@ let rec leaf_rules stmt =
       List.concat_map leaf_rules b
   | _ -> []
 
-(* Only reached once the two declarations are known to share a property, so the
-   property itself is not part of the key. *)
-let decl_value_key d =
-  (Declaration.string_of_value ~minify:true d, Declaration.is_important d)
+(* Two declarations an element computes differently once they swap order: they
+   write a common longhand slot, and they are not the same declaration. Reading
+   the slots off the shorthand footprint rather than the property name is what
+   ties [background] to the [background-color] it also writes. A pair that
+   differs in importance is decided by importance, not by order. *)
+let declarations_conflict a b =
+  Declaration.is_important a = Declaration.is_important b
+  && (not (Shorthand.same_minified_declaration a b))
+  && Shorthand.declarations_overlap a b
 
 (* Two rules whose declarations would reorder unsafely: overlapping selectors
-   and a shared property set to a different value. Equal values reorder
-   freely. *)
+   and a conflicting declaration pair. *)
 let rules_conflict (r1 : rule) (r2 : rule) =
   Selector_summary.may_overlap
     (Selector_summary.of_selector r1.selector)
     (Selector_summary.of_selector r2.selector)
   && List.exists
-       (fun a ->
-         List.exists
-           (fun b ->
-             (* [same_property] reads the property off the AST; comparing the
-                printed names would tie two constructors that print alike. *)
-             Declaration.same_property a b
-             && decl_value_key a <> decl_value_key b)
-           r2.declarations)
+       (fun a -> List.exists (declarations_conflict a) r2.declarations)
        r1.declarations
 
 let needs_distant_media_merge stmts =
