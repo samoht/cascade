@@ -8,6 +8,7 @@
 # other: fetch.sh freezes every downloaded page (freeze_page.js) and xtest.js
 # pins the browser, leaving computed style a function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+root=$(CDPATH= cd "$dir/../.." && pwd)
 export CASCADE=${CASCADE:-cascade}
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
@@ -17,15 +18,32 @@ if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
 export CHROME
+
 # Canonical-difference filter: compares values the way cascade does, so
 # render-equivalent spellings (0% vs 0px, red vs rgb(...)) are not reported.
-# The filter is optional, so a build that cannot run leaves it unset rather
-# than stopping the sweep -- but it says why instead of discarding the reason.
-root=$(CDPATH= cd "$dir/../.." && pwd)
-if "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe; then
-  CANON_FILTER=$(cd "$root" && find _build -name canon_filter.exe | head -1)
-  [ -n "$CANON_FILTER" ] && export CANON_FILTER="$root/$CANON_FILTER"
+# Without it every such pair counts, and the run prints a number that looks
+# like a result but is an inflated one, which is worse than no number at all.
+# So a filter that is missing or does not work is fatal, not skipped.
+if [ -z "$CANON_FILTER" ]; then
+  (cd "$root" && "$root/scripts/with_switch.sh" dune build test/inline/canon_filter.exe)
+  CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
+# Prove it filters, rather than that a file exists: a stale or broken binary
+# passes an existence check and silently restores raw comparison. The first
+# line is one spelling of one value and must be dropped; the second is a real
+# change and must survive.
+canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\tcolor\tred\tblue\n' |
+  "$CANON_FILTER" 2>/dev/null)
+if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
+  echo "ERROR: canonical filter missing or not filtering: $CANON_FILTER" >&2
+  echo "  build it with: dune build test/inline/canon_filter.exe" >&2
+  echo "  (or point CANON_FILTER at one). Without it, equivalent spellings" >&2
+  echo "  count as differences and the reported total is not a result." >&2
+  exit 1
+fi
+export CANON_FILTER
+
+echo "compare: canonical"
 fail=0
 # xtest.js renders two pages, which is the whole cost of the run: keep its
 # report rather than paying for it a second time to print the failure.

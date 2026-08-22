@@ -53,7 +53,12 @@ if (CANON && cand.length) {
 }
 const diffs = lines.map(l=>{const f=l.split('\t');return '['+f[0]+' '+f[1]+'] '+f[2]+': "'+f[3]+'" vs "'+f[4]+'"';});
 if (a.length !== b.length) diffs.unshift('element count '+a.length+' vs '+b.length);
-console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length+(CANON?' (canonical compare)':''));
+// Say which comparison produced the count. Without the filter every
+// equivalent spelling counts, so the total is inflated and is not the number
+// run.sh reports: label it loudly rather than let it pass for the real one.
+const how = CANON ? ' (canonical compare)'
+  : ' (RAW COMPARE, no CANON_FILTER: equivalent spellings counted, total inflated)';
+console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length+how);
 if (!diffs.length) console.log('RESULT: IDENTICAL computed styles (inlining preserves the render)');
 // The whole list, not a sample: it is the artifact you diff between runs.
-else { console.log('RESULT: '+diffs.length+' difference(s):'); diffs.forEach(d=>console.log('  '+d)); }
+else { console.log('RESULT: '+diffs.length+' difference(s)'+(CANON?'':' [RAW, INFLATED]')+':'); diffs.forEach(d=>console.log('  '+d)); }
