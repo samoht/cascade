@@ -78,6 +78,7 @@ let drop_empty_rules = Block.drop_empty_rules
 let drop_misplaced_imports = Block.drop_misplaced_imports
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
 let merge_lone_nested_rule = Nest.merge_lone
+let hoist_declaration_runs = Nest.hoist_declaration_runs
 let synthesize_nesting_statements = Nest.statements
 let stylesheet_key stmts = Pp.to_string ~minify:true pp_stylesheet stmts
 
@@ -402,28 +403,31 @@ and process_import_statement ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
   process_statements ?factor_cache ~ctx ~enforce_spec ~nesting ~pending
     (stmt :: acc) rest
 
+(* Optimize one rule's nested statements recursively, then drop the redundant
+   nesting prefix (see [drop_nesting_prefix]) and let a run written after them
+   rejoin the rule's own declarations wherever the cascade allows. *)
+and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec rule =
+  let nested =
+    match rule.nested with
+    | [] -> []
+    | nested ->
+        let nested =
+          statements ?factor_cache ~ctx ~enforce_spec ~nesting:true nested
+        in
+        if enforce_spec then nested
+        else list_map_preserve drop_nesting_prefix nested
+  in
+  let rule = hoist_declaration_runs (rule_with_nested rule nested) in
+  let rule =
+    let selector = Selector.canonicalize rule.selector in
+    if selector == rule.selector then rule else { rule with selector }
+  in
+  merge_lone_nested_rule rule
+
 and rules_aux ?factor_cache ~ctx ~enforce_spec (rules : rule list) : rule list =
-  (* First optimize each rule's nested statements recursively, then drop the
-     redundant nesting prefix (see [drop_nesting_prefix]). *)
   let with_optimized_nested =
     list_map_preserve
-      (fun rule ->
-        let nested =
-          match rule.nested with
-          | [] -> []
-          | nested ->
-              let nested =
-                statements ?factor_cache ~ctx ~enforce_spec ~nesting:true nested
-              in
-              if enforce_spec then nested
-              else list_map_preserve drop_nesting_prefix nested
-        in
-        let rule = rule_with_nested rule nested in
-        let rule =
-          let selector = Selector.canonicalize rule.selector in
-          if selector == rule.selector then rule else { rule with selector }
-        in
-        merge_lone_nested_rule rule)
+      (rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec)
       rules
   in
   (* Apply local rule normalization before the DAG factor scheduler decides
@@ -502,10 +506,16 @@ let statements_top_level ?factor_cache ~ctx ~enforce_spec
 
 let single_rule ?scope (rule : rule) : rule =
   let ctx = ctx_of_scope scope in
+  let rule =
+    hoist_declaration_runs
+      {
+        rule with
+        nested = statements ~ctx ~enforce_spec:false ~nesting:true rule.nested;
+      }
+  in
   {
     rule with
     declarations = deduplicate_declarations_with ~ctx rule.declarations;
-    nested = statements ~ctx ~enforce_spec:false ~nesting:true rule.nested;
   }
 
 let rules ?scope (rules : rule list) : rule list =

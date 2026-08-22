@@ -3483,6 +3483,37 @@ let same_minified_declaration (a : declaration) (b : declaration) =
   || Declaration.hash a = Declaration.hash b
      && Declaration.equal_declaration a b
 
+(* Only a pair that writes a common cascade slot at the same importance with
+   different values constrains its own order: [!important] beats the plain
+   declaration wherever the two sit, and an identical pair is its own winner
+   either way. The footprint is computed once per declaration rather than once
+   per pair, since the test below is quadratic. *)
+type commute_fact = {
+  decl : declaration;
+  important : bool;
+  keys : overlap_key list;
+}
+
+let commute_fact decl =
+  {
+    decl;
+    important = Declaration.is_important decl;
+    keys = declaration_overlap_keys decl;
+  }
+
+let commute_facts_conflict a b =
+  a.important = b.important
+  && (not (same_minified_declaration a.decl b.decl))
+  && declarations_overlap_with_keys a.decl a.keys b.decl b.keys
+
+let declarations_commute left right =
+  let left = List.map commute_fact left in
+  let right = List.map commute_fact right in
+  not
+    (List.exists
+       (fun a -> List.exists (fun b -> commute_facts_conflict a b) right)
+       left)
+
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
      cascade may pick whichever the browser understands. *)
