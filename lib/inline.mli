@@ -19,6 +19,33 @@ val vars :
     name (leading [--]) that could not be inlined because it is redefined in a
     different scope. *)
 
+val mentioned_custom_names : Stylesheet.t -> string list
+(** [mentioned_custom_names stylesheet] is every custom-property name (leading
+    [--]) the stylesheet still mentions: declared by a declaration, referenced
+    by a [var()] in a declaration or in an at-rule condition (fallbacks
+    included), or queried by a [style()] container query. A [@property] body is
+    not a mention, so a registration never keeps itself. *)
+
+val layer_order : Stylesheet.t -> string list option
+(** [layer_order stylesheet] is the cascade layer order [stylesheet] declares,
+    weakest first, as one dotted path per layer, or [None] when the order
+    depends on something static analysis cannot settle: a layer first named
+    inside a conditional group is introduced there only when the condition
+    holds, and one named inside an {!Stylesheet.Origin} block belongs to that
+    origin's own stack. This is the order {!vars} resolves a custom property
+    defined across several layers against, and [None] is the answer that stops
+    it. *)
+
+val flattening_layers_is_safe : Stylesheet.t -> bool
+(** [flattening_layers_is_safe stylesheet] is [true] when dropping every
+    [@layer] wrapper in [stylesheet] leaves the same declaration winning each
+    cascade slot. Unwrapping a layer replays the stack as document order and
+    lets specificity speak again, which only holds where the two already agree
+    on every slot two layers write. [false] also answers for a sheet where that
+    is out of reach: an order {!layer_order} cannot rank, an anonymous layer,
+    another origin's stack, a [@scope] block, a nested rule, or a declaration
+    broad enough to write any slot. *)
+
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
     quotes from an [@import] URL string as held in

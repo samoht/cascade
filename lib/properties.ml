@@ -430,6 +430,7 @@ let pp_property : type a. a property Pp.t =
   | Font_variation_settings -> Pp.string ctx "font-variation-settings"
   | Webkit_tap_highlight_color -> Pp.string ctx "-webkit-tap-highlight-color"
   | Webkit_text_fill_color -> Pp.string ctx "-webkit-text-fill-color"
+  | Webkit_text_stroke_color -> Pp.string ctx "-webkit-text-stroke-color"
   | Webkit_user_select -> Pp.string ctx "-webkit-user-select"
   | Ms_user_select -> Pp.string ctx "-ms-user-select"
   | Moz_user_select -> Pp.string ctx "-moz-user-select"
@@ -545,6 +546,7 @@ let pp_property : type a. a property Pp.t =
   | Column_width -> Pp.string ctx "column-width"
   | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
+  | Column_rule_color -> Pp.string ctx "column-rule-color"
   | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
@@ -769,11 +771,11 @@ let rec pp_content : content Pp.t =
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
-  | Counter name -> Pp.call "counter" Pp.string ctx name
-  | String_ref name -> Pp.call "string" Pp.string ctx name
+  | Counter name -> Pp.call "counter" pp_ident ctx name
+  | String_ref name -> Pp.call "string" pp_ident ctx name
   | Counters (name, separator) ->
       Pp.string ctx "counters(";
-      Pp.string ctx name;
+      pp_ident ctx name;
       Pp.char ctx ',';
       Pp.space ctx ();
       Pp.quoted_string ctx separator;
@@ -787,7 +789,7 @@ let rec pp_content : content Pp.t =
   | Var v -> pp_var pp_content ctx v
 
 let pp_counter_item ctx { name; value } =
-  Pp.string ctx name;
+  pp_ident ctx name;
   match value with
   | None -> ()
   | Some n ->
@@ -1489,6 +1491,7 @@ let read_any_property t =
   | "column-width" -> Prop Column_width
   | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
+  | "column-rule-color" -> Prop Column_rule_color
   | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
@@ -1749,6 +1752,7 @@ let read_any_property t =
   | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
   | "-webkit-text-fill-color" -> Prop Webkit_text_fill_color
+  | "-webkit-text-stroke-color" -> Prop Webkit_text_stroke_color
   | "-webkit-user-select" -> Prop Webkit_user_select
   | "-ms-user-select" -> Prop Ms_user_select
   | "-moz-user-select" -> Prop Moz_user_select
@@ -2038,12 +2042,14 @@ let try_read_custom_time components =
   read_custom_value_as Duration read_duration components
 
 let pp_number_value ctx (value : number) =
-  let pp_rounded f = Pp.float ctx (Pp.round_sig 6 f) in
   match value with
-  | Num f when Pp.minified ctx -> pp_rounded f
   | Calc c when Pp.minified ctx -> (
+      (* [eval_numeric_calc] is Cascade's own arithmetic, so its result takes
+         the six significant figures Cascade commits to in serialised output. An
+         authored coefficient is the author's digits and keeps every one of
+         them, so it falls through to [pp_number]. *)
       match eval_numeric_calc c with
-      | Some f -> pp_rounded f
+      | Some f -> Pp.float ctx (Pp.round_sig 6 f)
       | None -> pp_number ctx (Calc (eval_calc c)))
   | _ -> pp_number ctx value
 
@@ -2438,6 +2444,9 @@ let normalize_property_value : type a.
   | Border_block_color -> normalize_logical_border_color ~lossless value
   | Text_decoration_color -> normalize_color value
   | Webkit_text_decoration_color -> normalize_color value
+  | Webkit_text_fill_color -> normalize_color value
+  | Webkit_text_stroke_color -> normalize_color value
+  | Column_rule_color -> normalize_color value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -2785,6 +2794,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
   | Webkit_text_fill_color -> pp pp_color
+  | Webkit_text_stroke_color -> pp pp_color
+  | Column_rule_color -> pp pp_color
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -3436,6 +3447,9 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Outline_color -> Some Color
   | Webkit_tap_highlight_color -> Some Color
   | Webkit_text_decoration_color -> Some Color
+  | Webkit_text_fill_color -> Some Color
+  | Webkit_text_stroke_color -> Some Color
+  | Column_rule_color -> Some Color
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color

@@ -77,10 +77,12 @@ if [ -z "$CANON_FILTER" ]; then
   CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
 # Prove it filters, rather than that a file exists: a stale or broken binary
-# passes an existence check and silently restores raw comparison. The first
-# line is one spelling of one value and must be dropped; the second is a real
-# change and must survive.
-canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\tcolor\tred\tblue\n' |
+# passes an existence check and silently restores raw comparison. The first two
+# lines each spell one value two ways and must be dropped; the third is a real
+# change and must survive. The prefixed line is there on purpose: cascade folds
+# a colour only for a property it types, and the prefixed colours are the ones
+# a real page carries by the thousand.
+canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\t-webkit-text-fill-color\tlab(1.90334 0.278696 -5.48866)\trgb(3, 7, 18)\n0\tX\tcolor\tred\tblue\n' |
   "$CANON_FILTER" 2>/dev/null)
 if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
   echo "ERROR: canonical filter missing or not filtering: $CANON_FILTER" >&2
@@ -117,34 +119,69 @@ check() { # label before after
        fail=1 ;;
   esac
 }
+# A transform that dies leaves an empty file, and an empty page differs from
+# the original in every computed style, so the run blames the transform for a
+# render change that never happened. Report the status, and the error the tool
+# printed with it.
+transform() { # label out cmd...
+  label=$1; out=$2; shift 2
+  err=$(mktemp)
+  "$@" > "$out" 2> "$err"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "CRASH $label (exit $status): $*"
+    head -8 "$err" | sed 's/^/     /'
+    fail=1
+  fi
+  rm -f "$err"
+  return "$status"
+}
 for f in "$dir"/fixtures/*.html; do
   for mode in "" "--minimal"; do
     tmp=$(mktemp)
+    label="$(basename "$f") ${mode:-full}"
     # shellcheck disable=SC2086 # an empty $mode must vanish, not pass ""
-    "$CASCADE" apply $mode "$f" > "$tmp" 2>/dev/null
-    check "$(basename "$f") ${mode:-full}" "$f" "$tmp"
+    if transform "$label" "$tmp" "$CASCADE" apply $mode "$f"; then
+      check "$label" "$f" "$tmp"
+    fi
     rm -f "$tmp"
   done
 done
-# cascade --minify preserves the render too: minify each <style> block in place
-# and compare computed styles against the original page.
-for f in "$dir"/fixtures/*.html; do
-  tmp=$(mktemp)
-  node "$dir/minify_page.js" "$f" > "$tmp" 2>/dev/null
-  check "$(basename "$f") minify" "$f" "$tmp"
-  rm -f "$tmp"
+# cascade --minify preserves the render too, and so does the closed-world
+# --inline-vars cleanup layered on it: rewrite each <style> block in place and
+# compare computed styles against the original page.
+for flags in "" "--inline-vars"; do
+  for f in "$dir"/fixtures/*.html; do
+    tmp=$(mktemp)
+    label="$(basename "$f") minify${flags:+ $flags}"
+    # shellcheck disable=SC2086 # an empty $flags must vanish, not pass ""
+    if transform "$label" "$tmp" node "$dir/minify_page.js" "$f" $flags; then
+      check "$label" "$f" "$tmp"
+    fi
+    rm -f "$tmp"
+  done
 done
 # Real pages downloaded by fetch.sh (gitignored, so absent until it is run).
 # They gate like the fixtures do: a surviving difference is a defect in the
 # transform, whichever page happened to find it. One that appears the day a
 # site is redesigned is still a defect, but re-run fetch.sh before reading it
 # as a regression in the working tree, and check the hash in the label first.
+#
+# Both transforms run: `apply` and `--minify` fail differently, and a real page
+# carries selectors and feature queries no fixture does, so a minify defect
+# that only a real page reaches goes unmeasured until the leg exists.
 for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
   page="$(basename "$f")@$(sha "$f")"
   tmp=$(mktemp)
-  "$CASCADE" apply --minimal "$f" > "$tmp" 2>/dev/null
-  check "real $page minimal" "$f" "$tmp"
+  label="real $page minimal"
+  if transform "$label" "$tmp" "$CASCADE" apply --minimal "$f"; then
+    check "$label" "$f" "$tmp"
+  fi
+  label="real $page minify"
+  if transform "$label" "$tmp" node "$dir/minify_page.js" "$f"; then
+    check "$label" "$f" "$tmp"
+  fi
   rm -f "$tmp"
 done
 exit $fail

@@ -104,7 +104,7 @@ let generated_stylesheet buf =
             ];
         ];
       Css.layer
-        ~name:(pick [ "base"; "theme"; "components" ] buf 8)
+        ~name:(pick [ [ "base" ]; [ "theme" ]; [ "components" ] ] buf 8)
         [ Css.rule ~selector:(selector "layered") [ color 12 ] ];
     ]
 
@@ -117,14 +117,14 @@ let generated_api_stylesheet buf =
   in
   Css.v
     [
-      Css.layer ~name:"theme"
+      Css.layer ~name:[ "theme" ]
         [
           Css.rule ~selector:(selector "root") [ prop 0 ];
           Css.media
             ~condition:(Css.Media.of_string "(prefers-color-scheme: dark)")
             [ Css.rule ~selector:(selector "dark") [ prop 2 ] ];
         ];
-      Css.layer ~name:"utilities"
+      Css.layer ~name:[ "utilities" ]
         [ Css.rule ~selector:(selector "utility") [ prop 4 ] ];
       Css.rule ~selector:(selector "card")
         ~nested:
@@ -267,8 +267,8 @@ let test_public_fold_count buf =
 let test_custom_props_scope buf =
   let sheet = generated_api_stylesheet buf in
   let all_props = Css.custom_props sheet in
-  let theme_props = Css.custom_props ~layer:"theme" sheet in
-  let util_props = Css.custom_props ~layer:"utilities" sheet in
+  let theme_props = Css.custom_props ~layer:[ "theme" ] sheet in
+  let util_props = Css.custom_props ~layer:[ "utilities" ] sheet in
   if List.length all_props < 3 then
     failf "Css.custom_props lost properties: %S" (String.concat "," all_props);
   List.iter
@@ -376,7 +376,7 @@ let test_css2_legacy_invalid_vectors buf =
         "h1::first-line::before { color: red }";
         "a + { color: red }";
         "table > > td { color: red }";
-        "@page { @top-center { display: block } }";
+        "@page { @top-center { display: 1px } }";
         "ol { list-style-position: center }";
         "p { vertical-align: left right }";
         "q { content: open-quote none }";

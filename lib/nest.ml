@@ -56,6 +56,71 @@ let rec merge_lone (rule : rule) =
       merge_lone { child with selector = combine rule.selector child.selector }
   | _ -> rule
 
+(* What a run of nested statements would have to cross to move ahead of them:
+   every declaration they can write at any depth, read through
+   [statement_declarations] and [statement_children] so no block at-rule hides
+   one. An unknown at-rule is raw text whose body cannot be read at all, so it
+   is [Opaque]: a barrier nothing crosses. *)
+type barrier = Opaque | Crossed of Declaration.declaration list
+
+let rec crossing barrier (stmts : statement list) =
+  match (barrier, stmts) with
+  | Opaque, _ | _, [] -> barrier
+  | Crossed decls, stmt :: rest ->
+      let barrier =
+        match stmt with
+        | Unknown_at_rule _ -> Opaque
+        | _ ->
+            crossing
+              (Crossed (List.rev_append (statement_declarations stmt) decls))
+              (statement_children stmt)
+      in
+      crossing barrier rest
+
+let crosses_freely barrier decl =
+  match barrier with
+  | Opaque -> false
+  | Crossed decls -> Shorthand.declarations_commute [ decl ] decls
+
+(* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested statement
+   behind it. Moving one back into the rule's own run is cascade-neutral exactly
+   when it commutes with everything it would cross, so the body is walked once,
+   growing the barrier with each statement kept and with each declaration that
+   had to stay. Selectors are left out of the question: a nested rule matches
+   other elements than its parent, but assuming it matches the same one only
+   refuses a hoist the cascade would have allowed. *)
+let hoist_declaration_runs (rule : rule) =
+  let hoist_run barrier run =
+    List.fold_left
+      (fun (hoisted, barrier, kept) decl ->
+        if crosses_freely barrier decl then (decl :: hoisted, barrier, kept)
+        else
+          let barrier =
+            match barrier with
+            | Opaque -> Opaque
+            | Crossed decls -> Crossed (decl :: decls)
+          in
+          (hoisted, barrier, decl :: kept))
+      ([], barrier, []) run
+  in
+  let rec go hoisted barrier nested = function
+    | [] -> (List.rev hoisted, List.rev nested)
+    | Declarations run :: rest ->
+        let run_hoisted, barrier, kept = hoist_run barrier run in
+        let nested =
+          match List.rev kept with
+          | [] -> nested
+          | kept -> Declarations kept :: nested
+        in
+        go (run_hoisted @ hoisted) barrier nested rest
+    | stmt :: rest ->
+        go hoisted (crossing barrier [ stmt ]) (stmt :: nested) rest
+  in
+  match go [] (Crossed []) [] rule.nested with
+  | [], _ -> rule
+  | hoisted, nested ->
+      { rule with declarations = rule.declarations @ hoisted; nested }
+
 let rec strip_prefix (parent : Selector.t) (child : Selector.t) =
   match (parent, child) with
   | _, Selector.Combined (cp, comb, crest) when Selector.equal cp parent ->

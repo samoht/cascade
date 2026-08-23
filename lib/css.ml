@@ -71,6 +71,15 @@ let layer_known ~layer_order = function
   | None -> true
   | Some name -> List.exists (String.equal name) layer_order
 
+(* The layer a [Context] keys a declaration by: the CSS text of the [@layer]
+   name entered here, or the layer already entered when the block is anonymous.
+   Two names never share their text (CSS Cascade 5 sec. 6.4.1), so the key tells
+   the layer named [a.b] from the sublayer [b] of [a]. *)
+let entered_layer name outer =
+  match name with
+  | Some name -> Some (Stylesheet.string_of_layer_name name)
+  | None -> outer
+
 (* The places a declaration contributes to ordinary element matching. The other
    declaration sites belong to another cascade origin or to no element at all
    (CSS Cascading 5 sec. 6.1): [@keyframes] is the animation origin,
@@ -110,7 +119,9 @@ let collect_cascade_rules ~layer_order stylesheet =
   let rec statement current_layer acc stmt =
     let open Stylesheet in
     let current_layer =
-      match stmt with Layer ((Some _ as name), _) -> name | _ -> current_layer
+      match stmt with
+      | Layer (name, _) -> entered_layer name current_layer
+      | _ -> current_layer
     in
     let acc =
       if at_declaration_site element_matching_sites stmt then
@@ -142,9 +153,7 @@ and eval_statement ?ctx_for_layer ~layer_order ?layer:context_layer ctx
   let open Stylesheet in
   match statement with
   | Layer (name, block) ->
-      let current_layer =
-        match name with Some _ -> name | None -> context_layer
-      in
+      let current_layer = entered_layer name context_layer in
       let ctx =
         match ctx_for_layer with Some f -> f current_layer | None -> ctx
       in
@@ -551,7 +560,7 @@ let custom_props ?layer sheet =
       | Layer (Some name, _) -> (
           match layer with
           | None -> true
-          | Some target -> in_layer || name = target)
+          | Some target -> in_layer || Stylesheet.equal_layer_name name target)
       | _ -> in_layer
     in
     let acc =
@@ -621,14 +630,37 @@ let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
    which [edit_statements] cannot express and which does not need it: the splice
    is the [concat_map] over a block, and the descent below it is still
    [map_statement_children]'s, so an at-rule added later is walked without a
-   word here. *)
-let rec statements_for_inline block = List.concat_map statement_for_inline block
+   word here.
 
-and statement_for_inline statement =
+   [live] holds every custom-property name the substituted stylesheet still
+   mentions, with the leading [--]. A [@property] registration is not
+   scaffolding for the [var()] it feeds: CSS Properties and Values API 1 sec. 2
+   makes its [initial-value] the computed value wherever no declaration wins,
+   and its [inherits] descriptor decides whether the property inherits at all.
+   Both change computed values, so the registration dies only with the property
+   itself - once substitution has left neither a declaration of it nor a [var()]
+   reading it.
+
+   [keep_layers] leaves the [@layer] wrappers and declarations standing.
+   Dropping them replays the layer stack as document order, which only preserves
+   the cascade once every layered competition has been resolved: the layered
+   custom properties by the fold {!Inline.vars} runs, and the rest by the stack
+   and document order already agreeing, which is what
+   {!Inline.flattening_layers_is_safe} answers. *)
+let rec statements_for_inline ~live ~keep_layers block =
+  List.concat_map (statement_for_inline ~live ~keep_layers) block
+
+and statement_for_inline ~live ~keep_layers statement =
+  let inline_block = statements_for_inline ~live ~keep_layers in
   match statement with
-  | Layer (_, block) -> statements_for_inline block
-  | Layer_decl _ | Property _ -> []
-  | statement -> [ map_statement_children statements_for_inline statement ]
+  | Layer (name, block) when keep_layers -> [ Layer (name, inline_block block) ]
+  | Layer (_, block) -> inline_block block
+  | Property rule -> if List.mem rule.name live then [ statement ] else []
+  | Layer_decl _ when keep_layers -> [ statement ]
+  (* Every [@layer] wrapper is spliced into its parent above, so the layers an
+     [@layer] statement orders no longer exist to be ordered. *)
+  | Layer_decl _ -> []
+  | statement -> [ map_statement_children inline_block statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
    rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
@@ -675,15 +707,17 @@ let canonicalize_rule_order = Rule_order.canonicalize
 
 (* Explicit AST step matching what [to_string ~mode:Inline] does internally:
    substitute every resolvable [var()] reference, then strip the now-empty
-   [@layer] wrappers and the [@property] / [@layer-decl] rules that only existed
-   to register the substituted variables. *)
+   [@layer] wrappers, the [@layer-decl] rules ordering them, and the [@property]
+   registrations whose property the substitution removed. *)
 let inline_vars ?keep_vars ?warn stylesheet =
   let substituted =
     match keep_vars with
     | None -> Inline.vars ?warn stylesheet
     | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
   in
-  statements_for_inline substituted
+  let live = Inline.mentioned_custom_names substituted in
+  let keep_layers = not (Inline.flattening_layers_is_safe substituted) in
+  statements_for_inline ~live ~keep_layers substituted
 
 (* Collect every [var(--name)] reference's name (with leading [--]) from a
    stylesheet. Used by [resolve_theme] to know which names to ask the

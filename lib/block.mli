@@ -13,13 +13,17 @@ val merge_consecutive_media :
 (** Merge adjacent [@media] blocks with identical conditions. *)
 
 val merge_distant_media :
+  ?owner:Stylesheet.rule ->
   optimize_merged_block:(Stylesheet.statement list -> Stylesheet.statement list) ->
   Stylesheet.statement list ->
   Stylesheet.statement list
 (** Merge a later same-condition [@media] block into the first occurrence when
     hoisting it past the intervening statements cannot reorder a conflicting
     rule (overlapping selector with a shared property set to a different value).
-*)
+
+    [owner] is the style rule whose body the statements are, when they are one.
+    A declarations run in that body sets properties on [owner] (CSS Nesting 1
+    sec. 3.4), so without it the run is a conflict the hoist never sees. *)
 
 val merge_consecutive_supports :
   optimize_merged_block:(Stylesheet.statement list -> Stylesheet.statement list) ->
@@ -37,9 +41,9 @@ val is_layer_empty : Stylesheet.statement list -> bool
 (** Whether a layer block has no cascade-contributing statements. *)
 
 val collect_empty_layer_names :
-  string list ->
+  Stylesheet.layer_name list ->
   Stylesheet.statement list ->
-  string list * Stylesheet.statement list
+  Stylesheet.layer_name list * Stylesheet.statement list
 (** Collect consecutive empty named layers into layer declaration names. *)
 
 val merge_layer_declarations :

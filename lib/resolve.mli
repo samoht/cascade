@@ -69,17 +69,19 @@ val supported : Selector.t -> bool
 val layer_order : Stylesheet.t -> string list
 (** [layer_order sheet] is the cascade layer order [sheet] declares, weakest
     first, as one dotted path per layer: [a.b] is the sublayer [b] of [a],
-    however it was written ([@layer a.b] or [@layer a { @layer b }]). Layers
-    come in order of first appearance with each sublayer inside its parent's run
-    (css-cascade-5 sec. 6.4.2), and an [@layer a, b;] statement declares its
-    names there just as a block does. Every anonymous [@layer { ... }] block is
-    a layer of its own, keyed by a path holding a U+0000 that no author can
-    write - a caller that prints these paths has to spell those out itself. The
-    layers counted are those {!Make.resolve} ranks against, so a layer declared
-    inside one of the blocks it does not walk - a conditional group rule
-    ([@media], [@supports], [@container], [@-moz-document], [@when], [@else]),
-    [@starting-style], [@scope], or an origin wrapper - is not part of this
-    order.
+    however it was written ([@layer a.b] or [@layer a { @layer b }]). Each ident
+    of a path carries the escapes that read it back (css-syntax-3 sec. 2.1), so
+    the layer named [a.b] is the path [a\.b] and stays apart from the sublayer
+    [a.b]. Layers come in order of first appearance with each sublayer inside
+    its parent's run (css-cascade-5 sec. 6.4.2), and an [@layer a, b;] statement
+    declares its names there just as a block does. Every anonymous
+    [@layer { ... }] block is a layer of its own, keyed by a path holding a
+    U+0000 that no author can write - a caller that prints these paths has to
+    spell those out itself. The layers counted are those {!Make.resolve} ranks
+    against, so a layer declared inside one of the blocks it does not walk - a
+    conditional group rule ([@media], [@supports], [@container],
+    [@-moz-document], [@when], [@else]), [@starting-style], [@scope], or an
+    origin wrapper - is not part of this order.
 
     This is the [~layer_order] that {!Stylesheet.cascade_layer_precedence_rank}
     expects. *)

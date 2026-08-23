@@ -45,16 +45,19 @@ val custom_property : ?layer:string -> string -> string -> declaration
     authored CSS text.
 
     @raise Failure
-      if the pair does not write back as the one declaration it names. [name]
-      has to be a [<dashed-ident>] that tokenizes to itself, and [value] the
-      [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property: no
-      top-level [;], no unmatched closing bracket, no unterminated function,
-      block or string. {!parse_custom_property} is the same check as an option.
-*)
+      if the pair does not make the one declaration it names. [name] has to be a
+      [<dashed-ident>], and [value] the [<declaration-value>?] CSS Variables 1
+      sec. 2 gives a custom property: no top-level [;], no unmatched closing
+      bracket, no unterminated function, block or string. A [name] holding a
+      code point no bare ident carries is written back with the escapes that
+      read it. {!parse_custom_property} is the same check as an option. *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
-(** [parse_declaration ?layer property value] parses ["property: value"] with
-    the declaration parser into a fully-typed declaration:
+(** [parse_declaration ?layer property value] reads [property] and [value] with
+    the declaration parser into a fully-typed declaration. The two are read as
+    the tokens they are rather than as one ["property: value"] text, so a
+    [property] carrying a [;], a [}] or a [:] names this declaration or names
+    none:
     - a known property (e.g. [mask-type], {!val-display}) becomes a typed
       declaration;
     - a custom property ([--x]) or an unknown property keeps its parsed
@@ -67,9 +70,8 @@ val parse_declaration : ?layer:string -> string -> string -> declaration option
 
 val parse_custom_property : string -> string -> declaration option
 (** [parse_custom_property name value] is {!parse_declaration} restricted to a
-    custom property whose [name] and [value] are safe to write into a rule
-    verbatim. It is [None] unless [name] is a [<dashed-ident>] that tokenizes
-    back to itself and [value] is one [<declaration-value>] (CSS Syntax 3 sec.
+    custom property that a rule can hold. It is [None] unless [name] is a
+    [<dashed-ident>] and [value] is one [<declaration-value>] (CSS Syntax 3 sec.
     8.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched closing
     bracket, no unterminated function or block, and no top-level [;].
 

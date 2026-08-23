@@ -24,6 +24,9 @@ let decl_t : Css.Declaration.declaration Alcotest.testable =
 let check_import_rule =
   check_value_cursor "import_rule" read_import_rule pp_import_rule
 
+let check_layer_name =
+  check_value_cursor "layer_name" read_layer_name pp_layer_name
+
 let check_declaration =
   check_value_cursor "declaration" Css.Declaration.read_declaration
     (Css.Pp.option Css.Declaration.pp_declaration)
@@ -277,7 +280,7 @@ let test_property_rule_creation () =
 let test_layer_rule_creation () =
   let decl = Css.Declaration.background_color (Css.Values.hex "ff0000") in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule ] in
+  let layer_stmt = layer ~name:[ "utilities" ] [ statement_of_rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   (* Both paths for the same node. minify (pp) does the shortest same-node
      spelling: Hex ff0000 -> #f00. minify+optimize cross-folds to the shortest
@@ -555,7 +558,7 @@ let test_property_spec_syntax_vectors () =
 let test_layer_pp () =
   let decl = Css.Declaration.color (Css.Values.hex "0000ff") in
   let rule_obj = rule ~selector:(Selector.class_ "blue") [ decl ] in
-  let layer_stmt = layer ~name:"utilities" [ statement_of_rule rule_obj ] in
+  let layer_stmt = layer ~name:[ "utilities" ] [ statement_of_rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true sheet in
@@ -564,7 +567,7 @@ let test_layer_pp () =
 
   (* Test empty layer - per CSS spec, empty @layer statements end with
      semicolon *)
-  let empty_layer = layer ~name:"base" [] in
+  let empty_layer = layer ~name:[ "base" ] [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output = Css.Stylesheet.pp ~minify:true empty_sheet in
   Alcotest.(check string) "empty layer" "@layer base;" empty_output
@@ -777,7 +780,7 @@ let page_case () =
      counter(page) } }";
   neg_cursor read_stylesheet "@page : { margin: 1cm }";
   neg_cursor read_stylesheet "@page :unknown { margin: 1cm }";
-  neg_cursor read_stylesheet "@page { color: red }"
+  neg_cursor read_stylesheet "@page { color: notacolor }"
 
 let page_margin_edges () =
   check_stylesheet
@@ -798,7 +801,7 @@ let page_margin_edges () =
     "@page invoice:blank:first { margin: 1cm }";
   neg_cursor read_stylesheet "@page { @unknown { content: none } }";
   neg_cursor read_stylesheet "@page { @top-left; }";
-  neg_cursor read_stylesheet "@page { @top-left { color: red } }"
+  neg_cursor read_stylesheet "@page { @top-left { color: notacolor } }"
 
 let property_rule_edges () =
   check_stylesheet
@@ -926,11 +929,153 @@ let spec_page_margin_descriptor_matrix () =
      content: counter(page) } @bottom-center { content: \"Chapter\" } }";
   List.iter
     (neg_cursor read_stylesheet)
-    [ "@page { @top-center { display: block } }" ];
+    [ "@page { @top-center { display: 1px } }" ];
   check_stylesheet ~expected:"@page:first:left{margin:1cm}"
     "@page :first:left { margin: 1cm }";
   check_stylesheet ~expected:"@page:blank:first{margin:.5cm}"
     "@page :blank:first { margin: 0.5cm }"
+
+(* CSS Paged Media 3 sec. 6: Appendix A is the normative list of CSS 2.1
+   properties that apply in the page context and in the margin context, and
+   "behavior for properties not included in CSS 2.1 is undefined" - undefined,
+   not invalid, "to allow the gradual addition of appropriate CSS3 properties as
+   they emerge". Page-margin boxes inherit from the page context and the page
+   context inherits from the root element, so an inherited property set on the
+   page carries into every margin box. Blink 146 reads every declaration below
+   back out of [cssRules[0].cssText] unchanged, in the page body and in the
+   margin box alike. *)
+let spec_page_context_properties () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      (* Appendix A, page context. *)
+      ("@page{color:red}", "@page { color: red }");
+      ("@page{font-size:12pt}", "@page { font-size: 12pt }");
+      ("@page{direction:rtl}", "@page { direction: rtl }");
+      ("@page{text-align:center}", "@page { text-align: center }");
+      ("@page{padding:1cm}", "@page { padding: 1cm }");
+      ("@page{border:1px solid red}", "@page { border: 1px solid red }");
+      ("@page{visibility:hidden}", "@page { visibility: hidden }");
+      (* Sec. 6.1: page-based counters are defined in the page context. *)
+      ("@page{counter-increment:page 1}", "@page { counter-increment: page 1 }");
+      (* Sec. 7.1.2 and 7.3 descriptors of this same module. Blink 146 keeps
+         [page-orientation] and drops [bleed], which it does not implement;
+         [bleed] is the name the module defines. *)
+      ( "@page{page-orientation:rotate-left}",
+        "@page { page-orientation: rotate-left }" );
+      ("@page{bleed:6pt}", "@page { bleed: 6pt }");
+      (* Not in Appendix A, so undefined rather than invalid; Blink 146 keeps
+         both. Cascade formats CSS, so an undefined descriptor is carried
+         through rather than dropped. *)
+      ("@page{orphans:3;widows:3}", "@page { orphans: 3; widows: 3 }");
+      (* Blink 146 drops a custom property in a page context and no module
+         defines one there, so admissibility is open; carrying it costs nothing,
+         dropping it loses the author's text. *)
+      ("@page{--custom:1}", "@page { --custom: 1 }");
+      (* Appendix A, margin context: the page-context list plus [content]. *)
+      ( "@page{@top-center{color:red;font-size:9pt;content:\"x\"}}",
+        "@page { @top-center { color: red; font-size: 9pt; content: \"x\" } }"
+      );
+      ( "@page{@top-center{display:block}}",
+        "@page { @top-center { display: block } }" );
+      (* An inherited property on the page reaches the margin boxes. *)
+      ( "@page{color:red;@top-center{content:\"x\"}}",
+        "@page { color: red; @top-center { content: \"x\" } }" );
+    ];
+  (* What browsers still reject: a value the property's grammar does not admit,
+     and an item that is not a declaration at all. Blink 146 drops each of these
+     and keeps the rest of the block. *)
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@page { margin: notalength }";
+      "@page { color: notacolor }";
+      "@page { width: 10 }";
+      "@page { .a { b: c } }";
+      "@page { @media print { margin: 1cm } }";
+      "@page { @unknown { content: none } }";
+      "@page { @top-center { display: 1px } }";
+      "@page { @top-center { @media screen { .x { color: red } } } }";
+    ]
+
+(* CSS Cascade 5 sec. 6.2 puts an important author declaration above a normal
+   one whichever was written first, and sec. 6.4 breaks a tie between two of the
+   same importance by order of appearance. The page context cascades on those
+   rules like any other author context, so a duplicate name in a page body or a
+   margin box keeps the important declaration, and the last one when both carry
+   the same importance. Blink 146 reads exactly that back out of
+   [cssRules[0].cssText] in both contexts. Blink serializes the survivors with
+   the normal declarations before the important ones, a consequence of how it
+   builds its property set; cascade keeps the order the author wrote, which
+   names the same declarations. *)
+let spec_page_descriptor_importance () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@page{margin:1cm!important}",
+        "@page { margin: 1cm !important; margin: 2cm }" );
+      ( "@page{margin:2cm!important}",
+        "@page { margin: 1cm; margin: 2cm !important }" );
+      ("@page{margin:2cm}", "@page { margin: 1cm; margin: 2cm }");
+      ( "@page{margin:2cm!important}",
+        "@page { margin: 1cm !important; margin: 2cm !important }" );
+      ( "@page{color:red!important}",
+        "@page { color: red !important; color: blue; color: green }" );
+      (* The important declaration keeps the place it was written in. *)
+      ( "@page{margin:1cm!important;size:A4}",
+        "@page { margin: 1cm !important; size: a4; margin: 2cm }" );
+      (* Sec. 5: a margin box holds a declaration list of its own, and the same
+         cascade decides it. *)
+      ( "@page{@top-center{content:\"a\"!important}}",
+        "@page { @top-center { content: \"a\" !important; content: \"b\" } }" );
+      ( "@page{@top-center{content:\"b\"!important}}",
+        "@page { @top-center { content: \"a\"; content: \"b\" !important } }" );
+      ( "@page{@top-center{content:\"b\"}}",
+        "@page { @top-center { content: \"a\"; content: \"b\" } }" );
+      (* A longhand written after its shorthand is a different name, so neither
+         replaces the other and both stay. Blink expands the pair to longhands
+         and prints [margin: 2cm 1cm 1cm], the same four values. *)
+      ( "@page{margin:1cm;margin-top:2cm}",
+        "@page { margin: 1cm; margin-top: 2cm }" );
+      ( "@page{margin-top:2cm!important;margin:1cm}",
+        "@page { margin-top: 2cm !important; margin: 1cm }" );
+      (* Blink drops a custom property in a page context, so it gives no reading
+         here; the cascade rule that decides every other name decides this one
+         too. *)
+      ("@page{--x:1!important}", "@page { --x: 1 !important; --x: 2 }");
+    ]
+
+(* CSS Paged Media 3 sec. 5 gives a margin at-rule a [<declaration-list>], which
+   CSS Syntax 3 sec. 5.4.4 consumes even when it holds nothing, so a margin box
+   with an empty block is valid and Blink 146 reads one back unchanged - a box
+   left empty by a stray [;] too, which sec. 5.4.3 discards with no declaration
+   to validate. Sec. 5 generates the box only where its [content] computes away
+   from [none], so an empty one paints nothing, and {!Css.to_string} elides what
+   paints nothing whether or not the sheet was optimized: an empty box goes the
+   way an empty style rule and an empty [@page] already go, and a page left with
+   neither descriptor nor box goes with it. *)
+let spec_page_margin_box_empty () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ("@page{@top-center{}}", "@page { @top-center { } }");
+      ("@page{@top-center{}}", "@page { @top-center {} }");
+      ("@page{@top-center{}}", "@page { @top-center { ; } }");
+      ( "@page{margin:1cm;@top-center{}}",
+        "@page { margin: 1cm; @top-center { } }" );
+      ( "@page{@top-center{}@bottom-center{content:\"x\"}}",
+        "@page { @top-center { } @bottom-center { content: \"x\" } }" );
+    ];
+  (* An empty block is not a missing one: sec. 5 still asks for a block. *)
+  neg_cursor read_stylesheet "@page { @top-left; }";
+  assert_minify_and_optimize "@page { @top-center { } }" ~minified:""
+    ~optimized:"";
+  assert_minify_and_optimize "@page { margin: 1cm; @top-center { } }"
+    ~minified:"@page{margin:1cm}" ~optimized:"@page{margin:1cm}";
+  assert_minify_and_optimize
+    "@page { @top-center { } @bottom-center { content: \"x\" } }"
+    ~minified:"@page{@bottom-center{content:\"x\"}}"
+    ~optimized:"@page{@bottom-center{content:\"x\"}}"
 
 let spec_property_descriptor_matrix () =
   List.iter
@@ -1183,6 +1328,7 @@ let spec_strict_accepts_valid_stylesheets () =
         "@container sidebar (inline-size > 30em) { .x { display: grid } }" );
       (* Paged Media 3 SS 3.1 permits multiple page pseudo-classes; compound
          vectors are covered by the page descriptor matrix. *)
+      ("empty page margin box", "@page { @top-center { } }");
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
       ( "font-face wildcard unicode range",
@@ -1224,6 +1370,41 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@namespace svg url(http://www.w3.org/2000/svg); @import url(late.css);"
       );
       ("import inside style rule", ".x { @import url(inner.css); color: red }");
+      (* CSS Nesting 1 sec. 3.3: an at-rule whose body holds no style rule does
+         not nest, so writing one inside a style rule is invalid. *)
+      ( "font-face inside style rule",
+        ".x { color: red; @font-face { font-family: F; src: url(f.woff2) } }" );
+      ( "keyframes inside style rule",
+        ".x { color: red; @keyframes k { to { opacity: 1 } } }" );
+      ( "webkit keyframes inside style rule",
+        ".x { color: red; @-webkit-keyframes k { to { opacity: 1 } } }" );
+      ( "moz keyframes inside style rule",
+        ".x { color: red; @-moz-keyframes k { to { opacity: 1 } } }" );
+      ( "property inside style rule",
+        ".x { color: red; @property --p { syntax: \"*\"; inherits: false } }" );
+      ("page inside style rule", ".x { color: red; @page { margin: 1cm } }");
+      ( "counter-style inside style rule",
+        ".x { color: red; @counter-style c { system: cyclic; symbols: \"x\" } }"
+      );
+      ( "position-try inside style rule",
+        ".x { color: red; @position-try --t { top: 1px } }" );
+      ( "font-palette-values inside style rule",
+        ".x { color: red; @font-palette-values --v { font-family: F; \
+         base-palette: 0 } }" );
+      ( "font-feature-values inside style rule",
+        ".x { color: red; @font-feature-values F { @styleset { s: 1 } } }" );
+      ( "viewport inside style rule",
+        ".x { color: red; @viewport { width: 1px } }" );
+      ( "ms-viewport inside style rule",
+        ".x { color: red; @-ms-viewport { width: 1px } }" );
+      ( "supports-condition inside style rule",
+        ".x { color: red; @supports-condition (color: red) { color: green } }"
+      );
+      (* CSS Conditional 5 sec. 4: an @else needs a preceding @when here too. *)
+      ( "orphan else inside style rule",
+        ".x { color: red; @else { color: green } }" );
+      ( "orphan else inside a nested group rule",
+        ".x { @media screen { color: red; @else { color: green } } }" );
       ("import inside media rule", "@media screen { @import url(inner.css); }");
       ("import with block", "@import url(theme.css) { .x { color: red } }");
       ( "import layer after condition",
@@ -1319,8 +1500,7 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@counter-style thumbs { symbols: \"*\" }" );
       ( "counter-style cyclic missing symbols",
         "@counter-style thumbs { system: cyclic }" );
-      ( "page margin invalid declaration",
-        "@page { @top-left { display: block } }" );
+      ("page margin invalid declaration", "@page { @top-left { display: 1px } }");
       ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
       ("keyframes forbidden name none", "@keyframes none { to { opacity: 1 } }");
       ( "keyframes forbidden css-wide name",
@@ -1361,7 +1541,662 @@ let spec_lenient_recovery_stylesheets () =
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     ".ok{color:green}.next{color:#00f}" 1;
   lenient_recover "unclosed block auto-closes" ".btn { color: red;"
-    ".btn{color:red}" 0
+    ".btn{color:red}" 0;
+  lenient_recover "descriptor at-rule in a style rule keeps its neighbours"
+    ".a { color: red; @font-face { font-family: F; src: url(f.woff2) } \
+     background: blue }"
+    ".a{color:red;background:#00f}" 1;
+  lenient_recover "orphan else in a style rule keeps its neighbours"
+    ".a { color: red; @else { color: green } background: blue }"
+    ".a{color:red;background:#00f}" 1
+
+(* CSS Syntax 3 sec. 5.4.4 "consume a declaration" ends an invalid declaration
+   at the next top-level [;], and a [{}] met on the way is one component value
+   of the value being skipped, not a stopping point. A nested at-rule's body is
+   <block-contents> just like a style rule's (CSS Nesting 1 sec. 3.3), so the
+   same recovery applies inside it: Blink 146 drops the one declaration and
+   keeps every neighbour, the enclosing group rule and the rest of the sheet. *)
+let spec_lenient_recovery_nested_at_rule_declarations () =
+  let recovered = ".a{@media screen{color:red;background:#00f}}" in
+  lenient_recover "bad declaration first in a nested at-rule"
+    ".a { @media screen { width: 10; color: red; background: blue } }" recovered
+    1;
+  lenient_recover "bad declaration mid-run in a nested at-rule"
+    ".a { @media screen { color: red; width: 10; background: blue } }" recovered
+    1;
+  lenient_recover "bad declaration last in a nested at-rule"
+    ".a { @media screen { color: red; background: blue; width: 10 } }" recovered
+    1;
+  lenient_recover "sole declaration of a nested at-rule dropped"
+    ".a { @media screen { width: 10 } }" "" 1;
+  lenient_recover "bad declaration in a nested style rule"
+    ".a { & b { color: red; width: 10; margin: 0 } }" ".a b{color:red;margin:0}"
+    1;
+  lenient_recover "bad declaration in a style rule under a nested at-rule"
+    ".a { @media screen { & b { color: red; width: 10; margin: 0 } } }"
+    ".a{@media screen{& b{color:red;margin:0}}}" 1;
+  lenient_recover "bad declaration in a doubly nested at-rule"
+    ".a { @media screen { @container (width > 0px) { color: red; width: 10; \
+     background: blue } } }"
+    ".a{@media screen{@container(width>0px){color:red;background:#00f}}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @layer"
+    ".a { @layer x { color: red; width: 10; background: blue } }"
+    ".a{@layer x{color:red;background:#00f}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @scope"
+    ".a { @scope (.b) { color: red; width: 10; background: blue } }"
+    ".a{@scope(.b){color:red;background:#00f}}" 1;
+  lenient_recover "nested at-rule keeps recovery in @starting-style"
+    ".a { @starting-style { color: red; width: 10; background: blue } }"
+    ".a{@starting-style{color:red;background:#00f}}" 1;
+  (* A [{}] in the dropped value is consumed with it; the run resumes at the [;]
+     after it. An unclosed function has no such [;] - the tokenizer closes it at
+     the end of the block, so it swallows the rest, as Blink does. *)
+  lenient_recover "curly block inside a dropped value is skipped with it"
+    ".a { @media screen { color: red; width: {1}; background: blue } }"
+    recovered 1;
+  lenient_recover "unclosed function swallows the rest of the block"
+    ".a { @media screen { color: red; width: calc(1px; background: blue } }"
+    ".a{@media screen{color:red}}" 1;
+  lenient_recover "a run of stray tokens is dropped like a bad declaration"
+    ".a { @media screen { color: red; !!!; background: blue } }" recovered 1
+
+(* A dropped declaration leaves no gap: the run written around it is one run, as
+   it is in Blink 146, the same way a dropped at-rule leaves one. *)
+let spec_lenient_recovery_nested_declaration_run () =
+  lenient_recover "bad declaration immediately before a nested rule"
+    ".a { @media screen { width: 10; & b { color: red } } }"
+    ".a{@media screen{& b{color:red}}}" 1;
+  lenient_recover "bad declaration immediately after a nested rule"
+    ".a { @media screen { & b { color: red } width: 10; background: blue } }"
+    ".a{@media screen{& b{color:red}background:#00f}}" 1;
+  lenient_recover "dropped declaration does not seal the run before a rule"
+    ".a { @media screen { color: red; width: 10; background: blue; & b { \
+     margin: 0 } } }"
+    ".a{@media screen{color:red;background:#00f;& b{margin:0}}}" 1;
+  lenient_recover "dropped declaration does not seal the run it opened"
+    ".a { @media screen { width: 10; color: red; & b { margin: 0 } background: \
+     blue } }"
+    ".a{@media screen{color:red;& b{margin:0}background:#00f}}" 1
+
+(* [css] reports exactly [expected] warnings leniently, and [~strict:true]
+   rejects it exactly when the lenient parse warned. *)
+let warns_exactly css expected =
+  let warnings =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.warnings; _ } -> warnings
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" css
+          (Cascade.Error.to_string err)
+  in
+  Alcotest.(check int) ("warnings for " ^ css) expected (List.length warnings);
+  match (Css.of_string ~strict:true css, expected) with
+  | Ok _, 0 -> ()
+  | Error _, 0 -> Alcotest.failf "strict parse rejected warning-free %S" css
+  | Ok _, _ -> Alcotest.failf "strict parse accepted warned-about %S" css
+  | Error _, _ -> ()
+
+(* Each recovered declaration reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. *)
+let spec_recovery_warns_once_per_declaration () =
+  let check = warns_exactly in
+  check ".a { @media screen { color: red; width: 10; background: blue } }" 1;
+  check ".a { @media screen { width: 10; height: 20; color: red } }" 2;
+  check
+    ".a { @media screen { @container (width > 0px) { width: 10; color: red } } \
+     }"
+    1;
+  check ".a { @media screen { color: red; background: blue } }" 0
+
+(* CSS Paged Media 3 sec. 4.1: "If an error is encountered during the processing
+   of a declaration block within a page or a margin context, the Rules for
+   handling parsing errors apply; that is, valid declarations within the block
+   are applied." One bad descriptor therefore costs that descriptor, not the
+   [@page] holding it and not the sheet holding that. The discard follows CSS
+   Syntax 3 sec. 5.4.4 for a declaration - up to the next top-level [;], a [{}]
+   met on the way counting as one component value of the value being skipped -
+   and sec. 5.4.2 for an at-rule, which ends at its block or its [;]. Blink 146
+   keeps both neighbours in every case below. *)
+let spec_lenient_recovery_page_descriptors () =
+  let recovered = "@page{margin:1cm;margin-top:2cm}" in
+  lenient_recover "bad descriptor first in @page"
+    "@page { width: 10; margin: 1cm; margin-top: 2cm }" recovered 1;
+  lenient_recover "bad descriptor mid-body in @page"
+    "@page { margin: 1cm; width: 10; margin-top: 2cm }" recovered 1;
+  lenient_recover "bad descriptor last in @page"
+    "@page { margin: 1cm; margin-top: 2cm; width: 10 }" recovered 1;
+  lenient_recover "sole descriptor of @page dropped" "@page { width: 10 }" "" 1;
+  lenient_recover "curly block inside a dropped page value is skipped with it"
+    "@page { margin: 1cm; width: {1}; margin-top: 2cm }" recovered 1;
+  lenient_recover "two curly blocks in a dropped page value are one skip"
+    "@page { margin: 1cm; width: {1}{2}; margin-top: 2cm }" recovered 1;
+  lenient_recover "tokens after a curly block in a dropped page value"
+    "@page { margin: 1cm; width: {1} 2px; margin-top: 2cm }" recovered 1;
+  (* An unclosed function has no top-level [;] left to stop at - the tokenizer
+     closes it at the end of the block - so it takes the rest of the body, as it
+     does in Blink. *)
+  lenient_recover "unclosed function swallows the rest of the page body"
+    "@page { margin: 1cm; width: calc(1px; margin-top: 2cm }"
+    "@page{margin:1cm}" 1;
+  (* A selector-shaped item is not a declaration, so sec. 5.4.4 skips it as a
+     bad one: with no [;] after its block it takes the body's tail with it, and
+     with a [;] it costs only itself. Blink 146 splits the two the same way. *)
+  lenient_recover "selector-shaped item without a semicolon takes the tail"
+    "@page { margin: 1cm; .a { b: c } margin-top: 2cm }" "@page{margin:1cm}" 1;
+  lenient_recover "selector-shaped item with a semicolon costs only itself"
+    "@page { margin: 1cm; .a { b: c }; margin-top: 2cm }" recovered 1;
+  (* An at-rule ends at its block, so discarding an invalid one leaves the
+     descriptor written after it in the page. *)
+  lenient_recover "unknown page margin rule is dropped alone"
+    "@page { @bogus-box { content: \"x\" } margin: 1cm; margin-top: 2cm }"
+    recovered 1;
+  lenient_recover "at-rule that is no page margin rule is dropped alone"
+    "@page { margin: 1cm; @media screen { color: red } margin-top: 2cm }"
+    recovered 1;
+  lenient_recover "page margin rule with no block ends at its semicolon"
+    "@page { margin: 1cm; @top-center; margin-top: 2cm }" recovered 1
+
+(* A page-margin box holds a declaration block of its own (CSS Paged Media 3
+   sec. 5), so sec. 4.1 applies inside it too: the descriptors written around a
+   bad one stay in the box, and the box stays in the [@page]. *)
+let spec_lenient_recovery_page_margin_box () =
+  let recovered = "@page{@top-center{content:\"x\";margin:0}}" in
+  lenient_recover "bad descriptor in a page margin box"
+    "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }" recovered 1;
+  lenient_recover "at-rule in a page margin box ends at its block"
+    "@page { @top-center { @media screen { a: b } content: \"x\"; margin: 0 } }"
+    recovered 1;
+  lenient_recover "selector-shaped item in a margin box with a semicolon"
+    "@page { @top-center { content: \"x\"; .a { b: c }; margin: 0 } }" recovered
+    1;
+  (* The box outlives its only item, as it does in Blink 146, and what is left
+     is an empty box: nothing to paint, so it is elided on output like any other
+     block that applies nothing, and the page it empties goes with it. *)
+  lenient_recover "selector-shaped item alone in a page margin box"
+    "@page { @top-center { .a { b: c } } }" "" 1
+
+(* A dropped descriptor leaves no gap: the page keeps the descriptors written
+   around it in source order, and its margin boxes keep theirs. *)
+let spec_lenient_recovery_page_body_order () =
+  lenient_recover "bad descriptor before a page margin box"
+    "@page { margin: 1cm; width: 10; @top-center { content: \"x\" } \
+     margin-top: 2cm }"
+    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+  lenient_recover "bad descriptor after a page margin box"
+    "@page { margin: 1cm; @top-center { content: \"x\" } width: 10; \
+     margin-top: 2cm }"
+    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+  lenient_recover "bad descriptor between two page margin boxes"
+    "@page { @top-center { content: \"x\" } width: 10; @bottom-center { \
+     content: \"y\" } margin: 1cm }"
+    "@page{margin:1cm;@top-center{content:\"x\"}@bottom-center{content:\"y\"}}"
+    1
+
+(* Each dropped page descriptor reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. A stray [;] is discarded without a
+   declaration to validate (CSS Syntax 3 sec. 5.4.3), so it costs nothing. *)
+let spec_page_recovery_warns_once_per_descriptor () =
+  warns_exactly "@page { margin: 1cm; width: 10; margin-top: 2cm }" 1;
+  warns_exactly "@page { margin: 1cm; width: {1}{2}; margin-top: 2cm }" 1;
+  warns_exactly "@page { width: 10; margin: 1cm; height: 20 }" 2;
+  warns_exactly "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }"
+    1;
+  warns_exactly "@page { margin: 1cm; margin-top: 2cm }" 0;
+  warns_exactly "@page { margin: 1cm;; margin-top: 2cm }" 0;
+  warns_exactly "@page { ; margin: 1cm }" 0;
+  warns_exactly "@page { @top-center { content: \"x\" } margin: 1cm }" 0;
+  (* A name no module defines in a page context is undefined there, not invalid,
+     so it neither warns nor is dropped - the same treatment cascade gives an
+     unknown property name in a style rule. *)
+  warns_exactly "@page { margin: 1cm; zzz: 1; margin-top: 2cm }" 0;
+  warns_exactly "@page { @top-center { content: \"x\"; zzz: 1; margin: 0 } }" 0
+
+(* CSS Properties and Values API 1 sec. 2: [@property] holds the [syntax],
+   [inherits] and [initial-value] descriptors, and "unknown descriptors are
+   invalid and ignored". Dropping one costs that descriptor, not the
+   registration and not the sheet holding it. The discard follows CSS Syntax 3
+   sec. 5.4.4 for a declaration - up to the next top-level [;], a [{}] met on
+   the way counting as one component value of the value being skipped - and sec.
+   5.4.2 for an at-rule, which ends at its block or its [;]. Blink 146 keeps the
+   registration in every case below. *)
+let spec_lenient_recovery_property_descriptors () =
+  let registered =
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let body rest = "@property --x { syntax: \"<length>\"; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @property"
+    "@property --x { zzz: 1; syntax: \"<length>\"; inherits: false; \
+     initial-value: 0px }"
+    registered 1;
+  lenient_recover "unknown descriptor mid-body in @property"
+    (body "zzz: 1; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "unknown descriptor last in @property"
+    (body "inherits: false; initial-value: 0px; zzz: 1")
+    registered 1;
+  lenient_recover "curly block inside a dropped descriptor value"
+    (body "zzz: {1}; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "two curly blocks in a dropped descriptor value are one skip"
+    (body "zzz: {1}{2}; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "tokens after a curly block in a dropped descriptor value"
+    (body "zzz: {1} 2px; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "a run of stray tokens is dropped like a bad descriptor"
+    (body "!!!; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "selector-shaped item in @property is dropped alone"
+    (body ".a { b: c }; inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "at-rule in @property ends at its block"
+    (body "@media screen { color: red } inherits: false; initial-value: 0px")
+    registered 1;
+  lenient_recover "at-rule with no block in @property ends at its semicolon"
+    (body "@media screen; inherits: false; initial-value: 0px")
+    registered 1;
+  (* A descriptor's value is its whole declaration, so anything left over makes
+     the declaration invalid rather than the leftover alone. Losing [inherits]
+     that way leaves the registration incomplete, which drops it - as it does in
+     Blink. *)
+  lenient_recover "trailing tokens invalidate the descriptor they follow"
+    (body "inherits: false bogus; initial-value: 0px")
+    "" 1;
+  lenient_recover "an important flag invalidates the descriptor it follows"
+    (body "inherits: false !important; initial-value: 0px")
+    "" 1;
+  lenient_recover "a later descriptor still overrides the one dropped"
+    (body "inherits: false !important; initial-value: 0px; inherits: true")
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}" 1
+
+(* CSS Syntax 3 sec. 5.4.3 "consume a block's contents" discards a [;] that no
+   declaration precedes rather than validating one, so a stray semicolon in an
+   [@property] body costs nothing. Blink 146 reads all three of these. *)
+let spec_property_skips_stray_semicolons () =
+  let registered =
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  lenient_recover "leading semicolon in @property"
+    "@property --x { ; syntax: \"<length>\"; inherits: false; initial-value: \
+     0px }"
+    registered 0;
+  lenient_recover "doubled semicolon in @property"
+    "@property --x { syntax: \"<length>\";; inherits: false; initial-value: \
+     0px }"
+    registered 0;
+  lenient_recover "trailing semicolon in @property"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: \
+     0px; }"
+    registered 0
+
+(* Each dropped [@property] descriptor reports once, and [~strict:true] rejects
+   exactly the inputs the lenient parse warned about. *)
+let spec_property_recovery_warns_once_per_descriptor () =
+  let body rest = "@property --x { syntax: \"<length>\"; " ^ rest ^ " }" in
+  warns_exactly (body "zzz: 1; inherits: false; initial-value: 0px") 1;
+  warns_exactly (body "zzz: {1}{2}; inherits: false; initial-value: 0px") 1;
+  warns_exactly (body "zzz: 1; yyy: 2; inherits: false; initial-value: 0px") 2;
+  warns_exactly (body "inherits: false; initial-value: 0px") 0;
+  warns_exactly (body ";; inherits: false; initial-value: 0px") 0
+
+(* A rule that fails to parse inside a grouping at-rule's block ends where CSS
+   Syntax 3 says its kind ends: an at-rule at its block or its [;] (sec. 5.4.2),
+   a qualified rule at its block (sec. 5.4.3). A [(] or a [[] met before that
+   block is a component value of the prelude, so the rule being discarded runs
+   on past it. Stopping there instead would leave the tail of the prelude to be
+   read as a rule of its own, and Blink 146 keeps no such rule: for each input
+   below it reads back only the rule named in the expectation. *)
+let spec_lenient_recovery_block_statements () =
+  lenient_recover "bad @supports prelude in @media ends at its block"
+    "@media screen { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad @supports prelude in @layer ends at its block"
+    "@layer base { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    "@layer base{b{color:#00f}}" 1;
+  lenient_recover "bad @supports prelude in @supports ends at its block"
+    "@supports (color: red) { @supports (display: grid) bogus { a { color: red \
+     } } b { color: blue } }"
+    "b{color:#00f}" 1;
+  lenient_recover "bad @media prelude in @media ends at its block"
+    "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad @container prelude in @media ends at its block"
+    "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
+     color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "at-rule with no block in @media ends at its semicolon"
+    "@media screen { @supports (display: grid) bogus; b { color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "bad selector holding a [] in @media ends at its block"
+    "@media screen { a[href=] { color: red } p { color: blue } }"
+    "@media screen{p{color:#00f}}" 1;
+  lenient_recover "bad selector holding a [] in @layer ends at its block"
+    "@layer base { a[href=] { color: red } p { color: blue } }"
+    "@layer base{p{color:#00f}}" 1;
+  lenient_recover "bad selector opening on a () in @media ends at its block"
+    "@media screen { (foo) bar { a { color: red } } b { color: blue } }"
+    "@media screen{b{color:#00f}}" 1;
+  lenient_recover "two bad statements in one block cost only themselves"
+    "@media screen { @supports (display: grid) bogus { a { color: red } } \
+     @container (min-width: 1px) !! { c { color: lime } } b { color: blue } }"
+    "@media screen{b{color:#00f}}" 2
+
+(* Each statement dropped from a grouping at-rule's block reports once: the tail
+   of its prelude is part of what is discarded, not a second rule to be read and
+   rejected on its own. *)
+let spec_block_recovery_warns_once_per_statement () =
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus { a { color: red } } b { \
+     color: blue } }"
+    1;
+  warns_exactly
+    "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
+     color: blue } }"
+    1;
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus; b { color: blue } }" 1;
+  warns_exactly "@media screen { a[href=] { color: red } p { color: blue } }" 1;
+  warns_exactly "@layer base { a[href=] { color: red } p { color: blue } }" 1;
+  warns_exactly
+    "@media screen { @supports (display: grid) bogus { a { color: red } } \
+     @container (min-width: 1px) !! { c { color: lime } } b { color: blue } }"
+    2;
+  warns_exactly
+    "@media screen { @supports (display: grid) { a { color: red } } b { color: \
+     blue } }"
+    0
+
+(* CSS Counter Styles 3 sec. 3 gives [@counter-style] a block of descriptor
+   declarations, so CSS Syntax 3 sec. 5.4.3 keeps what that block already
+   yielded when one item fails to parse: a descriptor cascade rejects costs that
+   descriptor, not the [@counter-style] holding it and not the sheet holding
+   that. The discard follows sec. 5.4.4 for a declaration - up to the next
+   top-level [;], a [{}] met on the way counting as one component value of the
+   value being skipped - and sec. 5.4.2 for an at-rule, which ends at its block
+   or its [;]. Blink 146 keeps the rule in every case below. *)
+let spec_lenient_recovery_counter_style_descriptors () =
+  let recovered =
+    "@counter-style c{system:cyclic;symbols:\"a\";suffix:\" \"}"
+  in
+  let shorter = "@counter-style c{system:cyclic;symbols:\"a\"}" in
+  let body rest = "@counter-style c { system: cyclic; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @counter-style"
+    "@counter-style c { zzz: 1; system: cyclic; symbols: \"a\"; suffix: \" \" }"
+    recovered 1;
+  lenient_recover "unknown descriptor mid-body in @counter-style"
+    (body "zzz: 1; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover "unknown descriptor last in @counter-style"
+    (body "symbols: \"a\"; suffix: \" \"; zzz: 1")
+    recovered 1;
+  lenient_recover "bad value for a known @counter-style descriptor"
+    (body "symbols: \"a\"; suffix: !!!")
+    shorter 1;
+  lenient_recover "two curly blocks in a dropped counter-style value"
+    (body "zzz: {1}{2}; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  (* A descriptor's value is the whole of its declaration, and no descriptor
+     takes an [!important] flag, so the declaration it follows is invalid rather
+     than the flag alone. *)
+  lenient_recover "an important flag invalidates the counter-style descriptor"
+    (body "symbols: \"a\"; suffix: \" \" !important")
+    shorter 1;
+  lenient_recover "an important flag on an opaque counter-style descriptor"
+    (body "symbols: \"a\"; pad: 2 \"0\" !important; suffix: \" \"")
+    recovered 1;
+  lenient_recover "at-rule in @counter-style ends at its block"
+    (body "@media screen { color: red } symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @counter-style ends at its semicolon"
+    (body "@media screen; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  lenient_recover "selector-shaped item in @counter-style with a semicolon"
+    (body ".a { b: c }; symbols: \"a\"; suffix: \" \"")
+    recovered 1;
+  (* Sec. 5.4.4 skips a bad declaration to the next top-level [;], and a
+     selector-shaped item has none of its own, so it takes the tail of the body
+     with it. Blink 146 splits the two the same way. *)
+  lenient_recover "selector-shaped item in @counter-style takes the tail"
+    (body "symbols: \"a\"; .a { b: c } suffix: \" \"")
+    shorter 1;
+  lenient_recover "a dropped counter-style descriptor keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "zzz: 1; symbols: \"a\"; suffix: \" \""
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS Fonts 4 sec. 12.1 gives [@font-palette-values] a block of descriptor
+   declarations, so one descriptor cascade rejects costs that descriptor alone.
+   A descriptor's value is the whole of its declaration: a trailing [!important]
+   or a stray ident makes the declaration invalid rather than the leftover
+   alone, as it does in Blink 146. *)
+let spec_lenient_recovery_font_palette_descriptors () =
+  let recovered = "@font-palette-values --p{font-family:X;base-palette:1}" in
+  let body rest = "@font-palette-values --p { font-family: X; " ^ rest ^ " }" in
+  lenient_recover "unknown descriptor first in @font-palette-values"
+    "@font-palette-values --p { zzz: 1; font-family: X; base-palette: 1 }"
+    recovered 1;
+  lenient_recover "unknown descriptor mid-body in @font-palette-values"
+    (body "zzz: 1; base-palette: 1")
+    recovered 1;
+  lenient_recover "unknown descriptor last in @font-palette-values"
+    (body "base-palette: 1; zzz: 1")
+    recovered 1;
+  lenient_recover "bad value for a known @font-palette-values descriptor"
+    (body "base-palette: -1; base-palette: 1")
+    recovered 1;
+  lenient_recover "two curly blocks in a dropped font-palette value"
+    (body "zzz: {1}{2}; base-palette: 1")
+    recovered 1;
+  lenient_recover "trailing tokens invalidate the font-palette descriptor"
+    (body "base-palette: 2 bogus; base-palette: 1")
+    recovered 1;
+  lenient_recover "an important flag invalidates the font-palette descriptor"
+    (body "base-palette: 2 !important; base-palette: 1")
+    recovered 1;
+  lenient_recover "at-rule in @font-palette-values ends at its block"
+    (body "@media screen { color: red } base-palette: 1")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @font-palette-values ends at its semicolon"
+    (body "@media screen; base-palette: 1")
+    recovered 1;
+  lenient_recover
+    "selector-shaped item in @font-palette-values with a semicolon"
+    (body ".a { b: c }; base-palette: 1")
+    recovered 1;
+  lenient_recover "a dropped font-palette descriptor keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "zzz: 1; base-palette: 1"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS View Transitions 2 sec. 2.4 gives [@view-transition] a block of
+   descriptor declarations, so one descriptor cascade rejects costs that
+   descriptor alone. Blink 146 keeps the rule in every case below. *)
+let spec_lenient_recovery_view_transition_descriptors () =
+  let recovered = "@view-transition{navigation:auto}" in
+  let both = "@view-transition{navigation:auto;types:a}" in
+  lenient_recover "unknown descriptor first in @view-transition"
+    "@view-transition { zzz: 1; navigation: auto }" recovered 1;
+  lenient_recover "unknown descriptor mid-body in @view-transition"
+    "@view-transition { navigation: auto; zzz: 1; types: a }" both 1;
+  lenient_recover "unknown descriptor last in @view-transition"
+    "@view-transition { navigation: auto; zzz: 1 }" recovered 1;
+  lenient_recover "bad value for a known @view-transition descriptor"
+    "@view-transition { navigation: bogus; navigation: auto }" recovered 1;
+  lenient_recover "two curly blocks in a dropped view-transition value"
+    "@view-transition { zzz: {1}{2}; navigation: auto }" recovered 1;
+  lenient_recover "trailing tokens invalidate the view-transition descriptor"
+    "@view-transition { navigation: none bogus; navigation: auto }" recovered 1;
+  lenient_recover "an important flag invalidates the view-transition descriptor"
+    "@view-transition { navigation: none !important; navigation: auto }"
+    recovered 1;
+  lenient_recover "at-rule in @view-transition ends at its block"
+    "@view-transition { @media screen { color: red } navigation: auto }"
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @view-transition ends at its semicolon"
+    "@view-transition { @media screen; navigation: auto }" recovered 1;
+  lenient_recover "selector-shaped item in @view-transition with a semicolon"
+    "@view-transition { .a { b: c }; navigation: auto }" recovered 1;
+  lenient_recover "a dropped view-transition descriptor keeps the sheet whole"
+    ".a { color: red } @view-transition { zzz: 1; navigation: auto } .z { \
+     color: lime }"
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* CSS Fonts 4 sec. 11.1 fills an [@font-feature-values] body with feature value
+   blocks, so it is a rule list: CSS Syntax 3 sec. 5.4.2 ends the block cascade
+   rejects at its own [{}] or [;], leaving the blocks written around it in the
+   rule. A [;] with no rule before it is discarded with nothing to validate
+   (sec. 5.4.3), so it costs nothing. *)
+let spec_lenient_recovery_font_feature_values_blocks () =
+  let recovered = "@font-feature-values Xf{@swash{s:1}@ornaments{o:2}}" in
+  let body rest = "@font-feature-values Xf { @swash { s: 1 } " ^ rest ^ " }" in
+  lenient_recover "unknown block first in @font-feature-values"
+    "@font-feature-values Xf { @zzz { a: 1 } @swash { s: 1 } @ornaments { o: 2 \
+     } }"
+    recovered 1;
+  lenient_recover "unknown block mid-body in @font-feature-values"
+    (body "@zzz { a: 1 } @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover "unknown block last in @font-feature-values"
+    (body "@ornaments { o: 2 } @zzz { a: 1 }")
+    recovered 1;
+  lenient_recover
+    "at-rule with no block in @font-feature-values ends at its semicolon"
+    (body "@zzz; @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover
+    "selector-shaped item in @font-feature-values ends at its block"
+    (body ".a { b: c } @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover
+    "declaration in an @font-feature-values body ends at its semicolon"
+    (body "color: red; @ornaments { o: 2 }")
+    recovered 1;
+  lenient_recover "stray semicolon in @font-feature-values costs nothing"
+    (body "; @ornaments { o: 2 }")
+    recovered 0;
+  lenient_recover "leading semicolon in @font-feature-values costs nothing"
+    "@font-feature-values Xf { ; @swash { s: 1 } @ornaments { o: 2 } }"
+    recovered 0;
+  lenient_recover "a dropped feature block keeps the sheet whole"
+    (".a { color: red } "
+    ^ body "@zzz { a: 1 } @ornaments { o: 2 }"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* Each dropped descriptor reports once, and [~strict:true] rejects exactly the
+   inputs the lenient parse warned about. *)
+let spec_descriptor_recovery_warns_once_per_descriptor () =
+  warns_exactly "@counter-style c { system: cyclic; zzz: 1; symbols: \"a\" }" 1;
+  warns_exactly
+    "@counter-style c { system: cyclic; zzz: {1}{2}; symbols: \"a\" }" 1;
+  warns_exactly
+    "@counter-style c { system: cyclic; zzz: 1; yyy: 2; symbols: \"a\" }" 2;
+  warns_exactly "@counter-style c { system: cyclic; symbols: \"a\" }" 0;
+  warns_exactly "@counter-style c { ;; system: cyclic; symbols: \"a\" }" 0;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: 1; base-palette: 1 }" 1;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: {1}{2}; base-palette: 1 }"
+    1;
+  warns_exactly
+    "@font-palette-values --p { font-family: X; zzz: 1; yyy: 2; base-palette: \
+     1 }"
+    2;
+  warns_exactly "@font-palette-values --p { font-family: X; base-palette: 1 }" 0;
+  warns_exactly "@view-transition { zzz: 1; navigation: auto }" 1;
+  warns_exactly "@view-transition { zzz: {1}{2}; navigation: auto }" 1;
+  warns_exactly "@view-transition { zzz: 1; yyy: 2; navigation: auto }" 2;
+  warns_exactly "@view-transition { navigation: auto }" 0;
+  warns_exactly "@view-transition { ;; navigation: auto }" 0;
+  warns_exactly "@font-feature-values Xf { @zzz { a: 1 } @swash { s: 1 } }" 1;
+  warns_exactly
+    "@font-feature-values Xf { @zzz { a: 1 } @yyy { b: 2 } @swash { s: 1 } }" 2;
+  warns_exactly "@font-feature-values Xf { @swash { s: 1 } }" 0;
+  warns_exactly "@font-feature-values Xf { ;; @swash { s: 1 } }" 0
+
+(* CSS Animations 1 sec. 3 fills a [@keyframes] body with keyframe rules, so it
+   is a list of rules: an at-rule has no place there, and CSS Syntax 3 sec.
+   5.4.2 ends the one being discarded at its own [{}] block or at its [;],
+   leaving the keyframes written around it in the animation. A [(] or a [[] met
+   in the prelude on the way is a component value of that prelude, not an end.
+   Blink 146 keeps both neighbours in every case below. *)
+let spec_lenient_recovery_keyframes_at_rule () =
+  let recovered = "@keyframes k{0%{color:red}50%{background:#0f0}}" in
+  let body rest = "@keyframes k { " ^ rest ^ " }" in
+  lenient_recover "at-rule first in @keyframes"
+    (body
+       "@media print { to { color: pink } } from { color: red } 50% { \
+        background: lime }")
+    recovered 1;
+  lenient_recover "at-rule mid-body in @keyframes"
+    (body
+       "from { color: red } @media print { to { color: pink } } 50% { \
+        background: lime }")
+    recovered 1;
+  lenient_recover "at-rule last in @keyframes"
+    (body
+       "from { color: red } 50% { background: lime } @media print { to { \
+        color: pink } }")
+    recovered 1;
+  lenient_recover "at-rule with no block in @keyframes ends at its semicolon"
+    (body "from { color: red } @zzz; 50% { background: lime }")
+    recovered 1;
+  lenient_recover "a paren in the prelude of a dropped @keyframes at-rule"
+    (body
+       "from { color: red } @media (min-width: 1px) { to { color: pink } } 50% \
+        { background: lime }")
+    recovered 1;
+  lenient_recover "a bracket in the prelude of a dropped @keyframes at-rule"
+    (body
+       "from { color: red } @zzz [a] { to { color: pink } } 50% { background: \
+        lime }")
+    recovered 1;
+  lenient_recover "two at-rules in @keyframes are dropped one at a time"
+    (body
+       "from { color: red } @media print { a: b } @supports (display: grid) { \
+        b: c } 50% { background: lime }")
+    recovered 2;
+  (* The animation outlives its only item, as it does in Blink 146: what is left
+     is a [@keyframes] that animates nothing. *)
+  lenient_recover "at-rule alone in @keyframes"
+    (body "@media print { to { color: pink } }")
+    "@keyframes k{}" 1;
+  lenient_recover "a dropped at-rule in @keyframes keeps the sheet whole"
+    (".a { color: red } "
+    ^ body
+        "from { color: red } @media print { to { color: pink } } 50% { \
+         background: lime }"
+    ^ " .z { color: lime }")
+    (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
+    1
+
+(* Each dropped keyframe rule reports once, and [~strict:true] rejects exactly
+   the inputs the lenient parse warned about. *)
+let spec_keyframes_recovery_warns_once_per_rule () =
+  let body rest = "@keyframes k { " ^ rest ^ " }" in
+  warns_exactly
+    (body
+       "from { color: red } @media print { to { color: pink } } 50% { \
+        background: lime }")
+    1;
+  warns_exactly
+    (body
+       "from { color: red } @media print { a: b } @supports (display: grid) { \
+        b: c } 50% { background: lime }")
+    2;
+  warns_exactly (body "from { color: red } @zzz; 50% { background: lime }") 1;
+  warns_exactly (body "from { color: red } 50% { background: lime }") 0
 
 let stylesheet_tests =
   [
@@ -1415,6 +2250,9 @@ let stylesheet_tests =
     ( "spec page margin descriptor matrix",
       `Quick,
       spec_page_margin_descriptor_matrix );
+    ("spec page context properties", `Quick, spec_page_context_properties);
+    ("spec page descriptor importance", `Quick, spec_page_descriptor_importance);
+    ("spec page margin box empty", `Quick, spec_page_margin_box_empty);
     ("property rule edges", `Quick, property_rule_edges);
     ("spec property descriptor matrix", `Quick, spec_property_descriptor_matrix);
     ("sheet_item", `Quick, sheet_item_case);
@@ -1438,6 +2276,63 @@ let stylesheet_tests =
     ( "spec lenient recovery stylesheets",
       `Quick,
       spec_lenient_recovery_stylesheets );
+    ( "spec lenient recovery in a nested at-rule",
+      `Quick,
+      spec_lenient_recovery_nested_at_rule_declarations );
+    ( "spec lenient recovery keeps a nested declaration run whole",
+      `Quick,
+      spec_lenient_recovery_nested_declaration_run );
+    ( "spec recovery warns once per dropped declaration",
+      `Quick,
+      spec_recovery_warns_once_per_declaration );
+    ( "spec lenient recovery in a @page body",
+      `Quick,
+      spec_lenient_recovery_page_descriptors );
+    ( "spec lenient recovery in a page margin box",
+      `Quick,
+      spec_lenient_recovery_page_margin_box );
+    ( "spec lenient recovery keeps a @page body in order",
+      `Quick,
+      spec_lenient_recovery_page_body_order );
+    ( "spec page recovery warns once per dropped descriptor",
+      `Quick,
+      spec_page_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in an @property body",
+      `Quick,
+      spec_lenient_recovery_property_descriptors );
+    ( "spec @property skips stray semicolons",
+      `Quick,
+      spec_property_skips_stray_semicolons );
+    ( "spec property recovery warns once per dropped descriptor",
+      `Quick,
+      spec_property_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in a grouping at-rule block",
+      `Quick,
+      spec_lenient_recovery_block_statements );
+    ( "spec block recovery warns once per dropped statement",
+      `Quick,
+      spec_block_recovery_warns_once_per_statement );
+    ( "spec lenient recovery in a @counter-style body",
+      `Quick,
+      spec_lenient_recovery_counter_style_descriptors );
+    ( "spec lenient recovery in a @font-palette-values body",
+      `Quick,
+      spec_lenient_recovery_font_palette_descriptors );
+    ( "spec lenient recovery in a @view-transition body",
+      `Quick,
+      spec_lenient_recovery_view_transition_descriptors );
+    ( "spec lenient recovery in a @font-feature-values body",
+      `Quick,
+      spec_lenient_recovery_font_feature_values_blocks );
+    ( "spec descriptor recovery warns once per dropped descriptor",
+      `Quick,
+      spec_descriptor_recovery_warns_once_per_descriptor );
+    ( "spec lenient recovery in a @keyframes body",
+      `Quick,
+      spec_lenient_recovery_keyframes_at_rule );
+    ( "spec keyframes recovery warns once per dropped rule",
+      `Quick,
+      spec_keyframes_recovery_warns_once_per_rule );
   ]
 
 (* Tests for newly added check functions *)
@@ -1465,6 +2360,22 @@ let test_import_rule () =
      string-token (the ill-formedness is a parse-error warning, not a
      token-level failure), so [\@import 'test.css] parses as a valid import. *)
   check_import_rule ~expected:"@import\"test.css\";" "@import 'test.css"
+
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*]. The
+   idents are the name; a [.] one of them carries is written back escaped (CSS
+   Syntax 3 sec. 2.1) and only a bare [.] separates two. A CSS-wide keyword is
+   reserved, in any ident of the name. *)
+let test_layer_name () =
+  check_layer_name ~roundtrip:true "a";
+  check_layer_name ~roundtrip:true "a.b";
+  check_layer_name ~roundtrip:true ~expected:"a\\.b" "a\\2e b";
+  check_layer_name ~roundtrip:true ~expected:"a\\.b.c" "a\\2e b.c";
+  check_layer_name ~roundtrip:true ~expected:"a.b\\.c" "a.b\\2e c";
+  check_layer_name ~roundtrip:true ~expected:"a\\;b" "a\\3b b";
+  neg_cursor read_layer_name "initial";
+  neg_cursor read_layer_name "a.revert-layer";
+  neg_cursor read_layer_name ".a";
+  neg_cursor read_layer_name "a."
 
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
@@ -1977,56 +2888,57 @@ let c64_invalid_layer_names () =
 (* Not a roundtrip test *)
 let c8_layer_api () =
   (* CSS Cascade section 8: CSSOM exposes the declared layer name on imports and
-     layer block rules, and the declared name list on layer statement rules.
-     Nested block rule names are the at-rule's own name, not parent-prefixed. *)
+     layer block rules, and the declared name list on layer statement rules. A
+     name is its idents, so [framework.theme] is two of them; nested block rule
+     names are the at-rule's own name, not parent-prefixed. *)
+  let name = Alcotest.(option (list string)) in
   let import_named =
     {
       url = "theme.css";
-      layer = Some "framework.theme";
+      layer = Some [ "framework"; "theme" ];
       supports = None;
       media = None;
     }
   in
   let import_anonymous =
-    { url = "private.css"; layer = Some ""; supports = None; media = None }
+    { url = "private.css"; layer = Some []; supports = None; media = None }
   in
   let import_plain =
     { url = "plain.css"; layer = None; supports = None; media = None }
   in
-  Alcotest.(check (option string))
-    "named import layerName" (Some "framework.theme")
+  Alcotest.check name "named import layerName"
+    (Some [ "framework"; "theme" ])
     (Css.Stylesheet.import_layer_name import_named);
-  Alcotest.(check (option string))
-    "anonymous import layerName is empty string" (Some "")
+  Alcotest.check name "anonymous import layerName is the empty name" (Some [])
     (Css.Stylesheet.import_layer_name import_anonymous);
-  Alcotest.(check (option string))
-    "unlayered import layerName is null" None
+  Alcotest.check name "unlayered import layerName is null" None
     (Css.Stylesheet.import_layer_name import_plain);
-  Alcotest.(check (option string))
-    "named layer block API name" (Some "framework.theme")
+  Alcotest.check name "named layer block API name"
+    (Some [ "framework"; "theme" ])
     (Css.Stylesheet.layer_block_name
-       (Css.Stylesheet.Layer (Some "framework.theme", [])));
-  Alcotest.(check (option string))
-    "anonymous layer block API name is empty string" (Some "")
+       (Css.Stylesheet.Layer (Some [ "framework"; "theme" ], [])));
+  Alcotest.check name "anonymous layer block API name is the empty name"
+    (Some [])
     (Css.Stylesheet.layer_block_name (Css.Stylesheet.Layer (None, [])));
   (match
      Css.Stylesheet.Layer
-       (Some "outer", [ Css.Stylesheet.Layer (Some "foo.bar", []) ])
+       (Some [ "outer" ], [ Css.Stylesheet.Layer (Some [ "foo"; "bar" ], []) ])
    with
   | Css.Stylesheet.Layer (_, [ inner ]) ->
-      Alcotest.(check (option string))
-        "inner layer block API name is not parent-prefixed" (Some "foo.bar")
+      Alcotest.check name "inner layer block API name is not parent-prefixed"
+        (Some [ "foo"; "bar" ])
         (Css.Stylesheet.layer_block_name inner)
   | _ -> Alcotest.fail "expected nested layer block");
-  Alcotest.(check (option (list string)))
+  Alcotest.(check (option (list (list string))))
     "layer statement API nameList"
-    (Some [ "reset"; "framework.theme"; "components" ])
+    (Some [ [ "reset" ]; [ "framework"; "theme" ]; [ "components" ] ])
     (Css.Stylesheet.layer_statement_name_list
-       (Css.Stylesheet.Layer_decl [ "reset"; "framework.theme"; "components" ]));
-  Alcotest.(check (option (list string)))
+       (Css.Stylesheet.Layer_decl
+          [ [ "reset" ]; [ "framework"; "theme" ]; [ "components" ] ]));
+  Alcotest.(check (option (list (list string))))
     "non-statement layer has no nameList" None
     (Css.Stylesheet.layer_statement_name_list
-       (Css.Stylesheet.Layer (Some "reset", [])))
+       (Css.Stylesheet.Layer (Some [ "reset" ], [])))
 
 (* Not a roundtrip test *)
 let c41_declared_values () =
@@ -2344,16 +3256,16 @@ let fetch_url_boundary () =
     [
       ( "@import url(base.css) layer(reset) supports(display: grid) screen;",
         "base.css",
-        Some "reset" );
+        Some [ "reset" ] );
       ("@import \"print.css\" print;", "print.css", None);
-      ("@import url(theme.css) layer();", "theme.css", Some "");
+      ("@import url(theme.css) layer();", "theme.css", Some []);
       ( "@import url(theme.css) layer(theme) supports(selector(:has(img))) \
          screen and (width >= 40em);",
         "theme.css",
-        Some "theme" );
+        Some [ "theme" ] );
       ( "@import url(\"../fonts/brand.woff2\") layer(fonts);",
         "../fonts/brand.woff2",
-        Some "fonts" );
+        Some [ "fonts" ] );
     ]
   in
   List.iter
@@ -2361,7 +3273,7 @@ let fetch_url_boundary () =
       let r = Cursor.of_string input in
       let rule = Css.Stylesheet.read_import_rule r in
       Alcotest.(check string) "import url" url rule.url;
-      Alcotest.(check (option string)) "import layer" layer rule.layer)
+      Alcotest.(check (option (list string))) "import layer" layer rule.layer)
     import_cases;
   check_declaration ~expected:"background-image:url(../img/logo.svg)"
     "background-image: url(../img/logo.svg);";
@@ -2661,7 +3573,7 @@ let spec_at_rule_descriptor_matrix () =
       "@view-transition { @media screen { .x { color: red } } }";
       "@position-try --below { @supports (display: grid) { .x { color: red } } \
        }";
-      "@page { @top-center { display: block } }";
+      "@page { @top-center { @media screen { .x { color: red } } } }";
       "@keyframes fade { @media screen { opacity: 1 } }";
       "@media screen;";
       "@media screen and or (width) { .x { color: red } }";
@@ -2908,6 +3820,201 @@ let test_nesting_check_stylesheet () =
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
+(* A nested @layer holds nesting content: bare declarations belong to the parent
+   selector, exactly as in @media/@supports. Blink and WebKit both read
+   [.a{@layer n{color:red}}] as a layer block wrapping nested declarations. *)
+let spec_nesting_layer_block () =
+  test_nesting_roundtrip ~expected:".a{@layer n{color:red}}"
+    ".a { @layer n { color: red; } }";
+  test_nesting_roundtrip ~expected:".a{@layer{color:red}}"
+    ".a { @layer { color: red; } }";
+  test_nesting_roundtrip ~expected:".a{color:red;@layer n{color:blue}}"
+    ".a { color: red; @layer n { color: blue; } }";
+  test_nesting_roundtrip ~expected:".a{@layer n{& b{color:red}}}"
+    ".a { @layer n { & b { color: red; } } }";
+  test_nesting_idempotent ".a { @layer n { color: red; } }"
+
+(* The statement form [@layer n;] is only a layer-order declaration, which no
+   style rule can contain: both Blink and WebKit drop it. An empty nested layer
+   therefore keeps its block form so the output re-reads. *)
+let spec_nesting_empty_layer_keeps_block () =
+  test_nesting_roundtrip ~expected:".a{@layer n{}}" ".a { @layer n { } }";
+  test_nesting_idempotent ".a { @layer n { } }";
+  test_nesting_roundtrip ~expected:"@layer n;" "@layer n { }"
+
+(* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be
+   nested inside of a style rule as well", and its body is then read as nesting
+   content. [@starting-style] is a grouping rule over style rules (CSS
+   Transitions 2 sec. 3.3), and Blink 146 keeps the whole shape. *)
+let spec_nesting_starting_style () =
+  test_nesting_roundtrip ~expected:".a{@starting-style{color:red}}"
+    ".a { @starting-style { color: red } }";
+  test_nesting_roundtrip ~expected:".a{@starting-style{color:red}color:green}"
+    ".a { @starting-style { color: red } color: green }";
+  test_nesting_roundtrip ~expected:".a{@starting-style{& b{color:red}}}"
+    ".a { @starting-style { & b { color: red } } }";
+  test_nesting_idempotent ".a { @starting-style { color: red } color: green }"
+
+(* The same section covers every conditional group rule, not just the three
+   cascade already nested: [@-moz-document] carries style rules, and CSS
+   Conditional 5 sec. 3 and sec. 4 make [@when] and [@else] conditional group
+   rules over a rule list. *)
+let spec_nesting_other_group_rules () =
+  test_nesting_roundtrip ~expected:".a{@-moz-document url-prefix(){color:red}}"
+    ".a { @-moz-document url-prefix() { color: red } }";
+  test_nesting_roundtrip ~expected:".a{@when media(width>0px){color:red}}"
+    ".a { @when media(width > 0px) { color: red } }";
+  test_nesting_roundtrip
+    ~expected:".a{@when media(width>0px){color:red}@else{color:green}}"
+    ".a { @when media(width > 0px) { color: red } @else { color: green } }";
+  test_nesting_idempotent ".a { @-moz-document url-prefix() { color: red } }"
+
+(* A nested group rule's body is nesting content all the way down, so an at-rule
+   inside one is itself a nested group rule. Blink 146 keeps [.a{@layer n{@media
+   screen{color:red}}}] whole. *)
+let spec_nesting_at_rule_inside_nested_group () =
+  test_nesting_roundtrip ~expected:".a{@layer n{@media screen{color:red}}}"
+    ".a { @layer n { @media screen { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{@supports(foo:bar){color:red}}}"
+    ".a { @media screen { @supports (foo: bar) { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{@starting-style{color:red}}}"
+    ".a { @media screen { @starting-style { color: red } } }";
+  test_nesting_idempotent ".a { @layer n { @media screen { color: red } } }"
+
+(* CSS Nesting 1 sec. 3.3 nests "any at-rule whose body contains style rules"; a
+   descriptor rule, a keyframe list and a declaration-list rule contain none, so
+   inside a style rule they are invalid. Blink 146 drops each one and keeps the
+   declarations written around it, which is the recovery CSS Syntax 3 sec. 5.4.4
+   describes: discard the invalid construct, resume at the next one. *)
+let spec_nesting_rejects_non_group_at_rules () =
+  let drops at_rule =
+    test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+      (".a { color: red; " ^ at_rule ^ " background: blue }")
+  in
+  drops "@font-face { font-family: F; src: url(f.woff2) }";
+  drops "@keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@-webkit-keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@-moz-keyframes k { from { opacity: 0 } to { opacity: 1 } }";
+  drops "@property --p { syntax: \"<color>\"; inherits: false }";
+  drops "@page { margin: 1cm }";
+  drops "@counter-style c { system: cyclic; symbols: \"x\" }";
+  drops "@position-try --t { top: 1px }";
+  drops "@font-palette-values --v { font-family: F; base-palette: 0 }";
+  drops "@font-feature-values F { @styleset { s: 1 } }";
+  drops "@viewport { width: 100px }";
+  drops "@-ms-viewport { width: 100px }";
+  drops "@supports-condition (color: red) { color: green }"
+
+(* The same rejection inside every nesting context that a style rule opens: a
+   nested group rule's body, a nested style rule, and a rule reached through a
+   stylesheet-level group rule. *)
+let spec_nesting_rejects_non_group_at_rules_deep () =
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @font-face { font-family: F; src: \
+     url(f.woff2) } background: blue } }";
+  test_nesting_roundtrip ~expected:".a{& b{color:red;background:blue}}"
+    ".a { & b { color: red; @keyframes k { to { opacity: 1 } } background: \
+     blue } }";
+  test_nesting_roundtrip
+    ~expected:"@media screen{.a{color:red;background:blue}}"
+    "@media screen { .a { color: red; @page { margin: 1cm } background: blue } \
+     }"
+
+(* Dropping the invalid at-rule must not take a nested style rule written after
+   it, and the surviving text has to read back unchanged. *)
+let spec_nesting_rejection_keeps_the_rest () =
+  test_nesting_roundtrip ~expected:".a{color:red;& span{color:lime}b:2}"
+    ".a { color: red; @font-face { font-family: F; src: url(f.woff2) } & span \
+     { color: lime } b: 2 }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @font-face; background: blue }";
+  test_nesting_idempotent
+    ".a { color: red; @page { margin: 1cm } background: blue }"
+
+(* CSS View Transitions 2 gives [\@view-transition] a descriptor body, so CSS
+   Nesting 1 sec. 3.3 does not nest it either - but Blink 146 keeps it inside a
+   style rule, down to [&:hover], where every rule above is dropped. Dropping
+   what a shipping engine still reads is the one lossy direction, so cascade
+   keeps it. *)
+let spec_nesting_keeps_view_transition () =
+  test_nesting_roundtrip
+    ~expected:".a{color:red;@view-transition{navigation:auto}background:blue}"
+    ".a { color: red; @view-transition { navigation: auto } background: blue }"
+
+(* CSS Conditional 5 sec. 4: [\@else] is only valid after a [\@when] or another
+   [\@else], wherever it is written. *)
+let spec_nesting_rejects_orphan_else () =
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @else { color: green } background: blue }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @else { color: green } background: blue \
+     } }";
+  test_nesting_roundtrip
+    ~expected:".a{@when media(width>0px){color:red}@else{color:green}}"
+    ".a { @when media(width > 0px) { color: red } @else { color: green } }"
+
+(* A top-of-sheet rule is invalid in a style rule too, and Blink 146 drops it
+   the same way. Discarding it ends at the at-rule: [\@import url(x){}] carries
+   a block, and a skip to the next [;] runs past the end of the group rule
+   holding it. *)
+let spec_nesting_rejects_top_of_sheet_at_rules () =
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @charset \"utf-8\"; background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @import url(x.css); background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @import url(x.css) { color: pink } background: blue }";
+  test_nesting_roundtrip ~expected:".a{color:red;background:blue}"
+    ".a { color: red; @namespace n url(http://e.com); background: blue }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red; @import url(x.css); background: blue } }"
+
+(* CSS Nesting 1 sec. 3: a nested rule's prelude may start with an ident, so
+   [h2:where(.b) { ... }] is a rule and not a [h2] declaration, however much its
+   head looks like one. That holds in a nested at-rule's body as much as in a
+   style rule's, and Blink 146 reads both as rules. *)
+let spec_nesting_ident_prelude_in_nested_at_rule () =
+  test_nesting_roundtrip ~expected:".a{@media screen{h2:where(.b){color:red}}}"
+    ".a { @media screen { h2:where(.b) { color: red } } }";
+  test_nesting_idempotent ".a { @media screen { h2:where(.b) { color: red } } }";
+  test_nesting_roundtrip
+    ~expected:
+      ".a{@media screen{color:red;h2:where(.b){margin:0}background:blue}}"
+    ".a { @media screen { color: red; h2:where(.b) { margin: 0 } background: \
+     blue } }"
+
+(* CSS Syntax 3 sec. 5.4.3 "consume a block's contents" drops a [;] that no
+   declaration precedes rather than validating one, so a stray semicolon in a
+   nested at-rule's body costs nothing. Blink 146 keeps both neighbours. *)
+let spec_nesting_skips_stray_semicolons () =
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { color: red;; background: blue } }";
+  test_nesting_roundtrip
+    ~expected:".a{@media screen{color:red;background:blue}}"
+    ".a { @media screen { ; color: red; background: blue } }"
+
+(* CSS Nesting 1 sec. 3.4: a run of declarations written after a nested rule is
+   wrapped in a nested declarations rule, which keeps its place among the nested
+   rules. The spec's own worked example names the hoisted spelling as NOT
+   equivalent, and Blink and WebKit both compute the later declaration. *)
+let spec_nesting_declaration_after_nested_rule () =
+  test_nesting_roundtrip ~expected:".a{color:red;& b{color:blue}color:green}"
+    ".a { color: red; & b { color: blue } color: green }";
+  test_nesting_roundtrip
+    ~expected:".a{@supports(color:red){color:blue}color:green}"
+    ".a { @supports (color: red) { color: blue } color: green }";
+  test_nesting_roundtrip ~expected:".a{c:1;& b{d:2}e:3;f:4;& g{h:5}i:6}"
+    ".a { c: 1; & b { d: 2 } e: 3; f: 4; & g { h: 5 } i: 6 }";
+  test_nesting_idempotent ".a { color: red; & b { color: blue } color: green }";
+  test_nesting_idempotent
+    ".a { @media (min-width: 1px) { padding: 2rem } color: green }"
+
 let spec_nesting_selector_edges () =
   assert_minify_and_optimize
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
@@ -3100,9 +4207,9 @@ let c643_dotted_nested_layer () =
   in
   Alcotest.(check string)
     "the inner rule appears in the foo.bar layer regardless of input form"
-    (inner_rule_text (Css.layer_block "foo.bar" dotted))
-    (inner_rule_text (Css.layer_block "foo.bar" nested));
-  Alcotest.(check (list string))
+    (inner_rule_text (Css.layer_block [ "foo"; "bar" ] dotted))
+    (inner_rule_text (Css.layer_block [ "foo"; "bar" ] nested));
+  Alcotest.(check (list (list string)))
     "both forms expose the same set of declared layers" (Css.layers dotted)
     (Css.layers nested)
 
@@ -4892,6 +5999,55 @@ let s417_is_unwrap () =
     (normalize ".x .a.b { color: red }")
     (normalize ".x :is(.a):is(.b) { color: red }")
 
+(* CSS Selectors L4 section 4.2 (compound selector): "if it contains a type
+   selector or universal selector, that selector must come first". So a
+   single-argument [:is(<type>)] unwraps only into a compound it leads: spliced
+   anywhere else the two names fuse, and [.a:is(code)] turns into [.acode],
+   which matches a class nobody wrote. Same for [:not(:not(<type>))]. *)
+let s442_compound_type_first () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ".a:is(code) keeps its wrapper" ".x .a:is(code){color:red}"
+    (normalize ".x .a:is(code) { color: red }");
+  Alcotest.(check string)
+    "div:is(code) keeps its wrapper" ".x div:is(code){color:red}"
+    (normalize ".x div:is(code) { color: red }");
+  Alcotest.(check string)
+    ":is(<ancestor> *):is(code) keeps its wrapper"
+    ":is(.a *):is(code){color:red}"
+    (normalize ":is(.a *):is(code) { color: red }");
+  Alcotest.(check string)
+    ":is(code.b) keeps its wrapper" ".a:is(code.b){color:red}"
+    (normalize ".a:is(code.b) { color: red }");
+  Alcotest.(check string)
+    "a namespaced universal keeps its wrapper" ".a:is(svg|*){color:red}"
+    (normalize ".a:is(svg|*) { color: red }");
+  Alcotest.(check string)
+    ":not(:not(code)) keeps its wrappers" ".a:not(:not(code)){color:red}"
+    (normalize ".a:not(:not(code)) { color: red }");
+  (* Leading its compound the type selector would be where it belongs, and
+     unwrapping there is sound - but the rewrite is node-local, so it declines
+     rather than guess at a position it cannot see. *)
+  Alcotest.(check string)
+    ":is(code) leading a compound keeps its wrapper too"
+    ".x :is(code).a{color:red}"
+    (normalize ".x :is(code).a { color: red }");
+  Alcotest.(check string)
+    ":is(*) keeps its wrapper" ".a:is(*){color:red}"
+    (normalize ".a:is(*) { color: red }");
+  (* An argument with no type selector is spliceable wherever the [:is()]
+     stands, so those keep unwrapping. *)
+  Alcotest.(check string)
+    ":is(.b) still unwraps" ".a.b{color:red}"
+    (normalize ".a:is(.b) { color: red }");
+  Alcotest.(check string)
+    ":not(:not(.b)) still folds" ".a.b{color:red}"
+    (normalize ".a:not(:not(.b)) { color: red }")
+
 (* CSS Selectors L4 section 6.1: attribute compound selectors drop quotes per
    attribute when the value is a valid identifier. *)
 let s462_compound_attr () =
@@ -5214,40 +6370,45 @@ let s3437_string_escape () =
    those back escaped (CSS Syntax 3 sec. 2.1): printed raw, the name ends its
    own declaration or closes the rule around it, and cascade's reader stops
    reading what the input meant. *)
-let s4370_custom_property_name_escapes () =
-  (* Print [css] and hold the printer to its own reader: the output parses in
-     strict mode, says what the input said, and printing it again is a byte
-     fixpoint. The tree comparison stands in for AST equality, which a token
-     carrying its source position makes sensitive to how long the escape was.
-     The minified output is what the spellings below are checked against. *)
-  let roundtrip css =
-    match Css.of_string ~strict:false css with
-    | Error e ->
-        Alcotest.failf "parse failed: %s (%s)" css (Cascade.Error.to_string e)
-    | Ok parsed ->
-        let check ~minify label out =
-          match Css.of_string ~strict:true out with
-          | Error e ->
-              Alcotest.failf "%s output is not readable: %s (%s)" label out
-                (Cascade.Error.to_string e)
-          | Ok again ->
-              Alcotest.(check bool)
-                (String.concat "" [ label; " says what "; css; " said" ])
-                true
-                (Cascade_diff.Css_compare.equal ~mode:`Tree css out);
-              Alcotest.(check string)
-                (String.concat "" [ label; " is a byte fixpoint: "; out ])
-                out
-                (Css.to_string ~minify again.Css.stylesheet)
-        in
-        let minified = Css.to_string ~minify:true parsed.Css.stylesheet in
-        check ~minify:true "minified" minified;
-        check ~minify:false "pretty" (Css.to_string parsed.Css.stylesheet);
-        minified
-  in
+(* Print [css] and hold the printer to its own reader: the output parses in
+   strict mode, says what the input said, and printing it again is a byte
+   fixpoint. The tree comparison stands in for AST equality, which a token
+   carrying its source position makes sensitive to how long the escape was.
+   Returns the minified output, which is what a caller's spellings are checked
+   against. *)
+let escape_roundtrip css =
+  match Css.of_string ~strict:false css with
+  | Error e ->
+      Alcotest.failf "parse failed: %s (%s)" css (Cascade.Error.to_string e)
+  | Ok parsed ->
+      let check ~minify label out =
+        match Css.of_string ~strict:true out with
+        | Error e ->
+            Alcotest.failf "%s output is not readable: %s (%s)" label out
+              (Cascade.Error.to_string e)
+        | Ok again ->
+            Alcotest.(check bool)
+              (String.concat "" [ label; " says what "; css; " said" ])
+              true
+              (Cascade_diff.Css_compare.equal ~mode:`Tree css out);
+            Alcotest.(check string)
+              (String.concat "" [ label; " is a byte fixpoint: "; out ])
+              out
+              (Css.to_string ~minify again.Css.stylesheet)
+      in
+      let minified = Css.to_string ~minify:true parsed.Css.stylesheet in
+      check ~minify:true "minified" minified;
+      check ~minify:false "pretty" (Css.to_string parsed.Css.stylesheet);
+      minified
+
+let check_escape_roundtrips cases =
   List.iter
     (fun (css, expected) ->
-      Alcotest.(check string) css expected (roundtrip css))
+      Alcotest.(check string) css expected (escape_roundtrip css))
+    cases
+
+let s4370_custom_property_name_escapes () =
+  check_escape_roundtrips
     [
       (* The declaration name. *)
       (":root{--x\\3b y:red}", ":root{--x\\;y:red}");
@@ -5275,6 +6436,150 @@ let s4370_custom_property_name_escapes () =
       (":root{--0:red}.a{color:var(--0)}", ":root{--0:red}.a{color:var(--0)}");
       ( ":root{--\\e9 x:red}.a{color:var(--\\e9 x)}",
         ":root{--\xc3\xa9x:red}.a{color:var(--\xc3\xa9x)}" );
+    ]
+
+(* CSS Syntax 3 sec. 4.3.7 reads an escape as the code point it names, so any
+   ident cascade stores can hold a [;], a [}] or another code point CSS Syntax 3
+   sec. 4.2 keeps out of an ident. Serializing an ident writes those back
+   escaped (CSS Syntax 3 sec. 2.1), and every prelude below names something with
+   a [<custom-ident>] or a [<dashed-ident>]: printed raw the name ends the
+   at-rule or closes the block around it. *)
+let s4370_at_rule_prelude_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*],
+         so each dot-separated part takes the escapes and the [.] separators
+         stay bare. *)
+      ("@layer a\\3b b;", "@layer a\\;b;");
+      ("@layer a\\3b b{.x{color:red}}", "@layer a\\;b{.x{color:red}}");
+      ("@layer a\\3b b,c\\3b d;", "@layer a\\;b,c\\;d;");
+      ("@layer a.b\\3b c;", "@layer a.b\\;c;");
+      ("@import\"a.css\"layer(l\\3b x);", "@import\"a.css\"layer(l\\;x);");
+      (* CSS Counter Styles 3 sec. 2 [@counter-style <counter-style-name>], and
+         sec. 3.1.4 [system: extends <counter-style-name>]. *)
+      ( "@counter-style a\\3b b{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style a\\;b{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+      ( "@counter-style c{system:extends d\\3b y}",
+        "@counter-style c{system:extends d\\;y}" );
+      (* CSS Anchor Positioning 1 sec. 4.2 [@position-try <dashed-ident>] and
+         CSS Fonts 4 sec. 11.1 [@font-palette-values <dashed-ident>]. *)
+      ("@position-try --x\\3b y{top:0}", "@position-try --x\\;y{top:0}");
+      ( "@font-palette-values --x\\3b y{font-family:Foo;base-palette:1}",
+        "@font-palette-values --x\\;y{font-family:Foo;base-palette:1}" );
+      (* CSS Containment 3 sec. 5.2: [@container] names a [<custom-ident>], and
+         CSS Fonts 4 sec. 6.5 names a feature value the same way. *)
+      ( "@container n\\3b m (width>10px){.a{color:red}}",
+        "@container n\\;m (width>10px){.a{color:red}}" );
+      ( "@font-feature-values Foo{@styleset{s\\3b x:1}}",
+        "@font-feature-values Foo{@styleset{s\\;x:1}}" );
+      (* A name needing no escape keeps its spelling, and the leading-digit rule
+         of CSS Syntax 3 sec. 4.3.11 still applies. *)
+      ("@layer a.b{.x{color:red}}", "@layer a.b{.x{color:red}}");
+      ( "@counter-style \\31 a{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style \\31 a{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+      ( "@counter-style \\e9 x{system:cyclic;symbols:\"x\";suffix:\" \"}",
+        "@counter-style \xc3\xa9x{system:cyclic;symbols:\"x\";suffix:\" \"}" );
+    ]
+
+(* The same rule for a name a declaration's value carries: printed raw it ends
+   its own declaration, so it is written with the escapes CSS Syntax 3 sec.
+   4.3.7 reads back as the same name. *)
+let s4370_property_value_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* CSS Anchor Positioning 1 sec. 2.1 / 3.1 / 4.1 name
+         [<dashed-ident>]s. *)
+      (".a{anchor-name:--a\\3b b}", ".a{anchor-name:--a\\;b}");
+      (".a{position-anchor:--p\\3b q}", ".a{position-anchor:--p\\;q}");
+      ( ".a{position-try-fallbacks:--f\\3b g}",
+        ".a{position-try-fallbacks:--f\\;g}" );
+      (* CSS Scroll Animations 1 sec. 2.1 / 3.1 / 4 name [<dashed-ident>]s, and
+         CSS Fonts 4 sec. 2.7 [font-palette] takes one. *)
+      (".a{animation-timeline:--t\\3b u}", ".a{animation-timeline:--t\\;u}");
+      (".a{scroll-timeline-name:--s\\3b t}", ".a{scroll-timeline-name:--s\\;t}");
+      (".a{view-timeline-name:--v\\3b w}", ".a{view-timeline-name:--v\\;w}");
+      ( ".a{scroll-timeline:--s\\3b t block}",
+        ".a{scroll-timeline:--s\\;t block}" );
+      (".a{timeline-scope:--z\\3b y}", ".a{timeline-scope:--z\\;y}");
+      (".a{font-palette:--f\\3b g}", ".a{font-palette:--f\\;g}");
+      (* CSS Transitions 1 sec. 2.1: [transition-property] names a property, and
+         a custom property is a [<dashed-ident>]. *)
+      (".a{transition-property:--t\\3b x}", ".a{transition-property:--t\\;x}");
+      (* [<custom-ident>] names: CSS Containment 3 sec. 3.1, CSS Animations 1
+         sec. 4.1, CSS View Transitions 1 sec. 3.1 and 2 sec. 3.2, and CSS Will
+         Change 1 sec. 2. *)
+      (".a{container-name:c\\3b d}", ".a{container-name:c\\;d}");
+      (".a{animation-name:n\\3b m}", ".a{animation-name:n\\;m}");
+      (".a{view-transition-name:v\\3b w}", ".a{view-transition-name:v\\;w}");
+      (".a{view-transition-class:c\\3b d}", ".a{view-transition-class:c\\;d}");
+      (".a{will-change:w\\3b x}", ".a{will-change:w\\;x}");
+      (* CSS Lists 3 sec. 3 names a counter with a [<custom-ident>], both where
+         it is set and where [counter()] reads it, and sec. 4 names a string the
+         same way. *)
+      (".a{counter-reset:c\\3b d 1}", ".a{counter-reset:c\\;d 1}");
+      (".a{counter-increment:c\\3b d 1}", ".a{counter-increment:c\\;d 1}");
+      (".a{content:counter(c\\3b d)}", ".a{content:counter(c\\;d)}");
+      (".a{content:string(s\\3b t)}", ".a{content:string(s\\;t)}");
+      (* CSS Grid 2 sec. 8.1: a grid line is named by a [<custom-ident>], in a
+         placement property and in a track list. *)
+      (".a{grid-area:g\\3b h}", ".a{grid-area:g\\;h}");
+      (".a{grid-row-start:g\\3b h}", ".a{grid-row-start:g\\;h}");
+      (".a{grid-row-start:span g\\3b h}", ".a{grid-row-start:span g\\;h}");
+      ( ".a{grid-template-columns:[l\\3b m]1fr}",
+        ".a{grid-template-columns:[l\\;m]1fr}" );
+      (* A name needing no escape keeps its spelling. *)
+      (".a{grid-area:g}", ".a{grid-area:g}");
+      (".a{anchor-name:--a}", ".a{anchor-name:--a}");
+    ]
+
+(* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so a
+   dot inside an ident and a dot between two idents name different layers.
+   [@layer a\2e b] is one layer, [@layer a.b] is the sublayer [b] of [a], and
+   the printed name says which: a dot an ident carries is written back escaped
+   (CSS Syntax 3 sec. 2.1), the separators stay bare. *)
+let s641_layer_name_parts () =
+  check_escape_roundtrips
+    [
+      (* One ident holding a dot, against the two idents it would pass for. *)
+      ("@layer a\\2e b;", "@layer a\\.b;");
+      ("@layer a.b;", "@layer a.b;");
+      ("@layer a\\2e b{.x{color:red}}", "@layer a\\.b{.x{color:red}}");
+      ("@layer a.b{.x{color:red}}", "@layer a.b{.x{color:red}}");
+      ("@layer a\\2e b,a.b;", "@layer a\\.b,a.b;");
+      (* A sublayer of the layer named [a.b], and the layer named [a.b.c]. *)
+      ("@layer a\\2e b.c;", "@layer a\\.b.c;");
+      ("@layer a\\2e b\\2e c;", "@layer a\\.b\\.c;");
+      (* The [@import] prelude names a layer the same way. *)
+      ("@import\"a.css\"layer(a\\2e b);", "@import\"a.css\"layer(a\\.b);");
+      ("@import\"a.css\"layer(a.b);", "@import\"a.css\"layer(a.b);");
+      (* Each part still takes the escaping of every other code point. *)
+      ("@layer a\\3b b.c\\3b d;", "@layer a\\;b.c\\;d;");
+    ]
+
+(* CSS Conditional 3 sec. 2.2: a [<supports-decl>] holds a declaration, and a
+   custom property's name can carry a [;] or a [}] through an escape (CSS Syntax
+   3 sec. 4.3.7). The condition is a capability predicate for that exact name,
+   so it survives the round trip with the escapes that read it back. *)
+let s4370_supports_property_name_escapes () =
+  check_escape_roundtrips
+    [
+      (* The name a [<supports-decl>] tests, in each shape the feature takes: a
+         declaration, an empty value, and an operand of [and]. *)
+      ( "@supports (--x\\3b y:red){.a{color:red}}",
+        "@supports(--x\\;y:red){.a{color:red}}" );
+      ( "@supports (--x\\7d y:red){.a{color:red}}",
+        "@supports(--x\\}y:red){.a{color:red}}" );
+      ( "@supports (--x\\3b y:){.a{color:red}}",
+        "@supports(--x\\;y:){.a{color:red}}" );
+      ( "@supports (--x\\3b y:red) and (color:red){.a{color:red}}",
+        "@supports(--x\\;y:red)and (color:red){.a{color:red}}" );
+      ( "@supports not (--x\\3b y:red){.a{color:red}}",
+        "@supports not (--x\\;y:red){.a{color:red}}" );
+      (* A name needing no escape keeps its spelling. *)
+      ( "@supports (--xy:red){.a{color:red}}",
+        "@supports(--xy:red){.a{color:red}}" );
+      ( "@supports (color:red){.a{color:red}}",
+        "@supports(color:red){.a{color:red}}" );
     ]
 
 let fidelity_string_escape_preserved () =
@@ -5355,6 +6660,48 @@ let fidelity_color_space_preserved () =
     (Astring.String.is_infix ~affix:"264.123456" hue)
 
 (* {2 @supports (CSS Conditional L4 sec. 2)} *)
+
+(* CSS Conditional 4 sec. 2.5: a feature query asks the browser whether it
+   supports a declaration, and a vendor prefix is the author saying support is
+   not universal. The web-features dataset behind {!Baseline} tracks unprefixed
+   features only, so a prefixed property has no fact either way and its guard is
+   load-bearing: Chrome answers false to both [(-webkit-hyphens: none)] and
+   [(-moz-orient: inline)], which no unprefixed baseline predicts. A custom
+   property is a different case - sec. 2.5 makes every custom property
+   declaration supported - so [(--x: y)] still elides. *)
+let conditional4_2_vendor_prefixed_guard_kept () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed ->
+        parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "a prefixed feature query keeps its guard"
+    "@supports(-webkit-hyphens:none){.x{color:red}}"
+    (normalize "@supports (-webkit-hyphens: none) { .x { color: red } }");
+  Alcotest.(check string)
+    "a negated prefixed feature query keeps its rule"
+    "@supports not (-webkit-hyphens:none){.x{color:red}}"
+    (normalize "@supports not (-webkit-hyphens: none) { .x { color: red } }");
+  Alcotest.(check string)
+    "a prefixed property with a prefixed value keeps its guard"
+    "@supports(-webkit-appearance:-apple-pay-button){.x{color:red}}"
+    (normalize
+       "@supports (-webkit-appearance: -apple-pay-button) { .x { color: red } }");
+  Alcotest.(check bool)
+    "a prefixed conjunct survives a mixed condition" true
+    (Astring.String.is_infix ~affix:"-webkit-hyphens"
+       (normalize
+          "@supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) \
+           { .x { color: red } }"));
+  Alcotest.(check string)
+    "a custom property declaration is supported, so its guard goes"
+    ".x{color:red}"
+    (normalize "@supports (--x: y) { .x { color: red } }");
+  Alcotest.(check string)
+    "an unprefixed baseline guard still goes" ".x{display:grid}"
+    (normalize "@supports (display: grid) { .x { display: grid } }")
 
 (* CSS Conditional Rules Module Level 4, section 2 (The @supports rule): the
    rule body parses as a rule list (like a stylesheet) and round- trips
@@ -5708,6 +7055,77 @@ let v4107_math_reduction () =
     "calc(max(1px, 2px, 3px)) -> 3px" ".x{width:3px}"
     (normalize ".x { width: calc(max(1px, 2px, 3px)) }")
 
+(* CSS Values 4 sec. 10.7: [abs()] and [hypot()] return their argument's type,
+   and sec. 10.9 gives the inverse trig functions an [<angle>]. A [calc()]
+   wrapper around one reduced it to a bare coefficient, so [calc(hypot(1px,
+   1px))] printed [1.41421356], which is not a [<length>] and is a declaration
+   the reader drops. Each expected form is reparsed to prove it survives. *)
+let v4107_typed_math_fn_units () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [reparses]") expected (normalize expected))
+    [
+      ( "calc(hypot(3px, 4px)) -> 5px",
+        ".x { width: calc(hypot(3px, 4px)) }",
+        ".x{width:5px}" );
+      ( "calc(hypot(1px, 1px)) -> 1.41421px",
+        ".x { width: calc(hypot(1px, 1px)) }",
+        ".x{width:1.41421px}" );
+      ( "calc(1px + hypot(3px, 4px)) -> 6px",
+        ".x { width: calc(1px + hypot(3px, 4px)) }",
+        ".x{width:6px}" );
+      ( "calc(hypot(3em, 4em)) -> 5em",
+        ".x { width: calc(hypot(3em, 4em)) }",
+        ".x{width:5em}" );
+      ( "calc(hypot(3%, 4%)) -> 5%",
+        ".x { width: calc(hypot(3%, 4%)) }",
+        ".x{width:5%}" );
+      (* Both arguments are a [<length>], so the call is well typed, but [px]
+         and [em] resolve against a font size only the browser knows. *)
+      ( "calc(hypot(1px, 1em)) keeps the call",
+        ".x { width: calc(hypot(1px, 1em)) }",
+        ".x{width:calc(hypot(1px,1em))}" );
+      ( "calc(abs(-3px)) -> 3px",
+        ".x { width: calc(abs(-3px)) }",
+        ".x{width:3px}" );
+      (* A [<number>] argument keeps a [<number>] result, which scales a length
+         rather than becoming one. *)
+      ( "calc(hypot(3, 4) * 1px) -> 5px",
+        ".x { width: calc(hypot(3, 4) * 1px) }",
+        ".x{width:5px}" );
+      ( "calc(hypot(3s, 4s)) -> 5s",
+        ".x { transition-duration: calc(hypot(3s, 4s)) }",
+        ".x{transition-duration:5s}" );
+      ( "calc(abs(-3s)) -> 3s",
+        ".x { transition-duration: calc(abs(-3s)) }",
+        ".x{transition-duration:3s}" );
+      ( "calc(hypot(3deg, 4deg)) -> 5deg",
+        ".x { transform: rotate(calc(hypot(3deg, 4deg))) }",
+        ".x{transform:rotate(5deg)}" );
+      ( "calc(abs(-3deg)) -> 3deg",
+        ".x { transform: rotate(calc(abs(-3deg))) }",
+        ".x{transform:rotate(3deg)}" );
+      ( "calc(atan2(1, 1)) -> 45deg",
+        ".x { transform: rotate(calc(atan2(1, 1))) }",
+        ".x{transform:rotate(45deg)}" );
+      ( "calc(30deg + atan2(1, 1)) -> 75deg",
+        ".x { transform: rotate(calc(30deg + atan2(1, 1))) }",
+        ".x{transform:rotate(75deg)}" );
+      (* [opacity] folds its [calc()] through the untyped numeric reduction,
+         which has no unit to rebuild, so the call stays rather than becoming
+         the [30] that a browser clamps to full opacity. *)
+      ( "calc(abs(-30%)) on an opacity keeps the call",
+        ".x { opacity: calc(abs(-30%)) }",
+        ".x{opacity:calc(abs(-30%))}" );
+    ]
+
 let v4107_numeric_reduction () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -5788,6 +7206,159 @@ let v4107_math_product_reduction () =
       ( "calc(2px * tan(45deg)) -> 2px",
         ".x { width: calc(2px * tan(45deg)) }",
         ".x{width:2px}" );
+    ]
+
+(* CSS Values 4 sec. 10.13 leaves numeric precision implementation-defined, so
+   the budget is Cascade's own: six significant figures for a value Cascade
+   computes, and every digit the author wrote for one it did not. The two are
+   different values - at a [14px] font [.4285714em] is [6px] while [.428571em]
+   is [5.999994px] - so the reduction happens at the fold that produces the
+   irrational, never at print time. *)
+let authored_precision_preserved () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  (* An [@property --n] registration, and the minified form it prints as, so the
+     [--n] declaration under it is read as a typed [<number>]. *)
+  let registered decl =
+    String.concat ""
+      [
+        "@property --n { syntax: \"<number>\"; inherits: false; initial-value: \
+         0 }";
+        decl;
+      ]
+  in
+  let registered_min decl =
+    String.concat ""
+      [
+        "@property --n{syntax:\"<number>\";inherits:false;initial-value:0}";
+        decl;
+      ]
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [idempotent]") expected (normalize expected))
+    [
+      (* Authored dimensions past six significant figures. *)
+      ( "authored em keeps its digits",
+        ".x { padding-left: .4285714em }",
+        ".x{padding-left:.4285714em}" );
+      ( "authored px keeps its magnitude",
+        ".x { width: 999999999px }",
+        ".x{width:999999999px}" );
+      ( "authored time keeps its digits",
+        ".x { transition-duration: 1.2345678s }",
+        ".x{transition-duration:1.2345678s}" );
+      ( "authored angle keeps its digits",
+        ".x { transform: rotate(1.2345678deg) }",
+        ".x{transform:rotate(1.2345678deg)}" );
+      ( "min() keeps the authored operand it selects",
+        ".x { width: min(1.41421356px, 2px) }",
+        ".x{width:1.41421356px}" );
+      (* A folded irrational carries the digits Cascade commits to. *)
+      ( "calc(2px * pi) rounds at the fold",
+        ".x { width: calc(2px * pi) }",
+        ".x{width:6.28319px}" );
+      ( "calc(2px / pi) rounds at the fold",
+        ".x { width: calc(2px / pi) }",
+        ".x{width:.63662px}" );
+      ( "calc(1px * sqrt(2)) rounds at the fold",
+        ".x { width: calc(1px * sqrt(2)) }",
+        ".x{width:1.41421px}" );
+      ( "hypot() on lengths rounds at the fold",
+        ".x { width: hypot(1px, 1px) }",
+        ".x{width:1.41421px}" );
+      (* [<number>] is untouched in both directions. *)
+      ( "authored line-height keeps its digits",
+        ".x { line-height: 1.4285714 }",
+        ".x{line-height:1.4285714}" );
+      ( "authored opacity keeps its digits",
+        ".x { opacity: .12345678 }",
+        ".x{opacity:.12345678}" );
+      ( "authored unregistered custom property keeps its digits",
+        ".x { --raw: 1.4285714 }",
+        ".x{--raw:1.4285714}" );
+      (* CSS Properties and Values API 1 sec. 2: an [@property] registration
+         lifts a [--name] use into the typed [<number>] shape, which must not
+         change the author's digits either. *)
+      ( "registered <number> keeps its digits",
+        registered ".x { --n: 1.4285714 }",
+        registered_min ".x{--n:1.4285714}" );
+      ( "registered <number> keeps its magnitude",
+        registered ".x { --n: 999999999999 }",
+        registered_min ".x{--n:999999999999}" );
+      ( "registered <number> shortens the fold the printer runs",
+        registered ".x { --n: calc(1 / 3) }",
+        registered_min ".x{--n:.333333}" );
+      (* A [calc()] the optimizer already collapsed reaches the printer as a
+         bare coefficient, where the registered shape has to print what an
+         untyped [<number>] prints. *)
+      ( "registered <number> prints a collapsed fold like an untyped one",
+        registered ".x { --n: calc(2 * pi) }",
+        registered_min ".x{--n:6.28318531}" );
+      ( "untyped <number> prints the same collapsed fold",
+        ".x { line-height: calc(2 * pi) }",
+        ".x{line-height:6.28318531}" );
+    ]
+
+(* The six-significant-figure budget buys a fractional tail, and past 10^6 it
+   stops reaching one: the only digits left to spend are integer ones the
+   arithmetic got right. [1in] is exactly [96px] and [1pt] exactly [4/3px] (CSS
+   Values 4 sec. 6.2), so [calc(1in + 999999999px)] is [1000000095px] and
+   rounding it to [1000000000px] moves the box by 95px. A value small enough for
+   the budget to reach its fraction still pays it: [1cm] is [4800/127px], whose
+   tail is Cascade's own noise. *)
+let computed_precision_keeps_integer_digits () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun (name, input, expected) ->
+      Alcotest.(check string) name expected (normalize input);
+      Alcotest.(check string)
+        (name ^ " [idempotent]") expected (normalize expected))
+    [
+      (* An absolute-unit combine past 10^6 keeps every digit. *)
+      ( "in + px keeps the whole magnitude",
+        ".x { width: calc(1in + 999999999px) }",
+        ".x{width:1000000095px}" );
+      ( "in + px keeps a mid-range magnitude",
+        ".x { width: calc(1in + 12345678px) }",
+        ".x{width:12345774px}" );
+      ( "pc + px keeps the whole magnitude",
+        ".x { width: calc(1pc + 1000000px) }",
+        ".x{width:1000016px}" );
+      ( "pt + px keeps the third of a pixel",
+        ".x { width: calc(1pt + 1000000px) }",
+        ".x{width:1000001.33333333px}" );
+      ( "hypot() past 10^6 keeps the whole magnitude",
+        ".x { width: hypot(999999999px, 1px) }",
+        ".x{width:999999999px}" );
+      ( "a folded irrational past 10^6 keeps its integer digits",
+        ".x { width: calc(1000000px * pi) }",
+        ".x{width:3141592.65358979px}" );
+      (* Under 10^6 the budget still spends the tail. *)
+      ( "cm + px spends the tail",
+        ".x { width: calc(1cm + 1px) }",
+        ".x{width:38.7953px}" );
+      ( "mm + px spends the tail",
+        ".x { width: calc(1mm + 1px) }",
+        ".x{width:4.77953px}" );
+      ( "q + px spends the tail",
+        ".x { width: calc(1q + 1px) }",
+        ".x{width:1.94488px}" );
+      ( "a non-Pythagorean hypot() spends the tail",
+        ".x { width: hypot(1px, 2px) }",
+        ".x{width:2.23607px}" );
+      ( "a Pythagorean hypot() has no tail to spend",
+        ".x { width: hypot(3px, 4px) }",
+        ".x{width:5px}" );
     ]
 
 let v4107_mod_rem () =
@@ -6579,35 +8150,46 @@ let theme_defaults_reject_escaping_value () =
     (emit "red/*")
 
 (* CSS Syntax 3 sec. 4.3.7: a [\X] escape carries any code point into an ident,
-   so [var(--x\3b y)] references the theme name ["x;y"]. A name that cannot be
-   written back as a single ident cannot be bound - and must not turn into some
-   other declaration ([y:red]) at root scope. *)
-let theme_defaults_reject_escaping_name () =
+   so [var(--x\3b y)] references the theme name ["x;y"]. The default binds under
+   that name, written back with the escapes that read it - the one spelling that
+   makes the declaration the name it references rather than some other
+   declaration ([y:red]) at root scope. *)
+let theme_defaults_escaping_name () =
   let parse css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   List.iter
-    (fun (what, src, name, expected) ->
-      let resolved =
+    (fun (what, src, name, bound, inlined) ->
+      let resolve ?theme () =
         parse src
-        |> Css.resolve_theme ~theme_defaults:(fun n ->
+        |> Css.resolve_theme ?theme ~theme_defaults:(fun n ->
             if n = name then Some "red" else None)
+        |> Css.to_string ~minify:true
       in
       Alcotest.(check string)
-        (what ^ ": nothing binds and the reference stays live")
-        expected
-        (Css.to_string ~minify:true resolved))
+        (what ^ ": binds under the name the reference spells")
+        bound (resolve ());
+      Alcotest.(check string)
+        (what ^ ": resolves the reference it binds")
+        inlined
+        (resolve ~theme:Css.Pp.String_set.empty ());
+      Alcotest.(check string)
+        (what ^ ": the binding reads back as itself")
+        bound
+        (Css.to_string ~minify:true (parse bound)))
     [
       ( "a name carrying a [;]",
         ".a{color:var(--x\\3b y)}",
         "x;y",
-        ".a{color:var(--x\\;y)}" );
+        ":root{--x\\;y:red}.a{color:var(--x\\;y)}",
+        ".a{color:red}" );
       ( "a name carrying a [}]",
         ".a{color:var(--x\\7d y)}",
         "x}y",
-        ".a{color:var(--x\\}y)}" );
+        ":root{--x\\}y:red}.a{color:var(--x\\}y)}",
+        ".a{color:red}" );
     ]
 
 (* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
@@ -6984,6 +8566,7 @@ let additional_tests =
   [
     ("check function", `Quick, test_check);
     ("import_rule", `Quick, test_import_rule);
+    ("layer_name", `Quick, test_layer_name);
     (* Positive tests *)
     ("advanced selectors", `Quick, test_advanced_selectors);
     ("advanced properties", `Quick, test_advanced_properties);
@@ -7010,6 +8593,48 @@ let additional_tests =
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
+    ( "spec nesting declaration after a nested rule keeps its place",
+      `Quick,
+      spec_nesting_declaration_after_nested_rule );
+    ( "spec nesting @layer block holds nesting content",
+      `Quick,
+      spec_nesting_layer_block );
+    ( "spec nesting empty @layer keeps block form",
+      `Quick,
+      spec_nesting_empty_layer_keeps_block );
+    ( "spec nesting @starting-style holds nesting content",
+      `Quick,
+      spec_nesting_starting_style );
+    ( "spec nesting other group rules hold nesting content",
+      `Quick,
+      spec_nesting_other_group_rules );
+    ( "spec nesting at-rule inside a nested group rule",
+      `Quick,
+      spec_nesting_at_rule_inside_nested_group );
+    ( "spec nesting rejects a non-group at-rule",
+      `Quick,
+      spec_nesting_rejects_non_group_at_rules );
+    ( "spec nesting rejects a non-group at-rule at every depth",
+      `Quick,
+      spec_nesting_rejects_non_group_at_rules_deep );
+    ( "spec nesting rejection keeps the rest of the rule",
+      `Quick,
+      spec_nesting_rejection_keeps_the_rest );
+    ( "spec nesting keeps @view-transition",
+      `Quick,
+      spec_nesting_keeps_view_transition );
+    ( "spec nesting rejects an orphan @else",
+      `Quick,
+      spec_nesting_rejects_orphan_else );
+    ( "spec nesting rejects a top-of-sheet at-rule",
+      `Quick,
+      spec_nesting_rejects_top_of_sheet_at_rules );
+    ( "spec nesting reads an ident prelude in a nested at-rule",
+      `Quick,
+      spec_nesting_ident_prelude_in_nested_at_rule );
+    ( "spec nesting skips stray semicolons in a nested at-rule",
+      `Quick,
+      spec_nesting_skips_stray_semicolons );
     ( "spec CSS Nesting L1 preserves nested structure",
       `Quick,
       nesting_module_l1_preserves_structure );
@@ -7127,6 +8752,9 @@ let additional_tests =
       `Quick,
       v4107_minmax_reduction );
     ("spec selectors 4 17 :is single-argument unwrap", `Quick, s417_is_unwrap);
+    ( "spec selectors 4 4.2 compound type selector first",
+      `Quick,
+      s442_compound_type_first );
     ( "spec selectors 4 6.2 compound attribute canonicalization",
       `Quick,
       s462_compound_attr );
@@ -7170,6 +8798,16 @@ let additional_tests =
     ( "spec syntax 3 4.3.7 custom-property name escapes",
       `Quick,
       s4370_custom_property_name_escapes );
+    ( "spec syntax 3 4.3.7 at-rule prelude name escapes",
+      `Quick,
+      s4370_at_rule_prelude_name_escapes );
+    ( "spec syntax 3 4.3.7 property value name escapes",
+      `Quick,
+      s4370_property_value_name_escapes );
+    ( "spec conditional 3 2.2 supports property name escapes",
+      `Quick,
+      s4370_supports_property_name_escapes );
+    ("spec cascade 5 6.4.1 layer name parts", `Quick, s641_layer_name_parts);
     ( "fidelity string escape preserved",
       `Quick,
       fidelity_string_escape_preserved );
@@ -7183,6 +8821,9 @@ let additional_tests =
     ( "spec conditional 4 2 supports preserved",
       `Quick,
       conditional4_2_supports_preserved );
+    ( "spec conditional 4 2 vendor-prefixed guard kept",
+      `Quick,
+      conditional4_2_vendor_prefixed_guard_kept );
     ( "spec conditional 4 2 supports invalid (negative)",
       `Quick,
       conditional4_2_supports_invalid_rejected );
@@ -7233,9 +8874,18 @@ let additional_tests =
     ( "spec values 4 10.7 numeric math reduction",
       `Quick,
       v4107_numeric_reduction );
+    ( "spec values 4 10.7 typed math function units",
+      `Quick,
+      v4107_typed_math_fn_units );
     ( "spec values 4 10.7 length times math reduction",
       `Quick,
       v4107_math_product_reduction );
+    ( "authored numeric precision preserved",
+      `Quick,
+      authored_precision_preserved );
+    ( "computed numeric precision keeps integer digits",
+      `Quick,
+      computed_precision_keeps_integer_digits );
     ("spec values 4 10.7 mod/rem reduction", `Quick, v4107_mod_rem);
     ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
     ( "spec values 4 10.7 division by zero preserved",
@@ -7362,9 +9012,9 @@ let additional_tests =
     ( "theme defaults reject a value that escapes its declaration",
       `Quick,
       theme_defaults_reject_escaping_value );
-    ( "theme defaults reject a name that escapes its declaration",
+    ( "theme defaults bind a name that needs escaping",
       `Quick,
-      theme_defaults_reject_escaping_name );
+      theme_defaults_escaping_name );
     ( "spec custom-properties 1 fallback list with inlining",
       `Quick,
       customprops1_fallback_list );

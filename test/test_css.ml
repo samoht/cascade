@@ -65,7 +65,7 @@ let optimization_flag () =
 (* Test layers work end-to-end *)
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
-  let stylesheet = Css.v [ layer ~name:"utilities" [ utility_rule ] ] in
+  let stylesheet = Css.v [ layer ~name:[ "utilities" ] [ utility_rule ] ] in
 
   let css = Css.to_string ~minify:true stylesheet in
 
@@ -262,21 +262,22 @@ let test_layer_block () =
   let stylesheet =
     v
       [
-        layer ~name:"theme" [ rule ~selector:btn [ color (hex "#ff0000") ] ];
-        layer ~name:"utilities" [ rule ~selector:card [ padding [ Px 10. ] ] ];
+        layer ~name:[ "theme" ] [ rule ~selector:btn [ color (hex "#ff0000") ] ];
+        layer ~name:[ "utilities" ]
+          [ rule ~selector:card [ padding [ Px 10. ] ] ];
         rule ~selector:(Selector.class_ "base") [ margin [ Px 5. ] ];
       ]
   in
 
   (* Test extracting theme layer *)
-  let theme_stmts = layer_block "theme" stylesheet in
+  let theme_stmts = layer_block [ "theme" ] stylesheet in
   Alcotest.(check bool) "theme layer found" true (Option.is_some theme_stmts);
 
   let theme_rules = theme_stmts |> Option.get |> rules_of_statements in
   Alcotest.(check int) "theme has one rule" 1 (List.length theme_rules);
 
   (* Test extracting non-existent layer *)
-  let missing = layer_block "missing" stylesheet in
+  let missing = layer_block [ "missing" ] stylesheet in
   Alcotest.(check bool) "missing layer not found" true (Option.is_none missing)
 
 let test_rules_of_statements () =
@@ -397,7 +398,7 @@ let conditional_groups body =
     ("@media", Stylesheet.Media (Media.of_string "screen", body));
     ("@supports", Stylesheet.Supports (Supports.of_string "(top: 0)", body));
     ("@container", Stylesheet.Container (None, None, body));
-    ("@layer", Stylesheet.Layer (Some "a", body));
+    ("@layer", Stylesheet.Layer (Some [ "a" ], body));
     ("@origin", Stylesheet.Origin (Stylesheet.Author, body));
     ("@scope", Stylesheet.Scope (Some (Selector.class_ "card"), None, body));
     ("@starting-style", Stylesheet.Starting_style body);
@@ -425,7 +426,7 @@ let test_spec_map_conditional_boundaries () =
               rule ~selector:(Selector.class_ "title") [ color (hex "#ff0000") ];
             ];
         ];
-      layer ~name:"components"
+      layer ~name:[ "components" ]
         [ rule ~selector:(Selector.class_ "inside") [ color (hex "#ff0000") ] ];
     ]
   in
@@ -532,7 +533,7 @@ let test_spec_sort_conditional_boundaries () =
               rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ];
             ];
         ];
-      layer ~name:"base"
+      layer ~name:[ "base" ]
         [
           rule ~selector:(Selector.class_ "yyy") [ color (hex "#ff0000") ];
           rule ~selector:(Selector.class_ "bbb") [ color (hex "#00ff00") ];
@@ -623,7 +624,7 @@ let public_fold_edges () =
       [
         with_origin Author
           [
-            layer ~name:"components"
+            layer ~name:[ "components" ]
               [
                 supports
                   ~condition:(Css.Supports.property "display" "grid")
@@ -688,7 +689,7 @@ let public_custom_props_edges () =
     media
       ~condition:(Css.Media.of_string "(prefers-color-scheme: dark)")
       [
-        layer ~name:"theme"
+        layer ~name:[ "theme" ]
           [
             rule ~selector:Selector.Root
               [ custom_property "--brand-dark" "#000" ];
@@ -696,17 +697,17 @@ let public_custom_props_edges () =
       ]
   in
   let utilities =
-    layer ~name:"utilities"
+    layer ~name:[ "utilities" ]
       [
         rule ~selector:(Selector.class_ "m")
           [ custom_property "--space" "1rem" ];
       ]
   in
   let sheet =
-    v [ root; layer ~name:"theme" [ theme_rule ]; nested_theme; utilities ]
+    v [ root; layer ~name:[ "theme" ] [ theme_rule ]; nested_theme; utilities ]
   in
   let all_props = custom_props sheet in
-  let theme_props = custom_props ~layer:"theme" sheet in
+  let theme_props = custom_props ~layer:[ "theme" ] sheet in
   let has name props = List.mem name props in
   Alcotest.(check bool)
     "all props include unlayered" true
@@ -744,7 +745,7 @@ let public_custom_props_declaration_sites () =
       ( "@supports",
         Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
       ("@container", Stylesheet.Container (None, None, [ styled ]));
-      ("@layer", Stylesheet.Layer (Some "a", [ styled ]));
+      ("@layer", Stylesheet.Layer (Some [ "a" ], [ styled ]));
       ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
       ( "@scope",
         Stylesheet.Scope (Some (Selector.class_ "card"), None, [ styled ]) );
@@ -796,13 +797,13 @@ let public_custom_props_declaration_sites () =
     v
       [
         Stylesheet.Layer
-          (Some "a", [ Stylesheet.Scope (None, None, [ styled ]) ]);
+          (Some [ "a" ], [ Stylesheet.Scope (None, None, [ styled ]) ]);
         rule ~selector:(Selector.class_ "b") [ custom_property "--out" "2" ];
       ]
   in
   Alcotest.(check (list string))
     "layer selects through @scope" [ "--x" ]
-    (custom_props ~layer:"a" layered);
+    (custom_props ~layer:[ "a" ] layered);
   Alcotest.(check (list string))
     "unlayered sibling still reported" [ "--x"; "--out" ] (custom_props layered)
 
@@ -813,15 +814,15 @@ let public_custom_props_declaration_sites () =
    conservative one, when such a block is skipped. *)
 let public_layers_conditional_groups () =
   let styled = rule ~selector:(Selector.class_ "a") [ color (hex "#111111") ] in
-  let block = Stylesheet.Layer (Some "inner", [ styled ]) in
-  let decl = Stylesheet.Layer_decl [ "declared" ] in
+  let block = Stylesheet.Layer (Some [ "inner" ], [ styled ]) in
+  let decl = Stylesheet.Layer_decl [ [ "declared" ] ] in
   let groups =
     [
       ("@media", fun b -> Stylesheet.Media (Media.of_string "screen", b));
       ( "@supports",
         fun b -> Stylesheet.Supports (Supports.of_string "(top: 0)", b) );
       ("@container", fun b -> Stylesheet.Container (None, None, b));
-      ("@layer", fun b -> Stylesheet.Layer (Some "outer", b));
+      ("@layer", fun b -> Stylesheet.Layer (Some [ "outer" ], b));
       ("@origin", fun b -> Stylesheet.Origin (Stylesheet.Author, b));
       ( "@scope",
         fun b -> Stylesheet.Scope (Some (Selector.class_ "card"), None, b) );
@@ -838,7 +839,9 @@ let public_layers_conditional_groups () =
       ("style rule", fun b -> rule ~selector:(Selector.class_ "b") ~nested:b []);
     ]
   in
-  let qualify label name = if label = "@layer" then "outer." ^ name else name in
+  let qualify label name =
+    if label = "@layer" then [ "outer"; name ] else [ name ]
+  in
   let missing =
     List.filter_map
       (fun (label, group) ->
@@ -857,7 +860,7 @@ let public_layers_conditional_groups () =
     Alcotest.failf "layer not reported inside: %s" (String.concat ", " missing);
   (* A sublayer of an anonymous [@layer { }] has no name any caller can ask for,
      so it is not one of the sheet's declared layers. *)
-  Alcotest.(check (list string))
+  Alcotest.(check (list (list string)))
     "anonymous layer hides its sublayers" []
     (layers (v [ Stylesheet.Layer (None, [ block ]) ]));
   (* A layer statement declares a name without opening a block, so it must not
@@ -865,12 +868,13 @@ let public_layers_conditional_groups () =
   let forward_declared =
     v
       [
-        Stylesheet.Layer_decl [ "one"; "two" ];
-        Stylesheet.Layer (Some "one", [ styled ]);
+        Stylesheet.Layer_decl [ [ "one" ]; [ "two" ] ];
+        Stylesheet.Layer (Some [ "one" ], [ styled ]);
       ]
   in
-  Alcotest.(check (list string))
-    "statement declares the order" [ "one"; "two" ] (layers forward_declared);
+  Alcotest.(check (list (list string)))
+    "statement declares the order" [ [ "one" ]; [ "two" ] ]
+    (layers forward_declared);
   let block_text name sheet =
     match layer_block name sheet with
     | None -> "<no block>"
@@ -878,23 +882,23 @@ let public_layers_conditional_groups () =
   in
   Alcotest.(check string)
     "statement does not shadow the block" ".a{color:#111}"
-    (block_text "one" forward_declared);
+    (block_text [ "one" ] forward_declared);
   Alcotest.(check string)
     "a name only declared opens no block" "<no block>"
-    (block_text "two" forward_declared);
+    (block_text [ "two" ] forward_declared);
   (* Names come in source order, so a caller reading them reads the order the
      sheet introduces its layers in. *)
-  Alcotest.(check (list string))
+  Alcotest.(check (list (list string)))
     "names in source order"
-    [ "first"; "second"; "third" ]
+    [ [ "first" ]; [ "second" ]; [ "third" ] ]
     (layers
        (v
           [
-            Stylesheet.Layer_decl [ "first" ];
+            Stylesheet.Layer_decl [ [ "first" ] ];
             Stylesheet.Media
               ( Media.of_string "screen",
-                [ Stylesheet.Layer (Some "second", [ styled ]) ] );
-            Stylesheet.Layer (Some "third", [ styled ]);
+                [ Stylesheet.Layer (Some [ "second" ], [ styled ]) ] );
+            Stylesheet.Layer (Some [ "third" ], [ styled ]);
           ]))
 
 (* [Stylesheet.layers] and [Css.layers] answer one question, so they answer it
@@ -905,27 +909,28 @@ let stylesheet_layers_agree_with_css () =
   let styled = rule ~selector:(Selector.class_ "a") [ color (hex "#111111") ] in
   let sheets =
     [
-      ("dotted name", v [ Stylesheet.Layer (Some "foo.bar", [ styled ]) ]);
+      ("dotted name", v [ Stylesheet.Layer (Some [ "foo"; "bar" ], [ styled ]) ]);
       ( "layer in a group",
         v
           [
             Stylesheet.Media
               ( Media.of_string "screen",
-                [ Stylesheet.Layer (Some "inner", [ styled ]) ] );
+                [ Stylesheet.Layer (Some [ "inner" ], [ styled ]) ] );
           ] );
       ( "layer in a rule",
         v
           [
             rule ~selector:(Selector.class_ "b")
-              ~nested:[ Stylesheet.Layer (Some "deep", [ styled ]) ]
+              ~nested:[ Stylesheet.Layer (Some [ "deep" ], [ styled ]) ]
               [];
           ] );
-      ("statement form", v [ Stylesheet.Layer_decl [ "one"; "two.three" ] ]);
+      ( "statement form",
+        v [ Stylesheet.Layer_decl [ [ "one" ]; [ "two"; "three" ] ] ] );
     ]
   in
   List.iter
     (fun (label, sheet) ->
-      Alcotest.(check (list string))
+      Alcotest.(check (list (list string)))
         (label ^ ": Stylesheet.layers matches Css.layers")
         (layers sheet)
         (Css.Stylesheet.layers sheet))
@@ -968,7 +973,7 @@ let stylesheet_queries_reach_nested () =
       rule ~selector:(Selector.class_ "outer")
         ~nested:[ styled "nested" ]
         [ color (hex "#111111") ];
-      Stylesheet.Layer (Some "l", [ styled "layered" ]);
+      Stylesheet.Layer (Some [ "l" ], [ styled "layered" ]);
     ]
   in
   Alcotest.(check (list string))
@@ -1023,7 +1028,7 @@ let public_vars_declaration_sites () =
       ( "@supports",
         Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
       ("@container", Stylesheet.Container (None, None, [ styled ]));
-      ("@layer", Stylesheet.Layer (Some "a", [ styled ]));
+      ("@layer", Stylesheet.Layer (Some [ "a" ], [ styled ]));
       ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
       ( "@scope",
         Stylesheet.Scope (Some (Selector.class_ "card"), None, [ styled ]) );

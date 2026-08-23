@@ -397,6 +397,9 @@ let matrix =
         "text-decoration-color";
         "-webkit-text-decoration-color";
         "-webkit-tap-highlight-color";
+        "-webkit-text-fill-color";
+        "-webkit-text-stroke-color";
+        "column-rule-color";
         "outline-color";
         "fill";
         "stroke";

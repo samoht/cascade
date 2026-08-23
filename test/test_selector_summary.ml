@@ -73,6 +73,17 @@ let pseudo_elements () =
     ".x::after";
   check_overlap "pseudo-element and originating element are disjoint" false
     ".x::before" ".x";
+  (* The reader and the summary read one pseudo-element list, so the highlight
+     pseudo-elements, an unrecognised [::foo] and the framework-only [::deep]
+     name boxes of their own here as well. *)
+  check_overlap "target-text is a box of its own" false ".x::target-text" ".x";
+  check_overlap "spelling-error is a box of its own" false ".x::spelling-error"
+    ".x";
+  check_overlap "grammar-error is a box of its own" false ".x::grammar-error"
+    ".x";
+  check_overlap "unknown pseudo-element is a box of its own" false
+    ".x::future-pseudo-element" ".x";
+  check_overlap "::v-deep is a box of its own" false ".x::v-deep" ".x";
   check_overlap "legacy and modern before spelling may overlap" true ".x:before"
     ".x::before";
   check_overlap "legacy and modern after spelling may overlap" true ".x:after"

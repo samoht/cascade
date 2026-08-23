@@ -24,6 +24,26 @@ let test_merge_layers_keeps_distinct_names () =
     "different-name @layer blocks stay separate"
     "@layer a{.x{color:red}}@layer b{.y{color:blue}}" out
 
+(* CSS Cascade 5 sec. 6.4.1: [@layer a\2e b] names one layer whose single ident
+   holds a dot and [@layer a.b] names the sublayer [b] of [a], so merging the
+   two would move a declaration into a layer the input never wrote it in. Two
+   spellings of the one ident still name the one layer. *)
+let test_merge_layers_keeps_escaped_dot_apart () =
+  let stmts = block "@layer a\\2e b{.x{color:red}}@layer a.b{.y{color:blue}}" in
+  let merged = Block.merge_consecutive_layers ~optimize_merged_block:id stmts in
+  Alcotest.(check string)
+    "an ident holding a dot is not the sublayer of the same spelling"
+    "@layer a\\.b{.x{color:red}}@layer a.b{.y{color:blue}}" (render merged)
+
+let test_merge_layers_combines_escaped_dot () =
+  let stmts =
+    block "@layer a\\2e b{.x{color:red}}@layer a\\.b{.y{color:blue}}"
+  in
+  let merged = Block.merge_consecutive_layers ~optimize_merged_block:id stmts in
+  Alcotest.(check string)
+    "two spellings of one ident merge"
+    "@layer a\\.b{.x{color:red}.y{color:blue}}" (render merged)
+
 let test_merge_media_combines_same_condition () =
   let stmts =
     block
@@ -140,6 +160,10 @@ let suite =
         test_merge_layers_combines_same_name;
       Alcotest.test_case "keep distinct-name @layer" `Quick
         test_merge_layers_keeps_distinct_names;
+      Alcotest.test_case "keep an escaped dot out of a sublayer" `Quick
+        test_merge_layers_keeps_escaped_dot_apart;
+      Alcotest.test_case "merge one ident spelled two ways" `Quick
+        test_merge_layers_combines_escaped_dot;
       Alcotest.test_case "merge same-condition @media" `Quick
         test_merge_media_combines_same_condition;
       Alcotest.test_case "drop empty rules" `Quick test_drop_empty_rules;

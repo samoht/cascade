@@ -44,31 +44,6 @@ let empty =
   }
 
 let mark_complex s = if s.complex then s else { s with complex = true }
-
-(* Pseudo-elements as far as overlap analysis is concerned: anything that
-   identifies a generated box distinct from its originating element.
-   Element-tied pseudo-classes (Hover, Focus, ...) do not appear here - they
-   tighten which elements match but do not change the subject identity. *)
-let is_pseudo_element = function
-  | Selector_intf.Before _ | After _ | First_letter _ | First_line _ | Backdrop
-  | Marker | Placeholder | Selection | Target_text | Spelling_error
-  | Grammar_error | File_selector_button | Details_content | Moz_placeholder
-  | Webkit_input_placeholder | Ms_input_placeholder | Webkit_scrollbar
-  | Webkit_search_cancel_button | Webkit_search_decoration
-  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
-  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
-  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
-  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
-  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
-  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
-  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
-  | Webkit_details_marker | View_transition | View_transition_group _
-  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ | Part _
-  | Slotted _ | Cue _ | Cue_region _ | Highlight _ ->
-      true
-  | _ -> false
-
 let add_nth nth s = { s with nth = nth :: s.nth; complex = true }
 
 let nth_of_selector = function
@@ -120,7 +95,10 @@ let rec fold_simple s (sel : Selector.t) =
       | Some _ -> mark_complex s)
   | Universal _ -> s
   | Compound xs -> List.fold_left fold_simple s xs
-  | sel when is_pseudo_element sel -> (
+  (* A pseudo-element is a subject of its own, so it replaces the originating
+     element rather than narrowing it. Same predicate as the reader's, so the
+     summary calls a compound a pseudo-element exactly when the reader does. *)
+  | sel when Selector.is_pseudo_element sel -> (
       (* Normalize legacy single-colon spellings ([:before] vs [::before]) so
          the two parses of the same pseudo-element compare equal. *)
       let canonical : Selector.t =

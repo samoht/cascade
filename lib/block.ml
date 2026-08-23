@@ -44,7 +44,7 @@ let has_nested_preference_media block =
    [@layer { ... }] without a name creates a new layer. *)
 let rec needs_layer_merge = function
   | Layer (Some prev_name, _) :: Layer (Some name, _) :: _
-    when String.equal prev_name name ->
+    when equal_layer_name prev_name name ->
       true
   | _ :: rest -> needs_layer_merge rest
   | [] -> false
@@ -59,7 +59,8 @@ let merge_layer_blocks ~optimize_merged_block stmts =
         | None -> List.rev acc)
     | Layer (Some name, block) :: rest -> (
         match prev with
-        | Some (Some prev_name, prev_block) when String.equal prev_name name ->
+        | Some (Some prev_name, prev_block) when equal_layer_name prev_name name
+          ->
             merge acc (Some (Some name, prev_block @ block)) rest
         | Some (Some prev_name, prev_block) ->
             merge
@@ -147,12 +148,39 @@ let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
   else stmts
 
 (* Leaf rules reachable from a statement, in source order, descending into
-   nested blocks. *)
-let leaf_rules stmt =
-  List.rev
-    (fold_statements
-       (fun acc stmt -> match stmt with Rule r -> r :: acc | _ -> acc)
-       [] [ stmt ])
+   nested blocks. A nested declarations run (CSS Nesting 1 sec. 3.4) sets
+   properties on the rule it sits in, so it reads as one more rule with that
+   selector; missed, it is a conflict the hoisting analysis below never sees.
+   Descent goes through [statement_children], so a statement that grows a block
+   is reached without listing it here. *)
+let rec leaf_rules ?parent stmt =
+  match stmt with
+  | Rule r -> r :: List.concat_map (fun s -> leaf_rules ~parent:r s) r.nested
+  | Declarations decls -> (
+      match parent with
+      | Some (p : rule) -> [ { p with declarations = decls; nested = [] } ]
+      | None -> [])
+  | stmt ->
+      List.concat_map (fun s -> leaf_rules ?parent s) (statement_children stmt)
+
+(* A declarations run outside any style rule: [leaf_rules] reports nothing for
+   it, so an analysis that must see every declaration refuses rather than read
+   that silence as "no conflict". *)
+let rec holds_unattributed_run stmt =
+  match stmt with
+  | Declarations _ -> true
+  | Media (_, b)
+  | Supports (_, b)
+  | Layer (_, b)
+  | Container (_, _, b)
+  | Starting_style b
+  | Origin (_, b)
+  | Moz_document (_, b)
+  | Scope (_, _, b)
+  | When (_, b)
+  | Else (_, b) ->
+      List.exists holds_unattributed_run b
+  | _ -> false
 
 (* Two declarations an element computes differently once they swap order: they
    write a common longhand slot, and they are not the same declaration. Reading
@@ -186,12 +214,21 @@ let needs_distant_media_merge stmts =
 
 (* CSS Conditional 3: same-condition [@media] blocks are spec-equivalent to one
    block. Merge a later block into the first occurrence when hoisting it past
-   the intervening statements cannot reorder a conflicting rule. *)
-let merge_distant_media ~optimize_merged_block stmts =
+   the intervening statements cannot reorder a conflicting rule.
+
+   [owner] is the style rule whose body [stmts] is, when it is one. A
+   declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
+   3.4), so the analysis below only sees it once it can name the rule the run
+   belongs to. *)
+let merge_distant_media ?owner ~optimize_merged_block stmts =
   if not (needs_distant_media_merge stmts) then stmts
   else
+    let leaves stmts = List.concat_map (leaf_rules ?parent:owner) stmts in
+    let unattributed stmts =
+      Option.is_none owner && List.exists holds_unattributed_run stmts
+    in
     let try_merge out cond block : statement list option =
-      let hoisted = List.concat_map leaf_rules block in
+      let hoisted = leaves block in
       let rec split before :
           statement list ->
           (statement list * statement list * statement list) option = function
@@ -210,11 +247,12 @@ let merge_distant_media ~optimize_merged_block stmts =
       match split [] out with
       | None -> None
       | Some (before, target, after) when List.for_all crossable after ->
-          let crossed = List.concat_map leaf_rules after in
+          let crossed = leaves after in
           if
-            List.exists
-              (fun h -> List.exists (rules_conflict h) crossed)
-              hoisted
+            unattributed block || unattributed after
+            || List.exists
+                 (fun h -> List.exists (rules_conflict h) crossed)
+                 hoisted
           then None
           else Some (before @ [ Media (cond, target @ block) ] @ after)
       | Some _ -> None
@@ -376,7 +414,7 @@ let add_new_layer_names seen names =
   let seen, added_rev =
     List.fold_left
       (fun (seen, added_rev) name ->
-        if List.exists (String.equal name) seen then (seen, added_rev)
+        if List.exists (equal_layer_name name) seen then (seen, added_rev)
         else (name :: seen, name :: added_rev))
       (seen, []) names
   in
@@ -407,7 +445,7 @@ let list_has_prefix prefix list =
   let rec loop = function
     | [], _ -> true
     | _ :: _, [] -> false
-    | x :: xs, y :: ys -> String.equal x y && loop (xs, ys)
+    | x :: xs, y :: ys -> equal_layer_name x y && loop (xs, ys)
   in
   loop (prefix, list)
 
@@ -419,7 +457,7 @@ let layer_decl_forward_redundant seen names rest =
   added_by_layer_decl && list_has_prefix introduced_by_decl introduced_by_rest
 
 let layer_decl_backward_redundant seen names =
-  List.for_all (fun name -> List.exists (String.equal name) seen) names
+  List.for_all (fun name -> List.exists (equal_layer_name name) seen) names
 
 (* Top-level CSS Cascade 6.4 cleanup. A layer statement is removable when it
    only repeats layer order already introduced in the current import-separated
@@ -480,6 +518,22 @@ let is_empty_statement ~chained = function
   | Position_try _ | Viewport _ | Unknown_at_rule _ ->
       false
 
+(* CSS Paged Media 3 sec. 5 generates a page-margin box only where its [content]
+   computes away from [none], so a box holding no descriptor generates nothing.
+   Stripping those first lets [is_empty_statement] drop the page they leave with
+   neither descriptor nor box. *)
+let drop_empty_margin_boxes stmt =
+  match stmt with
+  | Page_with_margins (selector, descriptors, margins) ->
+      let kept =
+        list_filter_preserve
+          (fun (m : page_margin_rule) -> m.descriptors <> [])
+          margins
+      in
+      if kept == margins then stmt
+      else Page_with_margins (selector, descriptors, kept)
+  | stmt -> stmt
+
 (* The tail is filtered first, so a branch is judged against the [@else] that
    survives rather than the one written: an empty [@when] whose only [@else] is
    itself empty goes with it in one pass. *)
@@ -488,12 +542,13 @@ let rec drop_empty_rules stmts =
   | [] -> []
   | stmt :: rest ->
       let rest' = drop_empty_rules rest in
+      let stmt' = drop_empty_margin_boxes stmt in
       let chained =
         match rest' with Else _ :: _ -> true | [] | _ :: _ -> false
       in
-      if is_empty_statement ~chained stmt then rest'
-      else if rest' == rest then stmts
-      else stmt :: rest'
+      if is_empty_statement ~chained stmt' then rest'
+      else if rest' == rest && stmt' == stmt then stmts
+      else stmt' :: rest'
 
 (* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
    and may interleave with [@charset] / [@import] / [@namespace], so a
@@ -525,8 +580,8 @@ let drop_misplaced_imports stmts =
    downstream. *)
 let merge_named_layers_by_name (stmts : statement list) : statement list =
   let is_empty_block = function [] -> true | _ -> false in
-  let content : (string, statement list) Hashtbl.t = Hashtbl.create 8 in
-  let first_nonempty : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let content : (layer_name, statement list) Hashtbl.t = Hashtbl.create 8 in
+  let first_nonempty : (layer_name, unit) Hashtbl.t = Hashtbl.create 8 in
   let has_merge = ref false in
   List.iter
     (fun stmt ->

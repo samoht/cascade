@@ -1,0 +1,22 @@
+<!doctype html><html><head><style>
+  .n1 { color: red; & b { width: 9px } color: green }
+  .n2 { @media (min-width: 1px) { color: blue } color: green }
+  .n3 { @supports (color: red) { color: blue } color: green }
+  .n4 { color: red; & b { width: 9px } color: blue }
+  .n4 { color: green }
+  .n5 { @media (min-width: 1px) { color: blue } color: green; width: 30px }
+  .n6 { --w: 40px; & b { --w: 50px } width: var(--w) }
+  .n7 { @media (min-width: 1px) { color: blue } color: green !important }
+  .n8 { color: red; @media (min-width: 1px) { padding: 3px } color: green; & i { width: 8px } font-size: 20px }
+  .n9 { @media (min-width: 1px) { color: blue } color: red; color: green }
+</style></head><body>
+<div class="n1">a<b>x</b></div>
+<div class="n2">b</div>
+<div class="n3">c</div>
+<div class="n4">d<b>y</b></div>
+<div class="n5">e</div>
+<div class="n6">f<b>z</b></div>
+<div class="n7">g</div>
+<div class="n8">h<i>w</i></div>
+<div class="n9">i</div>
+</body></html>

@@ -306,7 +306,7 @@ let layers () =
   in
 
   let layer_stmt =
-    Css.Stylesheet.Layer (Some "utilities", [ statement_of_rule rule ])
+    Css.Stylesheet.Layer (Some [ "utilities" ], [ statement_of_rule rule ])
   in
 
   let stylesheet = [ layer_stmt ] in
@@ -532,7 +532,9 @@ let test_media_merge_in_layers () =
     ]
   in
 
-  let stylesheet = [ Css.Stylesheet.Layer (Some "utilities", layer_content) ] in
+  let stylesheet =
+    [ Css.Stylesheet.Layer (Some [ "utilities" ], layer_content) ]
+  in
 
   let optimized = Css.Optimize.stylesheet stylesheet in
 
@@ -554,10 +556,10 @@ let test_empty_layers_statement () =
      represented by the statement form from CSS Cascade 5. *)
   let stylesheet =
     [
-      Css.Stylesheet.Layer (Some "reset", []);
-      Css.Stylesheet.Layer (Some "theme", []);
+      Css.Stylesheet.Layer (Some [ "reset" ], []);
+      Css.Stylesheet.Layer (Some [ "theme" ], []);
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")
@@ -577,8 +579,8 @@ let test_tw_empty_layers_statement () =
      the shortest faithful spelling combines adjacent declarations. *)
   let input =
     [
-      Css.Stylesheet.Layer (Some "components", []);
-      Css.Stylesheet.Layer (Some "utilities", []);
+      Css.Stylesheet.Layer (Some [ "components" ], []);
+      Css.Stylesheet.Layer (Some [ "utilities" ], []);
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -1046,6 +1048,36 @@ let test_vendor_prefix_baseline_gate () =
     ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}"
     (opt ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}")
 
+(* A colour-valued property folds its colour whatever its name: CIE Lab
+   L=1.90334 a=0.278696 b=-5.48866 is sRGB 3,7,18, so both spellings print the
+   same hex. A property left out of the fold reports the two as different
+   values, which is what the browser-differential harness then counts as a
+   render change. *)
+let test_color_property_folds () =
+  let opt css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun property ->
+      let rule value = String.concat "" [ ".a{"; property; ":"; value; "}" ] in
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds lab() to hex" ])
+        (rule "#030712")
+        (opt (rule "lab(1.90334 0.278696 -5.48866)"));
+      Alcotest.(check string)
+        (String.concat "" [ property; " folds rgb() to hex" ])
+        (rule "#030712")
+        (opt (rule "rgb(3, 7, 18)")))
+    [
+      "color";
+      "column-rule-color";
+      "-webkit-text-fill-color";
+      "-webkit-text-stroke-color";
+    ]
+
 let test_lossless_declaration_order () =
   let opt ?(lossless = false) css =
     match Css.of_string css with
@@ -1140,6 +1172,9 @@ let shorthand_longhand_order_cases =
     ( "columns",
       ".a{columns:2;column-width:10em}",
       ".a{columns:2;column-width:10em}" );
+    ( "column-rule",
+      ".a{column-rule:1px solid red;column-rule-color:green}",
+      ".a{column-rule:1px solid red;column-rule-color:green}" );
     ( "list-style",
       ".a{list-style:none;list-style-type:disc}",
       ".a{list-style:none;list-style-type:disc}" );
@@ -1212,6 +1247,25 @@ let test_lossless_keeps_shorthand_longhand_order () =
     (fun (name, input, expected) ->
       Alcotest.(check string) name expected (opt input))
     shorthand_longhand_order_cases
+
+(* The same relation across rules. Two rules writing one colour tempt the
+   optimizer to share a selector list, which puts the later one where the
+   earlier one sits; a rule writing the shorthand in between resets that colour,
+   so an element matching both would repaint. *)
+let test_shorthand_longhand_rule_order () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  Alcotest.(check string)
+    "a colour rule does not cross the shorthand that resets it"
+    ".a{column-rule-color:green}.b{column-rule:1px solid \
+     red}.c{column-rule-color:green}"
+    (opt
+       ".a{column-rule-color:green}.b{column-rule:1px solid \
+        red}.c{column-rule-color:green}")
 
 (* CSS Logical 1 sec. 2: a flow-relative longhand resolves to a physical side
    the writing mode picks, so a sheet on its own cannot say whether
@@ -1388,6 +1442,7 @@ let optimize_tests =
       nesting_synthesis_can_be_disabled );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
+    ("color property folds", `Quick, test_color_property_folds);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "lossless keeps unknown property order",
       `Quick,
@@ -1395,6 +1450,7 @@ let optimize_tests =
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );
+    ("shorthand longhand rule order", `Quick, test_shorthand_longhand_rule_order);
     ( "lossless keeps logical physical order",
       `Quick,
       test_lossless_keeps_logical_physical_order );
@@ -1731,7 +1787,34 @@ let test_distant_media_merge () =
     "@media(width>=1px){a{background-color:red}}a{background:#00f}@media(width>=1px){a{background-color:green}}"
     (minify_str
        "@media (width>=1px){a{background-color:red}}a{background:blue}@media \
-        (width>=1px){a{background-color:green}}")
+        (width>=1px){a{background-color:green}}");
+  (* CSS Nesting 1 sec. 3.4: a declaration written after a nested rule stays
+     behind it, so the run between the two blocks is one more rule with the
+     enclosing selector. Hoisting the second block over it would compute blue
+     where the source computes green. *)
+  Alcotest.(check string)
+    "keeps blocks apart across a conflicting nested declarations run"
+    ".a{@media(width>=1px){color:red}color:#00f;@media(width>=1px){color:green}}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}color:blue;@media \
+        (width>=1px){color:green}}");
+  (* The run sets another property, so nothing an element computes depends on
+     the order: the blocks still merge, and the disjoint run rejoins the rule's
+     own declarations. *)
+  Alcotest.(check string)
+    "merges across a nested declarations run that sets another property"
+    ".a{outline-color:#00f;@media(width>=1px){color:red;color:green}}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}outline-color:blue;@media \
+        (width>=1px){color:green}}");
+  (* Adjacent blocks cross nothing, so the run after them keeps its place and
+     the merge stands. *)
+  Alcotest.(check string)
+    "merges adjacent blocks inside a rule"
+    ".a{@media(width>=1px){color:red;color:green}color:#00f}"
+    (minify_str
+       ".a{@media (width>=1px){color:red}@media \
+        (width>=1px){color:green}color:blue}")
 
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
@@ -2167,9 +2250,12 @@ let c61_adjacent_later_dedup () =
     "adjacent same-selector rules merge and dedupe by source order"
     ".box{display:flex;color:#00f}" output
 
-(* A rule that carries nested children can still absorb a later same-selector
-   rule: the merge moves the later declarations ahead of the nested block, which
-   is only observable for a property the nested block also sets. *)
+(* A rule's [declarations] is the run written before its first nested statement
+   (CSS Nesting 1 sec. 3.4), not its whole body, so absorbing a later
+   same-selector rule moves that rule's declarations ahead of body content the
+   merge has to read for itself. It reads the whole body, so a rule carrying
+   nested children can still absorb a later one: the move is only observable for
+   a property that body also sets. *)
 let same_selector_merge_past_nested () =
   let of_string css =
     match Css.of_string css with
@@ -2186,9 +2272,99 @@ let same_selector_merge_past_nested () =
     ".a{color:red;padding:1rem;&:hover{background:#00f}}"
     (canon ".a{color:red;&:hover{background:blue}}.a{padding:1rem}");
   Alcotest.(check string)
-    "a nested child setting the same property does block it"
+    "a nested child setting the same property keeps its place"
     ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}"
-    (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}")
+    (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}");
+  (* A nested conditional group sets properties just as a nested rule does:
+     hoisting [padding:1rem] ahead of it hands the conditional the win wherever
+     it applies, which is a different rendered padding. *)
+  Alcotest.(check string)
+    "a nested @media setting the same property blocks it"
+    ".a{color:red;@media(width>=1px){padding:2rem}}.a{padding:1rem}"
+    (canon ".a{color:red;@media (min-width:1px){padding:2rem}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "a nested @container setting the same property blocks it"
+    ".a{color:red;@container(width>=1px){padding:2rem}}.a{padding:1rem}"
+    (canon
+       ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}");
+  (* The merged rule replays every declaration ahead of every nested block, so
+     no order of the rules rescues a merge a later declaration would have to
+     cross: [color:green] wins over the [@media] wherever it applies, and
+     merging hands the win back to the [@media]. *)
+  Alcotest.(check string)
+    "a later declaration overriding a nested @media blocks the merge"
+    ".a{padding:1rem;@media(width>=1px){color:#00f}}.a{color:green}"
+    (canon ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{color:green}");
+  (* Two nested blocks setting a common property race in the order the merged
+     rule replays them, which stays the order they were written in. *)
+  Alcotest.(check string)
+    "nested blocks setting a common property keep their order"
+    ".a{padding:1rem;margin:1rem;@media(width>=1px){color:#00f}@media(width>=2px){color:green}}"
+    (canon
+       ".a{padding:1rem;@media \
+        (min-width:1px){color:blue}}.a{margin:1rem;@media \
+        (min-width:2px){color:green}}");
+  (* A shorthand and a longhand of its family write a common cascade slot, so a
+     nested [margin] and a later [margin-top] compete: hoisting the longhand
+     ahead of the nested block hands [margin] the win, a different rendered
+     margin-top wherever the query applies. *)
+  Alcotest.(check string)
+    "a later longhand overriding a nested shorthand blocks the merge"
+    ".a{color:red;@media(width>=1px){margin:2rem}}.a{margin-top:1rem}"
+    (canon
+       ".a{color:red;@media (min-width:1px){margin:2rem}}.a{margin-top:1rem}");
+  (* The same slot written the other way round: a later shorthand resets the
+     longhand the nested block set. *)
+  Alcotest.(check string)
+    "a later shorthand overriding a nested longhand blocks the merge"
+    ".a{color:red;@media(width>=1px){margin-top:2rem}}.a{margin:1rem}"
+    (canon
+       ".a{color:red;@media (min-width:1px){margin-top:2rem}}.a{margin:1rem}");
+  (* Two properties of different families share no slot, so the merge stands:
+     the guard reads footprints, not the presence of a nested block. *)
+  Alcotest.(check string)
+    "a nested block of a disjoint family still merges"
+    ".a{color:red;padding:1rem;@media(width>=1px){margin:2rem}}"
+    (canon ".a{color:red;@media (min-width:1px){margin:2rem}}.a{padding:1rem}");
+  (* Nested blocks race in the order the merged rule replays them, and shorthand
+     against longhand is such a race: swapping these two blocks changes
+     margin-top wherever both queries apply. *)
+  Alcotest.(check string)
+    "nested blocks sharing a slot through a shorthand keep their order"
+    ".a{padding:1rem;color:red;@media(width>=1px){margin:2rem}@media(width>=2px){margin-top:3rem}}"
+    (canon
+       ".a{padding:1rem;@media \
+        (min-width:1px){margin:2rem}}.a{color:red;@media \
+        (min-width:2px){margin-top:3rem}}")
+
+(* A run of declarations written after a nested statement (CSS Nesting 1 sec.
+   3.4) is a declaration list like any other, with nothing between two writes
+   inside it, so the deduplication a rule body gets applies to it. *)
+let nested_declaration_run_dedupes () =
+  let of_string css =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Alcotest.failf "could not parse %s" css
+  in
+  let canon css =
+    Css.Optimize.stylesheet (Css.statements (of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  (* The run cannot move: [color] is what the nested rule sets too. *)
+  Alcotest.(check string)
+    "a repeated declaration inside a run collapses" ".a{b{color:red}color:#00f}"
+    (canon ".a{& b{color:red}color:blue;color:blue}");
+  Alcotest.(check string)
+    "a declaration the run itself overrides goes" ".a{b{color:red}color:green}"
+    (canon ".a{& b{color:red}color:blue;color:green}");
+  (* The crossed shorthand pins every one of the four longhands, so they compose
+     where they stand. *)
+  Alcotest.(check string)
+    "longhands inside a run compose" ".a{b{margin:9px}margin:1px}"
+    (canon
+       ".a{& \
+        b{margin:9px}margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}")
 
 (* A selector list holding a vendor pseudo-element is invalidated as a whole by
    a browser that does not know it, so the other selectors silently lose the
@@ -2698,7 +2874,7 @@ let c61_no_layer_media_merge () =
   let input =
     [
       media_rule "a" "ff0000";
-      Css.Stylesheet.Layer_decl [ "theme" ];
+      Css.Stylesheet.Layer_decl [ [ "theme" ] ];
       media_rule "b" "0000ff";
     ]
   in
@@ -2763,14 +2939,14 @@ let c61_no_merge_layer () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
               [ Css.Declaration.display Block ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -2794,7 +2970,7 @@ let c64_layer_order_boundary () =
       Css.rule
         ~selector:(Css.Selector.class_ "theme")
         [ Css.Declaration.color (hex_color "ff0000") ];
-      Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+      Css.Stylesheet.Layer_decl [ [ "reset" ]; [ "components" ] ];
       Css.rule
         ~selector:(Css.Selector.class_ "theme")
         [ Css.Declaration.display Flex ];
@@ -2813,7 +2989,7 @@ let c61_unlayered_outside_layer () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "audio")
@@ -2837,7 +3013,7 @@ let c61_important_layer_order () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -2847,7 +3023,7 @@ let c61_important_layer_order () =
               ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "btn")
@@ -3802,16 +3978,16 @@ let c64_statement_layer_order () =
      rules appear later. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "default"; "theme"; "components" ];
+      Css.Stylesheet.Layer_decl [ [ "default" ]; [ "theme" ]; [ "components" ] ];
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "widget")
               [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "default",
+        ( Some [ "default" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "widget")
@@ -3915,7 +4091,7 @@ let c64_unlayered_final_layer () =
         ~selector:(Css.Selector.element "audio")
         [ Css.Declaration.display Flex ];
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:
@@ -3939,9 +4115,9 @@ let c64_important_layers_reverse () =
      but earlier layers win for important declarations. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "defaults"; "overrides" ];
+      Css.Stylesheet.Layer_decl [ [ "defaults" ]; [ "overrides" ] ];
       Css.Stylesheet.Layer
-        ( Some "defaults",
+        ( Some [ "defaults" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "notice")
@@ -3951,7 +4127,7 @@ let c64_important_layers_reverse () =
               ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "overrides",
+        ( Some [ "overrides" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "notice")
@@ -4017,16 +4193,16 @@ let c64_nested_layer_distinct () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule ~selector:(Css.Selector.element "p")
               [ Css.Declaration.max_width (Ch 70.) ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "framework",
+        ( Some [ "framework" ],
           [
             Css.Stylesheet.Layer
-              ( Some "base",
+              ( Some [ "base" ],
                 [
                   Css.rule ~selector:(Css.Selector.element "p")
                     [ Css.Declaration.margin_block (Em 0.75) ];
@@ -4037,10 +4213,10 @@ let c64_nested_layer_distinct () =
   let optimized = Css.Optimize.stylesheet input in
   match optimized with
   | [
-   Css.Stylesheet.Layer (Some "base", [ base_stmt ]);
+   Css.Stylesheet.Layer (Some [ "base" ], [ base_stmt ]);
    Css.Stylesheet.Layer
-     ( Some "framework",
-       [ Css.Stylesheet.Layer (Some "base", [ framework_base_stmt ]) ] );
+     ( Some [ "framework" ],
+       [ Css.Stylesheet.Layer (Some [ "base" ], [ framework_base_stmt ]) ] );
   ] ->
       let base_rule = rule_of_statement base_stmt in
       let framework_base_rule = rule_of_statement framework_base_stmt in
@@ -4069,16 +4245,16 @@ let c64_keyframe_name_layers () =
   in
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "framework"; "override" ];
+      Css.Stylesheet.Layer_decl [ [ "framework" ]; [ "override" ] ];
       Css.Stylesheet.Layer
-        ( Some "override",
+        ( Some [ "override" ],
           [
             Css.Stylesheet.Keyframes
               ( "slide-left",
                 [ frame (Css.Declaration.opacity (Opacity_number 0.)) ] );
           ] );
       Css.Stylesheet.Layer
-        ( Some "framework",
+        ( Some [ "framework" ],
           [
             Css.Stylesheet.Keyframes
               ("slide-left", [ frame (Css.Declaration.margin_left (Pct 0.)) ]);
@@ -4101,17 +4277,17 @@ let c64_layer_decls_import_cross () =
      declarations across an import. *)
   let input =
     [
-      Css.Stylesheet.Layer_decl [ "default" ];
+      Css.Stylesheet.Layer_decl [ [ "default" ] ];
       Css.Stylesheet.Import
         {
           url = "url(\"theme.css\")";
-          layer = Some "theme";
+          layer = Some [ "theme" ];
           supports = None;
           media = None;
         };
-      Css.Stylesheet.Layer_decl [ "components" ];
+      Css.Stylesheet.Layer_decl [ [ "components" ] ];
       Css.Stylesheet.Layer
-        ( Some "default",
+        ( Some [ "default" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "audio")
@@ -4134,21 +4310,21 @@ let c64_repeated_layer_blocks_ordered () =
   let input =
     [
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
               [ Css.Declaration.color (hex_color "ff0000") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "theme",
+        ( Some [ "theme" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
               [ Css.Declaration.color (hex_color "0000ff") ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "base",
+        ( Some [ "base" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "button")
@@ -4174,14 +4350,14 @@ let c64_child_layer_one_anonymous () =
         ( None,
           [
             Css.Stylesheet.Layer
-              ( Some "foo",
+              ( Some [ "foo" ],
                 [
                   Css.rule
                     ~selector:(Css.Selector.class_ "inside")
                     [ Css.Declaration.color (hex_color "ff0000") ];
                 ] );
             Css.Stylesheet.Layer
-              ( Some "foo",
+              ( Some [ "foo" ],
                 [
                   Css.rule
                     ~selector:(Css.Selector.class_ "inside")
@@ -4219,7 +4395,7 @@ let c64_child_layer_distinct_anonymous () =
       ( None,
         [
           Css.Stylesheet.Layer
-            ( Some "foo",
+            ( Some [ "foo" ],
               [
                 Css.rule
                   ~selector:(Css.Selector.class_ "inside")
@@ -4237,9 +4413,9 @@ let c64_child_layer_distinct_anonymous () =
   match optimized with
   | [
    Css.Stylesheet.Layer
-     (None, [ Css.Stylesheet.Layer (Some "foo", [ first_stmt ]) ]);
+     (None, [ Css.Stylesheet.Layer (Some [ "foo" ], [ first_stmt ]) ]);
    Css.Stylesheet.Layer
-     (None, [ Css.Stylesheet.Layer (Some "foo", [ second_stmt ]) ]);
+     (None, [ Css.Stylesheet.Layer (Some [ "foo" ], [ second_stmt ]) ]);
   ] ->
       let first = rule_of_statement first_stmt in
       let second = rule_of_statement second_stmt in
@@ -4265,7 +4441,7 @@ let c64_conditional_layer_decls_nested () =
       Css.media
         ~condition:(Css.Media.of_string "(min-width:30em)")
         [
-          Css.layer ~name:"layout"
+          Css.layer ~name:[ "layout" ]
             [
               Css.rule
                 ~selector:(Css.Selector.class_ "title")
@@ -4275,15 +4451,15 @@ let c64_conditional_layer_decls_nested () =
       Css.supports
         ~condition:(Css.Supports.property "display" "grid")
         [
-          Css.Stylesheet.Layer_decl [ "grid" ];
-          Css.layer ~name:"grid"
+          Css.Stylesheet.Layer_decl [ [ "grid" ] ];
+          Css.layer ~name:[ "grid" ]
             [
               Css.rule
                 ~selector:(Css.Selector.class_ "title")
                 [ Css.Declaration.display Grid ];
             ];
         ];
-      Css.Stylesheet.Layer_decl [ "theme"; "layout" ];
+      Css.Stylesheet.Layer_decl [ [ "theme" ]; [ "layout" ] ];
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -4300,16 +4476,16 @@ let c64_empty_layer_before_block () =
      before a later block assigns style rules to that layer. *)
   let input =
     [
-      Css.Stylesheet.Layer (Some "reset", []);
+      Css.Stylesheet.Layer (Some [ "reset" ], []);
       Css.Stylesheet.Layer
-        ( Some "components",
+        ( Some [ "components" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")
               [ Css.Declaration.display Flex ];
           ] );
       Css.Stylesheet.Layer
-        ( Some "reset",
+        ( Some [ "reset" ],
           [
             Css.rule
               ~selector:(Css.Selector.class_ "card")
@@ -5392,6 +5568,8 @@ module Fuzz = struct
         fuzz_cascade_equivalent;
       Alcotest.test_case "same-selector merge past nested children" `Quick
         same_selector_merge_past_nested;
+      Alcotest.test_case "a nested declarations run is deduplicated" `Quick
+        nested_declaration_run_dedupes;
       Alcotest.test_case "vendor pseudo-element list is split" `Quick
         vendor_pseudo_list_is_split;
       Alcotest.test_case "cascade-neutral permutations stay equivalent" `Slow

@@ -191,6 +191,16 @@ let synthesize_position_try decls =
       | _ -> decls)
   | _ -> decls
 
+(* The declaration passes a rule body gets, for a body that has no rule of its
+   own: a nested declarations run (CSS Nesting 1 sec. 3.4) or a bare
+   [Declarations] block. Nothing comes between two writes inside one run, so the
+   later wins exactly as it does in a rule. The selector-dependent steps are
+   left out, since neither form carries a selector. *)
+let declaration_run ~ctx decls =
+  list_map_preserve (Declaration.normalize ~lossless:(Ctx.lossless ctx)) decls
+  |> deduplicate_declarations_with ~ctx
+  |> synthesize_columns |> synthesize_position_try |> preserve_list decls
+
 let finalize ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
   let declarations =
     deduplicate_declarations_with ~ctx rule.declarations
@@ -217,9 +227,12 @@ let drop_shadowed_rules (rules : rule list) : rule list =
   let changed = ref false in
   for i = len - 1 downto 0 do
     let rule = rules_arr.(i) in
+    (* [declarations] is only the run written before the first nested statement
+       (CSS Nesting 1 sec. 3.4), so covering it says nothing about what the rest
+       of the body sets: a rule with nested content stays. *)
     dropped.(i) <-
       (rule.declarations = [] && rule.nested = [])
-      || rule.declarations <> []
+      || rule.nested = [] && rule.declarations <> []
          && List.for_all
               (Cover.covered later_by_selector rule.Stylesheet_intf.selector)
               rule.declarations;

@@ -53,6 +53,39 @@ let test_merge_lone_wrapper () =
     "wrapper with declarations preserved" ".card{color:red;.title{width:1px}}"
     (Pp.to_string ~minify:true Stylesheet.pp_rule with_decl)
 
+(* CSS Nesting 1 sec. 3.4 holds a declaration written after a nested statement
+   behind it. Moving it back is cascade-neutral exactly when it commutes with
+   what it crosses, so the hoist is decided per declaration and per property. *)
+let test_hoist_declaration_runs () =
+  let hoisted css =
+    Pp.to_string ~minify:true Stylesheet.pp_rule
+      (Nest.hoist_declaration_runs (rule css))
+  in
+  Alcotest.(check string)
+    "a disjoint run rejoins the rule's own declarations"
+    ".a{color:red;& b{width:1px}}"
+    (hoisted ".a{& b{width:1px}color:red}");
+  Alcotest.(check string)
+    "a clashing run keeps its place" ".a{& b{color:blue}color:red}"
+    (hoisted ".a{& b{color:blue}color:red}");
+  Alcotest.(check string)
+    "a crossed shorthand blocks its longhand"
+    ".a{& b{margin:1px}margin-top:2px}"
+    (hoisted ".a{& b{margin:1px}margin-top:2px}");
+  Alcotest.(check string)
+    "only the clashing declaration stays"
+    ".a{width:2px;& b{color:blue}color:red}"
+    (hoisted ".a{& b{color:blue}color:red;width:2px}");
+  (* [!important] wins wherever it sits, so it never has to wait. *)
+  Alcotest.(check string)
+    "a differing importance is not a clash"
+    ".a{color:red!important;& b{color:blue}}"
+    (hoisted ".a{& b{color:blue}color:red!important}");
+  (* An unknown at-rule is raw text, so nothing may be assumed about it. *)
+  Alcotest.(check string)
+    "an unknown at-rule blocks everything" ".a{@wat foo{q:1}color:red}"
+    (hoisted ".a{@wat foo{q:1}color:red}")
+
 let test_rules_synthesizes_isolated_chain () =
   let nested = Nest.rules (rules ".card{color:red}.card .title{width:1px}") in
   Alcotest.(check (list string))
@@ -76,6 +109,8 @@ let suite =
       Alcotest.test_case "combine relative nested and descendant" `Quick
         test_combine_relative_nested_and_descendant;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
+      Alcotest.test_case "hoist declaration runs" `Quick
+        test_hoist_declaration_runs;
       Alcotest.test_case "rules synthesizes isolated chain" `Quick
         test_rules_synthesizes_isolated_chain;
       Alcotest.test_case "rules preserves competing outside selector" `Quick

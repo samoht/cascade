@@ -701,6 +701,427 @@ let parse_errors_pseudo () =
   check_parse_error ".test:not()" "expected at least one selector";
   check_parse_error ".test:has()" "expected at least one selector"
 
+(* Every [::] spelling cascade parses, in the shortest form that reaches its own
+   constructor. The list is the pseudo-element inventory of CSS Pseudo-Elements
+   4, Selectors 4, CSS Highlight API 1, CSS Shadow Parts 1, WebVTT and CSS View
+   Transitions 1, plus the vendor names shipping engines expose, plus the two
+   kinds cascade cannot name: an unrecognised [::foo] and the framework-only
+   [::deep] / [::v-deep] / [::ng-deep]. *)
+let pseudo_element_spellings =
+  [
+    ":before";
+    ":after";
+    ":first-line";
+    ":first-letter";
+    "::before";
+    "::after";
+    "::first-line";
+    "::first-letter";
+    "::backdrop";
+    "::marker";
+    "::placeholder";
+    "::selection";
+    "::target-text";
+    "::spelling-error";
+    "::grammar-error";
+    "::file-selector-button";
+    "::details-content";
+    "::view-transition";
+    "::view-transition-group(*)";
+    "::view-transition-image-pair(*)";
+    "::view-transition-old(*)";
+    "::view-transition-new(*)";
+    "::part(tab)";
+    "::slotted(p)";
+    "::cue";
+    "::cue-region";
+    "::highlight(find)";
+    "::-moz-placeholder";
+    "::-webkit-input-placeholder";
+    "::-ms-input-placeholder";
+    "::-webkit-scrollbar";
+    "::-webkit-search-cancel-button";
+    "::-webkit-search-decoration";
+    "::-webkit-datetime-edit";
+    "::-webkit-date-and-time-value";
+    "::-webkit-inner-spin-button";
+    "::-webkit-outer-spin-button";
+    "::-webkit-calendar-picker-indicator";
+    "::-webkit-details-marker";
+    "::future-pseudo-element";
+    "::foo(bar)";
+    "::deep";
+    "::v-deep";
+    "::ng-deep";
+    "::-webkit-scrollbar-thumb";
+    "::-webkit-scrollbar-track";
+    "::-webkit-scrollbar-track-piece";
+    "::-webkit-scrollbar-button";
+    "::-webkit-scrollbar-corner";
+    "::-webkit-resizer";
+  ]
+
+(* Selectors 4 sec. 16: a complex selector unit is [<compound-selector>?
+   <pseudo-compound-selector>*] and a pseudo-compound is
+   [<pseudo-element-selector> <pseudo-class-selector>*], so a class, id or
+   attribute selector may never follow a pseudo-element; sec. 4.5 keeps
+   pseudo-elements out of [:has()] as well. Both rules key off the [::] form,
+   not off whether the name is one cascade knows, so an unrecognised [::foo] and
+   the framework-only [::deep] family are bound by them too. Cascade keeps a
+   bare pseudo-element it does not recognise, since the name may be one a
+   browser already ships, but the shape rules apply all the same. Chrome 151 and
+   WebKit 26.5 drop every rule the negatives below build. *)
+let pseudo_element_compound_guard () =
+  let parses input =
+    match Cursor.option read (Cursor.of_string input) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "pseudo-element selector should parse: %s" input
+  in
+  List.iter
+    (fun pe ->
+      parses (String.concat "" [ ".a"; pe ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; ".b" ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; "#c" ]);
+      neg_cursor read (String.concat "" [ ".a"; pe; "[d]" ]);
+      neg_cursor read (String.concat "" [ ".a:has("; pe; ")" ]))
+    pseudo_element_spellings
+
+(* Selectors 4 sec. 16 builds both argument lists of the logical combinations
+   out of [<complex-real-selector>], which is [<compound-selector> [
+   <combinator>? <compound-selector> ]*] and so has no room for a
+   [<pseudo-compound-selector>]: sec. 4.3 spells that out for [:not()]
+   ("Pseudo-elements cannot be represented by the negation pseudo-class; they
+   are not valid within :not()"), sec. 4.2 for [:is()], sec. 4.4 gives
+   [:where()] the syntax of [:is()], and sec. 4.5 keeps them out of [:has()] as
+   well.
+
+   What a caller sees differs, because [:is()] and [:where()] take a
+   [<forgiving-selector-list>] (sec. 16.1: parse each item, drop the ones that
+   fail) while [:not()] and [:has()] do not: the pseudo-element takes the item
+   with it in the first pair and the whole selector in the second. Chrome 151
+   and WebKit 26.5 agree on both halves - they drop every rule the negatives
+   build, and keep every rule the positives build (Chrome prunes the dead item
+   from its [cssRules] readback, WebKit leaves it in place). *)
+let logical_combinator_pseudo_element () =
+  let concat = String.concat "" in
+  List.iter
+    (fun pe ->
+      (* Unforgiving: the pseudo-element invalidates the whole selector,
+         wherever in the argument it sits and however the two nest. *)
+      neg_cursor read (concat [ ".a:not("; pe; ")" ]);
+      neg_cursor read (concat [ ".a:not("; pe; ",.b)" ]);
+      neg_cursor read (concat [ ".a:not(.b "; pe; ")" ]);
+      neg_cursor read (concat [ ".a:not(:not("; pe; "))" ]);
+      neg_cursor read (concat [ ".a:has("; pe; ",.b)" ]);
+      neg_cursor read (concat [ ".a:has(:not("; pe; "))" ]);
+      neg_cursor read (concat [ ".a:not(:has("; pe; "))" ]);
+      (* Forgiving: only the item carrying the pseudo-element goes. *)
+      check_minified_to ".a:is()" (concat [ ".a:is("; pe; ")" ]);
+      check_minified_to ".a:where()" (concat [ ".a:where("; pe; ")" ]);
+      check_minified_to ".a:is(.b)" (concat [ ".a:is("; pe; ",.b)" ]);
+      check_minified_to ".a:is()" (concat [ ".a:is(:not("; pe; "))" ]);
+      check_minified_to ".a:where()" (concat [ ".a:where(:not("; pe; "))" ]);
+      check_minified_to ".a:not(:is())" (concat [ ".a:not(:is("; pe; "))" ]);
+      check_minified_to ".a:not(:where())"
+        (concat [ ".a:not(:where("; pe; "))" ]))
+    pseudo_element_spellings
+
+(* CSS Selectors 4 sec. 9. Sec. 3.6.3 allows these after every pseudo-element;
+   the engines are narrower, and disagree with the spec on the four Level 2
+   pseudo-elements ([::first-line:hover] is the spec's own example and both
+   engines drop it), so the rows below follow the engines. *)
+let user_action_pseudo_classes =
+  [ ":hover"; ":active"; ":focus"; ":focus-visible"; ":focus-within" ]
+
+(* CSS Pseudo-Elements 4 sec. 5: an element-backed pseudo-element takes the
+   pseudo-classes a real element takes, bar the ones that would report on the
+   tree it sits in - the tree-structural pseudo-classes (Selectors 4 sec. 13)
+   and [:has()]. *)
+let element_backed_pseudo_classes =
+  user_action_pseudo_classes
+  @ [
+      ":enabled";
+      ":disabled";
+      ":checked";
+      ":defined";
+      ":link";
+      ":target";
+      ":dir(ltr)";
+      ":lang(en)";
+    ]
+
+(* WebKit, "Styling Scrollbars": the state a scrollbar part reports about
+   itself. [:window-inactive] is the one that is about the window rather than
+   the scrollbar, and the one that reaches past the scrollbar. *)
+let scrollbar_state_pseudo_classes =
+  [
+    ":horizontal";
+    ":vertical";
+    ":decrement";
+    ":increment";
+    ":start";
+    ":end";
+    ":double-button";
+    ":single-button";
+    ":no-button";
+    ":corner-present";
+    ":window-inactive";
+  ]
+
+(* Each probe names a pseudo-class cascade recognises: an unrecognised one is
+   already a parse error at an unforgiving site, whatever precedes it, so it
+   would not tell us anything about the pseudo-element's own rules. *)
+let probe_pseudo_classes =
+  element_backed_pseudo_classes @ scrollbar_state_pseudo_classes
+  @ [
+      ":root";
+      ":empty";
+      ":first-child";
+      ":only-child";
+      ":nth-child(1)";
+      ":has(.b)";
+    ]
+
+(* What each pseudo-element accepts after it. Rows come from CSS Pseudo-Elements
+   4 sec. 5 for the element-backed ones and from Chrome 151 and WebKit 26.5
+   everywhere else, taking a pseudo-class as accepted when either engine keeps
+   the rule: Selectors 4 sec. 3.6.3 hands the per-pseudo-element list to "other
+   specifications", and for the UA widgets that list is only written down in the
+   engines. *)
+let pseudo_element_pseudo_class_rows =
+  [
+    (* Nothing beyond the logical combinations. *)
+    ( [
+        ":before";
+        ":after";
+        ":first-line";
+        ":first-letter";
+        "::before";
+        "::after";
+        "::first-line";
+        "::first-letter";
+        "::backdrop";
+        "::marker";
+        "::target-text";
+        "::spelling-error";
+        "::grammar-error";
+        "::highlight(find)";
+        "::view-transition";
+        "::slotted(p)";
+        "::cue(v)";
+      ],
+      [] );
+    (* The UA widgets that stand in for a real control. *)
+    ( [
+        "::placeholder";
+        "::file-selector-button";
+        "::-webkit-input-placeholder";
+        "::-webkit-search-cancel-button";
+        "::-webkit-search-decoration";
+        "::-webkit-datetime-edit";
+        "::-webkit-datetime-edit-fields-wrapper";
+        "::-webkit-datetime-edit-year-field";
+        "::-webkit-datetime-edit-month-field";
+        "::-webkit-datetime-edit-day-field";
+        "::-webkit-datetime-edit-hour-field";
+        "::-webkit-datetime-edit-minute-field";
+        "::-webkit-datetime-edit-second-field";
+        "::-webkit-datetime-edit-millisecond-field";
+        "::-webkit-datetime-edit-meridiem-field";
+        "::-webkit-date-and-time-value";
+        "::-webkit-inner-spin-button";
+        "::-webkit-outer-spin-button";
+        "::-webkit-calendar-picker-indicator";
+        "::-webkit-details-marker";
+      ],
+      user_action_pseudo_classes );
+    (* The scrollbar takes no focus, and reports its own state instead. *)
+    ( [ "::-webkit-scrollbar" ],
+      [ ":hover"; ":active"; ":enabled"; ":disabled" ]
+      @ scrollbar_state_pseudo_classes );
+    (* WebKit's [::selection:window-inactive], and nothing else. *)
+    ([ "::selection" ], [ ":window-inactive" ]);
+    (* CSS View Transitions 1 sec. 3.1: [:only-child] matches a view transition
+       pseudo with no sibling in the pseudo-element tree. *)
+    ( [
+        "::view-transition-group(*)";
+        "::view-transition-image-pair(*)";
+        "::view-transition-old(*)";
+        "::view-transition-new(*)";
+      ],
+      [ ":only-child" ] );
+    (* [:window-inactive] is about the window, so both engines take it after a
+       shadow part. The rows stop where the engines agree: only WebKit takes the
+       other ten after [::part()], and only Chrome takes [:window-inactive]
+       after [::details-content]. *)
+    ([ "::part(tab)" ], element_backed_pseudo_classes @ [ ":window-inactive" ]);
+    ([ "::details-content" ], element_backed_pseudo_classes);
+    (* Names no shipping engine knows, plus the two WebVTT names cascade only
+       has a constructor for in their functional form, so that a bare [::cue] or
+       [::cue-region] reaches the reader as an unrecognised name: cascade keeps
+       all of these for forward compatibility and cannot know their rules, so it
+       keeps taking any pseudo-class after them. *)
+    ( [
+        "::-moz-placeholder";
+        "::-ms-input-placeholder";
+        "::cue";
+        "::cue-region";
+        "::future-pseudo-element";
+        "::foo(bar)";
+        "::deep";
+        "::v-deep";
+        "::ng-deep";
+        "::-webkit-scrollbar-thumb";
+        "::-webkit-scrollbar-track";
+        "::-webkit-scrollbar-track-piece";
+        "::-webkit-scrollbar-button";
+        "::-webkit-scrollbar-corner";
+        "::-webkit-resizer";
+      ],
+      probe_pseudo_classes );
+  ]
+
+(* CSS Selectors 4 sec. 3.6.3: "Certain pseudo-elements may be immediately
+   followed by any combination of certain pseudo-classes [...] Combinations that
+   are not explicitly allowed are invalid selectors." Which combinations those
+   are is per pseudo-element, so one predicate over all of them cannot answer
+   it: Chrome 151 and WebKit 26.5 keep [::file-selector-button:hover] and drop
+   [::before:hover], and agree on every row below. *)
+let pseudo_element_pseudo_classes () =
+  let concat = String.concat "" in
+  let parses input =
+    match Cursor.option read (Cursor.of_string input) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "selector should parse: %s" input
+  in
+  List.iter
+    (fun (spellings, allowed) ->
+      List.iter
+        (fun pe ->
+          List.iter
+            (fun pc ->
+              let sel = concat [ ".a"; pe; pc ] in
+              if List.mem pc allowed then parses sel else neg_cursor read sel)
+            probe_pseudo_classes;
+          (* Sec. 3.6.3 allows the logical combinations after any pseudo-element
+             and passes the row on to their arguments; what an argument the row
+             rules out costs is then the argument list's own business. [:is()]
+             and [:where()] take a [<forgiving-selector-list>] (sec. 4.1), which
+             drops it and leaves a selector that still parses and matches
+             nothing, so both engines keep the rule whatever the row says. *)
+          List.iter
+            (fun pc -> parses (concat [ ".a"; pe; pc ]))
+            [ ":is(.b)"; ":where(.b)"; ":is(:hover)"; ":not(:is(.b))" ];
+          (* [:not()] takes an unforgiving list, so it goes down with an
+             argument the row rules out. *)
+          List.iter
+            (fun pc ->
+              let sel = concat [ ".a"; pe; ":not("; pc; ")" ] in
+              if List.mem pc allowed then parses sel else neg_cursor read sel)
+            probe_pseudo_classes;
+          (* Only a pseudo-class may follow a pseudo-element at all, so a
+             [:not()] holding anything else goes down with it too - except after
+             a name cascade does not recognise, whose row takes every probe
+             because cascade knows none of its rules. *)
+          let knows_nothing =
+            List.for_all (fun pc -> List.mem pc allowed) probe_pseudo_classes
+          in
+          let sel = concat [ ".a"; pe; ":not(.b)" ] in
+          if knows_nothing then parses sel else neg_cursor read sel)
+        spellings)
+    pseudo_element_pseudo_class_rows;
+  (* The row reaches all the way down a nest of unforgiving lists, and stops at
+     the first forgiving one. *)
+  parses ".a::part(tab):not(:not(:hover))";
+  parses ".a::-webkit-scrollbar:not(:not(:hover))";
+  parses ".a::part(tab):not(:where(.b))";
+  neg_cursor read ".a::part(tab):not(:not(.b))";
+  neg_cursor read ".a::-webkit-scrollbar:not(:not(:focus))";
+  neg_cursor read ".a::before:not(:not(:hover))";
+  neg_cursor read ".a::marker:not(:not(:hover))";
+  (* A whole complex selector never fits where a pseudo-class goes. *)
+  neg_cursor read ".a::part(tab):not(div>.b)";
+  (* No pseudo-element is left to a default: every spelling the compound guard
+     covers names its own row. *)
+  let covered pe =
+    List.exists
+      (fun (spellings, _) -> List.mem pe spellings)
+      pseudo_element_pseudo_class_rows
+  in
+  List.iter
+    (fun pe ->
+      Alcotest.(check bool)
+        (String.concat "" [ "pseudo-class row for "; pe ])
+        true (covered pe))
+    pseudo_element_spellings
+
+(* [canonicalize] splices a single-argument [:is(s)] into the compound around
+   it, since [:is(s)] matches [s] with the same specificity (Selectors 4 sec.
+   4.2). A pseudo-compound is [<pseudo-element-selector>
+   <pseudo-class-selector>*] (sec. 16) and which pseudo-classes it takes is per
+   pseudo-element (sec. 3.6.3), so the splice would build a compound cascade's
+   own reader rejects. Chrome 151 and WebKit 26.5 keep every input below and
+   drop [.a::before.b] and [.a::before:hover]. *)
+let canonicalize_pseudo_compound_is () =
+  let canon expected input =
+    let actual = to_string ~minify:true (canonicalize (of_string input)) in
+    Alcotest.(check string) ("canonicalize " ^ input) expected actual;
+    match Cursor.option read (Cursor.of_string actual) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "canonicalized selector does not parse: %s" actual
+  in
+  (* The wrapper stays in a pseudo-compound. *)
+  canon ".a:before:is(.b)" ".a::before:is(.b)";
+  canon ".a:before:is(#c)" ".a::before:is(#c)";
+  canon ".a:before:is([d])" ".a::before:is([d])";
+  canon ".a:before:is(div)" ".a::before:is(div)";
+  canon ".a:before:is(.b.c)" ".a::before:is(.b.c)";
+  canon ".a:before:is(:hover)" ".a::before:is(:hover)";
+  canon ".a:before:is(.b)" ".a:before:is(.b)";
+  canon "div .a:before:is(.b)" "div .a::before:is(.b)";
+  (* [::part()] takes the user action pseudo-classes, so that one splices. *)
+  canon ".a::part(p):hover" ".a::part(p):is(:hover)";
+  (* Outside a pseudo-compound the splice stands. *)
+  canon ".a.b" ".a:is(.b)";
+  canon "div>.b" "div>:is(.b)";
+  canon ".b" ":is(.b)";
+  canon ".x .a" ".x :is(:is(.a))";
+  (* [:where()] never unwraps: it contributes zero specificity. *)
+  canon ".a:before:where(.b)" ".a::before:where(.b)"
+
+(* WebKit, "Styling Scrollbars" defines eleven pseudo-classes for the state a
+   scrollbar part is in. They are not in any spec, and Chrome 151 and WebKit
+   26.5 both read them wherever a pseudo-class goes, so an unforgiving selector
+   list holding one keeps its rule. *)
+let scrollbar_state_pseudo_classes_read () =
+  let concat = String.concat "" in
+  let round_trips input =
+    match Cursor.option read (Cursor.of_string input) with
+    | None -> Alcotest.failf "selector should parse: %s" input
+    | Some sel ->
+        Alcotest.(check string)
+          ("round trip " ^ input) input
+          (to_string ~minify:true sel)
+  in
+  List.iter
+    (fun pc ->
+      (* On a plain element, where both engines read them. *)
+      round_trips (concat [ ".a"; pc ]);
+      (* And in the argument lists, forgiving and unforgiving alike. *)
+      round_trips (concat [ ".a:not("; pc; ")" ]);
+      round_trips (concat [ ".a:is("; pc; ")" ]);
+      round_trips (concat [ ".a:has("; pc; ")" ]);
+      (* Selectors 4 sec. 17: a pseudo-class weighs a class. *)
+      Alcotest.(check int)
+        ("specificity " ^ pc) 1 (specificity (of_string pc)).classes;
+      (* None of them is functional. *)
+      neg_cursor read (concat [ ".a"; pc; "(1)" ]))
+    scrollbar_state_pseudo_classes;
+  (* A scrollbar part reads any combination of them. *)
+  round_trips "::-webkit-scrollbar:vertical:hover";
+  round_trips "::-webkit-scrollbar:corner-present:window-inactive";
+  round_trips "::-webkit-scrollbar-button:start:decrement"
+
 let parse_errors_nesting_depth () =
   (* A pathologically deep functional-pseudo-class nest is capped rather than
      driving the per-level selector validation into super-linear time (a
@@ -1389,7 +1810,9 @@ let spec_selector_scope_pseudo_edges () =
   check_minified_to "input:not([type],[type=hidden])"
     "input:not([type], [type=hidden])";
   check_minified_to "a:before" "a::before";
-  check_minified_to ".a:before:hover" ".a::before:hover";
+  (* Chrome 151 and WebKit 26.5 drop [.a::before:hover], so the legacy fold is
+     pinned with the pseudo-class in the position both keep. *)
+  check_minified_to ".a:hover:before" ".a:hover::before";
   (* CSS Selectors 4 section 5.2: [*] in a non-solitary compound is redundant,
      but dropping it is a node change reserved for the optimizer's
      [Selector.canonicalize]; pp is lexical-only and holds it. *)
@@ -1770,6 +2193,16 @@ let suite =
       test_case "parse errors - combinators" `Quick parse_errors_combinators;
       test_case "parse errors - starts" `Quick parse_errors_starts;
       test_case "parse errors - pseudo" `Quick parse_errors_pseudo;
+      test_case "pseudo-element compound guard" `Quick
+        pseudo_element_compound_guard;
+      test_case "logical combinator pseudo-element" `Quick
+        logical_combinator_pseudo_element;
+      test_case "pseudo-element pseudo-classes" `Quick
+        pseudo_element_pseudo_classes;
+      test_case "scrollbar state pseudo-classes" `Quick
+        scrollbar_state_pseudo_classes_read;
+      test_case "canonicalize pseudo-compound :is()" `Quick
+        canonicalize_pseudo_compound_is;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;

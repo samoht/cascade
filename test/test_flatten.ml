@@ -54,9 +54,10 @@ let test_nested_rule_starting_with_ident () =
   check ".a{p:hover{color:red}}" ".a{p:hover{color:red}}";
   (* minify canonicalises the legacy one-colon form, as it does at top level *)
   check ".a{li::before{color:red}}" ".a{li:before{color:red}}";
-  (* several in a row, after and between declarations *)
+  (* several in a row, after and between declarations: CSS Nesting 1 sec. 3.4
+     keeps [height] where it was written, behind both nested rules *)
   check ".a{color:red;h2:hover{width:1px}h3:hover{width:2px};height:2px}"
-    ".a{color:red;height:2px;h2:hover{width:1px}h3:hover{width:2px}}";
+    ".a{color:red;h2:hover{width:1px}h3:hover{width:2px}height:2px}";
   (* the shapes that already worked must keep working *)
   check ".a{&:hover{color:red}}" ".a{&:hover{color:red}}";
   check ".a{.b{color:red}}" ".a{.b{color:red}}";
@@ -115,6 +116,22 @@ let test_flattens_inside_moz_document () =
   check ".a{@-moz-document url-prefix(){.b{color:red}}}"
     "@-moz-document url-prefix(){.a .b{color:red}}"
 
+(* CSS Nesting 1 sec. 3.3: any at-rule whose body carries style rules nests
+   inside a style rule, so flattening one has to carry the parent selector into
+   its declaration run. A group rule flatten does not know leaves the run bare
+   at the top of the block, which no reader takes back. *)
+let test_nested_group_rules_keep_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check ".a{@starting-style{color:red}}" "@starting-style{.a{color:red}}";
+  check ".a{@-moz-document url-prefix(){color:red}}"
+    "@-moz-document url-prefix(){.a{color:red}}";
+  check ".a{@when media(width>0px){color:red}}"
+    "@when media(width>0px){.a{color:red}}";
+  check ".a{@layer n{@media screen{color:red}}}"
+    "@layer n{@media screen{.a{color:red}}}"
+
 let suite =
   ( "flatten",
     [
@@ -134,4 +151,6 @@ let suite =
         test_nested_selector_list_keeps_parent;
       Alcotest.test_case "flattens inside @-moz-document" `Quick
         test_flattens_inside_moz_document;
+      Alcotest.test_case "nested group rules keep the parent" `Quick
+        test_nested_group_rules_keep_parent;
     ] )

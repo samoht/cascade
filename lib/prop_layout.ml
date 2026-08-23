@@ -20,7 +20,7 @@ let rec pp_will_change : will_change Pp.t =
   | Contents -> Pp.string ctx "contents"
   | Transform -> Pp.string ctx "transform"
   | Opacity -> Pp.string ctx "opacity"
-  | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
+  | Properties props -> Pp.list ~sep:Pp.comma pp_ident ctx props
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -63,7 +63,7 @@ let rec pp_container_name : container_name Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_container_name ctx v
   | None -> Pp.string ctx "none"
-  | Names names -> Pp.list ~sep:Pp.space Pp.string ctx names
+  | Names names -> Pp.list ~sep:Pp.space pp_ident ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -74,7 +74,7 @@ let rec pp_anchor_name : anchor_name Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_anchor_name ctx v
   | None -> Pp.string ctx "none"
-  | Names names -> Pp.list ~sep:Pp.comma Pp.string ctx names
+  | Names names -> Pp.list ~sep:Pp.comma pp_ident ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -85,7 +85,7 @@ let rec pp_position_anchor : position_anchor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_anchor ctx v
   | Auto -> Pp.string ctx "auto"
-  | Anchor name -> Pp.string ctx name
+  | Anchor name -> pp_ident ctx name
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -97,7 +97,7 @@ let pp_position_try_fallback : position_try_fallback Pp.t =
   | Flip_block -> Pp.string ctx "flip-block"
   | Flip_inline -> Pp.string ctx "flip-inline"
   | Flip_start -> Pp.string ctx "flip-start"
-  | Name name -> Pp.string ctx name
+  | Name name -> pp_ident ctx name
 
 let rec pp_position_try_fallbacks : position_try_fallbacks Pp.t =
  fun ctx -> function

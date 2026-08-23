@@ -106,30 +106,20 @@ let is_declaration_value value =
   | [] -> false
   | components -> components_stay_in_declaration components
 
-(* A name is written back verbatim, so it binds only when it tokenizes as the
-   single ident it claims to be. An escape (CSS Syntax 3 sec. 4.3.7) can carry a
-   [;] or a [}] into a name read from a [var()] reference. *)
-let is_writable_custom_property_name name =
-  is_custom_property_name name
-  &&
-  match Cursor.remaining (Cursor.of_string name) with
-  | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
-      String.equal ident name
-  | _ -> false
-
 let refuse name detail =
   failwith (String.concat "" [ "custom_property: "; name; ": "; detail ])
 
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* The pair is written back verbatim, so it binds only when the text reads
-     back as the one declaration it names: a [<dashed-ident>] name that
-     tokenizes to itself, and the [<declaration-value>?] CSS Variables 1 sec. 2
-     gives a custom property. A name or value outside that - a top-level [;] or
-     [}], an unmatched closing bracket, an unterminated function, block or
-     string - leaves the declaration as soon as the text is read back. *)
-  if not (is_writable_custom_property_name name) then
+  (* The pair binds only when it makes the one declaration it names: a
+     [<dashed-ident>] name, and the [<declaration-value>?] CSS Variables 1 sec.
+     2 gives a custom property. A value outside that - a top-level [;] or [}],
+     an unmatched closing bracket, an unterminated function, block or string -
+     leaves the declaration as soon as the text is read back. A name carrying
+     one of those is written back with the escapes that read it (CSS Syntax 3
+     sec. 4.3.7), so it stays the name of this declaration. *)
+  if not (is_custom_property_name name) then
     refuse name "not a custom-property name";
   if not (is_optional_declaration_value value) then
     refuse name (String.concat "" [ value; " is not a declaration value" ]);
@@ -457,6 +447,9 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Lighting_color -> p value
   | Webkit_tap_highlight_color -> p value
   | Webkit_text_decoration_color -> p value
+  | Webkit_text_fill_color -> p value
+  | Webkit_text_stroke_color -> p value
+  | Column_rule_color -> p value
   | Border_inline_color -> logical_color_uses p value
   | Border_block_color -> logical_color_uses p value
   | Box_shadow -> shadow_uses_color p value
@@ -1650,6 +1643,7 @@ let read_object_transition_value : type a.
   | Column_width -> Some (v Column_width (read_column_width t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
+  | Column_rule_color -> Some (v Column_rule_color (read_color t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 
@@ -1770,6 +1764,7 @@ let read_interaction_value : type a.
   | Webkit_user_select -> Some (v Webkit_user_select (read_user_select t))
   | Ms_user_select -> Some (v Ms_user_select (read_user_select t))
   | Webkit_text_fill_color -> Some (v Webkit_text_fill_color (read_color t))
+  | Webkit_text_stroke_color -> Some (v Webkit_text_stroke_color (read_color t))
   | Moz_user_select -> Some (v Moz_user_select (read_user_select t))
   | Pointer_events -> Some (v Pointer_events (read_pointer_events t))
   | Resize -> Some (v Resize (read_resize t))
@@ -2256,20 +2251,6 @@ let read_declaration t : declaration option =
          next [;]) is a nested rule. *)
       if is_nested_rule t then None else Some (read_one ())
 
-(* Skip from the current cursor position to just past the next top-level [;], or
-   stop at EOF. Used to recover from a failed declaration inside a block: per
-   CSS Syntax section 5.5.5 ("consume a block's contents"), an invalid
-   declaration is dropped, parsing resumes at the next [;], and the surrounding
-   rule survives. *)
-let skip_to_next_declaration t =
-  let rec loop () =
-    match Cursor.next_raw t with
-    | None -> ()
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-    | Some _ -> loop ()
-  in
-  loop ()
-
 type parse_step =
   | Done of declaration list
   | Continue of declaration list
@@ -2305,9 +2286,12 @@ let read_declaration_step t acc =
   if Cursor.recover t then read_declaration_with_recovery t acc
   else read_declaration_no_recovery t acc
 
+(* CSS Syntax 3 sec. 5.5.5 ("consume a block's contents"): the invalid
+   declaration is dropped, reading resumes past the next [;], and the
+   surrounding rule survives. *)
 let recover_declaration_step t acc e =
   Cursor.push_warning t e;
-  skip_to_next_declaration t;
+  Cursor.skip_past_semicolon t;
   acc
 
 let rec read_declarations_loop t acc =
@@ -2333,24 +2317,36 @@ let of_string s =
   | Some d -> d
   | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
 
+(* The declaration [property] and [value] name, as the tokens they are. The name
+   is one [<ident-token>] by construction and the value is parsed on its own, so
+   neither reaches the other's position: written into one text, a name carrying
+   a [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an escape)
+   would end its own declaration, and one carrying a [:] would name the property
+   in front of it. *)
+let name_value_components property value =
+  Component.Preserved (Token.synthetic (Token.Ident property))
+  :: Component.Preserved (Token.synthetic Token.Colon)
+  :: Cursor.remaining (Cursor.of_string value)
+
 let parse_declaration ?layer property value =
-  (* Parse [property:value] with the full declaration parser: a known property
-     (e.g. [mask-type], [display]) becomes a typed declaration, a custom
-     property ([--x]) or an unknown property keeps its parsed component stream
-     (so [vars_of_declarations] still finds its [var()] references), unlike
-     [custom_property] which forces an opaque [Tokens] value. A [layer] only
-     applies to a custom property; [custom_property] attaches it and yields the
-     same parsed token stream the declaration parser would. *)
+  (* Read [property] and [value] with the full declaration parser: a known
+     property (e.g. [mask-type], [display]) becomes a typed declaration, a
+     custom property ([--x]) or an unknown property keeps its parsed component
+     stream (so [vars_of_declarations] still finds its [var()] references),
+     unlike [custom_property] which forces an opaque [Tokens] value. A [layer]
+     only applies to a custom property; [custom_property] attaches it and yields
+     the same parsed token stream the declaration parser would. *)
   match layer with
   | Some _ when is_custom_property_name property -> (
       try Some (custom_property ?layer property value) with Failure _ -> None)
   | _ -> (
-      let s = String.concat "" [ property; ":"; value ] in
-      try read_declaration (Cursor.of_string s)
+      try
+        read_declaration
+          (Cursor.of_components (name_value_components property value))
       with Cursor.Parse_error _ -> None)
 
 let parse_custom_property name value =
-  if is_writable_custom_property_name name && is_declaration_value value then
+  if is_custom_property_name name && is_declaration_value value then
     parse_declaration name value
   else None
 

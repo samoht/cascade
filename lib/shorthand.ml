@@ -730,6 +730,16 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Columns -> [ key "column-width"; key "column-count" ]
   | Column_width -> [ key "column-width" ]
   | Column_count -> [ key "column-count" ]
+  (* CSS Multicol 1 sec. 4.4: [column-rule] resets the rule width, style and
+     colour. Naming those three is what keeps [column-rule-color] from reading
+     as a slot of its own that [column-rule] never touches. *)
+  | Column_rule ->
+      [
+        key "column-rule-width";
+        key "column-rule-style";
+        key "column-rule-color";
+      ]
+  | Column_rule_color -> [ key "column-rule-color" ]
   (* CSS Lists 3 sec. 3.6. *)
   | List_style ->
       [
@@ -997,6 +1007,7 @@ let layout_footprint_family_heads =
       Prop Overflow;
       Prop Overscroll_behavior;
       Prop Columns;
+      Prop Column_rule;
       Prop Contain_intrinsic_size;
       Prop Container;
     ]
@@ -1126,6 +1137,15 @@ let declarations_overlap a b =
     (declaration_overlap_keys a)
     b
     (declaration_overlap_keys b)
+
+(* A declaration no footprint comparison separates from another: [all] resets
+   every non-exempt slot, and a property outside the model expands to slots its
+   name does not spell out. *)
+let declaration_is_broad decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = All; _ } -> true
+  | Declaration { property = Unknown_property _; _ } -> true
+  | _ -> false
 
 let display_value_is_vendor : Properties.display -> bool = function
   | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
@@ -3482,6 +3502,37 @@ let same_minified_declaration (a : declaration) (b : declaration) =
   a == b
   || Declaration.hash a = Declaration.hash b
      && Declaration.equal_declaration a b
+
+(* Only a pair that writes a common cascade slot at the same importance with
+   different values constrains its own order: [!important] beats the plain
+   declaration wherever the two sit, and an identical pair is its own winner
+   either way. The footprint is computed once per declaration rather than once
+   per pair, since the test below is quadratic. *)
+type commute_fact = {
+  decl : declaration;
+  important : bool;
+  keys : overlap_key list;
+}
+
+let commute_fact decl =
+  {
+    decl;
+    important = Declaration.is_important decl;
+    keys = declaration_overlap_keys decl;
+  }
+
+let commute_facts_conflict a b =
+  a.important = b.important
+  && (not (same_minified_declaration a.decl b.decl))
+  && declarations_overlap_with_keys a.decl a.keys b.decl b.keys
+
+let declarations_commute left right =
+  let left = List.map commute_fact left in
+  let right = List.map commute_fact right in
+  not
+    (List.exists
+       (fun a -> List.exists (fun b -> commute_facts_conflict a b) right)
+       left)
 
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the

@@ -351,16 +351,174 @@ let test_inline_layer_winner () =
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
 
-(* The closed-world cleanup that follows substitution unwraps every [@layer] and
-   drops every [@property] registration. CSS nesting puts both inside a rule, so
-   the cleanup has to reach there as well or the same sheet comes out half
-   cleaned. *)
+(* The closed-world cleanup that follows substitution reaches inside a rule: CSS
+   nesting puts an [@layer] and a [@property] registration there, and a cleanup
+   that stops at the top level leaves the same sheet half cleaned. The [var()]
+   inside the nested [@media] is substituted either way; the wrapper itself
+   stays, since [Inline.flattening_layers_is_safe] cannot rank a sheet whose
+   rule carries nested content and unwrapping is only sound where the layer
+   stack and document order already agree. *)
 let test_inline_cleanup_inside_a_rule () =
-  check_inline_case "a nested @layer wrapper is unwrapped"
+  check_inline_case "a nested @layer wrapper keeps an order it cannot decide"
     ":root{--c:red}.a{@layer m{@media print{.n{color:var(--c)}}}}"
-    ".a{@media print{.n{color:red}}}";
+    ".a{@layer m{@media print{.n{color:red}}}}";
   check_inline_case "a nested @property registration is dropped"
     ".b{color:red;@property --y{syntax:\"*\";inherits:false}}" ".b{color:red}"
+
+(* CSS Properties and Values API 1 sec. 2: a registration gives its property an
+   [initial-value], used as the computed value wherever no declaration wins, and
+   an [inherits] descriptor deciding whether it inherits at all. Both change
+   computed values, so a registration is dead only once nothing is left for it
+   to govern: no declaration of the property, and no live [var()] reading it. *)
+let test_inline_property_registration_kept () =
+  check_inline_case "a registration for a kept-live property survives with it"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check_inline_case "an inheriting registration is kept on the same terms"
+    "@property \
+     --c{syntax:\"<color>\";inherits:true;initial-value:red}a{--c:#00f}b{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:true;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check_inline_case
+    "a registration for a declaration the cascade cannot see is kept"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}.theme{--c:#00f}.other{color:var(--c)}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}.theme{--c:#00f}.other{color:var(--c)}";
+  check_inline_case
+    "a registration whose declaration survives unreferenced is kept"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}"
+
+let test_inline_property_registration_dropped () =
+  check_inline_case "a resolved-away property takes its registration with it"
+    "@property \
+     --gap{syntax:\"<length>\";inherits:false;initial-value:16px}.a{padding:var(--gap)}"
+    ".a{padding:16px}";
+  check_inline_case
+    "a registration nothing declares and nothing reads has nothing to govern"
+    "@property --y{syntax:\"*\";inherits:false}.b{color:red}" ".b{color:red}"
+
+(* Inlining is a rewrite to a fixpoint: running it on its own output must change
+   nothing. A pass that keeps a declaration because a registration made its
+   property look multi-defined, then deletes that registration, contradicts
+   itself - the next pass sees a single-definition variable and prunes it. *)
+let test_inline_property_idempotent () =
+  let check name input =
+    let once = minified (Css.inline_vars (parse input)) in
+    let twice = minified (Css.inline_vars (parse once)) in
+    Alcotest.(check string) name once twice
+  in
+  check "a kept-live registered property is a fixpoint"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}";
+  check "an unreferenced registered declaration is a fixpoint"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}a{--c:#00f}";
+  check "an unused registration is a fixpoint"
+    "@property --y{syntax:\"*\";inherits:false}.b{color:red}"
+
+(* CSS Conditional 5 sec. 6.2 (style container features): a [style()] query is
+   evaluated against the computed value the queried custom property has on the
+   query container, and its boolean form against that property's initial value.
+   The queried name is a reference like any [var()]: whatever supplies that
+   computed value decides whether the block applies at all. Chrome 146 paints
+   [.z] green for [:root{--c:red}@container style(--c:red){.z{color:green}}] and
+   black once [:root] loses the declaration. *)
+let test_inline_style_query_keeps_queried_property () =
+  check_inline_case "a declaration style() query keeps the property it reads"
+    ":root{--c:red}@container style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container style(--c:red){.z{color:green}}";
+  check_inline_case "a boolean style() query keeps the property it tests"
+    ":root{--c:red}@container style(--c){.z{color:green}}"
+    ":root{--c:red}@container style(--c){.z{color:green}}";
+  check_inline_case "a queried property and the var() in its value both stay"
+    ":root{--c:red;--d:red}@container style(--c: var(--d)){.z{color:green}}"
+    ":root{--c:red;--d:red}@container style(--c:var(--d)){.z{color:green}}";
+  check_inline_case "a range style() query keeps the property it bounds"
+    ":root{--n:5}@container style(3 < --n < 10){.z{color:green}}"
+    ":root{--n:5}@container style(3<--n<10){.z{color:green}}";
+  check_inline_case "both sides of a combined style() query stay live"
+    ":root{--a:red;--b:blue}@container style(--a: red) and style(--b: \
+     blue){.z{color:green}}"
+    ":root{--a:red;--b:blue}@container style(--a:red) and \
+     style(--b:blue){.z{color:green}}";
+  (* Negation reverses which elements a lost declaration paints: with [--c] red
+     the block does not apply, without it the query is true and it does. *)
+  check_inline_case "a negated style() query keeps the property it tests"
+    ":root{--c:red}@container not style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container not style(--c:red){.z{color:green}}";
+  check_inline_case "a named container's style() query keeps its property"
+    ":root{--c:red}@container tall style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container tall style(--c:red){.z{color:green}}";
+  check_inline_case "a style() query nested under @media keeps its property"
+    ":root{--c:red}@media screen{@container style(--c: red){.z{color:green}}}"
+    ":root{--c:red}@media screen{@container style(--c:red){.z{color:green}}}"
+
+(* A style() query reads a computed value, so the [@property] registration that
+   supplies the initial value when nothing declares the property keeps the query
+   answerable. Chrome 146 paints [.z] green for the registration below and black
+   without it. *)
+let test_inline_style_query_keeps_registration () =
+  check_inline_case "a style() query keeps the registration it reads"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}@container \
+     style(--c: red){.z{color:green}}"
+    "@property \
+     --c{syntax:\"<color>\";inherits:false;initial-value:red}@container \
+     style(--c:red){.z{color:green}}"
+
+(* The other half of the guard: a style() query keeps the property it names, not
+   every property in sight, and a container name is a custom-ident that happens
+   to be spelled with two dashes, not a custom property. *)
+let test_inline_style_query_keeps_no_more () =
+  check_inline_case "a style() query keeps only the property it names"
+    ":root{--c:red;--other:blue}@container style(--c: red){.z{color:green}}"
+    ":root{--c:red}@container style(--c:red){.z{color:green}}";
+  check_inline_case "a container name is not a reference to a custom property"
+    ":root{--c:red}@container --c (min-width:1px){.z{color:green}}"
+    "@container --c (min-width:1px){.z{color:green}}"
+
+(* Layers are ordered by first appearance (CSS Cascade 5 sec. 6.4.2), so where a
+   layer is first named decides which definition of a cross-layer custom
+   property wins. A conditional group only introduces its layers when its
+   condition holds, which cascade cannot decide, while a [@container] block
+   holds rules that always exist and is evaluated per element. *)
+let test_inline_layer_order_sites () =
+  check_inline_case "a layer first named inside @media leaves the order open"
+    "@media screen{@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}"
+    "@media screen{@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}";
+  check_inline_case "a layer first named inside @container orders the sheet"
+    "@container (min-width:1px){@layer b{.z{outline-color:red}}}@layer \
+     a{:root{--c:red}}@layer b{:root{--c:blue}}.x{color:var(--c)}"
+    "@container(min-width:1px){.z{outline-color:red}}.x{color:red}"
+
+(* Unwrapping a [@layer] replays the layer stack as document order and hands the
+   decision back to specificity, so it holds only where no cascade slot is
+   written from two layers at once (CSS Cascade 5 sec. 6.4.3). No custom
+   property has to be involved for the unwrapping to change the render. *)
+let test_inline_layer_flattening () =
+  check_inline_case "a declared layer order outranks document order"
+    "@layer a,b;@layer b{.x{color:blue}}@layer a{.x{color:red}}"
+    "@layer a,b;@layer b{.x{color:blue}}@layer a{.x{color:red}}";
+  check_inline_case "an unlayered declaration keeps its win over a layer"
+    ".x{color:red}@layer a{.x{color:blue}}"
+    ".x{color:red}@layer a{.x{color:blue}}";
+  check_inline_case "a layer outranks a more specific selector below it"
+    "@layer a,b;@layer a{#x{color:red}}@layer b{.x{color:blue}}"
+    "@layer a,b;@layer a{#x{color:red}}@layer b{.x{color:blue}}";
+  check_inline_case "a longhand in a weaker layer loses to a shorthand"
+    "@layer a,b;@layer b{.x{margin:0}}@layer a{.x{margin-left:5px}}"
+    "@layer a,b;@layer b{.x{margin:0}}@layer a{.x{margin-left:5px}}";
+  check_inline_case "layers writing disjoint slots still flatten"
+    "@layer b{.x{color:blue}}@layer a{.y{padding:1px}}"
+    ".x{color:blue}.y{padding:1px}"
 
 let suite =
   ( "inline",
@@ -407,4 +565,23 @@ let suite =
         test_inline_layer_winner;
       Alcotest.test_case "inline vars clean up inside a rule too" `Quick
         test_inline_cleanup_inside_a_rule;
+      Alcotest.test_case
+        "inline vars keep the registration of a property they keep" `Quick
+        test_inline_property_registration_kept;
+      Alcotest.test_case
+        "inline vars drop the registration of a property they remove" `Quick
+        test_inline_property_registration_dropped;
+      Alcotest.test_case "inline vars reach a fixpoint on registrations" `Quick
+        test_inline_property_idempotent;
+      Alcotest.test_case "inline vars keep the property a style() query reads"
+        `Quick test_inline_style_query_keeps_queried_property;
+      Alcotest.test_case
+        "inline vars keep the registration a style() query reads" `Quick
+        test_inline_style_query_keeps_registration;
+      Alcotest.test_case "inline vars keep no more than a style() query reads"
+        `Quick test_inline_style_query_keeps_no_more;
+      Alcotest.test_case "inline vars order layers by where they are named"
+        `Quick test_inline_layer_order_sites;
+      Alcotest.test_case "inline vars keep a layer that still decides a slot"
+        `Quick test_inline_layer_flattening;
     ] )

@@ -656,9 +656,24 @@ let container_prefix = function
   | `At_rule -> ""
 
 let container_label container_type condition =
-  match container_prefix container_type with
-  | "" -> condition
-  | prefix -> prefix ^ " " ^ condition
+  match container_type with
+  | `At_rule -> condition
+  (* A nesting container is a rule's own block, and the condition names the rule
+     it belongs to. Prefixing it as the others are prints [& .a], which is a
+     selector matching a [.a] inside the parent, the one thing it is not. *)
+  | `Nesting -> condition ^ " { & }"
+  | container_type -> container_prefix container_type ^ " " ^ condition
+
+(* The whole of the [@layer] statement form. The semicolon is what tells a
+   layer-order pin from the block of the same name: [@layer a;] ahead of [@layer
+   a { ... }] is a second statement, not the block again. *)
+let layer_decl_text names =
+  String.concat ""
+    [
+      "@layer ";
+      String.concat ", " (List.map Css.Stylesheet.string_of_layer_name names);
+      ";";
+    ]
 
 (* The statements that carry neither a selector nor a block. Naming them apart
    also keeps them apart in the order keys, where one shared "(other statement)"
@@ -671,10 +686,7 @@ let describe_prelude_statement (s : Css.statement) =
         ("@namespace"
         ^ (match prefix with Some p -> " " ^ p | None -> "")
         ^ ";")
-  (* The semicolon is what tells a layer-order pin from the block of the same
-     name: [@layer a;] ahead of [@layer a { ... }] is a second statement, not
-     the block again. *)
-  | Layer_decl names -> Some ("@layer " ^ String.concat ", " names ^ ";")
+  | Layer_decl names -> Some (layer_decl_text names)
   | _ -> None
 
 (* A statement's own text, split at its block: the head names it, the body is
@@ -693,6 +705,12 @@ let statement_text_split stmt =
       in
       (String.trim head, body)
 
+(* The head of an [@layer]. *)
+let layer_block_head name =
+  match name with
+  | Some name -> "@layer " ^ Css.Stylesheet.string_of_layer_name name
+  | None -> "@layer"
+
 let describe_statement stmt =
   let try_desc f = f stmt in
   let matchers =
@@ -703,11 +721,7 @@ let describe_statement stmt =
         Option.map
           (fun (c, _) -> "@media " ^ Css.Media.to_string c)
           (Css.as_media s));
-      (fun s ->
-        Option.map
-          (fun (n, _) ->
-            match n with Some name -> "@layer " ^ name | None -> "@layer")
-          (Css.as_layer s));
+      (fun s -> Option.map (fun (n, _) -> layer_block_head n) (Css.as_layer s));
       (fun s ->
         Option.map
           (fun (n, c, _) ->
@@ -1045,11 +1059,26 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
+(* [Resolve.layer_order] escapes each ident of a path (CSS Syntax 3 sec. 2.1),
+   so only a bare [.] separates two of them: one an ident carries is written
+   [\.] and stays inside its own segment. *)
+let split_layer_path path =
+  let len = String.length path in
+  let rec go start i acc =
+    if i >= len then List.rev (String.sub path start (len - start) :: acc)
+    else
+      match path.[i] with
+      | '\\' -> go start (i + 2) acc
+      | '.' -> go (i + 1) (i + 1) (String.sub path start (i - start) :: acc)
+      | _ -> go start (i + 1) acc
+  in
+  go 0 0 []
+
 (* A layer path is keyed for the cascade, not for reading: an anonymous [@layer
    { }] block is a segment starting with U+0000, which a report has to name some
    other way. *)
 let layer_path_name path =
-  String.split_on_char '.' path
+  split_layer_path path
   |> List.map (fun segment ->
       if String.length segment > 0 && segment.[0] = '\000' then
         "(anonymous " ^ String.sub segment 1 (String.length segment - 1) ^ ")"
@@ -1144,12 +1173,19 @@ let statement_head stmt =
   else head
 
 (* Helper to extract rule information from statements *)
-let strings_of_rule stmt =
+let strings_of_rule (stmt : Css.statement) =
   match Css.as_rule stmt with
   | Some (selector, decls, _) ->
       let selector_str = Css.Selector.to_string selector in
       (selector_str, decls)
-  | None -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt)
+  (* CSS Nesting 1 sec. 3.4: a run written after a nested statement is a nested
+     declarations rule, which acts as [&]. It has no head to cut at, so the text
+     up to the first brace is its first declaration, which reads in the selector
+     column as a selector it is not. *)
+  | None -> (
+      match stmt with
+      | Declarations decls -> ("&", decls)
+      | _ -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt))
 
 let decl_to_prop_value decl =
   let name = Css.declaration_name decl in
@@ -2515,11 +2551,16 @@ let extract_supports_as_string stmt =
   | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
   | None -> None
 
-(* The name [layer_diff] keys a layer on: an anonymous [@layer { ... }] has
-   none, so it keys on the empty string like every other anonymous one. *)
+(* The name [layer_diff] keys a layer on: the CSS text of the name, so a [.] one
+   ident carries is not the separator between two (CSS Cascade 5 sec. 6.4.1). An
+   anonymous [@layer { ... }] has no name, so it keys on the empty string like
+   every other anonymous one. *)
+let layer_key name_opt =
+  Option.fold ~none:"" ~some:Css.Stylesheet.string_of_layer_name name_opt
+
 let extract_layer_name stmt =
   match Css.as_layer stmt with
-  | Some (name_opt, rules) -> Some (Option.value ~default:"" name_opt, rules)
+  | Some (name_opt, rules) -> Some (layer_key name_opt, rules)
   | None -> None
 
 let keyframes_container_info name =
@@ -2813,7 +2854,7 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
 
 (* Layer diff function *)
 and layer_diff items1 items2 =
-  let key_of (name_opt, _) = Option.value ~default:"" name_opt in
+  let key_of (name_opt, _) = layer_key name_opt in
   let key_equal = String.equal in
   let is_empty_diff (_, rules1) (_, rules2) =
     let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
@@ -2831,19 +2872,15 @@ and layer_diff items1 items2 =
   in
   (* Transform to consistent format with media_diff *)
   let added =
-    List.map
-      (fun (name_opt, rules) -> (Option.value ~default:"" name_opt, rules))
-      added
+    List.map (fun (name_opt, rules) -> (layer_key name_opt, rules)) added
   in
   let removed =
-    List.map
-      (fun (name_opt, rules) -> (Option.value ~default:"" name_opt, rules))
-      removed
+    List.map (fun (name_opt, rules) -> (layer_key name_opt, rules)) removed
   in
   let modified =
     List.map
       (fun ((name_opt, rules1), (_, rules2)) ->
-        (Option.value ~default:"" name_opt, rules1, rules2))
+        (layer_key name_opt, rules1, rules2))
       modified_pairs
   in
   (added, removed, modified)

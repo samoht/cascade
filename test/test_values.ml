@@ -127,9 +127,13 @@ let test_length () =
   check_length "-999999px";
   check_length ~expected:".000001em" "0.000001em";
   check_length ~expected:".0000001rem" "0.0000001rem";
-  (* CSS Values leaves numeric precision/range implementation-defined; the
-     printer rounds this edge value to the nearest representable decimal. *)
-  check_length ~expected:"1000000000px" "999999999px";
+  (* CSS Values leaves numeric precision implementation-defined, but an authored
+     magnitude is not Cascade's to pick: [1000000000px] is a pixel away from
+     what the author wrote. *)
+  check_length "999999999px";
+  check_length ".4285714em";
+  check_length "1.5714286em";
+  check_length "1.0000001px";
   check_length "-999px";
   check_length ".5px";
 

@@ -63,7 +63,7 @@ let selector_covers ~ancestor ~consumer =
 
 type at_node =
   | Media of Media.t
-  | Layer of string option
+  | Layer of Stylesheet.layer_name option
   | Supports of Supports.t
   | Moz_document of moz_document_condition list
   | Container of string option * Container.t option
@@ -149,10 +149,10 @@ type scope = {
 
 let custom_name = Variables.custom_declaration_name
 
-(* [Declaration.custom_property] refuses a name and value it cannot write back
-   as the one declaration they name. A parsed stylesheet can hold such a pair -
-   a name written with an escape, a value CSS Syntax 3 would drop - so a rewrite
-   that reaches one keeps what it started from instead of raising. *)
+(* [Declaration.custom_property] refuses a value it cannot write back as part of
+   the declaration it belongs to. A parsed stylesheet can hold such a value -
+   one CSS Syntax 3 would drop - so a rewrite that reaches one keeps what it
+   started from instead of raising. *)
 let rebuild_custom ?layer name value =
   try Some (Declaration.custom_property ?layer name value)
   with Failure _ -> None
@@ -801,14 +801,29 @@ let rec refs_of_supports : Supports.t -> string list = function
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 
+(* A style() query names a property; only a custom one is at risk here, and a
+   real property like [style(color: red)] keeps its value through substitution.
+   The name is dashed as written, so it needs no normalisation. *)
+let refs_of_queried_name name =
+  if String.length name >= 2 && String.sub name 0 2 = "--" then [ name ] else []
+
+(* CSS Conditional 5 sec. 6.2: a [style()] query is evaluated against the
+   computed value the queried property has on the query container, its boolean
+   form against that property's initial value. The queried name is therefore a
+   reference to whatever supplies that value, exactly like a [var()]: drop the
+   declaration and the block stops matching. *)
 let rec refs_of_style_query : Container.style_query -> string list = function
-  | Boolean _ -> []
-  | Declaration { value; _ } -> refs_of_components value
-  | Range { lower; upper; _ } ->
-      refs_of_components lower @ refs_of_components upper
+  | Boolean name -> refs_of_queried_name name
+  | Declaration { name; value } ->
+      refs_of_queried_name name @ refs_of_components value
+  | Range { lower; name; upper; _ } ->
+      refs_of_queried_name name @ refs_of_components lower
+      @ refs_of_components upper
   | All (a, b) | Any (a, b) -> refs_of_style_query a @ refs_of_style_query b
   | Neg query -> refs_of_style_query query
 
+(* CSS Conditional 5 sec. 6.3: scroll-state features are a fixed keyword set, so
+   a scroll-state query reads no custom property. *)
 let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
   function
   | State _ -> []
@@ -818,6 +833,8 @@ let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
 
 let rec refs_of_container : Container.t -> string list = function
   | Min_width_rem _ | Min_width_px _ -> []
+  (* A container name is a [<custom-ident>], so one spelled [--name] selects a
+     container and reads no custom property. *)
   | Named (_, query) | Not query -> refs_of_container query
   | Style { query; _ } -> refs_of_style_query query
   | Scroll_state { query; _ } -> refs_of_scroll_state query
@@ -1091,6 +1108,22 @@ let normalise_var_name name =
   if String.length name >= 2 && String.sub name 0 2 = "--" then name
   else String.concat "" [ "--"; name ]
 
+(* Every custom-property name the stylesheet still mentions: declared by a
+   declaration, or referenced by a [var()] in a declaration or in an at-rule
+   condition, fallbacks included. [collect_scoped_refs] never descends into a
+   [@property] body, so a registration is not a mention of the property it
+   registers and cannot keep itself. *)
+let mentioned_custom_names stylesheet =
+  let consumers, customs, _ = collect_scoped_refs stylesheet in
+  List.fold_left
+    (fun acc (_, _, refs) -> List.rev_append refs acc)
+    (List.fold_left
+       (fun acc (_, _, name, refs) ->
+         List.rev_append refs (normalise_var_name name :: acc))
+       [] customs)
+    consumers
+  |> List.sort_uniq compare
+
 (* Per custom-property name, how many definitions it has across the whole
    stylesheet, plus the set of names referenced anywhere. A variable is safe to
    inline and delete only when it has a single definition: its value is then
@@ -1142,51 +1175,222 @@ let var_census stylesheet =
 (* A variable redefined across cascade layers on the same element is a real
    override, but - unlike an @media or dark-mode override - its winner is
    statically decidable, so it can be folded to that winner instead of kept
-   live. [statements_for_inline] later drops the [@layer] wrappers, which would
-   otherwise leave the losing definitions competing by document order and pick
-   the wrong value. Resolving the winner here keeps the folded value correct. *)
+   live. Resolving the winner here is what lets [statements_for_inline] drop the
+   [@layer] wrappers: flattened, the losing definitions would compete by
+   document order and pick the wrong value. *)
 
 (* Document-order cascade layer names (dotted for nesting), low precedence
-   first: the order in which layers are first introduced. *)
-let stylesheet_layer_order stylesheet =
+   first: the order in which layers are first introduced (css-cascade-5 sec.
+   6.4.2). Keyed by the CSS text of the whole path, so a [.] one ident carries
+   is not the separator between two (sec. 6.4.1). [None] when a layer sits where
+   cascade cannot place it: a conditional group introduces its layers only when
+   its condition holds, and an [Origin] block carries its own layer stack. What
+   a [@container], [@scope] or [@starting-style] block holds, and what a rule
+   nests, always exists, so a layer named there counts where it is written. *)
+let layer_order stylesheet : string list option =
   let seen = Hashtbl.create 16 in
   let order = ref [] in
-  let add name =
+  let undecided = ref false in
+  let add path =
+    let name = Stylesheet.string_of_layer_name path in
     if not (Hashtbl.mem seen name) then begin
       Hashtbl.add seen name ();
       order := name :: !order
     end
   in
-  let dotted prefix name =
-    if prefix = "" then name else String.concat "." [ prefix; name ]
+  let rec walk ~placed prefix stmts = List.iter (statement ~placed prefix) stmts
+  and statement ~placed prefix stmt =
+    match stmt with
+    | Stylesheet.Layer_decl names ->
+        if not placed then undecided := true;
+        List.iter (fun n -> add (prefix @ n)) names
+    | Stylesheet.Layer (name, body) ->
+        if not placed then undecided := true;
+        let prefix =
+          match name with
+          | None -> prefix
+          | Some n ->
+              let full = prefix @ n in
+              add full;
+              full
+        in
+        walk ~placed prefix body
+    | Stylesheet.Media (_, body)
+    | Stylesheet.Supports (_, body)
+    | Stylesheet.Moz_document (_, body)
+    | Stylesheet.When (_, body)
+    | Stylesheet.Else (_, body)
+    | Stylesheet.Origin (_, body) ->
+        walk ~placed:false prefix body
+    | stmt -> walk ~placed prefix (Stylesheet.statement_children stmt)
   in
-  let rec walk prefix = function
-    | [] -> ()
-    | stmt :: rest ->
-        (match stmt with
-        | Stylesheet.Layer_decl names ->
-            List.iter (fun n -> add (dotted prefix n)) names
-        | Stylesheet.Layer (Some n, body) ->
-            let full = dotted prefix n in
-            add full;
-            walk full body
-        | Stylesheet.Layer (None, body) -> walk prefix body
-        | _ -> ());
-        walk prefix rest
+  walk ~placed:true [] stylesheet;
+  if !undecided then None else Some (List.rev !order)
+
+module Slot_table = Hashtbl.Make (struct
+  type t = Shorthand.overlap_key
+
+  let equal = Shorthand.overlap_key_equal
+  let hash = Shorthand.overlap_key_hash
+end)
+
+(* One declaration's stake in one cascade slot: where the layer stack ranks it,
+   and where specificity and document order leave it once the wrappers are gone.
+   [index] keeps both orders total, so two claims a single rule writes never
+   compare equal. *)
+type layer_claim = {
+  rank : int;
+  position : int;
+  specificity : Selector.specificity;
+  important : bool;
+  index : int;
+}
+
+(* Where specificity and document order leave two claims once the wrappers are
+   gone. Ascending, so the last claim standing is the one that wins. *)
+let compare_flattened a b =
+  match Bool.compare a.important b.important with
+  | 0 -> (
+      match Selector.compare_specificity a.specificity b.specificity with
+      | 0 -> (
+          match Int.compare a.position b.position with
+          | 0 -> Int.compare a.index b.index
+          | order -> order)
+      | order -> order)
+  | order -> order
+
+(* And where the layer stack leaves them. Importance outranks the stack and
+   comes through flattening untouched, so it settles a pair either way; between
+   two layers the stack decides, reversed for important declarations (CSS
+   Cascade 5 sec. 6.4.2); inside one layer the same things decide as after. *)
+let compare_layered a b =
+  match Bool.compare a.important b.important with
+  | 0 ->
+      let rank =
+        if a.important then Int.compare b.rank a.rank
+        else Int.compare a.rank b.rank
+      in
+      if rank <> 0 then rank else compare_flattened a b
+  | order -> order
+
+(* Two total orders over the same claims are the same order exactly when one's
+   sequence is sorted under the other, so whatever subset of them an element
+   matches, it keeps the winner it had. *)
+let slot_survives_flattening claims =
+  let rec ascending = function
+    | a :: (b :: _ as rest) -> compare_flattened a b < 0 && ascending rest
+    | _ -> true
   in
-  walk "" stylesheet;
-  List.rev !order
+  ascending (List.stable_sort compare_layered claims)
+
+(* A selector list matches an element through one branch at a time, and it is
+   that branch's specificity the cascade weighs. *)
+let selector_specificities selector =
+  match Selector.as_list selector with
+  | Some branches -> List.map Selector.specificity branches
+  | None -> [ Selector.specificity selector ]
+
+(* Record what one declaration stakes in every slot it writes. [false] when it
+   is broad enough that no footprint tells it apart from anything. *)
+let add_claim ~slots ~index ~rank ~position ~specificities decl =
+  if Shorthand.declaration_is_broad decl then false
+  else begin
+    let important = Declaration.is_important decl in
+    List.iter
+      (fun specificity ->
+        incr index;
+        let claim =
+          { rank; position; specificity; important; index = !index }
+        in
+        List.iter
+          (fun slot ->
+            let prev =
+              Option.value ~default:[] (Slot_table.find_opt slots slot)
+            in
+            Slot_table.replace slots slot (claim :: prev))
+          (Shorthand.declaration_overlap_keys decl))
+      specificities;
+    true
+  end
+
+(* Every declaration's stake in the slots it writes, indexed by slot, or [None]
+   for a sheet holding what this does not reach: an anonymous layer, another
+   origin's stack or a [@scope] block's proximity rule, a nested rule whose
+   subject it does not resolve, a declaration broad enough to write any slot at
+   all, or anything but a style rule inside a layer, [@keyframes] and friends
+   included, whose name resolution the stack also orders. *)
+let layer_claims ~ranks ~unlayered stylesheet =
+  let slots = Slot_table.create 64 in
+  let reaches = ref true in
+  let position = ref 0 in
+  let index = ref 0 in
+  let rec walk ~layer ~rank stmts = List.iter (statement ~layer ~rank) stmts
+  and statement ~layer ~rank stmt =
+    match stmt with
+    | Stylesheet.Layer (None, _) | Stylesheet.Origin _ | Stylesheet.Scope _ ->
+        reaches := false
+    | Stylesheet.Layer (Some name, body) ->
+        let layer = layer @ name in
+        let rank =
+          Option.value ~default:unlayered
+            (Hashtbl.find_opt ranks (Stylesheet.string_of_layer_name layer))
+        in
+        walk ~layer ~rank body
+    | Stylesheet.Layer_decl _ -> ()
+    | Stylesheet.Rule r ->
+        incr position;
+        if r.nested <> [] then reaches := false
+        else
+          let specificities = selector_specificities r.selector in
+          let position = !position in
+          List.iter
+            (fun decl ->
+              if
+                not
+                  (add_claim ~slots ~index ~rank ~position ~specificities decl)
+              then reaches := false)
+            r.declarations
+    | Stylesheet.Media (_, body)
+    | Stylesheet.Supports (_, body)
+    | Stylesheet.Container (_, _, body)
+    | Stylesheet.Moz_document (_, body)
+    | Stylesheet.When (_, body)
+    | Stylesheet.Else (_, body)
+    | Stylesheet.Starting_style body ->
+        walk ~layer ~rank body
+    | _ -> if rank <> unlayered then reaches := false
+  in
+  walk ~layer:[] ~rank:unlayered stylesheet;
+  if !reaches then Some slots else None
+
+(* Whether dropping every [@layer] wrapper leaves the same declaration winning
+   each cascade slot. Unwrapping replays the layer stack as document order and
+   hands the decision back to specificity, so it holds only where the two orders
+   already agree on every slot two layers write, and [layer_order] is what ranks
+   them: a sheet it cannot rank is one this cannot answer for. *)
+let flattening_layers_is_safe stylesheet =
+  match layer_order stylesheet with
+  | None -> false
+  | Some order -> (
+      let ranks = Hashtbl.create 16 in
+      List.iteri (fun rank name -> Hashtbl.replace ranks name rank) order;
+      match layer_claims ~ranks ~unlayered:(List.length order) stylesheet with
+      | None -> false
+      | Some slots ->
+          Slot_table.fold
+            (fun _ claims ok -> ok && slot_survives_flattening claims)
+            slots true)
 
 (* [Some layer] for a purely-layered path ([layer = None] unlayered, [Some name]
    the dotted layer), [None] when the path is conditional or holds an anonymous
    layer - those are not statically foldable. *)
 let foldable_layer_of_at_path at_path : string option option =
-  let rec go names : at_node list -> string option option = function
+  let rec go path : at_node list -> string option option = function
     | [] -> (
-        match List.rev names with
+        match List.rev path with
         | [] -> Some None
-        | ns -> Some (Some (String.concat "." ns)))
-    | Layer (Some n) :: rest -> go (n :: names) rest
+        | ns -> Some (Some (Stylesheet.string_of_layer_name (List.concat ns))))
+    | Layer (Some n) :: rest -> go (n :: path) rest
     | Layer None :: _ -> None
     | _ :: _ -> None
   in
@@ -1218,52 +1422,57 @@ let annotate_every_layer entries =
    it resolves to no value). A single scope with repeated declarations is left
    alone: the census already treats it as one inlinable definition. *)
 let layer_decided_customs ~keep stylesheet =
-  let scopes = collect_scopes ~kept:keep stylesheet in
-  let by_name = Hashtbl.create 64 in
-  List.iter
-    (fun (s : scope) ->
-      let sel = Selector.to_string ~minify:true s.selector in
-      let fl = foldable_layer_of_at_path s.at_path in
-      List.iter
-        (fun d ->
-          match custom_name d with
-          | None -> ()
-          | Some name ->
-              let prev =
-                Option.value ~default:[] (Hashtbl.find_opt by_name name)
-              in
-              Hashtbl.replace by_name name ((sel, fl, d) :: prev))
-        s.customs)
-    scopes;
-  let layer_order = stylesheet_layer_order stylesheet in
   let fold = Hashtbl.create 16 in
-  Hashtbl.iter
-    (fun name entries ->
-      let entries = List.rev entries in
-      let unconditional =
-        List.for_all (fun (_, fl, _) -> Option.is_some fl) entries
-      in
-      let one_selector =
-        match entries with
-        | (sel0, _, _) :: rest -> List.for_all (fun (s, _, _) -> s = sel0) rest
-        | [] -> true
-      in
-      let distinct_layers =
-        entries
-        |> List.filter_map (fun (_, fl, _) -> fl)
-        |> List.sort_uniq compare |> List.length
-      in
-      if unconditional && one_selector && distinct_layers >= 2 then
-        match annotate_every_layer entries with
-        | Option.None -> ()
-        | Option.Some annotated -> (
-            match Context.winning_custom_declaration ~layer_order annotated with
-            | Some w ->
-                Hashtbl.replace fold name
-                  (`Value (Declaration.string_of_value ~minify:true w))
-            | None -> Hashtbl.replace fold name `Unset))
-    by_name;
-  fold
+  match layer_order stylesheet with
+  | None -> fold
+  | Some layer_order ->
+      let scopes = collect_scopes ~kept:keep stylesheet in
+      let by_name = Hashtbl.create 64 in
+      List.iter
+        (fun (s : scope) ->
+          let sel = Selector.to_string ~minify:true s.selector in
+          let fl = foldable_layer_of_at_path s.at_path in
+          List.iter
+            (fun d ->
+              match custom_name d with
+              | None -> ()
+              | Some name ->
+                  let prev =
+                    Option.value ~default:[] (Hashtbl.find_opt by_name name)
+                  in
+                  Hashtbl.replace by_name name ((sel, fl, d) :: prev))
+            s.customs)
+        scopes;
+      Hashtbl.iter
+        (fun name entries ->
+          let entries = List.rev entries in
+          let unconditional =
+            List.for_all (fun (_, fl, _) -> Option.is_some fl) entries
+          in
+          let one_selector =
+            match entries with
+            | (sel0, _, _) :: rest ->
+                List.for_all (fun (s, _, _) -> s = sel0) rest
+            | [] -> true
+          in
+          let distinct_layers =
+            entries
+            |> List.filter_map (fun (_, fl, _) -> fl)
+            |> List.sort_uniq compare |> List.length
+          in
+          if unconditional && one_selector && distinct_layers >= 2 then
+            match annotate_every_layer entries with
+            | Option.None -> ()
+            | Option.Some annotated -> (
+                match
+                  Context.winning_custom_declaration ~layer_order annotated
+                with
+                | Some w ->
+                    Hashtbl.replace fold name
+                      (`Value (Declaration.string_of_value ~minify:true w))
+                | None -> Hashtbl.replace fold name `Unset))
+        by_name;
+      fold
 
 (* Replace every layer-decided definition with a single unlayered definition of
    the winner (or drop it entirely when unset), so the census sees one inlinable
@@ -1372,7 +1581,7 @@ let wrap_import_body (ir : import_rule) body =
   in
   match ir.layer with
   | None -> body
-  | Some "" -> [ Stylesheet.Layer (None, body) ]
+  | Some [] -> [ Stylesheet.Layer (None, body) ]
   | Some n -> [ Stylesheet.Layer (Some n, body) ]
 
 (* Layer/supports/media guard checks. When [layer_order] is empty, every layer
@@ -1381,9 +1590,9 @@ let wrap_import_body (ir : import_rule) body =
    through and survive as wrapping at-rules in the inlined body; when a query is
    supplied the guard is evaluated and the import is dropped on rejection. *)
 let layer_guard_passes ~(layer_order : string list) (rule : import_rule) =
-  match ((rule.layer : string option), layer_order) with
+  match ((rule.layer : Stylesheet.layer_name option), layer_order) with
   | None, _ | _, [] -> true
-  | Some name, order -> List.mem name order
+  | Some name, order -> List.mem (Stylesheet.string_of_layer_name name) order
 
 let supports_guard_passes ~(query : Context.query option) (rule : import_rule) =
   match ((rule.supports : Supports.t option), query) with

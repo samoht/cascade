@@ -40,6 +40,171 @@
   CSS-wide keyword as a corner radius. CSS Backgrounds 3 sec. 5.1 allows only a
   non-negative `<length-percentage>` there, and Chrome and WebKit drop every
   such declaration (#417)
+- The reader and the optimizer's selector summary answer "is this a
+  pseudo-element?" from one list, so `::target-text`, `::spelling-error`,
+  `::grammar-error` and the framework-only `::deep` family obey the compound
+  and `:has()` rules the rest already did. Selectors 4 sec. 16 admits nothing
+  but pseudo-classes after a pseudo-element and sec. 4.5 keeps pseudo-elements
+  out of `:has()`, whatever the pseudo-element's name, and Chrome and WebKit
+  drop every selector that breaks either rule (#418)
+- `:not()` rejects a pseudo-element in its argument, as `:has()` already did,
+  so `.a:not(::before)` no longer parses and prints back as `.a:not(:before)`.
+  Selectors 4 sec. 4.3 gives `:not()` a `<complex-real-selector-list>`, built
+  by sec. 16 out of compound selectors with no pseudo-element among them, and
+  the list is unforgiving, so Chrome and WebKit drop the whole rule where
+  `:is()` and `:where()` drop only the offending item (#426)
+- Which pseudo-classes may follow a pseudo-element is read per pseudo-element,
+  so `::before:hover`, `::marker:hover`, `::selection:hover` and
+  `::spelling-error:hover` stop parsing while `::file-selector-button:hover`,
+  `::part(p):hover`, `::cue:hover` and `::-webkit-scrollbar:hover` keep
+  parsing. Selectors 4 sec. 3.6.3 makes the list per pseudo-element and calls
+  every other combination invalid, CSS Pseudo-Elements 4 sec. 5 gives the
+  element-backed pseudo-elements theirs, and Chrome and WebKit agree on the
+  rest. A pseudo-element cascade does not recognise still takes any
+  pseudo-class. A logical combination carries that list into its own argument:
+  `:is()` and `:where()` take a forgiving list, so `::before:is(.b)` still
+  parses and matches nothing, while the unforgiving `:not()` goes down with the
+  argument, so `::before:not(.b)` and `::part(p):not(.b)` stop parsing and
+  `::part(p):not(:hover)` keeps parsing (#430)
+- The eleven pseudo-classes WebKit's scrollbar parts report their state through
+  are read as pseudo-classes, so `::-webkit-scrollbar:vertical`,
+  `::-webkit-scrollbar-thumb:window-inactive` and the rest of that family keep
+  their rule instead of losing it at an unforgiving selector list. Chrome and
+  WebKit both read all eleven wherever a pseudo-class goes; after a
+  pseudo-element only a scrollbar part takes them, bar `:window-inactive`,
+  which reaches a `::selection` and a `::part()` as well (#441)
+- A `<custom-ident>` or `<dashed-ident>` an at-rule prelude or a declaration
+  value names is printed with the escapes CSS Syntax 3 sec. 4.3.7 needs to read
+  it back as the same name. `@layer a\3b b` printed `@layer a;b`, two
+  statements naming a layer the input never had. `@counter-style`,
+  `@position-try`, `@font-palette-values`, `@container`, `@import layer()`, a
+  `@font-feature-values` feature name and every name a declaration value
+  carries, from `anchor-name` to `will-change`, all take the escaping (#436)
+- `@supports (--x\3b y: red)` is read instead of the whole rule being dropped.
+  The reader demanded a property name that re-tokenizes from its own bytes,
+  which holds only while the printer writes that name raw; Chrome and
+  lightningcss both accept the escaped name (#437)
+- A `@layer` name is read as the idents CSS Cascade 5 sec. 6.4.1 makes it, so
+  `@layer a\2e b`, the layer named `a.b`, is no longer the same value as
+  `@layer a.b`, the sublayer `b` of `a`. Both printed `@layer a.b` and the
+  minifier merged the two blocks into one layer, moving declarations into a
+  layer the input never wrote them in (#442)
+- An `@layer` block inside a style rule holds nesting content, so
+  `.a { @layer n { color: red } }` keeps its declaration instead of reading the
+  body as a selector list and dropping it. CSS Nesting 1 sec. 3.1 admits nested
+  at-rules, and `@layer` was the last of the at-rules cascade reads as a
+  nesting context still taking a stylesheet block (#374)
+- A declaration written after a nested rule keeps its place instead of being
+  hoisted to the top of the block. CSS Nesting 1 sec. 3.4 wraps such a run in a
+  nested declarations rule, and its worked example names the hoisted spelling as
+  not equivalent, so `.a { @supports (color: red) { color: blue } color: green }`
+  now computes green as Blink and WebKit do, where cascade printed a sheet that
+  computed blue (#380)
+- Every at-rule that nests inside a style rule reads its body as nesting
+  content. `.a { @starting-style { color: blue } }` kept the wrapper and dropped
+  the declaration, `@-moz-document`, `@when` and `@else` lost theirs the same
+  way, and an at-rule written inside a nested group rule, as in
+  `.a { @layer n { @media screen { color: red } } }`, reached the
+  stylesheet-level reader and lost its block too. CSS Nesting 1 sec. 3.3 nests
+  any at-rule whose body carries style rules, and Blink 146 keeps every one of
+  these shapes whole (#384)
+- An at-rule with no style rule in its body is rejected inside a style rule
+  instead of being kept. CSS Nesting 1 sec. 3.3 nests only an at-rule whose body
+  carries style rules, so `.a { @font-face { ... } }`, `@keyframes`, `@property`,
+  `@page`, `@counter-style`, `@position-try`, `@font-palette-values`,
+  `@font-feature-values`, `@viewport` and `@supports-condition` are invalid
+  there, as is an `@else` with no preceding `@when`; each is dropped with a
+  warning that `Css.of_string ~strict:true` turns into an error, and the
+  declarations written around it stay in the rule. `@view-transition` is kept,
+  since Blink 146 still reads it there (#388)
+- Discarding an at-rule that is invalid inside a style rule ends at the at-rule
+  rather than at the next semicolon. `.a { @import url(x) { } color: red }` lost
+  `color: red`, and an `@import` inside a nested group rule took the whole group
+  with it (#388)
+- An invalid declaration inside a nested at-rule is dropped on its own rather
+  than taking the whole stylesheet. `.a { @media screen { color: red;
+  width: 10; background: blue } }` parsed to nothing, since the nested block had
+  no recovery and the error unwound past every enclosing block. CSS Syntax 3
+  sec. 5.4.4 ends a bad declaration at the next top-level `;`, counting a `{}`
+  met on the way as one component value of the value being skipped, and Blink
+  146 keeps both neighbours in one declaration run. A nested rule whose prelude
+  starts with an identifier, as in `.a { @media screen { h2:where(.b) { color:
+  red } } }`, and a stray `;` between two declarations there, were lost the same
+  way (#392)
+- A descriptor a `@page` body rejects is dropped on its own rather than taking
+  the rule and the stylesheet holding it. `@page { margin: 1cm; width: 10;
+  margin-top: 2cm }` parsed to nothing, and a page margin box lost its whole
+  block the same way. CSS Paged Media 3 sec. 4.1 applies the parse-error rules
+  inside a page or margin context, so the valid declarations around the bad one
+  still apply, and Blink 146 keeps every neighbour. An invalid margin at-rule is
+  discarded to the end of its block rather than to the next `;`, and a
+  selector-shaped item in a margin box, such as `@page { @top-center { .a { b:
+  c } } }`, no longer loops forever (#398)
+- A descriptor an `@property` body rejects is dropped on its own rather than
+  taking the registration and the stylesheet holding it. `@property --x { syntax:
+  "<length>"; inherits: false; initial-value: 0px; zzz: 1 }` parsed to nothing,
+  and so did a stray `;` between two valid descriptors. CSS Properties and Values
+  API 1 sec. 2 ignores an unknown descriptor, CSS Syntax 3 sec. 5.4.3 discards a
+  `;` with no declaration to validate, and Blink 146 reads the registration in
+  both. Tokens left after a descriptor's value, such as a trailing `!important`,
+  now invalidate the declaration they follow rather than the leftover alone
+  (#399)
+- A rule a grouping at-rule's block rejects is discarded to the end of that rule
+  rather than to the first block of any kind in its prelude. In
+  `@media screen { @supports (display: grid) bogus { a { color: red } } }` the
+  discard stopped at `(display: grid)`, so `bogus { a { color: red } }` came back
+  as a rule of its own, and a `[]` in a bad selector cost a second warning for
+  one dropped rule. CSS Syntax 3 sec. 5.4.2 ends an at-rule at its block or its
+  `;` and sec. 5.4.3 ends a qualified rule at its block, so a `(` or a `[`
+  written before that block is part of what is discarded, and Blink 146 keeps no
+  such rule (#402)
+- A `@page` body and a page-margin box keep any property they are given, so
+  `@page { color: red }`, `@page { orphans: 3 }` and
+  `@page { @top-center { display: block } }` are read instead of erroring under
+  `~strict:true` and being dropped with a warning otherwise. CSS Paged Media 3
+  sec. 6 admits its Appendix A list of CSS 2.1 properties in both contexts and
+  leaves anything outside CSS 2.1 undefined rather than invalid, and Blink 146
+  keeps every property it knows there. The seven-name allowlist also rejected
+  `bleed`, the name sec. 7.3 defines, and `page-orientation`. A value the
+  property's grammar rejects, and an item that is no declaration, are still
+  rejected (#403)
+- A duplicate descriptor in a `@page` body or a page-margin box keeps the
+  important declaration rather than the one written last, so
+  `@page { margin: 1cm !important; margin: 2cm }` keeps `margin: 1cm !important`
+  where it kept `margin: 2cm`. CSS Cascade 5 sec. 6.2 ranks an important author
+  declaration above a normal one whatever their order, and Blink 146 reads the
+  important one back in a page body and in a margin box alike. Two declarations
+  of the same importance still keep the last (#404)
+- A page-margin box with an empty block is read instead of erroring under
+  `~strict:true` and being dropped with a warning otherwise, so
+  `@page { @top-center { } }` no longer takes its `@page` with it. CSS Paged
+  Media 3 sec. 5 gives a margin at-rule a `<declaration-list>`, which CSS Syntax
+  3 sec. 5.4.4 consumes even when it holds nothing, and Blink 146 keeps the box.
+  Sec. 5 generates the box only where `content` computes away from `none`, so an
+  empty one is elided on output like an empty style rule and an empty `@page`
+  already are (#405)
+- A descriptor a `@counter-style`, `@font-palette-values` or `@view-transition`
+  body rejects is dropped on its own, as is a feature block an
+  `@font-feature-values` body rejects, rather than taking the at-rule and the
+  stylesheet holding it. `@counter-style thumbs { system: cyclic; symbols: "x";
+  zzz: 1 }` parsed to nothing, and the other three lost their whole rule the
+  same way. CSS Syntax 3 sec. 5.4.3 keeps what a block's contents already
+  yielded when one item fails to parse, and Blink 146 keeps all four rules. An
+  `@font-feature-values` body is a list of rules, so an item discarded there
+  ends at its own block rather than at a `;` it has not got, and a `;` with
+  nothing before it costs nothing. Tokens left after a `@font-palette-values` or
+  `@view-transition` or `@counter-style` descriptor value, such as a trailing
+  `!important`, now invalidate the declaration they follow rather than the
+  leftover alone (#419)
+- An at-rule inside a `@keyframes` body is dropped on its own rather than taking
+  the animation and the stylesheet holding it, so
+  `@keyframes k { from { color: red } @media print { to { color: pink } } 50%
+  { background: lime } }` keeps both keyframes where it parsed to nothing. The
+  rejection was raised around the loop rather than inside it, so it unwound past
+  the recovery the loop already ran for a keyframe selector it rejects. CSS
+  Syntax 3 sec. 5.4.2 ends the at-rule being discarded at its own block, past
+  any `(` or `[` in its prelude, and Blink 146 keeps the keyframes written
+  around it (#420)
 
 ### Minification
 
@@ -55,6 +220,43 @@
   `@media (width>=1px){a{background-color:red}}a{background:blue}@media (width>=1px){a{background-color:green}}`
   minified to a sheet Chrome computes blue for where the source computes green
   (#415)
+- A `font-family` name keeps the spelling the author wrote. A table of known
+  font names matched an authored name case-insensitively with hyphens folded
+  to spaces and re-emitted the table's spelling, so `font-family: open-sans`
+  became `font-family: "Open Sans"` and `font-family: ny` became
+  `font-family: "New York"`. CSS Fonts 4 sec. 5.1 matches a `<family-name>`
+  with Default Caseless Matching, a caseless string comparison that folds
+  neither a hyphen to a space nor one name to another, so those rewrites named
+  a different family, in the `@font-face` descriptor that *defines* the name as
+  well as in the properties that reference it (#387)
+- A multi-word `<family-name>` unquotes under minify wherever it appears:
+  `"Source Code Pro"` and `"Fira Sans"` stayed quoted next to the `SF Mono` and
+  `Roboto Mono` in the same stack (#387)
+- An authored coefficient keeps every digit under `--minify`. Any dimension was
+  rounded to six significant figures at print time, so `.4285714em` came out as
+  `.428571em`, which is `5.99999px` rather than `6px` at a `14px` font size, and
+  `999999999px` came out a pixel wider. The six-figure budget now belongs to the
+  fold that computes a value, so `calc(2px * pi)` is still `6.28319px` (#350)
+- A `--name` registered by `@property` as a `<number>` keeps the digits it was
+  written with: `--n: 1.4285714` came out as `1.42857`. The six-figure budget
+  stays on the `calc()` the printer folds itself, so `calc(1 / 3)` is still
+  `.333333` (#354)
+- A math function inside `calc()` keeps the unit CSS Values 4 sec. 10.7 gives
+  it: `calc(hypot(1px, 1px))` came out as `1.41421356`, a declaration browsers
+  and cascade's own reader both drop. `abs()` and `hypot()` now carry their
+  arguments' unit out, the inverse trig functions carry `deg`, and a call whose
+  operands mix units keeps its spelling (#362)
+- A computed dimension past a million units keeps every digit under `--minify`.
+  Six significant figures stop reaching its fraction there, so the budget was
+  paid in integer digits the arithmetic got right: `calc(1in + 999999999px)`
+  came out as `1000000000px`, 95px from the `1000000095px` an inch is worth (CSS
+  Values 4 sec. 6.2), and `hypot(999999999px, 1px)` a pixel wider than its own
+  longest side. A narrower value still pays the budget: `calc(1cm + 1px)` is
+  `38.7953px` (#367)
+- An empty `@layer name` inside a style rule keeps its block form. The
+  statement form is a layer-order declaration, which no style rule accepts, so
+  `.a { @layer n {} }` minified to `.a{@layer n;}`, which neither a browser nor
+  cascade's own reader takes back (#374)
 - A declaration whose value is spec-invalid is discarded inside a `@keyframes`
   frame, matching what a browser does with it there and what cascade already
   did in a style rule (#341)
@@ -82,6 +284,23 @@
   `-webkit-backdrop-filter`, `-webkit-user-select`, `-webkit-text-size-adjust`
   and `-webkit-print-color-adjust` were dropped against an unprefixed twin no
   shipping Safari understands (#325)
+- A rule whose declarations a later rule all rewrites is dropped only when it
+  carries no nested content. A rule's declarations are only the run written
+  before its first nested statement (CSS Nesting 1 sec. 3.4), so covering them
+  says nothing about what the rest of the body sets, and
+  `.a { all: unset; @media (min-width: 1px) { width: 1px } } .a { all: initial }`
+  lost its nested block along with the rule (#376)
+- A declaration written after a nested statement rejoins the rule's own run
+  when nothing it crosses writes the same property at the same importance, so
+  `.a { & b { width: 1px } color: red }` minifies to
+  `.a{color:red;b{width:1px}}` and `--diff=canonical` stops reporting it as
+  different from `.a { color: red; & b { width: 1px } }`. A declaration that
+  does clash keeps the place CSS Nesting 1 sec. 3.4 gives it (#383)
+- A run of declarations written after a nested statement is deduplicated like
+  any other declaration list, so `.a { & b { color: red } color: blue;
+  color: green }` minifies to `.a{b{color:red}color:green}` rather than keeping
+  a write nothing can read. Nothing sits between two writes inside one run, so
+  the later wins (CSS Cascade 5 sec. 6.4.4) (#386)
 - `--minify` is faster on a stylesheet the optimizer factors heavily, for the
   same output. The rule graph's cycle check, topological order and
   selector-branch index each probed a generic `Hashtbl` once per edge or per
@@ -98,6 +317,63 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- `column-rule-color` and `-webkit-text-stroke-color` are typed as colours and
+  `-webkit-text-fill-color` joins the colour fold, so a colour-valued property
+  minifies to the same spelling whatever its name: `lab(1.90334 0.278696
+  -5.48866)` and `rgb(3, 7, 18)` both print `#030712` (#447)
+- A declaration writing `column-rule-color` keeps its place against one writing
+  `column-rule`. The shorthand resets the rule width, style and colour (CSS
+  Multicol 1 sec. 4.4), but the colour longhand sat outside its overlap
+  footprint, so the optimizer read the pair as commutative: two rules writing
+  the colour merged across `column-rule: 1px solid red`, and an element
+  matching both painted the rule red (#447)
+- A single-argument `:is()` and a double `:not()` keep their wrapper around a
+  type or universal selector. Selectors 4 sec. 3.5 puts such a selector first
+  in its compound, and both rewrites are node-local, so splicing fused the two
+  names: `.a:is(code)` printed `.acode` and `:is(.a *):is(code)` printed
+  `:is(.a *)code`, which browsers drop (#377)
+- A feature query on a vendor-prefixed property keeps its guard. The
+  web-features dataset behind the Baseline facts tracks unprefixed features
+  only, so a prefix is evidence of nothing and folding it to true flipped
+  Tailwind's legacy-browser reset on in Chrome, where
+  `@supports (-webkit-hyphens: none)` is false (#378)
+- A single-argument `:is()` keeps its wrapper after a pseudo-element that
+  cannot take its argument, so `.a::before:is(.b)` minifies to
+  `.a:before:is(.b)` rather than the `.a:before.b` that cascade's own reader,
+  Chrome and WebKit all drop. It still unwraps everywhere the compound can hold
+  the argument, `.a::part(p):is(:hover)` included (#431)
+- Merging same-selector rules keeps a later declaration behind a nested
+  conditional group that sets the same property. The safety check saw a nested
+  style rule only, so `@media`, `@container` and friends let the merge hoist
+  the declaration past them and hand the conditional the win (#352)
+- Merging same-selector rules orders the rules by what their nested blocks set
+  as well as by their declarations, and reads the source order to decide
+  whether a declaration crosses a nested block. The merge order could put the
+  rule carrying the nested block last, leaving that check nothing to look at,
+  so a nested `@media` won over a later declaration that overrode it (#364)
+- Merging same-selector rules weighs what a nested block sets against a later
+  declaration by cascade slot rather than by property name. A nested
+  `margin: 2rem` and a later `margin-top: 1rem` write one slot under two names,
+  so the merge read them as disjoint, hoisted the longhand ahead of the nested
+  block and handed the shorthand the win (#364)
+- A `font-family` name that cannot be spelled as an identifier keeps its
+  quotes. The unquoting guard checked which characters a name is made of but
+  not how CSS Syntax 3 sec. 4.3.9 lets an ident sequence start, so `"2Brand"`,
+  `"-2x"` and `"-"` came out bare in every mode and a browser dropped the whole
+  declaration, taking the rest of the font stack with it (#390)
+- A multi-word `font-family` name holding a reserved word keeps its quotes.
+  `"inherit test"`, `"revert serif"` and `"default x"` came out bare under
+  `--minify`, and cascade's own reader then rejected the declaration it had
+  just written. CSS Fonts 4 sec. 2.1.1 excludes a pre-defined `font-family`
+  keyword and a CSS-wide keyword per identifier, and CSS Values 4 sec. 4.2 adds
+  the reserved `default`, so the exclusion reaches every word of a
+  `<custom-ident>+` sequence and the quoted form is the only valid one (#401)
+- A same-condition `@media` block is no longer hoisted over a declaration
+  written after a nested rule. CSS Nesting 1 sec. 3.4 keeps that run behind the
+  rule it follows, so it is one more rule the hoist reorders, and
+  `.a { @media (min-width: 1px) { color: red } color: blue; @media (min-width: 1px) { color: green } }`
+  minified to a sheet Chrome computes blue for where the source computes green
+  (#414)
 - An empty `@-moz-document`, `@when` or `@else` is dropped, as an empty
   `@media` already was: a conditional group rule with no contents applies
   nothing whatever its condition. An empty `@when` or `@else` stays while a
@@ -105,6 +381,20 @@
   `@else` that no parser accepts (#396)
 
 ### Custom properties
+
+- `Css.inline_vars` resolves a custom property defined across cascade layers
+  against the order every `@layer` in the sheet gives it, counting the ones a
+  rule nests and the ones a `@container`, `@scope` or `@starting-style` block
+  holds. A layer first named inside a conditional group is introduced there only
+  when the condition holds, so the order is not decidable and the layers are
+  left standing rather than folded to a winner (#357)
+- `Css.inline_vars` unwraps an `@layer` only where the layer stack and document
+  order already pick the same winner for every slot two layers write. Unwrapping
+  replays the stack as document order and hands the decision back to
+  specificity, so a sheet whose layers order competing declarations came out
+  rendering a different value, with no custom property involved. It narrows the
+  unwrapping #373 added: a sheet holding a nested rule is one the check cannot
+  answer for, so an `@layer` written inside a rule stays standing (#371)
 
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry. A `var()` referenced only
@@ -131,6 +421,15 @@
   around it. The pair it takes is a `<dashed-ident>` name and the
   `<declaration-value>?` CSS Variables 1 sec. 2 gives a custom property, the
   check `parse_custom_property` already made (#428)
+- A custom-property name that needs escaping binds instead of being refused.
+  `Css.Declaration.parse_declaration` read `property ":" value` back as one
+  text, so a name carrying a `;` or a `}` (CSS Syntax 3 sec. 4.3.7 puts either
+  there through an escape) ended its own declaration, and the guard on
+  `custom_property` and `parse_custom_property` was there only to keep such a
+  name out of that text. The name and the value are read as the tokens they
+  are, so a `theme_defaults` answer for `x;y` emits `:root{--x\;y:red}` and a
+  name carrying a `:` names no declaration at all. `@supports (--x\3b y: red)`
+  builds its declaration the same way (#439)
 - `Css.inline_vars` preserves runtime-marked `var()` references, including
   typed fallbacks simplified through scalar values or shorthands, instead of
   replacing browser-time override points with compile-time defaults (#315)
@@ -144,6 +443,17 @@
   which closes the rule around it. The declaration name, the `var()` reference
   and every shape of its fallback, the `@property` prelude and a `style()`
   container query all take the escaping (#429)
+- `Css.inline_vars` keeps the `@property` registration of a custom property it
+  keeps live. Every registration was dropped, so a property the pass could not
+  inline safely lost the `initial-value` its references fall back on and the
+  `inherits: false` that stops it inheriting, repainting the page; and the pass
+  missed its own fixpoint, the second run pruning the declaration the first had
+  kept (#416)
+- `Css.inline_vars` reads a `style()` container query as a reference to the
+  custom property it queries. CSS Conditional 5 sec. 6.2 evaluates the query
+  against that property's computed value, so deleting the declaration behind it,
+  or the `@property` registration standing in for one, leaves a block that no
+  longer matches (#423)
 - Pruning unreferenced custom properties counts a `var()` in a `@keyframes`
   frame, `@page` and its margin boxes, `@position-try` or
   `@supports-condition` as a reference, instead of deleting a binding those
@@ -167,6 +477,11 @@
 
 ### Canonical diff
 
+- `Css_compare.equivalent_value ~property` spells the property name the way the
+  printer spells it before giving the two values that declaration context. A
+  name carrying a `}` (CSS Syntax 3 sec. 4.3.7 puts one there through an escape)
+  closed the rule and took both values with it, so any two values under such a
+  name compared equal (#440)
 - A fully transparent missing-axis `oklab()` colour, such as
   `oklab(0% none none / 0)`, canonicalises to transparent black while
   non-transparent forms remain distinct (#312)
@@ -209,6 +524,9 @@
 - `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
   rebuild a statement with a function applied to the block or the declarations
   it holds, the rebuilding counterparts of the two readers (#337)
+- `Css.Flatten` carries the parent selector into an `@-moz-document` block, the
+  one group rule it did not descend into. A nested declaration run came out
+  bare at the top of the block, which no reader takes back (#384)
 - `Css.Stylesheet.map_statement_children` and `map_statement_declarations`
   return the very statement they were given when the function they run leaves
   every list physically unchanged. A pass that short-circuits on physical
@@ -307,6 +625,11 @@
   overlap keys and for its position in the other rule, both of which name a
   property through a fresh buffer, where each is a fact about one declaration.
   `--minify` canonicalises a rule's declaration order the same way (#424)
+- `cascade diff` names a rule's nested block after the rule it belongs to. The
+  container printed as `& .a`, which is a selector matching a `.a` inside the
+  parent rather than the parent's own block, and a run of declarations written
+  after a nested statement was named by its first declaration instead of the
+  `&` that CSS Nesting 1 sec. 3.4 makes it (#385)
 
 ## 1.1.0
 

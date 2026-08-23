@@ -33,10 +33,10 @@ val property :
 (** [property ~syntax ?initial_value ?inherits name] creates a [@property] rule
     with typed syntax and initial value. *)
 
-val layer_decl : string list -> statement
+val layer_decl : layer_name list -> statement
 (** [layer_decl names] creates a layer declaration statement. *)
 
-val layer : ?name:string -> block -> statement
+val layer : ?name:layer_name -> block -> statement
 (** [layer ?name content] creates a [@layer] rule. *)
 
 val media : condition:Media.t -> block -> statement
@@ -66,19 +66,25 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
     rank for the origin/importance criterion. Larger ranks have higher
     precedence. *)
 
-val import_layer_name : import_rule -> string option
+val import_layer_name : import_rule -> layer_name option
 (** [import_layer_name rule] returns the layer name declared by an [@import]
-    rule: [None] means the import does not declare a layer, [Some ""] means the
+    rule: [None] means the import does not declare a layer, [Some []] means the
     import declares an anonymous layer, and [Some name] is the declared layer
     name. *)
 
-val layer_block_name : statement -> string option
+val equal_layer_name : layer_name -> layer_name -> bool
+(** [equal_layer_name a b] is whether [a] and [b] are the same layer, that is
+    the same idents in the same order. Two layers whose CSS text differs only in
+    how an ident is escaped are the same layer; [@layer a\2e b] and [@layer a.b]
+    are not. *)
+
+val layer_block_name : statement -> layer_name option
 (** [layer_block_name stmt] returns the declared name for an [@layer] block
-    rule. It returns [Some ""] for anonymous layer blocks, [Some name] for named
+    rule. It returns [Some []] for anonymous layer blocks, [Some name] for named
     layer blocks, and [None] for non-layer-block statements. The returned name
     is the at-rule's own declared name, not a parent-prefixed name. *)
 
-val layer_statement_name_list : statement -> string list option
+val layer_statement_name_list : statement -> layer_name list option
 (** [layer_statement_name_list stmt] returns the declared name list for
     statement-form [@layer] rules. *)
 
@@ -212,7 +218,11 @@ val selector : rule -> Selector.t
 (** [selector rule] returns the selector of a rule. *)
 
 val declarations : rule -> declaration list
-(** [declarations rule] returns the declarations of a rule. *)
+(** [declarations rule] returns the run of declarations written before the
+    rule's first nested statement. CSS Nesting 1 sec. 3.4 wraps a run written
+    after one in a nested declarations rule, so it stays in {!nested} at the
+    position it was written; this is the whole body only for a rule that nests
+    nothing. *)
 
 val nested : rule -> statement list
 (** [nested rule] returns the nested statements of a rule. *)
@@ -426,14 +436,15 @@ val empty : t
 val rules : t -> rule list
 (** [rules t] returns the top-level rules from the stylesheet. *)
 
-val layers : t -> string list
-(** [layers t] is every cascade layer [t] declares, one dotted path per layer
-    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
-    sheet first names them. A layer named inside a conditional group counts: the
-    group decides whether its contents apply, not whether the layer exists. A
-    sublayer of an anonymous [@layer { ... }] has no name to report. *)
+val layers : t -> layer_name list
+(** [layers t] is every cascade layer [t] declares, one path per layer ([a.b] is
+    the sublayer [b] of [a], however it was written), in the order the sheet
+    first names them. Each path is its idents, so a [.] one ident carries is not
+    the separator between two. A layer named inside a conditional group counts:
+    the group decides whether its contents apply, not whether the layer exists.
+    A sublayer of an anonymous [@layer { ... }] has no name to report. *)
 
-val layer_block : string -> t -> block option
+val layer_block : layer_name -> t -> block option
 (** [layer_block name t] is the statements of the layer [name], wherever it is
     declared and whatever form declares it: a dotted name, a nested block, or a
     block inside a conditional group. It is [None] when no [@layer] block opens
@@ -461,6 +472,20 @@ val pp_import_rule : import_rule Pp.t
 
 val read_import_rule : Cursor.t -> import_rule
 (** [read_import_rule r] parses an import rule. *)
+
+val pp_layer_name : layer_name Pp.t
+(** [pp_layer_name] prints a [<layer-name>]: each ident with the escapes that
+    read it back (CSS Syntax 3 sec. 2.1), joined by the [.] separators of CSS
+    Cascade 5 sec. 6.4.1. A [.] an ident carries is escaped, so it never reads
+    back as a separator. *)
+
+val read_layer_name : Cursor.t -> layer_name
+(** [read_layer_name r] parses a [<layer-name>]. It rejects a CSS-wide keyword,
+    which CSS Cascade 5 sec. 6.4.1 reserves. *)
+
+val string_of_layer_name : layer_name -> string
+(** [string_of_layer_name name] is what {!pp_layer_name} prints. Two names never
+    share their text, so it keys a layer. *)
 
 val rule_hash : rule -> int
 (** [rule_hash r] is a cheap hash that discriminates rules by their cached

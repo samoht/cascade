@@ -8,9 +8,9 @@ before and after.
   attribute and empties the `<style>` blocks, in both the default (full) and
   `--minimal` modes.
 - **`cascade --minify`** rewrites each `<style>` block in place (via
-  `minify_page.js`). Idempotence, size and reparse checks all pass on output
-  that renders differently; only this catches a minification that changes the
-  computed style.
+  `minify_page.js`), on its own and again with `--inline-vars`. Idempotence,
+  size and reparse checks all pass on output that renders differently; only
+  this catches a rewrite that changes the computed style.
 
 ```sh
 sh test/inline/run.sh
@@ -72,9 +72,11 @@ compares values the way cascade does, so `0%` against `0px`, or `red` against
 `rgb(255, 0, 0)`, is not reported. Comparing raw strings instead counts every
 such pair, which inflates the total into a number that reads like a result and
 is not one. `run.sh` therefore builds the filter through the checkout's own
-opam switch and proves it filters, on a pair that must be dropped and a pair
+opam switch and proves it filters, on two pairs that must be dropped and one
 that must survive, before measuring anything; a filter that is missing or wrong
-stops the run rather than downgrading it.
+stops the run rather than downgrading it. One dropped pair is vendor-prefixed,
+because cascade folds a colour only for a property it types, and a real page's
+prefixed colours outnumber all its other differences.
 
 ## Coverage
 
@@ -83,3 +85,14 @@ by `fetch.sh`, and they gate the run in the same way: a surviving difference is
 a defect in a transform, whichever page found it. A failure that starts the day
 a site is redesigned is still a defect, but re-run `fetch.sh` before reading it
 as a regression in the working tree.
+
+Every page runs both transforms. `apply` and `--minify` fail differently, and a
+real page carries selectors, feature queries and at-rules no fixture does, so a
+minify defect only a real page reaches stays unmeasured until the leg exists.
+The four pages cost about 25 seconds between them.
+
+Positions are how the two element lists line up, so the comparison runs only as
+far as the first index whose tags disagree. Past a dropped or added element
+every later index compares two different elements, and one structural change
+would report as thousands: `xtest.js` names the index instead and says how many
+elements it did not compare.

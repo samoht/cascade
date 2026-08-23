@@ -61,8 +61,9 @@ val unquote_font_family_strings : custom_value -> custom_value
     [<ident> <whitespace> <ident> ...] component sequence. Used by the
     [@property]-registered custom-property promotion when the registered syntax
     accepts [<custom-ident>+] (CSS Fonts 4 sec. 2.1.1 makes the two forms
-    equivalent in font-family-typed positions). Single-word strings and any
-    token that isn't a [<string>] pass through unchanged. *)
+    equivalent in font-family-typed positions). A single-word string, a string
+    holding a word that sec. 2.1.1 excludes from [<custom-ident>], and any token
+    that isn't a [<string>] pass through unchanged. *)
 
 val components_have_generic_family : custom_value -> bool
 (** [components_have_generic_family components] is [true] when a bare ident in

@@ -2133,6 +2133,134 @@ let test_font_family () =
   check_font_family "invalid-font";
   check_font_family ~expected:"Times New Roman" "\"Times New Roman\"";
   check_font_family "Arial";
+  (* CSS Fonts 4 sec. 5.1: a [<family-name>] is matched with Default Caseless
+     Matching, a caseless string comparison that folds neither a hyphen to a
+     space nor one name to another. [open-sans] names a different family from
+     [Open Sans] and [ny] a different family from [New York], so the author's
+     spelling survives verbatim - re-reading the output must be a fixpoint. *)
+  check_font_family ~roundtrip:true "inter";
+  check_font_family ~roundtrip:true "open-sans";
+  check_font_family ~roundtrip:true "ny";
+  check_font_family ~roundtrip:true "sf-pro";
+  check_font_family ~roundtrip:true "jetbrains-mono";
+  check_font_family ~roundtrip:true "SFMONO-REGULAR";
+  (* A [<string>] family name carries no case either; unquoting a single-word
+     name keeps its spelling, so the bare form re-reads to the same family. *)
+  check_font_family ~roundtrip:true ~expected:"inter" "\"inter\"";
+  check_font_family ~roundtrip:true ~expected:"OPEN SANS" "\"OPEN SANS\"";
+  check_font_family ~roundtrip:true ~expected:"Open Sans" "\"Open Sans\"";
+  (* CSS Syntax 3 sec. 4.3.9 gates when a name may be spelled as an ident at
+     all: the first code point must be a name-start code point, or a [-]
+     followed by a name-start code point or by a second [-]. A name that fails
+     that test has no unquoted spelling - CSS Fonts 4 sec. 2.1.1 leaves only the
+     [<string>] arm of [<family-name>] - and emitting it bare makes the browser
+     drop the whole declaration. *)
+  check_font_family ~roundtrip:true ~expected:"\"2Brand\"" "\"2Brand\"";
+  check_font_family ~roundtrip:true ~expected:"\"9\"" "\"9\"";
+  check_font_family ~roundtrip:true ~expected:"\"-2x\"" "\"-2x\"";
+  check_font_family ~roundtrip:true ~expected:"\"-\"" "\"-\"";
+  (* The guard is not a minify choice: the unminified printer picks the same
+     spelling. *)
+  check_font_family ~minify:false ~roundtrip:true ~expected:"\"2Brand\""
+    "\"2Brand\"";
+  check_font_family ~minify:false ~roundtrip:true ~expected:"\"-2x\"" "\"-2x\"";
+  (* The other side of sec. 4.3.9: a second [-] starts an ident sequence, and
+     sec. 4.2 counts [_] as a name-start code point, so these do unquote. *)
+  check_font_family ~roundtrip:true ~expected:"--brand" "\"--brand\"";
+  check_font_family ~roundtrip:true ~expected:"--" "\"--\"";
+  check_font_family ~roundtrip:true ~expected:"-x" "\"-x\"";
+  check_font_family ~roundtrip:true ~expected:"_brand" "\"_brand\"";
+  check_font_family ~roundtrip:true ~expected:"_" "\"_\"";
+  (* Sec. 4.2: [.] is not a name code point, and sec. 4.3.7 reads [\] as the
+     start of an escape, so [a\b] would name the family [ab]. Both stay
+     quoted. *)
+  check_font_family ~roundtrip:true ~expected:"\"Foo.Bar\"" "\"Foo.Bar\"";
+  check_font_family ~roundtrip:true ~expected:"\"a\\\\b\"" "\"a\\\\b\"";
+  (* Every word of a [<custom-ident>+] sequence is an ident in its own right, so
+     the same start rule gates each of them. *)
+  check_font_family ~roundtrip:true ~expected:"\"Brand -\"" "\"Brand -\"";
+  check_font_family ~roundtrip:true ~expected:"\"3 Rounded\"" "\"3 Rounded\"";
+  (* CSS Fonts 4 sec. 2.1 spells [font-family] as [[ <family-name> |
+     <generic-family> ]#], so the bare keyword is the generic and only the
+     quoted form names a family; CSS Values 4 sec. 4.2 excludes the CSS-wide
+     keywords and the reserved [default] from [<custom-ident>]. Unquoting any of
+     these changes the meaning rather than the spelling. *)
+  check_font_family ~roundtrip:true ~expected:"\"serif\"" "\"serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"inherit\"" "\"inherit\"";
+  check_font_family ~roundtrip:true ~expected:"\"default\"" "\"default\"";
+  (* CSS Fonts 4 sec. 2.1.1 states the exclusion per identifier, not per name:
+     "any identifier which could be misinterpreted as a pre-defined keyword in
+     the font-family value definition, or the CSS-wide keywords, is not
+     allowed". A word of a [<custom-ident>+] sequence is such an identifier, so
+     the rule reaches the first, a middle and the last word alike, and a name
+     carrying one has no unquoted spelling at all. *)
+  check_font_family ~roundtrip:true ~expected:"\"inherit test\""
+    "\"inherit test\"";
+  check_font_family ~roundtrip:true ~expected:"\"test inherit\""
+    "\"test inherit\"";
+  check_font_family ~roundtrip:true ~expected:"\"a initial b\""
+    "\"a initial b\"";
+  check_font_family ~roundtrip:true ~expected:"\"unset Sans\"" "\"unset Sans\"";
+  check_font_family ~roundtrip:true ~expected:"\"Brand revert\""
+    "\"Brand revert\"";
+  check_font_family ~roundtrip:true ~expected:"\"revert-layer x\""
+    "\"revert-layer x\"";
+  check_font_family ~roundtrip:true ~expected:"\"a revert-layer b\""
+    "\"a revert-layer b\"";
+  (* CSS Values 4 sec. 4.2 reserves [default] alongside the CSS-wide keywords
+     and excludes it from [<custom-ident>] in every position. *)
+  check_font_family ~roundtrip:true ~expected:"\"default x\"" "\"default x\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo default Bar\""
+    "\"Foo default Bar\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo default\""
+    "\"Foo default\"";
+  (* Sec. 4.2 excludes the keywords "in all ASCII case permutations". *)
+  check_font_family ~roundtrip:true ~expected:"\"INHERIT test\""
+    "\"INHERIT test\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo Default\""
+    "\"Foo Default\"";
+  (* The pre-defined keywords of the [font-family] value definition are the
+     [<generic-font-family>] names, and sec. 2.1.1 adds that a UA "must not
+     consider these keywords as matching the <font-family-name> type", so a
+     sequence word may not be one either. *)
+  check_font_family ~roundtrip:true ~expected:"\"Foo serif\"" "\"Foo serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"serif Foo\"" "\"serif Foo\"";
+  check_font_family ~roundtrip:true ~expected:"\"a sans-serif b\""
+    "\"a sans-serif b\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo monospace\""
+    "\"Foo monospace\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo cursive\""
+    "\"Foo cursive\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo fantasy\""
+    "\"Foo fantasy\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo system-ui\""
+    "\"Foo system-ui\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo math\"" "\"Foo math\"";
+  check_font_family ~roundtrip:true ~expected:"\"Cambria Math\""
+    "\"Cambria Math\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-serif\""
+    "\"Foo ui-serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-sans-serif\""
+    "\"Foo ui-sans-serif\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-monospace\""
+    "\"Foo ui-monospace\"";
+  check_font_family ~roundtrip:true ~expected:"\"Foo ui-rounded\""
+    "\"Foo ui-rounded\"";
+  (* Sec. 2.1.2 keeps the script-specific generics functional, so bare
+     [fangsong] and [emoji] are not pre-defined keywords of the value definition
+     and are ordinary [<custom-ident>]s inside a sequence. *)
+  check_font_family ~roundtrip:true ~expected:"Foo emoji" "\"Foo emoji\"";
+  check_font_family ~roundtrip:true ~expected:"Foo fangsong" "\"Foo fangsong\"";
+  check_font_family ~roundtrip:true ~expected:"Noto Color Emoji"
+    "\"Noto Color Emoji\"";
+  (* The exclusion is on the whole identifier, so a word that merely contains a
+     keyword is an ordinary [<custom-ident>] and still unquotes. *)
+  check_font_family ~roundtrip:true ~expected:"inherited test"
+    "\"inherited test\"";
+  check_font_family ~roundtrip:true ~expected:"Foo serifs" "\"Foo serifs\"";
+  check_font_family ~roundtrip:true ~expected:"Foo sans" "\"Foo sans\"";
+  check_font_family ~roundtrip:true ~expected:"Times New Roman"
+    "\"Times New Roman\"";
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)

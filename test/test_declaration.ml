@@ -1540,8 +1540,9 @@ let custom_property_values () =
 
 (* [parse_custom_property] builds a declaration from a name and value that came
    from outside the parser, so it takes only a pair that writes back as the one
-   declaration it claims to be: a [<dashed-ident>] name that tokenizes to
-   itself, and a CSS Syntax 3 sec. 8.2 [<declaration-value>]. *)
+   declaration it claims to be: a [<dashed-ident>] name, written back with the
+   escapes that read it (CSS Syntax 3 sec. 4.3.7), and a CSS Syntax 3 sec. 8.2
+   [<declaration-value>]. *)
 let parse_custom_property_guard () =
   let bind name value =
     match parse_custom_property name value with
@@ -1579,9 +1580,9 @@ let parse_custom_property_guard () =
     [
       ("--x", "--x:red");
       ("--color-red-500", "--color-red-500:red");
-      ("--x;y", "<rejected>");
-      ("--x}y", "<rejected>");
-      ("--x y", "<rejected>");
+      ("--x;y", "--x\\;y:red");
+      ("--x}y", "--x\\}y:red");
+      ("--x y", "--x\\ y:red");
       ("--", "<rejected>");
       ("-x", "<rejected>");
       ("color", "<rejected>");
@@ -1590,9 +1591,12 @@ let parse_custom_property_guard () =
 (* [custom_property] takes authored CSS text, so a pair it accepts has to write
    back as the one declaration it names. CSS Variables 1 sec. 2 gives a custom
    property the value grammar [<declaration-value>?] and a [<dashed-ident>]
-   name; a top-level [;] or [}], an unterminated function, block or string, or
-   an unmatched closing bracket all stop being part of the declaration as soon
-   as the text is read back, so they are not a pair this library can write. *)
+   name; a value carrying a top-level [;] or [}], an unterminated function,
+   block or string, or an unmatched closing bracket stops being part of the
+   declaration as soon as the text is read back, so it is not a pair this
+   library can write. A name carrying one of those is written back with the
+   escapes that read it (CSS Syntax 3 sec. 4.3.7), so it names the declaration
+   it made. *)
 let custom_property_guard () =
   (* Build the declaration, print it into a rule and read the rule back. The
      answer is derived from the round-trip, not from a pinned spelling. *)
@@ -1660,13 +1664,75 @@ let custom_property_guard () =
     [
       ("--x", "<round-trips>");
       ("--color-red-500", "<round-trips>");
-      ("--x}y", "<refused>");
-      ("--x;y", "<refused>");
-      ("--x y", "<refused>");
+      ("--x}y", "<round-trips>");
+      ("--x;y", "<round-trips>");
+      ("--x y", "<round-trips>");
       ("--", "<refused>");
       ("-x", "<refused>");
       ("color", "<refused>");
     ]
+
+(* [parse_declaration] is handed the name and the value as two strings, and CSS
+   Syntax 3 sec. 4.3.7 lets an escape carry a [;], a [}] or a space into a
+   custom property's name. Written into the text in front of the [:], such a
+   name ends its own declaration, closes the rule around it, or names a
+   different property, so the two never meet as text: the name reaches the
+   reader as the one ident it is. *)
+let parse_declaration_name_case () =
+  let bound name value =
+    match parse_declaration name value with
+    | None -> "<none>"
+    | Some d -> (
+        let text = to_string ~minify:true d in
+        let names decl =
+          Option.equal String.equal
+            (Css.custom_declaration_name decl)
+            (Some name)
+        in
+        let read_back =
+          Css.of_string ~strict:true (String.concat "" [ ":root{"; text; "}" ])
+        in
+        match read_back with
+        | Ok { Css.stylesheet = [ Css.Stylesheet.Rule r ]; _ } -> (
+            match r.declarations with
+            | [ d' ] when String.equal text (to_string ~minify:true d') ->
+                if names d && names d' then text
+                else String.concat "" [ text; " names another property" ]
+            | back ->
+                String.concat ""
+                  [
+                    text;
+                    " reads back as ";
+                    String.concat " + " (List.map (to_string ~minify:true) back);
+                  ])
+        | Ok { Css.stylesheet; _ } ->
+            String.concat ""
+              [
+                text;
+                " reads back as ";
+                string_of_int (List.length stylesheet);
+                " statements";
+              ]
+        | Error _ -> String.concat "" [ text; " does not read back" ])
+  in
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check string) name expected (bound name "red"))
+    [
+      ("--x", "--x:red");
+      ("--x;y", "--x\\;y:red");
+      ("--x}y", "--x\\}y:red");
+      ("--x y", "--x\\ y:red");
+    ];
+  (* A name is one ident or it names nothing: a [:] or a [;] inside it belongs
+     to no property cascade can write. *)
+  List.iter
+    (fun name ->
+      Alcotest.(check bool)
+        (String.concat "" [ name; " names no declaration" ])
+        true
+        (parse_declaration name "red" = None))
+    [ "a:b"; "color;background"; "color:red"; "" ]
 
 let spec_custom_tokens () =
   check_specified_value "custom property token stream specified"
@@ -2531,7 +2597,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 452
+    "property grammar manifest covers every tracked spec property name" 455
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 
@@ -2909,6 +2975,8 @@ let declaration_tests =
       parse_custom_property_guard;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
+    test_case "parse_declaration keeps the name out of the value" `Quick
+      parse_declaration_name_case;
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
     test_case "vendor prefixes" `Quick vendor_prefixes;

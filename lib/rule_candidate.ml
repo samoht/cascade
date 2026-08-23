@@ -27,13 +27,16 @@ let decl_facts_conflict a b =
   && (not (same_decl a.decl b.decl))
   && Shorthand.declarations_overlap_with_keys a.decl a.keys b.decl b.keys
 
-let declaration_blocks_commute left right =
-  let left = decl_facts left in
-  let right = decl_facts right in
+(* Two footprints commute when no pair of them writes a common cascade slot: the
+   order they are replayed in cannot then be observed. *)
+let decl_facts_commute left right =
   not
     (List.exists
        (fun a -> List.exists (fun b -> decl_facts_conflict a b) right)
        left)
+
+let declaration_blocks_commute left right =
+  decl_facts_commute (decl_facts left) (decl_facts right)
 
 let declarations_equal (a : Declaration.declaration list)
     (b : Declaration.declaration list) =
@@ -86,54 +89,57 @@ let rule_eligible (r : rule) =
    rules too - unlike the factoring passes, which reorder declarations and would
    disturb a later [var()] resolution. [try_rewrite]'s acyclicity check still
    rejects a group whose merge would cross a conflicting (re)definition. *)
-(* Keyed on the property's AST identity rather than its printed name: two
-   constructors that print alike are different properties, and building the set
-   from names would merge them. [prop_key] is unboxed over the property
-   constructor, so ordering it is ordering the constructor. *)
-module Prop_set = Set.Make (struct
-  type t = Declaration.prop_key
-
-  let compare = Stdlib.compare
-end)
-
 (* Merging a run of same-selector rules into the first one moves each later
    rule's declarations ahead of any nested block an earlier one carries. That
-   only matters for a property the nested block also sets, so a rule with nested
-   children can still take part as long as those children and the declarations
-   that would move past them are disjoint. *)
-let rec nested_property_keys acc (stmts : statement list) =
+   only matters where the two write a common cascade slot, so a rule with
+   nested children can still take part as long as those children and the
+   declarations that would move past them commute.
+
+   A slot, not a property name: a nested [margin] and a later [margin-top] name
+   two properties and write one slot, so the nested children are carried as
+   footprints and put through the overlap relation two flat declarations use.
+
+   Read through the exhaustive statement walks: every nested statement sets
+   properties, a nested declarations run as much as a nested style rule, and one
+   this walk cannot see is one the merge would happily hoist past. *)
+let rec nested_decl_facts acc (stmts : statement list) =
   List.fold_left
     (fun acc stmt ->
-      match stmt with
-      | Rule r ->
-          let acc =
-            List.fold_left
-              (fun acc d -> Prop_set.add (Declaration.property_key d) acc)
-              acc r.declarations
-          in
-          nested_property_keys acc r.nested
-      | _ -> acc)
+      let acc =
+        List.fold_left
+          (fun acc d -> decl_fact d :: acc)
+          acc
+          (statement_declarations stmt)
+      in
+      nested_decl_facts acc (statement_children stmt))
     acc stmts
 
+(* CSS Nesting 1 sec. 3.4 puts a declaration written after a nested rule behind
+   it, so a rule's body is not the run of declarations [declarations] holds:
+   merging a later same-selector rule into it moves that rule's declarations
+   ahead of everything nested. [nested_merge_is_safe] below reads the whole body
+   and decides that per property, so a rule carrying nested content stands on
+   the same terms as any other. *)
 let same_selector_eligible (r : rule) =
   r.merge_key = Option.None
   && (not (contains_vendor_pseudo_element r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
+(* [rules] in source order: whether a declaration ends up ahead of a nested
+   block it followed is a question about where the two were written, and the
+   merge order below answers a different one. *)
 let nested_merge_is_safe (rules : rule list) =
   let rec go = function
     | [] | [ _ ] -> true
-    | r :: rest ->
-        (r.nested = []
-        ||
-        let blocked = nested_property_keys Prop_set.empty r.nested in
-        List.for_all
-          (fun (later : rule) ->
+    | (r : rule) :: rest -> (
+        match nested_decl_facts [] r.nested with
+        | [] -> go rest
+        | nested ->
             List.for_all
-              (fun d -> not (Prop_set.mem (Declaration.property_key d) blocked))
-              later.declarations)
-          rest)
-        && go rest
+              (fun (later : rule) ->
+                decl_facts_commute nested (decl_facts later.declarations))
+              rest
+            && go rest)
   in
   go rules
 
@@ -296,17 +302,26 @@ let compare_rule_order_key (left_id, (left_rule : rule))
         (Rule_graph.Node_id.to_int right_id)
   | order -> order
 
+(* The precedence DAG holds every pair the merged rule replays in emission
+   order: its declarations, and its nested blocks, which follow all of them. A
+   pair that competes keeps the order it was written in; the rest is free for
+   [compare_rule_order_key] to canonicalise. *)
 let same_selector_merge_order
     (rules_with_ids : (Rule_graph.node_id * rule) list) =
   let rows = Array.of_list rules_with_ids in
   let n = Array.length rows in
+  let nested_facts =
+    Array.map (fun (_, (r : rule)) -> nested_decl_facts [] r.nested) rows
+  in
   let succ = Array.make n [] in
   let pred = Array.make n 0 in
   for i = 0 to n - 1 do
     let _, left = rows.(i) in
     for j = i + 1 to n - 1 do
       let _, right = rows.(j) in
-      if not (declaration_blocks_commute left.declarations right.declarations)
+      if
+        (not (declaration_blocks_commute left.declarations right.declarations))
+        || not (decl_facts_commute nested_facts.(i) nested_facts.(j))
       then begin
         succ.(i) <- j :: succ.(i);
         pred.(j) <- pred.(j) + 1
@@ -664,14 +679,14 @@ let same_selector_groups g ids =
   |> List.map (fun (_, ids) -> List.rev ids)
 
 let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
-  let rules_with_ids =
-    ordered_ids g ids |> rules_with_ids g |> same_selector_merge_order
-  in
+  let source_order = ordered_ids g ids |> rules_with_ids g in
+  let safe = nested_merge_is_safe (List.map snd source_order) in
+  let rules_with_ids = same_selector_merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
   match rules with
   | [] | [ _ ] -> ()
-  | (first : rule) :: _ when nested_merge_is_safe rules -> (
+  | (first : rule) :: _ when safe -> (
       let merged =
         {
           first with

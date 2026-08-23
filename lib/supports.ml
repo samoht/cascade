@@ -124,8 +124,13 @@ let starts_with ~prefix s =
   let prefix_len = String.length prefix in
   String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
 
+(* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;] or a [}] into a custom
+   property's name, so the name is checked against the spelling it serializes to
+   (CSS Syntax 3 sec. 2.1) rather than against its own bytes: read raw, such a
+   name ends the declaration early and never looks like the single ident it
+   is. *)
 let property_name name =
-  let reader = Cursor.of_string name in
+  let reader = Cursor.of_string (Parser.escape_ident name) in
   let parsed =
     try Cursor.ident ~keep_case:true reader
     with Cursor.Parse_error _ ->
@@ -146,10 +151,13 @@ let declaration_feature prop value =
   | _, "" -> Empty (property_name prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
+      (* The name and the value stay apart: read as one text, a name carrying a
+         [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an
+         escape) would end its own declaration. *)
       let name = property_name prop in
-      try Declaration (Declaration.of_string (prop ^ ":" ^ value))
-      with Cursor.Parse_error _ | Failure _ ->
-        Unsupported (name, String.trim value))
+      match Declaration.parse_declaration prop value with
+      | Some decl -> Declaration decl
+      | None -> Unsupported (name, String.trim value))
 
 let property prop value = Property (declaration_feature prop value)
 
@@ -197,10 +205,13 @@ let func name args =
 
 (* ===== Pretty printing ===== *)
 
+let escaped_property_name name =
+  Parser.escape_ident (string_of_property_name name)
+
 let render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
-  | Empty name -> string_of_property_name name ^ ":"
-  | Unsupported (name, value) -> string_of_property_name name ^ ": " ^ value
+  | Empty name -> escaped_property_name name ^ ":"
+  | Unsupported (name, value) -> escaped_property_name name ^ ": " ^ value
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
 let render_function_feature = function
@@ -239,10 +250,10 @@ let pp_declaration_feature ctx = function
          suppress lossy value rewrites (e.g. static colour folding). *)
       Declaration.pp_declaration (Pp.enter_feature_query ctx) decl
   | Empty name ->
-      Pp.string ctx (string_of_property_name name);
+      Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':'
   | Unsupported (name, value) ->
-      Pp.string ctx (string_of_property_name name);
+      Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
       Pp.string ctx value
@@ -547,16 +558,26 @@ let value_uses_greenfield value =
     (fun fn -> contains_sub ~needle:(fn ^ "(") v)
     Baseline.greenfield_value_functions
 
+(* A vendor prefix is the author saying support is not universal, and the
+   web-features dataset behind {!Baseline} tracks unprefixed features only, so
+   there is no fact either way and the guard stays. A custom property is not
+   that: CSS Conditional 4 sec. 2.5 makes every custom property declaration
+   supported, so [--x] is left to the Baseline path. *)
+let is_vendor_prefixed name =
+  String.length name > 1 && name.[0] = '-' && name.[1] <> '-'
+
 let is_greenfield_feature decl =
-  is_greenfield_property (Declaration.property_name decl)
+  let name = Declaration.property_name decl in
+  is_greenfield_property name
+  || is_vendor_prefixed name
   || value_uses_greenfield (Declaration.string_of_value ~minify:true decl)
 
 (* Baseline classification of one declaration feature. A [(prop: value)] test
    whose property and value Cascade recognizes as Baseline is treated as
-   Baseline-true; a not-yet-Baseline property or a greenfield value function
-   keeps its guard ([`Unknown]). Properties Cascade does not model parse as
-   [Unknown_property] and stay unknown, as do empty/unsupported/vendor-flag
-   features. *)
+   Baseline-true; a not-yet-Baseline property, a vendor-prefixed one or a
+   greenfield value function keeps its guard ([`Unknown]). Properties Cascade
+   does not model parse as [Unknown_property] and stay unknown, as do
+   empty/unsupported/vendor-flag features. *)
 let declaration_feature_truth = function
   | Declaration (Declaration.Declaration { property = Unknown_property _; _ })
     ->

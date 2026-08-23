@@ -163,9 +163,12 @@ val statement_selector : statement -> Selector.t option
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
-    statement is a rule, {!constructor-None} otherwise. *)
+    statement is a rule, {!constructor-None} otherwise. The declarations are the
+    run written before the first nested statement; a run written after one is a
+    nested declarations rule inside [nested], at the position it was written. *)
 
-val as_layer : statement -> (string option * statement list) option
+val as_layer :
+  statement -> (Stylesheet.layer_name option * statement list) option
 (** [as_layer stmt] returns [Some (name, statements)] if the statement is a
     layer, {!constructor-None} otherwise. *)
 
@@ -245,16 +248,16 @@ val eval_stylesheet :
 (** [eval_stylesheet ctx stylesheet] evaluates every declaration in
     [stylesheet]. *)
 
-val import_layer_name : Stylesheet.import_rule -> string option
+val import_layer_name : Stylesheet.import_rule -> Stylesheet.layer_name option
 (** [import_layer_name rule] returns the layer name declared by an [@import]
-    rule: {!constructor-None} means no layer, [Some ""] means an anonymous
+    rule: {!constructor-None} means no layer, [Some []] means an anonymous
     layer, and [Some name] is a named layer. *)
 
-val layer_block_name : statement -> string option
+val layer_block_name : statement -> Stylesheet.layer_name option
 (** [layer_block_name stmt] returns the declared name of an [@layer] block rule.
-    Anonymous layer blocks return [Some ""]. *)
+    Anonymous layer blocks return [Some []]. *)
 
-val layer_statement_name_list : statement -> string list option
+val layer_statement_name_list : statement -> Stylesheet.layer_name list option
 (** [layer_statement_name_list stmt] returns the declared name list for
     statement-form [@layer] rules. *)
 
@@ -512,12 +515,13 @@ val media_queries : t -> (Media.t * statement list) list
     query's rules; a nested rule keeps the relative selector it was written
     with. *)
 
-val layers : t -> string list
-(** [layers t] is every cascade layer [t] declares, one dotted path per layer
-    ([a.b] is the sublayer [b] of [a], however it was written), in the order the
-    sheet first names them. A layer named inside a conditional group counts: the
-    group decides whether its contents apply, not whether the layer exists. A
-    sublayer of an anonymous [@layer { ... }] has no name to report.
+val layers : t -> Stylesheet.layer_name list
+(** [layers t] is every cascade layer [t] declares, one path per layer ([a.b] is
+    the sublayer [b] of [a], however it was written), in the order the sheet
+    first names them. Each path is its idents, so a [.] one ident carries is not
+    the separator between two. A layer named inside a conditional group counts:
+    the group decides whether its contents apply, not whether the layer exists.
+    A sublayer of an anonymous [@layer { ... }] has no name to report.
 
     This is what a sheet declares, not the order a cascade resolves in.
     {!Resolve.layer_order} answers that, and leaves out a layer named inside any
@@ -526,7 +530,7 @@ val layers : t -> string list
 
 (** {3 AST Introspection Helpers} *)
 
-val layer_block : string -> t -> statement list option
+val layer_block : Stylesheet.layer_name -> t -> statement list option
 (** [layer_block name sheet] is the statements of the layer [name], wherever it
     is declared and whatever form declares it: a dotted name, a nested block, or
     a block inside a conditional group. It is {!constructor-None} when no
@@ -554,7 +558,7 @@ val custom_props_of_rules : (Selector.t * declaration list) list -> string list
 (** [custom_props_of_rules rules] extracts all custom property names from the
     declarations in the rules. *)
 
-val custom_props : ?layer:string -> t -> string list
+val custom_props : ?layer:Stylesheet.layer_name -> t -> string list
 (** [custom_props ?layer sheet] is the name of every custom property [sheet]
     declares for an element: the ones in a style rule or a bare nesting block,
     at the top level and inside a conditional group at-rule such as [@media],
@@ -577,16 +581,16 @@ val declarations : declaration list -> statement
 (** [declarations decls] creates a bare declarations block (used in CSS
     nesting). *)
 
-val layer : ?name:string -> statement list -> statement
+val layer : ?name:Stylesheet.layer_name -> statement list -> statement
 (** [layer ?name statements] creates a [@layer] statement with the given
     statements. *)
 
-val layer_decl : string list -> statement
+val layer_decl : Stylesheet.layer_name list -> statement
 (** [layer_decl names] creates a [@layer] declaration statement that declares
     layer names without any content (e.g.,
     [@layer theme, base, components, utilities;]). *)
 
-val layer_of : ?name:string -> t -> t
+val layer_of : ?name:Stylesheet.layer_name -> t -> t
 (** [layer_of ?name stylesheet] wraps an entire stylesheet in [@layer],
     preserving [@supports] and other at-rules within it. *)
 
@@ -4323,6 +4327,11 @@ type font_family = Properties.font_family =
   | Emoji
   | Math
   | Fangsong
+  (* Named families, for building a font stack in OCaml. CSS Fonts 4 sec. 2.1
+     makes these [<custom-ident>]s rather than keywords, so the reader never
+     produces one: an authored name is read as [Name] and printed back
+     verbatim. Each constructor prints exactly as the [Name] carrying its
+     spelling. *)
   (* Popular web fonts *)
   | Inter
   | Roboto
@@ -7592,24 +7601,26 @@ val custom_property : ?layer:string -> string -> string -> declaration
     API which provides compile-time checking and automatic variable management.
 
     @param layer Optional CSS layer name for the custom property
-    @param name
-      CSS custom property name: a [<dashed-ident>] that tokenizes to itself
+    @param name CSS custom property name: a [<dashed-ident>]
     @param value
       the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
       as CSS text
 
-    It raises [Failure] on a pair that does not write back as the one
-    declaration it names, such as a value carrying a top-level [;] or [}] or an
-    unterminated function, block or string. {!Declaration.parse_custom_property}
-    is the same check as an option.
+    It raises [Failure] on a pair that does not make the one declaration it
+    names, such as a value carrying a top-level [;] or [}] or an unterminated
+    function, block or string. A name holding a code point no bare ident carries
+    is written back with the escapes that read it.
+    {!Declaration.parse_custom_property} is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]
 
     See also {!val:var} (type-safe CSS variable API). *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
-(** [parse_declaration ?layer property value] parses ["property: value"] with
-    the full declaration parser:
+(** [parse_declaration ?layer property value] reads [property] and [value] with
+    the full declaration parser. The two are read as the tokens they are rather
+    than as one ["property: value"] text, so a [property] carrying a [;], a [}]
+    or a [:] names this declaration or names none:
     - a known property (e.g. [mask-type], {!val-display}) becomes a typed
       declaration;
     - a custom property ([--x]) or an unknown property keeps its parsed
@@ -7834,7 +7845,15 @@ val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
     [var()] reference; [warn] is called with each such name. The transform
     assumes no runtime mutation of the variables it inlines: a reference marked
     [~runtime] on {!var_ref} also stays live, fallback included, so a
-    browser-time override point survives. *)
+    browser-time override point survives. A [style()] container query reads the
+    computed value of the custom property it names, so that property stays live
+    as well.
+
+    Every [@layer] wrapper is spliced into its parent and the [@layer-decl]
+    rules ordering them go with it. A [@property] registration goes only when
+    the substitution left neither a declaration of its property nor a [var()]
+    reading it: its [initial-value] and [inherits] descriptors decide computed
+    values, so a property that stays live keeps its registration. *)
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t

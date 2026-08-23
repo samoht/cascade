@@ -140,8 +140,8 @@ let negative =
       "@font-face { font-family: Brand; src: url(brand.woff2); @media screen { \
        .x { color: red } } }";
     invalid "page" "invalid-pseudo" "@page :unknown { margin: 1cm }";
-    invalid "page" "invalid-margin-descriptor"
-      "@page { @top-center { display: block } }";
+    invalid "page" "bad-margin-descriptor-value"
+      "@page { @top-center { display: 1px } }";
     invalid "keyframes" "missing-block" "@keyframes missing-block";
     invalid "font-palette-values" "bad-name"
       "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
