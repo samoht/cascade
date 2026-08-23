@@ -379,6 +379,15 @@
   nothing whatever its condition. An empty `@when` or `@else` stays while a
   later `@else` binds to it, since dropping the antecedent would leave a bare
   `@else` that no parser accepts (#396)
+- A declaration writing `border-block-end-style` keeps its place against one
+  writing `border` or `border-style`. CSS Logical 1 sec. 4 resolves the four
+  flow-relative border style longhands to whichever physical side the writing
+  mode picks, but each named a slot no footprint mentions, so the optimizer
+  read the pair as commutative:
+  `.a{border:1px solid red;border-block-end-style:dashed}`
+  reordered under `--minify --lossless` into a rule Chrome 146 computes
+  `border-bottom-style: solid` for where the source computes `dashed`, and two
+  rules writing the longhand merged across an intervening `border` (#453)
 
 ### Custom properties
 

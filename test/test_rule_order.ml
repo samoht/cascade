@@ -303,6 +303,17 @@ let overlapping_declarations_keep_order () =
     (canonical ".x{margin:0;margin-top:5px}"
     <> canonical ".x{margin-top:5px;margin:0}")
 
+let logical_border_style_keeps_its_place () =
+  (* CSS Logical 1 sec. 4: [border-block-end-style] resolves to whichever
+     physical style side the writing mode picks, so the [border] written after
+     it resets it. Sorting the pair by content puts the longhand first, and
+     Chrome 146 then computes [border-bottom-style: solid] for the rule where
+     the source computes [dashed]. *)
+  Alcotest.(check string)
+    "a logical border style side stays after the shorthand that resets it"
+    ".a{border:1px solid red;border-block-end-style:dashed}"
+    (canonical ".a{border:1px solid red;border-block-end-style:dashed}")
+
 let nested_conditionals_participate () =
   let css =
     "@media print{@supports (display:flex){.z{color:red}}}.b{margin:0}"
@@ -385,6 +396,8 @@ let suite =
         commuting_declarations_converge;
       Alcotest.test_case "overlapping declarations keep order" `Quick
         overlapping_declarations_keep_order;
+      Alcotest.test_case "logical border style keeps its place" `Quick
+        logical_border_style_keeps_its_place;
       Alcotest.test_case "block with layer content is barrier" `Quick
         block_with_layer_content_is_barrier;
       Alcotest.test_case "nested conditionals participate" `Quick

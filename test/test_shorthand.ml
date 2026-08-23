@@ -181,6 +181,30 @@ let test_logical_physical_overlap () =
     (Shorthand.declarations_overlap
        (decl "border-inline-width:2px")
        (decl "border-left-width:1px"));
+  (* The style sides carry the same aliasing as the width and colour ones:
+     [border-block-end-style] resolves to whichever physical style slot the
+     writing mode picks, so [border] and [border-style] both reset it. *)
+  Alcotest.(check bool)
+    "a logical border style side overlaps a physical style side" true
+    (Shorthand.declarations_overlap
+       (decl "border-block-end-style:dashed")
+       (decl "border-bottom-style:solid"));
+  Alcotest.(check bool)
+    "a logical border style side overlaps the border shorthand" true
+    (Shorthand.declarations_overlap
+       (decl "border-block-end-style:dashed")
+       (decl "border:1px solid red"));
+  Alcotest.(check bool)
+    "an inline border style side overlaps the border style shorthand" true
+    (Shorthand.declarations_overlap
+       (decl "border-inline-start-style:dashed")
+       (decl "border-style:solid"));
+  (* Width and style are separate slots whatever the writing mode is. *)
+  Alcotest.(check bool)
+    "a logical border style side and a physical width are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "border-block-end-style:dashed")
+       (decl "border-left-width:1px"));
   Alcotest.(check bool)
     "a logical scroll margin overlaps a physical one" true
     (Shorthand.declarations_overlap
