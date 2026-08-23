@@ -1644,7 +1644,7 @@ let spec_recovery_warns_once_per_declaration () =
     1;
   check ".a { @media screen { color: red; background: blue } }" 0
 
-(* CSS Paged Media 3 sec. 6: "If an error is encountered during the processing
+(* CSS Paged Media 3 sec. 4.1: "If an error is encountered during the processing
    of a declaration block within a page or a margin context, the Rules for
    handling parsing errors apply; that is, valid declarations within the block
    are applied." One bad descriptor therefore costs that descriptor, not the
@@ -1693,7 +1693,7 @@ let spec_lenient_recovery_page_descriptors () =
     "@page { margin: 1cm; @top-center; margin-top: 2cm }" recovered 1
 
 (* A page-margin box holds a declaration block of its own (CSS Paged Media 3
-   sec. 5), so sec. 6 applies inside it too: the descriptors written around a
+   sec. 5), so sec. 4.1 applies inside it too: the descriptors written around a
    bad one stay in the box, and the box stays in the [@page]. *)
 let spec_lenient_recovery_page_margin_box () =
   let recovered = "@page{@top-center{content:\"x\";margin:0}}" in

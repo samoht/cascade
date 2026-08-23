@@ -1923,7 +1923,7 @@ let skip_invalid_item r =
    accumulator before the next is read, so an item dropped in recovery costs
    only itself and the items around it are kept. CSS Syntax 3 sec. 5.4.3 keeps
    what a block's contents already yielded when one item fails to parse, and CSS
-   Paged Media 3 sec. 6 says as much of a page or a margin context in so many
+   Paged Media 3 sec. 4.1 says as much of a page or a margin context in so many
    words: "valid declarations within the block are applied". Strict mode ([not
    (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
    lenient parse warns about. [skip] discards the item that failed, and which

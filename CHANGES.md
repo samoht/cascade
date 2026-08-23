@@ -85,7 +85,7 @@
 - A descriptor a `@page` body rejects is dropped on its own rather than taking
   the rule and the stylesheet holding it. `@page { margin: 1cm; width: 10;
   margin-top: 2cm }` parsed to nothing, and a page margin box lost its whole
-  block the same way. CSS Paged Media 3 sec. 6 applies the parse-error rules
+  block the same way. CSS Paged Media 3 sec. 4.1 applies the parse-error rules
   inside a page or margin context, so the valid declarations around the bad one
   still apply, and Blink 146 keeps every neighbour. An invalid margin at-rule is
   discarded to the end of its block rather than to the next `;`, and a
