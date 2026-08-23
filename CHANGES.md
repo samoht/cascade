@@ -317,6 +317,14 @@
   conflict test walks the two key lists in step instead of scanning one per
   element of the other, and collecting them no longer rescans what it has
   already collected (#422)
+- `--minify` keeps two rules apart across a rule whose property name the
+  footprint model cannot place. Such a name may be a shorthand, a legacy alias
+  or a longhand of a family the model does not carry, and the conflict test
+  says so, but the rule graph ruled the pair out first on an overlap key naming
+  the property itself, so
+  `.a{word-wrap:break-word}.b{overflow-wrap:normal}.c{word-wrap:break-word}`
+  minified to a sheet Chrome 146 computes `overflow-wrap: normal` for where the
+  source computes `break-word` (#452)
 - `column-rule-color` and `-webkit-text-stroke-color` are typed as colours and
   `-webkit-text-fill-color` joins the colour fold, so a colour-valued property
   minifies to the same spelling whatever its name: `lab(1.90334 0.278696
