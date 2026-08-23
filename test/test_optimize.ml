@@ -2481,6 +2481,33 @@ let vendor_alias_pins_intervening_rule () =
     (optimized_string
        ".a{-webkit-transform:none}.b{color:red}.c{-webkit-transform:none}")
 
+let unplaceable_name_pins_intervening_rule () =
+  (* A property name the footprint model cannot place may be a shorthand, a
+     legacy alias, or a longhand of a family the model does not carry, so it
+     writes whatever slot the declaration it meets writes. Grouping [.a] with
+     [.c] past [.b] changes which of the two wins for an element matching [.b]
+     and [.c]: Chrome 146 computes [background-position: 10px 0%] for the first
+     sheet below and [0% 0%] once the pair is grouped, and [overflow-wrap:
+     break-word] against [normal] for the second. *)
+  Alcotest.(check string)
+    "an unplaceable longhand is not grouped across the shorthand resetting it"
+    ".a{background-position-x:10px}.b{background:red}.c{background-position-x:10px}"
+    (optimized_string
+       ".a{background-position-x:10px}.b{background:red}.c{background-position-x:10px}");
+  Alcotest.(check string)
+    "an unplaceable legacy alias is not grouped across the property it aliases"
+    ".a{word-wrap:break-word}.b{overflow-wrap:normal}.c{word-wrap:break-word}"
+    (optimized_string
+       ".a{word-wrap:break-word}.b{overflow-wrap:normal}.c{word-wrap:break-word}");
+  (* A name the model does place keeps naming its own slot, so a rule holding
+     one still groups across an unrelated declaration. *)
+  Alcotest.(check string)
+    "a placeable name still groups across an unrelated declaration"
+    ".a,.c{margin-top:var(--a) var(--b)}.b{color:red}"
+    (optimized_string
+       ".a{margin-top:var(--a) var(--b)}.b{color:red}.c{margin-top:var(--a) \
+        var(--b)}")
+
 let c63_group_across_higher_specificity () =
   (* CSS Cascade 5 sec. 6.3: among the same origin, layer, and importance higher
      specificity wins regardless of source order; only a specificity tie defers
@@ -4863,6 +4890,9 @@ let selector_merging_tests =
     ( "vendor alias pins an intervening rule",
       `Quick,
       vendor_alias_pins_intervening_rule );
+    ( "unplaceable property name pins an intervening rule",
+      `Quick,
+      unplaceable_name_pins_intervening_rule );
     ( "group equal rules across higher-specificity intervening rule",
       `Quick,
       c63_group_across_higher_specificity );
