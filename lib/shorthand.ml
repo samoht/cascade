@@ -438,13 +438,13 @@ let property_slots : type a. a Properties.property -> overlap_key list =
       ]
   | Background_attachment -> [ key "background-attachment" ]
   | Background_blend_mode -> [ key "background-blend-mode" ]
-  | Background_clip -> [ key "background-clip" ]
+  | Background_clip | Webkit_background_clip -> [ key "background-clip" ]
   | Background_color -> [ key "background-color" ]
   | Background_image -> [ key "background-image" ]
   | Background_origin -> [ key "background-origin" ]
   | Background_position -> [ key "background-position" ]
   | Background_repeat -> [ key "background-repeat" ]
-  | Background_size -> [ key "background-size" ]
+  | Background_size | Webkit_background_size -> [ key "background-size" ]
   | Flex -> [ key "flex-grow"; key "flex-shrink"; key "flex-basis" ]
   | Flex_grow -> [ key "flex-grow" ]
   | Flex_shrink -> [ key "flex-shrink" ]
@@ -455,7 +455,25 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   (* A vendor-prefixed spelling is an alias of the unprefixed property in every
      engine that supports it - [deduplicate_declarations] already drops the
      prefixed copy of an identical twin - so it writes the same cascade slots
-     and carries the same footprint. *)
+     and carries the same footprint. The prefixed vocabulary need not match the
+     unprefixed one - [-webkit-mask-composite] spells [xor] where
+     [mask-composite] spells [exclude] - since the slot is named by the property
+     and not by the value. *)
+  | Transform | Webkit_transform | Moz_transform | Ms_transform | O_transform ->
+      [ key "transform" ]
+  | Appearance | Webkit_appearance | Moz_appearance -> [ key "appearance" ]
+  | Box_shadow | Webkit_box_shadow | Moz_box_shadow -> [ key "box-shadow" ]
+  | Box_sizing | Webkit_box_sizing | Moz_box_sizing -> [ key "box-sizing" ]
+  | User_select | Webkit_user_select | Moz_user_select | Ms_user_select ->
+      [ key "user-select" ]
+  | Filter | Webkit_filter | Ms_filter -> [ key "filter" ]
+  | Backdrop_filter | Webkit_backdrop_filter -> [ key "backdrop-filter" ]
+  | Box_decoration_break | Webkit_box_decoration_break ->
+      [ key "box-decoration-break" ]
+  | Hyphens | Webkit_hyphens -> [ key "hyphens" ]
+  | Print_color_adjust | Webkit_print_color_adjust ->
+      [ key "print-color-adjust" ]
+  | Text_size_adjust | Webkit_text_size_adjust -> [ key "text-size-adjust" ]
   | Transition | Webkit_transition | Moz_transition | O_transition ->
       transition_keys
   | Transition_property | Webkit_transition_property | Moz_transition_property
@@ -622,14 +640,14 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "mask-composite";
         key "mask-border";
       ]
-  | Mask_image -> [ key "mask-image" ]
-  | Mask_repeat -> [ key "mask-repeat" ]
-  | Mask_size -> [ key "mask-size" ]
-  | Mask_position -> [ key "mask-position" ]
-  | Mask_origin -> [ key "mask-origin" ]
-  | Mask_clip -> [ key "mask-clip" ]
+  | Mask_image | Webkit_mask_image -> [ key "mask-image" ]
+  | Mask_repeat | Webkit_mask_repeat -> [ key "mask-repeat" ]
+  | Mask_size | Webkit_mask_size -> [ key "mask-size" ]
+  | Mask_position | Webkit_mask_position -> [ key "mask-position" ]
+  | Mask_origin | Webkit_mask_origin -> [ key "mask-origin" ]
+  | Mask_clip | Webkit_mask_clip -> [ key "mask-clip" ]
   | Mask_mode -> [ key "mask-mode" ]
-  | Mask_composite -> [ key "mask-composite" ]
+  | Mask_composite | Webkit_mask_composite -> [ key "mask-composite" ]
   | Mask_border -> [ key "mask-border" ]
   | Font ->
       [

@@ -388,6 +388,14 @@
   reordered under `--minify --lossless` into a rule Chrome 146 computes
   `border-bottom-style: solid` for where the source computes `dashed`, and two
   rules writing the longhand merged across an intervening `border` (#453)
+- A vendor-prefixed declaration keeps its place against the property it
+  aliases. `-webkit-transform` and the rest of the prefixed spellings cascade
+  types write the slot their unprefixed twin writes, but each named a slot of
+  its own, so the optimizer read the pair as commutative:
+  `.a{-webkit-transform:none}.b{transform:rotate(45deg)}.c{-webkit-transform:none}`
+  minified to a sheet Chrome 146 computes `transform: matrix(...)` for where
+  the source computes `none`. Whether a dead prefix is then dropped outright is
+  a Baseline question `drop_vendor_aliases` still answers on its own (#454)
 
 ### Custom properties
 
