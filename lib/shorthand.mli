@@ -37,8 +37,8 @@ val overlap_key_compare : overlap_key -> overlap_key -> int
     two footprints instead of scanning one per element of the other. *)
 
 val broad_overlap_key : overlap_key
-(** Key for broad reset-like declarations, such as [all], that may overlap any
-    other non-exempt declaration. *)
+(** Key for a declaration that may overlap any other non-exempt declaration: a
+    reset such as [all], or a property name the footprint model cannot place. *)
 
 val overlap_keys_intersect : overlap_key list -> overlap_key list -> bool
 (** [overlap_keys_intersect a b] is [true] when two precomputed declaration

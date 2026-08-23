@@ -438,13 +438,13 @@ let property_slots : type a. a Properties.property -> overlap_key list =
       ]
   | Background_attachment -> [ key "background-attachment" ]
   | Background_blend_mode -> [ key "background-blend-mode" ]
-  | Background_clip -> [ key "background-clip" ]
+  | Background_clip | Webkit_background_clip -> [ key "background-clip" ]
   | Background_color -> [ key "background-color" ]
   | Background_image -> [ key "background-image" ]
   | Background_origin -> [ key "background-origin" ]
   | Background_position -> [ key "background-position" ]
   | Background_repeat -> [ key "background-repeat" ]
-  | Background_size -> [ key "background-size" ]
+  | Background_size | Webkit_background_size -> [ key "background-size" ]
   | Flex -> [ key "flex-grow"; key "flex-shrink"; key "flex-basis" ]
   | Flex_grow -> [ key "flex-grow" ]
   | Flex_shrink -> [ key "flex-shrink" ]
@@ -455,7 +455,25 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   (* A vendor-prefixed spelling is an alias of the unprefixed property in every
      engine that supports it - [deduplicate_declarations] already drops the
      prefixed copy of an identical twin - so it writes the same cascade slots
-     and carries the same footprint. *)
+     and carries the same footprint. The prefixed vocabulary need not match the
+     unprefixed one - [-webkit-mask-composite] spells [xor] where
+     [mask-composite] spells [exclude] - since the slot is named by the property
+     and not by the value. *)
+  | Transform | Webkit_transform | Moz_transform | Ms_transform | O_transform ->
+      [ key "transform" ]
+  | Appearance | Webkit_appearance | Moz_appearance -> [ key "appearance" ]
+  | Box_shadow | Webkit_box_shadow | Moz_box_shadow -> [ key "box-shadow" ]
+  | Box_sizing | Webkit_box_sizing | Moz_box_sizing -> [ key "box-sizing" ]
+  | User_select | Webkit_user_select | Moz_user_select | Ms_user_select ->
+      [ key "user-select" ]
+  | Filter | Webkit_filter | Ms_filter -> [ key "filter" ]
+  | Backdrop_filter | Webkit_backdrop_filter -> [ key "backdrop-filter" ]
+  | Box_decoration_break | Webkit_box_decoration_break ->
+      [ key "box-decoration-break" ]
+  | Hyphens | Webkit_hyphens -> [ key "hyphens" ]
+  | Print_color_adjust | Webkit_print_color_adjust ->
+      [ key "print-color-adjust" ]
+  | Text_size_adjust | Webkit_text_size_adjust -> [ key "text-size-adjust" ]
   | Transition | Webkit_transition | Moz_transition | O_transition ->
       transition_keys
   | Transition_property | Webkit_transition_property | Moz_transition_property
@@ -622,14 +640,14 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "mask-composite";
         key "mask-border";
       ]
-  | Mask_image -> [ key "mask-image" ]
-  | Mask_repeat -> [ key "mask-repeat" ]
-  | Mask_size -> [ key "mask-size" ]
-  | Mask_position -> [ key "mask-position" ]
-  | Mask_origin -> [ key "mask-origin" ]
-  | Mask_clip -> [ key "mask-clip" ]
+  | Mask_image | Webkit_mask_image -> [ key "mask-image" ]
+  | Mask_repeat | Webkit_mask_repeat -> [ key "mask-repeat" ]
+  | Mask_size | Webkit_mask_size -> [ key "mask-size" ]
+  | Mask_position | Webkit_mask_position -> [ key "mask-position" ]
+  | Mask_origin | Webkit_mask_origin -> [ key "mask-origin" ]
+  | Mask_clip | Webkit_mask_clip -> [ key "mask-clip" ]
   | Mask_mode -> [ key "mask-mode" ]
-  | Mask_composite -> [ key "mask-composite" ]
+  | Mask_composite | Webkit_mask_composite -> [ key "mask-composite" ]
   | Mask_border -> [ key "mask-border" ]
   | Font ->
       [
@@ -969,11 +987,6 @@ let rec overlap_keys_intersect a b =
   | footprint :: rest ->
       footprint_mem footprint b || overlap_keys_intersect rest b
 
-let declaration_overlap_keys decl =
-  match unwrap_theme_guard decl with
-  | Declaration { property; _ } -> property_footprint property
-  | _ -> [ key (Declaration.property_name decl) ]
-
 (* The families whose footprints spell out every longhand name the model knows.
    Every arm of [property_footprint] not listed here has a footprint that is a
    subset of one of these. Grouped only to keep each list short. *)
@@ -1111,6 +1124,18 @@ let name_extends other name =
   String.length name > n
   && String.starts_with ~prefix:other name
   && Char.equal name.[n] '-'
+
+(* A name the model cannot place takes the broad key, not a key naming itself:
+   [declarations_overlap_with_keys] treats it as touching whatever it meets, and
+   a footprint naming only itself let a caller's key prefilter judge the pair
+   disjoint and rule the real test out. *)
+let declaration_overlap_keys decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = Unknown_property name; _ }
+    when not (unknown_name_is_placeable name) ->
+      [ broad_overlap_key ]
+  | Declaration { property; _ } -> property_footprint property
+  | _ -> [ key (Declaration.property_name decl) ]
 
 let declarations_overlap_with_keys a a_keys b b_keys =
   match (unwrap_theme_guard a, unwrap_theme_guard b) with
