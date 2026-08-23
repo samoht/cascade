@@ -2450,6 +2450,37 @@ let aba_forbidden_intersection_dependency () =
     ".a.x{color:red}.b.x{color:#00f}.a.y{color:red}"
     (optimized_string ".a.x{color:red}.b.x{color:blue}.a.y{color:red}")
 
+let vendor_alias_pins_intervening_rule () =
+  (* A?B?A across a vendor alias: the prefixed spelling writes the slot its
+     unprefixed twin writes, so for an element matching [.b] and [.c] source
+     order decides the winner. Grouping [.a] with [.c] moves the prefixed
+     declaration in front of [.b] and flips it. Chrome 146 computes [transform:
+     none] for the first sheet below and [matrix(...)] once the pair is grouped;
+     Safari 26.5 agrees, and answers the same for [-webkit-hyphens], which
+     Chrome does not implement. *)
+  Alcotest.(check string)
+    "a prefixed transform is not grouped across its unprefixed twin"
+    ".a{-webkit-transform:none}.b{transform:rotate(45deg)}.c{-webkit-transform:none}"
+    (optimized_string
+       ".a{-webkit-transform:none}.b{transform:rotate(45deg)}.c{-webkit-transform:none}");
+  Alcotest.(check string)
+    "a prefixed hyphens is not grouped across its unprefixed twin"
+    ".a{-webkit-hyphens:none}.b{hyphens:auto}.c{-webkit-hyphens:none}"
+    (optimized_string
+       ".a{-webkit-hyphens:none}.b{hyphens:auto}.c{-webkit-hyphens:none}");
+  Alcotest.(check string)
+    "a prefixed mask longhand is not grouped across its unprefixed twin"
+    ".a{-webkit-mask-size:auto}.b{mask-size:cover}.c{-webkit-mask-size:auto}"
+    (optimized_string
+       ".a{-webkit-mask-size:auto}.b{mask-size:cover}.c{-webkit-mask-size:auto}");
+  (* A prefix names one slot, not its whole family, so an unrelated intervening
+     declaration still leaves the pair free to group. *)
+  Alcotest.(check string)
+    "a prefixed transform still groups across an unrelated declaration"
+    ".a,.c{-webkit-transform:none}.b{color:red}"
+    (optimized_string
+       ".a{-webkit-transform:none}.b{color:red}.c{-webkit-transform:none}")
+
 let c63_group_across_higher_specificity () =
   (* CSS Cascade 5 sec. 6.3: among the same origin, layer, and importance higher
      specificity wins regardless of source order; only a specificity tie defers
@@ -4829,6 +4860,9 @@ let selector_merging_tests =
     ( "A?B?A forbidden selector-intersection dependency",
       `Quick,
       aba_forbidden_intersection_dependency );
+    ( "vendor alias pins an intervening rule",
+      `Quick,
+      vendor_alias_pins_intervening_rule );
     ( "group equal rules across higher-specificity intervening rule",
       `Quick,
       c63_group_across_higher_specificity );

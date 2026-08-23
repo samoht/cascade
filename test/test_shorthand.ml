@@ -95,7 +95,61 @@ let test_vendor_alias_overlap () =
     "a prefixed text-decoration overlaps its unprefixed longhand" true
     (Shorthand.declarations_overlap
        (decl "-webkit-text-decoration:underline")
-       (decl "text-decoration-color:red"))
+       (decl "text-decoration-color:red"));
+  (* The whole alias family, one row per unprefixed twin the model types. A
+     prefix an engine does not implement makes the declaration invalid there,
+     which no ordering can be wrong about, so the relation follows the engine
+     that does implement it: Blink and WebKit for [-webkit-], Gecko for [-moz-],
+     Trident for [-ms-] and Presto for [-o-]. *)
+  List.iter
+    (fun (vendor, twin) ->
+      Alcotest.(check bool)
+        (String.concat " " [ vendor; "overlaps"; twin ])
+        true
+        (Shorthand.declarations_overlap (decl vendor) (decl twin)))
+    [
+      ("-webkit-transform:none", "transform:rotate(45deg)");
+      ("-moz-transform:none", "transform:rotate(45deg)");
+      ("-ms-transform:none", "transform:rotate(45deg)");
+      ("-o-transform:none", "transform:rotate(45deg)");
+      ("-webkit-appearance:none", "appearance:auto");
+      ("-moz-appearance:none", "appearance:auto");
+      ("-webkit-box-shadow:none", "box-shadow:0 0 1px red");
+      ("-moz-box-shadow:none", "box-shadow:0 0 1px red");
+      ("-webkit-box-sizing:content-box", "box-sizing:border-box");
+      ("-moz-box-sizing:content-box", "box-sizing:border-box");
+      ("-webkit-user-select:none", "user-select:text");
+      ("-moz-user-select:none", "user-select:text");
+      ("-ms-user-select:none", "user-select:text");
+      ("-webkit-filter:none", "filter:blur(1px)");
+      ("-ms-filter:none", "filter:blur(1px)");
+      ("-webkit-backdrop-filter:none", "backdrop-filter:blur(1px)");
+      ("-webkit-background-clip:border-box", "background-clip:content-box");
+      ("-webkit-background-size:auto", "background-size:cover");
+      ("-webkit-box-decoration-break:slice", "box-decoration-break:clone");
+      ("-webkit-hyphens:none", "hyphens:auto");
+      ("-webkit-mask-clip:border-box", "mask-clip:content-box");
+      ("-webkit-mask-composite:xor", "mask-composite:subtract");
+      ("-webkit-mask-image:none", "mask-image:linear-gradient(red,blue)");
+      ("-webkit-mask-origin:border-box", "mask-origin:content-box");
+      ("-webkit-mask-position:0 0", "mask-position:10px 20px");
+      ("-webkit-mask-repeat:repeat", "mask-repeat:no-repeat");
+      ("-webkit-mask-size:auto", "mask-size:cover");
+      ("-webkit-print-color-adjust:economy", "print-color-adjust:exact");
+      ("-webkit-text-size-adjust:none", "text-size-adjust:200%");
+    ];
+  (* Aliasing a prefix to its twin joins those two slots and no others: a
+     prefixed longhand still misses the rest of its own family. *)
+  Alcotest.(check bool)
+    "a prefixed mask image and an unprefixed mask size are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "-webkit-mask-image:none")
+       (decl "mask-size:cover"));
+  Alcotest.(check bool)
+    "a prefixed transform and an unrelated property are disjoint" false
+    (Shorthand.declarations_overlap
+       (decl "-webkit-transform:none")
+       (decl "color:red"))
 
 let test_shorthand_reset_boundaries () =
   (* CSS UI 4 sec. 3.1: [outline] resets width, style and colour, and leaves
