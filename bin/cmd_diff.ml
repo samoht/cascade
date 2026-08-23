@@ -12,19 +12,6 @@ let err_depth s =
 let read_file path =
   try Ok (Cli_io.read_file path) with Sys_error msg -> err_read path msg
 
-let no_color_var = "NO_COLOR"
-
-let no_color_env =
-  Cmd.Env.info no_color_var
-    ~doc:
-      "When set to a non-empty value, disable colour output (see \
-       https://no-color.org/). Overrides $(b,--color) and $(b,CASCADE_COLOR)."
-
-let resolve_style_renderer style_renderer =
-  match Sys.getenv_opt no_color_var with
-  | Some s when s <> "" -> Some `None
-  | _ -> style_renderer
-
 let run_diff mode ~lossless ~prune_unused_custom_props ~css1 ~css2 =
   let mode =
     match mode with
@@ -129,13 +116,10 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~depth ~mode result =
 
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
-let compare_files file1 file2 style_renderer mode depth opts () =
-  Fmt_tty.setup_std_outputs
-    ?style_renderer:(resolve_style_renderer style_renderer)
-    ();
+let compare_files file1 file2 mode depth opts () =
   (* The report is built in a plain buffer, so the diff printers cannot see the
-     tty; resolve the colour decision Fmt_tty just made (tty detection, --color,
-     CASCADE_COLOR, NO_COLOR) and pass it down. *)
+     tty; resolve the colour decision Observe just made (tty detection, --color,
+     NO_COLOR) and pass it down. *)
   let color =
     match Fmt.style_renderer Fmt.stdout with
     | `Ansi_tty -> true
@@ -248,23 +232,14 @@ let prune_unused_custom_props_arg =
 
 let term =
   let open Term in
-  let style_renderer_with_env =
-    Fmt_cli.style_renderer
-      ~env:
-        (Cmd.Env.info "CASCADE_COLOR"
-           ~doc:
-             "Set to $(b,auto), $(b,always), or $(b,never) to control colour \
-              output, like $(b,--color) (overridden by $(b,NO_COLOR)).")
-      ()
-  in
   let canonical_opts =
     const (fun lossless prune_unused_custom_props ->
         { lossless; prune_unused_custom_props })
     $ lossless_arg $ prune_unused_custom_props_arg
   in
   term_result
-    (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ depth_arg $ canonical_opts $ Cli_log.term)
+    (const compare_files $ file1_arg $ file2_arg $ mode_arg $ depth_arg
+   $ canonical_opts $ Observe.setup "cascade")
 
 let man =
   [
@@ -324,4 +299,4 @@ let man =
 
 let cmd =
   let doc = "Compare two CSS files with structural analysis" in
-  Cmd.v (Cmd.info "diff" ~doc ~man ~envs:[ no_color_env ]) term
+  Cmd.v (Cmd.info "diff" ~doc ~man) term

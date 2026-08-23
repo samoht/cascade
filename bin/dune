@@ -1,14 +1,4 @@
 (executable
  (public_name cascade)
  (name main)
- (libraries
-  cascade
-  cascade.info
-  cascade.diff
-  cmdliner
-  fmt
-  fmt.cli
-  fmt.tty
-  logs
-  logs.fmt
-  markup))
+ (libraries cascade cascade.info cascade.diff cmdliner fmt markup observe))

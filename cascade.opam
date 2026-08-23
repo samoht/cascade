@@ -28,6 +28,7 @@ depends: [
   "uri"
   "psq"
   "logs"
+  "observe"
   "cmdliner" {>= "1.1.0"}
   "odoc" {with-doc}
 ]

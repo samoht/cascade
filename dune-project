@@ -33,4 +33,5 @@
   uri
   psq
   logs
+  observe
   (cmdliner (>= 1.1.0))))

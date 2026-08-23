@@ -457,6 +457,20 @@ A fourth corpus, [SatCSS](test/interop/satcss/) (Hague-Lin-Hong's CSS
 minification benchmark), is regenerated locally and not vendored: the upstream
 repository carries no licence for redistributing the website CSS snapshots.
 
+### Profiling with `obs`
+
+The `add-observe` branch deliberately links the unreleased `observe` package
+and is not intended for merging. It exists so a current cascade binary can be
+captured and its saved run inspected. Build it in an opam switch populated
+from the Observe development monorepo, then run:
+
+<!-- $MDX skip -->
+```sh
+dune build
+obs run -- _build/default/bin/main.exe fmt --minify stylesheet.css
+obs report latest
+```
+
 ## References
 
 **Other CSS tooling.** [Lightning CSS](https://github.com/parcel-bundler/lightningcss)
