@@ -337,6 +337,28 @@ let graph_build_is_subcubic () =
     true
     (a1 = 0. || a2 < a1 *. 6.)
 
+(* Two rules whose selectors can never tie on specificity are never
+   order-constrained, whatever they write, so padding a run with rules at a
+   second specificity adds no dependency to discover: twice the rules may cost
+   about twice as much, not four times. Every rule below writes the same
+   declaration, so neither run has an edge to build and what is left is the
+   pairwise candidate enumeration. *)
+let second_specificity_costs_no_pair () =
+  let sheet_of rules = rules_of (String.concat "" rules) in
+  let n = 300 in
+  let one_class = sheet_of (List.init n (Fmt.str ".c%d{color:red}")) in
+  let two_classes =
+    sheet_of (List.init n (fun i -> Fmt.str ".d%d.e%d{color:red}" i i))
+  in
+  let padded = one_class @ two_classes in
+  let a1 = measure (fun () -> Rule_graph.of_rules one_class) in
+  let a2 = measure (fun () -> Rule_graph.of_rules padded) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N at a second specificity)" a1 a2
+       (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.5)
+
 (* A single transaction rebuilds graph state once: its allocation grows at most
    linearly with the live node count, never with the number of edges. *)
 let try_rewrite_is_subquadratic () =
@@ -408,4 +430,6 @@ let suite =
         graph_build_is_subcubic;
       Alcotest.test_case "try_rewrite is sub-quadratic" `Quick
         try_rewrite_is_subquadratic;
+      Alcotest.test_case "a second specificity costs no pair" `Quick
+        second_specificity_costs_no_pair;
     ] )
