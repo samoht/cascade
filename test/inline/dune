@@ -6,10 +6,10 @@
  (name canon_filter)
  (libraries cascade cascade_diff))
 
-; The self-stability control is what licenses every count run.sh prints, so it
-; is checked on every machine rather than only where a browser is installed:
-; test_selfcheck.sh drives run.sh through a stub browser that is unstable on
-; demand. It skips, with status 0, when node is missing.
+; The controls that license every count run.sh prints are checked on every
+; machine rather than only where a browser is installed: test_selfcheck.sh
+; drives run.sh through a stub browser that is unstable on demand. It skips,
+; with status 0, when node is missing.
 
 (rule
  (alias runtest)

@@ -119,13 +119,40 @@ check() { # label before after
        fail=1 ;;
   esac
 }
-# A count means something about a transform only if the page renders the same
-# twice without one, and a fetched page does not always: one frozen by an older
-# freeze_page.js keeps the @font-face rules that swap text metrics mid-render,
-# and it then differs from itself by a few hundred computed styles on about
-# half of its runs. Measured against a transform, that reads as a defect in the
-# transform. So prove the page first, and skip it rather than report a number
-# from an instrument that is not measuring the transform.
+# A page is frozen once, at fetch time, and the freezer moves. One frozen
+# before freeze_page.js learned to strip @font-face keeps the rules that swap
+# text metrics mid-render, and it then differs from itself by a few hundred
+# computed styles on about half of its runs; measured against a transform, that
+# reads as a defect in the transform.
+#
+# Freezing is idempotent, so re-freezing a page that is current is a no-op: one
+# that changes under the freezer in the tree was frozen by a different one and
+# is stale, whatever it happens to render today. That is the deterministic half
+# of the question, and it costs milliseconds, so ask it first.
+frozen_now() { # label file
+  refrozen=$(mktemp)
+  # A freezer that will not run would mark every page stale, which reads as a
+  # fetch.sh away from a working harness and is not. Stop, as a broken
+  # canonical filter does.
+  if ! node "$dir/freeze_page.js" "$2" "$refrozen"; then
+    rm -f "$refrozen"
+    echo "ERROR: freeze_page.js failed on $2, so no page can be checked" >&2
+    exit 1
+  fi
+  if cmp -s "$2" "$refrozen"; then rm -f "$refrozen"; return 0; fi
+  rm -f "$refrozen"
+  echo "UNUSABLE $1"
+  echo "     frozen by an older freeze_page.js, so what it renders is not"
+  echo "     what it will render; re-run fetch.sh"
+  fail=1
+  return 1
+}
+# The other half: a count means something about a transform only if the page
+# renders the same twice without one. Two renders catch only a page that is
+# unstable on those two renders, which is why the check above is not enough on
+# its own, but they catch instability the freezer does not know about. Prove
+# the page before measuring it, and skip it rather than report a number from an
+# instrument that is measuring something else.
 selfstable() { # label file
   report=$(node "$dir/xtest.js" --self "$2" 2>&1)
   case $report in
@@ -189,12 +216,13 @@ done
 # carries selectors and feature queries no fixture does, so a minify defect
 # that only a real page reaches goes unmeasured until the leg exists.
 #
-# The self-stability check is on the pages alone. A fixture is committed and
-# changes only under review; a page arrives off the network and goes stale on
-# its own, which is the way this has failed.
+# Both checks are on the pages alone. A fixture is committed and changes only
+# under review; a page arrives off the network and goes stale on its own, which
+# is the way this has failed.
 for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
   page="$(basename "$f")@$(sha "$f")"
+  frozen_now "real $page" "$f" || continue
   selfstable "real $page" "$f" || continue
   tmp=$(mktemp)
   label="real $page minimal"

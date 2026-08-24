@@ -55,6 +55,15 @@ run would otherwise hand that list to whichever transform it was measuring.
 Fixtures are exempt: they are committed and change only under review, where a
 page arrives off the network and goes stale on its own.
 
+Two renders catch a page that is unstable on those two, which is not the same
+as catching an unstable page: a `tailwind.html` frozen before the freezer
+learned to strip `@font-face` differed from itself on three self-checks in
+eight. So the run also re-freezes each page and requires that to be a no-op.
+`freeze_page.js` is idempotent, so a page it still changes was frozen by an
+older one and is stale whatever it renders today. That question is
+deterministic and costs milliseconds, so it is asked first, and `fetch.sh` is
+the answer to it.
+
 ## What a count is comparable to
 
 Repeating on one machine is half of it. A count also has to say what produced
