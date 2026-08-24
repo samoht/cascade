@@ -77,3 +77,25 @@ module String = struct
   let lowercase_ascii_preserve s =
     if is_ascii_lower_or_digit s then s else Stdlib.String.lowercase_ascii s
 end
+
+let mix_int acc x = ((acc lsl 5) - acc) lxor x
+
+(* [String.iter] would allocate a closure over the accumulator ref on every
+   call; the loop carries it in a parameter instead. *)
+let hash_string s =
+  let n = String.length s in
+  let rec go acc i =
+    if i >= n then acc
+    else go (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
+  in
+  go 0x811c9dc5 0
+
+module Table = struct
+  module Make (H : Hashtbl.HashedType) = struct
+    include Hashtbl.Make (H)
+
+    let push tbl key value =
+      let prev = find_opt tbl key |> Option.value ~default:[] in
+      replace tbl key (value :: prev)
+  end
+end

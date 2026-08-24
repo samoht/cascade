@@ -46,29 +46,19 @@ let merge_selector_list = Merge.selector_list
 let contains_vendor_pseudo_element = Merge.vendor
 let selectors_compatible = Merge.compatible
 let decls_size = Size.decls
-let mix_int acc x = ((acc lsl 5) - acc) lxor x
+let mix_int = Common.mix_int
+let hash_string = Common.hash_string
 let hash_bool = function false -> 0 | true -> 1
-
-(* [String.iter] would allocate a closure over the accumulator ref on every
-   call; the loop carries it in a parameter instead. *)
-let hash_string s =
-  let n = String.length s in
-  let rec go acc i =
-    if i >= n then acc
-    else go (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
-  in
-  go 0x811c9dc5 0
-
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
 
-module Int_table = Hashtbl.Make (struct
+module Int_table = Common.Table.Make (struct
   type t = int
 
   let equal = Int.equal
   let hash x = x land max_int
 end)
 
-module String_table = Hashtbl.Make (struct
+module String_table = Common.Table.Make (struct
   type t = string
 
   let equal = String.equal
@@ -193,14 +183,6 @@ let pairwise_compatible rules =
 let can_group_selectors rules = pairwise_compatible rules
 let body_equal_key g id = Rule_graph.declaration_body_key g id
 let body_bucket_key g id = body_equal_key g id |> hash_ints
-
-let add_int_bucket tbl key value =
-  let prev = Int_table.find_opt tbl key |> Option.value ~default:[] in
-  Int_table.replace tbl key (value :: prev)
-
-let add_string_bucket tbl key value =
-  let prev = String_table.find_opt tbl key |> Option.value ~default:[] in
-  String_table.replace tbl key (value :: prev)
 
 let touching_set = function
   | Option.None -> Option.None
@@ -645,7 +627,7 @@ let identical_body_candidates ?size_cache ?touching ~ctx ~finalize g =
   List.iter
     (fun (id, rule) ->
       if identical_body_eligible ~ctx rule && rule.declarations <> [] then
-        add_int_bucket buckets (body_bucket_key g id) id)
+        Int_table.push buckets (body_bucket_key g id) id)
     (live_rules g);
   let candidates = ref [] in
   Int_table.iter
@@ -710,7 +692,7 @@ let same_selector_candidates ?size_cache ?touching ~finalize g =
   List.iter
     (fun (id, rule) ->
       if same_selector_eligible rule then
-        add_int_bucket buckets (selector_key_hash rule) id)
+        Int_table.push buckets (selector_key_hash rule) id)
     (live_rules g);
   let candidates = ref [] in
   Int_table.iter
@@ -1425,7 +1407,7 @@ let selector_rank = Rule_graph.Node_id.to_int
 let add_single_selector_receivers receivers id rule =
   match single_selector_branch_key rule with
   | Option.None -> ()
-  | Option.Some key -> add_string_bucket receivers key id
+  | Option.Some key -> String_table.push receivers key id
 
 let remaining_selector_branches ~removed_key selectors =
   List.filter

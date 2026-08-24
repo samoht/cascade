@@ -231,12 +231,6 @@ type overlap_key = int
 let overlap_key_equal = Int.equal
 let overlap_key_compare = Int.compare
 let overlap_key_hash key = key land max_int
-let mix_int acc x = ((acc lsl 5) - acc) lxor x
-
-let hash_string s =
-  let hash = ref 0x811c9dc5 in
-  String.iter (fun c -> hash := mix_int !hash (Char.code c)) s;
-  !hash
 
 let overlap_key_of_name name =
   (* Hash collisions only add conservative ordering edges. They cannot make two

@@ -21,7 +21,7 @@ module Key_tbl = Hashtbl.Make (struct
   let hash = Shorthand.overlap_key_hash
 end)
 
-module String_table = Hashtbl.Make (String)
+module String_table = Common.Table.Make (String)
 
 module Node_id = struct
   type t = int
@@ -264,7 +264,7 @@ end)
 
 (* Packed specificities, so the bucket index is keyed by an immediate rather
    than by a record a generic table would hash and compare field by field. *)
-module Spec_table = Hashtbl.Make (struct
+module Spec_table = Common.Table.Make (struct
   type t = int
 
   let equal = Int.equal
@@ -357,22 +357,14 @@ let spec_bucket bucket key =
       Overlap_key_table.replace bucket key inner;
       inner
 
-let add_spec_bucket bucket spec value =
-  let prev = Spec_table.find_opt bucket spec |> Option.value ~default:[] in
-  Spec_table.replace bucket spec (value :: prev)
-
 let rec add_spec_buckets bucket value = function
   | [] -> ()
   | spec :: rest ->
-      add_spec_bucket bucket spec value;
+      Spec_table.push bucket spec value;
       add_spec_buckets bucket value rest
 
 let add_bucket bucket key specs value =
   add_spec_buckets (spec_bucket bucket key) value specs
-
-let add_string_bucket bucket key value =
-  let prev = String_table.find_opt bucket key |> Option.value ~default:[] in
-  String_table.replace bucket key (value :: prev)
 
 (* [seen] is a per-target stamp array indexed by node id: [seen.(i) = stamp]
    means node [i] is already a candidate for the current target. The target's
@@ -448,7 +440,7 @@ let source_order_edges t =
       candidates;
     List.iter (fun key -> add_bucket by_decl_key key specs j) keys;
     List.iter
-      (fun branch -> add_string_bucket by_branch branch j)
+      (fun branch -> String_table.push by_branch branch j)
       t.branches.(j);
     add_spec_buckets by_spec j specs
   done;
@@ -1076,7 +1068,7 @@ let add_produced_edges t ~consume ~total ~produced_count graph succ =
         | [] ->
             List.iter (fun key -> add_bucket by_decl_key key specs right) keys;
             List.iter
-              (fun branch -> add_string_bucket by_branch branch right)
+              (fun branch -> String_table.push by_branch branch right)
               graph.branches.(right);
             add_spec_buckets by_spec right specs;
             loop (pi + 1)

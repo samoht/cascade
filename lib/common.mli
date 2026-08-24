@@ -40,3 +40,22 @@ module String : sig
       [Stdlib.String.lowercase_ascii s]. CSS identifiers are overwhelmingly in
       that set, so this avoids the [Bytes.map] allocation for them. *)
 end
+
+val mix_int : int -> int -> int
+(** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)
+
+val hash_string : string -> int
+(** [hash_string s] hashes the bytes of [s] with {!mix_int}. Callers combine the
+    result with other hashes through {!mix_int}, so both sides of a bucket key
+    must come from the same pair of functions. *)
+
+(** Hash tables whose bindings are lists used as buckets. *)
+module Table : sig
+  module Make (H : Hashtbl.HashedType) : sig
+    include Hashtbl.S with type key = H.t
+
+    val push : 'a list t -> key -> 'a -> unit
+    (** [push tbl key value] prepends [value] to the list bound to [key], or
+        binds the singleton [[value]] when [key] is absent. *)
+  end
+end
