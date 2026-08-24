@@ -734,6 +734,39 @@ let borders () =
   check_declaration ~expected:"border-left-color:yellow"
     ~optimized:"border-left-color:#ff0" "border-left-color: yellow"
 
+let logical_border_shorthands () =
+  (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
+     border-inline-start and border-inline-end take <'border-top-width'> ||
+     <'border-top-style'> || <'border-top-color'>. sec. 4.4.2: border-block and
+     border-inline take <'border-block-start'>. Chrome 151 accepts every vector
+     below and reports the same serialisation. *)
+  check_declaration ~expected:"border-inline:1px solid red"
+    "border-inline: 1px solid red";
+  check_declaration ~expected:"border-inline-start:2px dashed red"
+    "border-inline-start: 2px dashed red";
+  check_declaration ~expected:"border-inline-end:3px dotted red"
+    "border-inline-end: 3px dotted red";
+  check_declaration ~expected:"border-block-start:4px double red"
+    "border-block-start: 4px double red";
+  check_declaration ~expected:"border-block-end:5px groove red"
+    "border-block-end: 5px groove red";
+  (* The || combinator makes each component optional and order-free; the
+     serialisation is width, style, colour. *)
+  check_declaration ~expected:"border-inline:solid" "border-inline: solid";
+  check_declaration ~expected:"border-inline:1px" "border-inline: 1px";
+  check_declaration ~expected:"border-block-start:medium"
+    "border-block-start: medium";
+  check_declaration ~expected:"border-inline:1px solid red"
+    "border-inline: red 1px solid";
+  (* A second width is not in the grammar; Chrome drops the declaration. *)
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "border-inline: 1px solid red 2px";
+      "border-inline-start: 1px solid red 2px";
+      "border-block-end: 1px solid red 2px";
+    ]
+
 let overflow () =
   check_declaration ~expected:"overflow:visible" "overflow: visible";
   check_declaration ~expected:"overflow:visible!important"
@@ -2995,6 +3028,7 @@ let declaration_tests =
     test_case "flexbox flex+basis" `Quick flexbox_flex_and_basis;
     test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
+    test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;
     test_case "animations (state)" `Quick animations_state;
