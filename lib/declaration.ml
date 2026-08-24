@@ -32,8 +32,8 @@ let theme_guarded ~var_name decl =
 
 (* Read the cached structural hash. Two declarations that minify to the same
    text always produce the same value here; the converse may fail on hash
-   collisions, so callers still confirm equality with [=] before treating two
-   declarations as equal. *)
+   collisions, so callers still confirm with [equal_declaration] before treating
+   two declarations as equal. *)
 let hash = function
   | Declaration { hash; _ } -> hash
   | Theme_guarded { hash; _ } -> hash
@@ -522,7 +522,14 @@ let rec property_name decl =
    property name" directly - no [Pp], no [Obj.repr]. *)
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
-let equal_declaration (a : declaration) b = a = b
+(* The pack hides the value's type, so nothing witnesses a per-property
+   comparison and the value is compared by walking its representation - the same
+   walk [v] hashes. That walk has to be [compare], not [(=)]: IEEE leaves a NaN
+   equal to nothing, itself included, so [(=)] read [opacity:calc(NaN)] as
+   different from itself while [hash], which normalises NaN, read it as the
+   same. CSS has one NaN, a parse-time keyword of the <number> grammar (Values 4
+   sec. 10.7.2) serialised as calc(NaN) (sec. 10.13). *)
+let equal_declaration (a : declaration) b = Stdlib.compare a b = 0
 let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
