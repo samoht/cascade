@@ -1036,6 +1036,56 @@ let spec_qualified_custom_prop () =
       Alcotest.fail
         "expected custom-property-shaped qualified rule to be discarded"
 
+let spec_qualified_custom_prop_warns () =
+  (* CSS Syntax Level 3 section 5.5.3 makes the custom-property-shaped prelude
+     invalid on purpose, so the rule is dropped rather than reinterpreted.
+     {!Css.of_string} promises warnings for "rules that were dropped", so the
+     drop has to be reported like any other. *)
+  let input = "--x:hover { color: red }" in
+  let out = Parser.stylesheet (Reader.of_string input) in
+  Alcotest.(check int) "rule dropped" 0 (List.length out.value);
+  (match out.warnings with
+  | [
+   {
+     sort = Sort.Qualified_rule;
+     kind =
+       Error.Sort_mismatch
+         { expected = Sort.Selector; found = Sort.Declaration };
+     _;
+   };
+  ] ->
+      ()
+  | ws ->
+      Alcotest.failf "expected one custom-property drop warning, got %d"
+        (List.length ws));
+  (* Strict mode collapses that warning into an error. *)
+  (match Css.of_string ~strict:true input with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "strict mode accepted a silently dropped rule");
+  (match Css.of_string input with
+  | Ok { Css.stylesheet; warnings = [ _ ] } ->
+      Alcotest.(check string)
+        "nothing survives the drop" ""
+        (Css.to_string ~minify:true stylesheet)
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "expected exactly one lenient warning, got %d"
+        (List.length warnings)
+  | Error _ -> Alcotest.fail "lenient parse must recover");
+  (* [--x; {...}] is a different shape: the ';' ends the prelude, so it keeps
+     its single existing warning instead of gaining a second one. *)
+  (match Css.of_string "--x; { color: red }" with
+  | Ok { Css.warnings = [ _ ]; _ } -> ()
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "expected exactly one warning for the ';' shape, got %d"
+        (List.length warnings)
+  | Error _ -> Alcotest.fail "lenient parse must recover");
+  (* A valid rule stays warning-free in both modes. *)
+  match Css.of_string ~strict:true ".a { color: red }" with
+  | Ok { Css.warnings = []; _ } -> ()
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "valid rule warned %d times" (List.length warnings)
+  | Error _ -> Alcotest.fail "valid rule rejected in strict mode"
+
 (* ----- Component values ----- *)
 
 let component_value_block () =
@@ -1453,6 +1503,8 @@ let suite =
         spec_qualified_rule_branches;
       Alcotest.test_case "spec section 5.5.3 custom property rule ambiguity"
         `Quick spec_qualified_custom_prop;
+      Alcotest.test_case "spec section 5.5.3 custom property rule warns" `Quick
+        spec_qualified_custom_prop_warns;
       Alcotest.test_case "component value: block" `Quick component_value_block;
       Alcotest.test_case "component value: function" `Quick
         component_value_function;
