@@ -171,6 +171,46 @@ let to_stylesheet_string ?(minify = false) t =
 
 let pp t = to_string t
 
+(* A style query holds component values, which carry the source positions they
+   were read from, so a structural walk would call two spellings of one query
+   different. Compare what the query asks, not where it was written. *)
+let style_query_rank = function
+  | Boolean _ -> 0
+  | Declaration _ -> 1
+  | Range _ -> 2
+  | All _ -> 3
+  | Any _ -> 4
+  | Neg _ -> 5
+
+let compare_values (a : component_values) b = List.compare Component.compare a b
+let compare_range_operator (a : range_operator) b = Stdlib.compare a b
+
+let compare_style_range (r1 : style_range) (r2 : style_range) =
+  let c = String.compare r1.name r2.name in
+  if c <> 0 then c
+  else
+    let c = compare_range_operator r1.lower_op r2.lower_op in
+    if c <> 0 then c
+    else
+      let c = compare_range_operator r1.upper_op r2.upper_op in
+      if c <> 0 then c
+      else
+        let c = compare_values r1.lower r2.lower in
+        if c <> 0 then c else compare_values r1.upper r2.upper
+
+let rec compare_style_query q1 q2 =
+  match (q1, q2) with
+  | Boolean n1, Boolean n2 -> String.compare n1 n2
+  | Declaration d1, Declaration d2 ->
+      let c = String.compare d1.name d2.name in
+      if c <> 0 then c else compare_values d1.value d2.value
+  | Range r1, Range r2 -> compare_style_range r1 r2
+  | All (a1, b1), All (a2, b2) | Any (a1, b1), Any (a2, b2) ->
+      let c = compare_style_query a1 a2 in
+      if c <> 0 then c else compare_style_query b1 b2
+  | Neg a, Neg b -> compare_style_query a b
+  | _ -> Int.compare (style_query_rank q1) (style_query_rank q2)
+
 let rec compare t1 t2 =
   match (t1, t2) with
   | Min_width_rem r1, Min_width_rem r2 -> Float.compare r1 r2
@@ -178,7 +218,8 @@ let rec compare t1 t2 =
   | Named (n1, c1), Named (n2, c2) ->
       let name_cmp = String.compare n1 n2 in
       if name_cmp <> 0 then name_cmp else compare c1 c2
-  | Style { query = q1; _ }, Style { query = q2; _ } -> Stdlib.compare q1 q2
+  | Style { query = q1; _ }, Style { query = q2; _ } ->
+      compare_style_query q1 q2
   | Scroll_state { query = q1; _ }, Scroll_state { query = q2; _ } ->
       Stdlib.compare q1 q2
   | And (a1, b1), And (a2, b2) ->

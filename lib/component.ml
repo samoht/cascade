@@ -37,7 +37,33 @@ type rule = Qualified of qualified_rule | At of at_rule
 type declaration_body = { name : string; value : t list; important : bool }
 type declaration = declaration_body node
 
-let equal (a : t) b = a = b
+(* A {!Loc.t} records where a node was read, not what it holds, so two nodes
+   that spell the same component value are the same value however far apart the
+   source wrote them. *)
+let rank = function Preserved _ -> 0 | Block _ -> 1 | Func _ -> 2
+
+let rec compare (a : t) (b : t) =
+  match (a, b) with
+  | Preserved t1, Preserved t2 -> Token.compare_kind t1.kind t2.kind
+  | Block b1, Block b2 -> compare_block b1.node b2.node
+  | Func f1, Func f2 -> compare_func f1.node f2.node
+  | (Preserved _ | Block _ | Func _), _ -> Int.compare (rank a) (rank b)
+
+and compare_block (b1 : block) (b2 : block) =
+  let c = Token.compare_bracket b1.opening b2.opening in
+  if c <> 0 then c
+  else
+    let c = Bool.compare b1.closed b2.closed in
+    if c <> 0 then c else List.compare compare b1.value b2.value
+
+and compare_func (f1 : func) (f2 : func) =
+  let c = String.compare f1.name f2.name in
+  if c <> 0 then c
+  else
+    let c = Bool.compare f1.terminated f2.terminated in
+    if c <> 0 then c else List.compare compare f1.arguments f2.arguments
+
+let equal a b = compare a b = 0
 
 let source_loc : t -> Loc.t = function
   | Preserved tok -> tok.Token.loc

@@ -200,6 +200,11 @@ answers.
 
 ### Minification
 
+- `--minify` merges adjacent `@container` blocks whose `style()` conditions
+  are written the same way. The comparison reached the source byte offsets
+  every token carries, so two byte-identical `style(--x: 1)` queries never
+  compared equal and their blocks stayed separate, while size queries and the
+  bare `style(--x)` form already merged (#465)
 - `--minify` keeps the `center` in `position-area: top center`. A lone keyword
   stands for `X span-all`, not `X center`, so dropping it moved the box to a
   different area (#457)
