@@ -187,6 +187,77 @@ let test_roundtrip () =
       Alcotest.(check string) ("roundtrip: " ^ s) s (to_string parsed))
     cases
 
+(* [property] takes authored CSS text, so a pair it accepts has to write back as
+   the one feature test it names. css-conditional-3 sec. 2.2 gives
+   [<supports-decl>] the grammar [( <declaration> )], and CSS Syntax 3 sec. 8.2
+   keeps out of a [<declaration-value>] any unmatched closing bracket, any
+   top-level [;], and any [<bad-string-token>] or [<bad-url-token>]. Written
+   between the feature's own parentheses such a value closes them, and the tail
+   becomes a second branch of the condition: Chrome answers
+   [CSS.supports("color", "red) or (color:blue")] false while the emitted
+   [(color:red) or (color:blue)] is true, so the rules it guards apply. CSS
+   Syntax 3 sec. 4.3.6 returns the [<url-token>] at end of input, so [url(foo]
+   is the value [url(foo)] is. *)
+let property_guard () =
+  (* Print the condition into a stylesheet and read the stylesheet back. The
+     answer comes from the round-trip, not from a pinned spelling. *)
+  let body =
+    [ Css.rule ~selector:(Css.Selector.class_ "a") [ Css.color (Named Red) ] ]
+  in
+  let build name value =
+    match property name value with
+    | exception Failure _ -> "<refused>"
+    | cond -> (
+        let text =
+          Css.to_string ~minify:true
+            (Css.v [ Css.Stylesheet.Supports (cond, body) ])
+        in
+        match Css.of_string ~strict:false text with
+        | Error _ -> String.concat "" [ text; " reads back as <unparsable>" ]
+        | Ok { Css.stylesheet = [ Css.Stylesheet.Supports (back, [ _ ]) ]; _ }
+          when equal cond back ->
+            "<round-trips>"
+        | Ok { Css.stylesheet; _ } ->
+            String.concat ""
+              [
+                text;
+                " reads back as ";
+                Css.to_string ~minify:true (Css.v stylesheet);
+              ])
+  in
+  List.iter
+    (fun (value, expected) ->
+      Alcotest.(check string)
+        (String.concat "" [ "color:"; value ])
+        expected (build "color" value))
+    [
+      (* A [<declaration-value>]. *)
+      ("red", "<round-trips>");
+      ("rgb(1,2,3)", "<round-trips>");
+      ("\"a;b\"", "<round-trips>");
+      ("url(foo", "<round-trips>");
+      (* Not one: an unmatched closing bracket, a top-level [;], an unterminated
+         function, block or string, a [<bad-url-token>]. *)
+      ("red) or (color:blue", "<refused>");
+      ("red)", "<refused>");
+      ("red]", "<refused>");
+      ("red}", "<refused>");
+      ("red;--b:blue", "<refused>");
+      ("rgb(1,2,3", "<refused>");
+      ("{a:b", "<refused>");
+      ("\"abc", "<refused>");
+      ("url(foo bar)", "<refused>");
+    ];
+  (* The same holds for a property whose value cascade does not model, which is
+     the arm that keeps the caller's text. *)
+  List.iter
+    (fun (value, expected) ->
+      Alcotest.(check string)
+        (String.concat "" [ "wibble-prop:"; value ])
+        expected
+        (build "wibble-prop" value))
+    [ ("1", "<round-trips>"); ("1) or (color:blue", "<refused>") ]
+
 let suite =
   let open Alcotest in
   ( "supports",
@@ -205,4 +276,5 @@ let suite =
       test_case "spec conditional supports context syntax vectors" `Quick
         spec_supports_context_vectors;
       test_case "roundtrip" `Quick test_roundtrip;
+      test_case "property guard" `Quick property_guard;
     ] )
