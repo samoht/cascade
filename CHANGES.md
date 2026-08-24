@@ -180,6 +180,12 @@ answers.
   (#404)
 - `@page { @top-center { } }` no longer takes its `@page` with it. An empty
   margin box is elided on output, as an empty style rule already was (#405)
+- An at-rule cascade has no handler for reaches the output with its block
+  intact, where `cascade fmt` deleted it and every rule inside it without
+  saying so. CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its
+  at-keyword; discarding one is the user agent's step, and
+  `Optimize.drop_unknown_at_rules` serves a caller writing for a browser
+  (#469)
 
 ### Printing
 

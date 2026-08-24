@@ -3101,6 +3101,10 @@ let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
+(* CSS Syntax 3 sec. 5.4.6: an unclosed block runs to EOF, so its slice has no
+   closer to exclude and instead carries whatever [}] an unterminated nested
+   construct swallowed on the way. The serializer supplies its own closer, so
+   drop those or each round-trip stacks another one. *)
 let trim_unknown_block_body body =
   let rec trim_end i =
     if i < 0 then 0
@@ -3109,18 +3113,16 @@ let trim_unknown_block_body body =
       | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
       | _ -> i + 1
   in
-  let n = String.length body in
-  String.sub body 0 (trim_end (n - 1))
+  String.sub body 0 (trim_end (String.length body - 1))
 
-let unknown_block_body slice value =
-  match value with
-  | [] -> ""
-  | _ ->
-      let first = Component.source_loc (List.hd value) in
-      let last =
-        Component.source_loc (List.nth value (List.length value - 1))
-      in
-      slice first.Loc.start_pos last.Loc.end_pos |> trim_unknown_block_body
+(* An unrecognised at-rule has no grammar to re-serialise its body from, so the
+   body travels as the source text between its own braces. Slice the block's own
+   span, not its child components: the children stop short of the closer
+   whenever the body ends in a nested block ([@foo{a{b:c}}]). *)
+let unknown_block_body slice (block : Component.block Component.node) =
+  let start = block.loc.Loc.start_pos + 1 in
+  if block.node.Component.closed then slice start (block.loc.Loc.end_pos - 1)
+  else slice start block.loc.Loc.end_pos |> trim_unknown_block_body
 
 (* CSS Syntax 3 sec. 5.5.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
@@ -3141,14 +3143,9 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
     | None -> ()
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
         ignore (Cursor.next_raw r)
-    | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
+    | Some (Component.Block ({ node = { opening = Token.Curly; _ }; _ } as b))
       ->
-        (* CSS Syntax 3 section 5.5.2: when an unterminated nested block
-           ([(...], [[...]) inside the at-rule's body extends to EOF, the
-           Parser's source slice carries the close [}] and any trailing
-           whitespace from outside the block - trim them so the serializer
-           re-adds its own [}] without stacking. *)
-        block := Option.Some (unknown_block_body slice value);
+        block := Option.Some (unknown_block_body slice b);
         ignore (Cursor.next_raw r)
     | Some comp ->
         let loc = Component.source_loc comp in
@@ -3540,11 +3537,11 @@ let rec read_statement (r : Cursor.t) : statement =
       match List.assoc_opt name table with
       | Some p -> p r
       | None ->
-          (* CSS Syntax 3 sec. 5.4.1: an at-rule with no registered handler is
-             reported via a typed warning so [Css.of_string] partial-recovery
-             can surface it to callers. The prelude/block stay in the AST as
-             [Unknown_at_rule], and [Optimize.drop_unknown] removes them under
-             minify when the user opted into spec-strict canonicalization. *)
+          (* CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its name, so
+             the prelude and block stay in the AST as [Unknown_at_rule] and
+             reach the output. The typed warning tells the caller cascade could
+             not interpret it; [Optimize.drop_unknown_at_rules] is there for a
+             caller that wants it gone. *)
           ignore (Cursor.next_raw r);
           let stmt = read_unknown_at_rule name r in
           Cursor.push_warning r (Error.unknown_at_rule loc name);

@@ -1534,9 +1534,11 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: invalid-color; color: red }" ".a{color:red}" 1;
   lenient_recover "bad declaration keeps sibling rule"
     ".a { color: rgb(300); } .b { color: red }" ".b{color:red}" 1;
-  lenient_recover "unknown at-rule skipped"
+  (* CSS Syntax 3 sec. 5.4.2 consumes the at-rule and its block whatever the
+     name, so what recovers here is the rule after it, not the at-rule. *)
+  lenient_recover "unknown at-rule keeps its neighbour"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    ".ok{color:#00f}" 1;
+    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1;
   lenient_recover "bad selector list drops rule only"
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     ".ok{color:green}.next{color:#00f}" 1;
@@ -2590,7 +2592,7 @@ let css_syntax_recovery () =
     ".ok { color: green } .bad:not() { color: red }" ".ok{color:green}" 1;
   check_recovery "unknown at-rule"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    ".ok{color:#00f}" 1
+    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1
 
 let css_syntax_recovery_structural () =
   let declaration_counts stylesheet =
@@ -2670,6 +2672,36 @@ let s3431_unknown_at_rule_prelude_separator () =
   Alcotest.(check string)
     "statement form without a prelude stays unspaced" "@foo;"
     (roundtrips "@foo;")
+
+(* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
+   re-serialise its body from, so the body travels as the source text between
+   its braces. That text is what sits between the at-rule's own braces. Taking
+   it from the at-rule's child components instead stops at the last one the
+   lexer produced, which is inside the closer whenever the body ends in a nested
+   block, and the printed at-rule then never closes. Sec. 5.4.6: an unterminated
+   nested construct swallows the closer the other way, leaving none in the
+   source to exclude and one for the serializer to supply. *)
+let s542_unknown_at_rule_block_body () =
+  let printed input =
+    String.trim
+      (Css.Stylesheet.to_string ~minify:true
+         (read_stylesheet (Cursor.of_string input)))
+  in
+  let roundtrips name input expected =
+    Alcotest.(check string) name expected (printed input);
+    Alcotest.(check string)
+      (name ^ " is a fixed point")
+      expected (printed expected)
+  in
+  roundtrips "a body ending in a nested block keeps both closers"
+    "@foo test{div{color:red}}" "@foo test{div{color:red}}";
+  roundtrips "nested blocks all the way down" "@foo{a{b{c:d}}}"
+    "@foo{a{b{c:d}}}";
+  roundtrips "an empty body stays empty" "@foo{}" "@foo{}";
+  roundtrips "an unterminated function does not stack closers" "@foo{a:(b}"
+    "@foo{a:(b}";
+  roundtrips "an unterminated nested block gets one closer" "@foo{a{b:c"
+    "@foo{a{b:c}"
 
 (* Gecko's [@document]/[@-moz-document] takes a comma-separated list of [<url> |
    url-prefix(<string>) | domain(<string>) | media-document(<string>) |
@@ -8622,6 +8654,9 @@ let additional_tests =
     ( "spec CSS Syntax structural recovery",
       `Quick,
       css_syntax_recovery_structural );
+    ( "spec CSS Syntax 5.4.2 unknown at-rule block body",
+      `Quick,
+      s542_unknown_at_rule_block_body );
     ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
       `Quick,
       s3431_unknown_at_rule_prelude_separator );
@@ -9363,7 +9398,8 @@ let additional_tests =
               "warning surfaced" true
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
-              "recovered output" ".a{color:#00f}" (minify parsed.stylesheet)
+              "recovered output" "@unknown{ color: red }.a{color:#00f}"
+              (minify parsed.stylesheet)
         | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"
               (Error.to_string e) );

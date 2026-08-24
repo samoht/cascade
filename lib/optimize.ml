@@ -557,9 +557,9 @@ let drop_invalid (stylesheet : t) : t =
     stylesheet
 
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
-    depth. Used in [--minify] alongside [drop_invalid] so the typed warnings
-    emitted at parse time materialise as a dropped rule, matching CSS Syntax 3
-    sec. 5.4.1 (unknown at-rules are discarded). *)
+    depth, matching what a user agent applies of a stylesheet (CSS 2.1 sec. 4.2)
+    rather than what a transform may hand the next reader of one. Opt in when
+    the output has exactly one consumer and it is a browser. *)
 let drop_unknown_at_rules (stylesheet : t) : t =
   edit_statements
     (function Unknown_at_rule _ -> List.Drop | _ -> List.Keep)
@@ -800,12 +800,13 @@ let normalize_live_declarations ~ctx ~lossless decls =
 
 (* An [@property] registration holds a typed initial value rather than a
    declaration, so it is the one statement whose value
-   [map_statement_declarations] does not reach; every other statement either is
-   an unknown at-rule, dropped per CSS Syntax 3 sec. 5.4.1, or has its
-   declarations normalised wherever that walk finds them. *)
+   [map_statement_declarations] does not reach; every other statement either
+   carries an unknown at-rule's body as opaque source text, which has no grammar
+   to normalise against, or has its declarations normalised wherever that walk
+   finds them. *)
 let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
   match s with
-  | Unknown_at_rule _ -> List.Drop
+  | Unknown_at_rule _ -> List.Keep
   | Property r ->
       let initial_value =
         match r.initial_value with
