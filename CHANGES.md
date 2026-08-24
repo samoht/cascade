@@ -29,6 +29,10 @@
 
 ### Parsing
 
+- `border-inline`, `border-inline-start`, `border-inline-end`,
+  `border-block-start` and `border-block-end` keep their value. None of the five
+  had a value reader, so the declaration was dropped with a warning and a file
+  holding nothing else exited 1 (#456)
 - `stroke-miterlimit` takes a value between 0 and 1. SVG 2 makes only a
   negative value illegal, having dropped SVG 1.1's "at least 1" rule because
   CSS parsers never enforced it (#334)
