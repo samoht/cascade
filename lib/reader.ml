@@ -618,7 +618,14 @@ let number ?(allow_negative = true) t =
     err_invalid t "negative values not allowed"
   else result
 
-let int t = int_of_float (number t)
+let int t =
+  let v = number t in
+  (* [float_of_int max_int] rounds up to 2^62, so bound on [float_of_int
+     min_int], which is exact, and its negation. *)
+  let low = float_of_int min_int in
+  if v < low || v >= -.low then err_invalid t "integer (out of range)"
+  else if Float.is_integer v then int_of_float v
+  else err_invalid t "integer (not a whole number)"
 
 let hex t =
   let buf = Buffer.create 6 in

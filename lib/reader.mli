@@ -192,7 +192,8 @@ val number : ?allow_negative:bool -> t -> float
     rejects negative numbers. Default: true. *)
 
 val int : t -> int
-(** [int t] reads an integer. *)
+(** [int t] reads an integer. Raises Parse_error on a value with a fractional
+    part, such as [3.9], and on one outside the [int] range, such as [1e30]. *)
 
 val hex : t -> int
 (** [hex t] reads a hexadecimal number (without 0x prefix). *)

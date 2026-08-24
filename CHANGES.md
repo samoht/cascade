@@ -65,6 +65,10 @@ answers.
 
 ### Parsing
 
+- `Reader.int` raises `Parse_error` on a number with a fractional part or one
+  outside the `int` range. It truncated `3.9` to `3` and answered `-1` for
+  `1e30`, `1e999` and `9223372036854775808`, `int_of_float` being undefined
+  past that range (#466)
 - `border-inline`, `border-inline-start`, `border-inline-end`,
   `border-block-start` and `border-block-end` keep their value. None of the five
   had a value reader, so the declaration was dropped with a warning and a file
