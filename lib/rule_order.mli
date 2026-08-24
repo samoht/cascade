@@ -53,4 +53,15 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     [--lossless], which otherwise keeps whichever function was written. Only
     that fold applies: a declaration is kept exactly as it came in unless the
     colour moved. Emission cannot make the same rewrite, since [color()] needs a
-    browser that parses it. *)
+    browser that parses it.
+
+    A top-level [@layer] statement loses every name whose removal leaves the
+    sheet's layer order alone, and goes away once it has none left. CSS Cascade
+    5 sec. 6.4.3 sorts layers by the order in which they first are declared, so
+    a pin the following block repeats declares nothing the block does not, while
+    one that is the only or the earliest declaration of its layer stays. A
+    position the projection cannot read - an anonymous layer, the layers an
+    [@import] carries in, or a layer declared inside a conditional group rule,
+    which sec. 6.4.3 has contribute only when the condition holds - blocks the
+    fold across it. Emission keeps every pin, since the statement is visible
+    through the CSSOM. *)

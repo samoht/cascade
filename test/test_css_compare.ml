@@ -1083,12 +1083,12 @@ let zero_counters_unparsed_do_not_claim_equivalence () =
 
 (* The canonical minified form is the verdict in [`Canonical] mode: two sheets
    whose canonical bytes differ differ, whether or not the tree diff reached the
-   divergence. Here an empty layer-order pin the projection does not fold away -
-   either a normalisation key the projection is missing or a blind spot in the
-   tree diff, and both are findings. *)
+   divergence. Here a layer-order pin that is the only declaration of its layer,
+   so CSS Cascade 5 sec. 6.4.3 has it order [a] before [b] and the projection
+   keeps it; the tree diff walks past a statement that carries no rules. *)
 let canonical_byte_residual_is_a_difference () =
-  let pinned = "@layer a;@layer a{x{top:0}}" in
-  let unpinned = "@layer a{x{top:0}}" in
+  let pinned = "@layer a;@layer b{x{top:0}}" in
+  let unpinned = "@layer b{x{top:0}}" in
   let result = Cascade_diff.Css_compare.diff ~mode:`Canonical pinned unpinned in
   (match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.String_diff _ -> ()

@@ -462,6 +462,11 @@ answers.
   printer spells it before comparing two values under it. A name carrying an
   escaped `}` closed the rule and took both values with it, so any two values
   under such a name compared equal (#440)
+- A redundant `@layer` order pin no longer reads as a difference: the canonical
+  projection drops every name whose removal leaves the sheet's layer order
+  alone, so `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin
+  that fixes the order, or one over a position the projection cannot read, is
+  kept (#475)
 
 ### Library
 
