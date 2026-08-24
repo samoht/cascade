@@ -11,6 +11,10 @@
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a
   statement holds; call that one instead (#348)
+- `Css.Supports.property` raises `Failure` on a value that is not a
+  `<declaration-value>`, where it wrote the text unchecked:
+  `property "color" "red) or (color:blue"` emitted a condition a browser answers
+  true for, so the rules the caller meant to guard applied (#459)
 - `Css.Declaration.custom_property` raises `Failure` on a name and value that
   do not write back as the one declaration they name, where it stored the token
   stream unchecked: `custom_property "--a" "red;--b:blue"` wrote a second

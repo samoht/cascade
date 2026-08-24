@@ -54,7 +54,13 @@ type t =
 
 val property : string -> string -> t
 (** [property name value] parses [name: value] as a structured supports
-    declaration feature. *)
+    declaration feature.
+
+    @raise Failure
+      if [value] is not a [<declaration-value>] (CSS Syntax 3 sec. 8.2). The
+      feature writes the value between its own parentheses, so an unmatched
+      closing bracket closes them and the tail becomes a second branch of the
+      condition. *)
 
 val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports

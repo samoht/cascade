@@ -40,6 +40,13 @@ val string_of_declaration : ?minify:bool -> declaration -> string
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)
 
+val is_declaration_value : string -> bool
+(** [is_declaration_value s] is whether [s] is a [<declaration-value>]: one or
+    more component values with no unmatched closing bracket, no top-level [;],
+    no [<bad-string-token>] or [<bad-url-token>] and no unterminated function,
+    block or string (CSS Syntax 3 sec. 8.2). Text outside it stops being part of
+    the declaration it is written into. *)
+
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
     authored CSS text.

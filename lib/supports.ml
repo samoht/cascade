@@ -159,7 +159,31 @@ let declaration_feature prop value =
       | Some decl -> Declaration decl
       | None -> Unsupported (name, String.trim value))
 
-let property prop value = Property (declaration_feature prop value)
+(* [property] takes authored CSS text and writes it between the feature's own
+   parentheses, so the value has to be a [<declaration-value>] (CSS Syntax 3
+   sec. 8.2): an unmatched closing bracket closes those parentheses and the tail
+   becomes a second branch of the condition. The reader below hands
+   [declaration_feature] a value rendered from balanced components, so it needs
+   no check. Rendering through the component stream closes a [<url-token>] the
+   caller left open, the way the reader's own path already does. *)
+let property prop value =
+  if not (String.equal value "" || Declaration.is_declaration_value value) then
+    failwith
+      (String.concat ""
+         [
+           "supports property: ";
+           prop;
+           ": ";
+           value;
+           " is not a declaration value";
+         ]);
+  let value =
+    if String.equal value "" then value
+    else
+      Cursor.string_of_components ~trim:true
+        (Cursor.remaining (Cursor.of_string value))
+  in
+  Property (declaration_feature prop value)
 
 let single_ident name args =
   let cursor = Cursor.of_string args in
@@ -374,7 +398,7 @@ let declaration_of_components prop value =
   match property_ident (strip_components prop) with
   | Some prop ->
       let value = Cursor.string_of_components ~trim:true value in
-      property prop value
+      Property (declaration_feature prop value)
   | None -> failwith "Invalid declaration in @supports"
 
 let function_call (fn : Component.func Component.node) =
