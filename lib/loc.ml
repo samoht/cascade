@@ -63,14 +63,48 @@ module Context = struct
   let push step t = { t with path = Path.push step t.path }
 end
 
+(* A caret column is one Unicode scalar value. That is not what a terminal
+   draws: a combining mark takes a column of its own here and none there, and a
+   wide CJK glyph takes one here and two there. Counting graphemes or east Asian
+   widths instead needs segmentation and width tables cascade does not carry,
+   and scalars are exact for the ASCII and Latin text CSS is written in. *)
+let scalars ?pos ?len text =
+  Uutf.String.fold_utf_8 ?pos ?len (fun n _ _ -> n + 1) 0 text
+
+(* A UTF-8 continuation byte, [10xxxxxx]. A window boundary sitting on one is
+   inside a code point. *)
+let continuation source i = Char.code source.[i] land 0xc0 = 0x80
+
+(* Walk a boundary out of a code point, no further than the three continuation
+   bytes a sequence can hold, so a source that is not UTF-8 to begin with leaves
+   the boundary where it was rather than running off. *)
+let rec lead_at_or_before source len i room =
+  if room = 0 || i <= 0 || i >= len || not (continuation source i) then i
+  else lead_at_or_before source len (i - 1) (room - 1)
+
+let rec lead_at_or_after source len i room =
+  if room = 0 || i >= len || not (continuation source i) then i
+  else lead_at_or_after source len (i + 1) (room - 1)
+
 let snippet ?(window = 40) source loc =
   let len = String.length source in
   let pos = max 0 (min len loc.start_pos) in
   let end_pos = max pos (min len loc.end_pos) in
-  let start_pos = max 0 (pos - window) in
-  let stop_pos = min len (end_pos + window) in
+  (* [window] is a target radius, not a cap: a boundary that falls inside a code
+     point moves outward to the lead byte, widening the snippet by up to three
+     bytes a side. A snippet is a diagnostic, so keeping the sequence whole
+     outranks keeping the byte budget. *)
+  let start_pos = lead_at_or_before source len (max 0 (pos - window)) 3 in
+  let stop_pos = lead_at_or_after source len (min len (end_pos + window)) 3 in
   let text = String.sub source start_pos (stop_pos - start_pos) in
-  let marker_pos = pos - start_pos in
-  let marker_len = max 1 (end_pos - pos) in
-  let marker_len = min marker_len (String.length text - marker_pos) in
-  { Context.text; marker_pos; marker_len }
+  let before = pos - start_pos and marked = end_pos - pos in
+  let marker_pos = scalars ~pos:0 ~len:before text in
+  let marked_chars = scalars ~pos:before ~len:marked text in
+  let after_chars =
+    scalars ~pos:(before + marked) ~len:(stop_pos - end_pos) text
+  in
+  {
+    Context.text;
+    marker_pos;
+    marker_len = min (max 1 marked_chars) (marked_chars + after_chars);
+  }

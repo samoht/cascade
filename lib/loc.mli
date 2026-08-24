@@ -82,7 +82,12 @@ end
 
 val snippet : ?window:int -> string -> t -> Context.snippet
 (** [snippet source loc] extracts a snippet of [source] around [loc]:
-    {!Context.field-text} is the byte window (default: 40 bytes on each side of
-    the location), {!Context.field-marker_pos} points at [loc.start_pos] within
-    {!Context.field-text}, and {!Context.field-marker_len} spans the located
-    range. *)
+    {!Context.field-text} is the window (default: 40 bytes on each side of the
+    location), {!Context.field-marker_pos} counts the characters of
+    {!Context.field-text} before [loc.start_pos], and
+    {!Context.field-marker_len} counts the characters the located range spans.
+
+    A column is one Unicode scalar value, which a combining mark and a wide
+    glyph each make approximate on a terminal. [window] is a target rather than
+    a cap: a boundary falling inside a UTF-8 sequence moves outward to the lead
+    byte, so {!Context.field-text} is never a truncated code point. *)

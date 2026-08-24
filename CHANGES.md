@@ -503,6 +503,12 @@ answers.
   proximity criterion, and an origin wrapper carries an origin that outranks
   the layer. `Css.layers` remains the exhaustive count of what a sheet declares
   (#394)
+- `Cascade.Error.to_string` puts the caret under the character that failed and
+  prints back a snippet that is valid UTF-8. The caret column was a byte count,
+  so a multibyte selector pushed the marker well past the error, and the window
+  was sliced on byte offsets, so a long multibyte class name opened the snippet
+  inside a code point and the line came out starting with a replacement
+  character (#472)
 
 ### CLI tools
 
