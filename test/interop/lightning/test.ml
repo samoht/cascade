@@ -294,6 +294,71 @@ let format_source_parse_diagnostics (pair : Trace_pairs.t) =
      %s"
     input !parseable (List.length candidates) reports
 
+(* Lowercased at-keyword names in [css], scanned rather than parsed: the point
+   of the check below is to measure Cascade against the cached text without
+   routing through Cascade. Strings and comments are skipped so a [content:
+   "@media"] is not read as a rule. *)
+let at_keywords css =
+  let len = String.length css in
+  let is_name c =
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9')
+    || c = '-' || c = '_'
+    || Char.code c >= 0x80
+  in
+  let rec skip_string quote i =
+    if i >= len then i
+    else if css.[i] = '\\' then skip_string quote (i + 2)
+    else if css.[i] = quote then i + 1
+    else skip_string quote (i + 1)
+  in
+  let rec skip_comment i =
+    if i + 1 >= len then len
+    else if css.[i] = '*' && css.[i + 1] = '/' then i + 2
+    else skip_comment (i + 1)
+  in
+  let rec name_end i =
+    if i < len && is_name css.[i] then name_end (i + 1) else i
+  in
+  let rec scan i acc =
+    if i >= len then acc
+    else
+      match css.[i] with
+      | ('"' | '\'') as q -> scan (skip_string q (i + 1)) acc
+      | '/' when i + 1 < len && css.[i + 1] = '*' ->
+          scan (skip_comment (i + 2)) acc
+      | '@' ->
+          let stop = name_end (i + 1) in
+          let name =
+            String.lowercase_ascii (String.sub css (i + 1) (stop - i - 1))
+          in
+          scan stop (if name = "" then acc else name :: acc)
+      | _ -> scan (i + 1) acc
+  in
+  List.sort_uniq String.compare (scan 0 [])
+
+(* At-keywords Cascade's own parser reported as having no handler. *)
+let unrecognised_at_keywords input =
+  match Css.of_string ~strict:false input with
+  | Error _ -> []
+  | Ok { Css.warnings; _ } ->
+      warnings
+      |> List.filter_map (fun e ->
+          match e.Error.kind with
+          | Error.Unknown_at_rule name -> Some (String.lowercase_ascii name)
+          | _ -> None)
+      |> List.sort_uniq String.compare
+
+(* At-keywords every cached answer kept. *)
+let unanimously_kept_at_keywords (pair : Trace_pairs.t) =
+  match List.map (fun (c : candidate) -> at_keywords c.css) pair.candidates with
+  | [] -> []
+  | first :: rest ->
+      List.fold_left
+        (fun acc kept -> List.filter (fun k -> List.mem k kept) acc)
+        first rest
+
 let classify (pair : Trace_pairs.t) =
   let input = pair.input in
   match cascade_minify input with
@@ -309,8 +374,33 @@ let classify (pair : Trace_pairs.t) =
         @ List.map (fun issue -> Failed_candidate issue) pair.failures
       in
       let best = shortest_length candidates in
+      (* Neither measure below can see a construct Cascade deletes. Length
+         scoring cannot: a deletion always reads as a shorter output.
+         [validate_candidate] cannot either, because it routes the source and
+         the candidate through the same Cascade serializer, so whatever that
+         serializer drops is missing from both sides and the two compare equal.
+         The cached text is the one measure outside that loop. Scope it to the
+         at-rules Cascade's parser says it has no handler for: those are the
+         ones it has no grounds to rewrite, so when every tool that answered
+         kept one, its name has to reach Cascade's output too. At-rules Cascade
+         does understand stay out of scope, since unwrapping a satisfied
+         [@supports] removes the name and keeps the contents. *)
+      let dropped =
+        let kept = at_keywords actual in
+        let unanimous = unanimously_kept_at_keywords pair in
+        unrecognised_at_keywords input
+        |> List.filter (fun k -> List.mem k unanimous && not (List.mem k kept))
+      in
       let outcome =
-        if candidates = [] then Pass
+        if dropped <> [] then
+          Fmt.kstr
+            (fun s -> Mismatch s)
+            "%s\n\
+            \    dropped an at-rule it could not interpret and every cached \
+             answer kept: %s"
+            (display_css actual)
+            (dropped |> List.map (fun k -> "@" ^ k) |> String.concat " ")
+        else if candidates = [] then Pass
         else if String.length actual <= best then Pass
         else
           let shortest =
