@@ -212,7 +212,15 @@ and conditional =
   | And of conditional * conditional
   | Or of conditional * conditional
 
-and moz_document_condition = Url_prefix of string option
+(* Gecko's [@document] prelude: [<url> | url-prefix(<string>) | domain(<string>)
+   | media-document(<string>) | regexp(<string>)]#. *)
+and moz_document_condition =
+  | Url_exact of string
+  | Url_prefix of string option
+  | Domain of string
+  | Media_document of string
+  | Regexp of string
+
 and viewport_prefix = Standard | Ms_prefixed
 
 and viewport_descriptor = { name : string; value : string }

@@ -2702,10 +2702,17 @@ let moz_document_prelude_forms () =
       ("url-prefix(\"a\"),domain(\"b\")", "url-prefix(\"a\"),domain(\"b\")");
     ];
   (* A form outside the grammar still takes the at-rule down, which is what CSS
-     Syntax 3 sec. 5.4.2 does with a prelude no grammar accepts. *)
-  Alcotest.(check string)
-    "an unknown prelude function drops the at-rule" ".a{color:red}"
-    (roundtrips ".a{color:red}@-moz-document wibble(\"x\"){.b{color:red}}")
+     Syntax 3 sec. 5.4.2 does with a prelude no grammar accepts. The recovering
+     reader is the one that drops it; the raw one raises. *)
+  match
+    Css.of_string ~strict:false
+      ".a{color:red}@-moz-document wibble(\"x\"){.b{color:red}}"
+  with
+  | Error e -> Alcotest.fail (Error.to_string e)
+  | Ok { Css.stylesheet; _ } ->
+      Alcotest.(check string)
+        "an unknown prelude function drops the at-rule" ".a{color:red}"
+        (String.trim (Css.Stylesheet.to_string ~minify:true stylesheet))
 
 (* Not a roundtrip test *)
 let test_invalid_functions () =

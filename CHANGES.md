@@ -11,6 +11,8 @@
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a
   statement holds; call that one instead (#348)
+- `Css.Stylesheet.moz_document_condition` gains `Url_exact`, `Domain`,
+  `Media_document` and `Regexp`, so a match on it is no longer exhaustive (#461)
 - `Css.Supports.property` raises `Failure` on a value that is not a
   `<declaration-value>`, where it wrote the text unchecked:
   `property "color" "red) or (color:blue"` emitted a condition a browser answers
@@ -37,6 +39,9 @@
   `border-block-start` and `border-block-end` keep their value. None of the five
   had a value reader, so the declaration was dropped with a warning and a file
   holding nothing else exited 1 (#456)
+- `@-moz-document` reads all five of its URL-matching functions. Only
+  `url-prefix()` had a grammar, so `url()`, `domain()`, `media-document()` and
+  `regexp()` took the at-rule down with every rule inside it (#461)
 - `stroke-miterlimit` takes a value between 0 and 1. SVG 2 makes only a
   negative value illegal, having dropped SVG 1.1's "at least 1" rule because
   CSS parsers never enforced it (#334)
