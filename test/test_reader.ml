@@ -465,6 +465,43 @@ let numbers () =
   let n = number r in
   Alcotest.(check (float 0.001)) "leading dot with exponent" 500.0 n
 
+(* Test integer parsing *)
+let integers () =
+  (* Whole numbers round-trip, sign included *)
+  let r = of_string "42" in
+  let n = int r in
+  Alcotest.(check int) "plain integer" 42 n;
+
+  let r = of_string "-17" in
+  let n = int r in
+  Alcotest.(check int) "negative integer" (-17) n;
+
+  let r = of_string "0" in
+  let n = int r in
+  Alcotest.(check int) "zero" 0 n;
+
+  (* A fractional value is not an integer *)
+  let r = of_string "3.9" in
+  check_raises "fractional"
+    (parse_error_expected "invalid integer (not a whole number)" r) (fun () ->
+      ignore (int r));
+
+  (* Values outside the OCaml int range *)
+  let r = of_string "1e999" in
+  check_raises "infinite"
+    (parse_error_expected "invalid integer (out of range)" r) (fun () ->
+      ignore (int r));
+
+  let r = of_string "1e30" in
+  check_raises "past max_int"
+    (parse_error_expected "invalid integer (out of range)" r) (fun () ->
+      ignore (int r));
+
+  let r = of_string "9223372036854775808" in
+  check_raises "past 2^63"
+    (parse_error_expected "invalid integer (out of range)" r) (fun () ->
+      ignore (int r))
+
 (* Test unit parsing *)
 let units () =
   (* Units are parsed as identifiers *)
@@ -1498,6 +1535,7 @@ let suite =
       test_case "commit" `Quick commit_case;
       (* Value parsing *)
       test_case "numbers" `Quick numbers;
+      test_case "integers" `Quick integers;
       test_case "units" `Quick units;
       test_case "idents" `Quick tests_idents;
       test_case "string literals" `Quick string_literals;
