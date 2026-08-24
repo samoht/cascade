@@ -840,7 +840,8 @@ let consume_at_rule ?(nested = false) lexer ~name ~start_loc : Component.at_rule
 (* CSS Syntax Level 3 section 5.5.3. [nested = true] makes a stray ['}'] or a
    top-level ';' before any block end the rule attempt with [None]. The
    custom-property-shaped guard discards a rule whose first two non-whitespace
-   prelude items are an ident starting with [--] followed by ':'. *)
+   prelude items are an ident starting with [--] followed by ':', warning that
+   the prelude read as a declaration rather than a selector. *)
 let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
   let is_custom_property_shape prelude =
@@ -872,10 +873,15 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        if is_custom_property_shape prelude then None
-        else
-          let loc = Loc.union start_loc block.loc in
-          Some { node = { prelude = List.rev prelude; block }; loc }
+        let loc = Loc.union start_loc block.loc in
+        if is_custom_property_shape prelude then (
+          (* Dropping the rule is what the spec asks for, but it still has to be
+             reported: [Css.of_string] warns for every rule it drops. *)
+          warn ~meta lexer warnings
+            (Error.sort_mismatch loc ~sort:Sort.Qualified_rule
+               ~expected:Sort.Selector ~found:Sort.Declaration);
+          None)
+        else Some { node = { prelude = List.rev prelude; block }; loc }
     | _ ->
         let _ = Lexer.next lexer in
         let cv = consume_component_value_from lexer tok in

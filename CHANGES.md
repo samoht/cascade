@@ -186,6 +186,11 @@ answers.
   at-keyword; discarding one is the user agent's step, and
   `Optimize.drop_unknown_at_rules` serves a caller writing for a browser
   (#469)
+- A qualified rule whose prelude reads as a custom property, such as
+  `--x:hover { color: red }`, is reported when it is dropped, and
+  `Css.of_string ~strict:true` rejects it. CSS Syntax 3 sec. 5.5.3 makes the
+  shape invalid so that a `{}`-block inside a custom property value is never
+  misread as a rule; the drop itself was silent (#473)
 
 ### Printing
 
