@@ -521,6 +521,137 @@ let spec_family_name_reserved_words () =
       Alcotest.failf "family names spelled with a reserved word:\n%s"
         (String.concat "\n" mismatches)
 
+(* [src] has one value type and one reader, so the [@font-face] descriptor and
+   an [src:] declaration are two routes into one printer and must spell the same
+   value the same way. CSS Fonts 4 sec. 4.3: [<font-src> = <url>
+   [format(<font-format>)]? [tech(<font-tech>#)]? | local(<font-family-name>)],
+   with [<font-family-name> = <string> | <custom-ident>+] (CSS Fonts 4 sec.
+   2.1.1) and [<font-format>] a [<string>] or one of the seven format keywords.
+   Each of the two notations a [<url>], a family name and a format spells is
+   valid, so minify picks the shorter one and pretty keeps the authored one.
+   Every route is checked minified and pretty, and each output is re-read in
+   strict mode: what one route emits, the other reads back. *)
+let check_src_printer_routes (name, value, minified, pretty) =
+  let fail fmt = Fmt.kstr (fun s -> Some s) fmt in
+  let route label ~minify input expected =
+    match Css.of_string ~strict:false input with
+    | Error e ->
+        fail "%s / %s: parse rejected %S\n  %s" name label input
+          (Error.to_string e)
+    | Ok { Css.stylesheet; _ } -> (
+        let actual = Css.to_string ~minify stylesheet |> String.trim in
+        if not (String.equal actual expected) then
+          fail "%s / %s\n  input:    %S\n  expected: %S\n  actual:   %S" name
+            label input expected actual
+        else
+          match Css.of_string ~strict:true actual with
+          | Error e ->
+              fail "%s / %s: output does not read back: %S\n  %s" name label
+                actual (Error.to_string e)
+          | Ok _ -> None)
+  in
+  let descriptor v =
+    String.concat "" [ "@font-face{font-family:F;src:"; v; "}" ]
+  in
+  let declaration v = String.concat "" [ ".a{src:"; v; "}" ] in
+  List.filter_map Fun.id
+    [
+      route "@font-face descriptor, minified" ~minify:true (descriptor value)
+        (descriptor minified);
+      route "src declaration, minified" ~minify:true (declaration value)
+        (declaration minified);
+      route "@font-face descriptor, pretty" ~minify:false (descriptor value)
+        (String.concat ""
+           [ "@font-face {\n  font-family: F;\n  src: "; pretty; ";\n}" ]);
+      route "src declaration, pretty" ~minify:false (declaration value)
+        (String.concat "" [ ".a {\n  src: "; pretty; ";\n}" ]);
+    ]
+
+let spec_src_printer_routes () =
+  match
+    List.concat_map check_src_printer_routes
+      [
+        (* CSS Values 4 sec. 3.4: [url(<string>)] and the bare [<url-token>]
+           spell the same URL, so the quotes go under minify unless the body
+           holds a character the bare form cannot carry. *)
+        ( "a quoted url drops its quotes under minify",
+          "url(\"a.woff2\")",
+          "url(a.woff2)",
+          "url(\"a.woff2\")" );
+        ( "a single-quoted url drops its quotes under minify",
+          "url('a.woff2')",
+          "url(a.woff2)",
+          "url('a.woff2')" );
+        ("a bare url stays bare", "url(a.woff2)", "url(a.woff2)", "url(a.woff2)");
+        ( "a url holding a space keeps its quotes",
+          "url(\"a b.woff2\")",
+          "url(\"a b.woff2\")",
+          "url(\"a b.woff2\")" );
+        (* CSS Fonts 4 sec. 2.1.1: a [<font-family-name>] is a [<string>] or a
+           [<custom-ident>+], so an ident name drops its quotes under minify. *)
+        ( "a local ident name drops its quotes under minify",
+          "local(\"Arial\")",
+          "local(Arial)",
+          "local(\"Arial\")" );
+        ( "a bare local ident name reads as the same name",
+          "local(Arial)",
+          "local(Arial)",
+          "local(\"Arial\")" );
+        ( "a local name with an underscore drops its quotes",
+          "local(\"Brand_2\")",
+          "local(Brand_2)",
+          "local(\"Brand_2\")" );
+        ( "a local name holding a space keeps its quotes",
+          "local(\"Noto Sans\")",
+          "local(\"Noto Sans\")",
+          "local(\"Noto Sans\")" );
+        (* CSS Values 4 sec. 3.3: the CSS-wide keywords and the reserved
+           [default] are not valid [<custom-ident>]s, in every ASCII case
+           permutation, so those names have only the [<string>] spelling. *)
+        ( "a local CSS-wide keyword name keeps its quotes",
+          "local(\"inherit\")",
+          "local(\"inherit\")",
+          "local(\"inherit\")" );
+        ( "the reserved default keeps its quotes in local()",
+          "local(\"default\")",
+          "local(\"default\")",
+          "local(\"default\")" );
+        ( "the reserved default is excluded in every ASCII case permutation",
+          "local(\"DEFAULT\")",
+          "local(\"DEFAULT\")",
+          "local(\"DEFAULT\")" );
+        (* CSS Syntax 3 sec. 4.3.9: a name starting with a digit does not start
+           an ident sequence, so it has no unquoted spelling. *)
+        ( "a local name starting with a digit keeps its quotes",
+          "local(\"2Cool\")",
+          "local(\"2Cool\")",
+          "local(\"2Cool\")" );
+        (* CSS Fonts 4 sec. 4.3: [<font-format>] is a [<string>] or one of
+           [collection], [embedded-opentype], [opentype], [svg], [truetype],
+           [woff] and [woff2]; only those seven have a bare spelling. *)
+        ( "a known format keyword drops its quotes under minify",
+          "url(\"a.woff2\") format(\"woff2\")",
+          "url(a.woff2)format(woff2)",
+          "url(\"a.woff2\") format(\"woff2\")" );
+        ( "a format string that is no keyword keeps its quotes",
+          "url(a.woff2) format(\"weird thing\")",
+          "url(a.woff2)format(\"weird thing\")",
+          "url(a.woff2) format(\"weird thing\")" );
+        ( "format and tech both follow the url",
+          "url(a.woff2) format(\"truetype\") tech(variations)",
+          "url(a.woff2)format(truetype)tech(variations)",
+          "url(a.woff2) format(\"truetype\") tech(variations)" );
+        ( "a source list keeps its order and separator",
+          "local(\"Brand\"),url(\"b.woff2\") format(\"woff2\")",
+          "local(Brand),url(b.woff2)format(woff2)",
+          "local(\"Brand\"), url(\"b.woff2\") format(\"woff2\")" );
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "src printer routes disagree with the spec oracle:\n%s"
+        (String.concat "\n" mismatches)
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -553,4 +684,5 @@ let suite =
         spec_family_name_ident_start;
       test_case "spec family name reserved words" `Quick
         spec_family_name_reserved_words;
+      test_case "spec src printer routes" `Quick spec_src_printer_routes;
     ] )
