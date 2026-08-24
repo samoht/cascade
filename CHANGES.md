@@ -563,6 +563,9 @@ answers.
   wholesale whatever the block holds, where a `@scope`, a `@starting-style` or
   a rule nested in another rule printed a header with nothing beneath it and
   read as empty (#389)
+- `cascade diff` reports a rule that changed places next to whatever else the
+  two sheets differ on, where one modified or added rule anywhere in the sheet
+  hid every transposition and the report named the content change alone (#474)
 
 ## 1.1.0
 
