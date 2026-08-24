@@ -4039,6 +4039,20 @@ let spec_generated_position_interaction_edges () =
   check_overlay "auto";
   check_position_anchor "--menu";
   check_position_area "center span-all";
+  (* css-anchor-position-1 sec. 3.1.2: a lone keyword behaves as if the second
+     were [span-all] when it names one axis, and repeats itself only when it
+     names neither. So [top center] is a different area from [top], and Chrome
+     151 agrees: it computes them as "center top" and "top", and lays a
+     percentage-width box out at 200px wide 50px against 0px wide 600px. Only
+     the axis-ambiguous keywords fold. *)
+  check_position_area "top center";
+  check_position_area "left center";
+  check_position_area "block-start center";
+  check_position_area "x-start center";
+  check_position_area "span-left center";
+  check_position_area "center top";
+  check_position_area ~expected:"center" "center center";
+  check_position_area ~expected:"span-all" "span-all span-all";
   check_position_area_keyword "span-inline-start";
   check_position_try_fallback "flip-block";
   check_position_try_fallbacks ~expected:"flip-block,--fallback"

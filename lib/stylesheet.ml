@@ -1023,12 +1023,22 @@ let rec pp_conditional : conditional Pp.t =
       Pp.string ctx " or ";
       pp_conditional ctx b
 
-let pp_moz_document_condition ctx = function
+(* Every argument but the [<url>] one is a [<string>], so it stays quoted; the
+   [<url>] takes the shortest spelling [Pp.url] gives it. *)
+let pp_moz_document_condition ctx =
+  let call name arg =
+    Pp.string ctx name;
+    Pp.char ctx '(';
+    Pp.quoted_string ctx arg;
+    Pp.char ctx ')'
+  in
+  function
+  | Url_exact url -> Pp.url ctx url
   | Url_prefix None -> Pp.string ctx "url-prefix()"
-  | Url_prefix (Some prefix) ->
-      Pp.string ctx "url-prefix(";
-      Pp.quoted_string ctx prefix;
-      Pp.char ctx ')'
+  | Url_prefix (Some prefix) -> call "url-prefix" prefix
+  | Domain domain -> call "domain" domain
+  | Media_document media -> call "media-document" media
+  | Regexp regexp -> call "regexp" regexp
 
 let pp_declarations_statement ctx raw_decls =
   (* Bare declarations for CSS nesting - no selector/braces, just declarations.
@@ -2021,25 +2031,49 @@ let read_moz_keyframes r =
     (fun name frames -> Moz_keyframes (name, frames))
     r
 
+(* [url-prefix()] with no argument is the prelude that matches every document,
+   so an empty argument list and an empty string both read as [None]. *)
+let read_moz_url_prefix arg_cursor =
+  match Cursor.string_opt arg_cursor with
+  | Some "" -> Option.None
+  | Some prefix -> Some prefix
+  | None ->
+      Cursor.ws arg_cursor;
+      if Cursor.is_done arg_cursor then Option.None
+      else Cursor.err_expected arg_cursor "url-prefix string argument"
+
+let read_moz_document_function r name arguments : moz_document_condition =
+  let arg_cursor = Cursor.of_components arguments in
+  Cursor.ws arg_cursor;
+  let finish condition =
+    Cursor.ws arg_cursor;
+    Cursor.expect_eof arg_cursor;
+    condition
+  in
+  match name with
+  | "url" -> finish (Url_exact (Cursor.string arg_cursor))
+  | "url-prefix" -> finish (Url_prefix (read_moz_url_prefix arg_cursor))
+  | "domain" -> finish (Domain (Cursor.string arg_cursor))
+  | "media-document" -> finish (Media_document (Cursor.string arg_cursor))
+  | "regexp" -> finish (Regexp (Cursor.string arg_cursor))
+  | _ -> Cursor.err_expected r "a @-moz-document URL-matching function"
+
+(* Gecko's [@document] prelude takes [<url>], [url-prefix(<string>)],
+   [domain(<string>)], [media-document(<string>)] and [regexp(<string>)]. A
+   prelude function outside that list has no grammar, so the at-rule goes down
+   with it, which is what CSS Syntax 3 sec. 5.4.2 does with any prelude no
+   grammar accepts. *)
 let read_moz_document_condition r : moz_document_condition =
   Cursor.ws r;
-  match Cursor.next r with
-  | Some (Component.Func { node = { name = "url-prefix"; arguments; _ }; _ }) ->
-      let arg_cursor = Cursor.of_components arguments in
-      Cursor.ws arg_cursor;
-      let prefix =
-        match Cursor.string_opt arg_cursor with
-        | Some "" -> Option.None
-        | Some s -> Some s
-        | None ->
-            Cursor.ws arg_cursor;
-            if Cursor.is_done arg_cursor then Option.None
-            else Cursor.err_expected arg_cursor "url-prefix string argument"
-      in
-      Cursor.ws arg_cursor;
-      Cursor.expect_eof arg_cursor;
-      Url_prefix prefix
-  | _ -> Cursor.err_expected r "url-prefix()"
+  (* [url(x)] lexes as a [<url-token>] and [url("x")] as a function, so the
+     [<url>] form is read before the function arms. *)
+  match Cursor.url_opt r with
+  | Some url -> Url_exact url
+  | None -> (
+      match Cursor.next r with
+      | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+          read_moz_document_function r name arguments
+      | _ -> Cursor.err_expected r "a @-moz-document URL-matching function")
 
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)

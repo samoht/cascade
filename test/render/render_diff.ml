@@ -162,12 +162,7 @@ type input = {
 (* Inputs the sweep is known to fail. Each is a render change the optimizer
    makes today; fixing one is its own piece of work, so the sweep pins them here
    and stays green on everything else. *)
-let known =
-  [
-    ( "corpus-anchor-0002",
-      "position-area: top center folds to top, which Chromium computes as a \
-       different area" );
-  ]
+let known = []
 
 let sheet id source =
   let expect =

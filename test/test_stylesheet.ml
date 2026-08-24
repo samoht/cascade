@@ -2671,6 +2671,49 @@ let s3431_unknown_at_rule_prelude_separator () =
     "statement form without a prelude stays unspaced" "@foo;"
     (roundtrips "@foo;")
 
+(* Gecko's [@document]/[@-moz-document] takes a comma-separated list of [<url> |
+   url-prefix(<string>) | domain(<string>) | media-document(<string>) |
+   regexp(<string>)]. Cascade modelled only [url-prefix()], so every other form
+   failed the prelude read and the at-rule went down with every rule inside it.
+   The five minifiers in [test/interop/lightning] all keep the at-rule verbatim.
+   A [<string>] argument stays quoted; a [<url>] takes the shortest spelling. *)
+let moz_document_prelude_forms () =
+  let roundtrips input =
+    String.trim
+      (Css.Stylesheet.to_string ~minify:true
+         (read_stylesheet (Cursor.of_string input)))
+  in
+  List.iter
+    (fun (prelude, expected) ->
+      let wrap p =
+        String.concat "" [ "@-moz-document "; p; "{.b{color:red}}" ]
+      in
+      Alcotest.(check string)
+        prelude (wrap expected)
+        (roundtrips (wrap prelude)))
+    [
+      ("url-prefix(\"x\")", "url-prefix(\"x\")");
+      ("url-prefix()", "url-prefix()");
+      ("url(x)", "url(x)");
+      ("url(\"x\")", "url(x)");
+      ("domain(\"example.com\")", "domain(\"example.com\")");
+      ("regexp(\"x\")", "regexp(\"x\")");
+      ("media-document(\"video\")", "media-document(\"video\")");
+      ("url-prefix(\"a\"),domain(\"b\")", "url-prefix(\"a\"),domain(\"b\")");
+    ];
+  (* A form outside the grammar still takes the at-rule down, which is what CSS
+     Syntax 3 sec. 5.4.2 does with a prelude no grammar accepts. The recovering
+     reader is the one that drops it; the raw one raises. *)
+  match
+    Css.of_string ~strict:false
+      ".a{color:red}@-moz-document wibble(\"x\"){.b{color:red}}"
+  with
+  | Error e -> Alcotest.fail (Error.to_string e)
+  | Ok { Css.stylesheet; _ } ->
+      Alcotest.(check string)
+        "an unknown prelude function drops the at-rule" ".a{color:red}"
+        (String.trim (Css.Stylesheet.to_string ~minify:true stylesheet))
+
 (* Not a roundtrip test *)
 let test_invalid_functions () =
   expect_parse_error ".btn { color: rgb(300); }";
@@ -8582,6 +8625,7 @@ let additional_tests =
     ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
       `Quick,
       s3431_unknown_at_rule_prelude_separator );
+    ("spec @-moz-document prelude forms", `Quick, moz_document_prelude_forms);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
     ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);

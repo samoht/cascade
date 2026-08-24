@@ -1,4 +1,21 @@
-## Unreleased
+## 1.2.0
+
+Most of the entries below are defect fixes, and the largest group of them has
+one cause. Readers, printers and optimizer passes each walked the statement
+tree by hand, matching the constructors they knew and closing with a wildcard,
+and no two of those lists agreed, so an at-rule added to the AST later fell
+through them unseen rather than failing to compile. They share one traversal
+now, written without that wildcard, so a statement kind added after this
+release stops every site that has to decide about it from compiling, and a test
+walks all twenty-three statement shapes and every place a declaration can sit
+to pin that the shared walk reaches them. Correctness was judged against a
+browser rather than against cascade: the test suite renders a sheet and its
+optimised form in headless Chrome and compares every property
+`getComputedStyle` reports on every element, and a manual sweep does the same
+to live pages, so several of the fixes below are miscompiles Chrome
+contradicted rather than readings of the spec. Behind those sit 504 CSS files
+drawn from 72 production sites and 2960 recorded cases carrying six minifiers'
+answers.
 
 ### Breaking
 
@@ -11,6 +28,12 @@
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a
   statement holds; call that one instead (#348)
+- `Css.Stylesheet.moz_document_condition` gains `Url_exact`, `Domain`,
+  `Media_document` and `Regexp`, so a match on it is no longer exhaustive (#461)
+- `Css.Supports.property` raises `Failure` on a value that is not a
+  `<declaration-value>`, where it wrote the text unchecked:
+  `property "color" "red) or (color:blue"` emitted a condition a browser answers
+  true for, so the rules the caller meant to guard applied (#459)
 - `Css.Declaration.custom_property` raises `Failure` on a name and value that
   do not write back as the one declaration they name, where it stored the token
   stream unchecked: `custom_property "--a" "red;--b:blue"` wrote a second
@@ -26,9 +49,29 @@
 - `Css.vars_of_rules` is `Css.vars_of_stylesheet`. It reported only what a
   top-level rule holds; it now also reports a `var()` inside a nested rule, an
   animation frame or a page margin box (#382)
+- `Css.Stylesheet.layer_name` is the identifiers a `<layer-name>` is made of
+  rather than the text between them, so `Css.layers`, `layer_block`,
+  `layer_decl`, `layer`, `layer_of`, `as_layer`, `layer_block_name`,
+  `layer_statement_name_list`, `import_layer_name` and the `?layer` argument of
+  `custom_props` carry a `string list` where they carried a `string`.
+  `Css.Stylesheet.read_layer_name` and `string_of_layer_name` convert between
+  the two (#442)
+- `Css.color` keeps the origin of a relative colour as a colour rather than in
+  the opaque tail: `Relative_rgb` carries `color * string` and
+  `Relative_color` carries `string * color * string`, so an expression or a
+  pattern naming either takes the extra field (#313)
+- `Css.Pp.ctx` gains `in_style_rule`; record expressions must set it and record
+  patterns must bind it or use `; _` (#374)
 
 ### Parsing
 
+- `border-inline`, `border-inline-start`, `border-inline-end`,
+  `border-block-start` and `border-block-end` keep their value. None of the five
+  had a value reader, so the declaration was dropped with a warning and a file
+  holding nothing else exited 1 (#456)
+- `@-moz-document` reads all five of its URL-matching functions. Only
+  `url-prefix()` had a grammar, so `url()`, `domain()`, `media-document()` and
+  `regexp()` took the at-rule down with every rule inside it (#461)
 - `stroke-miterlimit` takes a value between 0 and 1. SVG 2 makes only a
   negative value illegal, having dropped SVG 1.1's "at least 1" rule because
   CSS parsers never enforced it (#334)
@@ -157,6 +200,9 @@
 
 ### Minification
 
+- `--minify` keeps the `center` in `position-area: top center`. A lone keyword
+  stands for `X span-all`, not `X center`, so dropping it moved the box to a
+  different area (#457)
 - `--minify` keeps a `@layer` whose own rules write no declarations but nest
   rules that do. The emptiness test read only the declarations, so
   `@layer a { .x { .y { color: red } } }` collapsed to `@layer a;` and every
