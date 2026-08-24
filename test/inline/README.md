@@ -46,6 +46,24 @@ Freezing happens at fetch time, before `cascade apply` ever sees the page, so
 the document cascade resolves is the document the browser lays out. Pages live
 in the gitignored `pages/`; re-run `fetch.sh` to rebuild them.
 
+Freezing and pinning are what make a page reproducible; neither shows that it
+is. So `run.sh` renders each fetched page twice with nothing transforming it in
+between (`xtest.js --self`) before it measures anything, and unless the two
+renders agree it reports the page as unusable and skips its transform legs. A
+page that differs from itself yields a difference list about nothing, and the
+run would otherwise hand that list to whichever transform it was measuring.
+Fixtures are exempt: they are committed and change only under review, where a
+page arrives off the network and goes stale on its own.
+
+Two renders catch a page that is unstable on those two, which is not the same
+as catching an unstable page: a `tailwind.html` frozen before the freezer
+learned to strip `@font-face` differed from itself on three self-checks in
+eight. So the run also re-freezes each page and requires that to be a no-op.
+`freeze_page.js` is idempotent, so a page it still changes was frozen by an
+older one and is stale whatever it renders today. That question is
+deterministic and costs milliseconds, so it is asked first, and `fetch.sh` is
+the answer to it.
+
 ## What a count is comparable to
 
 Repeating on one machine is half of it. A count also has to say what produced

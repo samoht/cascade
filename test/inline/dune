@@ -5,3 +5,18 @@
 (executable
  (name canon_filter)
  (libraries cascade cascade_diff))
+
+; The controls that license every count run.sh prints are checked on every
+; machine rather than only where a browser is installed: test_selfcheck.sh
+; drives run.sh through a stub browser that is unstable on demand. It skips,
+; with status 0, when node is missing.
+
+(rule
+ (alias runtest)
+ (deps run.sh xtest.js minify_page.js freeze_page.js)
+ (action
+  (run
+   sh
+   %{dep:test_selfcheck.sh}
+   %{exe:../../bin/main.exe}
+   %{dep:canon_filter.exe})))
