@@ -1106,11 +1106,7 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx fams ->
           Pp.list ~sep:Pp.comma Properties.pp_font_family ctx fams)
         families
-  | Src value ->
-      pp_descriptor "src"
-        (fun ctx v ->
-          Pp.string ctx (Font_face.string_of_src ~minify:(Pp.minified ctx) v))
-        value
+  | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
   | Font_style_range (min_style, max_style) ->

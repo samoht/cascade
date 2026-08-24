@@ -215,6 +215,14 @@ answers.
   every token carries, so two byte-identical `style(--x: 1)` queries never
   compared equal and their blocks stayed separate, while size queries and the
   bare `style(--x)` form already merged (#465)
+- `--minify` shortens an `src:` declaration outside `@font-face` the way it
+  already shortened the `@font-face` descriptor: `url("a.woff2")` drops its
+  quotes, `local("Arial")` becomes `local(Arial)` and a known `format()`
+  keyword loses its quotes. The two routes into the `src` printer had
+  drifted, and the declaration route spelled a multi-word `format("...")`
+  string unquoted, which no browser reads back as that format. A family name
+  of `default` keeps its quotes on both routes, the reserved word being no
+  `<custom-ident>` (#470)
 - `--minify` keeps the `center` in `position-area: top center`. A lone keyword
   stands for `X span-all`, not `X center`, so dropping it moved the box to a
   different area (#457)

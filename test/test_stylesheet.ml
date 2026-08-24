@@ -3354,7 +3354,9 @@ let fetch_url_boundary () =
     "background-image: url(../img/logo.svg);";
   check_declaration ~expected:"cursor:url(cursor.cur),auto"
     "cursor: url(cursor.cur), auto";
-  check_declaration ~expected:"src:url(brand.woff2) format(woff2)"
+  (* A [<url-token>] ends at its [)], so [format(] needs no separator after it
+     and minify drops the space, as it does after [@import] just below. *)
+  check_declaration ~expected:"src:url(brand.woff2)format(woff2)"
     "src: url(brand.woff2) format(woff2)";
   check_import_rule ~expected:"@import\"theme.css\"supports(display:);"
     "@import url(theme.css) supports(display:);";

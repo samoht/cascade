@@ -93,14 +93,18 @@ let pp_url_arg ctx s =
     Pp.char ctx '"')
   else Pp.string ctx s
 
-let css_wide_keyword s =
+(* CSS Values 4 sec. 3.3: the CSS-wide keywords are not valid [<custom-ident>]s,
+   and neither is the reserved [default]. Both exclusions hold in every ASCII
+   case permutation, so such a name has only its [<string>] spelling. *)
+let excluded_from_custom_ident s =
   match String.lowercase_ascii s with
-  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" | "default" ->
+      true
   | _ -> false
 
 let local_name_can_unquote name =
   String.length name > 0
-  && (not (css_wide_keyword name))
+  && (not (excluded_from_custom_ident name))
   && String.for_all
        (function
          | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true | _ -> false)
