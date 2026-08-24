@@ -13,7 +13,7 @@
 
 (rule
  (alias runtest)
- (deps run.sh xtest.js minify_page.js)
+ (deps run.sh xtest.js minify_page.js freeze_page.js)
  (action
   (run
    sh

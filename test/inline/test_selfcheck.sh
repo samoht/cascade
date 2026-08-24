@@ -1,6 +1,6 @@
 #!/bin/sh
-# The harness must prove a page renders the same twice before it reports a
-# difference count for it.
+# The harness must prove a page is measurable before it reports a difference
+# count for it, on both of the counts it can fail.
 #
 # A page whose layout has not settled by the time the computed styles are read
 # differs from itself, and run.sh then attributes that difference to whichever
@@ -8,11 +8,19 @@
 # fine. It has happened twice. So a page that is not self-stable has to be
 # reported as unusable, and its transform legs skipped, rather than measured.
 #
-# Testing that needs a browser that is unstable on demand, which a real one is
-# not, so this drives run.sh through a stub: it answers `--version`, and for
-# each `--dump-dom` it prints one of two computed-style payloads, alternating
-# only for a page carrying the marker below. No browser is involved, so the
-# gate is checked on every machine rather than only where Chrome is installed.
+# Two renders only catch a page that is unstable on those two renders, and the
+# page that prompted this was unstable on three self-checks in eight. What is
+# deterministic about it is that it was frozen by an older freeze_page.js:
+# freezing is idempotent, so re-freezing a current page is a no-op, and a page
+# that changes under the current freezer is stale whatever it renders today.
+# That has to be caught too, and every time.
+#
+# Testing the first needs a browser that is unstable on demand, which a real
+# one is not, so this drives run.sh through a stub: it answers `--version`, and
+# for each `--dump-dom` it prints one of two computed-style payloads,
+# alternating only for a page carrying the marker below. No browser is
+# involved, so both gates are checked on every machine rather than only where
+# Chrome is installed.
 #
 # Usage: sh test_selfcheck.sh <cascade> <canon_filter>
 set -e
@@ -29,7 +37,7 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/fixtures" "$work/pages"
-cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$work/"
+cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$dir/freeze_page.js" "$work/"
 
 # The stub keys off the page text, not the invocation count, so the original
 # page and each transform of it answer alike: only the marked page moves.
@@ -64,6 +72,12 @@ EOF
 page "$work/fixtures/one.html" stable
 page "$work/pages/stable.html" stable
 page "$work/pages/moving.html" xtest-stub-unstable
+# Frozen by a freezer that did not strip <script>, so the current one changes
+# it. The stub renders it as steadily as any other page: staleness is the only
+# thing wrong with it.
+page "$work/pages/unfrozen.html" stable
+sed -i.bak 's|</body>|<script>void 0</script></body>|' "$work/pages/unfrozen.html"
+rm -f "$work/pages/unfrozen.html.bak"
 
 STUB_STATE=$work/state
 export STUB_STATE CASCADE CANON_FILTER
@@ -97,6 +111,14 @@ if grep -q 'moving\.html@.* \(minimal\|minify\)$' "$work/out"; then
   fail "an unusable page still reported a transform result"
 fi
 
+# The page the current freezer would still change was frozen by an older one,
+# so what it renders today says nothing about what it renders tomorrow.
+grep -q '^UNUSABLE real unfrozen\.html@' "$work/out" ||
+  fail "a page the current freezer still changes was not reported as unusable"
+if grep -q 'unfrozen\.html@.* \(minimal\|minify\)$' "$work/out"; then
+  fail "a stale page still reported a transform result"
+fi
+
 [ "$status" -ne 0 ] || fail "run.sh exited 0 with a page it could not measure"
 
-echo "PASS: an unstable page is reported as unusable, not measured"
+echo "PASS: an unstable page and a stale one are reported as unusable"
