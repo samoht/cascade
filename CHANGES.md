@@ -161,6 +161,9 @@
 
 ### Minification
 
+- `--minify` keeps the `center` in `position-area: top center`. A lone keyword
+  stands for `X span-all`, not `X center`, so dropping it moved the box to a
+  different area (#457)
 - `--minify` keeps a `@layer` whose own rules write no declarations but nest
   rules that do. The emptiness test read only the declarations, so
   `@layer a { .x { .y { color: red } } }` collapsed to `@layer a;` and every

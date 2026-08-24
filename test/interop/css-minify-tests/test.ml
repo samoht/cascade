@@ -475,6 +475,14 @@ let normalize_expected ~category ~id expected =
          rounding. *)
       fixture ~category ~id ~upstream:"a{width:calc(100%*2)}"
         ~cascade:"a{width:200%}" upstream
+  | "anchor", "0002" ->
+      (* The upstream folds [position-area: top center] to [top].
+         css-anchor-position-1 sec. 3.1.2 defaults the omitted axis to
+         [span-all], not to [center], so the two name different areas: Chrome
+         151 computes them as "center top" and "top" and lays a percentage-width
+         box out 50px wide at x=200 against 600px wide at x=0. *)
+      fixture ~category ~id ~upstream:"a{position-area:top}"
+        ~cascade:"a{position-area:top center}" upstream
   | "anchor", "0003" ->
       (* The upstream rewrites [position-try-fallbacks: --flip] to the built-in
          [flip-block] tactic by inlining the [@position-try --flip {

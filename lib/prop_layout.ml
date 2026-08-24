@@ -190,12 +190,12 @@ let rec pp_position_area : position_area Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_area ctx v
   | None -> Pp.string ctx "none"
-  (* CSS Anchor Positioning 1 sec. 3.1: the second axis defaults to [center], so
-     [X center] minifies to [X]; both axes equal also collapse. *)
+  (* css-anchor-position-1 sec. 3.1.2: a lone keyword stands for [X span-all]
+     when it names an axis and repeats itself only when it names neither, so
+     only an axis-ambiguous pair collapses. [top center] is a different area
+     from [top]. *)
   | Area (first, Some second)
-    when Pp.minified ctx
-         && (equal_position_area_keyword first second
-            || equal_position_area_keyword second Center) ->
+    when Pp.minified ctx && equal_position_area_keyword first second ->
       pp_position_area_keyword ctx first
   | Area (first, second) ->
       pp_position_area_keyword ctx first;
