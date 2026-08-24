@@ -2982,10 +2982,71 @@ let vendor_prefixed_shorthands () =
     (fun css -> check_sheet_roundtrip "vendor prefix" ("a{" ^ css ^ "}"))
     cases
 
+(* CSS Values 4 sec. 10.7.2 makes NaN a keyword of the <number> grammar that
+   resolves at parse time, and sec. 10.13 serialises every NaN-valued
+   calculation as calc(NaN): CSS has one NaN and one spelling for it, so two
+   declarations that spell it are one declaration. The cached [Declaration.hash]
+   already answers that way, and [Shorthand.same_minified_declaration] merges
+   rules on [hash a = hash b && equal_declaration a b], so the two have to agree
+   or a merge is lost. *)
+let optimized_declarations css =
+  Css.of_string_exn css |> Css.optimize |> Css.statements
+  |> List.concat_map (function
+    | Css.Stylesheet.Rule r -> r.Css.Stylesheet.declarations
+    | _ -> [])
+
+let sole_declaration css =
+  match optimized_declarations css with
+  | [ d ] -> d
+  | l ->
+      Alcotest.failf "%s: expected one declaration, got %d" css (List.length l)
+
+let minified css =
+  Css.to_string ~minify:true (Css.optimize (Css.of_string_exn css))
+
+let nan_declaration_is_one_value () =
+  (* Parsed apart so the two are distinct heap blocks: a physical-equality
+     short-circuit must not stand in for the answer. *)
+  let a = sole_declaration ".a{opacity:calc(infinity - infinity)}" in
+  let b = sole_declaration ".b{opacity:calc(infinity - infinity)}" in
+  Alcotest.(check string)
+    "the fold spells calc(NaN)" "opacity:calc(NaN)"
+    (Css.Declaration.to_string ~minify:true a);
+  Alcotest.(check int)
+    "hash reads the two as one value" (Css.Declaration.hash a)
+    (Css.Declaration.hash b);
+  Alcotest.(check bool)
+    "a NaN declaration equals itself" true
+    (Css.Declaration.equal_declaration a a);
+  Alcotest.(check bool)
+    "two NaN declarations are equal" true
+    (Css.Declaration.equal_declaration a b);
+  (* An ordinary float still answers both ways. *)
+  let half = sole_declaration ".c{opacity:.5}" in
+  let half' = sole_declaration ".d{opacity:.5}" in
+  let other = sole_declaration ".e{opacity:.6}" in
+  Alcotest.(check bool)
+    "equal floats are equal" true
+    (Css.Declaration.equal_declaration half half');
+  Alcotest.(check bool)
+    "different floats are not" false
+    (Css.Declaration.equal_declaration half other);
+  (* What the disagreement costs: the NaN pair is left unmerged while the
+     ordinary-float control merges. *)
+  Alcotest.(check string)
+    "the NaN pair merges" ".a,.b{opacity:calc(NaN)}"
+    (minified
+       ".a{opacity:calc(infinity - infinity)}.b{opacity:calc(infinity - \
+        infinity)}");
+  Alcotest.(check string)
+    "the float control merges" ".c,.d{opacity:.5}"
+    (minified ".c{opacity:.5}.d{opacity:.5}")
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
