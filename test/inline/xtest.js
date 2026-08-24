@@ -35,7 +35,15 @@ function computed(path){
   if(!m) throw new Error('no data-xtest for '+path);
   return JSON.parse(Buffer.from(m[1],'base64').toString('utf8'));
 }
-const a = computed(process.argv[2]), b = computed(process.argv[3]);
+// --self renders one page twice and compares it with itself. Nothing
+// transformed it in between, so a difference here is the page's own, and every
+// later count taken from it reads as a defect in whichever transform happened
+// to be measured. run.sh settles that before it believes any count.
+const self = process.argv[2] === '--self';
+const [pathA, pathB] = self
+  ? [process.argv[3], process.argv[3]]
+  : [process.argv[2], process.argv[3]];
+const a = computed(pathA), b = computed(pathB);
 // The two lists line up by position, so the comparison is only meaningful up to
 // the first place the trees disagree. Past a dropped or added element every
 // later index compares two different elements, and one structural change
@@ -71,6 +79,11 @@ if (split !== null) diffs.unshift(split);
 const how = CANON ? ' (canonical compare)'
   : ' (RAW COMPARE, no CANON_FILTER: equivalent spellings counted, total inflated)';
 console.log('visual elements: '+n+', computed props/elem: ~'+Object.keys(a[0]||{}).length+how);
-if (!diffs.length) console.log('RESULT: IDENTICAL computed styles (inlining preserves the render)');
+const verdict = self
+  ? { same: 'RESULT: SELF-STABLE (the page renders the same twice)',
+      differ: 'RESULT: NOT SELF-STABLE, '+diffs.length+' difference(s) between two renders of it' }
+  : { same: 'RESULT: IDENTICAL computed styles (inlining preserves the render)',
+      differ: 'RESULT: '+diffs.length+' difference(s)'+(CANON?'':' [RAW, INFLATED]') };
+if (!diffs.length) console.log(verdict.same);
 // The whole list, not a sample: it is the artifact you diff between runs.
-else { console.log('RESULT: '+diffs.length+' difference(s)'+(CANON?'':' [RAW, INFLATED]')+':'); diffs.forEach(d=>console.log('  '+d)); }
+else { console.log(verdict.differ+':'); diffs.forEach(d=>console.log('  '+d)); }

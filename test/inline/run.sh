@@ -119,6 +119,24 @@ check() { # label before after
        fail=1 ;;
   esac
 }
+# A count means something about a transform only if the page renders the same
+# twice without one, and a fetched page does not always: one frozen by an older
+# freeze_page.js keeps the @font-face rules that swap text metrics mid-render,
+# and it then differs from itself by a few hundred computed styles on about
+# half of its runs. Measured against a transform, that reads as a defect in the
+# transform. So prove the page first, and skip it rather than report a number
+# from an instrument that is not measuring the transform.
+selfstable() { # label file
+  report=$(node "$dir/xtest.js" --self "$2" 2>&1)
+  case $report in
+    *"RESULT: SELF-STABLE"*) return 0 ;;
+    *) echo "UNUSABLE $1"
+       printf '%s\n' "$report" | head -8 | sed 's/^/     /'
+       echo "     no count from this page means anything; re-run fetch.sh"
+       fail=1
+       return 1 ;;
+  esac
+}
 # A transform that dies leaves an empty file, and an empty page differs from
 # the original in every computed style, so the run blames the transform for a
 # render change that never happened. Report the status, and the error the tool
@@ -170,9 +188,14 @@ done
 # Both transforms run: `apply` and `--minify` fail differently, and a real page
 # carries selectors and feature queries no fixture does, so a minify defect
 # that only a real page reaches goes unmeasured until the leg exists.
+#
+# The self-stability check is on the pages alone. A fixture is committed and
+# changes only under review; a page arrives off the network and goes stale on
+# its own, which is the way this has failed.
 for f in "$dir"/pages/*.html; do
   [ -e "$f" ] || continue
   page="$(basename "$f")@$(sha "$f")"
+  selfstable "real $page" "$f" || continue
   tmp=$(mktemp)
   label="real $page minimal"
   if transform "$label" "$tmp" "$CASCADE" apply --minimal "$f"; then
