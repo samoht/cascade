@@ -262,6 +262,15 @@ module Overlap_key_table = Hashtbl.Make (struct
   let hash = Shorthand.overlap_key_hash
 end)
 
+(* Packed specificities, so the bucket index is keyed by an immediate rather
+   than by a record a generic table would hash and compare field by field. *)
+module Spec_table = Hashtbl.Make (struct
+  type t = int
+
+  let equal = Int.equal
+  let hash = Hashtbl.hash
+end)
+
 let declaration_overlap decl =
   {
     decl;
@@ -313,11 +322,53 @@ let rule_overlap_keys decls =
     distinct_keys keys (total - 1) []
   end
 
-let add_bucket bucket key value =
-  let prev =
-    Overlap_key_table.find_opt bucket key |> Option.value ~default:[]
-  in
-  Overlap_key_table.replace bucket key (value :: prev)
+(* A cascade conflict needs two selector branches of equal specificity, so a
+   candidate bucket is keyed by specificity as well as by overlap key: rules
+   that write the same property at specificities that can never tie are not
+   enumerated at all, which is four candidate pairs in five of a real
+   stylesheet. The three components count simple selectors and sit far below the
+   20-bit field; one past it saturates, which can only merge two specificities
+   into one bucket, never split one. *)
+let spec_field = 0xFFFFF
+let spec_component x = if x > spec_field then spec_field else x
+
+let spec_key (s : Selector.specificity) =
+  (spec_component s.ids lsl 40)
+  lor (spec_component s.classes lsl 20)
+  lor spec_component s.elements
+
+let rec spec_key_mem (key : int) = function
+  | [] -> false
+  | k :: rest -> key = k || spec_key_mem key rest
+
+(* The distinct specificities of a node's branches. A rule has a handful of
+   branches, so the linear membership test beats sorting them. *)
+let rec distinct_spec_keys acc = function
+  | [] -> acc
+  | spec :: rest ->
+      let key = spec_key spec in
+      distinct_spec_keys (if spec_key_mem key acc then acc else key :: acc) rest
+
+let spec_bucket bucket key =
+  match Overlap_key_table.find_opt bucket key with
+  | Option.Some inner -> inner
+  | Option.None ->
+      let inner = Spec_table.create 4 in
+      Overlap_key_table.replace bucket key inner;
+      inner
+
+let add_spec_bucket bucket spec value =
+  let prev = Spec_table.find_opt bucket spec |> Option.value ~default:[] in
+  Spec_table.replace bucket spec (value :: prev)
+
+let rec add_spec_buckets bucket value = function
+  | [] -> ()
+  | spec :: rest ->
+      add_spec_bucket bucket spec value;
+      add_spec_buckets bucket value rest
+
+let add_bucket bucket key specs value =
+  add_spec_buckets (spec_bucket bucket key) value specs
 
 let add_string_bucket bucket key value =
   let prev = String_table.find_opt bucket key |> Option.value ~default:[] in
@@ -335,33 +386,53 @@ let add_candidate stamp seen acc i =
     i :: acc
   end
 
-let collect_bucket bucket key stamp seen acc =
-  Overlap_key_table.find_opt bucket key
-  |> Option.value ~default:[]
-  |> List.fold_left (add_candidate stamp seen) acc
+let rec add_candidates stamp seen acc = function
+  | [] -> acc
+  | i :: rest -> add_candidates stamp seen (add_candidate stamp seen acc i) rest
+
+let rec collect_specs bucket specs stamp seen acc =
+  match specs with
+  | [] -> acc
+  | spec :: rest ->
+      let acc =
+        match Spec_table.find_opt bucket spec with
+        | Option.None -> acc
+        | Option.Some ids -> add_candidates stamp seen acc ids
+      in
+      collect_specs bucket rest stamp seen acc
+
+let collect_bucket bucket key specs stamp seen acc =
+  match Overlap_key_table.find_opt bucket key with
+  | Option.None -> acc
+  | Option.Some inner -> collect_specs inner specs stamp seen acc
 
 let collect_string_bucket bucket key stamp seen acc =
   String_table.find_opt bucket key
   |> Option.value ~default:[]
-  |> List.fold_left (add_candidate stamp seen) acc
+  |> add_candidates stamp seen acc
 
 let source_order_edges t =
   let n = t.count in
   let succ = Array.make n [] in
   let by_decl_key = Overlap_key_table.create 256 in
   let by_branch = String_table.create 256 in
+  (* every prior node, bucketed by specificity: what a node carrying the broad
+     key has to be checked against, since the broad key intersects every
+     other *)
+  let by_spec = Spec_table.create 64 in
   let seen = Array.make (max n 1) (-1) in
-  let prior_nodes = ref [] in
   for j = 0 to n - 1 do
     let keys = t.overlap_keys.(j) in
+    let specs = distinct_spec_keys [] t.specificities.(j) in
     let candidates =
       if overlap_key_in Shorthand.broad_overlap_key keys then
-        List.fold_left (add_candidate j seen) [] !prior_nodes
-      else collect_bucket by_decl_key Shorthand.broad_overlap_key j seen []
+        collect_specs by_spec specs j seen []
+      else
+        collect_bucket by_decl_key Shorthand.broad_overlap_key specs j seen []
     in
     let candidates =
       List.fold_left
-        (fun acc key -> collect_bucket by_decl_key key j seen acc)
+        (fun acc key -> collect_bucket by_decl_key key specs j seen acc)
         candidates keys
     in
     let candidates =
@@ -375,11 +446,11 @@ let source_order_edges t =
         | Option.None -> ()
         | Option.Some reason -> succ.(i) <- (j, reason) :: succ.(i))
       candidates;
-    List.iter (fun key -> add_bucket by_decl_key key j) keys;
+    List.iter (fun key -> add_bucket by_decl_key key specs j) keys;
     List.iter
       (fun branch -> add_string_bucket by_branch branch j)
       t.branches.(j);
-    prior_nodes := j :: !prior_nodes
+    add_spec_buckets by_spec j specs
   done;
   Array.map List.rev succ
 
@@ -965,19 +1036,21 @@ let add_produced_edge t graph consume succ left right reason =
   | Ambiguous -> Error (Ambiguous_produced_order { left; right })
   | New_conflict -> Error (New_produced_conflict { left; right })
 
-(* Prior produced nodes that share a declaration key or branch with [right], and
-   so might conflict with it. A broad key forces a scan of every prior node;
-   otherwise the decl-key and branch buckets narrow the set. *)
-let collect_produced_candidates by_decl_key by_branch graph right seen keys
-    prior_nodes =
+(* Prior produced nodes that share a declaration key or branch with [right] at a
+   specificity that can tie, and so might conflict with it. A broad key forces a
+   scan of every prior node at those specificities; otherwise the decl-key and
+   branch buckets narrow the set further. *)
+let collect_produced_candidates by_decl_key by_spec by_branch graph right seen
+    keys specs =
   let candidates =
     if overlap_key_in Shorthand.broad_overlap_key keys then
-      List.fold_left (add_candidate right seen) [] prior_nodes
-    else collect_bucket by_decl_key Shorthand.broad_overlap_key right seen []
+      collect_specs by_spec specs right seen []
+    else
+      collect_bucket by_decl_key Shorthand.broad_overlap_key specs right seen []
   in
   let candidates =
     List.fold_left
-      (fun acc key -> collect_bucket by_decl_key key right seen acc)
+      (fun acc key -> collect_bucket by_decl_key key specs right seen acc)
       candidates keys
   in
   List.fold_left
@@ -987,24 +1060,25 @@ let collect_produced_candidates by_decl_key by_branch graph right seen keys
 let add_produced_edges t ~consume ~total ~produced_count graph succ =
   let by_decl_key = Overlap_key_table.create 256 in
   let by_branch = String_table.create 256 in
+  let by_spec = Spec_table.create 16 in
   let seen = Array.make (max (total + produced_count) 1) (-1) in
-  let prior_nodes = ref [] in
   let rec loop pi =
     if pi = produced_count then Ok ()
     else
       let right = total + pi in
       let keys = graph.overlap_keys.(right) in
+      let specs = distinct_spec_keys [] graph.specificities.(right) in
       let candidates =
-        collect_produced_candidates by_decl_key by_branch graph right seen keys
-          !prior_nodes
+        collect_produced_candidates by_decl_key by_spec by_branch graph right
+          seen keys specs
       in
       let rec add_edges = function
         | [] ->
-            List.iter (fun key -> add_bucket by_decl_key key right) keys;
+            List.iter (fun key -> add_bucket by_decl_key key specs right) keys;
             List.iter
               (fun branch -> add_string_bucket by_branch branch right)
               graph.branches.(right);
-            prior_nodes := right :: !prior_nodes;
+            add_spec_buckets by_spec right specs;
             loop (pi + 1)
         | left :: rest -> (
             match nodes_conflict_reason graph left right with

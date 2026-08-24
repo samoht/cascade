@@ -357,6 +357,12 @@ answers.
   (#323)
 - `--minify` and `cascade diff` spend less time on a large stylesheet, for the
   same output (#413, #422, #424)
+- `--minify` builds the rule-dependency graph of a large stylesheet in less
+  memory, for byte-identical output. It compared every pair of rules writing
+  the same property, though two rules whose selectors cannot tie on
+  specificity are never order-constrained; skipping those pairs cuts a
+  4000-rule sheet to 51% of the allocations and 37% of the instructions
+  (#468)
 
 ### Custom properties
 
