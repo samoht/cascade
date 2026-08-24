@@ -32,6 +32,19 @@
 - `Css.vars_of_rules` is `Css.vars_of_stylesheet`. It reported only what a
   top-level rule holds; it now also reports a `var()` inside a nested rule, an
   animation frame or a page margin box (#382)
+- `Css.Stylesheet.layer_name` is the identifiers a `<layer-name>` is made of
+  rather than the text between them, so `Css.layers`, `layer_block`,
+  `layer_decl`, `layer`, `layer_of`, `as_layer`, `layer_block_name`,
+  `layer_statement_name_list`, `import_layer_name` and the `?layer` argument of
+  `custom_props` carry a `string list` where they carried a `string`.
+  `Css.Stylesheet.read_layer_name` and `string_of_layer_name` convert between
+  the two (#442)
+- `Css.color` keeps the origin of a relative colour as a colour rather than in
+  the opaque tail: `Relative_rgb` carries `color * string` and
+  `Relative_color` carries `string * color * string`, so an expression or a
+  pattern naming either takes the extra field (#313)
+- `Css.Pp.ctx` gains `in_style_rule`; record expressions must set it and record
+  patterns must bind it or use `; _` (#374)
 
 ### Parsing
 
