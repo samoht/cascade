@@ -1460,6 +1460,87 @@ let error_formatting_at_end () =
       "marker near end" true
       (error.marker_pos >= String.length error.context_window - 5)
 
+(* U+20AC EURO SIGN, three UTF-8 bytes, spelled as escapes because cascade
+   source stays 7-bit. *)
+let euro = "\xe2\x82\xac"
+let euros n = String.concat "" (List.init n (fun _ -> euro))
+
+(* A local UTF-8 validator, so the oracle does not run through the decoder under
+   test. *)
+let is_utf8 s =
+  let len = String.length s in
+  let rec go i =
+    if i >= len then true
+    else
+      let b = Char.code s.[i] in
+      let n =
+        if b < 0x80 then 1
+        else if b land 0xe0 = 0xc0 then 2
+        else if b land 0xf0 = 0xe0 then 3
+        else if b land 0xf8 = 0xf0 then 4
+        else 0
+      in
+      if n = 0 || i + n > len then false
+      else
+        let rec continuations k =
+          k = n
+          || (Char.code s.[i + k] land 0xc0 = 0x80 && continuations (k + 1))
+        in
+        continuations 1 && go (i + n)
+  in
+  go 0
+
+(* Fail at byte [pos] of [input] by demanding a character the input never holds,
+   and hand back the error record. *)
+let error_at input pos =
+  let r = of_string input in
+  for _ = 1 to pos do
+    skip r
+  done;
+  try
+    expect '\x01' r;
+    Alcotest.failf "expected a parse error at byte %d" pos
+  with Parse_error error -> error
+
+(* Lines and columns are 1-based and counted from the start of the input: the
+   byte just past a newline opens the next line at column 1, and the position
+   past the last byte of a line is one column beyond it. *)
+let error_line_and_column () =
+  let check name input pos expected =
+    Alcotest.(check string) name expected (error_at input pos).filename
+  in
+  check "start of the second line" "abc\n" 4 "<CSS input>:2:1";
+  check "start of the second line, longer first" "aaaaa\n" 6 "<CSS input>:2:1";
+  check "start of the third line" "ab\ncd\n" 6 "<CSS input>:3:1";
+  check "past the last character" "abc" 3 "<CSS input>:1:4"
+
+(* A column is one Unicode scalar value, for the reported column and for the
+   caret alike, so three euro signs put the error in column 4 with three
+   characters before the caret rather than nine bytes. *)
+let error_column_counts_characters () =
+  let error = error_at (euros 3) 9 in
+  Alcotest.(check string)
+    "column counts characters" "<CSS input>:1:4" error.filename;
+  Alcotest.(check int) "caret counts characters" 3 error.marker_pos
+
+(* The caret of pure ASCII stays where it was, one column per byte. *)
+let error_ascii_caret_holds () =
+  let error = error_at (String.make 50 'a') 50 in
+  Alcotest.(check string) "ascii column" "<CSS input>:1:51" error.filename;
+  Alcotest.(check int) "ascii caret" 40 error.marker_pos
+
+(* A window boundary landing inside a UTF-8 sequence moves out to the lead byte,
+   so the context a caret is drawn under is never a truncated code point. *)
+let error_context_window_keeps_code_points () =
+  let before = error_at (euros 40 ^ "xx") 122 in
+  Alcotest.(check bool)
+    "leading boundary keeps code points" true
+    (is_utf8 before.context_window);
+  let after = error_at ("x" ^ euros 40) 1 in
+  Alcotest.(check bool)
+    "trailing boundary keeps code points" true
+    (is_utf8 after.context_window)
+
 (* Grouped test runners by feature for simpler suite entries *)
 
 let tests_backtracking () =
@@ -1507,6 +1588,12 @@ let tests_call_stack () =
   fold_many_with_enum_context ();
   many_call_stack ();
   triple_call_stack ()
+
+let tests_error_position () =
+  error_line_and_column ();
+  error_column_counts_characters ();
+  error_ascii_caret_holds ();
+  error_context_window_keeps_code_points ()
 
 let tests_error_formatting () =
   error_formatting_multiline ();
@@ -1557,4 +1644,5 @@ let suite =
       test_case "call stack" `Quick tests_call_stack;
       (* Error formatting *)
       test_case "error formatting" `Quick tests_error_formatting;
+      test_case "error position" `Quick tests_error_position;
     ] )
