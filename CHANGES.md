@@ -480,9 +480,10 @@ answers.
 - `--minify` and `cascade diff` spend less time and memory on a large
   stylesheet, for the same output (#413, #422, #424, #468, #507)
 - `--minify` no longer allocates quadratically on a long run of rules sharing
-  one selector or one body, nor probes every pair of them to decide whether it
-  may merge. The benchmark corpora hold no such run, so this bounds a worst
-  case rather than speeding real input up (#480, #486, #487, #502, #505)
+  one selector, one body, or one declaration, nor probes every pair of them to
+  decide whether it may merge or which order the cascade needs. The benchmark
+  corpora hold no such run, so this bounds a worst case rather than speeding
+  real input up (#480, #486, #487, #502, #505, #523)
 - `--minify` decides which rules share a default value without rebuilding a
   property key for every declaration it reads, a scan it repeats once per
   member per property under consideration. It allocates a twentieth less over
