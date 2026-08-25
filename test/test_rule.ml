@@ -85,6 +85,52 @@ let test_merge_adjacent_skips_vendor_pseudo () =
   Alcotest.(check bool)
     "vendor pseudo-element selectors never share a list" true (merged == input)
 
+(* --- complexity guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* [n] adjacent rules sharing one body and no two selectors alike, so the whole
+   run is one group and [take] grows it to [n]. The [:where(.sidebar)] prefix is
+   what makes the cost readable: the group- and peer-marker probes each take a
+   [String.sub] of a class name longer than the marker they look for, so a walk
+   of one of these selectors allocates and minor words count walks. *)
+let same_body_run n =
+  let b = Buffer.create (n * 48) in
+  let out = Fmt.with_buffer b in
+  for i = 0 to n - 1 do
+    Fmt.pf out ":where(.sidebar) .s%d{color:red}" i
+  done;
+  rules (Buffer.contents b)
+
+(* Whether a run may share one selector list turns on two facts read off each
+   selector alone, so the group decision costs one walk per member. Asking it of
+   every PAIR costs [n(n-1)] walks, and a run of same-body rules is exactly what
+   a utility-class sheet emits. Doubling the run must about double the words. *)
+let test_merge_run_reads_each_selector_once () =
+  (* The ratio below is readable only while the marker probe allocates. Pin that
+     first, so a probe that stops allocating fails here rather than leaving the
+     guard passing on a flat line. *)
+  let sel = Selector.of_string ":where(.sidebar) .s0" in
+  Alcotest.(check bool)
+    "marker probe allocates, so words count walks" true
+    (measure (fun () -> Selector.has_is_where_pattern sel) > 0.);
+  let in1 = same_body_run 200 and in2 = same_body_run 400 in
+  let merge input () = Rule.merge_adjacent_identical ~ctx:extend_ctx input in
+  Alcotest.(check int)
+    "the whole run merges into one rule" 1
+    (List.length (merge in2 ()));
+  let a1 = measure (merge in1) in
+  let a2 = measure (merge in2) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a2 < a1 *. 3.)
+
 let suite =
   ( "rule",
     [
@@ -102,4 +148,6 @@ let suite =
         test_merge_adjacent_skips_intervening_rule;
       Alcotest.test_case "merge adjacent skips vendor pseudo" `Quick
         test_merge_adjacent_skips_vendor_pseudo;
+      Alcotest.test_case "merge run reads each selector once" `Quick
+        test_merge_run_reads_each_selector_once;
     ] )
