@@ -279,7 +279,8 @@ val box_shadow : shadow -> declaration
 val box_shadows : shadow list -> declaration
 (** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
-    property from a comma-separated list. *)
+    property from a comma-separated list. Raises [Invalid_argument] when
+    [values] is empty. *)
 
 (** Declaration constructors *)
 
@@ -1316,7 +1317,8 @@ val webkit_background_clip : background_box -> declaration
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
-     font-family} property from a comma-separated list. *)
+     font-family} property from a comma-separated list. Raises
+    [Invalid_argument] when [fonts] is empty. *)
 
 val word_spacing : length -> declaration
 (** [word_spacing v] is the

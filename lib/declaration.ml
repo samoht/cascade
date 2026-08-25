@@ -2508,7 +2508,7 @@ let animation value = v Animation [ value ]
 let box_shadow value = v Box_shadow value
 
 let box_shadows = function
-  | [] -> failwith "empty box_shadows"
+  | [] -> invalid_arg "box_shadows: empty list"
   | values -> v Box_shadow (List values)
 
 (* Special helpers *)
@@ -2800,7 +2800,7 @@ let background_clip value = v Background_clip value
 let webkit_background_clip value = v Webkit_background_clip value
 
 let font_families = function
-  | [] -> failwith "empty font_families"
+  | [] -> invalid_arg "font_families: empty list"
   | fonts -> v Font_family (List fonts)
 
 let background_attachment value = v Background_attachment value

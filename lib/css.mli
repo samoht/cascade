@@ -4433,7 +4433,8 @@ val font_family : font_family -> declaration
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
-     font-family} property from a comma-separated list. *)
+     font-family} property from a comma-separated list. Raises
+    [Invalid_argument] when [fonts] is empty. *)
 
 val font_size : length -> declaration
 (** [font_size size] is the
@@ -6060,7 +6061,7 @@ val box_shadow : shadow -> declaration
 val box_shadows : shadow list -> declaration
 (** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
-    property. *)
+    property. Raises [Invalid_argument] when [values] is empty. *)
 
 (** CSS scale property values *)
 type scale = Properties.scale =
