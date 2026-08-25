@@ -7669,17 +7669,19 @@ val to_string :
   ?enforce_spec:bool ->
   t ->
   string
-(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
-    formatter - no optimisation, no theme resolution, no [var()] substitution.
-    Run {!optimize}, {!resolve_theme}, and {!inline_vars} explicitly when those
-    passes are needed. Spec recovery (drop invalid declarations, unknown
-    at-rules, empty rules) still applies because the parser preserved those
-    shapes for round-trip and browsers discard them during parse. Output never
-    ends with a newline.
+(** [to_string ?minify ?indent ?lossless ?enforce_spec stylesheet] serialises a
+    stylesheet to CSS. Pure formatter - no optimisation, no theme resolution, no
+    [var()] substitution. Run {!optimize}, {!resolve_theme}, and {!inline_vars}
+    explicitly when those passes are needed. Spec recovery (drop invalid
+    declarations and empty rules) still applies because the parser preserved
+    those shapes for round-trip and browsers discard them during parse. Unknown
+    at-rules are preserved. Output never ends with a newline.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
     - [lossless] suppresses colour-channel rounding in minified output.
+    - [enforce_spec] suppresses target-dependent minified shortenings and keeps
+      their spec-canonical serialisations.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
@@ -7864,8 +7866,9 @@ val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t
-(** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST step
-    matching the print-time [~theme] / [~theme_defaults] knobs on {!to_string}.
+(** [resolve_theme ?theme ?theme_defaults stylesheet] resolves theme guards and
+    external theme defaults as an explicit AST transformation. {!to_string} is a
+    pure formatter and does not perform this step.
 
     [theme] names the variables whose [var()] references stay live. When [theme]
     is given, references to any other name are inlined to the value

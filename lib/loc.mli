@@ -1,4 +1,7 @@
-(** Source locations: byte-offset ranges in the original input.
+(** Source locations: byte-offset ranges in the CSS Syntax-preprocessed input.
+
+    {!Reader.of_string} strips a leading UTF-8 BOM, replaces NUL with U+FFFD,
+    and maps CR, FF and CRLF to LF before the lexer records these offsets.
 
     Every {!Token.t} and {!Component.t} carries one. *)
 
@@ -20,7 +23,8 @@ val default_meta_level : meta_level
 type t = { start_pos : int; end_pos : int }
 
 val v : start_pos:int -> end_pos:int -> t
-(** [v ~start_pos ~end_pos] is a location spanning [\[start_pos, end_pos)]. *)
+(** [v ~start_pos ~end_pos] is a location spanning [\[start_pos, end_pos)] in
+    the preprocessed source buffer. *)
 
 val dummy : t
 (** [dummy] is a location of zero width at position 0. For test data and
@@ -81,7 +85,11 @@ module Context : sig
 end
 
 val snippet : ?window:int -> string -> t -> Context.snippet
-(** [snippet source loc] extracts a snippet of [source] around [loc]:
+(** [snippet source loc] extracts a snippet of [source] around [loc]: [source]
+    must be the same preprocessed buffer the lexer indexed, such as
+    {!Reader.source}; a caller's original BOM/CRLF/NUL/FF-containing string is
+    in a different coordinate space.
+
     {!Context.field-text} is the window (default: 40 bytes on each side of the
     location), {!Context.field-marker_pos} counts the characters of
     {!Context.field-text} before [loc.start_pos], and

@@ -1,4 +1,7 @@
-(** Source locations: byte-offset ranges in the original input.
+(** Source locations: byte-offset ranges in the CSS Syntax-preprocessed input.
+
+    {!Reader.of_string} strips a leading UTF-8 BOM, replaces NUL with U+FFFD,
+    and maps CR, FF and CRLF to LF before the lexer records these offsets.
 
     Every {!Token.t} and {!Component.t} carries one, letting downstream
     validators report errors with precise positions and recover ranges for
