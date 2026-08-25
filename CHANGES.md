@@ -204,6 +204,10 @@ answers.
   every `span-` spelling. css-anchor-position-1 sec. 3.1.2 gives them a branch
   of the grammar and browsers lay them out, but cascade had no keyword for any
   of them and dropped the declaration (#478, #485)
+- `position-area` rejects two keywords taken from different branches of its
+  grammar, such as `left block-start` or `start top`. Cascade checked only that
+  they named different axes, so it accepted 1120 ordered keyword pairs that
+  css-anchor-position-1 sec. 3.1.2 and Chrome 151 both reject (#495)
 
 ### Printing
 
