@@ -48,23 +48,27 @@ let report_warning w =
   |> List.iter (fun line -> Fmt.epr "warning: %s@." line)
 
 (* [Some sheet] is CSS the projection can use. [None] is a source the parser
-   could not turn into any: a fatal syntax error, or - keyed as in [cascade fmt]
-   - a recovery that left nothing to serialise from an input that had something
-   to drop. Neither is a source that was legitimately empty, which parses
-   without a word and contributes nothing. [note] says what the caller does
-   about the loss. *)
+   could not turn into any: a fatal syntax error, or a recovery that left no
+   statement at all from an input that had something to drop. Neither is a
+   source that was legitimately empty, which parses without a word and
+   contributes nothing. [note] says what the caller does about the loss. *)
 let parse_source ~filename ~note css =
   match Css.of_string ~filename css with
   | Error e ->
       Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
       None
-  | Ok { Css.stylesheet; warnings } ->
+  | Ok { Css.stylesheet; warnings } -> (
       List.iter report_warning warnings;
-      if warnings <> [] && Css.to_string ~minify:true stylesheet = "" then begin
-        Fmt.epr "Error: %s: parse dropped every rule%s@." filename note;
-        None
-      end
-      else Some stylesheet
+      (* Whether the parse produced anything is a question about the statement
+         list. Serialising the sheet to answer it asks a different one, and gets
+         it wrong: [@charset "UTF-8"] and an [src]-less [@font-face] parse, are
+         kept, and still print nothing. What [Apply.compute] consumes is the
+         list, not the text. *)
+      match (stylesheet, warnings) with
+      | [], _ :: _ ->
+          Fmt.epr "Error: %s: parse dropped every rule%s@." filename note;
+          None
+      | _ -> Some stylesheet)
 
 let inline_html ~minimal ~filename ~html ~extra =
   let doc = Html.parse html in

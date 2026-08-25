@@ -575,6 +575,10 @@ answers.
   measures each text run on its own, so merging them moved the element's width;
   licence headers went missing outright. The page is parsed and printed with
   markup.ml in place of lambdasoup (#346)
+- `cascade apply` exits 0 for a `<style>` block whose parse kept a statement,
+  so a build gating on the exit status passes on valid CSS. The check rendered
+  the sheet, and an empty rule, a redundant `@charset "UTF-8"` or an `src`-less
+  `@font-face` prints nothing while losing nothing (#489)
 - `cascade diff` names an at-rule that carries no condition of its own by the
   head it prints to, rather than describing every one identically. That
   description keys the ordering comparison, so a `@media` that moved between a
