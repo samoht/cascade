@@ -3042,11 +3042,94 @@ let nan_declaration_is_one_value () =
     "the float control merges" ".c,.d{opacity:.5}"
     (minified ".c{opacity:.5}.d{opacity:.5}")
 
+(* CSS Values 4 sec. 10.7.2 gives NaN one spelling and one resolution: it is a
+   keyword of the <number> grammar that resolves at parse time, so a NaN reaches
+   the AST as that keyword rather than as a float a calculation happened to land
+   on. Sec. 10.13 serialises every NaN-valued calculation the same way,
+   calc(NaN) for a <number> and calc(NaN * 1px) once the value carries a unit.
+   One value, one node: however the source spelled the NaN, the declaration that
+   holds it is the same declaration, so it merges and it hashes the same.
+
+   infinity and -infinity are separate constants of the same sec. 10.7.2 list,
+   each with its own serialisation, so they stay three distinct values. *)
+let same_text_same_hash label a b =
+  let text = Css.Declaration.to_string ~minify:true a in
+  Alcotest.(check string)
+    (label ^ ": one minified text")
+    text
+    (Css.Declaration.to_string ~minify:true b);
+  Alcotest.(check int)
+    (label ^ ": one hash") (Css.Declaration.hash a) (Css.Declaration.hash b);
+  Alcotest.(check bool)
+    (label ^ ": one declaration")
+    true
+    (Css.Declaration.equal_declaration a b)
+
+let distinct_value label a b =
+  Alcotest.(check bool)
+    (label ^ ": two texts") false
+    (String.equal
+       (Css.Declaration.to_string ~minify:true a)
+       (Css.Declaration.to_string ~minify:true b));
+  Alcotest.(check bool)
+    (label ^ ": two declarations")
+    false
+    (Css.Declaration.equal_declaration a b)
+
+let nan_has_one_node () =
+  (* The keyword and the calculation that lands on NaN are the same value. *)
+  let keyword = sole_declaration ".a{opacity:calc(NaN)}" in
+  let computed = sole_declaration ".b{opacity:calc(infinity - infinity)}" in
+  Alcotest.(check string)
+    "the keyword spells calc(NaN)" "opacity:calc(NaN)"
+    (Css.Declaration.to_string ~minify:true keyword);
+  same_text_same_hash "keyword vs computed" keyword computed;
+  Alcotest.(check string)
+    "the two spellings merge" ".a,.b{opacity:calc(NaN)}"
+    (minified ".a{opacity:calc(NaN)}.b{opacity:calc(infinity - infinity)}");
+  (* Spellings a calculation keeps rather than folds stay one value each. *)
+  Alcotest.(check string)
+    "calc(0/0) merges" ".a,.b{opacity:calc(0/0)}"
+    (minified ".a{opacity:calc(0/0)}.b{opacity:calc(0/0)}");
+  Alcotest.(check string)
+    "calc(asin(2)) merges" ".a,.b{opacity:calc(asin(2))}"
+    (minified ".a{opacity:calc(asin(2))}.b{opacity:calc(asin(2))}");
+  Alcotest.(check string)
+    "a NaN length merges" ".a,.b{width:calc(NaN*1px)}"
+    (minified ".a{width:calc(NaN*1px)}.b{width:calc(NaN*1px)}");
+  Alcotest.(check string)
+    "a NaN duration merges" ".a,.b{transition-duration:calc(NaN*1s)}"
+    (minified
+       ".a{transition-duration:calc(NaN*1s)}.b{transition-duration:calc(NaN*1s)}");
+  Alcotest.(check string)
+    "a NaN length expression merges"
+    ".a,.b{width:calc(infinity*1px - infinity*1px)}"
+    (minified
+       ".a{width:calc(infinity*1px - infinity*1px)}.b{width:calc(infinity*1px \
+        - infinity*1px)}");
+  (* The other two degenerate constants keep their own values. *)
+  let inf = sole_declaration ".c{opacity:calc(infinity)}" in
+  let inf' = sole_declaration ".d{opacity:calc(infinity)}" in
+  let neg_inf = sole_declaration ".e{opacity:calc(-infinity)}" in
+  same_text_same_hash "infinity vs infinity" inf inf';
+  distinct_value "infinity vs -infinity" inf neg_inf;
+  distinct_value "infinity vs NaN" inf keyword;
+  distinct_value "-infinity vs NaN" neg_inf keyword;
+  Alcotest.(check string)
+    "infinity merges with itself" ".c,.d{opacity:calc(infinity)}"
+    (minified ".c{opacity:calc(infinity)}.d{opacity:calc(infinity)}");
+  Alcotest.(check string)
+    "the three constants stay apart"
+    ".a{opacity:calc(NaN)}.c{opacity:calc(infinity)}.e{opacity:calc(-infinity)}"
+    (minified
+       ".a{opacity:calc(NaN)}.c{opacity:calc(infinity)}.e{opacity:calc(-infinity)}")
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
+    test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
