@@ -337,3 +337,24 @@ type mode = Variables | Inline  (** Rendering mode for CSS output *)
 
 let equal_cascade_origin (a : cascade_origin) b = a = b
 let equal (a : stylesheet) b = a = b
+
+(** [resolve_font_face_var ~src ~unicode_range descriptor] is [descriptor] with
+    its value rewritten by the matching resolver, or [None] when it holds no
+    value a [var()] can be resolved in.
+
+    CSS Variables 1 sec. 3 substitutes [var()] in a property value; an
+    [\@font-face] descriptor is not a property, so no descriptor grammar accepts
+    one and browsers drop the declaration that holds it. cascade substitutes at
+    build time instead, and this table is the whole set it can reach: the parser
+    keeps a [var()] only for a descriptor named here, and {!Inline} supplies the
+    resolvers. A descriptor added to the table takes another resolver argument,
+    so both sides have to answer for it. *)
+let resolve_font_face_var ~src ~unicode_range = function
+  | Src value -> Some (Src (src value))
+  | Unicode_range values -> Some (Unicode_range (unicode_range values))
+  | Font_family _ | Font_style _ | Font_style_range _ | Font_weight _
+  | Font_weight_range _ | Font_stretch _ | Font_stretch_range _ | Font_display _
+  | Font_variant _ | Font_feature_settings _ | Font_variation_settings _
+  | Font_tech _ | Size_adjust _ | Ascent_override _ | Descent_override _
+  | Line_gap_override _ ->
+      Option.None

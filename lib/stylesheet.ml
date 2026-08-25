@@ -2353,17 +2353,23 @@ let rec components_upto_semicolon = function
   | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
   | component :: rest -> component :: components_upto_semicolon rest
 
-(* cascade generates CSS, so a var() it substitutes at build time never reaches
-   a browser. [Inline.simplify_font_face_descriptor] resolves exactly these two
-   under [--inline-vars], so their readers keep the var(); every other
-   descriptor has no resolution path, leaving the var() unresolvable. *)
-let descriptor_resolves_var = function
-  | "src" | "unicode-range" -> true
-  | _ -> false
+let descriptor_value_has_var r =
+  components_have_var (components_upto_semicolon (Cursor.remaining r))
 
-let descriptor_value_has_var name r =
-  (not (descriptor_resolves_var name))
-  && components_have_var (components_upto_semicolon (Cursor.remaining r))
+(* Whether the descriptor called [name] keeps a var() for the inline pass, asked
+   of the typed AST rather than of a second list of names: read a value only
+   such a descriptor accepts, then put the descriptor to
+   {!resolve_font_face_var}, the one table [Inline] fills in. A descriptor with
+   no resolution path either refuses the probe or lands on an arm that table
+   answers [None] for. Only a value carrying a var() asks, so an ordinary
+   descriptor never pays for the probe. *)
+let descriptor_resolves_var name =
+  let probe = Cursor.of_string ":var(--x)" in
+  match read_font_face_desc name probe with
+  | descriptor ->
+      Option.is_some
+        (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id descriptor)
+  | exception Error.Parse_error _ -> false
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
@@ -2374,7 +2380,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   else
     let name = Cursor.ident ~keep_case:false r in
     match
-      if descriptor_value_has_var name r then
+      if descriptor_value_has_var r && not (descriptor_resolves_var name) then
         Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
       else read_font_face_desc name r
     with

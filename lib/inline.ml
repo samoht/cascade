@@ -596,12 +596,19 @@ let simplify_unicode_range_descriptor visible (value : Properties.unicode_range)
   in
   simplify ~visited:[] value
 
-let simplify_font_face_descriptor visible = function
-  | Src value -> Src (simplify_font_src_descriptor visible value)
-  | Unicode_range values ->
-      Unicode_range
-        (List.map (simplify_unicode_range_descriptor visible) values)
-  | descriptor -> descriptor
+(* [resolve_font_face_var] names the descriptors whose var() survives the parse
+   and asks for one resolver each, so this pass and the parser cannot grow
+   apart: a descriptor added to that table takes a resolver argument the call
+   below has to supply. *)
+let simplify_font_face_descriptor visible descriptor =
+  match
+    resolve_font_face_var
+      ~src:(simplify_font_src_descriptor visible)
+      ~unicode_range:(List.map (simplify_unicode_range_descriptor visible))
+      descriptor
+  with
+  | Some resolved -> resolved
+  | Option.None -> descriptor
 
 let eval_page_declaration visible ctx decl =
   let resolve_length_var (var : Values.length Values.var) =
