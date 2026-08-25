@@ -810,11 +810,22 @@ let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
   in
   warnings := e :: !warnings
 
+(* Sections 5.5.9 and 5.5.10 auto-close a simple block and a function at EOF,
+   which every rule-level caller relies on, and the CR snapshot marks both of
+   those EOF branches a parse error. Report the repair so [Css.of_string] keeps
+   its promise: an unclosed block otherwise swallows the rest of the input in
+   silence. A function left open at EOF always sits inside such a block, so the
+   enclosing block accounts for it and the rule is reported once. *)
+let warn_unclosed ~meta lexer warnings (block : Component.block Component.node)
+    =
+  if not block.node.closed then
+    warn ~meta lexer warnings (Error.unterminated block.loc Sort.Block)
+
 (* CSS Syntax Level 3 section 5.5.2. [nested = true] also terminates on a stray
    ['}'] (the spec's "outermost block ended") so block-contents callers can
    recover instead of swallowing the closing delimiter. *)
-let consume_at_rule ?(nested = false) lexer ~name ~start_loc : Component.at_rule
-    =
+let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
+    Component.at_rule =
   let close prelude end_loc block =
     let loc = Loc.union start_loc end_loc in
     { node = { name; prelude = List.rev prelude; block }; loc }
@@ -829,6 +840,7 @@ let consume_at_rule ?(nested = false) lexer ~name ~start_loc : Component.at_rule
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
+        warn_unclosed ~meta lexer warnings block;
         close prelude block.loc (Some block)
     | _ ->
         let _ = Lexer.next lexer in
@@ -838,10 +850,12 @@ let consume_at_rule ?(nested = false) lexer ~name ~start_loc : Component.at_rule
   loop []
 
 (* CSS Syntax Level 3 section 5.5.3. [nested = true] makes a stray ['}'] or a
-   top-level ';' before any block end the rule attempt with [None]. The
-   custom-property-shaped guard discards a rule whose first two non-whitespace
-   prelude items are an ident starting with [--] followed by ':', warning that
-   the prelude read as a declaration rather than a selector. *)
+   top-level ';' before any block end the rule attempt with [None]; the spec
+   groups those two with the EOF branch as parse errors, so they are reported
+   the same way. The custom-property-shaped guard discards a rule whose first
+   two non-whitespace prelude items are an ident starting with [--] followed by
+   ':', warning that the prelude read as a declaration rather than a
+   selector. *)
 let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
   let is_custom_property_shape prelude =
@@ -858,21 +872,25 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
         | _ -> false)
     | _ -> false
   in
+  let drop end_loc =
+    let loc = Loc.union start_loc end_loc in
+    warn ~meta lexer warnings (Error.unterminated loc Sort.Qualified_rule);
+    None
+  in
   let rec loop prelude =
     let tok = Lexer.peek lexer in
     match tok.Token.kind with
     | Token.Eof ->
         let _ = Lexer.next lexer in
-        let loc = Loc.union start_loc tok.loc in
-        warn ~meta lexer warnings (Error.unterminated loc Sort.Qualified_rule);
-        None
+        drop tok.loc
     | Token.Semicolon when nested ->
         let _ = Lexer.next lexer in
-        None
-    | Token.Close Curly when nested -> None
+        drop tok.loc
+    | Token.Close Curly when nested -> drop tok.loc
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
+        warn_unclosed ~meta lexer warnings block;
         let loc = Loc.union start_loc block.loc in
         if is_custom_property_shape prelude then (
           (* Dropping the rule is what the spec asks for, but it still has to be
@@ -905,7 +923,9 @@ let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
     | Token.At_keyword name ->
-        let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
+        let ar =
+          consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings
+        in
         loop (At ar :: acc)
     | _ -> (
         Lexer.reconsume lexer tok;
@@ -1034,7 +1054,7 @@ let consume_decl_list_item ~meta lexer ~warnings tok =
   | Token.Eof -> `Done
   | Token.Whitespace | Token.Semicolon | Token.Close Curly -> `Skip
   | Token.At_keyword name ->
-      let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
+      let ar = consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings in
       `Item (`At ar)
   | Token.Ident name -> (
       match
@@ -1136,7 +1156,10 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
     | Token.Whitespace | Token.Semicolon -> loop ()
     | Token.At_keyword name ->
         flush ();
-        let ar = consume_at_rule ~nested:true lexer ~name ~start_loc:tok.loc in
+        let ar =
+          consume_at_rule ~nested:true ~meta lexer ~name ~start_loc:tok.loc
+            ~warnings
+        in
         result := `Rule (Component.At ar) :: !result;
         loop ()
     | Token.Ident name ->
@@ -1168,7 +1191,9 @@ let rule ?(meta = Loc.default_meta_level) r =
         | Token.Eof -> None
         | Token.At_keyword name ->
             let tok = Lexer.next lexer in
-            Some (Component.At (consume_at_rule lexer ~name ~start_loc:tok.loc))
+            Some
+              (Component.At
+                 (consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings))
         | _ -> (
             let start_loc = (Lexer.peek lexer).Token.loc in
             match consume_qualified_rule ~meta lexer ~start_loc ~warnings with

@@ -65,6 +65,9 @@ answers.
 
 ### Parsing
 
+- Everything the parser repaired or dropped is reported, so strict mode
+  rejects it. `@media screen {` swallowed the rest of the file and still
+  returned `Ok` with no warnings, hiding a truncated stylesheet (#484)
 - `Reader.int` raises `Parse_error` on a number with a fractional part or one
   outside the `int` range. It truncated `3.9` to `3` and answered `-1` for
   `1e30`, `1e999` and `9223372036854775808`, `int_of_float` being undefined
