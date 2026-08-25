@@ -1431,6 +1431,35 @@ let nesting_synthesis_can_be_disabled () =
     (Astring.String.is_infix ~affix:"&:where(.dark,.dark *)"
        (out ~regroup:false ()))
 
+(* CSS Fragmentation 3 sec. 3.4 makes [page-break-*] the same property as its
+   [break-*] alias, so two [page-break-*] declarations in one rule are two
+   declarations of one property and the later one shadows the earlier, exactly
+   as [break-*] and every other property does. A [var()] on the left does not
+   change whose property it is. *)
+let page_break_var_shadows_like_its_alias () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (Css.of_string_exn ~strict:false input |> minify))
+    [
+      (* The modern spelling sets the oracle. *)
+      (".a{break-after:var(--x);break-after:page}", ".a{break-after:page}");
+      (".a{break-after:page;break-after:var(--x)}", ".a{break-after:var(--x)}");
+      (".a{break-inside:var(--x);break-inside:avoid}", ".a{break-inside:avoid}");
+      (* The legacy spelling answers the same. *)
+      ( ".a{page-break-after:var(--x);page-break-after:always}",
+        ".a{break-after:page}" );
+      ( ".a{page-break-after:always;page-break-after:var(--x)}",
+        ".a{page-break-after:var(--x)}" );
+      ( ".a{page-break-before:var(--x);page-break-before:left}",
+        ".a{break-before:left}" );
+      ( ".a{page-break-inside:var(--x);page-break-inside:avoid}",
+        ".a{break-inside:avoid}" );
+      ( ".a{page-break-inside:avoid;page-break-inside:var(--x)}",
+        ".a{page-break-inside:var(--x)}" );
+    ]
+
 let optimize_tests =
   [
     ( "!important survives non-adjacent duplicate elimination",
@@ -1440,6 +1469,9 @@ let optimize_tests =
     ( "nesting synthesis can be disabled",
       `Quick,
       nesting_synthesis_can_be_disabled );
+    ( "a page-break var shadows like its alias",
+      `Quick,
+      page_break_var_shadows_like_its_alias );
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
     ("color property folds", `Quick, test_color_property_folds);

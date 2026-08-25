@@ -1144,11 +1144,23 @@ let property_key_equal left right =
 
 let property_key_hash key = key.hash
 
+(* [property_key_equal (declaration_property_key decl) key] reads only the two
+   compared fields, so building the record first buys nothing and costs one
+   allocation per declaration examined. The scans below run once per entry per
+   member per candidate group, which made this the single largest allocation
+   site in the whole candidate search. *)
+let declaration_has_key key decl =
+  Bool.equal (Declaration.is_important decl) key.important
+  && Declaration.equal_prop_key (Declaration.property_key decl) key.prop
+
+let declaration_has_any_key keys decl =
+  List.exists (fun key -> declaration_has_key key decl) keys
+
 let single_declaration_in_list key decls =
   let rec loop found = function
     | [] -> found
     | decl :: rest ->
-        if property_key_equal (declaration_property_key decl) key then
+        if declaration_has_key key decl then
           match found with
           | Option.None -> loop (Option.Some decl) rest
           | Option.Some _ -> Option.None
@@ -1168,9 +1180,7 @@ let property_keys (r : rule) =
 
 let rec has_property_key key = function
   | [] -> false
-  | decl :: rest ->
-      property_key_equal (declaration_property_key decl) key
-      || has_property_key key rest
+  | decl :: rest -> declaration_has_key key decl || has_property_key key rest
 
 (* Each entry carries the order in which its key was first seen. The buckets
    live in a hash table, so folding them yields the hash's order, and the sort
@@ -1205,12 +1215,8 @@ let add_property_buckets ~seq ~origin buckets id (rule : rule) =
   in
   loop [] rule.declarations
 
-let key_mem key keys = List.exists (property_key_equal key) keys
-
 let remove_property_declarations keys decls =
-  List.filter
-    (fun decl -> not (key_mem (declaration_property_key decl) keys))
-    decls
+  List.filter (fun decl -> not (declaration_has_any_key keys decl)) decls
 
 type default_member = { id : Rule_graph.node_id; rule : rule }
 
@@ -1332,8 +1338,7 @@ let removed_default_declarations entries member =
 
 let exact_common_without keys members =
   common_exact_decls (default_member_rules members)
-  |> List.filter (fun decl ->
-      not (key_mem (declaration_property_key decl) keys))
+  |> List.filter (fun decl -> not (declaration_has_any_key keys decl))
 
 let default_group_decls ~exact_common entries =
   append_unique_decls exact_common

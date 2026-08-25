@@ -533,6 +533,11 @@ let equal_declaration (a : declaration) b = Stdlib.compare a b = 0
 let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
+(* The pack hides the value's type but not the property's identity, so the order
+   is the one [Properties] gives that identity. *)
+let compare_prop_key (a : prop_key) b =
+  match (a, b) with Key p, Key q -> Properties.compare_property p q
+
 let rec property_key decl =
   match decl with
   | Declaration { property; _ } -> Key property
@@ -956,15 +961,10 @@ let read_place_self_value t =
 let read_background_blend_mode_value t =
   v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
-let prop_name (type a) (prop_type : a property) =
-  let buf = Buffer.create 32 in
-  let ctx = Pp.ctx ~minify:true buf in
-  pp_property ctx prop_type;
-  Buffer.contents buf
-
-(* The spelling a property parses back from. [prop_name] renders under minify,
-   where [page-break-*] becomes the CSS Fragmentation 3 sec. 3.4 [break-*] alias
-   of a different property. *)
+(* The spelling a property parses back from, and the one a diagnostic names: a
+   minified [page-break-*] is the CSS Fragmentation 3 sec. 3.4 [break-*] alias
+   of a different property, which reports the failure against a property the
+   declaration never wrote. *)
 let canonical_prop_name (type a) (prop : a property) =
   Pp.to_string ~minify:false pp_property prop
 
@@ -1911,14 +1911,16 @@ let rec read_value_from : type a.
     value_reader list -> a property -> Cursor.t -> declaration =
  fun readers prop t ->
   match readers with
-  | [] -> Cursor.err_invalid t ("unsupported property reader: " ^ prop_name prop)
+  | [] ->
+      Cursor.err_invalid t
+        ("unsupported property reader: " ^ canonical_prop_name prop)
   | reader :: rest -> (
       match reader.read_value_opt prop t with
       | Some decl -> decl
       | None -> read_value_from rest prop t)
 
 let read_value (type a) (prop : a property) t : declaration =
-  Cursor.with_context t (prop_name prop) @@ fun () ->
+  Cursor.with_context t (canonical_prop_name prop) @@ fun () ->
   match prop with
   | Custom_property name ->
       Cursor.err_invalid t
@@ -2200,7 +2202,7 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
       in
       try read ()
       with Cursor.Parse_error e ->
-        Error.fail (Error.with_property (prop_name prop_type) e))
+        Error.fail (Error.with_property (canonical_prop_name prop_type) e))
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;
@@ -2453,7 +2455,13 @@ let rec pp_declaration : declaration Pp.t =
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Declaration { property; value; important; _ } ->
-      pp_property ctx property;
+      (* Under minify [pp_property] gives a [page-break-*] property the
+         [break-*] property it aliases, which CSS Fragmentation 3 sec. 3.4
+         defines by a value mapping table. A value the table does not name has
+         no alias spelling, so the name follows the value back to the legacy
+         property rather than writing it under one that cannot express it. *)
+      if minified_name_carries property value then pp_property ctx property
+      else Pp.string ctx (canonical_prop_name property);
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
       pp_property_value ctx (property, value);

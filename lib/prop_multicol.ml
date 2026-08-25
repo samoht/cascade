@@ -76,23 +76,29 @@ let rec pp_page_break_inside_value : page_break_inside_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Inherit -> Pp.string ctx "inherit"
 
-let break_of_page_break (value : page_break_value) : break_value =
+(* CSS Fragmentation 3 sec. 3.4 defines the page-break-* aliases by a value
+   mapping table: [auto | left | right | avoid] map to themselves and [always]
+   maps to [page]. The table is keyed on the value, so a value it does not name
+   has no break-* spelling and declines. A [var()] is one: substitution happens
+   at computed-value time, and [always], the one mapping that is not the
+   identity, is not a break-* value to fall back on. *)
+let break_of_page_break (value : page_break_value) : break_value option =
   match value with
-  | Auto -> Auto
-  | Always -> Page
-  | Avoid -> Avoid
-  | Left -> Left
-  | Right -> Right
-  | Inherit -> Inherit
-  | Var _ -> invalid_arg "page-break value var cannot be converted"
+  | Auto -> Some Auto
+  | Always -> Some Page
+  | Avoid -> Some Avoid
+  | Left -> Some Left
+  | Right -> Some Right
+  | Inherit -> Some Inherit
+  | Var _ -> None
 
 let break_inside_of_page_break (value : page_break_inside_value) :
-    break_inside_value =
+    break_inside_value option =
   match value with
-  | Auto -> Auto
-  | Avoid -> Avoid
-  | Inherit -> Inherit
-  | Var _ -> invalid_arg "page-break-inside value var cannot be converted"
+  | Auto -> Some Auto
+  | Avoid -> Some Avoid
+  | Inherit -> Some Inherit
+  | Var _ -> None
 
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function
@@ -230,8 +236,8 @@ let rec read_break_inside_value t : break_inside_value =
     ~var:(fun t -> Var (Values.read_var read_break_inside_value t))
     t
 
-let read_page_break_value t : page_break_value =
-  Cursor.enum "page-break"
+let rec read_page_break_value t : page_break_value =
+  Cursor.enum_or_var "page-break"
     [
       ("auto", (Auto : page_break_value));
       ("always", Always);
@@ -240,15 +246,17 @@ let read_page_break_value t : page_break_value =
       ("right", Right);
       ("inherit", Inherit);
     ]
+    ~var:(fun t -> Var (Values.read_var read_page_break_value t))
     t
 
-let read_page_break_inside_value t : page_break_inside_value =
-  Cursor.enum "page-break-inside"
+let rec read_page_break_inside_value t : page_break_inside_value =
+  Cursor.enum_or_var "page-break-inside"
     [
       ("auto", (Auto : page_break_inside_value));
       ("avoid", Avoid);
       ("inherit", Inherit);
     ]
+    ~var:(fun t -> Var (Values.read_var read_page_break_inside_value t))
     t
 
 let read_columns_count t =

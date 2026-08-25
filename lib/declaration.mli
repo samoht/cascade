@@ -178,6 +178,12 @@ val equal_prop_key : prop_key -> prop_key -> bool
 val hash_prop_key : prop_key -> int
 (** [hash_prop_key key] returns a hash consistent with {!equal_prop_key}. *)
 
+val compare_prop_key : prop_key -> prop_key -> int
+(** [compare_prop_key a b] is a total order on property identities, [0] exactly
+    where {!equal_prop_key} is [true]. It orders the property tag rather than
+    the runtime representation, so an ordered container keyed on a property
+    stays off {!Stdlib.compare}. *)
+
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations
     have the same property name iff their keys are structurally equal. *)

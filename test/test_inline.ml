@@ -614,6 +614,32 @@ let test_inline_keeps_a_page_break_property () =
     (Declaration.v Properties.Page_break_inside (Var (Values.var_ref "pb")))
     "avoid"
 
+(* The same substitution as [test_inline_keeps_a_page_break_property], reached
+   from CSS text rather than from a hand-built declaration. Reading a [var()]
+   into the property the author wrote is what puts a [Page_break_*] carrying a
+   [var()] in front of the inliner at all, so the property tag it rebuilds on
+   has to survive the whole round trip. [break-inside] accepts neither [always]
+   nor [avoid-page]. *)
+let test_inline_keeps_a_page_break_property_from_css () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (input |> parse |> Css.inline_vars |> minified))
+    [
+      ( ":root{--pb:always}.a{page-break-after:var(--pb)}",
+        ".a{break-after:page}" );
+      ( ":root{--pb:always}.a{page-break-before:var(--pb)}",
+        ".a{break-before:page}" );
+      ( ":root{--pb:avoid}.a{page-break-inside:var(--pb)}",
+        ".a{break-inside:avoid}" );
+      (":root{--pb:left}.a{page-break-after:var(--pb)}", ".a{break-after:left}");
+      (* A substitution the legacy grammar rejects leaves the declaration in
+         place rather than retyping it as a property that would accept it. *)
+      ( ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}",
+        ".a{page-break-inside:avoid-page}" );
+    ]
+
 let suite =
   ( "inline",
     [
@@ -684,4 +710,6 @@ let suite =
         `Quick test_inline_layer_flattening;
       Alcotest.test_case "inline vars keep a page-break property" `Quick
         test_inline_keeps_a_page_break_property;
+      Alcotest.test_case "inline vars keep a page-break property read from CSS"
+        `Quick test_inline_keeps_a_page_break_property_from_css;
     ] )

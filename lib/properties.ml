@@ -754,6 +754,580 @@ let pp_property : type a. a property Pp.t =
   | Ms_filter -> Pp.string ctx "-ms-filter"
   | O_transition -> Pp.string ctx "-o-transition"
 
+(* Whether the name [pp_property] gives [property] under minify can carry
+   [value]. CSS Fragmentation 3 sec. 3.4 defines the [page-break-*] alias of
+   [break-*] by a value mapping table, so the [break-*] name a [page-break-*]
+   property minifies to is a spelling the declaration can use only for a value
+   the table names: [always] maps to [page], the rest map to themselves, and a
+   [var()] maps to nothing here since substitution happens at computed-value
+   time. Every other property names itself the same whatever it carries. *)
+let minified_name_carries : type a. a property -> a -> bool =
+ fun property value ->
+  match property with
+  | Page_break_before -> Option.is_some (break_of_page_break value)
+  | Page_break_after -> Option.is_some (break_of_page_break value)
+  | Page_break_inside -> Option.is_some (break_inside_of_page_break value)
+  | _ -> true
+
+(* A dense integer per property constructor, in the order [Properties_intf]
+   declares them. It exists so an ordered container keyed on a property
+   identity compares two integers rather than walking the runtime
+   representation through [caml_compare]; ordering an identity never has to
+   relate the two payload types a [Declaration] pack hides, so a tag is all it
+   takes.
+
+   The match carries no wildcard, so a new constructor fails this build, and
+   [scripts/check_properties.ml] pins that no two constructors take the same
+   tag - a silent collision would make an ordered container hold one entry for
+   two different properties. *)
+(* PROPERTY_TAG_START - Used by scripts/check_properties.ml *)
+let property_tag : type a. a property -> int = function
+  | Custom_property _ -> 0
+  | Unknown_property _ -> 1
+  | All -> 2
+  | Background_color -> 3
+  | Color -> 4
+  | Border_color -> 5
+  | Border_style -> 6
+  | Border_top_style -> 7
+  | Border_right_style -> 8
+  | Border_bottom_style -> 9
+  | Border_left_style -> 10
+  | Border_inline_start_style -> 11
+  | Border_inline_end_style -> 12
+  | Border_block_start_style -> 13
+  | Border_block_end_style -> 14
+  | Padding -> 15
+  | Padding_left -> 16
+  | Padding_right -> 17
+  | Padding_bottom -> 18
+  | Padding_top -> 19
+  | Padding_inline -> 20
+  | Padding_inline_start -> 21
+  | Padding_inline_end -> 22
+  | Padding_block -> 23
+  | Padding_block_start -> 24
+  | Padding_block_end -> 25
+  | Margin -> 26
+  | Margin_inline_end -> 27
+  | Margin_inline_start -> 28
+  | Margin_left -> 29
+  | Margin_right -> 30
+  | Margin_top -> 31
+  | Margin_bottom -> 32
+  | Margin_inline -> 33
+  | Margin_block -> 34
+  | Margin_block_start -> 35
+  | Margin_block_end -> 36
+  | Gap -> 37
+  | Column_gap -> 38
+  | Row_gap -> 39
+  | Width -> 40
+  | Height -> 41
+  | Min_width -> 42
+  | Min_height -> 43
+  | Max_width -> 44
+  | Max_height -> 45
+  | Inline_size -> 46
+  | Min_inline_size -> 47
+  | Max_inline_size -> 48
+  | Block_size -> 49
+  | Min_block_size -> 50
+  | Max_block_size -> 51
+  | Font_size -> 52
+  | Line_height -> 53
+  | Font_weight -> 54
+  | Font_style -> 55
+  | Text_align -> 56
+  | Text_decoration -> 57
+  | Text_decoration_line -> 58
+  | Text_decoration_style -> 59
+  | Text_decoration_color -> 60
+  | Text_underline_offset -> 61
+  | Text_decoration_skip -> 62
+  | Text_decoration_skip_self -> 63
+  | Text_decoration_skip_box -> 64
+  | Text_decoration_skip_inset -> 65
+  | Text_decoration_skip_spaces -> 66
+  | Text_emphasis -> 67
+  | Text_emphasis_style -> 68
+  | Text_emphasis_color -> 69
+  | Text_emphasis_position -> 70
+  | Text_emphasis_skip -> 71
+  | Text_orientation -> 72
+  | Text_transform -> 73
+  | Letter_spacing -> 74
+  | List_style_type -> 75
+  | List_style_position -> 76
+  | List_style_image -> 77
+  | Display -> 78
+  | Position -> 79
+  | Visibility -> 80
+  | Baseline_source -> 81
+  | Alignment_baseline -> 82
+  | Baseline_shift -> 83
+  | Flex_direction -> 84
+  | Flex_wrap -> 85
+  | Flex_flow -> 86
+  | Flex -> 87
+  | Flex_grow -> 88
+  | Flex_shrink -> 89
+  | Flex_basis -> 90
+  | Order -> 91
+  | Align_items -> 92
+  | Justify_content -> 93
+  | Justify_items -> 94
+  | Justify_self -> 95
+  | Align_content -> 96
+  | Align_self -> 97
+  | Place_content -> 98
+  | Place_items -> 99
+  | Place_self -> 100
+  | Grid_template_columns -> 101
+  | Grid_template_rows -> 102
+  | Grid_template_areas -> 103
+  | Grid_template -> 104
+  | Grid -> 105
+  | Grid_area -> 106
+  | Grid_auto_flow -> 107
+  | Grid_auto_columns -> 108
+  | Grid_auto_rows -> 109
+  | Grid_column -> 110
+  | Grid_row -> 111
+  | Grid_column_start -> 112
+  | Grid_column_end -> 113
+  | Grid_row_start -> 114
+  | Grid_row_end -> 115
+  | Border_width -> 116
+  | Border_top_width -> 117
+  | Border_right_width -> 118
+  | Border_bottom_width -> 119
+  | Border_left_width -> 120
+  | Border_inline_start_width -> 121
+  | Border_inline_end_width -> 122
+  | Border_block_start_width -> 123
+  | Border_block_end_width -> 124
+  | Border_inline_width -> 125
+  | Border_block_width -> 126
+  | Border_image -> 127
+  | Border_image_source -> 128
+  | Border_image_slice -> 129
+  | Border_image_repeat -> 130
+  | Border_image_width -> 131
+  | Border_image_outset -> 132
+  | Border_radius -> 133
+  | Border_top_left_radius -> 134
+  | Border_top_right_radius -> 135
+  | Border_bottom_left_radius -> 136
+  | Border_bottom_right_radius -> 137
+  | Border_top_color -> 138
+  | Border_right_color -> 139
+  | Border_bottom_color -> 140
+  | Border_left_color -> 141
+  | Border_inline_start_color -> 142
+  | Border_inline_end_color -> 143
+  | Border_block_start_color -> 144
+  | Border_block_end_color -> 145
+  | Border_inline_color -> 146
+  | Border_block_color -> 147
+  | Border_inline_style -> 148
+  | Border_block_style -> 149
+  | Border_start_start_radius -> 150
+  | Border_start_end_radius -> 151
+  | Border_end_start_radius -> 152
+  | Border_end_end_radius -> 153
+  | Opacity -> 154
+  | Fill_opacity -> 155
+  | Stroke_opacity -> 156
+  | Stop_opacity -> 157
+  | Flood_opacity -> 158
+  | Mix_blend_mode -> 159
+  | Transform -> 160
+  | Translate -> 161
+  | Cursor -> 162
+  | Interactivity -> 163
+  | Caret_animation -> 164
+  | Caret_shape -> 165
+  | Caret -> 166
+  | Interest_delay -> 167
+  | Interest_delay_start -> 168
+  | Interest_delay_end -> 169
+  | Nav_up -> 170
+  | Nav_right -> 171
+  | Nav_down -> 172
+  | Nav_left -> 173
+  | Table_layout -> 174
+  | Border_collapse -> 175
+  | Border_spacing -> 176
+  | User_select -> 177
+  | Pointer_events -> 178
+  | Overflow -> 179
+  | Inset -> 180
+  | Inset_inline -> 181
+  | Inset_inline_start -> 182
+  | Inset_inline_end -> 183
+  | Inset_block -> 184
+  | Inset_block_start -> 185
+  | Inset_block_end -> 186
+  | Top -> 187
+  | Right -> 188
+  | Bottom -> 189
+  | Left -> 190
+  | Z_index -> 191
+  | Outline -> 192
+  | Outline_style -> 193
+  | Outline_width -> 194
+  | Outline_color -> 195
+  | Outline_offset -> 196
+  | Forced_color_adjust -> 197
+  | Scroll_snap_type -> 198
+  | White_space -> 199
+  | Border -> 200
+  | Border_block -> 201
+  | Border_block_start -> 202
+  | Border_block_end -> 203
+  | Border_inline -> 204
+  | Border_inline_start -> 205
+  | Border_inline_end -> 206
+  | Background -> 207
+  | Tab_size -> 208
+  | Zoom -> 209
+  | Webkit_text_size_adjust -> 210
+  | Font_feature_settings -> 211
+  | Font_variation_settings -> 212
+  | Webkit_tap_highlight_color -> 213
+  | Webkit_user_select -> 214
+  | Moz_user_select -> 215
+  | Ms_user_select -> 216
+  | Webkit_text_decoration -> 217
+  | Webkit_text_decoration_color -> 218
+  | Webkit_text_fill_color -> 219
+  | Webkit_text_stroke_color -> 220
+  | Text_indent -> 221
+  | List_style -> 222
+  | Font -> 223
+  | Source -> 224
+  | Webkit_appearance -> 225
+  | Webkit_transform -> 226
+  | Moz_transform -> 227
+  | Ms_transform -> 228
+  | O_transform -> 229
+  | Webkit_transition -> 230
+  | Webkit_transition_delay -> 231
+  | Webkit_transition_duration -> 232
+  | Webkit_transition_property -> 233
+  | Webkit_transition_timing_function -> 234
+  | Webkit_animation -> 235
+  | Webkit_animation_delay -> 236
+  | Webkit_animation_duration -> 237
+  | Webkit_animation_direction -> 238
+  | Webkit_animation_iteration_count -> 239
+  | Webkit_animation_name -> 240
+  | Webkit_animation_timing_function -> 241
+  | Webkit_animation_fill_mode -> 242
+  | Webkit_animation_play_state -> 243
+  | Webkit_flex_direction -> 244
+  | Webkit_flex_wrap -> 245
+  | Webkit_flex_flow -> 246
+  | Webkit_justify_content -> 247
+  | Webkit_align_items -> 248
+  | Webkit_align_content -> 249
+  | Webkit_align_self -> 250
+  | Webkit_border_radius -> 251
+  | Webkit_box_sizing -> 252
+  | Moz_box_sizing -> 253
+  | Webkit_box_shadow -> 254
+  | Webkit_background_size -> 255
+  | Webkit_filter -> 256
+  | Moz_appearance -> 257
+  | Moz_animation -> 258
+  | Moz_animation_delay -> 259
+  | Moz_animation_duration -> 260
+  | Moz_animation_direction -> 261
+  | Moz_animation_iteration_count -> 262
+  | Moz_animation_name -> 263
+  | Moz_animation_timing_function -> 264
+  | Moz_animation_fill_mode -> 265
+  | Moz_animation_play_state -> 266
+  | Moz_transition -> 267
+  | Moz_transition_delay -> 268
+  | Moz_transition_duration -> 269
+  | Moz_transition_property -> 270
+  | Moz_transition_timing_function -> 271
+  | Moz_border_radius -> 272
+  | Moz_box_shadow -> 273
+  | Ms_filter -> 274
+  | O_transition -> 275
+  | Container_type -> 276
+  | Container_name -> 277
+  | Container -> 278
+  | Anchor_name -> 279
+  | Position_anchor -> 280
+  | Position_try_fallbacks -> 281
+  | Position_try_order -> 282
+  | Position_try -> 283
+  | Position_visibility -> 284
+  | Position_area -> 285
+  | Shape_outside -> 286
+  | Shape_margin -> 287
+  | Shape_image_threshold -> 288
+  | Overflow_clip_margin -> 289
+  | Overflow_anchor -> 290
+  | Scrollbar_width -> 291
+  | Scrollbar_color -> 292
+  | Scrollbar_gutter -> 293
+  | Line_height_step -> 294
+  | Font_palette -> 295
+  | Font_synthesis -> 296
+  | Text_wrap_mode -> 297
+  | Text_wrap_style -> 298
+  | Text_box_trim -> 299
+  | Text_underline_position -> 300
+  | Text_box_edge -> 301
+  | Text_box -> 302
+  | Inline_sizing -> 303
+  | Line_fit_edge -> 304
+  | Interpolate_size -> 305
+  | Min_intrinsic_sizing -> 306
+  | Ruby_align -> 307
+  | Ruby_merge -> 308
+  | Ruby_overhang -> 309
+  | Ruby_position -> 310
+  | Glyph_orientation_vertical -> 311
+  | Text_combine_upright -> 312
+  | Animation_timeline -> 313
+  | Animation_range -> 314
+  | Animation_range_start -> 315
+  | Animation_range_end -> 316
+  | Scroll_timeline -> 317
+  | Scroll_timeline_name -> 318
+  | Scroll_timeline_axis -> 319
+  | View_transition_name -> 320
+  | View_transition_class -> 321
+  | Image_orientation -> 322
+  | Image_rendering -> 323
+  | Image_resolution -> 324
+  | Contain_intrinsic_size -> 325
+  | Contain_intrinsic_width -> 326
+  | Contain_intrinsic_height -> 327
+  | Contain_intrinsic_block_size -> 328
+  | Contain_intrinsic_inline_size -> 329
+  | Margin_trim -> 330
+  | Offset_path -> 331
+  | Offset_distance -> 332
+  | Offset_rotate -> 333
+  | Font_size_adjust -> 334
+  | Font_variant_emoji -> 335
+  | Text_spacing_trim -> 336
+  | Hyphenate_limit_chars -> 337
+  | Initial_letter -> 338
+  | Initial_letter_align -> 339
+  | Initial_letter_wrap -> 340
+  | Dominant_baseline -> 341
+  | View_timeline_name -> 342
+  | View_timeline_axis -> 343
+  | View_timeline_inset -> 344
+  | View_timeline -> 345
+  | Timeline_scope -> 346
+  | Perspective -> 347
+  | Perspective_origin -> 348
+  | Transform_style -> 349
+  | Backface_visibility -> 350
+  | Object_position -> 351
+  | Rotate -> 352
+  | Transition_duration -> 353
+  | Transition_timing_function -> 354
+  | Transition_delay -> 355
+  | Transition_property -> 356
+  | Transition_behavior -> 357
+  | Overlay -> 358
+  | Will_change -> 359
+  | Contain -> 360
+  | Isolation -> 361
+  | Break_before -> 362
+  | Break_after -> 363
+  | Break_inside -> 364
+  | Page_break_before -> 365
+  | Page_break_after -> 366
+  | Page_break_inside -> 367
+  | Page_size -> 368
+  | Columns -> 369
+  | Column_width -> 370
+  | Column_count -> 371
+  | Column_rule -> 372
+  | Column_rule_color -> 373
+  | Column_span -> 374
+  | Word_spacing -> 375
+  | Background_attachment -> 376
+  | Border_top -> 377
+  | Border_right -> 378
+  | Border_bottom -> 379
+  | Border_left -> 380
+  | Transform_origin -> 381
+  | Transform_box -> 382
+  | Text_shadow -> 383
+  | Clip_path -> 384
+  | Mask -> 385
+  | Mask_border -> 386
+  | Content_visibility -> 387
+  | Filter -> 388
+  | Background_image -> 389
+  | Background_origin -> 390
+  | Background_clip -> 391
+  | Webkit_background_clip -> 392
+  | Animation -> 393
+  | Aspect_ratio -> 394
+  | Overflow_x -> 395
+  | Overflow_y -> 396
+  | Overflow_block -> 397
+  | Overflow_inline -> 398
+  | Vertical_align -> 399
+  | Font_family -> 400
+  | Background_position -> 401
+  | Background_repeat -> 402
+  | Background_size -> 403
+  | Webkit_font_smoothing -> 404
+  | Moz_osx_font_smoothing -> 405
+  | Webkit_line_clamp -> 406
+  | Webkit_box_orient -> 407
+  | Moz_orient -> 408
+  | Text_overflow -> 409
+  | Text_wrap -> 410
+  | Word_break -> 411
+  | Overflow_wrap -> 412
+  | Line_break -> 413
+  | Hyphens -> 414
+  | Webkit_hyphens -> 415
+  | Font_stretch -> 416
+  | Font_optical_sizing -> 417
+  | Font_kerning -> 418
+  | Font_language_override -> 419
+  | Font_synthesis_style -> 420
+  | Font_synthesis_weight -> 421
+  | Font_synthesis_small_caps -> 422
+  | Font_synthesis_position -> 423
+  | Font_variant_ligatures -> 424
+  | Caps -> 425
+  | Numeric -> 426
+  | Font_variant_position -> 427
+  | East_asian -> 428
+  | Backdrop_filter -> 429
+  | Webkit_backdrop_filter -> 430
+  | Webkit_mask_image -> 431
+  | Webkit_mask_composite -> 432
+  | Webkit_mask_source_type -> 433
+  | Webkit_mask_size -> 434
+  | Webkit_mask_position -> 435
+  | Webkit_mask_repeat -> 436
+  | Webkit_mask_clip -> 437
+  | Webkit_mask_origin -> 438
+  | Mask_image -> 439
+  | Mask_composite -> 440
+  | Mask_mode -> 441
+  | Mask_size -> 442
+  | Mask_position -> 443
+  | Mask_repeat -> 444
+  | Mask_clip -> 445
+  | Mask_origin -> 446
+  | Mask_type -> 447
+  | Scroll_snap_align -> 448
+  | Scroll_snap_stop -> 449
+  | Scroll_behavior -> 450
+  | Box_sizing -> 451
+  | Field_sizing -> 452
+  | Caption_side -> 453
+  | Resize -> 454
+  | Object_fit -> 455
+  | Object_view_box -> 456
+  | Appearance -> 457
+  | Color_scheme -> 458
+  | Print_color_adjust -> 459
+  | Webkit_print_color_adjust -> 460
+  | Box_decoration_break -> 461
+  | Webkit_box_decoration_break -> 462
+  | Content -> 463
+  | Counter_reset -> 464
+  | Counter_increment -> 465
+  | Quotes -> 466
+  | Text_decoration_thickness -> 467
+  | Text_size_adjust -> 468
+  | Touch_action -> 469
+  | Clip -> 470
+  | Clear -> 471
+  | Float -> 472
+  | Scale -> 473
+  | Transition -> 474
+  | Box_shadow -> 475
+  | Fill -> 476
+  | Stroke -> 477
+  | Stroke_width -> 478
+  | Fill_rule -> 479
+  | Clip_rule -> 480
+  | Stroke_linecap -> 481
+  | Stroke_linejoin -> 482
+  | Stroke_miterlimit -> 483
+  | Stroke_dashoffset -> 484
+  | Stroke_dasharray -> 485
+  | Paint_order -> 486
+  | Vector_effect -> 487
+  | Stop_color -> 488
+  | Flood_color -> 489
+  | Lighting_color -> 490
+  | Direction -> 491
+  | Unicode_bidi -> 492
+  | Writing_mode -> 493
+  | Text_decoration_skip_ink -> 494
+  | Animation_name -> 495
+  | Animation_duration -> 496
+  | Animation_timing_function -> 497
+  | Animation_delay -> 498
+  | Animation_iteration_count -> 499
+  | Animation_direction -> 500
+  | Animation_fill_mode -> 501
+  | Animation_play_state -> 502
+  | Animation_composition -> 503
+  | Background_blend_mode -> 504
+  | Scroll_margin -> 505
+  | Scroll_margin_top -> 506
+  | Scroll_margin_right -> 507
+  | Scroll_margin_bottom -> 508
+  | Scroll_margin_left -> 509
+  | Scroll_margin_inline -> 510
+  | Scroll_margin_inline_start -> 511
+  | Scroll_margin_inline_end -> 512
+  | Scroll_margin_block -> 513
+  | Scroll_margin_block_start -> 514
+  | Scroll_margin_block_end -> 515
+  | Scroll_padding -> 516
+  | Scroll_padding_top -> 517
+  | Scroll_padding_right -> 518
+  | Scroll_padding_bottom -> 519
+  | Scroll_padding_left -> 520
+  | Scroll_padding_inline -> 521
+  | Scroll_padding_inline_start -> 522
+  | Scroll_padding_inline_end -> 523
+  | Scroll_padding_block -> 524
+  | Scroll_padding_block_start -> 525
+  | Scroll_padding_block_end -> 526
+  | Overscroll_behavior -> 527
+  | Overscroll_behavior_x -> 528
+  | Overscroll_behavior_y -> 529
+  | Overscroll_behavior_block -> 530
+  | Overscroll_behavior_inline -> 531
+  | Accent_color -> 532
+  | Caret_color -> 533
+(* PROPERTY_TAG_END *)
+
+(* Two property identities order by tag, and the two payload-carrying
+   constructors by name within their own tag, so [0] means the same property
+   exactly as [Declaration.equal_prop_key] does. *)
+let compare_property : type a b. a property -> b property -> int =
+ fun a b ->
+  match (a, b) with
+  | Custom_property x, Custom_property y -> String.compare x y
+  | Unknown_property x, Unknown_property y -> String.compare x y
+  | _ -> Int.compare (property_tag a) (property_tag b)
+
 let rec pp_content : content Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -2111,6 +2685,9 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Gradient_stop -> pp pp_gradient_stop
   | Gradient_direction -> pp pp_gradient_direction
   | Gradient_position -> pp pp_gradient_position
+  | Radial_shape -> pp pp_radial_shape
+  | Radial_size -> pp pp_radial_size
+  | Position_value -> pp pp_position_value
   | Animation -> pp pp_animation
   | Timing_function -> pp pp_timing_function
   | Transform -> pp pp_transform
@@ -2806,16 +3383,20 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
-  | Page_break_before ->
-      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
-      else pp_page_break_value ctx value
-  | Page_break_after ->
-      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
-      else pp_page_break_value ctx value
-  | Page_break_inside ->
-      if Pp.minified ctx then
-        pp_break_inside_value ctx (break_inside_of_page_break value)
-      else pp_page_break_inside_value ctx value
+  | Page_break_before -> (
+      match if Pp.minified ctx then break_of_page_break value else None with
+      | Some aliased -> pp_break_value ctx aliased
+      | None -> pp_page_break_value ctx value)
+  | Page_break_after -> (
+      match if Pp.minified ctx then break_of_page_break value else None with
+      | Some aliased -> pp_break_value ctx aliased
+      | None -> pp_page_break_value ctx value)
+  | Page_break_inside -> (
+      match
+        if Pp.minified ctx then break_inside_of_page_break value else None
+      with
+      | Some aliased -> pp_break_inside_value ctx aliased
+      | None -> pp_page_break_inside_value ctx value)
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Column_width -> pp pp_column_width

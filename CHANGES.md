@@ -19,6 +19,11 @@ answers.
 
 ### Breaking
 
+- `Css.Media.equal` reads normalised query structure where it read serialised
+  text, so it is no longer `Css.Media.compare a b = 0` and answers differently
+  both ways: `(min-width: 10px)` and `(width >= 10px)` are now equal, and two
+  queries that print alike but parse apart are not. `Css.Media.normalize`
+  exposes the normal form it compares (#516)
 - **IMPORTANT** Many of the fixes below change the CSS cascade emits for input
   1.1.0 already accepted, and a dozen of them change how the page renders. If
   you shipped minified output built with 1.1.0, re-run it and compare:
@@ -79,9 +84,41 @@ answers.
 - `Cascade.Reader.parse_error` gains `line` and `col`, and `filename` holds a
   source name where it packed `"<CSS input>:L:C"`: read the location from the
   two new fields, and `with_filename` keeps it instead of overwriting (#491)
+- `Css.kind` gains `Radial_shape`, `Radial_size` and `Position_value`, so a
+  match on it is no longer exhaustive and needs the three arms. They let
+  `Css.Variables.var` bind a radial gradient's shape, size or centre
+  `<position>` as a typed custom property, where it could only take those as an
+  opaque token stream (#508)
+- `Cascade.Cursor.pair` and `triple` rewind the cursor when the separator or a
+  later parser fails, as `option`, `one_of`, `try_parse_err` and `list` already
+  do. Code that caught `Parse_error` from either and read on from the advanced
+  position now re-reads what the first parser consumed (#509)
+- `Cascade.Reader` is the character cursor `Lexer` drives and no longer reads
+  CSS. Gone: the combinators `atomic`, `lookahead`, `option`, `one_of`, `many`,
+  `fold_many`, `take`, `pair`, `triple`, `list`, `try_parse_err`, `enum`,
+  `enum_calls`, `enum_or_calls` and `call`; the readers `ident`, `token`,
+  `string`, `number`, `int`, `hex`, `ws`, `pct`, `bool`, `unit`,
+  `number_with_unit`, `url` and `css_value`; and the delimiter helpers `char`,
+  `expect`, `expect_string`, `while_`, `until`, `parens`, `braces`, `comma`,
+  `slash`, `comma_opt`, `slash_opt`, `consume_if`, `peek2`, `is_alpha`,
+  `is_digit`, `is_hex` and `is_ident_start`. `Cascade.Cursor` carries those
+  names over a component-value stream, so read CSS from a `Cursor.of_string` or
+  `Cursor.of_reader` instead. The cursor itself, the `parse_error` record and
+  the call stack are unchanged (#509, #514)
 
 ### Parsing
 
+- A parse error in a `page-break-before`, `page-break-after` or
+  `page-break-inside` declaration is reported against the property the
+  declaration wrote. The diagnostic named the CSS Fragmentation 3 sec. 3.4
+  `break-*` property those minify to, which is a different property with
+  different values, so the message pointed at a property the author never used
+  (#518)
+- A `var()` in a `page-break-before`, `page-break-after` or
+  `page-break-inside` declaration is read as the property it names. These
+  three were the only fragmentation properties whose reader had no `var()`
+  arm, so the declaration became an unknown property and no longer shadowed
+  a later one of its own name (#511)
 - An error inside an at-rule condition or an `@font-face` descriptor points at
   the slice that failed, not at the end of the file with the caret past the
   last byte (#496, #497, #499, #501)
@@ -252,6 +289,11 @@ answers.
 
 ### Minification
 
+- `--minify` merges `@media` blocks by query structure rather than serialised
+  text: `(min-width: 10px)` and `(width >= 10px)` are one bound and now merge
+  (Media Queries 4 sec. 2.4.4), while `@media screen\ and\ \(min-width\:\
+  10px\)` names an unknown media type that never matches and no longer merges
+  into `@media screen and (min-width: 10px)` (#516)
 - `--minify` merges two rules that declare the same NaN, whichever way each
   spelled it: `opacity: calc(NaN)` and `opacity: calc(infinity - infinity)`
   are one declaration (#471, #482)
@@ -420,6 +462,10 @@ answers.
   one selector or one body, nor probes every pair of them to decide whether it
   may merge. The benchmark corpora hold no such run, so this bounds a worst
   case rather than speeding real input up (#480, #486, #487, #502, #505)
+- `--minify` decides which rules share a default value without rebuilding a
+  property key for every declaration it reads, a scan it repeats once per
+  member per property under consideration. It allocates a twentieth less over
+  the 504-file corpus, for byte-identical output (#517)
 - `--minify` no longer scans quadratically when many rules share a deep
   selector prefix. The structural hash reads a fixed count of nodes, so
   `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
@@ -519,6 +565,12 @@ answers.
 
 ### Library
 
+- `Css.Properties.compare_property` and `Css.Declaration.compare_prop_key` are
+  a total order on a property identity, `0` exactly where equality holds. The
+  table that drops shadowed rules orders its coverage set with it instead of
+  comparing the runtime representation of a key, which takes a fifth off that
+  set on a sheet writing many properties under one selector and leaves a real
+  stylesheet where it was (#513)
 - `Css.Stylesheet.statement_declarations` is the declarations a statement holds
   directly; with `statement_children` it reaches every declaration in a
   stylesheet (#317)

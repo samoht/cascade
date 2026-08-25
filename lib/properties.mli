@@ -6,6 +6,21 @@ include module type of Properties_intf
 val pp_property : 'a property Pp.t
 (** [pp_property] is the pretty-printer for property names. *)
 
+val minified_name_carries : 'a property -> 'a -> bool
+(** [minified_name_carries property value] is whether the name {!pp_property}
+    gives [property] under minify can carry [value]. A [page-break-*] property
+    minifies to the CSS Fragmentation 3 sec. 3.4 [break-*] property it aliases,
+    and that alias is defined by a value mapping table, so it is a spelling the
+    declaration can use only for a value the table names. A [var()] is not one:
+    substitution happens at computed-value time, and [always], the only mapping
+    that is not the identity, has no [break-*] spelling. Every other property
+    names itself the same whatever it carries. *)
+
+val compare_property : 'a property -> 'b property -> int
+(** [compare_property a b] is a total order on property identities. It is [0]
+    exactly when [a] and [b] are the same property, so an ordered container
+    keyed on a property agrees with equality on it. *)
+
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)

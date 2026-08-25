@@ -199,6 +199,38 @@ let test_is_layer_not_empty_with_nested () =
       | _ -> Alcotest.fail "expected one layer statement")
     cases
 
+(* Media Queries 4 sec. 3.2: an unknown media type never matches. [@media
+   screen\ and\ \(min-width\:\ 10px\)] names one escaped ident as its media
+   type, so it selects nothing, while [@media screen and (min-width: 10px)]
+   selects a screen at 10px or wider. The two spell the same characters, and
+   merging them would apply declarations the input never let match. Same shape
+   as the escaped [@layer] dot above. *)
+let test_merge_media_keeps_an_escaped_media_type_apart () =
+  let css =
+    "@media screen\\ and\\ \\(min-width\\:\\ 10px\\){.x{color:red}}@media \
+     screen and (min-width:10px){.y{color:blue}}"
+  in
+  let stmts = block css in
+  let merged = Block.merge_consecutive_media ~optimize_merged_block:id stmts in
+  Alcotest.(check int)
+    "an unknown media type is not merged into a real one" 2 (List.length merged);
+  let distant = Block.merge_distant_media ~optimize_merged_block:id stmts in
+  Alcotest.(check int)
+    "the distant merge keeps them apart too" 2 (List.length distant)
+
+(* Media Queries 4 sec. 2.4.4: a [min-] prefix on a range feature is the [>=]
+   comparison, so these two blocks carry one condition in two spellings and the
+   cascade evaluates them identically. *)
+let test_merge_media_joins_two_spellings_of_one_bound () =
+  let stmts =
+    block
+      "@media (min-width:10px){.x{color:red}}@media \
+       (width>=10px){.y{color:blue}}"
+  in
+  let merged = Block.merge_consecutive_media ~optimize_merged_block:id stmts in
+  Alcotest.(check int)
+    "two spellings of one bound merge into one block" 1 (List.length merged)
+
 let suite =
   ( "block",
     [
@@ -212,6 +244,10 @@ let suite =
         test_merge_layers_combines_escaped_dot;
       Alcotest.test_case "merge same-condition @media" `Quick
         test_merge_media_combines_same_condition;
+      Alcotest.test_case "keep an escaped media type out of a merge" `Quick
+        test_merge_media_keeps_an_escaped_media_type_apart;
+      Alcotest.test_case "merge two spellings of one bound" `Quick
+        test_merge_media_joins_two_spellings_of_one_bound;
       Alcotest.test_case "merge same-condition @container" `Quick
         test_merge_containers_by_condition;
       Alcotest.test_case "keep distinct-condition @container" `Quick

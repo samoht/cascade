@@ -211,6 +211,152 @@ let test_media_feature_recovery buf =
   if actual <> "not all" then
     failf "invalid media feature family did not recover: %S -> %S" input actual
 
+(* ===== Soundness of the equivalence [Media.equal] decides ===== *)
+
+(* [Media.equal] gates block merging: two [@media] blocks it calls equal have
+   their declarations concatenated under one condition. So whatever it calls
+   equal must select the same media, and that is a property, not a table:
+
+   Media.equal a b => a and b match every sampled media state alike
+
+   Only this direction. Two equivalent queries are free to compare unequal; that
+   costs a merge and never correctness, and demanding the converse would mean
+   deciding media-query equivalence.
+
+   The oracle is [Context.matches_media], which evaluates a query against a
+   described environment the way a UA does. It knows nothing about how [equal]
+   is derived, so it is free to disagree with it. *)
+
+let px f : Css.Media.value = Length (Css.Values.Px f)
+let em f : Css.Media.value = Length (Css.Values.Em f)
+
+let state ?media_type features : Css.Context.query =
+  { Css.Context.empty_query with media_type; media_features = features }
+
+(* Widths land on, just below and just above every bound the generator can emit,
+   because an inclusive bound read as a strict one only shows at the bound
+   itself. Both length units appear, since a normaliser that rewrites a bound
+   must carry its unit across. *)
+let sampled_states =
+  let widths = [ 0.; 1.; 9.; 10.; 11.; 39.; 40.; 41.; 255.; 256. ] in
+  let sizes =
+    List.concat_map
+      (fun w ->
+        [
+          [
+            Css.Media.feature "width" (px w); Css.Media.feature "height" (px w);
+          ];
+          [
+            Css.Media.feature "width" (em w); Css.Media.feature "height" (em w);
+          ];
+        ])
+      widths
+  in
+  let discrete =
+    [
+      [];
+      [ Css.Media.feature "orientation" (Ident Landscape) ];
+      [ Css.Media.feature "orientation" (Ident Portrait) ];
+      [ Css.Media.feature "hover" (Ident Hover) ];
+      [ Css.Media.feature "pointer" (Ident Coarse) ];
+      [ Css.Media.feature "prefers-color-scheme" (Ident Dark) ];
+      [ Css.Media.feature "prefers-reduced-motion" (Ident Reduce) ];
+      [ Css.Media.feature "prefers-contrast" (Ident More) ];
+      [ Css.Media.feature "forced-colors" (Ident Active) ];
+      [ Css.Media.feature "scripting" (Ident Enabled) ];
+      [ Css.Media.feature "dynamic-range" (Ident High) ];
+      [ Css.Media.feature "prefers-reduced-data" (Ident Reduce) ];
+    ]
+  in
+  let types = [ None; Some "screen"; Some "print"; Some "tv" ] in
+  List.concat_map
+    (fun media_type ->
+      List.concat_map
+        (fun size -> List.map (fun d -> state ?media_type (size @ d)) discrete)
+        sizes)
+    types
+
+(* The first sampled state the two queries disagree on, if any. *)
+let disagreement a b =
+  List.find_opt
+    (fun q ->
+      Bool.compare
+        (Css.Context.matches_media q a)
+        (Css.Context.matches_media q b)
+      <> 0)
+    sampled_states
+
+let report_disagreement label a b q =
+  failf "%s called %S and %S equal, but they disagree on media state %s" label
+    (Css.Media.to_string a) (Css.Media.to_string b)
+    (String.concat " "
+       (Option.value ~default:"(no type)" q.Css.Context.media_type
+       :: List.map Css.Media.to_string q.Css.Context.media_features))
+
+let test_equal_is_sound buf =
+  let a = media buf 0 in
+  let b = media buf 7 in
+  if Css.Media.equal a b then
+    match disagreement a b with
+    | Some q -> report_disagreement "Media.equal" a b q
+    | None -> ()
+
+(* Bound spellings the generator above never pairs, drawn so that a normaliser
+   which flips a comparison, drops a unit or loses the media type is caught. *)
+let bound_pair buf i =
+  let open Css.Media in
+  pick
+    [
+      ("(min-width: 10px)", "(width >= 10px)");
+      ("(min-width: 10px)", "(width > 10px)");
+      ("(max-width: 40em)", "(width <= 40em)");
+      ("(max-width: 40em)", "(40em >= width)");
+      ("(10px <= width)", "(width >= 10px)");
+      ("(10px < width)", "(width > 10px)");
+      ("(10em <= width <= 40em)", "(40em >= width >= 10em)");
+      ("(10em <= width < 40em)", "(40em > width >= 10em)");
+      ("(min-height: 10px)", "(height >= 10px)");
+      ("(min-width: 10px)", "(min-height: 10px)");
+      ("all and (min-width: 10px)", "(width >= 10px)");
+      ("screen and (min-width: 10px)", "screen and (width >= 10px)");
+      ("screen and (min-width: 10px)", "print and (width >= 10px)");
+      ("not all and (min-width: 10px)", "not (width >= 10px)");
+      ({|screen\ and\ \(min-width\:\ 10px\)|}, "screen and (min-width: 10px)");
+      ({|print\,screen|}, "print, screen");
+      ("theme(static)", "theme(dynamic)");
+      ("(unknown-feature: 1)", "theme(static)");
+      ("(min-width: 10px), print", "(width >= 10px), print");
+    ]
+    buf i
+  |> fun (a, b) -> (of_string a, of_string b)
+
+let test_bound_spellings_sound buf =
+  let a, b = bound_pair buf 0 in
+  if Css.Media.equal a b then
+    match disagreement a b with
+    | Some q -> report_disagreement "Media.equal" a b q
+    | None -> ()
+
+(* Control: the sweep above only means something if it can see a wrong merge.
+   Equality on serialised text is one such wrong rule, and these two queries are
+   the reason: an unknown media type never matches, so they serialise the same
+   and select different media. If the sweep cannot separate them it cannot
+   separate anything. *)
+let test_sweep_catches_wrong_equality _buf =
+  let escaped = Css.Media.of_string {|screen\ and\ \(min-width\:\ 10px\)|} in
+  let real = Css.Media.of_string "screen and (min-width: 10px)" in
+  let text_equal a b =
+    String.equal (Css.Media.to_string a) (Css.Media.to_string b)
+  in
+  if not (text_equal escaped real) then
+    fail "the control pair no longer collides on serialised text";
+  match disagreement escaped real with
+  | Some _ -> ()
+  | None ->
+      fail
+        "the sampled media states cannot tell an unknown media type from a \
+         media type plus a condition"
+
 let suite =
   ( "media",
     [
@@ -233,4 +379,9 @@ let suite =
         test_media_feature_family;
       test_case "spec media feature family recovery vectors" [ bytes ]
         test_media_feature_recovery;
+      test_case "equal is sound" [ bytes ] test_equal_is_sound;
+      test_case "equal is sound on bound spellings" [ bytes ]
+        test_bound_spellings_sound;
+      test_case "state sweep catches a wrong equality" [ bytes ]
+        test_sweep_catches_wrong_equality;
     ] )

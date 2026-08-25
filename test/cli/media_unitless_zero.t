@@ -40,4 +40,4 @@ The range and container spellings take the zero too.
   > @container (min-width: 0) { .c { color: red } }
   > EOF
   $ cascade fmt --minify range.css
-  @media(width>=0px){.a{color:red}}@media(0px<=width){.b{color:red}}@container(width>=0px){.c{color:red}}
+  @media(0px<=width){.a,.b{color:red}}@container(width>=0px){.c{color:red}}

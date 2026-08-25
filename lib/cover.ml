@@ -1,7 +1,10 @@
+(* Keyed on the property identity, ordered by its typed tag: the set is probed
+   once per declaration of every rule, so each [mem] and [add] would otherwise
+   spend O(log n) [caml_compare] calls walking a GADT-derived key. *)
 module Props = Set.Make (struct
   type t = Declaration.prop_key
 
-  let compare = Stdlib.compare
+  let compare = Declaration.compare_prop_key
 end)
 
 (* Keyed on the selector itself, so it carries the same requirement as the

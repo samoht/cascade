@@ -318,6 +318,42 @@ let test_vars_of_declarations () =
   Alcotest.(check bool)
     "custom Tokens value exposes the ref" true (has_black tokens_ref)
 
+(* CSS Images 3 sec. 3.2 gives a radial gradient three independently animatable
+   parts - shape, size and centre <position> - and CSS Variables L1 sec. 3 lets
+   a custom property hold any one of them. Each type carries [Var], so a caller
+   binds one to a custom property, prints the binding, and reads it back through
+   a [var()] channel exactly as [Color] or [Length] does. *)
+let spec_radial_and_position_kinds () =
+  let bind name kind value expected =
+    let decl, _ = var name kind value in
+    Alcotest.(check string)
+      ("--" ^ name ^ " binding")
+      expected
+      (Css.Declaration.string_of_declaration ~minify:true decl)
+  in
+  bind "radial-shape" Radial_shape Circle "--radial-shape:circle";
+  bind "radial-size" Radial_size Farthest_corner "--radial-size:farthest-corner";
+  bind "radial-position" Position_value Center "--radial-position:center";
+  (* A typed binding whose value is itself a [var()] exposes the reference, so
+     the three channels compose the way tw's mask-radial stops need. *)
+  let _, shape_src = var "src-shape" Radial_shape Ellipse in
+  let _, size_src = var "src-size" Radial_size Closest_side in
+  let _, position_src = var "src-position" Position_value Top in
+  let reads name decl expected =
+    Alcotest.(check (list string))
+      name [ expected ]
+      (List.map any_var_name (vars_of_declarations [ decl ]))
+  in
+  reads "radial shape channel"
+    (fst (var "radial-shape" Radial_shape (Var shape_src)))
+    "--src-shape";
+  reads "radial size channel"
+    (fst (var "radial-size" Radial_size (Var size_src)))
+    "--src-size";
+  reads "radial position channel"
+    (fst (var "radial-position" Position_value (Var position_src)))
+    "--src-position"
+
 (* Not a roundtrip test *)
 let test_any_var_name () =
   let _spacing_decl, var_handle = var "spacing" Length (Px 0.) in
@@ -557,6 +593,7 @@ let tests =
       `Quick,
       spec_theme_binding_past_non_cascading_declaration );
     ("vars of declarations", `Quick, test_vars_of_declarations);
+    ("spec radial and position kinds", `Quick, spec_radial_and_position_kinds);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);
     ("custom declaration name", `Quick, test_custom_declaration_name);

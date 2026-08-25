@@ -89,6 +89,42 @@ let test_err_unexpected () =
   | exception Cursor.Parse_error _ -> ()
   | _ -> Alcotest.fail "expected Parse_error"
 
+(* [pair] and [triple] are backtracking combinators: a failure anywhere inside
+   them must leave the cursor exactly where it started, the same contract every
+   other failable [Cursor] combinator ([option], [one_of], [try_parse_err],
+   [list]) already honours through [atomic]. *)
+let boom t = Cursor.err_expected t "a later item"
+
+let test_pair_rewinds_on_failure () =
+  let c = cursor_of_string "foo" in
+  (match Cursor.pair Cursor.ident boom c with
+  | exception Cursor.Parse_error _ -> ()
+  | _ -> Alcotest.fail "expected Parse_error");
+  Alcotest.(check (option string))
+    "cursor rewound past the first item" (Some "foo") (Cursor.ident_opt c)
+
+let test_triple_rewinds_on_failure () =
+  let c = cursor_of_string "foo bar" in
+  (match Cursor.triple Cursor.ident Cursor.ident boom c with
+  | exception Cursor.Parse_error _ -> ()
+  | _ -> Alcotest.fail "expected Parse_error");
+  Alcotest.(check (option string))
+    "cursor rewound past both items" (Some "foo") (Cursor.ident_opt c);
+  Alcotest.(check (option string))
+    "second still there" (Some "bar") (Cursor.ident_opt c)
+
+(* The one wording for an [~at_least] shortfall, shared with [Reader.list]. *)
+let test_list_at_least_message () =
+  let c = cursor_of_string "foo" in
+  match Cursor.list ~at_least:2 Cursor.ident c with
+  | exception Cursor.Parse_error e -> (
+      match e.kind with
+      | Error.Bad_value { reason; _ } ->
+          Alcotest.(check string)
+            "at_least message" "expected at least 2 items (got 1)" reason
+      | _ -> Alcotest.fail "expected Bad_value")
+  | _ -> Alcotest.fail "expected Parse_error"
+
 let suite =
   ( "cursor",
     [
@@ -102,4 +138,10 @@ let suite =
       Alcotest.test_case "enum" `Quick test_enum;
       Alcotest.test_case "enum miss" `Quick test_enum_miss;
       Alcotest.test_case "err unexpected" `Quick test_err_unexpected;
+      Alcotest.test_case "pair rewinds on failure" `Quick
+        test_pair_rewinds_on_failure;
+      Alcotest.test_case "triple rewinds on failure" `Quick
+        test_triple_rewinds_on_failure;
+      Alcotest.test_case "list ~at_least message" `Quick
+        test_list_at_least_message;
     ] )

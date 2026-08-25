@@ -1480,6 +1480,78 @@ let spec_comment_recovery_edges () =
   let rs = parse_ss ".a { color:red /* hidden } .b { color:blue }" in
   Alcotest.(check int) "one rule after hidden brace" 1 (List.length rs)
 
+(* --- allocation guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+let alloc_tokens = 500
+
+(* Comma-separated so every printer makes the same separator decisions and only
+   the token kind differs between a pair. *)
+let alloc_stream tok =
+  let src = String.concat "," (List.init alloc_tokens (fun _ -> tok)) in
+  (Parser.list_of_component_values (Reader.of_string src)).Parser.value
+
+let alloc_per_print print cvs =
+  let iters = 2_000 in
+  let loop n () =
+    let acc = ref 0 in
+    for _ = 1 to n do
+      acc := !acc + String.length (print cvs)
+    done;
+    !acc
+  in
+  let a1 = measure (loop iters) in
+  let a2 = measure (loop (2 * iters)) in
+  (a2 -. a1) /. float_of_int iters
+
+let token_printers =
+  [
+    ("string_of_components", Parser.string_of_components);
+    ("to_string_minified", Parser.to_string_minified);
+    ( "to_string_custom_minified",
+      Parser.to_string_custom_minified ~fold_ident:Fun.id );
+  ]
+
+(* [hot] and [cold] serialise to the same byte count, so the output buffer, its
+   growth and the final [Buffer.contents] copy cancel in the difference; what is
+   left is what the token kind itself costs on the way into the buffer. A token
+   goes straight into the caller's buffer, so that is nothing. *)
+let check_token_kind_allocates_nothing ~hot ~cold =
+  let hot_cvs = alloc_stream hot and cold_cvs = alloc_stream cold in
+  List.iter
+    (fun (pname, print) ->
+      let bh = String.length (print hot_cvs) in
+      let bc = String.length (print cold_cvs) in
+      Alcotest.(check int)
+        (Fmt.str "%s: %s/%s same length" pname hot cold)
+        bc bh;
+      let ah = alloc_per_print print hot_cvs in
+      let ac = alloc_per_print print cold_cvs in
+      let per_token = (ah -. ac) /. float_of_int alloc_tokens in
+      Alcotest.(check bool)
+        (Fmt.str "%s: %s vs %s alloc %.0f vs %.0f (%.2f words per token)" pname
+           hot cold ah ac per_token)
+        true (per_token < 0.5))
+    token_printers
+
+let alloc_dimension () =
+  check_token_kind_allocates_nothing ~hot:"12345px" ~cold:"1234567"
+
+let alloc_percentage () =
+  check_token_kind_allocates_nothing ~hot:"123456%" ~cold:"1234567"
+
+let alloc_hash () =
+  check_token_kind_allocates_nothing ~hot:"#abcdef" ~cold:"abcdefg"
+
+let alloc_at_keyword () =
+  check_token_kind_allocates_nothing ~hot:"@abcdef" ~cold:"abcdefg"
+
 let suite =
   ( "parser",
     [
@@ -1614,6 +1686,13 @@ let suite =
         spec_csv_nested_edges;
       Alcotest.test_case "spec section 5.5 deep nesting edges" `Quick
         spec_deep_nesting_edges;
+      Alcotest.test_case "dimension token allocates nothing" `Quick
+        alloc_dimension;
+      Alcotest.test_case "percentage token allocates nothing" `Quick
+        alloc_percentage;
+      Alcotest.test_case "hash token allocates nothing" `Quick alloc_hash;
+      Alcotest.test_case "at-keyword token allocates nothing" `Quick
+        alloc_at_keyword;
       Alcotest.test_case "spec comment recovery edges" `Quick
         spec_comment_recovery_edges;
     ] )

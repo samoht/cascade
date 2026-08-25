@@ -7474,6 +7474,9 @@ type 'a kind = 'a Properties.kind =
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind
   | Gradient_position : gradient_position kind
+  | Radial_shape : radial_shape kind
+  | Radial_size : radial_size kind
+  | Position_value : position_value kind
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind
