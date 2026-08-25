@@ -1,0 +1,13 @@
+Declaration.pp_declaration
+Declaration.string_of_declaration
+Stylesheet.empty_stylesheet
+Stylesheet.read_stylesheet
+Stylesheet.inline_style_of_declarations
+Keyframe.string_of_selector
+Pp.float_compact
+Css.Transform.of_string
+Css.Transform_origin.of_string
+Css.Perspective_origin.of_string
+Css.Animation.of_string
+Css.inset_ring_shadow
+Properties.inset_ring_shadow
