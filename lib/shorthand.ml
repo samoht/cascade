@@ -1123,13 +1123,13 @@ let name_extends other name =
    [declarations_overlap_with_keys] treats it as touching whatever it meets, and
    a footprint naming only itself let a caller's key prefilter judge the pair
    disjoint and rule the real test out. *)
-let declaration_overlap_keys decl =
-  match unwrap_theme_guard decl with
+let rec declaration_overlap_keys decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
   | Declaration { property = Unknown_property name; _ }
     when not (unknown_name_is_placeable name) ->
       [ broad_overlap_key ]
   | Declaration { property; _ } -> property_footprint property
-  | _ -> [ key (Declaration.property_name decl) ]
 
 let declarations_overlap_with_keys a a_keys b b_keys =
   match (unwrap_theme_guard a, unwrap_theme_guard b) with
@@ -2063,6 +2063,45 @@ let compose_font_via_index idx =
           i := !i + 5
   done
 
+(* The property a name spells, when the reader types one.
+   [Properties.read_any_property] is the table [pp_property] inverts, so a name
+   resolves to the very constructor the typed matches below test. *)
+let property_of_name name =
+  let t = Cursor.of_string name in
+  match
+    let property = Properties.read_any_property t in
+    Cursor.expect_eof t;
+    property
+  with
+  | property -> Some property
+  | exception Cursor.Parse_error _ -> None
+
+(* The property a declaration writes. A typed value reader that rejects its
+   input leaves the declaration as [Unknown_property] under the property's own
+   name ([font-kerning:var(--a) var(--b)] reads that way), and it still names
+   that property, so the name is read back into its constructor. *)
+let named_property decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = Unknown_property name; _ } -> property_of_name name
+  | Declaration { property; _ } -> Some (Properties.Prop property)
+  | _ -> None
+
+(* CSS Fonts 4 sec. 2.7: [font] takes these six subproperties from its own value
+   and returns every other one it covers to its initial. Both halves are [Font]
+   arms of [covers_longhand]. *)
+let is_font_slot_property : type a. a Properties.property -> bool = function
+  | Font_style | Font_weight | Font_stretch | Font_size | Line_height
+  | Font_family ->
+      true
+  | _ -> false
+
+let is_font_reset_property : type a. a Properties.property -> bool = function
+  | Font_variant_ligatures | Caps | Numeric | Font_variant_position | East_asian
+  | Font_variant_emoji | Font_variation_settings | Font_feature_settings
+  | Font_size_adjust | Font_kerning | Font_optical_sizing ->
+      true
+  | _ -> false
+
 (* [font] resets the [font-variant-*] / [font-variation-settings] /
    [font-feature-settings] / [font-size-adjust] / [font-kerning] /
    [font-optical-sizing] subproperties to their initials. When such a reset
@@ -2070,22 +2109,15 @@ let compose_font_via_index idx =
    synthesised [font] does not clobber it (as
    [reorder_border_image_before_border]). *)
 let reorder_font_resets_before_font decls =
-  let prop d = property_name (snd d) in
   let is_font_reset d =
-    match prop d with
-    | "font-variant-ligatures" | "font-variant-caps" | "font-variant-numeric"
-    | "font-variant-position" | "font-variant-east-asian" | "font-variant-emoji"
-    | "font-variation-settings" | "font-feature-settings" | "font-size-adjust"
-    | "font-kerning" | "font-optical-sizing" ->
-        true
-    | _ -> false
+    match named_property (snd d) with
+    | Some (Properties.Prop p) -> is_font_reset_property p
+    | None -> false
   in
   let is_font_longhand d =
-    match prop d with
-    | "font-style" | "font-weight" | "font-stretch" | "font-size"
-    | "line-height" | "font-family" ->
-        true
-    | _ -> false
+    match named_property (snd d) with
+    | Some (Properties.Prop p) -> is_font_slot_property p
+    | None -> false
   in
   let rec span pred acc = function
     | d :: rest when pred d -> span pred (d :: acc) rest
@@ -2096,8 +2128,16 @@ let reorder_font_resets_before_font decls =
     | d :: _ as l when is_font_reset d ->
         let reset_block, rest1 = span is_font_reset [] l in
         let long_block, rest2 = span is_font_longhand [] rest1 in
-        let has p = List.exists (fun d -> String.equal (prop d) p) long_block in
-        if has "font-size" && has "font-family" then
+        let has key =
+          List.exists
+            (fun d ->
+              match named_property (snd d) with
+              | Some (Properties.Prop p) -> equal_prop_key (Key p) key
+              | None -> false)
+            long_block
+        in
+        if has (Key Properties.Font_size) && has (Key Properties.Font_family)
+        then
           (* [long_block ++ reset_block] reversed onto acc, tail-recursively and
              without (@) on a large LHS. *)
           go
@@ -2854,33 +2894,14 @@ let empty_bg_shorthand : Properties.background_shorthand =
    concatenation, layer outside the file). Cascade composes only when the local
    run is reset-closed -- every reset field has a declaration in the run, so the
    shorthand cannot disturb prior writes. *)
-let bg_longhand_property_name :
-    Properties.background_shorthand -> string -> bool =
- fun s name ->
-  match name with
-  | "color" -> s.color <> None
-  | "image" -> s.image <> None
-  | "position" -> s.position <> None
-  | "size" -> s.size <> None
-  | "repeat" -> s.repeat <> None
-  | "attachment" -> s.attachment <> None
-  | "origin" -> s.origin <> None
-  | "clip" -> s.clip <> None
-  | _ -> false
-
-let background_run_is_reset_closed layer =
-  List.for_all
-    (bg_longhand_property_name layer)
-    [
-      "color";
-      "image";
-      "position";
-      "size";
-      "repeat";
-      "attachment";
-      "origin";
-      "clip";
-    ]
+let background_run_is_reset_closed (layer : Properties.background_shorthand) =
+  Option.is_some layer.color && Option.is_some layer.image
+  && Option.is_some layer.position
+  && Option.is_some layer.size
+  && Option.is_some layer.repeat
+  && Option.is_some layer.attachment
+  && Option.is_some layer.origin
+  && Option.is_some layer.clip
 
 (* A layer shorthand resets every layer field, so synthesizing it from a run
    silently reverts any same-family longhand sitting before the run (separated
@@ -4007,15 +4028,38 @@ let text_vendor_alias_twin vendor twin =
       | None -> false)
   | _ -> false
 
+(* {!Baseline.greenfield_properties} is generated from web-features as names.
+   Resolve each once into the property it spells, so the test below compares
+   property tags instead of rendering one. A name the reader does not type keeps
+   its [Unknown_property] tag, which is the shape it reaches
+   [drop_vendor_aliases] in as a [text_vendor_alias_twin] twin. *)
+let greenfield_keys =
+  let tbl = Hashtbl.create 512 in
+  let add key = Hashtbl.replace tbl key () in
+  List.iter
+    (fun name ->
+      add (Key (Properties.Unknown_property name));
+      match property_of_name name with
+      | Some (Properties.Prop property) -> add (Key property)
+      | None -> ())
+    Baseline.greenfield_properties;
+  tbl
+
 (* An unprefixed property supersedes its prefix only once every maintained
-   browser reads it. {!Baseline.greenfield_properties}, generated from
-   web-features, lists the properties that are not yet Baseline "widely
-   available", which is exactly the set whose prefix is still load-bearing:
-   Safari reads only [-webkit-backdrop-filter] up to 17.6, and
-   [-webkit-text-size-adjust] has no unprefixed Safari support at all. *)
+   browser reads it. {!Baseline.greenfield_properties} lists the properties that
+   are not yet Baseline "widely available", which is exactly the set whose
+   prefix is still load-bearing: Safari reads only [-webkit-backdrop-filter] up
+   to 17.6, and [-webkit-text-size-adjust] has no unprefixed Safari support at
+   all. *)
 let unprefixed_is_widely_available twin =
-  let name = String.lowercase_ascii_preserve (property_name twin) in
-  not (List.mem name Baseline.greenfield_properties)
+  let key =
+    match Declaration.property_key twin with
+    (* CSS Syntax 3 sec. 8.1: property names are case-insensitive. *)
+    | Key (Unknown_property name) ->
+        Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
+    | key -> key
+  in
+  not (Hashtbl.mem greenfield_keys key)
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance and is widely available. The
