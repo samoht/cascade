@@ -134,7 +134,8 @@ answers.
   a later one of its own name (#511)
 - An error inside an at-rule condition or an `@font-face` descriptor points at
   the slice that failed, not at the end of the file with the caret past the
-  last byte (#496, #497, #499, #501)
+  last byte. `@when` and `@else` name the at-rule with it (#496, #497, #499,
+  #501, #538)
 - Everything the parser repaired or dropped is reported, so strict mode
   rejects it. `@media screen {` swallowed the rest of the file and still
   returned `Ok` with no warnings, hiding a truncated stylesheet (#484)

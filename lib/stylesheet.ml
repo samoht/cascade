@@ -3235,25 +3235,25 @@ let read_property_initial_value r syntax str =
   Cursor.expect_eof value_reader;
   value
 
-let conditional_args (fn : Component.func Component.node) =
-  if not fn.node.terminated then failwith "unterminated conditional function";
-  Cursor.string_of_components ~trim:true fn.node.arguments
+(* Every failure below is a failure of the [\@when] / [\@else] prelude, so it is
+   raised on the cursor the prelude's own components sit in and the caret lands
+   on the one that failed rather than on the block that follows it. *)
+let conditional_terminated r ~at_rule (fn : Component.func Component.node) =
+  if not fn.node.terminated then
+    Cursor.err_condition r ~at_rule "unterminated condition function"
 
-let conditional_arguments (fn : Component.func Component.node) =
-  if not fn.node.terminated then failwith "unterminated conditional function";
-  fn.node.arguments
-
-let conditional_atom (fn : Component.func Component.node) =
+let conditional_atom r ~at_rule (fn : Component.func Component.node) =
+  conditional_terminated r ~at_rule fn;
   match String.lowercase_ascii fn.Component.node.name with
-  | "media" ->
-      Media_condition (Media.of_function_components (conditional_arguments fn))
+  | "media" -> Media_condition (Media.of_function_components fn.node.arguments)
   | "supports" ->
       Supports_condition_test
-        (Supports.of_string ~allow_unwrapped_decl:true (conditional_args fn))
-  | name -> failwith ("unknown conditional function: " ^ name)
+        (Supports.of_string ~allow_unwrapped_decl:true
+           (Cursor.string_of_components ~trim:true fn.node.arguments))
+  | name ->
+      Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
 
-let conditional_components components =
-  let cursor = Cursor.of_components components in
+let conditional_components ~at_rule cursor =
   let peek_ident () =
     match Cursor.peek cursor with
     | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
@@ -3264,30 +3264,29 @@ let conditional_components components =
     Cursor.ws cursor;
     match Cursor.peek cursor with
     | Some (Component.Func fn) ->
+        let atom = conditional_atom cursor ~at_rule fn in
         Cursor.skip cursor;
-        conditional_atom fn
-    | _ -> failwith "expected conditional function"
+        atom
+    | _ -> Cursor.err_condition cursor ~at_rule "expected a condition function"
   in
+  let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
   let rec chain op acc =
     Cursor.ws cursor;
     match peek_ident () with
     | Some "and" ->
-        (match op with
-        | Some `Or -> failwith "mixed @when condition operators"
-        | _ -> ());
+        (match op with Some `Or -> mixed "or and and" | _ -> ());
         Cursor.skip cursor;
         chain (Some `And) (And (acc, read_atom ()))
     | Some "or" ->
-        (match op with
-        | Some `And -> failwith "mixed @when condition operators"
-        | _ -> ());
+        (match op with Some `And -> mixed "and and or" | _ -> ());
         Cursor.skip cursor;
         chain (Some `Or) (Or (acc, read_atom ()))
     | _ -> acc
   in
   let condition = chain None (read_atom ()) in
   Cursor.ws cursor;
-  if not (Cursor.is_done cursor) then failwith "trailing @when condition";
+  if not (Cursor.is_done cursor) then
+    Cursor.err_condition cursor ~at_rule "trailing content";
   condition
 
 let follows_conditional = function When _ | Else _ -> true | _ -> false
@@ -3514,10 +3513,9 @@ let read_when ~body (r : Cursor.t) : statement =
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
   if Cursor.string_of_components ~trim:true prelude = "" then
-    Cursor.err_invalid r "@when: missing condition";
+    Cursor.err_condition r ~at_rule:"@when" "missing condition";
   let condition : conditional =
-    try conditional_components prelude
-    with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
+    conditional_components ~at_rule:"@when" (Cursor.sub r prelude)
   in
   When (condition, Cursor.braces body r)
 
@@ -3534,10 +3532,7 @@ let read_else ~body (r : Cursor.t) : statement =
         prelude
     with
     | [] -> Option.None
-    | _ -> (
-        match conditional_components prelude with
-        | condition -> Some condition
-        | exception Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
+    | _ -> Some (conditional_components ~at_rule:"@else" (Cursor.sub r prelude))
   in
   Else (condition, Cursor.braces body r)
 
