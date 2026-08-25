@@ -24,6 +24,13 @@ answers.
   you shipped minified output built with 1.1.0, re-run it and compare:
   `cascade diff --diff=canonical old.css new.css` exits 1 and prints the
   difference wherever the two are not equivalent.
+- `Css.Container.of_components` and `Css.Media.of_components` are gone: call
+  `Container.read` / `Media.read` with a cursor over the prelude's components
+  (`Cursor.sub`). `Container.of_string`, `Media.of_string_strict`,
+  `Supports.of_string` and the three `Font_face.*_of_string` raise
+  `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
+  around any of them stops catching and the exception escapes; match
+  `Cursor.Parse_error` instead (#496, #497, #499, #501)
 - `Css.statement_declarations` is gone. It answered for a rule and a bare
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a
@@ -70,9 +77,7 @@ answers.
 
 - An error inside an at-rule condition or an `@font-face` descriptor points at
   the slice that failed, not at the end of the file with the caret past the
-  last byte. The readers take a cursor and raise `Cursor.Parse_error` where
-  they raised `Failure`; `Css.Container.of_components` and
-  `Css.Media.of_components` are replaced by `read` (#496, #497, #499)
+  last byte (#496, #497, #499, #501)
 - Everything the parser repaired or dropped is reported, so strict mode
   rejects it. `@media screen {` swallowed the rest of the file and still
   returned `Ok` with no warnings, hiding a truncated stylesheet (#484)

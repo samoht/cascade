@@ -76,9 +76,16 @@ val pp_declaration_feature : declaration_feature Pp.t
 (** [pp_declaration_feature ctx feature] prints a supports declaration feature
     without the surrounding condition parentheses. *)
 
+val read : ?allow_unwrapped_decl:bool -> Cursor.t -> t
+(** [read t] parses the [\@supports] condition [t] holds. A malformed condition
+    raises {!Cursor.exception-Parse_error} anchored on the slice of the
+    condition that failed, so pass a cursor built over the components the
+    prelude was lexed into ({!Cursor.val-sub}) rather than a re-lex of their
+    text. *)
+
 val of_string : ?allow_unwrapped_decl:bool -> string -> t
 (** [of_string s] parses a [\@supports] condition string into a structured type.
-    Fails if the condition cannot be parsed. *)
+    Raises {!Cursor.exception-Parse_error} if the condition cannot be parsed. *)
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. *)
