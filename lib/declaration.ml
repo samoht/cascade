@@ -2470,12 +2470,8 @@ let rec pp_declaration : declaration Pp.t =
       pp_property ctx (Custom_property name);
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      (match (layer, value) with
-      | Some "theme", Typed { kind = Font_family; value } ->
-          pp_value ctx (Font_family, value)
-      | _ ->
-          pp_property_value ctx
-            (Custom_property name, Custom_value { value; layer; meta = None }));
+      pp_property_value ctx
+        (Custom_property name, Custom_value { value; layer; meta = None });
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Declaration { property; value; important; _ } ->

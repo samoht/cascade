@@ -350,68 +350,22 @@ let media_not_min_width_length l =
           (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)));
     }
 
-let parse_length s =
+let parse_option read s =
   match
     let c = Cursor.of_string s in
-    let l = Values.read_length c in
-    if Cursor.is_done c then Some l else None
+    let value = read c in
+    if Cursor.is_done c then Some value else None
   with
   | value -> value
   | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
-let parse_color s =
-  match
-    let c = Cursor.of_string s in
-    let col = Values.read_color c in
-    if Cursor.is_done c then Some col else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_shadow s =
-  match
-    let r = Cursor.of_string s in
-    let sh = Properties.read_shadow r in
-    if Cursor.is_done r then Some sh else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_background_image s =
-  match
-    let r = Cursor.of_string s in
-    let imgs = Properties.read_background_images r in
-    if Cursor.is_done r then Some imgs else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_font_family s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_font_family r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_list_style_type s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_list_style_type r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_list_style_image s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_list_style_image r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
+let parse_length s = parse_option Values.read_length s
+let parse_color s = parse_option Values.read_color s
+let parse_shadow s = parse_option Properties.read_shadow s
+let parse_background_image s = parse_option Properties.read_background_images s
+let parse_font_family s = parse_option Properties.read_font_family s
+let parse_list_style_type s = parse_option Properties.read_list_style_type s
+let parse_list_style_image s = parse_option Properties.read_list_style_image s
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
