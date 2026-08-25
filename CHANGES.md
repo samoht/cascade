@@ -419,7 +419,7 @@ answers.
 - `--minify` no longer allocates quadratically on a long run of rules sharing
   one selector or one body, nor probes every pair of them to decide whether it
   may merge. The benchmark corpora hold no such run, so this bounds a worst
-  case rather than speeding real input up (#480, #486, #487, #502)
+  case rather than speeding real input up (#480, #486, #487, #502, #505)
 - `--minify` no longer scans quadratically when many rules share a deep
   selector prefix. The structural hash reads a fixed count of nodes, so
   `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took

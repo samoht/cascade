@@ -361,17 +361,22 @@ let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
   let rec go = function
     | [] -> []
     | r :: rest when adjacent_merge_eligible ~ctx r && r.declarations <> [] ->
-        let rec take group = function
+        (* Whether a group may share one selector list turns on two facts read
+           off each selector alone, so the group carries them and a candidate is
+           read once rather than once per member already in it. *)
+        let rec take run group rules =
+          match rules with
           | s :: tail
             when adjacent_merge_eligible ~ctx s
-                 && bodies_equal r.declarations s.declarations
-                 && List.for_all
-                      (fun (g : rule) -> Merge.compatible g.selector s.selector)
-                      group ->
-              take (s :: group) tail
-          | tail -> (group, tail)
+                 && bodies_equal r.declarations s.declarations ->
+              let run = Merge.extend_run run s.selector in
+              if Merge.run_compatible run then take run (s :: group) tail
+              else (group, rules)
+          | _ -> (group, rules)
         in
-        let group, rest = take [ r ] rest in
+        let group, rest =
+          take (Merge.extend_run Merge.empty_run r.selector) [ r ] rest
+        in
         let merged =
           match group with
           | [ _ ] -> r

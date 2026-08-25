@@ -140,6 +140,50 @@ let test_all_compatible_matches_the_pair_loop () =
            pool.(Random.State.int state (Array.length pool))))
   done
 
+(* The group decision as [Rule.merge_adjacent_identical] used to make it: a
+   candidate joins the group when it is [compatible] with every member already
+   in it. It decides which rules end up sharing a selector list, so the run has
+   to accept exactly the same prefix of every sequence. *)
+let take_by_pairs sels =
+  let rec loop group = function
+    | sel :: rest when List.for_all (fun g -> Merge.compatible g sel) group ->
+        loop (sel :: group) rest
+    | _ -> List.rev group
+  in
+  loop [] sels
+
+let take_by_run sels =
+  let rec loop run group = function
+    | sel :: rest ->
+        let run = Merge.extend_run run sel in
+        if Merge.run_compatible run then loop run (sel :: group) rest
+        else List.rev group
+    | [] -> List.rev group
+  in
+  loop Merge.empty_run [] sels
+
+let check_take sels =
+  if not (List.equal Selector.equal (take_by_pairs sels) (take_by_run sels))
+  then
+    Alcotest.failf "run disagrees with the pair loop on [%s]"
+      (String.concat "; " (List.map Selector.to_string sels))
+
+let test_run_matches_the_pair_loop () =
+  let pool = Array.of_list compat_pool in
+  let rec exhaustive depth acc =
+    check_take (List.rev acc);
+    if depth > 0 then
+      Array.iter (fun sel -> exhaustive (depth - 1) (sel :: acc)) pool
+  in
+  exhaustive 5 [];
+  let state = Random.State.make [| 0x217A |] in
+  for _ = 1 to 5000 do
+    let len = Random.State.int state 30 in
+    check_take
+      (List.init len (fun _ ->
+           pool.(Random.State.int state (Array.length pool))))
+  done
+
 (* Selectors whose distinguishing part sits behind a prefix they share, which is
    where a table keyed by [key] has to work hardest. *)
 let key_pool =
@@ -211,6 +255,8 @@ let suite =
         test_compatible_matches_the_predicates;
       Alcotest.test_case "all_compatible matches the pair loop" `Quick
         test_all_compatible_matches_the_pair_loop;
+      Alcotest.test_case "run matches the pair loop" `Quick
+        test_run_matches_the_pair_loop;
       Alcotest.test_case "declarations_equal fast and structural paths" `Quick
         test_declarations_equal_fast_and_structural_paths;
       Alcotest.test_case "key is the selector set" `Quick
