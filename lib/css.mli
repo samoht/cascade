@@ -3971,7 +3971,7 @@ val grid_template_rows : grid_template -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows}
      grid-template-rows} property. *)
 
-val grid_template_areas : string -> declaration
+val grid_template_areas : grid_template_areas -> declaration
 (** [grid_template_areas areas] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas}
      grid-template-areas} property. *)

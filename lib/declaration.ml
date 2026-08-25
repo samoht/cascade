@@ -2554,7 +2554,7 @@ let column_gap len = v Column_gap len
 let row_gap len = v Row_gap len
 
 (* Grid functions *)
-let grid_template_areas template = v Grid_template_areas (Areas template)
+let grid_template_areas value = v Grid_template_areas value
 let grid_template template = v Grid_template template
 let grid_auto_columns size = v Grid_auto_columns size
 let grid_auto_rows size = v Grid_auto_rows size

@@ -488,7 +488,7 @@ val row_gap : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/row-gap} row-gap}
     property. *)
 
-val grid_template_areas : string -> declaration
+val grid_template_areas : grid_template_areas -> declaration
 (** [grid_template_areas v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas}
      grid-template-areas} property. *)
