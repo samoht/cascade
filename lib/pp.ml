@@ -228,12 +228,33 @@ let column ctx =
   in
   find_newline (len - 1)
 
-let list_wrap_append ~threshold ~wrap_sep ctx s =
-  char ctx ',';
-  if column ctx + 1 + String.length s > threshold then (
+let truncate_out out len =
+  match out with
+  | Buffer b -> Buffer.truncate b len
+  | Counter c -> c.count <- len
+
+let is_layout_whitespace = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let trim_separator_layout ctx start =
+  let rec find i =
+    if i >= start && is_layout_whitespace (out_nth ctx.out i) then find (i - 1)
+    else i + 1
+  in
+  truncate_out ctx.out (find (out_length ctx.out - 1))
+
+let list_wrap_append ~threshold ~sep ~wrap_sep ctx s =
+  let separator_start = out_length ctx.out in
+  sep ctx ();
+  if column ctx + String.length s > threshold then (
+    (* A pretty separator may end in layout space (for example [, ]). Replace
+       that layout with the wrapped layout while preserving the separator
+       itself. *)
+    trim_separator_layout ctx separator_start;
     char ctx '\n';
     string ctx wrap_sep)
-  else char ctx ' ';
+  else ();
   string ctx s
 
 let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
@@ -251,9 +272,9 @@ let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
     | [ x ] -> pp ctx x
     | h :: t ->
         pp ctx h;
-        ignore sep;
         List.iter
-          (fun x -> list_wrap_append ~threshold ~wrap_sep ctx (measure_item x))
+          (fun x ->
+            list_wrap_append ~threshold ~sep ~wrap_sep ctx (measure_item x))
           t
 
 let option ?(none = nop) pp ctx = function
