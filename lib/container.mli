@@ -84,12 +84,15 @@ val pp : t -> string
 (** [pp t] returns a string representation of a container condition. *)
 
 val of_string : string -> t
-(** [of_string s] parses a container condition. Raises [Failure] for malformed
-    conditions. *)
+(** [of_string s] parses a container condition. Raises
+    {!Cursor.exception-Parse_error} for a malformed condition. *)
 
-val of_components : Component.t list -> t
-(** [of_components components] parses an already-tokenized container condition.
-    Raises [Failure] for malformed conditions. *)
+val read : Cursor.t -> t
+(** [read t] parses the container condition [t] holds, consuming nothing. A
+    malformed condition raises {!Cursor.exception-Parse_error} anchored on the
+    slice of the query that failed, so pass a cursor built over the components
+    the prelude was lexed into ({!Cursor.val-sub}) rather than a re-lex of their
+    text. *)
 
 val feature : string -> Media.value -> t
 (** [feature name value] is the typed container feature query constructed via

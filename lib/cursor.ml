@@ -205,9 +205,11 @@ exception Parse_error = Error.Parse_error
 
 let sort = Sort.Component
 
-let raise_ t kind loc =
+let raise_sort t sort kind loc =
   let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
   Error.fail (Error.v ?source ~loc ~sort kind)
+
+let raise_ t kind loc = raise_sort t sort kind loc
 
 let err ?got t msg =
   let loc = position t in
@@ -226,6 +228,12 @@ let err_expected_but_eof t what =
   raise_ t (Error.Missing_token what) (position t)
 
 let err_unexpected t = err t "unexpected token"
+
+let err_condition t ~at_rule reason =
+  raise_sort t Sort.At_rule
+    (Error.Bad_condition { at_rule; reason })
+    (position t)
+
 let with_context _t label f = Error.with_context label f
 
 let atomic t f =

@@ -1,10 +1,12 @@
 CLI: parse-error warnings carry a precise location, not Loc.dummy.
 
-The `of_string` parsers in lib/{supports,container,media,...}.ml raise
-typed `Cursor.Parse_error` anchored at the failing cursor position.
-The stylesheet readers re-anchor those errors at the surrounding rule's
-condition span so the `[start-end]` locator in the warning points at
-the offending region of the source file, never `[0-0]`.
+The `read` and `of_string` parsers in lib/{supports,container,media,...}.ml
+raise typed `Cursor.Parse_error` anchored at the failing cursor position.
+A reader handed the components the prelude was lexed into faults the slice
+of the condition that failed; one handed a re-lex of the prelude text is
+re-anchored by the stylesheet reader at the surrounding condition span. The
+`[start-end]` locator in the warning points at the offending region of the
+source file, never `[0-0]`.
 
 Invalid `@supports` condition: trailing junk after a valid feature
 query lands the warning at the at-rule's prelude span.
@@ -26,10 +28,11 @@ slice, not at the start of the file.
   > @container style() { .a { color: blue } }
   > EOF
   $ cascade --minify bad-container.css 2>&1
-  warning: bad-container.css: bad value for : invalid: empty style() container query at [61-61] (in component)
-  warning: ontainer style() { .a { color: blue } }
+  warning: bad-container.css: bad condition for @container: empty style() container query at [30-37] (in at-rule)
+  warning: .ok { color: red }
+  warning: @container style() { .a { color: blue } }
   warning: 
-  warning:                                         ^
+  warning:                               ^^^^^^^
   .ok{color:red}
 
 Invalid `@media` query inside `@import`: the warning points at the

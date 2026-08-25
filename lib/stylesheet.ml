@@ -3706,15 +3706,10 @@ and read_container (r : Cursor.t) : statement =
     | other -> other
   in
   Cursor.ws r;
-  let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition : Container.t option =
-    if Cursor.of_components condition_components |> Cursor.is_done then
-      Option.None
-    else
-      match Container.of_components condition_components with
-      | condition -> Some condition
-      | exception Failure msg -> Cursor.err_invalid r msg
+    if Cursor.is_done query then Option.None else Some (Container.read query)
   in
   (* CSS Containment 3 section 4: [@container] requires a query (with an
      optional [<container-name>] in front). Bare [@container { ... }] is a parse
@@ -3838,14 +3833,10 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
 and read_nested_container_rule r =
   let container_name : string option = Cursor.option Cursor.ident r in
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   let condition : Container.t option =
-    if condition_str = "" then Option.None
-    else
-      match Container.of_string condition_str with
-      | condition -> Some condition
-      | exception Failure msg -> Cursor.err_invalid r msg
+    if Cursor.is_done query then Option.None else Some (Container.read query)
   in
   Container (container_name, condition, content)
 

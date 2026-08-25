@@ -197,6 +197,12 @@ val err_expected_but_eof : t -> string -> 'a
 val err_unexpected : t -> 'a
 (** [err_unexpected t] raises "unexpected token" at the current position. *)
 
+val err_condition : t -> at_rule:string -> string -> 'a
+(** [err_condition t ~at_rule reason] raises {!Parse_error} carrying
+    {!Error.Bad_condition} for [at_rule], anchored at the current position. An
+    at-rule prelude reader raises through this so the caret lands on the slice
+    of the condition that failed rather than on the enclosing rule. *)
+
 val with_context : t -> string -> (unit -> 'a) -> 'a
 (** [with_context t label f] annotates any {!Parse_error} raised by [f] with
     [label] in the error path. *)
