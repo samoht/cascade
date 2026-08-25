@@ -1490,6 +1490,74 @@ let spec_cascade3_aliasing () =
       neg_cursor read_declaration row.input)
     Cascade_spec_inventory.Declaration_grammar.alias_negative
 
+let spec_break3_page_break_var () =
+  (* CSS Fragmentation 3 sec. 3.4 aliases [page-break-*] to [break-*] through a
+     value mapping table: [auto | left | right | avoid] map to themselves and
+     [always] maps to [page]. The table is keyed on the value, so a [var()]
+     declaration has no alias to take: substitution happens at computed-value
+     time, and the one mapping that is not the identity has no [break-*]
+     spelling to fall back on. The declaration names [page-break-*] and stays
+     there, in both modes. *)
+  List.iter
+    (fun (input, pretty, minified) ->
+      check_declaration ~minify:false ~expected:pretty input;
+      check_declaration ~expected:minified input)
+    [
+      ( "page-break-before: var(--x)",
+        "page-break-before: var(--x)",
+        "page-break-before:var(--x)" );
+      ( "page-break-after: var(--x)",
+        "page-break-after: var(--x)",
+        "page-break-after:var(--x)" );
+      ( "page-break-inside: var(--x)",
+        "page-break-inside: var(--x)",
+        "page-break-inside:var(--x)" );
+      (* The fallback shows what the alias cannot carry: an unset [--x] leaves
+         [always], which no [break-*] property accepts. *)
+      ( "page-break-after: var(--x, always)",
+        "page-break-after: var(--x, always)",
+        "page-break-after:var(--x,always)" );
+      ( "page-break-inside: var(--x) !important",
+        "page-break-inside: var(--x) !important",
+        "page-break-inside:var(--x)!important" );
+    ];
+  (* A value the table does map still takes the alias, unmoved. *)
+  List.iter
+    (fun (input, pretty, minified) ->
+      check_declaration ~minify:false ~expected:pretty input;
+      check_declaration ~expected:minified input)
+    [
+      ( "page-break-before: always",
+        "page-break-before: always",
+        "break-before:page" );
+      ( "page-break-after: always",
+        "page-break-after: always",
+        "break-after:page" );
+      ("page-break-after: avoid", "page-break-after: avoid", "break-after:avoid");
+      ("page-break-before: left", "page-break-before: left", "break-before:left");
+      ( "page-break-inside: avoid",
+        "page-break-inside: avoid",
+        "break-inside:avoid" );
+      ("page-break-inside: auto", "page-break-inside: auto", "break-inside:auto");
+    ];
+  (* The [var()] declaration is the property it names, not an opaque one that
+     happens to spell the same: it answers [same_property] against a keyword
+     declaration of that property, the way every other property does. *)
+  List.iter
+    (fun (var_decl, keyword_decl) ->
+      Alcotest.(check bool)
+        (var_decl ^ " names the same property as " ^ keyword_decl)
+        true
+        (same_property
+           (Css.Declaration.of_string var_decl)
+           (Css.Declaration.of_string keyword_decl)))
+    [
+      ("page-break-before: var(--x)", "page-break-before: left");
+      ("page-break-after: var(--x)", "page-break-after: always");
+      ("page-break-inside: var(--x)", "page-break-inside: avoid");
+      ("break-after: var(--x)", "break-after: page");
+    ]
+
 let spec_cascade3_all () =
   (* CSS Cascade section 3.2: [all] is a shorthand that accepts only CSS-wide
      keywords and resets all CSS properties except direction, unicode-bidi, and
@@ -3212,6 +3280,8 @@ let declaration_tests =
     test_case "spec cascade 3 shorthand properties" `Quick
       spec_cascade3_shorthands;
     test_case "spec cascade 3.1 property aliasing" `Quick spec_cascade3_aliasing;
+    test_case "spec break 3.4 page-break alias with a var" `Quick
+      spec_break3_page_break_var;
     test_case "spec cascade 3.2 all property" `Quick spec_cascade3_all;
     test_case "spec cascade 7 defaulting keywords" `Quick
       spec_cascade7_defaulting;
