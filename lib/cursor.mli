@@ -488,7 +488,8 @@ val one_of : (t -> 'a) list -> t -> 'a
 val list :
   ?sep:(t -> unit) -> ?at_least:int -> ?at_most:int -> (t -> 'a) -> t -> 'a list
 (** [list ?sep ?at_least ?at_most item t] parses items separated by [sep]
-    (default: no separator). Enforces cardinality bounds. *)
+    (default: no separator). Enforces cardinality bounds. Too few items raise
+    ["expected at least N items (got M)"], the wording {!Reader.list} uses. *)
 
 val fold_many :
   (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option
@@ -502,12 +503,13 @@ val many : (t -> 'a) -> t -> 'a list * string option
 
 val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
 (** [pair ?sep a b t] parses [a] followed by [b], optionally separated by [sep].
-*)
+    Atomic: a failure in [sep] or [b] rewinds the cursor to where [a] started,
+    so the caller can try another alternative. *)
 
 val triple :
   ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
 (** [triple ?sep a b c t] parses [a], [b], and [c], optionally separated by
-    [sep]. *)
+    [sep]. Atomic like {!val-pair}. *)
 
 val try_parse_err : (t -> 'a) -> t -> ('a, string) result
 (** [try_parse_err p t] returns [Ok v] on success or [Error msg] on parse

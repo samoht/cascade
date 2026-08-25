@@ -84,6 +84,10 @@ answers.
   `Css.Variables.var` bind a radial gradient's shape, size or centre
   `<position>` as a typed custom property, where it could only take those as an
   opaque token stream (#508)
+- `Cascade.Cursor.pair` and `triple` rewind the cursor when the separator or a
+  later parser fails, as `option`, `one_of`, `try_parse_err` and `list` already
+  do. Code that caught `Parse_error` from either and read on from the advanced
+  position now re-reads what the first parser consumed (#509)
 
 ### Parsing
 
@@ -579,6 +583,9 @@ answers.
   the line before the error and stopped one column short at end of input, and
   the caret was a byte count under a window that could open inside a code
   point (#477)
+- `Cascade.Reader.list` reports too few items as
+  `expected at least N items (got M)`, the wording `Cascade.Cursor.list` uses,
+  where it said `expected at least N item(s)` (#509)
 
 ### CLI tools
 

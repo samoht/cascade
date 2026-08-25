@@ -275,14 +275,19 @@ val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
 val list :
   ?sep:(t -> unit) -> ?at_least:int -> ?at_most:int -> (t -> 'a) -> t -> 'a list
 (** [list ~sep ~at_least ~at_most item t] parses items separated by [sep]
-    (default: no separator). Enforces optional cardinality constraints. *)
+    (default: no separator). Enforces optional cardinality constraints. Too few
+    items raise ["expected at least N items (got M)"], the wording
+    {!Cursor.list} uses. *)
 
 val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
-(** [pair ~sep p1 p2 t] parses two items with optional separator. *)
+(** [pair ~sep p1 p2 t] parses two items with optional separator. Atomic: a
+    failure in [sep] or [p2] restores the position to where [p1] started, so the
+    caller can try another alternative. *)
 
 val triple :
   ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
-(** [triple ~sep p1 p2 p3 t] parses three items with optional separator. *)
+(** [triple ~sep p1 p2 p3 t] parses three items with optional separator. Atomic
+    like {!val-pair}. *)
 
 val url : t -> string
 (** [url t] parses [url(...)] content. *)

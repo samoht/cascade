@@ -870,24 +870,37 @@ let rec many p t =
       (v :: rest, err)
 
 let pair ?sep p1 p2 t =
-  let a = p1 t in
-  (match sep with None -> () | Some s -> s t);
-  let b = p2 t in
-  (a, b)
+  atomic t (fun () ->
+      let a = p1 t in
+      (match sep with None -> () | Some s -> s t);
+      let b = p2 t in
+      (a, b))
 
 let triple ?sep p1 p2 p3 t =
-  let a = p1 t in
-  (match sep with None -> () | Some s -> s t);
-  let b = p2 t in
-  (match sep with None -> () | Some s -> s t);
-  let c = p3 t in
-  (a, b, c)
+  atomic t (fun () ->
+      let a = p1 t in
+      (match sep with None -> () | Some s -> s t);
+      let b = p2 t in
+      (match sep with None -> () | Some s -> s t);
+      let c = p3 t in
+      (a, b, c))
 
 let fold_many p ~init ~f t =
   let rec loop acc =
     match option p t with None -> (acc, None) | Some v -> loop (f acc v)
   in
   loop init
+
+(* One wording for an [~at_least] shortfall, shared with [Reader.list]. *)
+let at_least_shortfall ~at_least ~got =
+  String.concat ""
+    [
+      "at least ";
+      string_of_int at_least;
+      " items (got ";
+      string_of_int got;
+      ")";
+    ]
 
 let list_consume_separator sep t =
   match sep with
@@ -924,16 +937,7 @@ let list ?sep ?(at_least = 0) ?at_most item t =
   let max = Option.value at_most ~default:max_int in
   let items = list_collect sep item t [] 0 max in
   let len = List.length items in
-  if len < at_least then
-    err_expected t
-      (String.concat ""
-         [
-           "at least ";
-           string_of_int at_least;
-           " items (got ";
-           string_of_int len;
-           ")";
-         ])
+  if len < at_least then err_expected t (at_least_shortfall ~at_least ~got:len)
   else items
 
 let try_parse_err p t =

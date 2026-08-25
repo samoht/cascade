@@ -995,15 +995,26 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
       let c = p3 t in
       (a, b, c))
 
+(* One wording for an [~at_least] shortfall, shared with [Cursor.list]. *)
+let at_least_shortfall ~at_least ~got =
+  String.concat ""
+    [
+      "at least ";
+      string_of_int at_least;
+      " items (got ";
+      string_of_int got;
+      ")";
+    ]
+
 let list_impl_check_at_least t item at_least items =
-  if List.length items >= at_least then ()
-  else if List.length items = 0 && at_least > 0 then
-    (* If we got no items and at_least:1 was specified, try to parse one more
-       time to get a better error message that includes the nested context. This
-       will fail and propagate the error with full context. *)
+  let got = List.length items in
+  if got >= at_least then ()
+  else if got = 0 && at_least > 0 then
+    (* No items at all: run the item parser once more so the error carries the
+       nested context. It failed already, so this raises. *)
     let _ = item t in
-    err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
-  else err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
+    err_expected t (at_least_shortfall ~at_least ~got)
+  else err_expected t (at_least_shortfall ~at_least ~got)
 
 let list_impl_check_at_most t at_most items =
   match at_most with
