@@ -70,6 +70,16 @@ let nonempty_declaration_lists () =
     (Invalid_argument "font_families: empty list") (fun () ->
       ignore (font_families []))
 
+let grid_template_areas_values () =
+  let render value =
+    Css.Declaration.to_string ~minify:true (grid_template_areas value)
+  in
+  Alcotest.(check string) "none" "grid-template-areas:none" (render No_areas);
+  Alcotest.(check string)
+    "areas" "grid-template-areas:\"a\"" (render (Areas "\"a\""));
+  Alcotest.(check string)
+    "global keyword" "grid-template-areas:initial" (render Initial)
+
 (* Test layers work end-to-end *)
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
@@ -1683,6 +1693,8 @@ let suite =
       Alcotest.test_case "optimization flag works" `Quick optimization_flag;
       Alcotest.test_case "non-empty declaration lists" `Quick
         nonempty_declaration_lists;
+      Alcotest.test_case "grid-template-areas values" `Quick
+        grid_template_areas_values;
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
