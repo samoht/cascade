@@ -112,9 +112,10 @@ val order_constrained : t -> node_id -> node_id -> bool
 (** [order_constrained] is a clearer alias for {!val-conflict}. *)
 
 val precedes : t -> node_id -> node_id -> bool
-(** [precedes t i j] is [true] when the graph has a direct edge requiring node
-    [i] to be emitted before node [j]. This is for local candidate ordering; use
-    {!val-canonical_order} when a full output projection is needed. *)
+(** [precedes t i j] is [true] when the graph requires node [i] to be emitted
+    before node [j], directly or through a compact transitive chain. This is for
+    local candidate ordering; use {!val-canonical_order} when a full output
+    projection is needed. *)
 
 val canonical_order_by : t -> (node_id -> int) -> node_id array
 (** [canonical_order_by t rank] is the live node indices in a linear extension
@@ -126,7 +127,7 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
 
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
-    of the dependency DAG (an edge from the earlier to the later node of every
+    of the dependency DAG (a path from the earlier to the later node of every
     conflicting pair). Among the nodes currently free to come next, Kahn's
     algorithm takes the smallest first-appearance source key, then the node id.
     Every constrained pair keeps its required order; unconstrained pairs are

@@ -22,8 +22,8 @@ let shape name n =
   rules_of (Buffer.contents b)
 
 (* Differenced across two iteration counts, so the parse and the one-off startup
-   cancel out. Three builds are enough here: allocation is deterministic, while
-   the distinct-declaration controls are intentionally quadratic. *)
+   cancel out. Three builds are enough because allocation is deterministic; all
+   four shapes should remain linear when the rule count doubles. *)
 let words rules =
   let run k =
     Gc.full_major ();

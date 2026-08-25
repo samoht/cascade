@@ -325,6 +325,10 @@ answers.
 - `--minify` indexes each selector's latest write by property instead of
   rescanning every later declaration when deciding whether a rule is shadowed.
   The 8,000-rule same-selector benchmark is about 108x faster.
+- `--minify` keeps source-order dependencies as compact constraints instead of
+  materialising their transitive closure. At 4,000 rules, allocations in the
+  representative A, C and D cases fall by 99.47%, about 106.9x and about 58.7x
+  respectively; case B remains linear.
 - `--minify` merges `@media` blocks by query structure rather than serialised
   text: `(min-width: 10px)` and `(width >= 10px)` are one bound and now merge
   (Media Queries 4 sec. 2.4.4), while `@media screen\ and\ \(min-width\:\
