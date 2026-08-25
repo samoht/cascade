@@ -1014,8 +1014,12 @@ let origin_bounds g ids =
       in
       Option.Some (min_origin, max_origin)
 
-let id_mem id ids =
-  List.exists (fun other -> Rule_graph.Node_id.compare id other = 0) ids
+(* Recursive rather than [List.exists] over a closure: the closure captures
+   [id], so it is allocated afresh at every node the external scan walks
+   past. *)
+let rec id_mem id = function
+  | [] -> false
+  | other :: rest -> Rule_graph.Node_id.compare id other = 0 || id_mem id rest
 
 let crosses_bounds g ~min_origin ~max_origin id =
   let origin = Rule_graph.node_origin g id in
@@ -1040,12 +1044,11 @@ let group_crosses_external_conflict g ~ids (grouped : rule) =
   match origin_bounds g ids with
   | Option.None -> false
   | Option.Some (min_origin, max_origin) ->
-      (* Walk the ids, not a freshly built (id, rule) list: this runs once per
-         candidate, so materialising every live rule up front cost more than the
-         scan itself, which usually stops on the first crossing node. The origin
+      (* Walk the nodes, materialising neither their rules nor a list of their
+         ids: this runs once per candidate and answers no at almost every node,
+         so anything built to scan over costs more than the scan. The origin
          range is the cheapest filter, so it goes first. *)
-      Rule_graph.live_nodes g
-      |> List.exists (fun external_id ->
+      Rule_graph.exists_live_node g (fun external_id ->
           (not (id_mem external_id ids))
           && crosses_bounds g ~min_origin ~max_origin external_id
           &&
@@ -1449,9 +1452,39 @@ let default_produce g ~keys ~entries ~exact_common ~group_decls members =
         in
         Option.Some (grouped :: leftovers)
 
+(* Pruning keeps a member only two ways: everything it writes disappears into
+   the group body, or the body hands it back at least as many bytes as naming
+   its selector costs. Both are bounded by the provider's own declarations. The
+   body is drawn from them - [exact_common] filters the provider's list and
+   every default is the provider's declaration for that key - and every
+   declaration the body hands a member is one the member already writes, since
+   [exact_common] holds only declarations common to all members and a removed
+   default is the member's own value. So a member that writes something the
+   provider does not, and whose selector costs more than the provider
+   declarations it shares, is pruned whichever entries survive the safety
+   filters. When no member past the provider clears that bound the group cannot
+   keep two, and it is dropped before the four cross-member scans that would
+   otherwise reach the same answer. The bound is one-sided: it lets through
+   groups that pruning still rejects, never the reverse, so the candidates are
+   the same either way. *)
+let member_may_survive_pruning provider_decls (member : default_member) =
+  List.for_all
+    (fun decl -> decl_mem decl provider_decls)
+    member.rule.declarations
+  || selector_size member.rule + 1
+     <= decls_inline_cost
+          (List.filter
+             (fun decl -> decl_mem decl member.rule.declarations)
+             provider_decls)
+
+let default_group_can_keep_two provider members =
+  List.exists (member_may_survive_pruning provider.rule.declarations) members
+
 let default_candidate_from_members ?size_cache ~finalize g ~seen members =
   match members with
   | [] | [ _ ] -> Option.None
+  | first :: rest when not (default_group_can_keep_two first rest) ->
+      Option.None
   | first :: _ -> (
       let entries =
         common_property_keys members

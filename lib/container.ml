@@ -793,3 +793,137 @@ let style ?value prop =
 
 let scroll_state name value =
   Scroll_state { query = State { name; value }; uppercase = false }
+
+(* ===== Canonical form ===== *)
+
+(* [normalize] is the one place that decides which spellings name one container
+   query, and its invariant runs one way only:
+
+   normalize a = normalize b => a and b select the same containers
+
+   Nothing promises the converse, and nothing should: two equivalent queries may
+   normalise apart, which costs a merge and never correctness. So every rewrite
+   below is one of the spec's own equivalences, never a heuristic. *)
+
+(* CSS Conditional Rules 5 sec. 6.1: a [<size-feature>] is spelled like a media
+   feature, so the [min-] prefix, the value-first bound and the two interval
+   directions are the Media Queries 4 sec. 2.4.3 and sec. 2.4.4 equivalences
+   here too. [Media.normalize] owns that fold; the [Min_width_*] shorthands are
+   cascade's compact spelling of [(min-width: V)], so they enter it as that
+   feature rather than being folded a second way. *)
+let min_width l : Media.t =
+  Media.Cond
+    (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
+
+(* CSS Syntax 3 sec. 5.5.6 consumes a declaration by discarding the whitespace
+   after the colon and removing the trailing whitespace tokens, so a
+   [<style-feature-plain>] means the same however much space the source left
+   around its value. A [<style-range>] carries no whitespace at all: the parser
+   strips it before splitting on the comparison. *)
+let rec normalize_style_query (q : style_query) : style_query =
+  match q with
+  | Declaration { name; value } ->
+      let value' = trim_components value in
+      if value' == value then q else Declaration { name; value = value' }
+  | All (a, b) ->
+      let a' = normalize_style_query a and b' = normalize_style_query b in
+      if a' == a && b' == b then q else All (a', b')
+  | Any (a, b) ->
+      let a' = normalize_style_query a and b' = normalize_style_query b in
+      if a' == a && b' == b then q else Any (a', b')
+  | Neg a ->
+      let a' = normalize_style_query a in
+      if a' == a then q else Neg a'
+  | Boolean _ | Range _ -> q
+
+(* Rebuild only what changed, as [lower_for_minify] does: [equal] runs this on
+   both sides of every merge test, and the queries it is asked about are usually
+   already normal. *)
+let rec normalize (c : t) : t =
+  match c with
+  | Min_width_rem rem -> Feature_query (Media.normalize (min_width (Rem rem)))
+  | Min_width_px px ->
+      Feature_query (Media.normalize (min_width (Px (float_of_int px))))
+  | Feature_query q ->
+      let q' = Media.normalize q in
+      if q' == q then c else Feature_query q'
+  | Named (name, cond) ->
+      let cond' = normalize cond in
+      if cond' == cond then c else Named (name, cond')
+  (* CSS Values 4 sec. 9: function names are ASCII case-insensitive, so the
+     [STYLE(] / [SCROLL-STATE(] spelling the AST keeps for round-trip says
+     nothing about which query this is. *)
+  | Style { query; uppercase } ->
+      let query' = normalize_style_query query in
+      if query' == query && not uppercase then c
+      else Style { query = query'; uppercase = false }
+  | Scroll_state { query; uppercase } ->
+      if not uppercase then c else Scroll_state { query; uppercase = false }
+  | And (a, b) ->
+      let a' = normalize a and b' = normalize b in
+      if a' == a && b' == b then c else And (a', b')
+  | Or (a, b) ->
+      let a' = normalize a and b' = normalize b in
+      if a' == a && b' == b then c else Or (a', b')
+  | Not a ->
+      let a' = normalize a in
+      if a' == a then c else Not a'
+
+(* Written out rather than left to the structural operators: [equal] is the gate
+   on block merging, and a comparison that walks a runtime representation is how
+   a spelling difference becomes a merge. *)
+let equal_components (a : component_values) b = List.equal Component.equal a b
+
+let equal_range_operator (a : range_operator) b =
+  match (a, b) with
+  | Lt, Lt | Lte, Lte | Gt, Gt | Gte, Gte -> true
+  | (Lt | Lte | Gt | Gte), _ -> false
+
+let equal_style_range (a : style_range) b =
+  String.equal a.name b.name
+  && equal_range_operator a.lower_op b.lower_op
+  && equal_range_operator a.upper_op b.upper_op
+  && equal_components a.lower b.lower
+  && equal_components a.upper b.upper
+
+let rec equal_style_query (a : style_query) b =
+  match (a, b) with
+  | Boolean a, Boolean b -> String.equal a b
+  | Declaration a, Declaration b ->
+      String.equal a.name b.name && equal_components a.value b.value
+  | Range a, Range b -> equal_style_range a b
+  | All (a1, b1), All (a2, b2) | Any (a1, b1), Any (a2, b2) ->
+      equal_style_query a1 a2 && equal_style_query b1 b2
+  | Neg a, Neg b -> equal_style_query a b
+  | (Boolean _ | Declaration _ | Range _ | All _ | Any _ | Neg _), _ -> false
+
+let rec equal_scroll_state_query (a : scroll_state_query) b =
+  match (a, b) with
+  | State a, State b ->
+      String.equal a.name b.name && String.equal a.value b.value
+  | Both (a1, b1), Both (a2, b2) | Either (a1, b1), Either (a2, b2) ->
+      equal_scroll_state_query a1 a2 && equal_scroll_state_query b1 b2
+  | Negated a, Negated b -> equal_scroll_state_query a b
+  | (State _ | Both _ | Either _ | Negated _), _ -> false
+
+(* A [<container-name>] is a [<custom-ident>] (Conditional Rules 5 sec. 5.4), so
+   it is compared by the name the parser unescaped, not by how it was
+   spelled. *)
+let rec equal_normalized (a : t) b =
+  match (a, b) with
+  | Min_width_rem a, Min_width_rem b -> Float.equal a b
+  | Min_width_px a, Min_width_px b -> Int.equal a b
+  | Named (n1, c1), Named (n2, c2) ->
+      String.equal n1 n2 && equal_normalized c1 c2
+  | Style a, Style b -> equal_style_query a.query b.query
+  | Scroll_state a, Scroll_state b -> equal_scroll_state_query a.query b.query
+  | And (a1, b1), And (a2, b2) | Or (a1, b1), Or (a2, b2) ->
+      equal_normalized a1 a2 && equal_normalized b1 b2
+  | Not a, Not b -> equal_normalized a b
+  | Feature_query a, Feature_query b -> Media.equal a b
+  | ( ( Min_width_rem _ | Min_width_px _ | Named _ | Style _ | Scroll_state _
+      | And _ | Or _ | Not _ | Feature_query _ ),
+      _ ) ->
+      false
+
+let equal a b = equal_normalized (normalize a) (normalize b)

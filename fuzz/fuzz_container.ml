@@ -125,6 +125,174 @@ let test_invalid_container_vectors buf =
   in
   assert_invalid_container_contract "invalid container query vector" input
 
+(* ===== Soundness of the equivalence [Container.equal] decides ===== *)
+
+(* [Container.equal] gates block merging: two [@container] blocks it calls equal
+   have their declarations concatenated under one condition. So whatever it
+   calls equal must select the same query containers, and that is a property,
+   not a table:
+
+   Container.equal a b => a and b match every sampled container state alike
+
+   Only this direction. Two equivalent queries are free to compare unequal; that
+   costs a merge and never correctness, and demanding the converse would mean
+   deciding container query equivalence.
+
+   The oracle is [Context.matches_container], which evaluates a query against a
+   described query container the way a UA does. It knows nothing about how
+   [equal] is derived, so it is free to disagree with it. *)
+
+let px f : Css.Media.value = Length (Css.Values.Px f)
+let em f : Css.Media.value = Length (Css.Values.Em f)
+let rem f : Css.Media.value = Length (Css.Values.Rem f)
+
+let sizes_in unit_ v =
+  List.map
+    (fun axis -> Css.Container.feature axis (unit_ v))
+    [ "width"; "height"; "inline-size"; "block-size" ]
+
+(* Sizes land exactly on every bound the generator and the spec inventory can
+   emit, and on either side of it: an inclusive bound read as a strict one shows
+   only at the bound itself. Each length unit appears on its own, since a
+   normaliser that rewrites a bound must carry its unit across. *)
+let sampled_sizes =
+  let bounds =
+    [ 0.; 9.; 10.; 11.; 20.; 24.; 30.; 45.; 60.; 100.; 400.; 700.; 1200. ]
+  in
+  List.concat_map
+    (fun v -> [ sizes_in px v; sizes_in em v; sizes_in rem v ])
+    bounds
+
+(* The rest of what a query container exposes: the discrete size features, the
+   computed values a [style()] query reads, the scroll state a [scroll-state()]
+   query reads, and the name a [<container-name>] filters on. *)
+let sampled_contexts =
+  [
+    (None, []);
+    (None, [ Css.Container.feature "orientation" (Ident Portrait) ]);
+    (None, [ Css.Container.feature "orientation" (Ident Landscape) ]);
+    (None, [ Css.Container.feature "aspect-ratio" (Ratio (16, 9)) ]);
+    (None, [ Css.Container.feature "aspect-ratio" (Ratio (4, 3)) ]);
+    (None, [ Css.Container.style ~value:"dark" "--theme" ]);
+    (None, [ Css.Container.style ~value:"featured" "--variant" ]);
+    (None, [ Css.Container.style ~value:"15px" "--gap" ]);
+    (None, [ Css.Container.style ~value:"red" "color" ]);
+    (None, [ Css.Container.scroll_state "stuck" "top" ]);
+    (None, [ Css.Container.scroll_state "stuck" "left" ]);
+    (None, [ Css.Container.scroll_state "snapped" "block" ]);
+    (None, [ Css.Container.scroll_state "scrollable" "inline" ]);
+    (None, [ Css.Container.scroll_state "scrolled" "y" ]);
+    (Some "card", []);
+    ( Some "card",
+      [
+        Css.Container.style ~value:"featured" "--variant";
+        Css.Container.scroll_state "stuck" "top";
+      ] );
+    (Some "sidebar", []);
+    (Some "sidebar", [ Css.Container.style ~value:"dark" "--theme" ]);
+  ]
+
+let sampled_states =
+  List.concat_map
+    (fun size ->
+      List.map
+        (fun (container_name, extra) ->
+          Css.Context.query ?container_name ~container_features:(size @ extra)
+            ())
+        sampled_contexts)
+    sampled_sizes
+
+(* The first sampled container state the two queries disagree on, if any. *)
+let disagreement a b =
+  List.find_opt
+    (fun q ->
+      Bool.compare
+        (Css.Context.matches_container q a)
+        (Css.Context.matches_container q b)
+      <> 0)
+    sampled_states
+
+let report_disagreement label a b q =
+  failf
+    "%s called %S and %S equal, but they disagree on container state %s (name \
+     %s)"
+    label
+    (Css.Container.to_string a)
+    (Css.Container.to_string b)
+    (String.concat " "
+       (List.map Css.Container.to_string q.Css.Context.container_features))
+    (Option.value ~default:"(none)" q.Css.Context.container_name)
+
+let test_equal_is_sound buf =
+  let a = condition buf 0 in
+  let b = condition buf 7 in
+  if Css.Container.equal a b then
+    match disagreement a b with
+    | Some q -> report_disagreement "Container.equal" a b q
+    | None -> ()
+
+(* Bound and function spellings the generator above never pairs, drawn so that a
+   normaliser which flips a comparison, drops a unit, loses the container name
+   or reads an escaped ident as the query it spells is caught. *)
+let spelling_pair buf i =
+  let open Css.Container in
+  pick
+    [
+      ("(min-width: 10px)", "(width >= 10px)");
+      ("(min-width: 10px)", "(width > 10px)");
+      ("(min-width: 24rem)", "(width >= 24rem)");
+      ("(max-inline-size: 30em)", "(inline-size <= 30em)");
+      ("(30em >= inline-size)", "(inline-size <= 30em)");
+      ("(30em < inline-size)", "(inline-size > 30em)");
+      ("(30em <= inline-size <= 60em)", "(60em >= inline-size >= 30em)");
+      ("(30em <= inline-size < 60em)", "(60em > inline-size >= 30em)");
+      ("(min-width: 10px)", "(min-height: 10px)");
+      ("(inline-size > 30em)", "(block-size > 30em)");
+      ({|(inline-size\ \>\=\ 10px)|}, "(inline-size >= 10px)");
+      ( {|(\31 0px\ \<\=\ inline-size\ \<\=\ 20px)|},
+        "(10px <= inline-size <= 20px)" );
+      ({|(orientation\:\ landscape)|}, "(orientation: landscape)");
+      ("STYLE(--theme: dark)", "style(--theme: dark)");
+      ("style(--theme: dark)", "style(--theme: light)");
+      ("style(--theme:dark)", "style(--theme: dark)");
+      ("SCROLL-STATE(stuck: top)", "scroll-state(stuck: top)");
+      ("scroll-state(stuck: top)", "scroll-state(stuck: left)");
+      ("card (inline-size > 30em)", "sidebar (inline-size > 30em)");
+      ("card (inline-size > 30em)", "card (30em < inline-size)");
+      ("not (inline-size > 30em)", "not (30em < inline-size)");
+      ("theme(static)", "theme(dynamic)");
+    ]
+    buf i
+  |> fun (a, b) -> (of_string a, of_string b)
+
+let test_spelling_pairs_sound buf =
+  let a, b = spelling_pair buf 0 in
+  if Css.Container.equal a b then
+    match disagreement a b with
+    | Some q -> report_disagreement "Container.equal" a b q
+    | None -> ()
+
+(* Control: the sweep above only means something if it can see a wrong merge.
+   Equality on serialised text is one such wrong rule, and these two queries are
+   the reason: an unknown container feature selects no query container
+   (Conditional Rules 5 sec. 5.4), so they serialise the same and match
+   different containers. If the sweep cannot separate them it cannot separate
+   anything. *)
+let test_sweep_catches_wrong_equality _buf =
+  let escaped = Css.Container.of_string {|(inline-size\ \>\=\ 10px)|} in
+  let real = Css.Container.of_string "(inline-size >= 10px)" in
+  let text_equal a b =
+    String.equal (Css.Container.to_string a) (Css.Container.to_string b)
+  in
+  if not (text_equal escaped real) then
+    fail "the control pair no longer collides on serialised text";
+  match disagreement escaped real with
+  | Some _ -> ()
+  | None ->
+      fail
+        "the sampled container states cannot tell an unknown container feature \
+         from the size range it spells"
+
 let suite =
   ( "container",
     [
@@ -143,4 +311,9 @@ let suite =
         test_spec_container_vectors;
       test_case "invalid container query vectors rejected" [ bytes ]
         test_invalid_container_vectors;
+      test_case "equal is sound" [ bytes ] test_equal_is_sound;
+      test_case "equal is sound on spelling pairs" [ bytes ]
+        test_spelling_pairs_sound;
+      test_case "state sweep catches a wrong equality" [ bytes ]
+        test_sweep_catches_wrong_equality;
     ] )

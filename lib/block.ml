@@ -311,18 +311,21 @@ let merge_consecutive_supports ~optimize_merged_block (stmts : statement list) :
     in
     merge [] None stmts
 
+(* The whole [@container] merge gate: a name and a condition, read once to
+   decide the pass has work and once per adjacent pair. A [<container-name>] is
+   a [<custom-ident>] (Conditional Rules 5 sec. 5.4), so the name the parser
+   unescaped is its identity; [Container.equal] reads the condition's normalised
+   structure rather than its serialised text, which an unknown container feature
+   can repeat without meaning it. *)
+let same_container (prev_name, prev_cond) (name, cond) =
+  Option.equal String.equal prev_name name
+  && Option.equal Container.equal prev_cond cond
+
 let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
     : statement list =
-  let compare_condition a b =
-    match (a, b) with
-    | Some a, Some b -> Container.compare a b
-    | Some _, None -> 1
-    | None, Some _ -> -1
-    | None, None -> 0
-  in
   let rec needs_merge = function
     | Container (prev_name, prev_cond, _) :: Container (name, cond, _) :: _
-      when prev_name = name && compare_condition prev_cond cond = 0 ->
+      when same_container (prev_name, prev_cond) (name, cond) ->
         true
     | _ :: rest -> needs_merge rest
     | [] -> false
@@ -340,7 +343,7 @@ let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
       | Container (name, cond, block) :: rest -> (
           match prev with
           | Some (prev_name, prev_cond, prev_block)
-            when prev_name = name && compare_condition prev_cond cond = 0 ->
+            when same_container (prev_name, prev_cond) (name, cond) ->
               merge acc (Some (name, cond, prev_block @ block)) rest
           | Some (prev_name, prev_cond, prev_block) ->
               merge

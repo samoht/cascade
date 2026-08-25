@@ -47,6 +47,17 @@ current plugin through `postcss-cli` instead.
 RUNS=5 CASCADE=_build/default/bin/main.exe bench/minifier_comparison.sh
 ```
 
+## `source-order/bench_source_order.ml` -- rule-graph allocation scaling
+
+```bash
+dune exec bench/source-order/bench_source_order.exe
+```
+
+Reports allocated words per graph build while doubling same-specificity rule
+sets. Its four shapes separate distinct declarations from identical ones and
+class selectors from ID and type selectors, making regressions in source-order
+candidate indexing visible without including parse or startup allocation.
+
 ## Corpus
 
 The SatCSS corpus (Hague, Lin, Hong; TOPLAS 2019) is regenerated locally rather

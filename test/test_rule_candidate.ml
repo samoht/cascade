@@ -275,6 +275,71 @@ let default_factoring_lookup_is_subcubic () =
     true
     (a1 = 0. || a2 < a1 *. 5.5)
 
+(* [pairs] pairs of neighbouring rules, each pair sharing one custom property
+   and each member carrying one of its own. Every pair is an exact-factoring
+   group whose two members sit next to each other in source order, so the span
+   between the group's first and last rule holds nothing, and the whole sheet
+   grows without ever putting a rule inside one of those spans. *)
+let adjacent_shared_pairs ~pairs =
+  List.init pairs (fun i ->
+      Fmt.str ".a%d{--s%d:1;--x%d:2}.b%d{--s%d:1;--y%d:3}" i i i i i i)
+  |> String.concat ""
+
+(* Before committing a factored group the search asks whether any rule outside
+   it sits between the group's first and last member and would change meaning by
+   being crossed. Only a rule inside that origin span can answer yes, and a
+   group of two neighbours has none, so every node is rejected on an integer
+   comparison. Listing the live nodes to scan them, and capturing the group's
+   ids in a closure at each one, spends that scan's whole allocation on nodes it
+   walks straight past - and both the number of groups and the number of nodes
+   grow with the sheet, so the waste is quadratic in it. Scanning without
+   building the list leaves the rejection allocation-free: quadrupling the sheet
+   must stay near the linear 4x, well below the quadratic 16x. *)
+let external_conflict_scan_is_subquadratic () =
+  let work pairs () =
+    adjacent_shared_pairs ~pairs
+    |> rules |> Rule_graph.of_rules
+    |> Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id
+  in
+  let a1 = measure (work 64) in
+  let a2 = measure (work 256) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 4x rules)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 5.)
+
+(* The first member provides the only default. Every later member writes an
+   extra declaration that the provider does not, and its selector costs more
+   than the provider declaration it shares, so pruning must discard it. The
+   group can therefore never keep two members. A same-sized group whose members
+   all repeat the provider's declaration is the control: those members can
+   survive and the full candidate checks still have to run. Rejecting the doomed
+   group before constructing entries and leftovers keeps its allocation well
+   below the control. *)
+let default_factoring_rejects_a_doomed_group_early () =
+  let doomed =
+    List.init 8 (fun i ->
+        if i = 0 then ".p{color:red}"
+        else
+          Fmt.str
+            ".selector-that-cannot-pay-for-the-group-%d{color:blue;--own-%d:1}"
+            i i)
+    |> String.concat "" |> rules |> Rule_graph.of_rules
+  in
+  let survivable =
+    List.init 8 (fun i -> Fmt.str ".s%d{color:red}" i)
+    |> String.concat "" |> rules |> Rule_graph.of_rules
+  in
+  let work graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let rejected = measure (work doomed) in
+  let control = measure (work survivable) in
+  Alcotest.(check bool)
+    (Fmt.str "doomed group %.0f words, survivable control %.0f" rejected control)
+    true
+    (control = 0. || rejected < control *. 0.4)
+
 let suite =
   ( "rule_candidate",
     [
@@ -303,4 +368,8 @@ let suite =
         nested_merge_safety_reads_each_block_once;
       Alcotest.test_case "default factoring lookup is subcubic" `Quick
         default_factoring_lookup_is_subcubic;
+      Alcotest.test_case "external-conflict scan is subquadratic" `Quick
+        external_conflict_scan_is_subquadratic;
+      Alcotest.test_case "default factoring rejects a doomed group early" `Quick
+        default_factoring_rejects_a_doomed_group_early;
     ] )

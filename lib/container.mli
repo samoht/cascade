@@ -108,8 +108,48 @@ val scroll_state : string -> string -> t
 (** [scroll_state prop value] is the canonical lowercase
     {!constructor-Scroll_state} query, matching [scroll-state(prop: value)]. *)
 
+val normalize : t -> t
+(** [normalize t] rewrites [t] into the spelling its equivalence class is
+    compared by. The invariant runs one way: when [normalize a] and
+    [normalize b] are equal, [a] and [b] select the same query containers.
+
+    The converse is neither promised nor intended: two equivalent queries may
+    normalise apart, which costs a merge and never correctness. So every rewrite
+    is one of the spec's own equivalences. A [<size-feature>] is spelled like a
+    media feature (CSS Conditional Rules 5 sec. 6.1), so it takes
+    {!Media.normalize}: a [min-] or [max-] prefix on a range feature becomes the
+    [>=] or [<=] comparison, a value-first bound becomes name-first (Media
+    Queries 4 sec. 2.4.4 and sec. 2.4.3), and a descending interval becomes
+    ascending. {!constructor-Min_width_rem} and {!constructor-Min_width_px} are
+    cascade's compact spelling of [(min-width: V)] and enter that fold as the
+    feature they spell. A [style()] or [scroll-state()] function name loses the
+    case the source wrote it in (CSS Values 4 sec. 9), and a
+    [<style-feature-plain>] loses the whitespace around its value (CSS Syntax 3
+    sec. 5.5.6).
+
+    Completeness is a separate property, and it stops there. Equivalences
+    [normalize] leaves apart: a [style()] property name spelled in another case;
+    two [style()] values that compute alike but tokenise apart, such as [red]
+    against [#f00]; reassociating or reordering [and] and [or]; De Morgan pairs;
+    two bounds on one feature against the written interval; a plain feature
+    against its [=] comparison; and anything inside a [<general-enclosed>],
+    whose text is compared verbatim. Each of those costs a merge, never
+    correctness. *)
+
 val compare : t -> t -> int
-(** [compare t1 t2] compares two container conditions. *)
+(** [compare t1 t2] compares two container conditions. Ordering only needs to be
+    deterministic, so a size feature that ties on every ordinal key reaches
+    {!Media.compare}'s serialised tiebreak. That makes [compare a b = 0] a
+    different question from {!equal}, which reads structure: each says yes where
+    the other says no. Sort with [compare], decide sameness with {!equal}. *)
+
+val equal : t -> t -> bool
+(** [equal a b] is structural equality on {!normalize}d conditions, so it is
+    true only when [a] and [b] select the same query containers. It gates block
+    merging and therefore never answers on serialised text: an unknown container
+    feature spelled as one escaped ident is not the size feature whose
+    characters it repeats, and a [<general-enclosed>] equals only the same text.
+*)
 
 val compare_scroll_state_query : scroll_state_query -> scroll_state_query -> int
 (** [compare_scroll_state_query a b] totally orders scroll-state queries. *)

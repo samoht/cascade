@@ -2413,11 +2413,31 @@ let read t =
   | Some d -> d
   | None -> Cursor.err_expected t "declaration"
 
+(* A cascade layer and caller metadata belong to the declaration, not to its
+   value, so a value read back from text starts without them. A value-only
+   rewrite copies over what [from] holds, the way [map_custom_value] keeps them
+   when it rewrites in place. *)
+let keep_custom_fields ~from decl =
+  match decl with
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value cv;
+        important;
+        _;
+      } ->
+      let layer = custom_declaration_layer from in
+      let meta = meta_of_declaration from in
+      v ~important property (Custom_value { cv with layer; meta })
+  | Declaration _ | Theme_guarded _ -> decl
+
 let with_value decl value =
   let important = if is_important decl then "!important" else "" in
   let tail () = Cursor.of_string (String.concat "" [ value; important ]) in
   match property_key decl with
-  | Key (Custom_property name) -> read_custom_value_declaration (tail ()) name
+  | Key (Custom_property name) ->
+      keep_custom_fields ~from:decl
+        (read_custom_value_declaration (tail ()) name)
   | Key (Unknown_property name) ->
       (* An unknown property is its name, and a substituted value may now be one
          a typed reader accepts, so read the pair back whole: that is the step

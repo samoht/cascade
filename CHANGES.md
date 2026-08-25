@@ -294,6 +294,14 @@ answers.
   (Media Queries 4 sec. 2.4.4), while `@media screen\ and\ \(min-width\:\
   10px\)` names an unknown media type that never matches and no longer merges
   into `@media screen and (min-width: 10px)` (#516)
+- `--minify` merges `@container` blocks by query structure rather than
+  serialised text: `(min-width: 700px)` and `(width >= 700px)` are one bound
+  and now merge, because a `<size-feature>` is spelled like a media feature
+  (CSS Conditional Rules 5 sec. 6.1), while
+  `@container (inline-size\ \>\=\ 10px)` names an unknown container feature
+  that never matches and no longer merges into
+  `@container (inline-size >= 10px)`. `Css.Container.equal` decides that, and
+  `Css.Container.normalize` exposes the normal form it compares (#519)
 - `--minify` merges two rules that declare the same NaN, whichever way each
   spelled it: `opacity: calc(NaN)` and `opacity: calc(infinity - infinity)`
   are one declaration (#471, #482)
@@ -475,6 +483,11 @@ answers.
 
 ### Custom properties
 
+- A cascade layer and caller metadata on a custom property survive
+  `Css.inline_vars`. Both belong to the declaration rather than to its value,
+  and the two rewrites that read a custom value back - canonicalising a value
+  that is one colour, and folding a `var()` that value references - rebuilt the
+  declaration from the value alone (#520)
 - A `page-break-before`, `page-break-after` or `page-break-inside` declaration
   survives `Css.inline_vars` as itself. Substituting a `var()` rebuilt the
   declaration from its minified name, which for these three is the `break-*`

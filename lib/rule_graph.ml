@@ -403,6 +403,107 @@ let collect_string_bucket bucket key stamp seen acc =
   |> Option.value ~default:[]
   |> add_candidates stamp seen acc
 
+(* The declaration that writes a key is the third level of the source-order
+   index, under the overlap key and the specificity. Two rules writing the same
+   declaration for a key never constrain each other's order there - an identical
+   pair is its own winner wherever the two sit - so that (often large) group is
+   skipped whole instead of being walked and rejected pair by pair. The rewrite
+   path already reads its externals this way through [key_index]; specificity
+   stays the outer level so #468's partition still narrows first. *)
+type decl_groups = node_id list Decl_tbl.t
+
+let decl_spec_bucket bucket key =
+  match Overlap_key_table.find_opt bucket key with
+  | Option.Some inner -> inner
+  | Option.None ->
+      let inner = Spec_table.create 4 in
+      Overlap_key_table.replace bucket key inner;
+      inner
+
+let decl_groups inner spec : decl_groups =
+  match Spec_table.find_opt inner spec with
+  | Option.Some groups -> groups
+  | Option.None ->
+      let groups = Decl_tbl.create 4 in
+      Spec_table.replace inner spec groups;
+      groups
+
+let rec add_decl_specs inner decl value = function
+  | [] -> ()
+  | spec :: rest ->
+      let groups = decl_groups inner spec in
+      Decl_tbl.replace groups decl
+        (value :: Option.value ~default:[] (Decl_tbl.find_opt groups decl));
+      add_decl_specs inner decl value rest
+
+let add_decl_bucket bucket key specs decl value =
+  add_decl_specs (decl_spec_bucket bucket key) decl value specs
+
+(* Every group under [key] at one of [specs], minus the one writing [decl]. *)
+let rec collect_decl_specs inner decl specs stamp seen acc =
+  match specs with
+  | [] -> acc
+  | spec :: rest ->
+      let acc =
+        match Spec_table.find_opt inner spec with
+        | Option.None -> acc
+        | Option.Some groups ->
+            Decl_tbl.fold
+              (fun decl' ids acc ->
+                if Shorthand.same_minified_declaration decl decl' then acc
+                else add_candidates stamp seen acc ids)
+              groups acc
+      in
+      collect_decl_specs inner decl rest stamp seen acc
+
+let collect_decl_bucket bucket key decl specs stamp seen acc =
+  match Overlap_key_table.find_opt bucket key with
+  | Option.None -> acc
+  | Option.Some inner -> collect_decl_specs inner decl specs stamp seen acc
+
+(* A prior node whose own declaration is broad meets every key, so no single
+   declaration of the querying node can rule its group out. *)
+let rec collect_broad_specs inner specs stamp seen acc =
+  match specs with
+  | [] -> acc
+  | spec :: rest ->
+      let acc =
+        match Spec_table.find_opt inner spec with
+        | Option.None -> acc
+        | Option.Some groups ->
+            Decl_tbl.fold
+              (fun _ ids acc -> add_candidates stamp seen acc ids)
+              groups acc
+      in
+      collect_broad_specs inner rest stamp seen acc
+
+let collect_broad_bucket bucket specs stamp seen acc =
+  match Overlap_key_table.find_opt bucket Shorthand.broad_overlap_key with
+  | Option.None -> acc
+  | Option.Some inner -> collect_broad_specs inner specs stamp seen acc
+
+let rec collect_decl_keys bucket decl specs stamp seen acc = function
+  | [] -> acc
+  | key :: rest ->
+      collect_decl_keys bucket decl specs stamp seen
+        (collect_decl_bucket bucket key decl specs stamp seen acc)
+        rest
+
+let rec collect_decl_overlaps bucket specs stamp seen acc = function
+  | [] -> acc
+  | (ov : decl_overlap) :: rest ->
+      collect_decl_overlaps bucket specs stamp seen
+        (collect_decl_keys bucket ov.decl specs stamp seen acc ov.footprint)
+        rest
+
+let rec add_decl_overlaps bucket specs value = function
+  | [] -> ()
+  | (ov : decl_overlap) :: rest ->
+      List.iter
+        (fun key -> add_decl_bucket bucket key specs ov.decl value)
+        ov.footprint;
+      add_decl_overlaps bucket specs value rest
+
 let source_order_edges t =
   let n = t.count in
   let succ = Array.make n [] in
@@ -417,15 +518,17 @@ let source_order_edges t =
     let keys = t.overlap_keys.(j) in
     let specs = distinct_spec_keys [] t.specificities.(j) in
     let candidates =
+      (* A node carrying the broad key meets every prior declaration, so its own
+         keys index nothing: only specificity narrows it. *)
       if overlap_key_in Shorthand.broad_overlap_key keys then
         collect_specs by_spec specs j seen []
       else
-        collect_bucket by_decl_key Shorthand.broad_overlap_key specs j seen []
-    in
-    let candidates =
-      List.fold_left
-        (fun acc key -> collect_bucket by_decl_key key specs j seen acc)
-        candidates keys
+        (* probed per declaration rather than per distinct key: the key alone
+           does not say which declaration of [j] faces the bucket, and that is
+           what decides which group can never conflict *)
+        collect_decl_overlaps by_decl_key specs j seen
+          (collect_broad_bucket by_decl_key specs j seen [])
+          t.decl_overlaps.(j)
     in
     let candidates =
       List.fold_left
@@ -438,7 +541,7 @@ let source_order_edges t =
         | Option.None -> ()
         | Option.Some reason -> succ.(i) <- (j, reason) :: succ.(i))
       candidates;
-    List.iter (fun key -> add_bucket by_decl_key key specs j) keys;
+    add_decl_overlaps by_decl_key specs j t.decl_overlaps.(j);
     List.iter
       (fun branch -> String_table.push by_branch branch j)
       t.branches.(j);
@@ -533,6 +636,14 @@ let live_nodes t =
     if t.live.(i) then acc := i :: !acc
   done;
   !acc
+
+(* Recursive over the index rather than a local closure over [t] and [f], so a
+   scan that answers no everywhere allocates nothing at all. *)
+let rec exists_live_from t f i =
+  i < t.count
+  && ((t.live.(i) && f (Node_id.of_int_exn i)) || exists_live_from t f (i + 1))
+
+let exists_live_node t f = exists_live_from t f 0
 
 (* The interned declaration-body hash list of a node, for bucketing nodes by
    identical declaration body. *)

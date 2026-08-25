@@ -351,6 +351,70 @@ let test_inline_layer_winner () =
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
     ":root{--c:red}.dark{--c:blue}.x{color:var(--c)}"
 
+(* A custom declaration carries a cascade layer and caller metadata beside its
+   value, and both are cascade- and caller-significant. [inline_vars] rewrites
+   the value of a custom property it keeps - it canonicalises a value that is
+   one colour, and folds the variables that value references - so every rewrite
+   has to hand the layer, the metadata and [!important] on. *)
+let test_inline_keeps_what_a_custom_declaration_carries () =
+  let inject, project = Css.meta () in
+  let kept ?(extra = []) name decl =
+    let stylesheet =
+      Css.v [ Css.rule ~selector:(Css.Selector.class_ "a") (extra @ [ decl ]) ]
+    in
+    match
+      List.concat_map Css.Stylesheet.statement_declarations
+        (Css.inline_vars ~keep_vars:[ "--x" ] stylesheet)
+    with
+    | [ d ] -> d
+    | ds ->
+        Alcotest.failf "%s: expected one declaration, got %d" name
+          (List.length ds)
+  in
+  let layer d = Css.custom_declaration_layer d in
+  let meta d = Option.bind (Css.meta_of_declaration d) project in
+  (* A value that is one colour is the value [inline_vars] canonicalises. *)
+  let red : Css.color = Css.Named Css.Values.Red in
+  let layered, _ = Css.var ~layer:"theme" "x" Css.Color red in
+  let d = kept "layer" layered in
+  Alcotest.(check (option string)) "layer survives" (Some "theme") (layer d);
+  let tagged, _ = Css.var ~meta:(inject "tag") "x" Css.Color red in
+  let d = kept "meta" tagged in
+  Alcotest.(check (option string)) "meta survives" (Some "tag") (meta d);
+  let both, _ = Css.var ~layer:"theme" ~meta:(inject "tag") "x" Css.Color red in
+  let d = kept "layer and meta" both in
+  Alcotest.(check (option string))
+    "layer survives beside meta" (Some "theme") (layer d);
+  Alcotest.(check (option string))
+    "meta survives beside layer" (Some "tag") (meta d);
+  (* Importance already travels; it must keep travelling. *)
+  let d = kept "important" (Css.important (Css.custom_property "--x" "red")) in
+  Alcotest.(check bool)
+    "important survives" true
+    (Css.Declaration.is_important d);
+  Alcotest.(check string)
+    "important is written back" "--x:red!important"
+    (Css.Declaration.to_string ~minify:true d);
+  (* A declaration carrying none of the three is left exactly as it was. *)
+  let d = kept "plain" (Css.custom_property "--x" "red") in
+  Alcotest.(check (option string)) "no layer appears" None (layer d);
+  Alcotest.(check (option string)) "no meta appears" None (meta d);
+  Alcotest.(check bool) "not important" false (Css.Declaration.is_important d);
+  Alcotest.(check string)
+    "plain value is unchanged" "--x:red"
+    (Css.Declaration.to_string ~minify:true d);
+  (* Folding a variable the kept value references is the other rewrite. *)
+  let d =
+    kept "folds a reference"
+      ~extra:[ Css.custom_property "--y" "1px solid" ]
+      (Css.custom_property ~layer:"theme" "--x" "var(--y)")
+  in
+  Alcotest.(check string)
+    "the reference folded" "--x:1px solid"
+    (Css.Declaration.to_string ~minify:true d);
+  Alcotest.(check (option string))
+    "layer survives the fold" (Some "theme") (layer d)
+
 (* The closed-world cleanup that follows substitution reaches inside a rule: CSS
    nesting puts an [@layer] and a [@property] registration there, and a cleanup
    that stops at the top level leaves the same sheet half cleaned. The [var()]
@@ -687,6 +751,8 @@ let suite =
       Alcotest.test_case
         "inline vars fold a layer-decided override to its winner" `Quick
         test_inline_layer_winner;
+      Alcotest.test_case "inline vars keep what a custom declaration carries"
+        `Quick test_inline_keeps_what_a_custom_declaration_carries;
       Alcotest.test_case "inline vars clean up inside a rule too" `Quick
         test_inline_cleanup_inside_a_rule;
       Alcotest.test_case

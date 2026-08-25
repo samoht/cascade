@@ -91,6 +91,13 @@ val generation : t -> int
 val live_nodes : t -> node_id list
 (** [live_nodes t] is the live node ids in creation order. *)
 
+val exists_live_node : t -> (node_id -> bool) -> bool
+(** [exists_live_node t f] is whether [f] holds of some live node, asked in
+    creation order and stopping at the first that says yes. This is
+    [List.exists f (live_nodes t)] without the list: the candidate search runs
+    it once per proposed group over the whole graph, and answers no at almost
+    every node, so the list was the scan's whole cost. *)
+
 val declaration_body_key : t -> node_id -> int list
 (** [declaration_body_key t i] is a hash key for bucketing nodes with identical
     declaration bodies. Hash collisions must be checked by callers. *)
