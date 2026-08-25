@@ -154,6 +154,56 @@ let try_rewrite_preserves_residual_source_slots () =
         ".form-input,.form-select{display:block}.form-input{color:red}.marker{z-index:1}.form-select{color:blue}"
         (graph_to_string g')
 
+(* A consumed node can be the middle of a compact transitive source-order chain.
+   It remains a zero-output relay, so the surviving endpoints cannot be reversed
+   even when their rank requests it. *)
+let rewrite_keeps_constraints_through_dead_relays () =
+  let g =
+    Rule_graph.of_rules (rules_of ".a{color:red}.b{color:green}.c{color:blue}")
+  in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 1 ])
+      ~produce:(rules_of ".b{margin:0}")
+  with
+  | None -> Alcotest.fail "disjoint replacement should commit"
+  | Some g' ->
+      let order =
+        Rule_graph.canonical_order_by g' (fun id ->
+            -Rule_graph.Node_id.to_int id)
+        |> int_order
+      in
+      let rec position id index = function
+        | [] -> max_int
+        | node :: rest ->
+            if Int.equal id node then index else position id (index + 1) rest
+      in
+      Alcotest.(check bool)
+        "live endpoints retain their source constraint" true
+        (position 0 0 order < position 2 0 order)
+
+(* A later rewrite can add a back edge around a consumed node in a compact
+   chain. Cycle detection must traverse the dead relay, not just live nodes. *)
+let rewrite_rejects_cycle_through_dead_relay () =
+  let g =
+    Rule_graph.of_rules
+      (rules_of
+         ".early{color:black}.left{color:red}.dead{color:green}.right{color:blue}.late{color:white}")
+  in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 2 ])
+      ~produce:(rules_of ".dead{margin:0}")
+  with
+  | None -> Alcotest.fail "disjoint replacement should commit"
+  | Some g' -> (
+      match
+        Rule_graph.try_rewrite g'
+          ~consume:(nids [ 0; 4 ])
+          ~produce:
+            (rules_of ".late,.shared{color:white}.early,.shared{color:black}")
+      with
+      | None -> ()
+      | Some _ -> Alcotest.fail "cycle through dead relay should be rejected")
+
 (* --- conflict predicate: the bidimensional + specificity edge --- *)
 
 let g_of s = Rule_graph.of_rules (rules_of s)
@@ -319,23 +369,26 @@ let measure f =
    graph - the worst case for edge construction and topological ordering. *)
 let dense_conflict n =
   List.init n (fun i ->
-      match Fmt.kstr rules_of ".x{color:rgb(%d,0,0)}" (i mod 200) with
+      match
+        Fmt.kstr rules_of ".c%d{color:rgb(%d,%d,0)}" i (i mod 256) (i / 256)
+      with
       | [ r ] -> r
       | _ -> assert false)
 
-(* Building the graph and projecting it back is at worst quadratic in the rule
-   count (the all-pairs edge set). Doubling N must keep allocation well under
-   the cubic 8x, catching any accidental super-quadratic regression. *)
-let graph_build_is_subcubic () =
+(* Every pair can target the same element and writes a distinct value to the
+   same property. Their required source order is a transitive chain, so graph
+   construction and projection should remain linear rather than materialising
+   the quadratic transitive closure. *)
+let dense_graph_build_is_subquadratic () =
   let work n () =
     Rule_graph.of_rules (dense_conflict n) |> Rule_graph.canonical_order
   in
-  let a1 = measure (work 60) in
-  let a2 = measure (work 120) in
+  let a1 = measure (work 400) in
+  let a2 = measure (work 800) in
   Alcotest.(check bool)
     (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
     true
-    (a1 = 0. || a2 < a1 *. 6.)
+    (a1 = 0. || a2 < a1 *. 2.5)
 
 (* Two rules whose selectors can never tie on specificity are never
    order-constrained, whatever they write, so padding a run with rules at a
@@ -378,6 +431,29 @@ let identical_declaration_costs_no_pair () =
        (a2 /. a1))
     true
     (a1 = 0. || a2 < a1 *. 2.5)
+
+(* Distinct declarations sharing a property still have no dependency when the
+   selectors are provably disjoint. Mandatory IDs and element names are cheap
+   exclusive selector facts, so doubling either run should cost about twice as
+   much rather than enumerating every declaration pair at one specificity. *)
+let disjoint_selector_facts_cost_no_pair () =
+  let check label selector =
+    let sheet n =
+      List.init n (fun i ->
+          Fmt.str "%s{color:rgb(%d,%d,0)}" (selector i) (i mod 256) (i / 256))
+      |> String.concat "" |> rules_of
+    in
+    let small = sheet 400 in
+    let large = sheet 800 in
+    let a1 = measure (fun () -> Rule_graph.of_rules small) in
+    let a2 = measure (fun () -> Rule_graph.of_rules large) in
+    Alcotest.(check bool)
+      (Fmt.str "%s alloc %.0f -> %.0f (%.1fx for 2x N)" label a1 a2 (a2 /. a1))
+      true
+      (a1 = 0. || a2 < a1 *. 2.5)
+  in
+  check "mandatory IDs" (Fmt.str "#i%d");
+  check "element names" (Fmt.str "e%d")
 
 (* A single transaction rebuilds graph state once: its allocation grows at most
    linearly with the live node count, never with the number of edges. *)
@@ -528,6 +604,10 @@ let suite =
         try_rewrite_rejects_unsafe_cross;
       Alcotest.test_case "try_rewrite preserves residual source slots" `Quick
         try_rewrite_preserves_residual_source_slots;
+      Alcotest.test_case "rewrite constraints cross dead relays" `Quick
+        rewrite_keeps_constraints_through_dead_relays;
+      Alcotest.test_case "rewrite rejects cycle through a dead relay" `Quick
+        rewrite_rejects_cycle_through_dead_relay;
       Alcotest.test_case "conflict: same-property tied pair" `Quick
         conflict_same_property_tie;
       Alcotest.test_case "conflict: higher specificity is not an edge" `Quick
@@ -556,14 +636,16 @@ let suite =
         try_rewrite_bumps_generation;
       Alcotest.test_case "declaration_body_key buckets identical bodies" `Quick
         declaration_body_key_buckets;
-      Alcotest.test_case "graph build/project is sub-cubic" `Quick
-        graph_build_is_subcubic;
+      Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick
+        dense_graph_build_is_subquadratic;
       Alcotest.test_case "try_rewrite is sub-quadratic" `Quick
         try_rewrite_is_subquadratic;
       Alcotest.test_case "a second specificity costs no pair" `Quick
         second_specificity_costs_no_pair;
       Alcotest.test_case "an identical declaration costs no pair" `Quick
         identical_declaration_costs_no_pair;
+      Alcotest.test_case "disjoint selector facts cost no pair" `Quick
+        disjoint_selector_facts_cost_no_pair;
       Alcotest.test_case "same-selector commute is sub-quadratic" `Quick
         same_selector_commute_is_subquadratic;
       Alcotest.test_case "grouping respects non-transitive compatibility" `Quick
