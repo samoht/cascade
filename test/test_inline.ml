@@ -107,6 +107,12 @@ let test_inline_keep_vars () =
     ":root{--brand:blue}.button{color:var(--brand);border-color:#00f}"
     (optimized_minified inlined)
 
+let test_inline_triple_dash_custom_property () =
+  Alcotest.(check string)
+    "a third dash starts the custom-property name" ".x{color:red}"
+    (parse ":root{---foo:red}.x{color:var(---foo)}"
+    |> Css.inline_vars |> minified)
+
 (* Inlining deletes a non-kept variable's definition only when it has a single
    definition scope; a variable overridden in another scope is kept as a live
    var() chain and reported through [warn]. *)
@@ -779,6 +785,8 @@ let suite =
         `Quick test_inline_substitutes_vars;
       Alcotest.test_case "inline vars keep requested references" `Quick
         test_inline_keep_vars;
+      Alcotest.test_case "inline vars accept a third name dash" `Quick
+        test_inline_triple_dash_custom_property;
       Alcotest.test_case "inline vars fold and delete non-kept definitions"
         `Quick test_inline_fold_deletes_defs;
       Alcotest.test_case "inline vars keep an at-rule reference's binding"
