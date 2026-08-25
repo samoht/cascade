@@ -491,9 +491,11 @@ let kept_counts_a_rule_less_at_rule_once () =
    the same nothing, so the projection cannot be what tells them apart. Taking a
    parsed sheet leaves that to {!Css.of_string}, whose warnings the caller reads
    before any of this runs; parsing the CSS text here would swallow them and
-   report both as the same empty result. ["a{"] is neither case: CSS Syntax 3
-   sec. 5.4 closes the block at EOF, so it is a valid rule with no
-   declarations. *)
+   report both as the same empty result. ["a{"] projects onto the same nothing
+   for a third reason: CSS Syntax 3 closes the block at EOF, so the rule is
+   valid and holds no declarations, but the CR snapshot calls that EOF branch a
+   parse error and the repair is reported. A correct rule and a reportable
+   defect are not in conflict. *)
 let invalid_css_is_not_empty_css () =
   let warnings css =
     match Css.of_string css with
@@ -506,8 +508,8 @@ let invalid_css_is_not_empty_css () =
     (warnings "@@@@ }}} {{{ !!! ;;;" <> []);
   Alcotest.(check bool) "empty CSS carries none" true (warnings "" = []);
   Alcotest.(check bool)
-    "a block closed at EOF carries none either" true
-    (warnings "a{" = []);
+    "a block repaired at EOF carries a diagnostic" true
+    (warnings "a{" <> []);
   List.iter
     (fun css ->
       let result = A.compute ~sheet:(parse css) [ node "div" ] in

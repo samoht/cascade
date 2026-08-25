@@ -1266,7 +1266,6 @@ let spec_strict_accepts_valid_stylesheets () =
         ".x { --token-list: [a, b] (c) { d: e } }" );
       ("custom property digit dashed-ident", ".x { font-size: var(--1A202C) }");
       ("valid escape in string", ".x { content: '\\gggg' }");
-      ("unterminated block auto-closes at EOF", ".x { color: red");
       ("out-of-range rgb channels clamp", ".x { color: rgb(300, 300, 300) }");
       ("mixed numeric rgb channels", ".x { color: rgb(50%, 100, 50%) }");
       ( "transparent currentColor color-mix",
@@ -1358,6 +1357,7 @@ let spec_strict_rejects_invalid_stylesheets () =
       (* CSS Syntax and stylesheet grammar. *)
       ("top-level bare block", "{ color: red }");
       ("stray top-level right brace", ".x { color: red } }");
+      ("unterminated block repaired at EOF", ".x { color: red");
       ( "malformed charset missing semicolon",
         "@charset \"UTF-8\" .x { color: red }" );
       ("charset must use string token", "@charset url(UTF-8);");
