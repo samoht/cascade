@@ -49,6 +49,18 @@ let test_string_output () =
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
     (to_string (of_string "(aspect-ratio > 1/1)"))
 
+(* CSS Containment 3 sec. 4 makes a container name a [<custom-ident>], so an
+   API-constructed name must take CSS Syntax 3 sec. 9.1 identifier escaping. *)
+let named_container_name_round_trips () =
+  let open Css.Container in
+  let query = Named ("a b", Min_width_rem 24.) in
+  let serialized = to_string query in
+  Alcotest.(check string)
+    "the container name is escaped" {|a\ b (min-width:24rem)|} serialized;
+  Alcotest.(check bool)
+    "the escaped container name reparses" true
+    (equal query (of_string serialized))
+
 let component_parser_edges () =
   let open Css.Container in
   Alcotest.(check string)
@@ -287,16 +299,16 @@ let equal_ignores_bound_spelling () =
 (* Conditional Rules 5 sec. 5.4: a <container-query> naming an unknown container
    feature selects no query container, so it is never true. [(inline-size\ \>\=\
    10px)] is one escaped ident, a boolean feature with that name, and it spells
-   the same characters as the size range [(inline-size >= 10px)]. They share a
-   serialisation, which is why [equal] cannot be an equality on serialised
-   text. *)
+   the same characters as the size range [(inline-size >= 10px)]. [equal]
+   therefore cannot be an equality on serialised text, even though correct
+   serialisation also keeps their spellings apart. *)
 let equal_separates_an_escaped_feature_name () =
   let open Css.Container in
   let escaped = of_string {|(inline-size\ \>\=\ 10px)|} in
   let real = of_string "(inline-size >= 10px)" in
-  Alcotest.(check string)
-    "the witness is a serialisation collision" (to_string real)
-    (to_string escaped);
+  Alcotest.(check bool)
+    "the two queries keep distinct serialisations" false
+    (String.equal (to_string escaped) (to_string real));
   Alcotest.(check bool)
     "an unknown container feature is not the size range it spells" false
     (equal escaped real);
@@ -381,6 +393,8 @@ let tests =
   Alcotest.
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "named container name round-trips" `Quick
+        named_container_name_round_trips;
       test_case "component parser edges" `Quick component_parser_edges;
       test_case "stylesheet component parser edges" `Quick
         stylesheet_component_parser_edges;

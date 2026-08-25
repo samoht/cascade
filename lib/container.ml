@@ -136,7 +136,8 @@ and to_string_with ~pretty ~minify t =
   | Min_width_px px ->
       let sep = if pretty && not minify then ": " else ":" in
       "(min-width" ^ sep ^ Int.to_string px ^ "px)"
-  | Named (name, cond) -> name ^ " " ^ to_string_with ~pretty ~minify cond
+  | Named (name, cond) ->
+      Parser.escape_ident name ^ " " ^ to_string_with ~pretty ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
       head ^ string_of_style_query ~minify query ^ ")"
@@ -700,7 +701,7 @@ let unresolved_media_feature components =
                           (Media.Feature
                              (Media.Plain
                                 ( Media.name_of_string name,
-                                  Media.Ident (Media.ident_of_string value) )))))
+                                  Media.value_of_string value )))))
               | Some _ | None -> None)
           | _ -> None)
       | None -> None)

@@ -164,7 +164,7 @@ let string_of_medium : medium -> string = function
   | All -> "all"
   | Screen -> "screen"
   | Print -> "print"
-  | Other s -> s
+  | Other s -> Parser.escape_ident s
 
 let rec string_of_name : name -> string = function
   | Width -> "width"
@@ -205,7 +205,7 @@ let rec string_of_name : name -> string = function
   | Scripting -> "scripting"
   | Min name -> "min-" ^ string_of_name name
   | Max name -> "max-" ^ string_of_name name
-  | Other s -> s
+  | Other s -> Parser.escape_ident s
 
 let rec name_of_string s : name =
   let s = String.lowercase_ascii s in
@@ -297,7 +297,7 @@ let string_of_ident : ident -> string = function
   | Back -> "back"
   | Initial_only -> "initial-only"
   | Enabled -> "enabled"
-  | Other s -> s
+  | Other s -> Parser.escape_ident s
 
 let ident_of_string s : ident =
   match String.lowercase_ascii s with

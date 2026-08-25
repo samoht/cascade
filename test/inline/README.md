@@ -12,6 +12,13 @@ before and after.
   size and reparse checks all pass on output that renders differently; only
   this catches a rewrite that changes the computed style.
 
+The browser and page-rewrite primitives are also the render adapter for
+[`bench/differential/run.sh`](../../bench/differential/run.sh). That suite sets
+`MINIFIER_CMD` to compare an external minifier without maintaining a second
+copy of either JavaScript driver. `REPORT_FORMAT=tsv`, `RAW_OUT` and `FILT_OUT`
+expose the same comparison as reproducible investigation artifacts; the normal
+test output is unchanged.
+
 ```sh
 sh test/inline/run.sh
 ```

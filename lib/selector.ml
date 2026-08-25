@@ -1841,7 +1841,8 @@ let has_invalid_css_escape s =
 
 let can_fallback_shortcut s =
   let len = String.length s in
-  (not (has_invalid_css_escape s))
+  len > 0
+  && (not (has_invalid_css_escape s))
   &&
   match s.[0] with
   | '.' | '#' -> len > 1 && not (is_unescaped_selector_syntax s 1)
@@ -1857,11 +1858,9 @@ let of_string_fallback s =
   | _ -> Element (None, unescape_selector_name s)
 
 let of_string s =
-  if String.length s = 0 then invalid_arg "of_string: empty selector string"
-  else
-    try read (Cursor.of_string s)
-    with Cursor.Parse_error _ as exn ->
-      if not (can_fallback_shortcut s) then raise exn else of_string_fallback s
+  try read (Cursor.of_string s)
+  with Cursor.Parse_error _ as exn ->
+    if not (can_fallback_shortcut s) then raise exn else of_string_fallback s
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =

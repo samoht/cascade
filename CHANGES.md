@@ -19,6 +19,11 @@ answers.
 
 ### Breaking
 
+- `Declaration.declaration` is a private variant. Its constructors remain
+  available for pattern matching, but construct values with `Declaration.v` or
+  `Declaration.theme_guarded`. The public records exposed their cached hash, so
+  a caller could give equal declarations different caches and make the
+  optimizer treat them as unequal.
 - `Css.Media.equal` reads normalised query structure where it read serialised
   text, so it is no longer `Css.Media.compare a b = 0` and answers differently
   both ways: `(min-width: 10px)` and `(width >= 10px)` are now equal, and two
@@ -36,6 +41,9 @@ answers.
   `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
   around any of them stops catching and the exception escapes; match
   `Cursor.Parse_error` instead (#496, #497, #499, #501)
+- `Css.Selector.of_string ""` raises `Error.Parse_error`, like every other
+  malformed selector, where it raised `Invalid_argument`. Its documentation
+  now describes the complete selector grammar the function already parses.
 - `Cascade.Component.pp` documents and renders itself as the located debug
   dump it always was. It was documented as source text, which sent a caller
   down a check that could never fire. Every node now shows its own location
@@ -265,6 +273,11 @@ answers.
 
 ### Printing
 
+- An unknown media type, media feature name or media identifier value keeps the
+  escapes needed to read it back as one identifier. `@media (width\ \>\=\
+  10px)` printed `@media (width >= 10px)`, turning an unknown boolean feature
+  into a real size range, so a second `--minify` pass could merge two conditions
+  the first kept apart.
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps its
   parentheses: `not ((min-width:1px) or (max-width:2px))` printed as
   `not (min-width:1px)or (max-width:2px)`, which browsers and cascade's own
@@ -552,6 +565,11 @@ answers.
 
 ### Canonical diff
 
+- The canonical projection keeps structurally distinct `@container` conditions
+  in separate cascade slots even when their minified text is identical. An
+  escaped unknown feature such as `(inline-size\>\=10px)` no longer merges into
+  the real `(inline-size >= 10px)` size range and moves its declarations under
+  a condition the input never gave them.
 - A fully transparent `oklab()` with a missing axis, such as
   `oklab(0% none none / 0)`, compares equal to transparent black.
   Non-transparent forms stay distinct (#312)

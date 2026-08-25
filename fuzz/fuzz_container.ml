@@ -272,20 +272,13 @@ let test_spelling_pairs_sound buf =
     | Some q -> report_disagreement "Container.equal" a b q
     | None -> ()
 
-(* Control: the sweep above only means something if it can see a wrong merge.
-   Equality on serialised text is one such wrong rule, and these two queries are
-   the reason: an unknown container feature selects no query container
-   (Conditional Rules 5 sec. 5.4), so they serialise the same and match
-   different containers. If the sweep cannot separate them it cannot separate
-   anything. *)
+(* Control: the sweep above only means something if it can see a wrong merge. An
+   unknown container feature selects no query container (Conditional Rules 5
+   sec. 5.4), so these two queries match different containers. If the sweep
+   cannot separate them it cannot separate anything. *)
 let test_sweep_catches_wrong_equality _buf =
   let escaped = Css.Container.of_string {|(inline-size\ \>\=\ 10px)|} in
   let real = Css.Container.of_string "(inline-size >= 10px)" in
-  let text_equal a b =
-    String.equal (Css.Container.to_string a) (Css.Container.to_string b)
-  in
-  if not (text_equal escaped real) then
-    fail "the control pair no longer collides on serialised text";
   match disagreement escaped real with
   | Some _ -> ()
   | None ->

@@ -1,6 +1,26 @@
 (** CSS declarations and parser. *)
 
-include module type of Declaration_intf
+type 'a kind = 'a Properties_intf.kind
+
+(** A typed declaration. Constructors remain available for pattern matching, but
+    values must be built with {!v} or {!theme_guarded} so the cached hash
+    matches the payload. *)
+type declaration = private
+  | Declaration : {
+      property : 'a Properties_intf.property;
+      value : 'a;
+      important : bool;
+      hash : int;
+    }
+      -> declaration
+  | Theme_guarded : {
+      var_name : string;
+      decl : declaration;
+      hash : int;
+    }
+      -> declaration
+
+type t = declaration
 
 val pp_property : 'a Properties.property Pp.t
 (** [pp_property] is the pretty-printer for CSS property names. *)

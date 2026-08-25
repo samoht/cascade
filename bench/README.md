@@ -8,6 +8,35 @@ installed `_opam/bin/cascade` may be stale:
 dune build bin/main.exe
 ```
 
+## `differential/run.sh` -- one differential suite
+
+The differential suite replaces per-fix scratch drivers. Its named profiles
+share build orchestration, deterministic observations, normalization and
+reporting:
+
+```bash
+# Compare serialisation/inlining over the interop corpus.
+bench/differential/run.sh outputs --baseline ../cascade-main
+
+# Compare internal optimiser candidate sets (quick is suitable while iterating).
+bench/differential/run.sh candidates --baseline ../cascade-main --quick
+
+# Render-check every committed HTML fixture through an external minifier.
+bench/differential/run.sh render --tool lightningcss --output /tmp/render-diff
+
+# The existing interleaved SatCSS performance and byte comparison.
+bench/differential/run.sh corpus -b ./old/main.exe
+```
+
+`outputs` and `candidates` expect the suite to exist in both compared trees;
+stack a work branch on the suite commit before measuring it. They run the same
+driver built against each tree and fail on the first differing record stream.
+`render` reuses `test/inline`'s pinned-browser computed-style comparison and
+writes raw and canonically filtered TSV artifacts. It reports the external
+tool version; set `MINIFIER_VERSION` when using an opaque `--command`. Add `--pages` only after
+`test/inline/fetch.sh` has frozen the optional real-page corpus. External tools
+are developer dependencies and are never part of ordinary `dune test`.
+
 ## `corpus_sweep.sh` -- minify all 504 SatCSS fixtures
 
 ```bash

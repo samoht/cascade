@@ -15,9 +15,11 @@ const EXTRACTOR = '<script>(function(){var s=' + JSON.stringify(SKIP) +
 //   host-resolver-rules   nothing resolves, so a stray remote URL fails at once
 //   window-size, scale    viewport units and device pixels are fixed
 //   hide-scrollbars       a scrollbar does not eat viewport width
+const budget = process.env.VIRTUAL_TIME_BUDGET || '4000';
+if (!/^\d+$/.test(budget)) throw new Error('invalid VIRTUAL_TIME_BUDGET: '+budget);
 const FLAGS = '--headless --disable-gpu --no-sandbox' +
   ' --host-resolver-rules="MAP * ~NOTFOUND" --window-size=1280,900' +
-  ' --force-device-scale-factor=1 --hide-scrollbars --virtual-time-budget=4000';
+  ' --force-device-scale-factor=1 --hide-scrollbars --virtual-time-budget='+budget;
 function computed(path){
   // Appended, not spliced in at </body>: a page can carry that text inside an
   // attribute value (wikipedia's CSS article quotes a whole HTML document in
@@ -70,6 +72,15 @@ if (CANON && cand.length) {
   const tmp = '/tmp/canon_'+process.pid+'.tsv';
   fs.writeFileSync(tmp, cand.join('\n'));
   lines = execSync(`"${CANON}" < "${tmp}"`,{encoding:'utf8',maxBuffer:1e8}).split('\n').filter(Boolean);
+  fs.unlinkSync(tmp);
+}
+if (process.env.RAW_OUT) fs.writeFileSync(process.env.RAW_OUT, cand.map(x=>x+'\n').join(''));
+if (process.env.FILT_OUT) fs.writeFileSync(process.env.FILT_OUT, lines.map(x=>x+'\n').join(''));
+if (process.env.REPORT_FORMAT === 'tsv') {
+  const label = process.env.LABEL || '';
+  console.log('LABEL\t'+label+'\tELEMS\t'+n+'\tRAW\t'+cand.length+
+              '\tFILTERED\t'+lines.length+'\tSPLIT\t'+(split === null ? '-' : split));
+  process.exit(lines.length || split !== null ? 1 : 0);
 }
 const diffs = lines.map(l=>{const f=l.split('\t');return '['+f[0]+' '+f[1]+'] '+f[2]+': "'+f[3]+'" vs "'+f[4]+'"';});
 if (split !== null) diffs.unshift(split);

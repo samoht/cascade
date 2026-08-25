@@ -447,6 +447,22 @@ let same_condition_blocks_fold_together () =
          (String.concat "" (String.split_on_char '@' (canonical split)))
     = 1)
 
+(* Conditional Rules 5 sec. 5.4: an unknown container feature never matches.
+   [(inline-size\>\=10px)] is one escaped feature name, not the real size range
+   [(inline-size >= 10px)], even though their compact serialisations are
+   identical. The canonical projection must therefore keep their blocks in
+   separate cascade slots. *)
+let container_key_keeps_structurally_distinct_queries_apart () =
+  let css =
+    {|@container (inline-size\>\=10px){.x{color:red}}@container (inline-size>=10px){.y{color:blue}}|}
+  in
+  let projected =
+    Css.v (statements css) |> Css.canonicalize_rule_order |> Css.statements
+  in
+  Alcotest.(check int)
+    "an unknown feature is not projected into the size range" 2
+    (List.length projected)
+
 let conflicting_block_fold_is_refused () =
   (* Folding either way moves a conditional write of [color] on [.a] past an
      unconditional write of [color] on [.a], which changes the winner when the
@@ -530,6 +546,8 @@ let suite =
         nested_conditionals_participate;
       Alcotest.test_case "same-condition blocks fold together" `Quick
         same_condition_blocks_fold_together;
+      Alcotest.test_case "container key keeps distinct queries apart" `Quick
+        container_key_keeps_structurally_distinct_queries_apart;
       Alcotest.test_case "conflicting block fold is refused" `Quick
         conflicting_block_fold_is_refused;
     ] )
