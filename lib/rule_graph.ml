@@ -534,6 +534,14 @@ let live_nodes t =
   done;
   !acc
 
+(* Recursive over the index rather than a local closure over [t] and [f], so a
+   scan that answers no everywhere allocates nothing at all. *)
+let rec exists_live_from t f i =
+  i < t.count
+  && ((t.live.(i) && f (Node_id.of_int_exn i)) || exists_live_from t f (i + 1))
+
+let exists_live_node t f = exists_live_from t f 0
+
 (* The interned declaration-body hash list of a node, for bucketing nodes by
    identical declaration body. *)
 let declaration_body_key t i =
