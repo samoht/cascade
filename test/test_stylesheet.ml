@@ -8716,6 +8716,53 @@ let cssom67_no_trailing_semicolon () =
     "minified output has no trailing semicolon before }" false
     (Astring.String.is_infix ~affix:";}" with_trailing)
 
+(* An [@container] prelude that does not parse is faulted against the slice of
+   the query that failed, so the caret lands inside the query. Every span below
+   is counted off the source text: the leading rule is 18 bytes plus a newline,
+   so line 2 opens at offset 19 and [@container ] runs to offset 29. *)
+let container_condition_error_spans () =
+  let check name query (reason, start_pos, end_pos) =
+    let input =
+      ".ok { color: red }\n@container " ^ query ^ " { .a { color: blue } }\n"
+    in
+    match Css.of_string ~strict:false input with
+    | Error err ->
+        Alcotest.failf "%s: lenient parse failed: %s" name
+          (Cascade.Error.to_string err)
+    | Ok { Css.stylesheet; warnings } -> (
+        Alcotest.(check int)
+          (name ^ ": sibling rule survives")
+          1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ e ] ->
+            (match e.Error.kind with
+            | Error.Bad_condition { at_rule; reason = got } ->
+                Alcotest.(check string)
+                  (name ^ ": at-rule") "@container" at_rule;
+                Alcotest.(check string) (name ^ ": reason") reason got
+            | _ ->
+                Alcotest.failf "%s: expected Bad_condition, got %s" name
+                  (Error.to_string e));
+            Alcotest.(check (pair int int))
+              (name ^ ": span") (start_pos, end_pos)
+              (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+        | ws ->
+            Alcotest.failf "%s: expected one warning, got %d" name
+              (List.length ws))
+  in
+  (* [style()] spans offsets 30-36; an empty argument list has no components of
+     its own, so the call itself carries the span. *)
+  check "empty style()" "style()" ("empty style() container query", 30, 37);
+  (* The parenthesised query spans offsets 30-33. *)
+  check "empty query" "(  )" ("empty container query", 30, 34);
+  (* [scroll-state(] ends at offset 42, so [bogus] spans 43-47. *)
+  check "bad scroll-state()" "scroll-state(bogus)"
+    ("invalid scroll-state() container query", 43, 48);
+  (* [style(] ends at offset 35, so [1px] spans 36-38. *)
+  check "bad style() name" "style(1px: red)"
+    ("invalid style() container query", 36, 39)
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -9644,6 +9691,9 @@ let additional_tests =
                 Alcotest.failf "expected Bad_condition, got %s"
                   (Error.to_string e))
         | _ -> Alcotest.fail "expected one warning" );
+    ( "an @container query error points at the failing slice",
+      `Quick,
+      container_condition_error_spans );
   ]
 
 (* Every shape a statement can take, so the walkers are exercised on the block
