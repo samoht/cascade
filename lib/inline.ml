@@ -1036,23 +1036,22 @@ let cyclic_live_customs ~consumers ~customs =
         customs)
     initially_live
 
+(* Write a value that is one colour back in its canonical spelling.
+   [map_custom_value] rewrites the value in place, so the declaration keeps its
+   importance, its cascade layer, its metadata and any theme guard; rebuilding
+   from the name and the new text drops all four. *)
 let normalize_custom_value decl =
   match custom_name decl with
   | None -> decl
-  | Some name -> (
+  | Some _ -> (
       let value = Declaration.string_of_value ~minify:true decl in
-      let important = Declaration.is_important decl in
       try
         let cursor = Cursor.of_string value in
         let color = Values.read_color cursor in
         Cursor.ws cursor;
         Cursor.expect_eof cursor;
-        match
-          rebuild_custom name (Pp.to_string ~minify:true Values.pp_color color)
-        with
-        | None -> decl
-        | Some normalized ->
-            if important then Declaration.important normalized else normalized
+        let canonical = Pp.to_string ~minify:true Values.pp_color color in
+        Declaration.map_custom_value (fun _ -> canonical) decl
       with Cursor.Parse_error _ -> decl)
 
 let custom_is_live ~keep ~live_set ~at_path ~selector name =

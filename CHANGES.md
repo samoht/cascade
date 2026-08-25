@@ -483,6 +483,11 @@ answers.
 
 ### Custom properties
 
+- A cascade layer and caller metadata on a custom property survive
+  `Css.inline_vars`. Both belong to the declaration rather than to its value,
+  and the two rewrites that read a custom value back - canonicalising a value
+  that is one colour, and folding a `var()` that value references - rebuilt the
+  declaration from the value alone (#520)
 - A `page-break-before`, `page-break-after` or `page-break-inside` declaration
   survives `Css.inline_vars` as itself. Substituting a `var()` rebuilt the
   declaration from its minified name, which for these three is the `break-*`
