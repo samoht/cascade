@@ -782,6 +782,14 @@ let var_via_enum_or_calls () =
   Alcotest.(check string) "concat-var-2" "var:b:empty" v2;
   Alcotest.(check bool) "concat-done" true (is_done r)
 
+(* [Reader.list] and [Cursor.list] report an [~at_least] shortfall with one
+   wording, and it names how many items were actually read. *)
+let list_at_least_message () =
+  let r = of_string "a" in
+  check_raises "list-at-least"
+    (parse_error_expected "expected at least 2 items (got 1)" r) (fun () ->
+      ignore (list ~sep:comma ~at_least:2 ident r))
+
 (* list_impl edge cases *)
 let list_edges () =
   (* Trailing comma: current behavior returns parsed items so far *)
@@ -1613,6 +1621,7 @@ let tests_enum_or_calls () =
 let tests_lists () =
   backtrack_list ();
   list_edges ();
+  list_at_least_message ();
   list_call_stack ()
 
 let tests_one_of () =
