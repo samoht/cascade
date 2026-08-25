@@ -49,6 +49,8 @@ let ignored_types =
     "cascade_layer_candidate";
     "cascade_candidate";
     "declared_value";
+    "edit";
+    (* Structural traversal decision, not a standalone CSS grammar. *)
     "value";
     "value_source";
     "value_processing_stage";

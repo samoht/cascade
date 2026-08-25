@@ -50,9 +50,9 @@
 
     Start with {!val:rule}, {!val:media}, {!val:container}, {!val:supports},
     {!val:v}, and {!val:to_string}. Property helpers are grouped by CSS feature
-    below. Parser internals such as cursors, tokens and component values are
-    available from the library root, for example {!module:Cascade.Cursor} and
-    {!module:Cascade.Parser}, not through [Css].
+    below. Parser building blocks such as cursors, tokens and component values
+    are available from the library root, for example {!module:Cascade.Cursor}
+    and {!module:Cascade.Parser}, not through [Css].
 
     See {:https://www.w3.org/Style/CSS/specs.en.html W3C CSS Specifications} and
     {:https://developer.mozilla.org/en-US/docs/Web/CSS MDN CSS Documentation}.
@@ -70,6 +70,8 @@
 
 module Selector = Selector
 module Selector_summary = Selector_summary
+module Aria = Aria
+module Color_space = Color_space
 module Context = Context
 module Pp = Pp
 module Values = Values
@@ -83,8 +85,9 @@ module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe
 module Font_face = Font_face
+module Nest = Nest
 
-(** Parser internals live at the library root ([Cascade.Cursor],
+(** Parser building blocks live at the library root ([Cascade.Cursor],
     [Cascade.Parser], [Cascade.Token], ...), not under [Css]. *)
 
 (** {2:value_parsers Per-type value parsers}

@@ -561,9 +561,7 @@ let drop_invalid (stylesheet : t) : t =
     rather than what a transform may hand the next reader of one. Opt in when
     the output has exactly one consumer and it is a browser. *)
 let drop_unknown_at_rules (stylesheet : t) : t =
-  edit_statements
-    (function Unknown_at_rule _ -> List.Drop | _ -> List.Keep)
-    stylesheet
+  edit_statements (function Unknown_at_rule _ -> Drop | _ -> Keep) stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
    typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
@@ -804,9 +802,9 @@ let normalize_live_declarations ~ctx ~lossless decls =
    carries an unknown at-rule's body as opaque source text, which has no grammar
    to normalise against, or has its declarations normalised wherever that walk
    finds them. *)
-let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
+let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
   match s with
-  | Unknown_at_rule _ -> List.Keep
+  | Unknown_at_rule _ -> Keep
   | Property r ->
       let initial_value =
         match r.initial_value with
@@ -815,15 +813,15 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
             let value' = Variables.normalize_value ~lossless r.syntax value in
             if value' == value then r.initial_value else Some value'
       in
-      if initial_value == r.initial_value then List.Keep
-      else List.Replace (Property { r with initial_value })
+      if initial_value == r.initial_value then Keep
+      else Replace (Property { r with initial_value })
   | _ ->
       let s' =
         map_statement_declarations
           (normalize_live_declarations ~ctx ~lossless)
           s
       in
-      if s' == s then List.Keep else List.Replace s'
+      if s' == s then Keep else Replace s'
 
 let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
   edit_statements (sanitize_statement ~ctx ~lossless) b

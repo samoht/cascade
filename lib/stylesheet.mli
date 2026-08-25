@@ -310,8 +310,7 @@ val iter_statements : (statement -> unit) -> block -> unit
 (** [iter_statements f block] applies [f] to every statement {!fold_statements}
     reaches. *)
 
-val edit_statements :
-  (statement -> statement Common.List.edit) -> block -> block
+val edit_statements : (statement -> statement edit) -> block -> block
 (** [edit_statements f block] rewrites the statements {!fold_statements}
     reaches: [f] keeps, replaces or drops each one, and the walk descends
     through {!map_statement_children} into what survives, so a caller names only

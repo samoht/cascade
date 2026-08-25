@@ -19,6 +19,20 @@ answers.
 
 ### Breaking
 
+- Implementation modules are no longer usable through accidental `Cascade.*`
+  aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
+  `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
+  `Rule_graph`, `Rule_scheduler`, `Pool`, `Order_maintenance`, `Preflight`,
+  `Ctx`, `Cover`, `Edge`, `Loop`, `Rule_candidate`, `Rule_rewrite`,
+  `Factor_safe`, `Gzip_size` and `Index` are private, as are the six shared
+  `Declaration_intf`, `Properties_intf`, `Selector_intf`, `Stylesheet_intf`,
+  `Values_intf` and `Variables_intf` modules. The supported `Css` aliases and
+  parser roots remain public; `Aria`, `Color_space` and `Nest` now have
+  coherent `Css` aliases too.
+- `Css.Stylesheet.edit_statements` callbacks return
+  `Css.Stylesheet.Keep`, `Replace` or `Drop` through the new
+  `Css.Stylesheet.edit` type. They previously leaked the otherwise-internal
+  `Common.List.edit` type.
 - `Declaration.declaration` is a private variant. Its constructors remain
   available for pattern matching, but construct values with `Declaration.v` or
   `Declaration.theme_guarded`. The public records exposed their cached hash, so
@@ -645,9 +659,10 @@ answers.
   `Css.media_queries` report a query written inside a grouping at-rule, and
   pair each query with every rule below its brace rather than the ones sitting
   directly under it (#389)
-- `Css.Flatten` carries the parent selector into an `@-moz-document` block, the
-  one grouping at-rule it did not descend into, where the declarations came out
-  bare at the top of the block and no reader takes that back (#384)
+- `Css.flatten_nesting` carries the parent selector into an `@-moz-document`
+  block, the one grouping at-rule it did not descend into, where the
+  declarations came out bare at the top of the block and no reader takes that
+  back (#384)
 - `Cascade_diff.Tree_diff.has_container_added_of_type` and
   `has_container_removed_of_type` look inside a container reported as modified,
   as `count_containers_by_type` already did, where a `@supports` added inside

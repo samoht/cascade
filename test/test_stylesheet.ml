@@ -10106,9 +10106,7 @@ let deep_walker_tests =
       `Quick,
       fun () ->
         let dropped =
-          edit_statements
-            (function Rule _ -> Common.List.Drop | _ -> Common.List.Keep)
-            (places ())
+          edit_statements (function Rule _ -> Drop | _ -> Keep) (places ())
         in
         Alcotest.(check (list string))
           "no rule left" []
@@ -10125,8 +10123,8 @@ let deep_walker_tests =
            so it is marked when the walk continues into the replacement rather
            than into the statement it replaced. *)
         let mark = function
-          | Rule r -> Common.List.Replace (Rule { r with merge_key = Some "k" })
-          | _ -> Common.List.Keep
+          | Rule r -> Replace (Rule { r with merge_key = Some "k" })
+          | _ -> Keep
         in
         Alcotest.(check (list string))
           "every rule marked" []
@@ -10142,7 +10140,7 @@ let deep_walker_tests =
       `Quick,
       fun () ->
         let block = places () in
-        if not (edit_statements (fun _ -> Common.List.Keep) block == block) then
+        if not (edit_statements (fun _ -> Keep) block == block) then
           Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
   ]
 

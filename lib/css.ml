@@ -13,6 +13,8 @@ module Parser = Parser
 module Cursor = Cursor
 module Sort = Sort
 module Error = Error
+module Aria = Aria
+module Color_space = Color_space
 module Values = Values
 module Context = Context
 module Declaration = Declaration
@@ -20,6 +22,7 @@ module Properties = Properties
 module Selector = Selector
 module Selector_summary = Selector_summary
 module Stylesheet = Stylesheet
+module Nest = Nest
 
 let parse_full ~property read s =
   let c = Cursor.of_string s in

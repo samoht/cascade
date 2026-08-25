@@ -486,7 +486,7 @@ let iter_statements f block = fold_statements (fun () stmt -> f stmt) () block
 let edit_statements f block =
   let rec statement stmt =
     match f stmt with
-    | Common.List.Drop -> Common.List.Drop
+    | Drop -> Common.List.Drop
     | Keep -> descend stmt stmt
     | Replace stmt' -> descend stmt stmt'
   and descend stmt stmt' =

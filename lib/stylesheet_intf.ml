@@ -331,6 +331,10 @@ type stylesheet = statement list
 type t = stylesheet
 (** Alias for backwards compatibility *)
 
+(** A decision made by a structural editing callback: retain an item, replace it
+    with another item, or remove it. *)
+type 'a edit = Keep | Replace of 'a | Drop
+
 (** {1 Rendering} *)
 
 type mode = Variables | Inline  (** Rendering mode for CSS output *)
