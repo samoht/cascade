@@ -2699,9 +2699,86 @@ let s542_unknown_at_rule_block_body () =
     "@foo{a{b{c:d}}}";
   roundtrips "an empty body stays empty" "@foo{}" "@foo{}";
   roundtrips "an unterminated function does not stack closers" "@foo{a:(b}"
-    "@foo{a:(b}";
+    "@foo{a:(b)}";
   roundtrips "an unterminated nested block gets one closer" "@foo{a{b:c"
-    "@foo{a{b:c}"
+    "@foo{a{b:c}}"
+
+(* CSS Syntax 3 (ED) sec. 5.5.2 "consume an at-rule" reads a prelude and a block
+   whatever the at-keyword spells, and cascade keeps both as the source text it
+   cannot re-serialise from a grammar. Sec. 4.3.5 returns the string token at
+   end of input and 4.3.6 the url token, both calling it a parse error, 4.3.2
+   ends the comment there and calls that one too, and sec. 5.5.9 and 5.5.10
+   close a simple block and a function on the EOF token. Each defines what end
+   of input leaves, so text that stopped mid-construct means the closed form.
+   Written back open, that construct swallows the [;] or [}] the at-rule ends
+   with, and the next reader sees one at-rule where cascade held an at-rule and
+   the rule after it. *)
+let s552_unknown_at_rule_eof_closers () =
+  let printed input =
+    String.trim
+      (Css.Stylesheet.to_string ~minify:true
+         (read_stylesheet (Cursor.of_string input)))
+  in
+  (* The at-rule has to end on its own: append a rule to what was printed and
+     both must come back, and re-reading must report nothing left
+     unterminated. *)
+  let self_delimiting name printed =
+    let input = String.concat "" [ printed; ".z{color:red}" ] in
+    let { Css.stylesheet; warnings } =
+      match Css.of_string ~strict:false input with
+      | Ok parsed -> parsed
+      | Error err ->
+          Alcotest.failf "%s: %S failed to reparse: %s" name input
+            (Cascade.Error.to_string err)
+    in
+    Alcotest.(check int)
+      (String.concat "" [ name; ": the rule after it survives" ])
+      2
+      (List.length (Css.statements stylesheet));
+    let unterminated =
+      List.filter
+        (fun (e : Error.t) ->
+          match e.Error.kind with Error.Unterminated _ -> true | _ -> false)
+        warnings
+    in
+    Alcotest.(check int)
+      (String.concat "" [ name; ": nothing left unterminated" ])
+      0 (List.length unterminated)
+  in
+  let closes name input expected =
+    Alcotest.(check string) name expected (printed input);
+    Alcotest.(check string)
+      (String.concat "" [ name; " is a fixed point" ])
+      expected (printed expected);
+    self_delimiting name expected
+  in
+  closes "a string closes at end of input" "@o x{ a \"i" "@o x{ a \"i\"}";
+  closes "a single-quoted string closes too" "@o x{ a 'i" "@o x{ a 'i'}";
+  closes "a url closes at end of input" "@o x{ a url(i" "@o x{ a url(i)}";
+  closes "a bad url closes too" "@o x{ a url(i j" "@o x{ a url(i j)}";
+  closes "a function closes at end of input" "@o x{ a f(i" "@o x{ a f(i)}";
+  closes "a square block closes at end of input" "@o x{ a [i" "@o x{ a [i]}";
+  closes "a paren block closes at end of input" "@o x{ a (i" "@o x{ a (i)}";
+  closes "a curly block closes at end of input" "@o x{ a { b" "@o x{ a { b}}";
+  closes "a comment ends at end of input" "@o x{ a /* b" "@o x{ a /* b*/}";
+  (* The prelude runs to the [;] the at-rule ends with, and swallows it the same
+     way. *)
+  closes "a prelude string closes at end of input" "@o \"i" "@o \"i\";";
+  closes "a prelude url closes at end of input" "@o url(i" "@o url(i);";
+  (* Sec. 4.3.6 reads the whitespace before the missing [)] and keeps none of it
+     in the url, so the closer takes its place rather than following it: a
+     minified stylesheet carries no newline of its own. *)
+  closes "whitespace before a missing closer is not carried" "@o url(i\n"
+    "@o url(i);";
+  closes "a prelude function closes at end of input" "@o f(i" "@o f(i);";
+  (* Controls: nothing is open, so nothing is added. *)
+  closes "a closed body is untouched" "@o x{ a b }" "@o x{ a b }";
+  closes "a quote inside a comment is not an opener" "@o x{ a /* \" */ b"
+    "@o x{ a /* \" */ b}";
+  closes "an escaped quote is not an opener" "@o x{ a \"i\\\"j\""
+    "@o x{ a \"i\\\"j\"}";
+  closes "a closed url is not reopened" "@o x{url(a)}" "@o x{url(a)}";
+  closes "a closed prelude is untouched" "@o bar" "@o bar;"
 
 (* Gecko's [@document]/[@-moz-document] takes a comma-separated list of [<url> |
    url-prefix(<string>) | domain(<string>) | media-document(<string>) |
@@ -8659,6 +8736,9 @@ let additional_tests =
     ( "spec CSS Syntax 5.4.2 unknown at-rule block body",
       `Quick,
       s542_unknown_at_rule_block_body );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule raw text closes at EOF",
+      `Quick,
+      s552_unknown_at_rule_eof_closers );
     ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
       `Quick,
       s3431_unknown_at_rule_prelude_separator );
