@@ -308,6 +308,38 @@ let external_conflict_scan_is_subquadratic () =
     true
     (a1 = 0. || a2 < a1 *. 5.)
 
+(* The first member provides the only default. Every later member writes an
+   extra declaration that the provider does not, and its selector costs more
+   than the provider declaration it shares, so pruning must discard it. The
+   group can therefore never keep two members. A same-sized group whose members
+   all repeat the provider's declaration is the control: those members can
+   survive and the full candidate checks still have to run. Rejecting the doomed
+   group before constructing entries and leftovers keeps its allocation well
+   below the control. *)
+let default_factoring_rejects_a_doomed_group_early () =
+  let doomed =
+    List.init 8 (fun i ->
+        if i = 0 then ".p{color:red}"
+        else
+          Fmt.str
+            ".selector-that-cannot-pay-for-the-group-%d{color:blue;--own-%d:1}"
+            i i)
+    |> String.concat "" |> rules |> Rule_graph.of_rules
+  in
+  let survivable =
+    List.init 8 (fun i -> Fmt.str ".s%d{color:red}" i)
+    |> String.concat "" |> rules |> Rule_graph.of_rules
+  in
+  let work graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let rejected = measure (work doomed) in
+  let control = measure (work survivable) in
+  Alcotest.(check bool)
+    (Fmt.str "doomed group %.0f words, survivable control %.0f" rejected control)
+    true
+    (control = 0. || rejected < control *. 0.4)
+
 let suite =
   ( "rule_candidate",
     [
@@ -338,4 +370,6 @@ let suite =
         default_factoring_lookup_is_subcubic;
       Alcotest.test_case "external-conflict scan is subquadratic" `Quick
         external_conflict_scan_is_subquadratic;
+      Alcotest.test_case "default factoring rejects a doomed group early" `Quick
+        default_factoring_rejects_a_doomed_group_early;
     ] )
