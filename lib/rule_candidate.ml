@@ -97,9 +97,9 @@ type commute_slot = { witness : decl_fact; mutable uniform : bool }
    pairwise test; they are rare enough that keeping it costs nothing. [indexed]
    is the side itself, for a [Broad] declaration facing it. *)
 type facts_index = {
-  indexed : decl_fact list;
+  mutable indexed : decl_fact list;
   written : commute_slot list Overlap_table.t;
-  broad : decl_fact list;
+  mutable broad : decl_fact list;
 }
 
 (* Whether two declarations share a slot: one weight, and, for a custom
@@ -149,6 +149,23 @@ let index_facts facts =
       [] facts
   in
   { indexed = facts; written; broad }
+
+let empty_index () =
+  { indexed = []; written = Overlap_table.create 16; broad = [] }
+
+(* Filing further facts into a built index. A slot answers for the whole
+   multiset filed into it - it conflicts with whatever reaches it once two of
+   them disagree, and otherwise compares the one witness they all match - so an
+   index over a union of footprints answers exactly what asking each of them
+   separately would. *)
+let rec add_facts index = function
+  | [] -> ()
+  | (fact : decl_fact) :: rest ->
+      index.indexed <- fact :: index.indexed;
+      (match fact.shape with
+      | Broad -> index.broad <- fact :: index.broad
+      | Slots | Custom _ -> file_keys index.written fact fact.keys);
+      add_facts index rest
 
 let rec slots_conflict (fact : decl_fact) = function
   | [] -> false
@@ -235,28 +252,38 @@ let same_selector_eligible (r : rule) =
 
    [decl_facts_conflict] is symmetric - every arm of the overlap relation under
    it is spelled both ways round - so either side of a commute test can be the
-   indexed one. The nested body is the side worth indexing: it is read once per
-   rule rather than once per rule facing it, and each declaration block is read
-   once for the whole run rather than once per nested block ahead of it. The
-   scan first is what keeps a run carrying no nested block, the common one, from
-   reading a body at all. *)
+   indexed one. The nested bodies are the side worth indexing, and one index
+   over all of them read so far is what a block moving past them faces: "every
+   nested body before it commutes with this block" is one question about their
+   union, not one per body. So the run is walked once, each block probed once
+   and each nested body read once, rather than every (body, later block) pair
+   being put to the index separately.
+
+   The scan first is what keeps a run carrying no nested block, the common one,
+   from reading a body at all, and the empty index short-circuits the blocks
+   ahead of the first nested body. *)
 let nested_merge_is_safe (rules : rule list) =
   let rec nested_ahead = function
     | [] | [ _ ] -> false
     | (r : rule) :: rest -> r.nested <> [] || nested_ahead rest
   in
-  let rec go = function
-    | [] | [ _ ] -> true
-    | ((r : rule), _) :: rest -> (
-        match nested_decl_facts [] r.nested with
-        | [] -> go rest
-        | nested ->
-            let index = index_facts nested in
-            List.for_all (fun (_, facts) -> facts_commute_with index facts) rest
-            && go rest)
+  let rec go ahead = function
+    | [] -> true
+    | (r : rule) :: rest -> (
+        let block_commutes =
+          match ahead.indexed with
+          | [] -> true
+          | _ -> facts_commute_with ahead (decl_facts r.declarations)
+        in
+        block_commutes
+        &&
+        match rest with
+        | [] -> true
+        | _ ->
+            add_facts ahead (nested_decl_facts [] r.nested);
+            go ahead rest)
   in
-  (not (nested_ahead rules))
-  || go (List.map (fun (r : rule) -> (r, decl_facts r.declarations)) rules)
+  (not (nested_ahead rules)) || go (empty_index ()) rules
 
 let identical_body_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = Option.None

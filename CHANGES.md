@@ -410,8 +410,9 @@ answers.
 - `--minify` and `cascade diff` spend less time and memory on a large
   stylesheet, for the same output (#413, #422, #424, #468)
 - `--minify` no longer allocates quadratically on a long run of rules sharing
-  one selector or one body. The benchmark corpora hold no such run, so this
-  bounds a worst case rather than speeding real input up (#480, #486, #487)
+  one selector or one body, nor probes every pair of them to decide whether it
+  may merge. The benchmark corpora hold no such run, so this bounds a worst
+  case rather than speeding real input up (#480, #486, #487, #502)
 - `--minify` no longer scans quadratically when many rules share a deep
   selector prefix. The structural hash reads a fixed count of nodes, so
   `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
