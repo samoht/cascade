@@ -184,6 +184,14 @@ let pp_position_area_keyword : position_area_keyword Pp.t =
   | Span_inline_end -> Pp.string ctx "span-inline-end"
   | Span_block_start -> Pp.string ctx "span-block-start"
   | Span_block_end -> Pp.string ctx "span-block-end"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Span_start -> Pp.string ctx "span-start"
+  | Span_end -> Pp.string ctx "span-end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Span_self_start -> Pp.string ctx "span-self-start"
+  | Span_self_end -> Pp.string ctx "span-self-end"
   | Span_all -> Pp.string ctx "span-all"
 
 let rec pp_position_area : position_area Pp.t =
@@ -831,6 +839,14 @@ let read_position_area_keyword t : position_area_keyword =
       ("span-inline-end", Span_inline_end);
       ("span-block-start", Span_block_start);
       ("span-block-end", Span_block_end);
+      ("start", Start);
+      ("end", End);
+      ("span-start", Span_start);
+      ("span-end", Span_end);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("span-self-start", Span_self_start);
+      ("span-self-end", Span_self_end);
       ("span-all", Span_all);
     ]
     t
@@ -846,7 +862,11 @@ let position_area_axis (keyword : position_area_keyword) =
   | Top | Bottom | Span_top | Span_bottom | Y_start | Y_end | Span_y_start
   | Span_y_end | Block_start | Block_end | Span_block_start | Span_block_end ->
       Vertical
-  | Center | Span_all -> Either
+  (* css-anchor-position-1 sec. 3.1.2: [center], [span-all] and the start/end
+     keywords that name neither the block nor the inline axis are ambiguous. *)
+  | Center | Span_all | Start | End | Span_start | Span_end | Self_start
+  | Self_end | Span_self_start | Span_self_end ->
+      Either
 
 let compatible_position_area_keywords first second =
   match (position_area_axis first, position_area_axis second) with
