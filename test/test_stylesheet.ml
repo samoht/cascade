@@ -4009,6 +4009,58 @@ let spec_nesting_starting_style () =
     ".a { @starting-style { & b { color: red } } }";
   test_nesting_idempotent ".a { @starting-style { color: red } color: green }"
 
+(* CSS Conditional 5 sec. 3 and sec. 4: a prelude the [@when] / [@else]
+   condition grammar rejects is a condition failure of that at-rule, and the
+   caret belongs on the slice of the condition that failed. The reader holds
+   those components, so it can point at them rather than at the block that
+   follows; the same rule the [@container] and [@supports] preludes read by. *)
+let conditional_prelude_errors () =
+  let case (input, at_rule, offending) =
+    let warnings =
+      match Css.of_string ~strict:false input with
+      | Error e -> [ e ]
+      | Ok { Css.warnings; _ } -> warnings
+    in
+    match warnings with
+    | [ ({ Error.kind = Error.Bad_condition { at_rule = named; _ }; _ } as e) ]
+      ->
+        Alcotest.(check string) (input ^ ": at-rule named") at_rule named;
+        Alcotest.(check string)
+          (input ^ ": caret on the offending slice")
+          offending
+          (String.sub input e.Error.loc.Loc.start_pos
+             (e.Error.loc.Loc.end_pos - e.Error.loc.Loc.start_pos))
+    | [ e ] ->
+        Alcotest.failf "%s: expected a condition error, got %s" input
+          (Error.to_string e)
+    | warnings ->
+        Alcotest.failf "%s: expected one warning, got %d" input
+          (List.length warnings)
+  in
+  List.iter case
+    [
+      ("@when foo(x){.a{color:red}}", "@when", "foo(x)");
+      ( "@when media(screen) and supports(top:0) or media(print){.a{c:red}}",
+        "@when",
+        "or" );
+      ( "@when media(screen) or supports(top:0) and media(print){.a{c:red}}",
+        "@when",
+        "and" );
+      ("@when .a{color:red}", "@when", ".");
+      ( "@when media(screen) media(print){.a{color:red}}",
+        "@when",
+        "media(print)" );
+      ( "@when media(screen{.a{color:red}}",
+        "@when",
+        "media(screen{.a{color:red}}" );
+      ( "@when media(width>0px){.a{color:red}}@else foo(x){.b{color:red}}",
+        "@else",
+        "foo(x)" );
+      ( "@when media(width>0px){.a{c:red}}@else media(print) x{.b{c:red}}",
+        "@else",
+        "x" );
+    ]
+
 (* The same section covers every conditional group rule, not just the three
    cascade already nested: [@-moz-document] carries style rules, and CSS
    Conditional 5 sec. 3 and sec. 4 make [@when] and [@else] conditional group
@@ -8933,6 +8985,9 @@ let additional_tests =
     ( "spec nesting @starting-style holds nesting content",
       `Quick,
       spec_nesting_starting_style );
+    ( "conditional prelude errors name the at-rule and the slice",
+      `Quick,
+      conditional_prelude_errors );
     ( "spec nesting other group rules hold nesting content",
       `Quick,
       spec_nesting_other_group_rules );
