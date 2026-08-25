@@ -5,8 +5,12 @@ open Cascade
 open Reader
 open Css_test_helpers
 
-(* Helper to create parse_error for test expectations *)
-let parse_error_expected ?(got = None) ?(filename = "<string>") message reader =
+(* Expected-error skeleton for [check_raises], which compares [message] and
+   [got] and nothing else. [filename] is the source name, so the default is the
+   placeholder name a reader built by [of_string] carries; [line] and [col] hold
+   the location, and are inert here. *)
+let parse_error_expected ?(got = None) ?(filename = "<CSS input>") message
+    reader =
   let context_window, marker_pos = context_window reader in
   Parse_error
     {
@@ -14,6 +18,8 @@ let parse_error_expected ?(got = None) ?(filename = "<string>") message reader =
       got;
       position = position reader;
       filename;
+      line = 1;
+      col = 1;
       context_window;
       marker_pos;
       callstack = callstack reader;
@@ -1369,10 +1375,13 @@ let error_formatting_multiline () =
     Alcotest.(check bool)
       "context reasonable length" true
       (String.length error.context_window < 120);
-    (* Check that filename includes line:col info *)
+    (* The location lives in [line] and [col]; [filename] names the source and
+       carries no location, so it holds no separator. *)
     Alcotest.(check bool)
-      "filename has line info" true
-      (String.contains error.filename ':')
+      "filename holds no location" false
+      (String.contains error.filename ':');
+    Alcotest.(check (pair int int))
+      "location of the failing byte" (5, 3) (error.line, error.col)
 
 let error_formatting_long_line () =
   (* Test error on very long single line (minified CSS) *)
@@ -1507,26 +1516,27 @@ let error_at input pos =
    past the last byte of a line is one column beyond it. *)
 let error_line_and_column () =
   let check name input pos expected =
-    Alcotest.(check string) name expected (error_at input pos).filename
+    let error = error_at input pos in
+    Alcotest.(check (pair int int)) name expected (error.line, error.col)
   in
-  check "start of the second line" "abc\n" 4 "<CSS input>:2:1";
-  check "start of the second line, longer first" "aaaaa\n" 6 "<CSS input>:2:1";
-  check "start of the third line" "ab\ncd\n" 6 "<CSS input>:3:1";
-  check "past the last character" "abc" 3 "<CSS input>:1:4"
+  check "start of the second line" "abc\n" 4 (2, 1);
+  check "start of the second line, longer first" "aaaaa\n" 6 (2, 1);
+  check "start of the third line" "ab\ncd\n" 6 (3, 1);
+  check "past the last character" "abc" 3 (1, 4)
 
 (* A column is one Unicode scalar value, for the reported column and for the
    caret alike, so three euro signs put the error in column 4 with three
    characters before the caret rather than nine bytes. *)
 let error_column_counts_characters () =
   let error = error_at (euros 3) 9 in
-  Alcotest.(check string)
-    "column counts characters" "<CSS input>:1:4" error.filename;
+  Alcotest.(check (pair int int))
+    "column counts characters" (1, 4) (error.line, error.col);
   Alcotest.(check int) "caret counts characters" 3 error.marker_pos
 
 (* The caret of pure ASCII stays where it was, one column per byte. *)
 let error_ascii_caret_holds () =
   let error = error_at (String.make 50 'a') 50 in
-  Alcotest.(check string) "ascii column" "<CSS input>:1:51" error.filename;
+  Alcotest.(check (pair int int)) "ascii column" (1, 51) (error.line, error.col);
   Alcotest.(check int) "ascii caret" 40 error.marker_pos
 
 (* A window boundary landing inside a UTF-8 sequence moves out to the lead byte,
@@ -1540,6 +1550,38 @@ let error_context_window_keeps_code_points () =
   Alcotest.(check bool)
     "trailing boundary keeps code points" true
     (is_utf8 after.context_window)
+
+(* [filename] names the source and holds nothing else. A reader built by
+   [of_string] has no name of its own, so it carries the placeholder, and
+   [with_filename] swaps in the caller's name without disturbing the location in
+   [line], [col] and [position]. *)
+let error_filename_names_the_source () =
+  let error = error_at "abc\ndef" 5 in
+  Alcotest.(check string) "default source name" "<CSS input>" error.filename;
+  Alcotest.(check (pair int int))
+    "location of the failing byte" (2, 2) (error.line, error.col);
+  let stamped = with_filename error "theme.css" in
+  Alcotest.(check string) "stamped source name" "theme.css" stamped.filename;
+  Alcotest.(check (pair int int))
+    "stamping a name keeps the location" (2, 2)
+    (stamped.line, stamped.col);
+  Alcotest.(check int) "stamping a name keeps the offset" 5 stamped.position
+
+(* The rendered location is the three-part [source:line:column] an editor can
+   jump to. The byte offset stays in [position] for a caller that wants it, and
+   is not a fourth part of the rendered location. *)
+let error_renders_three_part_location () =
+  let first_line error =
+    List.hd (String.split_on_char '\n' (pp_parse_error error))
+  in
+  let error = error_at "abc\ndef" 5 in
+  Alcotest.(check bool)
+    "renders source:line:column" true
+    (String.ends_with ~suffix:" at <CSS input>:2:2" (first_line error));
+  Alcotest.(check bool)
+    "renders the stamped source name" true
+    (String.ends_with ~suffix:" at theme.css:2:2"
+       (first_line (with_filename error "theme.css")))
 
 (* Grouped test runners by feature for simpler suite entries *)
 
@@ -1593,7 +1635,9 @@ let tests_error_position () =
   error_line_and_column ();
   error_column_counts_characters ();
   error_ascii_caret_holds ();
-  error_context_window_keeps_code_points ()
+  error_context_window_keeps_code_points ();
+  error_filename_names_the_source ();
+  error_renders_three_part_location ()
 
 let tests_error_formatting () =
   error_formatting_multiline ();
