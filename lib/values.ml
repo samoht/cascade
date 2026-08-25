@@ -642,6 +642,15 @@ let calc_operand_value : type a. a calc -> a calc = function
   | Math_const c -> Num (math_const_value c)
   | other -> other
 
+(* The other direction, for a fold that lands on a NaN. Sec. 10.7.2 resolves
+   [NaN] at parse time into a keyword of the [<number>] grammar and sec. 10.13
+   serialises every NaN-valued calculation through that keyword, so CSS has one
+   NaN and one node for it: a [Num] carrying the float would print [calc(NaN)]
+   too and hash apart from the keyword the same text parses to. [infinity] /
+   [-infinity] are constants of their own in that list and keep their values. *)
+let calc_num : type a. float -> a calc =
+ fun f -> if Float.is_nan f then Math_const Nan else Num f
+
 let rec minify_angle_arg : angle_arg -> angle_arg = function
   | Operation (l, op, r) -> (
       let l = minify_angle_arg l in
@@ -1116,7 +1125,7 @@ let unwrap_grouping : type a.
     ctx:calc_ctx -> rewrap:(a calc -> a calc) -> a calc -> a calc =
  fun ~ctx ~rewrap reduced ->
   match reduced with
-  | (Val _ | Num _) as leaf -> leaf
+  | (Val _ | Num _ | Math_const _) as leaf -> leaf
   | Var v as leaf when ctx.var_is_single_valued v.name -> leaf
   | reduced -> rewrap reduced
 
@@ -1146,11 +1155,13 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
       let lc = calc_operand_value l in
       let rc = calc_operand_value r in
       match (lc, op, rc) with
-      | Num a, Add, Num b -> Num (a +. b)
-      | Num a, Sub, Num b -> Num (a -. b)
-      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Add, Num b -> calc_num (a +. b)
+      | Num a, Sub, Num b -> calc_num (a -. b)
+      | Num a, Mul, Num b -> calc_num (a *. b)
       | Num a, Div, Num b -> (
-          match exact_div a b with Some q -> Num q | None -> Expr (l, op, r))
+          match exact_div a b with
+          | Some q -> calc_num q
+          | None -> Expr (l, op, r))
       | _ -> (
           match
             calc_identity ~zero:(Num 0.) ~is_zero:(fun _ -> false) l op r
@@ -1201,11 +1212,11 @@ let fold_typed_expr : type a.
   in
   let value v = (Val v, computed) in
   match (lc, op, rc) with
-  | Num a, Add, Num b -> (Num (a +. b), false)
-  | Num a, Sub, Num b -> (Num (a -. b), false)
-  | Num a, Mul, Num b -> (Num (a *. b), false)
+  | Num a, Add, Num b -> (calc_num (a +. b), false)
+  | Num a, Sub, Num b -> (calc_num (a -. b), false)
+  | Num a, Mul, Num b -> (calc_num (a *. b), false)
   | Num a, Div, Num b -> (
-      match exact_div a b with Some q -> (Num q, false) | None -> keep ())
+      match exact_div a b with Some q -> (calc_num q, false) | None -> keep ())
   | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
       (Option.get (fold_zero_numeric_expr lc op rc), false)
   | Val a, op, Val b -> (

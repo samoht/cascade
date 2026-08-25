@@ -225,9 +225,9 @@ answers.
 
 ### Minification
 
-- `--minify` merges two rules that declare the same NaN, such as
-  `opacity: calc(infinity - infinity)`. Structural equality read a NaN as
-  different from itself, which the declaration hash never did (#471)
+- `--minify` merges two rules that declare the same NaN, whichever way each
+  spelled it: `opacity: calc(NaN)` and `opacity: calc(infinity - infinity)`
+  are one declaration (#471, #482)
 - `--minify` merges adjacent `@container` blocks whose `style()` conditions
   are written the same way. The comparison reached the source byte offsets
   every token carries, so two byte-identical `style(--x: 1)` queries never
