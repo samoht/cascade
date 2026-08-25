@@ -230,6 +230,51 @@ let nested_merge_safety_reads_each_block_once () =
     true
     (b = 0. || a < b *. 3.)
 
+(* --- allocation / complexity guards --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* [members] rules that write the same [props] custom properties, each differing
+   on one of them, is the densest shape the default-value search sees: every
+   property is common to every member, so each is a candidate default and each
+   member is a candidate override. *)
+let dense_default_sheet ~members ~props =
+  List.init members (fun m ->
+      let decls =
+        List.init props (fun p ->
+            if p = m mod props then Fmt.str "--p%d:%dpx" p (p + 1)
+            else Fmt.str "--p%d:0px" p)
+        |> String.concat ";"
+      in
+      Fmt.str ".s%d{%s}" m decls)
+  |> String.concat ""
+
+(* Deciding a default group reads each member's body once per entry to find the
+   declaration that carries that entry's property. The number of entries and the
+   length of a body both grow with the shared property count, and so does the
+   number of groups examined, so a per-declaration allocation inside that lookup
+   makes the whole search cubic in [props]. Building only the lists the search
+   keeps leaves it quadratic: doubling [props] must stay well below the cubic
+   8x. *)
+let default_factoring_lookup_is_subcubic () =
+  let work props () =
+    dense_default_sheet ~members:8 ~props
+    |> rules |> Rule_graph.of_rules
+    |> Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id
+  in
+  let a1 = measure (work 16) in
+  let a2 = measure (work 32) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x shared properties)" a1 a2
+       (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 5.5)
+
 let suite =
   ( "rule_candidate",
     [
@@ -256,4 +301,6 @@ let suite =
         nested_merge_reads_a_slot_as_a_multiset;
       Alcotest.test_case "nested-merge safety reads each block once" `Quick
         nested_merge_safety_reads_each_block_once;
+      Alcotest.test_case "default factoring lookup is subcubic" `Quick
+        default_factoring_lookup_is_subcubic;
     ] )
