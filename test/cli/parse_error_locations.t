@@ -43,5 +43,9 @@ import URL's span.
   > .ok { color: red }
   > EOF
   $ cascade --minify bad-media.css 2>&1 | grep -E "warning|color" | head
-  warning: bad-media.css: bad condition for @media: expected media-in-parens at [21-32] (in at-rule)
+  warning: bad-media.css: bad condition for @media: expected media-in-parens at [22-27] (in at-rule)
+  warning: @import url("a.css") (bogus !!!);
+  warning: .ok { color: red }
+  warning: 
+  warning:                       ^^^^^
   .ok{color:red}

@@ -68,11 +68,12 @@ answers.
 
 ### Parsing
 
-- An error inside an at-rule condition points at the slice of the query
-  that failed. `@container style()` faulted the whole rule at the end of
-  the file, so the caret sat past the last byte and the snippet opened
-  mid-word. `Css.Container.of_string` raises `Cursor.Parse_error`, which
-  carries that span, where it raised `Failure` (#496)
+- An error inside an at-rule condition points at the slice of the query that
+  failed, where it landed at the end of the file with the caret past the last
+  byte and the snippet opening mid-word. The readers take the cursor
+  (`Css.Container.read`, `Css.Media.read`, replacing `of_components`) and raise
+  `Cursor.Parse_error`, which carries the span, where they raised `Failure`
+  (#496, #497)
 - Everything the parser repaired or dropped is reported, so strict mode
   rejects it. `@media screen {` swallowed the rest of the file and still
   returned `Ok` with no warnings, hiding a truncated stylesheet (#484)

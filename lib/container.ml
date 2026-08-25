@@ -734,7 +734,7 @@ let atom_of_components t components =
           match single_feature_of_media media with
           | Some f -> Feature_query f
           | None -> err t components "not a container feature query")
-      | exception Failure _ -> specific_of_components t stripped)
+      | exception Error.Parse_error _ -> specific_of_components t stripped)
 
 let rec unnamed_of_components t components =
   let components = trim_components components in

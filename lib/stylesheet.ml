@@ -1846,11 +1846,7 @@ let read_import_media (r : Cursor.t) : Media.t option =
     if starts_with_import_keyword components then
       Error.fail_bad_condition loc ~at_rule:"@media"
         ~reason:"layer()/supports() must precede the media query, and once only"
-    else
-      match Media.of_components ~recover:false components with
-      | media -> Some media
-      | exception Failure reason ->
-          Error.fail_bad_condition loc ~at_rule:"@media" ~reason
+    else Some (Media.read ~recover:false (Cursor.sub r components))
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
@@ -3363,11 +3359,11 @@ let read_supports_condition (r : Cursor.t) : statement =
 
 let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 
-let read_nested_media_condition components =
-  if Cursor.of_components components |> Cursor.is_done then Media.List []
+let read_nested_media_condition t =
+  if Cursor.is_done t then Media.List []
   else
-    try Media.of_components ~recover:false components
-    with Failure _ -> Media.of_string "not all"
+    try Media.read ~recover:false t
+    with Error.Parse_error _ -> Media.of_string "not all"
 
 let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
@@ -3657,14 +3653,11 @@ and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
   let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
-    if Cursor.of_components condition_components |> Cursor.is_done then
-      Media.List []
-    else
-      try Media.of_components ~recover:false condition_components
-      with Failure reason ->
-        Cursor.err_invalid r ("invalid @media condition: " ^ reason)
+    if Cursor.is_done query then Media.List []
+    else Media.read ~recover:false query
   in
   Media (condition, content)
 
@@ -3847,9 +3840,9 @@ and read_nested_supports_rule r =
   Supports (supports_condition ~loc:cond_loc condition, content)
 
 and read_nested_media_rule r =
-  let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-  Media (read_nested_media_condition condition_components, content)
+  Media (read_nested_media_condition query, content)
 
 and read_nested_scope_rule r =
   let prelude_components = Cursor.drain_until_block r in

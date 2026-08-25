@@ -229,10 +229,13 @@ let err_expected_but_eof t what =
 
 let err_unexpected t = err t "unexpected token"
 
-let err_condition t ~at_rule reason =
-  raise_sort t Sort.At_rule
+let condition_error t ~at_rule reason =
+  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
+  Error.v ?source ~loc:(position t) ~sort:Sort.At_rule
     (Error.Bad_condition { at_rule; reason })
-    (position t)
+
+let err_condition t ~at_rule reason =
+  Error.fail (condition_error t ~at_rule reason)
 
 let with_context _t label f = Error.with_context label f
 
