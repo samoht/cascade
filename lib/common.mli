@@ -39,6 +39,20 @@ module String : sig
       lowercase ASCII letters, digits, [-] and [_]; otherwise it is
       [Stdlib.String.lowercase_ascii s]. CSS identifiers are overwhelmingly in
       that set, so this avoids the [Bytes.map] allocation for them. *)
+
+  val utf8_length : ?pos:int -> ?len:int -> string -> int
+  (** [utf8_length s] counts the Unicode scalar values of [s], or of its [len]
+      bytes from [pos], each malformed byte sequence counting as one. *)
+
+  val utf8_lead_before : string -> int -> int
+  (** [utf8_lead_before s i] moves [i] back to the lead byte of the UTF-8
+      sequence it falls inside, by at most the three continuation bytes a
+      sequence holds, so bytes that are not UTF-8 leave [i] where it was.
+      Slicing [s] at the result never splits a code point. *)
+
+  val utf8_lead_after : string -> int -> int
+  (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
+      inside, on the same terms as {!utf8_lead_before}. *)
 end
 
 val mix_int : int -> int -> int

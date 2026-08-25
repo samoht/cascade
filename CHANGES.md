@@ -519,6 +519,12 @@ answers.
   was sliced on byte offsets, so a long multibyte class name opened the snippet
   inside a code point and the line came out starting with a replacement
   character (#472)
+- `Cascade.Reader.parse_error` reports the line and column of the failing byte
+  from a forward scan and counts its caret in characters. The walk ran
+  backwards from the error and reset the column at each newline, so it counted
+  the line before the error and stopped one column short at end of input, and
+  the caret was a byte count under a window that could open inside a code
+  point (#477)
 
 ### CLI tools
 

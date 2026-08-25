@@ -76,6 +76,32 @@ module String = struct
 
   let lowercase_ascii_preserve s =
     if is_ascii_lower_or_digit s then s else Stdlib.String.lowercase_ascii s
+
+  let utf8_length ?pos ?len s =
+    Uutf.String.fold_utf_8 ?pos ?len (fun n _ _ -> n + 1) 0 s
+
+  (* A UTF-8 continuation byte, [10xxxxxx]: an index sitting on one is inside a
+     sequence rather than at its start. *)
+  let continuation s i = Char.code s.[i] land 0xc0 = 0x80
+
+  (* Walk out of a sequence by no more than the three continuation bytes one can
+     hold, so bytes that are not UTF-8 to begin with leave the index where it
+     was rather than running off. *)
+  let utf8_lead_before s i =
+    let n = length s in
+    let rec go i room =
+      if room = 0 || i <= 0 || i >= n || not (continuation s i) then i
+      else go (i - 1) (room - 1)
+    in
+    go i 3
+
+  let utf8_lead_after s i =
+    let n = length s in
+    let rec go i room =
+      if room = 0 || i >= n || not (continuation s i) then i
+      else go (i + 1) (room - 1)
+    in
+    go i 3
 end
 
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
