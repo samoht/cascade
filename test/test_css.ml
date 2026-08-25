@@ -62,6 +62,14 @@ let optimization_flag () =
   let css_optimized = minify stylesheet in
   Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
+let nonempty_declaration_lists () =
+  Alcotest.check_raises "box-shadow list"
+    (Invalid_argument "box_shadows: empty list") (fun () ->
+      ignore (box_shadows []));
+  Alcotest.check_raises "font-family list"
+    (Invalid_argument "font_families: empty list") (fun () ->
+      ignore (font_families []))
+
 (* Test layers work end-to-end *)
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
@@ -1673,6 +1681,8 @@ let suite =
       (* Integration tests using public Css interface only *)
       Alcotest.test_case "CSS generation end-to-end" `Quick generation;
       Alcotest.test_case "optimization flag works" `Quick optimization_flag;
+      Alcotest.test_case "non-empty declaration lists" `Quick
+        nonempty_declaration_lists;
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
