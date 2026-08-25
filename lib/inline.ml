@@ -455,18 +455,18 @@ and keep_wrapper ~kept visible ~visited original fallback =
                 };
             ])
 
+(* The property is carried through as the tag [decl] already holds, never as its
+   rendered name: [Declaration.property_name] minifies, and [page-break-*]
+   minifies to the CSS Fragmentation 3 sec. 3.4 [break-*] alias of a different
+   property. *)
 let declaration_with_components decl components : Declaration.declaration option
     =
-  let property = Declaration.property_name decl in
   let value =
     Parser.to_string_custom_minified ~fold_ident:Values.fold_custom_value_ident
       components
   in
   if String.trim value = "" then None
   else
-    let important =
-      if Declaration.is_important decl then "!important" else ""
-    in
     let has_string =
       components_contain (function
         | { kind = Token.String _; _ } -> true
@@ -477,20 +477,20 @@ let declaration_with_components decl components : Declaration.declaration option
         | { kind = Token.Comma; _ } -> true
         | _ -> false)
     in
-    let opaque () =
-      let fallback =
-        Declaration.v (Properties.Unknown_property property)
-          (Cursor.remaining (Cursor.of_string value))
-      in
-      Some
-        (if Declaration.is_important decl then Declaration.important fallback
-         else fallback)
+    (* [font-family] reaches here typed or, when its value never parsed as one,
+       as the unknown property of that name; both are the same property. *)
+    let is_font_family =
+      match Declaration.property_key decl with
+      | Declaration.Key Properties.Font_family -> true
+      | Declaration.Key (Properties.Unknown_property name) ->
+          String.equal name "font-family"
+      | _ -> false
     in
-    let source = String.concat "" [ property; ":"; value; important ] in
-    match Declaration.read (Cursor.of_string source) with
+    let opaque () = Some (Declaration.with_opaque_value decl value) in
+    match Declaration.with_value decl value with
     | decl -> Some decl
     | exception Cursor.Parse_error _ ->
-        if property = "font-family" && has_string components then opaque ()
+        if is_font_family && has_string components then opaque ()
         else if has_comma components then None
         else opaque ()
 

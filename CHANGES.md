@@ -429,6 +429,11 @@ answers.
 
 ### Custom properties
 
+- A `page-break-before`, `page-break-after` or `page-break-inside` declaration
+  survives `Css.inline_vars` as itself. Substituting a `var()` rebuilt the
+  declaration from its minified name, which for these three is the `break-*`
+  alias of a different property, so `page-break-inside` came back as
+  `break-inside` with a value that property does not accept (#506)
 - `Css.inline_vars` stays linear in at-rule nesting depth. Each of its four
   walks rebuilt the enclosing `@media`/`@layer`/`@supports` chain at every
   level, which cost 6.4% of the instructions on real stylesheets (#481)
