@@ -3428,6 +3428,96 @@ let simplify_lengths_value ~layer_order ?layer ctx length_ctx value =
           | _ -> [ simplify_one (Values.Var var) ]))
   | _ -> List.map simplify_one value
 
+(* Every kind resolves the same way - simplify the value in context, then let a
+   css-wide keyword in the result take over - so the simplifier and the css-wide
+   reader are all that vary. Keeping them in one total table is what makes a new
+   kind a compile error rather than a value that falls through unsimplified. *)
+let kind_simplifier : type a.
+    layer_order:string list ->
+    ?layer:string ->
+    t ->
+    a Properties.property_value_kind ->
+    (a -> a) * (a -> css_wide_keyword option) =
+ fun ~layer_order ?layer ctx kind ->
+  let length_ctx = Length.of_t ctx in
+  match kind with
+  | Properties.Length ->
+      (Length.simplify ~layer_order ?layer ctx length_ctx, css_wide_of_length)
+  | Properties.Lengths ->
+      ( simplify_lengths_value ~layer_order ?layer ctx length_ctx,
+        css_wide_of_length_list )
+  | Properties.Length_percentage ->
+      ( simplify_length_percentage ~layer_order ?layer ctx length_ctx,
+        css_wide_of_length_percentage )
+  | Properties.Border_width ->
+      ( simplify_border_width ~layer_order ?layer ctx length_ctx,
+        css_wide_of_border_width )
+  | Properties.Border_widths ->
+      ( List.map (simplify_border_width ~layer_order ?layer ctx length_ctx),
+        css_wide_of_border_widths )
+  | Properties.Font_size ->
+      ( simplify_font_size ~layer_order ?layer ctx length_ctx,
+        css_wide_of_font_size )
+  | Properties.Translate ->
+      ( simplify_translate_value ~layer_order ?layer ctx length_ctx,
+        css_wide_of_translate_value )
+  | Properties.Transform ->
+      ( List.map (simplify_transform ~layer_order ?layer ctx length_ctx),
+        css_wide_of_transforms )
+  | Properties.Filter ->
+      (simplify_filter ~layer_order ?layer ctx length_ctx, css_wide_of_filter)
+  | Properties.Shadow ->
+      (simplify_shadow ~layer_order ?layer ctx length_ctx, css_wide_of_shadow)
+  | Properties.Border_radius ->
+      ( simplify_border_radius ~layer_order ?layer ctx length_ctx,
+        css_wide_of_border_radius )
+  | Properties.Opacity ->
+      (simplify_opacity ~layer_order ?layer ctx, css_wide_of_opacity)
+  | Properties.Rotate ->
+      (simplify_rotate_value ~layer_order ?layer ctx, css_wide_of_rotate_value)
+  | Properties.Duration ->
+      (simplify_duration ~layer_order ?layer ctx, css_wide_of_duration)
+  | Properties.Display ->
+      (simplify_display ~layer_order ?layer ctx, css_wide_of_display)
+  | Properties.Position ->
+      (simplify_position ~layer_order ?layer ctx, css_wide_of_position)
+  | Properties.Visibility ->
+      (simplify_visibility ~layer_order ?layer ctx, css_wide_of_visibility)
+  | Properties.Clear ->
+      (simplify_clear ~layer_order ?layer ctx, css_wide_of_clear)
+  | Properties.Float ->
+      (simplify_float_side ~layer_order ?layer ctx, css_wide_of_float_side)
+  | Properties.Number_percentage ->
+      (simplify_number_percentage ~layer_order ?layer ctx, fun _ -> None)
+  | Properties.Scale ->
+      (simplify_scale ~layer_order ?layer ctx, css_wide_of_scale)
+  | Properties.Animation ->
+      let duration = simplify_duration ~layer_order ?layer ctx in
+      ( List.map (simplify_animation_item ~layer_order ?layer ctx duration),
+        css_wide_of_animations )
+  | Properties.Transition ->
+      let duration = simplify_duration ~layer_order ?layer ctx in
+      ( List.map (simplify_transition_item ~layer_order ?layer ctx duration),
+        css_wide_of_transitions )
+  | Properties.Color ->
+      (simplify_color ~layer_order ?layer ctx, css_wide_of_color)
+  | Properties.Colors ->
+      (List.map (simplify_color ~layer_order ?layer ctx), css_wide_of_colors)
+  | Properties.Animation_name ->
+      (simplify_animation_name ~layer_order ?layer ctx, fun _ -> None)
+  | Properties.Background ->
+      (List.map (simplify_background ~layer_order ?layer ctx), fun _ -> None)
+  | Properties.Background_image ->
+      ( simplify_background_image ~layer_order ?layer ctx,
+        css_wide_of_background_image )
+  | Properties.Background_images ->
+      ( List.map (simplify_background_image ~layer_order ?layer ctx),
+        css_wide_of_background_images )
+  | Properties.Font_src ->
+      (simplify_font_src ~layer_order ?layer ctx, fun _ -> None)
+  | Properties.Font_family ->
+      (simplify_font_family ~layer_order ?layer ctx, css_wide_of_font_family)
+
 let rec eval_typed ?layer_order ?layer ctx decl =
   let ctx = scope ?layer_order ?layer ctx in
   let layer_order = ctx.layer_order in
@@ -3469,154 +3559,8 @@ and eval_kind : type a.
     a ->
     Declaration.declaration =
  fun ~layer_order ?layer ctx kind property important value ->
-  let length_ctx = Length.of_t ctx in
-  let resolve s c =
-    resolve_typed ~layer_order ctx s c property important value
-  in
-  match kind with
-  | Properties.Length ->
-      resolve
-        (Length.simplify ~layer_order ?layer ctx length_ctx)
-        css_wide_of_length
-  | Properties.Lengths ->
-      resolve
-        (simplify_lengths_value ~layer_order ?layer ctx length_ctx)
-        css_wide_of_length_list
-  | Properties.Length_percentage ->
-      resolve
-        (simplify_length_percentage ~layer_order ?layer ctx length_ctx)
-        css_wide_of_length_percentage
-  | Properties.Border_width ->
-      resolve
-        (simplify_border_width ~layer_order ?layer ctx length_ctx)
-        css_wide_of_border_width
-  | Properties.Border_widths ->
-      resolve
-        (List.map (simplify_border_width ~layer_order ?layer ctx length_ctx))
-        css_wide_of_border_widths
-  | Properties.Font_size ->
-      resolve
-        (simplify_font_size ~layer_order ?layer ctx length_ctx)
-        css_wide_of_font_size
-  | Properties.Translate ->
-      resolve
-        (simplify_translate_value ~layer_order ?layer ctx length_ctx)
-        css_wide_of_translate_value
-  | Properties.Transform ->
-      resolve
-        (List.map (simplify_transform ~layer_order ?layer ctx length_ctx))
-        css_wide_of_transforms
-  | Properties.Filter ->
-      resolve
-        (simplify_filter ~layer_order ?layer ctx length_ctx)
-        css_wide_of_filter
-  | Properties.Shadow ->
-      resolve
-        (simplify_shadow ~layer_order ?layer ctx length_ctx)
-        css_wide_of_shadow
-  | Properties.Border_radius ->
-      resolve
-        (simplify_border_radius ~layer_order ?layer ctx length_ctx)
-        css_wide_of_border_radius
-  | kind ->
-      eval_kind_other ~layer_order ?layer ctx kind property important value
-
-and eval_kind_other : type a.
-    layer_order:string list ->
-    ?layer:string ->
-    t ->
-    a Properties.property_value_kind ->
-    a Properties.property ->
-    bool ->
-    a ->
-    Declaration.declaration =
- fun ~layer_order ?layer ctx kind property important value ->
-  let resolve s c =
-    resolve_typed ~layer_order ctx s c property important value
-  in
-  match kind with
-  | Properties.Opacity ->
-      resolve (simplify_opacity ~layer_order ?layer ctx) css_wide_of_opacity
-  | Properties.Rotate ->
-      resolve
-        (simplify_rotate_value ~layer_order ?layer ctx)
-        css_wide_of_rotate_value
-  | Properties.Duration ->
-      resolve (simplify_duration ~layer_order ?layer ctx) css_wide_of_duration
-  | Properties.Display ->
-      resolve (simplify_display ~layer_order ?layer ctx) css_wide_of_display
-  | Properties.Position ->
-      resolve (simplify_position ~layer_order ?layer ctx) css_wide_of_position
-  | Properties.Visibility ->
-      resolve
-        (simplify_visibility ~layer_order ?layer ctx)
-        css_wide_of_visibility
-  | Properties.Clear ->
-      resolve (simplify_clear ~layer_order ?layer ctx) css_wide_of_clear
-  | Properties.Float ->
-      resolve
-        (simplify_float_side ~layer_order ?layer ctx)
-        css_wide_of_float_side
-  | kind -> eval_kind_misc ~layer_order ?layer ctx kind property important value
-
-and eval_kind_misc : type a.
-    layer_order:string list ->
-    ?layer:string ->
-    t ->
-    a Properties.property_value_kind ->
-    a Properties.property ->
-    bool ->
-    a ->
-    Declaration.declaration =
- fun ~layer_order ?layer ctx kind property important value ->
-  let resolve s c =
-    resolve_typed ~layer_order ctx s c property important value
-  in
-  match kind with
-  | Properties.Number_percentage ->
-      let value = simplify_number_percentage ~layer_order ?layer ctx value in
-      Declaration.v ~important property value
-  | Properties.Scale ->
-      resolve (simplify_scale ~layer_order ?layer ctx) css_wide_of_scale
-  | Properties.Animation ->
-      let duration = simplify_duration ~layer_order ?layer ctx in
-      resolve
-        (List.map (simplify_animation_item ~layer_order ?layer ctx duration))
-        css_wide_of_animations
-  | Properties.Transition ->
-      let duration = simplify_duration ~layer_order ?layer ctx in
-      resolve
-        (List.map (simplify_transition_item ~layer_order ?layer ctx duration))
-        css_wide_of_transitions
-  | Properties.Color ->
-      resolve (simplify_color ~layer_order ?layer ctx) css_wide_of_color
-  | Properties.Colors ->
-      resolve
-        (List.map (simplify_color ~layer_order ?layer ctx))
-        css_wide_of_colors
-  | Properties.Animation_name ->
-      resolve (simplify_animation_name ~layer_order ?layer ctx) (fun _ -> None)
-  | Properties.Background ->
-      resolve
-        (List.map (simplify_background ~layer_order ?layer ctx))
-        (fun _ -> None)
-  | Properties.Background_image ->
-      resolve
-        (simplify_background_image ~layer_order ?layer ctx)
-        css_wide_of_background_image
-  | Properties.Background_images ->
-      resolve
-        (List.map (simplify_background_image ~layer_order ?layer ctx))
-        css_wide_of_background_images
-  | Properties.Font_src ->
-      resolve (simplify_font_src ~layer_order ?layer ctx) (fun _ -> None)
-  | Properties.Font_family ->
-      resolve
-        (simplify_font_family ~layer_order ?layer ctx)
-        css_wide_of_font_family
-  | _ ->
-      (* unreachable: handled by eval_kind / eval_kind_other *)
-      assert false
+  let simplify, css_wide_of = kind_simplifier ~layer_order ?layer ctx kind in
+  resolve_typed ~layer_order ctx simplify css_wide_of property important value
 
 and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name keyword
     =
