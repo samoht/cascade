@@ -410,6 +410,56 @@ let same_selector_commute_is_subquadratic () =
     true
     (a1 = 0. || a2 < a1 *. 3.)
 
+(* Selector compatibility is not transitive, so a run of same-body rules groups
+   only when EVERY pair in it agrees. [.y] pairs with both of the others and
+   they do not pair with each other, so the three never share a selector list
+   and the enumerator settles for the compatible subset. *)
+let grouping_respects_non_transitive_compatibility () =
+  let newer = ".x:user-valid{color:red}" in
+  let plain = ".y{color:red}" in
+  let guarded = ":is(:where(.group):hover .z){color:red}" in
+  Alcotest.(check string)
+    "newer groups with plain" ".x:user-valid,.y{color:red}"
+    (optimize_str (newer ^ plain));
+  Alcotest.(check string)
+    "plain groups with guarded" ".y,:is(:where(.group):hover .z){color:red}"
+    (optimize_str (plain ^ guarded));
+  Alcotest.(check string)
+    "newer never groups with guarded"
+    ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
+    (optimize_str (newer ^ guarded));
+  Alcotest.(check string)
+    "all three settle for the compatible subset"
+    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
+    (optimize_str (newer ^ plain ^ guarded))
+
+(* Every rule here carries the same body and a selector no other rule shares, so
+   the whole run lands in one identical-body bucket and grouping it asks about
+   all N(N-1)/2 pairs. Whether two selectors can share a selector list is
+   settled by two predicates read off each of them alone, so reading each
+   selector once is enough and the pair loop costs no allocation of its own:
+   doubling N may cost about twice as much, never the quadratic four times.
+
+   The [:where()] nodes hold no group or peer marker, so neither predicate stops
+   early and each pair pays a full walk of both selectors. Both runs stay above
+   the 128 nodes at which the enumerator drops its wider candidate kinds, so
+   what separates them is the pair loop alone. *)
+let identical_body_grouping_is_subquadratic () =
+  let sheet n =
+    List.init n
+      (Fmt.str ":where(.a,.b):where(.c,.d):where(.e,.f) .w%d{color:red}")
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 200))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 400))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.6)
+
 let suite =
   ( "rule_graph",
     [
@@ -463,4 +513,8 @@ let suite =
         second_specificity_costs_no_pair;
       Alcotest.test_case "same-selector commute is sub-quadratic" `Quick
         same_selector_commute_is_subquadratic;
+      Alcotest.test_case "grouping respects non-transitive compatibility" `Quick
+        grouping_respects_non_transitive_compatibility;
+      Alcotest.test_case "identical-body grouping is sub-quadratic" `Quick
+        identical_body_grouping_is_subquadratic;
     ] )
