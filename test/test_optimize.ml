@@ -2337,6 +2337,51 @@ let same_selector_merge_past_nested () =
         (min-width:1px){margin:2rem}}.a{color:red;@media \
         (min-width:2px){margin-top:3rem}}")
 
+(* Whether a nested body and a later declaration block share a slot reads the
+   same whichever of the two is asked about: a custom property overlaps the same
+   name and nothing else, [all] reaches every non-exempt slot, and a property
+   the footprint model cannot place reaches whatever it meets. Each of those is
+   stated over an ordered pair, so each is checked here from both ends. The
+   shorthand-against-longhand pair is above. *)
+let nested_merge_reads_the_slot_from_either_side () =
+  let of_string css =
+    match Css.of_string css with
+    | Ok p -> p.Css.stylesheet
+    | Error _ -> Alcotest.failf "could not parse %s" css
+  in
+  let canon css =
+    Css.Optimize.stylesheet (Css.statements (of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "a later write of the nested custom property blocks the merge"
+    ".a{color:red;&:hover{--x:2}}.a{--x:1}"
+    (canon ".a{color:red;&:hover{--x:2}}.a{--x:1}");
+  Alcotest.(check string)
+    "another custom property still merges" ".a{--y:1;color:red;&:hover{--x:2}}"
+    (canon ".a{color:red;&:hover{--x:2}}.a{--y:1}");
+  Alcotest.(check string)
+    "a custom property and a longhand share no slot"
+    ".a{color:red;padding:1rem;&:hover{--x:2}}"
+    (canon ".a{color:red;&:hover{--x:2}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "nor do they the other way round"
+    ".a{--x:1;color:red;&:hover{padding:2rem}}"
+    (canon ".a{color:red;&:hover{padding:2rem}}.a{--x:1}");
+  Alcotest.(check string)
+    "a nested all reset blocks the merge"
+    ".a{color:red;&:hover{all:unset}}.a{padding:1rem}"
+    (canon ".a{color:red;&:hover{all:unset}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "a nested unplaceable name blocks the merge"
+    ".a{color:red;&:hover{unknown-thing:2}}.a{padding:1rem}"
+    (canon ".a{color:red;&:hover{unknown-thing:2}}.a{padding:1rem}");
+  Alcotest.(check string)
+    "and so does a later one"
+    ".a{color:red;&:hover{padding:2rem}}.a{unknown-thing:1}"
+    (canon ".a{color:red;&:hover{padding:2rem}}.a{unknown-thing:1}")
+
 (* A run of declarations written after a nested statement (CSS Nesting 1 sec.
    3.4) is a declaration list like any other, with nothing between two writes
    inside it, so the deduplication a rule body gets applies to it. *)
@@ -5632,6 +5677,8 @@ module Fuzz = struct
         fuzz_cascade_equivalent;
       Alcotest.test_case "same-selector merge past nested children" `Quick
         same_selector_merge_past_nested;
+      Alcotest.test_case "nested merge reads the slot from either side" `Quick
+        nested_merge_reads_the_slot_from_either_side;
       Alcotest.test_case "a nested declarations run is deduplicated" `Quick
         nested_declaration_run_dedupes;
       Alcotest.test_case "vendor pseudo-element list is split" `Quick

@@ -460,6 +460,37 @@ let identical_body_grouping_is_subquadratic () =
     true
     (a1 = 0. || a2 < a1 *. 2.6)
 
+(* Every rule here sits on one selector and carries a block of custom properties
+   no other rule names, half of them in a nested block, so deciding whether the
+   run can merge asks about all N(N-1)/2 pairs and not one short-circuits.
+   Whether a nested body commutes with a later declaration block is a question
+   about the slots each writes, and the relation reads the same from either
+   side: indexing the nested body once per rule and reading each block once for
+   the whole run leaves the pair loop no allocation of its own, so doubling N
+   may cost about twice as much, never the quadratic four times.
+
+   Both runs stay above the 128 nodes at which the enumerator drops its wider
+   candidate kinds, so what separates them is the pair loop alone. *)
+let nested_merge_safety_is_subquadratic () =
+  let block prefix i =
+    List.init 20 (fun k -> Fmt.str "--%s%d-%d:%d" prefix i k ((i * 20) + k))
+    |> String.concat ";"
+  in
+  let sheet n =
+    List.init n (fun i ->
+        Fmt.str ".q{%s;&:hover{%s}}" (block "o" i) (block "n" i))
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 200))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 400))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.6)
+
 let suite =
   ( "rule_graph",
     [
@@ -517,4 +548,6 @@ let suite =
         grouping_respects_non_transitive_compatibility;
       Alcotest.test_case "identical-body grouping is sub-quadratic" `Quick
         identical_body_grouping_is_subquadratic;
+      Alcotest.test_case "nested-merge safety is sub-quadratic" `Quick
+        nested_merge_safety_is_subquadratic;
     ] )
