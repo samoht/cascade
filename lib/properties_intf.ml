@@ -1,4 +1,18 @@
-(** Property type shared between properties.ml and properties.mli *)
+(** Property type shared between properties.ml and properties.mli.
+
+    {2 Keyword constructors}
+
+    A CSS keyword carries its own name as a constructor in every value type
+    whose grammar admits it: [None] for [none], [Auto] for [auto], [Normal] for
+    [normal]. A new value type follows the same rule, so the name stays shared
+    rather than prefixed with the property it belongs to.
+
+    The expected type selects among them. An argument to a property setter
+    ([Css.display None]), an annotated binding ([let d : Css.display = None]),
+    an annotated parameter and a [match] on a scrutinee that already has a type
+    all resolve without warning 41. A binding with no expected type
+    ([let d = None]) and a [function] whose argument type comes from its own
+    branches do not; annotate the binding or the parameter there. *)
 
 open Values
 
