@@ -183,11 +183,6 @@ let rec facts_conflict index = function
    order they are replayed in cannot then be observed. *)
 let facts_commute_with index left = not (facts_conflict index left)
 
-let decl_facts_commute left right =
-  match (left, right) with
-  | [], _ | _, [] -> true
-  | _ -> facts_commute_with (index_facts right) left
-
 let rule_eligible (r : rule) =
   r.nested = [] && r.merge_key = Option.None
   && (not (contains_vendor_pseudo_element r.selector))
@@ -236,21 +231,32 @@ let same_selector_eligible (r : rule) =
 
 (* [rules] in source order: whether a declaration ends up ahead of a nested
    block it followed is a question about where the two were written, and the
-   merge order below answers a different one. *)
+   merge order below answers a different one.
+
+   [decl_facts_conflict] is symmetric - every arm of the overlap relation under
+   it is spelled both ways round - so either side of a commute test can be the
+   indexed one. The nested body is the side worth indexing: it is read once per
+   rule rather than once per rule facing it, and each declaration block is read
+   once for the whole run rather than once per nested block ahead of it. The
+   scan first is what keeps a run carrying no nested block, the common one, from
+   reading a body at all. *)
 let nested_merge_is_safe (rules : rule list) =
+  let rec nested_ahead = function
+    | [] | [ _ ] -> false
+    | (r : rule) :: rest -> r.nested <> [] || nested_ahead rest
+  in
   let rec go = function
     | [] | [ _ ] -> true
-    | (r : rule) :: rest -> (
+    | ((r : rule), _) :: rest -> (
         match nested_decl_facts [] r.nested with
         | [] -> go rest
         | nested ->
-            List.for_all
-              (fun (later : rule) ->
-                decl_facts_commute nested (decl_facts later.declarations))
-              rest
+            let index = index_facts nested in
+            List.for_all (fun (_, facts) -> facts_commute_with index facts) rest
             && go rest)
   in
-  go rules
+  (not (nested_ahead rules))
+  || go (List.map (fun (r : rule) -> (r, decl_facts r.declarations)) rules)
 
 let identical_body_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = Option.None

@@ -401,11 +401,11 @@ answers.
   4000-rule sheet to 51% of the allocations and 37% of the instructions
   (#468)
 - `--minify` merges a long run of rules on one selector in less time and
-  memory, for byte-identical output. Deciding whether two declaration blocks
-  can be reordered walked one block once per declaration of the other, and the
-  run rebuilt every block it compared; indexing each block once by the slots it
-  writes cuts 400 same-selector rules of 20 declarations to 4% of the
-  allocations and 12% of the instructions (#480)
+  memory, for byte-identical output. Deciding whether two blocks can be
+  reordered rebuilt and re-walked a body once per pair, both between two
+  declaration runs and between a nested block and the declarations that would
+  move past it; indexing each body once by the slots it writes leaves 4% of
+  the allocations either way (#480, #487)
 - `--minify` groups a long run of same-body rules in less memory, for
   byte-identical output. Whether the run can share one selector list was asked
   of every pair of it, though the answer is read off each selector alone;
