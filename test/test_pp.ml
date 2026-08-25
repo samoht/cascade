@@ -57,6 +57,17 @@ let list_case () =
   let result = Pp.to_string ~minify:true pp_list [ "single" ] in
   check string "single item" "single" result
 
+let list_wrap_separator_case () =
+  let pp_list threshold =
+    Pp.list_wrap ~threshold ~sep:Pp.semicolon ~wrap_indent:2 Pp.string
+  in
+  check string "pretty separator" "a;b;c"
+    (Pp.to_string ~minify:false (pp_list 80) [ "a"; "b"; "c" ]);
+  check string "wrapped separator" "a;\n  bb"
+    (Pp.to_string ~minify:false (pp_list 3) [ "a"; "bb" ]);
+  check string "minified separator" "a;b;c"
+    (Pp.to_string ~minify:true (pp_list 3) [ "a"; "b"; "c" ])
+
 let float_case () =
   (* Basic floats *)
   check_float 3.14159 ~expected:"3.14159";
@@ -269,6 +280,7 @@ let suite =
       Alcotest.test_case "indent" `Quick indent_case;
       Alcotest.test_case "block" `Quick block_case;
       Alcotest.test_case "list" `Quick list_case;
+      Alcotest.test_case "list wrap separator" `Quick list_wrap_separator_case;
       Alcotest.test_case "float" `Quick float_case;
       Alcotest.test_case "float leading zero" `Quick float_leading_zero;
       Alcotest.test_case "float negative leading zero" `Quick
