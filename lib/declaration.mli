@@ -138,7 +138,8 @@ val read : Cursor.t -> t
 
 val of_string : string -> declaration
 (** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
-    Raises [Failure] if [s] is not a valid declaration. *)
+    Raises {!Cursor.exception-Parse_error}, anchored on the offending text, when
+    [s] is not a valid declaration. *)
 
 val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)

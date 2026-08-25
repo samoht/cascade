@@ -2371,9 +2371,13 @@ let read_block t =
   Cursor.braces (fun inner -> read_declarations inner) t
 
 let of_string s =
-  match read_declaration (Cursor.of_string s) with
+  let r = Cursor.of_string s in
+  match read_declaration r with
   | Some d -> d
-  | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
+  (* [read_declaration] answers [None] for text a declaration cannot start with,
+     which here is the whole input: report it where the reader stopped rather
+     than as a second, position-free exception. *)
+  | None -> Cursor.err_expected r "a declaration"
 
 (* The declaration [property] and [value] name, as the tokens they are. The name
    is one [<ident-token>] by construction and the value is parsed on its own, so
