@@ -1450,11 +1450,37 @@ let test_no_comments_in_output buf =
       check "lenient-minified" (Css.to_string ~minify:true parsed.stylesheet);
       check "lenient-pretty" (Css.to_string ~minify:false parsed.stylesheet)
 
+(* Every warning kind but one names something lenient mode repairs: a rejected
+   value or selector is dropped, an unterminated node is closed, so the repair
+   is done once and the reparse is silent. [Unknown_at_rule] names no defect.
+   CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its at-keyword, and sec.
+   5.5.2 keeps the block it consumes, so an at-keyword cascade has no handler
+   for is well-formed CSS carrying no grammar cascade knows - discarding it is
+   the user agent's step (CSS 2.1 sec. 4.2), and a transform that took it would
+   delete every construct newer than its own vocabulary. There is no repair that
+   both keeps the at-rule and clears the notice, because the notice is about the
+   name and the name is the data. So it recurs on every reparse by design, and
+   the two properties below, which measure repair, read it apart from the kinds
+   that do report one. *)
+let is_unknown_at_keyword (err : Error.t) =
+  match err.Error.kind with Error.Unknown_at_rule _ -> true | _ -> false
+
+(* Count them rather than name them: an at-keyword's spelling is not stable
+   across a roundtrip, since a source byte outside ASCII comes back as the hex
+   escape for the code point it denotes, exactly as a selector's does ([.\xb5x]
+   serialises to [.\b5 x]). Serialisation splitting one at-rule in two, or
+   minting one the input never held, still moves the count. *)
+let unknown_at_rule_count warnings =
+  List.length (List.filter is_unknown_at_keyword warnings)
+
 (* Lenient output is strict-parseable: after lenient recovery, the serialized
    stylesheet must be acceptable to strict mode. This is the "best-minifier"
-   guarantee: feed lenient any garbage, get clean spec-compliant CSS out.
-   Equivalent to [recovery is total] above via the dual-mode invariant, but
-   stated directly in terms of strict acceptance. *)
+   guarantee: feed lenient any garbage, get clean spec-compliant CSS out. The
+   one thing strict may still reject is an at-keyword it had no handler for on
+   the way in, which lenient carried through rather than deleting. Strict stops
+   at the first warning, so an unrecognised at-rule sitting ahead of a real
+   defect hides it here; [recovery is total] below reads the whole warning list
+   and fails on that case. *)
 let test_lenient_output_strict_parseable buf =
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
@@ -1462,6 +1488,10 @@ let test_lenient_output_strict_parseable buf =
       let serialized = Css.to_string ~minify:true parsed.stylesheet in
       match Css.of_string ~strict:true serialized with
       | Ok _ -> ()
+      | Error err
+        when is_unknown_at_keyword err
+             && unknown_at_rule_count parsed.warnings > 0 ->
+          ()
       | Error err ->
           failf
             "lenient output is not strict-parseable: lenient cleaned %S to %S \
@@ -1469,9 +1499,13 @@ let test_lenient_output_strict_parseable buf =
             buf serialized
             (Cascade.Error.to_string err))
 
-(* Recovery is total: after lenient parse, the recovered AST is clean - so
-   re-parsing its serialization in lenient mode must yield zero warnings.
-   Otherwise the parser kept invalid material inside the AST. *)
+(* Recovery is total: after lenient parse, everything the recovered AST still
+   holds is material cascade can read back, so re-parsing its serialization in
+   lenient mode reports no repairable defect. A warning of any other kind means
+   the parser kept invalid material inside the AST and laundered the error
+   through the serializer instead of fixing it. The unrecognised at-rules that
+   do recur must be ones the input already carried: minting one is the same bug
+   wearing the exempt kind. *)
 let test_lenient_recovery_is_total buf =
   match Css.of_string ~strict:false buf with
   | Error _ -> ()
@@ -1485,11 +1519,24 @@ let test_lenient_recovery_is_total buf =
             serialized
             (Cascade.Error.to_string err)
       | Ok reparsed ->
-          if reparsed.Css.warnings <> [] then
+          let defects =
+            List.filter
+              (fun w -> not (is_unknown_at_keyword w))
+              reparsed.Css.warnings
+          in
+          if defects <> [] then
             failf
               "lenient recovery is not total: recovered AST re-serialized to \
-               CSS that still emits warnings: %S -> %S"
-              buf serialized)
+               CSS that still emits warnings: %S -> %S (%s)"
+              buf serialized
+              (String.concat "; " (List.map Cascade.Error.to_string defects));
+          let carried = unknown_at_rule_count parsed.warnings in
+          let reported = unknown_at_rule_count reparsed.Css.warnings in
+          if reported > carried then
+            failf
+              "lenient recovery is not total: serialization turned %d \
+               unrecognised at-rule(s) into %d: %S -> %S"
+              carried reported buf serialized)
 
 (* Strict output reparses strictly: if [Css.of_string ~strict:true] accepted the
    input, the serialized output must also be strict-accepted (no new warnings
@@ -1781,7 +1828,7 @@ let recovery_cases =
       test_strict_output_reparses_strictly;
     test_case "optimize preserves strict-validity" [ bytes ]
       test_optimize_preserves_strict_validity;
-    test_case "lenient recovery is total: re-serialize yields no warnings"
+    test_case "lenient recovery is total: re-serialize repairs nothing further"
       [ bytes ] test_lenient_recovery_is_total;
     test_case "lenient output is strict-parseable" [ bytes ]
       test_lenient_output_strict_parseable;

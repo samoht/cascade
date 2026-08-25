@@ -68,6 +68,52 @@ let test_merge_media_combines_same_condition () =
      String.iter (fun c -> if c = '@' then incr media_count) out;
      !media_count = 1)
 
+(* CSS Conditional Rules 5 sec. 5: a [@container] rule applies when its
+   container name and query both match, so two adjacent rules sharing both
+   evaluate identically and merge. A [style()] query is one query whatever it
+   spells, values and ranges included. *)
+let test_merge_containers_by_condition () =
+  let merged condition =
+    let css =
+      String.concat ""
+        [
+          "@container ";
+          condition;
+          "{.a{color:red}}@container ";
+          condition;
+          "{.b{color:blue}}";
+        ]
+    in
+    Block.merge_consecutive_containers ~optimize_merged_block:id (block css)
+  in
+  List.iter
+    (fun (name, condition) ->
+      Alcotest.(check int)
+        (name ^ ": adjacent same-condition @container blocks merge into one")
+        1
+        (List.length (merged condition)))
+    [
+      ("size query", "(min-width: 100px)");
+      ("boolean style query", "style(--x)");
+      ("style declaration query", "style(--x: 1)");
+      ("style range query", "style(1px < --w < 5px)");
+      ("compound style query", "style((--x: 1) and (--y: 2))");
+      ("named style query", "card style(--x: 1)");
+    ]
+
+(* Two style queries that ask different things gate different content, so they
+   stay two rules. *)
+let test_merge_containers_keeps_distinct_conditions () =
+  let stmts =
+    block
+      "@container style(--x: 1){.a{color:red}}@container style(--x: \
+       2){.b{color:blue}}"
+  in
+  Alcotest.(check int)
+    "@container blocks with different style queries stay separate" 2
+    (List.length
+       (Block.merge_consecutive_containers ~optimize_merged_block:id stmts))
+
 let test_drop_empty_rules () =
   let stmts = block ".a{}.b{color:red}.c{}" in
   let out = render (Block.drop_empty_rules stmts) in
@@ -166,6 +212,10 @@ let suite =
         test_merge_layers_combines_escaped_dot;
       Alcotest.test_case "merge same-condition @media" `Quick
         test_merge_media_combines_same_condition;
+      Alcotest.test_case "merge same-condition @container" `Quick
+        test_merge_containers_by_condition;
+      Alcotest.test_case "keep distinct-condition @container" `Quick
+        test_merge_containers_keeps_distinct_conditions;
       Alcotest.test_case "drop empty rules" `Quick test_drop_empty_rules;
       Alcotest.test_case "drop empty @-moz-document" `Quick
         test_drop_empty_moz_document;

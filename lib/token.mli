@@ -82,8 +82,16 @@ val equal_number_flag : number_flag -> number_flag -> bool
 val equal_bracket : bracket -> bracket -> bool
 (** [equal_bracket a b] tests bracket kinds for equality. *)
 
+val compare_bracket : bracket -> bracket -> int
+(** [compare_bracket a b] totally orders the bracket characters. *)
+
 val equal_kind : kind -> kind -> bool
 (** [equal_kind a b] tests token payloads for structural equality. *)
+
+val compare_kind : kind -> kind -> int
+(** [compare_kind a b] totally orders token payloads. A payload carries no
+    {!Loc.t}, so the order is over what the token spells, not where it was read.
+*)
 
 val v : kind:kind -> loc:Loc.t -> t
 (** [v ~kind ~loc] is a token with the given payload and location. *)

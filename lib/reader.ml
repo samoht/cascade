@@ -48,7 +48,7 @@ let pp_parse_error (err : parse_error) =
       let marker =
         if
           err.marker_pos > 0
-          && err.marker_pos <= String.length err.context_window
+          && err.marker_pos <= Common.String.utf8_length err.context_window
         then String.make err.marker_pos ' ' ^ "^"
         else
           (* Fallback if marker position is out of bounds *)
@@ -198,26 +198,35 @@ let callstack t = List.rev t.call_stack
 
 let context_window ?(before = 40) ?(after = 40) t =
   let pos = t.pos in
-  let start_pos = max 0 (pos - before) in
-  let end_pos = min t.len (pos + after) in
-  let before_text = String.sub t.input start_pos (pos - start_pos) in
-  let after_text = String.sub t.input pos (end_pos - pos) in
-  let context = before_text ^ after_text in
-  let marker_pos = String.length before_text in
+  (* [before] and [after] are target radiuses, not caps: a boundary that falls
+     inside a code point moves outward to the lead byte, widening the window by
+     up to three bytes a side. A window is a diagnostic, so keeping the sequence
+     whole outranks keeping the byte budget. *)
+  let start_pos =
+    Common.String.utf8_lead_before t.input (max 0 (pos - before))
+  in
+  let end_pos =
+    Common.String.utf8_lead_after t.input (min t.len (pos + after))
+  in
+  let context = String.sub t.input start_pos (end_pos - start_pos) in
+  let marker_pos =
+    Common.String.utf8_length ~pos:start_pos ~len:(pos - start_pos) t.input
+  in
   (context, marker_pos)
 
 (** Error helpers *)
 let err ?got t expected =
   let context, marker_pos = context_window t in
-  (* Calculate line and column numbers for better error reporting *)
+  (* Scan forward from the start of the input, so a newline ends the line it
+     sits on and the byte after it opens the next one at column 1. A column
+     counts Unicode scalar values, like the caret. *)
   let line, col =
-    let rec count_lines pos line col =
-      if pos <= 0 then (line, col)
-      else if pos >= String.length t.input then (line, col)
-      else if t.input.[pos] = '\n' then count_lines (pos - 1) (line + 1) 1
-      else count_lines (pos - 1) line (col + 1)
-    in
-    count_lines (t.pos - 1) 1 1
+    Uutf.String.fold_utf_8 ~len:t.pos
+      (fun (line, col) _ decoded ->
+        match decoded with
+        | `Uchar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
+        | `Uchar _ | `Malformed _ -> (line, col + 1))
+      (1, 1) t.input
   in
   let better_filename =
     "<CSS input>:" ^ string_of_int line ^ ":" ^ string_of_int col
@@ -618,7 +627,14 @@ let number ?(allow_negative = true) t =
     err_invalid t "negative values not allowed"
   else result
 
-let int t = int_of_float (number t)
+let int t =
+  let v = number t in
+  (* [float_of_int max_int] rounds up to 2^62, so bound on [float_of_int
+     min_int], which is exact, and its negation. *)
+  let low = float_of_int min_int in
+  if v < low || v >= -.low then err_invalid t "integer (out of range)"
+  else if Float.is_integer v then int_of_float v
+  else err_invalid t "integer (not a whole number)"
 
 let hex t =
   let buf = Buffer.create 6 in

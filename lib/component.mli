@@ -48,7 +48,12 @@ type declaration_body = { name : string; value : t list; important : bool }
 type declaration = declaration_body node
 
 val equal : t -> t -> bool
-(** [equal a b] tests component values for structural equality. *)
+(** [equal a b] tests component values for structural equality. Source locations
+    are provenance rather than value, so they are not compared. *)
+
+val compare : t -> t -> int
+(** [compare a b] totally orders component values, ignoring source locations
+    just as {!equal} does. *)
 
 val source_loc : t -> Loc.t
 (** [source_loc cv] is the source range spanned by [cv]. *)

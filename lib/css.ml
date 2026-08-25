@@ -663,14 +663,15 @@ and statement_for_inline ~live ~keep_layers statement =
   | statement -> [ map_statement_children inline_block statement ]
 
 (* Pure serialiser: walk the AST and emit CSS, no optimise/theme/inline-vars
-   rewriting. Spec recovery (drop invalid declarations, unknown at-rules, empty
-   rules) still applies - browsers discard those at parse, so it keeps the
-   output observationally equal to a fresh parse, not an optimisation. Compose
-   {!optimize}, {!resolve_theme}, {!inline_vars} upstream when needed. *)
+   rewriting. Spec recovery (drop invalid declarations, empty rules) still
+   applies - browsers discard those at parse, so it keeps the output
+   observationally equal to a fresh parse, not an optimisation. An at-rule with
+   no handler is not in that set: the browser ignoring it is a cascade step, and
+   a serialiser has no agent to be. Compose {!optimize}, {!resolve_theme},
+   {!inline_vars} upstream when needed. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
   let stylesheet =
-    stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
-    |> Optimize.drop_empty_rules
+    stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
   in
   Stylesheet.to_string ~minify ?indent ?lossless ?enforce_spec stylesheet
 
@@ -679,8 +680,7 @@ let pp = to_string
 (* Append the serialised stylesheet to [buf]. *)
 let to_buffer buf ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
   let stylesheet =
-    stylesheet |> Optimize.drop_invalid |> Optimize.drop_unknown_at_rules
-    |> Optimize.drop_empty_rules
+    stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
   in
   let pp ctx () = Stylesheet.pp_stylesheet ctx stylesheet in
   Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ()

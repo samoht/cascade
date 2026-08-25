@@ -231,12 +231,6 @@ type overlap_key = int
 let overlap_key_equal = Int.equal
 let overlap_key_compare = Int.compare
 let overlap_key_hash key = key land max_int
-let mix_int acc x = ((acc lsl 5) - acc) lxor x
-
-let hash_string s =
-  let hash = ref 0x811c9dc5 in
-  String.iter (fun c -> hash := mix_int !hash (Char.code c)) s;
-  !hash
 
 let overlap_key_of_name name =
   (* Hash collisions only add conservative ordering edges. They cannot make two
@@ -1175,6 +1169,14 @@ let declaration_is_broad decl =
   | Declaration { property = All; _ } -> true
   | Declaration { property = Unknown_property _; _ } -> true
   | _ -> false
+
+(* The name a custom property declaration writes, read through a theme guard. A
+   custom property overlaps the declarations writing that same name and nothing
+   else, so its name is its whole footprint. *)
+let custom_property_name decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = Custom_property name; _ } -> Some name
+  | _ -> None
 
 let display_value_is_vendor : Properties.display -> bool = function
   | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box

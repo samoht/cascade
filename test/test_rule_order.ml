@@ -206,6 +206,114 @@ let layer_blocks_stay_put () =
     (render (statements css))
     (canonical css)
 
+let redundant_layer_pin_folds () =
+  (* CSS Cascade 5 sec. 6.4.3: cascade layers are sorted by the order in which
+     they first are declared, so a pin gives its layer a position the very next
+     block would have given it anyway. Dropping it leaves the order alone, so
+     the two spellings are one sheet and the projection brings them together. *)
+  Alcotest.(check string)
+    "a pin the following block repeats folds away" "@layer a{x{color:red}}"
+    (canonical "@layer a;@layer a{x{color:red}}")
+
+let order_changing_layer_pin_is_kept () =
+  (* Sec. 6.4.3 read the other way: here the pins are the only thing putting [a]
+     before [b], since [b]'s block comes first. Dropping [@layer a;] reverses
+     the two layers and changes what the sheet renders, so it has to stay. The
+     [b] pin only repeats what [b]'s own block declares, so it goes. *)
+  let pinned =
+    "@layer a;@layer b;@layer b{x{color:red}}@layer a{y{color:blue}}"
+  in
+  let unpinned = "@layer b{x{color:red}}@layer a{y{color:blue}}" in
+  Alcotest.(check string)
+    "the pin that fixes the order stays"
+    "@layer a;@layer b{x{color:red}}@layer a{y{color:blue}}" (canonical pinned);
+  Alcotest.(check bool)
+    "pinned and unpinned sheets stay distinct" true
+    (canonical pinned <> canonical unpinned)
+
+let leading_layer_pins_matching_the_blocks_fold () =
+  (* The shape a generator writes: every layer named up front, then the blocks
+     in that same order. Sec. 6.4.3 has the blocks declare that order on their
+     own, so the whole pin goes. One name reads as needed only while a later one
+     is still there to be weighed against it, so the fold has to settle rather
+     than sweep once. *)
+  Alcotest.(check string)
+    "pins repeating the block order fold away"
+    "@layer a{x{color:red}}@layer b{y{color:blue}}"
+    (canonical "@layer a,b;@layer a{x{color:red}}@layer b{y{color:blue}}");
+  Alcotest.(check string)
+    "written as two statements they fold the same way"
+    "@layer a{x{color:red}}@layer b{y{color:blue}}"
+    (canonical "@layer a;@layer b;@layer a{x{color:red}}@layer b{y{color:blue}}");
+  Alcotest.(check bool)
+    "the reversed pin order is another sheet and stays" true
+    (canonical "@layer b,a;@layer a{x{color:red}}@layer b{y{color:blue}}"
+    <> canonical "@layer a{x{color:red}}@layer b{y{color:blue}}")
+
+let layer_pin_folds_one_name_not_the_statement () =
+  (* Sec. 6.4.4.2: [@layer a, b;] declares two layers in that order. Only [b]
+     repeats the order the blocks already give, so the statement survives with
+     [a] alone rather than going away whole, and the two spellings of the one
+     order project together. *)
+  Alcotest.(check string)
+    "only the redundant name leaves the pin"
+    "@layer a;@layer b{x{color:red}}@layer a{y{color:blue}}"
+    (canonical "@layer a,b;@layer b{x{color:red}}@layer a{y{color:blue}}")
+
+let layer_pin_names_are_ident_lists () =
+  (* Sec. 6.4.2: [a.b] is the sublayer [b] of [a] and declares [a] on the way,
+     so a pin naming [a] repeats what the sublayer block declares first. An
+     escaped dot makes one ident instead, a layer neither block declares, and
+     that pin is the whole of what puts that layer in the order. *)
+  Alcotest.(check string)
+    "a pin the sublayer block declares first folds away"
+    "@layer a.b{x{color:red}}"
+    (canonical "@layer a;@layer a.b{x{color:red}}");
+  Alcotest.(check bool)
+    "a pin naming an ident that holds a dot stays" true
+    (canonical "@layer a\\2e b;@layer a.b{x{color:red}}"
+    <> canonical "@layer a.b{x{color:red}}")
+
+let unblocked_layer_pin_is_kept () =
+  (* A pin whose layer never gets a block of its own is the only declaration of
+     that layer, and sec. 6.4.3 sorts it before every layer declared after it.
+     Dropping it would take a position out of the order. *)
+  Alcotest.(check string)
+    "a pin with no block of its own stays" "@layer a;@layer b{x{color:red}}"
+    (canonical "@layer a;@layer b{x{color:red}}")
+
+let layer_pin_over_conditional_declaration_is_kept () =
+  (* Sec. 6.4.3: a layer declared inside a conditional group rule contributes to
+     the order only when the condition holds, so what the [@media] puts between
+     the pin and the block cannot be read here. Without the pin the [@media] may
+     declare [a] first and push it before [b], so the pin stays. *)
+  let css =
+    "@layer a;@media print{@layer a{x{color:red}}}@layer \
+     b{y{color:blue}}@layer a{z{color:green}}"
+  in
+  Alcotest.(check string)
+    "a pin over an unreadable position stays"
+    (render (statements css))
+    (canonical css)
+
+let layer_pin_over_import_is_kept () =
+  (* Sec. 6.4.1: an [@import] with no layer keyword puts the imported sheet's
+     own layers into this order at that point, so the position between the pin
+     and the block is unknown here too. *)
+  let css = "@layer a;@import url(x.css);@layer a{y{color:red}}" in
+  Alcotest.(check string)
+    "a pin over an import stays"
+    (render (statements css))
+    (canonical css)
+
+let layer_pin_fold_is_idempotent () =
+  (* The projection is a projection: what it emits is already canonical. *)
+  let once =
+    canonical "@layer a,b;@layer b{x{color:red}}@layer a{y{color:blue}}"
+  in
+  Alcotest.(check string)
+    "projecting the projection changes nothing" once (canonical once)
+
 let block_with_layer_content_is_barrier () =
   (* A conditional block is only reorderable when its transitive content is
      plain rules; a nested [@layer] pins it in place. *)
@@ -398,6 +506,24 @@ let suite =
         overlapping_declarations_keep_order;
       Alcotest.test_case "logical border style keeps its place" `Quick
         logical_border_style_keeps_its_place;
+      Alcotest.test_case "redundant layer pin folds" `Quick
+        redundant_layer_pin_folds;
+      Alcotest.test_case "order-changing layer pin is kept" `Quick
+        order_changing_layer_pin_is_kept;
+      Alcotest.test_case "leading layer pins matching the blocks fold" `Quick
+        leading_layer_pins_matching_the_blocks_fold;
+      Alcotest.test_case "layer pin folds one name not the statement" `Quick
+        layer_pin_folds_one_name_not_the_statement;
+      Alcotest.test_case "layer pin names are ident lists" `Quick
+        layer_pin_names_are_ident_lists;
+      Alcotest.test_case "unblocked layer pin is kept" `Quick
+        unblocked_layer_pin_is_kept;
+      Alcotest.test_case "layer pin over conditional declaration is kept" `Quick
+        layer_pin_over_conditional_declaration_is_kept;
+      Alcotest.test_case "layer pin over import is kept" `Quick
+        layer_pin_over_import_is_kept;
+      Alcotest.test_case "layer pin fold is idempotent" `Quick
+        layer_pin_fold_is_idempotent;
       Alcotest.test_case "block with layer content is barrier" `Quick
         block_with_layer_content_is_barrier;
       Alcotest.test_case "nested conditionals participate" `Quick

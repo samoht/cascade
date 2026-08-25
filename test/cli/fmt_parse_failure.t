@@ -21,7 +21,7 @@ an error, stdout stays empty and the exit status is non-zero.
 The warnings that explain the drop are still reported.
 
   $ grep -c '^warning' err.txt
-  4
+  8
 
 A single rule whose value does not validate is the same case: the one
 rule is dropped and nothing is left to write.

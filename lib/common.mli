@@ -39,4 +39,37 @@ module String : sig
       lowercase ASCII letters, digits, [-] and [_]; otherwise it is
       [Stdlib.String.lowercase_ascii s]. CSS identifiers are overwhelmingly in
       that set, so this avoids the [Bytes.map] allocation for them. *)
+
+  val utf8_length : ?pos:int -> ?len:int -> string -> int
+  (** [utf8_length s] counts the Unicode scalar values of [s], or of its [len]
+      bytes from [pos], each malformed byte sequence counting as one. *)
+
+  val utf8_lead_before : string -> int -> int
+  (** [utf8_lead_before s i] moves [i] back to the lead byte of the UTF-8
+      sequence it falls inside, by at most the three continuation bytes a
+      sequence holds, so bytes that are not UTF-8 leave [i] where it was.
+      Slicing [s] at the result never splits a code point. *)
+
+  val utf8_lead_after : string -> int -> int
+  (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
+      inside, on the same terms as {!utf8_lead_before}. *)
+end
+
+val mix_int : int -> int -> int
+(** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)
+
+val hash_string : string -> int
+(** [hash_string s] hashes the bytes of [s] with {!mix_int}. Callers combine the
+    result with other hashes through {!mix_int}, so both sides of a bucket key
+    must come from the same pair of functions. *)
+
+(** Hash tables whose bindings are lists used as buckets. *)
+module Table : sig
+  module Make (H : Hashtbl.HashedType) : sig
+    include Hashtbl.S with type key = H.t
+
+    val push : 'a list t -> key -> 'a -> unit
+    (** [push tbl key value] prepends [value] to the list bound to [key], or
+        binds the singleton [[value]] when [key] is absent. *)
+  end
 end

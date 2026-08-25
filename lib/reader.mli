@@ -21,7 +21,11 @@ type parse_error = {
   marker_pos : int;
   callstack : string list;
 }
-(** Parse error information with structured details. *)
+(** Parse error information with structured details. {!field-position} is a byte
+    offset, {!field-filename} carries the 1-based line and column of that
+    offset, and {!field-marker_pos} counts the characters of
+    {!field-context_window} before it. A column is one Unicode scalar value, as
+    for {!context_window}. *)
 
 exception Parse_error of parse_error
 (** [Parse_error error] is raised on parse errors with structured debugging
@@ -67,9 +71,13 @@ val position : t -> int
 
 val context_window : ?before:int -> ?after:int -> t -> string * int
 (** [context_window ~before ~after t] returns [(context, marker_pos)] where
-    [context] is text around the current position and {!field-marker_pos}
-    indicates where in the context the current position is. Used for better
-    error messages. *)
+    [context] is text around the current position and {!field-marker_pos} counts
+    the characters of [context] before it. Used for better error messages.
+
+    A character is one Unicode scalar value, which a combining mark and a wide
+    glyph each make approximate on a terminal. [before] and [after] are target
+    radiuses rather than caps: a boundary falling inside a UTF-8 sequence moves
+    outward to the lead byte, so [context] is never a truncated code point. *)
 
 (** {1 Call Stack Management} *)
 
@@ -192,7 +200,8 @@ val number : ?allow_negative:bool -> t -> float
     rejects negative numbers. Default: true. *)
 
 val int : t -> int
-(** [int t] reads an integer. *)
+(** [int t] reads an integer. Raises Parse_error on a value with a fractional
+    part, such as [3.9], and on one outside the [int] range, such as [1e30]. *)
 
 val hex : t -> int
 (** [hex t] reads a hexadecimal number (without 0x prefix). *)

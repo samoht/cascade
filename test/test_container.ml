@@ -116,6 +116,61 @@ let test_compare () =
     "px < named" true
     (compare (Min_width_px 640) (Named ("x", Min_width_rem 24.)) < 0)
 
+(* A container condition means what it spells, not where it was written, so one
+   condition written twice compares equal wherever the source put it. *)
+let test_compare_ignores_source_position () =
+  let conditions css =
+    match Css.of_string css with
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        List.filter_map
+          (function
+            | Stylesheet.Container (_, condition, _) -> condition | _ -> None)
+          stylesheet
+  in
+  let pair condition =
+    conditions
+      (String.concat ""
+         [
+           "@container ";
+           condition;
+           "{.a{color:red}}@container ";
+           condition;
+           "{.b{color:blue}}";
+         ])
+  in
+  List.iter
+    (fun (name, condition) ->
+      match pair condition with
+      | [ first; second ] ->
+          Alcotest.(check int)
+            (name ^ ": one condition written twice compares equal")
+            0
+            (Css.Container.compare first second)
+      | got ->
+          Alcotest.failf "%s: expected two container conditions, got %d" name
+            (List.length got))
+    [
+      ("size query", "(min-width: 100px)");
+      ("boolean style query", "style(--x)");
+      ("style declaration query", "style(--x: 1)");
+      ("style range query", "style(1px < --w < 5px)");
+      ("compound style query", "style((--x: 1) and (--y: 2))");
+    ];
+  (* Ignoring source positions must not flatten the values themselves. *)
+  match
+    conditions
+      "@container style(--x: 1){.a{color:red}}@container style(--x: \
+       2){.b{color:blue}}"
+  with
+  | [ first; second ] ->
+      Alcotest.(check bool)
+        "style queries with different values stay distinct" true
+        (Css.Container.compare first second <> 0)
+  | got ->
+      Alcotest.failf "expected two container conditions, got %d"
+        (List.length got)
+
 let test_kind () =
   let open Css.Container in
   Alcotest.(check bool)
@@ -207,6 +262,8 @@ let tests =
       test_case "spec container query level 3 vectors" `Quick
         spec_container_l3_vectors;
       test_case "compare" `Quick test_compare;
+      test_case "compare ignores source position" `Quick
+        test_compare_ignores_source_position;
       test_case "kind" `Quick test_kind;
       test_case "spec container compare edges" `Quick
         test_spec_container_compare_edges;

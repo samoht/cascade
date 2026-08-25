@@ -65,6 +65,13 @@ answers.
 
 ### Parsing
 
+- Everything the parser repaired or dropped is reported, so strict mode
+  rejects it. `@media screen {` swallowed the rest of the file and still
+  returned `Ok` with no warnings, hiding a truncated stylesheet (#484)
+- `Reader.int` raises `Parse_error` on a number with a fractional part or one
+  outside the `int` range. It truncated `3.9` to `3` and answered `-1` for
+  `1e30`, `1e999` and `9223372036854775808`, `int_of_float` being undefined
+  past that range (#466)
 - `border-inline`, `border-inline-start`, `border-inline-end`,
   `border-block-start` and `border-block-end` keep their value. None of the five
   had a value reader, so the declaration was dropped with a warning and a file
@@ -176,6 +183,24 @@ answers.
   (#404)
 - `@page { @top-center { } }` no longer takes its `@page` with it. An empty
   margin box is elided on output, as an empty style rule already was (#405)
+- An at-rule cascade has no handler for reaches the output with its block
+  intact, where `cascade fmt` deleted it and every rule inside it without
+  saying so. CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its
+  at-keyword; discarding one is the user agent's step, and
+  `Optimize.drop_unknown_at_rules` serves a caller writing for a browser. A
+  string, url, function, bracket or comment the source stopped inside is closed
+  on the way in, so what is written back ends the at-rule instead of swallowing
+  its `;` or `}` (#469, #483)
+- A qualified rule whose prelude reads as a custom property, such as
+  `--x:hover { color: red }`, is reported when it is dropped, and
+  `Css.of_string ~strict:true` rejects it. CSS Syntax 3 sec. 5.5.3 makes the
+  shape invalid so that a `{}`-block inside a custom property value is never
+  misread as a rule; the drop itself was silent (#473)
+- `position-area` takes the logical `start`/`end` keywords along with their
+  `self-`, `self-x-`, `self-y-`, `self-block-` and `self-inline-` forms and
+  every `span-` spelling. css-anchor-position-1 sec. 3.1.2 gives them a branch
+  of the grammar and browsers lay them out, but cascade had no keyword for any
+  of them and dropped the declaration (#478, #485)
 
 ### Printing
 
@@ -197,9 +222,30 @@ answers.
   which closes the rule around it. The declaration name, the `var()` reference
   and its fallback, the `@property` prelude and a `style()` container query all
   take the escaping (#435)
+- Serialising a stylesheet walks it once. `Css.to_string` sized its buffer
+  exactly by first rendering the whole sheet through a counter, so every
+  printer below it ran twice to save a buffer growth that is amortised
+  anyway; one walk cuts a 5000-rule sheet to 55% of the allocations and 69%
+  of the instructions, for byte-identical output (#479)
 
 ### Minification
 
+- `--minify` merges two rules that declare the same NaN, whichever way each
+  spelled it: `opacity: calc(NaN)` and `opacity: calc(infinity - infinity)`
+  are one declaration (#471, #482)
+- `--minify` merges adjacent `@container` blocks whose `style()` conditions
+  are written the same way. The comparison reached the source byte offsets
+  every token carries, so two byte-identical `style(--x: 1)` queries never
+  compared equal and their blocks stayed separate, while size queries and the
+  bare `style(--x)` form already merged (#465)
+- `--minify` shortens an `src:` declaration outside `@font-face` the way it
+  already shortened the `@font-face` descriptor: `url("a.woff2")` drops its
+  quotes, `local("Arial")` becomes `local(Arial)` and a known `format()`
+  keyword loses its quotes. The two routes into the `src` printer had
+  drifted, and the declaration route spelled a multi-word `format("...")`
+  string unquoted, which no browser reads back as that format. A family name
+  of `default` keeps its quotes on both routes, the reserved word being no
+  `<custom-ident>` (#470)
 - `--minify` keeps the `center` in `position-area: top center`. A lone keyword
   stands for `X span-all`, not `X center`, so dropping it moved the box to a
   different area (#457)
@@ -348,9 +394,30 @@ answers.
   (#323)
 - `--minify` and `cascade diff` spend less time on a large stylesheet, for the
   same output (#413, #422, #424)
+- `--minify` builds the rule-dependency graph of a large stylesheet in less
+  memory, for byte-identical output. It compared every pair of rules writing
+  the same property, though two rules whose selectors cannot tie on
+  specificity are never order-constrained; skipping those pairs cuts a
+  4000-rule sheet to 51% of the allocations and 37% of the instructions
+  (#468)
+- `--minify` merges a long run of rules on one selector in less time and
+  memory, for byte-identical output. Deciding whether two blocks can be
+  reordered rebuilt and re-walked a body once per pair, both between two
+  declaration runs and between a nested block and the declarations that would
+  move past it; indexing each body once by the slots it writes leaves 4% of
+  the allocations either way (#480, #487)
+- `--minify` groups a long run of same-body rules in less memory, for
+  byte-identical output. Whether the run can share one selector list was asked
+  of every pair of it, though the answer is read off each selector alone;
+  reading each once cuts 400 such rules to 17% of the allocations and 12% of
+  the instructions (#486)
 
 ### Custom properties
 
+- `Css.inline_vars` stays linear in at-rule nesting depth. Each of its four
+  walks rebuilt the enclosing `@media`/`@layer`/`@supports` chain at every
+  level, so the cost grew with the square of the depth: one variable inside 800
+  nested blocks allocated 8.9M words, now 221K (#481)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry: a name referenced only from
   inside one of them keeps its theme binding, a name whose only declaration
@@ -425,6 +492,11 @@ answers.
   printer spells it before comparing two values under it. A name carrying an
   escaped `}` closed the rule and took both values with it, so any two values
   under such a name compared equal (#440)
+- A redundant `@layer` order pin no longer reads as a difference: the canonical
+  projection drops every name whose removal leaves the sheet's layer order
+  alone, so `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin
+  that fixes the order, or one over a position the projection cannot read, is
+  kept (#475)
 
 ### Library
 
@@ -471,6 +543,18 @@ answers.
   proximity criterion, and an origin wrapper carries an origin that outranks
   the layer. `Css.layers` remains the exhaustive count of what a sheet declares
   (#394)
+- `Cascade.Error.to_string` puts the caret under the character that failed and
+  prints back a snippet that is valid UTF-8. The caret column was a byte count,
+  so a multibyte selector pushed the marker well past the error, and the window
+  was sliced on byte offsets, so a long multibyte class name opened the snippet
+  inside a code point and the line came out starting with a replacement
+  character (#472)
+- `Cascade.Reader.parse_error` reports the line and column of the failing byte
+  from a forward scan and counts its caret in characters. The walk ran
+  backwards from the error and reset the column at each newline, so it counted
+  the line before the error and stopped one column short at end of input, and
+  the caret was a byte count under a window that could open inside a code
+  point (#477)
 
 ### CLI tools
 
@@ -520,6 +604,9 @@ answers.
   wholesale whatever the block holds, where a `@scope`, a `@starting-style` or
   a rule nested in another rule printed a header with nothing beneath it and
   read as empty (#389)
+- `cascade diff` reports a rule that changed places next to whatever else the
+  two sheets differ on, where one modified or added rule anywhere in the sheet
+  hid every transposition and the report named the content change alone (#474)
 
 ## 1.1.0
 

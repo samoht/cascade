@@ -1266,7 +1266,6 @@ let spec_strict_accepts_valid_stylesheets () =
         ".x { --token-list: [a, b] (c) { d: e } }" );
       ("custom property digit dashed-ident", ".x { font-size: var(--1A202C) }");
       ("valid escape in string", ".x { content: '\\gggg' }");
-      ("unterminated block auto-closes at EOF", ".x { color: red");
       ("out-of-range rgb channels clamp", ".x { color: rgb(300, 300, 300) }");
       ("mixed numeric rgb channels", ".x { color: rgb(50%, 100, 50%) }");
       ( "transparent currentColor color-mix",
@@ -1358,6 +1357,7 @@ let spec_strict_rejects_invalid_stylesheets () =
       (* CSS Syntax and stylesheet grammar. *)
       ("top-level bare block", "{ color: red }");
       ("stray top-level right brace", ".x { color: red } }");
+      ("unterminated block repaired at EOF", ".x { color: red");
       ( "malformed charset missing semicolon",
         "@charset \"UTF-8\" .x { color: red }" );
       ("charset must use string token", "@charset url(UTF-8);");
@@ -1534,9 +1534,11 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: invalid-color; color: red }" ".a{color:red}" 1;
   lenient_recover "bad declaration keeps sibling rule"
     ".a { color: rgb(300); } .b { color: red }" ".b{color:red}" 1;
-  lenient_recover "unknown at-rule skipped"
+  (* CSS Syntax 3 sec. 5.4.2 consumes the at-rule and its block whatever the
+     name, so what recovers here is the rule after it, not the at-rule. *)
+  lenient_recover "unknown at-rule keeps its neighbour"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    ".ok{color:#00f}" 1;
+    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1;
   lenient_recover "bad selector list drops rule only"
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     ".ok{color:green}.next{color:#00f}" 1;
@@ -2590,7 +2592,7 @@ let css_syntax_recovery () =
     ".ok { color: green } .bad:not() { color: red }" ".ok{color:green}" 1;
   check_recovery "unknown at-rule"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    ".ok{color:#00f}" 1
+    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1
 
 let css_syntax_recovery_structural () =
   let declaration_counts stylesheet =
@@ -2670,6 +2672,113 @@ let s3431_unknown_at_rule_prelude_separator () =
   Alcotest.(check string)
     "statement form without a prelude stays unspaced" "@foo;"
     (roundtrips "@foo;")
+
+(* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
+   re-serialise its body from, so the body travels as the source text between
+   its braces. That text is what sits between the at-rule's own braces. Taking
+   it from the at-rule's child components instead stops at the last one the
+   lexer produced, which is inside the closer whenever the body ends in a nested
+   block, and the printed at-rule then never closes. Sec. 5.4.6: an unterminated
+   nested construct swallows the closer the other way, leaving none in the
+   source to exclude and one for the serializer to supply. *)
+let s542_unknown_at_rule_block_body () =
+  let printed input =
+    String.trim
+      (Css.Stylesheet.to_string ~minify:true
+         (read_stylesheet (Cursor.of_string input)))
+  in
+  let roundtrips name input expected =
+    Alcotest.(check string) name expected (printed input);
+    Alcotest.(check string)
+      (name ^ " is a fixed point")
+      expected (printed expected)
+  in
+  roundtrips "a body ending in a nested block keeps both closers"
+    "@foo test{div{color:red}}" "@foo test{div{color:red}}";
+  roundtrips "nested blocks all the way down" "@foo{a{b{c:d}}}"
+    "@foo{a{b{c:d}}}";
+  roundtrips "an empty body stays empty" "@foo{}" "@foo{}";
+  roundtrips "an unterminated function does not stack closers" "@foo{a:(b}"
+    "@foo{a:(b)}";
+  roundtrips "an unterminated nested block gets one closer" "@foo{a{b:c"
+    "@foo{a{b:c}}"
+
+(* CSS Syntax 3 (ED) sec. 5.5.2 "consume an at-rule" reads a prelude and a block
+   whatever the at-keyword spells, and cascade keeps both as the source text it
+   cannot re-serialise from a grammar. Sec. 4.3.5 returns the string token at
+   end of input and 4.3.6 the url token, both calling it a parse error, 4.3.2
+   ends the comment there and calls that one too, and sec. 5.5.9 and 5.5.10
+   close a simple block and a function on the EOF token. Each defines what end
+   of input leaves, so text that stopped mid-construct means the closed form.
+   Written back open, that construct swallows the [;] or [}] the at-rule ends
+   with, and the next reader sees one at-rule where cascade held an at-rule and
+   the rule after it. *)
+let s552_unknown_at_rule_eof_closers () =
+  let printed input =
+    String.trim
+      (Css.Stylesheet.to_string ~minify:true
+         (read_stylesheet (Cursor.of_string input)))
+  in
+  (* The at-rule has to end on its own: append a rule to what was printed and
+     both must come back, and re-reading must report nothing left
+     unterminated. *)
+  let self_delimiting name printed =
+    let input = String.concat "" [ printed; ".z{color:red}" ] in
+    let { Css.stylesheet; warnings } =
+      match Css.of_string ~strict:false input with
+      | Ok parsed -> parsed
+      | Error err ->
+          Alcotest.failf "%s: %S failed to reparse: %s" name input
+            (Cascade.Error.to_string err)
+    in
+    Alcotest.(check int)
+      (String.concat "" [ name; ": the rule after it survives" ])
+      2
+      (List.length (Css.statements stylesheet));
+    let unterminated =
+      List.filter
+        (fun (e : Error.t) ->
+          match e.Error.kind with Error.Unterminated _ -> true | _ -> false)
+        warnings
+    in
+    Alcotest.(check int)
+      (String.concat "" [ name; ": nothing left unterminated" ])
+      0 (List.length unterminated)
+  in
+  let closes name input expected =
+    Alcotest.(check string) name expected (printed input);
+    Alcotest.(check string)
+      (String.concat "" [ name; " is a fixed point" ])
+      expected (printed expected);
+    self_delimiting name expected
+  in
+  closes "a string closes at end of input" "@o x{ a \"i" "@o x{ a \"i\"}";
+  closes "a single-quoted string closes too" "@o x{ a 'i" "@o x{ a 'i'}";
+  closes "a url closes at end of input" "@o x{ a url(i" "@o x{ a url(i)}";
+  closes "a bad url closes too" "@o x{ a url(i j" "@o x{ a url(i j)}";
+  closes "a function closes at end of input" "@o x{ a f(i" "@o x{ a f(i)}";
+  closes "a square block closes at end of input" "@o x{ a [i" "@o x{ a [i]}";
+  closes "a paren block closes at end of input" "@o x{ a (i" "@o x{ a (i)}";
+  closes "a curly block closes at end of input" "@o x{ a { b" "@o x{ a { b}}";
+  closes "a comment ends at end of input" "@o x{ a /* b" "@o x{ a /* b*/}";
+  (* The prelude runs to the [;] the at-rule ends with, and swallows it the same
+     way. *)
+  closes "a prelude string closes at end of input" "@o \"i" "@o \"i\";";
+  closes "a prelude url closes at end of input" "@o url(i" "@o url(i);";
+  (* Sec. 4.3.6 reads the whitespace before the missing [)] and keeps none of it
+     in the url, so the closer takes its place rather than following it: a
+     minified stylesheet carries no newline of its own. *)
+  closes "whitespace before a missing closer is not carried" "@o url(i\n"
+    "@o url(i);";
+  closes "a prelude function closes at end of input" "@o f(i" "@o f(i);";
+  (* Controls: nothing is open, so nothing is added. *)
+  closes "a closed body is untouched" "@o x{ a b }" "@o x{ a b }";
+  closes "a quote inside a comment is not an opener" "@o x{ a /* \" */ b"
+    "@o x{ a /* \" */ b}";
+  closes "an escaped quote is not an opener" "@o x{ a \"i\\\"j\""
+    "@o x{ a \"i\\\"j\"}";
+  closes "a closed url is not reopened" "@o x{url(a)}" "@o x{url(a)}";
+  closes "a closed prelude is untouched" "@o bar" "@o bar;"
 
 (* Gecko's [@document]/[@-moz-document] takes a comma-separated list of [<url> |
    url-prefix(<string>) | domain(<string>) | media-document(<string>) |
@@ -3322,7 +3431,9 @@ let fetch_url_boundary () =
     "background-image: url(../img/logo.svg);";
   check_declaration ~expected:"cursor:url(cursor.cur),auto"
     "cursor: url(cursor.cur), auto";
-  check_declaration ~expected:"src:url(brand.woff2) format(woff2)"
+  (* A [<url-token>] ends at its [)], so [format(] needs no separator after it
+     and minify drops the space, as it does after [@import] just below. *)
+  check_declaration ~expected:"src:url(brand.woff2)format(woff2)"
     "src: url(brand.woff2) format(woff2)";
   check_import_rule ~expected:"@import\"theme.css\"supports(display:);"
     "@import url(theme.css) supports(display:);";
@@ -8622,6 +8733,12 @@ let additional_tests =
     ( "spec CSS Syntax structural recovery",
       `Quick,
       css_syntax_recovery_structural );
+    ( "spec CSS Syntax 5.4.2 unknown at-rule block body",
+      `Quick,
+      s542_unknown_at_rule_block_body );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule raw text closes at EOF",
+      `Quick,
+      s552_unknown_at_rule_eof_closers );
     ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
       `Quick,
       s3431_unknown_at_rule_prelude_separator );
@@ -9363,7 +9480,8 @@ let additional_tests =
               "warning surfaced" true
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
-              "recovered output" ".a{color:#00f}" (minify parsed.stylesheet)
+              "recovered output" "@unknown{ color: red }.a{color:#00f}"
+              (minify parsed.stylesheet)
         | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"
               (Error.to_string e) );
@@ -9794,6 +9912,76 @@ let deep_walker_tests =
           Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
   ]
 
+(* --- rendering --- *)
+
+(* [to_string] and the bare formatter run the same printer, so they agree byte
+   for byte; the only difference either may have is how the output bytes are
+   collected. *)
+let one_pass ~minify sheet =
+  let pp ctx () = pp_stylesheet ctx sheet in
+  Css.Pp.to_string ~minify pp ()
+
+let render_sheet n =
+  let b = Buffer.create (n * 96) in
+  let out = Fmt.with_buffer b in
+  for i = 0 to n - 1 do
+    Fmt.pf out
+      ".c%d .d%d > span:hover{color:rgb(%d,%d,%d);margin:%dpx \
+       %dpx;padding:%dpx;display:flex}@media (min-width:%dpx){.m%d{outline:1px \
+       solid #abc}}"
+      i i (i mod 256)
+      (i * 7 mod 256)
+      (i * 13 mod 256)
+      (i mod 40)
+      (i * 3 mod 40)
+      (i mod 20)
+      (300 + (i mod 900))
+      i
+  done;
+  Fmt.flush out ();
+  Css.of_string_exn (Buffer.contents b)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* A serialiser walks the tree once. Presizing the buffer from a [Pp.size]
+   prepass walks it a second time, and the counter sink skips only the output
+   bytes: [normalise], [printable_statements] and every printer below them run
+   twice. Buffer growth is amortised, so the second walk buys nothing, and its
+   cost is the whole formatter rather than a rounding error - pin it well below
+   the 1.8x the prepass measured. *)
+let to_string_renders_once minify () =
+  let sheet = render_sheet 400 in
+  let a_one = measure (fun () -> one_pass ~minify sheet) in
+  let a_full = measure (fun () -> to_string ~minify sheet) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx the one-pass walk)" a_one a_full
+       (a_full /. a_one))
+    true
+    (a_one = 0. || a_full < a_one *. 1.25)
+
+let to_string_matches_one_pass minify () =
+  let sheet = render_sheet 400 in
+  Alcotest.(check string)
+    "same bytes" (one_pass ~minify sheet) (to_string ~minify sheet)
+
+let render_tests =
+  [
+    ( "to_string minified matches the bare formatter",
+      `Quick,
+      to_string_matches_one_pass true );
+    ( "to_string pretty matches the bare formatter",
+      `Quick,
+      to_string_matches_one_pass false );
+    ("to_string renders minified once", `Quick, to_string_renders_once true);
+    ("to_string renders pretty once", `Quick, to_string_renders_once false);
+  ]
+
 let suite =
   ( "stylesheet",
-    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests )
+    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests
+    @ render_tests )

@@ -337,6 +337,28 @@ let graph_build_is_subcubic () =
     true
     (a1 = 0. || a2 < a1 *. 6.)
 
+(* Two rules whose selectors can never tie on specificity are never
+   order-constrained, whatever they write, so padding a run with rules at a
+   second specificity adds no dependency to discover: twice the rules may cost
+   about twice as much, not four times. Every rule below writes the same
+   declaration, so neither run has an edge to build and what is left is the
+   pairwise candidate enumeration. *)
+let second_specificity_costs_no_pair () =
+  let sheet_of rules = rules_of (String.concat "" rules) in
+  let n = 300 in
+  let one_class = sheet_of (List.init n (Fmt.str ".c%d{color:red}")) in
+  let two_classes =
+    sheet_of (List.init n (fun i -> Fmt.str ".d%d.e%d{color:red}" i i))
+  in
+  let padded = one_class @ two_classes in
+  let a1 = measure (fun () -> Rule_graph.of_rules one_class) in
+  let a2 = measure (fun () -> Rule_graph.of_rules padded) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N at a second specificity)" a1 a2
+       (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.5)
+
 (* A single transaction rebuilds graph state once: its allocation grows at most
    linearly with the live node count, never with the number of edges. *)
 let try_rewrite_is_subquadratic () =
@@ -358,6 +380,116 @@ let try_rewrite_is_subquadratic () =
     (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
     true
     (a1 = 0. || a2 < a1 *. 6.)
+
+(* Every rule here writes one selector and a block of custom properties no other
+   rule names, so the same-selector merge order compares all N(N-1)/2 pairs and
+   not one of them short-circuits on a conflict. Whether two blocks commute is a
+   question about the slots each writes, answered by reading each block once
+   rather than once per declaration facing it, so the pair loop costs no
+   allocation of its own: doubling N may cost about twice as much, never the
+   quadratic four times.
+
+   Both runs stay above the node count at which the enumerator stops offering
+   its wider candidate kinds, so what separates them is the pair loop alone. *)
+let same_selector_commute_is_subquadratic () =
+  let block i =
+    List.init 20 (fun k -> Fmt.str "--p%d-%d:%d" i k ((i * 20) + k))
+    |> String.concat ";"
+  in
+  let sheet n =
+    List.init n (fun i -> Fmt.str ".q{%s}" (block i))
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 150))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 300))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 3.)
+
+(* Selector compatibility is not transitive, so a run of same-body rules groups
+   only when EVERY pair in it agrees. [.y] pairs with both of the others and
+   they do not pair with each other, so the three never share a selector list
+   and the enumerator settles for the compatible subset. *)
+let grouping_respects_non_transitive_compatibility () =
+  let newer = ".x:user-valid{color:red}" in
+  let plain = ".y{color:red}" in
+  let guarded = ":is(:where(.group):hover .z){color:red}" in
+  Alcotest.(check string)
+    "newer groups with plain" ".x:user-valid,.y{color:red}"
+    (optimize_str (newer ^ plain));
+  Alcotest.(check string)
+    "plain groups with guarded" ".y,:is(:where(.group):hover .z){color:red}"
+    (optimize_str (plain ^ guarded));
+  Alcotest.(check string)
+    "newer never groups with guarded"
+    ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
+    (optimize_str (newer ^ guarded));
+  Alcotest.(check string)
+    "all three settle for the compatible subset"
+    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
+    (optimize_str (newer ^ plain ^ guarded))
+
+(* Every rule here carries the same body and a selector no other rule shares, so
+   the whole run lands in one identical-body bucket and grouping it asks about
+   all N(N-1)/2 pairs. Whether two selectors can share a selector list is
+   settled by two predicates read off each of them alone, so reading each
+   selector once is enough and the pair loop costs no allocation of its own:
+   doubling N may cost about twice as much, never the quadratic four times.
+
+   The [:where()] nodes hold no group or peer marker, so neither predicate stops
+   early and each pair pays a full walk of both selectors. Both runs stay above
+   the 128 nodes at which the enumerator drops its wider candidate kinds, so
+   what separates them is the pair loop alone. *)
+let identical_body_grouping_is_subquadratic () =
+  let sheet n =
+    List.init n
+      (Fmt.str ":where(.a,.b):where(.c,.d):where(.e,.f) .w%d{color:red}")
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 200))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 400))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.6)
+
+(* Every rule here sits on one selector and carries a block of custom properties
+   no other rule names, half of them in a nested block, so deciding whether the
+   run can merge asks about all N(N-1)/2 pairs and not one short-circuits.
+   Whether a nested body commutes with a later declaration block is a question
+   about the slots each writes, and the relation reads the same from either
+   side: indexing the nested body once per rule and reading each block once for
+   the whole run leaves the pair loop no allocation of its own, so doubling N
+   may cost about twice as much, never the quadratic four times.
+
+   Both runs stay above the 128 nodes at which the enumerator drops its wider
+   candidate kinds, so what separates them is the pair loop alone. *)
+let nested_merge_safety_is_subquadratic () =
+  let block prefix i =
+    List.init 20 (fun k -> Fmt.str "--%s%d-%d:%d" prefix i k ((i * 20) + k))
+    |> String.concat ";"
+  in
+  let sheet n =
+    List.init n (fun i ->
+        Fmt.str ".q{%s;&:hover{%s}}" (block "o" i) (block "n" i))
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 200))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 400))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.6)
 
 let suite =
   ( "rule_graph",
@@ -408,4 +540,14 @@ let suite =
         graph_build_is_subcubic;
       Alcotest.test_case "try_rewrite is sub-quadratic" `Quick
         try_rewrite_is_subquadratic;
+      Alcotest.test_case "a second specificity costs no pair" `Quick
+        second_specificity_costs_no_pair;
+      Alcotest.test_case "same-selector commute is sub-quadratic" `Quick
+        same_selector_commute_is_subquadratic;
+      Alcotest.test_case "grouping respects non-transitive compatibility" `Quick
+        grouping_respects_non_transitive_compatibility;
+      Alcotest.test_case "identical-body grouping is sub-quadratic" `Quick
+        identical_body_grouping_is_subquadratic;
+      Alcotest.test_case "nested-merge safety is sub-quadratic" `Quick
+        nested_merge_safety_is_subquadratic;
     ] )

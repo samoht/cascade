@@ -613,6 +613,147 @@ let rec sort_property_runs (stmts : statement list) : statement list =
   in
   go [] stmts
 
+(* CSS Cascade 5 sec. 6.4.3: cascade layers are sorted by the order in which
+   they first are declared, so all an [@layer a;] statement contributes is the
+   position it gives [a] in that order (sec. 6.4.4.2). A name whose removal
+   leaves the whole order untouched contributes nothing, and the projection
+   drops it, so [@layer a;@layer a{...}] and [@layer a{...}] read as one sheet.
+   Emission keeps the statement: it is visible through the CSSOM, and a sheet
+   concatenated after this one can bind the position it fixes. *)
+
+(* One position in the layer order. [Named] dedups by layer name, a
+   re-declaration naming no new layer. [Opaque] stands for a position whose
+   names cannot be read here: an anonymous layer (sec. 6.4.2.1), the layers an
+   [@import] carries in with it, or a layer declared inside a conditional group
+   rule, which sec. 6.4.3 has contribute to the order only when the condition
+   holds. Each carries the index of the statement that raised it, so the two
+   orders being weighed line their opaque positions up while no name ever dedups
+   into one: a pin whose name is refilled across an unreadable position is left
+   alone, which is what makes reading the sheet this coarsely safe. *)
+type slot = Named of layer_name | Opaque of int
+
+let equal_slot a b =
+  match (a, b) with
+  | Named a, Named b -> equal_layer_name a b
+  | Opaque a, Opaque b -> Int.equal a b
+  | (Named _ | Opaque _), _ -> false
+
+(* Sec. 6.4.2: [a.b] is shorthand for those layers nested in order, so naming a
+   sublayer declares each of its parents first. *)
+let layer_name_slots (name : layer_name) : slot list =
+  let rec loop acc rev_prefix = function
+    | [] -> List.rev acc
+    | ident :: rest ->
+        let rev_prefix = ident :: rev_prefix in
+        loop (Named (List.rev rev_prefix) :: acc) rev_prefix rest
+  in
+  loop [] [] name
+
+let rec declares_layer (stmts : statement list) : bool =
+  List.exists
+    (fun stmt ->
+      match stmt with
+      | Layer _ | Layer_decl _ | Import _ -> true
+      | stmt -> declares_layer (Stylesheet.statement_children stmt))
+    stmts
+
+(* The positions statement [i] adds to the layer order. A named [@layer] block
+   or an [@import ... layer(x)] declares its own name, and whatever either holds
+   inside is a sublayer sorting within it rather than a position out here. *)
+let statement_slots i (stmt : statement) : slot list =
+  match stmt with
+  | Layer_decl names -> List.concat_map layer_name_slots names
+  | Layer (Some name, _) -> layer_name_slots name
+  | Import { layer = Some (_ :: _ as name); _ } -> layer_name_slots name
+  | Layer (None, _) | Import _ -> [ Opaque i ]
+  | stmt ->
+      if declares_layer (Stylesheet.statement_children stmt) then [ Opaque i ]
+      else []
+
+(* [fixed.(i)] is what statement [i] contributes when it is not a pin, read
+   once; [pins.(i)] is the names a pin still carries, which the pruning below
+   shortens. A pin left with no name contributes nothing and keeps its index, so
+   the opaque positions stay keyed the way [target] saw them. *)
+let layer_order ~(fixed : slot list array)
+    ~(pins : layer_name list option array) =
+  let add (seen, rev) slot =
+    match slot with
+    | Named name when List.exists (equal_layer_name name) seen -> (seen, rev)
+    | Named name -> (name :: seen, slot :: rev)
+    | Opaque _ -> (seen, slot :: rev)
+  in
+  let rec loop i acc =
+    if i >= Array.length fixed then List.rev (snd acc)
+    else
+      let slots =
+        match pins.(i) with
+        | None -> fixed.(i)
+        | Some names -> List.concat_map layer_name_slots names
+      in
+      loop (i + 1) (List.fold_left add acc slots)
+  in
+  loop 0 ([], [])
+
+(* Weigh one pin's names left to right, each candidate against the order the
+   sheet came in with rather than against the last candidate, so every name kept
+   is one the sheet's own order needs. *)
+let rec prune_pin ~(fixed : slot list array)
+    ~(pins : layer_name list option array) ~target i kept_rev = function
+  | [] -> List.rev kept_rev
+  | name :: rest ->
+      pins.(i) <- Some (List.rev_append kept_rev rest);
+      if List.equal equal_slot (layer_order ~fixed ~pins) target then
+        prune_pin ~fixed ~pins ~target i kept_rev rest
+      else begin
+        pins.(i) <- Some (List.rev_append kept_rev (name :: rest));
+        prune_pin ~fixed ~pins ~target i (name :: kept_rev) rest
+      end
+
+(* Top level only. A pin written inside a [@layer] block names a sublayer of it,
+   and the sublayer order runs across every block of that layer rather than
+   within one, so a block on its own does not say whether such a pin binds. *)
+let fold_layer_pins (stmts : statement list) : statement list =
+  let is_pin = function Layer_decl (_ :: _) -> true | _ -> false in
+  if not (List.exists is_pin stmts) then stmts
+  else
+    let work = Array.of_list stmts in
+    let pins : layer_name list option array =
+      Array.map (function Layer_decl names -> Some names | _ -> None) work
+    in
+    let fixed =
+      Array.mapi
+        (fun i stmt ->
+          match stmt with Layer_decl _ -> [] | stmt -> statement_slots i stmt)
+        work
+    in
+    let target = layer_order ~fixed ~pins in
+    (* One sweep is not enough: a name only reads as needed while a later one it
+       is weighed against is still there, and drops out once that one goes. Each
+       sweep only removes, so repeating to a fixed point terminates, and every
+       candidate is still weighed against the order the sheet came in with. *)
+    let sweep () =
+      let dropped = ref false in
+      Array.iteri
+        (fun i names ->
+          match names with
+          | Some (_ :: _ as names) ->
+              let kept = prune_pin ~fixed ~pins ~target i [] names in
+              if List.compare_lengths kept names <> 0 then dropped := true
+          | Some [] | None -> ())
+        pins;
+      !dropped
+    in
+    let rec settle changed = if sweep () then settle true else changed in
+    if not (settle false) then stmts
+    else
+      let rebuild i (stmt : statement) : statement option =
+        match (stmt, pins.(i)) with
+        | Layer_decl _, Some [] -> None
+        | Layer_decl _, Some (_ :: _ as names) -> Some (Layer_decl names)
+        | stmt, (None | Some _) -> Some stmt
+      in
+      List.filter_map Fun.id (List.mapi rebuild stmts)
+
 (* Media Queries 4 sec. 2.3: [all] matches every media type, so it is the
    identity in [<media-type> and <condition>] and the Level 3 spelling [not all
    and (X)] is the same query as the Level 4 [not (X)]. Bare [not all] has no
@@ -653,9 +794,10 @@ let rec canonical_media_queries (stmts : statement list) : statement list =
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
   let normalized =
-    canonical_media_queries
-      (sort_property_runs
-         (canonical_color_spellings (normalize_custom_values stmts)))
+    fold_layer_pins
+      (canonical_media_queries
+         (sort_property_runs
+            (canonical_color_spellings (normalize_custom_values stmts))))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized

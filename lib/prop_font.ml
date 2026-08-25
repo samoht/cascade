@@ -9,7 +9,6 @@
 
 open Common
 open Values
-open Syntax
 open Properties_intf
 open Prop_common
 
@@ -1968,64 +1967,10 @@ let rec read_font_variation_settings t : font_variation_settings =
     ~calls:[ ("var", read_var) ]
     ~default:read_axis_list t
 
-let pp_font_url ctx s =
-  Pp.string ctx "url(";
-  if url_needs_quotes s then (
-    Pp.char ctx '"';
-    Pp.string ctx s;
-    Pp.char ctx '"')
-  else Pp.string ctx s;
-  Pp.char ctx ')'
-
-let pp_quoted_font_url ctx quote s =
-  Pp.string ctx "url(";
-  Pp.char ctx quote;
-  Pp.string ctx s;
-  Pp.char ctx quote;
-  Pp.char ctx ')'
-
-let pp_font_src_modifiers ctx (format : string option) (tech : string option) =
-  (match format with
-  | None -> ()
-  | Some value ->
-      Pp.space ctx ();
-      Pp.string ctx "format(";
-      Pp.string ctx value;
-      Pp.char ctx ')');
-  match tech with
-  | None -> ()
-  | Some value ->
-      Pp.space ctx ();
-      Pp.string ctx "tech(";
-      Pp.string ctx value;
-      Pp.char ctx ')'
-
-let rec pp_font_src_entry ctx : Font_face.src_entry -> unit = function
-  | Local name ->
-      Pp.string ctx "local(";
-      Pp.char ctx '"';
-      Pp.string ctx name;
-      Pp.char ctx '"';
-      Pp.char ctx ')'
-  | Url { url; format; tech } ->
-      pp_font_url ctx url;
-      pp_font_src_modifiers ctx format tech
-  | Quoted_url { url; quote; format; tech } ->
-      pp_quoted_font_url ctx quote url;
-      pp_font_src_modifiers ctx format tech
-  | Var var -> pp_var pp_font_src ctx var
-
-and pp_font_src ctx entries =
-  let first = ref true in
-  List.iter
-    (fun entry ->
-      if !first then first := false
-      else (
-        Pp.char ctx ',';
-        Pp.space_if_pretty ctx ());
-      pp_font_src_entry ctx entry)
-    entries
-
+(* [src] has one value type, one reader and one printer. The [@font-face]
+   descriptor and every [src:] declaration route through [Font_face.pp], so the
+   two spellings cannot drift apart. *)
+let pp_font_src : Font_face.src Pp.t = Font_face.pp
 let read_font_src = Font_face.read_src
 
 let normalize_font_size (fs : font_size) : font_size =

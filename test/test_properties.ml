@@ -4053,6 +4053,64 @@ let spec_generated_position_interaction_edges () =
   check_position_area "center top";
   check_position_area ~expected:"center" "center center";
   check_position_area ~expected:"span-all" "span-all span-all";
+  (* css-anchor-position-1 sec. 3.1.2 has two {1,2} branches over the plain
+     logical keywords, [start] [end] [span-start] [span-end] [span-all], and
+     over their [self-] equivalents. The spec calls every start/end keyword that
+     names neither the block nor the inline axis ambiguous, so a lone one
+     repeats itself instead of standing for [X span-all]: [start start] folds to
+     [start], while [start end] and [end start] name distinct areas and survive
+     minification unchanged. *)
+  check_position_area "start";
+  check_position_area ~expected:"start" "start start";
+  check_position_area "start end";
+  check_position_area "end start";
+  check_position_area "start span-end";
+  check_position_area "span-start end";
+  check_position_area ~expected:"self-start" "self-start self-start";
+  check_position_area "self-start span-self-end";
+  check_position_area "span-self-start self-end";
+  (* Section 3.1.2 also spells out [self-x-start]/[self-x-end] and
+     [self-y-start]/[self-y-end] inside the two physical groups, and gives
+     [self-block-start]/[self-inline-start] a branch of their own, each with a
+     [span-] form. Unlike [self-start], every one of these names its axis, so
+     the ambiguity clause does not reach them: a lone one behaves as if the
+     second keyword were [span-all] instead of repeating itself, which leaves a
+     repeated one naming a single axis twice, a shape no branch admits. *)
+  check_position_area "self-x-start";
+  check_position_area "self-x-end";
+  check_position_area "self-y-start";
+  check_position_area "self-y-end";
+  check_position_area "span-self-x-start";
+  check_position_area "span-self-x-end";
+  check_position_area "span-self-y-start";
+  check_position_area "span-self-y-end";
+  check_position_area "self-block-start";
+  check_position_area "self-block-end";
+  check_position_area "self-inline-start";
+  check_position_area "self-inline-end";
+  check_position_area "span-self-block-start";
+  check_position_area "span-self-block-end";
+  check_position_area "span-self-inline-start";
+  check_position_area "span-self-inline-end";
+  (* Two keywords on opposite axes name one row and one column, so they are a
+     distinct area from either alone and stay as written. *)
+  check_position_area "self-x-start self-y-end";
+  check_position_area "span-self-x-end self-y-start";
+  check_position_area "self-block-start self-inline-end";
+  check_position_area "span-self-block-end self-inline-start";
+  (* [span-all] is the ambiguous partner, so it takes the free axis and the pair
+     is held exactly as [top span-all] is. *)
+  check_position_area "top span-all";
+  check_position_area "self-x-start span-all";
+  check_position_area "span-all self-block-end";
+  (* Naming one axis twice has no branch, in contrast with the ambiguous
+     [self-start self-start] above, which folds. *)
+  neg_cursor read_position_area "self-x-start self-x-end";
+  neg_cursor read_position_area "self-x-start self-x-start";
+  neg_cursor read_position_area "self-y-start span-self-y-end";
+  neg_cursor read_position_area "self-block-start self-block-end";
+  neg_cursor read_position_area "self-block-start self-block-start";
+  neg_cursor read_position_area "self-inline-start span-self-inline-end";
   check_position_area_keyword "span-inline-start";
   check_position_try_fallback "flip-block";
   check_position_try_fallbacks ~expected:"flip-block,--fallback"

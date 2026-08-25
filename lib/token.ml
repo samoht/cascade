@@ -45,7 +45,10 @@ type t = { kind : kind; loc : Loc.t }
 let equal_hash_flag (a : hash_flag) b = a = b
 let equal_number_flag (a : number_flag) b = a = b
 let equal_bracket (a : bracket) b = a = b
+let bracket_rank = function Curly -> 0 | Paren -> 1 | Square -> 2
+let compare_bracket a b = Int.compare (bracket_rank a) (bracket_rank b)
 let equal_kind (a : kind) b = a = b
+let compare_kind (a : kind) b = Stdlib.compare a b
 let v ~kind ~loc = { kind; loc }
 let synthetic kind = { kind; loc = Loc.dummy }
 

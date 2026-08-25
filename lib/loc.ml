@@ -63,14 +63,36 @@ module Context = struct
   let push step t = { t with path = Path.push step t.path }
 end
 
+(* A caret column is one Unicode scalar value. That is not what a terminal
+   draws: a combining mark takes a column of its own here and none there, and a
+   wide CJK glyph takes one here and two there. Counting graphemes or east Asian
+   widths instead needs segmentation and width tables cascade does not carry,
+   and scalars are exact for the ASCII and Latin text CSS is written in. *)
+let scalars = Common.String.utf8_length
+
 let snippet ?(window = 40) source loc =
   let len = String.length source in
   let pos = max 0 (min len loc.start_pos) in
   let end_pos = max pos (min len loc.end_pos) in
-  let start_pos = max 0 (pos - window) in
-  let stop_pos = min len (end_pos + window) in
+  (* [window] is a target radius, not a cap: a boundary that falls inside a code
+     point moves outward to the lead byte, widening the snippet by up to three
+     bytes a side. A snippet is a diagnostic, so keeping the sequence whole
+     outranks keeping the byte budget. *)
+  let start_pos =
+    Common.String.utf8_lead_before source (max 0 (pos - window))
+  in
+  let stop_pos =
+    Common.String.utf8_lead_after source (min len (end_pos + window))
+  in
   let text = String.sub source start_pos (stop_pos - start_pos) in
-  let marker_pos = pos - start_pos in
-  let marker_len = max 1 (end_pos - pos) in
-  let marker_len = min marker_len (String.length text - marker_pos) in
-  { Context.text; marker_pos; marker_len }
+  let before = pos - start_pos and marked = end_pos - pos in
+  let marker_pos = scalars ~pos:0 ~len:before text in
+  let marked_chars = scalars ~pos:before ~len:marked text in
+  let after_chars =
+    scalars ~pos:(before + marked) ~len:(stop_pos - end_pos) text
+  in
+  {
+    Context.text;
+    marker_pos;
+    marker_len = min (max 1 marked_chars) (marked_chars + after_chars);
+  }

@@ -167,7 +167,10 @@ val property_name : declaration -> string
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
 val equal_declaration : declaration -> declaration -> bool
-(** [equal_declaration a b] tests declarations for structural equality. *)
+(** [equal_declaration a b] tests declarations for structural equality. A NaN
+    equals itself here, as it does under {!hash}: CSS has one NaN, a keyword of
+    the [<number>] grammar (Values 4 sec. 10.7.2) serialised as [calc(NaN)]
+    (sec. 10.13). *)
 
 val equal_prop_key : prop_key -> prop_key -> bool
 (** [equal_prop_key a b] tests property identities for equality. *)

@@ -135,6 +135,94 @@ let diff_move_names_the_rule_that_moved () =
   in
   Alcotest.(check (list string)) "only the mover is named" [ ".d" ] moved
 
+let reordered_selectors d =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Cascade_diff.Tree_diff.Reordered { selector; _ } -> Some selector
+      | _ -> None)
+    d.Cascade_diff.Tree_diff.rules
+
+let content_changed_selectors d =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Cascade_diff.Tree_diff.Content_changed { selector; _ } -> Some selector
+      | _ -> None)
+    d.Cascade_diff.Tree_diff.rules
+
+let added_selectors d =
+  List.filter_map
+    (fun (diff : Cascade_diff.Tree_diff.rule_diff) ->
+      match diff with
+      | Cascade_diff.Tree_diff.Added { selector; _ } -> Some selector
+      | _ -> None)
+    d.Cascade_diff.Tree_diff.rules
+
+(* A transposition is a cascade change whatever else the two sides differ on, so
+   it has to be reported next to that other change and not instead of it. The
+   control below is these same three rules with [.c] left alone; the three that
+   follow add one unrelated difference each. *)
+
+let diff_swap_alone_reports_the_reorder () =
+  let expected =
+    parse ".a { color: red } .b { color: blue } .c { color: green }"
+  in
+  let actual =
+    parse ".b { color: blue } .a { color: red } .c { color: green }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check (list string))
+    "the swap is named" [ ".a" ] (reordered_selectors d);
+  Alcotest.(check (list string))
+    "nothing else changed" []
+    (content_changed_selectors d)
+
+let diff_swap_with_modified_rule_reports_both () =
+  let expected =
+    parse ".a { color: red } .b { color: blue } .c { color: green }"
+  in
+  let actual =
+    parse ".b { color: blue } .a { color: red } .c { color: teal }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check (list string))
+    "the swap is still named" [ ".a" ] (reordered_selectors d);
+  Alcotest.(check (list string))
+    "so is the changed rule" [ ".c" ]
+    (content_changed_selectors d)
+
+let diff_swap_with_added_rule_reports_both () =
+  let expected = parse ".a { color: red } .b { color: blue }" in
+  let actual =
+    parse ".b { color: blue } .a { color: red } .d { color: pink }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check (list string))
+    "the swap is still named" [ ".a" ] (reordered_selectors d);
+  Alcotest.(check (list string))
+    "so is the new rule" [ ".d" ] (added_selectors d)
+
+let diff_move_with_modified_rule_names_the_mover () =
+  (* [.d] jumps from fourth to first while [.e] changes value. The move is one
+     entry, naming the rule that moved rather than the three it passed. *)
+  let expected =
+    parse
+      ".a { color: red } .b { color: blue } .c { color: green } .d { color: \
+       pink } .e { color: gray }"
+  in
+  let actual =
+    parse
+      ".d { color: pink } .a { color: red } .b { color: blue } .c { color: \
+       green } .e { color: navy }"
+  in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check (list string))
+    "the mover is named" [ ".d" ] (reordered_selectors d);
+  Alcotest.(check (list string))
+    "so is the changed rule" [ ".e" ]
+    (content_changed_selectors d)
+
 let diff_dropped_rules_are_not_a_reorder () =
   (* Dropping the leading rules shifts every position after them. Nothing was
      transposed, so the survivors are unchanged and their cascade-neutral
@@ -1253,6 +1341,14 @@ let suite =
         diff_swap_reports_one_reorder;
       Alcotest.test_case "move names the rule that moved" `Quick
         diff_move_names_the_rule_that_moved;
+      Alcotest.test_case "swap alone reports the reorder" `Quick
+        diff_swap_alone_reports_the_reorder;
+      Alcotest.test_case "swap with a modified rule reports both" `Quick
+        diff_swap_with_modified_rule_reports_both;
+      Alcotest.test_case "swap with an added rule reports both" `Quick
+        diff_swap_with_added_rule_reports_both;
+      Alcotest.test_case "move with a modified rule names the mover" `Quick
+        diff_move_with_modified_rule_names_the_mover;
       Alcotest.test_case "dropped rules are not a reorder" `Quick
         diff_dropped_rules_are_not_a_reorder;
       Alcotest.test_case "dropped rules keep the declaration reorder" `Quick

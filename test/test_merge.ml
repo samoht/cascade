@@ -41,11 +41,116 @@ let test_declarations_equal_fast_and_structural_paths () =
     "different length" false
     (Merge.declarations_equal ~same:same_decl r.declarations r3.declarations)
 
+(* [compatible] is reflexive and symmetric but NOT transitive. A plain selector
+   sits beside one carrying a newer pseudo-class, and beside an
+   [:is(:where(...))] variant, while those two never sit together: a browser
+   that does not know [:user-valid] drops the whole rule, where the forgiving
+   variant would have survived. Grouping by sorting a run and checking only
+   neighbours is unsound for exactly this reason. *)
+let test_compatible_is_not_transitive () =
+  let newer = Selector.of_string ".x:user-valid" in
+  let plain = Selector.of_string ".y" in
+  let guarded = Selector.of_string ":is(:where(.group):hover .z)" in
+  Alcotest.(check bool) "newer with plain" true (Merge.compatible newer plain);
+  Alcotest.(check bool)
+    "plain with guarded" true
+    (Merge.compatible plain guarded);
+  Alcotest.(check bool)
+    "newer with guarded" false
+    (Merge.compatible newer guarded);
+  Alcotest.(check bool)
+    "and the other way round" false
+    (Merge.compatible guarded newer);
+  Alcotest.(check bool) "reflexive on newer" true (Merge.compatible newer newer);
+  Alcotest.(check bool)
+    "reflexive on guarded" true
+    (Merge.compatible guarded guarded)
+
+(* Every shape [compatible] distinguishes: a selector with neither marker, one
+   carrying a newer pseudo-class where a browser can see it, one carrying it
+   inside a forgiving [:is()], an [:is(:where(.group))] and an
+   [:is(:where(.peer))] variant, one that is both, and a [:where()] holding
+   neither marker. *)
+let compat_pool =
+  List.map Selector.of_string
+    [
+      ".a";
+      ".b:hover";
+      ".c:user-valid";
+      ".d:user-invalid .e";
+      ":is(:where(.group):hover .f)";
+      ":is(:where(.peer):checked~.g)";
+      ":is(:where(.group):hover .h):user-valid";
+      ":where(.i,.j) .k";
+      ":is(.l:user-valid) .m";
+      ".n::before";
+    ]
+
+(* The relation as it was written before [all_compatible]: read
+   [has_is_where_pattern] off both, and where they disagree read
+   [has_newer_pseudo_class] off the one that lacks it. *)
+let compatible_by_hand sel1 sel2 =
+  let sel1_complex = Selector.has_is_where_pattern sel1 in
+  let sel2_complex = Selector.has_is_where_pattern sel2 in
+  if sel1_complex <> sel2_complex then
+    let plain_sel = if sel1_complex then sel2 else sel1 in
+    not (Selector.has_newer_pseudo_class plain_sel)
+  else true
+
+let test_compatible_matches_the_predicates () =
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          if Merge.compatible a b <> compatible_by_hand a b then
+            Alcotest.failf "compatible %s %s" (Selector.to_string a)
+              (Selector.to_string b))
+        compat_pool)
+    compat_pool
+
+(* [all_compatible] answers for the whole list what [compatible] answers per
+   pair, so the two must agree on every list: all of them up to five selectors
+   drawn from the pool, then longer random ones. *)
+let all_compatible_by_hand sels =
+  let rec loop = function
+    | [] | [ _ ] -> true
+    | sel :: rest ->
+        List.for_all (fun other -> Merge.compatible sel other) rest && loop rest
+  in
+  loop sels
+
+let check_agrees sels =
+  if Merge.all_compatible sels <> all_compatible_by_hand sels then
+    Alcotest.failf "all_compatible [%s]"
+      (String.concat "; " (List.map Selector.to_string sels))
+
+let test_all_compatible_matches_the_pair_loop () =
+  let pool = Array.of_list compat_pool in
+  let rec exhaustive depth acc =
+    check_agrees (List.rev acc);
+    if depth > 0 then
+      Array.iter (fun sel -> exhaustive (depth - 1) (sel :: acc)) pool
+  in
+  exhaustive 5 [];
+  let state = Random.State.make [| 0x5EED |] in
+  for _ = 1 to 5000 do
+    let len = Random.State.int state 30 in
+    check_agrees
+      (List.init len (fun _ ->
+           pool.(Random.State.int state (Array.length pool))))
+  done
+
 let suite =
   ( "merge",
     [
       Alcotest.test_case "pseudo and vendor detection" `Quick
         test_pseudo_and_vendor_detection;
+      Alcotest.test_case "compatible is not transitive" `Quick
+        test_compatible_is_not_transitive;
+      Alcotest.test_case "compatible matches the two predicates" `Quick
+        test_compatible_matches_the_predicates;
+      Alcotest.test_case "all_compatible matches the pair loop" `Quick
+        test_all_compatible_matches_the_pair_loop;
       Alcotest.test_case "declarations_equal fast and structural paths" `Quick
         test_declarations_equal_fast_and_structural_paths;
     ] )

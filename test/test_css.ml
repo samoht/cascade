@@ -1563,6 +1563,57 @@ let font_family_value_parser () =
   roundtrip "var(--font-source-sans-pro), system-ui";
   roundtrip "var(--font-ubuntu-mono)"
 
+(* CSS Syntax 3 sec. 5.4.2 "consume an at-rule" builds an at-rule node for any
+   at-keyword, recognised or not; the block it consumes keeps its contents.
+   Discarding an unrecognised at-rule is a user-agent cascade step (CSS 2.1 sec.
+   4.2 "Rules for handling parsing errors"), not a serialisation step, and a
+   transform cannot know which agent reads its output: an agent that later
+   implements the name renders the input and a stripped output differently.
+   Lightning CSS, esbuild, csso, clean-css and cssnano all keep the at-rule and
+   its block. So [to_string] keeps it too, at every block depth, with a body or
+   without one. [Optimize.drop_unknown_at_rules] stays available for a caller
+   that does want user-agent-equivalent output. *)
+let unknown_at_rule_reaches_output () =
+  let parse input =
+    match of_string ~strict:false input with
+    | Ok parsed -> parsed.stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" input
+          (Cascade.Error.to_string err)
+  in
+  let keeps name input expected =
+    Alcotest.(check string)
+      (name ^ " (serialize)") expected
+      (to_string ~minify:true (parse input));
+    Alcotest.(check string)
+      (name ^ " (optimize)") expected
+      (parse input |> optimize |> to_string ~minify:true)
+  in
+  keeps "a statement-form at-rule reaches the output" "@foo bar;\na{color:red}"
+    "@foo bar;a{color:red}";
+  keeps "a block-form at-rule takes its contents with it"
+    "@future x{a{color:red}}\nb{color:red}"
+    "@future x{a{color:red}}b{color:red}";
+  keeps "an unknown at-rule nested in @media survives"
+    "@media screen{@foo bar;d{color:red}}"
+    "@media screen{@foo bar;d{color:red}}";
+  (* tw hands cascade [--input-css] written in this vocabulary. *)
+  keeps "the Tailwind v4 authoring vocabulary survives"
+    "@theme{--c:red}\n@utility btn{color:red}\n.x{color:red}"
+    "@theme{--c:red}@utility btn{color:red}.x{color:red}";
+  (* An at-rule alone in the stylesheet is the whole output, not nothing. *)
+  keeps "an at-rule that is the entire stylesheet is the entire output"
+    "@foo bar;" "@foo bar;";
+  (* Control: a recognised at-rule is unaffected. *)
+  keeps "a recognised at-rule is unaffected" "@media screen{a{color:red}}"
+    "@media screen{a{color:red}}";
+  (* Pretty output re-parses to the same statement list as the minified one. *)
+  let input = "@future x{a{color:red}}\nb{color:red}" in
+  Alcotest.(check string)
+    "pretty output re-parses to the minified output"
+    "@future x{a{color:red}}b{color:red}"
+    (to_string ~minify:true (parse (to_string (parse input))))
+
 let suite =
   ( "css",
     [
@@ -1625,4 +1676,6 @@ let suite =
       Alcotest.test_case "public parse recovery edges" `Quick public_parse_edges;
       Alcotest.test_case "public bad-string prelude edges" `Quick
         public_bad_string_prelude_edges;
+      Alcotest.test_case "spec unknown at-rule reaches the output" `Quick
+        unknown_at_rule_reaches_output;
     ] )

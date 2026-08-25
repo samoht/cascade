@@ -61,6 +61,9 @@ let selector_covers ~ancestor ~consumer =
 
 (** {1 At-rule path} *)
 
+(* One at-rule wrapper a statement sits inside. A path is the whole chain, held
+   innermost-first so that descending conses onto the parent's chain rather than
+   copying it. *)
 type at_node =
   | Media of Media.t
   | Layer of Stylesheet.layer_name option
@@ -83,16 +86,27 @@ let rec drop_layers = function
   | Layer _ :: rest -> drop_layers rest
   | node :: rest -> node :: drop_layers rest
 
+let rec drop_deeper n (path : at_node list) =
+  if n <= 0 then path
+  else match path with [] -> [] | _ :: rest -> drop_deeper (n - 1) rest
+
+(* Nodes compare structurally, as the prefix form compared them. [Media.equal]
+   and its neighbours answer on the serialised query, which would make
+   [(min-width:10px)] and [(width>=10px)] one barrier rather than two. *)
+let rec same_path (a : at_node list) (b : at_node list) =
+  match (a, b) with
+  | [], [] -> true
+  | x :: a, y :: b -> x = y && same_path a b
+  | _ -> false
+
 (* Visibility through at-rule wrappers: a custom property defined outside
-   (shorter path) is visible to consumers further inside (longer path). *)
+   (shorter path) is visible to consumers further inside (longer path). A path
+   is held innermost-first, so "outside" is the tail: [outer] reaches [inner]
+   when it is a suffix of it. *)
 let at_path_prefix ~outer ~inner =
-  let rec prefix outer inner =
-    match (outer, inner) with
-    | [], _ -> true
-    | _, [] -> false
-    | a :: outer, b :: inner -> a = b && prefix outer inner
-  in
-  prefix (drop_layers outer) (drop_layers inner)
+  let outer = drop_layers outer and inner = drop_layers inner in
+  let deeper = List.length inner - List.length outer in
+  deeper >= 0 && same_path outer (drop_deeper deeper inner)
 
 let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
   | Stylesheet.Layer (n, b) ->
@@ -188,7 +202,7 @@ let collect_scopes ~kept stylesheet =
   let rec walk_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
     | Some (node, body, _) ->
-        List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
+        List.iter (walk_stmt ~parents ~at_path:(node :: at_path)) body
     | None -> walk_non_at ~parents ~at_path stmt
   and walk_non_at ~parents ~at_path = function
     | Rule rule ->
@@ -656,7 +670,7 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
   match at_wrapper stmt with
   | Some (node, body, rebuild) ->
       rebuild
-        (substitute ~kept ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
+        (substitute ~kept ~scopes ~parents ~at_path:(node :: at_path) body)
   | None -> (
       match stmt with
       | Rule rule ->
@@ -892,7 +906,7 @@ let collect_scoped_refs stylesheet =
     match at_wrapper stmt with
     | Some (node, body, _) ->
         record_at_node_refs consumers ~parents ~at_path node;
-        List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
+        List.iter (walk_stmt ~parents ~at_path:(node :: at_path)) body
     | None -> walk_non_at ~parents ~at_path stmt
   and walk_non_at ~parents ~at_path stmt =
     match stmt with
@@ -1080,7 +1094,7 @@ let strip_dead ~keep ~live_set stmts =
   and map_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
     | Some (node, body, rebuild) -> (
-        match map_stmts ~parents ~at_path:(at_path @ [ node ]) body with
+        match map_stmts ~parents ~at_path:(node :: at_path) body with
         | [] -> None
         | b -> Some (rebuild b))
     | None -> map_non_at ~parents ~at_path stmt
@@ -1385,9 +1399,11 @@ let flattening_layers_is_safe stylesheet =
    the dotted layer), [None] when the path is conditional or holds an anonymous
    layer - those are not statically foldable. *)
 let foldable_layer_of_at_path at_path : string option option =
+  (* Walking an innermost-first path and consing leaves [path] outermost-first,
+     which is the order the dotted layer name reads in. *)
   let rec go path : at_node list -> string option option = function
     | [] -> (
-        match List.rev path with
+        match path with
         | [] -> Some None
         | ns -> Some (Some (Stylesheet.string_of_layer_name (List.concat ns))))
     | Layer (Some n) :: rest -> go (n :: path) rest

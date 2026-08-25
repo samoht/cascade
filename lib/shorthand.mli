@@ -65,6 +65,12 @@ val declaration_is_broad : Declaration.declaration -> bool
     the [all] shorthand, and a property outside the model, whose name does not
     spell out what it expands to. *)
 
+val custom_property_name : Declaration.declaration -> string option
+(** [custom_property_name d] is the custom property [d] writes, read through a
+    theme guard. Such a declaration overlaps the declarations writing that same
+    name and nothing else, so a caller indexing footprints files it under the
+    name rather than under {!val-declaration_overlap_keys}. *)
+
 val same_property : Declaration.declaration -> Declaration.declaration -> bool
 (** Same CSS property. *)
 

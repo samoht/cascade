@@ -3338,6 +3338,30 @@ type position_area_keyword =
   | Span_inline_end
   | Span_block_start
   | Span_block_end
+  | Start
+  | End
+  | Span_start
+  | Span_end
+  | Self_start
+  | Self_end
+  | Span_self_start
+  | Span_self_end
+  | Self_x_start
+  | Self_x_end
+  | Self_y_start
+  | Self_y_end
+  | Span_self_x_start
+  | Span_self_x_end
+  | Span_self_y_start
+  | Span_self_y_end
+  | Self_block_start
+  | Self_block_end
+  | Self_inline_start
+  | Self_inline_end
+  | Span_self_block_start
+  | Span_self_block_end
+  | Span_self_inline_start
+  | Span_self_inline_end
   | Span_all
 
 type position_area =

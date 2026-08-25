@@ -1106,11 +1106,7 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx fams ->
           Pp.list ~sep:Pp.comma Properties.pp_font_family ctx fams)
         families
-  | Src value ->
-      pp_descriptor "src"
-        (fun ctx v ->
-          Pp.string ctx (Font_face.string_of_src ~minify:(Pp.minified ctx) v))
-        value
+  | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
   | Font_style_range (min_style, max_style) ->
@@ -1569,14 +1565,14 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-(* Measure the output size with [Pp.size] and presize the buffer exactly. *)
+(* One walk of the tree. Presizing the buffer from a [Pp.size] prepass would
+   cost a second full walk - the counter sink skips the output bytes, not
+   [normalise], [printable_statements] or any printer below them - to save a
+   [Buffer] growth that is amortised anyway. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
   let pp ctx () = pp_stylesheet ctx statements in
-  let size = Pp.size ~minify ?indent ?lossless ?enforce_spec pp () in
-  let buf = Buffer.create size in
-  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ();
-  Buffer.contents buf
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp ()
 
 let pp = to_string
 
@@ -3101,6 +3097,78 @@ let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
+(* CSS Syntax 3 (ED) sec. 4.3.5 closes a string at end of input, 4.3.6 a url,
+   4.3.2 a comment, and 5.5.9 and 5.5.10 a simple block and a function. Raw text
+   that stops mid-construct therefore means the closed form, but written back as
+   it stands it hands the next reader an opener that eats the [;] or [}] the
+   at-rule ends with. These close it, once, so the AST holds text that reads
+   back as itself. *)
+let bracket_closer = function
+  | Token.Curly -> "}"
+  | Token.Paren -> ")"
+  | Token.Square -> "]"
+
+(* One pass: the closers the open blocks and functions still want, innermost
+   first, with the last token and the token count for [tail_closer]. *)
+let scan_raw text =
+  let lexer = Lexer.of_string text in
+  let rec loop stack last n =
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof -> (stack, last, n)
+    | Token.Function _ -> loop (")" :: stack) (Some tok) (n + 1)
+    | Token.Open b -> loop (bracket_closer b :: stack) (Some tok) (n + 1)
+    | Token.Close b ->
+        let stack =
+          match stack with
+          | c :: rest when String.equal c (bracket_closer b) -> rest
+          | _ -> stack
+        in
+        loop stack (Some tok) (n + 1)
+    | _ -> loop stack (Some tok) (n + 1)
+  in
+  loop [] None 0
+
+(* A string, a url and a comment run to end of input and close there without
+   leaving an opener on the stack, so ask the tokenizer rather than re-deriving
+   its state: text that swallows the probe gives back no token for it. Two probe
+   code points, since a [\] at end of input eats one and returns it as an
+   ident. *)
+let tail_closer text last n =
+  let lexer = Lexer.of_string (String.concat "" [ text; ";;" ]) in
+  let rec count n =
+    match (Lexer.next lexer).Token.kind with
+    | Token.Eof -> n
+    | _ -> count (n + 1)
+  in
+  if count 0 <> n then []
+  else
+    match last with
+    | Some { Token.kind = Token.String { quote; terminated = false; _ }; _ } ->
+        [ String.make 1 quote ]
+    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc }
+      when loc.Loc.end_pos = String.length text ->
+        [ ")" ]
+    | _ -> [ "*/" ]
+
+(* Closing one construct can uncover another: a [\] before the closing quote
+   escapes it and leaves the string open, so re-read until the text settles. *)
+let rec close_raw fuel text =
+  let stack, last, n = scan_raw text in
+  match List.append (tail_closer text last n) stack with
+  | [] -> text
+  | closers ->
+      let closed = String.concat "" (text :: closers) in
+      if fuel <= 1 then closed else close_raw (fuel - 1) closed
+
+(* One pass closes what the stack holds; the other two are for a closer that a
+   [\] at end of input escapes before it lands. *)
+let close_open_constructs = close_raw 3
+
+(* CSS Syntax 3 sec. 5.4.6: an unclosed block runs to EOF, so its slice has no
+   closer to exclude and instead carries whatever [}] an unterminated nested
+   construct swallowed on the way. The serializer supplies its own closer, so
+   drop those or each round-trip stacks another one. *)
 let trim_unknown_block_body body =
   let rec trim_end i =
     if i < 0 then 0
@@ -3109,18 +3177,18 @@ let trim_unknown_block_body body =
       | '}' | ' ' | '\t' | '\n' | '\r' -> trim_end (i - 1)
       | _ -> i + 1
   in
-  let n = String.length body in
-  String.sub body 0 (trim_end (n - 1))
+  String.sub body 0 (trim_end (String.length body - 1))
 
-let unknown_block_body slice value =
-  match value with
-  | [] -> ""
-  | _ ->
-      let first = Component.source_loc (List.hd value) in
-      let last =
-        Component.source_loc (List.nth value (List.length value - 1))
-      in
-      slice first.Loc.start_pos last.Loc.end_pos |> trim_unknown_block_body
+(* An unrecognised at-rule has no grammar to re-serialise its body from, so the
+   body travels as the source text between its own braces. Slice the block's own
+   span, not its child components: the children stop short of the closer
+   whenever the body ends in a nested block ([@foo{a{b:c}}]). *)
+let unknown_block_body slice (block : Component.block Component.node) =
+  let start = block.loc.Loc.start_pos + 1 in
+  if block.node.Component.closed then slice start (block.loc.Loc.end_pos - 1)
+  else
+    slice start block.loc.Loc.end_pos
+    |> trim_unknown_block_body |> close_open_constructs
 
 (* CSS Syntax 3 sec. 5.5.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
@@ -3141,14 +3209,9 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
     | None -> ()
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
         ignore (Cursor.next_raw r)
-    | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
+    | Some (Component.Block ({ node = { opening = Token.Curly; _ }; _ } as b))
       ->
-        (* CSS Syntax 3 section 5.5.2: when an unterminated nested block
-           ([(...], [[...]) inside the at-rule's body extends to EOF, the
-           Parser's source slice carries the close [}] and any trailing
-           whitespace from outside the block - trim them so the serializer
-           re-adds its own [}] without stacking. *)
-        block := Option.Some (unknown_block_body slice value);
+        block := Option.Some (unknown_block_body slice b);
         ignore (Cursor.next_raw r)
     | Some comp ->
         let loc = Component.source_loc comp in
@@ -3158,8 +3221,17 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
         gather ()
   in
   gather ();
+  (* The block form knows it ran to EOF from [closed] and pays for the scan only
+     then; a statement one cannot, because [cursor_of_rule] gives the at-rule a
+     [;] whether the source ended in one or in EOF. A prelude that is already
+     closed comes back unchanged, so close it either way - after the trim the
+     printer applies, so the closer lands where the trim would have ended the
+     text rather than after the run of whitespace it takes off. *)
   let prelude =
-    if !prelude_start < 0 then "" else slice !prelude_start !prelude_end
+    if !prelude_start < 0 then ""
+    else
+      slice !prelude_start !prelude_end
+      |> trim_unknown_at_prelude |> close_open_constructs
   in
   Unknown_at_rule { name; prelude; block = !block }
 
@@ -3540,11 +3612,11 @@ let rec read_statement (r : Cursor.t) : statement =
       match List.assoc_opt name table with
       | Some p -> p r
       | None ->
-          (* CSS Syntax 3 sec. 5.4.1: an at-rule with no registered handler is
-             reported via a typed warning so [Css.of_string] partial-recovery
-             can surface it to callers. The prelude/block stay in the AST as
-             [Unknown_at_rule], and [Optimize.drop_unknown] removes them under
-             minify when the user opted into spec-strict canonicalization. *)
+          (* CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its name, so
+             the prelude and block stay in the AST as [Unknown_at_rule] and
+             reach the output. The typed warning tells the caller cascade could
+             not interpret it; [Optimize.drop_unknown_at_rules] is there for a
+             caller that wants it gone. *)
           ignore (Cursor.next_raw r);
           let stmt = read_unknown_at_rule name r in
           Cursor.push_warning r (Error.unknown_at_rule loc name);

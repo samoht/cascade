@@ -94,9 +94,11 @@ val drop_invalid : t -> t
 
 val drop_unknown_at_rules : t -> t
 (** [drop_unknown_at_rules ss] removes every [Unknown_at_rule] statement at any
-    block depth. CSS Syntax 3 sec. 5.4.1 says an unknown at-rule is discarded;
-    the parser preserves them in the AST for fidelity, and minify-time
-    canonicalization then drops them. *)
+    block depth, along with whatever it contains. A user agent ignores an
+    at-rule it has no handler for (CSS 2.1 sec. 4.2), so this projects a
+    stylesheet onto what one browser applies of it. Serialisation does not do
+    this: the reader of a transform's output is not always a browser, and an
+    agent that later implements the name would render the two differently. *)
 
 val drop_empty_rules : t -> t
 (** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body

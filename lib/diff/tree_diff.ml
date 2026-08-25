@@ -1236,6 +1236,78 @@ let rule_declarations = Css.Stylesheet.statement_declarations
 let rule_nested stmt =
   match Css.as_rule stmt with Some (_, _, nested) -> nested | None -> []
 
+(* A container takes part in the ordering comparison too: swapping a rule with
+   an [@media] that writes the same property flips the cascade winner. *)
+type order_key = Rule_order of Css.Selector.t | Block_order of string
+
+let order_key_of_stmt stmt =
+  match Css.as_rule stmt with
+  | Some (sel, _, _) -> Some (Rule_order (selector_key_of_selector sel))
+  | None -> Option.map (fun desc -> Block_order desc) (describe_statement stmt)
+
+(* Order keys in first-occurrence order. *)
+let order_keys_in_order stmts =
+  let seen = Hashtbl.create (List.length stmts) in
+  List.filter_map
+    (fun stmt ->
+      match order_key_of_stmt stmt with
+      | Some key when not (Hashtbl.mem seen key) ->
+          Hashtbl.add seen key ();
+          Some key
+      | _ -> None)
+    stmts
+
+(* Positions of one longest increasing subsequence of [ranks], by patience
+   sorting: [tails.(l)] is the position ending the smallest subsequence of
+   length [l + 1] seen so far, and [prev] chains each position to its
+   predecessor. *)
+let increasing_subsequence ranks =
+  let n = Array.length ranks in
+  let tails = Array.make n 0 in
+  let prev = Array.make n (-1) in
+  let len = ref 0 in
+  for i = 0 to n - 1 do
+    let lo = ref 0 and hi = ref !len in
+    while !lo < !hi do
+      let mid = (!lo + !hi) / 2 in
+      if ranks.(tails.(mid)) < ranks.(i) then lo := mid + 1 else hi := mid
+    done;
+    let pos = !lo in
+    prev.(i) <- (if pos > 0 then tails.(pos - 1) else -1);
+    tails.(pos) <- i;
+    if pos = !len then incr len
+  done;
+  let members = Array.make n false in
+  (if !len > 0 then
+     let i = ref tails.(!len - 1) in
+     while !i >= 0 do
+       members.(!i) <- true;
+       i := prev.(!i)
+     done);
+  members
+
+(* Statements whose order against the rest actually inverted. Judged on the
+   statements both sides share, since one the other side never had shifts every
+   absolute position after it without transposing anything: comparing positions
+   on each side reports the whole tail of the stylesheet as reordered whenever a
+   rule is added or dropped. Anchoring on a longest order-preserving matching of
+   that common sequence also keeps one move to one entry, where comparing rank
+   pairwise would name every statement the move passed. *)
+let moved_order_keys stmts1 stmts2 =
+  let keys2 = order_keys_in_order stmts2 in
+  let rank2 = Hashtbl.create (List.length keys2) in
+  List.iteri (fun i key -> Hashtbl.replace rank2 key i) keys2;
+  let common = List.filter (Hashtbl.mem rank2) (order_keys_in_order stmts1) in
+  let ranks = Array.of_list (List.map (Hashtbl.find rank2) common) in
+  let anchored = increasing_subsequence ranks in
+  let moved = Hashtbl.create (Array.length ranks) in
+  List.iteri
+    (fun i key -> if not anchored.(i) then Hashtbl.replace moved key ())
+    common;
+  moved
+
+let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
+
 (* Generic helper for finding added/removed/modified items between two lists.
    Works with any item type that has a key for comparison.
 
@@ -1334,9 +1406,25 @@ let build_rule_lookup_tables rules2 =
     rules2;
   (rules2_by_key, rules2_by_props)
 
-(* Try to find an exact match by selector key and declarations *)
-(* Returns: Some (Some diff) if selectors differ, Some None if exact match with same selectors, None if no exact match *)
-let try_exact_match rules2_by_key used_rules r1 key1 d1 =
+(* A rule paired with its partner on the other side: the two selectors and the
+   two declaration lists, in the order the rule matcher hands them on. *)
+type rule_modification =
+  Css.Selector.t * Css.Selector.t * Css.declaration list * Css.declaration list
+
+(* What an exact match reports. It usually says nothing: the same selector
+   carrying the same declarations is the same rule. Two exceptions. The selector
+   list was written in another order, which is a rewrite of the selector. And
+   the rule sits somewhere else against the rest of the sheet, which is a
+   cascade change however identical the block is, so the pair has to reach
+   [convert_modified_rule] for the reorder entry to be made. *)
+type exact_match =
+  | Same
+  | Selector_rewritten of rule_modification
+  | Moved of rule_modification
+
+(* Try to find an exact match by selector key and declarations. [None] when
+   nothing on the other side matches exactly. *)
+let try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 =
   let candidates = try Hashtbl.find rules2_by_key key1 with Not_found -> [] in
   match
     List.find_opt
@@ -1352,8 +1440,10 @@ let try_exact_match rules2_by_key used_rules r1 key1 d1 =
       let sel2 = rule_selector exact in
       let sel1_str = Css.Selector.to_string sel1 in
       let sel2_str = Css.Selector.to_string sel2 in
-      if sel1_str <> sel2_str then Some (Some (sel1, sel2, d1, d1))
-      else Some None
+      if not (String.equal sel1_str sel2_str) then
+        Some (Selector_rewritten (sel1, sel2, d1, d1))
+      else if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
+      else Some Same
   | None -> None
 
 (* Try to find any rule with the same selector key *)
@@ -1393,7 +1483,12 @@ let pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
   | Some result -> Some result
   | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
 
-let rules_modified_diff rules1 rules2 =
+(* The pairs the rules of [rules1] make with [rules2], as [(moved, changed)]:
+   the rules that only changed places, and the rules whose content or selector
+   differs. They are kept apart because only the second answers whether the two
+   sheets differ structurally, which is what decides how the ordering is read
+   back. *)
+let rules_modified_diff ~moved rules1 rules2 =
   let rules2_by_key, rules2_by_props = build_rule_lookup_tables rules2 in
   let used_rules = Hashtbl.create (List.length rules2) in
   (* Claim every exact match first, wherever it sits. Matching in one greedy
@@ -1406,10 +1501,18 @@ let rules_modified_diff rules1 rules2 =
       (fun r1 ->
         let key1 = selector_key_of_stmt r1 in
         let d1 = rule_declarations r1 in
-        match try_exact_match rules2_by_key used_rules r1 key1 d1 with
+        match try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 with
         | Some pick -> Left pick
         | None -> Right r1)
       rules1
+  in
+  let moved_exact =
+    List.filter_map (function Moved pair -> Some pair | _ -> None) exact
+  in
+  let rewritten =
+    List.filter_map
+      (function Selector_rewritten pair -> Some pair | _ -> None)
+      exact
   in
   let rec aux acc = function
     | [] -> List.rev acc
@@ -1424,7 +1527,7 @@ let rules_modified_diff rules1 rules2 =
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
   in
-  List.filter_map Fun.id exact @ aux [] pending
+  (moved_exact, rewritten @ aux [] pending)
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
@@ -1476,78 +1579,6 @@ let build_selector_map rules =
       (sel, decls) :: acc)
     [] rules
   |> List.rev
-
-(* A container takes part in the ordering comparison too: swapping a rule with
-   an [@media] that writes the same property flips the cascade winner. *)
-type order_key = Rule_order of Css.Selector.t | Block_order of string
-
-let order_key_of_stmt stmt =
-  match Css.as_rule stmt with
-  | Some (sel, _, _) -> Some (Rule_order (selector_key_of_selector sel))
-  | None -> Option.map (fun desc -> Block_order desc) (describe_statement stmt)
-
-(* Order keys in first-occurrence order. *)
-let order_keys_in_order stmts =
-  let seen = Hashtbl.create (List.length stmts) in
-  List.filter_map
-    (fun stmt ->
-      match order_key_of_stmt stmt with
-      | Some key when not (Hashtbl.mem seen key) ->
-          Hashtbl.add seen key ();
-          Some key
-      | _ -> None)
-    stmts
-
-(* Positions of one longest increasing subsequence of [ranks], by patience
-   sorting: [tails.(l)] is the position ending the smallest subsequence of
-   length [l + 1] seen so far, and [prev] chains each position to its
-   predecessor. *)
-let increasing_subsequence ranks =
-  let n = Array.length ranks in
-  let tails = Array.make n 0 in
-  let prev = Array.make n (-1) in
-  let len = ref 0 in
-  for i = 0 to n - 1 do
-    let lo = ref 0 and hi = ref !len in
-    while !lo < !hi do
-      let mid = (!lo + !hi) / 2 in
-      if ranks.(tails.(mid)) < ranks.(i) then lo := mid + 1 else hi := mid
-    done;
-    let pos = !lo in
-    prev.(i) <- (if pos > 0 then tails.(pos - 1) else -1);
-    tails.(pos) <- i;
-    if pos = !len then incr len
-  done;
-  let members = Array.make n false in
-  (if !len > 0 then
-     let i = ref tails.(!len - 1) in
-     while !i >= 0 do
-       members.(!i) <- true;
-       i := prev.(!i)
-     done);
-  members
-
-(* Statements whose order against the rest actually inverted. Judged on the
-   statements both sides share, since one the other side never had shifts every
-   absolute position after it without transposing anything: comparing positions
-   on each side reports the whole tail of the stylesheet as reordered whenever a
-   rule is added or dropped. Anchoring on a longest order-preserving matching of
-   that common sequence also keeps one move to one entry, where comparing rank
-   pairwise would name every statement the move passed. *)
-let moved_order_keys stmts1 stmts2 =
-  let keys2 = order_keys_in_order stmts2 in
-  let rank2 = Hashtbl.create (List.length keys2) in
-  List.iteri (fun i key -> Hashtbl.replace rank2 key i) keys2;
-  let common = List.filter (Hashtbl.mem rank2) (order_keys_in_order stmts1) in
-  let ranks = Array.of_list (List.map (Hashtbl.find rank2) common) in
-  let anchored = increasing_subsequence ranks in
-  let moved = Hashtbl.create (Array.length ranks) in
-  List.iteri
-    (fun i key -> if not anchored.(i) then Hashtbl.replace moved key ())
-    common;
-  moved
-
-let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
 
 (* The conditions of the containers that changed places against the rest of the
    enclosing statement list, judged on the same key space as the rule ordering.
@@ -1870,7 +1901,8 @@ let handle_structural_diff rules1 rules2 =
   in
   let added, removed, regrouped = reconcile_selector_grouping added removed in
 
-  let other_modified = rules_modified_diff rules1 rules2 in
+  let moved = moved_order_keys rules1 rules2 in
+  let moved_exact, other_modified = rules_modified_diff ~moved rules1 rules2 in
   let filtered_other_modified =
     exclude_modified_selector_changes sel_changes other_modified
   in
@@ -1888,11 +1920,14 @@ let handle_structural_diff rules1 rules2 =
             (order_signature rules2))
   in
 
+  (* With nothing else to report, the two sides line up position by position and
+     [ordering_diff] can also name a swap of two rules that share a selector,
+     which no order key distinguishes. Once something else did change that walk
+     no longer lines up, and the rules that only changed places are the ones the
+     order keys name. *)
   let modified_with_order =
-    if has_ordering_changes then
-      let moved = moved_order_keys rules1 rules2 in
-      ordering_diff ~moved rules1 rules2 @ modified
-    else modified
+    if has_ordering_changes then ordering_diff ~moved rules1 rules2 @ modified
+    else moved_exact @ modified
   in
 
   (added, removed, modified_with_order, regrouped)

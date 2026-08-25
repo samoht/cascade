@@ -184,6 +184,30 @@ let pp_position_area_keyword : position_area_keyword Pp.t =
   | Span_inline_end -> Pp.string ctx "span-inline-end"
   | Span_block_start -> Pp.string ctx "span-block-start"
   | Span_block_end -> Pp.string ctx "span-block-end"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Span_start -> Pp.string ctx "span-start"
+  | Span_end -> Pp.string ctx "span-end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Span_self_start -> Pp.string ctx "span-self-start"
+  | Span_self_end -> Pp.string ctx "span-self-end"
+  | Self_x_start -> Pp.string ctx "self-x-start"
+  | Self_x_end -> Pp.string ctx "self-x-end"
+  | Self_y_start -> Pp.string ctx "self-y-start"
+  | Self_y_end -> Pp.string ctx "self-y-end"
+  | Span_self_x_start -> Pp.string ctx "span-self-x-start"
+  | Span_self_x_end -> Pp.string ctx "span-self-x-end"
+  | Span_self_y_start -> Pp.string ctx "span-self-y-start"
+  | Span_self_y_end -> Pp.string ctx "span-self-y-end"
+  | Self_block_start -> Pp.string ctx "self-block-start"
+  | Self_block_end -> Pp.string ctx "self-block-end"
+  | Self_inline_start -> Pp.string ctx "self-inline-start"
+  | Self_inline_end -> Pp.string ctx "self-inline-end"
+  | Span_self_block_start -> Pp.string ctx "span-self-block-start"
+  | Span_self_block_end -> Pp.string ctx "span-self-block-end"
+  | Span_self_inline_start -> Pp.string ctx "span-self-inline-start"
+  | Span_self_inline_end -> Pp.string ctx "span-self-inline-end"
   | Span_all -> Pp.string ctx "span-all"
 
 let rec pp_position_area : position_area Pp.t =
@@ -803,37 +827,62 @@ let rec read_position_visibility t : position_visibility =
       (Conditions conditions : position_visibility))
     t
 
+let position_area_keywords : (string * position_area_keyword) list =
+  [
+    ("top", Top);
+    ("bottom", Bottom);
+    ("left", Left);
+    ("right", Right);
+    ("center", Center);
+    ("span-top", Span_top);
+    ("span-bottom", Span_bottom);
+    ("span-left", Span_left);
+    ("span-right", Span_right);
+    ("x-start", X_start);
+    ("x-end", X_end);
+    ("y-start", Y_start);
+    ("y-end", Y_end);
+    ("span-x-start", Span_x_start);
+    ("span-x-end", Span_x_end);
+    ("span-y-start", Span_y_start);
+    ("span-y-end", Span_y_end);
+    ("inline-start", Inline_start);
+    ("inline-end", Inline_end);
+    ("block-start", Block_start);
+    ("block-end", Block_end);
+    ("span-inline-start", Span_inline_start);
+    ("span-inline-end", Span_inline_end);
+    ("span-block-start", Span_block_start);
+    ("span-block-end", Span_block_end);
+    ("start", Start);
+    ("end", End);
+    ("span-start", Span_start);
+    ("span-end", Span_end);
+    ("self-start", Self_start);
+    ("self-end", Self_end);
+    ("span-self-start", Span_self_start);
+    ("span-self-end", Span_self_end);
+    ("self-x-start", Self_x_start);
+    ("self-x-end", Self_x_end);
+    ("self-y-start", Self_y_start);
+    ("self-y-end", Self_y_end);
+    ("span-self-x-start", Span_self_x_start);
+    ("span-self-x-end", Span_self_x_end);
+    ("span-self-y-start", Span_self_y_start);
+    ("span-self-y-end", Span_self_y_end);
+    ("self-block-start", Self_block_start);
+    ("self-block-end", Self_block_end);
+    ("self-inline-start", Self_inline_start);
+    ("self-inline-end", Self_inline_end);
+    ("span-self-block-start", Span_self_block_start);
+    ("span-self-block-end", Span_self_block_end);
+    ("span-self-inline-start", Span_self_inline_start);
+    ("span-self-inline-end", Span_self_inline_end);
+    ("span-all", Span_all);
+  ]
+
 let read_position_area_keyword t : position_area_keyword =
-  Cursor.enum "position-area keyword"
-    [
-      ("top", (Top : position_area_keyword));
-      ("bottom", Bottom);
-      ("left", Left);
-      ("right", Right);
-      ("center", Center);
-      ("span-top", Span_top);
-      ("span-bottom", Span_bottom);
-      ("span-left", Span_left);
-      ("span-right", Span_right);
-      ("x-start", X_start);
-      ("x-end", X_end);
-      ("y-start", Y_start);
-      ("y-end", Y_end);
-      ("span-x-start", Span_x_start);
-      ("span-x-end", Span_x_end);
-      ("span-y-start", Span_y_start);
-      ("span-y-end", Span_y_end);
-      ("inline-start", Inline_start);
-      ("inline-end", Inline_end);
-      ("block-start", Block_start);
-      ("block-end", Block_end);
-      ("span-inline-start", Span_inline_start);
-      ("span-inline-end", Span_inline_end);
-      ("span-block-start", Span_block_start);
-      ("span-block-end", Span_block_end);
-      ("span-all", Span_all);
-    ]
-    t
+  Cursor.enum "position-area keyword" position_area_keywords t
 
 type position_area_axis = Horizontal | Vertical | Either
 
@@ -841,12 +890,22 @@ let position_area_axis (keyword : position_area_keyword) =
   match keyword with
   | Left | Right | Span_left | Span_right | X_start | X_end | Span_x_start
   | Span_x_end | Inline_start | Inline_end | Span_inline_start | Span_inline_end
-    ->
+  | Self_x_start | Self_x_end | Span_self_x_start | Span_self_x_end
+  | Self_inline_start | Self_inline_end | Span_self_inline_start
+  | Span_self_inline_end ->
       Horizontal
   | Top | Bottom | Span_top | Span_bottom | Y_start | Y_end | Span_y_start
-  | Span_y_end | Block_start | Block_end | Span_block_start | Span_block_end ->
+  | Span_y_end | Block_start | Block_end | Span_block_start | Span_block_end
+  | Self_y_start | Self_y_end | Span_self_y_start | Span_self_y_end
+  | Self_block_start | Self_block_end | Span_self_block_start
+  | Span_self_block_end ->
       Vertical
-  | Center | Span_all -> Either
+  (* css-anchor-position-1 sec. 3.1.2: [center], [span-all] and the start/end
+     keywords that name no axis explicitly are ambiguous. The [self-] forms that
+     do name one, physical or logical, are not. *)
+  | Center | Span_all | Start | End | Span_start | Span_end | Self_start
+  | Self_end | Span_self_start | Span_self_end ->
+      Either
 
 let compatible_position_area_keywords first second =
   match (position_area_axis first, position_area_axis second) with

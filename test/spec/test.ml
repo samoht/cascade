@@ -289,7 +289,14 @@ let syntax_recovery () =
      and warns; strict mode escalates (pinned by [cross_mode_pinning]). *)
   recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:#00f}"
     1;
-  recover "@unknown { .a { color: red } } .b { color: blue }" ".b{color:#00f}" 1;
+  (* CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its at-keyword and
+     sec. 5.5.2 keeps the block it consumes, so what recovers here is the rule
+     after the at-rule, not the at-rule itself. Discarding an unrecognised one
+     is the user agent's step (CSS 2.1 sec. 4.2), served by
+     [Optimize.drop_unknown_at_rules]. Its body has no known grammar, so it
+     travels as source text and minify has nothing to shorten it against. *)
+  recover "@unknown { .a { color: red } } .b { color: blue }"
+    "@unknown{ .a { color: red } }.b{color:#00f}" 1;
   recover ".a { color: red" ".a{color:red}" 0
 
 (* {2 CSS Selectors Level 4} https://www.w3.org/TR/selectors-4/ *)

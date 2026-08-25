@@ -23,7 +23,7 @@ the CSS text a browser might still make something of.
 The warnings that explain the drop are still reported.
 
   $ grep -c '^warning' err.txt
-  3
+  6
 
 The control: a page whose CSS parses is projected exactly as before, and the
 exit status stays 0.

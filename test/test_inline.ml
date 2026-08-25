@@ -520,9 +520,71 @@ let test_inline_layer_flattening () =
     "@layer b{.x{color:blue}}@layer a{.y{padding:1px}}"
     ".x{color:blue}.y{padding:1px}"
 
+(* An at-rule path is a containment test, not an equality: a custom property is
+   visible to a consumer wrapped in every block it sits in and then some, and to
+   nobody outside its own. A [@layer] is transparent to that test, so a path
+   crossing one still has to line the conditional blocks up. Both directions pin
+   the orientation the paths are compared in. *)
+let test_inline_at_path_containment () =
+  check_inline_case "an outer definition reaches a deeper consumer"
+    "@media print{@media (min-width:10px){:root{--x:red}@layer l{@media \
+     (min-width:20px){.a{color:var(--x)}}}}}"
+    "@media print{@media(min-width:10px){@layer \
+     l{@media(min-width:20px){.a{color:red}}}}}";
+  check_inline_case "an inner definition does not reach an outer consumer"
+    "@media print{:root{--x:red}}.a{color:var(--x)}" ".a{color:var(--x)}";
+  check_inline_case "a sibling block at the same depth is not an enclosing one"
+    "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
+    "@media screen{.a{color:var(--x)}}"
+
+(* --- allocation / complexity guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* [depth] nested [@media print] blocks around one rule that declares and reads
+   a single custom property. The variable count, the scope count and the
+   declaration count are all held at one, so the at-rule path depth is the only
+   thing that varies. *)
+let nested_media depth =
+  let b = Buffer.create ((depth * 14) + 32) in
+  for _ = 1 to depth do
+    Buffer.add_string b "@media print{"
+  done;
+  Buffer.add_string b ".a{--x:red;color:var(--x)}";
+  for _ = 1 to depth do
+    Buffer.add_char b '}'
+  done;
+  parse (Buffer.contents b)
+
+(* Each of the passes below descends carrying the chain of enclosing at-rules.
+   Extending that chain by copying it costs one cell per enclosing block, so a
+   depth-[d] chain pays 1 + 2 + ... + d per pass before a single liveness
+   question is asked; sharing the tail costs one cell per level. That is the
+   difference between quadrupling and doubling on twice the depth, so pin the
+   ratio below the halfway point. Minor words rather than total allocation: the
+   chain is short-lived scratch, and counting the major heap would fold in an
+   output string that grows with the depth. *)
+let test_inline_at_path_cost_is_linear () =
+  let shallow = nested_media 100 and deep = nested_media 200 in
+  let a1 = measure (fun () -> Css.inline_vars shallow) in
+  let a2 = measure (fun () -> Css.inline_vars deep) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x depth)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.5)
+
 let suite =
   ( "inline",
     [
+      Alcotest.test_case "inline vars contain a definition to its at-rule path"
+        `Quick test_inline_at_path_containment;
+      Alcotest.test_case "inline vars cost stays linear in at-rule depth" `Quick
+        test_inline_at_path_cost_is_linear;
       Alcotest.test_case "inline vars substitute visible custom properties"
         `Quick test_inline_substitutes_vars;
       Alcotest.test_case "inline vars keep requested references" `Quick

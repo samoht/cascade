@@ -91,6 +91,8 @@ let pp : t Pp.t =
       Pp.cut ctx ();
       Pp.string ctx text;
       Pp.cut ctx ();
+      (* Both counts are columns rather than bytes, so a space and a caret
+         apiece line the marker up under a multibyte snippet. *)
       Pp.string ctx (String.make marker_pos ' ');
       Pp.string ctx (String.make (max 1 marker_len) '^')
 
