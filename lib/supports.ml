@@ -120,10 +120,6 @@ let string_of_font_tech = function
   | Palettes -> "palettes"
   | Incremental -> "incremental"
 
-let starts_with ~prefix s =
-  let prefix_len = String.length prefix in
-  String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
-
 (* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;] or a [}] into a custom
    property's name, so the name is checked against the spelling it serializes to
    (CSS Syntax 3 sec. 2.1) rather than against its own bytes: read raw, such a
@@ -139,7 +135,7 @@ let property_name name =
   if not (Cursor.is_done reader) then
     failwith ("invalid supports declaration property name: " ^ name);
   let name =
-    if starts_with ~prefix:"--" parsed then parsed
+    if Custom_property_name.has_prefix parsed then parsed
     else String.lowercase_ascii parsed
   in
   Property_name name

@@ -629,7 +629,7 @@ let rec read_timeline_name t : timeline_name =
 let read_timeline_shorthand_item t : timeline_shorthand_item =
   Cursor.ws t;
   let name = Cursor.ident ~keep_case:true t in
-  if not (String.starts_with ~prefix:"--" name) then
+  if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid t "timeline name";
   Cursor.ws t;
   let axis = read_timeline_axis t in

@@ -869,7 +869,7 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     in
     match drop_ws (List.rev prelude) with
     | Component.Preserved { kind = Token.Ident name; _ } :: rest
-      when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' -> (
+      when Custom_property_name.has_prefix name -> (
         match drop_ws rest with
         | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
         | _ -> false)
@@ -982,7 +982,7 @@ let value_has_invalid_block ~is_custom value =
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
 let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
-  let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
+  let is_custom = Custom_property_name.has_prefix name in
   match drop_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
       let value1 = trim_ws rest in

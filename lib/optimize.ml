@@ -744,11 +744,7 @@ let registered_foldable (stylesheet : t) : string -> bool =
               (* [@property] names carry the [--] prefix; [var()] references
                  store the bare name, so normalise to the bare form for
                  lookup. *)
-              let key =
-                if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
-                then String.sub pr.name 2 (String.length pr.name - 2)
-                else pr.name
-              in
+              let key = Custom_property_name.strip_prefix pr.name in
               Hashtbl.replace tbl key ()
           | None -> ())
       | _ -> ())
@@ -772,11 +768,7 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
   let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
   (* [@property] names carry the [--] prefix; calc [Var] leaves store the bare
      name (the reader strips it), so key the table on the bare name. *)
-  let bare name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix in
   iter_statements
     (fun (stmt : statement) ->
       match stmt with
@@ -869,11 +861,7 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
 let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
     =
   let tbl = Hashtbl.create 64 in
-  let bare n =
-    if String.length n >= 2 && n.[0] = '-' && n.[1] = '-' then
-      String.sub n 2 (String.length n - 2)
-    else n
-  in
+  let bare = Custom_property_name.strip_prefix in
   let note_decls =
     List.iter (fun d ->
         List.iter
@@ -893,11 +881,7 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
    like [Inline.vars]. *)
 let drop_unused_custom_props (stmts : statement list) : statement list =
   let referenced = referenced_custom_props stmts in
-  let bare name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix in
   let keep_decl d =
     match Variables.custom_declaration_name d with
     | Some name -> Hashtbl.mem referenced (bare name)

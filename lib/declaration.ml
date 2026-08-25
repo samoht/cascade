@@ -62,8 +62,7 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
       let decl = normalize ~lossless ~exact_srgb ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
-let is_custom_property_name name =
-  String.length name > 2 && name.[0] = '-' && name.[1] = '-'
+let is_custom_property_name = Custom_property_name.is_valid
 
 (* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
    values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
@@ -235,7 +234,7 @@ let invalid_var_arguments arguments =
     List.filter (fun component -> not (is_ws_component component)) arguments
   with
   | Component.Preserved { kind = Token.Ident name; _ } :: _
-    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
+    when Custom_property_name.is_valid name ->
       false
   | _ -> true
 
@@ -1934,11 +1933,7 @@ let read_value (type a) (prop : a property) t : declaration =
 
 (** Parse a custom property (--name: value) *)
 let is_font_family_var name =
-  let bare =
-    if String.length name > 2 && String.sub name 0 2 = "--" then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix name in
   let starts_with prefix s =
     String.length s >= String.length prefix
     && String.sub s 0 (String.length prefix) = prefix
@@ -2287,7 +2282,7 @@ let read_declaration t : declaration option =
     let is_custom =
       match Cursor.peek t with
       | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
-          String.length s >= 2 && s.[0] = '-' && s.[1] = '-'
+          Custom_property_name.has_prefix s
       | _ -> false
     in
     if is_custom then read_custom_property_declaration t

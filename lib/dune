@@ -10,6 +10,7 @@
   baseline
   block
   common
+  custom_property_name
   declaration_intf
   factor
   flatten

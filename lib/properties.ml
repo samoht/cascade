@@ -2347,7 +2347,7 @@ let read_any_property t =
      value is opaque); other unrecognized names fail here. The lenient
      declaration recovery in [Declaration.read_regular_property_declaration]
      catches and falls back to [read_unknown_property_declaration]. *)
-  | _ when String.length prop_name >= 2 && String.sub prop_name 0 2 = "--" ->
+  | _ when Custom_property_name.has_prefix prop_name ->
       Prop (Unknown_property prop_name)
   | _ -> Cursor.err_invalid t ("unknown property: " ^ prop_name)
 

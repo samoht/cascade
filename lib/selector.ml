@@ -147,7 +147,7 @@ let validate_identifier_start name =
   if first_char >= '0' && first_char <= '9' then
     err_invalid_identifier name "cannot start with digit";
   if String.length name >= 2 then (
-    if name.[0] = '-' && name.[1] = '-' then
+    if Custom_property_name.has_prefix name then
       err_invalid_identifier name
         "cannot start with '--' (reserved for custom properties)";
     if name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9' then
@@ -188,7 +188,7 @@ let element ?ns name =
    prefix. *)
 let validate_serializable_class name =
   if String.length name = 0 then err_invalid_identifier name "cannot be empty";
-  if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+  if Custom_property_name.has_prefix name then
     err_invalid_identifier name
       "cannot start with '--' (reserved for custom properties)";
   String.iter

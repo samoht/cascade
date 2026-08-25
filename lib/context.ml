@@ -169,8 +169,8 @@ let animation ?timeline_time ?progress ?(animated_properties = []) () =
 let empty_property_registry = { property_registrations = [] }
 
 let property_registration ?initial_value ~inherits name syntax =
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
-    invalid_arg "property_registration: name must start with --";
+  if not (Custom_property_name.is_valid name) then
+    invalid_arg "property_registration: invalid custom-property name";
   { name; syntax; inherits; initial_value }
 
 let property_registry ?(property_registrations = []) () =
@@ -433,7 +433,7 @@ let validate_value_against_syntax (Variables.Syntax syntax) value =
 
 let validate_registered_custom_property registry decl =
   let name = Declaration.property_name decl in
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+  if not (Custom_property_name.is_valid name) then
     Error ("not a custom property: " ^ name)
   else
     match registered_property name registry with

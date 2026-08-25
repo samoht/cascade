@@ -720,10 +720,7 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
 let resolve_theme_guards_in_stmts ~theme stmts =
   Stylesheet.map_declarations (resolve_theme_guards_in_decls ~theme) stmts
 
-let bare_theme_name raw_name =
-  if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
-    String.sub raw_name 2 (String.length raw_name - 2)
-  else raw_name
+let bare_theme_name raw_name = Custom_property_name.strip_prefix raw_name
 
 (* [var()] references nested anywhere inside a value, so resolving one theme
    default pulls its targets into the inject set and [Inline.vars]' recursive
@@ -785,10 +782,7 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
    declaration, an unterminated string - is not a binding this library can
    write, so the name stays unresolved and its [var()] reference stays live. *)
 let theme_default_declaration (name, value) =
-  let name =
-    if String.length name >= 2 && String.sub name 0 2 = "--" then name
-    else "--" ^ name
-  in
+  let name = Custom_property_name.add_prefix name in
   Declaration.parse_custom_property name value
 
 (* [lookup] restricted to the answers that bind: anything else reads as [None],

@@ -368,8 +368,7 @@ let split_named_components components =
       if starts_query query then Some (name, query) else None
   | _ -> None
 
-let is_custom_property name =
-  String.length name >= 2 && name.[0] = '-' && name.[1] = '-'
+let is_custom_property name = Custom_property_name.is_valid name
 
 let has_semicolon_component =
   List.exists (function

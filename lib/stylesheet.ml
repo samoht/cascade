@@ -766,11 +766,7 @@ let normalise_charset statements =
     statements
 
 let color_custom_property_names stylesheet =
-  let var_name_of_custom_property name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let var_name_of_custom_property = Custom_property_name.strip_prefix in
   let declaration names = function
     | Declaration.Declaration
         {
@@ -2735,7 +2731,7 @@ let read_page (r : Cursor.t) : statement =
   Page_with_margins (selector, descriptors, margins)
 
 let validate_dashed_ident r name context =
-  if not (String.starts_with ~prefix:"--" name) then
+  if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid r (context ^ " name must be a dashed ident")
 
 let font_palette_descriptor_kind = function
@@ -3334,8 +3330,8 @@ let read_supports_condition (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports-condition" r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
-    Cursor.err_invalid r "@supports-condition: name must start with '--'";
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid r "@supports-condition: invalid custom-property name";
   Cursor.ws r;
   let declarations = Cursor.braces Declaration.read_declarations r in
   Supports_condition (name, declarations)
@@ -3439,8 +3435,8 @@ let read_property_rule (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "property" r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
-    Cursor.err_invalid r ("@property: name must start with '--', got: " ^ name);
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid r ("@property: invalid custom-property name: " ^ name);
   Cursor.ws r;
   let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with

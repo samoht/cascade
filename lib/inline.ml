@@ -234,13 +234,7 @@ let visible_customs ~scopes ~at_path ~selector =
 
 (* [kept] names carry the [--] prefix; [Context.runtime_vars] expects the bare
    custom-property name. *)
-let runtime_var_names kept =
-  List.map
-    (fun name ->
-      if String.length name >= 2 && String.sub name 0 2 = "--" then
-        String.sub name 2 (String.length name - 2)
-      else name)
-    kept
+let runtime_var_names kept = List.map Custom_property_name.strip_prefix kept
 
 let context_for ?(kept = []) visible =
   Context.v ~custom_properties:(List.rev visible)
@@ -266,10 +260,7 @@ let read_custom_components read = function
   | _ -> None
 
 let lookup_visible_custom visible name read =
-  let dashed =
-    if String.length name >= 2 && String.sub name 0 2 = "--" then name
-    else "--" ^ name
-  in
+  let dashed = Custom_property_name.add_prefix name in
   List.find_map
     (function
       | Declaration.Declaration
@@ -303,10 +294,7 @@ let consider_custom_candidate idx best decl value =
   if better_custom_candidate ~important ~idx best then Some candidate else best
 
 let lookup_visible_custom_components visible name =
-  let dashed =
-    if String.length name >= 2 && String.sub name 0 2 = "--" then name
-    else "--" ^ name
-  in
+  let dashed = Custom_property_name.add_prefix name in
   let choose idx best decl =
     match decl with
     | Declaration.Declaration { property = Properties.Custom_property n; _ }
@@ -346,15 +334,9 @@ let parse_var_components args : (string * Component.t list option) option =
   try
     let cursor = Cursor.of_components args in
     let raw_name = Cursor.ident ~keep_case:true cursor in
-    if
-      not
-        (String.length raw_name >= 3
-        && raw_name.[0] = '-'
-        && raw_name.[1] = '-'
-        && raw_name.[2] <> '-')
-    then None
+    if not (Custom_property_name.is_valid raw_name) then None
     else
-      let name = String.sub raw_name 2 (String.length raw_name - 2) in
+      let name = Custom_property_name.strip_prefix raw_name in
       let fallback =
         Cursor.ws cursor;
         if Cursor.comma_opt cursor then Some (Cursor.remaining cursor) else None
@@ -763,7 +745,7 @@ and refs_of_var_args args =
   with Cursor.Parse_error _ -> (
     match strip_component_ws args with
     | Component.Preserved { kind = Token.Ident name; _ } :: rest
-      when String.length name >= 2 && String.sub name 0 2 = "--" ->
+      when Custom_property_name.is_valid name ->
         name :: refs_of_components (split_var_fallback [] rest)
     | Component.Preserved { kind = Token.Delim "--"; _ }
       :: Component.Preserved { kind = Token.Ident name; _ }
@@ -826,7 +808,7 @@ let rec refs_of_supports : Supports.t -> string list = function
    real property like [style(color: red)] keeps its value through substitution.
    The name is dashed as written, so it needs no normalisation. *)
 let refs_of_queried_name name =
-  if String.length name >= 2 && String.sub name 0 2 = "--" then [ name ] else []
+  if Custom_property_name.is_valid name then [ name ] else []
 
 (* CSS Conditional 5 sec. 6.2: a [style()] query is evaluated against the
    computed value the queried property has on the query container, its boolean
@@ -1124,9 +1106,7 @@ let strip_dead ~keep ~live_set stmts =
   in
   map_stmts ~parents:[] ~at_path:[] stmts
 
-let normalise_var_name name =
-  if String.length name >= 2 && String.sub name 0 2 = "--" then name
-  else String.concat "" [ "--"; name ]
+let normalise_var_name = Custom_property_name.add_prefix
 
 (* Every custom-property name the stylesheet still mentions: declared by a
    declaration, or referenced by a [var()] in a declaration or in an at-rule
