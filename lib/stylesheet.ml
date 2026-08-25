@@ -1565,14 +1565,14 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-(* Measure the output size with [Pp.size] and presize the buffer exactly. *)
+(* One walk of the tree. Presizing the buffer from a [Pp.size] prepass would
+   cost a second full walk - the counter sink skips the output bytes, not
+   [normalise], [printable_statements] or any printer below them - to save a
+   [Buffer] growth that is amortised anyway. *)
 let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
   let pp ctx () = pp_stylesheet ctx statements in
-  let size = Pp.size ~minify ?indent ?lossless ?enforce_spec pp () in
-  let buf = Buffer.create size in
-  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ();
-  Buffer.contents buf
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp ()
 
 let pp = to_string
 

@@ -217,6 +217,11 @@ answers.
   which closes the rule around it. The declaration name, the `var()` reference
   and its fallback, the `@property` prelude and a `style()` container query all
   take the escaping (#435)
+- Serialising a stylesheet walks it once. `Css.to_string` sized its buffer
+  exactly by first rendering the whole sheet through a counter, so every
+  printer below it ran twice to save a buffer growth that is amortised
+  anyway; one walk cuts a 5000-rule sheet to 55% of the allocations and 69%
+  of the instructions, for byte-identical output (#479)
 
 ### Minification
 
