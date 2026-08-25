@@ -222,11 +222,9 @@ answers.
   which closes the rule around it. The declaration name, the `var()` reference
   and its fallback, the `@property` prelude and a `style()` container query all
   take the escaping (#435)
-- Serialising a stylesheet walks it once. `Css.to_string` sized its buffer
-  exactly by first rendering the whole sheet through a counter, so every
-  printer below it ran twice to save a buffer growth that is amortised
-  anyway; one walk cuts a 5000-rule sheet to 55% of the allocations and 69%
-  of the instructions, for byte-identical output (#479)
+- `Css.to_string` renders the sheet once. It sized its buffer exactly by
+  first running the sheet through a counter, so every printer below it ran
+  twice to save a buffer growth that is amortised anyway (#479)
 
 ### Minification
 
@@ -392,32 +390,17 @@ answers.
   already gives up Level 3 compatibility inside that very query by lowering
   `min-width` to range syntax. `--enforce-spec` keeps both Level 3 spellings
   (#323)
-- `--minify` and `cascade diff` spend less time on a large stylesheet, for the
-  same output (#413, #422, #424)
-- `--minify` builds the rule-dependency graph of a large stylesheet in less
-  memory, for byte-identical output. It compared every pair of rules writing
-  the same property, though two rules whose selectors cannot tie on
-  specificity are never order-constrained; skipping those pairs cuts a
-  4000-rule sheet to 51% of the allocations and 37% of the instructions
-  (#468)
-- `--minify` merges a long run of rules on one selector in less time and
-  memory, for byte-identical output. Deciding whether two blocks can be
-  reordered rebuilt and re-walked a body once per pair, both between two
-  declaration runs and between a nested block and the declarations that would
-  move past it; indexing each body once by the slots it writes leaves 4% of
-  the allocations either way (#480, #487)
-- `--minify` groups a long run of same-body rules in less memory, for
-  byte-identical output. Whether the run can share one selector list was asked
-  of every pair of it, though the answer is read off each selector alone;
-  reading each once cuts 400 such rules to 17% of the allocations and 12% of
-  the instructions (#486)
+- `--minify` and `cascade diff` spend less time and memory on a large
+  stylesheet, for the same output (#413, #422, #424, #468)
+- `--minify` no longer allocates quadratically on a long run of rules sharing
+  one selector or one body. The benchmark corpora hold no such run, so this
+  bounds a worst case rather than speeding real input up (#480, #486, #487)
 
 ### Custom properties
 
 - `Css.inline_vars` stays linear in at-rule nesting depth. Each of its four
   walks rebuilt the enclosing `@media`/`@layer`/`@supports` chain at every
-  level, so the cost grew with the square of the depth: one variable inside 800
-  nested blocks allocated 8.9M words, now 221K (#481)
+  level, which cost 6.4% of the instructions on real stylesheets (#481)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry: a name referenced only from
   inside one of them keeps its theme binding, a name whose only declaration
