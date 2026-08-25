@@ -88,6 +88,18 @@ answers.
   later parser fails, as `option`, `one_of`, `try_parse_err` and `list` already
   do. Code that caught `Parse_error` from either and read on from the advanced
   position now re-reads what the first parser consumed (#509)
+- `Cascade.Reader` is the character cursor `Lexer` drives and no longer reads
+  CSS. Gone: the combinators `atomic`, `lookahead`, `option`, `one_of`, `many`,
+  `fold_many`, `take`, `pair`, `triple`, `list`, `try_parse_err`, `enum`,
+  `enum_calls`, `enum_or_calls` and `call`; the readers `ident`, `token`,
+  `string`, `number`, `int`, `hex`, `ws`, `pct`, `bool`, `unit`,
+  `number_with_unit`, `url` and `css_value`; and the delimiter helpers `char`,
+  `expect`, `expect_string`, `while_`, `until`, `parens`, `braces`, `comma`,
+  `slash`, `comma_opt`, `slash_opt`, `consume_if`, `peek2`, `is_alpha`,
+  `is_digit`, `is_hex` and `is_ident_start`. `Cascade.Cursor` carries those
+  names over a component-value stream, so read CSS from a `Cursor.of_string` or
+  `Cursor.of_reader` instead. The cursor itself, the `parse_error` record and
+  the call stack are unchanged (#509, #514)
 
 ### Parsing
 
@@ -594,9 +606,6 @@ answers.
   the line before the error and stopped one column short at end of input, and
   the caret was a byte count under a window that could open inside a code
   point (#477)
-- `Cascade.Reader.list` reports too few items as
-  `expected at least N items (got M)`, the wording `Cascade.Cursor.list` uses,
-  where it said `expected at least N item(s)` (#509)
 
 ### CLI tools
 
