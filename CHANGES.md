@@ -533,6 +533,12 @@ answers.
 
 ### Library
 
+- `Css.Properties.compare_property` and `Css.Declaration.compare_prop_key` are
+  a total order on a property identity, `0` exactly where equality holds. The
+  table that drops shadowed rules orders its coverage set with it instead of
+  comparing the runtime representation of a key, which takes a fifth off that
+  set on a sheet writing many properties under one selector and leaves a real
+  stylesheet where it was (#513)
 - `Css.Stylesheet.statement_declarations` is the declarations a statement holds
   directly; with `statement_children` it reaches every declaration in a
   stylesheet (#317)

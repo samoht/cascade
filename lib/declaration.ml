@@ -533,6 +533,11 @@ let equal_declaration (a : declaration) b = Stdlib.compare a b = 0
 let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
+(* The pack hides the value's type but not the property's identity, so the order
+   is the one [Properties] gives that identity. *)
+let compare_prop_key (a : prop_key) b =
+  match (a, b) with Key p, Key q -> Properties.compare_property p q
+
 let rec property_key decl =
   match decl with
   | Declaration { property; _ } -> Key property

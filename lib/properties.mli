@@ -16,6 +16,11 @@ val minified_name_carries : 'a property -> 'a -> bool
     that is not the identity, has no [break-*] spelling. Every other property
     names itself the same whatever it carries. *)
 
+val compare_property : 'a property -> 'b property -> int
+(** [compare_property a b] is a total order on property identities. It is [0]
+    exactly when [a] and [b] are the same property, so an ordered container
+    keyed on a property agrees with equality on it. *)
+
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
