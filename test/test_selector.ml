@@ -1613,6 +1613,64 @@ let test_attr_name () =
   check_attr_name "data-testid";
   check_attr_name "href"
 
+(* A table keyed by a selector separates its keys only if the hash reads far
+   enough into one to reach what distinguishes it. [Combined] nests to the
+   right, so the class that tells [.p0 ... .p7 .t1] from [.p0 ... .p7 .t2] is
+   the deepest node in both, behind a prefix they share: a hash that stops after
+   a fixed count of nodes returns one value for the whole family, and every
+   probe of such a table then walks the whole bucket comparing selector subtrees
+   down the shared chain. *)
+let hash_separates_deep_tails () =
+  let depth = 8 and n = 500 in
+  let prefix = String.concat " " (List.init depth (Fmt.str ".p%d")) in
+  let seen = Hashtbl.create 1024 in
+  for i = 1 to n do
+    Hashtbl.replace seen
+      (Fmt.kstr (fun src -> hash (of_string src)) "%s .t%d" prefix i)
+      ()
+  done;
+  Alcotest.(check int)
+    (Fmt.str "%d selectors sharing a %d-deep prefix take distinct hashes" n
+       depth)
+    n (Hashtbl.length seen)
+
+(* [hash] is consistent with [equal], and [equal] is the structural order's
+   zero: both hold across shapes that put what distinguishes them at every depth
+   a selector can. Each source is read twice, so the two sides are separate
+   trees and the hash is read off the structure, not off a shared pointer. *)
+let hash_agrees_with_equal () =
+  let sources =
+    [
+      ".a";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t1";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t2";
+      ".p0>.p1>.p2>.p3>.p4>.p5>.p6>.t1";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t1:hover";
+      "div.p0 .p1 .p2 .p3 .p4 .p5 .p6 span.t1";
+      ":is(.p0 .p1 .p2 .p3 .p4 .p5 .t1)";
+      ":is(.p0 .p1 .p2 .p3 .p4 .p5 .t2)";
+      ":where(.p0 .p1 .p2 .p3 .p4 .p5 .t1)";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6[data-x=one]";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6[data-x=two]";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6::before";
+    ]
+  in
+  List.iter
+    (fun src_a ->
+      List.iter
+        (fun src_b ->
+          let a = of_string src_a and b = of_string src_b in
+          let eq = equal a b in
+          if eq <> (compare a b = 0) then
+            Alcotest.failf "equal disagrees with compare on %s / %s" src_a src_b;
+          if eq <> String.equal src_a src_b then
+            Alcotest.failf "equal conflates %s with %s" src_a src_b;
+          if eq then
+            if hash a <> hash b then
+              Alcotest.failf "equal selectors hash apart: %s" src_a)
+        sources)
+    sources
+
 (** {2 CSS Nesting Selector Tests} *)
 
 (* ignore-test *)
@@ -2235,5 +2293,7 @@ let suite =
         spec_selector_serialization_invariant_matrix;
       test_case "spec selector attribute namespace edges" `Quick
         spec_selector_attr_ns_edges;
+      test_case "hash separates deep tails" `Quick hash_separates_deep_tails;
+      test_case "hash agrees with equal" `Quick hash_agrees_with_equal;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )

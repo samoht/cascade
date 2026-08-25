@@ -140,6 +140,66 @@ let test_all_compatible_matches_the_pair_loop () =
            pool.(Random.State.int state (Array.length pool))))
   done
 
+(* Selectors whose distinguishing part sits behind a prefix they share, which is
+   where a table keyed by [key] has to work hardest. *)
+let key_pool =
+  Array.map Selector.of_string
+    [|
+      ".a";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t1";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t2";
+      ".p0>.p1>.p2>.p3>.p4>.p5>.p6>.t1";
+      ":is(.p0 .p1 .p2 .p3 .p4 .p5 .t1)";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6[data-x=one]";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6::before";
+      "div.p0 .p1 .p2 .p3 .p4 .p5 .p6 span.t1";
+    |]
+
+let key_of sels = Merge.key (Merge.selector_list sels)
+let keys_equal a b = List.equal Selector.equal (key_of a) (key_of b)
+let render sels = String.concat "," (List.map Selector.to_string sels)
+
+(* [key] answers for a selector list which SET of targets it writes, so any two
+   orderings of one list share a key and two different sets never do. A table
+   keyed by [key] inherits exactly that, which is what makes it sound to merge
+   the rules it groups. *)
+let check_key_is_the_set sels =
+  let shuffled = List.rev sels in
+  if not (keys_equal sels shuffled) then
+    Alcotest.failf "key is not order-insensitive on [%s]" (render sels);
+  let sorted = List.sort Selector.compare sels in
+  if not (keys_equal sels sorted) then
+    Alcotest.failf "key disagrees with its own sort on [%s]" (render sels)
+
+let test_key_is_the_selector_set () =
+  let pool = key_pool in
+  let n = Array.length pool in
+  (* Every list up to four selectors drawn from the pool, then longer random
+     ones. *)
+  let rec exhaustive depth acc =
+    if acc <> [] then check_key_is_the_set (List.rev acc);
+    if depth > 0 then
+      Array.iter (fun sel -> exhaustive (depth - 1) (sel :: acc)) pool
+  in
+  exhaustive 4 [];
+  let state = Random.State.make [| 0x5E1EC |] in
+  for _ = 1 to 5000 do
+    let len = 1 + Random.State.int state 12 in
+    check_key_is_the_set
+      (List.init len (fun _ -> pool.(Random.State.int state n)))
+  done;
+  (* Distinctness: two singleton lists share a key only when the selector is the
+     same one. *)
+  Array.iter
+    (fun a ->
+      Array.iter
+        (fun b ->
+          if keys_equal [ a ] [ b ] <> Selector.equal a b then
+            Alcotest.failf "key conflates %s with %s" (Selector.to_string a)
+              (Selector.to_string b))
+        pool)
+    pool
+
 let suite =
   ( "merge",
     [
@@ -153,4 +213,6 @@ let suite =
         test_all_compatible_matches_the_pair_loop;
       Alcotest.test_case "declarations_equal fast and structural paths" `Quick
         test_declarations_equal_fast_and_structural_paths;
+      Alcotest.test_case "key is the selector set" `Quick
+        test_key_is_the_selector_set;
     ] )
