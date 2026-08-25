@@ -25,6 +25,70 @@ let check_inline_case ?optimized name input expected =
         expected
         (optimized_minified inlined)
 
+(* Every [\@font-face] descriptor, with a value it takes. *)
+let font_face_descriptors =
+  [
+    ("font-family", "b");
+    ("src", "local(y)");
+    ("font-style", "italic");
+    ("font-weight", "400");
+    ("font-stretch", "50%");
+    ("font-display", "swap");
+    ("unicode-range", "U+0-7f");
+    ("font-variant", "normal");
+    ("font-feature-settings", "normal");
+    ("font-variation-settings", "normal");
+    ("font-tech", "\"variations\"");
+    ("size-adjust", "100%");
+    ("ascent-override", "normal");
+    ("descent-override", "normal");
+    ("line-gap-override", "normal");
+  ]
+
+let holds_substring sub s =
+  let n = String.length s and m = String.length sub in
+  let rec from i = i + m <= n && (String.sub s i m = sub || from (i + 1)) in
+  from 0
+
+let font_face_descriptor_count sheet =
+  List.length
+    (List.concat_map
+       (fun statement ->
+         match Css.as_font_face statement with
+         | Some descriptors -> descriptors
+         | None -> [])
+       sheet)
+
+(* CSS Fonts 4 sec. 4.1: no descriptor grammar accepts a [var()], so a browser
+   drops the declaration holding one. cascade substitutes at build time instead,
+   but only where the inline pass has a resolution path, and the parser keeps a
+   [var()] exactly there. The two are one decision, so read them together: a
+   descriptor that survives the parse leaves [inline_vars] with no [var()]
+   behind, and no other descriptor survives. *)
+let test_inline_font_face_var_descriptors () =
+  let survives (name, value) =
+    let css =
+      String.concat ""
+        [
+          ":root{--v:";
+          value;
+          "}@font-face{font-family:a;src:local(anchor);";
+          name;
+          ":var(--v)}";
+        ]
+    in
+    let sheet = parse css in
+    let inlined = minified (Css.inline_vars sheet) in
+    Alcotest.(check bool)
+      (name ^ ": no var() reaches the output")
+      false
+      (holds_substring "var(" inlined);
+    font_face_descriptor_count sheet = 3
+  in
+  let kept = List.map fst (List.filter survives font_face_descriptors) in
+  Alcotest.(check (list string))
+    "descriptors the parser keeps a var() for" [ "src"; "unicode-range" ] kept
+
 let test_inline_substitutes_vars () =
   check_inline ~optimized:".button{color:#00f}"
     ":root{--brand:blue}.button{color:var(--brand)}" ".button{color:blue}"
@@ -778,4 +842,7 @@ let suite =
         test_inline_keeps_a_page_break_property;
       Alcotest.test_case "inline vars keep a page-break property read from CSS"
         `Quick test_inline_keeps_a_page_break_property_from_css;
+      Alcotest.test_case
+        "inline vars resolve the @font-face descriptors the parser keeps" `Quick
+        test_inline_font_face_var_descriptors;
     ] )
