@@ -82,18 +82,28 @@ let closing_char : Token.bracket -> char = function
   | Paren -> ')'
   | Square -> ']'
 
+(* A debug dump, not source text: every node shows its own location and the CSS
+   Syntax section 5.4.6 flags [compare] separates values on. [Pp.space] rather
+   than [Pp.sp] because a dump has no minified form, and layout whitespace would
+   drop out and run the children together. *)
 let rec pp : t Pp.t =
  fun ctx cv ->
   match cv with
   | Preserved tok -> Token.pp ctx tok
-  | Block { node = { opening; value; _ }; _ } ->
+  | Block { node = { opening; value; closed }; loc } ->
       Pp.char ctx (opening_char opening);
-      Pp.list ~sep:Pp.sp pp ctx value;
-      Pp.char ctx (closing_char opening)
-  | Func { node = { name; arguments; _ }; _ } ->
+      Pp.list ~sep:Pp.space pp ctx value;
+      Pp.char ctx (closing_char opening);
+      if not closed then Pp.string ctx "<unclosed>";
+      Pp.char ctx '@';
+      Loc.pp ctx loc
+  | Func { node = { name; arguments; terminated }; loc } ->
       Pp.string ctx name;
       Pp.char ctx '(';
-      Pp.list ~sep:Pp.sp pp ctx arguments;
-      Pp.char ctx ')'
+      Pp.list ~sep:Pp.space pp ctx arguments;
+      Pp.char ctx ')';
+      if not terminated then Pp.string ctx "<unterminated>";
+      Pp.char ctx '@';
+      Loc.pp ctx loc
 
 let to_string t = Pp.to_string pp t

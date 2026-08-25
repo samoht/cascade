@@ -31,6 +31,13 @@ answers.
   `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
   around any of them stops catching and the exception escapes; match
   `Cursor.Parse_error` instead (#496, #497, #499, #501)
+- `Cascade.Component.pp` documents and renders itself as the located debug
+  dump it always was. It was documented as source text, which sent a caller
+  down a check that could never fire. Every node now shows its own location
+  and an unclosed block or unterminated function is tagged, so two components
+  `Component.equal` separates no longer print alike, and the children stay
+  apart under minify. Source text comes from
+  `Cascade.Parser.string_of_components` (#504)
 - `Css.statement_declarations` is gone. It answered for a rule and a bare
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a

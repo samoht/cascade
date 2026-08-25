@@ -3512,8 +3512,8 @@ let read_when ~body (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "when" r;
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
-  if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
-  then Cursor.err_invalid r "@when: missing condition";
+  if Cursor.string_of_components ~trim:true prelude = "" then
+    Cursor.err_invalid r "@when: missing condition";
   let condition : conditional =
     try conditional_components prelude
     with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
