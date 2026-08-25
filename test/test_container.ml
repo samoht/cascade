@@ -49,6 +49,18 @@ let test_string_output () =
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
     (to_string (of_string "(aspect-ratio > 1/1)"))
 
+(* CSS Containment 3 sec. 4 makes a container name a [<custom-ident>], so an
+   API-constructed name must take CSS Syntax 3 sec. 9.1 identifier escaping. *)
+let named_container_name_round_trips () =
+  let open Css.Container in
+  let query = Named ("a b", Min_width_rem 24.) in
+  let serialized = to_string query in
+  Alcotest.(check string)
+    "the container name is escaped" {|a\ b (min-width:24rem)|} serialized;
+  Alcotest.(check bool)
+    "the escaped container name reparses" true
+    (equal query (of_string serialized))
+
 let component_parser_edges () =
   let open Css.Container in
   Alcotest.(check string)
@@ -381,6 +393,8 @@ let tests =
   Alcotest.
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "named container name round-trips" `Quick
+        named_container_name_round_trips;
       test_case "component parser edges" `Quick component_parser_edges;
       test_case "stylesheet component parser edges" `Quick
         stylesheet_component_parser_edges;
