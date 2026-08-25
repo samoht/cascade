@@ -395,6 +395,12 @@ answers.
   specificity are never order-constrained; skipping those pairs cuts a
   4000-rule sheet to 51% of the allocations and 37% of the instructions
   (#468)
+- `--minify` merges a long run of rules on one selector in less time and
+  memory, for byte-identical output. Deciding whether two declaration blocks
+  can be reordered walked one block once per declaration of the other, and the
+  run rebuilt every block it compared; indexing each block once by the slots it
+  writes cuts 400 same-selector rules of 20 declarations to 4% of the
+  allocations and 12% of the instructions (#480)
 
 ### Custom properties
 

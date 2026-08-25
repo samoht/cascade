@@ -7,17 +7,32 @@ module Node_set = Set.Make (Rule_graph.Node_id)
 
 let same_decl = Shorthand.same_minified_declaration
 
+(* How much of a declaration's overlap relation its precomputed footprint
+   settles. [Slots] is decided by the keys alone; [Custom] by the property name,
+   which is the whole of a custom property's footprint; [Broad] by neither,
+   since [all] and an unknown name reach declarations no key of theirs names. *)
+type decl_shape = Slots | Custom of string | Broad
+
 type decl_fact = {
   decl : Declaration.declaration;
   important : bool;
   keys : Shorthand.overlap_key list;
+  shape : decl_shape;
 }
+
+let decl_shape decl =
+  if Shorthand.declaration_is_broad decl then Broad
+  else
+    match Shorthand.custom_property_name decl with
+    | Option.Some name -> Custom name
+    | Option.None -> Slots
 
 let decl_fact decl =
   {
     decl;
     important = Declaration.is_important decl;
     keys = Shorthand.declaration_overlap_keys decl;
+    shape = decl_shape decl;
   }
 
 let decl_facts decls = List.map decl_fact decls
@@ -26,17 +41,6 @@ let decl_facts_conflict a b =
   a.important = b.important
   && (not (same_decl a.decl b.decl))
   && Shorthand.declarations_overlap_with_keys a.decl a.keys b.decl b.keys
-
-(* Two footprints commute when no pair of them writes a common cascade slot: the
-   order they are replayed in cannot then be observed. *)
-let decl_facts_commute left right =
-  not
-    (List.exists
-       (fun a -> List.exists (fun b -> decl_facts_conflict a b) right)
-       left)
-
-let declaration_blocks_commute left right =
-  decl_facts_commute (decl_facts left) (decl_facts right)
 
 let declarations_equal (a : Declaration.declaration list)
     (b : Declaration.declaration list) =
@@ -65,9 +69,125 @@ module String_table = Common.Table.Make (struct
   let hash s = hash_string s land max_int
 end)
 
+module Overlap_table = Common.Table.Make (struct
+  type t = Shorthand.overlap_key
+
+  let equal = Shorthand.overlap_key_equal
+  let hash = Shorthand.overlap_key_hash
+end)
+
 let hash_strings strings =
   strings
   |> List.fold_left (fun hash s -> mix_int hash (hash_string s)) 0x123456
+
+(* One side of a commute test, read once into the slots its declarations write,
+   so the other side is walked once rather than once per declaration facing it.
+
+   A slot holds the declarations that write one key at one weight, custom
+   properties under their own name: an overlap key is a property-name hash, and
+   only the name itself separates two custom properties, which write nothing but
+   the slot they name. [decl_facts_conflict] clears a pair of declarations that
+   minify the same, so a slot every declaration filed under it agrees on answers
+   for all of them by comparing that one witness; a slot two of them disagree on
+   conflicts with whatever reaches it, since at most one of the two can be the
+   declaration asking. *)
+type commute_slot = { witness : decl_fact; mutable uniform : bool }
+
+(* [broad] holds the declarations no slot decides. What [all] and an unknown
+   name overlap is read off the name rather than the footprint, so they keep the
+   pairwise test; they are rare enough that keeping it costs nothing. [indexed]
+   is the side itself, for a [Broad] declaration facing it. *)
+type facts_index = {
+  indexed : decl_fact list;
+  written : commute_slot list Overlap_table.t;
+  broad : decl_fact list;
+}
+
+(* Whether two declarations share a slot: one weight, and, for a custom
+   property, one name. *)
+let same_commute_slot (a : decl_fact) (b : decl_fact) =
+  Bool.equal a.important b.important
+  &&
+  match (a.shape, b.shape) with
+  | Custom left, Custom right -> String.equal left right
+  | Custom _, _ | _, Custom _ -> false
+  | _ -> true
+
+(* Spelled as explicit recursion throughout, and reading the table with
+   [mem]/[find] rather than [find_opt]: a closure or an option allocated per
+   declaration would put back the per-pair cost the index exists to remove. *)
+let rec absorb (fact : decl_fact) = function
+  | [] -> false
+  | slot :: rest ->
+      if same_commute_slot slot.witness fact then begin
+        if slot.uniform && not (same_decl slot.witness.decl fact.decl) then
+          slot.uniform <- false;
+        true
+      end
+      else absorb fact rest
+
+let rec file_keys table fact = function
+  | [] -> ()
+  | key :: rest ->
+      let slots =
+        if Overlap_table.mem table key then Overlap_table.find table key else []
+      in
+      if not (absorb fact slots) then
+        Overlap_table.replace table key
+          ({ witness = fact; uniform = true } :: slots);
+      file_keys table fact rest
+
+let index_facts facts =
+  let written = Overlap_table.create 16 in
+  let broad =
+    List.fold_left
+      (fun broad (fact : decl_fact) ->
+        match fact.shape with
+        | Broad -> fact :: broad
+        | Slots | Custom _ ->
+            file_keys written fact fact.keys;
+            broad)
+      [] facts
+  in
+  { indexed = facts; written; broad }
+
+let rec slots_conflict (fact : decl_fact) = function
+  | [] -> false
+  | slot :: rest ->
+      same_commute_slot slot.witness fact
+      && ((not slot.uniform) || not (same_decl slot.witness.decl fact.decl))
+      || slots_conflict fact rest
+
+let rec any_conflicts (fact : decl_fact) = function
+  | [] -> false
+  | other :: rest -> decl_facts_conflict fact other || any_conflicts fact rest
+
+let rec keys_conflict written (fact : decl_fact) = function
+  | [] -> false
+  | key :: rest ->
+      Overlap_table.mem written key
+      && slots_conflict fact (Overlap_table.find written key)
+      || keys_conflict written fact rest
+
+let fact_conflicts index (fact : decl_fact) =
+  match fact.shape with
+  | Broad -> any_conflicts fact index.indexed
+  | Slots | Custom _ ->
+      any_conflicts fact index.broad
+      || keys_conflict index.written fact fact.keys
+
+let rec facts_conflict index = function
+  | [] -> false
+  | fact :: rest -> fact_conflicts index fact || facts_conflict index rest
+
+(* Two footprints commute when no pair of them writes a common cascade slot: the
+   order they are replayed in cannot then be observed. *)
+let facts_commute_with index left = not (facts_conflict index left)
+
+let decl_facts_commute left right =
+  match (left, right) with
+  | [], _ | _, [] -> true
+  | _ -> facts_commute_with (index_facts right) left
 
 let rule_eligible (r : rule) =
   r.nested = [] && r.merge_key = Option.None
@@ -271,17 +391,15 @@ let rec compare_declaration_order_keys left right =
       | 0 -> compare_declaration_order_keys left_rest right_rest
       | order -> order)
 
-let compare_rule_order_key (left_id, (left_rule : rule))
-    (right_id, (right_rule : rule)) =
-  match
-    compare_declaration_order_keys
-      (List.map declaration_order_key left_rule.declarations)
-      (List.map declaration_order_key right_rule.declarations)
-  with
-  | 0 ->
-      Int.compare
-        (Rule_graph.Node_id.to_int left_id)
-        (Rule_graph.Node_id.to_int right_id)
+(* Read off a rule once. The insertion sort below asks for the same order of the
+   same rule against every rule already queued, and rendering a body into keys
+   per comparison is what made that sort cost a body read per pair. *)
+let rule_order_key (id, (r : rule)) =
+  (List.map declaration_order_key r.declarations, Rule_graph.Node_id.to_int id)
+
+let compare_rule_order_key (left_keys, left_id) (right_keys, right_id) =
+  match compare_declaration_order_keys left_keys right_keys with
+  | 0 -> Int.compare left_id right_id
   | order -> order
 
 (* The precedence DAG holds every pair the merged rule replays in emission
@@ -292,18 +410,24 @@ let same_selector_merge_order
     (rules_with_ids : (Rule_graph.node_id * rule) list) =
   let rows = Array.of_list rules_with_ids in
   let n = Array.length rows in
+  let facts =
+    Array.map (fun (_, (r : rule)) -> decl_facts r.declarations) rows
+  in
   let nested_facts =
     Array.map (fun (_, (r : rule)) -> nested_decl_facts [] r.nested) rows
   in
+  (* Indexed once per rule rather than once per pair: every rule below faces
+     every later one, and reading a body is what the pair test costs. *)
+  let body_index = Array.map index_facts facts in
+  let nested_body_index = Array.map index_facts nested_facts in
+  let order_key = Array.map rule_order_key rows in
   let succ = Array.make n [] in
   let pred = Array.make n 0 in
   for i = 0 to n - 1 do
-    let _, left = rows.(i) in
     for j = i + 1 to n - 1 do
-      let _, right = rows.(j) in
       if
-        (not (declaration_blocks_commute left.declarations right.declarations))
-        || not (decl_facts_commute nested_facts.(i) nested_facts.(j))
+        (not (facts_commute_with body_index.(j) facts.(i)))
+        || not (facts_commute_with nested_body_index.(j) nested_facts.(i))
       then begin
         succ.(i) <- j :: succ.(i);
         pred.(j) <- pred.(j) + 1
@@ -313,7 +437,7 @@ let same_selector_merge_order
   let rec insert index = function
     | [] -> [ index ]
     | head :: rest as queue ->
-        if compare_rule_order_key rows.(index) rows.(head) < 0 then
+        if compare_rule_order_key order_key.(index) order_key.(head) < 0 then
           index :: queue
         else head :: insert index rest
   in

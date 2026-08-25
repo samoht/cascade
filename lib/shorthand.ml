@@ -1170,6 +1170,14 @@ let declaration_is_broad decl =
   | Declaration { property = Unknown_property _; _ } -> true
   | _ -> false
 
+(* The name a custom property declaration writes, read through a theme guard. A
+   custom property overlaps the declarations writing that same name and nothing
+   else, so its name is its whole footprint. *)
+let custom_property_name decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property = Custom_property name; _ } -> Some name
+  | _ -> None
+
 let display_value_is_vendor : Properties.display -> bool = function
   | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
   | Moz_inline_box ->
