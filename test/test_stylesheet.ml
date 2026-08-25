@@ -9832,6 +9832,76 @@ let deep_walker_tests =
           Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
   ]
 
+(* --- rendering --- *)
+
+(* [to_string] and the bare formatter run the same printer, so they agree byte
+   for byte; the only difference either may have is how the output bytes are
+   collected. *)
+let one_pass ~minify sheet =
+  let pp ctx () = pp_stylesheet ctx sheet in
+  Css.Pp.to_string ~minify pp ()
+
+let render_sheet n =
+  let b = Buffer.create (n * 96) in
+  let out = Fmt.with_buffer b in
+  for i = 0 to n - 1 do
+    Fmt.pf out
+      ".c%d .d%d > span:hover{color:rgb(%d,%d,%d);margin:%dpx \
+       %dpx;padding:%dpx;display:flex}@media (min-width:%dpx){.m%d{outline:1px \
+       solid #abc}}"
+      i i (i mod 256)
+      (i * 7 mod 256)
+      (i * 13 mod 256)
+      (i mod 40)
+      (i * 3 mod 40)
+      (i mod 20)
+      (300 + (i mod 900))
+      i
+  done;
+  Fmt.flush out ();
+  Css.of_string_exn (Buffer.contents b)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* A serialiser walks the tree once. Presizing the buffer from a [Pp.size]
+   prepass walks it a second time, and the counter sink skips only the output
+   bytes: [normalise], [printable_statements] and every printer below them run
+   twice. Buffer growth is amortised, so the second walk buys nothing, and its
+   cost is the whole formatter rather than a rounding error - pin it well below
+   the 1.8x the prepass measured. *)
+let to_string_renders_once minify () =
+  let sheet = render_sheet 400 in
+  let a_one = measure (fun () -> one_pass ~minify sheet) in
+  let a_full = measure (fun () -> to_string ~minify sheet) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx the one-pass walk)" a_one a_full
+       (a_full /. a_one))
+    true
+    (a_one = 0. || a_full < a_one *. 1.25)
+
+let to_string_matches_one_pass minify () =
+  let sheet = render_sheet 400 in
+  Alcotest.(check string)
+    "same bytes" (one_pass ~minify sheet) (to_string ~minify sheet)
+
+let render_tests =
+  [
+    ( "to_string minified matches the bare formatter",
+      `Quick,
+      to_string_matches_one_pass true );
+    ( "to_string pretty matches the bare formatter",
+      `Quick,
+      to_string_matches_one_pass false );
+    ("to_string renders minified once", `Quick, to_string_renders_once true);
+    ("to_string renders pretty once", `Quick, to_string_renders_once false);
+  ]
+
 let suite =
   ( "stylesheet",
-    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests )
+    stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests
+    @ render_tests )
