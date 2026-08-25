@@ -8816,6 +8816,49 @@ let media_condition_error_spans () =
     ~at_rule:"@media"
     ("expected media-in-parens", 22, 27)
 
+(* An @font-face descriptor whose value does not parse is faulted against the
+   value, not against the enclosing block. The descriptor is dropped and the
+   rest of the at-rule is kept, so the [src] below keeps the @font-face valid
+   and the warning list holds only the descriptor failure. Spans are counted off
+   the source text: the leading rule is 18 bytes plus a newline, so line 2 opens
+   at offset 19. *)
+let descriptor_value_error_spans () =
+  let check name descriptor (reason, start_pos, end_pos) =
+    let input =
+      ".ok { color: red }\n@font-face { font-family: x; src: url(a.woff2); "
+      ^ descriptor ^ " }\n"
+    in
+    match Css.of_string ~strict:false input with
+    | Error err ->
+        Alcotest.failf "%s: lenient parse failed: %s" name
+          (Cascade.Error.to_string err)
+    | Ok { Css.stylesheet; warnings } -> (
+        Alcotest.(check int)
+          (name ^ ": sibling rule survives")
+          1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ e ] ->
+            (match e.Error.kind with
+            | Error.Bad_value { reason = got; _ } ->
+                Alcotest.(check string) (name ^ ": reason") reason got
+            | _ ->
+                Alcotest.failf "%s: expected Bad_value, got %s" name
+                  (Error.to_string e));
+            Alcotest.(check (pair int int))
+              (name ^ ": span") (start_pos, end_pos)
+              (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+        | ws ->
+            Alcotest.failf "%s: expected one warning, got %d" name
+              (List.length ws))
+  in
+  (* [ascent-override] opens at offset 67, so its value spans 84-86. *)
+  check "negative metric override" "ascent-override: -5%"
+    ("invalid: metric override", 84, 87);
+  (* [size-adjust] opens at offset 67, so its value spans 80-84. *)
+  check "size-adjust that is not a percentage" "size-adjust: bogus"
+    ("invalid: size-adjust", 80, 85)
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -9750,6 +9793,9 @@ let additional_tests =
     ( "a media query error points at the failing slice",
       `Quick,
       media_condition_error_spans );
+    ( "an @font-face descriptor error points at the value",
+      `Quick,
+      descriptor_value_error_spans );
   ]
 
 (* Every shape a statement can take, so the walkers are exercised on the block
