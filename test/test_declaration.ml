@@ -385,6 +385,32 @@ let error_missing_colon () =
   let r = Cursor.of_string "color red;" in
   expect_parse_error "missing colon" (fun () -> ignore (read_declaration r))
 
+(* [Declaration.of_string] documents one failure mode, so a caller writes one
+   handler. Text that is not a declaration reaches it two ways - the reader
+   raises, or it answers [None] for a component a declaration cannot start with
+   - and both must leave through the same exception. *)
+let of_string_one_failure_mode () =
+  let refused input =
+    match of_string input with
+    | d ->
+        Alcotest.failf "%S: expected a parse error, parsed %S" input
+          (to_string d)
+    | exception Cursor.Parse_error _ -> ()
+  in
+  (* The reader reaches the value and rejects it. *)
+  refused "color";
+  refused "color red";
+  refused "color:";
+  refused "1px";
+  (* [read_declaration] answers [None]: no declaration starts here. *)
+  refused "";
+  refused "   ";
+  refused ".foo";
+  refused "#id";
+  refused "&:hover";
+  refused "[data-x]";
+  refused ": red"
+
 let error_stray_semicolon () =
   let r = Cursor.of_string "; color: red;" in
   expect_parse_error "stray semicolon" (fun () -> ignore (read_declaration r))
@@ -3292,6 +3318,7 @@ let declaration_tests =
       spec_property_grammar_manifest;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
+    test_case "of_string has one failure mode" `Quick of_string_one_failure_mode;
     test_case "error stray semicolon" `Quick error_stray_semicolon;
     test_case "error unclosed block" `Quick error_unclosed_block;
     test_case "unterminated parsing" `Quick unterminated;
