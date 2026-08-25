@@ -2453,7 +2453,13 @@ let rec pp_declaration : declaration Pp.t =
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Declaration { property; value; important; _ } ->
-      pp_property ctx property;
+      (* Under minify [pp_property] gives a [page-break-*] property the
+         [break-*] property it aliases, which CSS Fragmentation 3 sec. 3.4
+         defines by a value mapping table. A value the table does not name has
+         no alias spelling, so the name follows the value back to the legacy
+         property rather than writing it under one that cannot express it. *)
+      if minified_name_carries property value then pp_property ctx property
+      else Pp.string ctx (canonical_prop_name property);
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
       pp_property_value ctx (property, value);

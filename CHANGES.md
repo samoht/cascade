@@ -91,6 +91,11 @@ answers.
 
 ### Parsing
 
+- A `var()` in a `page-break-before`, `page-break-after` or
+  `page-break-inside` declaration is read as the property it names. These
+  three were the only fragmentation properties whose reader had no `var()`
+  arm, so the declaration became an unknown property and no longer shadowed
+  a later one of its own name (#511)
 - An error inside an at-rule condition or an `@font-face` descriptor points at
   the slice that failed, not at the end of the file with the caret past the
   last byte (#496, #497, #499, #501)

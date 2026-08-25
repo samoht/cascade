@@ -754,6 +754,21 @@ let pp_property : type a. a property Pp.t =
   | Ms_filter -> Pp.string ctx "-ms-filter"
   | O_transition -> Pp.string ctx "-o-transition"
 
+(* Whether the name [pp_property] gives [property] under minify can carry
+   [value]. CSS Fragmentation 3 sec. 3.4 defines the [page-break-*] alias of
+   [break-*] by a value mapping table, so the [break-*] name a [page-break-*]
+   property minifies to is a spelling the declaration can use only for a value
+   the table names: [always] maps to [page], the rest map to themselves, and a
+   [var()] maps to nothing here since substitution happens at computed-value
+   time. Every other property names itself the same whatever it carries. *)
+let minified_name_carries : type a. a property -> a -> bool =
+ fun property value ->
+  match property with
+  | Page_break_before -> Option.is_some (break_of_page_break value)
+  | Page_break_after -> Option.is_some (break_of_page_break value)
+  | Page_break_inside -> Option.is_some (break_inside_of_page_break value)
+  | _ -> true
+
 let rec pp_content : content Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -2809,16 +2824,20 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
-  | Page_break_before ->
-      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
-      else pp_page_break_value ctx value
-  | Page_break_after ->
-      if Pp.minified ctx then pp_break_value ctx (break_of_page_break value)
-      else pp_page_break_value ctx value
-  | Page_break_inside ->
-      if Pp.minified ctx then
-        pp_break_inside_value ctx (break_inside_of_page_break value)
-      else pp_page_break_inside_value ctx value
+  | Page_break_before -> (
+      match if Pp.minified ctx then break_of_page_break value else None with
+      | Some aliased -> pp_break_value ctx aliased
+      | None -> pp_page_break_value ctx value)
+  | Page_break_after -> (
+      match if Pp.minified ctx then break_of_page_break value else None with
+      | Some aliased -> pp_break_value ctx aliased
+      | None -> pp_page_break_value ctx value)
+  | Page_break_inside -> (
+      match
+        if Pp.minified ctx then break_inside_of_page_break value else None
+      with
+      | Some aliased -> pp_break_inside_value ctx aliased
+      | None -> pp_page_break_inside_value ctx value)
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Column_width -> pp pp_column_width
