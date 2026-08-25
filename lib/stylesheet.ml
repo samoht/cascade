@@ -3097,6 +3097,74 @@ let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
 let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
+(* CSS Syntax 3 (ED) sec. 4.3.5 closes a string at end of input, 4.3.6 a url,
+   4.3.2 a comment, and 5.5.9 and 5.5.10 a simple block and a function. Raw text
+   that stops mid-construct therefore means the closed form, but written back as
+   it stands it hands the next reader an opener that eats the [;] or [}] the
+   at-rule ends with. These close it, once, so the AST holds text that reads
+   back as itself. *)
+let bracket_closer = function
+  | Token.Curly -> "}"
+  | Token.Paren -> ")"
+  | Token.Square -> "]"
+
+(* One pass: the closers the open blocks and functions still want, innermost
+   first, with the last token and the token count for [tail_closer]. *)
+let scan_raw text =
+  let lexer = Lexer.of_string text in
+  let rec loop stack last n =
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof -> (stack, last, n)
+    | Token.Function _ -> loop (")" :: stack) (Some tok) (n + 1)
+    | Token.Open b -> loop (bracket_closer b :: stack) (Some tok) (n + 1)
+    | Token.Close b ->
+        let stack =
+          match stack with
+          | c :: rest when String.equal c (bracket_closer b) -> rest
+          | _ -> stack
+        in
+        loop stack (Some tok) (n + 1)
+    | _ -> loop stack (Some tok) (n + 1)
+  in
+  loop [] None 0
+
+(* A string, a url and a comment run to end of input and close there without
+   leaving an opener on the stack, so ask the tokenizer rather than re-deriving
+   its state: text that swallows the probe gives back no token for it. Two probe
+   code points, since a [\] at end of input eats one and returns it as an
+   ident. *)
+let tail_closer text last n =
+  let lexer = Lexer.of_string (String.concat "" [ text; ";;" ]) in
+  let rec count n =
+    match (Lexer.next lexer).Token.kind with
+    | Token.Eof -> n
+    | _ -> count (n + 1)
+  in
+  if count 0 <> n then []
+  else
+    match last with
+    | Some { Token.kind = Token.String { quote; terminated = false; _ }; _ } ->
+        [ String.make 1 quote ]
+    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc }
+      when loc.Loc.end_pos = String.length text ->
+        [ ")" ]
+    | _ -> [ "*/" ]
+
+(* Closing one construct can uncover another: a [\] before the closing quote
+   escapes it and leaves the string open, so re-read until the text settles. *)
+let rec close_raw fuel text =
+  let stack, last, n = scan_raw text in
+  match List.append (tail_closer text last n) stack with
+  | [] -> text
+  | closers ->
+      let closed = String.concat "" (text :: closers) in
+      if fuel <= 1 then closed else close_raw (fuel - 1) closed
+
+(* One pass closes what the stack holds; the other two are for a closer that a
+   [\] at end of input escapes before it lands. *)
+let close_open_constructs = close_raw 3
+
 (* CSS Syntax 3 sec. 5.4.6: an unclosed block runs to EOF, so its slice has no
    closer to exclude and instead carries whatever [}] an unterminated nested
    construct swallowed on the way. The serializer supplies its own closer, so
@@ -3118,7 +3186,9 @@ let trim_unknown_block_body body =
 let unknown_block_body slice (block : Component.block Component.node) =
   let start = block.loc.Loc.start_pos + 1 in
   if block.node.Component.closed then slice start (block.loc.Loc.end_pos - 1)
-  else slice start block.loc.Loc.end_pos |> trim_unknown_block_body
+  else
+    slice start block.loc.Loc.end_pos
+    |> trim_unknown_block_body |> close_open_constructs
 
 (* CSS Syntax 3 sec. 5.5.2 "consume an at-rule": after the at-keyword has been
    consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
@@ -3151,8 +3221,17 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
         gather ()
   in
   gather ();
+  (* The block form knows it ran to EOF from [closed] and pays for the scan only
+     then; a statement one cannot, because [cursor_of_rule] gives the at-rule a
+     [;] whether the source ended in one or in EOF. A prelude that is already
+     closed comes back unchanged, so close it either way - after the trim the
+     printer applies, so the closer lands where the trim would have ended the
+     text rather than after the run of whitespace it takes off. *)
   let prelude =
-    if !prelude_start < 0 then "" else slice !prelude_start !prelude_end
+    if !prelude_start < 0 then ""
+    else
+      slice !prelude_start !prelude_end
+      |> trim_unknown_at_prelude |> close_open_constructs
   in
   Unknown_at_rule { name; prelude; block = !block }
 

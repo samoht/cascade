@@ -184,8 +184,10 @@ answers.
   intact, where `cascade fmt` deleted it and every rule inside it without
   saying so. CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its
   at-keyword; discarding one is the user agent's step, and
-  `Optimize.drop_unknown_at_rules` serves a caller writing for a browser
-  (#469)
+  `Optimize.drop_unknown_at_rules` serves a caller writing for a browser. A
+  string, url, function, bracket or comment the source stopped inside is closed
+  on the way in, so what is written back ends the at-rule instead of swallowing
+  its `;` or `}` (#469, #483)
 - A qualified rule whose prelude reads as a custom property, such as
   `--x:hover { color: red }`, is reported when it is dropped, and
   `Css.of_string ~strict:true` rejects it. CSS Syntax 3 sec. 5.5.3 makes the
