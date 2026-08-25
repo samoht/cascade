@@ -68,6 +68,14 @@ let check_minified_equiv input =
     ("specificity preserved: " ^ input)
     (specificity original) (specificity reparsed)
 
+let of_string_empty_raises_parse_error () =
+  match of_string "" with
+  | _ -> Alcotest.fail "empty selector parsed"
+  | exception Error.Parse_error _ -> ()
+  | exception exn ->
+      Alcotest.failf "empty selector raised %s instead of Error.Parse_error"
+        (Printexc.to_string exn)
+
 (* Not a roundtrip test *)
 let element_cases () =
   (* Test element selectors *)
@@ -2246,6 +2254,8 @@ let suite =
         test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
       (* Parser/API-policy error coverage. *)
+      test_case "of_string empty raises Parse_error" `Quick
+        of_string_empty_raises_parse_error;
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
       test_case "parse errors - combinators" `Quick parse_errors_combinators;
