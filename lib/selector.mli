@@ -26,14 +26,9 @@ val id : string -> t
     [Invalid_argument] on invalid. *)
 
 val of_string : string -> t
-(** [of_string s] parses a CSS-escaped selector string:
-    - [".classname"] -> class selector
-    - ["#idname"] -> id selector
-    - ["element"] -> element selector
-
-    Unescapes both simple escapes (e.g., ["\:"]) and hex escapes (e.g.,
-    ["\3A"]). Example: [of_string ".sm\\:p-4"] creates a class selector for
-    "sm:p-4". *)
+(** [of_string s] parses a complete CSS selector, including complex and
+    comma-separated selectors. CSS escapes are decoded. Raises
+    {!Error.Parse_error} when [s] is malformed. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)

@@ -41,6 +41,9 @@ answers.
   `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
   around any of them stops catching and the exception escapes; match
   `Cursor.Parse_error` instead (#496, #497, #499, #501)
+- `Css.Selector.of_string ""` raises `Error.Parse_error`, like every other
+  malformed selector, where it raised `Invalid_argument`. Its documentation
+  now describes the complete selector grammar the function already parses.
 - `Cascade.Component.pp` documents and renders itself as the located debug
   dump it always was. It was documented as source text, which sent a caller
   down a check that could never fire. Every node now shows its own location
