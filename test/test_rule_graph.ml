@@ -381,6 +381,35 @@ let try_rewrite_is_subquadratic () =
     true
     (a1 = 0. || a2 < a1 *. 6.)
 
+(* Every rule here writes one selector and a block of custom properties no other
+   rule names, so the same-selector merge order compares all N(N-1)/2 pairs and
+   not one of them short-circuits on a conflict. Whether two blocks commute is a
+   question about the slots each writes, answered by reading each block once
+   rather than once per declaration facing it, so the pair loop costs no
+   allocation of its own: doubling N may cost about twice as much, never the
+   quadratic four times.
+
+   Both runs stay above the node count at which the enumerator stops offering
+   its wider candidate kinds, so what separates them is the pair loop alone. *)
+let same_selector_commute_is_subquadratic () =
+  let block i =
+    List.init 20 (fun k -> Fmt.str "--p%d-%d:%d" i k ((i * 20) + k))
+    |> String.concat ";"
+  in
+  let sheet n =
+    List.init n (fun i -> Fmt.str ".q{%s}" (block i))
+    |> String.concat "" |> rules_of
+  in
+  let candidates graph () =
+    Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id graph
+  in
+  let a1 = measure (candidates (Rule_graph.of_rules (sheet 150))) in
+  let a2 = measure (candidates (Rule_graph.of_rules (sheet 300))) in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 3.)
+
 let suite =
   ( "rule_graph",
     [
@@ -432,4 +461,6 @@ let suite =
         try_rewrite_is_subquadratic;
       Alcotest.test_case "a second specificity costs no pair" `Quick
         second_specificity_costs_no_pair;
+      Alcotest.test_case "same-selector commute is sub-quadratic" `Quick
+        same_selector_commute_is_subquadratic;
     ] )
