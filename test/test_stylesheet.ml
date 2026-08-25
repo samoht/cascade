@@ -8763,6 +8763,59 @@ let container_condition_error_spans () =
   check "bad style() name" "style(1px: red)"
     ("invalid style() container query", 36, 39)
 
+(* One warning off a lenient parse, checked against the at-rule it names, the
+   reason it gives and the span it points at. *)
+let one_condition_warning name input ~at_rule (reason, start_pos, end_pos) =
+  match Css.of_string ~strict:false input with
+  | Error err ->
+      Alcotest.failf "%s: lenient parse failed: %s" name
+        (Cascade.Error.to_string err)
+  | Ok { Css.stylesheet; warnings } -> (
+      Alcotest.(check int)
+        (name ^ ": sibling rule survives")
+        1
+        (List.length (Css.rule_statements stylesheet));
+      match warnings with
+      | [ e ] ->
+          (match e.Error.kind with
+          | Error.Bad_condition { at_rule = got_rule; reason = got } ->
+              Alcotest.(check string) (name ^ ": at-rule") at_rule got_rule;
+              Alcotest.(check string) (name ^ ": reason") reason got
+          | _ ->
+              Alcotest.failf "%s: expected Bad_condition, got %s" name
+                (Error.to_string e));
+          Alcotest.(check (pair int int))
+            (name ^ ": span") (start_pos, end_pos)
+            (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+      | ws ->
+          Alcotest.failf "%s: expected one warning, got %d" name
+            (List.length ws))
+
+(* A media query that does not parse is faulted against the slice of the query
+   that failed. Spans are counted off the source text: the leading rule is 18
+   bytes plus a newline, so line 2 opens at offset 19 and [@media ] runs to
+   offset 25. *)
+let media_condition_error_spans () =
+  let check name query expected =
+    let input =
+      ".ok { color: red }\n@media " ^ query ^ " { .a { color: blue } }\n"
+    in
+    one_condition_warning name input ~at_rule:"@media" expected
+  in
+  (* A lone [not] prefixes nothing; the query itself spans offsets 26-28. *)
+  check "prefix with no type" "not" ("expected media type or condition", 26, 29);
+  (* [bogus] inside the parentheses spans offsets 27-31. *)
+  check "junk in parens" "(bogus !!!)" ("expected media-in-parens", 27, 32);
+  (* The [or] that follows an [and] spans offsets 46-47. *)
+  check "mixed operators" "(color) and (hover) or (a)"
+    ("mixed 'and'/'or' media condition", 46, 48);
+  (* The media query list of an [@import] prelude is read the same way: [bogus]
+     spans offsets 22-26. *)
+  one_condition_warning "import prelude"
+    "@import url(\"a.css\") (bogus !!!);\n.ok { color: red }\n"
+    ~at_rule:"@media"
+    ("expected media-in-parens", 22, 27)
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -9694,6 +9747,9 @@ let additional_tests =
     ( "an @container query error points at the failing slice",
       `Quick,
       container_condition_error_spans );
+    ( "a media query error points at the failing slice",
+      `Quick,
+      media_condition_error_spans );
   ]
 
 (* Every shape a statement can take, so the walkers are exercised on the block
