@@ -230,16 +230,17 @@ let drop_shadowed_rules (rules : rule list) : rule list =
     (* [declarations] is only the run written before the first nested statement
        (CSS Nesting 1 sec. 3.4), so covering it says nothing about what the rest
        of the body sets: a rule with nested content stays. *)
-    dropped.(i) <-
-      (rule.declarations = [] && rule.nested = [])
-      || rule.nested = [] && rule.declarations <> []
-         && List.for_all
-              (Cover.covered later_by_selector rule.Stylesheet_intf.selector)
-              rule.declarations;
-    if dropped.(i) then changed := true;
-    List.iter
-      (Cover.add later_by_selector rule.Stylesheet_intf.selector)
-      rule.declarations
+    (match rule.declarations with
+    | [] -> dropped.(i) <- rule.nested = []
+    | decls ->
+        (* One selector for the whole rule, so the coverage its declarations are
+           tested against is read once and stored back once. *)
+        let selector = rule.Stylesheet_intf.selector in
+        let written = Cover.written later_by_selector selector in
+        dropped.(i) <-
+          rule.nested = [] && List.for_all (Cover.covered written) decls;
+        Cover.record later_by_selector selector written decls);
+    if dropped.(i) then changed := true
   done;
   let rec filter i = function
     | [] -> []

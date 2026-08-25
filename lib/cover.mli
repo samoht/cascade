@@ -3,14 +3,20 @@
 type t
 (** Properties written later, keyed by selector. *)
 
+type written
+(** What one selector has written later for it. *)
+
 val v : unit -> t
 (** [v ()] creates an empty coverage table. *)
 
-val covered : t -> Selector.t -> Declaration.t -> bool
-(** [covered t selector decl] is [true] when [decl]'s property is definitely
-    shadowed by a later declaration for [selector] at the same or stronger
-    importance. *)
+val written : t -> Selector.t -> written
+(** [written t selector] is what [t] holds for [selector], read in one lookup
+    and answering for every declaration a rule at that selector carries. *)
 
-val add : t -> Selector.t -> Declaration.t -> unit
-(** [add t selector decl] records that [decl]'s property is written later for
-    [selector]. *)
+val covered : written -> Declaration.t -> bool
+(** [covered written decl] is [true] when [decl]'s property is definitely
+    shadowed by a later declaration at the same or stronger importance. *)
+
+val record : t -> Selector.t -> written -> Declaration.t list -> unit
+(** [record t selector written decls] stores [written] extended with [decls] as
+    what is written later for [selector], in one store. *)

@@ -14,26 +14,32 @@ module Selector_tbl = Hashtbl.Make (struct
   let hash = Selector.hash
 end)
 
-type entry = Props.t * Props.t
-type t = entry Selector_tbl.t
+(* The normal and the important half of what a selector writes later. A rule
+   asks about one selector and every declaration it carries, so the entry is
+   fetched once and stored once rather than probed per declaration. *)
+type written = Props.t * Props.t
+type t = written Selector_tbl.t
 
 let v () = Selector_tbl.create 256
 let empty = (Props.empty, Props.empty)
 
-let get t selector =
+let written t selector =
   Option.value ~default:empty (Selector_tbl.find_opt t selector)
 
-let covered t selector decl =
-  let normal, important = get t selector in
+let covered (normal, important) decl =
   let prop = Declaration.property_key decl in
   if Declaration.is_important decl then Props.mem prop important
   else Props.mem prop normal || Props.mem prop important
 
-let add t selector decl =
-  let normal, important = get t selector in
-  let prop = Declaration.property_key decl in
-  let cover =
-    if Declaration.is_important decl then (normal, Props.add prop important)
-    else (Props.add prop normal, important)
+let record t selector (normal, important) decls =
+  (* The two halves stay apart until the store, so a rule builds one entry
+     rather than one per declaration. *)
+  let rec fold normal important = function
+    | [] -> Selector_tbl.replace t selector (normal, important)
+    | decl :: rest ->
+        let prop = Declaration.property_key decl in
+        if Declaration.is_important decl then
+          fold normal (Props.add prop important) rest
+        else fold (Props.add prop normal) important rest
   in
-  Selector_tbl.replace t selector cover
+  fold normal important decls

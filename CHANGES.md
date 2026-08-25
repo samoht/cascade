@@ -415,7 +415,7 @@ answers.
   `min-width` to range syntax. `--enforce-spec` keeps both Level 3 spellings
   (#323)
 - `--minify` and `cascade diff` spend less time and memory on a large
-  stylesheet, for the same output (#413, #422, #424, #468)
+  stylesheet, for the same output (#413, #422, #424, #468, #507)
 - `--minify` no longer allocates quadratically on a long run of rules sharing
   one selector or one body, nor probes every pair of them to decide whether it
   may merge. The benchmark corpora hold no such run, so this bounds a worst
