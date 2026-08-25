@@ -1477,6 +1477,35 @@ let spec_cascade3_shorthands () =
   neg_cursor read_declaration "border: 1px solid revert";
   neg_cursor read_declaration "font: bold inherit 12pt Helvetica"
 
+(* A parse error names the property the declaration wrote. [page-break-*]
+   minifies to the CSS Fragmentation 3 sec. 3.4 [break-*] property it aliases,
+   which is a different property with its own values, so a diagnostic rendered
+   under minify reports the failure against a property the author never wrote
+   and cannot tell the two apart. *)
+let error_names_the_property_written () =
+  let message input =
+    let r = Cursor.of_string input in
+    match read_declaration r with
+    | _ -> Alcotest.failf "%s: expected Parse_error but none was raised" input
+    | exception Cursor.Parse_error e -> Error.to_string e
+  in
+  List.iter
+    (fun (input, written, alias) ->
+      let msg = message input in
+      Alcotest.(check bool)
+        (input ^ " is reported against " ^ written)
+        true
+        (Astring.String.is_infix ~affix:("bad value for " ^ written ^ ":") msg);
+      Alcotest.(check bool)
+        (input ^ " is not reported against " ^ alias)
+        false
+        (Astring.String.is_infix ~affix:("bad value for " ^ alias ^ ":") msg))
+    [
+      ("page-break-before: bogus", "page-break-before", "break-before");
+      ("page-break-after: bogus", "page-break-after", "break-after");
+      ("page-break-inside: bogus", "page-break-inside", "break-inside");
+    ]
+
 let spec_cascade3_aliasing () =
   (* CSS Cascade section 3.1: legacy shorthands behave as shorthands at parse
      time but are not selected for serialization. The spec example maps
@@ -3282,6 +3311,8 @@ let declaration_tests =
     test_case "spec cascade 3.1 property aliasing" `Quick spec_cascade3_aliasing;
     test_case "spec break 3.4 page-break alias with a var" `Quick
       spec_break3_page_break_var;
+    test_case "a parse error names the property written" `Quick
+      error_names_the_property_written;
     test_case "spec cascade 3.2 all property" `Quick spec_cascade3_all;
     test_case "spec cascade 7 defaulting keywords" `Quick
       spec_cascade7_defaulting;
