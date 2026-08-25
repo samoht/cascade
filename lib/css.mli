@@ -7728,12 +7728,13 @@ val optimize :
   ?aggressive:bool ->
   ?regroup:bool ->
   ?closed_world:bool ->
-  ?objective:[ `Raw | `Transfer ] ->
+  ?objective:Optimize.objective ->
   ?prune_unused_custom_props:bool ->
   ?stats:Stats.t ->
   t ->
   t
 (** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
+     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats
      stylesheet] applies CSS optimizations to the stylesheet, including merging
     consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics for any DOM, unless
@@ -7757,6 +7758,11 @@ val optimize :
     runs even when the preflight predicts low gain, and the top-level
     statement-optimisation pipeline iterates until the AST reaches a structural
     fixpoint (capped at a small bound).
+
+    When [regroup] is [true] (the default), order-dependent adjacent rule runs
+    may be regrouped by factoring shared declarations and synthesising nesting.
+    Canonical diff projection disables it to remain confluent; see
+    {!Optimize.stylesheet}.
 
     When [closed_world] is [true] (default [false]) the optimizer assumes the
     caller knows the exact HTML and that no element ever matches two clashing

@@ -12,6 +12,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 (** {1 Edge Model} *)
 
 type scope = Ctx.scope
+type objective = [ `Raw | `Transfer ]
 
 (* Optimisation context threaded from the entry points to the shorthand
    composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
