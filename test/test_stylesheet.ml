@@ -8859,6 +8859,30 @@ let descriptor_value_error_spans () =
   check "size-adjust that is not a percentage" "size-adjust: bogus"
     ("invalid: size-adjust", 80, 85)
 
+(* An @supports condition that does not parse is faulted against the slice of
+   the condition that failed, where the reader used to hand back a bare reason
+   that the stylesheet re-anchored on the whole prelude. Spans are counted off
+   the source text: the leading rule is 18 bytes plus a newline, so line 2 opens
+   at offset 19 and [@supports ] runs to offset 28. *)
+let supports_condition_error_spans () =
+  let check name condition expected =
+    let input =
+      ".ok { color: red }\n@supports " ^ condition ^ " { .a { color: blue } }\n"
+    in
+    one_condition_warning name input ~at_rule:"@supports" expected
+  in
+  (* [extra-junk] follows a complete feature query and spans offsets 45-54. *)
+  check "trailing content" "(display: grid) extra-junk"
+    ("trailing content", 45, 55);
+  (* The [or] that follows an [and] spans offsets 45-46. *)
+  check "mixed operators" "(a:b) and (c:d) or (e:f)"
+    ("Cannot mix and/or without parentheses in @supports", 45, 47);
+  (* The empty parentheses span offsets 29-30. *)
+  check "empty parentheses" "()" ("Empty parentheses in @supports", 29, 31);
+  (* [font-format(] ends at offset 40, so [bogus] spans 41-45. *)
+  check "unknown font format" "font-format(bogus)"
+    ("invalid font-format() in @supports", 41, 46)
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -9796,6 +9820,9 @@ let additional_tests =
     ( "an @font-face descriptor error points at the value",
       `Quick,
       descriptor_value_error_spans );
+    ( "an @supports condition error points at the failing slice",
+      `Quick,
+      supports_condition_error_spans );
   ]
 
 (* Every shape a statement can take, so the walkers are exercised on the block
