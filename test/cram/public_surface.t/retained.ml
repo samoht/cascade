@@ -12,6 +12,8 @@ let _ = Container.to_string
 let _ : Container.t Pp.t = Container.pp
 let _ : Stylesheet.t Pp.t = Stylesheet.pp
 let _ : Css.t Pp.t = Css.pp
+let _ : Optimize.objective = `Transfer
+let _ : Css.Optimize.objective = `Raw
 let _ :
     ?optimize:bool ->
     ?minify:bool ->
