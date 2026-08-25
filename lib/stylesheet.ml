@@ -2073,10 +2073,7 @@ let read_descriptor_value read_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
-  try
-    let value = read_fn r in
-    constructor value
-  with Failure msg -> Cursor.err_invalid r msg
+  constructor (read_fn r)
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
    sec. 5.4.3 discards with no declaration to validate, or the end of the body.
@@ -2339,20 +2336,20 @@ let read_font_face_desc name r =
         r
   | "font-tech" -> read_string_descriptor "font-tech" (fun v -> Font_tech v) r
   | "size-adjust" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Size_adjust (Font_face.size_adjust_of_string v))
+      read_descriptor_value Font_face.read_size_adjust
+        (fun v -> Size_adjust v)
         r
   | "ascent-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Ascent_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Ascent_override v)
         r
   | "descent-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Descent_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Descent_override v)
         r
   | "line-gap-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Line_gap_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Line_gap_override v)
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 

@@ -155,24 +155,38 @@ let to_string = string_of_src
 
 let valid_percentage p = Float.is_finite p && p >= 0.
 
-(** Parse a metric override string like "normal" or "90%". *)
-let metric_override_of_string s =
-  let s = String.trim s in
-  if String.equal s "normal" then Normal
-  else if String.length s > 0 && s.[String.length s - 1] = '%' then (
-    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-    if not (valid_percentage p) then failwith "invalid metric override";
-    Percent p)
-  else failwith "invalid metric override"
+(* CSS Fonts 4 sec. 4.10: [normal | <percentage [0,inf]>]. The token is left in
+   place on a mismatch, so the error carries the offending value's span rather
+   than whatever follows it. *)
+let read_metric_override t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident "normal"; _ }) ->
+      Cursor.skip t;
+      Normal
+  | Some (Component.Preserved { kind = Token.Percentage number; _ })
+    when valid_percentage number.Token.value ->
+      Cursor.skip t;
+      Percent number.Token.value
+  | Some _ | None -> Cursor.err_invalid t "metric override"
 
-(** Parse a size-adjust percentage like "90%". *)
-let size_adjust_of_string s =
-  let s = String.trim s in
-  if String.length s > 0 && s.[String.length s - 1] = '%' then (
-    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-    if not (valid_percentage p) then failwith "invalid size-adjust";
-    p)
-  else failwith "invalid size-adjust"
+(* CSS Fonts 4 sec. 4.11: [<percentage [0,inf]>]. *)
+let read_size_adjust t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Percentage number; _ })
+    when valid_percentage number.Token.value ->
+      Cursor.skip t;
+      number.Token.value
+  | Some _ | None -> Cursor.err_invalid t "size-adjust"
+
+let read_whole read s =
+  let t = Cursor.of_string s in
+  let value = read t in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  value
+
+let metric_override_of_string = read_whole read_metric_override
+let size_adjust_of_string = read_whole read_size_adjust
 
 let read_function_arg name t =
   Cursor.call name t @@ fun inner ->
@@ -284,9 +298,7 @@ let src_of_string s =
     | Quoted_url { url; format; tech; _ } -> Url { url; format; tech }
     | entry -> entry
   in
-  try
-    let t = Cursor.of_string s in
-    let entries = read_src t in
-    Cursor.expect_eof t;
-    List.map normalize_entry entries
-  with Cursor.Parse_error _ -> failwith "invalid font src"
+  let t = Cursor.of_string s in
+  let entries = read_src t in
+  Cursor.expect_eof t;
+  List.map normalize_entry entries
