@@ -153,7 +153,7 @@ let test_resolve_cascade () =
     List.find_map
       (fun d ->
         if Declaration.property_name d = p then
-          Some (Declaration.string_of_declaration ~minify:true d)
+          Some (Declaration.to_string ~minify:true d)
         else None)
       decls
   in
@@ -169,7 +169,7 @@ let resolved_color css =
   List.find_map
     (fun d ->
       if Declaration.property_name d = "color" then
-        Some (Declaration.string_of_declaration ~minify:true d)
+        Some (Declaration.to_string ~minify:true d)
       else None)
     (R.resolve (sheet_of css) s2)
 
@@ -241,7 +241,7 @@ let test_resolve_skips_conditional_and_scoped_blocks () =
     (List.find_map
        (fun d ->
          if Declaration.property_name d = "color" then
-           Some (Declaration.string_of_declaration ~minify:true d)
+           Some (Declaration.to_string ~minify:true d)
          else None)
        (R.resolve [ Stylesheet.Origin (Author, sheet_of "span{color:red}") ] s2))
 

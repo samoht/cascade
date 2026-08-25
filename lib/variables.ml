@@ -1870,7 +1870,6 @@ let vars_of_kind : type a. a kind -> a -> any_var list =
   | Rotate -> vars_of_rotate_value value
   | Scale -> vars_of_scale value
   | Shadow -> vars_of_shadow value
-  | Box_shadow -> vars_of_shadow value
   | Content -> vars_of_content value
   | Gradient_stop -> vars_of_gradient_stop value
   | Gradient_direction -> vars_of_gradient_direction value

@@ -49,7 +49,7 @@ let rec subsets = function
       let rest = subsets xs in
       rest @ List.map (fun tail -> x :: tail) rest
 
-let canon d = Pp.to_string ~minify:true Declaration.pp_declaration d
+let canon d = Pp.to_string ~minify:true Declaration.pp d
 
 let computed sheet classes =
   R.resolve sheet { classes } |> List.map canon |> List.sort String.compare

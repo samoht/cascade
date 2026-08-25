@@ -213,7 +213,7 @@ let rec share_branch a b =
       else if c < 0 then share_branch xs b
       else share_branch a ys
 
-let declaration_size decl = Pp.size ~minify:true Declaration.pp_declaration decl
+let declaration_size decl = Pp.size ~minify:true Declaration.pp decl
 
 let rule_summary rule =
   Summary.v ~rule_size:Size.rule ~decl_size:declaration_size

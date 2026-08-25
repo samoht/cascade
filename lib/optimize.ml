@@ -867,7 +867,7 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
         List.iter
           (fun n -> Hashtbl.replace tbl (bare n) ())
           (Variables.var_refs_in_value_string
-             (Declaration.string_of_declaration ~minify:true d)))
+             (Declaration.to_string ~minify:true d)))
   in
   (* Through the exhaustive walk rather than a local match: a reference it
      cannot reach reads as no reference at all, and [@keyframes], [@page] and

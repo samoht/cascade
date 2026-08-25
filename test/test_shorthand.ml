@@ -12,7 +12,7 @@ let decls css =
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let decl_strings decls =
-  List.map (Pp.to_string ~minify:true Declaration.pp_declaration) decls
+  List.map (Pp.to_string ~minify:true Declaration.pp) decls
 
 let indexed decls = List.mapi (fun i d -> (i, d)) decls
 let unindexed decls = List.map snd decls

@@ -486,7 +486,7 @@ let pp_field ctx ~first label print_value value =
   Pp.char ctx '=';
   print_value ctx value
 
-let pp_decl_list ctx items = pp_debug_list Declaration.pp_declaration ctx items
+let pp_decl_list ctx items = pp_debug_list Declaration.pp ctx items
 let pp_bool ctx value = Pp.string ctx (string_of_bool value)
 let pp_int ctx value = Pp.string ctx (string_of_int value)
 
@@ -497,7 +497,7 @@ let pp_cascade_rule ctx (rule : cascade_rule) =
   pp_field ctx ~first "important" pp_bool rule.important;
   pp_field ctx ~first "layer" pp_string_option rule.layer;
   pp_field ctx ~first "source_order" pp_int rule.source_order;
-  pp_field ctx ~first "declaration" Declaration.pp_declaration rule.declaration;
+  pp_field ctx ~first "declaration" Declaration.pp rule.declaration;
   Pp.char ctx '}'
 
 let pp_cascade_rules ctx = function
@@ -664,9 +664,6 @@ let kind_equal : type a b.
   | Properties.Font_size, Properties.Font_size -> Some Refl
   | Properties.Filter, Properties.Filter -> Some Refl
   | Properties.Shadow, Properties.Shadow -> Some Refl
-  | Properties.Shadow, Properties.Box_shadow -> Some Refl
-  | Properties.Box_shadow, Properties.Shadow -> Some Refl
-  | Properties.Box_shadow, Properties.Box_shadow -> Some Refl
   | Properties.Color, Properties.Color -> Some Refl
   | Properties.Gradient_stop, Properties.Gradient_stop -> Some Refl
   | Properties.Background_image, Properties.Background_image -> Some Refl
@@ -1791,7 +1788,7 @@ module Import = struct
   let parse_source rule source =
     try
       let cursor = Cursor.of_string source in
-      let sheet = Stylesheet.read_stylesheet cursor in
+      let sheet = Stylesheet.read cursor in
       Ok (wrap_in_layer rule sheet)
     with
     | Failure msg -> Error msg

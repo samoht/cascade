@@ -7,9 +7,8 @@ open Css_test_helpers
 
 (* One-liner check functions for each type *)
 let check_declaration ?minify ?roundtrip ?expected ?optimized input =
-  check_value_cursor "declaration" read_declaration
-    (Css.Pp.option pp_declaration)
-    ?minify ?roundtrip ?expected input;
+  check_value_cursor "declaration" read_declaration (Css.Pp.option pp) ?minify
+    ?roundtrip ?expected input;
   match optimized with
   | None -> ()
   | Some into ->
@@ -1670,8 +1669,7 @@ let unterminated () =
   in
   Alcotest.(check string)
     "unterminated rgb declaration normalize" "color:#000"
-    (decl |> Css.Declaration.normalize
-    |> Css.Declaration.string_of_declaration ~minify:true);
+    (decl |> Css.Declaration.normalize |> Css.Declaration.to_string ~minify:true);
   (* A missing semicolon between two declarations in a block remains a parse
      error. *)
   Css_test_helpers.neg_cursor Css.Declaration.read_block
@@ -2572,17 +2570,15 @@ let parse_property_decl property value =
     match read_declaration c with
     | None -> None
     | Some decl ->
-        let serialized =
-          Css.Declaration.string_of_declaration ~minify:true decl
-        in
+        let serialized = Css.Declaration.to_string ~minify:true decl in
         let c2 = Cursor.of_string serialized in
         Some (input, serialized, decl, read_declaration c2)
   with Cursor.Parse_error _ | Reader.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
   Css.Declaration.property_name reparsed = row.property
-  && Css.Declaration.string_of_declaration ~minify:true decl
-     = Css.Declaration.string_of_declaration ~minify:true reparsed
+  && Css.Declaration.to_string ~minify:true decl
+     = Css.Declaration.to_string ~minify:true reparsed
 
 let check_property_positive (row : property_grammar_row) value =
   match parse_property_decl row.property value with

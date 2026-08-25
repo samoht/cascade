@@ -229,7 +229,7 @@ let escaped_property_name name =
   Parser.escape_ident (string_of_property_name name)
 
 let render_declaration_feature = function
-  | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
+  | Declaration decl -> Declaration.to_string ~minify:false decl
   | Empty name -> escaped_property_name name ^ ":"
   | Unsupported (name, value) -> escaped_property_name name ^ ": " ^ value
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
@@ -268,7 +268,7 @@ let pp_declaration_feature ctx = function
   | Declaration decl ->
       (* The declaration is a capability predicate for this exact value, so
          suppress lossy value rewrites (e.g. static colour folding). *)
-      Declaration.pp_declaration (Pp.enter_feature_query ctx) decl
+      Declaration.pp (Pp.enter_feature_query ctx) decl
   | Empty name ->
       Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':'

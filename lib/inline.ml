@@ -1617,7 +1617,7 @@ let strip_evaluated_guards ~(query : Context.query option) (rule : import_rule)
 
 let parse_import_content content =
   let cursor = Cursor.of_string content in
-  match read_stylesheet cursor with
+  match read cursor with
   | stylesheet -> Some stylesheet
   | exception Cursor.Parse_error _ -> (
       match

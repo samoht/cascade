@@ -150,9 +150,7 @@ let parse_inline s =
   | exception Error.Parse_error _ -> []
 
 let decl_value d =
-  let s =
-    Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables [ d ]
-  in
+  let s = Css.inline_style_of_declarations ~minify:true ~mode:Variables [ d ] in
   match String.index_opt s ':' with
   | Some i -> String.sub s (i + 1) (String.length s - i - 1)
   | None -> s

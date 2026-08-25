@@ -2453,7 +2453,7 @@ let with_opaque_value decl value =
   if is_important decl then important opaque else opaque
 
 (* Pretty printer for declarations *)
-let rec pp_declaration : declaration Pp.t =
+let rec pp : declaration Pp.t =
  fun ctx -> function
   | Declaration
       {
@@ -2485,18 +2485,14 @@ let rec pp_declaration : declaration Pp.t =
   | Theme_guarded { decl; _ } ->
       (* Theme guards are resolved by the transform layer; if one survives to
          print time, emit the wrapped declaration. *)
-      pp_declaration ctx decl
-
-let pp = pp_declaration
+      pp ctx decl
 
 (* Convert a declaration to its string representation *)
-let string_of_declaration ?(minify = false) decl =
+let to_string ?(minify = false) (decl : t) =
   let buf = Buffer.create 32 in
   let ctx = Pp.ctx ~minify buf in
-  pp_declaration ctx decl;
+  pp ctx decl;
   Buffer.contents buf
-
-let to_string ?minify (decl : t) = string_of_declaration ?minify decl
 
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]

@@ -246,7 +246,7 @@ let starting_style_nested declarations =
 
 let keyframes name frames = Keyframes (name, frames)
 let v statements : stylesheet = statements
-let empty_stylesheet : stylesheet = []
+let empty : stylesheet = []
 
 (** {1 Accessors} *)
 
@@ -612,7 +612,7 @@ let pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
   pp_keyframe_selector ctx kf.selector;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx kf.declarations
+  Pp.braced_semicolon_list Declaration.pp ctx kf.declarations
 
 let pp_keyframes_block_statement ctx header name frames =
   Pp.string ctx header;
@@ -651,15 +651,14 @@ let pp_page_margin_rule : page_margin_rule Pp.t =
   Pp.string ctx "@";
   Pp.string ctx rule.name;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx rule.descriptors
+  Pp.braced_semicolon_list Declaration.pp ctx rule.descriptors
 
 let pp_page_with_margins_body ctx descriptors margins =
   Pp.braces
     (fun ctx () ->
       Pp.list ~sep:Pp.semicolon_cut
         (fun ctx (i, d) ->
-          if i = 0 then Declaration.pp_declaration ctx d
-          else Pp.indent Declaration.pp_declaration ctx d)
+          if i = 0 then Declaration.pp ctx d else Pp.indent Declaration.pp ctx d)
         ctx
         (List.mapi (fun i d -> (i, d)) descriptors);
       if descriptors <> [] && margins <> [] then (
@@ -1035,7 +1034,7 @@ let pp_declarations_statement ctx raw_decls =
   (* Bare declarations for CSS nesting - no selector/braces, just declarations.
      No extra indent since the containing block handles it *)
   let decls = raw_decls in
-  Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
+  Pp.list ~sep:Pp.semicolon_cut Declaration.pp ctx decls;
   if decls <> [] && not ctx.Pp.minify then Pp.semicolon ctx ()
 
 let pp_namespace_uri ctx = function
@@ -1266,9 +1265,7 @@ let rec pp_rule : rule Pp.t =
   | decls, nested ->
       let ctx = Pp.enter_style_rule { ctx with level = ctx.level + 1 } in
       let pp_declarations ctx () =
-        Pp.list ~sep:Pp.semicolon_cut
-          (Pp.indent Declaration.pp_declaration)
-          ctx decls
+        Pp.list ~sep:Pp.semicolon_cut (Pp.indent Declaration.pp) ctx decls
       in
       let pp_nested ctx () =
         let rec loop = function
@@ -1451,7 +1448,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@supports-condition ";
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
+      Pp.braced_semicolon_list Declaration.pp ctx declarations
   | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) -> pp_scope_statement ctx start end_ content
   | Keyframes (name, frames) ->
@@ -1473,7 +1470,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx raw_declarations
+      Pp.braced_semicolon_list Declaration.pp ctx raw_declarations
   | Page_with_margins (selector, descriptors, margins) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
@@ -1499,7 +1496,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@position-try ";
       Pp.string ctx (Parser.escape_ident name);
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
+      Pp.braced_semicolon_list Declaration.pp ctx declarations
   | Viewport (prefix, descriptors) ->
       pp_viewport_statement ctx prefix descriptors
   | Unknown_at_rule { name; prelude; block } ->
@@ -1554,6 +1551,8 @@ let pp_stylesheet : stylesheet Pp.t =
   in
   loop statements
 
+let pp = pp_stylesheet
+
 (** {1 Rendering} *)
 
 (* One walk of the tree. Presizing the buffer from a [Pp.size] prepass would
@@ -1564,8 +1563,6 @@ let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
   let pp ctx () = pp_stylesheet ctx statements in
   Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp ()
-
-let pp = to_string
 
 (** {1 Legacy Compatibility} *)
 
@@ -1652,7 +1649,6 @@ let queries_of pick block =
        [] block)
 
 (* Legacy compatibility functions *)
-let empty = empty_stylesheet
 let rules t = extract_rules t
 
 let media_queries t =
@@ -3988,7 +3984,7 @@ let rec read_stylesheet_statements r state acc =
     validate_stylesheet_prelude r state stmt;
     read_stylesheet_statements r state (stmt :: acc)
 
-let read_stylesheet (r : Cursor.t) : stylesheet =
+let read (r : Cursor.t) : stylesheet =
   Cursor.with_context r "stylesheet" (fun () ->
       read_stylesheet_statements r (new_prelude_seen ()) [])
 
@@ -4304,41 +4300,6 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   let sheet = interleave bangs rule_ends sheet in
   (sheet, out.warnings @ typed_warnings)
 
-(** {1 Inline Styles} *)
-
-let pp_important ~minify pp_ctx =
-  if minify then Pp.string pp_ctx "!important"
-  else (
-    Pp.space pp_ctx ();
-    Pp.string pp_ctx "!important")
-
-let pp_decl_inline ~minify ~mode pp_ctx decl =
-  let name = Declaration.property_name decl in
-  let value =
-    Declaration.string_of_value ~minify ~inline:(mode = Inline) decl
-  in
-  let is_important = Declaration.is_important decl in
-  Pp.string pp_ctx name;
-  Pp.char pp_ctx ':';
-  if not minify then Pp.space pp_ctx ();
-  Pp.string pp_ctx value;
-  if is_important then pp_important ~minify pp_ctx
-
-let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
-    =
-  let buf = Buffer.create 128 in
-  let pp_ctx = Pp.ctx ~minify ~inline:(mode = Inline) buf in
-  let first = ref true in
-  List.iter
-    (fun decl ->
-      if !first then first := false
-      else (
-        Pp.semicolon pp_ctx ();
-        if not minify then Pp.space pp_ctx ());
-      pp_decl_inline ~minify ~mode pp_ctx decl)
-    props;
-  Buffer.contents buf
-
 (** {1 Variable extraction from stylesheets} *)
 
 (* A [var()] is a reference wherever the declaration holding it sits, so this is
@@ -4349,9 +4310,6 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
 let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
   fold_declarations (fun acc decls -> List.rev_append decls acc) [] ss
   |> List.rev |> Variables.vars_of_declarations
-
-(* Alias for API consistency *)
-let read = read_stylesheet
 
 (* Pretty-printer for import_rule *)
 let pp_import_rule : import_rule Pp.t =

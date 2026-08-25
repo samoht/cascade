@@ -4468,7 +4468,6 @@ type _ kind =
   | Rotate : rotate_value kind
   | Scale : scale kind
   | Shadow : shadow kind
-  | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind

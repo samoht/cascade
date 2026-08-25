@@ -30,7 +30,7 @@ let node ?id ?(classes = []) ?(attrs = []) ?(children = []) name =
   n
 
 let inline_style decls =
-  Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables decls
+  Css.inline_style_of_declarations ~minify:true ~mode:Variables decls
 
 (* [A.compute] takes a parsed sheet, so the fixtures parse here. They are all
    meant to parse; one that does not is a broken test, not a case under test. *)

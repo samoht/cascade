@@ -1,5 +1,5 @@
 let decls ds =
-  let pp ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
+  let pp ctx ds = List.iter (Declaration.pp ctx) ds in
   Pp.size ~minify:true pp ds
 
 let rule (r : Stylesheet.rule) =

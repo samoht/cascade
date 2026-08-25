@@ -14,7 +14,7 @@ let rule css =
   | rs -> Alcotest.failf "expected one rule, got %d" (List.length rs)
 
 let min_rule r = Pp.to_string ~minify:true Stylesheet.pp_rule r
-let min_decl d = Pp.to_string ~minify:true Declaration.pp_declaration d
+let min_decl d = Pp.to_string ~minify:true Declaration.pp d
 
 let test_decl_list_separator_math () =
   Alcotest.(check int) "empty list" 0 (Size.decl_list 0 0);

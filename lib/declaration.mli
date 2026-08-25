@@ -25,9 +25,6 @@ type t = declaration
 val pp_property : 'a Properties.property Pp.t
 (** [pp_property] is the pretty-printer for CSS property names. *)
 
-val pp_declaration : declaration Pp.t
-(** [pp_declaration] is the pretty-printer for declarations. *)
-
 val pp : t Pp.t
 (** [pp] is the pretty-printer for declarations. *)
 
@@ -51,11 +48,6 @@ val normalize :
     pure serialiser. [lossless] disables colour approximation. [exact_srgb] is
     {!Properties.normalize_property_value}'s flag of the same name, for the
     canonical diff projection only. *)
-
-val string_of_declaration : ?minify:bool -> declaration -> string
-(** [string_of_declaration ~minify decl] converts a declaration to its string
-    representation. If [minify] is [true] (default: [false]), the output is
-    minified. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)

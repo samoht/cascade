@@ -420,8 +420,6 @@ let float ctx f =
     int ctx (int_of_float f)
   else string ctx (string_of_float ~drop_leading_zero:true f)
 
-let float_compact = float
-
 let float_n n ctx f =
   if Float.is_nan f then nan_value ctx ""
   else if Float.is_integer f && Float.abs f <= float_of_int max_int then

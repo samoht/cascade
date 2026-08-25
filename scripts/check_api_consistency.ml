@@ -367,7 +367,10 @@ let check_test_patterns ~lib_dir ~mod_name ~valid_types ~expected_test_name
   match List.find_opt (fun t -> expected_test_name t = tname) valid_types with
   | Some typename ->
       let mli_path = lib_dir // (mod_name ^ ".mli") in
-      let read_name = if typename = "t" then "read" else "read_" ^ typename in
+      let read_name =
+        if typename = "t" || typename = mod_name then "read"
+        else "read_" ^ typename
+      in
       if
         (not has_neg) && Sys.file_exists mli_path
         && file_has_val mli_path read_name
@@ -540,10 +543,16 @@ let () =
         List.iter
           (fun tname ->
             stats.total_types <- stats.total_types + 1;
-            (* Special case: type t uses 'read' and 'pp' instead of 'read_t' and
-               'pp_t' *)
-            let read_name = if tname = "t" then "read" else "read_" ^ tname in
-            let pp_name = if tname = "t" then "pp" else "pp_" ^ tname in
+            (* A module's principal reader uses [read]. A [t] printer uses [pp];
+               Declaration's historical [declaration] type is also its [t].
+               Other named types keep the explicit [pp_<type>] form. *)
+            let principal = tname = "t" || tname = mod_base in
+            let read_name = if principal then "read" else "read_" ^ tname in
+            let pp_name =
+              if tname = "t" || (mod_base = "declaration" && principal) then
+                "pp"
+              else "pp_" ^ tname
+            in
             let check_name =
               if tname = "t" then "check" else "check_" ^ tname
             in

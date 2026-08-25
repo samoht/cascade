@@ -170,7 +170,7 @@ let to_string ?(minify = false) t = to_string_with ~pretty:false ~minify t
 let to_stylesheet_string ?(minify = false) t =
   to_string_with ~pretty:true ~minify t
 
-let pp t = to_string t
+let pp ctx t = Pp.string ctx (to_string ~minify:(Pp.minified ctx) t)
 
 (* A style query holds component values, which carry the source positions they
    were read from, so a structural walk would call two spellings of one query

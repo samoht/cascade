@@ -80,8 +80,8 @@ val to_stylesheet_string : ?minify:bool -> t -> string
     printing. Non-minified output keeps optional whitespace in typed shorthand
     feature queries. *)
 
-val pp : t -> string
-(** [pp t] returns a string representation of a container condition. *)
+val pp : t Pp.t
+(** [pp] is a composable printer for a container condition. *)
 
 val of_string : string -> t
 (** [of_string s] parses a container condition. Raises

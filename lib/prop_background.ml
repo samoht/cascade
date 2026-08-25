@@ -1499,13 +1499,6 @@ let shadow ?(inset = false) ?(inset_var : string option)
       Inset (Toggle { name; no_fallback = inset_var_no_fallback; body })
   | None -> if inset then Inset (Body body) else Shadow body
 
-let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
-    ?(blur : length option) ?(spread : length option) ?(color : color option) ()
-    : shadow =
-  let h_offset = Option.value h_offset ~default:(Zero : length) in
-  let v_offset = Option.value v_offset ~default:(Zero : length) in
-  (Inset (Body { h_offset; v_offset; blur; spread; color }) : shadow)
-
 let border_shorthand ?width ?style ?color () : border =
   Shorthand { width; style; color }
 

@@ -11,8 +11,7 @@ let check_any_syntax =
 
 let decl_t : Css.Declaration.declaration Alcotest.testable =
   Alcotest.testable
-    (fun fmt d ->
-      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    (fun fmt d -> Format.pp_print_string fmt (Css.Declaration.to_string d))
     ( = )
 
 (* These tests are for CSS Variables module *)
@@ -338,7 +337,7 @@ let spec_radial_and_position_kinds () =
     Alcotest.(check string)
       ("--" ^ name ^ " binding")
       expected
-      (Css.Declaration.string_of_declaration ~minify:true decl)
+      (Css.Declaration.to_string ~minify:true decl)
   in
   bind "radial-shape" Radial_shape Circle "--radial-shape:circle";
   bind "radial-size" Radial_size Farthest_corner "--radial-size:farthest-corner";

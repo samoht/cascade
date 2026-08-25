@@ -33,6 +33,26 @@ answers.
   `Css.Stylesheet.Keep`, `Replace` or `Drop` through the new
   `Css.Stylesheet.edit` type. They previously leaked the otherwise-internal
   `Common.List.edit` type.
+- Redundant public aliases are gone. Use `Declaration.pp` and
+  `Declaration.to_string` instead of `pp_declaration` and
+  `string_of_declaration`; `Stylesheet.empty`, `Stylesheet.read` and
+  `Stylesheet.to_string` instead of `empty_stylesheet`, `read_stylesheet` and
+  the old string-valued `Stylesheet.pp`; and `Keyframe.to_string` instead of
+  `string_of_selector`. `Stylesheet.pp`, `Css.pp`, and `Container.pp` are now
+  composable `Pp.t` printers rather than string-returning aliases; use their
+  `to_string` functions when a string is required. `Pp.float` replaces the
+  identical `Pp.float_compact`. Use `Css.inline_style_of_declarations`, which
+  retains the useful `optimize` option, instead of the removed duplicate
+  `Stylesheet.inline_style_of_declarations`.
+- The unused one-off `Css.Transform`, `Css.Transform_origin`,
+  `Css.Perspective_origin` and `Css.Animation` string parser modules are gone;
+  use the corresponding `Properties.read_*` parser with a `Cursor`.
+  `Css.Gradient_direction.of_string`, which has an external caller, remains.
+  The unused Tailwind-specific `inset_ring_shadow` helper is also gone; use
+  `shadow ~inset:true` or construct the typed shadow value when its distinct
+  defaults matter.
+- `Box_shadow` is no longer a duplicate constructor of the typed `kind` GADT;
+  use `Shadow`. The `Box_shadow` CSS property constructor is unchanged.
 - `Declaration.declaration` is a private variant. Its constructors remain
   available for pattern matching, but construct values with `Declaration.v` or
   `Declaration.theme_guarded`. The public records exposed their cached hash, so

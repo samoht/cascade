@@ -40,28 +40,9 @@ let parse_full ~property read s =
       else Ok v
     with Cursor.Parse_error e -> Error e
 
-module Transform = struct
-  let of_string s = parse_full ~property:"transform" Properties.read_transform s
-end
-
 module Gradient_direction = struct
   let of_string s =
     parse_full ~property:"gradient-direction" Properties.read_gradient_prelude s
-end
-
-module Transform_origin = struct
-  let of_string s =
-    parse_full ~property:"transform-origin" Properties.read_transform_origin s
-end
-
-module Perspective_origin = struct
-  let of_string s =
-    parse_full ~property:"perspective-origin" Properties.read_perspective_origin
-      s
-end
-
-module Animation = struct
-  let of_string s = parse_full ~property:"animation" Properties.read_animation s
 end
 
 let eval_declaration ?layer_order ?layer ctx decl =
@@ -626,21 +607,47 @@ and statement_for_inline ~live ~keep_layers statement =
    no handler is not in that set: the browser ignoring it is a cascade step, and
    a serialiser has no agent to be. Compose {!optimize}, {!resolve_theme},
    {!inline_vars} upstream when needed. *)
-let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
+let pp ctx stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
   in
-  Stylesheet.to_string ~minify ?indent ?lossless ?enforce_spec stylesheet
+  Stylesheet.pp ctx stylesheet
 
-let pp = to_string
+let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp stylesheet
 
 (* Append the serialised stylesheet to [buf]. *)
 let to_buffer buf ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
-  let stylesheet =
-    stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
+  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp stylesheet
+
+let pp_inline_important ~minify ctx =
+  if minify then Pp.string ctx "!important"
+  else (
+    Pp.space ctx ();
+    Pp.string ctx "!important")
+
+let pp_inline_declaration ~minify ~mode ctx declaration =
+  let name = Declaration.property_name declaration in
+  let value =
+    Declaration.string_of_value ~minify ~inline:(mode = Inline) declaration
   in
-  let pp ctx () = Stylesheet.pp_stylesheet ctx stylesheet in
-  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ()
+  Pp.string ctx name;
+  Pp.char ctx ':';
+  if not minify then Pp.space ctx ();
+  Pp.string ctx value;
+  if Declaration.is_important declaration then pp_inline_important ~minify ctx
+
+let render_inline_style ?(minify = false) ?(mode : mode = Inline) declarations =
+  let buffer = Buffer.create 128 in
+  let ctx = Pp.ctx ~minify ~inline:(mode = Inline) buffer in
+  List.iteri
+    (fun index declaration ->
+      if index > 0 then (
+        Pp.semicolon ctx ();
+        if not minify then Pp.space ctx ());
+      pp_inline_declaration ~minify ~mode ctx declaration)
+    declarations;
+  Buffer.contents buffer
 
 let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     =
@@ -648,7 +655,7 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     if optimize then Optimize.deduplicate_declarations declarations
     else declarations
   in
-  inline_style_of_declarations ?minify ?mode declarations
+  render_inline_style ?minify ?mode declarations
 
 let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats

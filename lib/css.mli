@@ -90,41 +90,12 @@ module Nest = Nest
 (** Parser building blocks live at the library root ([Cascade.Cursor],
     [Cascade.Parser], [Cascade.Token], ...), not under [Css]. *)
 
-(** {2:value_parsers Per-type value parsers}
-
-    [of_string] wrappers around the [Properties.read_*] cursor-driven parsers
-    used internally by {!Declaration.of_string}. The argument is the
-    right-hand-side of a declaration, with no [property:] prefix or trailing
-    [;]. They are intended for callers (e.g. Tailwind bracket values) that have
-    already extracted a typed value substring and need to lift it into the typed
-    AST without round-tripping through a full declaration. *)
-
-module Transform : sig
-  val of_string : string -> (Properties.transform, Error.t) result
-  (** [of_string s] parses [s] as a single {!val-transform} value. *)
-end
+(** {2:value_parsers Per-type value parsers} *)
 
 module Gradient_direction : sig
   val of_string : string -> (Properties.gradient_direction, Error.t) result
   (** [of_string s] parses [s] as a gradient [<direction>] (a side keyword, an
       [<angle>], or a [<direction> in <color-interpolation>] form). *)
-end
-
-module Transform_origin : sig
-  val of_string : string -> (Properties.transform_origin, Error.t) result
-  (** [of_string s] parses [s] as a [transform-origin] value. *)
-end
-
-module Perspective_origin : sig
-  val of_string : string -> (Properties.perspective_origin, Error.t) result
-  (** [of_string s] parses [s] as a [perspective-origin] value. *)
-end
-
-module Animation : sig
-  val of_string : string -> (Properties.animation, Error.t) result
-  (** [of_string s] parses [s] as a single {!val-animation} shorthand entry (one
-      comma-separated entry; for the full list use {!Properties.read_animations}
-      with a cursor). *)
 end
 
 (** {2:css_rules CSS Rules and Stylesheets}
@@ -1510,11 +1481,6 @@ val declaration_value_for_equivalence : declaration -> string
     the equivalent unquoted [<ident>] sequence. Used as a structural-diff key so
     [--font: "Noto Color Emoji"] and [--font: Noto Color Emoji] compare equal;
     not for emission, where both forms stay verbatim. *)
-
-val string_of_declaration : ?minify:bool -> declaration -> string
-(** [string_of_declaration ~minify decl] converts a declaration to its string
-    representation. If [minify] is [true] (default: [false]), the output is
-    minified. *)
 
 (** {1 Property Categories}
 
@@ -5041,18 +5007,6 @@ val shadow :
     inset_var=None, inset_var_no_fallback=false, h_offset=0px, v_offset=0px,
     blur=0px, spread=0px, color=Transparent. *)
 
-val inset_ring_shadow :
-  ?h_offset:length ->
-  ?v_offset:length ->
-  ?blur:length ->
-  ?spread:length ->
-  ?color:color ->
-  unit ->
-  shadow
-(** [inset_ring_shadow ?h_offset ?v_offset ?blur ?spread ?color ()] is an inset
-    shadow value suitable for ring utilities. Defaults: h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Transparent. *)
-
 (** CSS text-shadow values *)
 type text_shadow = Properties.text_shadow =
   | None
@@ -7473,7 +7427,6 @@ type 'a kind = 'a Properties.kind =
   | Rotate : rotate_value kind
   | Scale : scale kind
   | Shadow : shadow kind
-  | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind
@@ -7685,14 +7638,9 @@ val to_string :
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
-val pp :
-  ?minify:bool ->
-  ?indent:int ->
-  ?lossless:bool ->
-  ?enforce_spec:bool ->
-  t ->
-  string
-(** [pp] is {!to_string}. *)
+val pp : t Pp.t
+(** [pp] is the composable form of {!to_string}. It applies the same invalid
+    declaration and empty-rule filtering before printing. *)
 
 val to_buffer :
   Buffer.t ->

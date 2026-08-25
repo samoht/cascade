@@ -4,7 +4,7 @@ let useful_gain_ratio_ppm = 140_000
 
 (* Source size and both gains are tracked in approximate minified bytes so a few
    repeated long declarations register their real weight, not just a count. *)
-let decl_size = Pp.size ~minify:true Declaration.pp_declaration
+let decl_size = Pp.size ~minify:true Declaration.pp
 
 type t = {
   mutable source_units : int;

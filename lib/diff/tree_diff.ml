@@ -2612,7 +2612,7 @@ let keyframe_frames_diff frames1 frames2 =
     diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
   in
   let selector_str (frame : Css.keyframe) =
-    Css.Keyframe.string_of_selector frame.selector
+    Css.Keyframe.to_string frame.selector
   in
   let added_changes =
     List.map
