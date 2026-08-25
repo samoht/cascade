@@ -548,6 +548,34 @@ let equal_on_opaque_conditions () =
        (of_string "(unknown-feature: 1)")
        (feat (General_enclosed "(unknown-feature: 1)")))
 
+(* A normal form is already normal, and it is still the query it came from:
+   reparsing what [normalize] printed lands back on the same normal form. *)
+let normalize_is_idempotent () =
+  List.iter
+    (fun input ->
+      let once = normalize (of_string input) in
+      Alcotest.(check string)
+        ("normalize is idempotent: " ^ input)
+        (to_string once)
+        (to_string (normalize once));
+      Alcotest.(check bool)
+        ("a normal form reparses to itself: " ^ input)
+        true
+        (equal once (of_string (to_string once))))
+    [
+      "(min-width: 10px)";
+      "(width >= 10px)";
+      "(10px <= width)";
+      "(20em >= width >= 10em)";
+      "all and (min-width: 10px)";
+      "not all and (min-width: 10px)";
+      "screen and (max-width: 40em)";
+      "(min-width: 10px) and (orientation: landscape)";
+      "not (min-width: 10px)";
+      "print, screen and (min-width: 10px)";
+      "theme(static)";
+    ]
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -586,4 +614,5 @@ let suite =
       test_case "equal separates an escaped media type" `Quick
         equal_separates_an_escaped_media_type;
       test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
+      test_case "normalize is idempotent" `Quick normalize_is_idempotent;
     ] )

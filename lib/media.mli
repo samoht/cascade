@@ -197,11 +197,41 @@ val pp_condition : condition Pp.t
 val pp_feature : feature Pp.t
 (** Pretty-printer for media features. *)
 
+val normalize : t -> t
+(** [normalize t] rewrites [t] into the spelling its equivalence class is
+    compared by. The invariant runs one way: when [normalize a] and
+    [normalize b] are equal, [a] and [b] select the same media.
+
+    The converse is neither promised nor intended: two equivalent queries may
+    normalise apart, which costs a merge and never correctness. So every rewrite
+    is one of the spec's own equivalences. A [min-] or [max-] prefix on a range
+    feature becomes the [>=] or [<=] comparison and a value-first bound becomes
+    name-first (Media Queries 4 sec. 2.4.4 and sec. 2.4.3); a descending
+    interval becomes ascending; [all] drops out of [all and X] and
+    [not all and X] (sec. 2.3); a nested query list flattens and a one-member
+    list becomes its member.
+
+    Completeness is a separate property, and it stops there. Equivalences
+    [normalize] leaves apart: two bounds on one feature against the written
+    interval, [(width >= 10px) and (width <= 20px)] against
+    [(10px <= width <= 20px)]; De Morgan pairs; reassociating or reordering
+    [and] and [or]; a plain feature against its [=] comparison; reordering a
+    query list; and anything inside a [<general-enclosed>], whose text is
+    compared verbatim. Each of those costs a merge, never correctness. *)
+
 val compare : t -> t -> int
-(** Total order on media queries. *)
+(** Total order on media queries. Ordering only needs to be deterministic, so a
+    full tie on every ordinal key breaks on the serialised query. That makes
+    [compare a b = 0] a different question from {!equal}, which reads structure:
+    each says yes where the other says no. Sort with [compare], decide sameness
+    with {!equal}. *)
 
 val equal : t -> t -> bool
-(** Structural equality on media queries. *)
+(** [equal a b] is structural equality on {!normalize}d queries, so it is true
+    only when [a] and [b] select the same media. It gates block merging and
+    therefore never answers on serialised text: an unknown media type spelled as
+    one escaped ident is not the media type and condition whose characters it
+    repeats, and a [<general-enclosed>] equals only the same text. *)
 
 type key
 (** A precomputed sort key for {!val-compare}. Deriving the order serializes the

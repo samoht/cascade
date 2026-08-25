@@ -19,6 +19,11 @@ answers.
 
 ### Breaking
 
+- `Css.Media.equal` reads normalised query structure where it read serialised
+  text, so it is no longer `Css.Media.compare a b = 0` and answers differently
+  both ways: `(min-width: 10px)` and `(width >= 10px)` are now equal, and two
+  queries that print alike but parse apart are not. `Css.Media.normalize`
+  exposes the normal form it compares (#516)
 - **IMPORTANT** Many of the fixes below change the CSS cascade emits for input
   1.1.0 already accepted, and a dozen of them change how the page renders. If
   you shipped minified output built with 1.1.0, re-run it and compare:
@@ -278,6 +283,11 @@ answers.
 
 ### Minification
 
+- `--minify` merges `@media` blocks by query structure rather than serialised
+  text: `(min-width: 10px)` and `(width >= 10px)` are one bound and now merge
+  (Media Queries 4 sec. 2.4.4), while `@media screen\ and\ \(min-width\:\
+  10px\)` names an unknown media type that never matches and no longer merges
+  into `@media screen and (min-width: 10px)` (#516)
 - `--minify` merges two rules that declare the same NaN, whichever way each
   spelled it: `opacity: calc(NaN)` and `opacity: calc(infinity - infinity)`
   are one declaration (#471, #482)

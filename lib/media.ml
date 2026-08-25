@@ -1156,6 +1156,156 @@ let rec lower_for_minify : t -> t = function
       in
       loop false [] qs
 
+(* ===== Canonical form ===== *)
+
+(* [normalize] is the one place that decides which spellings name one query, and
+   its invariant runs one way only:
+
+   normalize a = normalize b => a and b select the same media
+
+   Nothing promises the converse, and nothing should: two equivalent queries may
+   normalise apart, which costs a merge and never correctness. So every rewrite
+   below is one of the spec's own equivalences, never a heuristic. *)
+
+(* Media Queries 4 sec. 2.4.4: a [min-] prefix on a range feature is the [>=]
+   comparison and [max-] is [<=]; sec. 2.4.3 adds the value-first spelling. One
+   bound, four spellings. [feature_bound] already projects all four onto a
+   common view for the interval fold, so reading that view back as [name op
+   value] is the whole rewrite. The prefix leg is gated on a range feature
+   because that is the feature class sec. 2.4.4 speaks about, and the parser
+   rejects the prefix anywhere else. *)
+let canonical_bound (f : feature) : feature =
+  let is_bound =
+    match f with
+    | Plain (Min base, _) | Plain (Max base, _) -> range_feature_name base
+    | Range _ | Range_rev _ -> true
+    | Plain _ | Boolean _ | Interval _ | General_enclosed _ -> false
+  in
+  if not is_bound then f
+  else
+    match feature_bound f with
+    | Some (name, Lower, Le, v) -> Range (name, Ge, v)
+    | Some (name, Lower, Lt, v) -> Range (name, Gt, v)
+    | Some (name, Upper, Le, v) -> Range (name, Le, v)
+    | Some (name, Upper, Lt, v) -> Range (name, Lt, v)
+    (* [feature_bound] reports every bound it recognises as [Lt] or [Le]. *)
+    | Some _ | None -> f
+
+(* Media Queries 4 sec. 2.4.3: an interval is written in either direction, so
+   [(20em >= width >= 10em)] and [(10em <= width <= 20em)] are one query. Keep
+   the ascending direction. *)
+let canonical_interval a op1 name op2 b : feature =
+  match (op1, op2) with
+  | (Gt | Ge), (Gt | Ge) ->
+      let flip = function Gt -> Lt | Ge -> Le | (Lt | Le | Eq) as op -> op in
+      Interval (b, flip op2, name, flip op1, a)
+  | _ -> Interval (a, op1, name, op2, b)
+
+let normalize_feature (f : feature) : feature =
+  match f with
+  | Interval (a, op1, name, op2, b) -> canonical_interval a op1 name op2 b
+  | Plain _ | Boolean _ | Range _ | Range_rev _ -> canonical_bound f
+  (* A [<general-enclosed>] carries no structure to read, so its text is the
+     whole of what it means and none of it is rewritten. *)
+  | General_enclosed _ -> f
+
+(* Rebuild only what changed, as [lower_condition] does: [equal] runs this on
+   both sides of every merge test, and the queries it is asked about are usually
+   already normal. *)
+let rec normalize_condition (c : condition) : condition =
+  match c with
+  | Feature f as cond ->
+      let f' = normalize_feature f in
+      if f' == f then cond else Feature f'
+  | Not c as cond ->
+      let c' = normalize_condition c in
+      if c' == c then cond else Not c'
+  | And (a, b) as cond ->
+      let a' = normalize_condition a and b' = normalize_condition b in
+      if a' == a && b' == b then cond else And (a', b')
+  | Or (a, b) as cond ->
+      let a' = normalize_condition a and b' = normalize_condition b in
+      if a' == a && b' == b then cond else Or (a', b')
+
+let rec normalize (query : t) : t =
+  match query with
+  | Cond c ->
+      let c' = normalize_condition c in
+      if c' == c then query else Cond c'
+  (* Media Queries 4 sec. 2.3: [all] matches every media type, so it drops out
+     of an unprefixed [all and X], and [not all and X] is the Level 3 spelling
+     of [not (X)]. Bare [all] has no condition form and stays. *)
+  | Type { prefix = None; type_ = All; trailing = Some c } ->
+      Cond (normalize_condition c)
+  | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
+      Cond (Not (normalize_condition c))
+  | Type { trailing = None; _ } -> query
+  | Type ({ trailing = Some c; _ } as r) ->
+      let c' = normalize_condition c in
+      if c' == c then query else Type { r with trailing = Some c' }
+  (* A query list matches when any member does, so a one-member list is that
+     member and a nested list flattens. *)
+  | List [ q ] -> normalize q
+  | List qs ->
+      List
+        (List.concat_map
+           (fun q -> match normalize q with List qs -> qs | q -> [ q ])
+           qs)
+
+(* Written out rather than left to the structural operators: [equal] is the gate
+   on block merging, and a comparison that walks a runtime representation is how
+   a spelling difference becomes a merge. *)
+let equal_cmp (a : cmp) b =
+  match (a, b) with
+  | Lt, Lt | Le, Le | Eq, Eq | Gt, Gt | Ge, Ge -> true
+  | (Lt | Le | Eq | Gt | Ge), _ -> false
+
+let equal_medium (a : medium) b =
+  match (a, b) with
+  | All, All | Screen, Screen | Print, Print -> true
+  | Other a, Other b -> String.equal a b
+  | (All | Screen | Print | Other _), _ -> false
+
+let equal_prefix (a : prefix) b =
+  match (a, b) with Not, Not | Only, Only -> true | (Not | Only), _ -> false
+
+let equal_feature (a : feature) b =
+  match (a, b) with
+  | Plain (n1, v1), Plain (n2, v2) -> equal_name n1 n2 && equal_value v1 v2
+  | Boolean n1, Boolean n2 -> equal_name n1 n2
+  | Range (n1, o1, v1), Range (n2, o2, v2) ->
+      equal_name n1 n2 && equal_cmp o1 o2 && equal_value v1 v2
+  | Range_rev (v1, o1, n1), Range_rev (v2, o2, n2) ->
+      equal_value v1 v2 && equal_cmp o1 o2 && equal_name n1 n2
+  | Interval (a1, o1, n1, p1, b1), Interval (a2, o2, n2, p2, b2) ->
+      equal_value a1 a2 && equal_cmp o1 o2 && equal_name n1 n2
+      && equal_cmp p1 p2 && equal_value b1 b2
+  | General_enclosed a, General_enclosed b -> String.equal a b
+  | ( ( Plain _ | Boolean _ | Range _ | Range_rev _ | Interval _
+      | General_enclosed _ ),
+      _ ) ->
+      false
+
+let rec equal_condition (a : condition) b =
+  match (a, b) with
+  | Feature a, Feature b -> equal_feature a b
+  | Not a, Not b -> equal_condition a b
+  | And (a1, b1), And (a2, b2) | Or (a1, b1), Or (a2, b2) ->
+      equal_condition a1 a2 && equal_condition b1 b2
+  | (Feature _ | Not _ | And _ | Or _), _ -> false
+
+let rec equal_normalized (a : t) b =
+  match (a, b) with
+  | Cond a, Cond b -> equal_condition a b
+  | Type a, Type b ->
+      Option.equal equal_prefix a.prefix b.prefix
+      && equal_medium a.type_ b.type_
+      && Option.equal equal_condition a.trailing b.trailing
+  | List a, List b -> List.equal equal_normalized a b
+  | (Cond _ | Type _ | List _), _ -> false
+
+let equal a b = equal_normalized (normalize a) (normalize b)
+
 (* ===== Sorting / classification ===== *)
 
 type kind =
@@ -1419,5 +1569,3 @@ let compare a b =
       else
         let c = Int.compare (preference_order a) (preference_order b) in
         if c <> 0 then c else String.compare (to_string a) (to_string b)
-
-let equal a b = compare a b = 0

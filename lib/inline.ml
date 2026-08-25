@@ -91,7 +91,7 @@ let rec drop_deeper n (path : at_node list) =
   else match path with [] -> [] | _ :: rest -> drop_deeper (n - 1) rest
 
 (* Nodes compare structurally, as the prefix form compared them. [Media.equal]
-   and its neighbours answer on the serialised query, which would make
+   and its neighbours fold the spec's spelling equivalences, which would make
    [(min-width:10px)] and [(width>=10px)] one barrier rather than two. *)
 let rec same_path (a : at_node list) (b : at_node list) =
   match (a, b) with
