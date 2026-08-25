@@ -1086,6 +1086,70 @@ let spec_qualified_custom_prop_warns () =
       Alcotest.failf "valid rule warned %d times" (List.length warnings)
   | Error _ -> Alcotest.fail "valid rule rejected in strict mode"
 
+let spec_unterminated_repairs_warn () =
+  (* CSS Syntax Level 3 auto-closes at EOF in "consume an at-rule" (sec. 5.5.2),
+     "consume a qualified rule" (sec. 5.5.3), "consume a simple block" (sec.
+     5.5.9) and "consume a function" (sec. 5.5.10); the CR snapshot marks each
+     of those EOF branches a parse error. Auto-closing is the right repair, but
+     {!Css.of_string} promises a warning for everything it repairs, so strict
+     mode has to have something to reject. *)
+  let repaired input ~expect ~sort =
+    match Css.of_string input with
+    | Ok { Css.stylesheet; warnings = [ w ] } -> (
+        Alcotest.(check string)
+          "the repair does not move the output" expect
+          (Css.to_string ~minify:true stylesheet);
+        (match w with
+        | { Error.kind = Error.Unterminated s; _ } ->
+            Alcotest.(check string)
+              "unterminated sort" (Sort.to_string sort) (Sort.to_string s)
+        | _ -> Alcotest.failf "expected an unterminated warning for %S" input);
+        match Css.of_string ~strict:true input with
+        | Error _ -> ()
+        | Ok _ -> Alcotest.failf "strict mode accepted the repair of %S" input)
+    | Ok { Css.warnings; _ } ->
+        Alcotest.failf "expected exactly one warning for %S, got %d" input
+          (List.length warnings)
+    | Error _ -> Alcotest.failf "lenient parse of %S must recover" input
+  in
+  (* An unclosed at-rule block swallows everything up to EOF. *)
+  repaired "@media screen {" ~expect:"" ~sort:Sort.Block;
+  repaired "@media screen{.c{color:green}"
+    ~expect:"@media screen{.c{color:green}}" ~sort:Sort.Block;
+  (* An unclosed qualified-rule block, and one whose value also leaves a
+     function open: the rule is repaired once, not once per nested construct. *)
+  repaired ".a{color:red" ~expect:".a{color:red}" ~sort:Sort.Block;
+  repaired ".a{color:rgb(1,2,3" ~expect:".a{color:rgb(1 2 3)}" ~sort:Sort.Block;
+  (* Section 5.5.3 makes a stop token before the block a parse error too, and
+     the rule is dropped rather than repaired. *)
+  let dropped input =
+    let out = Parser.block_contents (Reader.of_string input) in
+    Alcotest.(check int) "rule dropped" 0 (List.length out.value);
+    match out.warnings with
+    | [ { Error.kind = Error.Unterminated Sort.Qualified_rule; _ } ] -> ()
+    | ws ->
+        Alcotest.failf "expected one dropped-rule warning for %S, got %d" input
+          (List.length ws)
+  in
+  dropped "& .b ;";
+  dropped "& .b }";
+  (* The sibling that already reported: EOF in the prelude, before any block. It
+     keeps exactly one warning of the same shape. *)
+  (match Css.of_string "h1" with
+  | Ok { Css.warnings = [ { Error.kind = Error.Unterminated s; _ } ]; _ } ->
+      Alcotest.(check string)
+        "prelude EOF still reports the rule" "qualified-rule" (Sort.to_string s)
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "expected exactly one warning for \"h1\", got %d"
+        (List.length warnings)
+  | Error _ -> Alcotest.fail "lenient parse must recover");
+  (* A closed stylesheet stays warning-free in both modes. *)
+  match Css.of_string ~strict:true "@media screen{.a{color:red}}" with
+  | Ok { Css.warnings = []; _ } -> ()
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "valid stylesheet warned %d times" (List.length warnings)
+  | Error _ -> Alcotest.fail "valid stylesheet rejected in strict mode"
+
 (* ----- Component values ----- *)
 
 let component_value_block () =
@@ -1505,6 +1569,8 @@ let suite =
         `Quick spec_qualified_custom_prop;
       Alcotest.test_case "spec section 5.5.3 custom property rule warns" `Quick
         spec_qualified_custom_prop_warns;
+      Alcotest.test_case "spec EOF repairs and drops are reported" `Quick
+        spec_unterminated_repairs_warn;
       Alcotest.test_case "component value: block" `Quick component_value_block;
       Alcotest.test_case "component value: function" `Quick
         component_value_function;
