@@ -512,18 +512,46 @@ let equal_ignores_bound_spelling () =
 
 (* An unknown media type never matches (Media Queries 4 sec. 3.2 error
    handling), so a query whose type is one escaped ident is not the query that
-   spells the same characters as a type plus a condition. They share a
-   serialisation, which is why [equal] cannot be an equality on serialised
-   text. *)
+   spells the same characters as a type plus a condition. [equal] therefore
+   cannot be an equality on serialised text, even though correct serialisation
+   also keeps their spellings apart. *)
 let equal_separates_an_escaped_media_type () =
   let escaped = of_string {|screen\ and\ \(min-width\:\ 10px\)|} in
   let real = of_string "screen and (min-width: 10px)" in
-  Alcotest.(check string)
-    "the witness is a serialisation collision" (to_string real)
-    (to_string escaped);
+  Alcotest.(check bool)
+    "the two queries keep distinct serialisations" false
+    (String.equal (to_string escaped) (to_string real));
   Alcotest.(check bool)
     "an unknown media type is not a media type plus a condition" false
     (equal escaped real)
+
+(* CSS Syntax 3 sec. 4.3.11 consumes escapes before Media sees an ident, while
+   sec. 4.2 requires serialisation to produce a token stream that re-parses to
+   the same tokens. This applies to unknown media types, feature names and
+   feature values alike. Losing those token boundaries can turn an unknown
+   condition into a real one, after which a second minify pass merges blocks
+   that the first pass correctly kept apart. *)
+let escaped_identifiers_survive_emission () =
+  let check_roundtrip name source =
+    let parsed = of_string source in
+    let reparsed = parsed |> to_string ~minify:true |> of_string in
+    Alcotest.(check bool) name true (equal parsed reparsed)
+  in
+  check_roundtrip "escaped media type" {|screen\ and\ \(min-width\:\ 10px\)|};
+  check_roundtrip "escaped feature name" {|(width\ \>\=\ 10px)|};
+  check_roundtrip "escaped feature value" {|(future: light\ or\ dark)|};
+  let minify source =
+    source
+    |> Css.of_string_exn ~strict:false
+    |> Css.optimize |> Css.to_string ~minify:true
+  in
+  let source =
+    "@media(width\\ \\>\\=\\ \
+     10px){.a{color:red}}@media(width>=10px){.b{color:blue}}"
+  in
+  let once = minify source in
+  Alcotest.(check string)
+    "a second minify pass preserves the two conditions" once (minify once)
 
 (* An opaque condition carries no structure to reason over, so it equals an
    identical spelling and nothing else. Reflexivity is not optional: [equal] is
@@ -613,6 +641,8 @@ let suite =
         equal_ignores_bound_spelling;
       test_case "equal separates an escaped media type" `Quick
         equal_separates_an_escaped_media_type;
+      test_case "escaped identifiers survive emission" `Quick
+        escaped_identifiers_survive_emission;
       test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
       test_case "normalize is idempotent" `Quick normalize_is_idempotent;
     ] )
