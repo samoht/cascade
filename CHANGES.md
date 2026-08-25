@@ -404,6 +404,10 @@ answers.
 
 ### Custom properties
 
+- `Css.inline_vars` stays linear in at-rule nesting depth. Each of its four
+  walks rebuilt the enclosing `@media`/`@layer`/`@supports` chain at every
+  level, so the cost grew with the square of the depth: one variable inside 800
+  nested blocks allocated 8.9M words, now 221K (#481)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry: a name referenced only from
   inside one of them keeps its theme binding, a name whose only declaration
