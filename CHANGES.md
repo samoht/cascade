@@ -5,17 +5,16 @@ one cause. Readers, printers and optimizer passes each walked the statement
 tree by hand, matching the constructors they knew and closing with a wildcard,
 and no two of those lists agreed, so an at-rule added to the AST later fell
 through them unseen rather than failing to compile. They share one traversal
-now, written without that wildcard, so a statement kind added after this
-release stops every site that has to decide about it from compiling, and a test
-walks all twenty-three statement shapes and every place a declaration can sit
-to pin that the shared walk reaches them. Correctness was judged against a
-browser rather than against cascade: the test suite renders a sheet and its
-optimised form in headless Chrome and compares every property
-`getComputedStyle` reports on every element, and a manual sweep does the same
-to live pages, so several of the fixes below are miscompiles Chrome
-contradicted rather than readings of the spec. Behind those sit 504 CSS files
-drawn from 72 production sites and 2960 recorded cases carrying six minifiers'
-answers.
+now, written without that wildcard. A statement kind added after this release
+stops every site that has to decide about it from compiling, and a test pins
+that the shared walk reaches all twenty-three statement shapes and every place
+a declaration can sit. Correctness was judged against a browser rather than
+against cascade. The test suite renders a sheet and its optimised form in
+headless Chrome, then compares every property `getComputedStyle` reports on
+every element; a manual sweep does the same to live pages. Several of the
+fixes below are miscompiles Chrome contradicted, not readings of the spec.
+Behind those sit 504 CSS files drawn from 72 production sites and 2960
+recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
