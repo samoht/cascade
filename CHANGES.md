@@ -265,6 +265,11 @@ answers.
 
 ### Printing
 
+- An unknown media type, media feature name or media identifier value keeps the
+  escapes needed to read it back as one identifier. `@media (width\ \>\=\
+  10px)` printed `@media (width >= 10px)`, turning an unknown boolean feature
+  into a real size range, so a second `--minify` pass could merge two conditions
+  the first kept apart.
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps its
   parentheses: `not ((min-width:1px) or (max-width:2px))` printed as
   `not (min-width:1px)or (max-width:2px)`, which browsers and cascade's own

@@ -700,7 +700,7 @@ let unresolved_media_feature components =
                           (Media.Feature
                              (Media.Plain
                                 ( Media.name_of_string name,
-                                  Media.Ident (Media.ident_of_string value) )))))
+                                  Media.value_of_string value )))))
               | Some _ | None -> None)
           | _ -> None)
       | None -> None)
