@@ -140,6 +140,110 @@ let test_all_compatible_matches_the_pair_loop () =
            pool.(Random.State.int state (Array.length pool))))
   done
 
+(* The group decision as [Rule.merge_adjacent_identical] used to make it: a
+   candidate joins the group when it is [compatible] with every member already
+   in it. It decides which rules end up sharing a selector list, so the run has
+   to accept exactly the same prefix of every sequence. *)
+let take_by_pairs sels =
+  let rec loop group = function
+    | sel :: rest when List.for_all (fun g -> Merge.compatible g sel) group ->
+        loop (sel :: group) rest
+    | _ -> List.rev group
+  in
+  loop [] sels
+
+let take_by_run sels =
+  let rec loop run group = function
+    | sel :: rest ->
+        let run = Merge.extend_run run sel in
+        if Merge.run_compatible run then loop run (sel :: group) rest
+        else List.rev group
+    | [] -> List.rev group
+  in
+  loop Merge.empty_run [] sels
+
+let check_take sels =
+  if not (List.equal Selector.equal (take_by_pairs sels) (take_by_run sels))
+  then
+    Alcotest.failf "run disagrees with the pair loop on [%s]"
+      (String.concat "; " (List.map Selector.to_string sels))
+
+let test_run_matches_the_pair_loop () =
+  let pool = Array.of_list compat_pool in
+  let rec exhaustive depth acc =
+    check_take (List.rev acc);
+    if depth > 0 then
+      Array.iter (fun sel -> exhaustive (depth - 1) (sel :: acc)) pool
+  in
+  exhaustive 5 [];
+  let state = Random.State.make [| 0x217A |] in
+  for _ = 1 to 5000 do
+    let len = Random.State.int state 30 in
+    check_take
+      (List.init len (fun _ ->
+           pool.(Random.State.int state (Array.length pool))))
+  done
+
+(* Selectors whose distinguishing part sits behind a prefix they share, which is
+   where a table keyed by [key] has to work hardest. *)
+let key_pool =
+  Array.map Selector.of_string
+    [|
+      ".a";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t1";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t2";
+      ".p0>.p1>.p2>.p3>.p4>.p5>.p6>.t1";
+      ":is(.p0 .p1 .p2 .p3 .p4 .p5 .t1)";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6[data-x=one]";
+      ".p0 .p1 .p2 .p3 .p4 .p5 .p6::before";
+      "div.p0 .p1 .p2 .p3 .p4 .p5 .p6 span.t1";
+    |]
+
+let key_of sels = Merge.key (Merge.selector_list sels)
+let keys_equal a b = List.equal Selector.equal (key_of a) (key_of b)
+let render sels = String.concat "," (List.map Selector.to_string sels)
+
+(* [key] answers for a selector list which SET of targets it writes, so any two
+   orderings of one list share a key and two different sets never do. A table
+   keyed by [key] inherits exactly that, which is what makes it sound to merge
+   the rules it groups. *)
+let check_key_is_the_set sels =
+  let shuffled = List.rev sels in
+  if not (keys_equal sels shuffled) then
+    Alcotest.failf "key is not order-insensitive on [%s]" (render sels);
+  let sorted = List.sort Selector.compare sels in
+  if not (keys_equal sels sorted) then
+    Alcotest.failf "key disagrees with its own sort on [%s]" (render sels)
+
+let test_key_is_the_selector_set () =
+  let pool = key_pool in
+  let n = Array.length pool in
+  (* Every list up to four selectors drawn from the pool, then longer random
+     ones. *)
+  let rec exhaustive depth acc =
+    if acc <> [] then check_key_is_the_set (List.rev acc);
+    if depth > 0 then
+      Array.iter (fun sel -> exhaustive (depth - 1) (sel :: acc)) pool
+  in
+  exhaustive 4 [];
+  let state = Random.State.make [| 0x5E1EC |] in
+  for _ = 1 to 5000 do
+    let len = 1 + Random.State.int state 12 in
+    check_key_is_the_set
+      (List.init len (fun _ -> pool.(Random.State.int state n)))
+  done;
+  (* Distinctness: two singleton lists share a key only when the selector is the
+     same one. *)
+  Array.iter
+    (fun a ->
+      Array.iter
+        (fun b ->
+          if keys_equal [ a ] [ b ] <> Selector.equal a b then
+            Alcotest.failf "key conflates %s with %s" (Selector.to_string a)
+              (Selector.to_string b))
+        pool)
+    pool
+
 let suite =
   ( "merge",
     [
@@ -151,6 +255,10 @@ let suite =
         test_compatible_matches_the_predicates;
       Alcotest.test_case "all_compatible matches the pair loop" `Quick
         test_all_compatible_matches_the_pair_loop;
+      Alcotest.test_case "run matches the pair loop" `Quick
+        test_run_matches_the_pair_loop;
       Alcotest.test_case "declarations_equal fast and structural paths" `Quick
         test_declarations_equal_fast_and_structural_paths;
+      Alcotest.test_case "key is the selector set" `Quick
+        test_key_is_the_selector_set;
     ] )

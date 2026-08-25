@@ -392,21 +392,40 @@ let property_ident = function
   | [ Component.Preserved { kind = Token.Ident name; _ } ] -> Some name
   | _ -> None
 
-let declaration_of_components prop value =
-  if contains_top_level_semicolon value then
-    failwith "Invalid declaration in @supports";
-  match property_ident (strip_components prop) with
-  | Some prop ->
-      let value = Cursor.string_of_components ~trim:true value in
-      Property (declaration_feature prop value)
-  | None -> failwith "Invalid declaration in @supports"
+(* Anchoring a failure on the components that failed puts the caret on that
+   slice of the condition. [t] anchors the smallest enclosing construct, for a
+   failure that has no components of its own. *)
+let err t cvs reason =
+  let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
+  Cursor.err_condition at ~at_rule:"@supports" reason
 
-let function_call (fn : Component.func Component.node) =
+let declaration_of_components t prop value =
+  if contains_top_level_semicolon value then
+    err t value "Invalid declaration in @supports";
+  match property_ident (strip_components prop) with
+  | Some name -> (
+      let text = Cursor.string_of_components ~trim:true value in
+      (* [declaration_feature] is the shared constructor, so it reports through
+         [Failure]; re-raise it against the declaration's own components. *)
+      match declaration_feature name text with
+      | feature -> Property feature
+      | exception Failure msg -> err t (prop @ value) msg)
+  | None -> err t prop "Invalid declaration in @supports"
+
+let function_call t (fn : Component.func Component.node) =
   let name = fn.node.name in
   let args = fn.node.arguments in
+  let inner = Cursor.func_sub fn t in
   if not (fn.node.terminated && components_are_closed args) then
-    failwith ("Unterminated " ^ name ^ "() in @supports");
-  func name (Cursor.string_of_components ~trim:true args)
+    err t [ Component.Func fn ] ("Unterminated " ^ name ^ "() in @supports");
+  (* [func] and the readers under it work from the argument text, so both the
+     [Failure] the shared constructor raises and a reader's own [Parse_error]
+     carry a position relative to that text, not to the source. *)
+  match func name (Cursor.string_of_components ~trim:true args) with
+  | feature -> feature
+  | exception Failure msg -> err inner args msg
+  | exception Cursor.Parse_error e ->
+      err inner args (Pp.to_string Error.pp_kind e.Error.kind)
 
 let peek_ident t =
   match Cursor.peek t with
@@ -430,7 +449,7 @@ and chain t op acc =
   | Some "and" ->
       (match op with
       | Some `Or ->
-          failwith "Cannot mix and/or without parentheses in @supports"
+          err t [] "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
       let right = in_parens ~allow_unwrapped_decl:false t in
@@ -438,7 +457,7 @@ and chain t op acc =
   | Some "or" ->
       (match op with
       | Some `And ->
-          failwith "Cannot mix and/or without parentheses in @supports"
+          err t [] "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
       let right = in_parens ~allow_unwrapped_decl:false t in
@@ -450,10 +469,10 @@ and in_parens ~allow_unwrapped_decl t =
     let components = Cursor.remaining t in
     match split_top_level_colon components with
     | Some (prop, value) ->
-        let decl = declaration_of_components prop value in
+        let decl = declaration_of_components t prop value in
         ignore (Cursor.consume_remaining_as_string t : string);
         decl
-    | None -> failwith "Expected supports feature"
+    | None -> err t [] "Expected supports feature"
   in
   Cursor.ws t;
   match Cursor.peek t with
@@ -461,48 +480,50 @@ and in_parens ~allow_unwrapped_decl t =
       (Component.Block { node = { opening = Token.Paren; value; _ }; _ } as cv)
     ->
       if not (closed_block cv) then
-        failwith "Unmatched parenthesis in @supports condition";
+        err t [ cv ] "Unmatched parenthesis in @supports condition";
       Cursor.skip t;
-      paren_components value
+      paren_components (Cursor.sub t [ cv ]) value
   | Some (Component.Func fn) ->
+      let group = Cursor.sub t [ Component.Func fn ] in
       Cursor.skip t;
-      function_call fn
+      function_call group fn
   | _ when allow_unwrapped_decl -> unwrapped_declaration t
-  | _ -> failwith "Expected supports feature"
+  | _ -> err t [] "Expected supports feature"
 
-and paren_components value =
-  if strip_components value = [] then failwith "Empty parentheses in @supports";
+and paren_components t value =
+  if strip_components value = [] then
+    err t value "Empty parentheses in @supports";
   if not (components_are_closed value) then
-    failwith "Unmatched parenthesis in @supports condition";
+    err t value "Unmatched parenthesis in @supports condition";
   match split_top_level_colon value with
-  | Some (prop, value) -> declaration_of_components prop value
+  | Some (prop, value) -> declaration_of_components t prop value
   | None ->
-      let inner = Cursor.of_components value in
+      let inner = Cursor.sub t value in
       let condition = condition inner in
       Cursor.ws inner;
       if not (Cursor.is_done inner) then
-        failwith "trailing content in @supports group";
+        err inner [] "trailing content in @supports group";
       condition
 
-let of_string ?(allow_unwrapped_decl = false) s =
-  let cursor = ref (Cursor.of_string s) in
-  let raise_bad reason =
-    Error.fail_bad_condition (Cursor.position !cursor) ~at_rule:"@supports"
-      ~reason
+let read ?(allow_unwrapped_decl = false) t =
+  let cond =
+    if not allow_unwrapped_decl then condition t
+    else
+      (* A bare declaration is only reachable once the wrapped grammar has been
+         ruled out, so the cursor is rewound and read again. *)
+      let snapshot = Cursor.save t in
+      try condition t
+      with Cursor.Parse_error _ ->
+        Cursor.restore t snapshot;
+        in_parens ~allow_unwrapped_decl t
   in
-  try
-    let cond =
-      try condition !cursor
-      with Failure _ when allow_unwrapped_decl ->
-        cursor := Cursor.of_string s;
-        in_parens ~allow_unwrapped_decl !cursor
-    in
-    Cursor.ws !cursor;
-    if not (Cursor.is_done !cursor) then raise_bad "trailing content";
-    cond
-  with
-  | Cursor.Parse_error _ as exn -> raise exn
-  | Failure reason -> raise_bad reason
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err_condition t ~at_rule:"@supports" "trailing content";
+  cond
+
+let of_string ?allow_unwrapped_decl s =
+  read ?allow_unwrapped_decl (Cursor.of_string s)
 
 (* ===== Comparison ===== *)
 

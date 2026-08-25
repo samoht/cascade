@@ -522,9 +522,19 @@ let to_string ?(minify = false) t = Pp.to_string ~minify pp t
 
 type recovery_scope = Branch | Query_list
 
-exception Parse_error of recovery_scope * string
+(* A branch failure is buffered rather than raised straight out: [of_components]
+   decides from [recover] whether to swallow it into [not all] or re-raise it,
+   so the error travels as a value with the span already attached. *)
+exception Parse_error of recovery_scope * Error.t
 
-let fail_parse ?(scope = Branch) reason = raise (Parse_error (scope, reason))
+let fail_parse ?(scope = Branch) e = raise (Parse_error (scope, e))
+
+(* Anchoring a failure on the components that failed puts the caret on that
+   slice of the query. [t] anchors the smallest enclosing construct, for a
+   failure that has no components of its own. *)
+let err ?scope t cvs reason =
+  let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
+  fail_parse ?scope (Cursor.condition_error at ~at_rule:"@media" reason)
 
 let is_whitespace_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
@@ -650,10 +660,10 @@ let value_of_components_opt components =
   | _ -> Option.None
 
 let value_of_string s =
-  let components = Cursor.of_string s |> Cursor.remaining in
-  match value_of_components_opt components with
+  let cursor = Cursor.of_string s in
+  match value_of_components_opt (Cursor.remaining cursor) with
   | Some value -> value
-  | Option.None -> failwith ("invalid media value: " ^ s)
+  | Option.None -> Cursor.err_invalid cursor "media value"
 
 let boolean_feature name : feature = Boolean name
 
@@ -910,53 +920,52 @@ let feature_in_components components =
   | Valid_feature feature -> Some feature
   | Invalid_feature | Not_feature -> Option.None
 
-let rec condition_of_components components : condition =
+let rec condition_of_components t components : condition =
   let components = non_whitespace_components components in
   match components with
   | first :: rest when ident_is "not" first -> (
       match rest with
-      | [ operand ] -> Not (condition_in_parens operand)
-      | _ -> failwith "trailing content after 'not <media-in-parens>'")
+      | [ operand ] -> Not (condition_in_parens t operand)
+      | _ -> err t rest "trailing content after 'not <media-in-parens>'")
   | first :: rest ->
-      let left = condition_in_parens first in
-      condition_chain Option.None left rest
-  | [] -> failwith "empty media condition"
+      let left = condition_in_parens t first in
+      condition_chain t Option.None left rest
+  | [] -> err t components "empty media condition"
 
-and condition_in_parens component : condition =
+and condition_in_parens t component : condition =
   match component with
   | Component.Block
       { node = { opening = Token.Paren; value; closed = true }; _ } -> (
       match parse_feature_components value with
       | Valid_feature feature -> Feature feature
-      | Invalid_feature ->
-          failwith ("invalid media feature: " ^ string_of_components value)
-      | Not_feature -> condition_of_components value)
+      | Invalid_feature -> err t value "invalid media feature"
+      | Not_feature -> condition_of_components t value)
   | Component.Block { node = { opening = Token.Paren; closed = false; _ }; _ }
     ->
-      failwith "unmatched parenthesis in @media condition"
+      err t [ component ] "unmatched parenthesis in @media condition"
   | Component.Func { node = { terminated = true; _ }; _ } ->
       Feature (General_enclosed (string_of_components [ component ]))
   | Component.Func { node = { terminated = false; _ }; _ } ->
-      failwith "unmatched function in @media condition"
+      err t [ component ] "unmatched function in @media condition"
   | Component.Block _ | Component.Preserved _ ->
-      failwith "expected media-in-parens"
+      err t [ component ] "expected media-in-parens"
 
-and condition_chain operator acc components : condition =
+and condition_chain t operator acc components : condition =
   match components with
   | [] -> acc
   | keyword :: operand :: rest when ident_is "and" keyword ->
       (match operator with
-      | Some `Or -> failwith "mixed 'and'/'or' media condition"
+      | Some `Or -> err t [ keyword ] "mixed 'and'/'or' media condition"
       | Some `And | Option.None -> ());
-      let right = condition_in_parens operand in
-      condition_chain (Some `And) (And (acc, right)) rest
+      let right = condition_in_parens t operand in
+      condition_chain t (Some `And) (And (acc, right)) rest
   | keyword :: operand :: rest when ident_is "or" keyword ->
       (match operator with
-      | Some `And -> failwith "mixed 'and'/'or' media condition"
+      | Some `And -> err t [ keyword ] "mixed 'and'/'or' media condition"
       | Some `Or | Option.None -> ());
-      let right = condition_in_parens operand in
-      condition_chain (Some `Or) (Or (acc, right)) rest
-  | _ -> failwith "trailing content in media condition"
+      let right = condition_in_parens t operand in
+      condition_chain t (Some `Or) (Or (acc, right)) rest
+  | _ -> err t components "trailing content in media condition"
 
 let medium_of_ident s : medium =
   match String.lowercase_ascii s with
@@ -985,19 +994,22 @@ let read_query_prefix = function
   | first :: rest when ident_is "only" first -> (Some Only, rest)
   | components -> (Option.None, components)
 
-let read_media_type_query components =
+let read_media_type_query t components =
   let components = non_whitespace_components components in
   let prefix, components = read_query_prefix components in
   (match (prefix, components) with
-  | Some _, first :: _ when ident_is "not" first || ident_is "only" first ->
-      fail_parse ~scope:Query_list "duplicate media query prefix"
+  | Some _, (first :: _ as rest)
+    when ident_is "not" first || ident_is "only" first ->
+      err ~scope:Query_list t rest "duplicate media query prefix"
   | _ -> ());
   match components with
   | name_component :: rest -> (
       match ident_component name_component with
-      | Option.None -> failwith "expected media type or condition"
+      | Option.None ->
+          err t [ name_component ] "expected media type or condition"
       | Some name when is_reserved_media_type_keyword name ->
-          failwith "reserved media condition keyword cannot be a media type"
+          err t [ name_component ]
+            "reserved media condition keyword cannot be a media type"
       | Some name -> (
           let type_ = medium_of_ident name in
           match rest with
@@ -1007,16 +1019,16 @@ let read_media_type_query components =
                 {
                   prefix;
                   type_;
-                  trailing = Some (condition_of_components condition);
+                  trailing = Some (condition_of_components t condition);
                 }
-          | _ -> failwith "expected 'and' or end of query after media type"))
-  | [] -> failwith "expected media type or condition"
+          | _ -> err t rest "expected 'and' or end of query after media type"))
+  | [] -> err t components "expected media type or condition"
 
-let single_query components =
-  if components_empty components then failwith "empty media query"
+let single_query t components =
+  if components_empty components then err t components "empty media query"
   else if starts_with_condition components then
-    Cond (condition_of_components components)
-  else read_media_type_query components
+    Cond (condition_of_components t components)
+  else read_media_type_query t components
 
 let not_all_query : t =
   Type { prefix = Some Not; type_ = All; trailing = Option.None }
@@ -1034,12 +1046,15 @@ let split_query_list components =
   in
   loop [] [] false components
 
-let parse_query_branch components =
-  try Ok (single_query components) with
-  | Parse_error (scope, reason) -> Error (scope, reason)
-  | Failure reason -> Error (Branch, reason)
+let parse_query_branch t components =
+  (* Anchor the branch, not the whole query list, so a fallback with no
+     components of its own still lands inside the branch that failed. *)
+  let t = Cursor.sub t components in
+  try Ok (single_query t components)
+  with Parse_error (scope, e) -> Error (scope, e)
 
-let of_components ?(recover = true) components =
+let read ?(recover = true) t =
+  let components = Cursor.remaining t in
   let branches, saw_comma = split_query_list components in
   if (not saw_comma) && List.for_all components_empty branches then
     (List [] : t)
@@ -1047,18 +1062,17 @@ let of_components ?(recover = true) components =
     let rec parse acc = function
       | [] -> List.rev acc
       | [ branch ] -> (
-          match parse_query_branch branch with
+          match parse_query_branch t branch with
           | Ok query -> List.rev (query :: acc)
-          | Error (_, reason) ->
-              if recover then [ not_all_query ] else raise (Failure reason))
+          | Error (_, e) -> if recover then [ not_all_query ] else Error.fail e)
       | branch :: rest -> (
-          match parse_query_branch branch with
+          match parse_query_branch t branch with
           | Ok query -> parse (query :: acc) rest
-          | Error (Query_list, reason) ->
-              if recover then [ not_all_query ] else raise (Failure reason)
-          | Error (Branch, reason) ->
+          | Error (Query_list, e) ->
+              if recover then [ not_all_query ] else Error.fail e
+          | Error (Branch, e) ->
               if recover then parse (not_all_query :: acc) rest
-              else raise (Failure reason))
+              else Error.fail e)
     in
     match (saw_comma, parse [] branches) with
     | false, [ query ] -> query
@@ -1069,18 +1083,16 @@ let of_components ?(recover = true) components =
         not_all_query
     | true, queries -> List queries
 
-let of_string s = Cursor.of_string s |> Cursor.remaining |> of_components
-
-let of_string_strict s =
-  Cursor.of_string s |> Cursor.remaining |> of_components ~recover:false
+let of_string s = read (Cursor.of_string s)
+let of_string_strict s = read ~recover:false (Cursor.of_string s)
 
 let of_function_components components =
   match feature_in_components components with
   | Some feature -> Cond (Feature feature)
-  | Option.None -> of_components components
+  | Option.None -> read (Cursor.of_components components)
 
 let of_function_body s =
-  Cursor.of_string s |> Cursor.remaining |> of_function_components
+  of_function_components (Cursor.remaining (Cursor.of_string s))
 
 let feature name value : t =
   Cond (Feature (plain_feature (name_of_string name) value))

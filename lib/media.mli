@@ -136,11 +136,15 @@ val of_string : string -> t
 (** [of_string s] parses [s] as a media query. *)
 
 val of_string_strict : string -> t
-(** [of_string_strict s] parses [s] as a media query without branch recovery. *)
+(** [of_string_strict s] parses [s] as a media query without branch recovery.
+    Raises {!Cursor.exception-Parse_error} for a malformed query. *)
 
-val of_components : ?recover:bool -> Component.t list -> t
-(** [of_components components] parses an already-tokenized media query. Invalid
-    branches recover to [not all] unless [recover] is [false]. *)
+val read : ?recover:bool -> Cursor.t -> t
+(** [read t] parses the media query [t] holds, consuming nothing. Invalid
+    branches recover to [not all] unless [recover] is [false], in which case the
+    branch's {!Cursor.exception-Parse_error} propagates anchored on the slice of
+    the query that failed. Pass a cursor built over the components the prelude
+    was lexed into ({!Cursor.val-sub}) rather than a re-lex of their text. *)
 
 val of_function_body : string -> t
 (** [of_function_body s] parses the body of a conditional [media(...)] function.

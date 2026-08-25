@@ -230,16 +230,17 @@ let drop_shadowed_rules (rules : rule list) : rule list =
     (* [declarations] is only the run written before the first nested statement
        (CSS Nesting 1 sec. 3.4), so covering it says nothing about what the rest
        of the body sets: a rule with nested content stays. *)
-    dropped.(i) <-
-      (rule.declarations = [] && rule.nested = [])
-      || rule.nested = [] && rule.declarations <> []
-         && List.for_all
-              (Cover.covered later_by_selector rule.Stylesheet_intf.selector)
-              rule.declarations;
-    if dropped.(i) then changed := true;
-    List.iter
-      (Cover.add later_by_selector rule.Stylesheet_intf.selector)
-      rule.declarations
+    (match rule.declarations with
+    | [] -> dropped.(i) <- rule.nested = []
+    | decls ->
+        (* One selector for the whole rule, so the coverage its declarations are
+           tested against is read once and stored back once. *)
+        let selector = rule.Stylesheet_intf.selector in
+        let written = Cover.written later_by_selector selector in
+        dropped.(i) <-
+          rule.nested = [] && List.for_all (Cover.covered written) decls;
+        Cover.record later_by_selector selector written decls);
+    if dropped.(i) then changed := true
   done;
   let rec filter i = function
     | [] -> []
@@ -261,20 +262,34 @@ let selector_keys (r : rule) =
   | Some xs -> List.map canonical_selector_key xs
   | None -> [ canonical_selector_key r.Stylesheet_intf.selector ]
 
+(* [canonical_selector_key] sorts, so a key names the SET of selectors a rule
+   targets and two rules that target the same set share one. List equality under
+   [Selector.equal] over that sorted key keeps exactly that relation.
+
+   Typed rather than polymorphic because the stdlib hash reads a fixed count of
+   nodes: selectors sharing a deep prefix all land in one bucket, and every
+   probe then walks it comparing selector subtrees down the chain they share.
+   [Selector.hash] reads the whole selector, so the probe lands on the one entry
+   that matches. *)
+module Key_table = Common.Table.Make (struct
+  type t = Selector.t list
+
+  let equal = List.equal Selector.equal
+
+  let rec fold acc = function
+    | [] -> acc
+    | sel :: rest -> fold (Common.mix_int acc (Selector.hash sel)) rest
+
+  let hash keys = fold 0x9e3779b9 keys land max_int
+end)
+
 let later_by_selector_key (indexed : (int * rule) list) =
-  let later_by_key :
-      (Selector.t list, (int * Declaration.t list) list) Hashtbl.t =
-    Hashtbl.create 16
-  in
+  let later_by_key = Key_table.create 16 in
   List.iter
     (fun ((i, r) : int * rule) ->
       List.iter
         (fun key ->
-          let prev =
-            Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
-          in
-          Hashtbl.replace later_by_key key
-            ((i, r.Stylesheet_intf.declarations) :: prev))
+          Key_table.push later_by_key key (i, r.Stylesheet_intf.declarations))
         (selector_keys r))
     indexed;
   later_by_key
@@ -282,7 +297,7 @@ let later_by_selector_key (indexed : (int * rule) list) =
 let shadowed_by_later ~later_by_key ~rule_index ~keys decl =
   let property_shadowed_for_key key =
     let writes =
-      Hashtbl.find_opt later_by_key key |> Option.value ~default:[]
+      Key_table.find_opt later_by_key key |> Option.value ~default:[]
     in
     List.exists
       (fun (j, decls) ->
@@ -347,17 +362,22 @@ let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
   let rec go = function
     | [] -> []
     | r :: rest when adjacent_merge_eligible ~ctx r && r.declarations <> [] ->
-        let rec take group = function
+        (* Whether a group may share one selector list turns on two facts read
+           off each selector alone, so the group carries them and a candidate is
+           read once rather than once per member already in it. *)
+        let rec take run group rules =
+          match rules with
           | s :: tail
             when adjacent_merge_eligible ~ctx s
-                 && bodies_equal r.declarations s.declarations
-                 && List.for_all
-                      (fun (g : rule) -> Merge.compatible g.selector s.selector)
-                      group ->
-              take (s :: group) tail
-          | tail -> (group, tail)
+                 && bodies_equal r.declarations s.declarations ->
+              let run = Merge.extend_run run s.selector in
+              if Merge.run_compatible run then take run (s :: group) tail
+              else (group, rules)
+          | _ -> (group, rules)
         in
-        let group, rest = take [ r ] rest in
+        let group, rest =
+          take (Merge.extend_run Merge.empty_run r.selector) [ r ] rest
+        in
         let merged =
           match group with
           | [ _ ] -> r

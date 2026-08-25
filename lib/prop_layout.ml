@@ -884,33 +884,65 @@ let position_area_keywords : (string * position_area_keyword) list =
 let read_position_area_keyword t : position_area_keyword =
   Cursor.enum "position-area keyword" position_area_keywords t
 
-type position_area_axis = Horizontal | Vertical | Either
+type position_area_axis = Horizontal | Vertical
 
-let position_area_axis (keyword : position_area_keyword) =
+(* css-anchor-position-1 sec. 3.1.2 spells <position-area> as five top-level
+   alternatives: three join two groups with [||], and two repeat a single group
+   with [{1,2}]. The axis below is only ever read against the other side of the
+   same [||], never across alternatives. [center] and [span-all] are the two
+   keywords listed in every group. *)
+type position_area_group =
+  | Physical of position_area_axis
+  | Logical of position_area_axis
+  | Self_logical of position_area_axis
+  | Plain
+  | Self_plain
+  | Every_group
+
+let position_area_group (keyword : position_area_keyword) =
   match keyword with
   | Left | Right | Span_left | Span_right | X_start | X_end | Span_x_start
-  | Span_x_end | Inline_start | Inline_end | Span_inline_start | Span_inline_end
-  | Self_x_start | Self_x_end | Span_self_x_start | Span_self_x_end
+  | Span_x_end | Self_x_start | Self_x_end | Span_self_x_start | Span_self_x_end
+    ->
+      Physical Horizontal
+  | Top | Bottom | Span_top | Span_bottom | Y_start | Y_end | Span_y_start
+  | Span_y_end | Self_y_start | Self_y_end | Span_self_y_start | Span_self_y_end
+    ->
+      Physical Vertical
+  | Inline_start | Inline_end | Span_inline_start | Span_inline_end ->
+      Logical Horizontal
+  | Block_start | Block_end | Span_block_start | Span_block_end ->
+      Logical Vertical
   | Self_inline_start | Self_inline_end | Span_self_inline_start
   | Span_self_inline_end ->
-      Horizontal
-  | Top | Bottom | Span_top | Span_bottom | Y_start | Y_end | Span_y_start
-  | Span_y_end | Block_start | Block_end | Span_block_start | Span_block_end
-  | Self_y_start | Self_y_end | Span_self_y_start | Span_self_y_end
+      Self_logical Horizontal
   | Self_block_start | Self_block_end | Span_self_block_start
   | Span_self_block_end ->
-      Vertical
-  (* css-anchor-position-1 sec. 3.1.2: [center], [span-all] and the start/end
-     keywords that name no axis explicitly are ambiguous. The [self-] forms that
-     do name one, physical or logical, are not. *)
-  | Center | Span_all | Start | End | Span_start | Span_end | Self_start
-  | Self_end | Span_self_start | Span_self_end ->
-      Either
+      Self_logical Vertical
+  | Start | End | Span_start | Span_end -> Plain
+  | Self_start | Self_end | Span_self_start | Span_self_end -> Self_plain
+  | Center | Span_all -> Every_group
 
 let compatible_position_area_keywords first second =
-  match (position_area_axis first, position_area_axis second) with
-  | Horizontal, Horizontal | Vertical, Vertical -> false
-  | _ -> true
+  match (position_area_group first, position_area_group second) with
+  (* Being in every group, these pair with anything and take whichever side is
+     left over. *)
+  | Every_group, _ | _, Every_group -> true
+  (* Each side of a [||] contributes at most one keyword, so a two-keyword value
+     has to take both sides of one alternative. *)
+  | Physical Horizontal, Physical Vertical
+  | Physical Vertical, Physical Horizontal
+  | Logical Horizontal, Logical Vertical
+  | Logical Vertical, Logical Horizontal
+  | Self_logical Horizontal, Self_logical Vertical
+  | Self_logical Vertical, Self_logical Horizontal ->
+      true
+  (* A [{1,2}] repeats one group, so any two of its keywords pair, a repeat
+     included. *)
+  | Plain, Plain | Self_plain, Self_plain -> true
+  (* Everything else crosses two alternatives, which the grammar never
+     produces. *)
+  | (Physical _ | Logical _ | Self_logical _ | Plain | Self_plain), _ -> false
 
 let rec read_position_area t : position_area =
   Cursor.enum_or_var "position-area"
@@ -929,7 +961,7 @@ let rec read_position_area t : position_area =
       | [ first; second ] ->
           if not (compatible_position_area_keywords first second) then
             Cursor.err_invalid t
-              "position-area keywords must cover different axes";
+              "position-area keywords must come from one branch of the grammar";
           (Area (first, Some second) : position_area)
       | _ -> Cursor.err_expected t "position-area")
     t

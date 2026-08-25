@@ -62,24 +62,36 @@ let compatible sel1 sel2 =
   | Newer, Guarded | Guarded, Newer -> false
   | _ -> true
 
-(* [compatible] rejects one pair and no other, so a list holds only compatible
-   pairs exactly when it does not hold both ends of it: one pass that reads each
-   selector once stands in for the N(N-1)/2 pair loop.
+(* [compatible] rejects one pair and no other, so a set of selectors holds only
+   compatible pairs exactly when it does not hold both ends of it. That is all a
+   group needs to remember about the members it already has, so a candidate
+   joins by reading its own two facts once rather than once per member.
 
-   Sorting the list and checking neighbours would not, because [compatible] is
+   Sorting a group and checking neighbours would not do, because [compatible] is
    reflexive and symmetric but NOT transitive - [Newer] sits with [Plain] and
    [Plain] sits with [Guarded], while [Newer] and [Guarded] never sit
    together. *)
+type run = Neither | Has_newer | Has_guarded | Mixed
+
+let empty_run = Neither
+
+let extend_run run sel =
+  match (run, compatibility sel) with
+  | Mixed, _ | _, Plain -> run
+  | (Neither | Has_newer), Newer -> Has_newer
+  | (Neither | Has_guarded), Guarded -> Has_guarded
+  | Has_newer, Guarded | Has_guarded, Newer -> Mixed
+
+let run_compatible = function Mixed -> false | _ -> true
+
 let all_compatible sels =
-  let rec loop newer guarded = function
+  let rec loop run = function
     | [] -> true
-    | sel :: rest -> (
-        match compatibility sel with
-        | Plain -> loop newer guarded rest
-        | Newer -> (not guarded) && loop true guarded rest
-        | Guarded -> (not newer) && loop newer true rest)
+    | sel :: rest ->
+        let run = extend_run run sel in
+        run_compatible run && loop run rest
   in
-  loop false false sels
+  loop empty_run sels
 
 let rec declaration_lists_equal ~same d1 d2 =
   match (d1, d2) with

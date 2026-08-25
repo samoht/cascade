@@ -71,3 +71,84 @@ The control: a supplementary stylesheet that reads and parses still applies.
   $ cascade apply page.html good.css 2> /dev/null
   <html><head></head><body><p style="margin:0">hi</p>
   </body></html>
+
+The gate asks a question about the parse: did it produce any statement? It
+is not the question "does this sheet serialise to anything", which a parse
+that kept everything can still answer with nothing. A statement can be
+parsed, held, and still print as the empty string: CSS Syntax 3 §8.3 makes
+`@charset` a decoder hint rather than a rule, and UTF-8 is what the
+serialiser emits anyway, so a redundant one prints nothing.
+
+  $ cat > charset.html <<EOF
+  > <html><head><style>@charset "UTF-8";@charset "UTF-8";</style></head><body><p>hi</p></body></html>
+  > EOF
+  $ cascade apply charset.html > out4.html 2> err4.txt
+  $ grep '^Error' err4.txt
+  [1]
+  $ cat out4.html
+  <html><head><style></style></head><body><p>hi</p>
+  </body></html>
+
+The second `@charset` is out of place, which is reported, and both are
+kept: nothing about that parse dropped every rule.
+
+  $ grep -c '^warning' err4.txt
+  1
+
+A `@font-face` with no `src` is the same shape. CSS Fonts 4 §4.3 gives it
+no font to load, so it prints nothing, but the rule itself parsed and the
+statement is there for the projection to read.
+
+  $ cat > face.html <<EOF
+  > <html><head><style>@font-face{font-family:x}</style></head><body><p>hi</p></body></html>
+  > EOF
+  $ cascade apply face.html > out5.html 2> err5.txt
+  $ grep '^Error' err5.txt
+  [1]
+  $ cat out5.html
+  <html><head><style></style></head><body><p>hi</p>
+  </body></html>
+
+Recovery inside that block is a different matter: a descriptor the parser
+cannot read takes the whole at-rule with it, which leaves no statement, so
+this one is a loss and says so.
+
+  $ cat > face2.html <<EOF
+  > <html><head><style>@font-face{font-family:x;@bogus w;}</style></head><body><p>hi</p></body></html>
+  > EOF
+  $ cascade apply face2.html > out8.html 2> err8.txt
+  [1]
+  $ grep '^Error' err8.txt
+  Error: face2.html:<style>#1: parse dropped every rule; keeping the block verbatim
+  $ cat out8.html
+  <html><head><style>@font-face{font-family:x;@bogus w;}</style></head><body><p>hi</p>
+  </body></html>
+
+An at-rule this library does not know parses to a statement of its own and
+is kept, so a block holding nothing else is not a loss either.
+
+  $ cat > unknown.html <<EOF
+  > <html><head><style>@foo bar;</style></head><body><p>hi</p></body></html>
+  > EOF
+  $ cascade apply unknown.html > out6.html 2> err6.txt
+  $ grep '^Error' err6.txt
+  [1]
+  $ cat out6.html
+  <html><head><style></style><style>@foo bar;</style></head><body><p>hi</p>
+  </body></html>
+
+The true positive keeps its exit status. `@charset` is recognised only in
+the exact form CSS Syntax 3 §8.2 reserves, so a lowercase label is not a
+statement this parser produces: the block holds one construct, it is
+dropped, and nothing is left to project.
+
+  $ cat > lower.html <<EOF
+  > <html><head><style>@charset "utf-8";</style></head><body><p>hi</p></body></html>
+  > EOF
+  $ cascade apply lower.html > out7.html 2> err7.txt
+  [1]
+  $ grep '^Error' err7.txt
+  Error: lower.html:<style>#1: parse dropped every rule; keeping the block verbatim
+  $ cat out7.html
+  <html><head><style>@charset "utf-8";</style></head><body><p>hi</p>
+  </body></html>

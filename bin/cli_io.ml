@@ -46,15 +46,25 @@ let read_input ?enforce_spec path =
 (* Recovery that drops every rule leaves nothing to serialise, so [cascade fmt
    src.css > dist.css] writes a 0-byte file. Warnings on stderr are not
    something a build can gate on; the exit status is. An input that had nothing
-   to drop (comments only, an empty rule) stays a plain empty result. *)
-let check_not_all_dropped input ~written =
-  if written = 0 && input.recovered then begin
-    Fmt.epr
-      "Error: %s: parse dropped every rule; refusing to write an empty \
-       stylesheet@."
-      input.filename;
-    Stdlib.exit 1
-  end
+   to drop (comments only, an empty rule) stays a plain empty result.
+
+   Whether the parse produced anything is a question about the statement list,
+   the same one [cascade apply] asks of each [<style>] block. Counting the bytes
+   printed answers a different one and gets it wrong both ways: a rule survives
+   a declaration it could not read and prints nothing, and a sheet that lost
+   nothing still prints nothing once [--minify] drops a redundant [@charset] or
+   an [src]-less [@font-face]. Neither is a parse that dropped every rule. *)
+let check_not_all_dropped input =
+  match input.stylesheet with
+  | _ :: _ -> ()
+  | [] ->
+      if input.recovered then begin
+        Fmt.epr
+          "Error: %s: parse dropped every rule; refusing to write an empty \
+           stylesheet@."
+          input.filename;
+        Stdlib.exit 1
+      end
 
 let split_comma s =
   String.split_on_char ',' s |> List.map String.trim

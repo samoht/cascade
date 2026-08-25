@@ -73,6 +73,53 @@ let test_filter_map_preserve_keeps_noop_identity () =
   Alcotest.(check bool) "replacement allocates" false (replaced == xs);
   Alcotest.(check int) "replacement length" 3 (L.length replaced)
 
+(* --- allocation guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* The string shapes a stylesheet hashes: an empty name, a short ident, a
+   hyphenated property, a long custom property, a value with punctuation, and a
+   name far longer than any of them. *)
+let hash_corpus =
+  [|
+    "";
+    "a";
+    "color";
+    "background-color";
+    "--tw-ring-offset-shadow";
+    "rgb(12 34 56/.5)";
+    String.make 64 'x';
+  |]
+
+let hash_corpus_times iters =
+  let acc = ref 0 in
+  for _ = 1 to iters do
+    for j = 0 to Array.length hash_corpus - 1 do
+      acc := Common.mix_int !acc (Common.hash_string hash_corpus.(j))
+    done
+  done;
+  !acc
+
+(* Hashing folds the bytes of a string into an accumulator, so nothing about it
+   needs the heap. A loop that reads the string and its length out of the
+   enclosing scope instead of carrying them in parameters costs a closure per
+   call, which a hot pair loop pays once per declaration it hashes. Two
+   iteration counts differenced cancel whatever the harness itself allocates. *)
+let test_hash_string_allocates_nothing () =
+  let iters = 20_000 in
+  let calls = iters * Array.length hash_corpus in
+  let a1 = measure (fun () -> hash_corpus_times iters) in
+  let a2 = measure (fun () -> hash_corpus_times (2 * iters)) in
+  let per_call = (a2 -. a1) /. float_of_int calls in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2f words per call)" a1 a2 per_call)
+    true (per_call < 0.5)
+
 let suite =
   ( "common",
     [
@@ -86,4 +133,6 @@ let suite =
         test_filter_preserve_keeps_noop_identity;
       Alcotest.test_case "filter_map_preserve keeps no-op identity" `Quick
         test_filter_map_preserve_keeps_noop_identity;
+      Alcotest.test_case "hash_string allocates nothing" `Quick
+        test_hash_string_allocates_nothing;
     ] )

@@ -1720,14 +1720,6 @@ let read_charset (r : Cursor.t) : statement =
       ~reason:"@charset must end with ';'";
   Charset encoding
 
-(* Re-anchor [Supports.of_string]'s typed error at the caller's [loc] so the
-   partial-parse catch in [read_statement_of_rule] surfaces it as a warning at
-   the surrounding rule, not at [Loc.dummy]. *)
-let supports_condition ~loc condition =
-  try Supports.of_string condition
-  with Error.Parse_error { kind = Bad_condition { reason; _ }; _ } ->
-    Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
-
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
    with no whitespace around the dot. CSS-wide keywords are reserved. *)
 let read_layer_name_component (r : Cursor.t) : layer_name =
@@ -1803,13 +1795,7 @@ let read_import_layer (r : Cursor.t) =
 
 let read_import_supports (r : Cursor.t) =
   Cursor.function_call "supports"
-    (fun inner ->
-      let loc = Cursor.position inner in
-      try
-        Supports.of_string ~allow_unwrapped_decl:true
-          (Cursor.string_of_remaining ~trim:true inner)
-      with Failure reason ->
-        Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
+    (fun inner -> Supports.read ~allow_unwrapped_decl:true inner)
     r
 
 (* In the [@import] prelude [layer(...)] and [supports(...)] are structural, and
@@ -1846,11 +1832,7 @@ let read_import_media (r : Cursor.t) : Media.t option =
     if starts_with_import_keyword components then
       Error.fail_bad_condition loc ~at_rule:"@media"
         ~reason:"layer()/supports() must precede the media query, and once only"
-    else
-      match Media.of_components ~recover:false components with
-      | media -> Some media
-      | exception Failure reason ->
-          Error.fail_bad_condition loc ~at_rule:"@media" ~reason
+    else Some (Media.read ~recover:false (Cursor.sub r components))
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
@@ -2077,10 +2059,7 @@ let read_descriptor_value read_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
-  try
-    let value = read_fn r in
-    constructor value
-  with Failure msg -> Cursor.err_invalid r msg
+  constructor (read_fn r)
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
    sec. 5.4.3 discards with no declaration to validate, or the end of the body.
@@ -2343,20 +2322,20 @@ let read_font_face_desc name r =
         r
   | "font-tech" -> read_string_descriptor "font-tech" (fun v -> Font_tech v) r
   | "size-adjust" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Size_adjust (Font_face.size_adjust_of_string v))
+      read_descriptor_value Font_face.read_size_adjust
+        (fun v -> Size_adjust v)
         r
   | "ascent-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Ascent_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Ascent_override v)
         r
   | "descent-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Descent_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Descent_override v)
         r
   | "line-gap-override" ->
-      read_descriptor_value Declaration.read_property_value
-        (fun v -> Line_gap_override (Font_face.metric_override_of_string v))
+      read_descriptor_value Font_face.read_metric_override
+        (fun v -> Line_gap_override v)
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
@@ -3363,11 +3342,11 @@ let read_supports_condition (r : Cursor.t) : statement =
 
 let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 
-let read_nested_media_condition components =
-  if Cursor.of_components components |> Cursor.is_done then Media.List []
+let read_nested_media_condition t =
+  if Cursor.is_done t then Media.List []
   else
-    try Media.of_components ~recover:false components
-    with Failure _ -> Media.of_string "not all"
+    try Media.read ~recover:false t
+    with Error.Parse_error _ -> Media.of_string "not all"
 
 let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
@@ -3533,8 +3512,8 @@ let read_when ~body (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "when" r;
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
-  if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
-  then Cursor.err_invalid r "@when: missing condition";
+  if Cursor.string_of_components ~trim:true prelude = "" then
+    Cursor.err_invalid r "@when: missing condition";
   let condition : conditional =
     try conditional_components prelude
     with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
@@ -3657,26 +3636,22 @@ and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
   let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
-    if Cursor.of_components condition_components |> Cursor.is_done then
-      Media.List []
-    else
-      try Media.of_components ~recover:false condition_components
-      with Failure reason ->
-        Cursor.err_invalid r ("invalid @media condition: " ^ reason)
+    if Cursor.is_done query then Media.List []
+    else Media.read ~recover:false query
   in
   Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
   Cursor.ws r;
-  let cond_loc = Cursor.position r in
-  let condition = Cursor.drain_until_block_as_string ~trim:true r in
-  if String.length condition = 0 then
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
+  if Cursor.is_done query then
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Supports (supports_condition ~loc:cond_loc condition, content)
+  Supports (Supports.read query, content)
 
 and read_scope (r : Cursor.t) : statement =
   (* CSS Cascade 6 sec. 3.5.2: [@scope <start> to <end> { ... }]. The two
@@ -3706,15 +3681,10 @@ and read_container (r : Cursor.t) : statement =
     | other -> other
   in
   Cursor.ws r;
-  let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition : Container.t option =
-    if Cursor.of_components condition_components |> Cursor.is_done then
-      Option.None
-    else
-      match Container.of_components condition_components with
-      | condition -> Some condition
-      | exception Failure msg -> Cursor.err_invalid r msg
+    if Cursor.is_done query then Option.None else Some (Container.read query)
   in
   (* CSS Containment 3 section 4: [@container] requires a query (with an
      optional [<container-name>] in front). Bare [@container { ... }] is a parse
@@ -3838,27 +3808,22 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
 and read_nested_container_rule r =
   let container_name : string option = Cursor.option Cursor.ident r in
   Cursor.ws r;
-  let condition_str = Cursor.drain_until_block_as_string ~trim:true r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   let condition : Container.t option =
-    if condition_str = "" then Option.None
-    else
-      match Container.of_string condition_str with
-      | condition -> Some condition
-      | exception Failure msg -> Cursor.err_invalid r msg
+    if Cursor.is_done query then Option.None else Some (Container.read query)
   in
   Container (container_name, condition, content)
 
 and read_nested_supports_rule r =
-  let cond_loc = Cursor.position r in
-  let condition = Cursor.drain_until_block_as_string ~trim:true r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-  Supports (supports_condition ~loc:cond_loc condition, content)
+  Supports (Supports.read query, content)
 
 and read_nested_media_rule r =
-  let condition_components = Cursor.drain_until_block r in
+  let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-  Media (read_nested_media_condition condition_components, content)
+  Media (read_nested_media_condition query, content)
 
 and read_nested_scope_rule r =
   let prelude_components = Cursor.drain_until_block r in

@@ -26,3 +26,16 @@ val compatible : Selector.t -> Selector.t -> bool
 val all_compatible : Selector.t list -> bool
 (** [all_compatible sels] is whether every pair in [sels] is {!compatible}, read
     off each selector once rather than once per pair. *)
+
+type run
+(** A group of selectors under consideration for one selector list. *)
+
+val empty_run : run
+(** The group holding no selector. *)
+
+val extend_run : run -> Selector.t -> run
+(** [extend_run run sel] is [run] with [sel] added, reading [sel] once whatever
+    the group already holds. *)
+
+val run_compatible : run -> bool
+(** Whether every pair in the group is {!compatible}. *)

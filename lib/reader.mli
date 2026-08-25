@@ -17,12 +17,16 @@ type parse_error = {
   got : string option;
   position : int;
   filename : string;
+  line : int;
+  col : int;
   context_window : string;
   marker_pos : int;
   callstack : string list;
 }
-(** Parse error information with structured details. {!field-position} is a byte
-    offset, {!field-filename} carries the 1-based line and column of that
+(** Parse error information with structured details. {!field-filename} names the
+    source: a reader built by {!val-of_string} carries ["<CSS input>"] until
+    {!with_filename} replaces it. {!field-position} is a byte offset,
+    {!field-line} and {!field-col} are the 1-based line and column of that
     offset, and {!field-marker_pos} counts the characters of
     {!field-context_window} before it. A column is one Unicode scalar value, as
     for {!context_window}. *)
@@ -32,8 +36,8 @@ exception Parse_error of parse_error
     information. *)
 
 val pp_parse_error : parse_error -> string
-(** [pp_parse_error error] formats a parse error as a string, including call
-    stack if available. *)
+(** [pp_parse_error error] formats a parse error as a string, locating it as
+    [filename:line:column] and including call stack if available. *)
 
 (** {1 Core} *)
 
@@ -116,7 +120,8 @@ val err_invalid : t -> string -> 'a
 (** {1 Error Utilities} *)
 
 val with_filename : parse_error -> string -> parse_error
-(** [with_filename error filename] returns error with updated filename. *)
+(** [with_filename error filename] is [error] with [filename] as its source
+    name. The location is unchanged. *)
 
 (** {1 Characters & Strings} *)
 

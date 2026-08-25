@@ -107,14 +107,13 @@ end
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 
 (* [String.iter] would allocate a closure over the accumulator ref on every
-   call; the loop carries it in a parameter instead. *)
-let hash_string s =
-  let n = String.length s in
-  let rec go acc i =
-    if i >= n then acc
-    else go (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
-  in
-  go 0x811c9dc5 0
+   call, and an inner loop reading [s] and [n] out of the enclosing scope
+   allocates one just the same; the loop carries all four in parameters. *)
+let rec hash_from s n acc i =
+  if i >= n then acc
+  else hash_from s n (mix_int acc (Char.code (String.unsafe_get s i))) (i + 1)
+
+let hash_string s = hash_from s (String.length s) 0x811c9dc5 0
 
 module Table = struct
   module Make (H : Hashtbl.HashedType) = struct

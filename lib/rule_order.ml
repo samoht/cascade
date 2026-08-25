@@ -228,15 +228,48 @@ let interval_clear scan ~lo ~hi mems =
   done;
   !ok
 
+(* The shape a run element folds in: a style rule merges declaration lists under
+   one selector, a conditional block concatenates bodies under an unchanged
+   prelude. [element_shape] is the one place the statements that can pair are
+   enumerated - the key that decides two elements share a cascade slot and the
+   merge that folds them both read it, so a statement cannot become mergeable
+   for one and stay unknown to the other. *)
+type block_prelude =
+  | Media_query of Media.t
+  | Feature_query of Supports.t
+  | Container_query of string option * Container.t option
+
+type merge_shape = Style of rule | Block of block_prelude * statement list
+
+let element_shape (stmt : statement) =
+  match stmt with
+  | Rule r when r.merge_key = None -> Some (Style r)
+  | Media (m, body) -> Some (Block (Media_query m, body))
+  | Supports (c, body) -> Some (Block (Feature_query c, body))
+  | Container (name, cond, body) ->
+      Some (Block (Container_query (name, cond), body))
+  | _ -> None
+
+let block_statement prelude body =
+  match prelude with
+  | Media_query m -> Media (m, body)
+  | Feature_query c -> Supports (c, body)
+  | Container_query (name, cond) -> Container (name, cond, body)
+
 (* The element a merge produces. Two elements only ever pair on an equal
-   [element_key], which is derived from the constructor, so the two sides always
-   match here. A block merge concatenates the bodies in source order and
-   re-canonicalises the result: the two halves were each canonical alone, but
-   their concatenation need not be. *)
+   [element_key], and the key carries the slot's shape, so the two sides always
+   agree; a pair that did not agree declines to merge, which is always sound
+   since leaving a run alone is what the coalescing scan starts from. A block
+   merge concatenates the bodies in source order and re-canonicalises the
+   result: the two halves were each canonical alone, but their concatenation
+   need not be. *)
 let merged_element ~canon_body scan ~from ~into =
   let earlier, later = if from < into then (from, into) else (into, from) in
-  match (fst scan.arr.(earlier), fst scan.arr.(later)) with
-  | Rule a, Rule b ->
+  match
+    ( element_shape (fst scan.arr.(earlier)),
+      element_shape (fst scan.arr.(later)) )
+  with
+  | Some (Style a), Some (Style b) ->
       let merged =
         {
           a with
@@ -245,24 +278,21 @@ let merged_element ~canon_body scan ~from ~into =
               (coalesced_declarations (a.declarations @ b.declarations));
         }
       in
-      (Rule merged, [ merged ])
-  | Media (m, ba), Media (_, bb) ->
-      let stmt = Media (m, canon_body (ba @ bb)) in
-      (stmt, Option.value ~default:[] (element_rules stmt))
-  | Supports (c, ba), Supports (_, bb) ->
-      let stmt = Supports (c, canon_body (ba @ bb)) in
-      (stmt, Option.value ~default:[] (element_rules stmt))
-  | Container (n, c, ba), Container (_, _, bb) ->
-      let stmt = Container (n, c, canon_body (ba @ bb)) in
-      (stmt, Option.value ~default:[] (element_rules stmt))
-  | _ -> assert false
+      Some (Rule merged, [ merged ])
+  | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
+      let stmt = block_statement prelude (canon_body (ba @ bb)) in
+      Some (stmt, Option.value ~default:[] (element_rules stmt))
+  | (Some (Style _ | Block _) | None), _ -> None
 
 let merge ~canon_body scan changed ~from ~into =
-  scan.arr.(into) <- merged_element ~canon_body scan ~from ~into;
-  scan.members.(into) <- scan.members.(from) @ scan.members.(into);
-  scan.alive.(from) <- false;
-  scan.merged_any <- true;
-  changed := true
+  match merged_element ~canon_body scan ~from ~into with
+  | None -> ()
+  | Some element ->
+      scan.arr.(into) <- element;
+      scan.members.(into) <- scan.members.(from) @ scan.members.(into);
+      scan.alive.(from) <- false;
+      scan.merged_any <- true;
+      changed := true
 
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
@@ -281,25 +311,24 @@ let try_merge ~canon_body scan changed ~last ~key i j =
    kind and condition; the [@]-prefix keeps the two namespaces apart. A block
    whose interior is not summarisable never became a run element, so it cannot
    reach here. *)
-let element_key (stmt : statement) =
-  match stmt with
-  | Rule r when r.merge_key = None ->
-      Some (Pp.to_string ~minify:true Selector.pp r.selector)
-  | Media (m, _) -> Some (String.concat "" [ "@media "; Media.to_string m ])
-  | Supports (c, _) ->
-      Some (String.concat "" [ "@supports "; Supports.to_string c ])
-  | Container (name, cond, _) ->
-      Some
-        (String.concat ""
-           [
-             "@container ";
-             Option.value ~default:"" name;
-             " ";
-             (match cond with
-             | Some c -> Container.to_string ~minify:true c
-             | None -> "");
-           ])
-  | _ -> None
+let shape_key = function
+  | Style r -> Pp.to_string ~minify:true Selector.pp r.selector
+  | Block (Media_query m, _) ->
+      String.concat "" [ "@media "; Media.to_string m ]
+  | Block (Feature_query c, _) ->
+      String.concat "" [ "@supports "; Supports.to_string c ]
+  | Block (Container_query (name, cond), _) ->
+      String.concat ""
+        [
+          "@container ";
+          Option.value ~default:"" name;
+          " ";
+          (match cond with
+          | Some c -> Container.to_string ~minify:true c
+          | None -> "");
+        ]
+
+let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
 (* Coalesce same-slot elements within one run. Folding an occurrence into
    another moves its writes past every element in between, which is observable

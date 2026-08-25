@@ -144,6 +144,92 @@ let default_factoring_keeps_prior_member_leftover_overlap () =
          ".a,.a.b.c,.b{border-color:green}.b{border-top-color:red}.a{margin-top:7px}"
        candidates)
 
+(* Whether a run of same-selector rules can merge is a question about the pairs
+   a merge reorders: each later rule's declarations move ahead of every nested
+   block an earlier rule carries. A pair counts when it writes a common cascade
+   slot at the same weight with a different value, so two nested blocks that
+   write one slot from two different rules must be read as a multiset - the
+   answer for a later block is not settled by whichever of them was seen first.
+   Each case below puts two nested writers on one slot and a third rule behind
+   them. *)
+let nested_merge_reads_a_slot_as_a_multiset () =
+  let case name expected css =
+    Alcotest.(check bool)
+      name expected
+      (Rule_candidate.nested_merge_is_safe (rules css))
+  in
+  case "a later nested writer still blocks a matching earlier one" false
+    ".q{top:0;&:hover{color:red}}.q{left:0;&:hover{color:blue}}.q{color:red}";
+  case "two nested writers that agree with the later block merge" true
+    ".q{top:0;&:hover{color:red}}.q{left:0;&:hover{color:red}}.q{color:red}";
+  case "an earlier nested writer still blocks a matching later one" false
+    ".q{top:0;&:hover{--x:1}}.q{left:0;&:hover{--y:1}}.q{--x:2}";
+  case "a weight of its own keeps a nested writer out of the slot" true
+    ".q{top:0;&:hover{color:red!important}}.q{left:0;&:hover{color:red}}.q{color:red}";
+  case "and does not excuse the writer at the block's weight" false
+    ".q{top:0;&:hover{color:red!important}}.q{left:0;&:hover{color:blue}}.q{color:red}";
+  case "a shorthand behind a longhand on one slot blocks the merge" false
+    ".q{top:0;&:hover{margin-top:1px}}.q{left:0;&:hover{margin:0}}.q{margin-top:1px}";
+  case "a slot neither of them writes is free" true
+    ".q{top:0;&:hover{margin-top:1px}}.q{left:0;&:hover{margin:0}}.q{padding:1rem}";
+  case "two values of one custom property block the merge" false
+    ".q{top:0;&:hover{--x:1}}.q{left:0;&:hover{--x:2}}.q{--x:1}";
+  case "one value of it does not" true
+    ".q{top:0;&:hover{--x:1}}.q{left:0;&:hover{--x:1}}.q{--x:1}";
+  case "nor does a custom property of another name" true
+    ".q{top:0;&:hover{--x:1}}.q{left:0;&:hover{--x:2}}.q{--y:1}";
+  case "a custom property at another weight writes another slot" true
+    ".q{top:0;&:hover{--x:1!important}}.q{left:0;&:hover{--x:2}}.q{--x:1!important}"
+
+(* Two runs of the same length carrying the same declarations and the same
+   nested declarations, differing only in where the nested blocks sit: [spread]
+   hangs one off every rule, [front] hangs all of them off the first. Deciding
+   the run asks, of each rule's declarations, whether they commute with every
+   nested block written before them - one question about the union of those
+   blocks, not one question per block - so each block is read once whichever run
+   it belongs to and the two cost the same. Asking it per (block, later block)
+   pair leaves [front] alone, since it has one block, and makes [spread] cost a
+   probe per pair.
+
+   The comparison is between the two runs, never against a wall-clock budget:
+   [Sys.time] is this process's own CPU, alcotest runs its cases one after
+   another, and the two measurements therefore sit under the same load. *)
+let nested_merge_safety_reads_each_block_once () =
+  let n = 2000 and reps = 100 in
+  let spread =
+    List.init n (fun i -> Fmt.str ".q{--a%d:%d;&:hover{--n%d:%d}}" i i i i)
+    |> String.concat "" |> rules
+  in
+  let front =
+    let nested =
+      List.init n (fun i -> Fmt.str "--n%d:%d" i i) |> String.concat ";"
+    in
+    Fmt.str ".q{--a0:0;&:hover{%s}}" nested
+    ^ (List.init (n - 1) (fun i -> Fmt.str ".q{--a%d:%d}" (i + 1) (i + 1))
+      |> String.concat "")
+    |> rules
+  in
+  Alcotest.(check bool)
+    "neither run writes a slot twice, so both merge" true
+    (Rule_candidate.nested_merge_is_safe spread
+    && Rule_candidate.nested_merge_is_safe front);
+  let cost rules =
+    Gc.full_major ();
+    let t0 = Sys.time () in
+    for _ = 1 to reps do
+      ignore (Sys.opaque_identity (Rule_candidate.nested_merge_is_safe rules))
+    done;
+    Sys.time () -. t0
+  in
+  let a = cost spread in
+  let b = cost front in
+  Alcotest.(check bool)
+    (Fmt.str
+       "%d nested blocks over %d rules costs %.3fs, all on one %.3fs (%.1fx)" n
+       n a b (a /. b))
+    true
+    (b = 0. || a < b *. 3.)
+
 let suite =
   ( "rule_candidate",
     [
@@ -166,4 +252,8 @@ let suite =
         `Quick exact_factoring_keeps_prior_member_leftover_overlap;
       Alcotest.test_case "default factoring keeps prior member leftover overlap"
         `Quick default_factoring_keeps_prior_member_leftover_overlap;
+      Alcotest.test_case "nested merge reads a slot as a multiset" `Quick
+        nested_merge_reads_a_slot_as_a_multiset;
+      Alcotest.test_case "nested-merge safety reads each block once" `Quick
+        nested_merge_safety_reads_each_block_once;
     ] )

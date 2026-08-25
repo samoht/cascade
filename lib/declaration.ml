@@ -962,6 +962,12 @@ let prop_name (type a) (prop_type : a property) =
   pp_property ctx prop_type;
   Buffer.contents buf
 
+(* The spelling a property parses back from. [prop_name] renders under minify,
+   where [page-break-*] becomes the CSS Fragmentation 3 sec. 3.4 [break-*] alias
+   of a different property. *)
+let canonical_prop_name (type a) (prop : a property) =
+  Pp.to_string ~minify:false pp_property prop
+
 type value_reader = {
   read_value_opt : 'a. 'a property -> Cursor.t -> declaration option;
 }
@@ -1982,17 +1988,10 @@ let read_custom_value name ~raw_is_whitespace_only value_str =
     whitespace_only_custom_property_value
   else read_custom_property_payload name value_str
 
-let read_custom_property_declaration t : declaration =
-  let name = read_property_name t in
-  (* CSS Syntax 3 sec. 4.3.7 lets [\X] escapes carry any code point into an
-     ident, so the name may contain characters ([/], whitespace, etc.) that
-     don't tokenize as a bare ident on a string round-trip. We trust the
-     original lexer's tokenization: the only validation we still run is the
-     [<dashed-ident>] prefix check. *)
-  if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
-    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
-  Cursor.ws t;
-  if not (Cursor.colon t) then Cursor.err_expected t "':'";
+(* The [name] declaration formed over the value at [t]; split from
+   [read_custom_property_declaration] for a caller that already holds the
+   name. *)
+let read_custom_value_declaration t name : declaration =
   (* CSS Custom Properties 1 sec. 2.1: [<declaration-value>] matches "any
      sequence of one or more tokens", so the whitespace after [:] IS the value
      when nothing else follows ([--foo: ;]). Don't skip it before
@@ -2011,6 +2010,19 @@ let read_custom_property_declaration t : declaration =
     in
     if is_important then important decl else decl
   with Failure msg -> Cursor.err_invalid t msg
+
+let read_custom_property_declaration t : declaration =
+  let name = read_property_name t in
+  (* CSS Syntax 3 sec. 4.3.7 lets [\X] escapes carry any code point into an
+     ident, so the name may contain characters ([/], whitespace, etc.) that
+     don't tokenize as a bare ident on a string round-trip. We trust the
+     original lexer's tokenization: the only validation we still run is the
+     [<dashed-ident>] prefix check. *)
+  if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
+    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
+  Cursor.ws t;
+  if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  read_custom_value_declaration t name
 
 (* Properties whose grammar allows multi-token values where a CSS-wide keyword
    can legitimately appear as a non-special ident. [animation-name] /
@@ -2157,12 +2169,14 @@ let read_unknown_property_declaration t name =
   | _ -> ());
   unknown_property ~important:is_important name raw_value
 
-let read_typed_property_declaration t start =
-  Cursor.restore t start;
-  let (Prop prop_type) = read_any_property t in
-  Cursor.ws t;
-  if not (Cursor.colon t) then Cursor.err_expected t "':'";
-  Cursor.ws t;
+(* The declaration [prop_type] forms over the value at [t]. Takes the property
+   rather than reading it, so a caller holding one does not have to spell it out
+   for the parser to read back: [pp_property] under minify writes [page-break-*]
+   as its CSS Fragmentation 3 sec. 3.4 [break-*] alias, which names a different
+   property. *)
+let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
+    =
+ fun prop_type t ->
   (* CSS Syntax 3 sec. 2.2 / sec. 4.3.5 auto-close unterminated functions,
      brackets and strings at EOF. Typed readers consume the spec-recovered
      tokens; the declaration survives with the auto-closed shape. *)
@@ -2188,6 +2202,14 @@ let read_typed_property_declaration t start =
       with Cursor.Parse_error e ->
         Error.fail (Error.with_property (prop_name prop_type) e))
 
+let read_typed_property_declaration t start =
+  Cursor.restore t start;
+  let (Prop prop_type) = read_any_property t in
+  Cursor.ws t;
+  if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  Cursor.ws t;
+  read_typed_value_declaration prop_type t
+
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
   let start = Cursor.save t in
@@ -2211,6 +2233,28 @@ let read_regular_property_declaration t : declaration =
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
       read_unknown_property_declaration t name
+
+(* [read_regular_property_declaration] with the name step replaced by the
+   property itself. [name] serves the validation and the opaque fallback; the
+   identity of what is read back comes from [prop]. *)
+let read_regular_value_declaration : type a.
+    a property -> Cursor.t -> declaration =
+ fun prop t ->
+  let name = canonical_prop_name prop in
+  let start = Cursor.save t in
+  let components = Cursor.lookahead Cursor.drain_to_decl_end t in
+  validate_regular_property_components t name components;
+  match prop with
+  | Source ->
+      read_font_src_declaration t
+        (String.trim (Parser.string_of_components components))
+  | _ -> (
+      try read_typed_value_declaration prop t
+      with Cursor.Parse_error _ as exn ->
+        let raw_value = String.trim (Parser.string_of_components components) in
+        if not (allows_unknown_fallback name raw_value) then raise exn;
+        Cursor.restore t start;
+        read_unknown_property_declaration t name)
 
 (* CSS Nesting 1: distinguish a declaration ([<ident> : <value>]) from a nested
    rule whose selector starts with an ident ([html &:hover { ... }]). The
@@ -2366,6 +2410,26 @@ let read t =
   match read_declaration t with
   | Some d -> d
   | None -> Cursor.err_expected t "declaration"
+
+let with_value decl value =
+  let important = if is_important decl then "!important" else "" in
+  let tail () = Cursor.of_string (String.concat "" [ value; important ]) in
+  match property_key decl with
+  | Key (Custom_property name) -> read_custom_value_declaration (tail ()) name
+  | Key (Unknown_property name) ->
+      (* An unknown property is its name, and a substituted value may now be one
+         a typed reader accepts, so read the pair back whole: that is the step
+         that types [--x: 1px] once [width: var(--x)] has folded. *)
+      read (Cursor.of_string (String.concat "" [ name; ":"; value; important ]))
+  | Key prop -> read_regular_value_declaration prop (tail ())
+
+let with_opaque_value decl value =
+  let (Key prop) = property_key decl in
+  let opaque =
+    let name = canonical_prop_name prop in
+    v (Unknown_property name) (Cursor.remaining (Cursor.of_string value))
+  in
+  if is_important decl then important opaque else opaque
 
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =

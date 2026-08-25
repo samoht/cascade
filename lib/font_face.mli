@@ -65,6 +65,15 @@ val to_string : ?minify:bool -> t -> string
 
 (** {1 Parsing} *)
 
+val read_metric_override : Cursor.t -> metric_override
+(** [read_metric_override t] reads one [ascent-override] / [descent-override] /
+    [line-gap-override] value. A mismatch raises {!Cursor.exception-Parse_error}
+    without consuming, so the error carries the offending value's span. *)
+
+val read_size_adjust : Cursor.t -> size_adjust
+(** [read_size_adjust t] reads one [size-adjust] value, like
+    {!read_metric_override}. *)
+
 val metric_override_of_string : string -> metric_override
 (** [metric_override_of_string s] parses a metric override value. *)
 

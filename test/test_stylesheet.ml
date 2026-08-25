@@ -8716,6 +8716,173 @@ let cssom67_no_trailing_semicolon () =
     "minified output has no trailing semicolon before }" false
     (Astring.String.is_infix ~affix:";}" with_trailing)
 
+(* An [@container] prelude that does not parse is faulted against the slice of
+   the query that failed, so the caret lands inside the query. Every span below
+   is counted off the source text: the leading rule is 18 bytes plus a newline,
+   so line 2 opens at offset 19 and [@container ] runs to offset 29. *)
+let container_condition_error_spans () =
+  let check name query (reason, start_pos, end_pos) =
+    let input =
+      ".ok { color: red }\n@container " ^ query ^ " { .a { color: blue } }\n"
+    in
+    match Css.of_string ~strict:false input with
+    | Error err ->
+        Alcotest.failf "%s: lenient parse failed: %s" name
+          (Cascade.Error.to_string err)
+    | Ok { Css.stylesheet; warnings } -> (
+        Alcotest.(check int)
+          (name ^ ": sibling rule survives")
+          1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ e ] ->
+            (match e.Error.kind with
+            | Error.Bad_condition { at_rule; reason = got } ->
+                Alcotest.(check string)
+                  (name ^ ": at-rule") "@container" at_rule;
+                Alcotest.(check string) (name ^ ": reason") reason got
+            | _ ->
+                Alcotest.failf "%s: expected Bad_condition, got %s" name
+                  (Error.to_string e));
+            Alcotest.(check (pair int int))
+              (name ^ ": span") (start_pos, end_pos)
+              (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+        | ws ->
+            Alcotest.failf "%s: expected one warning, got %d" name
+              (List.length ws))
+  in
+  (* [style()] spans offsets 30-36; an empty argument list has no components of
+     its own, so the call itself carries the span. *)
+  check "empty style()" "style()" ("empty style() container query", 30, 37);
+  (* The parenthesised query spans offsets 30-33. *)
+  check "empty query" "(  )" ("empty container query", 30, 34);
+  (* [scroll-state(] ends at offset 42, so [bogus] spans 43-47. *)
+  check "bad scroll-state()" "scroll-state(bogus)"
+    ("invalid scroll-state() container query", 43, 48);
+  (* [style(] ends at offset 35, so [1px] spans 36-38. *)
+  check "bad style() name" "style(1px: red)"
+    ("invalid style() container query", 36, 39)
+
+(* One warning off a lenient parse, checked against the at-rule it names, the
+   reason it gives and the span it points at. *)
+let one_condition_warning name input ~at_rule (reason, start_pos, end_pos) =
+  match Css.of_string ~strict:false input with
+  | Error err ->
+      Alcotest.failf "%s: lenient parse failed: %s" name
+        (Cascade.Error.to_string err)
+  | Ok { Css.stylesheet; warnings } -> (
+      Alcotest.(check int)
+        (name ^ ": sibling rule survives")
+        1
+        (List.length (Css.rule_statements stylesheet));
+      match warnings with
+      | [ e ] ->
+          (match e.Error.kind with
+          | Error.Bad_condition { at_rule = got_rule; reason = got } ->
+              Alcotest.(check string) (name ^ ": at-rule") at_rule got_rule;
+              Alcotest.(check string) (name ^ ": reason") reason got
+          | _ ->
+              Alcotest.failf "%s: expected Bad_condition, got %s" name
+                (Error.to_string e));
+          Alcotest.(check (pair int int))
+            (name ^ ": span") (start_pos, end_pos)
+            (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+      | ws ->
+          Alcotest.failf "%s: expected one warning, got %d" name
+            (List.length ws))
+
+(* A media query that does not parse is faulted against the slice of the query
+   that failed. Spans are counted off the source text: the leading rule is 18
+   bytes plus a newline, so line 2 opens at offset 19 and [@media ] runs to
+   offset 25. *)
+let media_condition_error_spans () =
+  let check name query expected =
+    let input =
+      ".ok { color: red }\n@media " ^ query ^ " { .a { color: blue } }\n"
+    in
+    one_condition_warning name input ~at_rule:"@media" expected
+  in
+  (* A lone [not] prefixes nothing; the query itself spans offsets 26-28. *)
+  check "prefix with no type" "not" ("expected media type or condition", 26, 29);
+  (* [bogus] inside the parentheses spans offsets 27-31. *)
+  check "junk in parens" "(bogus !!!)" ("expected media-in-parens", 27, 32);
+  (* The [or] that follows an [and] spans offsets 46-47. *)
+  check "mixed operators" "(color) and (hover) or (a)"
+    ("mixed 'and'/'or' media condition", 46, 48);
+  (* The media query list of an [@import] prelude is read the same way: [bogus]
+     spans offsets 22-26. *)
+  one_condition_warning "import prelude"
+    "@import url(\"a.css\") (bogus !!!);\n.ok { color: red }\n"
+    ~at_rule:"@media"
+    ("expected media-in-parens", 22, 27)
+
+(* An @font-face descriptor whose value does not parse is faulted against the
+   value, not against the enclosing block. The descriptor is dropped and the
+   rest of the at-rule is kept, so the [src] below keeps the @font-face valid
+   and the warning list holds only the descriptor failure. Spans are counted off
+   the source text: the leading rule is 18 bytes plus a newline, so line 2 opens
+   at offset 19. *)
+let descriptor_value_error_spans () =
+  let check name descriptor (reason, start_pos, end_pos) =
+    let input =
+      ".ok { color: red }\n@font-face { font-family: x; src: url(a.woff2); "
+      ^ descriptor ^ " }\n"
+    in
+    match Css.of_string ~strict:false input with
+    | Error err ->
+        Alcotest.failf "%s: lenient parse failed: %s" name
+          (Cascade.Error.to_string err)
+    | Ok { Css.stylesheet; warnings } -> (
+        Alcotest.(check int)
+          (name ^ ": sibling rule survives")
+          1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ e ] ->
+            (match e.Error.kind with
+            | Error.Bad_value { reason = got; _ } ->
+                Alcotest.(check string) (name ^ ": reason") reason got
+            | _ ->
+                Alcotest.failf "%s: expected Bad_value, got %s" name
+                  (Error.to_string e));
+            Alcotest.(check (pair int int))
+              (name ^ ": span") (start_pos, end_pos)
+              (e.Error.loc.Loc.start_pos, e.Error.loc.Loc.end_pos)
+        | ws ->
+            Alcotest.failf "%s: expected one warning, got %d" name
+              (List.length ws))
+  in
+  (* [ascent-override] opens at offset 67, so its value spans 84-86. *)
+  check "negative metric override" "ascent-override: -5%"
+    ("invalid: metric override", 84, 87);
+  (* [size-adjust] opens at offset 67, so its value spans 80-84. *)
+  check "size-adjust that is not a percentage" "size-adjust: bogus"
+    ("invalid: size-adjust", 80, 85)
+
+(* An @supports condition that does not parse is faulted against the slice of
+   the condition that failed, where the reader used to hand back a bare reason
+   that the stylesheet re-anchored on the whole prelude. Spans are counted off
+   the source text: the leading rule is 18 bytes plus a newline, so line 2 opens
+   at offset 19 and [@supports ] runs to offset 28. *)
+let supports_condition_error_spans () =
+  let check name condition expected =
+    let input =
+      ".ok { color: red }\n@supports " ^ condition ^ " { .a { color: blue } }\n"
+    in
+    one_condition_warning name input ~at_rule:"@supports" expected
+  in
+  (* [extra-junk] follows a complete feature query and spans offsets 45-54. *)
+  check "trailing content" "(display: grid) extra-junk"
+    ("trailing content", 45, 55);
+  (* The [or] that follows an [and] spans offsets 45-46. *)
+  check "mixed operators" "(a:b) and (c:d) or (e:f)"
+    ("Cannot mix and/or without parentheses in @supports", 45, 47);
+  (* The empty parentheses span offsets 29-30. *)
+  check "empty parentheses" "()" ("Empty parentheses in @supports", 29, 31);
+  (* [font-format(] ends at offset 40, so [bogus] spans 41-45. *)
+  check "unknown font format" "font-format(bogus)"
+    ("invalid font-format() in @supports", 41, 46)
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -9644,6 +9811,18 @@ let additional_tests =
                 Alcotest.failf "expected Bad_condition, got %s"
                   (Error.to_string e))
         | _ -> Alcotest.fail "expected one warning" );
+    ( "an @container query error points at the failing slice",
+      `Quick,
+      container_condition_error_spans );
+    ( "a media query error points at the failing slice",
+      `Quick,
+      media_condition_error_spans );
+    ( "an @font-face descriptor error points at the value",
+      `Quick,
+      descriptor_value_error_spans );
+    ( "an @supports condition error points at the failing slice",
+      `Quick,
+      supports_condition_error_spans );
   ]
 
 (* Every shape a statement can take, so the walkers are exercised on the block

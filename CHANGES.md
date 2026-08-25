@@ -24,6 +24,20 @@ answers.
   you shipped minified output built with 1.1.0, re-run it and compare:
   `cascade diff --diff=canonical old.css new.css` exits 1 and prints the
   difference wherever the two are not equivalent.
+- `Css.Container.of_components` and `Css.Media.of_components` are gone: call
+  `Container.read` / `Media.read` with a cursor over the prelude's components
+  (`Cursor.sub`). `Container.of_string`, `Media.of_string_strict`,
+  `Supports.of_string` and the three `Font_face.*_of_string` raise
+  `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
+  around any of them stops catching and the exception escapes; match
+  `Cursor.Parse_error` instead (#496, #497, #499, #501)
+- `Cascade.Component.pp` documents and renders itself as the located debug
+  dump it always was. It was documented as source text, which sent a caller
+  down a check that could never fire. Every node now shows its own location
+  and an unclosed block or unterminated function is tagged, so two components
+  `Component.equal` separates no longer print alike, and the children stay
+  apart under minify. Source text comes from
+  `Cascade.Parser.string_of_components` (#504)
 - `Css.statement_declarations` is gone. It answered for a rule and a bare
   nesting block only, sharing its name with the exhaustive
   `Css.Stylesheet.statement_declarations`, which reaches every declaration a
@@ -62,9 +76,15 @@ answers.
   pattern naming either takes the extra field (#313)
 - `Css.Pp.ctx` gains `in_style_rule`; record expressions must set it and record
   patterns must bind it or use `; _` (#374)
+- `Cascade.Reader.parse_error` gains `line` and `col`, and `filename` holds a
+  source name where it packed `"<CSS input>:L:C"`: read the location from the
+  two new fields, and `with_filename` keeps it instead of overwriting (#491)
 
 ### Parsing
 
+- An error inside an at-rule condition or an `@font-face` descriptor points at
+  the slice that failed, not at the end of the file with the caret past the
+  last byte (#496, #497, #499, #501)
 - Everything the parser repaired or dropped is reported, so strict mode
   rejects it. `@media screen {` swallowed the rest of the file and still
   returned `Ok` with no warnings, hiding a truncated stylesheet (#484)
@@ -201,6 +221,10 @@ answers.
   every `span-` spelling. css-anchor-position-1 sec. 3.1.2 gives them a branch
   of the grammar and browsers lay them out, but cascade had no keyword for any
   of them and dropped the declaration (#478, #485)
+- `position-area` rejects two keywords taken from different branches of its
+  grammar, such as `left block-start` or `start top`. Cascade checked only that
+  they named different axes, so it accepted 1120 ordered keyword pairs that
+  css-anchor-position-1 sec. 3.1.2 and Chrome 151 both reject (#495)
 
 ### Printing
 
@@ -222,11 +246,9 @@ answers.
   which closes the rule around it. The declaration name, the `var()` reference
   and its fallback, the `@property` prelude and a `style()` container query all
   take the escaping (#435)
-- Serialising a stylesheet walks it once. `Css.to_string` sized its buffer
-  exactly by first rendering the whole sheet through a counter, so every
-  printer below it ran twice to save a buffer growth that is amortised
-  anyway; one walk cuts a 5000-rule sheet to 55% of the allocations and 69%
-  of the instructions, for byte-identical output (#479)
+- `Css.to_string` renders the sheet once. It sized its buffer exactly by
+  first running the sheet through a counter, so every printer below it ran
+  twice to save a buffer growth that is amortised anyway (#479)
 
 ### Minification
 
@@ -392,32 +414,29 @@ answers.
   already gives up Level 3 compatibility inside that very query by lowering
   `min-width` to range syntax. `--enforce-spec` keeps both Level 3 spellings
   (#323)
-- `--minify` and `cascade diff` spend less time on a large stylesheet, for the
-  same output (#413, #422, #424)
-- `--minify` builds the rule-dependency graph of a large stylesheet in less
-  memory, for byte-identical output. It compared every pair of rules writing
-  the same property, though two rules whose selectors cannot tie on
-  specificity are never order-constrained; skipping those pairs cuts a
-  4000-rule sheet to 51% of the allocations and 37% of the instructions
-  (#468)
-- `--minify` merges a long run of rules on one selector in less time and
-  memory, for byte-identical output. Deciding whether two blocks can be
-  reordered rebuilt and re-walked a body once per pair, both between two
-  declaration runs and between a nested block and the declarations that would
-  move past it; indexing each body once by the slots it writes leaves 4% of
-  the allocations either way (#480, #487)
-- `--minify` groups a long run of same-body rules in less memory, for
-  byte-identical output. Whether the run can share one selector list was asked
-  of every pair of it, though the answer is read off each selector alone;
-  reading each once cuts 400 such rules to 17% of the allocations and 12% of
-  the instructions (#486)
+- `--minify` and `cascade diff` spend less time and memory on a large
+  stylesheet, for the same output (#413, #422, #424, #468, #507)
+- `--minify` no longer allocates quadratically on a long run of rules sharing
+  one selector or one body, nor probes every pair of them to decide whether it
+  may merge. The benchmark corpora hold no such run, so this bounds a worst
+  case rather than speeding real input up (#480, #486, #487, #502, #505)
+- `--minify` no longer scans quadratically when many rules share a deep
+  selector prefix. The structural hash reads a fixed count of nodes, so
+  `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
+  one hash and the two tables that drop shadowed rules and declarations
+  compared selector subtrees on every probe; the heaviest stylesheet in the
+  corpus spends a third of what it did on that pass (#493)
 
 ### Custom properties
 
+- A `page-break-before`, `page-break-after` or `page-break-inside` declaration
+  survives `Css.inline_vars` as itself. Substituting a `var()` rebuilt the
+  declaration from its minified name, which for these three is the `break-*`
+  alias of a different property, so `page-break-inside` came back as
+  `break-inside` with a value that property does not accept (#506)
 - `Css.inline_vars` stays linear in at-rule nesting depth. Each of its four
   walks rebuilt the enclosing `@media`/`@layer`/`@supports` chain at every
-  level, so the cost grew with the square of the depth: one variable inside 800
-  nested blocks allocated 8.9M words, now 221K (#481)
+  level, which cost 6.4% of the instructions on real stylesheets (#481)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and `@supports-condition` carry: a name referenced only from
   inside one of them keeps its theme binding, a name whose only declaration
@@ -592,6 +611,16 @@ answers.
   measures each text run on its own, so merging them moved the element's width;
   licence headers went missing outright. The page is parsed and printed with
   markup.ml in place of lambdasoup (#346)
+- `cascade apply` exits 0 for a `<style>` block whose parse kept a statement,
+  so a build gating on the exit status passes on valid CSS. The check rendered
+  the sheet, and an empty rule, a redundant `@charset "UTF-8"` or an `src`-less
+  `@font-face` prints nothing while losing nothing (#489)
+- `cascade fmt` exits 1 when parse recovery left no statement at all, where it
+  exited 1 when the printed output was empty and the parse had warned. A rule
+  survives a declaration the parser could not read, and `--minify` removes a
+  redundant `@charset "UTF-8"` or an `src`-less `@font-face` that nothing
+  lost, so both failed a build over CSS the parser used in full. The status
+  now answers the question `cascade apply` asks of each source (#494)
 - `cascade diff` names an at-rule that carries no condition of its own by the
   head it prints to, rather than describing every one identically. That
   description keys the ordering comparison, so a `@media` that moved between a

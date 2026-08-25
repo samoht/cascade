@@ -62,7 +62,11 @@ val rule_loc : rule -> Loc.t
 (** [rule_loc r] is the source range spanned by rule [r]. *)
 
 val pp : t Pp.t
-(** [pp] renders a component value back to source-like text. *)
+(** [pp] renders a component value as a located debug dump, the {!Token.pp} of a
+    whole tree, e.g. [rgb(<number 1>@[4-5])@[0-6]]. Every node shows its own
+    {!Loc.t}, and one the lexer closed synthetically at EOF is tagged
+    [<unclosed>] or [<unterminated>]. Source text comes from
+    {!Parser.string_of_components} and its whitespace-policy variants. *)
 
 val to_string : t -> string
 (** [to_string t] is the string rendering of {!pp}. *)

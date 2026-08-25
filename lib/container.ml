@@ -412,17 +412,26 @@ let style_range_query cvs =
       | _ -> None)
   | _ -> None
 
-let style_leaf_declaration name_components value =
+(* Every failure below is an [@container] prelude failure, and the slice of the
+   query that failed carries the span the caret must point at. [t] anchors the
+   smallest enclosing construct, for a failure that has no components of its
+   own. *)
+let err t cvs reason =
+  let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
+  Cursor.err_condition at ~at_rule:"@container" reason
+
+let style_leaf_declaration t name_components value =
   match (style_strip_ws name_components, style_strip_ws value) with
   | [ name_component ], stripped_value when not (has_semicolon_component value)
     -> (
       match ident_component name_component with
       | Some name when stripped_value <> [] || is_custom_property name ->
           Declaration { name; value }
-      | Some _ | None -> failwith "invalid style() container query")
-  | _ -> failwith "invalid style() container query"
+      | Some _ | None -> err t name_components "invalid style() container query"
+      )
+  | _ -> err t name_components "invalid style() container query"
 
-let style_leaf_boolean components =
+let style_leaf_boolean t components =
   match style_strip_ws components with
   | [ name_component ] -> (
       match ident_component name_component with
@@ -431,56 +440,56 @@ let style_leaf_boolean components =
          [--]. A bare property name like [style(color)] is not a valid boolean
          form. *)
       | Some name when is_custom_property name -> Boolean name
-      | _ -> failwith "invalid style() container query")
-  | _ -> failwith "invalid style() container query"
+      | _ -> err t components "invalid style() container query")
+  | _ -> err t components "invalid style() container query"
 
-let style_leaf_components components =
+let style_leaf_components t components =
   match split_top_level_colon components with
   | Some (name_components, value) ->
-      style_leaf_declaration name_components value
+      style_leaf_declaration t name_components value
   | None -> (
       match style_range_query components with
       | Some query -> query
-      | None -> style_leaf_boolean components)
+      | None -> style_leaf_boolean t components)
 
-let rec style_query_components components =
+let rec style_query_components t components =
   let components = trim_components components in
-  if components_empty components then failwith "empty style() container query";
+  if components_empty components then
+    err t components "empty style() container query";
   match split_top_level_colon components with
-  | Some _ -> style_leaf_components components
-  | None -> style_query_operator components
+  | Some _ -> style_leaf_components t components
+  | None -> style_query_operator t components
 
-and style_query_operator components =
+and style_query_operator t components =
   let level, unwrapped =
     match single_paren_body components with
     | Some body -> (trim_components body, true)
     | None -> (components, false)
   in
   if has_keyword "and" level && has_keyword "or" level then
-    failwith "mixed style() operators require grouping"
+    err t level "mixed style() operators require grouping"
   else
     match split_keyword "or" level with
     | Some (lhs, rhs) ->
-        Any (style_query_components lhs, style_query_components rhs)
-    | None -> style_query_conjunction ~components ~level ~unwrapped
+        Any (style_query_components t lhs, style_query_components t rhs)
+    | None -> style_query_conjunction t ~components ~level ~unwrapped
 
-and style_query_conjunction ~components ~level ~unwrapped =
+and style_query_conjunction t ~components ~level ~unwrapped =
   match split_keyword "and" level with
   | Some (lhs, rhs) ->
-      All (style_query_components lhs, style_query_components rhs)
-  | None -> style_query_unary ~components ~level ~unwrapped
+      All (style_query_components t lhs, style_query_components t rhs)
+  | None -> style_query_unary t ~components ~level ~unwrapped
 
-and style_query_unary ~components ~level ~unwrapped =
+and style_query_unary t ~components ~level ~unwrapped =
   match level with
-  | first :: rest when ident_is "not" first -> Neg (style_query_components rest)
-  | _ when unwrapped -> style_query_components level
-  | _ -> style_leaf_components components
+  | first :: rest when ident_is "not" first ->
+      Neg (style_query_components t rest)
+  | _ when unwrapped -> style_query_components t level
+  | _ -> style_leaf_components t components
 
-let style_body ~uppercase components =
-  let body = string_of_components components in
-  try Style { query = style_query_components components; uppercase }
-  with Failure msg ->
-    failwith (if String.equal body "" then msg else msg ^ ": " ^ body)
+let style_body t ~uppercase (fn : Component.func Component.node) =
+  let t = Cursor.sub t [ Component.Func fn ] in
+  Style { query = style_query_components t fn.node.arguments; uppercase }
 
 let scroll_state_value_allowed name value =
   match name with
@@ -508,7 +517,7 @@ let scroll_state_value_allowed name value =
       | _ -> false)
   | _ -> false
 
-let scroll_state_query_leaf components =
+let scroll_state_query_leaf t components =
   match split_top_level_colon components with
   | Some (name_components, value_components) -> (
       match
@@ -523,58 +532,63 @@ let scroll_state_query_leaf components =
               let value = String.lowercase_ascii value in
               if scroll_state_value_allowed name value then
                 State { name; value }
-              else failwith "invalid scroll-state() container query"
+              else
+                err t value_components "invalid scroll-state() container query"
           | Some _, None | None, Some _ | None, None ->
-              failwith "invalid scroll-state() container query")
-      | _ -> failwith "invalid scroll-state() container query")
-  | None -> failwith "invalid scroll-state() container query"
+              err t components "invalid scroll-state() container query")
+      | _ -> err t components "invalid scroll-state() container query")
+  | None -> err t components "invalid scroll-state() container query"
 
-let rec scroll_state_query_components components =
+let rec scroll_state_query_components t components =
   let components = trim_components components in
   if components_empty components then
-    failwith "empty scroll-state() container query";
+    err t components "empty scroll-state() container query";
   match split_top_level_colon components with
-  | Some _ -> scroll_state_query_leaf components
-  | None -> scroll_state_query_operator components
+  | Some _ -> scroll_state_query_leaf t components
+  | None -> scroll_state_query_operator t components
 
-and scroll_state_query_operator components =
+and scroll_state_query_operator t components =
   let level, unwrapped =
     match single_paren_body components with
     | Some body -> (trim_components body, true)
     | None -> (components, false)
   in
   if has_keyword "and" level && has_keyword "or" level then
-    failwith "mixed scroll-state() operators require grouping"
+    err t level "mixed scroll-state() operators require grouping"
   else
     match split_keyword "or" level with
     | Some (lhs, rhs) ->
         Either
-          (scroll_state_query_components lhs, scroll_state_query_components rhs)
-    | None -> scroll_state_query_conjunction ~components ~level ~unwrapped
+          ( scroll_state_query_components t lhs,
+            scroll_state_query_components t rhs )
+    | None -> scroll_state_query_conjunction t ~components ~level ~unwrapped
 
-and scroll_state_query_conjunction ~components ~level ~unwrapped =
+and scroll_state_query_conjunction t ~components ~level ~unwrapped =
   match split_keyword "and" level with
   | Some (lhs, rhs) ->
-      Both (scroll_state_query_components lhs, scroll_state_query_components rhs)
-  | None -> scroll_state_query_unary ~components ~level ~unwrapped
+      Both
+        ( scroll_state_query_components t lhs,
+          scroll_state_query_components t rhs )
+  | None -> scroll_state_query_unary t ~components ~level ~unwrapped
 
-and scroll_state_query_unary ~components ~level ~unwrapped =
+and scroll_state_query_unary t ~components ~level ~unwrapped =
   match level with
   | first :: rest when ident_is "not" first ->
-      Negated (scroll_state_query_components rest)
-  | _ when unwrapped -> scroll_state_query_components level
-  | _ -> scroll_state_query_leaf components
+      Negated (scroll_state_query_components t rest)
+  | _ when unwrapped -> scroll_state_query_components t level
+  | _ -> scroll_state_query_leaf t components
 
-let scroll_state_body ~uppercase components =
-  let body = string_of_components components in
-  try
-    Scroll_state { query = scroll_state_query_components components; uppercase }
-  with Failure msg ->
-    failwith (if String.equal body "" then msg else msg ^ ": " ^ body)
+let scroll_state_body t ~uppercase (fn : Component.func Component.node) =
+  let t = Cursor.sub t [ Component.Func fn ] in
+  Scroll_state
+    { query = scroll_state_query_components t fn.node.arguments; uppercase }
 
 type query_surface =
-  | Style_func of { canonical_name : bool; arguments : Component.t list }
-  | Scroll_state_func of { canonical_name : bool; arguments : Component.t list }
+  | Style_func of { canonical_name : bool; fn : Component.func Component.node }
+  | Scroll_state_func of {
+      canonical_name : bool;
+      fn : Component.func Component.node;
+    }
   | Parenthesized_feature
   | Other_query
 
@@ -620,25 +634,27 @@ let has_dangling_range_operator cvs =
   | Component.Preserved { kind = Token.Delim ("<" | ">"); _ } :: _ -> true
   | _ -> false
 
-let classify_query_surface components =
+let classify_query_surface t components =
   match trim_components components with
-  | [ Component.Func { node = { name; arguments; terminated }; _ } ] -> (
-      if not terminated then failwith "unmatched container query function";
+  | [ (Component.Func ({ node = { name; terminated; _ }; _ } as fn) as cv) ]
+    -> (
+      if not terminated then err t [ cv ] "unmatched container query function";
       let lower = String.lowercase_ascii name in
       let canonical_name = name = lower in
       match lower with
-      | "style" -> Style_func { canonical_name; arguments }
-      | "scroll-state" -> Scroll_state_func { canonical_name; arguments }
+      | "style" -> Style_func { canonical_name; fn }
+      | "scroll-state" -> Scroll_state_func { canonical_name; fn }
       | _ -> Other_query)
-  | [ Component.Block { node = { opening = Token.Paren; value; closed }; _ } ]
-    ->
-      if not closed then failwith "unmatched container query parentheses";
+  | [
+   (Component.Block { node = { opening = Token.Paren; value; closed }; _ } as cv);
+  ] ->
+      if not closed then err t [ cv ] "unmatched container query parentheses";
       let value = strip_ws value in
       if components_empty value then Other_query
       else if has_dangling_range_operator value then
-        failwith "dangling range operator in container query"
+        err t value "dangling range operator in container query"
       else if has_opposing_interval_components value then
-        failwith "opposing interval operators in container query"
+        err t value "opposing interval operators in container query"
       else Parenthesized_feature
   | _ -> Other_query
 
@@ -651,16 +667,17 @@ let single_feature_of_media (media : Media.t) =
   | Media.Cond (Media.Feature _) -> Some media
   | Media.Cond _ | Media.List _ | Media.Type _ -> None
 
-let specific_of_components components =
+let specific_of_components t components =
   if trim_components components |> components_empty then
-    failwith "empty container query";
-  match classify_query_surface components with
-  | Style_func { canonical_name; arguments } ->
-      style_body ~uppercase:(not canonical_name) arguments
-  | Scroll_state_func { canonical_name; arguments } ->
-      scroll_state_body ~uppercase:(not canonical_name) arguments
-  | Parenthesized_feature -> failwith "unrecognised container feature query"
-  | Other_query -> failwith "not a container-specific query"
+    err t components "empty container query";
+  match classify_query_surface t components with
+  | Style_func { canonical_name; fn } ->
+      style_body t ~uppercase:(not canonical_name) fn
+  | Scroll_state_func { canonical_name; fn } ->
+      scroll_state_body t ~uppercase:(not canonical_name) fn
+  | Parenthesized_feature ->
+      err t components "unrecognised container feature query"
+  | Other_query -> err t components "not a container-specific query"
 
 let unresolved_media_feature components =
   match trim_components components with
@@ -694,15 +711,15 @@ let rec strip_outer_components components =
   | Some body -> strip_outer_components body
   | None -> trim_components components
 
-let atom_of_components components =
+let atom_of_components t components =
   let components = trim_components components in
   let stripped = strip_outer_components components in
-  match classify_query_surface stripped with
+  match classify_query_surface t stripped with
   | _ when components_have_var components -> (
       match unresolved_media_feature components with
       | Some query -> query
-      | None -> specific_of_components stripped)
-  | Style_func _ | Scroll_state_func _ -> specific_of_components stripped
+      | None -> specific_of_components t stripped)
+  | Style_func _ | Scroll_state_func _ -> specific_of_components t stripped
   | Parenthesized_feature | Other_query -> (
       let source = string_of_components components in
       match Media.of_string_strict source with
@@ -716,12 +733,12 @@ let atom_of_components components =
       | media -> (
           match single_feature_of_media media with
           | Some f -> Feature_query f
-          | None -> failwith "not a container feature query")
-      | exception Failure _ -> specific_of_components stripped)
+          | None -> err t components "not a container feature query")
+      | exception Error.Parse_error _ -> specific_of_components t stripped)
 
-let rec unnamed_of_components components =
+let rec unnamed_of_components t components =
   let components = trim_components components in
-  if components_empty components then failwith "empty container query";
+  if components_empty components then err t components "empty container query";
   let level =
     match single_paren_body components with
     | Some body when Option.is_none (split_top_level_colon body) ->
@@ -729,32 +746,35 @@ let rec unnamed_of_components components =
     | Some _ | None -> components
   in
   if has_keyword "and" level && has_keyword "or" level then
-    failwith "mixed container query operators require grouping"
-  else unnamed_or_components ~components level
+    err t level "mixed container query operators require grouping"
+  else unnamed_or_components t ~components level
 
-and unnamed_or_components ~components level =
+and unnamed_or_components t ~components level =
   match split_keyword "or" level with
-  | Some (lhs, rhs) -> Or (unnamed_of_components lhs, unnamed_of_components rhs)
-  | None -> unnamed_and_components ~components level
+  | Some (lhs, rhs) ->
+      Or (unnamed_of_components t lhs, unnamed_of_components t rhs)
+  | None -> unnamed_and_components t ~components level
 
-and unnamed_and_components ~components level =
+and unnamed_and_components t ~components level =
   match split_keyword "and" level with
-  | Some (lhs, rhs) -> And (unnamed_of_components lhs, unnamed_of_components rhs)
-  | None -> unnamed_unary_components ~components level
+  | Some (lhs, rhs) ->
+      And (unnamed_of_components t lhs, unnamed_of_components t rhs)
+  | None -> unnamed_unary_components t ~components level
 
-and unnamed_unary_components ~components = function
+and unnamed_unary_components t ~components = function
   | first :: rest when ident_is "not" first ->
       if not (is_query_operand rest) then
-        failwith "container query: 'not' requires a query-in-parens operand";
-      Not (unnamed_of_components rest)
-  | _ -> atom_of_components components
+        err t rest "container query: 'not' requires a query-in-parens operand";
+      Not (unnamed_of_components t rest)
+  | _ -> atom_of_components t components
 
-let of_components components =
+let read t =
+  let components = Cursor.remaining t in
   match split_named_components components with
-  | Some (name, query) -> Named (name, unnamed_of_components query)
-  | None -> unnamed_of_components components
+  | Some (name, query) -> Named (name, unnamed_of_components t query)
+  | None -> unnamed_of_components t components
 
-let of_string s = Cursor.of_string s |> Cursor.remaining |> of_components
+let of_string s = read (Cursor.of_string s)
 let feature name value = Feature_query (Media.feature name value)
 
 let style ?value prop =

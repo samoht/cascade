@@ -4111,6 +4111,52 @@ let spec_generated_position_interaction_edges () =
   neg_cursor read_position_area "self-block-start self-block-end";
   neg_cursor read_position_area "self-block-start self-block-start";
   neg_cursor read_position_area "self-inline-start span-self-inline-end";
+  (* Sec. 3.1.2 spells <position-area> as five top-level alternatives: the
+     physical [ left | ... ] || [ top | ... ], the logical [ block-start | ... ]
+     || [ inline-start | ... ], its [self-] twin, and the two {1,2} groups over
+     [ start | ... ] and [ self-start | ... ]. Only [center] and [span-all]
+     appear in every group, so any other pair has to come from one alternative.
+     Naming two axes is not enough on its own: each pair below names one row and
+     one column yet crosses two alternatives, and Chrome 151 rejects every one
+     of them, leaving position-area at its [none] initial value. *)
+  neg_cursor read_position_area "left block-start";
+  neg_cursor read_position_area "block-start left";
+  neg_cursor read_position_area "inline-start y-end";
+  neg_cursor read_position_area "x-start self-block-start";
+  neg_cursor read_position_area "self-x-start self-block-start";
+  neg_cursor read_position_area "self-inline-end top";
+  neg_cursor read_position_area "block-start self-inline-end";
+  neg_cursor read_position_area "span-inline-start span-self-block-end";
+  (* The {1,2} groups are alternatives of their own, so a plain [start] pairs
+     with nothing outside its own group, not with a physical or logical keyword
+     and not with a [self-] one. *)
+  neg_cursor read_position_area "start top";
+  neg_cursor read_position_area "span-end left";
+  neg_cursor read_position_area "start block-end";
+  neg_cursor read_position_area "inline-end span-start";
+  neg_cursor read_position_area "start self-inline-start";
+  neg_cursor read_position_area "self-block-end span-start";
+  neg_cursor read_position_area "self-start right";
+  neg_cursor read_position_area "span-self-end y-start";
+  neg_cursor read_position_area "self-end block-start";
+  neg_cursor read_position_area "self-start self-x-end";
+  neg_cursor read_position_area "self-start self-block-end";
+  neg_cursor read_position_area "span-self-inline-start self-end";
+  neg_cursor read_position_area "start self-start";
+  neg_cursor read_position_area "span-self-start end";
+  (* Within one alternative the two sides of the [||] still combine in either
+     order, and [center] and [span-all] pair with anything. *)
+  check_position_area "left top";
+  check_position_area "x-start self-y-end";
+  check_position_area "block-start inline-end";
+  check_position_area "span-inline-start block-end";
+  check_position_area "self-inline-start self-block-end";
+  check_position_area "inline-start center";
+  check_position_area "span-all self-inline-end";
+  check_position_area "start span-all";
+  check_position_area "center self-end";
+  check_position_area "top span-right";
+  check_position_area "top span-left";
   check_position_area_keyword "span-inline-start";
   check_position_try_fallback "flip-block";
   check_position_try_fallbacks ~expected:"flip-block,--fallback"
