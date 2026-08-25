@@ -62,6 +62,9 @@ answers.
   pattern naming either takes the extra field (#313)
 - `Css.Pp.ctx` gains `in_style_rule`; record expressions must set it and record
   patterns must bind it or use `; _` (#374)
+- `Cascade.Reader.parse_error` gains `line` and `col`, and `filename` holds a
+  source name where it packed `"<CSS input>:L:C"`: read the location from the
+  two new fields, and `with_filename` keeps it instead of overwriting (#491)
 
 ### Parsing
 

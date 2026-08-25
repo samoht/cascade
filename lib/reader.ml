@@ -18,6 +18,8 @@ type parse_error = {
   got : string option;
   position : int;
   filename : string;
+  line : int;
+  col : int;
   context_window : string;
   marker_pos : int;
   callstack : string list;
@@ -56,8 +58,18 @@ let pp_parse_error (err : parse_error) =
       in
       "\n" ^ context_display ^ "\n" ^ marker
   in
-  err.message ^ " at " ^ err.filename ^ ":" ^ string_of_int err.position
-  ^ callstack_str ^ context_str
+  String.concat ""
+    [
+      err.message;
+      " at ";
+      err.filename;
+      ":";
+      string_of_int err.line;
+      ":";
+      string_of_int err.col;
+      callstack_str;
+      context_str;
+    ]
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
@@ -228,16 +240,17 @@ let err ?got t expected =
         | `Uchar _ | `Malformed _ -> (line, col + 1))
       (1, 1) t.input
   in
-  let better_filename =
-    "<CSS input>:" ^ string_of_int line ^ ":" ^ string_of_int col
-  in
   raise
     (Parse_error
        {
          message = expected;
          got;
          position = t.pos;
-         filename = better_filename;
+         (* A reader is built from a string, so it has no name of its own; a
+            caller that has one stamps it with [with_filename]. *)
+         filename = "<CSS input>";
+         line;
+         col;
          context_window = context;
          marker_pos;
          callstack = callstack t;
