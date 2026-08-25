@@ -398,6 +398,12 @@ answers.
 - `--minify` no longer allocates quadratically on a long run of rules sharing
   one selector or one body. The benchmark corpora hold no such run, so this
   bounds a worst case rather than speeding real input up (#480, #486, #487)
+- `--minify` no longer scans quadratically when many rules share a deep
+  selector prefix. The structural hash reads a fixed count of nodes, so
+  `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
+  one hash and the two tables that drop shadowed rules and declarations
+  compared selector subtrees on every probe; the heaviest stylesheet in the
+  corpus spends a third of what it did on that pass (#493)
 
 ### Custom properties
 

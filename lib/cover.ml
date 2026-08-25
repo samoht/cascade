@@ -4,11 +4,14 @@ module Props = Set.Make (struct
   let compare = Stdlib.compare
 end)
 
+(* Keyed on the selector itself, so it carries the same requirement as the
+   shadowing table next door: the stdlib hash reads a fixed count of nodes, and
+   rules written under one deep prefix would all land in one bucket. *)
 module Selector_tbl = Hashtbl.Make (struct
   type t = Selector.t
 
-  let equal = ( = )
-  let hash = Hashtbl.hash
+  let equal = Selector.equal
+  let hash = Selector.hash
 end)
 
 type entry = Props.t * Props.t

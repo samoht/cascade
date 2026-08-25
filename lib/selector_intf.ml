@@ -257,6 +257,13 @@ type t =
   | Nesting (* & - CSS nesting selector *)
 
 let equal (a : t) b = a = b
-let hash (selector : t) = Hashtbl.hash selector
+
+(* [Hashtbl.hash] reads ten meaningful nodes, and [Combined] nests to the right,
+   so what tells [.a .b .c .d .e .f .g] from [.a .b .c .d .e .f .h] sits past
+   where it stops: every selector behind a six-deep prefix takes one hash, and a
+   table keyed by one degenerates into a scan comparing selector subtrees down
+   the chain they share. 256 is the largest budget the runtime honours, and it
+   reaches the tail of any selector CSS is written with. *)
+let hash (selector : t) = Hashtbl.hash_param 256 256 selector
 let equal_specificity (a : specificity) b = a = b
 let equal_combinator (a : combinator) b = a = b
