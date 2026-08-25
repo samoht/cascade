@@ -114,6 +114,38 @@ let test_merge_containers_keeps_distinct_conditions () =
     (List.length
        (Block.merge_consecutive_containers ~optimize_merged_block:id stmts))
 
+(* Conditional Rules 5 sec. 5.4: a [<container-query>] that names an unknown
+   container feature selects no query container, so it is never true.
+   [@container (inline-size\ \>\=\ 10px)] is one escaped ident, a boolean
+   feature named [inline-size >= 10px], while [@container (inline-size >= 10px)]
+   is the size range that inline-size containers are made for. The two spell the
+   same characters, and merging them applies declarations the input never let
+   match. Same shape as the escaped [@layer] dot and the escaped [@media] type
+   above. *)
+let test_merge_containers_keeps_an_escaped_feature_name_apart () =
+  let css =
+    {|@container (inline-size\ \>\=\ 10px){.x{color:red}}@container (inline-size>=10px){.y{color:blue}}|}
+  in
+  Alcotest.(check int)
+    "an unknown container feature is not merged into a real one" 2
+    (List.length
+       (Block.merge_consecutive_containers ~optimize_merged_block:id (block css)))
+
+(* Conditional Rules 5 sec. 6.1 gives a [<size-feature>] the media feature
+   syntax, so Media Queries 4 sec. 2.4.4 applies: a [min-] prefix on a range
+   feature is the [>=] comparison. These two blocks carry one bound in two
+   spellings and the cascade evaluates them identically. *)
+let test_merge_containers_joins_two_spellings_of_one_bound () =
+  let stmts =
+    block
+      "@container (min-width:10px){.x{color:red}}@container \
+       (width>=10px){.y{color:blue}}"
+  in
+  Alcotest.(check int)
+    "two spellings of one bound merge into one block" 1
+    (List.length
+       (Block.merge_consecutive_containers ~optimize_merged_block:id stmts))
+
 let test_drop_empty_rules () =
   let stmts = block ".a{}.b{color:red}.c{}" in
   let out = render (Block.drop_empty_rules stmts) in
@@ -252,6 +284,10 @@ let suite =
         test_merge_containers_by_condition;
       Alcotest.test_case "keep distinct-condition @container" `Quick
         test_merge_containers_keeps_distinct_conditions;
+      Alcotest.test_case "keep an escaped container feature out of a merge"
+        `Quick test_merge_containers_keeps_an_escaped_feature_name_apart;
+      Alcotest.test_case "merge two spellings of one container bound" `Quick
+        test_merge_containers_joins_two_spellings_of_one_bound;
       Alcotest.test_case "drop empty rules" `Quick test_drop_empty_rules;
       Alcotest.test_case "drop empty @-moz-document" `Quick
         test_drop_empty_moz_document;
