@@ -578,6 +578,42 @@ let test_inline_at_path_cost_is_linear () =
     true
     (a1 = 0. || a2 < a1 *. 2.5)
 
+(* A [page-break-*] declaration holding a [var()] is inlined like any other, and
+   the property it names has to survive the substitution. [page-break-*]
+   serialises under minify as its CSS Fragmentation 3 sec. 3.4 [break-*] alias,
+   so a pass that rebuilds the declaration from that spelling rebuilds a
+   different property: [break-inside] does not even accept [always]. Built
+   through the typed API because the reader has no [var()] arm for these
+   three. *)
+let test_inline_keeps_a_page_break_property () =
+  let inline_one property value decl =
+    Css.inline_vars
+      [
+        Stylesheet.Rule
+          (Stylesheet.rule
+             ~selector:(Selector.of_string ":root")
+             [ Declaration.custom_property property value ]);
+        Stylesheet.Rule
+          (Stylesheet.rule ~selector:(Selector.of_string ".a") [ decl ]);
+      ]
+    |> Css.to_string
+  in
+  let check name expected decl value =
+    Alcotest.(check string) name expected (inline_one "--pb" value decl)
+  in
+  check "page-break-after keeps its own property"
+    ".a {\n  page-break-after: always;\n}"
+    (Declaration.v Properties.Page_break_after (Var (Values.var_ref "pb")))
+    "always";
+  check "page-break-before keeps its own property"
+    ".a {\n  page-break-before: always;\n}"
+    (Declaration.v Properties.Page_break_before (Var (Values.var_ref "pb")))
+    "always";
+  check "page-break-inside keeps its own property"
+    ".a {\n  page-break-inside: avoid;\n}"
+    (Declaration.v Properties.Page_break_inside (Var (Values.var_ref "pb")))
+    "avoid"
+
 let suite =
   ( "inline",
     [
@@ -646,4 +682,6 @@ let suite =
         `Quick test_inline_layer_order_sites;
       Alcotest.test_case "inline vars keep a layer that still decides a slot"
         `Quick test_inline_layer_flattening;
+      Alcotest.test_case "inline vars keep a page-break property" `Quick
+        test_inline_keeps_a_page_break_property;
     ] )
