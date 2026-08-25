@@ -1563,6 +1563,59 @@ let font_family_value_parser () =
   roundtrip "var(--font-source-sans-pro), system-ui";
   roundtrip "var(--font-ubuntu-mono)"
 
+(* The legacy option-returning value parsers all accept one complete value and
+   turn malformed or trailing input into [None], without leaking parser
+   exceptions. Keep that shared public contract while their cursor plumbing is
+   consolidated. *)
+let option_value_parser_contracts () =
+  let parsers =
+    [
+      ( "length",
+        (fun s -> Option.is_some (Css.parse_length s)),
+        "1px",
+        "red",
+        "1px red" );
+      ( "color",
+        (fun s -> Option.is_some (Css.parse_color s)),
+        "red",
+        "not-a-color",
+        "red junk" );
+      ( "shadow",
+        (fun s -> Option.is_some (Css.parse_shadow s)),
+        "0 1px 2px #000",
+        "not-a-shadow",
+        "0 1px 2px #000 junk" );
+      ( "background-image",
+        (fun s -> Option.is_some (Css.parse_background_image s)),
+        "url(a.png)",
+        "red",
+        "url(a.png) junk" );
+      ( "font-family",
+        (fun s -> Option.is_some (Css.parse_font_family s)),
+        "Inter, sans-serif",
+        ",",
+        "Inter, sans-serif !" );
+      ( "list-style-type",
+        (fun s -> Option.is_some (Css.parse_list_style_type s)),
+        "square",
+        "nonsense-style",
+        "square junk" );
+      ( "list-style-image",
+        (fun s -> Option.is_some (Css.parse_list_style_image s)),
+        "none",
+        "red",
+        "none junk" );
+    ]
+  in
+  List.iter
+    (fun (name, accepts, valid, malformed, trailing) ->
+      Alcotest.(check bool) (name ^ " complete value") true (accepts valid);
+      Alcotest.(check bool)
+        (name ^ " malformed value")
+        false (accepts malformed);
+      Alcotest.(check bool) (name ^ " trailing input") false (accepts trailing))
+    parsers
+
 (* CSS Syntax 3 sec. 5.4.2 "consume an at-rule" builds an at-rule node for any
    at-keyword, recognised or not; the block it consumes keeps its contents.
    Discarding an unrecognised at-rule is a user-agent cascade step (CSS 2.1 sec.
@@ -1634,6 +1687,8 @@ let suite =
         list_style_value_parsers;
       Alcotest.test_case "font-family value parser" `Quick
         font_family_value_parser;
+      Alcotest.test_case "option value parser contracts" `Quick
+        option_value_parser_contracts;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
       Alcotest.test_case "rules_of_statements" `Quick test_rules_of_statements;

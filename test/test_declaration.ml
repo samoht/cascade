@@ -1694,6 +1694,24 @@ let custom_property_values () =
   check_declaration ~expected:"z-index:var(--spec-value,{color:red;})"
     "z-index: var(--spec-value, { color: red; })"
 
+(* A typed custom property carries its layer as metadata; the layer does not
+   select a different CSS value serialization. In particular, the historical
+   [theme] layer and any caller-defined layer print the same font-family
+   value. *)
+let typed_custom_font_family_layer_printing () =
+  let render layer =
+    let declaration, _ =
+      Css.var ~layer "font-body" Css.Font_family
+        (Css.font_stack [ Css.Name "Inter"; Css.Sans_serif ])
+    in
+    Css.Declaration.to_string ~minify:true declaration
+  in
+  let theme = render "theme" in
+  Alcotest.(check string)
+    "typed font family" "--font-body:Inter,sans-serif" theme;
+  Alcotest.(check string)
+    "layer-independent serialization" theme (render "utilities")
+
 (* [parse_custom_property] builds a declaration from a name and value that came
    from outside the parser, so it takes only a pair that writes back as the one
    declaration it claims to be: a [<dashed-ident>] name, written back with the
@@ -3271,6 +3289,8 @@ let declaration_tests =
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
     test_case "custom property values" `Quick custom_property_values;
+    test_case "typed custom font family layers print alike" `Quick
+      typed_custom_font_family_layer_printing;
     test_case "parse_custom_property rejects an escaping pair" `Quick
       parse_custom_property_guard;
     test_case "custom_property refuses an escaping pair" `Quick
