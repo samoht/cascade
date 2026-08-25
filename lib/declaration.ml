@@ -961,15 +961,10 @@ let read_place_self_value t =
 let read_background_blend_mode_value t =
   v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
-let prop_name (type a) (prop_type : a property) =
-  let buf = Buffer.create 32 in
-  let ctx = Pp.ctx ~minify:true buf in
-  pp_property ctx prop_type;
-  Buffer.contents buf
-
-(* The spelling a property parses back from. [prop_name] renders under minify,
-   where [page-break-*] becomes the CSS Fragmentation 3 sec. 3.4 [break-*] alias
-   of a different property. *)
+(* The spelling a property parses back from, and the one a diagnostic names: a
+   minified [page-break-*] is the CSS Fragmentation 3 sec. 3.4 [break-*] alias
+   of a different property, which reports the failure against a property the
+   declaration never wrote. *)
 let canonical_prop_name (type a) (prop : a property) =
   Pp.to_string ~minify:false pp_property prop
 
@@ -1916,14 +1911,16 @@ let rec read_value_from : type a.
     value_reader list -> a property -> Cursor.t -> declaration =
  fun readers prop t ->
   match readers with
-  | [] -> Cursor.err_invalid t ("unsupported property reader: " ^ prop_name prop)
+  | [] ->
+      Cursor.err_invalid t
+        ("unsupported property reader: " ^ canonical_prop_name prop)
   | reader :: rest -> (
       match reader.read_value_opt prop t with
       | Some decl -> decl
       | None -> read_value_from rest prop t)
 
 let read_value (type a) (prop : a property) t : declaration =
-  Cursor.with_context t (prop_name prop) @@ fun () ->
+  Cursor.with_context t (canonical_prop_name prop) @@ fun () ->
   match prop with
   | Custom_property name ->
       Cursor.err_invalid t
@@ -2205,7 +2202,7 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
       in
       try read ()
       with Cursor.Parse_error e ->
-        Error.fail (Error.with_property (prop_name prop_type) e))
+        Error.fail (Error.with_property (canonical_prop_name prop_type) e))
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;

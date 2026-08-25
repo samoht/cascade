@@ -108,6 +108,12 @@ answers.
 
 ### Parsing
 
+- A parse error in a `page-break-before`, `page-break-after` or
+  `page-break-inside` declaration is reported against the property the
+  declaration wrote. The diagnostic named the CSS Fragmentation 3 sec. 3.4
+  `break-*` property those minify to, which is a different property with
+  different values, so the message pointed at a property the author never used
+  (#518)
 - A `var()` in a `page-break-before`, `page-break-after` or
   `page-break-inside` declaration is read as the property it names. These
   three were the only fragmentation properties whose reader had no `var()`
