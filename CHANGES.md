@@ -79,6 +79,11 @@ answers.
 - `Cascade.Reader.parse_error` gains `line` and `col`, and `filename` holds a
   source name where it packed `"<CSS input>:L:C"`: read the location from the
   two new fields, and `with_filename` keeps it instead of overwriting (#491)
+- `Css.kind` gains `Radial_shape`, `Radial_size` and `Position_value`, so a
+  match on it is no longer exhaustive and needs the three arms. They let
+  `Css.Variables.var` bind a radial gradient's shape, size or centre
+  `<position>` as a typed custom property, where it could only take those as an
+  opaque token stream (#508)
 
 ### Parsing
 

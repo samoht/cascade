@@ -2111,6 +2111,9 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Gradient_stop -> pp pp_gradient_stop
   | Gradient_direction -> pp pp_gradient_direction
   | Gradient_position -> pp pp_gradient_position
+  | Radial_shape -> pp pp_radial_shape
+  | Radial_size -> pp pp_radial_size
+  | Position_value -> pp pp_position_value
   | Animation -> pp pp_animation
   | Timing_function -> pp pp_timing_function
   | Transform -> pp pp_transform

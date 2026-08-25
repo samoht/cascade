@@ -1875,6 +1875,9 @@ let vars_of_kind : type a. a kind -> a -> any_var list =
   | Gradient_stop -> vars_of_gradient_stop value
   | Gradient_direction -> vars_of_gradient_direction value
   | Gradient_position -> vars_of_gradient_position value
+  | Radial_shape -> vars_of_radial_shape value
+  | Radial_size -> vars_of_radial_size value
+  | Position_value -> vars_of_position_value value
   | Animation -> vars_of_animation value
   | Timing_function -> []
   | Transform -> vars_of_transform value
