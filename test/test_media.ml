@@ -482,6 +482,72 @@ let spec_media_unitless_zero_length () =
   check_recovers "non-zero number is not a length" "(min-width: 1)";
   check_recovers "non-zero number in a range" "(width >= 1)"
 
+(* Media Queries 4 sec. 2.4.4 "Using 'min-' and 'max-' Prefixes On Range
+   Features": "Using a 'min-' prefix on a feature name is equivalent to using
+   the '>=' operator", and 'max-' is the '<=' operator. Two spellings of one
+   query, so [equal] must not read them as two. Sec. 2.4.3 adds the value-first
+   spelling and the two interval directions to the same class. *)
+let equal_ignores_bound_spelling () =
+  let same name a b =
+    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+  in
+  same "min- prefix is the >= comparison" "(min-width: 10px)" "(width >= 10px)";
+  same "max- prefix is the <= comparison" "(max-width: 10px)" "(width <= 10px)";
+  same "value-first range" "(10px <= width)" "(width >= 10px)";
+  same "value-first strict range" "(10px < width)" "(width > 10px)";
+  same "min- prefix against the value-first spelling" "(min-width: 10px)"
+    "(10px <= width)";
+  same "descending interval" "(20em >= width >= 10em)" "(10em <= width <= 20em)";
+  same "all is the identity media type" "all and (min-width: 10px)"
+    "(width >= 10px)";
+  (* An inclusive bound is not the strict one: normalising the spelling must not
+     normalise away the comparison. *)
+  let differ name a b =
+    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+  in
+  differ "inclusive is not strict" "(min-width: 10px)" "(width > 10px)";
+  differ "a lower bound is not an upper bound" "(min-width: 10px)"
+    "(max-width: 10px)";
+  differ "the bound value still counts" "(min-width: 10px)" "(min-width: 11px)"
+
+(* An unknown media type never matches (Media Queries 4 sec. 3.2 error
+   handling), so a query whose type is one escaped ident is not the query that
+   spells the same characters as a type plus a condition. They share a
+   serialisation, which is why [equal] cannot be an equality on serialised
+   text. *)
+let equal_separates_an_escaped_media_type () =
+  let escaped = of_string {|screen\ and\ \(min-width\:\ 10px\)|} in
+  let real = of_string "screen and (min-width: 10px)" in
+  Alcotest.(check string)
+    "the witness is a serialisation collision" (to_string real)
+    (to_string escaped);
+  Alcotest.(check bool)
+    "an unknown media type is not a media type plus a condition" false
+    (equal escaped real)
+
+(* An opaque condition carries no structure to reason over, so it equals an
+   identical spelling and nothing else. Reflexivity is not optional: [equal] is
+   an equality, and the duplicate scan in [Block] reads a query against
+   itself. *)
+let equal_on_opaque_conditions () =
+  let opaque = of_string "theme(static)" in
+  Alcotest.(check bool)
+    "an opaque condition equals itself" true
+    (equal opaque (of_string "theme(static)"));
+  Alcotest.(check bool)
+    "an opaque condition does not equal a different spelling" false
+    (equal opaque (of_string "theme( static )"));
+  Alcotest.(check bool)
+    "an opaque condition does not equal a different one" false
+    (equal opaque (of_string "theme(dynamic)"));
+  (* Nothing in an opaque condition is read, so it does not equal the feature
+     whose serialisation it happens to share. *)
+  Alcotest.(check bool)
+    "an opaque condition is not the feature it spells" false
+    (equal
+       (of_string "(unknown-feature: 1)")
+       (feat (General_enclosed "(unknown-feature: 1)")))
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -515,4 +581,9 @@ let suite =
       test_case "media-not takes a media-in-parens" `Quick
         media_not_takes_media_in_parens;
       test_case "negated all is level 4 not" `Quick negated_all_is_level4_not;
+      test_case "equal ignores bound spelling" `Quick
+        equal_ignores_bound_spelling;
+      test_case "equal separates an escaped media type" `Quick
+        equal_separates_an_escaped_media_type;
+      test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
     ] )
