@@ -836,38 +836,33 @@ let rec rewrite_shadow_value color_vars (value : Properties.shadow) :
 
 let rewrite_shadow_decl color_vars = function
   | Declaration.Declaration
-      ({ property = Properties.Box_shadow; value; _ } as decl) ->
-      Declaration.Declaration
-        { decl with value = rewrite_shadow_value color_vars value }
+      { property = Properties.Box_shadow as property; value; important; _ } as
+    decl ->
+      let value' = rewrite_shadow_value color_vars value in
+      if value' == value then decl else Declaration.v ~important property value'
   | Declaration.Declaration
-      ({
-         property = Properties.Custom_property _;
-         value =
-           Properties.Custom_value
-             {
+      {
+        property = Properties.Custom_property _ as property;
+        value =
+          Properties.Custom_value
+            ({
                value =
                  Properties.Typed { kind = Properties.Shadow; value = shadow };
-               layer;
-               meta;
-             };
-         _;
-       } as decl) ->
-      Declaration.Declaration
-        {
-          decl with
-          value =
-            Properties.Custom_value
-              {
-                value =
-                  Properties.Typed
-                    {
-                      kind = Properties.Shadow;
-                      value = rewrite_shadow_value color_vars shadow;
-                    };
-                layer;
-                meta;
-              };
-        }
+               _;
+             } as custom_value);
+        important;
+        _;
+      } as decl ->
+      let shadow' = rewrite_shadow_value color_vars shadow in
+      if shadow' == shadow then decl
+      else
+        Declaration.v ~important property
+          (Properties.Custom_value
+             {
+               custom_value with
+               value =
+                 Properties.Typed { kind = Properties.Shadow; value = shadow' };
+             })
   | decl -> decl
 
 let normalise_shadows stylesheet =

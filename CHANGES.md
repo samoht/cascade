@@ -19,6 +19,11 @@ answers.
 
 ### Breaking
 
+- `Declaration.declaration` is a private variant. Its constructors remain
+  available for pattern matching, but construct values with `Declaration.v` or
+  `Declaration.theme_guarded`. The public records exposed their cached hash, so
+  a caller could give equal declarations different caches and make the
+  optimizer treat them as unequal.
 - `Css.Media.equal` reads normalised query structure where it read serialised
   text, so it is no longer `Css.Media.compare a b = 0` and answers differently
   both ways: `(min-width: 10px)` and `(width >= 10px)` are now equal, and two

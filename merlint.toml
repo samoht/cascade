@@ -5,3 +5,9 @@
 [[rules]]
 files = "lib/prop_*.ml"
 exclude = ["E505"]
+
+# Declaration.declaration is an existing public API name. Its constructors are
+# repeated in the interface to make them private without renaming the type.
+[[rules]]
+files = "lib/declaration.mli"
+exclude = ["E330"]
