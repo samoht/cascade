@@ -20,4 +20,9 @@ val declarations_equal :
 (** Compare declaration lists with physical-identity fast path. *)
 
 val compatible : Selector.t -> Selector.t -> bool
-(** Whether two selector-list branches can safely share one selector list. *)
+(** Whether two selector-list branches can safely share one selector list. The
+    relation is reflexive and symmetric but not transitive. *)
+
+val all_compatible : Selector.t list -> bool
+(** [all_compatible sels] is whether every pair in [sels] is {!compatible}, read
+    off each selector once rather than once per pair. *)

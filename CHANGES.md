@@ -406,6 +406,11 @@ answers.
   run rebuilt every block it compared; indexing each block once by the slots it
   writes cuts 400 same-selector rules of 20 declarations to 4% of the
   allocations and 12% of the instructions (#480)
+- `--minify` groups a long run of same-body rules in less memory, for
+  byte-identical output. Whether the run can share one selector list was asked
+  of every pair of it, though the answer is read off each selector alone;
+  reading each once cuts 400 such rules to 17% of the allocations and 12% of
+  the instructions (#486)
 
 ### Custom properties
 

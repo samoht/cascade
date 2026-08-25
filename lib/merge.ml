@@ -46,13 +46,40 @@ let selector_list = function
       let flatten = function Selector.List xs -> xs | s -> [ s ] in
       Selector.List (List.concat_map flatten sels)
 
+(* Everything [compatible] reads off a selector. [Guarded] is an
+   [:is(:where(...))] group- or peer- variant; [Newer] carries, outside any
+   forgiving [:is()]/[:where()], a pseudo-class an older browser drops the whole
+   rule for; [Plain] is neither. *)
+type compatibility = Plain | Newer | Guarded
+
+let compatibility sel =
+  if Selector.has_is_where_pattern sel then Guarded
+  else if Selector.has_newer_pseudo_class sel then Newer
+  else Plain
+
 let compatible sel1 sel2 =
-  let sel1_complex = Selector.has_is_where_pattern sel1 in
-  let sel2_complex = Selector.has_is_where_pattern sel2 in
-  if sel1_complex <> sel2_complex then
-    let plain_sel = if sel1_complex then sel2 else sel1 in
-    not (Selector.has_newer_pseudo_class plain_sel)
-  else true
+  match (compatibility sel1, compatibility sel2) with
+  | Newer, Guarded | Guarded, Newer -> false
+  | _ -> true
+
+(* [compatible] rejects one pair and no other, so a list holds only compatible
+   pairs exactly when it does not hold both ends of it: one pass that reads each
+   selector once stands in for the N(N-1)/2 pair loop.
+
+   Sorting the list and checking neighbours would not, because [compatible] is
+   reflexive and symmetric but NOT transitive - [Newer] sits with [Plain] and
+   [Plain] sits with [Guarded], while [Newer] and [Guarded] never sit
+   together. *)
+let all_compatible sels =
+  let rec loop newer guarded = function
+    | [] -> true
+    | sel :: rest -> (
+        match compatibility sel with
+        | Plain -> loop newer guarded rest
+        | Newer -> (not guarded) && loop true guarded rest
+        | Guarded -> (not newer) && loop newer true rest)
+  in
+  loop false false sels
 
 let rec declaration_lists_equal ~same d1 d2 =
   match (d1, d2) with

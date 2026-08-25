@@ -48,7 +48,6 @@ let declarations_equal (a : Declaration.declaration list)
 
 let merge_selector_list = Merge.selector_list
 let contains_vendor_pseudo_element = Merge.vendor
-let selectors_compatible = Merge.compatible
 let decls_size = Size.decls
 let mix_int = Common.mix_int
 let hash_string = Common.hash_string
@@ -285,22 +284,11 @@ let selector_keys_equal left right =
   in
   loop left right
 
-let pairwise_compatible rules =
-  let rec loop = function
-    | [] | [ _ ] -> true
-    | (r : rule) :: rest ->
-        List.for_all
-          (fun (other : rule) -> selectors_compatible r.selector other.selector)
-          rest
-        && loop rest
-  in
-  loop rules
-
 (* Any identical-body rules can group into a selector list: a list of disjoint
    selectors, including distinct pseudo-elements ([::before] and [::after] never
    match a common box), is exactly equivalent to the separate rules, and the DAG
    enforces cascade-order safety. *)
-let can_group_selectors rules = pairwise_compatible rules
+let can_group_selectors = Merge.all_compatible
 let body_equal_key g id = Rule_graph.declaration_body_key g id
 let body_bucket_key g id = body_equal_key g id |> hash_ints
 
@@ -352,14 +340,13 @@ let grouped_rule (rules : rule list) : rule option =
   match rules with
   | [] -> Option.None
   | first :: _ ->
-      if not (can_group_selectors rules) then Option.None
+      let selectors = List.map (fun (r : rule) -> r.selector) rules in
+      if not (can_group_selectors selectors) then Option.None
       else
         Option.Some
           {
             first with
-            selector =
-              merge_selector_list
-                (List.map (fun (r : rule) -> r.selector) rules);
+            selector = merge_selector_list selectors;
             nested = [];
             merge_key = Option.None;
           }
