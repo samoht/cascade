@@ -588,6 +588,12 @@ answers.
   so a build gating on the exit status passes on valid CSS. The check rendered
   the sheet, and an empty rule, a redundant `@charset "UTF-8"` or an `src`-less
   `@font-face` prints nothing while losing nothing (#489)
+- `cascade fmt` exits 1 when parse recovery left no statement at all, where it
+  exited 1 when the printed output was empty and the parse had warned. A rule
+  survives a declaration the parser could not read, and `--minify` removes a
+  redundant `@charset "UTF-8"` or an `src`-less `@font-face` that nothing
+  lost, so both failed a build over CSS the parser used in full. The status
+  now answers the question `cascade apply` asks of each source (#494)
 - `cascade diff` names an at-rule that carries no condition of its own by the
   head it prints to, rather than describing every one identically. That
   description keys the ordering comparison, so a `@media` that moved between a

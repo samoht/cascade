@@ -43,21 +43,19 @@ let resolve_inline_imports ~input_path stylesheet =
   end
   else Cli_inline_imports.run ~base_url:input_path stylesheet
 
-(* Returns the number of bytes written, so the caller can tell a stylesheet that
-   serialised to nothing from one that had nothing to serialise. *)
 let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   let buf = Buffer.create 4096 in
   Css.to_buffer buf ~minify ~lossless ~enforce_spec stylesheet;
   let len = Buffer.length buf in
   if len > 0 && Buffer.nth buf (len - 1) <> '\n' then Buffer.add_char buf '\n';
-  Buffer.output_buffer stdout buf;
-  len
+  Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag
     ~inline_vars_flag ~keep_vars ~profile =
   try
     let input = Cli_io.read_input ~enforce_spec input_path in
+    Cli_io.check_not_all_dropped input;
     let stylesheet = input.Cli_io.stylesheet in
     let stylesheet =
       if inline_imports_flag then resolve_inline_imports ~input_path stylesheet
@@ -78,8 +76,7 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
           ~closed_world ~objective ~stats stylesheet
       else stylesheet
     in
-    let written = emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet in
-    Cli_io.check_not_all_dropped input ~written;
+    emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
     if profile then report_profile (Stats.snapshot stats)
   with
   | Sys_error msg ->
@@ -292,8 +289,9 @@ let man =
     `I ("0", "on success, including a parse that recovered some of the input");
     `I
       ( "1",
-        "if the input cannot be read, or if parse recovery dropped everything \
-         and the output would be an empty stylesheet" );
+        "if the input cannot be read, or if parse recovery left no statement \
+         at all. An output that is empty because the stylesheet held nothing a \
+         browser acts on is a success" );
     `S Manpage.s_examples;
     `P "Pretty-print a CSS file:";
     `Pre "  cascade fmt style.css";
