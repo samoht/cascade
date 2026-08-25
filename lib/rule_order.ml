@@ -294,39 +294,53 @@ let merge ~canon_body scan changed ~from ~into =
       scan.merged_any <- true;
       changed := true
 
+(* What makes two run elements the same cascade slot, so that one can fold into
+   the other. Style, media and supports shapes retain their text keys, while a
+   container condition uses the structural equality that decides whether two
+   queries select the same containers. Its normalised spelling is only a hash:
+   collisions still reach [equal] instead of becoming merges. *)
+module Shape_key = struct
+  type t = Text of string | Container of string option * Container.t option
+
+  let equal a b =
+    match (a, b) with
+    | Text a, Text b -> String.equal a b
+    | Container (an, ac), Container (bn, bc) ->
+        Option.equal String.equal an bn && Option.equal Container.equal ac bc
+    | (Text _ | Container _), _ -> false
+
+  let hash = function
+    | Text text -> Hashtbl.hash (0, text)
+    | Container (name, cond) ->
+        let cond =
+          Option.map
+            (fun c -> Container.to_string ~minify:true (Container.normalize c))
+            cond
+        in
+        Hashtbl.hash (1, name, cond)
+end
+
+module Shape_table = Hashtbl.Make (Shape_key)
+
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
 let try_merge ~canon_body scan changed ~last ~key i j =
   if interval_clear scan ~lo:i ~hi:j scan.members.(i) then begin
     merge ~canon_body scan changed ~from:i ~into:j;
-    Hashtbl.replace last key j
+    Shape_table.replace last key j
   end
   else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
     merge ~canon_body scan changed ~from:j ~into:i
-  else Hashtbl.replace last key j
+  else Shape_table.replace last key j
 
-(* What makes two run elements the same cascade slot, so that one can fold into
-   the other. A style rule is keyed by its selector, a conditional block by its
-   kind and condition; the [@]-prefix keeps the two namespaces apart. A block
-   whose interior is not summarisable never became a run element, so it cannot
-   reach here. *)
 let shape_key = function
-  | Style r -> Pp.to_string ~minify:true Selector.pp r.selector
+  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
   | Block (Media_query m, _) ->
-      String.concat "" [ "@media "; Media.to_string m ]
+      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
   | Block (Feature_query c, _) ->
-      String.concat "" [ "@supports "; Supports.to_string c ]
-  | Block (Container_query (name, cond), _) ->
-      String.concat ""
-        [
-          "@container ";
-          Option.value ~default:"" name;
-          " ";
-          (match cond with
-          | Some c -> Container.to_string ~minify:true c
-          | None -> "");
-        ]
+      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
+  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
 
 let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
@@ -357,15 +371,15 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
           merged_any = false;
         }
       in
-      let last = Hashtbl.create 16 in
+      let last = Shape_table.create 16 in
       for j = 0 to n - 1 do
         match element_key (fst arr.(j)) with
         | None -> ()
         | Some key -> (
-            match Hashtbl.find_opt last key with
+            match Shape_table.find_opt last key with
             | Some i when scan.alive.(i) ->
                 try_merge ~canon_body scan changed ~last ~key i j
-            | _ -> Hashtbl.replace last key j)
+            | _ -> Shape_table.replace last key j)
       done;
       if not scan.merged_any then run
       else Array.to_list arr |> List.filteri (fun i _ -> scan.alive.(i))

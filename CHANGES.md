@@ -565,6 +565,11 @@ answers.
 
 ### Canonical diff
 
+- The canonical projection keeps structurally distinct `@container` conditions
+  in separate cascade slots even when their minified text is identical. An
+  escaped unknown feature such as `(inline-size\>\=10px)` no longer merges into
+  the real `(inline-size >= 10px)` size range and moves its declarations under
+  a condition the input never gave them.
 - A fully transparent `oklab()` with a missing axis, such as
   `oklab(0% none none / 0)`, compares equal to transparent black.
   Non-transparent forms stay distinct (#312)
