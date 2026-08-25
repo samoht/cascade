@@ -196,11 +196,11 @@ answers.
   `Css.of_string ~strict:true` rejects it. CSS Syntax 3 sec. 5.5.3 makes the
   shape invalid so that a `{}`-block inside a custom property value is never
   misread as a rule; the drop itself was silent (#473)
-- `position-area` takes the logical `start`, `end`, `self-start` and
-  `self-end`, along with their `span-` forms. css-anchor-position-1
-  sec. 3.1.2 gives them two `{1,2}` branches of the grammar and browsers lay
-  them out, but cascade had no keyword for any of them and dropped the
-  declaration (#478)
+- `position-area` takes the logical `start`/`end` keywords along with their
+  `self-`, `self-x-`, `self-y-`, `self-block-` and `self-inline-` forms and
+  every `span-` spelling. css-anchor-position-1 sec. 3.1.2 gives them a branch
+  of the grammar and browsers lay them out, but cascade had no keyword for any
+  of them and dropped the declaration (#478, #485)
 
 ### Printing
 
