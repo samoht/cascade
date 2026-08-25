@@ -252,6 +252,131 @@ let spec_container_unitless_zero_length () =
   check "range" "(width >= 0)" "(width >= 0px)";
   rejects_invalid "(min-width: 1)"
 
+(* CSS Conditional Rules 5 sec. 6.1 "Size Container Features": "The syntax of a
+   <size-feature> is the same as for a media feature", so Media Queries 4 sec.
+   2.4.4 "Using 'min-' and 'max-' Prefixes On Range Features" reaches @container
+   too: a [min-] prefix on a range feature is the [>=] comparison and [max-] is
+   [<=]. Sec. 2.4.3 adds the value-first spelling and the two interval
+   directions to the same class. *)
+let equal_ignores_bound_spelling () =
+  let open Css.Container in
+  let same name a b =
+    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+  in
+  same "min- prefix is the >= comparison" "(min-width: 10px)" "(width >= 10px)";
+  same "min- prefix against the value-first spelling" "(min-width: 10px)"
+    "(10px <= width)";
+  same "the rem shorthand is the same bound" "(min-width: 24rem)"
+    "(width >= 24rem)";
+  same "max- prefix is the <= comparison" "(max-inline-size: 10px)"
+    "(inline-size <= 10px)";
+  same "value-first strict range" "(10px < inline-size)" "(inline-size > 10px)";
+  same "descending interval" "(20em >= inline-size >= 10em)"
+    "(10em <= inline-size <= 20em)";
+  (* An inclusive bound is not the strict one: normalising the spelling must not
+     normalise away the comparison. *)
+  let differ name a b =
+    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+  in
+  differ "inclusive is not strict" "(min-width: 10px)" "(width > 10px)";
+  differ "a lower bound is not an upper bound" "(min-width: 10px)"
+    "(max-width: 10px)";
+  differ "the bound value still counts" "(min-width: 10px)" "(min-width: 11px)";
+  differ "the axis still counts" "(min-width: 10px)" "(min-height: 10px)"
+
+(* Conditional Rules 5 sec. 5.4: a <container-query> naming an unknown container
+   feature selects no query container, so it is never true. [(inline-size\ \>\=\
+   10px)] is one escaped ident, a boolean feature with that name, and it spells
+   the same characters as the size range [(inline-size >= 10px)]. They share a
+   serialisation, which is why [equal] cannot be an equality on serialised
+   text. *)
+let equal_separates_an_escaped_feature_name () =
+  let open Css.Container in
+  let escaped = of_string {|(inline-size\ \>\=\ 10px)|} in
+  let real = of_string "(inline-size >= 10px)" in
+  Alcotest.(check string)
+    "the witness is a serialisation collision" (to_string real)
+    (to_string escaped);
+  Alcotest.(check bool)
+    "an unknown container feature is not the size range it spells" false
+    (equal escaped real);
+  Alcotest.(check bool)
+    "and it still equals itself" true
+    (equal escaped (of_string {|(inline-size\ \>\=\ 10px)|}))
+
+(* CSS Values 4 sec. 9: function names are ASCII case-insensitive, so the case
+   the AST keeps for round-trip is spelling. CSS Syntax 3 sec. 5.5.6 consumes a
+   declaration without the whitespace around its value, so that is spelling
+   too. *)
+let equal_ignores_function_spelling () =
+  let open Css.Container in
+  let same name a b =
+    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+  in
+  same "an uppercase style() is the same query" "STYLE(--x)" "style(--x)";
+  same "an uppercase scroll-state() is the same query"
+    "SCROLL-STATE(stuck: top)" "scroll-state(stuck: top)";
+  same "the space after the colon is not the value" "style(--x: 1)"
+    "style(--x:1)";
+  let differ name a b =
+    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+  in
+  differ "a different style() value is a different query" "style(--x: 1)"
+    "style(--x: 2)";
+  differ "a different custom property is a different query" "style(--x: 1)"
+    "style(--y: 1)";
+  differ "a different scroll-state is a different query"
+    "scroll-state(stuck: top)" "scroll-state(stuck: bottom)"
+
+(* Conditional Rules 5 sec. 5.4: "As with media queries, <general-enclosed>
+   evaluates to unknown". An opaque condition carries no structure to reason
+   over, so it equals an identical spelling and nothing else. Reflexivity is not
+   optional: [equal] is an equality, and the merge scan reads a query against
+   itself. *)
+let equal_on_opaque_conditions () =
+  let open Css.Container in
+  let opaque = of_string "theme(static)" in
+  Alcotest.(check bool)
+    "an opaque condition equals itself" true
+    (equal opaque (of_string "theme(static)"));
+  Alcotest.(check bool)
+    "the parentheses around it are not part of it" true
+    (equal opaque (of_string "(theme(static))"));
+  Alcotest.(check bool)
+    "an opaque condition does not equal a different one" false
+    (equal opaque (of_string "theme(dynamic)"))
+
+(* A normal form is already normal, and it is still the query it came from:
+   reparsing what [normalize] printed lands back on the same normal form. *)
+let normalize_is_idempotent () =
+  let open Css.Container in
+  List.iter
+    (fun input ->
+      let once = normalize (of_string input) in
+      Alcotest.(check string)
+        ("normalize is idempotent: " ^ input)
+        (to_string once)
+        (to_string (normalize once));
+      Alcotest.(check bool)
+        ("a normal form reparses to itself: " ^ input)
+        true
+        (equal once (of_string (to_string once))))
+    [
+      "(min-width: 10px)";
+      "(min-width: 24rem)";
+      "(width >= 10px)";
+      "(10px <= inline-size)";
+      "(20em >= inline-size >= 10em)";
+      "(orientation: landscape)";
+      "not (inline-size > 30em)";
+      "(inline-size > 30em) and (block-size > 10em)";
+      "card (inline-size > 30em)";
+      "style(--x)";
+      "STYLE(--x: 1)";
+      "scroll-state(stuck: top)";
+      "theme(static)";
+    ]
+
 let tests =
   Alcotest.
     [
@@ -275,6 +400,14 @@ let tests =
         spec_container_invalid_vectors;
       test_case "spec container unitless zero length" `Quick
         spec_container_unitless_zero_length;
+      test_case "equal ignores bound spelling" `Quick
+        equal_ignores_bound_spelling;
+      test_case "equal separates an escaped feature name" `Quick
+        equal_separates_an_escaped_feature_name;
+      test_case "equal ignores function spelling" `Quick
+        equal_ignores_function_spelling;
+      test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
+      test_case "normalize is idempotent" `Quick normalize_is_idempotent;
     ]
 
 let suite = ("container", tests)
