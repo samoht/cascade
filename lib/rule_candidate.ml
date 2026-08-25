@@ -1452,9 +1452,39 @@ let default_produce g ~keys ~entries ~exact_common ~group_decls members =
         in
         Option.Some (grouped :: leftovers)
 
+(* Pruning keeps a member only two ways: everything it writes disappears into
+   the group body, or the body hands it back at least as many bytes as naming
+   its selector costs. Both are bounded by the provider's own declarations. The
+   body is drawn from them - [exact_common] filters the provider's list and
+   every default is the provider's declaration for that key - and every
+   declaration the body hands a member is one the member already writes, since
+   [exact_common] holds only declarations common to all members and a removed
+   default is the member's own value. So a member that writes something the
+   provider does not, and whose selector costs more than the provider
+   declarations it shares, is pruned whichever entries survive the safety
+   filters. When no member past the provider clears that bound the group cannot
+   keep two, and it is dropped before the four cross-member scans that would
+   otherwise reach the same answer. The bound is one-sided: it lets through
+   groups that pruning still rejects, never the reverse, so the candidates are
+   the same either way. *)
+let member_may_survive_pruning provider_decls (member : default_member) =
+  List.for_all
+    (fun decl -> decl_mem decl provider_decls)
+    member.rule.declarations
+  || selector_size member.rule + 1
+     <= decls_inline_cost
+          (List.filter
+             (fun decl -> decl_mem decl member.rule.declarations)
+             provider_decls)
+
+let default_group_can_keep_two provider members =
+  List.exists (member_may_survive_pruning provider.rule.declarations) members
+
 let default_candidate_from_members ?size_cache ~finalize g ~seen members =
   match members with
   | [] | [ _ ] -> Option.None
+  | first :: rest when not (default_group_can_keep_two first rest) ->
+      Option.None
   | first :: _ -> (
       let entries =
         common_property_keys members
