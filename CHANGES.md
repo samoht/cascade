@@ -456,6 +456,10 @@ answers.
   one selector or one body, nor probes every pair of them to decide whether it
   may merge. The benchmark corpora hold no such run, so this bounds a worst
   case rather than speeding real input up (#480, #486, #487, #502, #505)
+- `--minify` decides which rules share a default value without rebuilding a
+  property key for every declaration it reads, a scan it repeats once per
+  member per property under consideration. It allocates a twentieth less over
+  the 504-file corpus, for byte-identical output (#517)
 - `--minify` no longer scans quadratically when many rules share a deep
   selector prefix. The structural hash reads a fixed count of nodes, so
   `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
