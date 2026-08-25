@@ -147,19 +147,18 @@ let escape_ident_emit_item buf starts () i = function
          same ident. Hex-escape each byte so the serialized form round-trips. *)
       String.iter (fun c -> add_hex_escape buf c) bs
 
+(* [s] and [n] are parameters rather than free variables of an inner loop, which
+   would cost a closure on every ident escaped. *)
+let rec ascii_ident_continue_from s n i =
+  i >= n
+  || Syntax.is_ascii_ident_continue s.[i]
+     && ascii_ident_continue_from s n (i + 1)
+
 (* An all-ASCII ident (start byte in ident-start, rest in ident-continue)
    serialises to itself byte-for-byte, so [escape_ident]'s buffer + Uutf walk
    would allocate nothing useful. *)
 let escape_ident_needs_no_escape s n =
-  if n = 0 then true
-  else if not (Syntax.is_ascii_ident_start s.[0]) then false
-  else
-    let rec loop i =
-      if i >= n then true
-      else if Syntax.is_ascii_ident_continue s.[i] then loop (i + 1)
-      else false
-    in
-    loop 1
+  n = 0 || (Syntax.is_ascii_ident_start s.[0] && ascii_ident_continue_from s n 1)
 
 let escape_ident s =
   let n = String.length s in
@@ -173,13 +172,7 @@ let escape_ident s =
 
 (* Every code point of an all-ASCII name serialises to itself, so the buffer +
    Uutf walk below would allocate nothing useful. *)
-let escape_name_needs_no_escape s n =
-  let rec loop i =
-    if i >= n then true
-    else if Syntax.is_ascii_ident_continue s.[i] then loop (i + 1)
-    else false
-  in
-  loop 0
+let escape_name_needs_no_escape s n = ascii_ident_continue_from s n 0
 
 let escape_name s =
   let n = String.length s in
@@ -193,8 +186,7 @@ let escape_name s =
     Uutf.String.fold_utf_8 folder () s;
     Buffer.contents buf
 
-let escape_string ~quote ~terminated s =
-  let buf = Buffer.create (String.length s + 2) in
+let add_escaped_string buf ~quote ~terminated s =
   Buffer.add_char buf quote;
   String.iter
     (fun c ->
@@ -205,20 +197,74 @@ let escape_string ~quote ~terminated s =
       else if code < 0x20 || code = 0x7F then add_hex_escape buf c
       else Buffer.add_char buf c)
     s;
-  if terminated then Buffer.add_char buf quote;
-  Buffer.contents buf
+  if terminated then Buffer.add_char buf quote
 
-let string_of_token_kind : Token.kind -> string = function
-  | Token.Ident s -> escape_ident s
-  | Token.Function s -> escape_ident s ^ "("
-  | Token.At_keyword s -> "@" ^ escape_ident s
-  | Token.Hash { value; _ } -> "#" ^ escape_name value
+let add_escaped_url buf s =
+  Buffer.add_string buf "url(";
+  String.iter
+    (fun c ->
+      let code = Char.code c in
+      if code < 0x20 || code = 0x7F then add_hex_escape buf c
+      else if c = '"' || c = '\'' || c = '(' || c = ')' || c = '\\' || c = ' '
+      then (
+        Buffer.add_char buf '\\';
+        Buffer.add_char buf c)
+      else Buffer.add_char buf c)
+    s;
+  Buffer.add_char buf ')'
+
+let digit_at s i = i < String.length s && s.[i] >= '0' && s.[i] <= '9'
+let is_sign c = c = '+' || c = '-'
+
+(* CSS Syntax sec. 9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
+   (signed) digit would re-read as scientific notation, so the leading letter is
+   hex-escaped to keep it out of the number's exponent. [digit_at] and [is_sign]
+   are top-level so this test costs no closure per dimension printed. *)
+let unit_starts_exponent unit_ =
+  let len = String.length unit_ in
+  len >= 2
+  && (unit_.[0] = 'e' || unit_.[0] = 'E')
+  && (digit_at unit_ 1 || (len >= 3 && is_sign unit_.[1] && digit_at unit_ 2))
+
+let add_dimension_unit buf unit_ =
+  if unit_starts_exponent unit_ then (
+    add_hex_escape buf unit_.[0];
+    Buffer.add_string buf
+      (escape_ident (String.sub unit_ 1 (String.length unit_ - 1))))
+  else Buffer.add_string buf (escape_ident unit_)
+
+let add_unicode_range buf ~start_value ~end_value =
+  Buffer.add_string buf "U+";
+  let rec add_hex n acc =
+    if n = 0 && acc = [] then Buffer.add_char buf '0'
+    else if n = 0 then List.iter (Buffer.add_char buf) acc
+    else add_hex (n / 16) (hex_digit (n mod 16) :: acc)
+  in
+  add_hex start_value [];
+  if end_value <> start_value then (
+    Buffer.add_char buf '-';
+    add_hex end_value [])
+
+(* Every token appends straight to the caller's buffer. All three callers are
+   themselves buffer writers, so returning a [string] would allocate one per
+   token whose text is assembled rather than read straight off the token. *)
+let add_token_kind buf : Token.kind -> unit = function
+  | Token.Ident s -> Buffer.add_string buf (escape_ident s)
+  | Token.Function s ->
+      Buffer.add_string buf (escape_ident s);
+      Buffer.add_char buf '('
+  | Token.At_keyword s ->
+      Buffer.add_char buf '@';
+      Buffer.add_string buf (escape_ident s)
+  | Token.Hash { value; _ } ->
+      Buffer.add_char buf '#';
+      Buffer.add_string buf (escape_name value)
   | Token.String { value; quote = _; terminated } ->
       (* Normalize quoting to double-quote (the original quote is kept on the
          token only for quote-sensitive lookups like @charset). CSS Syntax sec.
          4.3.5 recovers an unterminated string; the [terminated] flag is
          preserved so one round-trips, emitting without its closing quote. *)
-      escape_string ~quote:'"' ~terminated value
+      add_escaped_string buf ~quote:'"' ~terminated value
   | Token.Bad_string ->
       (* A bad string keeps no text, so serialize the shortest source that
          re-tokenizes as one, the way [Bad_url] serializes to [url(a b)]. CSS
@@ -226,75 +272,33 @@ let string_of_token_kind : Token.kind -> string = function
          reconsumes that newline, so the quote needs the newline after it and
          the token is always followed by whitespace -- which is what the
          reconsumed newline lexes as, keeping the component count stable. *)
-      "\"\n"
-  | Token.Url s ->
-      let buf = Buffer.create (String.length s + 5) in
-      Buffer.add_string buf "url(";
-      String.iter
-        (fun c ->
-          let code = Char.code c in
-          if code < 0x20 || code = 0x7F then add_hex_escape buf c
-          else if
-            c = '"' || c = '\'' || c = '(' || c = ')' || c = '\\' || c = ' '
-          then (
-            Buffer.add_char buf '\\';
-            Buffer.add_char buf c)
-          else Buffer.add_char buf c)
-        s;
-      Buffer.add_char buf ')';
-      Buffer.contents buf
-  | Token.Bad_url -> "url(a b)"
-  | Token.Delim "\\" -> "\\\n"
-  | Token.Delim s -> s
-  | Token.Number_tok { repr; _ } -> repr
-  | Token.Percentage { repr; _ } -> repr ^ "%"
+      Buffer.add_string buf "\"\n"
+  | Token.Url s -> add_escaped_url buf s
+  | Token.Bad_url -> Buffer.add_string buf "url(a b)"
+  | Token.Delim "\\" -> Buffer.add_string buf "\\\n"
+  | Token.Delim s -> Buffer.add_string buf s
+  | Token.Number_tok { repr; _ } -> Buffer.add_string buf repr
+  | Token.Percentage { repr; _ } ->
+      Buffer.add_string buf repr;
+      Buffer.add_char buf '%'
   | Token.Dimension { number; unit_ } ->
-      (* CSS Syntax sec. 9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
-         (signed) digit would re-read as scientific notation, so hex-escape the
-         leading letter to keep it out of the number's exponent. *)
-      let unit_serialized =
-        let len = String.length unit_ in
-        let next_is_digit i = i < len && unit_.[i] >= '0' && unit_.[i] <= '9' in
-        let is_sign c = c = '+' || c = '-' in
-        if
-          len >= 2
-          && (unit_.[0] = 'e' || unit_.[0] = 'E')
-          && (next_is_digit 1
-             || (len >= 3 && is_sign unit_.[1] && next_is_digit 2))
-        then (
-          let buf = Buffer.create (len + 4) in
-          add_hex_escape buf unit_.[0];
-          Buffer.add_string buf (escape_ident (String.sub unit_ 1 (len - 1)));
-          Buffer.contents buf)
-        else escape_ident unit_
-      in
-      number.repr ^ unit_serialized
-  | Token.Whitespace -> " "
+      Buffer.add_string buf number.repr;
+      add_dimension_unit buf unit_
+  | Token.Whitespace -> Buffer.add_char buf ' '
   | Token.Unicode_range { start_value; end_value; _ } ->
-      let buf = Buffer.create 16 in
-      Buffer.add_string buf "U+";
-      let rec add_hex n acc =
-        if n = 0 && acc = [] then Buffer.add_char buf '0'
-        else if n = 0 then List.iter (Buffer.add_char buf) acc
-        else add_hex (n / 16) (hex_digit (n mod 16) :: acc)
-      in
-      add_hex start_value [];
-      if end_value <> start_value then (
-        Buffer.add_char buf '-';
-        add_hex end_value []);
-      Buffer.contents buf
-  | Token.Cdo -> "<!--"
-  | Token.Cdc -> "-->"
-  | Token.Colon -> ":"
-  | Token.Semicolon -> ";"
-  | Token.Comma -> ","
-  | Token.Open Square -> "["
-  | Token.Close Square -> "]"
-  | Token.Open Paren -> "("
-  | Token.Close Paren -> ")"
-  | Token.Open Curly -> "{"
-  | Token.Close Curly -> "}"
-  | Token.Eof -> ""
+      add_unicode_range buf ~start_value ~end_value
+  | Token.Cdo -> Buffer.add_string buf "<!--"
+  | Token.Cdc -> Buffer.add_string buf "-->"
+  | Token.Colon -> Buffer.add_char buf ':'
+  | Token.Semicolon -> Buffer.add_char buf ';'
+  | Token.Comma -> Buffer.add_char buf ','
+  | Token.Open Square -> Buffer.add_char buf '['
+  | Token.Close Square -> Buffer.add_char buf ']'
+  | Token.Open Paren -> Buffer.add_char buf '('
+  | Token.Close Paren -> Buffer.add_char buf ')'
+  | Token.Open Curly -> Buffer.add_char buf '{'
+  | Token.Close Curly -> Buffer.add_char buf '}'
+  | Token.Eof -> ()
 
 let opening_char : Token.bracket -> char = function
   | Curly -> '{'
@@ -380,7 +384,7 @@ let normal_pair_needs_token_boundary prev next =
   | _ -> false
 
 let rec cv_to_buffer buf : Component.t -> unit = function
-  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
+  | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer buf value;
@@ -553,7 +557,7 @@ let pair_needs_token_boundary prev next =
   | _ -> false
 
 let rec cv_to_buffer_min buf = function
-  | Preserved t -> Buffer.add_string buf (string_of_token_kind t.kind)
+  | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min buf value;
@@ -732,13 +736,12 @@ let fold_value_ident s =
   let lower = String.lowercase_ascii s in
   if Hashtbl.mem case_insensitive_value_idents lower then lower else s
 
-let string_of_custom_value_token ~fold_ident : Token.kind -> string = function
-  | Token.Ident s -> escape_ident (fold_ident s)
-  | other -> string_of_token_kind other
+let add_custom_value_token ~fold_ident buf : Token.kind -> unit = function
+  | Token.Ident s -> Buffer.add_string buf (escape_ident (fold_ident s))
+  | other -> add_token_kind buf other
 
 let rec cv_to_buffer_custom_min ~fold_ident buf : Component.t -> unit = function
-  | Preserved t ->
-      Buffer.add_string buf (string_of_custom_value_token ~fold_ident t.kind)
+  | Preserved t -> add_custom_value_token ~fold_ident buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom ~fold_ident buf value;
