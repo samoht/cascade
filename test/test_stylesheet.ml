@@ -2120,6 +2120,21 @@ let spec_descriptor_recovery_warns_once_per_descriptor () =
   warns_exactly "@font-feature-values Xf { @swash { s: 1 } }" 0;
   warns_exactly "@font-feature-values Xf { ;; @swash { s: 1 } }" 0
 
+(* CSS Fonts 4 sec. 9.2 names the one mandatory descriptor:
+   "@font-palette-values rules require a font-family descriptor; if it is
+   missing, the @font-palette-values rule is invalid and must be ignored
+   entirely." base-palette is optional, and sec. 9.2.2 gives it a default: "If
+   this descriptor is not present in the @font-palette-values, [...] it behaves
+   as if 0 were specified." Both sections read the same in the Editor's Draft
+   and in the TR Working Draft of 25 August 2026. *)
+let spec_font_palette_values_requires_font_family () =
+  warns_exactly
+    "@font-palette-values --p { font-family: A; override-colors: 0 red }" 0;
+  warns_exactly "@font-palette-values --p { font-family: A }" 0;
+  warns_exactly
+    "@font-palette-values --p { base-palette: 1; override-colors: 0 red }" 1;
+  warns_exactly "@font-palette-values --p { override-colors: 0 red }" 1
+
 (* CSS Animations 1 sec. 3 fills a [@keyframes] body with keyframe rules, so it
    is a list of rules: an at-rule has no place there, and CSS Syntax 3 sec.
    5.4.2 ends the one being discarded at its own [{}] block or at its [;],
@@ -2318,6 +2333,9 @@ let stylesheet_tests =
     ( "spec descriptor recovery warns once per dropped descriptor",
       `Quick,
       spec_descriptor_recovery_warns_once_per_descriptor );
+    ( "spec font-palette-values requires font-family",
+      `Quick,
+      spec_font_palette_values_requires_font_family );
     ( "spec lenient recovery in a @keyframes body",
       `Quick,
       spec_lenient_recovery_keyframes_at_rule );
