@@ -632,7 +632,53 @@ let grouped_cases pairs =
         in
         Some (feature, cases))
 
+(* Hand-written pairs pinning the label a single cached answer gets. The corpus
+   cases cannot: they assert Cascade's own output, and a label only reaches them
+   through an aggregate count. *)
+let reported_issues pair =
+  classify pair |> snd
+  |> List.map (function
+    | Rejected_candidate rejection -> "bug:" ^ rejection.tool
+    | Failed_candidate failure -> "failed:" ^ failure.tool)
+
+let trace ?(candidates = []) ?(failures = []) input : Trace_pairs.t =
+  { input; candidates; failures }
+
+let labelling_case name pair expected =
+  Alcotest.test_case name `Quick (fun () ->
+      Alcotest.(check (list string))
+        "reported upstream bugs" expected (reported_issues pair))
+
+let labelling_cases =
+  [
+    labelling_case "equivalent answer is not an issue"
+      (trace ".foo { color: red }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = ".foo{color:red}" } ])
+      [];
+    labelling_case "divergent answer is an upstream bug"
+      (trace ".foo { color: red }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = ".foo{color:blue}" } ])
+      [ "bug:t" ];
+    labelling_case "at-rule Cascade cannot interpret is not an upstream bug"
+      (trace "@foo test { foo: bar; }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = "@foo test{foo:bar}" } ])
+      [];
+    labelling_case "an answer that invents one is still an upstream bug"
+      (trace "@font-feature-values foo { @swash { pretty: 1; } }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = "@swash{pretty:1}" } ])
+      [ "bug:t" ];
+    labelling_case "a tool that failed outright is an upstream bug"
+      (trace ".foo { color: red }"
+         ~failures:
+           [
+             Trace_pairs.
+               { tool = "t"; command = "t --minify"; reason = "exit 1" };
+           ])
+      [ "failed:t" ];
+  ]
+
 let () =
   reset_upstream_report ();
   let pairs = Trace_pairs.read trace_path in
-  Alcotest.run "lightning_minify" (grouped_cases pairs)
+  Alcotest.run "lightning_minify"
+    (("labelling", labelling_cases) :: grouped_cases pairs)
