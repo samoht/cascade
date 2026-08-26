@@ -33,8 +33,12 @@
     cascade/dependency/dead-code reasoning, but still open over runtime layout
     and environment state.
 
-    Gate per record:
+    Gate per record, in order:
 
+    + Cascade's output must be canonically equal to the record's input. The size
+      gate on its own rewards deletion, since dropping a rule always reads as a
+      shorter output, so the output has to still say what the input said before
+      its length counts for anything.
     + Cascade's byte length must be no longer than the shortest cached OK
       oracle, using the oracle bytes as recorded in the trace.
 
@@ -208,24 +212,39 @@ let compute_case record : case_result =
           record.errors
         |> String.concat " | "
       in
-      match pick_shortest record.oracles with
-      | None ->
-          failf "no successful oracle for %s\n    upstream_errors: %s"
-            record.name
-            (if upstream_errors = "" then "none" else upstream_errors)
-      | Some shortest ->
-          let actual_len = String.length actual in
-          let shortest_len = String.length shortest.raw in
-          if actual_len <= shortest_len then Pass
-          else
-            failf
-              "cascade output longer than shortest cached OK oracle\n\
-              \    cascade:  %d bytes (vs %s: %d bytes)\n\
-              \    oracles:  %s\n\
-              \    upstream_errors: %s"
-              actual_len shortest.tool shortest_len
-              (oracle_summary record.oracles)
-              (if upstream_errors = "" then "none" else upstream_errors))
+      (* The size gate alone rewards deletion: dropping a rule always reads as a
+         shorter output. Require the output to still say what the input said
+         before comparing lengths, so a regression that loses a declaration
+         fails here rather than scoring well. Mode [`Canonical] is the right
+         measure: it puts both sides through the same optimizer, so a rewrite
+         the optimizer is entitled to make compares equal and a loss does
+         not. *)
+      if
+        not
+          (Cascade_diff.Css_compare.equal ~mode:`Canonical record.input actual)
+      then
+        failf
+          "cascade output is not canonically equal to its input\n\
+          \    inspect: cascade diff --diff=canonical <input> <output>"
+      else
+        match pick_shortest record.oracles with
+        | None ->
+            failf "no successful oracle for %s\n    upstream_errors: %s"
+              record.name
+              (if upstream_errors = "" then "none" else upstream_errors)
+        | Some shortest ->
+            let actual_len = String.length actual in
+            let shortest_len = String.length shortest.raw in
+            if actual_len <= shortest_len then Pass
+            else
+              failf
+                "cascade output longer than shortest cached OK oracle\n\
+                \    cascade:  %d bytes (vs %s: %d bytes)\n\
+                \    oracles:  %s\n\
+                \    upstream_errors: %s"
+                actual_len shortest.tool shortest_len
+                (oracle_summary record.oracles)
+                (if upstream_errors = "" then "none" else upstream_errors))
 
 let case (result : case_result Lazy.t) () =
   match Lazy.force result with Pass -> () | Fail msg -> Alcotest.fail msg
