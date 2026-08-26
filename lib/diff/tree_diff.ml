@@ -2222,6 +2222,60 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
           | _ -> Some diff))
     changes
 
+(* Everything a [Reordered] entry puts in the report, as one string; [None] for
+   any other entry. Two entries sharing a key print the same line. *)
+let reorder_key : rule_diff -> string option = function
+  | Reordered r ->
+      let buf = Buffer.create 64 in
+      let add_decls = function
+        | None -> Buffer.add_char buf '-'
+        | Some decls ->
+            List.iter
+              (fun decl ->
+                let name, value = decl_to_prop_value decl in
+                add_strings buf [ name; ":"; value; ";" ])
+              decls
+      in
+      add_strings buf
+        [
+          r.selector;
+          "|";
+          string_of_int r.expected_pos;
+          "|";
+          string_of_int r.actual_pos;
+          "|";
+          Option.value r.swapped_with ~default:"-";
+          "|";
+        ];
+      add_decls r.old_declarations;
+      Buffer.add_char buf '|';
+      add_decls r.new_declarations;
+      Some (Buffer.contents buf)
+  | Added _ | Removed _ | Content_changed _ | Selector_changed _ | Rearranged _
+  | Regrouped _ ->
+      None
+
+(* One move, one entry. A reorder names the selector and the position that
+   selector holds on each side; which of its rules carried the declarations
+   across is no part of it. A selector written by several rules that travel
+   together therefore builds the same entry once per rule, and the node then
+   states the move as many times as it has rules and counts it as many times
+   over. Keyed on what the entry prints rather than on the selector alone, so a
+   declaration-level reorder inside another rule of that selector is a different
+   entry and stays. *)
+let dedup_reorders (changes : rule_diff list) : rule_diff list =
+  let seen = Hashtbl.create 8 in
+  List.filter
+    (fun diff ->
+      match reorder_key diff with
+      | None -> true
+      | Some key ->
+          if Hashtbl.mem seen key then false
+          else (
+            Hashtbl.replace seen key ();
+            true))
+    changes
+
 (* At-rules that carry neither a selector nor a condition the other processors
    key on: [@page], [@font-face], [@counter-style], [@scope], [@starting-style]
    and friends. [rule_diffs] gives every one of them the universal selector, so
@@ -2347,6 +2401,7 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   @ List.filter_map (convert_modified_rule ~moved ~rules1 ~rules2) r_modified
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
+  |> dedup_reorders
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =

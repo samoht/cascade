@@ -798,6 +798,9 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade diff --diff=tree` states a selector's move once. The entry names the
+  selector, not the rule, so a selector whose several rules cross together
+  printed the same line and counted the move once per rule (#581)
 - `cascade diff` names a selector whose rules a feature query splits once,
   where two entries under it claimed a declaration gained and another lost
   that the selector never stopped writing (#580)
