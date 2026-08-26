@@ -576,6 +576,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `Css.inline_vars` resolves every `@page` descriptor under one unit policy.
+  `margin-top` alone kept the authored unit, so one `@page` block answered
+  `1cm` for it and `37.79527559px` for the `margin-left` beside it (#555)
 - A cascade layer and caller metadata on a custom property survive
   `Css.inline_vars`. Both belong to the declaration rather than to its value,
   and the two rewrites that read a custom value back - canonicalising a value
