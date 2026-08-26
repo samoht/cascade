@@ -160,6 +160,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A rule nested under a pseudo-element parent, such as `.b` in
+  `.a::before{.b{color:red}}`, is dropped instead of flattened to
+  `.a::before .b`. CSS Selectors 4 sec. 3.6.5 makes that selector invalid and
+  every engine matches nothing with it (#559)
 - An unknown at-rule whose raw body ends on a backslash is written with a
   closer that closes it. The backslash used to escape the `}` the printer wrote
   after it, so the next statement in the stylesheet was swallowed into the body
