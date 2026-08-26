@@ -99,6 +99,66 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
+   maintained browsers support rather than by what the two sheets say, and the
+   ones that delete content leave the reader of that content - an engine without
+   the feature - with a different page. A comparison projection may re-spell,
+   but it cannot delete on a target assumption, so the projection takes none of
+   them. *)
+let canonical_keeps_target_gated_content () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  (* The declaration an engine without the guarded feature paints is the one
+     before the guard, so two sheets that disagree there paint differently. *)
+  Alcotest.(check bool)
+    "differing fallbacks under a baseline-true @supports differ" false
+    (equal ".a{color:red;@supports (display:grid){color:blue}}"
+       ".a{color:green;@supports (display:grid){color:blue}}");
+  Alcotest.(check bool)
+    "so do they with the guard written at the top level" false
+    (equal ".a{color:red}@supports (display:grid){.a{color:blue}}"
+       ".a{color:green}@supports (display:grid){.a{color:blue}}");
+  (* A vendor-prefixed declaration is the only one an engine that needs the
+     prefix reads, so dropping it is not dropping a spelling. *)
+  Alcotest.(check bool)
+    "a vendor-prefixed twin is not nothing" false
+    (equal ".a{-webkit-transition:all 1s;transition:all 1s}"
+       ".a{transition:all 1s}");
+  (* CSS Cascade 5 sec. 3.1: [supports()] on an [@import] decides whether the
+     sheet loads at all. *)
+  Alcotest.(check bool)
+    "an @import supports() guard is not nothing" false
+    (equal "@import url(\"a.css\") supports(display:grid);"
+       "@import url(\"a.css\");");
+  (* Guards that agree are still no difference, spelled either way. *)
+  Alcotest.(check bool)
+    "matching guards agree through a respelling" true
+    (equal ".a{color:red;@supports (display:grid){color:blue}}"
+       ".a { color: #f00; @supports (display: grid) { color: #00f } }")
+
+(* Media Queries 4 sec. 4.2 gives [min-X]/[max-X] and the range form one
+   meaning, and cascade's own minified output writes the range form, so the fold
+   has to hold on the comparison side once the projection stops taking the
+   optimizer's target facts. Deleting nothing, it is a respelling and stays. *)
+let canonical_folds_media_range_spellings () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "min-width agrees with the range form" true
+    (equal "@media (min-width:48rem){.a{color:red}}"
+       "@media (width>=48rem){.a{color:red}}");
+  Alcotest.(check bool)
+    "a bound pair agrees with the two-sided interval" true
+    (equal "@media (min-width:1px) and (max-width:9px){.a{color:red}}"
+       "@media (1px<=width<=9px){.a{color:red}}");
+  Alcotest.(check bool)
+    "an @container prelude folds the same way" true
+    (equal "@container (min-width:48rem){.a{color:red}}"
+       "@container (width>=48rem){.a{color:red}}");
+  (* A different bound is still a different query. *)
+  Alcotest.(check bool)
+    "a different bound still differs" false
+    (equal "@media (min-width:48rem){.a{color:red}}"
+       "@media (width>=49rem){.a{color:red}}")
+
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
    [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour in two spellings.
    [--lossless] keeps a modern colour function on output, which leaves the
@@ -1485,6 +1545,10 @@ let suite =
         equal_canonical_ignores_property_order;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical keeps target-gated content" `Quick
+        canonical_keeps_target_gated_content;
+      Alcotest.test_case "canonical folds media range spellings" `Quick
+        canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"
         `Quick equal_canonical_lossless_exact_srgb;
     ] )
