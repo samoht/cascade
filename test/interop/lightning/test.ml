@@ -198,6 +198,16 @@ let known_upstream_candidate_bug ({ tool; css } : candidate) =
     Some "emitted unitless zero in an angle slot; Cascade keeps the angle unit"
   else None
 
+(* Which side of the comparison failed decides who is answerable for it. An
+   answer cascade cannot match is the tool's, unless the input is opaque: a
+   construct cascade has no handler for leaves it no grounds to convict. A
+   source cascade cannot re-read implicates no property of the answer at all, so
+   it is nobody's bug whatever the input looks like - reporting it as one blames
+   a tool for cascade's own failure. *)
+let candidate_verdict ~opaque_input ~source_failed rejection =
+  if source_failed || opaque_input then Unjudgeable rejection
+  else Upstream_bug rejection
+
 let validate_candidate ~opaque_input input (candidate : candidate) =
   (* Candidate filtering is deliberately narrow. A cached upstream answer is an
      oracle only if it parses and canonicalizes to the same stylesheet-scoped
@@ -206,9 +216,9 @@ let validate_candidate ~opaque_input input (candidate : candidate) =
      redundant, empty, or otherwise non-participating. Hard-coded exclusions
      above cover known tool/source bugs where the CSS text itself is invalid
      despite being short. *)
-  let reject reason =
+  let reject ?(source_failed = false) reason =
     let rejection = { tool = candidate.tool; css = candidate.css; reason } in
-    if opaque_input then Unjudgeable rejection else Upstream_bug rejection
+    candidate_verdict ~opaque_input ~source_failed rejection
   in
   match known_upstream_candidate_bug candidate with
   | Some reason ->
@@ -226,7 +236,9 @@ let validate_candidate ~opaque_input input (candidate : candidate) =
             (display_css source_css) (display_css output_css)
       | Ok _, Error msg ->
           reject ("candidate output failed Cascade semantic roundtrip: " ^ msg)
-      | Error _, _ -> reject "source input failed Cascade parser roundtrip")
+      | Error _, _ ->
+          reject ~source_failed:true
+            "source input failed Cascade parser roundtrip")
 
 let split_equivalent_candidates ~opaque_input input
     (candidates : candidate list) =
@@ -711,6 +723,38 @@ let labelling_case ?(unjudgeable = []) name pair expected =
       Alcotest.(check (list string))
         "answers Cascade cannot judge" unjudgeable (unjudgeable_answers pair))
 
+(* Which side of the comparison failed decides who is answerable for it. A
+   candidate cascade cannot re-read is genuinely ambiguous, and an opaque input
+   excuses a divergence on a construct cascade has no handler for. A source
+   cascade cannot re-read implicates no property of the answer at all, so it is
+   never an upstream bug: reporting it as one blames a tool for cascade's own
+   failure.
+
+   No trace in the corpus reaches the source arm today, so the policy is pinned
+   here rather than through a trace pair. *)
+let verdict_name = function
+  | Equivalent _ -> "equivalent"
+  | Upstream_bug _ -> "bug"
+  | Unjudgeable _ -> "unjudgeable"
+
+let verdict_case name ~opaque_input ~source_failed expected =
+  Alcotest.test_case name `Quick (fun () ->
+      let rejection = { tool = "t"; css = ".a{}"; reason = "probe" } in
+      Alcotest.(check string)
+        name expected
+        (verdict_name
+           (candidate_verdict ~opaque_input ~source_failed rejection)))
+
+let verdict_cases =
+  [
+    verdict_case "a source cascade cannot re-read is nobody's bug"
+      ~opaque_input:false ~source_failed:true "unjudgeable";
+    verdict_case "an opaque input excuses the answer" ~opaque_input:true
+      ~source_failed:false "unjudgeable";
+    verdict_case "a divergence on an input cascade read is the tool's"
+      ~opaque_input:false ~source_failed:false "bug";
+  ]
+
 let labelling_cases =
   [
     labelling_case "equivalent answer is not an issue"
@@ -744,4 +788,5 @@ let () =
   reset_upstream_report ();
   let pairs = Trace_pairs.read trace_path in
   Alcotest.run "lightning_minify"
-    (("labelling", labelling_cases) :: grouped_cases pairs)
+    (("labelling", labelling_cases)
+    :: ("verdict", verdict_cases) :: grouped_cases pairs)
