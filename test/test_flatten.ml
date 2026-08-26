@@ -39,22 +39,29 @@ let test_empty_block_is_empty () =
     "empty input yields empty output" 0
     (List.length (Flatten.block stmts))
 
-(* A gap, pinned so it stays visible. CSS Selectors 4 sec. 3.6.5 makes a
-   combinator after a pseudo-element invalid, and the selector reader refuses
-   [.a::before .b] for it. Flattening builds the same selector from a valid
-   parent and a valid nested selector without going through the reader, so this
-   route still emits it. Chrome 151 and WebKit 26.5 keep the nested rule in
-   cssRules but it matches nothing, since the flattened form is the invalid one.
+(* CSS Selectors 4 sec. 3.6.5 makes a combinator after a pseudo-element invalid,
+   and the selector reader refuses [.a::before .b] when it is authored directly.
+   Flattening reaches the same selector from a valid parent and a valid nested
+   selector, so it has to apply the rule too: Chrome 151 and WebKit 26.5 keep
+   such a nested rule in cssRules but it matches nothing, so the rule carries no
+   style and emitting it only produces CSS cascade would refuse to read back.
 
-   Closing this needs the parent context at flatten time, which is a larger
-   change than the reader guard; when it lands, this expectation becomes an
-   empty statement list. *)
-let test_pseudo_element_parent_still_flattens () =
-  let stmts = block ".a::before{.b{color:red}}" in
-  Alcotest.(check string)
-    "nested rule under a pseudo-element parent flattens to an invalid selector"
-    ".a:before .b{color:red}"
-    (render (Flatten.block stmts))
+   The parent's own declarations are unaffected, and a nested selector that
+   extends the compound rather than following it is still valid. *)
+let test_pseudo_element_parent_drops_invalid_nesting () =
+  let dropped name css expected =
+    Alcotest.(check string) name expected (render (Flatten.block (block css)))
+  in
+  dropped "a descendant under a pseudo-element parent goes"
+    ".a::before{.b{color:red}}" "";
+  dropped "the parent keeps its own declarations"
+    ".a::before{color:red;.b{color:blue}}" ".a:before{color:red}";
+  dropped "a child combinator goes the same way" ".a::before{>.b{color:red}}" "";
+  (* Only the branches that follow the pseudo-element go. *)
+  dropped "an amperand branch extending the compound stays"
+    ".a::before{.b,&:hover{color:red}}" ".a:before:hover{color:red}";
+  (* Control: no pseudo-element, so nesting is valid and lifts as before. *)
+  dropped "a plain parent still flattens" ".a{.b{color:red}}" ".a .b{color:red}"
 
 (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so its
    prelude is ambiguous with a declaration until the block appears:
@@ -158,8 +165,8 @@ let suite =
         test_flattens_descendant_nesting;
       Alcotest.test_case "empty block stays empty" `Quick
         test_empty_block_is_empty;
-      Alcotest.test_case "pseudo-element parent still flattens" `Quick
-        test_pseudo_element_parent_still_flattens;
+      Alcotest.test_case "pseudo-element parent drops invalid nesting" `Quick
+        test_pseudo_element_parent_drops_invalid_nesting;
       Alcotest.test_case "nested rule starting with an ident" `Quick
         test_nested_rule_starting_with_ident;
       Alcotest.test_case "bad declaration stays a declaration" `Quick
