@@ -1531,7 +1531,7 @@ let spec_lenient_recovery_stylesheets () =
      name, so what recovers here is the rule after it, not the at-rule. *)
   lenient_recover "unknown at-rule keeps its neighbour"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1;
+    "@unknown-rule{.bad{color:red}}.ok{color:#00f}" 1;
   lenient_recover "bad selector list drops rule only"
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     ".ok{color:green}.next{color:#00f}" 1;
@@ -2599,7 +2599,7 @@ let css_syntax_recovery () =
     ".ok { color: green } .bad:not() { color: red }" ".ok{color:green}" 1;
   check_recovery "unknown at-rule"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    "@unknown-rule{ .bad { color: red } }.ok{color:#00f}" 1
+    "@unknown-rule{.bad{color:red}}.ok{color:#00f}" 1
 
 let css_syntax_recovery_structural () =
   let declaration_counts stylesheet =
@@ -9738,7 +9738,7 @@ let additional_tests =
               "warning surfaced" true
               (parsed.Css.warnings <> []);
             Alcotest.(check string)
-              "recovered output" "@unknown{ color: red }.a{color:#00f}"
+              "recovered output" "@unknown{color:red}.a{color:#00f}"
               (minify parsed.stylesheet)
         | Error e ->
             Alcotest.failf "non-strict mode should not promote warnings: %s"

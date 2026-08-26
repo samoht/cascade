@@ -376,6 +376,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `Css.optimize` writes an unrecognised at-rule's opaque body back as the token
+  stream it read, so `@foo{ .a { color: red } }` minifies to
+  `@foo{.a{color:red}}`. `~lossless:true` leaves the body as authored, and the
+  printer never touches it (#560)
 - `--minify` indexes each selector's latest write by property instead of
   rescanning every later declaration when deciding whether a rule is shadowed.
   The 8,000-rule same-selector benchmark is about 108x faster.

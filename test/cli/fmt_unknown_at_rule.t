@@ -71,23 +71,25 @@ A body cut short mid-construct still ends where the AST says it ends.
 CSS Syntax 3 (ED) sec. 4.3.5 returns the string token at end of input,
 4.3.6 the url token, and sec. 5.5.9 and 5.5.10 close a simple block and a
 function there, so the text carried means the closed form. Left open it
-eats the `}` and the at-rule runs on into whatever follows.
+eats the `}` and the at-rule runs on into whatever follows. The layout
+inside the body goes with it: the optimizer writes the body back as the
+token stream it read, keeping only the separators the tokens need.
 
   $ printf '@o x{ a "i' | cascade fmt --minify - 2> /dev/null
-  @o x{ a "i"}
+  @o x{a "i"}
   $ printf '@o x{ a url(i' | cascade fmt --minify - 2> /dev/null
-  @o x{ a url(i)}
+  @o x{a url(i)}
   $ printf '@o x{ a f(i' | cascade fmt --minify - 2> /dev/null
-  @o x{ a f(i)}
+  @o x{a f(i)}
   $ printf '@o x{ a [i' | cascade fmt --minify - 2> /dev/null
-  @o x{ a [i]}
+  @o x{a[i]}
   $ printf '@o x{ a (i' | cascade fmt --minify - 2> /dev/null
-  @o x{ a (i)}
+  @o x{a (i)}
 
 A well-formed body is untouched.
 
   $ printf '@o x{ a b }' | cascade fmt --minify - 2> /dev/null
-  @o x{ a b }
+  @o x{a b}
 
 Written back, the at-rule ends where it ended: a rule appended to the
 output is a second statement, not more of the at-rule.
@@ -95,4 +97,4 @@ output is a second statement, not more of the at-rule.
   $ printf '@o x{ a "i' | cascade fmt --minify - 2> /dev/null > cut.css
   $ printf '.z{color:red}' >> cut.css
   $ cascade fmt --minify cut.css 2> /dev/null
-  @o x{ a "i"}.z{color:red}
+  @o x{a "i"}.z{color:red}

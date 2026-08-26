@@ -557,6 +557,34 @@ let drop_invalid (stylesheet : t) : t =
     (list_filter_preserve (fun d -> not (Declaration.is_invalid d)))
     stylesheet
 
+(* CSS Syntax 3 sec. 5.4.2 keeps an unrecognised at-rule's body as raw source
+   text, so no typed node stands between the author's layout and the output and
+   the serializer may not touch it: rewriting the body is an AST change. Reading
+   it back as a component-value stream and writing it out with the separator
+   rules that already serve custom-property streams keeps every token boundary,
+   string, escape and nested block while the layout between them goes. A body
+   the lexer cannot re-serialise to the same stream is left alone. *)
+let compact_unknown_at_rule_body body =
+  let reader = Reader.of_string body in
+  let { Parser.value = components; warnings } =
+    Parser.list_of_component_values reader
+  in
+  match warnings with
+  | _ :: _ -> body
+  | [] ->
+      let compacted = Parser.to_string_minified components in
+      if String.length compacted < String.length body then compacted else body
+
+let compact_unknown_at_rule_bodies (stylesheet : t) : t =
+  edit_statements
+    (function
+      | Unknown_at_rule ({ block = Some body; _ } as at) ->
+          let compacted = compact_unknown_at_rule_body body in
+          if String.equal compacted body then Keep
+          else Replace (Unknown_at_rule { at with block = Some compacted })
+      | _ -> Keep)
+    stylesheet
+
 (** [drop_unknown_at_rules] removes [Unknown_at_rule] statements at every block
     depth, matching what a user agent applies of a stylesheet (CSS 2.1 sec. 4.2)
     rather than what a transform may hand the next reader of one. Opt in when
@@ -909,6 +937,11 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
+  (* Under [lossless] the raw body stands as authored: nothing types it, so
+     nothing proves the layout inside it carries no meaning to its reader. *)
+  let stylesheet =
+    if lossless then stylesheet else compact_unknown_at_rule_bodies stylesheet
+  in
   let stylesheet =
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in
