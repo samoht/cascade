@@ -1,6 +1,6 @@
 let rec vendor : Selector.t -> bool = function
   | File_selector_button -> true
-  | Webkit_scrollbar | Webkit_search_cancel_button | Webkit_search_decoration
+  | Webkit_scrollbar _ | Webkit_search_cancel_button | Webkit_search_decoration
   | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
   | Webkit_datetime_edit | Webkit_datetime_edit_year_field
   | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field

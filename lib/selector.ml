@@ -975,6 +975,15 @@ let scrollbar_state_ident = function
   | Corner_present -> "corner-present"
   | Window_inactive -> "window-inactive"
 
+let scrollbar_part_ident = function
+  | Scrollbar -> "-webkit-scrollbar"
+  | Button -> "-webkit-scrollbar-button"
+  | Track -> "-webkit-scrollbar-track"
+  | Track_piece -> "-webkit-scrollbar-track-piece"
+  | Thumb -> "-webkit-scrollbar-thumb"
+  | Corner -> "-webkit-scrollbar-corner"
+  | Resizer -> "-webkit-resizer"
+
 (* WebKit, "Styling Scrollbars". Both engines read these on any element, so they
    are ordinary pseudo-classes here; which pseudo-elements take them is
    [pseudo_element_allows]'s business. *)
@@ -1031,7 +1040,7 @@ let pseudo_vendor_idents =
     ("-ms-input-placeholder", Ms_input_placeholder);
     ("-moz-ui-invalid", Moz_ui_invalid);
     ("-moz-ui-valid", Moz_ui_valid);
-    ("-webkit-scrollbar", Webkit_scrollbar);
+    ("-webkit-scrollbar", Webkit_scrollbar Scrollbar);
     ("-webkit-search-cancel-button", Webkit_search_cancel_button);
     ("-webkit-search-decoration", Webkit_search_decoration);
     (* Webkit datetime pseudo-elements *)
@@ -1054,6 +1063,24 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
+(* Names the [::] reader takes and the [:] reader does not. Chrome 151 and
+   WebKit 26.5 drop [:cue] and [:-webkit-scrollbar-thumb] while keeping the [::]
+   spelling of both, so these stay out of [pseudo_class_all_idents];
+   [::-webkit-scrollbar] itself keeps the single-colon spelling cascade has
+   always read for it and stays in [pseudo_vendor_idents].
+
+   WebVTT 1 sec. 8.2 requires "the ::cue, ::cue(selector), ::cue-region and
+   ::cue-region(selector) pseudo-elements", and sec. 8.2.1 and sec. 8.2.3 define
+   the argument-less pair the [calls] table above cannot reach. Chrome, WebKit
+   and Lightning CSS all take [::cue]; only Lightning CSS takes [::cue-region],
+   the other two implement neither of its forms. *)
+let pseudo_element_double_colon_idents =
+  ("cue", Cue None)
+  :: ("cue-region", Cue_region None)
+  :: List.map
+       (fun part -> (scrollbar_part_ident part, Webkit_scrollbar part))
+       [ Button; Track; Track_piece; Thumb; Corner; Resizer ]
+
 (* Every [::] form, and only those: a pseudo-element names a box other than the
    originating element, where an element-tied pseudo-class ([:hover], [:focus])
    only narrows which elements match. An unrecognised [::foo] belongs here too.
@@ -1067,7 +1094,7 @@ let is_pseudo_element = function
   | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
   | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Moz_placeholder | Webkit_input_placeholder
-  | Ms_input_placeholder | Webkit_scrollbar | Webkit_search_cancel_button
+  | Ms_input_placeholder | Webkit_scrollbar _ | Webkit_search_cancel_button
   | Webkit_search_decoration | Webkit_datetime_edit_fields_wrapper
   | Webkit_date_and_time_value | Webkit_datetime_edit
   | Webkit_datetime_edit_year_field | Webkit_datetime_edit_month_field
@@ -1095,8 +1122,6 @@ let rec any p = function
     | Moz_any_call xs
     | Webkit_any_call xs
     | Slotted xs
-    | Cue xs
-    | Cue_region xs
     | Current_of xs ) as sel ->
       List.exists (any p) xs || p sel
   | ( Nth_child (_, Some xs)
@@ -1104,6 +1129,8 @@ let rec any p = function
     | Nth_of_type (_, Some xs)
     | Nth_last_of_type (_, Some xs)
     | Host (Some xs)
+    | Cue (Some xs)
+    | Cue_region (Some xs)
     | Host_context xs ) as sel ->
       List.exists (any p) xs || p sel
   | Part _ as sel -> p sel
@@ -1163,9 +1190,11 @@ let rec pseudo_element_allows pe pc =
   match pe with
   (* A name no engine recognises: cascade keeps it so a pseudo-element newer
      than this list survives a format pass, and knows nothing about its rules,
-     so it keeps taking any pseudo-class after it. *)
+     so it keeps taking any pseudo-class after it. [::cue-region()] keeps the
+     same bargain: Chrome 151 and WebKit 26.5 implement neither of its forms. *)
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ | Moz_placeholder
-  | Ms_input_placeholder | Cue_region _ ->
+  | Ms_input_placeholder
+  | Cue_region (Some _) ->
       true
   | pe -> (
       match pc with
@@ -1189,7 +1218,7 @@ let rec pseudo_element_allows pe pc =
          stops where they agree. *)
       | Scrollbar_state state -> (
           match (pe, state) with
-          | Webkit_scrollbar, _ -> true
+          | Webkit_scrollbar _, _ -> true
           | (Selection | Part _), Window_inactive -> true
           | _ -> false)
       (* Same forward-compatibility bargain as an unknown pseudo-element. *)
@@ -1203,9 +1232,9 @@ let rec pseudo_element_allows pe pc =
               match pc with
               | Has _ -> false
               | pc -> not (is_structural_pseudo_class pc))
-          (* A scrollbar takes no focus, and reports which part of which
+          (* A scrollbar part takes no focus, and reports which part of which
              scrollbar it is through the state pseudo-classes below. *)
-          | Webkit_scrollbar -> (
+          | Webkit_scrollbar _ -> (
               match pc with
               | Hover | Active | Enabled | Disabled -> true
               | _ -> false)
@@ -1214,8 +1243,12 @@ let rec pseudo_element_allows pe pc =
           | View_transition_group _ | View_transition_image_pair _
           | View_transition_old _ | View_transition_new _ -> (
               match pc with Only_child -> true | _ -> false)
-          (* The UA widgets that stand in for a real control. [::cue(...)]
-             selects inside the cue and takes none of them. *)
+          (* The UA widgets that stand in for a real control, and the cue and
+             region boxes WebVTT 1 sec. 8.2.1 and sec. 8.2.3 define: all three
+             engines keep [::cue:focus-within] and drop [::cue:enabled].
+             [::cue(...)] selects inside the cue and takes none of them. *)
+          | Cue None
+          | Cue_region None
           | Placeholder | File_selector_button | Webkit_input_placeholder
           | Webkit_search_cancel_button | Webkit_search_decoration
           | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
@@ -1328,6 +1361,7 @@ let pseudo_class_all_idents () = Lazy.force pseudo_class_all_idents_lazy
 let pseudo_element_unknown_idents =
   lazy
     (pseudo_element_modern_idents @ pseudo_vendor_idents
+   @ pseudo_element_double_colon_idents
     @ pseudo_element_legacy_idents Double)
 
 let read_unknown_pseudo_class_call ~all_idents t =
@@ -1620,11 +1654,11 @@ and read_slotted_content t =
 
 and read_cue_content t =
   let sels = read_complex_list t in
-  Cue sels
+  Cue (Some sels)
 
 and read_cue_region_content t =
   let sels = read_complex_list t in
-  Cue_region sels
+  Cue_region (Some sels)
 
 and read_slotted t = Cursor.call "slotted" t read_slotted_content
 and read_cue t = Cursor.call "cue" t read_cue_content
@@ -2372,7 +2406,7 @@ and pp : t Pp.t =
   | Moz_placeholder -> vendor_elem ctx "moz-placeholder"
   | Webkit_input_placeholder -> vendor_elem ctx "webkit-input-placeholder"
   | Ms_input_placeholder -> vendor_elem ctx "ms-input-placeholder"
-  | Webkit_scrollbar -> vendor_elem ctx "webkit-scrollbar"
+  | Webkit_scrollbar part -> elem ctx (scrollbar_part_ident part)
   | Webkit_search_cancel_button -> vendor_elem ctx "webkit-search-cancel-button"
   | Webkit_search_decoration -> vendor_elem ctx "webkit-search-decoration"
   (* Webkit datetime pseudo-elements *)
@@ -2405,8 +2439,10 @@ and pp : t Pp.t =
   (* Functional pseudo-elements *)
   | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.space Pp.string) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors
-  | Cue selectors -> elem_func ctx "cue" sels selectors
-  | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
+  | Cue None -> elem ctx "cue"
+  | Cue (Some selectors) -> elem_func ctx "cue" sels selectors
+  | Cue_region None -> elem ctx "cue-region"
+  | Cue_region (Some selectors) -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
   | Is selectors
     when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
@@ -2537,8 +2573,8 @@ let rec map f node =
     | Current_of xs -> lst (fun xs -> Current_of xs) xs
     | Host_context xs -> lst (fun xs -> Host_context xs) xs
     | Slotted xs -> lst (fun xs -> Slotted xs) xs
-    | Cue xs -> lst (fun xs -> Cue xs) xs
-    | Cue_region xs -> lst (fun xs -> Cue_region xs) xs
+    | Cue (Some xs) -> lst (fun xs -> Cue (Some xs)) xs
+    | Cue_region (Some xs) -> lst (fun xs -> Cue_region (Some xs)) xs
     | other -> other
   in
   f node'
@@ -2695,7 +2731,8 @@ let rec specificity = function
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
   | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_placeholder
   | Webkit_input_placeholder | Ms_input_placeholder | Moz_ui_invalid
-  | Moz_ui_valid | Scrollbar_state _ | Webkit_scrollbar
+  | Moz_ui_valid | Scrollbar_state _
+  | Webkit_scrollbar Scrollbar
   | Webkit_search_cancel_button | Webkit_search_decoration
   | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
   | Webkit_datetime_edit | Webkit_datetime_edit_year_field
@@ -2714,7 +2751,13 @@ let rec specificity = function
   | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ ->
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
+  (* Sec. 17 counts a pseudo-element in C. [::-webkit-scrollbar] is read with
+     one colon too and weighs a class above, as every [pseudo_vendor_idents]
+     name does; the parts are [::]-only. *)
+  | Webkit_scrollbar (Button | Track | Track_piece | Thumb | Corner | Resizer)
+  | Cue None
+  | Cue_region None ->
       { ids = 0; classes = 0; elements = 1 }
   | Where _ -> zero_specificity
   | Is xs
@@ -2738,7 +2781,7 @@ let rec specificity = function
       add_specificity
         { ids = 0; classes = 1; elements = 0 }
         (xs |> List.map specificity |> max_specificity)
-  | Slotted xs | Cue xs | Cue_region xs ->
+  | Slotted xs | Cue (Some xs) | Cue_region (Some xs) ->
       add_specificity
         { ids = 0; classes = 0; elements = 1 }
         (xs |> List.map specificity |> max_specificity)
@@ -2811,10 +2854,9 @@ let rec first_class = function
   | Moz_any_call xs
   | Webkit_any_call xs
   | Slotted xs
-  | Cue xs
-  | Cue_region xs
   | Current_of xs -> (
       match xs with [] -> None | h :: _ -> first_class h)
+  | Cue (Some (h :: _)) | Cue_region (Some (h :: _)) -> first_class h
   | Part _ -> None
   | _ -> None
 
@@ -2841,16 +2883,15 @@ let rec has_group_marker = function
   | Combined (a, _, b) -> has_group_marker a || has_group_marker b
   | Relative (_, b) -> has_group_marker b
   | List xs -> List.exists has_group_marker xs
+  | Cue (Some xs) | Cue_region (Some xs) -> List.exists has_group_marker xs
   | Is xs
   | Not xs
   | Has xs
   | Moz_any_call xs
   | Webkit_any_call xs
   | Slotted xs
-  | Cue xs
-  | Cue_region xs ->
+  | Current_of xs ->
       List.exists has_group_marker xs
-  | Current_of xs -> List.exists has_group_marker xs
   | _ -> false
 
 (** Check if selector contains :where(.peer) - used for peer-* modifiers *)
@@ -2870,16 +2911,15 @@ let rec has_peer_marker = function
   | Combined (a, _, b) -> has_peer_marker a || has_peer_marker b
   | Relative (_, b) -> has_peer_marker b
   | List xs -> List.exists has_peer_marker xs
+  | Cue (Some xs) | Cue_region (Some xs) -> List.exists has_peer_marker xs
   | Is xs
   | Not xs
   | Has xs
   | Moz_any_call xs
   | Webkit_any_call xs
   | Slotted xs
-  | Cue xs
-  | Cue_region xs ->
+  | Current_of xs ->
       List.exists has_peer_marker xs
-  | Current_of xs -> List.exists has_peer_marker xs
   | _ -> false
 
 (** Check if selector uses the :is(:where(...)) pattern used by group-* and

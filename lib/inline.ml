@@ -592,26 +592,6 @@ let simplify_font_face_descriptor visible descriptor =
   | Some resolved -> resolved
   | Option.None -> descriptor
 
-let eval_page_declaration visible ctx decl =
-  let resolve_length_var (var : Values.length Values.var) =
-    match lookup_visible_custom visible var.Values.name Values.read_length with
-    | Some value -> value
-    | None -> (
-        match var.Values.fallback with
-        | Values.Fallback value -> value
-        | _ -> Values.Var var)
-  in
-  match decl with
-  | Declaration.Declaration
-      {
-        property = Properties.Margin_top as property;
-        value = (Values.Var var : Values.length);
-        important;
-        _;
-      } ->
-      Declaration.v ~important property (resolve_length_var var)
-  | _ -> Context.eval ctx decl
-
 let map_keyframe_decls f frames =
   List.map
     (fun frame -> { frame with declarations = List.map f frame.declarations })
@@ -645,7 +625,7 @@ let substitute_font_face ~scopes ~at_path descriptors =
 
 let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
   let visible = universal_visible_customs ~scopes ~at_path in
-  let eval_page = eval_page_declaration visible (context_for visible) in
+  let eval_page = Context.eval (context_for visible) in
   let update_margin (m : page_margin_rule) =
     { m with descriptors = List.map eval_page m.descriptors }
   in
@@ -681,7 +661,7 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
       | Page (sel, decls) ->
           let visible = universal_visible_customs ~scopes ~at_path in
           let ctx = context_for visible in
-          Page (sel, List.map (eval_page_declaration visible ctx) decls)
+          Page (sel, List.map (Context.eval ctx) decls)
       | Position_try (n, decls) ->
           Position_try (n, eval_universal_decls ~scopes ~at_path decls)
       | Keyframes (n, frames) ->

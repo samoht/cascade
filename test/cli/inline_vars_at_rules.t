@@ -22,14 +22,15 @@ A variable used in an @font-face descriptor inlines.
   $ cascade --minify --inline-vars font-face.css
   @font-face{font-family:Brand;src:url(font.woff2);unicode-range:U+25-FF}
 
-A variable used in an @page margin descriptor inlines.
+A variable used in an @page margin descriptor follows the same canonical unit
+policy for a longhand or shorthand.
 
-  $ cat > page.css <<EOF
-  > :root { --margin-top: 1cm }
-  > @page { margin-top: var(--margin-top) }
-  > EOF
+  $ printf '%s\n' ':root { --page-margin: 1cm }' \
+  >   '@page:first { margin-top: var(--page-margin) }' \
+  >   '@page:left { margin-left: var(--page-margin) }' \
+  >   '@page:right { margin: var(--page-margin) }' > page.css
   $ cascade --minify --inline-vars page.css
-  @page{margin-top:1cm}
+  @page:first{margin-top:37.79527559px}@page:left{margin-left:37.79527559px}@page:right{margin:37.79527559px}
 
 A registered custom property declared via @property with an
 [initial-value] provides the inlining source when no explicit
