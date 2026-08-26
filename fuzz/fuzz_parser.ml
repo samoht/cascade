@@ -109,11 +109,17 @@ let string_rev s =
   String.init len (fun i -> s.[len - 1 - i])
 
 (** Component-value parsing must not crash on decoded CSS-shaped input. *)
-let test_component_value_crash_safety buf =
-  let buf = cssish buf in
+let component_value_crash_safety buf =
   ignore (Parser.component_value (Reader.of_string buf));
   ignore (Parser.list_of_component_values (Reader.of_string buf));
   ignore (Parser.csv_component_values (Reader.of_string buf))
+
+let test_component_value_crash_safety buf =
+  component_value_crash_safety (cssish buf)
+
+(* The same property over the byte shapes [cssish] cannot reach. *)
+let test_component_unicode_bytes buf =
+  component_value_crash_safety (Fuzz_helpers.unicodish buf)
 
 (** Minified serialization should be idempotent after reparsing. *)
 let test_component_value_minified_idempotent buf =
@@ -232,6 +238,8 @@ let suite =
     [
       test_case "component-value crash safety" [ bytes ]
         test_component_value_crash_safety;
+      test_case "component-value crash safety over non-ascii bytes" [ bytes ]
+        test_component_unicode_bytes;
       test_case "component-value minified serialization idempotent" [ bytes ]
         test_component_value_minified_idempotent;
       test_case "component-value serialization idempotent" [ bytes ]

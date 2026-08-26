@@ -606,6 +606,11 @@ let test_read_stylesheet buf =
   let r = Cursor.of_string buf in
   try ignore (Css.Stylesheet.read r) with Cursor.Parse_error _ -> ()
 
+(* The same property over byte shapes an ASCII alphabet cannot reach. *)
+let test_stylesheet_unicode_bytes buf =
+  let r = Cursor.of_string (Fuzz_helpers.unicodish buf) in
+  try ignore (Css.Stylesheet.read r) with Cursor.Parse_error _ -> ()
+
 (** read_rule -- must not crash. *)
 let test_read_rule buf =
   let r = Cursor.of_string buf in
@@ -1714,6 +1719,8 @@ let test_invalid_prelude_order buf =
 let parser_cases =
   [
     test_case "stylesheet read crash safety" [ bytes ] test_read_stylesheet;
+    test_case "stylesheet read crash safety over non-ascii bytes" [ bytes ]
+      test_stylesheet_unicode_bytes;
     test_case "read_rule crash safety" [ bytes ] test_read_rule;
     test_case "read_block crash safety" [ bytes ] test_read_block;
     test_case "read crash safety" [ bytes ] test_read;

@@ -65,6 +65,10 @@ let starts_with ~prefix s =
 let test_read_declaration_crash_safety buf =
   ignore (parse_declaration (cssish buf))
 
+(* The same property over the byte shapes [cssish] cannot reach. *)
+let test_declaration_unicode_bytes buf =
+  ignore (parse_declaration (Fuzz_helpers.unicodish buf))
+
 (* Allow one canonicalization pass (numeric trim, escape canonical form, ...)
    that only fires on re-parse, then require fixed point. *)
 let test_serialization_idempotent buf =
@@ -388,6 +392,8 @@ let suite =
     [
       test_case "read_declaration crash safety" [ bytes ]
         test_read_declaration_crash_safety;
+      test_case "read_declaration crash safety over non-ascii bytes" [ bytes ]
+        test_declaration_unicode_bytes;
       test_case "serialization idempotent" [ bytes ]
         test_serialization_idempotent;
       test_case "property name preserved after serialization" [ bytes ]

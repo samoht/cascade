@@ -33,6 +33,14 @@ let safe_component_input buf =
     ]
     buf 2
 
+(* The same property over the byte shapes [cssish] cannot reach. *)
+let test_cursor_unicode_bytes buf =
+  let c = Cursor.of_string (Fuzz_helpers.unicodish buf) in
+  ignore (Cursor.peek c);
+  ignore (Cursor.string_of_remaining c);
+  ignore (Cursor.consume_remaining_as_string c);
+  ignore (Cursor.is_done c)
+
 let test_cursor_crash_safety buf =
   let c = cursor buf in
   ignore (Cursor.peek c);
@@ -105,6 +113,8 @@ let suite =
   ( "cursor",
     [
       test_case "cursor crash safety" [ bytes ] test_cursor_crash_safety;
+      test_case "cursor crash safety over non-ascii bytes" [ bytes ]
+        test_cursor_unicode_bytes;
       test_case "save/restore remaining stable" [ bytes ]
         test_save_restore_remaining_stable;
       test_case "lookahead does not advance" [ bytes ]

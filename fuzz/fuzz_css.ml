@@ -182,6 +182,27 @@ let test_parse_crash_safety buf =
   ignore (Css.of_string ~strict:false css);
   ignore (Css.of_string_exn ~strict:false css)
 
+(* Parsing and printing over the byte shapes [cssish] cannot reach. Sec. 3.3
+   replaces every malformed sequence with U+FFFD before the tokenizer sees it,
+   so the output has to re-parse like any other stylesheet. *)
+let test_roundtrip_unicode_bytes buf =
+  let css = Fuzz_helpers.unicodish buf in
+  match Css.of_string ~strict:false css with
+  | Error _ -> ()
+  | Ok parsed ->
+      let printed = minified parsed.stylesheet in
+      let again =
+        match Css.of_string ~strict:false printed with
+        | Ok again -> minified again.stylesheet
+        | Error e ->
+            failf "printed non-ascii stylesheet did not re-parse: %s (%S)"
+              (Cascade.Error.to_string e)
+              printed
+      in
+      if not (String.equal printed again) then
+        failf "non-ascii stylesheet is not a printing fixed point: %S -> %S"
+          printed again
+
 let test_parse_always_recovers_bytes buf =
   let parsed = recovered_css "parse always recovers bytes" buf in
   ignore (minified parsed.stylesheet : string)
@@ -389,6 +410,8 @@ let suite =
   ( "css",
     [
       test_case "parse crash safety" [ bytes ] test_parse_crash_safety;
+      test_case "parse roundtrip over non-ascii bytes" [ bytes ]
+        test_roundtrip_unicode_bytes;
       test_case "parse always recovers bytes" [ bytes ]
         test_parse_always_recovers_bytes;
       test_case "strict/lenient cssish contract" [ bytes ]
