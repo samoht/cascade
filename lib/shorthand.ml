@@ -176,6 +176,24 @@ let covers_longhand : type a b.
   | Font, Font_optical_sizing -> true
   | _ -> false
 
+(* CSS Fragmentation 3 sec. 3.4 aliases [page-break-before/after/inside] to
+   [break-before/after/inside] through a value mapping ([always] maps to [page],
+   every other value to itself), so a pair is one property writing one slot:
+   either spelling shadows the other whatever value it carries. Symmetric,
+   unlike the shorthand table above, since the alias has exactly one
+   longhand. *)
+let aliases_page_break : type a b.
+    a Properties.property -> b Properties.property -> bool =
+ fun p q ->
+  match (p, q) with
+  | Page_break_before, Break_before -> true
+  | Break_before, Page_break_before -> true
+  | Page_break_after, Break_after -> true
+  | Break_after, Page_break_after -> true
+  | Page_break_inside, Break_inside -> true
+  | Break_inside, Page_break_inside -> true
+  | _ -> false
+
 (* CSS Cascade 5 sec. 3.2: [all] resets every property except [direction],
    [unicode-bidi], and custom properties. [Unknown_property _] is reset by [all]
    (an unrecognised non-custom property is still a CSS property). *)
@@ -224,6 +242,7 @@ let declaration_covers covering covered =
       Declaration { property = covered_p; _ } ) ->
       Declaration.same_property covering covered
       || covers_longhand covering_p covered_p
+      || aliases_page_break covering_p covered_p
   | _ -> false
 
 type overlap_key = int
@@ -756,6 +775,14 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "column-rule-color";
       ]
   | Column_rule_color -> [ key "column-rule-color" ]
+  (* CSS Fragmentation 3 sec. 3.4: a [page-break-*] alias writes the slot of the
+     [break-*] property it aliases. *)
+  | Break_before -> [ key "break-before" ]
+  | Page_break_before -> [ key "break-before" ]
+  | Break_after -> [ key "break-after" ]
+  | Page_break_after -> [ key "break-after" ]
+  | Break_inside -> [ key "break-inside" ]
+  | Page_break_inside -> [ key "break-inside" ]
   (* CSS Lists 3 sec. 3.6. *)
   | List_style ->
       [

@@ -546,6 +546,10 @@ recorded cases carrying six minifiers' answers.
   one hash and the two tables that drop shadowed rules and declarations
   compared selector subtrees on every probe; the heaviest stylesheet in the
   corpus spends a third of what it did on that pass (#493)
+- `--minify` keeps one declaration where a rule writes both a `page-break-*`
+  property and its `break-*` twin. CSS Fragmentation 3 sec. 3.4 makes the pair
+  one property, so `page-break-before: always; break-before: page` no longer
+  emits `break-before: page` twice (#547)
 
 ### Custom properties
 
