@@ -3581,7 +3581,14 @@ type margin_trim =
   | Revert_layer
   | Var of margin_trim var
 
-type ray_size = Radial of radial_size | Sides
+(** [ray()] size: the [<radial-extent>] keywords plus [sides]. The [<length>]
+    and two-radii branches of [<radial-size>] have no [ray()] syntax. *)
+type ray_size =
+  | Closest_side
+  | Closest_corner
+  | Farthest_side
+  | Farthest_corner
+  | Sides
 
 type ray = {
   angle : angle;

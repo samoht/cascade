@@ -154,6 +154,9 @@ recorded cases carrying six minifiers' answers.
 - `Css.Selector_summary.clear_memo` is gone. It did nothing, so a caller that
   called it can drop the call and see no change: summaries are computed per
   call and there is no cache to reset (#548)
+- `Css.Properties.ray_size` names the five sizes `ray()` accepts directly, so
+  write `Closest_side` for `Radial Closest_side`. The dropped `Radial` wrapper
+  also admitted lengths and radii that `pp_ray_size` raised on (#549)
 
 ### Parsing
 

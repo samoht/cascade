@@ -4497,16 +4497,7 @@ let test_outline_shorthand () =
    printed text parses back to it. *)
 let test_ray_size () =
   let sizes : ray_size list =
-    [
-      Radial Closest_side;
-      Radial Closest_corner;
-      Radial Farthest_side;
-      Radial Farthest_corner;
-      Radial (Circle_radius (Px 1.));
-      Radial (Ellipse_radii (Length (Px 1.), Pct 50.));
-      Radial (Var (Values.var_ref "x"));
-      Sides;
-    ]
+    [ Closest_side; Closest_corner; Farthest_side; Farthest_corner; Sides ]
   in
   List.iter
     (fun size ->

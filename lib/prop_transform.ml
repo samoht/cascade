@@ -301,12 +301,6 @@ let normalize_transform_origin : transform_origin -> transform_origin =
         preserve_if_equal value (Position_z (normalize_position_value p, z c))
     | other -> other
 
-let normalize_ray_size : ray_size -> ray_size =
- fun value ->
-  match value with
-  | Radial size -> preserve_if_equal value (Radial (normalize_radial_size size))
-  | Sides -> Sides
-
 let normalize_offset_path : offset_path -> offset_path =
  fun value ->
   match value with
@@ -316,7 +310,6 @@ let normalize_offset_path : offset_path -> offset_path =
            {
              ray with
              angle = Values.normalize_angle ray.angle;
-             size = option_map_preserve normalize_ray_size ray.size;
              position =
                option_map_preserve
                  (normalize_position_value ~strip:false)
@@ -654,11 +647,10 @@ let rec pp_backface_visibility : backface_visibility Pp.t =
 
 let pp_ray_size : ray_size Pp.t =
  fun ctx -> function
-  | Radial Closest_side -> Pp.string ctx "closest-side"
-  | Radial Closest_corner -> Pp.string ctx "closest-corner"
-  | Radial Farthest_side -> Pp.string ctx "farthest-side"
-  | Radial Farthest_corner -> Pp.string ctx "farthest-corner"
-  | Radial _ -> invalid_arg "pp_ray_size: invalid radial size for ray()"
+  | Closest_side -> Pp.string ctx "closest-side"
+  | Closest_corner -> Pp.string ctx "closest-corner"
+  | Farthest_side -> Pp.string ctx "farthest-side"
+  | Farthest_corner -> Pp.string ctx "farthest-corner"
   | Sides -> Pp.string ctx "sides"
 
 let pp_ray : ray Pp.t =
@@ -1201,10 +1193,10 @@ let read_perspective_origin : Cursor.t -> perspective_origin =
 let read_ray_size t : ray_size =
   Cursor.enum "ray size"
     [
-      ("closest-side", (Radial Closest_side : ray_size));
-      ("closest-corner", Radial Closest_corner);
-      ("farthest-side", Radial Farthest_side);
-      ("farthest-corner", Radial Farthest_corner);
+      ("closest-side", (Closest_side : ray_size));
+      ("closest-corner", Closest_corner);
+      ("farthest-side", Farthest_side);
+      ("farthest-corner", Farthest_corner);
       ("sides", Sides);
     ]
     t
