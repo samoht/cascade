@@ -773,27 +773,14 @@ let pseudo_element_spellings =
    constructor of its own. Every other entry of [pseudo_element_spellings] names
    a pseudo-element cascade models.
 
-   Some of these are real pseudo-elements that engines do implement: bare
-   [::cue] and [::cue-region] reach cascade's reader only in their functional
-   form, and the scrollbar parts past [::-webkit-scrollbar] have no constructor
-   at all. Until each name is modelled, cascade cannot tell it from [::deep] and
-   so keeps the rule. Modelling the name is what moves it to the list above. *)
+   No engine implements any of these, so cascade has nothing to judge them
+   against and keeps the rule: the name may be one a browser ships next.
+   [::deep], [::v-deep] and [::ng-deep] are Vue and Angular tooling spellings
+   that no engine has ever parsed. Chrome 151 and WebKit 26.5 drop every one,
+   and Lightning CSS reads every one back verbatim, which is what
+   test/interop/lightning records. *)
 let unmodelled_pseudo_element_spellings =
-  [
-    "::future-pseudo-element";
-    "::foo(bar)";
-    "::deep";
-    "::v-deep";
-    "::ng-deep";
-    "::cue";
-    "::cue-region";
-    "::-webkit-scrollbar-thumb";
-    "::-webkit-scrollbar-track";
-    "::-webkit-scrollbar-track-piece";
-    "::-webkit-scrollbar-button";
-    "::-webkit-scrollbar-corner";
-    "::-webkit-resizer";
-  ]
+  [ "::future-pseudo-element"; "::foo(bar)"; "::deep"; "::v-deep"; "::ng-deep" ]
 
 let modelled_pseudo_element_spellings =
   List.filter
@@ -1204,10 +1191,28 @@ let pseudo_element_pseudo_class_rows =
         "::-webkit-details-marker";
       ],
       user_action_pseudo_classes );
-    (* The scrollbar takes no focus, and reports its own state instead. *)
-    ( [ "::-webkit-scrollbar" ],
+    (* The scrollbar takes no focus, and reports its own state instead. Every
+       part reads the same row: Chrome 151, WebKit 26.5 and Lightning CSS keep
+       [::-webkit-resizer:vertical] and [::-webkit-scrollbar-thumb:enabled] and
+       drop [::-webkit-scrollbar-thumb:focus]. *)
+    ( [
+        "::-webkit-scrollbar";
+        "::-webkit-scrollbar-button";
+        "::-webkit-scrollbar-track";
+        "::-webkit-scrollbar-track-piece";
+        "::-webkit-scrollbar-thumb";
+        "::-webkit-scrollbar-corner";
+        "::-webkit-resizer";
+      ],
       [ ":hover"; ":active"; ":enabled"; ":disabled" ]
       @ scrollbar_state_pseudo_classes );
+    (* WebVTT 1 sec. 8.2.1 and sec. 8.2.3 define a cue and a region as boxes the
+       page styles, not as controls it drives, and the engines give the pair the
+       user-action row and nothing more: all three keep [::cue:focus-within] and
+       drop [::cue:enabled] and [::cue:lang(en)]. Chrome and WebKit implement
+       neither form of [::cue-region], so Lightning CSS answers that row alone
+       and answers it the same way. *)
+    ([ "::cue"; "::cue-region" ], user_action_pseudo_classes);
     (* WebKit's [::selection:window-inactive], and nothing else. *)
     ([ "::selection" ], [ ":window-inactive" ]);
     (* CSS View Transitions 1 sec. 3.1: [:only-child] matches a view transition
@@ -1225,27 +1230,17 @@ let pseudo_element_pseudo_class_rows =
        after [::details-content]. *)
     ([ "::part(tab)" ], element_backed_pseudo_classes @ [ ":window-inactive" ]);
     ([ "::details-content" ], element_backed_pseudo_classes);
-    (* Names no shipping engine knows, plus the two WebVTT names cascade only
-       has a constructor for in their functional form, so that a bare [::cue] or
-       [::cue-region] reaches the reader as an unrecognised name: cascade keeps
-       all of these for forward compatibility and cannot know their rules, so it
-       keeps taking any pseudo-class after them. *)
+    (* Names no shipping engine knows: cascade keeps all of these for forward
+       compatibility and cannot know their rules, so it keeps taking any
+       pseudo-class after them. *)
     ( [
         "::-moz-placeholder";
         "::-ms-input-placeholder";
-        "::cue";
-        "::cue-region";
         "::future-pseudo-element";
         "::foo(bar)";
         "::deep";
         "::v-deep";
         "::ng-deep";
-        "::-webkit-scrollbar-thumb";
-        "::-webkit-scrollbar-track";
-        "::-webkit-scrollbar-track-piece";
-        "::-webkit-scrollbar-button";
-        "::-webkit-scrollbar-corner";
-        "::-webkit-resizer";
       ],
       probe_pseudo_classes );
   ]
@@ -1323,6 +1318,110 @@ let pseudo_element_pseudo_classes () =
         (String.concat "" [ "pseudo-class row for "; pe ])
         true (covered pe))
     pseudo_element_spellings
+
+(* The names sec. 3.6.5 and sec. 3.6.4 used to miss, because cascade carried
+   them as raw idents and both rules exempt a name cascade does not model.
+
+   WebVTT 1 (Editor's Draft, w3c.github.io/webvtt/, 20 May 2026) sec. 8.2: "A
+   CSS user agent that implements the text tracks model must implement the
+   ::cue, ::cue(selector), ::cue-region and ::cue-region(selector)
+   pseudo-elements". Sec. 8.2.1 and sec. 8.2.3 define the argument-less forms
+   ("The ::cue pseudo-element (with no argument) matches any list of WebVTT Node
+   Objects", "The ::cue-region pseudo-element (with no argument) matches any
+   list of WebVTT region objects"); the W3C Candidate Recommendation Draft of
+   the same date carries the same three section numbers. Chrome 151, WebKit 26.5
+   and Lightning CSS all take [::cue]; Chrome and WebKit implement neither form
+   of [::cue-region], so Lightning CSS is the oracle for that one.
+
+   No specification defines the scrollbar parts. WebKit's "Styling Scrollbars"
+   introduces the seven names together and nothing else covers them, so the
+   oracle is browsers and independent parsers alone: all three take every part
+   bare, and all three drop a combinator or a pseudo-element after it.
+
+   Reading a name gives it a constructor, and a constructor prints its own
+   spelling, so an uppercase source folds to lower case where a raw ident kept
+   it. *)
+let modelled_raw_ident_pseudo_elements () =
+  let parses input =
+    let c = Cursor.of_string input in
+    match read c with
+    | exception Error.Parse_error _ ->
+        Alcotest.failf "selector should parse: %s" input
+    | _ ->
+        if Stdlib.not (Cursor.is_done c) then
+          Alcotest.failf "selector only partly read: %s" input
+  in
+  (* Sec. 3.6.5: no combinator after any of the eight. *)
+  neg_cursor read ".a::cue .b";
+  neg_cursor read ".a::cue > .b";
+  neg_cursor read ".a::cue-region .b";
+  neg_cursor read ".a::cue-region + .b";
+  neg_cursor read ".a::-webkit-scrollbar-button .b";
+  neg_cursor read ".a::-webkit-scrollbar-track > .b";
+  neg_cursor read ".a::-webkit-scrollbar-track-piece ~ .b";
+  neg_cursor read ".a::-webkit-scrollbar-thumb .b";
+  neg_cursor read ".a::-webkit-scrollbar-corner .b";
+  neg_cursor read ".a::-webkit-resizer .b";
+  (* Sec. 3.6.4: none of the eight is defined to take a sub-pseudo-element. The
+     first two rows are where cascade differed from all three engines. *)
+  neg_cursor read "::cue::before";
+  neg_cursor read "::cue::marker";
+  neg_cursor read "::cue::after";
+  neg_cursor read "::cue::cue";
+  neg_cursor read "::cue-region::before";
+  neg_cursor read "::-webkit-scrollbar-thumb::before";
+  neg_cursor read "::-webkit-resizer::before";
+  (* Sec. 3.6.3, per the rows above: a cue takes the user-action pseudo-classes,
+     a scrollbar part its own states. *)
+  parses ".a::cue:hover";
+  parses ".a::cue:focus-within";
+  parses ".a::cue-region:active";
+  neg_cursor read ".a::cue:enabled";
+  neg_cursor read ".a::cue:lang(en)";
+  neg_cursor read ".a::cue-region:first-child";
+  parses ".a::-webkit-scrollbar-thumb:enabled";
+  parses ".a::-webkit-scrollbar-thumb:window-inactive";
+  parses ".a::-webkit-resizer:vertical";
+  neg_cursor read ".a::-webkit-scrollbar-thumb:focus";
+  (* The functional forms are the ones cascade already modelled, and their rows
+     are untouched: [::cue()] takes no pseudo-class and [::cue-region()] takes
+     any, both as before. *)
+  check_minified_to "::cue(v)" "::cue(v)";
+  check_minified_to "::cue-region(v)" "::cue-region(v)";
+  check_minified_to "::cue(v[voice=active])" "::cue(v[voice='active'])";
+  parses ".a::cue-region(v):hover";
+  neg_cursor read ".a::cue(v):hover";
+  neg_cursor read ".a::cue(v) .b";
+  neg_cursor read ".a::cue-region(v) > .b";
+  neg_cursor read "::cue()";
+  neg_cursor read "::cue-region()";
+  (* Chrome and WebKit take none of the eight with one colon, so cascade reads
+     them off the [::] table alone and a single colon stays a parse error. *)
+  neg_cursor read ".a:cue";
+  neg_cursor read ".a:cue-region";
+  neg_cursor read ".a:-webkit-scrollbar-thumb";
+  neg_cursor read ".a:-webkit-resizer";
+  (* CSS Values 4 sec. 4.1: the name is case-insensitive, and a constructor
+     prints the canonical lower-case spelling. *)
+  check_minified_to "::cue" "::CUE";
+  check_minified_to "::cue-region" "::Cue-Region";
+  check_minified_to "::-webkit-scrollbar-thumb" "::-WEBKIT-SCROLLBAR-THUMB";
+  check_minified_to "::-webkit-resizer" "::-WebKit-Resizer";
+  check_minified_to "::cue(v)" "::CUE(v)";
+  (* The exemption the interop corpus rests on is untouched: a name cascade does
+     not model still takes a combinator, a sub-pseudo-element and any
+     pseudo-class after it, and still keeps the source's case. *)
+  parses ".foo ::deep .bar";
+  parses ".foo ::unknown(.foo) .bar";
+  parses ".foo ::v-deep .bar";
+  parses ".foo ::ng-deep .bar";
+  parses ".a::deep > .b";
+  parses ".a::deep::before";
+  parses ".a::foo::before::marker";
+  parses ".a::deep:first-child";
+  parses ".a::unknown(.foo):lang(en)";
+  check_minified_to "::DEEP" "::DEEP";
+  check_minified_to "::Foo(bar)" "::Foo(bar)"
 
 (* [canonicalize] splices a single-argument [:is(s)] into the compound around
    it, since [:is(s)] matches [s] with the same specificity (Selectors 4 sec.
@@ -2531,6 +2630,8 @@ let suite =
       test_case "sub-pseudo-element guard" `Quick sub_pseudo_element_guard;
       test_case "pseudo-element pseudo-classes" `Quick
         pseudo_element_pseudo_classes;
+      test_case "modelled raw-ident pseudo-elements" `Quick
+        modelled_raw_ident_pseudo_elements;
       test_case "scrollbar state pseudo-classes" `Quick
         scrollbar_state_pseudo_classes_read;
       test_case "canonicalize pseudo-compound :is()" `Quick
