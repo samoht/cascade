@@ -4,8 +4,7 @@ open Cascade
 
 let decl_t : Css.Declaration.declaration Alcotest.testable =
   Alcotest.testable
-    (fun fmt d ->
-      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    (fun fmt d -> Format.pp_print_string fmt (Css.Declaration.to_string d))
     ( = )
 
 let stylesheet_t : Css.Stylesheet.t Alcotest.testable =
@@ -446,7 +445,7 @@ let check_layered_eval_preserves name ~ctx ~layer_order ?layer input =
 
 let stylesheet_of_string input =
   let cursor = Cursor.of_string input in
-  try Css.Stylesheet.read_stylesheet cursor
+  try Css.Stylesheet.read cursor
   with Cursor.Parse_error err ->
     Alcotest.failf "expected stylesheet to parse: %s" (Error.to_string err)
 
@@ -523,7 +522,7 @@ let rec statement_shape stmt =
       ("container:"
       ^ Option.value ~default:"" name
       ^ ":"
-      ^ Option.fold ~none:"" ~some:Css.Container.pp condition)
+      ^ Option.fold ~none:"" ~some:Css.Container.to_string condition)
       :: block_lines block
   | Supports (condition, block) ->
       ("supports:" ^ Css.Pp.to_string ~minify:true Css.Supports.pp condition)
@@ -552,21 +551,21 @@ let rec statement_shape stmt =
       ("keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             ("  keyframe:" ^ Css.Keyframe.to_string keyframe.selector)
              :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Webkit_keyframes (name, keyframes) ->
       ("webkit-keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             ("  keyframe:" ^ Css.Keyframe.to_string keyframe.selector)
              :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Moz_keyframes (name, keyframes) ->
       ("moz-keyframes:" ^ name)
       :: (keyframes
          |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
-             ("  keyframe:" ^ Css.Keyframe.string_of_selector keyframe.selector)
+             ("  keyframe:" ^ Css.Keyframe.to_string keyframe.selector)
              :: prefixed "    " (declaration_lines keyframe.declarations))
          |> List.concat)
   | Font_face descriptors ->
@@ -633,8 +632,7 @@ let specificity_score selector =
   + (specificity.classes * 1_000)
   + specificity.elements
 
-let declaration_source decl =
-  Css.Declaration.string_of_declaration ~minify:true decl
+let declaration_source decl = Css.Declaration.to_string ~minify:true decl
 
 let declaration_value_source decl =
   let source = declaration_source decl in
@@ -2519,14 +2517,14 @@ let runtime_var_not_folded_contract () =
   Alcotest.(check bool)
     "non-runtime var folds" false
     (String.equal
-       (Css.Declaration.string_of_declaration folding)
-       (Css.Declaration.string_of_declaration
+       (Css.Declaration.to_string folding)
+       (Css.Declaration.to_string
           (Css.eval_declaration Css.Context.empty folding)));
   (* Multiplicative identities never read the variable's value, so they still
      simplify a runtime var; only value resolution ([* n], n >= 2) is
      skipped. *)
   let eval c =
-    Css.Declaration.string_of_declaration ~minify:true
+    Css.Declaration.to_string ~minify:true
       (Css.eval_declaration Css.Context.empty (Css.width (Calc c)))
   in
   Alcotest.(check string)
@@ -2544,7 +2542,7 @@ let runtime_var_not_folded_contract () =
   Alcotest.(check string)
     "runtime var * 1 in the padding shorthand folds to the operand"
     "padding:var(--spacing)"
-    (Css.Declaration.string_of_declaration ~minify:true
+    (Css.Declaration.to_string ~minify:true
        (Css.eval_declaration Css.Context.empty
           (Css.padding [ Calc (Expr (Var spacing, Mul, Num 1.)) ])))
 

@@ -19,12 +19,6 @@ val of_selector : Selector.t -> t
     keyed on the rightmost compound (the subject element) so that, e.g., [.a .b]
     and [.c .b] summarize the same way - both target a [.b] element. *)
 
-val clear_memo : unit -> unit
-(** [clear_memo ()] is a no-op kept for callers that previously reset a
-    per-selector memo. Summaries are now computed afresh per call; structural
-    Hashtbl caching cost more time on real-world stylesheets than the recompute
-    work it saved. *)
-
 val may_overlap : t -> t -> bool
 (** [may_overlap a b] is [true] when some DOM element might match both
     selectors. [false] is a hard guarantee that no element matches both, modulo

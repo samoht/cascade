@@ -1,22 +1,3 @@
-let rec pseudo : Selector.t -> Selector.t option = function
-  | Before f -> Some (Before f)
-  | After f -> Some (After f)
-  | First_letter f -> Some (First_letter f)
-  | First_line f -> Some (First_line f)
-  | Marker -> Some Marker
-  | Placeholder -> Some Placeholder
-  | Selection -> Some Selection
-  | File_selector_button -> Some File_selector_button
-  | Backdrop -> Some Backdrop
-  | Details_content -> Some Details_content
-  | Compound sels ->
-      List.fold_left
-        (fun acc sel ->
-          match pseudo sel with Some _ as pe -> pe | None -> acc)
-        None sels
-  | Combined (_, _, right) | Relative (_, right) -> pseudo right
-  | _ -> None
-
 let rec vendor : Selector.t -> bool = function
   | File_selector_button -> true
   | Webkit_scrollbar | Webkit_search_cancel_button | Webkit_search_decoration

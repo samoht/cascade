@@ -2538,17 +2538,6 @@ val shadow :
     [inset_var_no_fallback] is true). Defaults: inset=false, h_offset=0px,
     v_offset=0px, blur=0px, spread=0px, color=Rgb(0,0,0). *)
 
-val inset_ring_shadow :
-  ?h_offset:length ->
-  ?v_offset:length ->
-  ?blur:length ->
-  ?spread:length ->
-  ?color:color ->
-  unit ->
-  shadow
-(** [inset_ring_shadow ~h_offset ~v_offset ~blur ~spread ~color] is an inset
-    shadow with the given parameters. *)
-
 (** {2 Generic property handling} *)
 
 val pp_any_property : any_property Pp.t

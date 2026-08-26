@@ -5,20 +5,53 @@ one cause. Readers, printers and optimizer passes each walked the statement
 tree by hand, matching the constructors they knew and closing with a wildcard,
 and no two of those lists agreed, so an at-rule added to the AST later fell
 through them unseen rather than failing to compile. They share one traversal
-now, written without that wildcard, so a statement kind added after this
-release stops every site that has to decide about it from compiling, and a test
-walks all twenty-three statement shapes and every place a declaration can sit
-to pin that the shared walk reaches them. Correctness was judged against a
-browser rather than against cascade: the test suite renders a sheet and its
-optimised form in headless Chrome and compares every property
-`getComputedStyle` reports on every element, and a manual sweep does the same
-to live pages, so several of the fixes below are miscompiles Chrome
-contradicted rather than readings of the spec. Behind those sit 504 CSS files
-drawn from 72 production sites and 2960 recorded cases carrying six minifiers'
-answers.
+now, written without that wildcard. A statement kind added after this release
+stops every site that has to decide about it from compiling, and a test pins
+that the shared walk reaches all twenty-three statement shapes and every place
+a declaration can sit. Correctness was judged against a browser rather than
+against cascade. The test suite renders a sheet and its optimised form in
+headless Chrome, then compares every property `getComputedStyle` reports on
+every element; a manual sweep does the same to live pages. Several of the
+fixes below are miscompiles Chrome contradicted, not readings of the spec.
+Behind those sit 504 CSS files drawn from 72 production sites and 2960
+recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- Implementation modules are no longer usable through accidental `Cascade.*`
+  aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
+  `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
+  `Rule_graph`, `Rule_scheduler`, `Pool`, `Order_maintenance`, `Preflight`,
+  `Ctx`, `Cover`, `Edge`, `Loop`, `Rule_candidate`, `Rule_rewrite`,
+  `Factor_safe`, `Gzip_size` and `Index` are private, as are the six shared
+  `Declaration_intf`, `Properties_intf`, `Selector_intf`, `Stylesheet_intf`,
+  `Values_intf` and `Variables_intf` modules. The supported `Css` aliases and
+  parser roots remain public; `Aria`, `Color_space` and `Nest` now have
+  coherent `Css` aliases too.
+- `Css.Stylesheet.edit_statements` callbacks return
+  `Css.Stylesheet.Keep`, `Replace` or `Drop` through the new
+  `Css.Stylesheet.edit` type. They previously leaked the otherwise-internal
+  `Common.List.edit` type.
+- Redundant public aliases are gone. Use `Declaration.pp` and
+  `Declaration.to_string` instead of `pp_declaration` and
+  `string_of_declaration`; `Stylesheet.empty`, `Stylesheet.read` and
+  `Stylesheet.to_string` instead of `empty_stylesheet`, `read_stylesheet` and
+  the old string-valued `Stylesheet.pp`; and `Keyframe.to_string` instead of
+  `string_of_selector`. `Stylesheet.pp`, `Css.pp`, and `Container.pp` are now
+  composable `Pp.t` printers rather than string-returning aliases; use their
+  `to_string` functions when a string is required. `Pp.float` replaces the
+  identical `Pp.float_compact`. Use `Css.inline_style_of_declarations`, which
+  retains the useful `optimize` option, instead of the removed duplicate
+  `Stylesheet.inline_style_of_declarations`.
+- The unused one-off `Css.Transform`, `Css.Transform_origin`,
+  `Css.Perspective_origin` and `Css.Animation` string parser modules are gone;
+  use the corresponding `Properties.read_*` parser with a `Cursor`.
+  `Css.Gradient_direction.of_string`, which has an external caller, remains.
+  The unused Tailwind-specific `inset_ring_shadow` helper is also gone; use
+  `shadow ~inset:true` or construct the typed shadow value when its distinct
+  defaults matter.
+- `Box_shadow` is no longer a duplicate constructor of the typed `kind` GADT;
+  use `Shadow`. The `Box_shadow` CSS property constructor is unchanged.
 - `Declaration.declaration` is a private variant. Its constructors remain
   available for pattern matching, but construct values with `Declaration.v` or
   `Declaration.theme_guarded`. The public records exposed their cached hash, so
@@ -41,6 +74,11 @@ answers.
   `Cursor.Parse_error` where they raised `Failure`, so a `Failure` handler
   around any of them stops catching and the exception escapes; match
   `Cursor.Parse_error` instead (#496, #497, #499, #501)
+- `Declaration.of_string` raises `Cursor.Parse_error` for every input it
+  refuses, anchored on the text that failed. Empty, blank and selector-shaped
+  input raised `Failure` while everything the reader reached already raised
+  `Cursor.Parse_error`, so one handler now covers the function; replace a
+  `Failure` handler around it with `Cursor.Parse_error` (#535)
 - `Css.Selector.of_string ""` raises `Error.Parse_error`, like every other
   malformed selector, where it raised `Invalid_argument`. Its documentation
   now describes the complete selector grammar the function already parses.
@@ -113,9 +151,32 @@ answers.
   names over a component-value stream, so read CSS from a `Cursor.of_string` or
   `Cursor.of_reader` instead. The cursor itself, the `parse_error` record and
   the call stack are unchanged (#509, #514)
+- `Css.Selector_summary.clear_memo` is gone. It did nothing, so a caller that
+  called it can drop the call and see no change: summaries are computed per
+  call and there is no cache to reset (#548)
+- `Css.Properties.ray_size` names the five sizes `ray()` accepts directly, so
+  write `Closest_side` for `Radial Closest_side`. The dropped `Radial` wrapper
+  also admitted lengths and radii that `pp_ray_size` raised on (#549)
 
 ### Parsing
 
+- A rule whose selector chains one pseudo-element onto another, such as
+  `::before::marker`, `::part(label)::before` or `::slotted(a)::before`, is
+  read and written back instead of dropped. CSS Selectors 4 sec. 3.6.4
+  (Editor's Draft, drafts.csswg.org/selectors-4/) makes such a chain valid
+  where another specification defines the sub-pseudo-element, and CSS
+  Pseudo-Elements 4 sec. 4.2 and sec. 5 and CSS Shadow 1 sec. 3.2.4 (both
+  Editor's Drafts) do. `::before::before` stays invalid (#553)
+- A rule whose selector puts a combinator after a pseudo-element, such as
+  `.a::before .b`, is reported and dropped instead of written back. CSS
+  Selectors 4 sec. 3.6.5 (Editor's Draft, drafts.csswg.org/selectors-4/) makes
+  it invalid unless the pseudo-element has internal structure, and none that
+  ships has; Chrome 151 and WebKit 26.5 drop every such rule. A `::` name
+  cascade does not model, such as `::deep`, keeps its combinator (#552)
+- A valid `@font-palette-values` rule no longer warns, so `cascade apply`
+  accepts it. CSS Fonts 4 sec. 9.2.2 (Working Draft, 25 August 2026) defaults
+  a missing `base-palette` to 0, and sec. 9.2 makes `font-family` the mandatory
+  descriptor, whose absence warns in its place (#551)
 - A parse error in a `page-break-before`, `page-break-after` or
   `page-break-inside` declaration is reported against the property the
   declaration wrote. The diagnostic named the CSS Fragmentation 3 sec. 3.4
@@ -129,7 +190,8 @@ answers.
   a later one of its own name (#511)
 - An error inside an at-rule condition or an `@font-face` descriptor points at
   the slice that failed, not at the end of the file with the caret past the
-  last byte (#496, #497, #499, #501)
+  last byte. `@when` and `@else` name the at-rule with it (#496, #497, #499,
+  #501, #538)
 - Everything the parser repaired or dropped is reported, so strict mode
   rejects it. `@media screen {` swallowed the rest of the file and still
   returned `Ok` with no warnings, hiding a truncated stylesheet (#484)
@@ -302,6 +364,13 @@ answers.
 
 ### Minification
 
+- `--minify` indexes each selector's latest write by property instead of
+  rescanning every later declaration when deciding whether a rule is shadowed.
+  The 8,000-rule same-selector benchmark is about 108x faster.
+- `--minify` keeps source-order dependencies as compact constraints instead of
+  materialising their transitive closure. At 4,000 rules, allocations in the
+  representative A, C and D cases fall by 99.47%, about 106.9x and about 58.7x
+  respectively; case B remains linear.
 - `--minify` merges `@media` blocks by query structure rather than serialised
   text: `(min-width: 10px)` and `(width >= 10px)` are one bound and now merge
   (Media Queries 4 sec. 2.4.4), while `@media screen\ and\ \(min-width\:\
@@ -480,19 +549,30 @@ answers.
 - `--minify` and `cascade diff` spend less time and memory on a large
   stylesheet, for the same output (#413, #422, #424, #468, #507)
 - `--minify` no longer allocates quadratically on a long run of rules sharing
-  one selector or one body, nor probes every pair of them to decide whether it
-  may merge. The benchmark corpora hold no such run, so this bounds a worst
-  case rather than speeding real input up (#480, #486, #487, #502, #505)
+  one selector, one body, or one declaration, nor probes every pair of them to
+  decide whether it may merge or which order the cascade needs. The benchmark
+  corpora hold no such run, so this bounds a worst case rather than speeding
+  real input up (#480, #486, #487, #502, #505, #523)
 - `--minify` decides which rules share a default value without rebuilding a
   property key for every declaration it reads, a scan it repeats once per
   member per property under consideration. It allocates a twentieth less over
   the 504-file corpus, for byte-identical output (#517)
+- `--minify` decides whether a factored group would cross a rule outside it
+  without listing the graph's nodes to scan them, and without allocating at
+  each node it walks past. The check runs once per proposed group and answers
+  no at almost every node, so those two were the scan's whole cost. It
+  allocates a thirtieth less over the 504-file corpus, for byte-identical
+  output (#519)
 - `--minify` no longer scans quadratically when many rules share a deep
   selector prefix. The structural hash reads a fixed count of nodes, so
   `.a .b .c .d .e .f .g` and every sibling differing only past that prefix took
   one hash and the two tables that drop shadowed rules and declarations
   compared selector subtrees on every probe; the heaviest stylesheet in the
   corpus spends a third of what it did on that pass (#493)
+- `--minify` keeps one declaration where a rule writes both a `page-break-*`
+  property and its `break-*` twin. CSS Fragmentation 3 sec. 3.4 makes the pair
+  one property, so `page-break-before: always; break-before: page` no longer
+  emits `break-before: page` twice (#547)
 
 ### Custom properties
 
@@ -632,9 +712,10 @@ answers.
   `Css.media_queries` report a query written inside a grouping at-rule, and
   pair each query with every rule below its brace rather than the ones sitting
   directly under it (#389)
-- `Css.Flatten` carries the parent selector into an `@-moz-document` block, the
-  one grouping at-rule it did not descend into, where the declarations came out
-  bare at the top of the block and no reader takes that back (#384)
+- `Css.flatten_nesting` carries the parent selector into an `@-moz-document`
+  block, the one grouping at-rule it did not descend into, where the
+  declarations came out bare at the top of the block and no reader takes that
+  back (#384)
 - `Cascade_diff.Tree_diff.has_container_added_of_type` and
   `has_container_removed_of_type` look inside a container reported as modified,
   as `count_containers_by_type` already did, where a `@supports` added inside

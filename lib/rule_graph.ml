@@ -86,11 +86,10 @@ type t = {
   decl_overlaps : decl_overlap list array;
   overlap_keys : Shorthand.overlap_key list array;
   succ : (node_id * edge_reason) list array;
-      (** directed partial-order edges: [i] precedes every node in [succ.(i)].
-          An edge exists exactly between two conflicting nodes, oriented by the
-          order they were created in (source order for [of_rules], inherited
-          order for rewrites). A valid linear extension is any topological order
-          of the live sub-graph. *)
+      (** directed partial-order edges: [i] precedes every node reachable from
+          [succ.(i)]. Simple dense runs store a transitive chain rather than one
+          edge per conflicting pair. Edges follow creation order (source order
+          for [of_rules], inherited order for rewrites). *)
   key_index : node_id list Decl_tbl.t Key_tbl.t;
       (** overlap key -> (declaration writing it -> node ids), so a rewrite
           finds an external node's potential conflicts without scanning every
@@ -214,7 +213,7 @@ let rec share_branch a b =
       else if c < 0 then share_branch xs b
       else share_branch a ys
 
-let declaration_size decl = Pp.size ~minify:true Declaration.pp_declaration decl
+let declaration_size decl = Pp.size ~minify:true Declaration.pp decl
 
 let rule_summary rule =
   Summary.v ~rule_size:Size.rule ~decl_size:declaration_size
@@ -403,14 +402,51 @@ let collect_string_bucket bucket key stamp seen acc =
   |> Option.value ~default:[]
   |> add_candidates stamp seen acc
 
-(* The declaration that writes a key is the third level of the source-order
-   index, under the overlap key and the specificity. Two rules writing the same
-   declaration for a key never constrain each other's order there - an identical
-   pair is its own winner wherever the two sit - so that (often large) group is
-   skipped whole instead of being walked and rejected pair by pair. The rewrite
-   path already reads its externals this way through [key_index]; specificity
-   stays the outer level so #468's partition still narrows first. *)
-type decl_groups = node_id list Decl_tbl.t
+(* The declaration that writes a key sits below the specificity and the
+   selector's exclusive subject facts. Two rules writing the same declaration
+   never constrain each other's order there, while two branches with distinct
+   mandatory IDs or element names cannot target the same element. Keeping both
+   dimensions in the index skips either whole group without enumerating its
+   nodes.
+
+   For a simple one-declaration branch, every distinct declaration at the
+   frontier gets an edge to the new node. Those old frontier nodes are then
+   transitively dominated, so only the new node and any same-declaration peers
+   remain. [all] and [opaque] preserve full history for shapes where that
+   compaction invariant does not apply. *)
+type decl_groups = {
+  all : node_id list Decl_tbl.t;
+  opaque : node_id list Decl_tbl.t;
+  frontier : node_id list Decl_tbl.t;
+}
+
+type importance_decl_groups = { normal : decl_groups; important : decl_groups }
+
+type id_decl_groups = {
+  no_id : importance_decl_groups;
+  by_id : importance_decl_groups String_table.t;
+}
+
+type selector_decl_groups = {
+  no_element : id_decl_groups;
+  by_element : id_decl_groups String_table.t;
+}
+
+let empty_decl_groups () =
+  {
+    all = Decl_tbl.create 4;
+    opaque = Decl_tbl.create 4;
+    frontier = Decl_tbl.create 4;
+  }
+
+let empty_importance_decl_groups () =
+  { normal = empty_decl_groups (); important = empty_decl_groups () }
+
+let empty_id_decl_groups () =
+  { no_id = empty_importance_decl_groups (); by_id = String_table.create 4 }
+
+let empty_selector_decl_groups () =
+  { no_element = empty_id_decl_groups (); by_element = String_table.create 4 }
 
 let decl_spec_bucket bucket key =
   match Overlap_key_table.find_opt bucket key with
@@ -420,89 +456,202 @@ let decl_spec_bucket bucket key =
       Overlap_key_table.replace bucket key inner;
       inner
 
-let decl_groups inner spec : decl_groups =
+let selector_decl_groups inner spec : selector_decl_groups =
   match Spec_table.find_opt inner spec with
-  | Option.Some groups -> groups
+  | Option.Some index -> index
   | Option.None ->
-      let groups = Decl_tbl.create 4 in
-      Spec_table.replace inner spec groups;
-      groups
+      let index = empty_selector_decl_groups () in
+      Spec_table.replace inner spec index;
+      index
 
-let rec add_decl_specs inner decl value = function
-  | [] -> ()
-  | spec :: rest ->
-      let groups = decl_groups inner spec in
-      Decl_tbl.replace groups decl
-        (value :: Option.value ~default:[] (Decl_tbl.find_opt groups decl));
-      add_decl_specs inner decl value rest
+let element_decl_groups index = function
+  | Option.None -> index.no_element
+  | Option.Some element -> (
+      match String_table.find_opt index.by_element element with
+      | Option.Some groups -> groups
+      | Option.None ->
+          let groups = empty_id_decl_groups () in
+          String_table.replace index.by_element element groups;
+          groups)
 
-let add_decl_bucket bucket key specs decl value =
-  add_decl_specs (decl_spec_bucket bucket key) decl value specs
+let named_decl_groups groups name =
+  match String_table.find_opt groups.by_id name with
+  | Option.Some decls -> decls
+  | Option.None ->
+      let decls = empty_importance_decl_groups () in
+      String_table.replace groups.by_id name decls;
+      decls
 
-(* Every group under [key] at one of [specs], minus the one writing [decl]. *)
-let rec collect_decl_specs inner decl specs stamp seen acc =
-  match specs with
-  | [] -> acc
-  | spec :: rest ->
-      let acc =
-        match Spec_table.find_opt inner spec with
-        | Option.None -> acc
-        | Option.Some groups ->
-            Decl_tbl.fold
-              (fun decl' ids acc ->
-                if Shorthand.same_minified_declaration decl decl' then acc
-                else add_candidates stamp seen acc ids)
-              groups acc
-      in
-      collect_decl_specs inner decl rest stamp seen acc
+let importance_decl_groups groups decl =
+  if Declaration.is_important decl then groups.important else groups.normal
 
-let collect_decl_bucket bucket key decl specs stamp seen acc =
+let push_decl groups decl value =
+  Decl_tbl.replace groups decl
+    (value :: Option.value ~default:[] (Decl_tbl.find_opt groups decl))
+
+let add_decl ~compact groups decl value =
+  let groups = importance_decl_groups groups decl in
+  push_decl groups.all decl value;
+  if compact then begin
+    let same =
+      Decl_tbl.find_opt groups.frontier decl |> Option.value ~default:[]
+    in
+    Decl_tbl.clear groups.frontier;
+    Decl_tbl.replace groups.frontier decl (value :: same)
+  end
+  else push_decl groups.opaque decl value
+
+let add_selector_decl ~compact index summary decl value =
+  let groups = element_decl_groups index (Selector_summary.element summary) in
+  match Selector_summary.ids summary with
+  | [] -> add_decl ~compact groups.no_id decl value
+  | ids ->
+      List.iter
+        (fun id -> add_decl ~compact (named_decl_groups groups id) decl value)
+        ids
+
+let add_decl_bucket ~compact bucket key spec summary decl value =
+  add_selector_decl ~compact
+    (selector_decl_groups (decl_spec_bucket bucket key) spec)
+    summary decl value
+
+let collect_decl_table decl groups stamp seen acc =
+  Decl_tbl.fold
+    (fun decl' ids acc ->
+      if Shorthand.same_minified_declaration decl decl' then acc
+      else add_candidates stamp seen acc ids)
+    groups acc
+
+let collect_distinct_decls ~compact decl groups stamp seen acc =
+  let groups = importance_decl_groups groups decl in
+  if compact then
+    collect_decl_table decl groups.frontier stamp seen acc |> fun acc ->
+    collect_decl_table decl groups.opaque stamp seen acc
+  else collect_decl_table decl groups.all stamp seen acc
+
+let collect_all_decls groups stamp seen acc =
+  let collect groups acc =
+    Decl_tbl.fold
+      (fun _ ids acc -> add_candidates stamp seen acc ids)
+      groups.all acc
+  in
+  collect groups.normal acc |> fun acc -> collect groups.important acc
+
+let collect_id_groups collect groups ids stamp seen acc =
+  let acc = collect groups.no_id stamp seen acc in
+  match ids with
+  | [] ->
+      String_table.fold
+        (fun _ decls acc -> collect decls stamp seen acc)
+        groups.by_id acc
+  | ids ->
+      List.fold_left
+        (fun acc id ->
+          match String_table.find_opt groups.by_id id with
+          | Option.None -> acc
+          | Option.Some decls -> collect decls stamp seen acc)
+        acc ids
+
+let collect_selector_groups collect index summary stamp seen acc =
+  let ids = Selector_summary.ids summary in
+  let acc = collect_id_groups collect index.no_element ids stamp seen acc in
+  match Selector_summary.element summary with
+  | Option.None ->
+      String_table.fold
+        (fun _ groups acc ->
+          collect_id_groups collect groups ids stamp seen acc)
+        index.by_element acc
+  | Option.Some element -> (
+      match String_table.find_opt index.by_element element with
+      | Option.None -> acc
+      | Option.Some groups ->
+          collect_id_groups collect groups ids stamp seen acc)
+
+let collect_decl_bucket ~compact bucket key spec summary decl stamp seen acc =
   match Overlap_key_table.find_opt bucket key with
   | Option.None -> acc
-  | Option.Some inner -> collect_decl_specs inner decl specs stamp seen acc
+  | Option.Some inner -> (
+      match Spec_table.find_opt inner spec with
+      | Option.None -> acc
+      | Option.Some index ->
+          collect_selector_groups
+            (collect_distinct_decls ~compact decl)
+            index summary stamp seen acc)
 
 (* A prior node whose own declaration is broad meets every key, so no single
    declaration of the querying node can rule its group out. *)
-let rec collect_broad_specs inner specs stamp seen acc =
-  match specs with
-  | [] -> acc
-  | spec :: rest ->
-      let acc =
-        match Spec_table.find_opt inner spec with
-        | Option.None -> acc
-        | Option.Some groups ->
-            Decl_tbl.fold
-              (fun _ ids acc -> add_candidates stamp seen acc ids)
-              groups acc
-      in
-      collect_broad_specs inner rest stamp seen acc
-
-let collect_broad_bucket bucket specs stamp seen acc =
+let collect_broad_bucket bucket spec summary stamp seen acc =
   match Overlap_key_table.find_opt bucket Shorthand.broad_overlap_key with
   | Option.None -> acc
-  | Option.Some inner -> collect_broad_specs inner specs stamp seen acc
+  | Option.Some inner -> (
+      match Spec_table.find_opt inner spec with
+      | Option.None -> acc
+      | Option.Some index ->
+          collect_selector_groups collect_all_decls index summary stamp seen acc
+      )
 
-let rec collect_decl_keys bucket decl specs stamp seen acc = function
+let rec collect_decl_keys ~compact bucket spec summary decl stamp seen acc =
+  function
   | [] -> acc
   | key :: rest ->
-      collect_decl_keys bucket decl specs stamp seen
-        (collect_decl_bucket bucket key decl specs stamp seen acc)
+      collect_decl_keys ~compact bucket spec summary decl stamp seen
+        (collect_decl_bucket ~compact bucket key spec summary decl stamp seen
+           acc)
         rest
 
-let rec collect_decl_overlaps bucket specs stamp seen acc = function
+let rec collect_decl_overlaps ~compact bucket spec summary stamp seen acc =
+  function
   | [] -> acc
   | (ov : decl_overlap) :: rest ->
-      collect_decl_overlaps bucket specs stamp seen
-        (collect_decl_keys bucket ov.decl specs stamp seen acc ov.footprint)
+      collect_decl_overlaps ~compact bucket spec summary stamp seen
+        (collect_decl_keys ~compact bucket spec summary ov.decl stamp seen acc
+           ov.footprint)
         rest
 
-let rec add_decl_overlaps bucket specs value = function
+let rec simple_subject_selector (selector : Selector.t) =
+  match selector with
+  | Class _ | Id _ | Element _ | Universal _ -> true
+  | Compound selectors -> List.for_all simple_subject_selector selectors
+  | _ -> false
+
+let compact_rule = function [ { footprint = [ _ ]; _ } ] -> true | _ -> false
+
+let rec collect_rule_overlaps bucket decls selectors summaries specificities
+    stamp seen acc =
+  match (selectors, summaries, specificities) with
+  | [], [], [] -> acc
+  | selector :: selectors, summary :: summaries, specificity :: specificities ->
+      let spec = spec_key specificity in
+      let compact = compact_rule decls && simple_subject_selector selector in
+      let acc =
+        collect_broad_bucket bucket spec summary stamp seen acc |> fun acc ->
+        collect_decl_overlaps ~compact bucket spec summary stamp seen acc decls
+      in
+      collect_rule_overlaps bucket decls selectors summaries specificities stamp
+        seen acc
+  | _ -> invalid_arg "Rule_graph.collect_rule_overlaps"
+
+let rec add_decl_keys ~compact bucket spec summary decl value = function
+  | [] -> ()
+  | key :: rest ->
+      add_decl_bucket ~compact bucket key spec summary decl value;
+      add_decl_keys ~compact bucket spec summary decl value rest
+
+let rec add_decl_overlaps ~compact bucket spec summary value = function
   | [] -> ()
   | (ov : decl_overlap) :: rest ->
-      List.iter
-        (fun key -> add_decl_bucket bucket key specs ov.decl value)
-        ov.footprint;
-      add_decl_overlaps bucket specs value rest
+      add_decl_keys ~compact bucket spec summary ov.decl value ov.footprint;
+      add_decl_overlaps ~compact bucket spec summary value rest
+
+let rec add_rule_overlaps bucket decls selectors summaries specificities value =
+  match (selectors, summaries, specificities) with
+  | [], [], [] -> ()
+  | selector :: selectors, summary :: summaries, specificity :: specificities ->
+      let compact = compact_rule decls && simple_subject_selector selector in
+      add_decl_overlaps ~compact bucket (spec_key specificity) summary value
+        decls;
+      add_rule_overlaps bucket decls selectors summaries specificities value
+  | _ -> invalid_arg "Rule_graph.add_rule_overlaps"
 
 let source_order_edges t =
   let n = t.count in
@@ -526,9 +675,8 @@ let source_order_edges t =
         (* probed per declaration rather than per distinct key: the key alone
            does not say which declaration of [j] faces the bucket, and that is
            what decides which group can never conflict *)
-        collect_decl_overlaps by_decl_key specs j seen
-          (collect_broad_bucket by_decl_key specs j seen [])
-          t.decl_overlaps.(j)
+        collect_rule_overlaps by_decl_key t.decl_overlaps.(j) t.selectors.(j)
+          t.selector_summaries.(j) t.specificities.(j) j seen []
     in
     let candidates =
       List.fold_left
@@ -541,7 +689,8 @@ let source_order_edges t =
         | Option.None -> ()
         | Option.Some reason -> succ.(i) <- (j, reason) :: succ.(i))
       candidates;
-    add_decl_overlaps by_decl_key specs j t.decl_overlaps.(j);
+    add_rule_overlaps by_decl_key t.decl_overlaps.(j) t.selectors.(j)
+      t.selector_summaries.(j) t.specificities.(j) j;
     List.iter
       (fun branch -> String_table.push by_branch branch j)
       t.branches.(j);
@@ -625,9 +774,28 @@ let is_live t i = t.live.(i)
 let conflict t i j = nodes_conflict t i j
 let order_constrained = conflict
 
-let precedes t i j =
-  t.live.(i) && t.live.(j) && List.exists (fun (k, _) -> k = j) t.succ.(i)
+(* Compact source-order chains preserve a constraint by reachability rather than
+   by retaining every transitive edge. Dead rewrite inputs remain in the graph
+   as relay vertices, so paths through them continue to constrain the surviving
+   nodes. *)
+let path_exists t source target =
+  let seen = Bytes.make (max t.count 1) '\000' in
+  let rec visit = function
+    | [] -> false
+    | i :: rest ->
+        if i = target then true
+        else if Bytes.get seen i <> '\000' then visit rest
+        else begin
+          Bytes.set seen i '\001';
+          let next =
+            List.fold_left (fun acc (j, _) -> j :: acc) rest t.succ.(i)
+          in
+          visit next
+        end
+  in
+  source <> target && visit [ source ]
 
+let precedes t i j = t.live.(i) && t.live.(j) && path_exists t i j
 let generation t = t.generation
 
 let live_nodes t =
@@ -666,48 +834,46 @@ module Topo_queue =
 
 let topo_priority rank node = { key = rank node; node }
 
-(* Kahn topological order over the live sub-graph: among the live nodes whose
-   live predecessors are all emitted, always take the smallest [rank] key (ties
-   broken by node id). [rank] resolves the choice among ready nodes - source
-   position gives a minimal-disruption order, a content-derived rank gives a
-   deterministic order two input orderings converge to. Returns [Option.None] if
-   the live sub-graph has a cycle (no valid linear extension). *)
+(* Kahn topological order over the whole graph, emitting only live nodes. Dead
+   nodes stay as zero-output relays because a compact source-order chain can
+   carry a live-to-live constraint through a node consumed by a rewrite. Among
+   ready nodes, take the smallest [rank] key (ties broken by node id). *)
 let topo_order_by t (rank : node_id -> int) : node_id array option =
   let live = live_nodes t in
   let n = List.length live in
   (* Node ids are dense, so the in-degree and emitted marks are arrays over the
      whole node space rather than generic tables keyed by id: both are read once
      per edge, and a generic [Hashtbl] hashes and structurally compares the key
-     on every read. Dead ids are never looked at. *)
+     on every read. *)
   let slots = max (node_count t) 1 in
   let pred = Array.make slots 0 in
-  List.iter
-    (fun i ->
-      List.iter
-        (fun (j, _) -> if t.live.(j) then pred.(j) <- pred.(j) + 1)
-        t.succ.(i))
-    live;
+  for i = 0 to t.count - 1 do
+    List.iter (fun (j, _) -> pred.(j) <- pred.(j) + 1) t.succ.(i)
+  done;
   let out = Array.make n 0 in
   let emitted = Array.make slots false in
-  let queue =
-    List.fold_left
-      (fun queue i ->
-        if pred.(i) = 0 then Topo_queue.add i (topo_priority rank i) queue
-        else queue)
-      Topo_queue.empty live
-  in
-  let rec loop queue o =
-    if o = n then Option.Some out
+  let queue = ref Topo_queue.empty in
+  for i = 0 to t.count - 1 do
+    if pred.(i) = 0 then queue := Topo_queue.add i (topo_priority rank i) !queue
+  done;
+  let rec loop queue processed o =
+    if processed = t.count then Option.Some out
     else
       match Topo_queue.pop queue with
       | Option.None -> Option.None
       | Option.Some ((e, _), queue) ->
           emitted.(e) <- true;
-          out.(o) <- e;
+          let o =
+            if t.live.(e) then begin
+              out.(o) <- e;
+              o + 1
+            end
+            else o
+          in
           let queue =
             List.fold_left
               (fun queue (j, _) ->
-                if t.live.(j) && not emitted.(j) then begin
+                if not emitted.(j) then begin
                   let count = pred.(j) - 1 in
                   pred.(j) <- count;
                   if count = 0 then
@@ -717,9 +883,9 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
                 else queue)
               queue t.succ.(e)
           in
-          loop queue (o + 1)
+          loop queue (processed + 1) o
   in
-  loop queue 0
+  loop !queue 0 0
 
 let canonical_order_by t (rank : node_id -> int) : node_id array =
   match topo_order_by t rank with
@@ -894,7 +1060,7 @@ let rewrite_base t ~consume ~produce :
         Ok (total, consumed_set total consume, graph)
 
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
-let old_edge t a b = List.exists (fun (j, _) -> j = b) t.succ.(a)
+let old_edge = path_exists
 
 type orientation = Before | After | Ambiguous | New_conflict
 type source_ref = { node : node_id; decl : int option }
@@ -1231,19 +1397,13 @@ let rewrite_introduces_cycle graph ~total =
     else begin
       Bytes.set state i on_stack;
       let cyclic =
-        List.exists
-          (fun (j, _) ->
-            let j = Node_id.to_int j in
-            graph.live.(j) && dfs j)
-          graph.succ.(i)
+        List.exists (fun (j, _) -> dfs (Node_id.to_int j)) graph.succ.(i)
       in
       Bytes.set state i acyclic;
       cyclic
     end
   in
-  let rec from_root p =
-    p < n && ((graph.live.(p) && dfs p) || from_root (p + 1))
-  in
+  let rec from_root p = p < n && (dfs p || from_root (p + 1)) in
   from_root total
 
 let rewrite t ~consume ~produce : (t, rewrite_error) result =

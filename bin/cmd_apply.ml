@@ -39,7 +39,7 @@ let style_node node = function
          them. The [Inline] mode would substitute a var() with its fallback,
          dropping the reference and changing the render. *)
       Html.set_attribute node "style"
-        (Sheet.inline_style_of_declarations ~minify:true ~mode:Variables decls)
+        (Css.inline_style_of_declarations ~minify:true ~mode:Variables decls)
 
 (* Prefix every line of a multi-line diagnostic so a downstream [grep -v
    "warning"] filters the whole entry, not just the first line. *)
@@ -122,7 +122,7 @@ let read_file path =
    that reads but does not parse is reported and the page is still written,
    without it. *)
 let read_extra = function
-  | None -> Ok (Some Sheet.empty_stylesheet)
+  | None -> Ok (Some Sheet.empty)
   | Some f -> Result.map (parse_source ~filename:f ~note:"") (read_file f)
 
 let run minimal html_file css_file () =
@@ -134,7 +134,7 @@ let run minimal html_file css_file () =
   | Ok (html, extra) ->
       let out, kept, lost =
         inline_html ~minimal ~filename:html_file ~html
-          ~extra:(Option.value extra ~default:Sheet.empty_stylesheet)
+          ~extra:(Option.value extra ~default:Sheet.empty)
       in
       if kept > 0 then
         Fmt.epr "Kept %d rule(s) with no inline form in a <style> block.@." kept;

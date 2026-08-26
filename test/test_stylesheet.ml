@@ -17,8 +17,7 @@ let check_rule = check_value_cursor "rule" read_rule pp_rule
 
 let decl_t : Css.Declaration.declaration Alcotest.testable =
   Alcotest.testable
-    (fun fmt d ->
-      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    (fun fmt d -> Format.pp_print_string fmt (Css.Declaration.to_string d))
     ( = )
 
 let check_import_rule =
@@ -29,10 +28,9 @@ let check_layer_name =
 
 let check_declaration =
   check_value_cursor "declaration" Css.Declaration.read_declaration
-    (Css.Pp.option Css.Declaration.pp_declaration)
+    (Css.Pp.option Css.Declaration.pp)
 
-let check_stylesheet =
-  check_value_cursor "stylesheet" read_stylesheet pp_stylesheet
+let check_stylesheet = check_value_cursor "stylesheet" read pp_stylesheet
 
 (* Assert both serialization paths for one input. [minified] is pure pp: the
    held value in its shortest same-node spelling. [optimized] is pp+optimize:
@@ -72,12 +70,12 @@ let test_rule () =
   check_rule ~expected:"*{box-sizing:border-box}" "* { box-sizing: border-box }";
 
   (* Test invalid rule syntax *)
-  neg_cursor read_stylesheet "{color:red}";
+  neg_cursor read "{color:red}";
   (* Missing selector *)
-  neg_cursor read_stylesheet ".btn";
+  neg_cursor read ".btn";
   (* Missing declarations. CSS Syntax sec. 2.2 auto-closes [.btn{] so it is
      spec-valid and not asserted here. *)
-  neg_cursor read_stylesheet ".btn{color}";
+  neg_cursor read ".btn{color}";
   (* Missing value *)
   neg_cursor read_rule "" (* Empty rule *)
 
@@ -138,9 +136,9 @@ let test_stylesheet () =
   check_stylesheet ~expected:"@media{.test{color:red}}"
     "@media { .test { color: red } }";
   check_stylesheet ~expected:"@media{}" "@media { }";
-  neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
+  neg_cursor read "@charset 'UTF-8'" (* Wrong charset quotes *)
 
-let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true s
+let string_of_stylesheet s = Css.Stylesheet.to_string ~minify:true s
 
 (* Helper for testing rule construction *)
 let check_construct_rule name expected rule =
@@ -173,7 +171,7 @@ let test_media_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -186,7 +184,7 @@ let test_container_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   check_stylesheet output
 
 (* ignore-test: error-recovery contract, not a per-statement constructor. *)
@@ -241,7 +239,7 @@ let test_supports_rule_creation () =
       [ statement_of_rule r ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -259,7 +257,7 @@ let test_supports_nested_creation () =
       [ statement_of_rule r; nested_supports ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   check_stylesheet output
 
 (* Not a roundtrip test *)
@@ -288,7 +286,7 @@ let test_layer_rule_creation () =
   Alcotest.(check string)
     "layer rule creation (minify)"
     "@layer utilities{.red{background-color:#f00}}"
-    (Css.Stylesheet.pp ~minify:true sheet);
+    (Css.Stylesheet.to_string ~minify:true sheet);
   Alcotest.(check string)
     "layer rule creation (minify+optimize)"
     "@layer utilities{.red{background-color:red}}" (minify sheet)
@@ -327,13 +325,13 @@ let helper () =
 
 (* Not a roundtrip test *)
 let test_empty_stylesheet () =
-  let empty = empty_stylesheet in
-  Alcotest.(check int) "empty layers" 0 (List.length (layers empty));
-  Alcotest.(check int) "empty rules" 0 (List.length (rules empty));
-  Alcotest.(check int) "empty media" 0 (List.length (media_queries empty));
+  let sheet = empty in
+  Alcotest.(check int) "empty layers" 0 (List.length (layers sheet));
+  Alcotest.(check int) "empty rules" 0 (List.length (rules sheet));
+  Alcotest.(check int) "empty media" 0 (List.length (media_queries sheet));
   Alcotest.(check int)
     "empty container" 0
-    (List.length (container_queries empty))
+    (List.length (container_queries sheet))
 
 (* Not a roundtrip test *)
 let construction () =
@@ -407,7 +405,7 @@ let test_default_property_rule () =
 
   (* Test these generate valid statements *)
   let sheet = Css.Stylesheet.v [ prop_with_initial; prop_no_initial ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
 
   check_stylesheet output
 
@@ -420,7 +418,7 @@ let test_property_composite_syntax () =
       "--size"
   in
   let sheet = Css.Stylesheet.v [ prop ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   check_stylesheet output
 
 (** Test [@property] descriptor permutations and minified canonical order *)
@@ -473,7 +471,7 @@ let test_property_permutations () =
 let expect_property_error name input =
   let r = Cursor.of_string input in
   try
-    let _ = read_stylesheet r in
+    let _ = read r in
     Alcotest.failf "%s: expected parse error" name
   with Cursor.Parse_error _ -> ()
 
@@ -561,7 +559,7 @@ let test_layer_pp () =
   let layer_stmt = layer ~name:[ "utilities" ] [ statement_of_rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   Alcotest.(check string)
     "layer pp" "@layer utilities{.blue{color:#00f}}" output;
 
@@ -569,7 +567,7 @@ let test_layer_pp () =
      semicolon *)
   let empty_layer = layer ~name:[ "base" ] [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
-  let empty_output = Css.Stylesheet.pp ~minify:true empty_sheet in
+  let empty_output = Css.Stylesheet.to_string ~minify:true empty_sheet in
   Alcotest.(check string) "empty layer" "@layer base;" empty_output
 
 (** Test complete stylesheet pp *)
@@ -586,7 +584,7 @@ let pp_case () =
 
   let sheet = Css.Stylesheet.v [ statement_of_rule r; media_stmt; prop ] in
 
-  let output = Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.to_string ~minify:true sheet in
   Alcotest.(check string)
     "stylesheet pp"
     (* pp emits each node's shortest same-node spelling: Hex ff0000 -> #f00,
@@ -638,8 +636,8 @@ let namespace_case () =
   check_stylesheet
     ~expected:"@namespace math\"http://www.w3.org/1998/Math/MathML\";"
     "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
-  neg_cursor read_stylesheet "@namespace { url(http://example.test); }";
-  neg_cursor read_stylesheet "@namespace svg;"
+  neg_cursor read "@namespace { url(http://example.test); }";
+  neg_cursor read "@namespace svg;"
 
 (** Test [@keyframes] rules *)
 let keyframes_case () =
@@ -674,7 +672,7 @@ let test_keyframes_spec_edge_vectors () =
     "@keyframes bad { 50px { opacity: 1 } }";
   check_stylesheet ~expected:"@keyframes bad{}"
     "@keyframes bad { from, { opacity: 1 } }";
-  neg_cursor read_stylesheet "@keyframes missing-block"
+  neg_cursor read "@keyframes missing-block"
 
 (** Test [@font-face] rules *)
 let font_face_case () =
@@ -778,9 +776,9 @@ let page_case () =
       "@page{@top-left{content:\"title\"}@bottom-center{content:counter(page)}}"
     "@page { @top-left { content: \"title\" } @bottom-center { content: \
      counter(page) } }";
-  neg_cursor read_stylesheet "@page : { margin: 1cm }";
-  neg_cursor read_stylesheet "@page :unknown { margin: 1cm }";
-  neg_cursor read_stylesheet "@page { color: notacolor }"
+  neg_cursor read "@page : { margin: 1cm }";
+  neg_cursor read "@page :unknown { margin: 1cm }";
+  neg_cursor read "@page { color: notacolor }"
 
 let page_margin_edges () =
   check_stylesheet
@@ -799,9 +797,9 @@ let page_margin_edges () =
     "@page { bleeds: 6pt; marks: crop cross; @top-center { content: none } }";
   check_stylesheet ~expected:"@page invoice:blank:first{margin:1cm}"
     "@page invoice:blank:first { margin: 1cm }";
-  neg_cursor read_stylesheet "@page { @unknown { content: none } }";
-  neg_cursor read_stylesheet "@page { @top-left; }";
-  neg_cursor read_stylesheet "@page { @top-left { color: notacolor } }"
+  neg_cursor read "@page { @unknown { content: none } }";
+  neg_cursor read "@page { @top-left; }";
+  neg_cursor read "@page { @top-left { color: notacolor } }"
 
 let property_rule_edges () =
   check_stylesheet
@@ -819,16 +817,15 @@ let property_rule_edges () =
   check_stylesheet
     ~expected:"@property --any-tokens{syntax:\"*\";inherits:true}"
     "@property --any-tokens { syntax: \"*\"; inherits: true; }";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@property --bad { syntax: \"<length>+\"; inherits: false; initial-value: \
      red }";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@property --bad { syntax: \"<color>\"; inherits: yes; initial-value: red }";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@property --bad { syntax: \"<length> |\"; inherits: false; initial-value: \
      1px }";
-  neg_cursor read_stylesheet
-    "@property color { syntax: \"*\"; inherits: false }"
+  neg_cursor read "@property color { syntax: \"*\"; inherits: false }"
 
 let spec_font_face_descriptor_matrix () =
   (* Descriptor syntax is a spec oracle; these are not snapshots of the current
@@ -927,9 +924,7 @@ let spec_page_margin_descriptor_matrix () =
        landscape;margin:1in;@right-top{content:counter(page)}@bottom-center{content:\"Chapter\"}}"
     "@page chapter:right { size: letter landscape; margin: 1in; @right-top { \
      content: counter(page) } @bottom-center { content: \"Chapter\" } }";
-  List.iter
-    (neg_cursor read_stylesheet)
-    [ "@page { @top-center { display: 1px } }" ];
+  List.iter (neg_cursor read) [ "@page { @top-center { display: 1px } }" ];
   check_stylesheet ~expected:"@page:first:left{margin:1cm}"
     "@page :first:left { margin: 1cm }";
   check_stylesheet ~expected:"@page:blank:first{margin:.5cm}"
@@ -985,8 +980,7 @@ let spec_page_context_properties () =
   (* What browsers still reject: a value the property's grammar does not admit,
      and an item that is not a declaration at all. Blink 146 drops each of these
      and keeps the rest of the block. *)
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@page { margin: notalength }";
       "@page { color: notacolor }";
@@ -1067,7 +1061,7 @@ let spec_page_margin_box_empty () =
         "@page { @top-center { } @bottom-center { content: \"x\" } }" );
     ];
   (* An empty block is not a missing one: sec. 5 still asks for a block. *)
-  neg_cursor read_stylesheet "@page { @top-left; }";
+  neg_cursor read "@page { @top-left; }";
   assert_minify_and_optimize "@page { @top-center { } }" ~minified:""
     ~optimized:"";
   assert_minify_and_optimize "@page { margin: 1cm; @top-center { } }"
@@ -1094,8 +1088,7 @@ let spec_property_descriptor_matrix () =
         "@property --ident-or-color { syntax: \"<custom-ident> | <color>\"; \
          inherits: true; initial-value: currentColor }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@property --bad { syntax: \"<angle>#\"; inherits: false; initial-value: \
        red }";
@@ -1140,7 +1133,7 @@ let ordering () =
 let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
   let reader = Cursor.of_string css in
-  let sheet = read_stylesheet reader in
+  let sheet = read reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule" 1 (List.length rules);
   let rule = List.hd rules in
@@ -1151,7 +1144,7 @@ let test_read_stylesheet_basic () =
 let test_read_stylesheet_multiple_rules () =
   let css = ".btn { color: red; } .card { margin: 5px; }" in
   let reader = Cursor.of_string css in
-  let sheet = read_stylesheet reader in
+  let sheet = read reader in
   let rules = rules sheet in
   Alcotest.(check int) "has two rules" 2 (List.length rules)
 
@@ -1159,7 +1152,7 @@ let test_read_stylesheet_multiple_rules () =
 let test_read_stylesheet_empty () =
   let css = "" in
   let reader = Cursor.of_string css in
-  let sheet = read_stylesheet reader in
+  let sheet = read reader in
   let rules = rules sheet in
   Alcotest.(check int) "empty stylesheet has no rules" 0 (List.length rules)
 
@@ -1167,7 +1160,7 @@ let test_read_stylesheet_empty () =
 let test_read_stylesheet_whitespace_only () =
   let css = "   \n\t  " in
   let reader = Cursor.of_string css in
-  let sheet = read_stylesheet reader in
+  let sheet = read reader in
   let rules = rules sheet in
   Alcotest.(check int)
     "whitespace-only stylesheet has no rules" 0 (List.length rules)
@@ -1176,7 +1169,7 @@ let test_read_stylesheet_whitespace_only () =
 let test_read_stylesheet_with_comments () =
   let css = "/* comment */ .btn { color: red; } /* another comment */" in
   let reader = Cursor.of_string css in
-  let sheet = read_stylesheet reader in
+  let sheet = read reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
 
@@ -1494,7 +1487,7 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "font-face invalid font-display list",
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }" );
-      ( "font-palette missing base-palette",
+      ( "font-palette missing font-family",
         "@font-palette-values --brand { override-colors: 0 red }" );
       ( "counter-style missing system",
         "@counter-style thumbs { symbols: \"*\" }" );
@@ -2127,6 +2120,21 @@ let spec_descriptor_recovery_warns_once_per_descriptor () =
   warns_exactly "@font-feature-values Xf { @swash { s: 1 } }" 0;
   warns_exactly "@font-feature-values Xf { ;; @swash { s: 1 } }" 0
 
+(* CSS Fonts 4 sec. 9.2 names the one mandatory descriptor:
+   "@font-palette-values rules require a font-family descriptor; if it is
+   missing, the @font-palette-values rule is invalid and must be ignored
+   entirely." base-palette is optional, and sec. 9.2.2 gives it a default: "If
+   this descriptor is not present in the @font-palette-values, [...] it behaves
+   as if 0 were specified." Both sections read the same in the Editor's Draft
+   and in the TR Working Draft of 25 August 2026. *)
+let spec_font_palette_values_requires_font_family () =
+  warns_exactly
+    "@font-palette-values --p { font-family: A; override-colors: 0 red }" 0;
+  warns_exactly "@font-palette-values --p { font-family: A }" 0;
+  warns_exactly
+    "@font-palette-values --p { base-palette: 1; override-colors: 0 red }" 1;
+  warns_exactly "@font-palette-values --p { override-colors: 0 red }" 1
+
 (* CSS Animations 1 sec. 3 fills a [@keyframes] body with keyframe rules, so it
    is a list of rules: an at-rule has no place there, and CSS Syntax 3 sec.
    5.4.2 ends the one being discarded at its own [{}] block or at its [;],
@@ -2260,15 +2268,11 @@ let stylesheet_tests =
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);
     (* CSS parsing tests *)
-    ("read_stylesheet basic", `Quick, test_read_stylesheet_basic);
-    ( "read_stylesheet multiple rules",
-      `Quick,
-      test_read_stylesheet_multiple_rules );
-    ("read_stylesheet empty", `Quick, test_read_stylesheet_empty);
-    ( "read_stylesheet whitespace only",
-      `Quick,
-      test_read_stylesheet_whitespace_only );
-    ("read_stylesheet with comments", `Quick, test_read_stylesheet_with_comments);
+    ("read basic", `Quick, test_read_stylesheet_basic);
+    ("read multiple rules", `Quick, test_read_stylesheet_multiple_rules);
+    ("read empty", `Quick, test_read_stylesheet_empty);
+    ("read whitespace only", `Quick, test_read_stylesheet_whitespace_only);
+    ("read with comments", `Quick, test_read_stylesheet_with_comments);
     ( "spec strict accepts valid stylesheets",
       `Quick,
       spec_strict_accepts_valid_stylesheets );
@@ -2329,6 +2333,9 @@ let stylesheet_tests =
     ( "spec descriptor recovery warns once per dropped descriptor",
       `Quick,
       spec_descriptor_recovery_warns_once_per_descriptor );
+    ( "spec font-palette-values requires font-family",
+      `Quick,
+      spec_font_palette_values_requires_font_family );
     ( "spec lenient recovery in a @keyframes body",
       `Quick,
       spec_lenient_recovery_keyframes_at_rule );
@@ -2454,7 +2461,7 @@ let test_nested_rules () =
 let expect_parse_error input =
   let r = Cursor.of_string input in
   try
-    let _ = read_stylesheet r in
+    let _ = read r in
     Alcotest.failf "Expected parse error for: %s" input
   with Cursor.Parse_error _ | Error.Parse_error _ -> ()
 
@@ -2641,7 +2648,7 @@ let css_syntax_recovery_structural () =
    all keep the space. An at-rule with no prelude has no boundary to preserve
    and stays unspaced. *)
 let s3431_unknown_at_rule_prelude_separator () =
-  let parse input = read_stylesheet (Cursor.of_string input) in
+  let parse input = read (Cursor.of_string input) in
   let unknown input =
     match parse input with
     | [ Unknown_at_rule { name; prelude; block } ] -> (name, prelude, block)
@@ -2684,8 +2691,7 @@ let s3431_unknown_at_rule_prelude_separator () =
 let s542_unknown_at_rule_block_body () =
   let printed input =
     String.trim
-      (Css.Stylesheet.to_string ~minify:true
-         (read_stylesheet (Cursor.of_string input)))
+      (Css.Stylesheet.to_string ~minify:true (read (Cursor.of_string input)))
   in
   let roundtrips name input expected =
     Alcotest.(check string) name expected (printed input);
@@ -2716,8 +2722,7 @@ let s542_unknown_at_rule_block_body () =
 let s552_unknown_at_rule_eof_closers () =
   let printed input =
     String.trim
-      (Css.Stylesheet.to_string ~minify:true
-         (read_stylesheet (Cursor.of_string input)))
+      (Css.Stylesheet.to_string ~minify:true (read (Cursor.of_string input)))
   in
   (* The at-rule has to end on its own: append a rule to what was printed and
      both must come back, and re-reading must report nothing left
@@ -2789,8 +2794,7 @@ let s552_unknown_at_rule_eof_closers () =
 let moz_document_prelude_forms () =
   let roundtrips input =
     String.trim
-      (Css.Stylesheet.to_string ~minify:true
-         (read_stylesheet (Cursor.of_string input)))
+      (Css.Stylesheet.to_string ~minify:true (read (Cursor.of_string input)))
   in
   List.iter
     (fun (prelude, expected) ->
@@ -2866,10 +2870,9 @@ let c64_layer_name_syntax () =
        reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer reset { \
      [hidden] { display: none } }";
-  neg_cursor read_stylesheet
-    "@layer framework . theme { blockquote { display: block } }";
-  neg_cursor read_stylesheet "@layer initial { blockquote { display: block } }";
-  neg_cursor read_stylesheet
+  neg_cursor read "@layer framework . theme { blockquote { display: block } }";
+  neg_cursor read "@layer initial { blockquote { display: block } }";
+  neg_cursor read
     "@layer framework.revert-layer { blockquote { display: block } }"
 
 (* Not a roundtrip test *)
@@ -2923,11 +2926,10 @@ let c64_layer_statement_edges () =
      @layer default { audio[controls] { display: block } }";
   check_stylesheet ~expected:"@layer framework.base,framework.theme;"
     "@layer framework.base, framework.theme;";
-  neg_cursor read_stylesheet "@layer;";
-  neg_cursor read_stylesheet "@layer , theme;";
-  neg_cursor read_stylesheet "@layer default, { audio { display: block } }";
-  neg_cursor read_stylesheet
-    "@layer default, theme { audio { display: block } }"
+  neg_cursor read "@layer;";
+  neg_cursor read "@layer , theme;";
+  neg_cursor read "@layer default, { audio { display: block } }";
+  neg_cursor read "@layer default, theme { audio { display: block } }"
 
 (* Not a roundtrip test *)
 let c64_anonymous_layer_edges () =
@@ -3011,13 +3013,13 @@ let c64_import_namespace_order () =
        \"http://www.w3.org/1999/xhtml\";"
     "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
      layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@import url(default.css) layer(default); @layer theme; @import \
      url(components.css) layer(components);";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@import url(default.css) layer(default); @layer theme { .x { color: red } \
      } @import url(components.css) layer(components);";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@import url(default.css) layer(default); @layer theme; @namespace \
      url(http://www.w3.org/1999/xhtml);"
 
@@ -3027,15 +3029,14 @@ let c64_invalid_layer_names () =
      segment, and the <layer-name> grammar has no empty segments. *)
   List.iter
     (fun keyword ->
-      neg_cursor read_stylesheet ("@layer " ^ keyword ^ " { .x { color: red } }");
-      neg_cursor read_stylesheet
-        ("@layer framework." ^ keyword ^ " { .x { color: red } }"))
+      neg_cursor read ("@layer " ^ keyword ^ " { .x { color: red } }");
+      neg_cursor read ("@layer framework." ^ keyword ^ " { .x { color: red } }"))
     [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
-  neg_cursor read_stylesheet "@layer framework..theme { .x { color: red } }";
-  neg_cursor read_stylesheet "@layer .framework { .x { color: red } }";
-  neg_cursor read_stylesheet "@layer framework. { .x { color: red } }";
-  neg_cursor read_stylesheet "@layer framework.theme. { .x { color: red } }";
-  neg_cursor read_stylesheet "@layer InHeRiT { .x { color: red } }"
+  neg_cursor read "@layer framework..theme { .x { color: red } }";
+  neg_cursor read "@layer .framework { .x { color: red } }";
+  neg_cursor read "@layer framework. { .x { color: red } }";
+  neg_cursor read "@layer framework.theme. { .x { color: red } }";
+  neg_cursor read "@layer InHeRiT { .x { color: red } }"
 
 (* Not a roundtrip test *)
 let c8_layer_api () =
@@ -3398,9 +3399,9 @@ let dom_selector_boundary () =
         expected
         (Css.Selector.to_string ~minify:true (Css.Selector.of_string input)))
     selector_cases;
-  neg_cursor read_stylesheet ".card:has(> ) { color: red }";
-  neg_cursor read_stylesheet "::before::after { color: red }";
-  neg_cursor read_stylesheet ":host-context() { color: red }"
+  neg_cursor read ".card:has(> ) { color: red }";
+  neg_cursor read "::before::after { color: red }";
+  neg_cursor read ":host-context() { color: red }"
 
 let fetch_url_boundary () =
   (* @import and url(...) syntax is in scope; loading/resolution is not. *)
@@ -3451,9 +3452,9 @@ let environment_query_boundary () =
      style(--theme: dark) { .card { display: grid } } } }";
   check_stylesheet ~expected:"@supports(display:){.x{color:red}}"
     "@supports (display:) { .x { color: red } }";
-  neg_cursor read_stylesheet "@media (width >= ) { .x { color: red } }";
-  neg_cursor read_stylesheet "@container card style() { .x { color: red } }";
-  neg_cursor read_stylesheet "@container card (width >) { .x { color: red } }"
+  neg_cursor read "@media (width >= ) { .x { color: red } }";
+  neg_cursor read "@container card style() { .x { color: red } }";
+  neg_cursor read "@container card (width >) { .x { color: red } }"
 
 let value_resolution_boundary () =
   let open Css.Values in
@@ -3540,7 +3541,7 @@ let custom_property_boundary () =
     "--empty: var(--missing,);";
   check_specified_value "nested var fallback"
     "--nested: var(--a, var(--b, red));" "var(--a, var(--b, red))";
-  neg_cursor read_stylesheet
+  neg_cursor read
     "@property --registered { syntax: \"<color>\"; inherits: false; \
      initial-value: 10px }"
 
@@ -3595,9 +3596,8 @@ let spec_current_at_rules () =
   check_stylesheet
     ~expected:"@container scroll-state(stuck:top){.card{color:red}}"
     "@container scroll-state(stuck: top) { .card { color: red } }";
-  neg_cursor read_stylesheet "@container style() { .card { color: red } }";
-  neg_cursor read_stylesheet
-    "@container scroll-state() { .card { color: red } }";
+  neg_cursor read "@container style() { .card { color: red } }";
+  neg_cursor read "@container scroll-state() { .card { color: red } }";
   check_stylesheet
     ~expected:
       "@container(30em<=inline-size<60em){@supports(display:grid){.grid{display:grid}}}"
@@ -3608,13 +3608,13 @@ let spec_current_at_rules () =
     "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
   check_stylesheet ~expected:"@page chapter:left{margin:2cm}"
     "@page chapter:left { margin: 2cm }";
-  neg_cursor read_stylesheet "@media (width >) { .x { color: red } }";
-  neg_cursor read_stylesheet "@supports selector() { .x { color: red } }";
-  neg_cursor read_stylesheet "@scope (.card) .title { color: red }";
-  neg_cursor read_stylesheet "@font-palette-values { base-palette: 1; }";
-  neg_cursor read_stylesheet "@position-try default { top: 0; }";
-  neg_cursor read_stylesheet "@container () { .x { color: red } }";
-  neg_cursor read_stylesheet "@page : { margin: 1cm }"
+  neg_cursor read "@media (width >) { .x { color: red } }";
+  neg_cursor read "@supports selector() { .x { color: red } }";
+  neg_cursor read "@scope (.card) .title { color: red }";
+  neg_cursor read "@font-palette-values { base-palette: 1; }";
+  neg_cursor read "@position-try default { top: 0; }";
+  neg_cursor read "@container () { .x { color: red } }";
+  neg_cursor read "@page : { margin: 1cm }"
 
 let font_palette_values_descriptor_matrix () =
   List.iter
@@ -3630,8 +3630,7 @@ let font_palette_values_descriptor_matrix () =
         "@font-palette-values --dark { font-family: \"Color Font\", Brand; \
          base-palette: dark; }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
       "@font-palette-values --brand;";
@@ -3648,8 +3647,7 @@ let spec_view_transition_descriptor_matrix () =
       ( "@view-transition{navigation:none}",
         "@view-transition { navigation: none; }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@view-transition page { navigation: auto; }";
       "@view-transition;";
@@ -3669,8 +3667,7 @@ let spec_position_try_descriptor_matrix () =
         "@position-try --inline-start { inset-inline-end: anchor(start); \
          margin-inline: 1rem; }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@position-try default { top: 0; }";
       "@position-try --fallback;";
@@ -3714,8 +3711,7 @@ let spec_at_rule_descriptor_matrix () =
       ( "@starting-style{.dialog{opacity:0}}",
         "@starting-style { .dialog { opacity: 0 } }" );
     ];
-  List.iter
-    (neg_cursor read_stylesheet)
+  List.iter (neg_cursor read)
     [
       "@property --bad { syntax: \"<length>\"; inherits: false }";
       "@property --bad { syntax: \"<length>\"; inherits: false; initial-value: \
@@ -3744,9 +3740,7 @@ let spec_at_rule_inventory_matrix () =
   List.iter
     (fun (row : A.row) -> check_stylesheet ~expected:row.expected row.input)
     A.positive;
-  List.iter
-    (fun (row : A.invalid_row) -> neg_cursor read_stylesheet row.input)
-    A.negative;
+  List.iter (fun (row : A.invalid_row) -> neg_cursor read row.input) A.negative;
   let positive_features = A.features A.positive in
   let negative_features =
     A.negative
@@ -3811,9 +3805,9 @@ let test_spec_snapshot_tracking_vectors () =
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
     ~optimized:
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}";
-  neg_cursor read_stylesheet "@layer reset,,base;";
-  neg_cursor read_stylesheet "@container card () { .card { color: red } }";
-  neg_cursor read_stylesheet "@supports () { .accent { color: red } }"
+  neg_cursor read "@layer reset,,base;";
+  neg_cursor read "@container card () { .card { color: red } }";
+  neg_cursor read "@supports () { .accent { color: red } }"
 
 (* ignore-test *)
 let test_snapshot_membership_matrix () =
@@ -4008,6 +4002,58 @@ let spec_nesting_starting_style () =
   test_nesting_roundtrip ~expected:".a{@starting-style{& b{color:red}}}"
     ".a { @starting-style { & b { color: red } } }";
   test_nesting_idempotent ".a { @starting-style { color: red } color: green }"
+
+(* CSS Conditional 5 sec. 3 and sec. 4: a prelude the [@when] / [@else]
+   condition grammar rejects is a condition failure of that at-rule, and the
+   caret belongs on the slice of the condition that failed. The reader holds
+   those components, so it can point at them rather than at the block that
+   follows; the same rule the [@container] and [@supports] preludes read by. *)
+let conditional_prelude_errors () =
+  let case (input, at_rule, offending) =
+    let warnings =
+      match Css.of_string ~strict:false input with
+      | Error e -> [ e ]
+      | Ok { Css.warnings; _ } -> warnings
+    in
+    match warnings with
+    | [ ({ Error.kind = Error.Bad_condition { at_rule = named; _ }; _ } as e) ]
+      ->
+        Alcotest.(check string) (input ^ ": at-rule named") at_rule named;
+        Alcotest.(check string)
+          (input ^ ": caret on the offending slice")
+          offending
+          (String.sub input e.Error.loc.Loc.start_pos
+             (e.Error.loc.Loc.end_pos - e.Error.loc.Loc.start_pos))
+    | [ e ] ->
+        Alcotest.failf "%s: expected a condition error, got %s" input
+          (Error.to_string e)
+    | warnings ->
+        Alcotest.failf "%s: expected one warning, got %d" input
+          (List.length warnings)
+  in
+  List.iter case
+    [
+      ("@when foo(x){.a{color:red}}", "@when", "foo(x)");
+      ( "@when media(screen) and supports(top:0) or media(print){.a{c:red}}",
+        "@when",
+        "or" );
+      ( "@when media(screen) or supports(top:0) and media(print){.a{c:red}}",
+        "@when",
+        "and" );
+      ("@when .a{color:red}", "@when", ".");
+      ( "@when media(screen) media(print){.a{color:red}}",
+        "@when",
+        "media(print)" );
+      ( "@when media(screen{.a{color:red}}",
+        "@when",
+        "media(screen{.a{color:red}}" );
+      ( "@when media(width>0px){.a{color:red}}@else foo(x){.b{color:red}}",
+        "@else",
+        "foo(x)" );
+      ( "@when media(width>0px){.a{c:red}}@else media(print) x{.b{c:red}}",
+        "@else",
+        "x" );
+    ]
 
 (* The same section covers every conditional group rule, not just the three
    cascade already nested: [@-moz-document] carries style rules, and CSS
@@ -4204,10 +4250,10 @@ let spec_nesting_selector_edges () =
   check_stylesheet
     ~expected:"@starting-style{.dialog[open]{opacity:0;transform:scale(.95)}}"
     "@starting-style { .dialog[open] { opacity: 0; transform: scale(0.95) } }";
-  neg_cursor read_stylesheet ".card { & { & { color: red } } }";
-  neg_cursor read_stylesheet "@scope () { .x { color: red } }";
-  neg_cursor read_stylesheet "@scope (.x) to () { .x { color: red } }";
-  neg_cursor read_stylesheet "@starting-style;"
+  neg_cursor read ".card { & { & { color: red } } }";
+  neg_cursor read "@scope () { .x { color: red } }";
+  neg_cursor read "@scope (.x) to () { .x { color: red } }";
+  neg_cursor read "@starting-style;"
 
 (* CSS Nesting Module Level 1, sections 1 and 2: a nested style rule is a
    qualified rule appearing inside another qualified rule's block. The grammar
@@ -8933,6 +8979,9 @@ let additional_tests =
     ( "spec nesting @starting-style holds nesting content",
       `Quick,
       spec_nesting_starting_style );
+    ( "conditional prelude errors name the at-rule and the slice",
+      `Quick,
+      conditional_prelude_errors );
     ( "spec nesting other group rules hold nesting content",
       `Quick,
       spec_nesting_other_group_rules );
@@ -9567,9 +9616,9 @@ let additional_tests =
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->
-        (* Strict [read_stylesheet] would raise on the bad [rgb()]. The partial
-           entry point drops just the bad declaration; both rules survive (the
-           empty [.a\{\}] and the good [.b]). Per 5.4.4. *)
+        (* Strict [read] would raise on the bad [rgb()]. The partial entry point
+           drops just the bad declaration; both rules survive (the empty
+           [.a\{\}] and the good [.b]). Per 5.4.4. *)
         let sheet, warnings =
           parse_stylesheet_partial ".a { color: rgb(300); } .b { color: red; }"
         in
@@ -10051,9 +10100,7 @@ let deep_walker_tests =
       `Quick,
       fun () ->
         let dropped =
-          edit_statements
-            (function Rule _ -> Common.List.Drop | _ -> Common.List.Keep)
-            (places ())
+          edit_statements (function Rule _ -> Drop | _ -> Keep) (places ())
         in
         Alcotest.(check (list string))
           "no rule left" []
@@ -10070,8 +10117,8 @@ let deep_walker_tests =
            so it is marked when the walk continues into the replacement rather
            than into the statement it replaced. *)
         let mark = function
-          | Rule r -> Common.List.Replace (Rule { r with merge_key = Some "k" })
-          | _ -> Common.List.Keep
+          | Rule r -> Replace (Rule { r with merge_key = Some "k" })
+          | _ -> Keep
         in
         Alcotest.(check (list string))
           "every rule marked" []
@@ -10087,7 +10134,7 @@ let deep_walker_tests =
       `Quick,
       fun () ->
         let block = places () in
-        if not (edit_statements (fun _ -> Common.List.Keep) block == block) then
+        if not (edit_statements (fun _ -> Keep) block == block) then
           Alcotest.fail "statement edit rebuilt an unchanged stylesheet" );
   ]
 

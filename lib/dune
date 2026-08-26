@@ -1,10 +1,46 @@
 (library
  (public_name cascade)
  (name cascade)
- ; The prop_* modules hold property families that [Properties] includes. They
- ; are private so the split stays invisible: no [Cascade.Prop_*] alias and no
- ; extra odoc page.
+ ; Implementation modules stay available inside [cascade] without becoming
+ ; usable [Cascade.*] modules or standalone odoc pages.  The prop_* modules
+ ; hold the property families [Properties] includes; the *_intf modules share
+ ; types between implementations and public interfaces; the rest are parser
+ ; and optimizer implementation details behind the supported modules.
  (private_modules
+  baseline
+  block
+  common
+  custom_property_name
+  declaration_intf
+  factor
+  flatten
+  inline
+  merge
+  properties_intf
+  rule
+  rule_index
+  rule_order
+  selector_intf
+  shorthand
+  size
+  stylesheet_intf
+  summary
+  values_intf
+  variables_intf
+  rule_graph
+  rule_scheduler
+  pool
+  order_maintenance
+  preflight
+  ctx
+  cover
+  edge
+  loop
+  rule_candidate
+  rule_rewrite
+  factor_safe
+  gzip_size
+  index
   prop_common
   prop_svg
   prop_multicol

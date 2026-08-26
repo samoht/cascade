@@ -656,14 +656,11 @@ let test_inventory_css_wide_generation buf =
   | None ->
       failf "deterministic manifest CSS-wide declaration rejected: %S" input
   | Some decl -> (
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
+      let serialized = Css.Declaration.to_string ~minify:true decl in
       let c2 = Cursor.of_string serialized in
       match Css.Declaration.read_declaration c2 with
       | Some reparsed
-        when Css.Declaration.string_of_declaration ~minify:true reparsed
-             = serialized ->
+        when Css.Declaration.to_string ~minify:true reparsed = serialized ->
           ()
       | _ ->
           failf
@@ -679,13 +676,10 @@ let assert_decl_roundtrip label input =
   match parse_declaration input with
   | None -> failf "%s declaration rejected: %S" label input
   | Some decl -> (
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
+      let serialized = Css.Declaration.to_string ~minify:true decl in
       match parse_declaration serialized with
       | Some reparsed
-        when Css.Declaration.string_of_declaration ~minify:true reparsed
-             = serialized ->
+        when Css.Declaration.to_string ~minify:true reparsed = serialized ->
           ()
       | _ ->
           failf "%s declaration did not structurally roundtrip: %S -> %S" label
@@ -727,13 +721,10 @@ let test_inventory_positive_values buf =
   | None ->
       failf "deterministic manifest positive declaration rejected: %S" input
   | Some decl -> (
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
+      let serialized = Css.Declaration.to_string ~minify:true decl in
       match parse_declaration serialized with
       | Some reparsed
-        when Css.Declaration.string_of_declaration ~minify:true reparsed
-             = serialized ->
+        when Css.Declaration.to_string ~minify:true reparsed = serialized ->
           ()
       | _ ->
           failf
@@ -764,13 +755,10 @@ let test_inventory_var_values buf =
   match parse_declaration input with
   | None -> failf "deterministic manifest var() declaration rejected: %S" input
   | Some decl -> (
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
+      let serialized = Css.Declaration.to_string ~minify:true decl in
       match parse_declaration serialized with
       | Some reparsed
-        when Css.Declaration.string_of_declaration ~minify:true reparsed
-             = serialized ->
+        when Css.Declaration.to_string ~minify:true reparsed = serialized ->
           ()
       | _ ->
           failf
@@ -929,13 +917,10 @@ let assert_branch_roundtrip input =
   | None ->
       failf "property branch-depth positive declaration rejected: %S" input
   | Some decl -> (
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
+      let serialized = Css.Declaration.to_string ~minify:true decl in
       match parse_declaration serialized with
       | Some reparsed
-        when Css.Declaration.string_of_declaration ~minify:true reparsed
-             = serialized ->
+        when Css.Declaration.to_string ~minify:true reparsed = serialized ->
           ()
       | _ ->
           failf

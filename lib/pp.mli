@@ -71,8 +71,19 @@ val ctx :
   ?enforce_spec:bool ->
   Buffer.t ->
   ctx
-(** [ctx buf] builds a formatter context writing to [buf], for the
-    serialise-to-string / measuring helpers. *)
+(** [ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf] builds a formatter
+    context writing to [buf], for the serialise-to-string and measuring helpers.
+
+    - [minify] (default [false]) selects compact layout and value spelling.
+    - When [indent] is omitted it defaults to [None] under [minify] and [Some 2]
+      otherwise. An explicit width is honoured in either mode.
+    - [inline] (default [false]) prints a variable node's stored default or
+      typed fallback when it has one; otherwise the [var()] reference remains.
+      It does not resolve variables at print time.
+    - [lossless] (default [false]) suppresses lossy colour rounding and
+      approximations while retaining exact canonicalisation.
+    - [enforce_spec] (default [false]) disables evergreen-target-dependent
+      shortenings while retaining exact and spec-safe shortenings. *)
 
 val to_buffer :
   ?minify:bool ->
@@ -84,9 +95,9 @@ val to_buffer :
   'a t ->
   'a ->
   unit
-(** [to_buffer buf formatter value] runs the formatter writing into [buf]. The
-    optional {!val-indent} sets the per-level indent width (default: [None]
-    under {!field-minify}, [Some 2] otherwise). *)
+(** [to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf formatter
+     value] runs [formatter] under the context {!val-ctx} builds from the same
+    five options and writes the result into [buf]. *)
 
 val size :
   ?minify:bool ->
@@ -97,7 +108,8 @@ val size :
   'a t ->
   'a ->
   int
-(** [size formatter value] is the byte length of [to_string formatter value]
+(** [size ?minify ?indent ?inline ?lossless ?enforce_spec formatter value] is
+    the byte length of [to_string formatter value] under the same options,
     without allocating the result string. Use it for size-based decisions
     instead of measuring [String.length (to_string ...)]. *)
 
@@ -110,10 +122,9 @@ val to_string :
   'a t ->
   'a ->
   string
-(** [to_string formatter value] runs the formatter and returns a string. The
-    optional {!val-indent} sets the per-level indent width (default: [None]
-    under {!field-minify}, [Some 2] otherwise). {!field-enforce_spec} suppresses
-    target-dependent shortenings. *)
+(** [to_string ?minify ?indent ?inline ?lossless ?enforce_spec formatter value]
+    runs [formatter] under the context {!val-ctx} builds from the same five
+    options and returns the result. *)
 
 (** {2 Primitive Formatters} *)
 
@@ -218,11 +229,6 @@ val float : float t
     - Always drops leading zero for 0 < |n| < 1 (outputs .5 not 0.5)
     - No scientific notation (uses bounded precision)
     - Trims trailing zeros. *)
-
-val float_compact : float t
-(** [float_compact] like {!val-float} but always drops leading zeros regardless
-    of minification mode. Used for oklch chroma values where Tailwind always
-    uses compact format (e.g. [.034] not [0.034]). *)
 
 val float_n : int -> float t
 (** [float_n n] formats float to exactly n decimal places using round-half-up.

@@ -294,5 +294,5 @@ let pp_length_min_max ctx (v : length_percentage) =
    fallbacks, font-palette and the animation timeline names. *)
 let read_dashed_ident t =
   let ident = Cursor.ident ~keep_case:true t in
-  if String.length ident >= 2 && ident.[0] = '-' && ident.[1] = '-' then ident
+  if Custom_property_name.is_valid ident then ident
   else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)

@@ -26,12 +26,11 @@ type selector = Positions of position list
 
 type t = selector
 
-let string_of_selector = function
+let to_string = function
   | Positions positions ->
       String.concat ", " (List.map string_of_position positions)
 
-let to_string = string_of_selector
-let pp ctx selector = Pp.string ctx (string_of_selector selector)
+let pp ctx selector = Pp.string ctx (to_string selector)
 
 let percent_of_position = function
   | From -> 0.
@@ -96,4 +95,4 @@ let selector_of_string s =
     Positions positions
   else invalid_arg ("invalid keyframe selector: " ^ s)
 
-let selector_equal a b = string_of_selector a = string_of_selector b
+let selector_equal a b = to_string a = to_string b

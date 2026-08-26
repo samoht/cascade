@@ -44,7 +44,10 @@
     Upstream tool bugs are diagnostics only. When a cached upstream minifier
     failure or non-equivalent output is seen, the normal run appends a report to
     [_build/_tests/lightning_minify/upstream-bugs.log]. Override the report
-    location with [CASCADE_INTEROP_UPSTREAM_REPORT].
+    location with [CASCADE_INTEROP_UPSTREAM_REPORT]. That report has a second
+    section for cached answers Cascade has no grounds to judge: an at-rule it
+    has no handler for round-trips as opaque source text, so every rewrite of
+    that body reads as a change whether or not the meaning moved.
 
     For local iteration, run one Alcotest case from [dune exec ... -- list],
     e.g. [dune exec test/interop/lightning/test.exe -- test color 0]. *)
@@ -70,6 +73,21 @@ type failed_candidate = Trace_pairs.failed_candidate = {
 type upstream_issue =
   | Rejected_candidate of rejected_candidate
   | Failed_candidate of failed_candidate
+
+(* Rejecting a cached answer says only that Cascade could not certify it. That
+   is evidence against the tool when Cascade understood the input, and evidence
+   of nothing when it did not. *)
+type verdict =
+  | Equivalent of candidate
+  | Upstream_bug of rejected_candidate
+  | Unjudgeable of rejected_candidate
+
+type classification = {
+  outcome : outcome;
+  upstream_issues : upstream_issue list;
+  unjudgeable : rejected_candidate list;
+  opaque_at_keywords : string list;
+}
 
 let display_css css = if css = "" then "<empty>" else css
 
@@ -180,7 +198,7 @@ let known_upstream_candidate_bug ({ tool; css } : candidate) =
     Some "emitted unitless zero in an angle slot; Cascade keeps the angle unit"
   else None
 
-let validate_candidate input (candidate : candidate) =
+let validate_candidate ~opaque_input input (candidate : candidate) =
   (* Candidate filtering is deliberately narrow. A cached upstream answer is an
      oracle only if it parses and canonicalizes to the same stylesheet-scoped
      Cascade output as the source. Raw at-rule shape is not a validity
@@ -188,46 +206,37 @@ let validate_candidate input (candidate : candidate) =
      redundant, empty, or otherwise non-participating. Hard-coded exclusions
      above cover known tool/source bugs where the CSS text itself is invalid
      despite being short. *)
+  let reject reason =
+    let rejection = { tool = candidate.tool; css = candidate.css; reason } in
+    if opaque_input then Unjudgeable rejection else Upstream_bug rejection
+  in
   match known_upstream_candidate_bug candidate with
-  | Some reason -> Error { tool = candidate.tool; css = candidate.css; reason }
+  | Some reason ->
+      (* Invalid CSS text, read off the answer itself. Nothing about the input
+         is needed to convict, so an opaque input does not excuse it. *)
+      Upstream_bug { tool = candidate.tool; css = candidate.css; reason }
   | None -> (
       match (canonical_minified input, canonical_minified candidate.css) with
-      | Ok "", Ok "" -> Ok candidate
+      | Ok "", Ok "" -> Equivalent candidate
       | Ok source_css, Ok output_css when source_css = output_css ->
-          Ok candidate
+          Equivalent candidate
       | Ok source_css, Ok output_css ->
-          Error
-            {
-              tool = candidate.tool;
-              css = candidate.css;
-              reason =
-                Fmt.str
-                  "semantic fingerprint changed after Cascade parse: %s -> %s"
-                  (display_css source_css) (display_css output_css);
-            }
+          Fmt.kstr reject
+            "semantic fingerprint changed after Cascade parse: %s -> %s"
+            (display_css source_css) (display_css output_css)
       | Ok _, Error msg ->
-          Error
-            {
-              tool = candidate.tool;
-              css = candidate.css;
-              reason =
-                "candidate output failed Cascade semantic roundtrip: " ^ msg;
-            }
-      | Error _, _ ->
-          Error
-            {
-              tool = candidate.tool;
-              css = candidate.css;
-              reason = "source input failed Cascade parser roundtrip";
-            })
+          reject ("candidate output failed Cascade semantic roundtrip: " ^ msg)
+      | Error _, _ -> reject "source input failed Cascade parser roundtrip")
 
-let split_equivalent_candidates input (candidates : candidate list) =
+let split_equivalent_candidates ~opaque_input input
+    (candidates : candidate list) =
   List.fold_right
-    (fun candidate (accepted, rejected) ->
-      match validate_candidate input candidate with
-      | Ok candidate -> (candidate :: accepted, rejected)
-      | Error rejection -> (accepted, rejection :: rejected))
-    candidates ([], [])
+    (fun candidate (accepted, bugs, unjudgeable) ->
+      match validate_candidate ~opaque_input input candidate with
+      | Equivalent candidate -> (candidate :: accepted, bugs, unjudgeable)
+      | Upstream_bug rejection -> (accepted, rejection :: bugs, unjudgeable)
+      | Unjudgeable rejection -> (accepted, bugs, rejection :: unjudgeable))
+    candidates ([], [], [])
 
 let format_upstream_issues input issues =
   "UPSTREAM MINIFIER BUGS\n"
@@ -248,6 +257,25 @@ let format_upstream_issues input issues =
             \    reason: %s\n\
             \    input:  %s"
             failure.tool failure.command failure.reason input)
+    |> String.concat "\n")
+
+let format_unjudgeable input at_keywords rejections =
+  Fmt.str
+    "CACHED ANSWERS CASCADE CANNOT JUDGE: the input uses %s, which Cascade has \
+     no handler for, so the body round-trips as opaque source text and no \
+     rewrite of it can be certified equivalent. Rejecting these is correct; \
+     they are not upstream bugs.\n\
+     %s"
+    (at_keywords |> List.map (fun k -> "@" ^ k) |> String.concat " ")
+    (rejections
+    |> List.map (fun (rejection : rejected_candidate) ->
+        Fmt.str
+          "    UNJUDGEABLE answer from: %s\n\
+          \    reason: %s\n\
+          \    input:  %s\n\
+          \    output: %s"
+          rejection.tool rejection.reason input
+          (display_css rejection.css))
     |> String.concat "\n")
 
 let format_source_parse_diagnostics (pair : Trace_pairs.t) =
@@ -364,10 +392,21 @@ let classify (pair : Trace_pairs.t) =
   match cascade_minify input with
   | Source_parse_error msg ->
       let diagnostics = format_source_parse_diagnostics pair in
-      (Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics), [])
+      {
+        outcome = Parse_error (msg ^ "\n    input diagnostics: " ^ diagnostics);
+        upstream_issues = [];
+        unjudgeable = [];
+        opaque_at_keywords = [];
+      }
   | Result_css actual ->
-      let candidates, rejected =
-        split_equivalent_candidates input pair.candidates
+      (* The at-keywords Cascade's parser reported no handler for. It keeps
+         their bodies as opaque source text, so it has no grounds to certify a
+         cached rewrite of one, and the same names scope the dropped check
+         below. *)
+      let opaque_at_keywords = unrecognised_at_keywords input in
+      let candidates, rejected, unjudgeable =
+        split_equivalent_candidates ~opaque_input:(opaque_at_keywords <> [])
+          input pair.candidates
       in
       let upstream_issues =
         List.map (fun issue -> Rejected_candidate issue) rejected
@@ -388,7 +427,7 @@ let classify (pair : Trace_pairs.t) =
       let dropped =
         let kept = at_keywords actual in
         let unanimous = unanimously_kept_at_keywords pair in
-        unrecognised_at_keywords input
+        opaque_at_keywords
         |> List.filter (fun k -> List.mem k unanimous && not (List.mem k kept))
       in
       let outcome =
@@ -415,7 +454,7 @@ let classify (pair : Trace_pairs.t) =
             "%s\n    shortest: %s\n    actual_len=%d best_len=%d" actual
             shortest (String.length actual) best
       in
-      (outcome, upstream_issues)
+      { outcome; upstream_issues; unjudgeable; opaque_at_keywords }
 
 let candidate_names pairs =
   pairs
@@ -485,6 +524,26 @@ let append_upstream_report lines =
 let reset_upstream_report () =
   if Sys.file_exists upstream_report_path then Sys.remove upstream_report_path
 
+let emit_report ~summary ~kind ~trailer reports =
+  if reports <> [] then begin
+    let limit = if verbose then List.length reports else 20 in
+    let head =
+      List.filteri (fun i _ -> i < limit) reports
+      |> List.map (fun (i, report) ->
+          Fmt.str "  pair_%04d: %s\n%s" i kind report)
+      |> String.concat "\n"
+    in
+    let tail =
+      if List.length reports > limit then
+        Fmt.str "\n  ... (%d more; set VERBOSE=1 for full list)"
+          (List.length reports - limit)
+      else ""
+    in
+    let report = summary ^ "\n" ^ head ^ tail in
+    append_upstream_report report;
+    Fmt.epr "%s@.%s: %s@." report trailer upstream_report_path
+  end
+
 let feature_of_input input =
   let has s = contains_substring ~needle:s input in
   if has "animation" || has "@keyframes" then "animation"
@@ -549,19 +608,28 @@ let pair_cases ~total_pairs ~minifier_names selected ~feature ~shard ~shards ()
   let mismatch = ref 0 in
   let oracle_bug = ref 0 in
   let oracle_bug_reports = ref [] in
+  let unjudgeable = ref 0 in
+  let unjudgeable_reports = ref [] in
   let divergences = ref [] in
   List.iter
-    (fun (i, pair) ->
-      let outcome, upstream_issues = classify pair in
+    (fun (i, (pair : Trace_pairs.t)) ->
+      let classified = classify pair in
+      let upstream_issues = classified.upstream_issues in
       if upstream_issues <> [] then begin
         oracle_bug := !oracle_bug + List.length upstream_issues;
         oracle_bug_reports :=
-          ( i,
-            pair,
-            format_upstream_issues pair.Trace_pairs.input upstream_issues )
+          (i, format_upstream_issues pair.input upstream_issues)
           :: !oracle_bug_reports
       end;
-      match outcome with
+      if classified.unjudgeable <> [] then begin
+        unjudgeable := !unjudgeable + List.length classified.unjudgeable;
+        unjudgeable_reports :=
+          ( i,
+            format_unjudgeable pair.input classified.opaque_at_keywords
+              classified.unjudgeable )
+          :: !unjudgeable_reports
+      end;
+      match classified.outcome with
       | Pass -> incr pass
       | Parse_error _ as o ->
           incr parse_err;
@@ -571,34 +639,22 @@ let pair_cases ~total_pairs ~minifier_names selected ~feature ~shard ~shards ()
           divergences := (i, pair, o) :: !divergences)
     selected;
   let divergences = List.rev !divergences in
-  let oracle_bug_reports = List.rev !oracle_bug_reports in
   let summary =
     Fmt.str
       "minifier interop%s: %d/%d selected pass (%d total pairs; %d parse \
-       errors, %d longer-than-shortest mismatches, %d cached oracle bugs; \
-       cached oracle tools: %s)"
+       errors, %d longer-than-shortest mismatches, %d cached oracle bugs, %d \
+       cached answers Cascade cannot judge; cached oracle tools: %s)"
       (Fmt.str " [%s %d/%d]" feature (shard + 1) shards)
-      !pass total total_pairs !parse_err !mismatch !oracle_bug minifier_names
+      !pass total total_pairs !parse_err !mismatch !oracle_bug !unjudgeable
+      minifier_names
   in
   print_endline summary;
-  if oracle_bug_reports <> [] then begin
-    let limit = if verbose then List.length oracle_bug_reports else 20 in
-    let head =
-      List.filteri (fun i _ -> i < limit) oracle_bug_reports
-      |> List.map (fun (i, _pair, report) ->
-          Fmt.str "  pair_%04d: cached oracle bug warning\n%s" i report)
-      |> String.concat "\n"
-    in
-    let tail =
-      if List.length oracle_bug_reports > limit then
-        Fmt.str "\n  ... (%d more upstream bugs; set VERBOSE=1 for full list)"
-          (List.length oracle_bug_reports - limit)
-      else ""
-    in
-    let report = summary ^ "\n" ^ head ^ tail in
-    append_upstream_report report;
-    Fmt.epr "%s@.upstream minifier bug report: %s@." report upstream_report_path
-  end;
+  emit_report ~summary ~kind:"cached oracle bug warning"
+    ~trailer:"upstream minifier bug report"
+    (List.rev !oracle_bug_reports);
+  emit_report ~summary ~kind:"cached answer Cascade cannot judge"
+    ~trailer:"unjudgeable cached answer report"
+    (List.rev !unjudgeable_reports);
   if divergences <> [] then begin
     let limit = if verbose then List.length divergences else 20 in
     let head =
@@ -632,7 +688,60 @@ let grouped_cases pairs =
         in
         Some (feature, cases))
 
+(* Hand-written pairs pinning the label a single cached answer gets. The corpus
+   cases cannot: they assert Cascade's own output, and a label only reaches them
+   through an aggregate count. *)
+let reported_issues pair =
+  (classify pair).upstream_issues
+  |> List.map (function
+    | Rejected_candidate rejection -> "bug:" ^ rejection.tool
+    | Failed_candidate failure -> "failed:" ^ failure.tool)
+
+let unjudgeable_answers pair =
+  (classify pair).unjudgeable
+  |> List.map (fun (rejection : rejected_candidate) -> rejection.tool)
+
+let trace ?(candidates = []) ?(failures = []) input : Trace_pairs.t =
+  { input; candidates; failures }
+
+let labelling_case ?(unjudgeable = []) name pair expected =
+  Alcotest.test_case name `Quick (fun () ->
+      Alcotest.(check (list string))
+        "reported upstream bugs" expected (reported_issues pair);
+      Alcotest.(check (list string))
+        "answers Cascade cannot judge" unjudgeable (unjudgeable_answers pair))
+
+let labelling_cases =
+  [
+    labelling_case "equivalent answer is not an issue"
+      (trace ".foo { color: red }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = ".foo{color:red}" } ])
+      [];
+    labelling_case "divergent answer is an upstream bug"
+      (trace ".foo { color: red }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = ".foo{color:blue}" } ])
+      [ "bug:t" ];
+    labelling_case "at-rule Cascade cannot interpret is not an upstream bug"
+      ~unjudgeable:[ "t" ]
+      (trace "@foo test { foo: bar; }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = "@foo test{foo:bar}" } ])
+      [];
+    labelling_case "an answer that invents one is still an upstream bug"
+      (trace "@font-feature-values foo { @swash { pretty: 1; } }"
+         ~candidates:[ Trace_pairs.{ tool = "t"; css = "@swash{pretty:1}" } ])
+      [ "bug:t" ];
+    labelling_case "a tool that failed outright is an upstream bug"
+      (trace ".foo { color: red }"
+         ~failures:
+           [
+             Trace_pairs.
+               { tool = "t"; command = "t --minify"; reason = "exit 1" };
+           ])
+      [ "failed:t" ];
+  ]
+
 let () =
   reset_upstream_report ();
   let pairs = Trace_pairs.read trace_path in
-  Alcotest.run "lightning_minify" (grouped_cases pairs)
+  Alcotest.run "lightning_minify"
+    (("labelling", labelling_cases) :: grouped_cases pairs)

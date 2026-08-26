@@ -28,7 +28,7 @@ let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let color buf i = pick [ "#abc"; "#123"; "#f00"; "#00f"; "red"; "blue" ] buf i
 
 let inline_style ds =
-  Stylesheet.inline_style_of_declarations ~minify:true ~mode:Variables ds
+  Css.inline_style_of_declarations ~minify:true ~mode:Variables ds
 
 (* [A.compute] takes a parsed sheet. The generator only assembles well-formed
    rules, so a fatal parse error is a bug in the generator, not a finding. *)

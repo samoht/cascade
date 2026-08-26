@@ -62,8 +62,7 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
       let decl = normalize ~lossless ~exact_srgb ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
-let is_custom_property_name name =
-  String.length name > 2 && name.[0] = '-' && name.[1] = '-'
+let is_custom_property_name = Custom_property_name.is_valid
 
 (* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
    values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
@@ -235,7 +234,7 @@ let invalid_var_arguments arguments =
     List.filter (fun component -> not (is_ws_component component)) arguments
   with
   | Component.Preserved { kind = Token.Ident name; _ } :: _
-    when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' ->
+    when Custom_property_name.is_valid name ->
       false
   | _ -> true
 
@@ -1934,11 +1933,7 @@ let read_value (type a) (prop : a property) t : declaration =
 
 (** Parse a custom property (--name: value) *)
 let is_font_family_var name =
-  let bare =
-    if String.length name > 2 && String.sub name 0 2 = "--" then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix name in
   let starts_with prefix s =
     String.length s >= String.length prefix
     && String.sub s 0 (String.length prefix) = prefix
@@ -2287,7 +2282,7 @@ let read_declaration t : declaration option =
     let is_custom =
       match Cursor.peek t with
       | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
-          String.length s >= 2 && s.[0] = '-' && s.[1] = '-'
+          Custom_property_name.has_prefix s
       | _ -> false
     in
     if is_custom then read_custom_property_declaration t
@@ -2371,9 +2366,13 @@ let read_block t =
   Cursor.braces (fun inner -> read_declarations inner) t
 
 let of_string s =
-  match read_declaration (Cursor.of_string s) with
+  let r = Cursor.of_string s in
+  match read_declaration r with
   | Some d -> d
-  | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
+  (* [read_declaration] answers [None] for text a declaration cannot start with,
+     which here is the whole input: report it where the reader stopped rather
+     than as a second, position-free exception. *)
+  | None -> Cursor.err_expected r "a declaration"
 
 (* The declaration [property] and [value] name, as the tokens they are. The name
    is one [<ident-token>] by construction and the value is parsed on its own, so
@@ -2454,7 +2453,7 @@ let with_opaque_value decl value =
   if is_important decl then important opaque else opaque
 
 (* Pretty printer for declarations *)
-let rec pp_declaration : declaration Pp.t =
+let rec pp : declaration Pp.t =
  fun ctx -> function
   | Declaration
       {
@@ -2466,12 +2465,8 @@ let rec pp_declaration : declaration Pp.t =
       pp_property ctx (Custom_property name);
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      (match (layer, value) with
-      | Some "theme", Typed { kind = Font_family; value } ->
-          pp_value ctx (Font_family, value)
-      | _ ->
-          pp_property_value ctx
-            (Custom_property name, Custom_value { value; layer; meta = None }));
+      pp_property_value ctx
+        (Custom_property name, Custom_value { value; layer; meta = None });
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Declaration { property; value; important; _ } ->
@@ -2490,18 +2485,14 @@ let rec pp_declaration : declaration Pp.t =
   | Theme_guarded { decl; _ } ->
       (* Theme guards are resolved by the transform layer; if one survives to
          print time, emit the wrapped declaration. *)
-      pp_declaration ctx decl
-
-let pp = pp_declaration
+      pp ctx decl
 
 (* Convert a declaration to its string representation *)
-let string_of_declaration ?(minify = false) decl =
+let to_string ?(minify = false) (decl : t) =
   let buf = Buffer.create 32 in
   let ctx = Pp.ctx ~minify buf in
-  pp_declaration ctx decl;
+  pp ctx decl;
   Buffer.contents buf
-
-let to_string ?minify (decl : t) = string_of_declaration ?minify decl
 
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]
@@ -2513,7 +2504,7 @@ let animation value = v Animation [ value ]
 let box_shadow value = v Box_shadow value
 
 let box_shadows = function
-  | [] -> failwith "empty box_shadows"
+  | [] -> invalid_arg "box_shadows: empty list"
   | values -> v Box_shadow (List values)
 
 (* Special helpers *)
@@ -2559,7 +2550,7 @@ let column_gap len = v Column_gap len
 let row_gap len = v Row_gap len
 
 (* Grid functions *)
-let grid_template_areas template = v Grid_template_areas (Areas template)
+let grid_template_areas value = v Grid_template_areas value
 let grid_template template = v Grid_template template
 let grid_auto_columns size = v Grid_auto_columns size
 let grid_auto_rows size = v Grid_auto_rows size
@@ -2805,7 +2796,7 @@ let background_clip value = v Background_clip value
 let webkit_background_clip value = v Webkit_background_clip value
 
 let font_families = function
-  | [] -> failwith "empty font_families"
+  | [] -> invalid_arg "font_families: empty list"
   | fonts -> v Font_family (List fonts)
 
 let background_attachment value = v Background_attachment value

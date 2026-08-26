@@ -15,11 +15,7 @@ let rule css =
 
 let same_decl a b = a == b || a = b
 
-let test_pseudo_and_vendor_detection () =
-  Alcotest.(check (option string))
-    "pseudo at selector tail" (Some "::before")
-    (Option.map Selector.to_string
-       (Merge.pseudo (Selector.of_string ".a .b::before")));
+let test_vendor_detection () =
   Alcotest.(check bool)
     "vendor pseudo detected" true
     (Merge.vendor (Selector.of_string ".a::-webkit-scrollbar"));
@@ -247,8 +243,7 @@ let test_key_is_the_selector_set () =
 let suite =
   ( "merge",
     [
-      Alcotest.test_case "pseudo and vendor detection" `Quick
-        test_pseudo_and_vendor_detection;
+      Alcotest.test_case "vendor detection" `Quick test_vendor_detection;
       Alcotest.test_case "compatible is not transitive" `Quick
         test_compatible_is_not_transitive;
       Alcotest.test_case "compatible matches the two predicates" `Quick

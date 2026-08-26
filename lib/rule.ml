@@ -11,7 +11,6 @@ let list_filter_preserve = List.filter_preserve
 let with_declarations (rule : rule) declarations =
   if declarations == rule.declarations then rule else { rule with declarations }
 
-let same_property = Shorthand.same_property
 let is_intentionally_duplicated = Shorthand.is_intentionally_duplicated
 let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let canonical_selector_key = Merge.key
@@ -283,56 +282,43 @@ module Key_table = Common.Table.Make (struct
   let hash keys = fold 0x9e3779b9 keys land max_int
 end)
 
-let later_by_selector_key (indexed : (int * rule) list) =
-  let later_by_key = Key_table.create 16 in
-  List.iter
-    (fun ((i, r) : int * rule) ->
-      List.iter
-        (fun key ->
-          Key_table.push later_by_key key (i, r.Stylesheet_intf.declarations))
-        (selector_keys r))
-    indexed;
-  later_by_key
+let written_for_key later_by_key key =
+  Key_table.find_opt later_by_key key |> Option.value ~default:Cover.empty
 
-let shadowed_by_later ~later_by_key ~rule_index ~keys decl =
-  let property_shadowed_for_key key =
-    let writes =
-      Key_table.find_opt later_by_key key |> Option.value ~default:[]
-    in
-    List.exists
-      (fun (j, decls) ->
-        j > rule_index
-        && List.exists
-             (fun ld ->
-               same_property decl ld
-               && (Declaration.is_important ld
-                  || not (Declaration.is_important decl)))
-             decls)
-      writes
-  in
+let shadowed_by_later ~later_by_key ~keys decl =
   (not (is_intentionally_duplicated decl))
-  && List.for_all property_shadowed_for_key keys
+  && List.for_all
+       (fun key -> Cover.covered (written_for_key later_by_key key) decl)
+       keys
+
+let record_for_keys later_by_key keys decls =
+  List.iter
+    (fun key ->
+      let written = written_for_key later_by_key key in
+      Key_table.replace later_by_key key (Cover.add written decls))
+    keys
 
 let drop_shadowed_declarations (rules : rule list) : rule list =
-  let indexed = List.mapi (fun i r -> (i, r)) rules in
-  let later_by_key = later_by_selector_key indexed in
+  let later_by_key = Key_table.create 16 in
+  let rules_arr = Array.of_list rules in
+  let len = Array.length rules_arr in
   let changed = ref false in
-  let rules' =
-    List.map
-      (fun (i, rule) ->
-        let keys = selector_keys rule in
-        let kept =
-          list_filter_preserve
-            (fun d ->
-              not (shadowed_by_later ~later_by_key ~rule_index:i ~keys d))
-            rule.declarations
-        in
-        let rule' = with_declarations rule kept in
-        if not (rule' == rule) then changed := true;
-        rule')
-      indexed
-  in
-  if !changed then rules' else rules
+  for i = len - 1 downto 0 do
+    let rule = rules_arr.(i) in
+    let keys = selector_keys rule in
+    let kept =
+      list_filter_preserve
+        (fun d -> not (shadowed_by_later ~later_by_key ~keys d))
+        rule.declarations
+    in
+    let rule' = with_declarations rule kept in
+    if not (rule' == rule) then begin
+      changed := true;
+      rules_arr.(i) <- rule'
+    end;
+    record_for_keys later_by_key keys rule.declarations
+  done;
+  if !changed then Array.to_list rules_arr else rules
 
 let drop_shadowed rules =
   rules |> drop_shadowed_declarations |> drop_shadowed_rules

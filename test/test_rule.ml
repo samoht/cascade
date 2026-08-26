@@ -56,6 +56,45 @@ let test_drop_shadowed_selector_list_requires_all_branches () =
     [ ".a{color:blue}"; ".b{color:green}" ]
     (rule_strings optimized)
 
+let disjoint_property_run n =
+  let buffer = Buffer.create (n * 16) in
+  let formatter = Fmt.with_buffer buffer in
+  for i = 0 to n - 1 do
+    Fmt.pf formatter ".a{p%d:0}" i
+  done;
+  rules (Buffer.contents buffer)
+
+let cpu_per_drop rules =
+  let run count =
+    Gc.full_major ();
+    let started = Sys.time () in
+    for _ = 1 to count do
+      ignore (Sys.opaque_identity (Rule.drop_shadowed rules))
+    done;
+    Sys.time () -. started
+  in
+  ignore (run 1);
+  let rec measure count =
+    let elapsed = run count in
+    if elapsed >= 0.05 then elapsed /. float count else measure (count * 2)
+  in
+  measure 1
+
+(* A rule's property should be looked up in the later writes for its selector,
+   not compared with every declaration written by every later rule. CPU time is
+   used instead of wall time so machine load cannot make the ratio quadratic. *)
+let test_drop_shadowed_disjoint_properties_is_subquadratic () =
+  let small = disjoint_property_run 2_000 in
+  let large = disjoint_property_run 4_000 in
+  let small_cpu = cpu_per_drop small in
+  let large_cpu = cpu_per_drop large in
+  let ratio = large_cpu /. small_cpu in
+  Fmt.epr "  shadowed declarations CPU: %.4fs -> %.4fs (%.2fx)@." small_cpu
+    large_cpu ratio;
+  Alcotest.(check bool)
+    (Fmt.str "2x rules takes %.2fx CPU, below quadratic growth" ratio)
+    true (ratio < 3.)
+
 let extend_ctx = Ctx.with_extend_lists true Ctx.fragment
 
 let test_merge_adjacent_identical_bodies () =
@@ -142,6 +181,8 @@ let suite =
         `Quick test_drop_shadowed_declarations_keeps_live_properties;
       Alcotest.test_case "drop shadowed selector list requires all branches"
         `Quick test_drop_shadowed_selector_list_requires_all_branches;
+      Alcotest.test_case "drop shadowed disjoint properties is subquadratic"
+        `Quick test_drop_shadowed_disjoint_properties_is_subquadratic;
       Alcotest.test_case "merge adjacent identical bodies" `Quick
         test_merge_adjacent_identical_bodies;
       Alcotest.test_case "merge adjacent skips intervening rule" `Quick

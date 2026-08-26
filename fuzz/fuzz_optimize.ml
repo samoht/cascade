@@ -188,8 +188,7 @@ let minified ss = Css.Stylesheet.to_string ~minify:true ss |> String.trim
 
 let parse_stylesheet input =
   let r = Cursor.of_string input in
-  try Some (Css.Stylesheet.read_stylesheet r)
-  with Cursor.Parse_error _ -> None
+  try Some (Css.Stylesheet.read r) with Cursor.Parse_error _ -> None
 
 let class_name prefix buf i = prefix ^ string_of_int (byte_at buf i mod 10)
 

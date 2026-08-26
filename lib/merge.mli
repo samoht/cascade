@@ -1,8 +1,5 @@
 (** Rule merge helpers. *)
 
-val pseudo : Selector.t -> Selector.t option
-(** Extract a selector's final pseudo-element, if any. *)
-
 val vendor : Selector.t -> bool
 (** Whether a selector contains a vendor-specific pseudo-element. *)
 

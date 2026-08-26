@@ -246,7 +246,7 @@ let starting_style_nested declarations =
 
 let keyframes name frames = Keyframes (name, frames)
 let v statements : stylesheet = statements
-let empty_stylesheet : stylesheet = []
+let empty : stylesheet = []
 
 (** {1 Accessors} *)
 
@@ -486,7 +486,7 @@ let iter_statements f block = fold_statements (fun () stmt -> f stmt) () block
 let edit_statements f block =
   let rec statement stmt =
     match f stmt with
-    | Common.List.Drop -> Common.List.Drop
+    | Drop -> Common.List.Drop
     | Keep -> descend stmt stmt
     | Replace stmt' -> descend stmt stmt'
   and descend stmt stmt' =
@@ -612,7 +612,7 @@ let pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
   pp_keyframe_selector ctx kf.selector;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx kf.declarations
+  Pp.braced_semicolon_list Declaration.pp ctx kf.declarations
 
 let pp_keyframes_block_statement ctx header name frames =
   Pp.string ctx header;
@@ -651,15 +651,14 @@ let pp_page_margin_rule : page_margin_rule Pp.t =
   Pp.string ctx "@";
   Pp.string ctx rule.name;
   Pp.sp ctx ();
-  Pp.braced_semicolon_list Declaration.pp_declaration ctx rule.descriptors
+  Pp.braced_semicolon_list Declaration.pp ctx rule.descriptors
 
 let pp_page_with_margins_body ctx descriptors margins =
   Pp.braces
     (fun ctx () ->
       Pp.list ~sep:Pp.semicolon_cut
         (fun ctx (i, d) ->
-          if i = 0 then Declaration.pp_declaration ctx d
-          else Pp.indent Declaration.pp_declaration ctx d)
+          if i = 0 then Declaration.pp ctx d else Pp.indent Declaration.pp ctx d)
         ctx
         (List.mapi (fun i d -> (i, d)) descriptors);
       if descriptors <> [] && margins <> [] then (
@@ -766,11 +765,7 @@ let normalise_charset statements =
     statements
 
 let color_custom_property_names stylesheet =
-  let var_name_of_custom_property name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let var_name_of_custom_property = Custom_property_name.strip_prefix in
   let declaration names = function
     | Declaration.Declaration
         {
@@ -1039,7 +1034,7 @@ let pp_declarations_statement ctx raw_decls =
   (* Bare declarations for CSS nesting - no selector/braces, just declarations.
      No extra indent since the containing block handles it *)
   let decls = raw_decls in
-  Pp.list ~sep:Pp.semicolon_cut Declaration.pp_declaration ctx decls;
+  Pp.list ~sep:Pp.semicolon_cut Declaration.pp ctx decls;
   if decls <> [] && not ctx.Pp.minify then Pp.semicolon ctx ()
 
 let pp_namespace_uri ctx = function
@@ -1270,9 +1265,7 @@ let rec pp_rule : rule Pp.t =
   | decls, nested ->
       let ctx = Pp.enter_style_rule { ctx with level = ctx.level + 1 } in
       let pp_declarations ctx () =
-        Pp.list ~sep:Pp.semicolon_cut
-          (Pp.indent Declaration.pp_declaration)
-          ctx decls
+        Pp.list ~sep:Pp.semicolon_cut (Pp.indent Declaration.pp) ctx decls
       in
       let pp_nested ctx () =
         let rec loop = function
@@ -1455,7 +1448,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@supports-condition ";
       Pp.string ctx name;
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
+      Pp.braced_semicolon_list Declaration.pp ctx declarations
   | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) -> pp_scope_statement ctx start end_ content
   | Keyframes (name, frames) ->
@@ -1477,7 +1470,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx raw_declarations
+      Pp.braced_semicolon_list Declaration.pp ctx raw_declarations
   | Page_with_margins (selector, descriptors, margins) ->
       Pp.string ctx "@page";
       pp_page_selector ctx selector;
@@ -1503,7 +1496,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@position-try ";
       Pp.string ctx (Parser.escape_ident name);
       Pp.sp ctx ();
-      Pp.braced_semicolon_list Declaration.pp_declaration ctx declarations
+      Pp.braced_semicolon_list Declaration.pp ctx declarations
   | Viewport (prefix, descriptors) ->
       pp_viewport_statement ctx prefix descriptors
   | Unknown_at_rule { name; prelude; block } ->
@@ -1558,6 +1551,8 @@ let pp_stylesheet : stylesheet Pp.t =
   in
   loop statements
 
+let pp = pp_stylesheet
+
 (** {1 Rendering} *)
 
 (* One walk of the tree. Presizing the buffer from a [Pp.size] prepass would
@@ -1568,8 +1563,6 @@ let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
     =
   let pp ctx () = pp_stylesheet ctx statements in
   Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp ()
-
-let pp = to_string
 
 (** {1 Legacy Compatibility} *)
 
@@ -1656,7 +1649,6 @@ let queries_of pick block =
        [] block)
 
 (* Legacy compatibility functions *)
-let empty = empty_stylesheet
 let rules t = extract_rules t
 
 let media_queries t =
@@ -2353,17 +2345,23 @@ let rec components_upto_semicolon = function
   | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
   | component :: rest -> component :: components_upto_semicolon rest
 
-(* cascade generates CSS, so a var() it substitutes at build time never reaches
-   a browser. [Inline.simplify_font_face_descriptor] resolves exactly these two
-   under [--inline-vars], so their readers keep the var(); every other
-   descriptor has no resolution path, leaving the var() unresolvable. *)
-let descriptor_resolves_var = function
-  | "src" | "unicode-range" -> true
-  | _ -> false
+let descriptor_value_has_var r =
+  components_have_var (components_upto_semicolon (Cursor.remaining r))
 
-let descriptor_value_has_var name r =
-  (not (descriptor_resolves_var name))
-  && components_have_var (components_upto_semicolon (Cursor.remaining r))
+(* Whether the descriptor called [name] keeps a var() for the inline pass, asked
+   of the typed AST rather than of a second list of names: read a value only
+   such a descriptor accepts, then put the descriptor to
+   {!resolve_font_face_var}, the one table [Inline] fills in. A descriptor with
+   no resolution path either refuses the probe or lands on an arm that table
+   answers [None] for. Only a value carrying a var() asks, so an ordinary
+   descriptor never pays for the probe. *)
+let descriptor_resolves_var name =
+  let probe = Cursor.of_string ":var(--x)" in
+  match read_font_face_desc name probe with
+  | descriptor ->
+      Option.is_some
+        (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id descriptor)
+  | exception Error.Parse_error _ -> false
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
@@ -2374,7 +2372,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   else
     let name = Cursor.ident ~keep_case:false r in
     match
-      if descriptor_value_has_var name r then
+      if descriptor_value_has_var r && not (descriptor_resolves_var name) then
         Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
       else read_font_face_desc name r
     with
@@ -2729,7 +2727,7 @@ let read_page (r : Cursor.t) : statement =
   Page_with_margins (selector, descriptors, margins)
 
 let validate_dashed_ident r name context =
-  if not (String.starts_with ~prefix:"--" name) then
+  if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid r (context ^ " name must be a dashed ident")
 
 let font_palette_descriptor_kind = function
@@ -3229,25 +3227,25 @@ let read_property_initial_value r syntax str =
   Cursor.expect_eof value_reader;
   value
 
-let conditional_args (fn : Component.func Component.node) =
-  if not fn.node.terminated then failwith "unterminated conditional function";
-  Cursor.string_of_components ~trim:true fn.node.arguments
+(* Every failure below is a failure of the [\@when] / [\@else] prelude, so it is
+   raised on the cursor the prelude's own components sit in and the caret lands
+   on the one that failed rather than on the block that follows it. *)
+let conditional_terminated r ~at_rule (fn : Component.func Component.node) =
+  if not fn.node.terminated then
+    Cursor.err_condition r ~at_rule "unterminated condition function"
 
-let conditional_arguments (fn : Component.func Component.node) =
-  if not fn.node.terminated then failwith "unterminated conditional function";
-  fn.node.arguments
-
-let conditional_atom (fn : Component.func Component.node) =
+let conditional_atom r ~at_rule (fn : Component.func Component.node) =
+  conditional_terminated r ~at_rule fn;
   match String.lowercase_ascii fn.Component.node.name with
-  | "media" ->
-      Media_condition (Media.of_function_components (conditional_arguments fn))
+  | "media" -> Media_condition (Media.of_function_components fn.node.arguments)
   | "supports" ->
       Supports_condition_test
-        (Supports.of_string ~allow_unwrapped_decl:true (conditional_args fn))
-  | name -> failwith ("unknown conditional function: " ^ name)
+        (Supports.of_string ~allow_unwrapped_decl:true
+           (Cursor.string_of_components ~trim:true fn.node.arguments))
+  | name ->
+      Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
 
-let conditional_components components =
-  let cursor = Cursor.of_components components in
+let conditional_components ~at_rule cursor =
   let peek_ident () =
     match Cursor.peek cursor with
     | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
@@ -3258,30 +3256,29 @@ let conditional_components components =
     Cursor.ws cursor;
     match Cursor.peek cursor with
     | Some (Component.Func fn) ->
+        let atom = conditional_atom cursor ~at_rule fn in
         Cursor.skip cursor;
-        conditional_atom fn
-    | _ -> failwith "expected conditional function"
+        atom
+    | _ -> Cursor.err_condition cursor ~at_rule "expected a condition function"
   in
+  let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
   let rec chain op acc =
     Cursor.ws cursor;
     match peek_ident () with
     | Some "and" ->
-        (match op with
-        | Some `Or -> failwith "mixed @when condition operators"
-        | _ -> ());
+        (match op with Some `Or -> mixed "or and and" | _ -> ());
         Cursor.skip cursor;
         chain (Some `And) (And (acc, read_atom ()))
     | Some "or" ->
-        (match op with
-        | Some `And -> failwith "mixed @when condition operators"
-        | _ -> ());
+        (match op with Some `And -> mixed "and and or" | _ -> ());
         Cursor.skip cursor;
         chain (Some `Or) (Or (acc, read_atom ()))
     | _ -> acc
   in
   let condition = chain None (read_atom ()) in
   Cursor.ws cursor;
-  if not (Cursor.is_done cursor) then failwith "trailing @when condition";
+  if not (Cursor.is_done cursor) then
+    Cursor.err_condition cursor ~at_rule "trailing content";
   condition
 
 let follows_conditional = function When _ | Else _ -> true | _ -> false
@@ -3329,8 +3326,8 @@ let read_supports_condition (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports-condition" r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
-    Cursor.err_invalid r "@supports-condition: name must start with '--'";
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid r "@supports-condition: invalid custom-property name";
   Cursor.ws r;
   let declarations = Cursor.braces Declaration.read_declarations r in
   Supports_condition (name, declarations)
@@ -3434,8 +3431,8 @@ let read_property_rule (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "property" r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
-    Cursor.err_invalid r ("@property: name must start with '--', got: " ^ name);
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid r ("@property: invalid custom-property name: " ^ name);
   Cursor.ws r;
   let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with
@@ -3508,10 +3505,9 @@ let read_when ~body (r : Cursor.t) : statement =
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
   if Cursor.string_of_components ~trim:true prelude = "" then
-    Cursor.err_invalid r "@when: missing condition";
+    Cursor.err_condition r ~at_rule:"@when" "missing condition";
   let condition : conditional =
-    try conditional_components prelude
-    with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
+    conditional_components ~at_rule:"@when" (Cursor.sub r prelude)
   in
   When (condition, Cursor.braces body r)
 
@@ -3528,10 +3524,7 @@ let read_else ~body (r : Cursor.t) : statement =
         prelude
     with
     | [] -> Option.None
-    | _ -> (
-        match conditional_components prelude with
-        | condition -> Some condition
-        | exception Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
+    | _ -> Some (conditional_components ~at_rule:"@else" (Cursor.sub r prelude))
   in
   Else (condition, Cursor.braces body r)
 
@@ -3991,7 +3984,7 @@ let rec read_stylesheet_statements r state acc =
     validate_stylesheet_prelude r state stmt;
     read_stylesheet_statements r state (stmt :: acc)
 
-let read_stylesheet (r : Cursor.t) : stylesheet =
+let read (r : Cursor.t) : stylesheet =
   Cursor.with_context r "stylesheet" (fun () ->
       read_stylesheet_statements r (new_prelude_seen ()) [])
 
@@ -4086,14 +4079,16 @@ let validate_partial_statement loc = function
       Some
         (Error.bad_value loc ~property:"@font-face"
            ~reason:"missing font-family or src descriptor")
+  (* CSS Fonts 4 sec. 9.2 makes font-family the one mandatory descriptor; sec.
+     9.2.2 defaults a missing base-palette to 0. *)
   | Font_palette_values (_, descriptors)
     when not
            (List.exists
-              (function Base_palette _ -> true | _ -> false)
+              (function Palette_font_family _ -> true | _ -> false)
               descriptors) ->
       Some
         (Error.bad_value loc ~property:"@font-palette-values"
-           ~reason:"missing base-palette descriptor")
+           ~reason:"missing font-family descriptor")
   | (Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _))
     when List.mem
            (String.lowercase_ascii name)
@@ -4307,41 +4302,6 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   let sheet = interleave bangs rule_ends sheet in
   (sheet, out.warnings @ typed_warnings)
 
-(** {1 Inline Styles} *)
-
-let pp_important ~minify pp_ctx =
-  if minify then Pp.string pp_ctx "!important"
-  else (
-    Pp.space pp_ctx ();
-    Pp.string pp_ctx "!important")
-
-let pp_decl_inline ~minify ~mode pp_ctx decl =
-  let name = Declaration.property_name decl in
-  let value =
-    Declaration.string_of_value ~minify ~inline:(mode = Inline) decl
-  in
-  let is_important = Declaration.is_important decl in
-  Pp.string pp_ctx name;
-  Pp.char pp_ctx ':';
-  if not minify then Pp.space pp_ctx ();
-  Pp.string pp_ctx value;
-  if is_important then pp_important ~minify pp_ctx
-
-let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
-    =
-  let buf = Buffer.create 128 in
-  let pp_ctx = Pp.ctx ~minify ~inline:(mode = Inline) buf in
-  let first = ref true in
-  List.iter
-    (fun decl ->
-      if !first then first := false
-      else (
-        Pp.semicolon pp_ctx ();
-        if not minify then Pp.space pp_ctx ());
-      pp_decl_inline ~minify ~mode pp_ctx decl)
-    props;
-  Buffer.contents buf
-
 (** {1 Variable extraction from stylesheets} *)
 
 (* A [var()] is a reference wherever the declaration holding it sits, so this is
@@ -4352,9 +4312,6 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline) props
 let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
   fold_declarations (fun acc decls -> List.rev_append decls acc) [] ss
   |> List.rev |> Variables.vars_of_declarations
-
-(* Alias for API consistency *)
-let read = read_stylesheet
 
 (* Pretty-printer for import_rule *)
 let pp_import_rule : import_rule Pp.t =

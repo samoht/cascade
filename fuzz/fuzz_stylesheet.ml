@@ -306,16 +306,14 @@ let generated_condition_stylesheet buf =
 
 let parse_stylesheet input =
   let r = Cursor.of_string input in
-  try Some (Css.Stylesheet.read_stylesheet r)
-  with Cursor.Parse_error _ -> None
+  try Some (Css.Stylesheet.read r) with Cursor.Parse_error _ -> None
 
 let parse_declaration input =
   let r = Cursor.of_string input in
   try
     match Css.Declaration.read_declaration r with
     | None -> None
-    | Some decl ->
-        Some (Css.Declaration.string_of_declaration ~minify:true decl)
+    | Some decl -> Some (Css.Declaration.to_string ~minify:true decl)
   with Cursor.Parse_error _ | Error.Parse_error _ -> None
 
 let minified_stylesheet ss =
@@ -603,11 +601,10 @@ let anonymous_layer_count ss =
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss
 
-(** read_stylesheet -- must not crash on arbitrary input. *)
+(** [Stylesheet.read] must not crash on arbitrary input. *)
 let test_read_stylesheet buf =
   let r = Cursor.of_string buf in
-  try ignore (Css.Stylesheet.read_stylesheet r)
-  with Cursor.Parse_error _ -> ()
+  try ignore (Css.Stylesheet.read r) with Cursor.Parse_error _ -> ()
 
 (** read_rule -- must not crash. *)
 let test_read_rule buf =
@@ -659,14 +656,13 @@ let test_read_property_value buf =
 let test_stylesheet_roundtrip buf =
   let r = Cursor.of_string buf in
   match
-    try Some (Css.Stylesheet.read_stylesheet r)
-    with Cursor.Parse_error _ -> None
+    try Some (Css.Stylesheet.read r) with Cursor.Parse_error _ -> None
   with
   | None -> ()
   | Some ss -> (
       let s = Css.Stylesheet.to_string ss in
       let r2 = Cursor.of_string s in
-      try ignore (Css.Stylesheet.read_stylesheet r2)
+      try ignore (Css.Stylesheet.read r2)
       with Cursor.Parse_error _ -> fail "stylesheet roundtrip re-parse failed")
 
 (* Allow one canonicalization pass (numeric trim, [1e3] -> [1000], escape
@@ -1598,7 +1594,7 @@ let test_comments_anywhere_robust buf =
         mutated
         (Cascade.Error.to_string err)
 
-(* Comments in raw bytes: the lower-level [read_stylesheet] (used through
+(* Comments in raw bytes: the lower-level [Stylesheet.read] (used through
    [Cursor.of_string]) must also not crash when the input contains comments at
    pathological positions, even alongside random garbage. *)
 let test_comments_random_no_crash buf =
@@ -1717,7 +1713,7 @@ let test_invalid_prelude_order buf =
 
 let parser_cases =
   [
-    test_case "read_stylesheet crash safety" [ bytes ] test_read_stylesheet;
+    test_case "stylesheet read crash safety" [ bytes ] test_read_stylesheet;
     test_case "read_rule crash safety" [ bytes ] test_read_rule;
     test_case "read_block crash safety" [ bytes ] test_read_block;
     test_case "read crash safety" [ bytes ] test_read;

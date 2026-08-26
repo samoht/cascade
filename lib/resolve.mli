@@ -3,8 +3,8 @@
 
     A caller supplies its node type through {!NODE}; {!Make} then matches
     selectors and resolves the winning declarations per node. Nesting is
-    flattened with {!Flatten}, so a stylesheet produced by the optimiser
-    resolves the same as the authored form. *)
+    flattened as by {!Css.flatten_nesting}, so a stylesheet produced by the
+    optimiser resolves the same as the authored form. *)
 
 module type NODE = sig
   type t

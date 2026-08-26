@@ -11,8 +11,7 @@ let check_any_syntax =
 
 let decl_t : Css.Declaration.declaration Alcotest.testable =
   Alcotest.testable
-    (fun fmt d ->
-      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    (fun fmt d -> Format.pp_print_string fmt (Css.Declaration.to_string d))
     ( = )
 
 (* These tests are for CSS Variables module *)
@@ -39,6 +38,15 @@ let test_any_var () =
 
   (* Test negative cases *)
   neg_cursor read_reference "not-a-var()"
+
+(* CSS Variables 1 sec. 2: a custom-property name is any dashed-ident other than
+   bare [--]. A third dash starts the ident body; it is not forbidden. *)
+let custom_property_name_edges () =
+  let cursor = Cursor.of_string "var(---foo)" in
+  let name, fallback = read_reference cursor in
+  Alcotest.(check string) "third dash belongs to the name" "-foo" name;
+  Alcotest.(check (option string)) "no fallback" None fallback;
+  neg_cursor read_reference "var(--)"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -329,7 +337,7 @@ let spec_radial_and_position_kinds () =
     Alcotest.(check string)
       ("--" ^ name ^ " binding")
       expected
-      (Css.Declaration.string_of_declaration ~minify:true decl)
+      (Css.Declaration.to_string ~minify:true decl)
   in
   bind "radial-shape" Radial_shape Circle "--radial-shape:circle";
   bind "radial-size" Radial_size Farthest_corner "--radial-size:farthest-corner";
@@ -544,7 +552,7 @@ let spec_custom_fallback_edges () =
           (Printexc.to_string exn)
   in
   neg "var(--color";
-  neg "var(---)";
+  check_var_ref "var(---)" "-" None;
   neg "var(--, red)"
 
 let spec_custom_computed_edges () =
@@ -575,6 +583,7 @@ let spec_custom_computed_edges () =
 let tests =
   [
     ("any_var", `Quick, test_any_var);
+    ("custom property name edges", `Quick, custom_property_name_edges);
     ("any_syntax", `Quick, test_any_syntax);
     ("spec property syntax descriptor edges", `Quick, spec_property_syntax_edges);
     ("vars of calc", `Quick, test_vars_of_calc);

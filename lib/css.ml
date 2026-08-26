@@ -13,6 +13,8 @@ module Parser = Parser
 module Cursor = Cursor
 module Sort = Sort
 module Error = Error
+module Aria = Aria
+module Color_space = Color_space
 module Values = Values
 module Context = Context
 module Declaration = Declaration
@@ -20,6 +22,7 @@ module Properties = Properties
 module Selector = Selector
 module Selector_summary = Selector_summary
 module Stylesheet = Stylesheet
+module Nest = Nest
 
 let parse_full ~property read s =
   let c = Cursor.of_string s in
@@ -37,28 +40,9 @@ let parse_full ~property read s =
       else Ok v
     with Cursor.Parse_error e -> Error e
 
-module Transform = struct
-  let of_string s = parse_full ~property:"transform" Properties.read_transform s
-end
-
 module Gradient_direction = struct
   let of_string s =
     parse_full ~property:"gradient-direction" Properties.read_gradient_prelude s
-end
-
-module Transform_origin = struct
-  let of_string s =
-    parse_full ~property:"transform-origin" Properties.read_transform_origin s
-end
-
-module Perspective_origin = struct
-  let of_string s =
-    parse_full ~property:"perspective-origin" Properties.read_perspective_origin
-      s
-end
-
-module Animation = struct
-  let of_string s = parse_full ~property:"animation" Properties.read_animation s
 end
 
 let eval_declaration ?layer_order ?layer ctx decl =
@@ -347,68 +331,22 @@ let media_not_min_width_length l =
           (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)));
     }
 
-let parse_length s =
+let parse_option read s =
   match
     let c = Cursor.of_string s in
-    let l = Values.read_length c in
-    if Cursor.is_done c then Some l else None
+    let value = read c in
+    if Cursor.is_done c then Some value else None
   with
   | value -> value
   | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
 
-let parse_color s =
-  match
-    let c = Cursor.of_string s in
-    let col = Values.read_color c in
-    if Cursor.is_done c then Some col else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_shadow s =
-  match
-    let r = Cursor.of_string s in
-    let sh = Properties.read_shadow r in
-    if Cursor.is_done r then Some sh else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_background_image s =
-  match
-    let r = Cursor.of_string s in
-    let imgs = Properties.read_background_images r in
-    if Cursor.is_done r then Some imgs else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_font_family s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_font_family r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_list_style_type s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_list_style_type r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-
-let parse_list_style_image s =
-  match
-    let r = Cursor.of_string s in
-    let v = Properties.read_list_style_image r in
-    if Cursor.is_done r then Some v else None
-  with
-  | value -> value
-  | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
+let parse_length s = parse_option Values.read_length s
+let parse_color s = parse_option Values.read_color s
+let parse_shadow s = parse_option Properties.read_shadow s
+let parse_background_image s = parse_option Properties.read_background_images s
+let parse_font_family s = parse_option Properties.read_font_family s
+let parse_list_style_type s = parse_option Properties.read_list_style_type s
+let parse_list_style_image s = parse_option Properties.read_list_style_image s
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
@@ -669,21 +607,47 @@ and statement_for_inline ~live ~keep_layers statement =
    no handler is not in that set: the browser ignoring it is a cascade step, and
    a serialiser has no agent to be. Compose {!optimize}, {!resolve_theme},
    {!inline_vars} upstream when needed. *)
-let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
+let pp ctx stylesheet =
   let stylesheet =
     stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
   in
-  Stylesheet.to_string ~minify ?indent ?lossless ?enforce_spec stylesheet
+  Stylesheet.pp ctx stylesheet
 
-let pp = to_string
+let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp stylesheet
 
 (* Append the serialised stylesheet to [buf]. *)
 let to_buffer buf ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
-  let stylesheet =
-    stylesheet |> Optimize.drop_invalid |> Optimize.drop_empty_rules
+  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp stylesheet
+
+let pp_inline_important ~minify ctx =
+  if minify then Pp.string ctx "!important"
+  else (
+    Pp.space ctx ();
+    Pp.string ctx "!important")
+
+let pp_inline_declaration ~minify ~mode ctx declaration =
+  let name = Declaration.property_name declaration in
+  let value =
+    Declaration.string_of_value ~minify ~inline:(mode = Inline) declaration
   in
-  let pp ctx () = Stylesheet.pp_stylesheet ctx stylesheet in
-  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp ()
+  Pp.string ctx name;
+  Pp.char ctx ':';
+  if not minify then Pp.space ctx ();
+  Pp.string ctx value;
+  if Declaration.is_important declaration then pp_inline_important ~minify ctx
+
+let render_inline_style ?(minify = false) ?(mode : mode = Inline) declarations =
+  let buffer = Buffer.create 128 in
+  let ctx = Pp.ctx ~minify ~inline:(mode = Inline) buffer in
+  List.iteri
+    (fun index declaration ->
+      if index > 0 then (
+        Pp.semicolon ctx ();
+        if not minify then Pp.space ctx ());
+      pp_inline_declaration ~minify ~mode ctx declaration)
+    declarations;
+  Buffer.contents buffer
 
 let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     =
@@ -691,7 +655,7 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
     if optimize then Optimize.deduplicate_declarations declarations
     else declarations
   in
-  inline_style_of_declarations ?minify ?mode declarations
+  render_inline_style ?minify ?mode declarations
 
 let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats
@@ -763,10 +727,7 @@ let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
 let resolve_theme_guards_in_stmts ~theme stmts =
   Stylesheet.map_declarations (resolve_theme_guards_in_decls ~theme) stmts
 
-let bare_theme_name raw_name =
-  if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
-    String.sub raw_name 2 (String.length raw_name - 2)
-  else raw_name
+let bare_theme_name raw_name = Custom_property_name.strip_prefix raw_name
 
 (* [var()] references nested anywhere inside a value, so resolving one theme
    default pulls its targets into the inject set and [Inline.vars]' recursive
@@ -828,10 +789,7 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
    declaration, an unterminated string - is not a binding this library can
    write, so the name stays unresolved and its [var()] reference stays live. *)
 let theme_default_declaration (name, value) =
-  let name =
-    if String.length name >= 2 && String.sub name 0 2 = "--" then name
-    else "--" ^ name
-  in
+  let name = Custom_property_name.add_prefix name in
   Declaration.parse_custom_property name value
 
 (* [lookup] restricted to the answers that bind: anything else reads as [None],

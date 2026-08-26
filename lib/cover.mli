@@ -6,6 +6,9 @@ type t
 type written
 (** What one selector has written later for it. *)
 
+val empty : written
+(** No properties written. *)
+
 val v : unit -> t
 (** [v ()] creates an empty coverage table. *)
 
@@ -16,6 +19,9 @@ val written : t -> Selector.t -> written
 val covered : written -> Declaration.t -> bool
 (** [covered written decl] is [true] when [decl]'s property is definitely
     shadowed by a later declaration at the same or stronger importance. *)
+
+val add : written -> Declaration.t list -> written
+(** [add written decls] extends [written] with [decls]. *)
 
 val record : t -> Selector.t -> written -> Declaration.t list -> unit
 (** [record t selector written decls] stores [written] extended with [decls] as

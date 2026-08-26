@@ -34,11 +34,9 @@ let covered (normal, important) decl =
   if Declaration.is_important decl then Props.mem prop important
   else Props.mem prop normal || Props.mem prop important
 
-let record t selector (normal, important) decls =
-  (* The two halves stay apart until the store, so a rule builds one entry
-     rather than one per declaration. *)
+let add (normal, important) decls =
   let rec fold normal important = function
-    | [] -> Selector_tbl.replace t selector (normal, important)
+    | [] -> (normal, important)
     | decl :: rest ->
         let prop = Declaration.property_key decl in
         if Declaration.is_important decl then
@@ -46,3 +44,8 @@ let record t selector (normal, important) decls =
         else fold (Props.add prop normal) important rest
   in
   fold normal important decls
+
+let record t selector written decls =
+  (* The two halves stay apart until the store, so a rule builds one entry
+     rather than one per declaration. *)
+  Selector_tbl.replace t selector (add written decls)

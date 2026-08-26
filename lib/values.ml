@@ -4931,10 +4931,10 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
   Cursor.ws t;
   let name = Cursor.ident ~keep_case:true t in
   (* CSS Custom Properties 1: a [var()] reference must name a [<dashed-ident>]
-     (a token starting with [--]). Reject non-dashed names. *)
-  if not (String.length name >= 2 && name.[0] = '-' && name.[1] = '-') then
-    Cursor.err_invalid t ("var() name must start with '--': " ^ name);
-  let var_name = String.sub name 2 (String.length name - 2) in
+     other than the bare reserved [--] keyword. *)
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid t ("var() requires a custom-property name: " ^ name);
+  let var_name = Custom_property_name.strip_prefix name in
   Cursor.ws t;
   let fallback : _ fallback =
     if not (Cursor.comma_opt t) then None
@@ -5558,7 +5558,7 @@ let read_anchor_size_length inner =
   Anchor_size size
 
 let read_anchor_name_side inner first =
-  if String.starts_with ~prefix:"--" first then
+  if Custom_property_name.is_valid first then
     let side = Cursor.ident inner in
     (Some first, side)
   else (None, first)

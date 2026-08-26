@@ -32,7 +32,7 @@ let string_of_custom_value = Parser.to_string_custom
 let rec first_var_ref_ident = function
   | [] -> Option.None
   | Component.Preserved { Token.kind = Token.Ident n; _ } :: _
-    when String.length n >= 2 && n.[0] = '-' && n.[1] = '-' ->
+    when Custom_property_name.is_valid n ->
       Option.Some n
   | _ :: rest -> first_var_ref_ident rest
 
@@ -1870,7 +1870,6 @@ let vars_of_kind : type a. a kind -> a -> any_var list =
   | Rotate -> vars_of_rotate_value value
   | Scale -> vars_of_scale value
   | Shadow -> vars_of_shadow value
-  | Box_shadow -> vars_of_shadow value
   | Content -> vars_of_content value
   | Gradient_stop -> vars_of_gradient_stop value
   | Gradient_direction -> vars_of_gradient_direction value
@@ -1893,11 +1892,7 @@ let vars_of_kind : type a. a kind -> a -> any_var list =
 let vars_of_ref_names names : any_var list =
   List.rev_map
     (fun name ->
-      let bare =
-        if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-          String.sub name 2 (String.length name - 2)
-        else name
-      in
+      let bare = Custom_property_name.strip_prefix name in
       V (Values.var_ref bare))
     names
 
@@ -2625,17 +2620,11 @@ let read_reference (r : Cursor.t) : string * string option =
     Cursor.call "var" r (fun inner ->
         let raw_name = Cursor.ident ~keep_case:true inner in
         (* css-variables-1: a <custom-property-name> is a <dashed-ident> other
-           than [--]. The [--] prefix must be followed by an ident-continue code
-           point that is not itself [-], otherwise the trailing dashes are
-           ambiguous with the reserved [--] keyword. *)
-        if
-          not
-            (String.length raw_name >= 3
-            && raw_name.[0] = '-'
-            && raw_name.[1] = '-'
-            && raw_name.[2] <> '-')
-        then Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
-        let name = String.sub raw_name 2 (String.length raw_name - 2) in
+           than the bare reserved [--] keyword. A further leading dash is part
+           of the name. *)
+        if not (Custom_property_name.is_valid raw_name) then
+          Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
+        let name = Custom_property_name.strip_prefix raw_name in
         Cursor.ws inner;
         let fallback =
           if Cursor.comma_opt inner then Some (string_of_fallback inner)

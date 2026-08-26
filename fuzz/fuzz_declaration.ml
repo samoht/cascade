@@ -53,7 +53,7 @@ let parse_declaration input =
   let r = Cursor.of_string input in
   try Css.Declaration.read_declaration r with Cursor.Parse_error _ -> None
 
-let serialize decl = Css.Declaration.string_of_declaration ~minify:true decl
+let serialize decl = Css.Declaration.to_string ~minify:true decl
 
 let assert_invalid_declaration_contract =
   Fuzz_helpers.assert_invalid_declaration_contract

@@ -7,9 +7,8 @@ open Css_test_helpers
 
 (* One-liner check functions for each type *)
 let check_declaration ?minify ?roundtrip ?expected ?optimized input =
-  check_value_cursor "declaration" read_declaration
-    (Css.Pp.option pp_declaration)
-    ?minify ?roundtrip ?expected input;
+  check_value_cursor "declaration" read_declaration (Css.Pp.option pp) ?minify
+    ?roundtrip ?expected input;
   match optimized with
   | None -> ()
   | Some into ->
@@ -384,6 +383,32 @@ let expect_parse_error name f =
 let error_missing_colon () =
   let r = Cursor.of_string "color red;" in
   expect_parse_error "missing colon" (fun () -> ignore (read_declaration r))
+
+(* [Declaration.of_string] documents one failure mode, so a caller writes one
+   handler. Text that is not a declaration reaches it two ways - the reader
+   raises, or it answers [None] for a component a declaration cannot start with
+   - and both must leave through the same exception. *)
+let of_string_one_failure_mode () =
+  let refused input =
+    match of_string input with
+    | d ->
+        Alcotest.failf "%S: expected a parse error, parsed %S" input
+          (to_string d)
+    | exception Cursor.Parse_error _ -> ()
+  in
+  (* The reader reaches the value and rejects it. *)
+  refused "color";
+  refused "color red";
+  refused "color:";
+  refused "1px";
+  (* [read_declaration] answers [None]: no declaration starts here. *)
+  refused "";
+  refused "   ";
+  refused ".foo";
+  refused "#id";
+  refused "&:hover";
+  refused "[data-x]";
+  refused ": red"
 
 let error_stray_semicolon () =
   let r = Cursor.of_string "; color: red;" in
@@ -1644,8 +1669,7 @@ let unterminated () =
   in
   Alcotest.(check string)
     "unterminated rgb declaration normalize" "color:#000"
-    (decl |> Css.Declaration.normalize
-    |> Css.Declaration.string_of_declaration ~minify:true);
+    (decl |> Css.Declaration.normalize |> Css.Declaration.to_string ~minify:true);
   (* A missing semicolon between two declarations in a block remains a parse
      error. *)
   Css_test_helpers.neg_cursor Css.Declaration.read_block
@@ -1667,6 +1691,24 @@ let custom_property_values () =
      property grammar at parse time. *)
   check_declaration ~expected:"z-index:var(--spec-value,{color:red;})"
     "z-index: var(--spec-value, { color: red; })"
+
+(* A typed custom property carries its layer as metadata; the layer does not
+   select a different CSS value serialization. In particular, the historical
+   [theme] layer and any caller-defined layer print the same font-family
+   value. *)
+let typed_custom_font_family_layer_printing () =
+  let render layer =
+    let declaration, _ =
+      Css.var ~layer "font-body" Css.Font_family
+        (Css.font_stack [ Css.Name "Inter"; Css.Sans_serif ])
+    in
+    Css.Declaration.to_string ~minify:true declaration
+  in
+  let theme = render "theme" in
+  Alcotest.(check string)
+    "typed font family" "--font-body:Inter,sans-serif" theme;
+  Alcotest.(check string)
+    "layer-independent serialization" theme (render "utilities")
 
 (* [parse_custom_property] builds a declaration from a name and value that came
    from outside the parser, so it takes only a pair that writes back as the one
@@ -2528,17 +2570,15 @@ let parse_property_decl property value =
     match read_declaration c with
     | None -> None
     | Some decl ->
-        let serialized =
-          Css.Declaration.string_of_declaration ~minify:true decl
-        in
+        let serialized = Css.Declaration.to_string ~minify:true decl in
         let c2 = Cursor.of_string serialized in
         Some (input, serialized, decl, read_declaration c2)
   with Cursor.Parse_error _ | Reader.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
   Css.Declaration.property_name reparsed = row.property
-  && Css.Declaration.string_of_declaration ~minify:true decl
-     = Css.Declaration.string_of_declaration ~minify:true reparsed
+  && Css.Declaration.to_string ~minify:true decl
+     = Css.Declaration.to_string ~minify:true reparsed
 
 let check_property_positive (row : property_grammar_row) value =
   match parse_property_decl row.property value with
@@ -3245,6 +3285,8 @@ let declaration_tests =
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
     test_case "custom property values" `Quick custom_property_values;
+    test_case "typed custom font family layers print alike" `Quick
+      typed_custom_font_family_layer_printing;
     test_case "parse_custom_property rejects an escaping pair" `Quick
       parse_custom_property_guard;
     test_case "custom_property refuses an escaping pair" `Quick
@@ -3292,6 +3334,7 @@ let declaration_tests =
       spec_property_grammar_manifest;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
+    test_case "of_string has one failure mode" `Quick of_string_one_failure_mode;
     test_case "error stray semicolon" `Quick error_stray_semicolon;
     test_case "error unclosed block" `Quick error_unclosed_block;
     test_case "unterminated parsing" `Quick unterminated;

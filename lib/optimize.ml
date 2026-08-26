@@ -12,6 +12,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 (** {1 Edge Model} *)
 
 type scope = Ctx.scope
+type objective = [ `Raw | `Transfer ]
 
 (* Optimisation context threaded from the entry points to the shorthand
    composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
@@ -561,9 +562,7 @@ let drop_invalid (stylesheet : t) : t =
     rather than what a transform may hand the next reader of one. Opt in when
     the output has exactly one consumer and it is a browser. *)
 let drop_unknown_at_rules (stylesheet : t) : t =
-  edit_statements
-    (function Unknown_at_rule _ -> List.Drop | _ -> List.Keep)
-    stylesheet
+  edit_statements (function Unknown_at_rule _ -> Drop | _ -> Keep) stylesheet
 
 (* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
    typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
@@ -746,11 +745,7 @@ let registered_foldable (stylesheet : t) : string -> bool =
               (* [@property] names carry the [--] prefix; [var()] references
                  store the bare name, so normalise to the bare form for
                  lookup. *)
-              let key =
-                if String.length pr.name >= 2 && String.sub pr.name 0 2 = "--"
-                then String.sub pr.name 2 (String.length pr.name - 2)
-                else pr.name
-              in
+              let key = Custom_property_name.strip_prefix pr.name in
               Hashtbl.replace tbl key ()
           | None -> ())
       | _ -> ())
@@ -774,11 +769,7 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
   let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
   (* [@property] names carry the [--] prefix; calc [Var] leaves store the bare
      name (the reader strips it), so key the table on the bare name. *)
-  let bare name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix in
   iter_statements
     (fun (stmt : statement) ->
       match stmt with
@@ -804,9 +795,9 @@ let normalize_live_declarations ~ctx ~lossless decls =
    carries an unknown at-rule's body as opaque source text, which has no grammar
    to normalise against, or has its declarations normalised wherever that walk
    finds them. *)
-let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
+let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
   match s with
-  | Unknown_at_rule _ -> List.Keep
+  | Unknown_at_rule _ -> Keep
   | Property r ->
       let initial_value =
         match r.initial_value with
@@ -815,15 +806,15 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement List.edit =
             let value' = Variables.normalize_value ~lossless r.syntax value in
             if value' == value then r.initial_value else Some value'
       in
-      if initial_value == r.initial_value then List.Keep
-      else List.Replace (Property { r with initial_value })
+      if initial_value == r.initial_value then Keep
+      else Replace (Property { r with initial_value })
   | _ ->
       let s' =
         map_statement_declarations
           (normalize_live_declarations ~ctx ~lossless)
           s
       in
-      if s' == s then List.Keep else List.Replace s'
+      if s' == s then Keep else Replace s'
 
 let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
   edit_statements (sanitize_statement ~ctx ~lossless) b
@@ -871,17 +862,13 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
 let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
     =
   let tbl = Hashtbl.create 64 in
-  let bare n =
-    if String.length n >= 2 && n.[0] = '-' && n.[1] = '-' then
-      String.sub n 2 (String.length n - 2)
-    else n
-  in
+  let bare = Custom_property_name.strip_prefix in
   let note_decls =
     List.iter (fun d ->
         List.iter
           (fun n -> Hashtbl.replace tbl (bare n) ())
           (Variables.var_refs_in_value_string
-             (Declaration.string_of_declaration ~minify:true d)))
+             (Declaration.to_string ~minify:true d)))
   in
   (* Through the exhaustive walk rather than a local match: a reference it
      cannot reach reads as no reference at all, and [@keyframes], [@page] and
@@ -895,11 +882,7 @@ let referenced_custom_props (stmts : statement list) : (string, unit) Hashtbl.t
    like [Inline.vars]. *)
 let drop_unused_custom_props (stmts : statement list) : statement list =
   let referenced = referenced_custom_props stmts in
-  let bare name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  let bare = Custom_property_name.strip_prefix in
   let keep_decl d =
     match Variables.custom_declaration_name d with
     | Some name -> Hashtbl.mem referenced (bare name)
@@ -923,7 +906,6 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) ?(regroup = true)
     ?(closed_world = false) ?(objective = `Transfer)
     ?(prune_unused_custom_props = false) ?stats (stylesheet : t) : t =
-  Selector_summary.clear_memo ();
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in

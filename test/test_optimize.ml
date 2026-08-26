@@ -35,7 +35,7 @@ let is_important = Css.Declaration.is_important
 
 (* Helper to extract color hex value from declaration string like "color:red" *)
 let color_value_of_decl decl =
-  let s = Css.Declaration.string_of_declaration ~minify:true decl in
+  let s = Css.Declaration.to_string ~minify:true decl in
   (* Extract just the hex value after the colon and before any !important *)
   let after_colon =
     String.split_on_char ':' s |> List.tl |> String.concat ":"
@@ -146,13 +146,13 @@ let test_duplicate_buggy_properties () =
   let duplicated = duplicate_buggy_properties decls in
   check (list string) "keeps one webkit-text-decoration inherit fallback"
     [ "-webkit-text-decoration:inherit" ]
-    (List.map (Css.Declaration.string_of_declaration ~minify:true) duplicated);
+    (List.map (Css.Declaration.to_string ~minify:true) duplicated);
 
   (* -webkit-text-decoration-color is a compatibility property, not a generated
      fallback for the standard property. External minifiers preserve authored
      prefixed/unprefixed pairs and do not synthesize either spelling. *)
   let pp_decls decls =
-    List.map (Css.Declaration.string_of_declaration ~minify:true) decls
+    List.map (Css.Declaration.to_string ~minify:true) decls
   in
   let standard_color =
     duplicate_buggy_properties [ v Text_decoration_color (hex_color "0000ff") ]
@@ -5295,7 +5295,7 @@ module Fuzz = struct
   let canon_memo : (string, string) Hashtbl.t = Hashtbl.create 256
 
   let canon_decl d =
-    let s = Pp.to_string ~minify:true Declaration.pp_declaration d in
+    let s = Pp.to_string ~minify:true Declaration.pp d in
     match Hashtbl.find_opt canon_memo s with
     | Some c -> c
     | None ->
@@ -5477,7 +5477,7 @@ module Fuzz = struct
     ]
 
   let sh_decls = Array.of_list (List.map fst sh_alphabet)
-  let sh_decl_string d = Pp.to_string ~minify:true Declaration.pp_declaration d
+  let sh_decl_string d = Pp.to_string ~minify:true Declaration.pp d
 
   (* Four-side box shorthands: physical longhand names, in top/right/bottom/left
      order. optimize composes longhand runs back into these, so the oracle must

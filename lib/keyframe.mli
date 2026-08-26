@@ -21,9 +21,6 @@ type t = selector
 val pp : t Pp.t
 (** [pp] renders a keyframe selector. *)
 
-val string_of_selector : selector -> string
-(** [string_of_selector sel] renders a selector as CSS string. *)
-
 val to_string : t -> string
 (** [to_string sel] renders a selector as CSS source text. *)
 

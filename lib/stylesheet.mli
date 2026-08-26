@@ -209,8 +209,8 @@ val keyframes : string -> keyframe list -> statement
 val v : statement list -> stylesheet
 (** [v statements] creates a stylesheet from a list of statements. *)
 
-val empty_stylesheet : stylesheet
-(** [empty_stylesheet] is an empty stylesheet. *)
+val empty : t
+(** [empty] is an empty stylesheet. *)
 
 (** {1 Accessors} *)
 
@@ -310,8 +310,7 @@ val iter_statements : (statement -> unit) -> block -> unit
 (** [iter_statements f block] applies [f] to every statement {!fold_statements}
     reaches. *)
 
-val edit_statements :
-  (statement -> statement Common.List.edit) -> block -> block
+val edit_statements : (statement -> statement edit) -> block -> block
 (** [edit_statements f block] rewrites the statements {!fold_statements}
     reaches: [f] keeps, replaces or drops each one, and the walk descends
     through {!map_statement_children} into what survives, so a caller names only
@@ -358,8 +357,8 @@ val read_rule : ?nested:bool -> Cursor.t -> rule
 val read_block : Cursor.t -> block
 (** [read_block r] reads a CSS block from the reader. *)
 
-val read_stylesheet : Cursor.t -> stylesheet
-(** [read_stylesheet r] reads a complete CSS stylesheet from the reader. Raises
+val read : Cursor.t -> t
+(** [read r] reads a complete CSS stylesheet from the cursor. Raises
     {!Cursor.Parse_error} on the first validator failure; use
     {!parse_stylesheet_partial} to get the recovered sheet with warnings
     instead. *)
@@ -394,6 +393,9 @@ val pp_rule : rule Pp.t
 val pp_stylesheet : stylesheet Pp.t
 (** [pp_stylesheet] pretty-prints CSS stylesheets. *)
 
+val pp : t Pp.t
+(** [pp] is {!pp_stylesheet}. *)
+
 (** {1 Variable Extraction} *)
 
 val vars_of_stylesheet : stylesheet -> Variables.any_var list
@@ -414,24 +416,7 @@ val to_string :
 (** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
     formatter - no optimisation, no theme resolution. *)
 
-val pp :
-  ?minify:bool ->
-  ?indent:int ->
-  ?lossless:bool ->
-  ?enforce_spec:bool ->
-  t ->
-  string
-(** [pp] is {!to_string}. *)
-
-val inline_style_of_declarations :
-  ?minify:bool -> ?mode:mode -> declaration list -> string
-(** [inline_style_of_declarations declarations] converts declarations to inline
-    style string. *)
-
 (** {1 Legacy Compatibility} *)
-
-val empty : t
-(** [empty] is an empty stylesheet. *)
 
 val rules : t -> rule list
 (** [rules t] returns the top-level rules from the stylesheet. *)
@@ -463,9 +448,6 @@ val container_queries :
     below its brace, on the same terms as {!media_queries}. *)
 
 (** {1 Parsing and Pretty-printing} *)
-
-val read : Cursor.t -> t
-(** [read r] parses a stylesheet from the reader. *)
 
 val pp_import_rule : import_rule Pp.t
 (** [pp_import_rule] pretty-prints an import rule. *)

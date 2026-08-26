@@ -113,9 +113,7 @@ let canonical_declarations (decls : Declaration.declaration list) :
       let arr = Array.of_list decls in
       let n = Array.length arr in
       let keys =
-        Array.map
-          (fun d -> Pp.to_string ~minify:true Declaration.pp_declaration d)
-          arr
+        Array.map (fun d -> Pp.to_string ~minify:true Declaration.pp d) arr
       in
       let footprints = Array.map Shorthand.declaration_overlap_keys arr in
       let indeg = overlap_indegrees arr footprints in

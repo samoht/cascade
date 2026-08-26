@@ -1,9 +1,9 @@
 (** Optimizer profiling counters, scoped to one run.
 
-    A recorder belongs to the optimizer run that created it and is reachable
-    only through that run's {!Ctx.t}, so an optimization started while another
-    is in progress counts its own work. Readers take a {!snapshot}: a value, not
-    a view, so a later run cannot rewrite what an earlier one reported. *)
+    A recorder is threaded through only the optimizer run that receives it, so
+    an optimization started while another is in progress counts its own work.
+    Readers take a {!snapshot}: a value, not a view, so a later run cannot
+    rewrite what an earlier one reported. *)
 
 type t
 (** One run's recorder. *)

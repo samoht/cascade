@@ -18,12 +18,11 @@ let contains_literal haystack needle =
   let re = Re.compile (Re.str needle) in
   Re.execp re haystack
 
-let pp_decl decl = Css.Declaration.string_of_declaration ~minify:true decl
+let pp_decl decl = Css.Declaration.to_string ~minify:true decl
 let pp_stylesheet sheet = Css.Stylesheet.to_string ~minify:true sheet
 
 let normalize_decl decl =
-  Css.Declaration.of_string
-    (Css.Declaration.string_of_declaration ~minify:true decl)
+  Css.Declaration.of_string (Css.Declaration.to_string ~minify:true decl)
 
 let check_same_decl label expected actual =
   let expected = normalize_decl expected in
@@ -270,7 +269,7 @@ let eval_ctx ?viewport_height buf =
     ~container_width:(Px container_width) ()
 
 let stylesheet_of_string css =
-  try Css.Stylesheet.read_stylesheet (Cursor.of_string css)
+  try Css.Stylesheet.read (Cursor.of_string css)
   with Cursor.Parse_error err ->
     failf "stylesheet did not parse: %s" (Error.to_string err)
 

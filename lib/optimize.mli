@@ -23,6 +23,10 @@ type scope = [ `Fragment | `Stylesheet ]
     partial-coverage shorthand because the omitted longhand resets are
     guaranteed not to disturb any prior write. *)
 
+type objective = [ `Raw | `Transfer ]
+(** The size objective for global factoring. [`Raw] keeps raw-byte wins;
+    [`Transfer] rejects a result that grows the estimated DEFLATE size. *)
+
 (** {1 Declaration Optimization} *)
 
 val duplicate_buggy_properties : declaration list -> declaration list
@@ -50,19 +54,21 @@ val ctx_of_scope :
   ?regroup:bool ->
   ?extend_lists:bool ->
   ?closed_world:bool ->
-  ?objective:Ctx.objective ->
+  ?objective:objective ->
   ?enforce_spec:bool ->
   ?stats:Stats.t ->
   scope option ->
   ctx
-(** [ctx_of_scope ?lossless ?aggressive ?extend_lists ?closed_world scope]
-    builds the context the composers take; [None] is [`Fragment]. [aggressive]
-    forces the expensive global factoring fixpoint to run even when its
-    preflight predicts low gain. [extend_lists] is for direct DAG-scheduler
-    experiments; the main stylesheet optimizer enables guarded selector-list
-    extension internally. [closed_world] asserts the caller knows the exact HTML
-    and that no element matches two clashing selectors, so the optimizer may
-    merge rules it would otherwise keep apart; unsafe for an unknown DOM. *)
+(** [ctx_of_scope ?lossless ?aggressive ?regroup ?extend_lists ?closed_world
+     ?objective ?enforce_spec ?stats scope] builds the context the composers
+    take; [None] is [`Fragment]. [aggressive] forces the expensive global
+    factoring fixpoint to run even when its preflight predicts low or no gain.
+    [regroup] permits order-dependent regrouping of adjacent rules.
+    [extend_lists] is for direct DAG-scheduler experiments; the main stylesheet
+    optimizer enables guarded selector-list extension internally. [closed_world]
+    asserts the caller knows the exact HTML and that no element matches two
+    clashing selectors, so the optimizer may merge rules it would otherwise keep
+    apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer]. *)
 
 val compose_shorthands :
   ctx:ctx -> (int * declaration) list -> (int * declaration) list
@@ -155,17 +161,18 @@ val stylesheet :
   ?aggressive:bool ->
   ?regroup:bool ->
   ?closed_world:bool ->
-  ?objective:Ctx.objective ->
+  ?objective:objective ->
   ?prune_unused_custom_props:bool ->
   ?stats:Stats.t ->
   t ->
   t
-(** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ss] optimizes an
-    entire stylesheet while preserving cascade semantics for any DOM (with
-    [closed_world] off, the default). When [@supports] blocks are present
-    alongside top-level rules, optimization is limited because the stylesheet
-    structure separates rules from [@supports] blocks, losing their relative
-    ordering.
+(** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
+     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats ss]
+    optimizes an entire stylesheet while preserving cascade semantics for any
+    DOM (with [closed_world] off, the default). When [@supports] blocks are
+    present alongside top-level rules, optimization is limited because the
+    stylesheet structure separates rules from [@supports] blocks, losing their
+    relative ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
     desugared into flat rules: child selectors with [&] have the parent selector
@@ -176,21 +183,34 @@ val stylesheet :
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.
 
-    [lossless] disables colour approximation while keeping exact colour
-    canonicalisation.
+    When [lossless] is [true] (default [false]), colour-channel rounding and
+    other lossy approximations are suppressed while exact colour
+    canonicalisation still runs.
 
     When [enforce_spec] is [false] (default) the optimizer may treat baseline
     feature queries as known facts and elide [@supports] guards whose condition
     is satisfied in maintained evergreen browsers; [true] keeps every feature
     query and applies only CSS-text-and-spec-provable rewrites.
 
+    When [aggressive] is [true] (default [false]), global factoring runs even
+    when its preflight predicts low or no gain, candidate limits widen, and the
+    top-level statement pipeline uses a larger structural-fixpoint cap.
+
+    When [regroup] is [true] (the default), order-dependent adjacent rule runs
+    may be regrouped by factoring shared declarations and synthesising nesting.
+    Canonical diff projection disables it to remain confluent.
+
     When [closed_world] is [true] (default [false]) the optimizer assumes the
     caller knows the exact HTML and that no element ever matches two clashing
     selectors, so it may merge rules it would otherwise keep apart. Unsafe: the
     page can render wrong if such an element appears, including one a script
     adds at runtime. This is about the HTML, separate from [scope] (how much of
-    the CSS you control). The default is safe for any page; see
-    {!Ctx.closed_world}.
+    the CSS you control). The default is safe for any page.
+
+    [objective] (default [`Transfer]) chooses the size metric for global
+    factoring. [`Transfer] discards a result that grows estimated DEFLATE size
+    even when it shrinks raw bytes; [`Raw] keeps every raw-byte win and suits
+    output that ships uncompressed.
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. This is opt-in

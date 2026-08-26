@@ -32,7 +32,7 @@ let test_selector_roundtrip buf =
   match Css.Keyframe.selector_of_string buf with
   | exception Invalid_argument _ -> ()
   | sel ->
-      let s = Css.Keyframe.string_of_selector sel in
+      let s = Css.Keyframe.to_string sel in
       let sel2 = Css.Keyframe.selector_of_string s in
       if not (Css.Keyframe.selector_equal sel sel2) then
         fail "selector roundtrip mismatch"

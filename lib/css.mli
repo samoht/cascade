@@ -50,9 +50,9 @@
 
     Start with {!val:rule}, {!val:media}, {!val:container}, {!val:supports},
     {!val:v}, and {!val:to_string}. Property helpers are grouped by CSS feature
-    below. Parser internals such as cursors, tokens and component values are
-    available from the library root, for example {!module:Cascade.Cursor} and
-    {!module:Cascade.Parser}, not through [Css].
+    below. Parser building blocks such as cursors, tokens and component values
+    are available from the library root, for example {!module:Cascade.Cursor}
+    and {!module:Cascade.Parser}, not through [Css].
 
     See {:https://www.w3.org/Style/CSS/specs.en.html W3C CSS Specifications} and
     {:https://developer.mozilla.org/en-US/docs/Web/CSS MDN CSS Documentation}.
@@ -70,6 +70,8 @@
 
 module Selector = Selector
 module Selector_summary = Selector_summary
+module Aria = Aria
+module Color_space = Color_space
 module Context = Context
 module Pp = Pp
 module Values = Values
@@ -83,45 +85,17 @@ module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe
 module Font_face = Font_face
+module Nest = Nest
 
-(** Parser internals live at the library root ([Cascade.Cursor],
+(** Parser building blocks live at the library root ([Cascade.Cursor],
     [Cascade.Parser], [Cascade.Token], ...), not under [Css]. *)
 
-(** {2:value_parsers Per-type value parsers}
-
-    [of_string] wrappers around the [Properties.read_*] cursor-driven parsers
-    used internally by {!Declaration.of_string}. The argument is the
-    right-hand-side of a declaration, with no [property:] prefix or trailing
-    [;]. They are intended for callers (e.g. Tailwind bracket values) that have
-    already extracted a typed value substring and need to lift it into the typed
-    AST without round-tripping through a full declaration. *)
-
-module Transform : sig
-  val of_string : string -> (Properties.transform, Error.t) result
-  (** [of_string s] parses [s] as a single {!val-transform} value. *)
-end
+(** {2:value_parsers Per-type value parsers} *)
 
 module Gradient_direction : sig
   val of_string : string -> (Properties.gradient_direction, Error.t) result
   (** [of_string s] parses [s] as a gradient [<direction>] (a side keyword, an
       [<angle>], or a [<direction> in <color-interpolation>] form). *)
-end
-
-module Transform_origin : sig
-  val of_string : string -> (Properties.transform_origin, Error.t) result
-  (** [of_string s] parses [s] as a [transform-origin] value. *)
-end
-
-module Perspective_origin : sig
-  val of_string : string -> (Properties.perspective_origin, Error.t) result
-  (** [of_string s] parses [s] as a [perspective-origin] value. *)
-end
-
-module Animation : sig
-  val of_string : string -> (Properties.animation, Error.t) result
-  (** [of_string s] parses [s] as a single {!val-animation} shorthand entry (one
-      comma-separated entry; for the full list use {!Properties.read_animations}
-      with a cursor). *)
 end
 
 (** {2:css_rules CSS Rules and Stylesheets}
@@ -1507,11 +1481,6 @@ val declaration_value_for_equivalence : declaration -> string
     the equivalent unquoted [<ident>] sequence. Used as a structural-diff key so
     [--font: "Noto Color Emoji"] and [--font: Noto Color Emoji] compare equal;
     not for emission, where both forms stay verbatim. *)
-
-val string_of_declaration : ?minify:bool -> declaration -> string
-(** [string_of_declaration ~minify decl] converts a declaration to its string
-    representation. If [minify] is [true] (default: [false]), the output is
-    minified. *)
 
 (** {1 Property Categories}
 
@@ -3968,7 +3937,7 @@ val grid_template_rows : grid_template -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows}
      grid-template-rows} property. *)
 
-val grid_template_areas : string -> declaration
+val grid_template_areas : grid_template_areas -> declaration
 (** [grid_template_areas areas] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas}
      grid-template-areas} property. *)
@@ -4430,7 +4399,8 @@ val font_family : font_family -> declaration
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
-     font-family} property from a comma-separated list. *)
+     font-family} property from a comma-separated list. Raises
+    [Invalid_argument] when [fonts] is empty. *)
 
 val font_size : length -> declaration
 (** [font_size size] is the
@@ -5036,18 +5006,6 @@ val shadow :
     the shadow values. Used by Tailwind's ring system. Defaults: inset=false,
     inset_var=None, inset_var_no_fallback=false, h_offset=0px, v_offset=0px,
     blur=0px, spread=0px, color=Transparent. *)
-
-val inset_ring_shadow :
-  ?h_offset:length ->
-  ?v_offset:length ->
-  ?blur:length ->
-  ?spread:length ->
-  ?color:color ->
-  unit ->
-  shadow
-(** [inset_ring_shadow ?h_offset ?v_offset ?blur ?spread ?color ()] is an inset
-    shadow value suitable for ring utilities. Defaults: h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Transparent. *)
 
 (** CSS text-shadow values *)
 type text_shadow = Properties.text_shadow =
@@ -6057,7 +6015,7 @@ val box_shadow : shadow -> declaration
 val box_shadows : shadow list -> declaration
 (** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
-    property. *)
+    property. Raises [Invalid_argument] when [values] is empty. *)
 
 (** CSS scale property values *)
 type scale = Properties.scale =
@@ -7469,7 +7427,6 @@ type 'a kind = 'a Properties.kind =
   | Rotate : rotate_value kind
   | Scale : scale kind
   | Shadow : shadow kind
-  | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
   | Gradient_direction : gradient_direction kind
@@ -7665,28 +7622,25 @@ val to_string :
   ?enforce_spec:bool ->
   t ->
   string
-(** [to_string ?minify ?indent stylesheet] serialises a stylesheet to CSS. Pure
-    formatter - no optimisation, no theme resolution, no [var()] substitution.
-    Run {!optimize}, {!resolve_theme}, and {!inline_vars} explicitly when those
-    passes are needed. Spec recovery (drop invalid declarations, unknown
-    at-rules, empty rules) still applies because the parser preserved those
-    shapes for round-trip and browsers discard them during parse. Output never
-    ends with a newline.
+(** [to_string ?minify ?indent ?lossless ?enforce_spec stylesheet] serialises a
+    stylesheet to CSS. Pure formatter - no optimisation, no theme resolution, no
+    [var()] substitution. Run {!optimize}, {!resolve_theme}, and {!inline_vars}
+    explicitly when those passes are needed. Spec recovery (drop invalid
+    declarations and empty rules) still applies because the parser preserved
+    those shapes for round-trip and browsers discard them during parse. Unknown
+    at-rules are preserved. Output never ends with a newline.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
     - [lossless] suppresses colour-channel rounding in minified output.
+    - [enforce_spec] suppresses target-dependent minified shortenings and keeps
+      their spec-canonical serialisations.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
-val pp :
-  ?minify:bool ->
-  ?indent:int ->
-  ?lossless:bool ->
-  ?enforce_spec:bool ->
-  t ->
-  string
-(** [pp] is {!to_string}. *)
+val pp : t Pp.t
+(** [pp] is the composable form of {!to_string}. It applies the same invalid
+    declaration and empty-rule filtering before printing. *)
 
 val to_buffer :
   Buffer.t ->
@@ -7774,12 +7728,13 @@ val optimize :
   ?aggressive:bool ->
   ?regroup:bool ->
   ?closed_world:bool ->
-  ?objective:[ `Raw | `Transfer ] ->
+  ?objective:Optimize.objective ->
   ?prune_unused_custom_props:bool ->
   ?stats:Stats.t ->
   t ->
   t
 (** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
+     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats
      stylesheet] applies CSS optimizations to the stylesheet, including merging
     consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics for any DOM, unless
@@ -7803,6 +7758,11 @@ val optimize :
     runs even when the preflight predicts low gain, and the top-level
     statement-optimisation pipeline iterates until the AST reaches a structural
     fixpoint (capped at a small bound).
+
+    When [regroup] is [true] (the default), order-dependent adjacent rule runs
+    may be regrouped by factoring shared declarations and synthesising nesting.
+    Canonical diff projection disables it to remain confluent; see
+    {!Optimize.stylesheet}.
 
     When [closed_world] is [true] (default [false]) the optimizer assumes the
     caller knows the exact HTML and that no element ever matches two clashing
@@ -7860,8 +7820,9 @@ val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
 
 val resolve_theme :
   ?theme:Pp.String_set.t -> ?theme_defaults:(string -> string option) -> t -> t
-(** [resolve_theme ?theme ?theme_defaults stylesheet] is the explicit AST step
-    matching the print-time [~theme] / [~theme_defaults] knobs on {!to_string}.
+(** [resolve_theme ?theme ?theme_defaults stylesheet] resolves theme guards and
+    external theme defaults as an explicit AST transformation. {!to_string} is a
+    pure formatter and does not perform this step.
 
     [theme] names the variables whose [var()] references stay live. When [theme]
     is given, references to any other name are inlined to the value

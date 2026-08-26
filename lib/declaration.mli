@@ -25,9 +25,6 @@ type t = declaration
 val pp_property : 'a Properties.property Pp.t
 (** [pp_property] is the pretty-printer for CSS property names. *)
 
-val pp_declaration : declaration Pp.t
-(** [pp_declaration] is the pretty-printer for declarations. *)
-
 val pp : t Pp.t
 (** [pp] is the pretty-printer for declarations. *)
 
@@ -51,11 +48,6 @@ val normalize :
     pure serialiser. [lossless] disables colour approximation. [exact_srgb] is
     {!Properties.normalize_property_value}'s flag of the same name, for the
     canonical diff projection only. *)
-
-val string_of_declaration : ?minify:bool -> declaration -> string
-(** [string_of_declaration ~minify decl] converts a declaration to its string
-    representation. If [minify] is [true] (default: [false]), the output is
-    minified. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)
@@ -138,7 +130,8 @@ val read : Cursor.t -> t
 
 val of_string : string -> declaration
 (** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
-    Raises [Failure] if [s] is not a valid declaration. *)
+    Raises {!Cursor.exception-Parse_error}, anchored on the offending text, when
+    [s] is not a valid declaration. *)
 
 val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)
@@ -278,7 +271,8 @@ val box_shadow : shadow -> declaration
 val box_shadows : shadow list -> declaration
 (** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
-    property from a comma-separated list. *)
+    property from a comma-separated list. Raises [Invalid_argument] when
+    [values] is empty. *)
 
 (** Declaration constructors *)
 
@@ -486,7 +480,7 @@ val row_gap : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/row-gap} row-gap}
     property. *)
 
-val grid_template_areas : string -> declaration
+val grid_template_areas : grid_template_areas -> declaration
 (** [grid_template_areas v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas}
      grid-template-areas} property. *)
@@ -1315,7 +1309,8 @@ val webkit_background_clip : background_box -> declaration
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
-     font-family} property from a comma-separated list. *)
+     font-family} property from a comma-separated list. Raises
+    [Invalid_argument] when [fonts] is empty. *)
 
 val word_spacing : length -> declaration
 (** [word_spacing v] is the

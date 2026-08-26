@@ -170,7 +170,7 @@ let to_string ?(minify = false) t = to_string_with ~pretty:false ~minify t
 let to_stylesheet_string ?(minify = false) t =
   to_string_with ~pretty:true ~minify t
 
-let pp t = to_string t
+let pp ctx t = Pp.string ctx (to_string ~minify:(Pp.minified ctx) t)
 
 (* A style query holds component values, which carry the source positions they
    were read from, so a structural walk would call two spellings of one query
@@ -368,8 +368,7 @@ let split_named_components components =
       if starts_query query then Some (name, query) else None
   | _ -> None
 
-let is_custom_property name =
-  String.length name >= 2 && name.[0] = '-' && name.[1] = '-'
+let is_custom_property name = Custom_property_name.is_valid name
 
 let has_semicolon_component =
   List.exists (function

@@ -12,7 +12,7 @@ let decls css =
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let decl_strings decls =
-  List.map (Pp.to_string ~minify:true Declaration.pp_declaration) decls
+  List.map (Pp.to_string ~minify:true Declaration.pp) decls
 
 let indexed decls = List.mapi (fun i d -> (i, d)) decls
 let unindexed decls = List.map snd decls
@@ -612,6 +612,45 @@ let test_same_value_ignores_importance () =
     [ "display:-webkit-box!important" ]
     (decl_strings result)
 
+(* CSS Fragmentation 3 sec. 3.4 aliases [page-break-before/after/inside] to
+   [break-before/after/inside] through a value mapping: [always] maps to [page]
+   and every other value to itself. The pair is one property writing one cascade
+   slot, so either spelling shadows the other and only the last one written
+   survives. *)
+let test_page_break_alias_shadowing () =
+  Alcotest.(check bool)
+    "the legacy spelling covers the modern one" true
+    (Shorthand.declaration_covers
+       (decl "page-break-before:always")
+       (decl "break-before:page"));
+  Alcotest.(check bool)
+    "the modern spelling covers the legacy one" true
+    (Shorthand.declaration_covers (decl "break-before:page")
+       (decl "page-break-before:always"));
+  Alcotest.(check bool)
+    "the pair writes one slot" true
+    (Shorthand.declarations_overlap
+       (decl "page-break-inside:avoid")
+       (decl "break-inside:avoid"));
+  let dedup css =
+    decl_strings (Shorthand.deduplicate_declarations (decls css))
+  in
+  Alcotest.(check (list string))
+    "[always] maps to [page], so the pair is one declaration"
+    [ "break-before:page" ]
+    (dedup ".a{page-break-before:always;break-before:page}");
+  Alcotest.(check (list string))
+    "[avoid] maps to itself, so the pair is one declaration"
+    [ "break-inside:avoid" ]
+    (dedup ".a{page-break-inside:avoid;break-inside:avoid}");
+  Alcotest.(check (list string))
+    "[always] and [avoid] are two values of one property, and the last wins"
+    [ "break-before:avoid" ]
+    (dedup ".a{page-break-before:always;break-before:avoid}");
+  Alcotest.(check (list string))
+    "the legacy spelling wins when it comes last" [ "break-after:page" ]
+    (dedup ".a{break-after:avoid;page-break-after:always}")
+
 let suite =
   ( "shorthand",
     [
@@ -649,4 +688,6 @@ let suite =
         test_deduplicate_keeps_legacy_fallbacks;
       Alcotest.test_case "same value ignores importance" `Quick
         test_same_value_ignores_importance;
+      Alcotest.test_case "page-break alias shadowing" `Quick
+        test_page_break_alias_shadowing;
     ] )

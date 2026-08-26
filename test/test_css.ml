@@ -62,6 +62,24 @@ let optimization_flag () =
   let css_optimized = minify stylesheet in
   Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
+let nonempty_declaration_lists () =
+  Alcotest.check_raises "box-shadow list"
+    (Invalid_argument "box_shadows: empty list") (fun () ->
+      ignore (box_shadows []));
+  Alcotest.check_raises "font-family list"
+    (Invalid_argument "font_families: empty list") (fun () ->
+      ignore (font_families []))
+
+let grid_template_areas_values () =
+  let render value =
+    Css.Declaration.to_string ~minify:true (grid_template_areas value)
+  in
+  Alcotest.(check string) "none" "grid-template-areas:none" (render No_areas);
+  Alcotest.(check string)
+    "areas" "grid-template-areas:\"a\"" (render (Areas "\"a\""));
+  Alcotest.(check string)
+    "global keyword" "grid-template-areas:initial" (render Initial)
+
 (* Test layers work end-to-end *)
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
@@ -1563,6 +1581,59 @@ let font_family_value_parser () =
   roundtrip "var(--font-source-sans-pro), system-ui";
   roundtrip "var(--font-ubuntu-mono)"
 
+(* The legacy option-returning value parsers all accept one complete value and
+   turn malformed or trailing input into [None], without leaking parser
+   exceptions. Keep that shared public contract while their cursor plumbing is
+   consolidated. *)
+let option_value_parser_contracts () =
+  let parsers =
+    [
+      ( "length",
+        (fun s -> Option.is_some (Css.parse_length s)),
+        "1px",
+        "red",
+        "1px red" );
+      ( "color",
+        (fun s -> Option.is_some (Css.parse_color s)),
+        "red",
+        "not-a-color",
+        "red junk" );
+      ( "shadow",
+        (fun s -> Option.is_some (Css.parse_shadow s)),
+        "0 1px 2px #000",
+        "not-a-shadow",
+        "0 1px 2px #000 junk" );
+      ( "background-image",
+        (fun s -> Option.is_some (Css.parse_background_image s)),
+        "url(a.png)",
+        "red",
+        "url(a.png) junk" );
+      ( "font-family",
+        (fun s -> Option.is_some (Css.parse_font_family s)),
+        "Inter, sans-serif",
+        ",",
+        "Inter, sans-serif !" );
+      ( "list-style-type",
+        (fun s -> Option.is_some (Css.parse_list_style_type s)),
+        "square",
+        "nonsense-style",
+        "square junk" );
+      ( "list-style-image",
+        (fun s -> Option.is_some (Css.parse_list_style_image s)),
+        "none",
+        "red",
+        "none junk" );
+    ]
+  in
+  List.iter
+    (fun (name, accepts, valid, malformed, trailing) ->
+      Alcotest.(check bool) (name ^ " complete value") true (accepts valid);
+      Alcotest.(check bool)
+        (name ^ " malformed value")
+        false (accepts malformed);
+      Alcotest.(check bool) (name ^ " trailing input") false (accepts trailing))
+    parsers
+
 (* CSS Syntax 3 sec. 5.4.2 "consume an at-rule" builds an at-rule node for any
    at-keyword, recognised or not; the block it consumes keeps its contents.
    Discarding an unrecognised at-rule is a user-agent cascade step (CSS 2.1 sec.
@@ -1620,6 +1691,10 @@ let suite =
       (* Integration tests using public Css interface only *)
       Alcotest.test_case "CSS generation end-to-end" `Quick generation;
       Alcotest.test_case "optimization flag works" `Quick optimization_flag;
+      Alcotest.test_case "non-empty declaration lists" `Quick
+        nonempty_declaration_lists;
+      Alcotest.test_case "grid-template-areas values" `Quick
+        grid_template_areas_values;
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
@@ -1634,6 +1709,8 @@ let suite =
         list_style_value_parsers;
       Alcotest.test_case "font-family value parser" `Quick
         font_family_value_parser;
+      Alcotest.test_case "option value parser contracts" `Quick
+        option_value_parser_contracts;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
       Alcotest.test_case "rules_of_statements" `Quick test_rules_of_statements;
