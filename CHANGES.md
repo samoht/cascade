@@ -160,6 +160,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `stroke-width` reads a bare number, so `stroke-width: 1.5` round-trips
+  through cascade's own parser instead of being printed and then refused. SVG 2
+  sec. 13.5.3 gives it `<length-percentage> | <number>`, where a number is a
+  width in user units and a negative value is invalid (#579)
 - A selector using the column combinator, such as `svg||td` or `a||b`, is read
   and written back instead of dropped. The namespace read claimed the first
   bar of the `||` that CSS Selectors 4 sec. 15.2 defines (#572)

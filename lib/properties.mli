@@ -2335,6 +2335,14 @@ val pp_paint_order : paint_order Pp.t
 val read_paint_order : Cursor.t -> paint_order
 (** [read_paint_order t] is the [paint_order] parsed from [t]. *)
 
+val pp_stroke_width : stroke_width Pp.t
+(** [pp_stroke_width] pretty-prints a [stroke-width]. *)
+
+val read_stroke_width : Cursor.t -> stroke_width
+(** [read_stroke_width t] is the [stroke_width] parsed from [t]. A bare number
+    is in user units; anything carrying a unit or a percent sign is a
+    [<length-percentage>]. A negative width is rejected. *)
+
 val pp_dash_length : dash_length Pp.t
 (** [pp_dash_length] pretty-prints one SVG dash length. *)
 

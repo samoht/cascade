@@ -3942,6 +3942,20 @@ type fill_rule =
   | Revert_layer
   | Var of fill_rule var
 
+(** SVG 2 sec. 13.5.3 [stroke-width]: [<length-percentage> | <number>], where a
+    bare [<number>] is a width in user units. That number is not a CSS
+    [<length>], which is why this is not plain [length_percentage]; sec. 13.5.6
+    gives the dash lengths the same shape. A negative width is invalid. *)
+type stroke_width =
+  | Number of float
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_width var
+
 (** SVG 2 sec. 13.5.4 [stroke-linecap]: the shape drawn at the ends of an open
     subpath and at the ends of each dash. *)
 type stroke_linecap =
@@ -4999,7 +5013,7 @@ type 'a property =
   | Box_shadow : shadow property
   | Fill : svg_paint property
   | Stroke : svg_paint property
-  | Stroke_width : length property
+  | Stroke_width : stroke_width property
   | Fill_rule : fill_rule property
   | Clip_rule : fill_rule property
   | Stroke_linecap : stroke_linecap property
@@ -5090,6 +5104,7 @@ type _ property_value_kind =
   | Background_images : background_image list property_value_kind
   | Font_src : Font_face.src property_value_kind
   | Font_family : font_family property_value_kind
+  | Stroke_width : stroke_width property_value_kind
 
 let equal_overflow (a : overflow) b = a = b
 let equal_grid_line (a : grid_line) b = a = b

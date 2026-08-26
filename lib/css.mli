@@ -6969,7 +6969,19 @@ val fill : svg_paint -> declaration
 val stroke : svg_paint -> declaration
 (** [stroke paint] is the SVG stroke property. *)
 
-val stroke_width : length -> declaration
+(** SVG 2 sec. 13.5.3 [stroke-width]: [<length-percentage> | <number>], where a
+    bare number is a width in user units rather than a CSS [<length>]. *)
+type stroke_width = Properties.stroke_width =
+  | Number of float  (** A width in user units *)
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_width var
+
+val stroke_width : stroke_width -> declaration
 (** [stroke_width width] is the SVG stroke-width property. *)
 
 (** {2:scroll_touch Scroll & Touch}

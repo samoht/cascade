@@ -1028,7 +1028,6 @@ let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
   | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
   | Line_height_step -> Some (v Line_height_step (read_nn_length_or_global t))
-  | Stroke_width -> Some (v Stroke_width (read_nn_length_or_global t))
   | _ -> None
 
 let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
@@ -1801,6 +1800,7 @@ let read_interaction_value : type a.
       Some (v Stroke_linejoin (Properties.read_stroke_linejoin t))
   | Stroke_miterlimit ->
       Some (v Stroke_miterlimit (Properties.read_stroke_miterlimit t))
+  | Stroke_width -> Some (v Stroke_width (Properties.read_stroke_width t))
   | Stroke_dashoffset ->
       Some (v Stroke_dashoffset (Properties.read_stroke_dashoffset t))
   | Stroke_dasharray ->

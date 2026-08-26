@@ -883,7 +883,7 @@ val stroke : svg_paint -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke}
      stroke} property. *)
 
-val stroke_width : length -> declaration
+val stroke_width : stroke_width -> declaration
 (** [stroke_width v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-width}
      stroke-width} property. *)
