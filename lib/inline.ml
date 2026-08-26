@@ -918,55 +918,91 @@ let visible_refs ~path_visible consumers path =
       if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
     consumers
 
-let marked_live live (path, sel, name) =
-  List.exists (fun (p, s, n) -> p = path && s = sel && n = name) !live
+(* Each question the liveness fixpoint asks used to scan a whole list, which
+   made the walk cost a square in the variable count. Index them once: the
+   reference names a path can see, the customs answering to a name, and the
+   customs sharing a scope. *)
+let index_customs key_of customs =
+  let table = Hashtbl.create 64 in
+  List.iter
+    (fun custom ->
+      let key = key_of custom in
+      let prev = Option.value ~default:[] (Hashtbl.find_opt table key) in
+      Hashtbl.replace table key (custom :: prev))
+    customs;
+  fun key -> Option.value ~default:[] (Hashtbl.find_opt table key)
 
-let mark_live live entry =
-  if not (marked_live live entry) then live := entry :: !live
+let visible_ref_sets ~path_visible ~consumers =
+  let cache = Hashtbl.create 16 in
+  fun path ->
+    match Hashtbl.find_opt cache path with
+    | Some set -> set
+    | None ->
+        let set =
+          List.fold_left
+            (fun acc name -> Pp.String_set.add name acc)
+            Pp.String_set.empty
+            (visible_refs ~path_visible consumers path)
+        in
+        Hashtbl.replace cache path set;
+        set
 
-let live_at_scope live ~path ~sel =
-  List.exists (fun (p, s, _) -> p = path && s = sel) !live
-
-let mark_referenced_custom ~path_visible ~live ~consumer_path ref_name
-    (b_path, b_sel, b_name, _) =
-  if
-    b_name = ref_name
-    && path_visible ~scope_path:b_path ~consumer_path
-    && not (marked_live live (b_path, b_sel, b_name))
-  then mark_live live (b_path, b_sel, b_name)
+(* A scope enters the queue the first time anything in it goes live, and every
+   custom in a live scope propagates - which is what the scan-to-fixpoint did,
+   since it gated on the scope rather than on the entry. *)
+let live_marker () =
+  let live = Hashtbl.create 64 in
+  let live_scopes = Hashtbl.create 64 in
+  let pending = Queue.create () in
+  let mark (path, sel, name) =
+    if not (Hashtbl.mem live (path, sel, name)) then begin
+      Hashtbl.replace live (path, sel, name) ();
+      if not (Hashtbl.mem live_scopes (path, sel)) then begin
+        Hashtbl.replace live_scopes (path, sel) ();
+        Queue.add (path, sel) pending
+      end
+    end
+  in
+  (live, pending, mark)
 
 let live_customs ~consumers ~customs =
   let path_visible ~scope_path ~consumer_path =
     at_path_prefix ~outer:scope_path ~inner:consumer_path
   in
-  let live = ref [] in
+  let visible_ref_set = visible_ref_sets ~path_visible ~consumers in
+  let by_name = index_customs (fun (_, _, name, _) -> name) customs in
+  let by_scope = index_customs (fun (path, sel, _, _) -> (path, sel)) customs in
+  let live, pending, mark = live_marker () in
   (* Seed: every custom whose scope has a path-compatible consumer referencing
      its name is directly live. *)
   List.iter
     (fun (path, sel, name, _) ->
-      if List.mem name (visible_refs ~path_visible consumers path) then
-        mark_live live (path, sel, name))
+      if Pp.String_set.mem name (visible_ref_set path) then
+        mark (path, sel, name))
     customs;
   (* Propagate: if a live custom [A] references a name [N], any custom [B] named
-     [N] at a path that contains [A]'s path is also live. Iterate to
-     fixpoint. *)
-  let propagate_from (a_path, a_sel, _, a_refs) =
-    if live_at_scope live ~path:a_path ~sel:a_sel then
-      List.iter
-        (fun ref_name ->
-          List.iter
-            (mark_referenced_custom ~path_visible ~live ~consumer_path:a_path
-               ref_name)
-            customs)
-        a_refs
-  in
-  let changed = ref true in
-  while !changed do
-    let before = List.length !live in
-    List.iter propagate_from customs;
-    changed := List.length !live > before
+     [N] at a path that contains [A]'s path is also live. *)
+  while not (Queue.is_empty pending) do
+    let a_path, a_sel = Queue.pop pending in
+    List.iter
+      (fun (_, _, _, a_refs) ->
+        List.iter
+          (fun ref_name ->
+            List.iter
+              (fun (b_path, b_sel, b_name, _) ->
+                if path_visible ~scope_path:b_path ~consumer_path:a_path then
+                  mark (b_path, b_sel, b_name))
+              (by_name ref_name))
+          a_refs)
+      (by_scope (a_path, a_sel))
   done;
-  !live
+  (* Read the answer off [customs], so it does not depend on the order the queue
+     happened to take. *)
+  List.filter_map
+    (fun (path, sel, name, _) ->
+      if Hashtbl.mem live (path, sel, name) then Some (path, sel, name)
+      else None)
+    customs
 
 let same_live_custom (a_path, a_sel, a_name) (b_path, b_sel, b_name, _) =
   a_path = b_path && a_sel = b_sel && a_name = b_name
@@ -1023,18 +1059,22 @@ let normalize_custom_value decl =
         Declaration.map_custom_value (fun _ -> canonical) decl
       with Cursor.Parse_error _ -> decl)
 
-let custom_is_live ~keep ~live_set ~at_path ~selector name =
-  List.mem name keep
-  || List.exists
-       (fun (p, s, n) -> p = at_path && s = selector && n = name)
-       live_set
+(* [keep] and [live_set] are fixed for the whole walk, and the walk asks about
+   them once per declaration, so scanning either one costs a square in the
+   declaration count. Read them into a set and a table first. *)
+let live_lookup ~keep ~live_set =
+  let kept = Pp.String_set.of_list keep in
+  let live = Hashtbl.create (List.length live_set) in
+  List.iter (fun entry -> Hashtbl.replace live entry ()) live_set;
+  fun ~at_path ~selector name ->
+    Pp.String_set.mem name kept || Hashtbl.mem live (at_path, selector, name)
 
-let filter_live_custom_decls ~keep ~live_set ~at_path ~selector =
+let filter_live_custom_decls ~is_live ~at_path ~selector =
   List.filter_map (fun d ->
       match custom_name d with
       | None -> Some d
       | Some name ->
-          if custom_is_live ~keep ~live_set ~at_path ~selector name then
+          if is_live ~at_path ~selector name then
             Some (normalize_custom_value d)
           else None)
 
@@ -1054,8 +1094,9 @@ let strip_dead_declarations ~filter_decls ~parents ~at_path decls :
   | decls -> Some (Declarations decls)
 
 let strip_dead ~keep ~live_set stmts =
+  let is_live = live_lookup ~keep ~live_set in
   let filter_decls ~at_path ~selector =
-    filter_live_custom_decls ~keep ~live_set ~at_path ~selector
+    filter_live_custom_decls ~is_live ~at_path ~selector
   in
   let rec map_stmts ~parents ~at_path stmts =
     List.filter_map (map_stmt ~parents ~at_path) stmts
