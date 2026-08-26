@@ -95,8 +95,12 @@ let test_inline_font_face_var_descriptors () =
       "font-stretch";
       "font-display";
       "unicode-range";
+      "font-variant";
       "font-feature-settings";
       "font-variation-settings";
+      "ascent-override";
+      "descent-override";
+      "line-gap-override";
     ]
     kept
 
@@ -130,8 +134,13 @@ let test_inline_font_face_var_resolves () =
       (* CSS Syntax 3 sec. 4.3.10 reads the range case-insensitively and the
          printer writes the hex digits upper-case. *)
       ("unicode-range", "U+0-7F");
+      ("font-variant", "normal");
+      ("font-variant", "small-caps");
       ("font-feature-settings", "normal");
       ("font-variation-settings", "normal");
+      ("ascent-override", "normal");
+      ("descent-override", "90%");
+      ("line-gap-override", "10%");
     ]
 
 let test_inline_substitutes_vars () =
