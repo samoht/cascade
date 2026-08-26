@@ -151,6 +151,9 @@ recorded cases carrying six minifiers' answers.
   names over a component-value stream, so read CSS from a `Cursor.of_string` or
   `Cursor.of_reader` instead. The cursor itself, the `parse_error` record and
   the call stack are unchanged (#509, #514)
+- `Css.Selector_summary.clear_memo` is gone. It did nothing, so a caller that
+  called it can drop the call and see no change: summaries are computed per
+  call and there is no cache to reset (#548)
 
 ### Parsing
 

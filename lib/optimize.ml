@@ -906,7 +906,6 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
     ?(enforce_spec = false) ?(aggressive = false) ?(regroup = true)
     ?(closed_world = false) ?(objective = `Transfer)
     ?(prune_unused_custom_props = false) ?stats (stylesheet : t) : t =
-  Selector_summary.clear_memo ();
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in

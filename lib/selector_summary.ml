@@ -125,8 +125,6 @@ let rec fold_simple s (sel : Selector.t) =
       | Some nth -> add_nth nth s
       | None -> mark_complex s)
 
-let clear_memo () = ()
-
 let rec of_selector (sel : Selector.t) : t =
   match sel with
   | Combined (left, Child, right) ->
