@@ -798,6 +798,9 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade diff` names a selector whose rules a feature query splits once,
+  where two entries under it claimed a declaration gained and another lost
+  that the selector never stopped writing (#580)
 - `cascade apply` reads a `style` attribute as a declaration list in source
   order. The declarations came out reversed, so a longhand beat the shorthand
   it was written after, and a `}` inside the attribute closed the list early

@@ -2149,12 +2149,17 @@ let change_sides : rule_diff -> Css.declaration list * Css.declaration list =
       (old_declarations, new_declarations)
   | _ -> ([], [])
 
+(* A property arriving and a property leaving, judged on what the entry names
+   rather than on which constructor it is: a [Content_changed] that only
+   restates a value, or that names nothing at all, moves no declaration. *)
 let change_gains : rule_diff -> bool = function
-  | Added _ | Content_changed _ -> true
+  | Added _ -> true
+  | Content_changed { added_properties; _ } -> added_properties <> []
   | _ -> false
 
 let change_loses : rule_diff -> bool = function
-  | Removed _ | Content_changed _ -> true
+  | Removed _ -> true
+  | Content_changed { removed_properties; _ } -> removed_properties <> []
   | _ -> false
 
 (* Every declaration [sel] writes on one side, across all of its rules. *)
@@ -2190,7 +2195,12 @@ let merge_selector_group ~rules1 ~rules2 sel peers =
 
    Only a group that both gains and loses collapses: several rules added under
    one selector really are several additions, and merging those would hide the
-   count. *)
+   count. A single entry carries both sides of that on its own, and does when a
+   container sits between two rules of one selector: the two sheets then no
+   longer line up rule for rule, and the positional walk pairs one rule of the
+   selector against another, reading as a swap of declarations that never left
+   the selector. What the selector writes across all of its rules is what
+   settles it. *)
 let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
     rule_diff list =
   let done_ = Hashtbl.create 8 in
@@ -2204,7 +2214,7 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
             List.filter (fun d -> changed_selector d = Some sel) changes
           in
           match peers with
-          | _ :: _ :: _
+          | _ :: _
             when List.exists change_gains peers
                  && List.exists change_loses peers ->
               Hashtbl.replace done_ sel ();
