@@ -127,7 +127,9 @@ let test_inline_font_face_var_resolves () =
       ("font-weight", "700");
       ("font-stretch", "50%");
       ("font-display", "swap");
-      ("unicode-range", "U+0-7f");
+      (* CSS Syntax 3 sec. 4.3.10 reads the range case-insensitively and the
+         printer writes the hex digits upper-case. *)
+      ("unicode-range", "U+0-7F");
       ("font-feature-settings", "normal");
       ("font-variation-settings", "normal");
     ]

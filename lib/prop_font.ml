@@ -1763,8 +1763,8 @@ let rec read_font_stretch t : font_stretch =
     ~var:(fun t -> Var (read_var read_font_stretch t))
     ~default:read_percentage t
 
-let read_font_display t : font_display =
-  Cursor.enum "font-display"
+let rec read_font_display t : font_display =
+  Cursor.enum_or_var "font-display"
     [
       ("auto", (Auto : font_display));
       ("block", Block);
@@ -1772,6 +1772,7 @@ let read_font_display t : font_display =
       ("fallback", Fallback);
       ("optional", Optional);
     ]
+    ~var:(fun t -> Var (read_var read_font_display t))
     t
 
 let read_unicode_single start_value width =

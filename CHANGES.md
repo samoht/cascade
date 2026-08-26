@@ -596,6 +596,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- A `var()` in the `font-style`, `font-weight`, `font-stretch`,
+  `font-display`, `font-feature-settings` or `font-variation-settings`
+  descriptor of an `@font-face` is resolved by `Css.inline_vars` instead of
+  being dropped at parse time, joining `src` and `unicode-range`. A descriptor
+  whose typed value has no `Var` arm to hold the reference is still dropped
+  with a warning, as a browser does (#571)
 - `Css.inline_vars` resolves every `@page` descriptor under one unit policy.
   `margin-top` alone kept the authored unit, so one `@page` block answered
   `1cm` for it and `37.79527559px` for the `margin-left` beside it (#555)

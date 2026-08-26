@@ -2374,7 +2374,10 @@ let descriptor_resolves_var name =
   match read_font_face_desc name probe with
   | descriptor ->
       Option.is_some
-        (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id descriptor)
+        (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id
+           ~font_style:Fun.id ~font_weight:Fun.id ~font_stretch:Fun.id
+           ~font_display:Fun.id ~font_feature_settings:Fun.id
+           ~font_variation_settings:Fun.id descriptor)
   | exception Error.Parse_error _ -> false
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
