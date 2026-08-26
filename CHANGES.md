@@ -160,6 +160,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A rule whose selector puts a combinator after a pseudo-element, such as
+  `.a::before .b`, is reported and dropped instead of written back. CSS
+  Selectors 4 sec. 3.6.5 (Editor's Draft, drafts.csswg.org/selectors-4/) makes
+  it invalid unless the pseudo-element has internal structure, and none that
+  ships has; Chrome 151 and WebKit 26.5 drop every such rule. A `::` name
+  cascade does not model, such as `::deep`, keeps its combinator (#552)
 - A valid `@font-palette-values` rule no longer warns, so `cascade apply`
   accepts it. CSS Fonts 4 sec. 9.2.2 (Working Draft, 25 August 2026) defaults
   a missing `base-palette` to 0, and sec. 9.2 makes `font-family` the mandatory

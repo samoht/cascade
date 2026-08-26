@@ -1238,6 +1238,33 @@ and pseudo_element_allows_argument pe = function
   | Combined _ | Relative _ | List _ -> false
   | c -> is_pe_action c && pseudo_element_allows pe c
 
+(* CSS Selectors 4 sec. 3.6.5: a pseudo-element defined to have internal
+   structure may be followed by a child or descendant combinator, and a selector
+   with a combinator after the pseudo-element is invalid otherwise. Nothing
+   shipping claims that structure, so the exception stays empty: Chrome 151 and
+   WebKit 26.5 drop [::part(x) > .b], [::details-content > div] and
+   [::first-letter em] alike, and the Servo selectors crate raises
+   UnexpectedSelectorAfterPseudoElement for the same shapes.
+
+   A [::] name cascade does not model is exempt, for the reason
+   [pseudo_element_allows] already exempts it from sec. 3.6.3: cascade preserves
+   such a name rather than judging it. test/interop/lightning carries seven
+   rules of that kind ([.foo ::deep .bar], [.foo ::unknown(.foo) .bar] and their
+   kin) and all six reference minifiers keep every one verbatim, while Lightning
+   CSS rejects the identical shape as soon as the name is one it knows
+   ([::-moz-placeholder .b]). Dropping the exemption would delete those
+   rules. *)
+let is_modelled_pseudo_element = function
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ -> false
+  | sel -> is_pseudo_element sel
+
+(* Only the compound's own components. A pseudo-element inside a functional
+   pseudo-class argument belongs to that argument's own rules, so
+   [.a:has(.b::before) .c] is not this one's to judge. *)
+let bars_following_combinator = function
+  | Compound components -> List.exists is_modelled_pseudo_element components
+  | sel -> is_modelled_pseudo_element sel
+
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
    only happens once instead of per [:foo] / [::foo] pseudo read. *)
@@ -1720,26 +1747,35 @@ and read_complex t =
     || Cursor.peek_block t = Some Token.Square
     || Cursor.peek_ident t <> None
   in
+  (* CSS Selectors 4 sec. 3.6.5, via [bars_following_combinator]. [>>>] and
+     [/deep/] are Vue / Angular tooling spellings rather than CSS combinators,
+     and no engine parses either, so the rule never reaches them and cascade
+     passes them through as it does an unmodelled pseudo-element name. *)
+  let check_combinator = function
+    | Shadow_piercing | Shadow_deep -> ()
+    | Descendant | Child | Next_sibling | Subsequent_sibling | Column ->
+        if bars_following_combinator left then
+          Cursor.err t "combinator not allowed after a pseudo-element"
+  in
+  let read_combined () =
+    let comb = read_combinator t in
+    check_combinator comb;
+    Cursor.ws t;
+    combine left comb (read_complex t)
+  in
   match Cursor.peek_delim t with
   | Some '|'
     when Cursor.lookahead
            (fun t -> Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t)
            t ->
-      let comb = read_combinator t in
-      Cursor.ws t;
-      combine left comb (read_complex t)
-  | Some ('>' | '+' | '~') ->
-      let comb = read_combinator t in
-      Cursor.ws t;
-      combine left comb (read_complex t)
-  | Some '/' when Cursor.lookahead try_shadow_deep t ->
-      let comb = read_combinator t in
-      Cursor.ws t;
-      combine left comb (read_complex t)
+      read_combined ()
+  | Some ('>' | '+' | '~') -> read_combined ()
+  | Some '/' when Cursor.lookahead try_shadow_deep t -> read_combined ()
   | _ ->
       if Cursor.peek_comma t || Cursor.is_done t then left
-      else if can_start_selector () then
-        combine left Descendant (read_complex t)
+      else if can_start_selector () then (
+        check_combinator Descendant;
+        combine left Descendant (read_complex t))
       else left
 
 (* CSS Selectors 4 section 3.9: the top-level rule selector list is an

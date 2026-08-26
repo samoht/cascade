@@ -771,7 +771,13 @@ let pseudo_element_spellings =
 
 (* The [::] names above that cascade carries as a raw ident rather than a
    constructor of its own. Every other entry of [pseudo_element_spellings] names
-   a pseudo-element cascade models. *)
+   a pseudo-element cascade models.
+
+   Some of these are real pseudo-elements that engines do implement: bare
+   [::cue] and [::cue-region] reach cascade's reader only in their functional
+   form, and the scrollbar parts past [::-webkit-scrollbar] have no constructor
+   at all. Until each name is modelled, cascade cannot tell it from [::deep] and
+   so keeps the rule. Modelling the name is what moves it to the list above. *)
 let unmodelled_pseudo_element_spellings =
   [
     "::future-pseudo-element";
@@ -779,6 +785,8 @@ let unmodelled_pseudo_element_spellings =
     "::deep";
     "::v-deep";
     "::ng-deep";
+    "::cue";
+    "::cue-region";
     "::-webkit-scrollbar-thumb";
     "::-webkit-scrollbar-track";
     "::-webkit-scrollbar-track-piece";
@@ -920,6 +928,10 @@ let pseudo_element_combinator_guard () =
   (* The corpus case, spelled as test/interop/lightning carries it. *)
   parses ".foo ::deep .bar";
   parses ".foo ::unknown(.foo) .bar";
+  (* [::cue] and [::cue-region] are modelled in their functional form. *)
+  neg_cursor read ".a::cue(v) .b";
+  neg_cursor read ".a::cue-region(v) > .b";
+  parses ".a::cue(v)";
   (* A pseudo-class between the pseudo-element and the combinator does not
      reopen the compound: [::part()] takes [:focus] (CSS Pseudo-Elements 4 sec.
      5) and the combinator after it is still invalid. *)
