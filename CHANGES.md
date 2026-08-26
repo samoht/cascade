@@ -722,6 +722,12 @@ recorded cases carrying six minifiers' answers.
   alone, so `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin
   that fixes the order, or one over a position the projection cannot read, is
   kept (#475)
+- The canonical projection no longer deletes content that only a
+  browser-support assumption makes dead, which had it report no difference
+  between sheets that render differently: a progressive-enhancement fallback
+  under a baseline-true `@supports`, a vendor-prefixed declaration, an
+  `@import supports()` guard. The respellings gated with those, `min-width`
+  into the range form and the Level 3 `not all and (...)`, still compare equal
 
 ### Library
 

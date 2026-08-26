@@ -11,6 +11,12 @@ blue group and the indigo group in the opposite order. That order is
 cascade-significant for an element carrying both classes, so the difference
 is real and must still be reported.
 
+The projection keeps the feature query, since the declaration before it is
+what an engine without color-mix(in lab) paints, so each selector stays
+split over three rules with another selector's rules between them. Both
+groups keep every declaration they write, so each reports as one move
+rather than as a loss and a gain.
+
   $ cat > ref.css <<'EOF'
   > @layer utilities{.drop-shadow-sm{--tw-drop-shadow-size:drop-shadow(0 1px 2px var(--tw-drop-shadow-color,#00000026));--tw-drop-shadow:drop-shadow(var(--drop-shadow-sm));filter:var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)}.drop-shadow-blue-500\/50{--tw-drop-shadow-color:#3080ff80}@supports (color:color-mix(in lab, red, red)){.drop-shadow-blue-500\/50{--tw-drop-shadow-color:color-mix(in oklab, color-mix(in oklab, var(--color-blue-500) 50%, transparent) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-blue-500\/50{--tw-drop-shadow:var(--tw-drop-shadow-size)}.drop-shadow-indigo-500{--tw-drop-shadow-color:oklch(58.5% .233 277.117)}@supports (color:color-mix(in lab, red, red)){.drop-shadow-indigo-500{--tw-drop-shadow-color:color-mix(in oklab, var(--color-indigo-500) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-indigo-500{--tw-drop-shadow:var(--tw-drop-shadow-size)}}
   > EOF
@@ -23,10 +29,17 @@ is real and must still be reported.
   
   --- ref.css
   +++ tw.css
-  └─ @layer utilities (1 rearranged)
-     └─ .drop-shadow-indigo-500 (moved between rules)
-             --tw-drop-shadow-color color-mix(in oklab,var(--col...tw-drop-shadow-alpha),#0000)
-             --tw-drop-shadow var(--tw-drop-shadow-size)
+  └─ @layer utilities (2 reordered, 2 rearranged)
+     ├─ .drop-shadow-blue-500\/50 (position 3) ↔  .drop-shadow-indigo-500 (position 0)
+     ├─ .drop-shadow-blue-500\/50 (moved between rules)
+     │       --tw-drop-shadow-color #3080ff80
+     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     ├─ .drop-shadow-indigo-500 (moved between rules)
+     │       --tw-drop-shadow-color oklch(.585 .233 277.117)
+     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     ├─ .drop-shadow-indigo-500 (position 0) ↔  .drop-shadow-indigo-500 (position 4)
+     └─ @supports (color: color-mix(in lab, red, red)) (1 reordered)
+        └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
   
   [1]
 

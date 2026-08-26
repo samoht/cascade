@@ -252,8 +252,22 @@ let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
          synthesising nesting from adjacent rules - depends on how the input
          happened to order its rules, so it is not confluent: the same sheet
          written either way would canonicalise differently. The projection skips
-         it. *)
-      |> Css.optimize ~lossless ~regroup:false ~prune_unused_custom_props
+         it.
+
+         [~enforce_spec:true] holds off the rewrites the optimizer justifies
+         with what maintained browsers support, because they delete content:
+         unwrapping a baseline-true [@supports] leaves the declaration written
+         before the guard dead, dropping a vendor-prefixed declaration leaves
+         the engine that needs the prefix nothing, and clearing an [@import
+         supports()] guard decides the sheet always loads. An engine without the
+         feature reads exactly what each of those deletes, so two sheets that
+         disagree there paint differently and the projection has to keep them
+         apart. The respellings gated with them - [min-X] into the range form,
+         the Level 3 [not all and (X)] - delete nothing, and
+         {!Css.canonicalize_rule_order} applies those on the comparison side
+         instead. *)
+      |> Css.optimize ~lossless ~regroup:false ~enforce_spec:true
+           ~prune_unused_custom_props
       |> Css.canonicalize_rule_order
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None

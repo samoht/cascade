@@ -795,31 +795,27 @@ let fold_layer_pins (stmts : statement list) : statement list =
       in
       List.filter_map Fun.id (List.mapi rebuild stmts)
 
-(* Media Queries 4 sec. 2.3: [all] matches every media type, so it is the
-   identity in [<media-type> and <condition>] and the Level 3 spelling [not all
-   and (X)] is the same query as the Level 4 [not (X)]. Bare [not all] has no
-   condition form - it matches nothing - so it stays, and the unnegated [all and
-   (X)] never reaches here because {!Optimize} already drops it.
+(* Media Queries 4 sec. 2.3 makes [all] the identity media type, so the Level 3
+   [not all and (X)] is the Level 4 [not (X)]; sec. 4.2 gives [min-X]/[max-X]
+   and the range form one meaning, and a lower bound met by an upper bound one
+   two-sided interval. Every one of those is a respelling - nothing is dropped
+   and no query changes what it matches - so the projection takes them all.
+   {!Media.lower_for_minify} is the rewrite, and it fires here on the input the
+   optimizer leaves alone: statements a caller projects without optimizing, and
+   spec-literal optimized output, which keeps the longer spellings because a
+   Level 3 parser rejects the shorter ones. *)
+let canonical_media : Media.t -> Media.t = Media.lower_for_minify
 
-   Default minify emits the Level 4 form itself ({!Media.lower_for_minify}), so
-   this fires on the input that pass leaves alone: statements a caller projects
-   without optimizing, and [--enforce-spec] output, which keeps the Level 3
-   spelling. *)
-let rec canonical_media (query : Media.t) : Media.t =
-  match query with
-  | Media.Type { prefix = Some Media.Not; type_ = Media.All; trailing = Some c }
-    ->
-      Media.Cond (Media.Not c)
-  | Media.List qs ->
-      let qs' = Common.List.map_preserve canonical_media qs in
-      if qs' == qs then query else Media.List qs'
-  | query -> query
+(* An [@container] prelude carries a media condition of its own, and the same
+   respellings hold inside it. *)
+let canonical_container : Container.t -> Container.t =
+  Container.lower_for_minify
 
-(* [@media] is the only statement whose prelude this rewrites, so it is the only
-   one named; the descent below it is {!Stylesheet.map_statement_children}'s and
-   reaches every block at-rule, including the ones a [@media] can be written
-   inside. *)
-let rec canonical_media_queries (stmts : statement list) : statement list =
+(* [@media] and [@container] are the only statements whose prelude this
+   rewrites, so they are the only ones named; the descent below them is
+   {!Stylesheet.map_statement_children}'s and reaches every block at-rule,
+   including the ones they can be written inside. *)
+let rec canonical_query_preludes (stmts : statement list) : statement list =
   Common.List.map_preserve
     (fun stmt ->
       let stmt =
@@ -827,16 +823,19 @@ let rec canonical_media_queries (stmts : statement list) : statement list =
         | Media (q, inner) ->
             let q' = canonical_media q in
             if q' == q then stmt else Media (q', inner)
+        | Container (name, Some cond, inner) ->
+            let cond' = canonical_container cond in
+            if cond' == cond then stmt else Container (name, Some cond', inner)
         | stmt -> stmt
       in
-      Stylesheet.map_statement_children canonical_media_queries stmt)
+      Stylesheet.map_statement_children canonical_query_preludes stmt)
     stmts
 
 let canonicalize (stmts : statement list) : statement list =
   let changed = ref false in
   let normalized =
     fold_layer_pins
-      (canonical_media_queries
+      (canonical_query_preludes
          (sort_property_runs
             (canonical_color_spellings (normalize_custom_values stmts))))
   in

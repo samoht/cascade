@@ -13,6 +13,18 @@
     {b not} reason about browser computed values or cascade-affecting rule
     reorderings.
 
+    The projection optimizes spec-literally: it takes none of the rewrites
+    {!Cascade.Css.optimize} justifies with what maintained browsers support,
+    because those delete content rather than respell it. Taking them leaves the
+    declaration written before a baseline-true [@supports] dead, drops a
+    vendor-prefixed declaration whose unprefixed twin is widely available, and
+    clears an [@import supports()] guard, and an engine without the feature
+    reads exactly what each of those deletes - so two sheets that disagree there
+    render differently and the projection keeps them apart. The respellings
+    gated with them, [min-X] into the range form and the Level 3
+    [not all and (X)], delete nothing and are applied by
+    {!Cascade.Css.canonicalize_rule_order} instead.
+
     Those bytes are the verdict in mode [`Canonical]. Canonical means equivalent
     inputs project to one form, so two canonical forms that differ are either
     two different stylesheets or one projection missing a normalisation key -
