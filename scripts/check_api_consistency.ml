@@ -257,12 +257,17 @@ let extract_test_functions test_file =
 
 (* Analyze check and neg patterns in test function body. The "neg" call can be
    [neg] (basic helper), [neg_cursor] (cursor-based), or any future
-   [neg_<suffix>] variant. *)
+   [neg_<suffix>] variant, each optionally carrying labelled arguments such as
+   [~allow_partial:true] before the reader. *)
+(* [neg], [neg_cursor], [none], [none_cursor] and any future variant, each
+   optionally carrying labelled arguments such as [~allow_partial:true] before
+   the reader. *)
+let neg_call =
+  "\\b(?:neg|none)(?:_[a-z]+)?(?:[\\s]+~[A-Za-z0-9_]+:[A-Za-z0-9_]+)*[\\s]+"
+
 let analyze_test_patterns tname body module_name =
   let check_re = Re.Perl.compile_pat "\\bcheck_([A-Za-z0-9_]+)" in
-  let neg_read_re =
-    Re.Perl.compile_pat "\\bneg(?:_[a-z]+)?[\\s]+read_([A-Za-z0-9_]+)"
-  in
+  let neg_read_re = Re.Perl.compile_pat (neg_call ^ "read_([A-Za-z0-9_]+)") in
 
   let rec collect_checks pos acc =
     if pos >= String.length body then List.rev acc
@@ -289,19 +294,16 @@ let analyze_test_patterns tname body module_name =
   let has_neg =
     if tname = module_name then
       let has_read =
-        Re.execp (Re.Perl.compile_pat "\\bneg(?:_[a-z]+)?[\\s]+read[\\s]") body
+        Re.execp (Re.Perl.compile_pat (neg_call ^ "read[\\s]")) body
       in
       let has_read_module =
         Re.execp
-          (Re.Perl.compile_pat
-             ("\\bneg(?:_[a-z]+)?[\\s]+read_" ^ module_name ^ "\\b"))
+          (Re.Perl.compile_pat (neg_call ^ "read_" ^ module_name ^ "\\b"))
           body
       in
       has_read || has_read_module
     else
-      let neg_re =
-        Re.Perl.compile_pat ("\\bneg(?:_[a-z]+)?[\\s]+read_" ^ tname ^ "\\b")
-      in
+      let neg_re = Re.Perl.compile_pat (neg_call ^ "read_" ^ tname ^ "\\b") in
       Re.execp neg_re body
   in
 

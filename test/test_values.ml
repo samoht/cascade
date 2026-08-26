@@ -600,7 +600,7 @@ let test_duration () =
   neg_cursor read_duration "1px";
   neg_cursor read_duration "abc";
   neg_cursor read_duration "";
-  neg_cursor read_duration "-1s";
+  neg_cursor ~allow_partial:true read_duration "-1s";
   neg_cursor read_duration "10xs"
 
 let test_percentage () =
@@ -867,7 +867,7 @@ let test_color_name () =
   check_color_name "rebeccapurple";
   neg_cursor read_color_name "invalid";
   neg_cursor read_color_name "notacolor";
-  neg_cursor read_color_name "123";
+  neg_cursor ~allow_partial:true read_color_name "123";
   neg_cursor read_color_name ""
 
 (* CSS Color 4 sec. 6.1, the whole named-colour set, written out here rather
@@ -1094,7 +1094,7 @@ let test_calc_op () =
   check_calc_op "/";
   neg_cursor read_calc_op "invalid";
   neg_cursor read_calc_op "abc";
-  neg_cursor read_calc_op "++";
+  neg_cursor ~allow_partial:true read_calc_op "++";
   neg_cursor read_calc_op "";
   neg_cursor read_calc_op "="
 

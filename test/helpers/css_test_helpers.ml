@@ -8,13 +8,15 @@ open Cascade
 
 (** Generic negative test combinator - tests that parsing should fail Use this
     for parsers that raise Parse_error on failure *)
-let neg reader input =
+let neg ?(allow_partial = false) reader input =
   let r = Reader.of_string input in
   try
     let _ = reader r in
-    (* Check if there's unparsed content remaining *)
-    if not (Reader.is_done r) then ()
-      (* Success - parser didn't consume everything *)
+    (* Stopping early is not rejecting. A parser that takes the prefix of
+       [margin: inherit 10px] and leaves the rest has accepted a value the
+       negative case says is invalid, so only [allow_partial] - for a reader
+       whose job is to stop - lets leftover input stand for a rejection. *)
+    if allow_partial && not (Reader.is_done r) then ()
     else Alcotest.failf "Expected '%s' to fail parsing" input
   with Reader.Parse_error _ -> ()
 
@@ -40,12 +42,12 @@ let test_css_wide_keywords_mixing reader css_wide_keywords prop_name =
     css_wide_keywords
 
 (** Cursor-based variant of {!neg}. *)
-let neg_cursor parse input =
+let neg_cursor ?(allow_partial = false) parse input =
   let c = Cursor.of_string input in
   match parse c with
   | exception Error.Parse_error _ -> ()
   | _ ->
-      if Cursor.is_done c then
+      if not (allow_partial && not (Cursor.is_done c)) then
         Alcotest.failf "Expected '%s' to fail parsing" input
 
 (** Cursor-based variant of {!none}: the parser returns an option and should

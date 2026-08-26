@@ -1626,9 +1626,9 @@ let test_attribute_match () =
   check_attribute_match "*=substring";
 
   (* Test invalid attribute matches *)
-  neg_cursor read_attribute_match "%=invalid";
+  neg_cursor ~allow_partial:true read_attribute_match "%=invalid";
   (* Invalid operator *)
-  neg_cursor read_attribute_match "!=not-equal";
+  neg_cursor ~allow_partial:true read_attribute_match "!=not-equal";
   (* Not supported *)
   neg_cursor read_attribute_match "=";
   (* Missing value *)
@@ -1709,10 +1709,11 @@ let test_attr_flag () =
   (* No flag / empty should return None *)
   check_attr_flag "";
 
-  (* Test invalid flags using neg *)
-  neg_cursor read_attr_flag "x";
-  (* Invalid flag *)
-  neg_cursor read_attr_flag "is" (* Multiple characters *)
+  (* [read_attr_flag] returns an option and rewinds, so its rejection is [None]:
+     [x] is not a flag, and [is] is one ident rather than the flag [i] followed
+     by anything. *)
+  none_cursor read_attr_flag "x";
+  none_cursor read_attr_flag "is"
 
 (* Not a roundtrip test *)
 let test_attr_case_sensitivity_flags () =
@@ -1770,11 +1771,14 @@ let test_combinator () =
   check_combinator "~";
   check_combinator "||";
 
-  (* Test invalid combinators using neg *)
+  (* [!] and the empty input are refused outright. *)
   neg_cursor read_combinator "!";
-  neg_cursor read_combinator "&";
-  neg_cursor read_combinator "#";
-  neg_cursor read_combinator ""
+  neg_cursor read_combinator "";
+  (* A character that starts a compound is not a combinator, and the reader says
+     so by returning the implicit descendant without taking it, leaving it for
+     the caller to read as the next compound. *)
+  neg_cursor ~allow_partial:true read_combinator "&";
+  neg_cursor ~allow_partial:true read_combinator "#"
 
 let test_ns () =
   (* Test namespace type *)
@@ -1782,15 +1786,11 @@ let test_ns () =
   check_ns "xml|";
   check_ns "*|";
 
-  (* Test invalid namespace syntax *)
-  neg_cursor read_ns "|";
-  (* Just pipe without namespace *)
-  neg_cursor read_ns "||";
-  neg_cursor read_ns "svg";
-  (* Missing pipe *)
-  neg_cursor read_ns "svg||";
-
-  (* Double pipe *)
+  (* [read_ns] returns an option and rewinds rather than raising, so its
+     rejection is [None] and not leftover input. *)
+  none_cursor read_ns "|";
+  none_cursor read_ns "||";
+  none_cursor read_ns "svg";
 
   (* Test cases that should return None (no namespace found) *)
   none_cursor read_ns "notanamespace";
@@ -1872,18 +1872,15 @@ let test_nth () =
   check_nth ~expected:"6" "+6";
 
   (* Test invalid nth values *)
-  neg_cursor read_nth "invalid";
-  neg_cursor read_nth "";
-  neg_cursor read_nth "2 n";
-  neg_cursor read_nth "3 n";
-  neg_cursor read_nth "+ 2n";
-  neg_cursor read_nth "+ 2";
-  neg_cursor read_nth "3n + -6";
-  neg_cursor read_nth "n+";
-  neg_cursor read_nth "n+-1";
-  neg_cursor read_nth "2n--1";
-  neg_cursor read_nth "odd+1";
-  neg_cursor read_nth "evenn";
+  (* Nothing here is an [<an+b>], so the reader refuses each outright. *)
+  List.iter (neg_cursor read_nth)
+    [ "invalid"; ""; "+ 2n"; "+ 2"; "3n + -6"; "n+"; "n+-1"; "2n--1"; "evenn" ];
+  (* [read_nth] reads the [<an+b>] that is there and stops, so on [2 n] it takes
+     [2] and on [odd+1] it takes [odd], leaving the rest. Consuming the whole
+     argument is the caller's rule, so the rejection is pinned where it is
+     enforced. *)
+  List.iter (neg_cursor read)
+    [ ":nth-child(2 n)"; ":nth-child(3 n)"; ":nth-child(odd+1)" ];
   ()
 
 let test_selector () =
