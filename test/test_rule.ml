@@ -64,35 +64,25 @@ let disjoint_property_run n =
   done;
   rules (Buffer.contents buffer)
 
-let cpu_per_drop rules =
-  let run count =
-    Gc.full_major ();
-    let started = Sys.time () in
-    for _ = 1 to count do
-      ignore (Sys.opaque_identity (Rule.drop_shadowed rules))
-    done;
-    Sys.time () -. started
-  in
-  ignore (run 1);
-  let rec measure count =
-    let elapsed = run count in
-    if elapsed >= 0.05 then elapsed /. float count else measure (count * 2)
-  in
-  measure 1
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
 
 (* A rule's property should be looked up in the later writes for its selector,
-   not compared with every declaration written by every later rule. CPU time is
-   used instead of wall time so machine load cannot make the ratio quadratic. *)
+   not compared with every declaration written by every later rule. Counting
+   allocated words makes the complexity bound independent of scheduler load and
+   CPU frequency. *)
 let test_drop_shadowed_disjoint_properties_is_subquadratic () =
   let small = disjoint_property_run 2_000 in
   let large = disjoint_property_run 4_000 in
-  let small_cpu = cpu_per_drop small in
-  let large_cpu = cpu_per_drop large in
-  let ratio = large_cpu /. small_cpu in
-  Fmt.epr "  shadowed declarations CPU: %.4fs -> %.4fs (%.2fx)@." small_cpu
-    large_cpu ratio;
+  let small_words = measure (fun () -> Rule.drop_shadowed small) in
+  let large_words = measure (fun () -> Rule.drop_shadowed large) in
+  let ratio = large_words /. small_words in
   Alcotest.(check bool)
-    (Fmt.str "2x rules takes %.2fx CPU, below quadratic growth" ratio)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
     true (ratio < 3.)
 
 let extend_ctx = Ctx.with_extend_lists true Ctx.fragment
@@ -125,13 +115,6 @@ let test_merge_adjacent_skips_vendor_pseudo () =
     "vendor pseudo-element selectors never share a list" true (merged == input)
 
 (* --- complexity guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* [n] adjacent rules sharing one body and no two selectors alike, so the whole
    run is one group and [take] grows it to [n]. The [:where(.sidebar)] prefix is
