@@ -354,11 +354,12 @@ let equal (a : stylesheet) b = a = b
     keeps a [var()] only for a descriptor named here, and {!Inline} supplies the
     resolvers. A descriptor added to the table takes another resolver argument,
     so both sides have to answer for it. *)
-let resolve_font_face_var ~src ~unicode_range ~font_style ~font_weight
-    ~font_stretch ~font_display ~font_variant ~font_feature_settings
-    ~font_variation_settings ~metric_override = function
+let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
+    ~font_weight ~font_stretch ~font_display ~font_variant
+    ~font_feature_settings ~font_variation_settings ~metric_override = function
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
+  | Font_family values -> Some (Font_family (font_family values))
   | Font_style value -> Some (Font_style (font_style value))
   | Font_style_range (low, high) ->
       Some (Font_style_range (font_style low, font_style high))
@@ -378,5 +379,4 @@ let resolve_font_face_var ~src ~unicode_range ~font_style ~font_weight
   (* The rest hold a value type with no [Var] arm to park an unresolved
      reference in, so the parser has nowhere to keep one and drops the
      declaration as a browser does. *)
-  | Font_family _ | Font_stretch_range _ | Font_tech _ | Size_adjust _ ->
-      Option.None
+  | Font_stretch_range _ | Font_tech _ | Size_adjust _ -> Option.None

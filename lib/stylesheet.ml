@@ -2378,8 +2378,8 @@ let descriptor_resolves_var name =
   | descriptor ->
       Option.is_some
         (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id
-           ~font_style:Fun.id ~font_weight:Fun.id ~font_stretch:Fun.id
-           ~font_display:Fun.id ~font_variant:Fun.id
+           ~font_family:Fun.id ~font_style:Fun.id ~font_weight:Fun.id
+           ~font_stretch:Fun.id ~font_display:Fun.id ~font_variant:Fun.id
            ~font_feature_settings:Fun.id ~font_variation_settings:Fun.id
            ~metric_override:Fun.id descriptor)
   | exception Error.Parse_error _ -> false

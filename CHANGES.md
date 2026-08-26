@@ -603,6 +603,10 @@ recorded cases carrying six minifiers' answers.
   or `font-variant` descriptor of an `@font-face` is resolved by
   `Css.inline_vars` instead of being dropped at parse time. Their value types
   carry the `Var` arm the other typed descriptors already had (#573)
+- A `var()` in the `font-family` descriptor of an `@font-face` is resolved by
+  `Css.inline_vars` instead of being dropped at parse time. The descriptor is a
+  comma-separated list, so the reference may stand for one family or for the
+  whole stack (#575)
 - A `var()` in the `font-style`, `font-weight`, `font-stretch`,
   `font-display`, `font-feature-settings` or `font-variation-settings`
   descriptor of an `@font-face` is resolved by `Css.inline_vars` instead of
