@@ -111,3 +111,35 @@ an added !important changes what the selector writes.
   [1]
 
 
+
+
+
+The guard does not have to be one the optimizer can drop. Under a feature
+query no browser satisfies, each utility keeps all three of its rules and
+the two sides still differ only in which group comes first. Neither selector
+gains or loses a declaration, so neither may be reported as modified.
+
+  $ cat > guarded_ref.css <<'EOF'
+  > @layer utilities{.x{--c:1}@supports (zoo:bar){.x{--c:2}}.x{--d:3}.y{--c:4}@supports (zoo:bar){.y{--c:5}}.y{--d:6}}
+  > EOF
+  $ cat > guarded_tw.css <<'EOF'
+  > @layer utilities{.y{--c:4}@supports (zoo:bar){.y{--c:5}}.y{--d:6}.x{--c:1}@supports (zoo:bar){.x{--c:2}}.x{--d:3}}
+  > EOF
+  $ cascade diff --diff=canonical --depth=max guarded_ref.css guarded_tw.css
+  CSS: 115 chars vs 115 chars (0.0% diff)
+  Changes: 1 changed container
+  
+  --- guarded_ref.css
+  +++ guarded_tw.css
+  └─ @layer utilities (1 reordered, 2 rearranged)
+     ├─ .x (position 2) ↔  .y (position 0)
+     ├─ .x (moved between rules)
+     │       --c 1
+     │       --d 3
+     ├─ .y (moved between rules)
+     │       --c 4
+     │       --d 6
+     └─ @supports (zoo: bar) (1 reordered)
+        └─ .x ↔  .y
+  
+  [1]
