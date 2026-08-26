@@ -140,6 +140,22 @@ let complex_values () =
   check_declaration ~expected:"fill-rule:evenodd" "fill-rule: evenodd;";
   check_declaration ~expected:"clip-rule:nonzero" "clip-rule: nonzero;";
   check_declaration ~expected:"fill-rule:var(--r)" "fill-rule: var(--r);";
+  (* SVG 2 Editor's Draft sec. 13.5.3 gives [stroke-width] the value
+     [<length-percentage> | <number>] and says "A <number> value represents a
+     value in user units", the production sec. 13.5.6 already gives the dash
+     lengths. The bare number is not a CSS <length>, so accepting it here is
+     what keeps a printed [stroke-width] readable again. *)
+  check_declaration ~roundtrip:true ~expected:"stroke-width:1.5"
+    "stroke-width: 1.5;";
+  check_declaration ~roundtrip:true ~expected:"stroke-width:1.5px"
+    "stroke-width: 1.5px;";
+  check_declaration ~roundtrip:true ~expected:"stroke-width:50%"
+    "stroke-width: 50%;";
+  check_declaration ~roundtrip:true ~expected:"stroke-width:var(--w)"
+    "stroke-width: var(--w);";
+  (* Same section: "A negative value is invalid." *)
+  none_cursor read_declaration "stroke-width: -1";
+  none_cursor read_declaration "stroke-width: -1px";
   (* SVG 2 sec. 13.5.4 and 13.5.5. [miter-clip] and [arcs] are the Level 2
      additions to [stroke-linejoin]; a reader that takes the grammar takes all
      five. *)
