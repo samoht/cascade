@@ -34,6 +34,7 @@ let ignored_types =
     "stop";
     "point";
     "scrollbar_state";
+    "scrollbar_part";
     (* Helper fragments parsed only inside their owning structured values. *)
     "colon_form";
     "vt_class_selector";

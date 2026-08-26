@@ -56,6 +56,19 @@ type scrollbar_state =
   | Corner_present
   | Window_inactive
 
+(** Which part of a scrollbar a [::-webkit-] pseudo-element names. No
+    specification defines any of them: WebKit's "Styling Scrollbars" introduces
+    the seven together and is the only description there is. Chrome, WebKit and
+    Lightning CSS take all seven, and give all seven the same rules. *)
+type scrollbar_part =
+  | Scrollbar  (** [::-webkit-scrollbar] *)
+  | Button  (** [::-webkit-scrollbar-button] *)
+  | Track  (** [::-webkit-scrollbar-track] *)
+  | Track_piece  (** [::-webkit-scrollbar-track-piece] *)
+  | Thumb  (** [::-webkit-scrollbar-thumb] *)
+  | Corner  (** [::-webkit-scrollbar-corner] *)
+  | Resizer  (** [::-webkit-resizer] *)
+
 type aria_attr = Aria.t
 (** ARIA attribute names for type-safe handling *)
 
@@ -185,7 +198,7 @@ type t =
   | Moz_ui_invalid
   | Moz_ui_valid
   | Scrollbar_state of scrollbar_state
-  | Webkit_scrollbar
+  | Webkit_scrollbar of scrollbar_part
   | Webkit_search_cancel_button
   | Webkit_search_decoration
   (* Webkit datetime pseudo-elements *)
@@ -229,8 +242,12 @@ type t =
   (* Pseudo-elements *)
   | Part of string list (* ::part(...) - takes list of part names *)
   | Slotted of t list (* ::slotted(...) - takes selectors *)
-  | Cue of t list (* ::cue(...) - takes selectors *)
-  | Cue_region of t list (* ::cue-region(...) - takes selectors *)
+  | Cue of t list option
+      (** WebVTT 1 sec. 8.2.1 [::cue] ([None]) and [::cue(<selector>)] ([Some]).
+      *)
+  | Cue_region of t list option
+      (** WebVTT 1 sec. 8.2.3 [::cue-region] ([None]) and
+          [::cue-region(<selector>)] ([Some]). *)
   | Highlight of
       string list (* ::highlight(...) - takes custom highlight names *)
   | View_transition (* ::view-transition (CSS View Transitions 1 sec. 3.2) *)

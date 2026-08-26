@@ -160,6 +160,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Bare `::cue`, `::cue-region` and the scrollbar parts past
+  `::-webkit-scrollbar` are read as the pseudo-elements they are, so
+  `::cue::before` and `.a::-webkit-scrollbar-thumb .b` are dropped the way
+  Chrome, WebKit and Lightning CSS drop them (#556)
 - A rule whose selector chains one pseudo-element onto another, such as
   `::before::marker`, `::part(label)::before` or `::slotted(a)::before`, is
   read and written back instead of dropped. CSS Selectors 4 sec. 3.6.4

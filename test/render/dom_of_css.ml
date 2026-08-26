@@ -81,7 +81,7 @@ let is_pseudo_element = function
   | Selector.View_transition_old _ | Selector.View_transition_new _
   | Selector.Unknown_pseudo_element _ | Selector.Unknown_pseudo_element_call _
   | Selector.Moz_placeholder | Selector.Webkit_input_placeholder
-  | Selector.Ms_input_placeholder | Selector.Webkit_scrollbar
+  | Selector.Ms_input_placeholder | Selector.Webkit_scrollbar _
   | Selector.Webkit_search_cancel_button | Selector.Webkit_search_decoration
   | Selector.Webkit_details_marker | Selector.Details_content
   | Selector.Webkit_datetime_edit_fields_wrapper
@@ -350,7 +350,7 @@ let rec add sp part =
   | Selector.View_transition_old _ | Selector.View_transition_new _
   | Selector.Unknown_pseudo_element _ | Selector.Unknown_pseudo_element_call _
   | Selector.Moz_placeholder | Selector.Webkit_input_placeholder
-  | Selector.Ms_input_placeholder | Selector.Webkit_scrollbar
+  | Selector.Ms_input_placeholder | Selector.Webkit_scrollbar _
   | Selector.Webkit_search_cancel_button | Selector.Webkit_search_decoration
   | Selector.Webkit_details_marker | Selector.Details_content
   | Selector.Webkit_datetime_edit_fields_wrapper
