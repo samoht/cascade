@@ -160,6 +160,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A selector using the column combinator, such as `svg||td` or `a||b`, is read
+  and written back instead of dropped. The namespace read claimed the first
+  bar of the `||` that CSS Selectors 4 sec. 15.2 defines (#572)
 - A rule nested under a pseudo-element parent, such as `.b` in
   `.a::before{.b{color:red}}`, is dropped instead of flattened to
   `.a::before .b`. CSS Selectors 4 sec. 3.6.5 makes that selector invalid and

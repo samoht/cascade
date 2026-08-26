@@ -491,6 +491,13 @@ let lookahead_bare_pipe_ns t =
       | _ -> false)
     t
 
+(* CSS Selectors 4 sec. 15.2: [||] is the column combinator, so a pipe opening
+   one never separates a namespace prefix from a name. *)
+let at_column_combinator t =
+  Cursor.lookahead
+    (fun t -> Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t)
+    t
+
 let read_prefixed_ns t =
   let p = Cursor.ident ~keep_case:true t in
   (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
@@ -499,12 +506,15 @@ let read_prefixed_ns t =
       (fun t -> Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
       t
   in
-  if is_eq_pair then Cursor.err t "not a namespace";
+  if is_eq_pair || at_column_combinator t then Cursor.err t "not a namespace";
   Cursor.expect '|' t;
   Prefix p
 
 let read_ns_inner t =
-  if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
+  if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then
+    (* Another pipe means [*||td]: the universal selector, then a column. *)
+    if Cursor.peek_delim t = Some '|' then Cursor.err t "not a namespace"
+    else Any
   else if lookahead_bare_pipe_ns t then (
     Cursor.expect '|' t;
     None)
@@ -1806,7 +1816,10 @@ and read_compound t =
     | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> false
     | _ ->
         (match Cursor.peek_delim t with
-          | Some ('.' | '*' | '|' | '&') -> true
+          | Some ('.' | '*' | '&') -> true
+          (* A pipe extends the compound only as the [|name] prefix; a [||] ends
+             it so [read_complex] can take the column combinator. *)
+          | Some '|' -> lookahead_bare_pipe_ns t
           | _ -> false)
         || Cursor.peek_hash t <> None
         || Cursor.peek_colon t
