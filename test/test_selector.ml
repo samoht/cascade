@@ -952,6 +952,144 @@ let pseudo_element_combinator_guard () =
   check_minified_to ".a:where(.d)" ".a:where(.b::before .c,.d)";
   neg_cursor read ".a:not(.b::before .c)"
 
+(* CSS Selectors 4 (Editor's Draft, drafts.csswg.org/selectors-4/) sec. 3.6.4
+   "Sub-pseudo-elements": "Unless the corresponding sub-pseudo-element is
+   explicitly defined to exist in another specification, pseudo-element
+   selectors are not valid when compounded to another pseudo-element selector.
+   So, for example, ::before::before is an invalid selector, but
+   ::before::marker is valid". The rule is a pointer, so the question is which
+   other specification defines what, and the answer is three rows.
+
+   CSS Pseudo-Elements 4 (Editor's Draft, drafts.csswg.org/css-pseudo-4/) sec.
+   4.2: "The ::before::marker or ::after::marker selectors are valid [...]
+   However ::marker::marker is invalid". Chrome 151 keeps [::before::marker] and
+   its legacy [:before::marker] spelling, and drops [::marker::marker].
+
+   Same draft, sec. 5 "Element-backed Pseudo-Elements": "All pseudo-classes and
+   pseudo-elements are syntactically allowed after an element-backed
+   pseudo-element (such as x-button::part(label):hover or
+   x-button::part(label)::before), just as if the pseudo-element were a type
+   selector; but some are disallowed from matching: [...] ::part() never
+   matches". cascade turns the never-matching rows into a refusal, the way
+   [pseudo_element_allows] already turns sec. 5's [:has()] and structural rows
+   into one, so [::part()] and [::slotted()] never follow another
+   pseudo-element: Chrome 151 and Lightning CSS both drop [::part(x)::part(y)],
+   [::details-content::part(y)], [::part(x)::slotted(b)] and
+   [::slotted(a)::slotted(b)]. The element-backed row is [::part()] and
+   [::details-content], the pair [pseudo_element_allows] already carries. Sec.
+   5.1 puts [::file-selector-button] in the same section, but Chrome 151 and
+   Lightning CSS both drop [::file-selector-button::before], so it stays out on
+   the same engines-over-spec-text bargain the sec. 3.6.3 rows take.
+
+   CSS Shadow 1 (Editor's Draft, drafts.csswg.org/css-shadow-1/, the document
+   css-scoping-1 now redirects to) sec. 3.2.4: "The ::slotted() pseudo-element
+   can be followed by a tree-abiding pseudo-element, like ::slotted()::before".
+   Tree-abiding is narrower than element-backed and the engines show the gap:
+   both keep [::slotted(a)::before] and [::slotted(a)::marker] and drop
+   [::slotted(a)::first-line], while both keep [::part(x)::first-line]. The
+   tree-abiding names are css-pseudo-4 sec. 4 ([::before], [::after],
+   [::marker], [::placeholder]), the [::backdrop] and [::view-transition] of its
+   sec. 7.1 list, and the element-backed ones its sec. 5 calls "always
+   tree-abiding".
+
+   The rule reads one adjacent pair at a time, so a chain longer than two is
+   exactly as valid as each of its links: Chrome 151 keeps
+   [::part(x)::before::marker] and [::slotted(a)::before::marker] and drops
+   [::part(x)::marker::before] and [::before::marker::before].
+
+   A [::] name cascade does not model keeps its exemption in this position too,
+   for the reason [pseudo_element_allows] exempts it from sec. 3.6.3: cascade
+   preserves such a name rather than judging it, and Lightning CSS reads
+   [::foo::bar] and [::foo::before] back unchanged. A name cascade does model is
+   judged, so [::before::foo] goes. *)
+let sub_pseudo_element_guard () =
+  let concat = String.concat "" in
+  let parses input =
+    let c = Cursor.of_string input in
+    match read c with
+    | exception Error.Parse_error _ ->
+        Alcotest.failf "selector should parse: %s" input
+    | _ ->
+        if Stdlib.not (Cursor.is_done c) then
+          Alcotest.failf "selector only partly read: %s" input
+  in
+  let mem s = List.exists (String.equal s) in
+  let element_backed = [ "::part(tab)"; "::details-content" ] in
+  let tree_abiding =
+    [
+      ":before";
+      "::before";
+      ":after";
+      "::after";
+      "::marker";
+      "::placeholder";
+      "::backdrop";
+      "::view-transition";
+      "::details-content";
+      "::file-selector-button";
+    ]
+  in
+  let never_a_sub = [ "::part(tab)"; "::slotted(p)" ] in
+  let generated_content = [ ":before"; "::before"; ":after"; "::after" ] in
+  let allowed origin sub =
+    if mem sub never_a_sub then false
+    else if mem origin element_backed then true
+    else if String.equal origin "::slotted(p)" then mem sub tree_abiding
+    else if mem origin generated_content then String.equal sub "::marker"
+    else false
+  in
+  List.iter
+    (fun origin ->
+      List.iter
+        (fun sub ->
+          let s = concat [ ".a"; origin; sub ] in
+          if allowed origin sub then parses s else neg_cursor read s)
+        modelled_pseudo_element_spellings;
+      List.iter
+        (fun sub ->
+          let s = concat [ ".a"; origin; sub ] in
+          if mem origin element_backed then parses s else neg_cursor read s)
+        unmodelled_pseudo_element_spellings)
+    modelled_pseudo_element_spellings;
+  List.iter
+    (fun origin ->
+      List.iter
+        (fun sub -> parses (concat [ ".a"; origin; sub ]))
+        pseudo_element_spellings)
+    unmodelled_pseudo_element_spellings;
+  (* The three shapes the guard used to delete, read back after a print. *)
+  check_minified_to ".a:before::marker" ".a::before::marker";
+  check_minified_to "x-b::part(label):before" "x-b::part(label)::before";
+  check_minified_to "::slotted(a):before" "::slotted(a)::before";
+  check_minified_to ".a:after::marker" ".a::after::marker";
+  check_minified_to ".a:before::marker" ".a:before::marker";
+  check_minified_to "::part(label):first-line" "::part(label)::first-line";
+  check_minified_to "::slotted(a)::marker" "::slotted(a)::marker";
+  check_minified_to "::details-content:before" "::details-content::before";
+  check_minified_to "::part(label):before::marker"
+    "::part(label)::before::marker";
+  check_minified_to "::slotted(a):before::marker" "::slotted(a)::before::marker";
+  neg_cursor read ".a::before::marker::before";
+  neg_cursor read ".a::part(label)::marker::before";
+  (* A pseudo-class between the two belongs to the pseudo-element on its left,
+     and the one after it to the pseudo-element on its own left. *)
+  check_minified_to "::part(label):hover:before" "::part(label):hover::before";
+  (* Sec. 3.6.5 is the other question and answers it as before: a combinator
+     after the chain is invalid whatever the chain is, and an unmodelled name
+     stays exempt. *)
+  neg_cursor read ".a::before::marker > .b";
+  neg_cursor read ".a::part(label)::before .b";
+  parses ".foo ::deep .bar";
+  (* Sec. 3.6.3 is untouched: [::before] still takes no [:hover], [::part()]
+     still does, and what may never follow a pseudo-element still may not. *)
+  neg_cursor read ".a::before:hover";
+  neg_cursor read ".a::before::marker:hover";
+  neg_cursor read ".a::part(label)::before:hover";
+  check_minified_to ".a::part(label):hover" ".a::part(label):hover";
+  neg_cursor read ".a::before::marker.class";
+  neg_cursor read ".a::before::marker#id";
+  neg_cursor read ".a::before::marker[x]"
+
 (* CSS Selectors 4 sec. 9. Sec. 3.6.3 allows these after every pseudo-element;
    the engines are narrower, and disagree with the spec on the four Level 2
    pseudo-elements ([::first-line:hover] is the spec's own example and both
@@ -2385,6 +2523,7 @@ let suite =
         logical_combinator_pseudo_element;
       test_case "pseudo-element combinator guard" `Quick
         pseudo_element_combinator_guard;
+      test_case "sub-pseudo-element guard" `Quick sub_pseudo_element_guard;
       test_case "pseudo-element pseudo-classes" `Quick
         pseudo_element_pseudo_classes;
       test_case "scrollbar state pseudo-classes" `Quick
