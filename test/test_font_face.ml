@@ -351,7 +351,7 @@ let spec_fontface_var_descriptor_edges () =
     lenient @ strict
   in
   match
-    List.concat_map mismatches [ "size-adjust"; "font-family"; "font-tech" ]
+    List.concat_map mismatches [ "size-adjust"; "font-tech" ]
   with
   | [] -> ()
   | mismatches ->
@@ -391,6 +391,7 @@ let spec_fontface_var_descriptor_kept () =
   match
     List.concat_map mismatches
       [
+        "font-family";
         "src";
         "unicode-range";
         "font-style";

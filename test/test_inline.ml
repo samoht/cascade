@@ -89,6 +89,7 @@ let test_inline_font_face_var_descriptors () =
   Alcotest.(check (list string))
     "descriptors the parser keeps a var() for"
     [
+      "font-family";
       "src";
       "font-style";
       "font-weight";
@@ -127,6 +128,7 @@ let test_inline_font_face_var_resolves () =
   in
   List.iter resolves
     [
+      ("font-family", "b");
       ("font-style", "italic");
       ("font-weight", "700");
       ("font-stretch", "50%");
@@ -141,6 +143,30 @@ let test_inline_font_face_var_resolves () =
       ("ascent-override", "normal");
       ("descent-override", "90%");
       ("line-gap-override", "10%");
+    ]
+
+(* CSS Fonts 4 sec. 2.1 makes the [font-family] descriptor a [<family-name>#]
+   list, so a [var()] stands for a whole stack as readily as for one entry, and
+   a reference nested in the list has to be followed too. The property already
+   reads both shapes into the same type; the descriptor answers the same way. A
+   reference back onto its own name resolves once and then stands, as CSS
+   Variables 1 sec. 3 leaves an unresolvable reference in place. *)
+let test_inline_font_face_family_list () =
+  let check (name, css, expected) =
+    let inlined = minified (Css.inline_vars (parse css)) in
+    Alcotest.(check string) name expected inlined
+  in
+  List.iter check
+    [
+      ( "a var() standing for the whole stack",
+        ":root{--f:Arial,sans-serif}@font-face{font-family:var(--f);src:local(a)}",
+        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+      ( "a var() standing for one entry",
+        ":root{--f:sans-serif}@font-face{font-family:Arial,var(--f);src:local(a)}",
+        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+      ( "a var() naming itself inside a stack",
+        ":root{--f:Arial,var(--f)}@font-face{font-family:b,var(--f);src:local(a)}",
+        "@font-face{font-family:b,Arial,var(--f);src:local(a)}" );
     ]
 
 let test_inline_substitutes_vars () =
@@ -936,4 +962,6 @@ let suite =
       Alcotest.test_case
         "inline vars resolve the @font-face descriptors the parser keeps" `Quick
         test_inline_font_face_var_descriptors;
+      Alcotest.test_case "inline vars resolve a @font-face family list" `Quick
+        test_inline_font_face_family_list;
     ] )
