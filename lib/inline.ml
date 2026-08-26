@@ -222,22 +222,64 @@ let collect_scopes ~kept stylesheet =
 
 (** {1 Pass 2 - substitute var() in every declaration} *)
 
+(* The customs a consumer can see, with an index from name to the declarations
+   that answer to it. Both lookups below used to scan the whole list, and the
+   walk asks once per declaration, so the pass cost a square in the declaration
+   count. The index is built once per consumer scope instead. *)
+type visible = {
+  decls : Declaration.declaration list;
+  by_name : (string, (int * Declaration.declaration) list) Hashtbl.t;
+}
+
+let visible_of_decls decls =
+  let by_name = Hashtbl.create 64 in
+  List.iteri
+    (fun idx decl ->
+      match decl with
+      | Declaration.Declaration { property = Properties.Custom_property n; _ }
+        ->
+          let prev = Option.value ~default:[] (Hashtbl.find_opt by_name n) in
+          Hashtbl.replace by_name n ((idx, decl) :: prev)
+      | _ -> ())
+    decls;
+  (* Consed while walking, so put each bucket back in source order once rather
+     than appending to its end per entry. *)
+  Hashtbl.iter
+    (fun name entries -> Hashtbl.replace by_name name (List.rev entries))
+    (Hashtbl.copy by_name);
+  { decls; by_name }
+
+(* A name reaches its declarations under the spelling it was written with, so
+   ask for both: [--x] is stored as written and [x] is the bare form callers
+   hand in. *)
+let named visible name =
+  let dashed = Custom_property_name.add_prefix name in
+  match Hashtbl.find_opt visible.by_name name with
+  | Some entries when name = dashed -> entries
+  | Some entries -> (
+      match Hashtbl.find_opt visible.by_name dashed with
+      | None -> entries
+      | Some more ->
+          List.merge (fun (a, _) (b, _) -> Int.compare a b) entries more)
+  | None -> Option.value ~default:[] (Hashtbl.find_opt visible.by_name dashed)
+
 let visible_customs ~scopes ~at_path ~selector =
-  List.concat_map
-    (fun s ->
-      if
-        at_path_prefix ~outer:s.at_path ~inner:at_path
-        && selector_covers ~ancestor:s.selector ~consumer:selector
-      then s.customs
-      else [])
-    scopes
+  visible_of_decls
+    (List.concat_map
+       (fun s ->
+         if
+           at_path_prefix ~outer:s.at_path ~inner:at_path
+           && selector_covers ~ancestor:s.selector ~consumer:selector
+         then s.customs
+         else [])
+       scopes)
 
 (* [kept] names carry the [--] prefix; [Context.runtime_vars] expects the bare
    custom-property name. *)
 let runtime_var_names kept = List.map Custom_property_name.strip_prefix kept
 
 let context_for ?(kept = []) visible =
-  Context.v ~custom_properties:(List.rev visible)
+  Context.v ~custom_properties:(List.rev visible.decls)
     ~runtime_vars:(runtime_var_names kept) ()
 
 let read_custom_components read = function
@@ -260,15 +302,9 @@ let read_custom_components read = function
   | _ -> None
 
 let lookup_visible_custom visible name read =
-  let dashed = Custom_property_name.add_prefix name in
   List.find_map
-    (function
-      | Declaration.Declaration
-          { property = Properties.Custom_property n; value = _; _ } as decl
-        when n = name || n = dashed ->
-          read_custom_components read decl
-      | _ -> None)
-    visible
+    (fun (_, decl) -> read_custom_components read decl)
+    (named visible name)
 
 let custom_value_components = function
   | Declaration.Declaration
@@ -294,21 +330,13 @@ let consider_custom_candidate idx best decl value =
   if better_custom_candidate ~important ~idx best then Some candidate else best
 
 let lookup_visible_custom_components visible name =
-  let dashed = Custom_property_name.add_prefix name in
-  let choose idx best decl =
-    match decl with
-    | Declaration.Declaration { property = Properties.Custom_property n; _ }
-      when n = name || n = dashed -> (
-        match custom_value_components decl with
-        | None -> best
-        | Some value -> consider_custom_candidate idx best decl value)
-    | _ -> best
-  in
-  let rec loop idx best = function
-    | [] -> best
-    | decl :: rest -> loop (idx + 1) (choose idx best decl) rest
-  in
-  loop 0 None visible |> Option.map (fun (_, _, value) -> value)
+  List.fold_left
+    (fun best (idx, decl) ->
+      match custom_value_components decl with
+      | None -> best
+      | Some value -> consider_custom_candidate idx best decl value)
+    None (named visible name)
+  |> Option.map (fun (_, _, value) -> value)
 
 let trim_components components =
   let is_ws = function

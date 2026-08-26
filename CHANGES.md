@@ -699,10 +699,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
-- `Css.inline_vars` decides which variables are live through indexes and a
-  worklist rather than scanning its accumulator, so the pass no longer costs a
-  square in the variable count. On a 12,800-variable sheet the liveness phase
-  drops from 1.2s to 0.007s (#568)
+- `Css.inline_vars` no longer costs a square in the variable count: liveness is
+  decided through indexes and a worklist, and the customs a rule can see are
+  indexed by name instead of scanned per declaration. A 12,800-variable sheet
+  goes from 2.4s to 0.11s (#568, #569)
 - `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
   work out of `resolve`, so a caller walking a document flattens the nesting
   and buckets the rules by layer once rather than per node. Ten queries against
