@@ -81,6 +81,16 @@ let source_units t = t.source_units
    selector list is paid for, so discount it. *)
 let estimated_gain t = t.identical_body_gain + (t.shared_declaration_gain / 4)
 
+(* The gain is a raw-byte proxy, and the transfer gate in [Factor] later judges
+   the same factoring on compressed size, so a segment admitted here can still
+   be thrown away. Measured over the 30-file satcss corpus: 44 fixpoints run, 4
+   reverted, and those 4 account for 0.20s of the 1.01s spent factoring.
+
+   Scoring compressed size here instead is not available: the gate compares the
+   factored rendering against the unfactored one, and producing the factored
+   rendering is the work this gate exists to avoid. What the reverts cost is
+   bounded another way, by [Factor.near_reverted], which remembers a large
+   reverted segment's shape and suppresses the ones that resemble it. *)
 let useful t =
   t.declaration_count <= small_declaration_threshold
   ||
