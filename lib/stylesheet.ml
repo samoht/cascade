@@ -4079,14 +4079,16 @@ let validate_partial_statement loc = function
       Some
         (Error.bad_value loc ~property:"@font-face"
            ~reason:"missing font-family or src descriptor")
+  (* CSS Fonts 4 sec. 9.2 makes font-family the one mandatory descriptor; sec.
+     9.2.2 defaults a missing base-palette to 0. *)
   | Font_palette_values (_, descriptors)
     when not
            (List.exists
-              (function Base_palette _ -> true | _ -> false)
+              (function Palette_font_family _ -> true | _ -> false)
               descriptors) ->
       Some
         (Error.bad_value loc ~property:"@font-palette-values"
-           ~reason:"missing base-palette descriptor")
+           ~reason:"missing font-family descriptor")
   | (Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _))
     when List.mem
            (String.lowercase_ascii name)

@@ -160,6 +160,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A valid `@font-palette-values` rule no longer warns, so `cascade apply`
+  accepts it. CSS Fonts 4 sec. 9.2.2 (Working Draft, 25 August 2026) defaults
+  a missing `base-palette` to 0, and sec. 9.2 makes `font-family` the mandatory
+  descriptor, whose absence warns in its place (#551)
 - A parse error in a `page-break-before`, `page-break-after` or
   `page-break-inside` declaration is reported against the property the
   declaration wrote. The diagnostic named the CSS Fragmentation 3 sec. 3.4

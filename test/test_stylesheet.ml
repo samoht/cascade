@@ -1487,7 +1487,7 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "font-face invalid font-display list",
         "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
          block swap }" );
-      ( "font-palette missing base-palette",
+      ( "font-palette missing font-family",
         "@font-palette-values --brand { override-colors: 0 red }" );
       ( "counter-style missing system",
         "@counter-style thumbs { symbols: \"*\" }" );
