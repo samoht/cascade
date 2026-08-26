@@ -2,9 +2,15 @@
 
 (** {1 Metric Override Types} *)
 
-(** Metric override value - either "normal" or a percentage. Used for
-    ascent-override, descent-override, line-gap-override. *)
-type metric_override = Normal | Percent of float
+(** Metric override value - either "normal", a percentage, or an unresolved
+    [var()]. Used for ascent-override, descent-override, line-gap-override. *)
+type metric_override =
+  | Normal
+  | Percent of float
+  | Var of metric_override Values.var
+
+val pp_metric_override : metric_override Pp.t
+(** [pp_metric_override] renders a metric override. *)
 
 val string_of_metric_override : metric_override -> string
 (** [string_of_metric_override m] converts a metric override to its CSS string
@@ -67,8 +73,9 @@ val to_string : ?minify:bool -> t -> string
 
 val read_metric_override : Cursor.t -> metric_override
 (** [read_metric_override t] reads one [ascent-override] / [descent-override] /
-    [line-gap-override] value. A mismatch raises {!Cursor.exception-Parse_error}
-    without consuming, so the error carries the offending value's span. *)
+    [line-gap-override] value, or a [var()] standing for one. A mismatch raises
+    {!Cursor.exception-Parse_error} without consuming, so the error carries the
+    offending value's span. *)
 
 val read_size_adjust : Cursor.t -> size_adjust
 (** [read_size_adjust t] reads one [size-adjust] value, like

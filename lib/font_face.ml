@@ -4,13 +4,21 @@ open Syntax
 
 (** {1 Metric Override Types} *)
 
-(** Metric override value - either "normal" or a percentage. Used for
-    ascent-override, descent-override, line-gap-override. *)
-type metric_override = Normal | Percent of float
+(** Metric override value - either "normal", a percentage, or an unresolved
+    [var()]. Used for ascent-override, descent-override, line-gap-override. *)
+type metric_override =
+  | Normal
+  | Percent of float
+  | Var of metric_override Values.var
 
-let string_of_metric_override = function
-  | Normal -> "normal"
-  | Percent p -> Pp.string_of_float p ^ "%"
+let rec pp_metric_override ctx = function
+  | Normal -> Pp.string ctx "normal"
+  | Percent p ->
+      Pp.string ctx (Pp.string_of_float p);
+      Pp.char ctx '%'
+  | Var var -> Values.pp_var pp_metric_override ctx var
+
+let string_of_metric_override = Pp.to_string ~minify:false pp_metric_override
 
 (** {1 Size Adjust} *)
 
@@ -158,7 +166,7 @@ let valid_percentage p = Float.is_finite p && p >= 0.
 (* CSS Fonts 4 sec. 4.10: [normal | <percentage [0,inf]>]. The token is left in
    place on a mismatch, so the error carries the offending value's span rather
    than whatever follows it. *)
-let read_metric_override t =
+let rec read_metric_override t : metric_override =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident "normal"; _ }) ->
       Cursor.skip t;
@@ -167,6 +175,9 @@ let read_metric_override t =
     when valid_percentage number.Token.value ->
       Cursor.skip t;
       Percent number.Token.value
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_metric_override t)
   | Some _ | None -> Cursor.err_invalid t "metric override"
 
 (* CSS Fonts 4 sec. 4.11: [<percentage [0,inf]>]. *)

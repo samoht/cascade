@@ -645,6 +645,19 @@ let simplify_font_variation_settings_descriptor visible =
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Properties.Var v : Properties.font_variation_settings))
 
+let simplify_font_variant_descriptor visible =
+  simplify_typed_var visible ~read:read_font_variant_descriptor
+    ~as_var:(function Var v -> Some v | _ -> Option.None)
+    ~of_var:(fun v -> (Var v : font_variant_descriptor))
+
+(* One resolver covers [ascent-override], [descent-override] and
+   [line-gap-override]: CSS Fonts 4 sec. 4.10 gives the three the same
+   grammar. *)
+let simplify_metric_override_descriptor visible =
+  simplify_typed_var visible ~read:Font_face.read_metric_override
+    ~as_var:(function Font_face.Var v -> Some v | _ -> Option.None)
+    ~of_var:(fun v -> (Font_face.Var v : Font_face.metric_override))
+
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse
    and asks for one resolver each, so this pass and the parser cannot grow
    apart: a descriptor added to that table takes a resolver argument the call
@@ -658,9 +671,11 @@ let simplify_font_face_descriptor visible descriptor =
       ~font_weight:(simplify_font_weight_descriptor visible)
       ~font_stretch:(simplify_font_stretch_descriptor visible)
       ~font_display:(simplify_font_display_descriptor visible)
+      ~font_variant:(simplify_font_variant_descriptor visible)
       ~font_feature_settings:(simplify_font_feature_settings_descriptor visible)
       ~font_variation_settings:
         (simplify_font_variation_settings_descriptor visible)
+      ~metric_override:(simplify_metric_override_descriptor visible)
       descriptor
   with
   | Some resolved -> resolved

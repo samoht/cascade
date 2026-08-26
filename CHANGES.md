@@ -599,6 +599,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- A `var()` in the `ascent-override`, `descent-override`, `line-gap-override`
+  or `font-variant` descriptor of an `@font-face` is resolved by
+  `Css.inline_vars` instead of being dropped at parse time. Their value types
+  carry the `Var` arm the other typed descriptors already had (#573)
 - A `var()` in the `font-style`, `font-weight`, `font-stretch`,
   `font-display`, `font-feature-settings` or `font-variation-settings`
   descriptor of an `@font-face` is resolved by `Css.inline_vars` instead of

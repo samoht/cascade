@@ -84,7 +84,9 @@ let test_src_roundtrip buf =
 
 let test_metric_override_non_negative buf =
   match parse_metric buf with
-  | None | Some Css.Font_face.Normal -> ()
+  (* A [var()] stands for a value the inline pass has yet to substitute, so
+     there is no percentage to bound here. *)
+  | None | Some Css.Font_face.Normal | Some (Css.Font_face.Var _) -> ()
   | Some (Css.Font_face.Percent p) ->
       if Float.compare p 0. < 0 then
         fail "metric override parsed a negative percentage"

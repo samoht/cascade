@@ -280,6 +280,7 @@ and font_variant_descriptor =
   | Normal
   | None
   | Values of font_variant_descriptor_value list
+  | Var of font_variant_descriptor Values.var
 
 and font_variant_descriptor_value =
   | Ligature of Properties.font_variant_ligature
@@ -354,8 +355,8 @@ let equal (a : stylesheet) b = a = b
     resolvers. A descriptor added to the table takes another resolver argument,
     so both sides have to answer for it. *)
 let resolve_font_face_var ~src ~unicode_range ~font_style ~font_weight
-    ~font_stretch ~font_display ~font_feature_settings ~font_variation_settings
-    = function
+    ~font_stretch ~font_display ~font_variant ~font_feature_settings
+    ~font_variation_settings ~metric_override = function
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_style value -> Some (Font_style (font_style value))
@@ -366,14 +367,16 @@ let resolve_font_face_var ~src ~unicode_range ~font_style ~font_weight
       Some (Font_weight_range (font_weight low, font_weight high))
   | Font_stretch value -> Some (Font_stretch (font_stretch value))
   | Font_display value -> Some (Font_display (font_display value))
+  | Font_variant value -> Some (Font_variant (font_variant value))
   | Font_feature_settings value ->
       Some (Font_feature_settings (font_feature_settings value))
   | Font_variation_settings value ->
       Some (Font_variation_settings (font_variation_settings value))
+  | Ascent_override value -> Some (Ascent_override (metric_override value))
+  | Descent_override value -> Some (Descent_override (metric_override value))
+  | Line_gap_override value -> Some (Line_gap_override (metric_override value))
   (* The rest hold a value type with no [Var] arm to park an unresolved
      reference in, so the parser has nowhere to keep one and drops the
      declaration as a browser does. *)
-  | Font_family _ | Font_stretch_range _ | Font_variant _ | Font_tech _
-  | Size_adjust _ | Ascent_override _ | Descent_override _ | Line_gap_override _
-    ->
+  | Font_family _ | Font_stretch_range _ | Font_tech _ | Size_adjust _ ->
       Option.None

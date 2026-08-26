@@ -1090,11 +1090,12 @@ let pp_font_variant_descriptor_value ctx = function
   | Numeric value -> Properties.pp_font_variant_numeric_token ctx value
   | East_asian value -> Properties.pp_east_asian_feature ctx value
 
-let pp_font_variant_descriptor ctx = function
+let rec pp_font_variant_descriptor ctx = function
   | Normal -> Pp.string ctx "normal"
   | None -> Pp.string ctx "none"
   | Values values ->
       Pp.list ~sep:Pp.space pp_font_variant_descriptor_value ctx values
+  | Var var -> Values.pp_var pp_font_variant_descriptor ctx var
 
 let pp_font_face_descriptor : font_face_descriptor Pp.t =
  fun ctx desc ->
@@ -1152,17 +1153,11 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx v -> Pp.string ctx (Font_face.string_of_size_adjust v))
         value
   | Ascent_override value ->
-      pp_descriptor "ascent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "ascent-override" Font_face.pp_metric_override value
   | Descent_override value ->
-      pp_descriptor "descent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "descent-override" Font_face.pp_metric_override value
   | Line_gap_override value ->
-      pp_descriptor "line-gap-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "line-gap-override" Font_face.pp_metric_override value
 
 let pp_counter_style_system ctx = function
   | Cyclic -> Pp.string ctx "cyclic"
@@ -2277,7 +2272,7 @@ let read_font_variant_descriptor_value r =
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 
-let read_font_variant_descriptor r =
+let read_font_variant_keywords r : font_variant_descriptor =
   let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
   let snap = Cursor.save r in
   let first = Cursor.ident ~keep_case:false r in
@@ -2296,6 +2291,14 @@ let read_font_variant_descriptor r =
       if values = [] then Cursor.err_invalid r "font-variant descriptor";
       validate_font_variant_descriptor_values r values;
       Values values
+
+let rec read_font_variant_descriptor r : font_variant_descriptor =
+  Cursor.ws r;
+  match Cursor.peek r with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_font_variant_descriptor r)
+  | Some _ | None -> read_font_variant_keywords r
 
 let read_font_face_desc name r =
   match name with
@@ -2376,8 +2379,9 @@ let descriptor_resolves_var name =
       Option.is_some
         (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id
            ~font_style:Fun.id ~font_weight:Fun.id ~font_stretch:Fun.id
-           ~font_display:Fun.id ~font_feature_settings:Fun.id
-           ~font_variation_settings:Fun.id descriptor)
+           ~font_display:Fun.id ~font_variant:Fun.id
+           ~font_feature_settings:Fun.id ~font_variation_settings:Fun.id
+           ~metric_override:Fun.id descriptor)
   | exception Error.Parse_error _ -> false
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
