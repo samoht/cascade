@@ -160,6 +160,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An unknown at-rule whose raw body ends on a backslash is written with a
+  closer that closes it. The backslash used to escape the `}` the printer wrote
+  after it, so the next statement in the stylesheet was swallowed into the body
+  (#558)
 - Bare `::cue`, `::cue-region` and the scrollbar parts past
   `::-webkit-scrollbar` are read as the pseudo-elements they are, so
   `::cue::before` and `.a::-webkit-scrollbar-thumb .b` are dropped the way

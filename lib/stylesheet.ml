@@ -700,6 +700,16 @@ let trim_unknown_at_prelude prelude =
   let n = String.length prelude in
   String.sub prelude 0 (trim_end (n - 1))
 
+(* CSS Syntax 3 sec. 4.3.1: a backslash starts an escape unless a newline
+   follows it. A raw body ending on an odd run of backslashes therefore escapes
+   the closer written straight after it, and the at-rule swallows whatever comes
+   next instead of ending. *)
+let body_escapes_its_closer body =
+  let rec backslashes i n =
+    if i < 0 || body.[i] <> '\\' then n else backslashes (i - 1) (n + 1)
+  in
+  backslashes (String.length body - 1) 0 land 1 = 1
+
 let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
   (* CSS Syntax 3 section 5.5.2: an at-rule terminates on [;], [}], or EOF. When
      the Parser captures an unterminated nested block ([(...], [[...], [{...])
@@ -726,6 +736,10 @@ let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
       Pp.sp ctx ();
       Pp.char ctx '{';
       Pp.string ctx body;
+      (* Sec. 4.3.7 reads a space or a hex digit as part of the escape, so a
+         newline is the only separator that leaves the last backslash the delim
+         token it was. *)
+      if body_escapes_its_closer body then Pp.char ctx '\n';
       Pp.char ctx '}'
 
 let font_face_participates descriptors =
