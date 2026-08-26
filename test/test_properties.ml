@@ -4490,6 +4490,30 @@ let test_outline_shorthand () =
   check_outline_shorthand "2px solid red";
   neg_cursor read_outline_shorthand "invalid-outline-value"
 
+(* CSS Motion Path 1 (ED) sec. 2.1.1 gives [<ray-size> = <radial-extent> |
+   sides], and [<radial-extent>] (css-images-3 sec. 3.2.1) is the four extent
+   keywords: a length or a pair of radii is a [<radial-size>] branch that
+   [ray()] has no syntax for. Every value the type admits prints, and the
+   printed text parses back to it. *)
+let test_ray_size () =
+  let sizes : ray_size list =
+    [
+      Radial Closest_side;
+      Radial Closest_corner;
+      Radial Farthest_side;
+      Radial Farthest_corner;
+      Radial (Circle_radius (Px 1.));
+      Radial (Ellipse_radii (Length (Px 1.), Pct 50.));
+      Radial (Var (Values.var_ref "x"));
+      Sides;
+    ]
+  in
+  List.iter
+    (fun size ->
+      check_ray_size (Css.Pp.to_string ~minify:true pp_ray_size size))
+    sizes;
+  neg_cursor read_ray_size "10px"
+
 let additional_tests =
   [
     test_case "will_change" `Quick test_will_change;
@@ -4499,6 +4523,7 @@ let additional_tests =
     test_case "quotes" `Quick test_quotes;
     test_case "outline" `Quick test_outline;
     test_case "outline_shorthand" `Quick test_outline_shorthand;
+    test_case "ray_size" `Quick test_ray_size;
     test_case "background" `Quick test_background;
     test_case "font_family" `Quick test_font_family;
     test_case "text_shadow" `Quick test_text_shadow;
