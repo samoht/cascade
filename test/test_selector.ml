@@ -769,6 +769,29 @@ let pseudo_element_spellings =
     "::-webkit-resizer";
   ]
 
+(* The [::] names above that cascade carries as a raw ident rather than a
+   constructor of its own. Every other entry of [pseudo_element_spellings] names
+   a pseudo-element cascade models. *)
+let unmodelled_pseudo_element_spellings =
+  [
+    "::future-pseudo-element";
+    "::foo(bar)";
+    "::deep";
+    "::v-deep";
+    "::ng-deep";
+    "::-webkit-scrollbar-thumb";
+    "::-webkit-scrollbar-track";
+    "::-webkit-scrollbar-track-piece";
+    "::-webkit-scrollbar-button";
+    "::-webkit-scrollbar-corner";
+    "::-webkit-resizer";
+  ]
+
+let modelled_pseudo_element_spellings =
+  List.filter
+    (fun pe -> Stdlib.not (List.mem pe unmodelled_pseudo_element_spellings))
+    pseudo_element_spellings
+
 (* Selectors 4 sec. 16: a complex selector unit is [<compound-selector>?
    <pseudo-compound-selector>*] and a pseudo-compound is
    [<pseudo-element-selector> <pseudo-class-selector>*], so a class, id or
@@ -833,6 +856,89 @@ let logical_combinator_pseudo_element () =
       check_minified_to ".a:not(:where())"
         (concat [ ".a:not(:where("; pe; "))" ]))
     pseudo_element_spellings
+
+(* CSS Selectors 4 (Editor's Draft, drafts.csswg.org/selectors-4/) sec. 3.6.5
+   "Internal Structure": "Some pseudo-elements are defined to have internal
+   structure. These pseudo-elements may be followed by child/descendant
+   combinators to express those relationships. Selectors containing combinators
+   after the pseudo-element are otherwise invalid", with "::first-letter + span
+   and ::first-letter em are invalid selectors" as the section's own examples.
+   Sec. 3.6.2 says the same thing from the other side: a pseudo-element follows
+   the compound selector matching its originating element, and what comes after
+   applies to the pseudo-element itself.
+
+   Nothing shipping claims that internal structure, so the exception stays
+   theoretical and every name cascade models takes the rule. Chrome 151 and
+   WebKit 26.5 both drop [::part(x) > .b], [::details-content > div],
+   [::file-selector-button > div] and [::view-transition-group(...) > div]
+   alongside the plain [.a::before .b], and the Servo selectors crate - the
+   parser Firefox's Stylo shares, reached here through Lightning CSS - rejects
+   the same shapes with UnexpectedSelectorAfterPseudoElement.
+
+   A [::] name cascade does not model is exempt, for the reason
+   [pseudo_element_allows] already exempts it from sec. 3.6.3: cascade preserves
+   such a name rather than judging it. test/interop/lightning carries seven of
+   these ([.foo ::deep .bar], [.foo ::unknown(.foo) .bar] and their kin) and all
+   six reference minifiers keep every one verbatim, while Lightning CSS rejects
+   the identical shape as soon as the name is one it knows ([::-moz-placeholder
+   .b]).
+
+   [>>>] and [/deep/] are outside all of this: they are Vue and Angular tooling
+   spellings, no engine parses them, and cascade passes them through under the
+   same bargain as an unmodelled [::] name. *)
+let pseudo_element_combinator_guard () =
+  let concat = String.concat "" in
+  let parses input =
+    match Cursor.option read (Cursor.of_string input) with
+    | Some _ -> ()
+    | None -> Alcotest.failf "selector should parse: %s" input
+  in
+  (* Selectors 4 sec. 15: every combinator the specification defines. *)
+  let combinators = [ " "; ">"; "+"; "~"; " || " ] in
+  (* Tooling spellings cascade passes through; sec. 3.6.5 never reaches them. *)
+  let passthrough_combinators = [ ">>>"; "/deep/" ] in
+  List.iter
+    (fun pe ->
+      (* The pseudo-compound itself, and a pseudo-element ending the selector,
+         are what sec. 3.6.5 leaves alone. *)
+      parses (concat [ ".a"; pe ]);
+      parses (concat [ ".z .a"; pe ]);
+      parses (concat [ ".z > .a"; pe ]);
+      List.iter
+        (fun c -> neg_cursor read (concat [ ".a"; pe; c; ".b" ]))
+        combinators;
+      List.iter
+        (fun c -> parses (concat [ ".a"; pe; c; ".b" ]))
+        passthrough_combinators)
+    modelled_pseudo_element_spellings;
+  List.iter
+    (fun pe ->
+      List.iter
+        (fun c -> parses (concat [ ".a"; pe; c; ".b" ]))
+        (combinators @ passthrough_combinators))
+    unmodelled_pseudo_element_spellings;
+  (* The corpus case, spelled as test/interop/lightning carries it. *)
+  parses ".foo ::deep .bar";
+  parses ".foo ::unknown(.foo) .bar";
+  (* A pseudo-class between the pseudo-element and the combinator does not
+     reopen the compound: [::part()] takes [:focus] (CSS Pseudo-Elements 4 sec.
+     5) and the combinator after it is still invalid. *)
+  neg_cursor read ".a::part(x):focus > .b";
+  parses ".a::part(x):focus";
+  (* Sec. 3.6.5 governs the top level of the selector. A combinator inside a
+     functional pseudo-class argument is a different question and stays
+     untouched. *)
+  parses ".a:is(.b > .c) .d";
+  parses ".a:has(.b > .c) .d";
+  parses ".a:not(.b > .c) .d";
+  parses ".a:has(> .b) .c";
+  (* Sec. 3.9 and sec. 16.1: [:is()] and [:where()] take a forgiving list, so
+     the refused argument goes and the selector stands; [:not()] does not, so
+     the whole selector goes. Chrome 151 agrees on both, reading the first back
+     as [.a:is(.d)] and dropping the rule for the third. *)
+  check_minified_to ".a:is(.d)" ".a:is(.b::before .c,.d)";
+  check_minified_to ".a:where(.d)" ".a:where(.b::before .c,.d)";
+  neg_cursor read ".a:not(.b::before .c)"
 
 (* CSS Selectors 4 sec. 9. Sec. 3.6.3 allows these after every pseudo-element;
    the engines are narrower, and disagree with the spec on the four Level 2
@@ -2265,6 +2371,8 @@ let suite =
         pseudo_element_compound_guard;
       test_case "logical combinator pseudo-element" `Quick
         logical_combinator_pseudo_element;
+      test_case "pseudo-element combinator guard" `Quick
+        pseudo_element_combinator_guard;
       test_case "pseudo-element pseudo-classes" `Quick
         pseudo_element_pseudo_classes;
       test_case "scrollbar state pseudo-classes" `Quick
