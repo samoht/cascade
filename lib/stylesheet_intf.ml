@@ -342,9 +342,9 @@ type mode = Variables | Inline  (** Rendering mode for CSS output *)
 let equal_cascade_origin (a : cascade_origin) b = a = b
 let equal (a : stylesheet) b = a = b
 
-(** [resolve_font_face_var ~src ~unicode_range descriptor] is [descriptor] with
-    its value rewritten by the matching resolver, or [None] when it holds no
-    value a [var()] can be resolved in.
+(** [resolve_font_face_var ~src ~unicode_range ... descriptor] is [descriptor]
+    with its value rewritten by the matching resolver, or [None] when it holds
+    no value a [var()] can be resolved in.
 
     CSS Variables 1 sec. 3 substitutes [var()] in a property value; an
     [\@font-face] descriptor is not a property, so no descriptor grammar accepts
@@ -353,12 +353,27 @@ let equal (a : stylesheet) b = a = b
     keeps a [var()] only for a descriptor named here, and {!Inline} supplies the
     resolvers. A descriptor added to the table takes another resolver argument,
     so both sides have to answer for it. *)
-let resolve_font_face_var ~src ~unicode_range = function
+let resolve_font_face_var ~src ~unicode_range ~font_style ~font_weight
+    ~font_stretch ~font_display ~font_feature_settings ~font_variation_settings
+    = function
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
-  | Font_family _ | Font_style _ | Font_style_range _ | Font_weight _
-  | Font_weight_range _ | Font_stretch _ | Font_stretch_range _ | Font_display _
-  | Font_variant _ | Font_feature_settings _ | Font_variation_settings _
-  | Font_tech _ | Size_adjust _ | Ascent_override _ | Descent_override _
-  | Line_gap_override _ ->
+  | Font_style value -> Some (Font_style (font_style value))
+  | Font_style_range (low, high) ->
+      Some (Font_style_range (font_style low, font_style high))
+  | Font_weight value -> Some (Font_weight (font_weight value))
+  | Font_weight_range (low, high) ->
+      Some (Font_weight_range (font_weight low, font_weight high))
+  | Font_stretch value -> Some (Font_stretch (font_stretch value))
+  | Font_display value -> Some (Font_display (font_display value))
+  | Font_feature_settings value ->
+      Some (Font_feature_settings (font_feature_settings value))
+  | Font_variation_settings value ->
+      Some (Font_variation_settings (font_variation_settings value))
+  (* The rest hold a value type with no [Var] arm to park an unresolved
+     reference in, so the parser has nowhere to keep one and drops the
+     declaration as a browser does. *)
+  | Font_family _ | Font_stretch_range _ | Font_variant _ | Font_tech _
+  | Size_adjust _ | Ascent_override _ | Descent_override _ | Line_gap_override _
+    ->
       Option.None

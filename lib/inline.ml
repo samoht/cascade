@@ -586,25 +586,64 @@ let simplify_font_src_descriptor visible entries =
   in
   simplify ~visited:[] entries
 
-let unicode_range_var_fallback ~simplify ~visited
-    (var : Properties.unicode_range Values.var) : Properties.unicode_range =
-  match var.Values.fallback with
-  | Values.Fallback value -> simplify ~visited value
-  | _ -> (Properties.Var var : Properties.unicode_range)
-
-let simplify_unicode_range_descriptor visible (value : Properties.unicode_range)
-    =
-  let rec simplify ~visited : Properties.unicode_range -> _ = function
-    | Properties.Var var when not (List.mem var.Values.name visited) -> (
-        match
-          lookup_visible_custom visible var.Values.name
-            Properties.read_unicode_range
-        with
-        | Some value -> simplify ~visited:(var.Values.name :: visited) value
-        | None -> unicode_range_var_fallback ~simplify ~visited var)
-    | value -> value
+(* Every descriptor whose value type carries a [Var] arm resolves the same way:
+   follow the reference to the custom it names, then the references that value
+   holds in turn, and stop on a name already seen so a cycle terminates. What
+   differs per descriptor is only how to read the value and how to see a [Var],
+   so take those three and share the walk. *)
+let simplify_typed_var visible ~read ~(as_var : 'a -> 'a Values.var option)
+    ~(of_var : 'a Values.var -> 'a) (value : 'a) : 'a =
+  let rec simplify ~visited (value : 'a) : 'a =
+    match as_var value with
+    | Some var when not (List.mem var.Values.name visited) -> (
+        match lookup_visible_custom visible var.Values.name read with
+        | Some found -> simplify ~visited:(var.Values.name :: visited) found
+        | None -> (
+            (* Nothing defines the name: CSS Variables 1 sec. 3 falls back to
+               the second argument, and with none the reference stands. *)
+            match (var.Values.fallback : 'a Values.fallback) with
+            | Values.Fallback fallback -> simplify ~visited fallback
+            | Values.Empty | Values.Empty2 | Values.None
+            | Values.Syntax_fallback _ | Values.Var_fallback _ ->
+                of_var var))
+    | Some _ | None -> value
   in
   simplify ~visited:[] value
+
+let simplify_unicode_range_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_unicode_range
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.unicode_range))
+
+let simplify_font_style_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_style
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_style))
+
+let simplify_font_weight_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_weight
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_weight))
+
+let simplify_font_stretch_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_stretch
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_stretch))
+
+let simplify_font_display_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_display
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_display))
+
+let simplify_font_feature_settings_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_feature_settings
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_feature_settings))
+
+let simplify_font_variation_settings_descriptor visible =
+  simplify_typed_var visible ~read:Properties.read_font_variation_settings
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_variation_settings))
 
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse
    and asks for one resolver each, so this pass and the parser cannot grow
@@ -615,6 +654,13 @@ let simplify_font_face_descriptor visible descriptor =
     resolve_font_face_var
       ~src:(simplify_font_src_descriptor visible)
       ~unicode_range:(List.map (simplify_unicode_range_descriptor visible))
+      ~font_style:(simplify_font_style_descriptor visible)
+      ~font_weight:(simplify_font_weight_descriptor visible)
+      ~font_stretch:(simplify_font_stretch_descriptor visible)
+      ~font_display:(simplify_font_display_descriptor visible)
+      ~font_feature_settings:(simplify_font_feature_settings_descriptor visible)
+      ~font_variation_settings:
+        (simplify_font_variation_settings_descriptor visible)
       descriptor
   with
   | Some resolved -> resolved

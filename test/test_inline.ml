@@ -87,7 +87,52 @@ let test_inline_font_face_var_descriptors () =
   in
   let kept = List.map fst (List.filter survives font_face_descriptors) in
   Alcotest.(check (list string))
-    "descriptors the parser keeps a var() for" [ "src"; "unicode-range" ] kept
+    "descriptors the parser keeps a var() for"
+    [
+      "src";
+      "font-style";
+      "font-weight";
+      "font-stretch";
+      "font-display";
+      "unicode-range";
+      "font-feature-settings";
+      "font-variation-settings";
+    ]
+    kept
+
+(* Surviving the parse is only half of it: the value a [var()] stands for has to
+   reach the output. Each row reads a variable whose value the descriptor's own
+   grammar accepts. *)
+let test_inline_font_face_var_resolves () =
+  let resolves (name, value) =
+    let css =
+      String.concat ""
+        [
+          ":root{--v:";
+          value;
+          "}@font-face{font-family:a;src:local(anchor);";
+          name;
+          ":var(--v)}";
+        ]
+    in
+    let inlined = minified (Css.inline_vars (parse css)) in
+    Alcotest.(check bool)
+      (Fmt.str "%s: resolves to %s (%s)" name value inlined)
+      true
+      (holds_substring (name ^ ":" ^ value) inlined)
+  in
+  List.iter resolves
+    [
+      ("font-style", "italic");
+      ("font-weight", "700");
+      ("font-stretch", "50%");
+      ("font-display", "swap");
+      (* CSS Syntax 3 sec. 4.3.10 reads the range case-insensitively and the
+         printer writes the hex digits upper-case. *)
+      ("unicode-range", "U+0-7F");
+      ("font-feature-settings", "normal");
+      ("font-variation-settings", "normal");
+    ]
 
 let test_inline_substitutes_vars () =
   check_inline ~optimized:".button{color:#00f}"
@@ -802,6 +847,8 @@ let test_inline_keeps_a_page_break_property_from_css () =
 let suite =
   ( "inline",
     [
+      Alcotest.test_case "inline vars resolve a typed @font-face descriptor"
+        `Quick test_inline_font_face_var_resolves;
       Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
         test_inline_vars_liveness_propagates_through_scopes;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"

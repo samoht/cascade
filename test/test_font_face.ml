@@ -310,10 +310,14 @@ let spec_fontface_metric_numeric_edges () =
         (String.concat "\n" accepted)
 
 (* CSS Custom Properties 1 sec. 3 substitutes var() in properties only, and
-   @font-face descriptors are not properties: no descriptor grammar accepts it.
-   Every one of them is therefore dropped with a warning while the rest of the
-   block is kept (CSS Fonts 4 sec. 4.1, CSS Syntax 3 sec. 5.5.5), and
-   ~strict:true turns that warning into an error. *)
+   @font-face descriptors are not properties: no descriptor grammar accepts it,
+   so a browser drops the declaration. cascade substitutes at build time
+   instead, and can only do so for a descriptor whose typed value has somewhere
+   to park an unresolved reference. The ones below have no [Var] arm, so there
+   is nothing to keep and the declaration is dropped with a warning while the
+   rest of the block survives (CSS Fonts 4 sec. 4.1, CSS Syntax 3 sec. 5.5.5);
+   ~strict:true turns that warning into an error. The descriptors that do carry
+   one are covered by [spec_fontface_var_descriptor_kept]. *)
 let spec_fontface_var_descriptor_edges () =
   let kept = "@font-face{font-family:Brand;src:url(font.woff2)}" in
   let source descriptor =
@@ -346,8 +350,6 @@ let spec_fontface_var_descriptor_edges () =
     in
     lenient @ strict
   in
-  (* [unicode-range] is exempt for the same reason as [src]: [--inline-vars]
-     resolves its var() at build time, so cascade keeps it. *)
   match
     List.concat_map mismatches
       [
@@ -355,15 +357,61 @@ let spec_fontface_var_descriptor_edges () =
         "ascent-override";
         "descent-override";
         "line-gap-override";
-        "font-display";
-        "font-weight";
-        "font-style";
-        "font-stretch";
+        "font-family";
+        "font-tech";
       ]
   with
   | [] -> ()
   | mismatches ->
       Alcotest.failf "@font-face descriptors keeping var():\n%s"
+        (String.concat "\n" mismatches)
+
+(* The other side of the same decision: a descriptor whose typed value carries a
+   [Var] arm keeps the reference through the parse, with no warning and no
+   strict error, so [Css.inline_vars] can substitute it at build time. Keeping
+   it is only useful because the value is typed; an unresolved one still prints
+   as the [var()] it was. *)
+let spec_fontface_var_descriptor_kept () =
+  let source descriptor =
+    Fmt.str "@font-face{font-family:Brand;src:url(font.woff2);%s:var(--b)}"
+      descriptor
+  in
+  let mismatches descriptor =
+    let input = source descriptor in
+    match Css.of_string input with
+    | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" descriptor input ]
+    | Ok { Css.stylesheet; warnings } -> (
+        let printed = Css.to_string ~minify:true stylesheet |> String.trim in
+        (if String.equal printed input then []
+         else [ Fmt.str "%s: printed %S, expected %S" descriptor printed input ])
+        @ (if warnings = [] then []
+           else
+             [
+               Fmt.str "%s: %d parse warnings, expected none" descriptor
+                 (List.length warnings);
+             ])
+        @
+        match Css.of_string ~strict:true input with
+        | Ok _ -> []
+        | Error _ -> [ Fmt.str "%s: strict parse rejected %S" descriptor input ]
+        )
+  in
+  match
+    List.concat_map mismatches
+      [
+        "src";
+        "unicode-range";
+        "font-style";
+        "font-weight";
+        "font-stretch";
+        "font-display";
+        "font-feature-settings";
+        "font-variation-settings";
+      ]
+  with
+  | [] -> ()
+  | mismatches ->
+      Alcotest.failf "@font-face descriptors dropping var():\n%s"
         (String.concat "\n" mismatches)
 
 (* CSS Fonts 4 sec. 4.2: the [font-family] descriptor *defines* the name used in
@@ -689,6 +737,8 @@ let suite =
         spec_fontface_src_invalid_edges;
       test_case "spec font-face metric numeric edges" `Quick
         spec_fontface_metric_numeric_edges;
+      test_case "spec font-face var() descriptor kept" `Quick
+        spec_fontface_var_descriptor_kept;
       test_case "spec font-face var() descriptor edges" `Quick
         spec_fontface_var_descriptor_edges;
       test_case "spec font-face family descriptor verbatim" `Quick
