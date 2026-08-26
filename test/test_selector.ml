@@ -1791,6 +1791,8 @@ let test_ns () =
   none_cursor read_ns "|";
   none_cursor read_ns "||";
   none_cursor read_ns "svg";
+  none_cursor read_ns "svg||";
+  none_cursor read_ns "*||";
 
   (* Test cases that should return None (no namespace found) *)
   none_cursor read_ns "notanamespace";
@@ -1830,6 +1832,24 @@ let test_ns () =
   check "|div";
   check "|*";
   ()
+
+(* CSS Selectors 4 sec. 15.2 makes [||] the column combinator and sec. 6.1 makes
+   [ns|name] a namespaced name, so a pipe that opens a [||] never separates a
+   prefix from a name. *)
+let column_combinator_vs_namespace () =
+  check ~roundtrip:true "svg||td";
+  check ~roundtrip:true "*||td";
+  check ~roundtrip:true "a||b";
+  check ~roundtrip:true "svg|table||svg|td";
+  check ~expected:"a||b" "a || b";
+  check_minified_to "svg||td" "svg || td";
+  check_minified_to "*||td" "* || td";
+
+  (* The namespace forms a column combinator must leave alone. *)
+  check "svg|td";
+  check "*|a";
+  check "|a";
+  check "svg|a[*|href]"
 
 let test_nth () =
   (* Test nth type -- odd/even are canonicalized to 2n+1/2n *)
@@ -2584,6 +2604,8 @@ let suite =
       (* Core type tests *)
       test_case "combinator" `Quick test_combinator;
       test_case "ns" `Quick test_ns;
+      test_case "column combinator vs namespace" `Quick
+        column_combinator_vs_namespace;
       test_case "nth" `Quick test_nth;
       test_case "selector" `Quick test_selector;
       test_case "aria_attr" `Quick test_aria_attr;
