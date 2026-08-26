@@ -231,7 +231,7 @@ let test_noisy_unforgiving buf =
         ".card:has(:has(img))";
         ".card:has(::before)";
         ".a::before.class";
-        ".a::before::marker";
+        ".a::before::before";
       ]
       buf 0
   in

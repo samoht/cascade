@@ -160,6 +160,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A rule whose selector chains one pseudo-element onto another, such as
+  `::before::marker`, `::part(label)::before` or `::slotted(a)::before`, is
+  read and written back instead of dropped. CSS Selectors 4 sec. 3.6.4
+  (Editor's Draft, drafts.csswg.org/selectors-4/) makes such a chain valid
+  where another specification defines the sub-pseudo-element, and CSS
+  Pseudo-Elements 4 sec. 4.2 and sec. 5 and CSS Shadow 1 sec. 3.2.4 (both
+  Editor's Drafts) do. `::before::before` stays invalid (#553)
 - A rule whose selector puts a combinator after a pseudo-element, such as
   `.a::before .b`, is reported and dropped instead of written back. CSS
   Selectors 4 sec. 3.6.5 (Editor's Draft, drafts.csswg.org/selectors-4/) makes

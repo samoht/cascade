@@ -973,20 +973,21 @@ let pseudo_element_combinator_guard () =
    matches". cascade turns the never-matching rows into a refusal, the way
    [pseudo_element_allows] already turns sec. 5's [:has()] and structural rows
    into one, so [::part()] and [::slotted()] never follow another
-   pseudo-element: Chrome 151 and Lightning CSS both drop [::part(x)::part(y)],
-   [::details-content::part(y)], [::part(x)::slotted(b)] and
-   [::slotted(a)::slotted(b)]. The element-backed row is [::part()] and
-   [::details-content], the pair [pseudo_element_allows] already carries. Sec.
-   5.1 puts [::file-selector-button] in the same section, but Chrome 151 and
-   Lightning CSS both drop [::file-selector-button::before], so it stays out on
-   the same engines-over-spec-text bargain the sec. 3.6.3 rows take.
+   pseudo-element: Chrome 151, WebKit 27 and Lightning CSS all drop
+   [::part(x)::part(y)] and [::slotted(a)::part(y)]. [::slotted()] is in no such
+   row, so it stays allowed there and WebKit 27 keeps [::part(x)::slotted(b)].
+   The element-backed row is [::part()] and [::details-content], the pair
+   [pseudo_element_allows] already carries. Sec. 5.1 puts
+   [::file-selector-button] in the same section, but all three drop
+   [::file-selector-button::before], so it stays out on the same
+   engines-over-spec-text bargain the sec. 3.6.3 rows take.
 
    CSS Shadow 1 (Editor's Draft, drafts.csswg.org/css-shadow-1/, the document
    css-scoping-1 now redirects to) sec. 3.2.4: "The ::slotted() pseudo-element
    can be followed by a tree-abiding pseudo-element, like ::slotted()::before".
    Tree-abiding is narrower than element-backed and the engines show the gap:
-   both keep [::slotted(a)::before] and [::slotted(a)::marker] and drop
-   [::slotted(a)::first-line], while both keep [::part(x)::first-line]. The
+   all three keep [::slotted(a)::before] and [::slotted(a)::marker] and drop
+   [::slotted(a)::first-line], while all three keep [::part(x)::first-line]. The
    tree-abiding names are css-pseudo-4 sec. 4 ([::before], [::after],
    [::marker], [::placeholder]), the [::backdrop] and [::view-transition] of its
    sec. 7.1 list, and the element-backed ones its sec. 5 calls "always
@@ -1029,7 +1030,7 @@ let sub_pseudo_element_guard () =
       "::file-selector-button";
     ]
   in
-  let never_a_sub = [ "::part(tab)"; "::slotted(p)" ] in
+  let never_a_sub = [ "::part(tab)" ] in
   let generated_content = [ ":before"; "::before"; ":after"; "::after" ] in
   let allowed origin sub =
     if mem sub never_a_sub then false
@@ -1066,6 +1067,10 @@ let sub_pseudo_element_guard () =
   check_minified_to "::part(label):first-line" "::part(label)::first-line";
   check_minified_to "::slotted(a)::marker" "::slotted(a)::marker";
   check_minified_to "::details-content:before" "::details-content::before";
+  check_minified_to "::part(label)::slotted(a)" "::part(label)::slotted(a)";
+  neg_cursor read "::slotted(a)::slotted(b)";
+  neg_cursor read "::part(label)::part(x)";
+  neg_cursor read "::details-content::part(x)";
   check_minified_to "::part(label):before::marker"
     "::part(label)::before::marker";
   check_minified_to "::slotted(a):before::marker" "::slotted(a)::before::marker";
@@ -2040,7 +2045,7 @@ let spec_minifier_semantics () =
   neg_cursor read ".card:has(:has(img))";
   neg_cursor read ".card:has(::before)";
   neg_cursor read ".a::before.class";
-  neg_cursor read ".a::before::marker"
+  neg_cursor read ".a::before::before"
 
 (* ignore-test *)
 let test_spec_forgiving_selector_lists () =
@@ -2145,7 +2150,7 @@ let spec_selector_scope_pseudo_edges () =
   neg_cursor read "+ .item";
   neg_cursor read "~ .item";
   neg_cursor read ".a::before.class";
-  neg_cursor read ".a::before::marker";
+  neg_cursor read ".a::before::before";
   neg_cursor read ".a:has(:has(img))";
   neg_cursor read ".a:has(::before)";
   neg_cursor read "div#";

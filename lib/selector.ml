@@ -1130,9 +1130,11 @@ let rec matches_nothing = function
   | List xs -> List.for_all matches_nothing xs
   | _ -> false
 
-(* CSS Selectors 4 sec. 3.6.3: a pseudo-element compound may only be followed by
-   pseudo-classes. Class/id/type/attribute selectors after the pseudo-element
-   still make the compound invalid. *)
+(* CSS Selectors 4 sec. 3.6.3: what may follow a pseudo-element in its compound
+   is a pseudo-class, and sec. 3.6.4 adds a sub-pseudo-element
+   ([pseudo_element_allows_sub]). A class, id, type or attribute selector after
+   the pseudo-element makes the compound invalid whatever the pseudo-element
+   is. *)
 let is_pe_action = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ | Nesting -> false
   | sel -> not (is_pseudo_element sel)
@@ -1237,6 +1239,53 @@ and pseudo_element_allows_argument pe = function
       List.for_all (pseudo_element_allows_argument pe) components
   | Combined _ | Relative _ | List _ -> false
   | c -> is_pe_action c && pseudo_element_allows pe c
+
+(* CSS Pseudo-Elements 4 sec. 4 names the tree-abiding pseudo-elements, sec. 7.1
+   lists [::backdrop] and [::view-transition] among them, and sec. 5 adds that
+   "element-backed pseudo-elements are always tree-abiding". [::part()] is
+   element-backed and so belongs here on that reading, and is left out because
+   sec. 5 also says it never matches after a pseudo-element. *)
+let is_tree_abiding_pseudo_element = function
+  | Before _ | After _ | Marker | Placeholder | Backdrop | View_transition
+  | Details_content | File_selector_button ->
+      true
+  | _ -> false
+
+(* Which pseudo-elements each pseudo-element takes after it, in the same
+   compound. CSS Selectors 4 sec. 3.6.4 refuses the shape "unless the
+   corresponding sub-pseudo-element is explicitly defined to exist in another
+   specification", so the rows below are those definitions and nothing else:
+   [::before::before] goes, [::before::marker] stays.
+
+   CSS Pseudo-Elements 4 sec. 4.2 defines the [::marker] of a [::before] or
+   [::after] that is a list item, and rules [::marker::marker] out. Sec. 5 lets
+   an element-backed pseudo-element take every pseudo-element "just as if the
+   pseudo-element were a type selector", bar [::part()], which "never matches"
+   there; cascade turns that never-matching row into a refusal, as it does one
+   row up for [:has()] and the structural pseudo-classes. Sec. 5.1 files
+   [::file-selector-button] as element-backed, but Chrome 151, WebKit 27 and
+   Lightning CSS all drop [::file-selector-button::before], so the originating
+   row keeps the [::part()] / [::details-content] pair [pseudo_element_allows]
+   carries.
+
+   CSS Shadow 1 sec. 3.2.4 gives [::slotted()] a narrower row of its own: "the
+   ::slotted() pseudo-element can be followed by a tree-abiding pseudo-element".
+   The engines show the difference, dropping [::slotted(a)::first-line] while
+   keeping [::part(x)::first-line].
+
+   One adjacent pair at a time, so a longer chain is as valid as each of its
+   links: Chrome keeps [::part(x)::before::marker] and drops
+   [::part(x)::marker::before].
+
+   An unmodelled [::] name keeps the bargain [pseudo_element_allows] makes for
+   it: cascade preserves the name rather than judging what may follow it. *)
+let pseudo_element_allows_sub pe sub =
+  match pe with
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ -> true
+  | Part _ | Details_content -> ( match sub with Part _ -> false | _ -> true)
+  | Slotted _ -> is_tree_abiding_pseudo_element sub
+  | Before _ | After _ -> ( match sub with Marker -> true | _ -> false)
+  | _ -> false
 
 (* CSS Selectors 4 sec. 3.6.5: a pseudo-element defined to have internal
    structure may be followed by a child or descendant combinator, and a selector
@@ -1722,6 +1771,9 @@ and read_compound t =
        reader when a whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
     match List.find_opt is_pseudo_element acc with
+    | Some pe when is_pseudo_element s ->
+        if pseudo_element_allows_sub pe s then s :: acc
+        else Cursor.err t "pseudo-element not allowed after this pseudo-element"
     | Some _ when not (is_pe_action s) ->
         Cursor.err t "pseudo-element must be last in compound selector"
     | Some pe when not (pseudo_element_allows pe s) ->
