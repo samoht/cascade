@@ -33,6 +33,13 @@ type font_tech =
   | Palettes
   | Incremental
 
+val font_tech_of_string : string -> font_tech option
+(** [font_tech_of_string s] is the [<font-tech>] keyword [s] spells (CSS Fonts 4
+    sec. 11.1), or [None] for anything else. [s] is matched lower-cased. *)
+
+val string_of_font_tech : font_tech -> string
+(** [string_of_font_tech tech] is the canonical spelling of [tech]. *)
+
 type function_feature =
   | Selector of Selector.t
   | Font_format of font_format

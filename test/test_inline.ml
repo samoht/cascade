@@ -99,11 +99,11 @@ let test_inline_font_face_var_descriptors () =
       "font-variant";
       "font-feature-settings";
       "font-variation-settings";
+      "font-tech";
+      "size-adjust";
       "ascent-override";
       "descent-override";
       "line-gap-override";
-      "font-tech";
-      "size-adjust";
     ]
     kept
 

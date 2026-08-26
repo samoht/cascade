@@ -93,8 +93,8 @@ let test_metric_override_non_negative buf =
 
 let test_size_adjust_non_negative buf =
   match parse_size_adjust buf with
-  | None -> ()
-  | Some p ->
+  | None | Some (Css.Font_face.Var _) -> ()
+  | Some (Css.Font_face.Pct p) ->
       if Float.compare p 0. < 0 then
         fail "size-adjust parsed a negative percentage"
 
@@ -203,12 +203,19 @@ let test_invalid_metric_vectors buf =
 
 let test_spec_size_adjust_vectors buf =
   let input, expected =
-    pick [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5) ] buf 5
+    pick
+      [
+        ("0%", Css.Font_face.Pct 0.);
+        ("100%", Css.Font_face.Pct 100.);
+        ("125.5%", Css.Font_face.Pct 125.5);
+      ]
+      buf 5
   in
   match parse_size_adjust input with
   | Some actual when Css.Font_face.equal_size_adjust actual expected -> ()
   | Some actual ->
-      failf "font size-adjust structure changed: %S -> %g" input actual
+      failf "font size-adjust structure changed: %S -> %s" input
+        (Css.Font_face.string_of_size_adjust actual)
   | None -> failf "valid font size-adjust vector rejected: %S" input
 
 let test_invalid_size_adjust_vectors buf =
@@ -216,7 +223,8 @@ let test_invalid_size_adjust_vectors buf =
   match parse_size_adjust input with
   | None -> ()
   | Some size_adjust ->
-      failf "invalid font size-adjust vector parsed: %S -> %g" input size_adjust
+      failf "invalid font size-adjust vector parsed: %S -> %s" input
+        (Css.Font_face.string_of_size_adjust size_adjust)
 
 let suite =
   ( "font_face",

@@ -686,6 +686,17 @@ let simplify_metric_override_descriptor visible =
     ~as_var:(function Font_face.Var v -> Some v | _ -> Option.None)
     ~of_var:(fun v -> (Font_face.Var v : Font_face.metric_override))
 
+let simplify_font_tech_descriptor visible =
+  simplify_typed_var visible ~read:read_font_tech_descriptor
+    ~as_var:(function Var v -> Some v | Tech _ -> Option.None)
+    ~of_var:(fun v -> (Var v : font_tech_descriptor))
+
+let simplify_size_adjust_descriptor visible =
+  simplify_typed_var visible ~read:Font_face.read_size_adjust
+    ~as_var:(function
+      | Font_face.Var v -> Some v | Font_face.Pct _ -> Option.None)
+    ~of_var:(fun v -> (Font_face.Var v : Font_face.size_adjust))
+
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse
    and asks for one resolver each, so this pass and the parser cannot grow
    apart: a descriptor added to that table takes a resolver argument the call
@@ -705,6 +716,8 @@ let simplify_font_face_descriptor visible descriptor =
       ~font_variation_settings:
         (simplify_font_variation_settings_descriptor visible)
       ~metric_override:(simplify_metric_override_descriptor visible)
+      ~font_tech:(simplify_font_tech_descriptor visible)
+      ~size_adjust:(simplify_size_adjust_descriptor visible)
       descriptor
   with
   | Some resolved -> resolved

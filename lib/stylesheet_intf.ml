@@ -282,6 +282,13 @@ and font_variant_descriptor =
   | Values of font_variant_descriptor_value list
   | Var of font_variant_descriptor Values.var
 
+(** CSS Fonts 4 sec. 11.1 [<font-tech>], shared with [font-tech()] in
+    [\@supports]. No descriptor grammar takes a [var()] (sec. 4.1), so [Var]
+    parks a reference until the inline pass substitutes it. *)
+and font_tech_descriptor =
+  | Tech of Supports.font_tech
+  | Var of font_tech_descriptor Values.var
+
 and font_variant_descriptor_value =
   | Ligature of Properties.font_variant_ligature
   | Caps of Properties.font_variant_caps
@@ -306,7 +313,8 @@ and font_face_descriptor =
       (** variable font weight range, e.g. [100 900] *)
   | Font_stretch of Properties.font_stretch
       (** normal, condensed, expanded, etc. *)
-  | Font_stretch_range of string  (** variable font stretch range *)
+  | Font_stretch_range of Properties.font_stretch * Properties.font_stretch
+      (** variable font stretch range, e.g. [50% 200%] *)
   | Font_display of Properties.font_display
       (** auto, block, swap, fallback, optional *)
   | Unicode_range of Properties.unicode_range list
@@ -316,7 +324,7 @@ and font_face_descriptor =
       (** OpenType feature settings *)
   | Font_variation_settings of Properties.font_variation_settings
       (** Variable font settings *)
-  | Font_tech of string  (** [font-tech] descriptor *)
+  | Font_tech of font_tech_descriptor  (** [font-tech] descriptor *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
   | Descent_override of Font_face.metric_override
@@ -356,7 +364,8 @@ let equal (a : stylesheet) b = a = b
     so both sides have to answer for it. *)
 let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
     ~font_weight ~font_stretch ~font_display ~font_variant
-    ~font_feature_settings ~font_variation_settings ~metric_override = function
+    ~font_feature_settings ~font_variation_settings ~metric_override ~font_tech
+    ~size_adjust = function
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_family values -> Some (Font_family (font_family values))
@@ -367,6 +376,8 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Font_weight_range (low, high) ->
       Some (Font_weight_range (font_weight low, font_weight high))
   | Font_stretch value -> Some (Font_stretch (font_stretch value))
+  | Font_stretch_range (low, high) ->
+      Some (Font_stretch_range (font_stretch low, font_stretch high))
   | Font_display value -> Some (Font_display (font_display value))
   | Font_variant value -> Some (Font_variant (font_variant value))
   | Font_feature_settings value ->
@@ -376,7 +387,5 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Ascent_override value -> Some (Ascent_override (metric_override value))
   | Descent_override value -> Some (Descent_override (metric_override value))
   | Line_gap_override value -> Some (Line_gap_override (metric_override value))
-  (* The rest hold a value type with no [Var] arm to park an unresolved
-     reference in, so the parser has nowhere to keep one and drops the
-     declaration as a browser does. *)
-  | Font_stretch_range _ | Font_tech _ | Size_adjust _ -> Option.None
+  | Font_tech value -> Some (Font_tech (font_tech value))
+  | Size_adjust value -> Some (Size_adjust (size_adjust value))

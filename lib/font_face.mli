@@ -18,8 +18,13 @@ val string_of_metric_override : metric_override -> string
 
 (** {1 Size Adjust} *)
 
-type size_adjust = float
-(** Size adjustment percentage. *)
+(** CSS Fonts 5 sec. 4.4: a [<percentage [0,inf]>] glyph size multiplier. No
+    descriptor grammar takes a [var()] (CSS Fonts 4 sec. 4.1), so [Var] parks a
+    reference until the inline pass substitutes it. *)
+type size_adjust = Pct of float | Var of size_adjust Values.var
+
+val pp_size_adjust : size_adjust Pp.t
+(** [pp_size_adjust] renders one [size-adjust] value. *)
 
 val string_of_size_adjust : size_adjust -> string
 (** [string_of_size_adjust s] converts size adjust to string. *)

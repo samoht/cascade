@@ -607,6 +607,11 @@ recorded cases carrying six minifiers' answers.
   `Css.inline_vars` instead of being dropped at parse time. The descriptor is a
   comma-separated list, so the reference may stand for one family or for the
   whole stack (#575)
+- `Css.inline_vars` resolves a `var()` in the `size-adjust` and `font-tech`
+  descriptors of an `@font-face`, and in either endpoint of a `font-stretch`
+  range. The first two were dropped at parse time; the range carried the
+  reference through to the output, where a browser drops the whole
+  declaration (#577)
 - A `var()` in the `font-style`, `font-weight`, `font-stretch`,
   `font-display`, `font-feature-settings` or `font-variation-settings`
   descriptor of an `@font-face` is resolved by `Css.inline_vars` instead of

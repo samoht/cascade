@@ -460,6 +460,11 @@ val pp_import_rule : import_rule Pp.t
 val read_import_rule : Cursor.t -> import_rule
 (** [read_import_rule r] parses an import rule. *)
 
+val read_font_tech_descriptor : Cursor.t -> font_tech_descriptor
+(** [read_font_tech_descriptor r] parses the [font-tech] descriptor of an
+    [\@font-face] rule: one [<font-tech>] keyword (CSS Fonts 4 sec. 11.1), or a
+    [var()] reference the inline pass resolves. *)
+
 val pp_layer_name : layer_name Pp.t
 (** [pp_layer_name] prints a [<layer-name>]: each ident with the escapes that
     read it back (CSS Syntax 3 sec. 2.1), joined by the [.] separators of CSS
