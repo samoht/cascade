@@ -376,6 +376,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- Merging a distant same-condition `@media` block carries its accumulator
+  reversed instead of appending to the end, so the pass costs a line in the
+  statement count rather than a square. A 4,000-statement sheet allocates
+  24.4M words before and 0.4M after (#566)
 - `Css.optimize` writes an unrecognised at-rule's opaque body back as the token
   stream it read, so `@foo{ .a { color: red } }` minifies to
   `@foo{.a{color:red}}`. `~lossless:true` leaves the body as authored, and the
