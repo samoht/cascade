@@ -38,7 +38,7 @@ let font_face_descriptors =
     ("font-variant", "normal");
     ("font-feature-settings", "normal");
     ("font-variation-settings", "normal");
-    ("font-tech", "\"variations\"");
+    ("font-tech", "variations");
     ("size-adjust", "100%");
     ("ascent-override", "normal");
     ("descent-override", "normal");
@@ -102,6 +102,8 @@ let test_inline_font_face_var_descriptors () =
       "ascent-override";
       "descent-override";
       "line-gap-override";
+      "font-tech";
+      "size-adjust";
     ]
     kept
 
@@ -143,6 +145,8 @@ let test_inline_font_face_var_resolves () =
       ("ascent-override", "normal");
       ("descent-override", "90%");
       ("line-gap-override", "10%");
+      ("font-tech", "variations");
+      ("size-adjust", "100%");
     ]
 
 (* CSS Fonts 4 sec. 2.1 makes the [font-family] descriptor a [<family-name>#]
@@ -168,6 +172,16 @@ let test_inline_font_face_family_list () =
         ":root{--f:Arial,var(--f)}@font-face{font-family:b,var(--f);src:local(a)}",
         "@font-face{font-family:b,Arial,var(--f);src:local(a)}" );
     ]
+
+(* CSS Fonts 4 sec. 4.4 takes the font-width descriptor as
+   [<'font-width'>{1,2}], so the range form has two endpoints and a [var()] can
+   stand for either. A range built from one raw endpoint and one reference has
+   to reach the output with neither reference left in it. *)
+let test_inline_font_face_var_stretch_range () =
+  check_inline_case "font-stretch range endpoint from a var()"
+    ":root{--wide:200%}@font-face{font-family:a;src:local(anchor);font-stretch:50% \
+     var(--wide)}"
+    "@font-face{font-family:a;src:local(anchor);font-stretch:50% 200%}"
 
 let test_inline_substitutes_vars () =
   check_inline ~optimized:".button{color:#00f}"
@@ -884,6 +898,8 @@ let suite =
     [
       Alcotest.test_case "inline vars resolve a typed @font-face descriptor"
         `Quick test_inline_font_face_var_resolves;
+      Alcotest.test_case "inline vars resolve a @font-face range endpoint"
+        `Quick test_inline_font_face_var_stretch_range;
       Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
         test_inline_vars_liveness_propagates_through_scopes;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"

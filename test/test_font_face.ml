@@ -350,7 +350,7 @@ let spec_fontface_var_descriptor_edges () =
     in
     lenient @ strict
   in
-  match List.concat_map mismatches [ "size-adjust"; "font-tech" ] with
+  match List.concat_map mismatches [] with
   | [] -> ()
   | mismatches ->
       Alcotest.failf "@font-face descriptors keeping var():\n%s"
@@ -402,6 +402,8 @@ let spec_fontface_var_descriptor_kept () =
         "ascent-override";
         "descent-override";
         "line-gap-override";
+        "font-tech";
+        "size-adjust";
       ]
   with
   | [] -> ()
