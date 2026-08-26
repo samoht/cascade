@@ -2680,6 +2680,45 @@ let s3431_unknown_at_rule_prelude_separator () =
     "statement form without a prelude stays unspaced" "@foo;"
     (roundtrips "@foo;")
 
+(* CSS Syntax 3 sec. 4.3.1: a backslash is the start of an escape unless a
+   newline follows it, so a raw body ending on an odd run of backslashes eats
+   the [}] written straight after it and the at-rule never closes. Parsing can
+   only produce such a body at EOF, where recovery closes the block again and
+   hides the damage; the reachable case is a stylesheet that holds a statement
+   after the at-rule, where the escape swallows that statement instead.
+
+   A newline is the only separator that repairs it. Sec. 4.3.7 reads a space or
+   a hex digit as part of the escape, so either one changes the last backslash
+   from the delim token it was; a newline cannot be escaped, so the delim stays
+   a delim and the closer stays a closer. *)
+let s3431_unknown_at_rule_trailing_backslash () =
+  let parse input = read (Cursor.of_string input) in
+  let printed sheet =
+    String.trim (Css.Stylesheet.to_string ~minify:true sheet)
+  in
+  let at_rule body =
+    Unknown_at_rule { name = "o"; prelude = "x"; block = Some body }
+  in
+  let survives name body =
+    let sheet = [ at_rule body; List.hd (parse ".b{color:red}") ] in
+    Alcotest.(check int)
+      (name ^ ": the statement after the at-rule survives a round-trip")
+      2
+      (List.length (parse (printed sheet)))
+  in
+  survives "one backslash" " a \\";
+  survives "three backslashes" " a \\\\\\";
+  (* Control: an even run is a complete escape, and the closer after it already
+     closes the block. *)
+  survives "two backslashes" " a \\\\";
+  Alcotest.(check string)
+    "a body ending on a delim backslash is closed after a newline"
+    "@o x{ a \\\n}"
+    (printed [ at_rule " a \\" ]);
+  Alcotest.(check string)
+    "an escaped backslash needs no separator" "@o x{ a \\\\}"
+    (printed [ at_rule " a \\\\" ])
+
 (* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
    re-serialise its body from, so the body travels as the source text between
    its braces. That text is what sits between the at-rule's own braces. Taking
@@ -8955,6 +8994,9 @@ let additional_tests =
     ( "spec CSS Syntax 4.3.1 unknown at-rule prelude separator",
       `Quick,
       s3431_unknown_at_rule_prelude_separator );
+    ( "spec CSS Syntax 4.3.1 unknown at-rule trailing backslash",
+      `Quick,
+      s3431_unknown_at_rule_trailing_backslash );
     ("spec @-moz-document prelude forms", `Quick, moz_document_prelude_forms);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
