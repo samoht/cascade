@@ -699,6 +699,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
+  work out of `resolve`, so a caller walking a document flattens the nesting
+  and buckets the rules by layer once rather than per node. Ten queries against
+  a 2,000-rule sheet allocate 4.6x less (#567)
 - `Css.Properties.compare_property` and `Css.Declaration.compare_prop_key` are
   a total order on a property identity, `0` exactly where equality holds. The
   table that drops shadowed rules orders its coverage set with it instead of

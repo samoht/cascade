@@ -345,10 +345,78 @@ let test_apply_compute () =
   Alcotest.(check int) "the :hover rule is kept in a <style>" 1 result.kept;
   Alcotest.(check bool) "kept css is non-empty" true (result.keep_css <> "")
 
+(* --- allocation / complexity guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+let sheet_of_size n =
+  let b = Buffer.create ((n * 20) + 32) in
+  let out = Fmt.with_buffer b in
+  for i = 1 to n do
+    Fmt.pf out ".c%d{--p%d:%d}" i i i
+  done;
+  Buffer.add_string b "#s1{color:red}";
+  match Css.of_string (Buffer.contents b) with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+(* Flattening the sheet and bucketing its rules by layer depend on the sheet
+   alone, so a caller walking a document should pay for them once. Ten queries
+   against one prepared sheet cost close to one preparation; ten calls of
+   [resolve] pay ten times. *)
+let test_resolve_prepared_shares_the_sheet () =
+  let sheet = sheet_of_size 2_000 in
+  let queries = 10 in
+  let repeated =
+    measure (fun () ->
+        let last = ref [] in
+        for _ = 1 to queries do
+          last := R.resolve sheet s1
+        done;
+        !last)
+  in
+  let shared =
+    measure (fun () ->
+        let prepared = Resolve.prepare sheet in
+        let last = ref [] in
+        for _ = 1 to queries do
+          last := R.resolve_prepared prepared s1
+        done;
+        !last)
+  in
+  let ratio = repeated /. shared in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f repeated vs %.0f shared (%.2fx for %d queries)"
+       repeated shared ratio queries)
+    true (ratio > 3.)
+
+(* [resolve] is [prepare] followed by [resolve_prepared], so the two answer
+   alike on every node. *)
+let test_resolve_prepared_agrees () =
+  let sheet = sheet_of_size 32 in
+  let prepared = Resolve.prepare sheet in
+  List.iter
+    (fun node ->
+      let direct = List.map Declaration.to_string (R.resolve sheet node) in
+      let via =
+        List.map Declaration.to_string (R.resolve_prepared prepared node)
+      in
+      Alcotest.(check (list string)) "prepared resolve agrees" direct via)
+    [ s1; s2; a; b; section ]
+
 let suite =
   ( "resolve",
     [
       Alcotest.test_case "simple selectors" `Quick test_simple;
+      Alcotest.test_case "prepared resolve shares the sheet" `Quick
+        test_resolve_prepared_shares_the_sheet;
+      Alcotest.test_case "prepared resolve agrees with resolve" `Quick
+        test_resolve_prepared_agrees;
       Alcotest.test_case "single combinator" `Quick test_single_combinator;
       Alcotest.test_case "sibling then descendant/child" `Quick
         test_sibling_then_descendant;
