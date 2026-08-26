@@ -160,6 +160,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A rule nested under a pseudo-element parent, such as `.b` in
+  `.a::before{.b{color:red}}`, is dropped instead of flattened to
+  `.a::before .b`. CSS Selectors 4 sec. 3.6.5 makes that selector invalid and
+  every engine matches nothing with it (#559)
+- An unknown at-rule whose raw body ends on a backslash is written with a
+  closer that closes it. The backslash used to escape the `}` the printer wrote
+  after it, so the next statement in the stylesheet was swallowed into the body
+  (#558)
 - Bare `::cue`, `::cue-region` and the scrollbar parts past
   `::-webkit-scrollbar` are read as the pseudo-elements they are, so
   `::cue::before` and `.a::-webkit-scrollbar-thumb .b` are dropped the way
@@ -368,6 +376,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- Merging a distant same-condition `@media` block carries its accumulator
+  reversed instead of appending to the end, so the pass costs a line in the
+  statement count rather than a square. A 4,000-statement sheet allocates
+  24.4M words before and 0.4M after (#566)
+- `Css.optimize` writes an unrecognised at-rule's opaque body back as the token
+  stream it read, so `@foo{ .a { color: red } }` minifies to
+  `@foo{.a{color:red}}`. `~lossless:true` leaves the body as authored, and the
+  printer never touches it (#560)
 - `--minify` indexes each selector's latest write by property instead of
   rescanning every later declaration when deciding whether a rule is shadowed.
   The 8,000-rule same-selector benchmark is about 108x faster.
@@ -683,6 +699,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.inline_vars` no longer costs a square in the variable count: liveness is
+  decided through indexes and a worklist, and the customs a rule can see are
+  indexed by name instead of scanned per declaration. A 12,800-variable sheet
+  goes from 2.4s to 0.11s (#568, #569)
+- `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
+  work out of `resolve`, so a caller walking a document flattens the nesting
+  and buckets the rules by layer once rather than per node. Ten queries against
+  a 2,000-rule sheet allocate 4.6x less (#567)
 - `Css.Properties.compare_property` and `Css.Declaration.compare_prop_key` are
   a total order on a property identity, `0` exactly where equality holds. The
   table that drops shadowed rules orders its coverage set with it instead of

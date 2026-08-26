@@ -184,6 +184,19 @@ let layered_rules stmts =
 
 let layer_order stmts = List.map layer_key (fst (layered_rules stmts))
 
+(* Everything [resolve] can work out from the sheet alone: the flattened rule
+   list with each rule's layer, and the layer order the cascade ranks by.
+   Neither depends on the node, so a caller walking a document pays for them
+   once rather than per element. *)
+type prepared = {
+  layer_order : string list;
+  rules : (string list option * Stylesheet.rule) list;
+}
+
+let prepare sheet =
+  let paths, rules = layered_rules (Flatten.block sheet) in
+  { layer_order = List.map layer_key paths; rules }
+
 module Make (N : NODE) = struct
   let preceding_siblings n =
     match N.parent n with
@@ -348,13 +361,11 @@ module Make (N : NODE) = struct
               (Selector.specificity b) rest)
     | None -> Selector.specificity sel
 
-  let resolve sheet node =
+  let resolve_prepared { layer_order; rules } node =
     let upsert acc d =
       let k = Declaration.property_name d in
       (k, d) :: List.remove_assoc k acc
     in
-    let paths, rules = layered_rules (Flatten.block sheet) in
-    let layer_order = List.map layer_key paths in
     let matched =
       rules
       |> List.mapi (fun i (layer, r) ->
@@ -398,6 +409,8 @@ module Make (N : NODE) = struct
     (* normal first, then !important, last wins per property *)
     List.fold_left upsert [] (bucket ~important:false @ bucket ~important:true)
     |> List.rev_map snd
+
+  let resolve sheet node = resolve_prepared (prepare sheet) node
 end
 
 (* The capability side of the matcher, read off the matcher rather than restated

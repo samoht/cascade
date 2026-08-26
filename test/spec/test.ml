@@ -296,7 +296,7 @@ let syntax_recovery () =
      [Optimize.drop_unknown_at_rules]. Its body has no known grammar, so it
      travels as source text and minify has nothing to shorten it against. *)
   recover "@unknown { .a { color: red } } .b { color: blue }"
-    "@unknown{ .a { color: red } }.b{color:#00f}" 1;
+    "@unknown{.a{color:red}}.b{color:#00f}" 1;
   recover ".a { color: red" ".a{color:red}" 0
 
 (* {2 CSS Selectors Level 4} https://www.w3.org/TR/selectors-4/ *)

@@ -24,12 +24,32 @@ let scope_selector_in_context (parent : Selector.t) selector =
   if contains_nesting selector then substitute_nesting ~parent selector
   else selector
 
+(* CSS Selectors 4 sec. 3.6.5: a combinator after a pseudo-element is invalid,
+   and nesting composes exactly that selector out of a valid parent and a valid
+   child. Such a rule matches nothing in any engine, so drop the branches that
+   follow the pseudo-element and keep the ones that extend its compound. *)
+let keep_readable_branches (selector : Selector.t) =
+  let keeps sel = not (Selector.has_combinator_after_pseudo_element sel) in
+  match selector with
+  | Selector.List branches -> (
+      match List.filter keeps branches with
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | branches -> Option.Some (Selector.List branches))
+  | sel when keeps sel -> Option.Some sel
+  | _ -> Option.None
+
 let rec flat_rule ?(parent : Selector.t option) (rule : rule) : statement list =
   let selector =
     match parent with
-    | None -> rule.selector
-    | Some p -> combine_with_parent p rule.selector
+    | None -> Option.Some rule.selector
+    | Some p -> keep_readable_branches (combine_with_parent p rule.selector)
   in
+  match selector with
+  | Option.None -> []
+  | Option.Some selector -> flat_rule_with ~selector rule
+
+and flat_rule_with ~selector (rule : rule) : statement list =
   let direct =
     if rule.declarations = [] then []
     else

@@ -6,10 +6,14 @@
 
 open Cascade
 
-val neg : (Reader.t -> 'a) -> string -> unit
-(** [neg reader input] tests that parsing should fail by attempting to parse the
-    input and expecting either a Parse_error exception or incomplete consumption
-    of input. *)
+val neg : ?allow_partial:bool -> (Reader.t -> 'a) -> string -> unit
+(** [neg reader input] tests that [reader] rejects [input], by raising
+    [Parse_error] or by returning without having taken the whole of it.
+    Returning a value and leaving input behind is an acceptance, not a
+    rejection: a reader that takes the prefix of [margin: inherit 10px] has
+    accepted a value the case calls invalid. Pass [~allow_partial:true] for a
+    reader whose contract is to stop early, where leftover input is the
+    rejection. *)
 
 val none : (Reader.t -> 'a option) -> string -> unit
 (** [none reader input] tests that parsing should fail by expecting None result.
@@ -36,8 +40,8 @@ val check_value :
     [expected] must be spec-derived. Optionally tests roundtrip stability (parse
     -> print -> parse -> print). *)
 
-val neg_cursor : (Cursor.t -> 'a) -> string -> unit
-(** Cursor-based variant of {!neg}. *)
+val neg_cursor : ?allow_partial:bool -> (Cursor.t -> 'a) -> string -> unit
+(** Cursor-based variant of {!neg}, with the same [allow_partial] contract. *)
 
 val none_cursor : (Cursor.t -> 'a option) -> string -> unit
 (** Cursor-based variant of {!none}. *)

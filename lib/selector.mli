@@ -262,6 +262,14 @@ val has_newer_pseudo_class : t -> bool
     forgiving parsing). Newer pseudo-classes should not be combined in selector
     lists with group/peer variants to preserve browser compatibility. *)
 
+val has_combinator_after_pseudo_element : t -> bool
+(** [has_combinator_after_pseudo_element sel] is [true] when [sel] puts a
+    combinator after a pseudo-element, which CSS Selectors 4 sec. 3.6.5 makes
+    invalid and {!of_string} refuses. Reading it off a built selector catches
+    the selectors nesting composes, which join a valid parent to a valid child
+    without either one being refused. [>>>] and [/deep/] do not count: no engine
+    parses them, so the rule never reaches them. *)
+
 val is_pseudo_element : t -> bool
 (** [is_pseudo_element sel] is [true] when [sel] is one simple selector naming a
     pseudo-element: a box other than the originating element, where an

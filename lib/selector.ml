@@ -1347,6 +1347,22 @@ let bars_following_combinator = function
   | Compound components -> List.exists is_modelled_pseudo_element components
   | sel -> is_modelled_pseudo_element sel
 
+(* The same sec. 3.6.5 rule read off a built selector rather than applied while
+   reading one. Nesting reaches a selector the reader would refuse, because it
+   joins a valid parent to a valid child without either passing the check. The
+   two tooling combinators are exempt for the reason [check_combinator] exempts
+   them: no engine parses them, so the rule never reaches them. *)
+let rec has_combinator_after_pseudo_element = function
+  | List branches -> List.exists has_combinator_after_pseudo_element branches
+  | Combined (left, comb, right) ->
+      (match comb with
+        | Shadow_piercing | Shadow_deep -> false
+        | Descendant | Child | Next_sibling | Subsequent_sibling | Column ->
+            bars_following_combinator left)
+      || has_combinator_after_pseudo_element left
+      || has_combinator_after_pseudo_element right
+  | _ -> false
+
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
    only happens once instead of per [:foo] / [::foo] pseudo read. *)

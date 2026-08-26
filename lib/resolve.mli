@@ -86,6 +86,17 @@ val layer_order : Stylesheet.t -> string list
     This is the [~layer_order] that {!Stylesheet.cascade_layer_precedence_rank}
     expects. *)
 
+type prepared
+(** A stylesheet with everything {!Make.resolve} can settle without a node
+    worked out: the flattened rules with their layers, and the layer order the
+    cascade ranks by. *)
+
+val prepare : Stylesheet.t -> prepared
+(** [prepare sheet] is [sheet] with its nesting flattened and its rules bucketed
+    by layer. A caller resolving many nodes against one sheet prepares it once
+    and passes the result to {!Make.resolve_prepared}, rather than paying for
+    the flattening per node. *)
+
 module Make (N : NODE) : sig
   val match_selector : Selector.t -> N.t -> match_result
   (** [match_selector sel node] is what the matcher can say about [sel] and
@@ -98,14 +109,19 @@ module Make (N : NODE) : sig
       [No_match], so a caller that has to tell the two apart wants
       {!match_selector}. *)
 
+  val resolve_prepared : prepared -> N.t -> Declaration.declaration list
+  (** [resolve_prepared prepared node] is {!resolve} against an already
+      {!prepare}d sheet. Same result, without redoing the sheet-only work per
+      node. *)
+
   val resolve : Stylesheet.t -> N.t -> Declaration.declaration list
-  (** [resolve sheet node] is the declarations that win for [node] after
-      flattening nesting and applying the cascade: selector matching,
-      [!important] over normal, then cascade layer, specificity and source
-      order. [@layer] blocks and [@layer a, b;] statements order the layers by
-      first appearance, sublayers included; among normal declarations the last
-      layer wins and an unlayered declaration beats them all, and for
-      [!important] declarations that order reverses.
+  (** [resolve sheet node] is [resolve_prepared (prepare sheet) node]: the
+      declarations that win for [node] after flattening nesting and applying the
+      cascade: selector matching, [!important] over normal, then cascade layer,
+      specificity and source order. [@layer] blocks and [@layer a, b;]
+      statements order the layers by first appearance, sublayers included; among
+      normal declarations the last layer wins and an unlayered declaration beats
+      them all, and for [!important] declarations that order reverses.
 
       Style rules and [@layer] are the only blocks walked. A rule inside a
       conditional group rule ([@media], [@supports], [@container],

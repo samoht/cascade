@@ -263,6 +263,43 @@ let test_merge_media_joins_two_spellings_of_one_bound () =
   Alcotest.(check int)
     "two spellings of one bound merge into one block" 1 (List.length merged)
 
+(* --- allocation / complexity guard --- *)
+
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0
+
+(* [n] plain rules with one [@media print] block at each end, so the pass has
+   exactly one merge to make and [n] statements to carry while it looks for the
+   partner. Every rule writes its own property on its own selector, so nothing
+   conflicts and the merge goes through. *)
+let distant_media_run n =
+  let b = Buffer.create ((n * 24) + 64) in
+  let out = Fmt.with_buffer b in
+  Buffer.add_string b "@media print{.m0{color:red}}";
+  for i = 1 to n do
+    Fmt.pf out ".r%d{--p%d:%d}" i i i
+  done;
+  Buffer.add_string b "@media print{.m1{color:blue}}";
+  block (Buffer.contents b)
+
+(* Carrying the accumulator by appending to its end copies it once per
+   statement, so the walk costs a square in the statement count rather than a
+   line. The partner search is one scan and does not depend on [n] twice. *)
+let test_merge_distant_media_is_subquadratic () =
+  let small = distant_media_run 2_000 in
+  let large = distant_media_run 4_000 in
+  let merge stmts = Block.merge_distant_media ~optimize_merged_block:id stmts in
+  let small_words = measure (fun () -> merge small) in
+  let large_words = measure (fun () -> merge large) in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
+    true (ratio < 3.)
+
 let suite =
   ( "block",
     [
@@ -300,4 +337,6 @@ let suite =
       Alcotest.test_case "is_layer_empty" `Quick test_is_layer_empty;
       Alcotest.test_case "is_layer_empty sees nested rules" `Quick
         test_is_layer_not_empty_with_nested;
+      Alcotest.test_case "merge distant @media is subquadratic" `Quick
+        test_merge_distant_media_is_subquadratic;
     ] )

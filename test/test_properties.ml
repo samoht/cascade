@@ -1191,10 +1191,10 @@ let test_display () =
   check_display "unset";
   neg_cursor read_display "invalid-display";
   (* multiple values *)
-  neg_cursor read_display "block inline";
+  neg_cursor ~allow_partial:true read_display "block inline";
   neg_cursor read_display "flex-";
   neg_cursor read_display "";
-  neg_cursor read_display "123"
+  neg_cursor ~allow_partial:true read_display "123"
 
 let test_position () =
   check_position "static";
@@ -1203,9 +1203,9 @@ let test_position () =
   check_position "fixed";
   check_position "sticky";
   check_position "-webkit-sticky";
-  neg_cursor read_position "invalid-position";
+  neg_cursor ~allow_partial:true read_position "invalid-position";
   (* multiple values *)
-  neg_cursor read_position "absolute relative";
+  neg_cursor ~allow_partial:true read_position "absolute relative";
   (* incomplete sticky *)
   neg_cursor read_position "stick";
   (* wrong form *)
@@ -1246,7 +1246,7 @@ let test_border_style () =
   check_border_style "hidden";
   neg_cursor read_border_style "invalid-style";
   (* multiple values *)
-  neg_cursor read_border_style "solid dashed";
+  neg_cursor ~allow_partial:true read_border_style "solid dashed";
   (* typo *)
   neg_cursor read_border_style "soild";
   (* width, not style *)
@@ -1273,13 +1273,13 @@ let test_border () =
   (* Test with inherit/initial *)
   check_border "inherit";
   check_border "initial";
-  neg_cursor read_border "invalid-border";
+  neg_cursor ~allow_partial:true read_border "invalid-border";
   (* multiple widths *)
-  neg_cursor read_border "1px 2px";
+  neg_cursor ~allow_partial:true read_border "1px 2px";
   (* duplicate style *)
   neg_cursor read_border "solid solid";
   (* multiple colors *)
-  neg_cursor read_border "red blue";
+  neg_cursor ~allow_partial:true read_border "red blue";
   (* too many values *)
   neg_cursor read_border "1px solid red blue"
 
@@ -1291,7 +1291,7 @@ let test_visibility () =
   (* wrong keyword *)
   neg_cursor read_visibility "invisible";
   (* contradictory *)
-  neg_cursor read_visibility "hidden visible";
+  neg_cursor ~allow_partial:true read_visibility "hidden visible";
   (* display value, not visibility *)
   neg_cursor read_visibility "none"
 
@@ -1305,7 +1305,7 @@ let test_z_index () =
   (* no units allowed *)
   neg_cursor read_z_index "10px";
   (* duplicate *)
-  neg_cursor read_z_index "auto auto"
+  neg_cursor ~allow_partial:true read_z_index "auto auto"
 
 let test_flex_direction () =
   check_flex_direction "row";
@@ -1314,7 +1314,7 @@ let test_flex_direction () =
   check_flex_direction "column-reverse";
   neg_cursor read_flex_direction "diagonal";
   (* multiple values *)
-  neg_cursor read_flex_direction "row column";
+  neg_cursor ~allow_partial:true read_flex_direction "row column";
   (* incomplete *)
   neg_cursor read_flex_direction "reverse";
   neg_cursor read_flex_direction "column-";
@@ -1326,7 +1326,7 @@ let test_flex_wrap () =
   check_flex_wrap "wrap-reverse";
   neg_cursor read_flex_wrap "invalid-wrap";
   (* contradictory *)
-  neg_cursor read_flex_wrap "wrap nowrap";
+  neg_cursor ~allow_partial:true read_flex_wrap "wrap nowrap";
   (* doesn't exist *)
   neg_cursor read_flex_wrap "wrap-around";
   (* incomplete *)
@@ -1342,7 +1342,7 @@ let test_align_self () =
   neg_cursor read_align_self "invalid-align";
   neg_cursor read_align_self "left";
   (* not valid for align-self *)
-  neg_cursor read_align_self "flex-start flex-end";
+  neg_cursor ~allow_partial:true read_align_self "flex-start flex-end";
   (* multiple *)
   check_align_self "start"
 
@@ -1355,7 +1355,7 @@ let test_font_style () =
   neg_cursor read_font_style "invalid";
   neg_cursor read_font_style "italics";
   (* common typo *)
-  neg_cursor read_font_style "normal italic"
+  neg_cursor ~allow_partial:true read_font_style "normal italic"
 
 let test_font_display () =
   check_font_display "auto";
@@ -1365,7 +1365,7 @@ let test_font_display () =
   check_font_display "optional";
   neg_cursor read_font_display "invalid";
   neg_cursor read_font_display "inline";
-  neg_cursor read_font_display "auto block"
+  neg_cursor ~allow_partial:true read_font_display "auto block"
 
 let test_unicode_range () =
   (* Single code points per CSS spec *)
@@ -1385,8 +1385,8 @@ let test_unicode_range () =
   neg_cursor read_unicode_range "invalid";
   neg_cursor read_unicode_range "U+";
   neg_cursor read_unicode_range "U+GGGG";
-  neg_cursor read_unicode_range "U+1234-";
-  neg_cursor read_unicode_range "U+1234-GGGG";
+  neg_cursor ~allow_partial:true read_unicode_range "U+1234-";
+  neg_cursor ~allow_partial:true read_unicode_range "U+1234-GGGG";
   neg_cursor read_unicode_range "1234";
   neg_cursor read_unicode_range "+1234";
   neg_cursor read_unicode_range "U1234";
@@ -1406,7 +1406,7 @@ let test_text_align () =
   (* vertical align, not text align *)
   neg_cursor read_text_align "middle";
   (* contradictory *)
-  neg_cursor read_text_align "left right";
+  neg_cursor ~allow_partial:true read_text_align "left right";
   (* wrong form *)
   neg_cursor read_text_align "justified"
 
@@ -1419,7 +1419,7 @@ let test_text_decoration_style () =
   check_text_decoration_style "inherit";
   neg_cursor read_text_decoration_style "invalid-style";
   (* multiple styles *)
-  neg_cursor read_text_decoration_style "solid dotted";
+  neg_cursor ~allow_partial:true read_text_decoration_style "solid dotted";
   (* typo *)
   neg_cursor read_text_decoration_style "wavey";
   neg_cursor read_text_decoration_style "underline"
@@ -1434,7 +1434,7 @@ let test_text_overflow () =
   (* literal ellipsis not valid *)
   neg_cursor read_text_overflow "...";
   (* CSS Overflow 4 text-overflow accepts at most two markers *)
-  neg_cursor read_text_overflow "clip ellipsis clip"
+  neg_cursor ~allow_partial:true read_text_overflow "clip ellipsis clip"
 
 let test_text_wrap () =
   check_text_wrap "wrap";
@@ -1444,7 +1444,7 @@ let test_text_wrap () =
   check_text_wrap "inherit";
   neg_cursor read_text_wrap "invalid-wrap";
   (* contradictory *)
-  neg_cursor read_text_wrap "wrap nowrap";
+  neg_cursor ~allow_partial:true read_text_wrap "wrap nowrap";
   (* wrong form *)
   neg_cursor read_text_wrap "no-wrap";
   neg_cursor read_text_wrap "balanced"
@@ -1461,7 +1461,7 @@ let test_white_space () =
   (* hyphenated form incorrect *)
   neg_cursor read_white_space "no-wrap";
   (* contradictory *)
-  neg_cursor read_white_space "normal nowrap";
+  neg_cursor ~allow_partial:true read_white_space "normal nowrap";
   (* incomplete *)
   neg_cursor read_white_space "preserve"
 
@@ -1479,7 +1479,7 @@ let test_word_break () =
   (* different property *)
   neg_cursor read_word_break "word-wrap";
   (* contradictory *)
-  neg_cursor read_word_break "normal break-all"
+  neg_cursor ~allow_partial:true read_word_break "normal break-all"
 
 let test_overflow_wrap () =
   check_overflow_wrap "normal";
@@ -1487,7 +1487,7 @@ let test_overflow_wrap () =
   check_overflow_wrap "anywhere";
   check_overflow_wrap "inherit";
   neg_cursor read_overflow_wrap "invalid-wrap";
-  neg_cursor read_overflow_wrap "normal break-word";
+  neg_cursor ~allow_partial:true read_overflow_wrap "normal break-word";
   (* contradictory *)
   neg_cursor read_overflow_wrap "breakword";
   (* missing hyphen *)
@@ -1502,7 +1502,7 @@ let test_hyphens () =
   neg_cursor read_hyphens "invalid-hyphens";
   neg_cursor read_hyphens "true";
   (* boolean not valid *)
-  neg_cursor read_hyphens "auto manual";
+  neg_cursor ~allow_partial:true read_hyphens "auto manual";
   (* contradictory *)
   (* wrong form *)
   neg_cursor read_hyphens "hyphenate"
@@ -1517,14 +1517,14 @@ let test_line_height () =
   neg_cursor read_line_height "-1.5";
   (* negative line-height *)
   (* multiple values *)
-  neg_cursor read_line_height "normal 1.5"
+  neg_cursor ~allow_partial:true read_line_height "normal 1.5"
 
 let test_table_layout () =
   check_table_layout "auto";
   check_table_layout "fixed";
   check_table_layout "inherit";
   neg_cursor read_table_layout "invalid-layout";
-  neg_cursor read_table_layout "auto fixed";
+  neg_cursor ~allow_partial:true read_table_layout "auto fixed";
   (* both values *)
   neg_cursor read_table_layout "static";
   (* position value *)
@@ -1536,7 +1536,7 @@ let test_border_collapse () =
   check_border_collapse "separate";
   check_border_collapse "inherit";
   neg_cursor read_border_collapse "invalid-collapse";
-  neg_cursor read_border_collapse "collapse separate";
+  neg_cursor ~allow_partial:true read_border_collapse "collapse separate";
   (* both values *)
   neg_cursor read_border_collapse "collapsed";
   (* wrong form *)
@@ -1679,7 +1679,7 @@ let test_gap () =
   neg_cursor read_gap "invalid-gap";
   neg_cursor read_gap "-10px";
   (* negative gap *)
-  neg_cursor read_gap "10px 20px 30px";
+  neg_cursor ~allow_partial:true read_gap "10px 20px 30px";
   (* too many values *)
   (* not a valid gap value *)
   neg_cursor read_gap "auto"
@@ -1689,7 +1689,8 @@ let test_font_variant_numeric_token () =
   check_font_variant_numeric_token "ordinal";
   check_font_variant_numeric_token "slashed-zero";
   neg_cursor read_font_variant_numeric_token "invalid-token";
-  neg_cursor read_font_variant_numeric_token "normal ordinal";
+  neg_cursor ~allow_partial:true read_font_variant_numeric_token
+    "normal ordinal";
   (* contradictory *)
   neg_cursor read_font_variant_numeric_token "slashed-zeros";
   (* wrong form *)
@@ -1719,7 +1720,7 @@ let test_background_box () =
   neg_cursor read_background_box "invalid-box";
   neg_cursor read_background_box "margin-box";
   (* doesn't exist for background *)
-  neg_cursor read_background_box "border-box padding-box";
+  neg_cursor ~allow_partial:true read_background_box "border-box padding-box";
   (* multiple *)
   neg_cursor read_background_box "borderbox";
   (* missing hyphen *)
@@ -1744,7 +1745,7 @@ let test_background () =
     "url(a.png) repeat,url(b.png) space";
   check_background ~expected:"0 0" "none";
   neg_cursor read_background "invalid-background";
-  neg_cursor read_background "red blue";
+  neg_cursor ~allow_partial:true read_background "red blue";
   (* multiple colors without gradient *)
   (* Per CSS Images Module, [url()] with an empty URL is spec-valid. *)
   neg_cursor read_background "center center center";
@@ -1763,7 +1764,7 @@ let test_font_weight () =
   neg_cursor read_font_weight "invalid-weight";
   neg_cursor read_font_weight "1001";
   (* out of range *)
-  neg_cursor read_font_weight "normal bold";
+  neg_cursor ~allow_partial:true read_font_weight "normal bold";
   (* multiple values *)
   (* not a valid keyword *)
   neg_cursor read_font_weight "extra-bold"
@@ -1774,7 +1775,7 @@ let test_text_transform () =
   check_text_transform "capitalize";
   check_text_transform "none";
   neg_cursor read_text_transform "invalid-transform";
-  neg_cursor read_text_transform "uppercase lowercase";
+  neg_cursor ~allow_partial:true read_text_transform "uppercase lowercase";
   (* contradictory *)
   neg_cursor read_text_transform "upper-case";
   (* wrong form *)
@@ -1788,7 +1789,8 @@ let test_text_decoration_line () =
   neg_cursor read_text_decoration_line "invalid-line";
   neg_cursor read_text_decoration_line "strikethrough";
   (* wrong name *)
-  neg_cursor read_text_decoration_line "underline overline underline";
+  neg_cursor ~allow_partial:true read_text_decoration_line
+    "underline overline underline";
   (* duplicate *)
   (* that's a style, not a line *)
   neg_cursor read_text_decoration_line "wavy"
@@ -1807,7 +1809,7 @@ let test_cursor () =
   neg_cursor read_cursor "invalid-cursor";
   neg_cursor read_cursor "url(cursor.cur)";
   (* missing fallback *)
-  neg_cursor read_cursor "pointer default";
+  neg_cursor ~allow_partial:true read_cursor "pointer default";
   (* multiple keywords without url *)
   (* negative hotspot *)
   neg_cursor read_cursor "url(cursor.cur) -1 -1, pointer"
@@ -1831,7 +1833,7 @@ let test_border_width () =
   neg_cursor read_border_width "invalid-width";
   neg_cursor read_border_width "-2px";
   (* negative width *)
-  neg_cursor read_border_width "thick thin";
+  neg_cursor ~allow_partial:true read_border_width "thick thin";
   (* multiple values *)
   neg_cursor read_border_width "2";
   (* missing unit *)
@@ -1852,7 +1854,7 @@ let test_text_decoration () =
   check_text_decoration "underline";
   check_text_decoration "line-through";
   check_text_decoration ~expected:"none" "none";
-  neg_cursor read_text_decoration "invalid-decoration";
+  neg_cursor ~allow_partial:true read_text_decoration "invalid-decoration";
   neg_cursor read_text_decoration "underline line-through underline";
   (* duplicate - per CSS spec, || combinator means each component at most
      once *)
@@ -1881,13 +1883,14 @@ let test_text_decoration_shorthand () =
     "3px wavy blue underline";
   decl_optimizes ~prop:"text-decoration" ~held:"underline wavy blue 3px"
     ~into:"underline wavy #00f 3px" "3px wavy blue underline";
-  neg_cursor read_text_decoration_shorthand "invalid-decoration";
+  neg_cursor ~allow_partial:true read_text_decoration_shorthand
+    "invalid-decoration";
   neg_cursor read_text_decoration_shorthand "underline underline";
   (* duplicate line *)
   neg_cursor read_text_decoration_shorthand "solid solid";
   (* duplicate style *)
   (* multiple colors *)
-  neg_cursor read_text_decoration_shorthand "red blue"
+  neg_cursor ~allow_partial:true read_text_decoration_shorthand "red blue"
 
 let test_justify_self () =
   check_justify_self "auto";
@@ -1940,7 +1943,7 @@ let test_border_shorthand () =
   check_border_shorthand ~expected:"2px dashed blue" "blue 2px dashed";
   decl_optimizes ~prop:"border" ~held:"2px dashed blue" ~into:"2px dashed#00f"
     "blue 2px dashed";
-  neg_cursor read_border_shorthand "1px 2px"
+  neg_cursor ~allow_partial:true read_border_shorthand "1px 2px"
 
 let test_justify_items () =
   check_justify_items "normal";
@@ -1960,7 +1963,7 @@ let test_justify_items () =
   check_justify_items "unsafe center";
   check_justify_items "safe end";
   neg_cursor read_justify_items "invalid-justify";
-  neg_cursor read_justify_items "left right";
+  neg_cursor ~allow_partial:true read_justify_items "left right";
   (* contradictory *)
   neg_cursor read_justify_items "unsafe unsafe";
   (* duplicate modifier *)
@@ -1975,12 +1978,12 @@ let test_transition_shorthand () =
     "opacity 1s ease-in 0.5s";
   check_transition_shorthand "width 2s";
   check_transition_shorthand ~expected:"all .3s linear" "all 0.3s linear";
-  neg_cursor read_transition_shorthand "2invalid";
-  neg_cursor read_transition_shorthand "-1s";
+  neg_cursor ~allow_partial:true read_transition_shorthand "2invalid";
+  neg_cursor ~allow_partial:true read_transition_shorthand "-1s";
   (* negative duration. [transition:opacity] (property only, 0s duration) is
      valid - the shorthand components are all optional - so it is not rejected. *)
   (* too many durations *)
-  neg_cursor read_transition_shorthand "1s 2s 3s 4s"
+  neg_cursor ~allow_partial:true read_transition_shorthand "1s 2s 3s 4s"
 
 let test_flex_basis () =
   check_flex_basis "auto";
@@ -2014,7 +2017,7 @@ let test_background_shorthand () =
   check_background_shorthand ~expected:"url(image.png)center no-repeat red"
     "red url(image.png) center no-repeat";
   neg_cursor read_background_shorthand "invalid invalid";
-  neg_cursor read_background_shorthand "red blue green";
+  neg_cursor ~allow_partial:true read_background_shorthand "red blue green";
   (* multiple colors *)
   (* incomplete size syntax *)
   neg_cursor read_background_shorthand "center/";
@@ -2039,9 +2042,9 @@ let test_animation_shorthand () =
 
   (* Invalid cases *)
   (* invalid time unit *)
-  neg_cursor read_animation_shorthand "2invalid";
+  neg_cursor ~allow_partial:true read_animation_shorthand "2invalid";
   (* negative duration *)
-  neg_cursor read_animation_shorthand "slide -1s";
+  neg_cursor ~allow_partial:true read_animation_shorthand "slide -1s";
   (* too many time values *)
   neg_cursor read_animation_shorthand "slide 1s 2s 3s 4s 5s"
 
@@ -2054,7 +2057,7 @@ let test_any_property () =
   check_any_property "padding";
   check_any_property "font-size";
   neg_cursor read_any_property "not-a-property";
-  neg_cursor read_any_property "font size";
+  neg_cursor ~allow_partial:true read_any_property "font size";
   (* space instead of hyphen *)
   neg_cursor read_any_property "_private";
   (* invalid start *)
@@ -2395,7 +2398,7 @@ let test_transition () =
   check_transition "inherit";
   check_transition "initial";
   check_transition "none";
-  neg_cursor read_transition "2invalid"
+  neg_cursor ~allow_partial:true read_transition "2invalid"
 
 let test_animation_direction () =
   check_animation_direction "normal";
@@ -2434,7 +2437,8 @@ let test_animation () =
   (* More than 2 time values *)
   neg_cursor read_animation "-2s";
   (* Negative duration is invalid *)
-  neg_cursor read_animation "2s -1" (* Negative iteration count is invalid *)
+  neg_cursor ~allow_partial:true read_animation
+    "2s -1" (* Negative iteration count is invalid *)
 
 let test_blend_mode () =
   check_blend_mode "normal";
@@ -2546,7 +2550,7 @@ let test_gradient_position () =
   check_gradient_position "from 45deg";
   check_gradient_position "from 90deg at left top";
   check_gradient_position "var(--gradient-position)";
-  neg_cursor read_gradient_position "invalid-position"
+  neg_cursor ~allow_partial:true read_gradient_position "invalid-position"
 
 let test_gradient_stop () =
   (* Basic color stops *)
@@ -2589,9 +2593,10 @@ let test_gradient_stop () =
 
   (* Invalid stops *)
   neg_cursor read_gradient_stop "invalid-stop";
-  neg_cursor read_gradient_stop "red blue";
+  neg_cursor ~allow_partial:true read_gradient_stop "red blue";
   (* Two colors without position *)
-  neg_cursor read_gradient_stop "50% 25%" (* Two percentages without color *)
+  neg_cursor ~allow_partial:true read_gradient_stop
+    "50% 25%" (* Two percentages without color *)
 
 let test_color_interpolation () =
   check_color_interpolation "in oklab";
@@ -2609,9 +2614,9 @@ let test_hue_interpolation_method () =
   check_hue_interpolation_method "longer hue";
   check_hue_interpolation_method "increasing hue";
   check_hue_interpolation_method "decreasing hue";
-  neg_cursor read_hue_interpolation_method "shorter";
-  neg_cursor read_hue_interpolation_method "hue";
-  neg_cursor read_hue_interpolation_method "unknown hue"
+  neg_cursor ~allow_partial:true read_hue_interpolation_method "shorter";
+  neg_cursor ~allow_partial:true read_hue_interpolation_method "hue";
+  neg_cursor ~allow_partial:true read_hue_interpolation_method "unknown hue"
 
 (* ignore-test: url() escaping spans the printers, not a single property. *)
 let test_url_escaping () =
@@ -2744,7 +2749,7 @@ let test_radial_gradient_config () =
   check_radial_gradient_config "ellipse";
   check_radial_gradient_config "circle closest-side";
   check_radial_gradient_config "circle at center";
-  neg_cursor read_radial_gradient_config "invalid-config";
+  neg_cursor ~allow_partial:true read_radial_gradient_config "invalid-config";
   (* pp holds the authored defaults; the optimizer elides them (CSS Images 4
      section 3.2: ellipse / farthest-corner / center are implied). *)
   decl_optimizes ~prop:"background"
@@ -2772,14 +2777,14 @@ let test_background_position () =
   check_background_position "right .5rem center";
   check_background_position "50% 25%";
   check_background_position "inherit";
-  neg_cursor read_background_position "invalid-position"
+  neg_cursor ~allow_partial:true read_background_position "invalid-position"
 
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
   check_position_value "50% 25%";
   check_position_value "inherit";
-  neg_cursor read_position_value "invalid-position"
+  neg_cursor ~allow_partial:true read_position_value "invalid-position"
 
 let test_translate_value () =
   check_translate_value "none";
@@ -2986,7 +2991,7 @@ let test_fill_rule () =
   check_fill_rule "inherit";
   check_fill_rule "var(--r)";
   neg_cursor read_fill_rule "even-odd";
-  neg_cursor read_fill_rule "nonzero evenodd"
+  neg_cursor ~allow_partial:true read_fill_rule "nonzero evenodd"
 
 let test_stroke_linecap () =
   check_stroke_linecap "butt";
@@ -3356,7 +3361,7 @@ let test_position_try () =
   check_position_try "inherit";
   check_position_try "--foo";
   check_position_try "most-width --bar";
-  neg_cursor read_position_try "123"
+  neg_cursor ~allow_partial:true read_position_try "123"
 
 let test_border_image_repeat () =
   check_border_image_repeat "stretch";
@@ -3815,7 +3820,8 @@ let spec_property_grammar_edges () =
   neg_cursor read_timing_function "steps(0, jump-end)";
   neg_cursor read_transform "rotate(1 0 45deg)";
   neg_cursor read_transform "scale(1 2 3 4)";
-  neg_cursor read_container_shorthand "card / inline-size / size";
+  neg_cursor ~allow_partial:true read_container_shorthand
+    "card / inline-size / size";
   neg_cursor read_scroll_snap_type "mandatory x";
   neg_cursor read_clip_path "xywh(0 0)";
   neg_cursor read_content "counter()"
@@ -3830,14 +3836,14 @@ let spec_ui_property_edges () =
   check_field_sizing "content";
   check_appearance "base-select";
   check_user_select "contain";
-  neg_cursor read_text_wrap "pretty balance";
-  neg_cursor read_white_space "normal nowrap pre";
+  neg_cursor ~allow_partial:true read_text_wrap "pretty balance";
+  neg_cursor ~allow_partial:true read_white_space "normal nowrap pre";
   neg_cursor read_word_break "auto phrase";
-  neg_cursor read_overflow_wrap "break-word anywhere";
+  neg_cursor ~allow_partial:true read_overflow_wrap "break-word anywhere";
   neg_cursor read_hyphens "soft";
   neg_cursor read_field_sizing "auto content";
   neg_cursor read_appearance "base button";
-  neg_cursor read_user_select "none text"
+  neg_cursor ~allow_partial:true read_user_select "none text"
 
 let spec_mask_clip_property_edges () =
   check_mask_box "view-box";
@@ -3851,7 +3857,7 @@ let spec_mask_clip_property_edges () =
     "polygon(0 0, 100% 0, 100% 100%)";
   neg_cursor read_mask_box "margin-box";
   neg_cursor read_mask_mode "source";
-  neg_cursor read_mask_composite "add subtract";
+  neg_cursor ~allow_partial:true read_mask_composite "add subtract";
   neg_cursor read_webkit_mask_composite "add";
   neg_cursor read_webkit_mask_source_type "match-source";
   neg_cursor read_clip_path "polygon()"
@@ -3894,7 +3900,7 @@ let spec_generated_animation_font_edges () =
   check_image_rendering "pixelated";
   check_image_resolution "from-image 2dppx snap";
   check_resolution "2dppx";
-  neg_cursor read_animation_composition "replace blend";
+  neg_cursor ~allow_partial:true read_animation_composition "replace blend";
   neg_cursor read_animation_composition_item "blend";
   neg_cursor read_animation_name "1fade";
   neg_cursor read_animation_range_name "enter";
@@ -3913,10 +3919,10 @@ let spec_generated_animation_font_edges () =
   neg_cursor read_font_variant_caps "caps";
   neg_cursor read_font_variant_east_asian "jis78 jis78";
   neg_cursor read_east_asian_feature "jis05";
-  neg_cursor read_font_variant_emoji "emoji text";
+  neg_cursor ~allow_partial:true read_font_variant_emoji "emoji text";
   neg_cursor read_font_variant_ligature "common";
   neg_cursor read_font_variant_ligatures "common-ligatures common-ligatures";
-  neg_cursor read_font_variant_position "sub super";
+  neg_cursor ~allow_partial:true read_font_variant_position "sub super";
   neg_cursor read_glyph_orientation_vertical "45deg";
   neg_cursor read_image_orientation "image";
   neg_cursor read_image_rendering "crisp";
@@ -3975,8 +3981,8 @@ let spec_generated_box_layout_edges () =
   check_tab_size "4";
   check_zoom "50%";
   check_zoom "normal";
-  neg_cursor read_alignment_baseline "baseline middle";
-  neg_cursor read_baseline_shift "sub super";
+  neg_cursor ~allow_partial:true read_alignment_baseline "baseline middle";
+  neg_cursor ~allow_partial:true read_baseline_shift "sub super";
   neg_cursor read_baseline_source "middle";
   neg_cursor read_border_image "fill";
   neg_cursor read_border_image_outset_item "-1";
@@ -3990,10 +3996,10 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_contain_intrinsic_size "auto";
   neg_cursor read_contain_intrinsic_size_item "auto";
   neg_cursor read_counter_item "1section";
-  neg_cursor read_counter_set "none section";
+  neg_cursor ~allow_partial:true read_counter_set "none section";
   neg_cursor read_dominant_baseline "baseline baseline";
   neg_cursor read_flex_factor "-1";
-  neg_cursor read_flex_flow "row row";
+  neg_cursor ~allow_partial:true read_flex_flow "row row";
   neg_cursor read_grid_line_pair "span";
   neg_cursor read_grid_template_areas "\"a .\" \". a\"";
   neg_cursor read_hyphenate_limit_chars "3 4 5 6";
@@ -4006,12 +4012,12 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_line_break "break";
   neg_cursor read_line_fit_edge "text text";
   neg_cursor read_line_fit_edge_keyword "baseline";
-  neg_cursor read_logical_border_color "red blue green";
-  neg_cursor read_logical_border_width "1px 2px 3px";
+  neg_cursor ~allow_partial:true read_logical_border_color "red blue green";
+  neg_cursor ~allow_partial:true read_logical_border_width "1px 2px 3px";
   neg_cursor read_min_intrinsic_sizing "legacy legacy";
   neg_cursor read_min_intrinsic_sizing_keyword "zero";
   neg_cursor read_overflow_clip_box "margin-box";
-  neg_cursor read_overflow_clip_margin "1px 2px";
+  neg_cursor ~allow_partial:true read_overflow_clip_margin "1px 2px";
   neg_cursor read_shape_image_threshold "-1";
   neg_cursor read_tab_size "-1"
 
@@ -4177,13 +4183,13 @@ let spec_generated_position_interaction_edges () =
     "red blue";
   check_scrollbar_gutter "stable both-edges";
   check_scrollbar_width "thin";
-  neg_cursor read_anchor_name "none --x";
+  neg_cursor ~allow_partial:true read_anchor_name "none --x";
   neg_cursor read_caret "manual manual";
   neg_cursor read_caret_animation "blink";
   neg_cursor read_caret_shape "line";
-  neg_cursor read_container_name "none main";
+  neg_cursor ~allow_partial:true read_container_name "none main";
   neg_cursor read_interactivity "enabled";
-  neg_cursor read_interest_delay "-1s";
+  neg_cursor ~allow_partial:true read_interest_delay "-1s";
   neg_cursor read_margin_trim "block block";
   neg_cursor read_margin_trim_axis "both";
   neg_cursor read_margin_trim_edge "block";
@@ -4193,17 +4199,18 @@ let spec_generated_position_interaction_edges () =
   neg_cursor read_nav_scope "document";
   neg_cursor read_object_view_box "xywh(0 0 1px)";
   neg_cursor read_offset_path "ray()";
-  neg_cursor read_offset_rotate "auto reverse";
+  neg_cursor ~allow_partial:true read_offset_rotate "auto reverse";
   neg_cursor read_offset_rotate_mode "left";
   neg_cursor read_overflow_anchor "visible";
-  neg_cursor read_overlay "none auto";
+  neg_cursor ~allow_partial:true read_overlay "none auto";
   neg_cursor read_position_anchor "menu";
   neg_cursor read_position_area "top top top";
   neg_cursor read_position_area_keyword "middle";
   neg_cursor read_position_try_fallback "flip";
-  neg_cursor read_position_try_fallbacks "none flip-block";
+  neg_cursor ~allow_partial:true read_position_try_fallbacks "none flip-block";
   neg_cursor read_position_try_order "most-size";
-  neg_cursor read_position_visibility "always anchors-visible";
+  neg_cursor ~allow_partial:true read_position_visibility
+    "always anchors-visible";
   neg_cursor read_position_visibility_condition "visible";
   neg_cursor read_ray "ray()";
   neg_cursor read_ray_size "closest";
@@ -4257,7 +4264,7 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_text_box_edge "text text";
   neg_cursor read_text_box_edge_keyword "baseline";
   neg_cursor read_text_box_trim "trim";
-  neg_cursor read_text_combine_upright "digits 5";
+  neg_cursor ~allow_partial:true read_text_combine_upright "digits 5";
   neg_cursor read_text_decoration_skip "all";
   neg_cursor read_text_decoration_skip_box "auto";
   neg_cursor read_text_decoration_skip_inset "all";
@@ -4273,18 +4280,18 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_text_emphasis_skip "spaces spaces";
   neg_cursor read_text_emphasis_skip_keyword "letters";
   neg_cursor read_text_emphasis_style "filled open";
-  neg_cursor read_text_orientation "upright sideways";
+  neg_cursor ~allow_partial:true read_text_orientation "upright sideways";
   neg_cursor read_text_spacing_trim "trim";
-  neg_cursor read_text_underline_position "left right";
+  neg_cursor ~allow_partial:true read_text_underline_position "left right";
   neg_cursor read_text_underline_position_keyword "below";
   neg_cursor read_text_wrap_mode "pretty";
   neg_cursor read_text_wrap_style "nowrap";
-  neg_cursor read_timeline_inset "auto auto auto";
+  neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
   neg_cursor read_timeline_inset_item "-1px";
-  neg_cursor read_timeline_name "none --main";
+  neg_cursor ~allow_partial:true read_timeline_name "none --main";
   neg_cursor read_timeline_shorthand_item "--main z";
-  neg_cursor read_view_transition_class "none card";
-  neg_cursor read_view_transition_name "match-element card"
+  neg_cursor ~allow_partial:true read_view_transition_class "none card";
+  neg_cursor ~allow_partial:true read_view_transition_name "match-element card"
 
 let enum_readers_accept_leading_ws () =
   List.iter
@@ -4474,7 +4481,7 @@ let test_perspective_origin () =
 let test_quotes () =
   check_quotes "auto";
   check_quotes "none";
-  neg_cursor read_quotes "invalid-quotes-value"
+  neg_cursor ~allow_partial:true read_quotes "invalid-quotes-value"
 
 let test_outline () =
   check_outline "none";

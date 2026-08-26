@@ -32,6 +32,10 @@ let kind_strings_no_eof input =
 
 let test_tokenization_crash_safety buf = ignore (kinds (cssish buf))
 
+(* The same property over the byte shapes [cssish] cannot reach. *)
+let test_tokenization_unicode_bytes buf =
+  ignore (kinds (Fuzz_helpers.unicodish buf))
+
 let test_tokenization_deterministic buf =
   let input = cssish buf in
   let a = kind_strings input in
@@ -120,6 +124,8 @@ let suite =
     [
       test_case "tokenization crash safety" [ bytes ]
         test_tokenization_crash_safety;
+      test_case "tokenization crash safety over non-ascii bytes" [ bytes ]
+        test_tokenization_unicode_bytes;
       test_case "tokenization deterministic" [ bytes ]
         test_tokenization_deterministic;
       test_case "peek/next consistency" [ bytes ] test_peek_next_consistency;

@@ -671,6 +671,31 @@ let test_inline_at_path_containment () =
     "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
     "@media screen{.a{color:var(--x)}}"
 
+(* Liveness is decided by a fixpoint: a variable is live when a rule that can
+   see it reads it, and a variable read by a live one is live too. The chain
+   below is only reachable through several rounds of that propagation, and each
+   link sits in a different at-rule scope, so it also pins the visibility rule
+   the propagation carries. The tail is dead and must go. *)
+let test_inline_vars_liveness_propagates_through_scopes () =
+  let css =
+    String.concat ""
+      [
+        ":root{--a:red;--dead:blue}";
+        "@media print{:root{--b:var(--a)}}";
+        "@media print{@supports (display:grid){:root{--c:var(--b)}}}";
+        "@media print{@supports (display:grid){.x{color:var(--c)}}}";
+      ]
+  in
+  let out = minified (Css.inline_vars (parse css)) in
+  Alcotest.(check bool)
+    ("the chain resolves to its root: " ^ out)
+    true
+    (holds_substring "color:red" out);
+  Alcotest.(check bool)
+    ("the unread variable is dropped: " ^ out)
+    false
+    (holds_substring "--dead" out)
+
 (* --- allocation / complexity guard --- *)
 
 let measure f =
@@ -777,6 +802,8 @@ let test_inline_keeps_a_page_break_property_from_css () =
 let suite =
   ( "inline",
     [
+      Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
+        test_inline_vars_liveness_propagates_through_scopes;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"
         `Quick test_inline_at_path_containment;
       Alcotest.test_case "inline vars cost stays linear in at-rule depth" `Quick

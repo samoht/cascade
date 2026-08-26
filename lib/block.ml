@@ -220,6 +220,42 @@ let needs_distant_media_merge stmts =
    declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
    3.4), so the analysis below only sees it once it can name the rule the run
    belongs to. *)
+(* Only cross statements whose cascade is pure source order: plain rules and
+   conditional groups. Layers, origins, scopes, imports, etc. establish
+   ordering/context that hoisting past would change. *)
+let crossable_by_distant_media = function
+  | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
+  | _ -> false
+
+(* Split [out] at the first [@media] whose condition is [cond], into what comes
+   before it, its own block, and what sits between it and the caller. *)
+let split_at_media cond out :
+    (statement list * statement list * statement list) option =
+  let rec go before :
+      statement list ->
+      (statement list * statement list * statement list) option = function
+    | [] -> None
+    | Media (c, b) :: after when Media.equal c cond ->
+        Some (List.rev before, b, after)
+    | x :: rest -> go (x :: before) rest
+  in
+  go [] out
+
+let try_distant_media_merge ~leaves ~unattributed out cond block :
+    statement list option =
+  let hoisted = leaves block in
+  match split_at_media cond out with
+  | None -> None
+  | Some (before, target, after)
+    when List.for_all crossable_by_distant_media after ->
+      let crossed = leaves after in
+      if
+        unattributed block || unattributed after
+        || List.exists (fun h -> List.exists (rules_conflict h) crossed) hoisted
+      then None
+      else Some (before @ [ Media (cond, target @ block) ] @ after)
+  | Some _ -> None
+
 let merge_distant_media ?owner ~optimize_merged_block stmts =
   if not (needs_distant_media_merge stmts) then stmts
   else
@@ -227,46 +263,24 @@ let merge_distant_media ?owner ~optimize_merged_block stmts =
     let unattributed stmts =
       Option.is_none owner && List.exists holds_unattributed_run stmts
     in
-    let try_merge out cond block : statement list option =
-      let hoisted = leaves block in
-      let rec split before :
-          statement list ->
-          (statement list * statement list * statement list) option = function
-        | [] -> None
-        | Media (c, b) :: after when Media.equal c cond ->
-            Some (List.rev before, b, after)
-        | x :: rest -> split (x :: before) rest
-      in
-      (* Only cross statements whose cascade is pure source order: plain rules
-         and conditional groups. Layers, origins, scopes, imports, etc.
-         establish ordering/context that hoisting past would change. *)
-      let crossable = function
-        | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
-        | _ -> false
-      in
-      match split [] out with
-      | None -> None
-      | Some (before, target, after) when List.for_all crossable after ->
-          let crossed = leaves after in
-          if
-            unattributed block || unattributed after
-            || List.exists
-                 (fun h -> List.exists (rules_conflict h) crossed)
-                 hoisted
-          then None
-          else Some (before @ [ Media (cond, target @ block) ] @ after)
-      | Some _ -> None
+    (* The accumulator is carried reversed, as the consecutive-block passes
+       nearby carry theirs: appending to the end copies it once per statement,
+       which costs a square in the statement count. Only a [@media] statement
+       needs it in order, to find the partner it merges into, and [rev_map] puts
+       the result back in source order. *)
+    let step rout stmt =
+      match stmt with
+      | Media (cond, block) when not (has_nested_preference_media block) -> (
+          match
+            try_distant_media_merge ~leaves ~unattributed (List.rev rout) cond
+              block
+          with
+          | Some out' -> List.rev out'
+          | None -> stmt :: rout)
+      | _ -> stmt :: rout
     in
-    List.fold_left
-      (fun out stmt ->
-        match stmt with
-        | Media (cond, block) when not (has_nested_preference_media block) -> (
-            match try_merge out cond block with
-            | Some out' -> out'
-            | None -> out @ [ stmt ])
-        | _ -> out @ [ stmt ])
-      [] stmts
-    |> List.map (function
+    List.fold_left step [] stmts
+    |> List.rev_map (function
       | Media (c, b) -> Media (c, optimize_merged_block b)
       | s -> s)
 
