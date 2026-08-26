@@ -1460,8 +1460,52 @@ let page_break_var_shadows_like_its_alias () =
         ".a{page-break-inside:var(--x)}" );
     ]
 
+(* CSS Syntax 3 sec. 5.4.2 keeps an unrecognised at-rule's body as raw source
+   text, so nothing in it is typed and the printer cannot touch it: rewriting
+   the body changes the AST, which is the optimizer's job and not the
+   serializer's. The optimizer reads the body as a component-value stream and
+   writes it back with the separator rules that already serve custom-property
+   streams, so token boundaries, strings, escapes and nested blocks survive
+   while the layout between them goes.
+
+   [--minify] on its own leaves the body alone, since it may not change what the
+   AST holds. *)
+let unknown_at_rule_body_is_compacted () =
+  let parse css =
+    match Css.of_string ~strict:false css with
+    | Ok p -> p.stylesheet
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let optimized css = Css.to_string ~minify:true (Css.optimize (parse css)) in
+  let minified css = Css.to_string ~minify:true (parse css) in
+  let compacts name css expected =
+    Alcotest.(check string) name expected (optimized css);
+    Alcotest.(check string)
+      (name ^ ": optimizing again changes nothing")
+      expected (optimized expected)
+  in
+  compacts "a nested rule in an opaque body loses its layout"
+    "@foo{ .a { color: red } }" "@foo{.a{color:red}}";
+  compacts "a string keeps every byte between its quotes"
+    "@foo{ a: \"  b  c  \" }" "@foo{a:\"  b  c  \"}";
+  compacts "an escape spelling an ident is written as that ident"
+    "@foo{ \\41 b }" "@foo{Ab}";
+  compacts "an escape the ident needs is kept" "@foo{ a\\ b }" "@foo{a\\ b}";
+  compacts "two idents keep the boundary between them" "@foo{ a   b }"
+    "@foo{a b}";
+  compacts "an ident before a paren keeps the space that stops a function token"
+    "@foo{ a ( b  c ) [ d ] }" "@foo{a (b c)[d]}";
+  (* [--minify] alone may not rewrite the AST, so the body travels verbatim. *)
+  Alcotest.(check string)
+    "minify alone leaves the opaque body as authored"
+    "@foo{ .a { color: red } }"
+    (minified "@foo{ .a { color: red } }")
+
 let optimize_tests =
   [
+    ( "unknown at-rule body is compacted",
+      `Quick,
+      unknown_at_rule_body_is_compacted );
     ( "!important survives non-adjacent duplicate elimination",
       `Quick,
       important_survives_non_adjacent_duplicate );
