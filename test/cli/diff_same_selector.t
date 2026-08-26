@@ -143,3 +143,48 @@ gains or loses a declaration, so neither may be reported as modified.
         └─ .x ↔  .y
   
   [1]
+
+
+
+The tree view of the same pair names the move once. A [Reordered] entry
+carries the selector and the position that selector holds on each side, not
+the rule that carried it, so the two rules of `.x` crossing `.y` together
+are one fact stated once, and the summary counts what the node reports.
+
+  $ cascade diff --diff=tree --depth=max guarded_ref.css guarded_tw.css
+  CSS: 115 chars vs 115 chars (0.0% diff)
+  Changes: 1 changed container
+  
+  --- guarded_ref.css
+  +++ guarded_tw.css
+  └─ @layer utilities (1 reordered)
+     ├─ .x (position 3) ↔  .y (position 0)
+     └─ @supports (zoo: bar) (1 reordered)
+        └─ .x ↔  .y
+  
+  [1]
+
+
+
+Nothing about the walk that pairs the two sides position by position: a
+structural change elsewhere in the container sends the same selector down
+the exact-match path, which names the move once as well.
+
+  $ cat > swap_ref.css <<'EOF'
+  > @layer u{.x{--c:1}.x{--d:3}.y{--c:4}.z{--e:9}}
+  > EOF
+  $ cat > swap_tw.css <<'EOF'
+  > @layer u{.y{--c:4}.x{--c:1}.x{--d:3}}
+  > EOF
+  $ cascade diff --diff=tree --depth=max swap_ref.css swap_tw.css
+  CSS: 47 chars vs 38 chars (19.1% diff)
+  Changes: 1 changed container
+  
+  --- swap_ref.css
+  +++ swap_tw.css
+  └─ @layer u (1 removed, 1 reordered)
+     ├─ .z
+     │     - --e 9
+     └─ .x ↔  .y
+  
+  [1]
