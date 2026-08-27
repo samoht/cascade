@@ -397,6 +397,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify --enforce-spec` keeps the author's `:not(:dir(ltr))` instead of
+  shortening it to `:dir(rtl)`. CSS Selectors 4 sec. 7.1 leaves directionality
+  to the document language, so only a host document like HTML makes `ltr` and
+  `rtl` a partition, and that is one of the facts `--enforce-spec` drops (#593)
 - `--minify` merges a run of adjacent `@starting-style` blocks. The rule takes
   no prelude (CSS Transitions 2 sec. 3.3), so the run holds the same starting
   styles, in the same order, as one block over their concatenation, and the

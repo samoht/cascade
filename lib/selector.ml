@@ -2493,11 +2493,15 @@ and pp : t Pp.t =
   | Not [ Invalid ] when Pp.minified ctx -> pseudo ctx "valid"
   | Not [ Required ] when Pp.minified ctx -> pseudo ctx "optional"
   | Not [ Optional ] when Pp.minified ctx -> pseudo ctx "required"
-  | Not [ Dir "ltr" ] when Pp.minified ctx ->
-      (* CSS Selectors 4 sec. 7.1: directionality is binary, so
-         [:not(:dir(ltr))] is spec-equivalent to [:dir(rtl)] (and shorter). *)
+  | Not [ Dir "ltr" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
+      (* CSS Selectors 4 sec. 7.1 leaves directionality to the document
+         language, so CSS alone does not make [ltr] and [rtl] a partition: an
+         element the language gives no directionality matches neither. [HTML]
+         makes it one for every element in an HTML document, which is the host
+         fact [enforce_spec] drops. *)
       func ctx "dir" Pp.string "rtl"
-  | Not [ Dir "rtl" ] when Pp.minified ctx -> func ctx "dir" Pp.string "ltr"
+  | Not [ Dir "rtl" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
+      func ctx "dir" Pp.string "ltr"
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (Index 1, None) when Pp.minified ctx ->
