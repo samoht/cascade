@@ -753,6 +753,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.Color_space.gamut_mapped_srgb_of_oklch` and `Css.Values.gamut_map_color`
+  name the sRGB colour to write for an OKLCh colour sRGB cannot hold, reducing
+  its chroma at constant lightness and hue per CSS Color 4 sec. 14.2. The
+  library could report that a colour was out of gamut, not what to render in
+  its place. Minify is untouched and still keeps the colour the author wrote
+  (#591)
 - `Css.inline_vars` no longer costs a square in the variable count: liveness is
   decided through indexes and a worklist, and the customs a rule can see are
   indexed by name instead of scanned per declaration. A 12,800-variable sheet

@@ -3251,6 +3251,23 @@ let resolve_static_srgb (c : color) : color =
           | None -> c)
       | None -> c)
 
+(* CSS Color 4 sec. 14.2: the sRGB colour a display renders for a static colour,
+   gamut mapping the ones sRGB cannot hold. Unlike [resolve_static_srgb] this
+   always answers, so it serves a caller that has to write an sRGB colour; the
+   optimizer must not use it, as the mapped colour is not the authored one. A
+   colour that is not static is returned unchanged. *)
+let gamut_map_color (c : color) : color =
+  match static_color_to_linear_srgb c with
+  | None -> c
+  | Some (linear, alpha_f) ->
+      let lch =
+        Color_space.oklch_of_oklab (Color_space.oklab_of_linear_srgb linear)
+      in
+      let r, g, b = Color_space.gamut_mapped_srgb_of_oklch lch in
+      let byte v = Float.to_int (Float.round (v *. 255.)) in
+      let clamp01 v = Float.max 0. (Float.min 1. v) in
+      Hex { r = byte r; g = byte g; b = byte b; a = byte (clamp01 alpha_f) }
+
 (* CSS Color 4 sec. 13.4 [hue interpolation method] mapping into the simpler
    [Color_space.hue_interpolation] enum. [Default] and [Specified] both collapse
    to [Shorter] for the static fold; sec. 13.4 makes [shorter hue] the default

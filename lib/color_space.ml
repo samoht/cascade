@@ -274,6 +274,58 @@ let srgb_bytes_of_linear ?(budget = 0.002) (linear : rgb) :
     then Some (rb, gb, bb)
     else None
 
+(* CSS Color 4 sec. 14.2.2 "Binary Search Gamut Mapping with Local MINDE": halve
+   the OKLCh chroma at constant lightness and hue until the sRGB clip of the
+   searched colour lies within one just noticeable difference of it. *)
+
+let gamut_jnd = 0.02
+let gamut_epsilon = 0.0001
+
+let gamut_mapped_srgb_of_oklch ((l, chroma, h) : lch) : rgb =
+  if l >= 1.0 then (1.0, 1.0, 1.0)
+  else if l <= 0.0 then (0.0, 0.0, 0.0)
+  else
+    let srgb c =
+      rgb_of_linear_rgb (linear_srgb_of_oklab (oklab_of_oklch (l, c, h)))
+    in
+    let in_gamut (r, g, b) =
+      let inside v = v >= 0.0 && v <= 1.0 in
+      inside r && inside g && inside b
+    in
+    let clip (r, g, b) =
+      let clamp v = Float.max 0.0 (Float.min 1.0 v) in
+      (clamp r, clamp g, clamp b)
+    in
+    let delta clipped c =
+      oklab_distance
+        (oklab_of_linear_srgb (linear_rgb_of_rgb clipped))
+        (oklab_of_oklch (l, c, h))
+    in
+    let origin = srgb chroma in
+    if in_gamut origin then origin
+    else
+      let clipped = clip origin in
+      if delta clipped chroma < gamut_jnd then clipped
+      else
+        (* [lo_in_gamut] drops the first time the difference, rather than the
+           gamut, admits a chroma; past that the surface no longer bounds the
+           search, so testing it again would raise the lower end wrongly. *)
+        let rec search ~lo ~hi ~lo_in_gamut clipped =
+          if hi -. lo <= gamut_epsilon then clipped
+          else
+            let c = (lo +. hi) /. 2.0 in
+            let current = srgb c in
+            if lo_in_gamut && in_gamut current then
+              search ~lo:c ~hi ~lo_in_gamut clipped
+            else
+              let clipped = clip current in
+              let e = delta clipped c in
+              if e >= gamut_jnd then search ~lo ~hi:c ~lo_in_gamut clipped
+              else if gamut_jnd -. e < gamut_epsilon then clipped
+              else search ~lo:c ~hi ~lo_in_gamut:false clipped
+        in
+        search ~lo:0.0 ~hi:chroma ~lo_in_gamut:true clipped
+
 (* Hue interpolation. CSS Color 4 sec. 13.4. *)
 
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing

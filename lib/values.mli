@@ -94,6 +94,17 @@ val nonkeyword_color : color -> color
     must not be introduced when folding a colour inside an opaque
     custom-property token stream. *)
 
+val gamut_map_color : color -> color
+(** [gamut_map_color c] is the sRGB colour a display renders for the static
+    colour [c], as a hex colour: CSS Color 4 sec. 14.2 reduces the chroma of a
+    colour sRGB cannot hold until it fits, holding lightness and hue. A colour
+    already inside the sRGB gamut keeps its bytes, and one that is not static (a
+    [var()], [currentcolor], a [color-mix()] over either) is returned unchanged.
+
+    Emission does not use this: the mapped colour is not the authored one, and a
+    display shows the wider colour on hardware that has it. It is for a caller
+    that has to commit to sRGB bytes. *)
+
 val current_color : color
 (** [current_color] is the CSS currentcolor value. *)
 
