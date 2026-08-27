@@ -728,6 +728,9 @@ recorded cases carrying six minifiers' answers.
   under a baseline-true `@supports`, a vendor-prefixed declaration, an
   `@import supports()` guard. The respellings gated with those, `min-width`
   into the range form and the Level 3 `not all and (...)`, still compare equal
+- `cascade diff` no longer aborts on a reordered selector holding the same rule
+  index on both sides. The report is buffered, so the assertion that met such a
+  move cost the whole report; the move is now named without a coordinate (#582)
 
 ### Library
 

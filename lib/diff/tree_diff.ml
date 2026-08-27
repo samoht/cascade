@@ -440,23 +440,32 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
           ~new_declarations ~property_changes ~added_properties
           ~removed_properties ~has_any_changes))
 
+(* The index counts the rules of a container, while whether the selector moved
+   is judged against the selectors both sides share, so the two disagree: the
+   middle selector of a reversal keeps its index, and a rule dropped ahead of a
+   selector shifts it back onto the one it had. Pairing that index with itself
+   states nothing, so the move is named without a coordinate. *)
 let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
     ~swapped_with =
-  assert (expected_pos <> actual_pos);
   let truncate s = String_diff.truncate_middle 40 s in
-  match swapped_with with
-  | Some other when abs (expected_pos - actual_pos) = 1 ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other ^ "\n")
-  | Some other ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
-       ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
-       ^ string_of_int expected_pos ^ ")\n")
-  | None ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position " ^ string_of_int expected_pos
-       ^ " \xe2\x86\x92 " ^ string_of_int actual_pos ^ ")\n")
+  if expected_pos = actual_pos then
+    Buffer.add_string buf (prefix ^ truncate selector ^ " (moved)\n")
+  else
+    match swapped_with with
+    | Some other when abs (expected_pos - actual_pos) = 1 ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other
+         ^ "\n")
+    | Some other ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
+         ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
+         ^ string_of_int expected_pos ^ ")\n")
+    | None ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " (position "
+         ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
+         ^ string_of_int actual_pos ^ ")\n")
 
 let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
     =
