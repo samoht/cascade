@@ -50,6 +50,15 @@ let check_minified_to expected input =
     ("specificity preserved: " ^ input)
     (specificity original) (specificity reparsed)
 
+(* Minified serialisation under [--enforce-spec], where no fact about the
+   rendering browser or the host document language is available: a rewrite runs
+   only when the CSS text and the CSS specs prove it on their own. *)
+let check_enforce_spec_to expected input =
+  let actual =
+    Css.Pp.to_string ~minify:true ~enforce_spec:true pp (of_string input)
+  in
+  Alcotest.(check string) ("enforce-spec " ^ input) expected actual
+
 (* Extra minifier invariant: minify is idempotent (a second pass produces no
    further change), and specificity is preserved. Strict AST equality between
    [original] and [reparsed] does not hold for inputs the minifier rewrites
@@ -2163,6 +2172,28 @@ let spec_minifier_semantics () =
   neg_cursor read ".a::before.class";
   neg_cursor read ".a::before::before"
 
+(* CSS Selectors 4 sec. 7.1 defers directionality to the document language, and
+   an element the language gives no directionality matches neither [:dir(ltr)]
+   nor [:dir(rtl)], so the CSS text alone never proves the two are a partition.
+   [HTML] proves it for a host HTML document: the directionality of an element,
+   any element and not just an HTML one, is either 'ltr' or 'rtl'. Default
+   minify takes that host fact; [--enforce-spec] drops it and keeps the author's
+   [:not()]. *)
+let spec_selector_dir_fold_is_a_host_fact () =
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(ltr))";
+  check_minified_to ".a:dir(ltr)" ".a:not(:dir(rtl))";
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(ltr))";
+  check_enforce_spec_to ".a:not(:dir(rtl))" ".a:not(:dir(rtl))";
+  (* The author's own [:dir()] is a plain serialisation in either mode. *)
+  check_minified_to ".a:dir(rtl)" ".a:dir(rtl)";
+  check_enforce_spec_to ".a:dir(ltr)" ".a:dir(ltr)";
+  (* The gate is on the host fact alone: rewrites the CSS specs prove on their
+     own still run. Selectors 4 sec. 8.1 defines [:any-link] as equivalent to
+     [:is(:link, :visited)], and sec. 4.3 makes [:not(:not(X))] equivalent to
+     [X]. *)
+  check_enforce_spec_to ".a:any-link" ".a:is(:link,:visited)";
+  check_enforce_spec_to ".a:hover" ".a:not(:not(:hover))"
+
 (* ignore-test *)
 let test_spec_forgiving_selector_lists () =
   (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
@@ -2667,6 +2698,8 @@ let suite =
         test_spec_selector_specificity;
       test_case "spec selector minifier semantics" `Quick
         spec_minifier_semantics;
+      test_case "spec selector :dir() fold is a host fact" `Quick
+        spec_selector_dir_fold_is_a_host_fact;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick
