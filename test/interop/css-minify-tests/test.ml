@@ -441,6 +441,23 @@ let normalize_expected ~category ~id expected =
         ~cascade:
           "@media(width>=1px){a{background:#0b0;color:red}}a{color:green}"
         upstream
+  | "supports", "0003" ->
+      (* The upstream oracle decides the condition at build time. CSS
+         Conditional 5 sec. 2 evaluates it in the UA that renders the sheet,
+         which is the only reason to write one: the author ships the enhancement
+         and its fallback together and each UA picks. CSS Conditional 3 sec. 6.1
+         counts a usable level of support and a per-installation preference in
+         the answer, so no build-time table can stand in for that UA, and
+         deciding here deletes the fallback path for the UAs that answer no. No
+         minifier folds an author guard, csskit - the corpus author's own tool -
+         included. *)
+      fixture ~category ~id ~upstream:"a{display:grid}"
+        ~cascade:"@supports(display:grid){a{display:grid}}" upstream
+  | "supports", "0004" ->
+      (* Same reading as supports/0003: the guard is the author's question for
+         the rendering UA, so both rules stay inside it. *)
+      fixture ~category ~id ~upstream:"a{display:flex}b{color:red}"
+        ~cascade:"@supports(display:flex){a{display:flex}b{color:red}}" upstream
   | "values", "0057" ->
       (* The upstream oracle keeps [rgb(0 0 0)] verbatim to preserve the exact
          token string a script reads back via [getPropertyValue]. A complete
@@ -451,23 +468,6 @@ let normalize_expected ~category ~id expected =
          [#000] is the shortest spelling. *)
       fixture ~category ~id ~upstream:"a{--brand-color: rgb(0 0 0)}"
         ~cascade:"a{--brand-color:#000}" upstream
-  | "whitespace", "0009" ->
-      (* The default minifier may use maintained-evergreen target facts.
-         [display:flex] is true for that target, so [@supports not
-         (display:flex)] is target-dead and may be dropped. The css-minify-tests
-         harness intentionally exercises default minify, not --enforce-spec. *)
-      fixture ~category ~id
-        ~upstream:"@supports not (display:flex){a{display:block}}" ~cascade:""
-        upstream
-  | "whitespace", "0010" ->
-      (* Same evergreen-target policy as whitespace/0009. The positive feature
-         query [(display:grid) and (gap:10px)] is always true for maintained
-         evergreen browsers, so default minify may elide the wrapper and keep
-         the inner rule. *)
-      fixture ~category ~id
-        ~upstream:
-          "@supports(display:grid)and (gap:10px){a{display:grid;gap:10px}}"
-        ~cascade:"a{display:grid;gap:10px}" upstream
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
          calc() and keeps the calc() wrapper. Exact constant math may fold:

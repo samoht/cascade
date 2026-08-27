@@ -632,41 +632,12 @@ let test_tw_conditionals_layer () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "default minify elides baseline supports inside utility layer"
+    "adjacent same-condition blocks merge inside the utility layer"
     (* Source order is preserved: generator order is a public contract for
        Tailwind utilities even when disjoint properties would commute. *)
     "@layer \
-     utilities{.grid{display:grid}.gap{gap:1rem}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
-    output;
-  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
-  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
-  Alcotest.(check string)
-    "enforce-spec keeps adjacent supports merge inside utility layer"
-    "@layer \
      utilities{@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}@container(inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
-    spec_output
-
-let test_supports_greenfield_baseline () =
-  (* An @supports guard for a not-yet-Baseline feature (anchor positioning, view
-     transitions, ...) is written to detect exactly that feature, so the default
-     evergreen minify must keep it; a Baseline feature such as display:grid
-     still unwraps. *)
-  let minify css =
-    Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string css))
-    |> Css.Stylesheet.to_string ~minify:true
-    |> String.trim
-  in
-  Alcotest.(check string)
-    "greenfield anchor-name guard is kept"
-    "@supports(anchor-name:--x){.a{anchor-name:--x}}"
-    (minify "@supports (anchor-name:--x){.a{anchor-name:--x}}");
-  Alcotest.(check string)
-    "greenfield view-transition-name guard is kept"
-    "@supports(view-transition-name:x){.a{color:red}}"
-    (minify "@supports (view-transition-name:x){.a{color:red}}");
-  Alcotest.(check string)
-    "baseline display:grid guard is unwrapped" ".a{display:grid}"
-    (minify "@supports (display:grid){.a{display:grid}}")
+    output
 
 let test_tw_conditionals_split () =
   (* The optimizer must not collect same-condition blocks across an intervening
@@ -684,9 +655,9 @@ let test_tw_conditionals_split () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "default minify elides non-adjacent baseline supports"
+    "default minify keeps non-adjacent supports split"
     "@layer \
-     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}.grid{display:grid}.block{display:block}.gap{gap:1rem}}"
+     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
     output;
   let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
   let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
@@ -1618,9 +1589,6 @@ let optimize_tests =
     ( "tailwind conditionals merge inside layer",
       `Quick,
       test_tw_conditionals_layer );
-    ( "supports greenfield guards kept, baseline unwrapped",
-      `Quick,
-      test_supports_greenfield_baseline );
     ( "tailwind non-adjacent conditionals in layer stay split",
       `Quick,
       test_tw_conditionals_split );
@@ -2928,13 +2896,11 @@ let c61_conditional_competitor_order () =
         and (min-width:1024px){.u{display:flex}}")
 
 (* CSS Syntax 3 sec. 5.4.4/5.4.5: a declaration inside a nested block runs to
-   the next [;] or to the block's [}]. Unwrapping a baseline-true [@supports]
-   inside a style rule leaves its declarations as siblings of whatever followed
-   the wrapper, so the serializer owes them a separator; without one the last
-   declaration runs on into the next sibling and the reader drops the rule.
-   [Css.of_string ~strict:true] is the gate: it turns any recovery warning into
-   an error. *)
-let nested_folded_block_separator () =
+   the next [;] or to the block's [}], so a declaration followed by a nested
+   at-rule or nested rule owes it a separator; without one the declaration runs
+   on into the next sibling and the reader drops the rule. [Css.of_string
+   ~strict:true] is the gate: it turns any recovery warning into an error. *)
+let nested_block_separator () =
   let check name input expected =
     let output = optimized_string input in
     Alcotest.(check string) name expected output;
@@ -2944,21 +2910,22 @@ let nested_folded_block_separator () =
         Alcotest.failf "%s: emitted CSS %S is rejected by the reader: %s" name
           output (Error.to_string e)
   in
-  check "folded block before another folded block"
+  check "adjacent same-condition blocks merge"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}}"
-    ".a{color:red;top:0}";
-  check "three folded blocks in a row"
+    ".a{@supports(color:red){color:red;top:0}}";
+  check "three blocks in a row"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}@supports \
      (color:red){left:0}}"
-    ".a{color:red;top:0;left:0}";
-  check "folded block before a nested rule"
-    ".a{@supports (color:red){color:red}.b{top:0}}" ".a{color:red;.b{top:0}}";
-  check "folded block before a kept at-rule"
+    ".a{@supports(color:red){color:red;top:0;left:0}}";
+  check "nested at-rule before a nested rule"
+    ".a{@supports (color:red){color:red}.b{top:0}}"
+    ".a{@supports(color:red){color:red}.b{top:0}}";
+  check "two nested at-rules"
     ".a{@supports (color:red){color:red}@media print{top:0}}"
-    ".a{color:red;@media print{top:0}}";
-  check "declarations then folded block then nested rule"
+    ".a{@supports(color:red){color:red}@media print{top:0}}";
+  check "declaration then nested at-rule then nested rule"
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
-    ".a{top:0;color:red;.b{left:0}}"
+    ".a{top:0;@supports(color:red){color:red}.b{left:0}}"
 
 let target_minify_enforce_spec_split () =
   let check_modes name input ~default ~spec =
@@ -2967,59 +2934,6 @@ let target_minify_enforce_spec_split () =
       (name ^ " enforce-spec") spec
       (optimized_string ~enforce_spec:true input)
   in
-  check_modes "baseline supports grid"
-    "@supports (display: grid) { a { display: grid } }"
-    ~default:"a{display:grid}" ~spec:"@supports(display:grid){a{display:grid}}";
-  check_modes "baseline supports flex with several rules"
-    "@supports (display: flex) { a { display: flex } b { gap: 1rem } }"
-    ~default:"a{display:flex}b{gap:1rem}"
-    ~spec:"@supports(display:flex){a{display:flex}b{gap:1rem}}";
-  check_modes "negated baseline supports"
-    "@supports not (display: grid) { a { color: red } } b { color: blue }"
-    ~default:"b{color:#00f}"
-    ~spec:"@supports not (display:grid){a{color:red}}b{color:#00f}";
-  check_modes "negated baseline supports flex"
-    "@supports not (display: flex) { a { display: block } }" ~default:""
-    ~spec:"@supports not (display:flex){a{display:block}}";
-  check_modes "unknown supports preserved"
-    "@supports (future-layout: masonry-plus) { a { color: red } }"
-    ~default:"@supports(future-layout:masonry-plus){a{color:red}}"
-    ~spec:"@supports(future-layout:masonry-plus){a{color:red}}";
-  check_modes "known supports conjunction"
-    "@supports (display: grid) and (display: flex) { a { display: grid } }"
-    ~default:"a{display:grid}"
-    ~spec:"@supports(display:grid)and (display:flex){a{display:grid}}";
-  check_modes "known supports disjunction"
-    "@supports (display: grid) or (future-layout: masonry-plus) { a { display: \
-     grid } }"
-    ~default:"a{display:grid}"
-    ~spec:
-      "@supports(display:grid)or (future-layout:masonry-plus){a{display:grid}}";
-  check_modes "known and unknown supports conjunction"
-    "@supports (display: grid) and (future-layout: masonry-plus) { a { \
-     display: grid } }"
-    ~default:"@supports(future-layout:masonry-plus){a{display:grid}}"
-    ~spec:
-      "@supports(display:grid)and (future-layout:masonry-plus){a{display:grid}}";
-  check_modes "unknown negated supports preserved"
-    "@supports not (future-layout: masonry-plus) { a { color: red } }"
-    ~default:"@supports not (future-layout:masonry-plus){a{color:red}}"
-    ~spec:"@supports not (future-layout:masonry-plus){a{color:red}}";
-  check_modes "supports nested in media"
-    "@media (min-width: 40em) { @supports (display: grid) { a { display: grid \
-     } } }"
-    ~default:"@media(width>=40em){a{display:grid}}"
-    ~spec:"@media(min-width:40em){@supports(display:grid){a{display:grid}}}";
-  check_modes "baseline supports layer declaration preserves order"
-    "@layer base; @supports (display: grid) { @layer grid; } @layer theme, \
-     grid; @layer grid { .x { color: red } } @layer theme { .x { color: blue } \
-     }"
-    ~default:
-      "@layer base,grid,theme;@layer grid{.x{color:red}}@layer \
-       theme{.x{color:#00f}}"
-    ~spec:
-      "@layer base;@supports(display:grid){@layer grid;}@layer \
-       theme,grid;@layer grid{.x{color:red}}@layer theme{.x{color:#00f}}";
   check_modes "explicit flex zero basis is not one-value shorthand"
     "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
   check_modes "color-mix keeps the required in oklab in both modes"
@@ -3060,15 +2974,7 @@ let target_minify_enforce_spec_split () =
   check_modes "container min-width grammar"
     "@container sidebar (min-width: 700px) { a { color: red } }"
     ~default:"@container sidebar (width>=700px){a{color:red}}"
-    ~spec:"@container sidebar (min-width:700px){a{color:red}}";
-  check_modes "import supports baseline"
-    "@import url(\"grid.css\") supports(display: grid);"
-    ~default:"@import\"grid.css\";"
-    ~spec:"@import\"grid.css\"supports(display:grid);";
-  check_modes "import layer supports baseline"
-    "@import url(\"theme.css\") layer(theme) supports(display: flex);"
-    ~default:"@import\"theme.css\"layer(theme);"
-    ~spec:"@import\"theme.css\"layer(theme)supports(display:flex);"
+    ~spec:"@container sidebar (min-width:700px){a{color:red}}"
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
@@ -3438,11 +3344,10 @@ let c61_distinct_scope_limits_preserved () =
     output
 
 let c61_no_merge_supports () =
-  (* Default minify elides a baseline-true [@supports], exposing [.feature] to
-     the surrounding cascade. [.feature] ties [.card] on specificity (0,1,0) but
-     writes only [display], which neither merged [.card] property conflicts
-     with, so the two [.card] rules merge across it. With [--enforce-spec] the
-     [@supports] is kept as a boundary and blocks the merge. *)
+  (* CSS Cascade section 6.1 makes order of appearance a cascade criterion, and
+     an [@supports] block decides whether the declarations it holds apply at
+     all, so the optimizer reads it as a boundary: the two [.card] rules stay on
+     either side of it rather than merging across. *)
   let input =
     [
       Css.rule
@@ -3463,14 +3368,9 @@ let c61_no_merge_supports () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "default minify elides baseline supports boundary"
-    ".card{background-color:#00f;color:red}.feature{display:flex}" output;
-  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
-  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
-  Alcotest.(check string)
-    "enforce-spec keeps supports boundary"
+    "supports boundary blocks the merge"
     ".card{color:red}@supports(display:flex){.feature{display:flex}}.card{background-color:#00f}"
-    spec_output
+    output
 
 let c61_no_merge_container () =
   (* CSS Cascade section 6.1 order of appearance still determines the winner
@@ -3696,10 +3596,11 @@ let c61_nesting_synthesis_source_order () =
         ( "conditional boundary blocks nesting synthesis",
           ".card{color:red}@media(min-width:40em){.card .title{color:blue}}",
           ".card{color:red}@media(width>=40em){.card .title{color:#00f}}" );
-        ( "elided baseline supports exposes adjacent nesting",
+        ( "supports boundary blocks nesting synthesis",
           ".card{color:red}@supports(display:grid){.card{display:grid}}.card \
            .title{color:blue}",
-          ".card{color:red;display:grid;.title{color:#00f}}" );
+          ".card{color:red}@supports(display:grid){.card{display:grid}}.card \
+           .title{color:#00f}" );
       ]
   in
   match mismatches with
@@ -3724,9 +3625,8 @@ let c61_group_across_pseudo_competitor () =
     ".btn,.link{color:red}.btn:hover{color:#00f}" output
 
 let c61_no_conditional_cli_merge () =
-  (* Default minify may elide baseline @supports, making its inner rule part of
-     the surrounding cascade context. Remaining conditional boundaries still
-     filter declarations independently and must block cross-boundary merging. *)
+  (* Each conditional boundary filters its declarations independently, so none
+     of them may be crossed by a merge. *)
   let css =
     ".card{color:red}@supports \
      (display:grid){.card{display:grid}}.card{padding:1rem}@container \
@@ -3737,15 +3637,9 @@ let c61_no_conditional_cli_merge () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "default minify elides baseline supports boundary"
-    ".card{color:red;display:grid;padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
-    output;
-  let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
-  let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
-  Alcotest.(check string)
-    "enforce-spec keeps supports boundary"
+    "every conditional boundary blocks the merge"
     ".card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
-    spec_output
+    output
 
 let c61_important_blocks_longhand () =
   (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to
@@ -5089,9 +4983,9 @@ let selector_merging_tests =
     ( "target minify and enforce-spec split",
       `Quick,
       target_minify_enforce_spec_split );
-    ( "folded nested block keeps its declaration separator",
+    ( "a nested block keeps its declaration separator",
       `Quick,
-      nested_folded_block_separator );
+      nested_block_separator );
     ( "spec cascade 6.1 no media merge across layer statement",
       `Quick,
       c61_no_layer_media_merge );

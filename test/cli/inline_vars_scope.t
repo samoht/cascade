@@ -98,7 +98,7 @@ reason.
   > @supports (display: var(--display)) { .x { color: red } }
   > EOF
   $ cascade --minify --inline-vars supports-var.css 2>&1 | grep -v "warning"
-  :root{--display:grid}.x{color:red}
+  :root{--display:grid}@supports(display:var(--display)){.x{color:red}}
 
 A self-referential variable [--x: var(--x)] is invalid at computed
 time per CSS Custom Properties L1 §5; consumers use their fallback, and
