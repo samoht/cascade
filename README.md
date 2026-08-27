@@ -429,6 +429,28 @@ parses and minifies one stylesheet compresses to under 200 KiB
 
 ## Development and testing
 
+<!-- $MDX skip -->
+```bash
+dune build          # the library and the cascade binary
+dune test           # the whole suite: unit, cram, fuzz, interop, render
+dune fmt            # ocamlformat
+merlint             # lint the OCaml sources
+```
+
+`merlint` comes from the
+[samoht opam overlay](https://tangled.org/gazagnaire.org/opam-overlay.git);
+add the repository before `opam install merlint`.
+
+CI runs four jobs, and a change passing `dune build` and `dune test` can still
+fail two of them: `Build and test` on Linux and macOS, `Lower bounds` against
+the oldest dependency versions that solve, `ASCII source`
+([scripts/check_ascii.sh](scripts/check_ascii.sh) over the `.ml`, `.mli`,
+`.mll`, `.mly` and `dune` files), and `Lint` (ocamlformat plus merlint).
+Prose files carry their non-ASCII content.
+
+Every user-visible change gets an entry in the top version block of
+[CHANGES.md](CHANGES.md), naming the impact rather than the diff.
+
 Three oracle corpora cover parser conformance and minified-output behaviour:
 
 - **WPT parser conformance.** The `css/css-syntax/` subset of the [Web
