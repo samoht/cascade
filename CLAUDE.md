@@ -1,50 +1,30 @@
-# Cascade -- CSS Library for OCaml
+# Cascade
 
-## What is this?
+A CSS generation and manipulation library and CLI: a typed CSS AST, parser,
+pretty-printer, structural diff and optimizer, with no Tailwind-specific code.
+`README.md` covers what the tool does, how it is built and tested, and the
+oracle corpora the suite replays.
 
-A standalone CSS generation and manipulation library extracted from the `tw`
-(Tailwind CSS v4 in OCaml) project. It provides a typed CSS AST, parser,
-pretty-printer, structural transformation helpers, structural diff tools, and
-optimizer with no Tailwind-specific code.
+## Scope
 
-Cascade is a CSS library scoped to CSS text and CSS ASTs. It should parse,
-print, minify, diff, fold/map/sort, and apply safe AST transforms.
-Context-supplied evaluations are in scope when the caller provides the needed
-data through an explicit closed context record; theme/default based `var()`
-output is an existing example, and `Css.Context.t` is the context
-type for property-value transforms.
+Cascade is scoped to CSS text and CSS ASTs: parse, print, minify, diff,
+fold/map/sort, and safe AST transforms. A context-supplied evaluation is in
+scope when the caller passes the data in through an explicit closed context
+record; `Css.Context.t` is that type for property-value transforms, and
+theme-based `var()` output is the worked example. Tailwind-specific code, and
+Cascade APIs that exist only to serve Tailwind, belong in the `tw` project.
 
-## Build & Test
+`lib/` is flat and large. Read the interface next to a module rather than
+guessing from its name, and prefer extending an existing pass to adding one.
 
-```bash
-dune build
-dune test
-```
+## Working on it
 
-## Project Structure
-
-```
-lib/           CSS library (public_name: cascade)
-  css.ml       Main entry point: of_string, to_string, rule, etc.
-  values.ml    CSS values: lengths, colors, angles, durations
-  properties.ml CSS properties: typed property/value pairs
-  selector.ml  CSS selectors: class, id, pseudo, combinators
-  declaration.ml Declarations and custom properties
-  stylesheet.ml Statements: rules, @media, @layer, @supports, etc.
-  reader.ml    CSS parser
-  pp.ml        CSS pretty-printer (minification support)
-  optimize.ml  CSS optimizer (dedup, merge, combine)
-  variables.ml CSS custom properties and @property
-  media.ml     Media queries
-  supports.ml  @supports conditions
-  container.ml @container queries
-  font_face.ml @font-face
-  keyframe.ml  @keyframes
-  diff/        CSS diff sub-library (public_name cascade.diff)
-    css_compare.ml  Structural CSS diff
-    tree_diff.ml    Tree-based diff algorithm
-    string_diff.ml  String-level diff
-test/          CSS parser and printer tests
-bin/           cascade binary (fmt + diff subcommands)
-```
-
+- Start a behavioural change with a test that fails on current `main`. A test
+  that passes before the fix is pinning something else.
+- When a test oracle contradicts the code, surface the contradiction and ask
+  which side is right. Never rewrite an expected output to match what the code
+  prints, and never set an expectation by calling the function under test.
+- Sealed ADTs over open extension: nothing outside this repo adds a variant, so
+  a new case should stop every site that decides about it from compiling.
+- Build a string with `Buffer`, the internal `Pp`, or `String.concat ""`, not
+  with `^`, `Printf.sprintf` or `Fmt.str`.
