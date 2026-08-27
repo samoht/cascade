@@ -1545,12 +1545,13 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: red; @else { color: green } background: blue }"
     ".a{color:red;background:#00f}" 1
 
-(* CSS Syntax 3 sec. 5.4.4 "consume a declaration" ends an invalid declaration
-   at the next top-level [;], and a [{}] met on the way is one component value
-   of the value being skipped, not a stopping point. A nested at-rule's body is
-   <block-contents> just like a style rule's (CSS Nesting 1 sec. 3.3), so the
-   same recovery applies inside it: Blink 146 drops the one declaration and
-   keeps every neighbour, the enclosing group rule and the rest of the sheet. *)
+(* CSS Syntax 3 sec. 5.4.4 "consume a style block's contents" ends an invalid
+   declaration at the next top-level [;], and a [{}] met on the way is one
+   component value of the value being skipped, not a stopping point. A nested
+   at-rule's body is <block-contents> just like a style rule's (CSS Nesting 1
+   sec. 3.3), so the same recovery applies inside it: Blink 146 drops the one
+   declaration and keeps every neighbour, the enclosing group rule and the rest
+   of the sheet. *)
 let spec_lenient_recovery_nested_at_rule_declarations () =
   let recovered = ".a{@media screen{color:red;background:#00f}}" in
   lenient_recover "bad declaration first in a nested at-rule"
@@ -2011,7 +2012,7 @@ let spec_lenient_recovery_font_palette_descriptors () =
     (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
     1
 
-(* CSS View Transitions 2 sec. 2.4 gives [@view-transition] a block of
+(* CSS View Transitions 2 sec. 2.3.1 gives [@view-transition] a block of
    descriptor declarations, so one descriptor cascade rejects costs that
    descriptor alone. Blink 146 keeps the rule in every case below. *)
 let spec_lenient_recovery_view_transition_descriptors () =
@@ -6799,7 +6800,7 @@ let s641_layer_name_parts () =
       ("@layer a\\3b b.c\\3b d;", "@layer a\\;b.c\\;d;");
     ]
 
-(* CSS Conditional 3 sec. 2.2: a [<supports-decl>] holds a declaration, and a
+(* CSS Conditional 3 sec. 6: a [<supports-decl>] holds a declaration, and a
    custom property's name can carry a [;] or a [}] through an escape (CSS Syntax
    3 sec. 4.3.7). The condition is a capability predicate for that exact name,
    so it survives the round trip with the escapes that read it back. *)
@@ -6904,11 +6905,11 @@ let fidelity_color_space_preserved () =
 
 (* {2 @supports (CSS Conditional L4 sec. 2)} *)
 
-(* CSS Conditional 4 sec. 2.5: a feature query asks the browser rendering the
+(* CSS Conditional 3 sec. 6.1: a feature query asks the browser rendering the
    sheet whether it supports a declaration, so the answer belongs to that
    browser and the guard stays whatever shape the condition takes. Chrome
    answers false to both [(-webkit-hyphens: none)] and [(-moz-orient: inline)];
-   a UA older than custom properties answers false to [(--x: y)], which sec. 2.5
+   a UA older than custom properties answers false to [(--x: y)], which sec. 6.1
    calls supported. *)
 let conditional4_2_supports_guard_kept () =
   let normalize css =

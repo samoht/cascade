@@ -188,7 +188,7 @@ let test_roundtrip () =
     cases
 
 (* [property] takes authored CSS text, so a pair it accepts has to write back as
-   the one feature test it names. css-conditional-3 sec. 2.2 gives
+   the one feature test it names. CSS Conditional 3 sec. 6 gives
    [<supports-decl>] the grammar [( <declaration> )], and CSS Syntax 3 sec. 8.2
    keeps out of a [<declaration-value>] any unmatched closing bracket, any
    top-level [;], and any [<bad-string-token>] or [<bad-url-token>]. Written
