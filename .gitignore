@@ -5,7 +5,8 @@ _opam
 _homebrew_build/
 *~
 .DS_Store
-.claude/
+.claude/*
+!.claude/rules/
 
 /mono
 
