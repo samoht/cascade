@@ -906,6 +906,34 @@ let test_optimize_descends_into_every_conditional_group () =
      media(print){a{color:#f00}a{color:#f00}}@else{b{color:#f00}b{color:#f00}}"
     "@when media(print){a{color:red}}@else{b{color:red}}"
 
+(* CSS Transitions 2 sec. 3.3: a [@starting-style] rule carries no condition, so
+   a run of adjacent blocks holds the same starting styles, in the same order,
+   as one block over their concatenation - the argument the conditional groups
+   beside it make once their conditions are known equal. *)
+let test_merge_consecutive_starting_style () =
+  let check name css expected =
+    Alcotest.(check string) name expected (minify (Css.of_string_exn css))
+  in
+  check "@media merges an adjacent run"
+    "@media print{.a{opacity:0}}@media print{.b{opacity:1}}"
+    "@media print{.a{opacity:0}.b{opacity:1}}";
+  check "@supports merges an adjacent run"
+    "@supports (display:grid){.a{opacity:0}}@supports \
+     (display:grid){.b{opacity:1}}"
+    "@supports(display:grid){.a{opacity:0}.b{opacity:1}}";
+  check "@starting-style merges an adjacent run"
+    "@starting-style{.a{opacity:0}}@starting-style{.b{opacity:1}}"
+    "@starting-style{.a{opacity:0}.b{opacity:1}}";
+  check "three in a row collapse to one"
+    "@starting-style{.a{opacity:0}}@starting-style{.b{opacity:1}}@starting-style{.c{opacity:.5}}"
+    "@starting-style{.a{opacity:0}.b{opacity:1}.c{opacity:.5}}";
+  (* Adjacency-only, like the four passes beside it: reaching a block further
+     down means hoisting it over the statements between, which is the analysis
+     [merge_distant_media] carries and this pass does not. *)
+  check "a rule between two blocks keeps them apart"
+    "@starting-style{.a{opacity:0}}.c{opacity:1}@starting-style{.b{opacity:1}}"
+    "@starting-style{.a{opacity:0}}.c{opacity:1}@starting-style{.b{opacity:1}}"
+
 (* An [@property] registration is document-global (CSS Properties and Values API
    1 sec. 2), so a declaration of that name is typed wherever it is written.
    Promotion has to reach the at-rules that hold declarations outside a nested
@@ -1626,6 +1654,9 @@ let optimize_tests =
     ( "optimize descends into every conditional group",
       `Quick,
       test_optimize_descends_into_every_conditional_group );
+    ( "merge consecutive starting-style",
+      `Quick,
+      test_merge_consecutive_starting_style );
     ( "promote registered reaches at-rule declarations",
       `Quick,
       test_promote_registered_reaches_at_rule_declarations );

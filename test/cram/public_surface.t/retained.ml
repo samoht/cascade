@@ -25,3 +25,24 @@ let _ = Pp.float
 let _ = Css.Gradient_direction.of_string
 let _ = Css.shadow
 let _ : Css.shadow Css.kind = Css.Shadow
+
+(* The statement-merging passes are callable on their own, so a caller that
+   does not run the whole optimizer can still collapse a run of blocks. *)
+type merge_block =
+  ?optimize_merged_block:
+    (Stylesheet.statement list -> Stylesheet.statement list) ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
+
+let _ : merge_block = Optimize.merge_consecutive_layers
+let _ : merge_block = Optimize.merge_consecutive_media
+let _ : merge_block = Optimize.merge_consecutive_supports
+let _ : merge_block = Optimize.merge_consecutive_containers
+let _ : merge_block = Optimize.merge_consecutive_starting_style
+let _ : ?owner:Stylesheet.rule -> merge_block = Optimize.merge_distant_media
+
+let _ : Stylesheet.statement list -> Stylesheet.statement list =
+  Optimize.merge_named_layers_by_name
+
+let _ : Stylesheet.statement list -> Stylesheet.statement list =
+  Optimize.drop_empty_rules
