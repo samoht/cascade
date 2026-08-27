@@ -577,3 +577,151 @@ let rec compare t1 t2 =
   | _, And _ -> 1
 
 let equal a b = compare a b = 0
+
+(* ===== Entailment against the enclosing conditions ===== *)
+
+(* CSS Conditional 3 sec. 6 gives every term of a [<supports-condition>] a
+   two-valued result - of [<general-enclosed>] it says "The result is false",
+   not unknown - so a condition is a propositional formula over its feature
+   tests and classical entailment holds over it. A user agent answers one
+   feature test the same way everywhere in a sheet, so the conditions enclosing
+   a nested [@supports] are facts about whichever user agent reaches it. Nothing
+   below reads a support table.
+
+   Atom identity is syntactic: two feature tests are one variable exactly when
+   {!compare} calls them equal. Two spellings a user agent in fact answers alike
+   stay two variables, which enumerates worlds that do not exist; entailment
+   over that superset holds over the real world set too, so the approximation
+   only ever concludes less. *)
+
+(* A containment chain carries few distinct feature tests, so the truth table is
+   decided outright rather than searched. Past the cap the condition is left as
+   the author wrote it. *)
+let max_atoms = 16
+
+let rec collect_atoms acc = function
+  | (Property _ | Function _) as atom ->
+      if List.exists (fun a -> equal a atom) acc then acc
+      else if List.length acc >= max_atoms then raise Exit
+      else atom :: acc
+  | Not a -> collect_atoms acc a
+  | And (a, b) | Or (a, b) -> collect_atoms (collect_atoms acc a) b
+
+(* A truth vector holds one bit per assignment: bit [j] is the formula's value
+   under the assignment that reads bit [i] of [j] as the value of atom [i]. So
+   [and], [or] and [not] are bitwise, and one pass over [2^n / 8] bytes settles
+   a whole truth table. *)
+let vector_len n = if n <= 3 then 1 else 1 lsl (n - 3)
+
+let all_true n =
+  if n >= 3 then Bytes.make (vector_len n) '\xff'
+  else
+    (* Under three atoms the whole table fits in one byte's low bits. *)
+    Bytes.make 1 (Char.unsafe_chr [| 0b1; 0b11; 0b1111 |].(n))
+
+let map2 f a b =
+  Bytes.init (Bytes.length a) (fun i ->
+      Char.unsafe_chr
+        (f (Char.code (Bytes.get a i)) (Char.code (Bytes.get b i)) land 0xff))
+
+let v_and = map2 ( land )
+let v_or = map2 ( lor )
+let v_not ~all v = map2 ( lxor ) all v
+
+(* Atom [i] is true under assignment [j] when bit [i] of [j] is set. Below three
+   atoms that bit varies inside a byte, giving a fixed pattern; above it, whole
+   bytes alternate. *)
+let atom_vector n i =
+  let len = vector_len n in
+  if i < 3 then
+    v_and (all_true n)
+      (Bytes.make len (Char.unsafe_chr [| 0xaa; 0xcc; 0xf0 |].(i)))
+  else
+    Bytes.init len (fun b ->
+        if (b lsr (i - 3)) land 1 = 1 then '\xff' else '\000')
+
+let for_all_bytes f a b =
+  let rec loop i =
+    i >= Bytes.length a
+    || f (Char.code (Bytes.get a i)) (Char.code (Bytes.get b i))
+       && loop (i + 1)
+  in
+  loop 0
+
+let implies a b = for_all_bytes (fun x y -> x land lnot y land 0xff = 0) a b
+let disjoint a b = for_all_bytes (fun x y -> x land y = 0) a b
+let never v = Bytes.for_all (fun c -> c = '\000') v
+
+let rec eval ~atom ~all = function
+  | (Property _ | Function _) as leaf -> atom leaf
+  | Not a -> v_not ~all (eval ~atom ~all a)
+  | And (a, b) -> v_and (eval ~atom ~all a) (eval ~atom ~all b)
+  | Or (a, b) -> v_or (eval ~atom ~all a) (eval ~atom ~all b)
+
+(* Rewriting stays conservative where deciding is complete: a subformula the
+   context settles is replaced by its value and absorbed, and the author's shape
+   survives everywhere else. A minimised sum of products is usually longer as
+   CSS text and is not what the author wrote. *)
+let rec reduce ~atom ~world ~all cond =
+  let decide v residual =
+    if implies world v then (v, `True)
+    else if disjoint world v then (v, `False)
+    else (v, residual)
+  in
+  match cond with
+  | Property _ | Function _ -> decide (atom cond) (`Cond cond)
+  | Not a ->
+      let va, ra = reduce ~atom ~world ~all a in
+      let residual =
+        match ra with
+        | `True -> `False
+        | `False -> `True
+        | `Cond a' -> `Cond (if a' == a then cond else Not a')
+      in
+      decide (v_not ~all va) residual
+  | And (a, b) ->
+      let va, ra = reduce ~atom ~world ~all a in
+      let vb, rb = reduce ~atom ~world ~all b in
+      let residual =
+        match (ra, rb) with
+        | `False, _ | _, `False -> `False
+        | `True, r | r, `True -> r
+        | `Cond a', `Cond b' ->
+            `Cond (if a' == a && b' == b then cond else And (a', b'))
+      in
+      decide (v_and va vb) residual
+  | Or (a, b) ->
+      let va, ra = reduce ~atom ~world ~all a in
+      let vb, rb = reduce ~atom ~world ~all b in
+      let residual =
+        match (ra, rb) with
+        | `True, _ | _, `True -> `True
+        | `False, r | r, `False -> r
+        | `Cond a', `Cond b' ->
+            `Cond (if a' == a && b' == b then cond else Or (a', b'))
+      in
+      decide (v_or va vb) residual
+
+let simplify_under ~context cond =
+  match List.fold_left collect_atoms [] (cond :: context) with
+  | exception Exit -> `Cond cond
+  | atoms -> (
+      let atoms = Array.of_list atoms in
+      let n = Array.length atoms in
+      let all = all_true n in
+      let vectors = Array.init n (atom_vector n) in
+      let atom leaf =
+        let rec find i =
+          if equal atoms.(i) leaf then vectors.(i) else find (i + 1)
+        in
+        find 0
+      in
+      let world =
+        List.fold_left (fun w c -> v_and w (eval ~atom ~all c)) all context
+      in
+      if never world then `False
+      else
+        let size c = Pp.size ~minify:true pp c in
+        match snd (reduce ~atom ~world ~all cond) with
+        | `Cond c when (not (c == cond)) && size c >= size cond -> `Cond cond
+        | decision -> decision)

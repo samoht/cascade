@@ -217,6 +217,9 @@ Rule-level rewrites:
   (`animation:1s slide` -> `animation:slide 1s`).
 - Dead-rule elimination, `@layer` consolidation, and `@media`/`@container`
   flattening when the condition is satisfied for the evergreen target.
+- A nested `@supports` condition is decided against the conditions enclosing it:
+  a guard they already answer yes loses its wrapper, a guard they contradict
+  takes its block with it, and anything else narrows to what they leave to ask.
 - MQ4 range syntax when shorter (`(min-width:48px)` -> `(width>=48px)`).
 
 These rules compose wherever cascade has a typed CSS value. An unregistered
