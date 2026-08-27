@@ -747,6 +747,36 @@ let test_color_oklch_none_hue () =
   check_color ~expected:"oklch(55.6%0 none)" ~optimized:"oklch(.556 0 none)"
     "oklch(55.6% 0 none)"
 
+(* CSS Color 4 sec. 14.2: an out-of-sRGB-gamut colour still has a writable sRGB
+   answer, reached by the sec. 14.2.2 binary search on chroma at constant
+   lightness and hue. For oklch(.7 .35 150) the search stops at chroma .224,
+   where the clipped colour is one just noticeable difference away, and clipping
+   there gives #00c248. *)
+(* Not a roundtrip test *)
+let test_gamut_map_color () =
+  let open Css.Values in
+  let parse s =
+    match Css.parse_color s with
+    | Some c -> c
+    | None -> Alcotest.failf "failed to parse: %s" s
+  in
+  let map s = Css.Pp.to_string pp_color (gamut_map_color (parse s)) in
+  Alcotest.(check string)
+    "out-of-gamut oklch maps into sRGB" "#00c248"
+    (map "oklch(0.7 0.35 150)");
+  Alcotest.(check string)
+    "alpha rides through the mapping" "#00c24880"
+    (map "oklch(0.7 0.35 150 / 0.5)");
+  Alcotest.(check string)
+    "an in-gamut colour keeps its bytes" "#0088cc" (map "#0088cc");
+  let dynamic = parse "var(--brand)" in
+  Alcotest.(check bool)
+    "a colour that is not static is left alone" true
+    (equal_color (gamut_map_color dynamic) dynamic);
+  (* Mapping is a rendering answer, not a shorter spelling: minify keeps the
+     authored colour. *)
+  check_color ~expected:"oklch(.7 .35 150)" "oklch(0.7 0.35 150)"
+
 (* Not a roundtrip test *)
 let test_color_mix_printing () =
   let open Css.Values in
@@ -1486,6 +1516,7 @@ let value_tests =
     test_case "regular value formatting" `Quick test_regular_value_formatting;
     test_case "oklch printing" `Quick test_color_oklch_printing;
     test_case "oklch none hue" `Quick test_color_oklch_none_hue;
+    test_case "gamut map colour into sRGB" `Quick test_gamut_map_color;
     test_case "color-mix printing" `Quick test_color_mix_printing;
     test_case "var in calc other types" `Quick test_var_in_calc_types;
     test_case "number var printing" `Quick test_number_var_printing;

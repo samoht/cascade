@@ -213,6 +213,101 @@ let test_srgb_bytes_of_linear () =
     "out-of-sRGB-gamut colour is preserved" true
     (fold (2.0, 0.0, 0.0) = None)
 
+(* CSS Color 4 sec. 14.2.2 "Binary Search Gamut Mapping with Local MINDE". The
+   algorithm halves the OKLCh chroma at constant lightness and hue and returns a
+   clipped sRGB colour whose deltaEOK from the searched colour is under one just
+   noticeable difference, 0.02 in OKLab. Every bound below is that JND read back
+   through the OKLCh geometry, so the assertions follow from the algorithm
+   rather than from a captured result. *)
+let jnd = 0.02
+
+let oklch_of_srgb rgb =
+  Color_space.oklch_of_oklab
+    (Color_space.oklab_of_linear_srgb (Color_space.linear_rgb_of_rgb rgb))
+
+let srgb_of_oklch (l, c, h) =
+  Color_space.rgb_of_linear_rgb
+    (Color_space.linear_srgb_of_oklab (Color_space.oklab_of_oklch (l, c, h)))
+
+let check_in_srgb name (r, g, b) =
+  let inside v = v >= 0.0 && v <= 1.0 in
+  Alcotest.(check bool) name true (inside r && inside g && inside b)
+
+(* The mapped colour sits within one JND of the constant-lightness, constant-hue
+   ray through the origin: the lightness error is one component of that
+   distance, and the hue error is the angle a chord of at most one JND subtends
+   at the mapped chroma. *)
+let check_on_origin_ray ~l ~c ~h mapped =
+  let lm, cm, hm = oklch_of_srgb mapped in
+  Alcotest.(check bool)
+    "lightness stays within one JND" true
+    (Float.abs (lm -. l) <= jnd);
+  Alcotest.(check bool) "chroma is reduced, never raised" true (cm < c);
+  let max_hue_error =
+    if cm <= jnd then 180.0 else Float.asin (jnd /. cm) *. 180.0 /. Float.pi
+  in
+  let dh = Float.abs (hm -. h) in
+  let dh = Float.min dh (360.0 -. dh) in
+  Alcotest.(check bool)
+    "hue stays inside the JND cone" true (dh <= max_hue_error)
+
+let test_gamut_map_out_of_srgb () =
+  let l, c, h = (0.7, 0.35, 150.0) in
+  Alcotest.(check bool)
+    "premise: oklch(.7 .35 150) is out of the sRGB gamut" true
+    (Color_space.srgb_bytes_of_linear
+       (Color_space.linear_srgb_of_oklab (Color_space.oklab_of_oklch (l, c, h)))
+    = None);
+  let mapped = Color_space.gamut_mapped_srgb_of_oklch (l, c, h) in
+  check_in_srgb "mapped colour is writable in sRGB" mapped;
+  check_on_origin_ray ~l ~c ~h mapped
+
+let test_gamut_map_far_out_of_srgb () =
+  (* Chroma 1.0 is several times the widest sRGB chroma at any lightness. *)
+  let l, c, h = (0.5, 1.0, 300.0) in
+  let mapped = Color_space.gamut_mapped_srgb_of_oklch (l, c, h) in
+  check_in_srgb "far out-of-gamut colour is writable in sRGB" mapped;
+  check_on_origin_ray ~l ~c ~h mapped;
+  let _, cm, _ = oklch_of_srgb mapped in
+  Alcotest.(check bool) "chroma falls by more than half" true (cm < c /. 2.0)
+
+(* Relative colorimetric intent: sec. 14.2 leaves colours inside the destination
+   gamut alone. *)
+let test_gamut_map_in_srgb () =
+  let l, c, h = (0.7, 0.1, 150.0) in
+  let direct = srgb_of_oklch (l, c, h) in
+  check_in_srgb "premise: oklch(.7 .1 150) is already in sRGB" direct;
+  Alcotest.(check triplet)
+    "in-gamut colour is converted, not mapped" direct
+    (Color_space.gamut_mapped_srgb_of_oklch (l, c, h))
+
+let test_gamut_map_achromatic () =
+  let mapped = Color_space.gamut_mapped_srgb_of_oklch (0.5, 0.0, 0.0) in
+  check_in_srgb "achromatic colour is writable in sRGB" mapped;
+  Alcotest.(check triplet)
+    "achromatic colour is the grey of its lightness"
+    (srgb_of_oklch (0.5, 0.0, 0.0))
+    mapped;
+  let r, g, b = mapped in
+  Alcotest.(check approx_float_tight) "grey: r = g" r g;
+  Alcotest.(check approx_float_tight) "grey: g = b" g b
+
+(* Sec. 14.2: lightness at or above 1.0 returns white, at or below 0.0 black,
+   whatever the chroma. *)
+let test_gamut_map_lightness_extremes () =
+  Alcotest.(check triplet)
+    "L = 1 is white" (1.0, 1.0, 1.0)
+    (Color_space.gamut_mapped_srgb_of_oklch (1.0, 0.2, 150.0));
+  Alcotest.(check triplet)
+    "L above 1 is white" (1.0, 1.0, 1.0)
+    (Color_space.gamut_mapped_srgb_of_oklch (1.5, 0.2, 150.0));
+  Alcotest.(check triplet)
+    "L = 0 is black" (0.0, 0.0, 0.0)
+    (Color_space.gamut_mapped_srgb_of_oklch (0.0, 0.2, 150.0));
+  Alcotest.(check triplet)
+    "L below 0 is black" (0.0, 0.0, 0.0)
+    (Color_space.gamut_mapped_srgb_of_oklch (-0.5, 0.2, 150.0))
+
 let test_hue_interpolation () =
   let hue m h1 h2 t = Color_space.interpolate_hue m h1 h2 t in
   Alcotest.(check approx_float)
@@ -259,6 +354,16 @@ let suite =
         test_display_p3_grey_to_srgb;
       Alcotest.test_case "fold linear sRGB to bytes within budget" `Quick
         test_srgb_bytes_of_linear;
+      Alcotest.test_case "gamut map out-of-sRGB oklch" `Quick
+        test_gamut_map_out_of_srgb;
+      Alcotest.test_case "gamut map far out-of-sRGB oklch" `Quick
+        test_gamut_map_far_out_of_srgb;
+      Alcotest.test_case "gamut map leaves in-sRGB oklch alone" `Quick
+        test_gamut_map_in_srgb;
+      Alcotest.test_case "gamut map achromatic oklch" `Quick
+        test_gamut_map_achromatic;
+      Alcotest.test_case "gamut map lightness extremes" `Quick
+        test_gamut_map_lightness_extremes;
       Alcotest.test_case "Hue interpolation methods" `Quick
         test_hue_interpolation;
     ] )
