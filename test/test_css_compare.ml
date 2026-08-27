@@ -110,7 +110,7 @@ let canonical_keeps_target_gated_content () =
   (* The declaration an engine without the guarded feature paints is the one
      before the guard, so two sheets that disagree there paint differently. *)
   Alcotest.(check bool)
-    "differing fallbacks under a baseline-true @supports differ" false
+    "differing fallbacks under an @supports guard differ" false
     (equal ".a{color:red;@supports (display:grid){color:blue}}"
        ".a{color:green;@supports (display:grid){color:blue}}");
   Alcotest.(check bool)

@@ -1852,7 +1852,7 @@ let spec_lenient_recovery_block_statements () =
   lenient_recover "bad @supports prelude in @supports ends at its block"
     "@supports (color: red) { @supports (display: grid) bogus { a { color: red \
      } } b { color: blue } }"
-    "b{color:#00f}" 1;
+    "@supports(color:red){b{color:#00f}}" 1;
   lenient_recover "bad @media prelude in @media ends at its block"
     "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
      color: blue } }"
@@ -3830,7 +3830,7 @@ let test_spec_snapshot_tracking_vectors () =
     oklch_support;
   assert_minify_and_optimize oklch_support
     ~minified:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
-    ~optimized:".accent{color:#944a4b}";
+    ~optimized:"@supports(color:oklch(50%.1 20)){.accent{color:#944a4b}}";
   let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }"
@@ -6900,15 +6900,13 @@ let fidelity_color_space_preserved () =
 
 (* {2 @supports (CSS Conditional L4 sec. 2)} *)
 
-(* CSS Conditional 4 sec. 2.5: a feature query asks the browser whether it
-   supports a declaration, and a vendor prefix is the author saying support is
-   not universal. The web-features dataset behind {!Baseline} tracks unprefixed
-   features only, so a prefixed property has no fact either way and its guard is
-   load-bearing: Chrome answers false to both [(-webkit-hyphens: none)] and
-   [(-moz-orient: inline)], which no unprefixed baseline predicts. A custom
-   property is a different case - sec. 2.5 makes every custom property
-   declaration supported - so [(--x: y)] still elides. *)
-let conditional4_2_vendor_prefixed_guard_kept () =
+(* CSS Conditional 4 sec. 2.5: a feature query asks the browser rendering the
+   sheet whether it supports a declaration, so the answer belongs to that
+   browser and the guard stays whatever shape the condition takes. Chrome
+   answers false to both [(-webkit-hyphens: none)] and [(-moz-orient: inline)];
+   a UA older than custom properties answers false to [(--x: y)], which sec. 2.5
+   calls supported. *)
+let conditional4_2_supports_guard_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
@@ -6934,12 +6932,21 @@ let conditional4_2_vendor_prefixed_guard_kept () =
        (normalize
           "@supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) \
            { .x { color: red } }"));
+  (* A conjunction is one condition, not two facts to settle separately.
+     Dropping the conjunct a support table calls always-true rewrites the
+     question the author asked the browser. *)
   Alcotest.(check string)
-    "a custom property declaration is supported, so its guard goes"
-    ".x{color:red}"
+    "a mixed conjunction keeps both conjuncts"
+    "@supports(display:grid)and (text-wrap:balance){.x{text-wrap:balance}}"
+    (normalize
+       "@supports (display: grid) and (text-wrap: balance) { .x { text-wrap: \
+        balance } }");
+  Alcotest.(check string)
+    "a custom property guard is kept" "@supports(--x:y){.x{color:red}}"
     (normalize "@supports (--x: y) { .x { color: red } }");
   Alcotest.(check string)
-    "an unprefixed baseline guard still goes" ".x{display:grid}"
+    "an unprefixed widely-available guard is kept"
+    "@supports(display:grid){.x{display:grid}}"
     (normalize "@supports (display: grid) { .x { display: grid } }")
 
 (* CSS Conditional Rules Module Level 4, section 2 (The @supports rule): the
@@ -6947,36 +6954,28 @@ let conditional4_2_vendor_prefixed_guard_kept () =
    preserved. The supports-condition grammar accepts declarations, [not], [and],
    [or], [selector()], and [font-tech()]. *)
 let conditional4_2_supports_preserved () =
-  let normalize ?(enforce_spec = false) css =
+  let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed ->
-        parsed.stylesheet |> Css.optimize ~enforce_spec
-        |> Css.to_string ~minify:true
+        parsed.stylesheet |> Css.optimize |> Css.to_string ~minify:true
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   let grid = "@supports (display: grid) { .x { display: grid } }" in
   Alcotest.(check string)
-    "default minify elides baseline @supports" ".x{display:grid}"
+    "a feature query round-trips" "@supports(display:grid){.x{display:grid}}"
     (normalize grid);
-  Alcotest.(check string)
-    "enforce-spec preserves baseline @supports"
-    "@supports(display:grid){.x{display:grid}}"
-    (normalize ~enforce_spec:true grid);
   let not_grid = "@supports not (display: grid) { .x { display: block } }" in
   Alcotest.(check string)
-    "default minify drops negated baseline @supports" "" (normalize not_grid);
-  Alcotest.(check string)
-    "enforce-spec preserves negated baseline @supports"
-    "@supports not (display:grid){.x{display:block}}"
-    (normalize ~enforce_spec:true not_grid);
+    "a negated feature query round-trips"
+    "@supports not (display:grid){.x{display:block}}" (normalize not_grid);
   Alcotest.(check bool)
     "@supports selector(:has(img)) preserved" true
     (Astring.String.is_infix ~affix:"selector(:has(img))"
        (normalize "@supports selector(:has(img)) { .x { color: red } }"));
   Alcotest.(check bool)
-    "enforce-spec preserves boolean @supports" true
+    "a boolean condition keeps its operator" true
     (Astring.String.is_infix ~affix:"and"
-       (normalize ~enforce_spec:true
+       (normalize
           "@supports (display: grid) and (color: red) { .x { color: red } }"))
 
 let conditional4_2_supports_invalid_rejected () =
@@ -9240,9 +9239,9 @@ let additional_tests =
     ( "spec conditional 4 2 supports preserved",
       `Quick,
       conditional4_2_supports_preserved );
-    ( "spec conditional 4 2 vendor-prefixed guard kept",
+    ( "spec conditional 4 2 author guard kept",
       `Quick,
-      conditional4_2_vendor_prefixed_guard_kept );
+      conditional4_2_supports_guard_kept );
     ( "spec conditional 4 2 supports invalid (negative)",
       `Quick,
       conditional4_2_supports_invalid_rejected );

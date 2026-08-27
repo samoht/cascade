@@ -95,6 +95,12 @@ recorded cases carrying six minifiers' answers.
   statement holds; call that one instead (#348)
 - `Css.Stylesheet.moz_document_condition` gains `Url_exact`, `Domain`,
   `Media_document` and `Regexp`, so a match on it is no longer exhaustive (#461)
+- An author's `@supports` guard survives `--minify`. Cascade decided the
+  condition against a generated support table, which is property-granular, so
+  `@supports (height: stretch)` was read as a question about `height` and every
+  browser lacking that value lost the guarded fallback and rendered with no
+  height at all. `Css.Supports.simplify_baseline` is gone, and `--enforce-spec`
+  no longer changes how a guard is treated (#584)
 - `Css.Supports.property` raises `Failure` on a value that is not a
   `<declaration-value>`, where it wrote the text unchecked:
   `property "color" "red) or (color:blue"` emitted a condition a browser answers

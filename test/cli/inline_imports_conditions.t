@@ -34,7 +34,7 @@ A @supports condition on @import wraps the inlined content in @supports.
   > .e { padding: 10px }
   > EOF
   $ cascade --minify --inline-imports supports.css
-  .grid{display:grid}.e{padding:10px}
+  @supports(display:grid){.grid{display:grid}}.e{padding:10px}
 
 A combined @import with both layer and media wraps in nested at-rules.
 

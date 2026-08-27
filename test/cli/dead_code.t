@@ -251,7 +251,7 @@ Adjacent same-condition [@supports] blocks merge.
   > @supports (display: grid) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-supports.css
-  .a{color:red}.b{color:#00f}
+  @supports(display:grid){.a{color:red}.b{color:#00f}}
 
 Adjacent same-condition [@container] blocks merge.
 
@@ -320,7 +320,7 @@ that filter when nested declarations apply.
   > .card { background-color: white }
   > EOF
   $ cascade --minify conditional-boundaries.css
-  .card{color:red;display:grid;padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
+  .card{color:red}@supports(display:grid){.card{display:grid}}.card{padding:1rem}@container(inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
 
 Equal declaration blocks group across an overlapping pseudo-class rule
 of different specificity. [.btn:hover] (0,2,0) outranks [.btn] (0,1,0),
