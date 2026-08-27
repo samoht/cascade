@@ -696,6 +696,35 @@ let test_tw_conditionals_split () =
      utilities{@media(min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(min-width:48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
     spec_output
 
+let test_supports_author_guard_kept_by_default () =
+  (* CSS Conditional 5 sec. 2 evaluates an @supports condition in the UA that
+     renders the sheet, so the guarded block is the author's enhancement and
+     whatever it does not cover is the fallback. Deciding the condition at build
+     time deletes that fallback path, which is the construct's only purpose, so
+     the default optimize keeps every author guard. *)
+  let minify css =
+    Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "a widely-available feature is still a guard"
+    "@supports(display:grid){.a{display:grid}}"
+    (minify "@supports (display:grid){.a{display:grid}}");
+  (* The condition is a feature test, not a colour. Folding the probe to
+     [color:red] would ask a question every UA answers yes to. *)
+  Alcotest.(check string)
+    "a color-mix probe keeps its condition unfolded"
+    "@supports(color:color-mix(in lab,red,red)){.a{color:#00f}}"
+    (minify "@supports (color:color-mix(in lab, red, red)){.a{color:blue}}");
+  (* [not <supports-in-parens>] is itself a <supports-condition>, so the outer
+     parens drop; the space before [(] stays, since [not(] lexes as a function
+     token. *)
+  Alcotest.(check string)
+    "a negated guard selects the UAs the fallback is for"
+    "@supports not (display:grid){.a{display:flex}}"
+    (minify "@supports (not (display:grid)){.a{display:flex}}")
+
 (* Optimize must preserve physical identity when there is nothing left to do.
    Optimizing once reaches a fixed point [canon]; a second pass changes nothing,
    so it must return the very same value ([==]) rather than a structurally-equal
@@ -1595,6 +1624,9 @@ let optimize_tests =
     ( "tailwind non-adjacent conditionals in layer stay split",
       `Quick,
       test_tw_conditionals_split );
+    ( "author supports guards survive the default minify",
+      `Quick,
+      test_supports_author_guard_kept_by_default );
   ]
 
 (** {1 Selector merging tests (cascade semantics)} *)
