@@ -99,3 +99,18 @@ val compare : t -> t -> int
 
 val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)
+
+val simplify_under : context:t list -> t -> [ `True | `False | `Cond of t ]
+(** [simplify_under ~context cond] decides [cond] against the conjunction [K] of
+    the conditions enclosing it. [`True] means [K and not cond] is
+    unsatisfiable, so [cond] holds wherever [K] does and its guard asks a
+    question already answered; [`False] means [K and cond] is unsatisfiable, so
+    the guard selects no user agent; [`Cond c] keeps the guard, narrowed to what
+    [K] leaves of it when that is shorter and left as written otherwise.
+
+    Every feature test is one propositional variable, keyed by {!compare}, and
+    the decision is the truth table over them: CSS Conditional 3 sec. 6 gives
+    every term a two-valued result, [<general-enclosed>] included. No support
+    table is consulted, so the answer holds whatever the user agent answers. A
+    chain carrying more than sixteen distinct feature tests is returned
+    unchanged. *)

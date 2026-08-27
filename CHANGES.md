@@ -389,6 +389,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` simplifies a nested `@supports` condition against the conditions
+  enclosing it, by propositional logic over its feature tests and against no
+  support table: under `@supports (A)`, an inner `@supports (A)` loses its
+  guard, an inner `@supports (A) and (B)` narrows to `(B)`, and an inner
+  `@supports (not (A))` is dead code
 - Merging a distant same-condition `@media` block carries its accumulator
   reversed instead of appending to the end, so the pass costs a line in the
   statement count rather than a square. A 4,000-statement sheet allocates

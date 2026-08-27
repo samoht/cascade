@@ -696,6 +696,77 @@ let test_supports_author_guard_kept_by_default () =
     "@supports not (display:grid){.a{display:flex}}"
     (minify "@supports (not (display:grid)){.a{display:flex}}")
 
+let test_supports_entailed_by_its_context () =
+  (* CSS Conditional 3 sec. 6 evaluates a condition as a two-valued boolean over
+     its feature tests, so a condition is a propositional formula and classical
+     entailment holds over it. Inside @supports (A) the UA has already answered
+     A, and one sheet gets the same answer everywhere in it, so an inner
+     condition simplifies against the conjunction K of its enclosing conditions
+     by propositional logic alone. K and not C unsatisfiable means C is entailed
+     and its guard goes; K and C unsatisfiable means C is refuted and its block
+     is dead. No support table is consulted, so this holds whatever the UA
+     answers. Atom identity is syntactic: two feature tests are the same
+     variable when they are structurally equal after parsing. *)
+  let minify css =
+    Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string css))
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  (* The boundary first. A disjunction does not entail its disjuncts: a UA
+     answering yes to (B) and no to (A) satisfies the context and still has to
+     be asked about (A). *)
+  Alcotest.(check string)
+    "a disjunctive context entails neither disjunct"
+    "@supports(nonsense-a:1px)or \
+     (nonsense-b:2px){@supports(nonsense-a:1px){.a{top:0}}}"
+    (minify
+       "@supports (nonsense-a:1px) or (nonsense-b:2px){@supports \
+        (nonsense-a:1px){.a{top:0}}}");
+  (* Two feature tests on one property are still two variables: accepting
+     display:grid does not imply accepting display:inline-grid. *)
+  Alcotest.(check string)
+    "two tests on one property are two variables"
+    "@supports(display:grid){@supports(display:inline-grid){.a{top:0}}}"
+    (minify
+       "@supports (display:grid){@supports (display:inline-grid){.a{top:0}}}");
+  Alcotest.(check string)
+    "a repeated guard asks a question already answered"
+    "@supports(nonsense-a:1px){.a{top:0}}"
+    (minify "@supports (nonsense-a:1px){@supports (nonsense-a:1px){.a{top:0}}}");
+  (* A conjunction entails each conjunct, and operand order is not part of the
+     question: (A) and (B) has the truth table of (B) and (A). *)
+  Alcotest.(check string)
+    "a conjunction entails its conjuncts in either order"
+    "@supports(nonsense-a:1px)and (nonsense-b:2px){.a{top:0}}"
+    (minify
+       "@supports (nonsense-a:1px) and (nonsense-b:2px){@supports \
+        (nonsense-b:2px) and (nonsense-a:1px){.a{top:0}}}");
+  (* A disjunct entails its disjunction, so (B) is never asked. *)
+  Alcotest.(check string)
+    "a disjunct entails its disjunction" "@supports(nonsense-a:1px){.a{top:0}}"
+    (minify
+       "@supports (nonsense-a:1px){@supports (nonsense-a:1px) or \
+        (nonsense-b:2px){.a{top:0}}}");
+  (* A and not A is false on every UA, so the inner block never applies and the
+     enclosing block is left empty. *)
+  Alcotest.(check string)
+    "a guard negating its context is dead" ""
+    (minify
+       "@supports (nonsense-a:1px){@supports (not (nonsense-a:1px)){.a{top:0}}}");
+  (* Neither entailed nor refuted: what K leaves to ask is (B). *)
+  Alcotest.(check string)
+    "a narrowing guard keeps only its residual"
+    "@supports(nonsense-a:1px){@supports(nonsense-b:2px){.a{top:0}}}"
+    (minify
+       "@supports (nonsense-a:1px){@supports (nonsense-a:1px) and \
+        (nonsense-b:2px){.a{top:0}}}");
+  (* Knowing the property changes nothing: the transform reads the condition's
+     shape, not a support table. *)
+  Alcotest.(check string)
+    "a property cascade models behaves the same"
+    "@supports(display:grid){.a{top:0}}"
+    (minify "@supports (display:grid){@supports (display:grid){.a{top:0}}}")
+
 (* Optimize must preserve physical identity when there is nothing left to do.
    Optimizing once reaches a fixed point [canon]; a second pass changes nothing,
    so it must return the very same value ([==]) rather than a structurally-equal
@@ -1595,6 +1666,9 @@ let optimize_tests =
     ( "author supports guards survive the default minify",
       `Quick,
       test_supports_author_guard_kept_by_default );
+    ( "a supports condition simplifies against the conditions enclosing it",
+      `Quick,
+      test_supports_entailed_by_its_context );
   ]
 
 (** {1 Selector merging tests (cascade semantics)} *)
