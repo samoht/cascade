@@ -7764,9 +7764,11 @@ val optimize :
     When [lossless] is [true] (default [false]), colour approximation is
     disabled while exact colour canonicalisation still runs.
 
-    When [enforce_spec] is [false] (default) the optimizer may treat baseline
-    feature queries as known facts and elide [@supports] guards satisfied in
-    maintained evergreen browsers; [true] keeps every feature query.
+    When [enforce_spec] is [true] (default [false]) the optimizer drops the
+    evergreen-browser target facts: a vendor-prefixed declaration is kept beside
+    its unprefixed twin, a media or container feature keeps its [min-]/[max-]
+    form rather than the shorter Media Queries 4 range grammar, and a nested
+    selector keeps its [&] prefix.
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
     runs even when the preflight predicts low gain, and the top-level

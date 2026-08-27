@@ -187,10 +187,12 @@ val stylesheet :
     other lossy approximations are suppressed while exact colour
     canonicalisation still runs.
 
-    When [enforce_spec] is [false] (default) the optimizer may treat baseline
-    feature queries as known facts and elide [@supports] guards whose condition
-    is satisfied in maintained evergreen browsers; [true] keeps every feature
-    query and applies only CSS-text-and-spec-provable rewrites.
+    When [enforce_spec] is [true] (default [false]) the optimizer drops the
+    evergreen-browser target facts and applies only CSS-text-and-spec-provable
+    rewrites: a vendor-prefixed declaration is kept beside its unprefixed twin,
+    a media or container feature keeps its [min-]/[max-] form rather than the
+    shorter Media Queries 4 range grammar, and a nested selector keeps its [&]
+    prefix.
 
     When [aggressive] is [true] (default [false]), global factoring runs even
     when its preflight predicts low or no gain, candidate limits widen, and the
