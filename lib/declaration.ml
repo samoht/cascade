@@ -2402,6 +2402,21 @@ let parse_declaration ?layer property value =
           (Cursor.of_components (name_value_components property value))
       with Cursor.Parse_error _ -> None)
 
+(* [parse_declaration] with the typed grammar skipped: the value stays the
+   component stream it was written as, the way an unknown property's does. A
+   custom property already reads that way, so it takes the ordinary path. *)
+let parse_opaque_declaration property value =
+  if is_custom_property_name property then parse_declaration property value
+  else
+    let t = Cursor.of_components (name_value_components property value) in
+    try
+      let name = String.lowercase_ascii_preserve (read_property_name t) in
+      Cursor.ws t;
+      if not (Cursor.colon t) then Cursor.err_expected t "':'";
+      Cursor.ws t;
+      Some (read_unknown_property_declaration t name)
+    with Cursor.Parse_error _ -> None
+
 let parse_custom_property name value =
   if is_custom_property_name name && is_declaration_value value then
     parse_declaration name value

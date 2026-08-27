@@ -149,9 +149,16 @@ let declaration_feature prop value =
   | _ -> (
       (* The name and the value stay apart: read as one text, a name carrying a
          [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an
-         escape) would end its own declaration. *)
+         escape) would end its own declaration.
+
+         The value is read opaquely. CSS Conditional 3 sec. 6.1 answers a
+         declaration feature by running that exact declaration through the
+         browser's own parser, so the spelling is the question and a typed
+         reading would hand back a different one: [rgba(0,0,0,.5)] and
+         [#ff0000ff] name grammars a browser can accept one of and refuse the
+         other. *)
       let name = property_name prop in
-      match Declaration.parse_declaration prop value with
+      match Declaration.parse_opaque_declaration prop value with
       | Some decl -> Declaration decl
       | None -> Unsupported (name, String.trim value))
 
@@ -265,10 +272,7 @@ and render_branch operator = function
 let to_string condition = render `Root condition
 
 let pp_declaration_feature ctx = function
-  | Declaration decl ->
-      (* The declaration is a capability predicate for this exact value, so
-         suppress lossy value rewrites (e.g. static colour folding). *)
-      Declaration.pp (Pp.enter_feature_query ctx) decl
+  | Declaration decl -> Declaration.pp ctx decl
   | Empty name ->
       Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':'

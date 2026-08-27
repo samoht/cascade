@@ -251,15 +251,12 @@ val normalize_duration : ?ctx:calc_ctx -> duration -> duration
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. *)
 
-val normalize_color :
-  ?lossless:bool -> ?exact_srgb:bool -> in_feature_query:bool -> color -> color
-(** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
-    shortest spelling: a static colour in any space folds through sRGB to
-    hex/named, hex shortens, and named<->hex picks the shorter.
-    [in_feature_query] keeps a colour untouched inside an [@supports] test,
-    where the exact spelling is the capability being probed. [lossless] disables
-    lossy static colour-space and color-mix folds while preserving exact
-    named/hex and byte-exact rgb folds.
+val normalize_color : ?lossless:bool -> ?exact_srgb:bool -> color -> color
+(** [normalize_color ?lossless c] canonicalises a color to its shortest
+    spelling: a static colour in any space folds through sRGB to hex/named, hex
+    shortens, and named<->hex picks the shorter. [lossless] disables lossy
+    static colour-space and color-mix folds while preserving exact named/hex and
+    byte-exact rgb folds.
 
     [exact_srgb] (default [false], and only consulted under [lossless])
     additionally folds a [color(srgb ...)] whose channels all land on a whole

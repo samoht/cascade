@@ -244,6 +244,15 @@ token boundary, so the space after it is dropped (`drop-shadow(a) drop-shadow(b)
 -> `drop-shadow(a)drop-shadow(b)`). The space after a `var()` / `env()` / `attr()`
 stays, since the substituted value could otherwise merge with its neighbour.
 
+The value inside an `@supports` condition is opaque too, for a different
+reason. CSS Conditional Rules 3 section 6.1 answers a declaration feature by
+running that exact declaration through the rendering browser's parser, so what
+stands there is the question and not a value to shorten:
+`@supports (color: rgba(0,0,0,.5))` and `@supports (width: 10.0px)` reach the
+output as written, where the same text in a rule body folds. The whitespace
+around the condition's own tokens is still elided, so
+`@supports (display: grid)` prints as `@supports(display:grid)`.
+
 ### How rule merging scales
 
 The rule-level rewrites run on a cascade-dependency DAG, not on repeated linear

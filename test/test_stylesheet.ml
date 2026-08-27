@@ -3825,12 +3825,16 @@ let test_spec_snapshot_tracking_vectors () =
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
      } }"
   in
+  (* The condition keeps [0.1] as written: it is the declaration the browser is
+     asked to parse, not a value to re-spell. The guarded rule folds. *)
   check_stylesheet
-    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~expected:
+      "@supports(color:oklch(50% 0.1 20)){.accent{color:oklch(50%.1 20)}}"
     oklch_support;
   assert_minify_and_optimize oklch_support
-    ~minified:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
-    ~optimized:"@supports(color:oklch(50%.1 20)){.accent{color:#944a4b}}";
+    ~minified:
+      "@supports(color:oklch(50% 0.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~optimized:"@supports(color:oklch(50% 0.1 20)){.accent{color:#944a4b}}";
   let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }"

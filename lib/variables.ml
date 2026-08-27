@@ -300,7 +300,7 @@ let list_map_preserve = List.map_preserve
 let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
  fun ?(lossless = false) syntax value ->
   match syntax with
-  | Color -> Values.normalize_color ~lossless ~in_feature_query:false value
+  | Color -> Values.normalize_color ~lossless value
   | Or (left, right) -> (
       match value with
       | Either.Left v ->

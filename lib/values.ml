@@ -7390,16 +7390,13 @@ let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
       else Some (num f)
   | other -> other
 
-let normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c =
+let normalize_static_modern_color ~exact_srgb ~lossless c =
   let hex_of_bytes r g b (a : alpha) =
     match alpha_value_byte a with
     | Some ab -> canonical_color_of_hex r g b ab
     | Option.None -> c
   in
-  (* A feature query asks whether the browser parses the function that was
-     written, so the spelling is the point there and no fold applies. *)
-  if in_feature_query then drop_full_alpha c
-  else if lossless then
+  if lossless then
     match
       if exact_srgb then exact_srgb_function_channels c else Option.None
     with
@@ -7499,20 +7496,18 @@ let round_lab_family_axes ~lossless (c : color) : color =
   | other -> other
 
 (* AST-level color canonicalisation: the value-changing colour folds live here,
-   producing a canonical [color] so [pp_color] stays a pure serialiser.
-   [in_feature_query] gates the static colour-space fold (suppressed inside
-   [@supports] tests). The sRGB fold runs on the authored coefficients first;
-   [round_lab_family_axes] then rounds only what survives in its own colour
-   space. *)
-let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
-    ~in_feature_query (c : color) : color =
+   producing a canonical [color] so [pp_color] stays a pure serialiser. The sRGB
+   fold runs on the authored coefficients first; [round_lab_family_axes] then
+   rounds only what survives in its own colour space. *)
+let rec normalize_color ?(lossless = false) ?(exact_srgb = false) (c : color) :
+    color =
   let normalize_color ?(lossless = lossless) =
     normalize_color ~lossless ~exact_srgb
   in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   let static_fold () =
     round_lab_family_axes ~lossless
-      (normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c)
+      (normalize_static_modern_color ~exact_srgb ~lossless c)
   in
   match c with
   | Oklab { l = Some l; a = None; b = None; alpha }
@@ -7522,8 +7517,7 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  | Color _ ->
-      normalize_static_modern_color ~in_feature_query ~exact_srgb ~lossless c
+  | Color _ -> normalize_static_modern_color ~exact_srgb ~lossless c
   | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
       normalize_hex_color c r g b a
   | Named orig_name -> normalize_named_color c orig_name
@@ -7536,19 +7530,15 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
       | Option.None -> drop_full_alpha c)
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
-      normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
-        ~percent1 ~color2 ~percent2
+      normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+        ~percent2
   | Light_dark (l, d) ->
-      Light_dark
-        ( normalize_color ~lossless ~in_feature_query l,
-          normalize_color ~lossless ~in_feature_query d )
-  | Contrast_color inner ->
-      Contrast_color (normalize_color ~lossless ~in_feature_query inner)
+      Light_dark (normalize_color ~lossless l, normalize_color ~lossless d)
+  | Contrast_color inner -> Contrast_color (normalize_color ~lossless inner)
   | Relative_rgb (origin, tail) ->
-      Relative_rgb (normalize_color ~lossless ~in_feature_query origin, tail)
+      Relative_rgb (normalize_color ~lossless origin, tail)
   | Relative_color (name, origin, tail) ->
-      Relative_color
-        (name, normalize_color ~lossless ~in_feature_query origin, tail)
+      Relative_color (name, normalize_color ~lossless origin, tail)
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
@@ -7556,7 +7546,7 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
          untouched. *)
       let fallback =
         match v.fallback with
-        | Fallback c -> Fallback (normalize_color ~lossless ~in_feature_query c)
+        | Fallback c -> Fallback (normalize_color ~lossless c)
         | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as other
           ->
             other
@@ -7565,13 +7555,12 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
         {
           v with
           fallback;
-          default =
-            Option.map (normalize_color ~lossless ~in_feature_query) v.default;
+          default = Option.map (normalize_color ~lossless) v.default;
         }
   | _ -> c
 
-and normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
-    ~percent1 ~color2 ~percent2 =
+and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+    ~percent2 =
   let keep () =
     (* CSS Color 5 sec. 3 / CSS Color 4 sec. 13.4: [shorter] is the default hue
        and drops, and percentages that restate the [100% - other] default drop
@@ -7594,9 +7583,9 @@ and normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
       {
         in_space;
         hue;
-        color1 = normalize_color ~lossless ~in_feature_query color1;
+        color1 = normalize_color ~lossless color1;
         percent1;
-        color2 = normalize_color ~lossless ~in_feature_query color2;
+        color2 = normalize_color ~lossless color2;
         percent2;
       }
   in
@@ -7617,7 +7606,7 @@ and normalize_mix_color ~lossless ~in_feature_query ~in_space ~hue ~color1
       | _ -> None
   in
   match folded with
-  | Some color -> normalize_color ~lossless ~in_feature_query color
+  | Some color -> normalize_color ~lossless color
   | None -> keep ()
 
 (** Read hue_interpolation *)

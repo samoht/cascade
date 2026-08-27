@@ -38,11 +38,6 @@ type ctx = {
       (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
           boundary ([calc] is type-aware so [<percentage>] and [<number>] are
           not interchangeable). *)
-  in_feature_query : bool;
-      (** Set while serialising the value of an [@supports (property: value)]
-          feature test. The value is a capability predicate for that exact
-          syntax, so lossy rewrites (e.g. static colour folding) are suppressed
-          there. *)
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -275,14 +270,6 @@ val block_close : unit t
 
 val minified : ctx -> bool
 (** [minified ctx] queries whether context is in minification mode. *)
-
-val in_feature_query : ctx -> bool
-(** [in_feature_query ctx] is true while serialising an [@supports] feature-test
-    value, where lossy rewrites must be suppressed. *)
-
-val enter_feature_query : ctx -> ctx
-(** [enter_feature_query ctx] marks [ctx] as inside an [@supports] feature-test
-    value. *)
 
 val in_style_rule : ctx -> bool
 (** [in_style_rule ctx] is true while serialising the contents of a style rule,

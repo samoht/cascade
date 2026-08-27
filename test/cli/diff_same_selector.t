@@ -38,7 +38,7 @@ rather than as a loss and a gain.
      │       --tw-drop-shadow-color oklch(.585 .233 277.117)
      │       --tw-drop-shadow var(--tw-drop-shadow-size)
      ├─ .drop-shadow-indigo-500 (position 0) ↔  .drop-shadow-indigo-500 (position 4)
-     └─ @supports (color: color-mix(in lab, red, red)) (1 reordered)
+     └─ @supports (color: color-mix(in lab,red,red)) (1 reordered)
         └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
   
   [1]

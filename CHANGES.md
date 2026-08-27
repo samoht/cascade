@@ -101,6 +101,14 @@ recorded cases carrying six minifiers' answers.
   browser lacking that value lost the guarded fallback and rendered with no
   height at all. `Css.Supports.simplify_baseline` is gone, and `--enforce-spec`
   no longer changes how a guard is treated (#584)
+- An `@supports` condition keeps the value the author wrote. Cascade re-spelled
+  it through the property's typed grammar, so `(color: rgba(0,0,0,.5))` asked
+  about CSS Color 4 instead, and `(width: calc(10px))` and `(width: 10.0px)`
+  became one question, merging the blocks two different guards protected.
+  `Css.Values.normalize_color` loses the `in_feature_query` argument nothing
+  ever set, along with the `Css.Pp` field and accessors behind it.
+  `Css.Declaration.parse_opaque_declaration` reads a declaration without its
+  typed grammar (#587)
 - `Css.Supports.property` raises `Failure` on a value that is not a
   `<declaration-value>`, where it wrote the text unchecked:
   `property "color" "red) or (color:blue"` emitted a condition a browser answers
