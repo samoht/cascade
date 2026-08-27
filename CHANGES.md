@@ -397,6 +397,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` merges a run of adjacent `@starting-style` blocks. The rule takes
+  no prelude (CSS Transitions 2 sec. 3.3), so the run holds the same starting
+  styles, in the same order, as one block over their concatenation, and the
+  four conditional groups beside it already collapsed such a run (#592)
 - `--minify` simplifies a nested `@supports` condition against the conditions
   enclosing it, by propositional logic over its feature tests and against no
   support table: under `@supports (A)`, an inner `@supports (A)` loses its
@@ -759,6 +763,15 @@ recorded cases carrying six minifiers' answers.
   library could report that a colour was out of gamut, not what to render in
   its place. Minify is untouched and still keeps the colour the author wrote
   (#591)
+- The statement-merging passes are callable on their own:
+  `Css.Optimize.merge_consecutive_layers`, `merge_named_layers_by_name`,
+  `merge_consecutive_media`, `merge_distant_media`,
+  `merge_consecutive_supports`, `merge_consecutive_containers` and
+  `merge_consecutive_starting_style`. A caller that runs `Css.optimize` behind
+  a flag of its own can now collapse the block structure of a sheet it only
+  serialises. `Css.Optimize.drop_empty_rules` is spelled over the statement
+  list it walks, which states the scope it always had: the block it is given,
+  not the tree below it (#592)
 - `Css.inline_vars` no longer costs a square in the variable count: liveness is
   decided through indexes and a worklist, and the customs a rule can see are
   indexed by name instead of scanned per declaration. A 12,800-variable sheet

@@ -72,6 +72,7 @@ let merge_consecutive_media = Block.merge_consecutive_media
 let merge_distant_media = Block.merge_distant_media
 let merge_consecutive_supports = Block.merge_consecutive_supports
 let merge_consecutive_containers = Block.merge_consecutive_containers
+let merge_consecutive_starting_style = Block.merge_consecutive_starting_style
 let is_layer_empty = Block.is_layer_empty
 let collect_empty_layer_names = Block.collect_empty_layer_names
 let merge_layer_declarations = Block.merge_layer_declarations
@@ -175,6 +176,7 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           |> merge_distant_media ?owner ~optimize_merged_block
           |> merge_consecutive_supports ~optimize_merged_block
           |> merge_consecutive_containers ~optimize_merged_block
+          |> merge_consecutive_starting_style ~optimize_merged_block
         in
         stmts |> merge_layer_declarations |> drop_empty_rules
       in

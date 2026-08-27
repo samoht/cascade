@@ -94,8 +94,8 @@ let merge_layer_blocks ~optimize_merged_block stmts =
   in
   merge [] None stmts
 
-let merge_consecutive_layers ~optimize_merged_block (stmts : statement list) :
-    statement list =
+let merge_consecutive_layers ?(optimize_merged_block = Fun.id)
+    (stmts : statement list) : statement list =
   if needs_layer_merge stmts then
     merge_layer_blocks ~optimize_merged_block stmts
   else stmts
@@ -141,8 +141,8 @@ let merge_media_blocks ~optimize_merged_block stmts =
   in
   merge [] None stmts
 
-let merge_consecutive_media ~optimize_merged_block (stmts : statement list) :
-    statement list =
+let merge_consecutive_media ?(optimize_merged_block = Fun.id)
+    (stmts : statement list) : statement list =
   if needs_media_merge stmts then
     merge_media_blocks ~optimize_merged_block stmts
   else stmts
@@ -256,7 +256,7 @@ let try_distant_media_merge ~leaves ~unattributed out cond block :
       else Some (before @ [ Media (cond, target @ block) ] @ after)
   | Some _ -> None
 
-let merge_distant_media ?owner ~optimize_merged_block stmts =
+let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
   if not (needs_distant_media_merge stmts) then stmts
   else
     let leaves stmts = List.concat_map (leaf_rules ?parent:owner) stmts in
@@ -287,8 +287,8 @@ let merge_distant_media ?owner ~optimize_merged_block stmts =
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
-let merge_consecutive_supports ~optimize_merged_block (stmts : statement list) :
-    statement list =
+let merge_consecutive_supports ?(optimize_merged_block = Fun.id)
+    (stmts : statement list) : statement list =
   let rec needs_merge = function
     | Supports (prev_cond, _) :: Supports (cond, _) :: _
       when Supports.equal prev_cond cond ->
@@ -335,8 +335,8 @@ let same_container (prev_name, prev_cond) (name, cond) =
   Option.equal String.equal prev_name name
   && Option.equal Container.equal prev_cond cond
 
-let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
-    : statement list =
+let merge_consecutive_containers ?(optimize_merged_block = Fun.id)
+    (stmts : statement list) : statement list =
   let rec needs_merge = function
     | Container (prev_name, prev_cond, _) :: Container (name, cond, _) :: _
       when same_container (prev_name, prev_cond) (name, cond) ->
@@ -374,6 +374,40 @@ let merge_consecutive_containers ~optimize_merged_block (stmts : statement list)
                 (stmt
                 :: Container (name, cond, optimize_merged_block block)
                 :: acc)
+                None rest
+          | None -> merge (stmt :: acc) None rest)
+    in
+    merge [] None stmts
+
+(* CSS Transitions 2 sec. 3.3: [@starting-style] takes no prelude, so two
+   adjacent blocks hold the same starting styles, in the same order, as one
+   block over their concatenation. Adjacency is the whole gate; the conditional
+   passes above compare a condition this rule does not have. *)
+let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id)
+    (stmts : statement list) : statement list =
+  let rec needs_merge = function
+    | Starting_style _ :: Starting_style _ :: _ -> true
+    | _ :: rest -> needs_merge rest
+    | [] -> false
+  in
+  if not (needs_merge stmts) then stmts
+  else
+    (* [acc] holds output in REVERSE order; reverse once at the end. *)
+    let rec merge acc prev = function
+      | [] -> (
+          match prev with
+          | Some block ->
+              List.rev (Starting_style (optimize_merged_block block) :: acc)
+          | None -> List.rev acc)
+      | Starting_style block :: rest -> (
+          match prev with
+          | Some prev_block -> merge acc (Some (prev_block @ block)) rest
+          | None -> merge acc (Some block) rest)
+      | stmt :: rest -> (
+          match prev with
+          | Some block ->
+              merge
+                (stmt :: Starting_style (optimize_merged_block block) :: acc)
                 None rest
           | None -> merge (stmt :: acc) None rest)
     in

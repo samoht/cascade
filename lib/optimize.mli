@@ -106,13 +106,6 @@ val drop_unknown_at_rules : t -> t
     this: the reader of a transform's output is not always a browser, and an
     agent that later implements the name would render the two differently. *)
 
-val drop_empty_rules : t -> t
-(** [drop_empty_rules ss] removes top-level rules and at-rule frames whose body
-    is empty (no declarations and no nested rules), and rules whose selector
-    {!Selector.matches_nothing}, which no element can ever be styled by. An
-    empty [@when] or [@else] stays while a later [@else] binds to it, and an
-    empty [@layer] or origin wrapper always stays. *)
-
 (** {1 Edge Model} *)
 
 (** Existential wrapper that hides the value type of a typed property tag, so
@@ -144,6 +137,91 @@ val single_rule : ?scope:scope -> rule -> rule
 
 val rules : ?scope:scope -> rule list -> rule list
 (** [rules ?scope rs] optimizes a list of flat rules. *)
+
+(** {1 Statement Optimization}
+
+    Passes over the statements of one block: a whole stylesheet, or the body of
+    a single [@media] / [@layer] / style rule. Each one is a self-contained
+    rewrite, so a caller that runs {!stylesheet} behind a flag of its own can
+    still collapse the structure of a sheet it only serialises.
+
+    [optimize_merged_block] runs over the statements of a block a merge
+    produced. It defaults to the identity, which leaves the joined body exactly
+    as the two written bodies were; {!stylesheet} passes its own recursion, so a
+    merge there re-optimizes what it joins. *)
+
+val merge_consecutive_layers :
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_consecutive_layers stmts] merges adjacent named [@layer] blocks that
+    name the same layer: CSS Cascade 5 sec. 6.4.2 accumulates a named layer over
+    all of its occurrences. An anonymous [@layer] block is left alone, each one
+    without a name creating a layer of its own. *)
+
+val merge_named_layers_by_name : statement list -> statement list
+(** [merge_named_layers_by_name stmts] merges every same-name [@layer] block in
+    one enclosing block into its first non-empty occurrence. The accumulation
+    {!merge_consecutive_layers} exploits is not conditional on adjacency, so
+    this reaches the occurrences another statement is written between. The
+    hoisted content keeps the source order it had within its layer, and against
+    a statement outside that layer precedence follows layer order rather than
+    position (CSS Cascade 5 sec. 6.4.3). *)
+
+val merge_consecutive_media :
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_consecutive_media stmts] merges adjacent [@media] blocks with
+    identical conditions. *)
+
+val merge_distant_media :
+  ?owner:rule ->
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_distant_media ?owner stmts] merges a later same-condition [@media]
+    block into the first occurrence when hoisting it past the intervening
+    statements cannot reorder a conflicting rule (overlapping selector with a
+    shared property set to a different value).
+
+    [owner] is the style rule whose body [stmts] is, when it is one. A
+    declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
+    3.4), so without it the run is a conflict the hoist never sees; the pass
+    then refuses the merge rather than read that silence as safety. *)
+
+val merge_consecutive_supports :
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_consecutive_supports stmts] merges adjacent [@supports] blocks with
+    identical conditions. *)
+
+val merge_consecutive_containers :
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_consecutive_containers stmts] merges adjacent [@container] blocks
+    with identical names and conditions. *)
+
+val merge_consecutive_starting_style :
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_consecutive_starting_style stmts] merges adjacent [@starting-style]
+    blocks. The rule takes no prelude (CSS Transitions 2 sec. 3.3), so unlike
+    the conditional groups above it has nothing to compare: adjacency is the
+    whole gate. *)
+
+val drop_empty_rules : statement list -> statement list
+(** [drop_empty_rules stmts] drops the statements of a block that contribute
+    nothing: a rule with no declarations and no nested rules, a rule whose
+    selector {!Selector.matches_nothing}, a conditional group rule with an empty
+    body, and an empty [@scope], [@starting-style] or [@page] box. An empty
+    [@when] or [@else] goes only when no [@else] chains onto it, since
+    css-conditional-5 sec. 3 binds an [@else] to the branch before it. An empty
+    [@layer] stays, the name still ordering the layer, and so does an empty
+    origin wrapper, which gates nothing. *)
 
 (** {1 Nested Structure Optimization} *)
 
