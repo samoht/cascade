@@ -57,6 +57,13 @@ let normalize_paint_order (value : paint_order) : paint_order =
       shortest 0
   | _ -> value
 
+let normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
+  match value with
+  | Length lp ->
+      let lp' = Values.normalize_length_percentage ~ctx lp in
+      if lp' == lp then value else Length lp'
+  | _ -> value
+
 let normalize_dash_length ~ctx (value : dash_length) : dash_length =
   match value with
   | Number _ -> value
@@ -139,6 +146,17 @@ let rec pp_paint_order : paint_order Pp.t =
   | Var v -> pp_var pp_paint_order ctx v
   | Normal -> Pp.string ctx "normal"
   | Order ks -> Pp.list ~sep:Pp.space pp_paint_order_keyword ctx ks
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_stroke_width : stroke_width Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_stroke_width ctx v
+  | Number n -> Pp.float ctx n
+  | Length lp -> Values.pp_length_percentage ctx lp
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -438,6 +456,34 @@ let rec read_stroke_dasharray t : stroke_dasharray =
       in
       (Dashes (go []) : stroke_dasharray))
     t
+
+(* SVG 2 sec. 13.5.3: "A <number> value represents a value in user units", and
+   "A negative value is invalid", so both branches of the production refuse one.
+   Only a literal can be checked here; calc() and var() resolve later. *)
+let read_stroke_width_value t : stroke_width =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
+      let n = Cursor.number t in
+      if n < 0. then Cursor.err_invalid t "negative stroke-width";
+      Number n
+  (* The grammar has no keyword branch, so the intrinsic-sizing keywords a bare
+     length would accept are out. *)
+  | _ ->
+      Length
+        (Values.read_length_percentage ~allow_negative:false
+           ~with_keywords:false t)
+
+let rec read_stroke_width t : stroke_width =
+  Cursor.enum_or_calls "stroke-width"
+    [
+      ("inherit", (Inherit : stroke_width));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_width t)) ]
+    ~default:read_stroke_width_value t
 
 (* SVG 2 sec. 13.5.5: "A negative value for stroke-miterlimit must be treated as
    an illegal value". SVG 1.1 sec. 11.4 also required at least 1, but SVG 2

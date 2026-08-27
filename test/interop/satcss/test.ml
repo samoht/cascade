@@ -49,18 +49,14 @@ let cases () =
    closed-world (where it already makes the same DOM-dependent merges). The
    remainder is a structural-shape difference in the merged form, not a refused
    merge. Each entry asserts cascade is STILL larger, so a fix that closes the
-   gap fails the test and prompts removing the entry. *)
+   gap fails the test and prompts removing the entry. Only the sign is asserted:
+   the byte figures below move with the optimizer. *)
 let known_larger =
   [
     ( "vk-3",
-      "Residual +17 bytes under closed-world: SatCSS's grouping of \
+      "Residual +13 bytes under closed-world: SatCSS's grouping of \
        `.blocked_about_login`/`.blocked_no_code` (tied on `padding-top`) lands \
        a marginally tighter structure than cascade's equivalent merge." );
-    ( "google-2",
-      "Residual +39 bytes under closed-world: with the DOM-disjointness \
-       assumption cascade groups the `position` rules \
-       (`#viewport,.goog-inline-block,...` and `#footer,.jfk-bubble,...`) but \
-       reaches all but ~39 bytes of SatCSS's exact shape." );
   ]
 
 let check_case name () =

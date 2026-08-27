@@ -3111,7 +3111,7 @@ let normalize_property_value : type a.
   | Perspective -> Values.normalize_length ~ctx value
   | Word_spacing -> Values.normalize_length ~ctx value
   | Text_decoration_thickness -> Values.normalize_length ~ctx value
-  | Stroke_width -> Values.normalize_length ~ctx value
+  | Stroke_width -> normalize_stroke_width ~ctx value
   | Scroll_margin_top -> Values.normalize_length ~ctx value
   | Scroll_margin_right -> Values.normalize_length ~ctx value
   | Scroll_margin_bottom -> Values.normalize_length ~ctx value
@@ -3671,7 +3671,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Box_shadow -> pp pp_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
-  | Stroke_width -> pp pp_length
+  | Stroke_width -> pp pp_stroke_width
   | Transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Scale -> pp pp_scale
   | Outline -> pp pp_outline
@@ -3914,7 +3914,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Line_height_step -> Some Length
   | Perspective -> Some Length
   | Text_decoration_thickness -> Some Length
-  | Stroke_width -> Some Length
+  | Stroke_width -> Some Stroke_width
   | Scroll_margin_top -> Some Length
   | Scroll_margin_right -> Some Length
   | Scroll_margin_bottom -> Some Length
@@ -4080,6 +4080,7 @@ let pp_property_value_kind : type a. a property_value_kind Pp.t =
   | Background_images -> Pp.string ctx "background-images"
   | Font_src -> Pp.string ctx "font-src"
   | Font_family -> Pp.string ctx "font-family"
+  | Stroke_width -> Pp.string ctx "stroke-width"
 
 let read_property_value_kind (type a) (_ : Cursor.t) : a property_value_kind =
   invalid_arg

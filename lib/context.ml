@@ -1980,6 +1980,18 @@ let simplify_font_size ?layer_order ?layer cascade (length_ctx : Length.ctx)
   in
   Calc_residual.simplify ?layer_order ?layer cascade ops value
 
+(* Only the <length-percentage> branch carries anything to simplify: a bare
+   number is already a user-unit width. *)
+let simplify_stroke_width ?layer_order ?layer cascade length_ctx
+    (value : Properties.stroke_width) : Properties.stroke_width =
+  match value with
+  | Length lp ->
+      let lp' =
+        simplify_length_percentage ?layer_order ?layer cascade length_ctx lp
+      in
+      if lp' == lp then value else Length lp'
+  | _ -> value
+
 let simplify_opacity ?layer_order ?layer cascade value =
   let to_number = function
     | Properties.Opacity_number n -> Some n
@@ -2422,6 +2434,15 @@ let css_wide_of_border_widths (value : Properties.border_width list) =
   match value with [ width ] -> css_wide_of_border_width width | _ -> None
 
 let css_wide_of_opacity (value : Properties.opacity) =
+  match value with
+  | Properties.Inherit -> Some Inherit
+  | Properties.Initial -> Some Initial
+  | Properties.Unset -> Some Unset
+  | Properties.Revert -> Some Revert
+  | Properties.Revert_layer -> Some Revert_layer
+  | _ -> None
+
+let css_wide_of_stroke_width (value : Properties.stroke_width) =
   match value with
   | Properties.Inherit -> Some Inherit
   | Properties.Initial -> Some Initial
@@ -3514,6 +3535,9 @@ let kind_simplifier : type a.
       (simplify_font_src ~layer_order ?layer ctx, fun _ -> None)
   | Properties.Font_family ->
       (simplify_font_family ~layer_order ?layer ctx, css_wide_of_font_family)
+  | Properties.Stroke_width ->
+      ( simplify_stroke_width ~layer_order ?layer ctx length_ctx,
+        css_wide_of_stroke_width )
 
 let rec eval_typed ?layer_order ?layer ctx decl =
   let ctx = scope ?layer_order ?layer ctx in

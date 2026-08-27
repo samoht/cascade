@@ -4,20 +4,36 @@ open Syntax
 
 (** {1 Metric Override Types} *)
 
-(** Metric override value - either "normal" or a percentage. Used for
-    ascent-override, descent-override, line-gap-override. *)
-type metric_override = Normal | Percent of float
+(** Metric override value - either "normal", a percentage, or an unresolved
+    [var()]. Used for ascent-override, descent-override, line-gap-override. *)
+type metric_override =
+  | Normal
+  | Percent of float
+  | Var of metric_override Values.var
 
-let string_of_metric_override = function
-  | Normal -> "normal"
-  | Percent p -> Pp.string_of_float p ^ "%"
+let rec pp_metric_override ctx = function
+  | Normal -> Pp.string ctx "normal"
+  | Percent p ->
+      Pp.string ctx (Pp.string_of_float p);
+      Pp.char ctx '%'
+  | Var var -> Values.pp_var pp_metric_override ctx var
+
+let string_of_metric_override = Pp.to_string ~minify:false pp_metric_override
 
 (** {1 Size Adjust} *)
 
-type size_adjust = float
-(** Size adjustment percentage. *)
+(** CSS Fonts 5 sec. 4.4: a [<percentage [0,inf]>] glyph size multiplier. No
+    descriptor grammar takes a [var()] (CSS Fonts 4 sec. 4.1), so [Var] parks a
+    reference until the inline pass substitutes it. *)
+type size_adjust = Pct of float | Var of size_adjust Values.var
 
-let string_of_size_adjust p = Pp.string_of_float p ^ "%"
+let rec pp_size_adjust ctx : size_adjust -> unit = function
+  | Pct p ->
+      Pp.string ctx (Pp.string_of_float p);
+      Pp.char ctx '%'
+  | Var var -> Values.pp_var pp_size_adjust ctx var
+
+let string_of_size_adjust = Pp.to_string ~minify:false pp_size_adjust
 
 (** {1 Font Source} *)
 
@@ -39,8 +55,8 @@ and src = src_entry list
 type t = src
 
 let equal_metric_override (a : metric_override) b = a = b
-let equal_size_adjust (a : size_adjust) b = Float.equal a b
-let compare_size_adjust (a : size_adjust) b = Float.compare a b
+let equal_size_adjust (a : size_adjust) b = a = b
+let compare_size_adjust (a : size_adjust) b = compare a b
 let equal_src (a : src) b = a = b
 
 (* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
@@ -158,7 +174,7 @@ let valid_percentage p = Float.is_finite p && p >= 0.
 (* CSS Fonts 4 sec. 4.10: [normal | <percentage [0,inf]>]. The token is left in
    place on a mismatch, so the error carries the offending value's span rather
    than whatever follows it. *)
-let read_metric_override t =
+let rec read_metric_override t : metric_override =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident "normal"; _ }) ->
       Cursor.skip t;
@@ -167,15 +183,21 @@ let read_metric_override t =
     when valid_percentage number.Token.value ->
       Cursor.skip t;
       Percent number.Token.value
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_metric_override t)
   | Some _ | None -> Cursor.err_invalid t "metric override"
 
-(* CSS Fonts 4 sec. 4.11: [<percentage [0,inf]>]. *)
-let read_size_adjust t =
+(* CSS Fonts 5 sec. 4.4: [<percentage [0,inf]>]. *)
+let rec read_size_adjust t : size_adjust =
   match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_size_adjust t)
   | Some (Component.Preserved { kind = Token.Percentage number; _ })
     when valid_percentage number.Token.value ->
       Cursor.skip t;
-      number.Token.value
+      Pct number.Token.value
   | Some _ | None -> Cursor.err_invalid t "size-adjust"
 
 let read_whole read s =

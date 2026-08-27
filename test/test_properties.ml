@@ -192,6 +192,9 @@ let check_svg_paint = check_value_cursor "svg-paint" read_svg_paint pp_svg_paint
 let check_direction = check_value_cursor "direction" read_direction pp_direction
 let check_fill_rule = check_value_cursor "fill-rule" read_fill_rule pp_fill_rule
 
+let check_stroke_width =
+  check_value_cursor "stroke-width" read_stroke_width pp_stroke_width
+
 let check_stroke_linecap =
   check_value_cursor "stroke-linecap" read_stroke_linecap pp_stroke_linecap
 
@@ -2993,6 +2996,19 @@ let test_fill_rule () =
   neg_cursor read_fill_rule "even-odd";
   neg_cursor ~allow_partial:true read_fill_rule "nonzero evenodd"
 
+(* SVG 2 sec. 13.5.3 gives [stroke-width] [<length-percentage> | <number>]: a
+   bare number is a width in user units, not a CSS [<length>], and a negative
+   value is invalid. *)
+let test_stroke_width () =
+  check_stroke_width "1.5";
+  check_stroke_width "0";
+  check_stroke_width "1.5px";
+  check_stroke_width "50%";
+  check_stroke_width "var(--w)";
+  neg_cursor read_stroke_width "-1";
+  neg_cursor read_stroke_width "-1px";
+  neg_cursor read_stroke_width "thick"
+
 let test_stroke_linecap () =
   check_stroke_linecap "butt";
   check_stroke_linecap "round";
@@ -4611,6 +4627,7 @@ let additional_tests =
     test_case "svg_paint" `Quick test_svg_paint;
     test_case "direction" `Quick test_direction;
     test_case "fill_rule" `Quick test_fill_rule;
+    test_case "stroke_width" `Quick test_stroke_width;
     test_case "stroke_linecap" `Quick test_stroke_linecap;
     test_case "stroke_linejoin" `Quick test_stroke_linejoin;
     test_case "stroke_miterlimit" `Quick test_stroke_miterlimit;

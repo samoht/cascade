@@ -589,10 +589,16 @@ let simplify_font_src_descriptor visible entries =
 (* Every descriptor whose value type carries a [Var] arm resolves the same way:
    follow the reference to the custom it names, then the references that value
    holds in turn, and stop on a name already seen so a cycle terminates. What
-   differs per descriptor is only how to read the value and how to see a [Var],
-   so take those three and share the walk. *)
-let simplify_typed_var visible ~read ~(as_var : 'a -> 'a Values.var option)
-    ~(of_var : 'a Values.var -> 'a) (value : 'a) : 'a =
+   differs per descriptor is only how to read the value, how to see a [Var], and
+   what a value that is no [Var] still holds, so take those and share the walk.
+   [leaf] receives the walk so a value nesting its own type carries the same
+   [visited] set inwards; without that a reference reachable both directly and
+   through the nesting would not terminate. *)
+let simplify_nested_var visible ~read ~(as_var : 'a -> 'a Values.var option)
+    ~(of_var : 'a Values.var -> 'a)
+    ~(leaf :
+       (visited:string list -> 'a -> 'a) -> visited:string list -> 'a -> 'a)
+    (value : 'a) : 'a =
   let rec simplify ~visited (value : 'a) : 'a =
     match as_var value with
     | Some var when not (List.mem var.Values.name visited) -> (
@@ -606,14 +612,36 @@ let simplify_typed_var visible ~read ~(as_var : 'a -> 'a Values.var option)
             | Values.Empty | Values.Empty2 | Values.None
             | Values.Syntax_fallback _ | Values.Var_fallback _ ->
                 of_var var))
-    | Some _ | None -> value
+    | Some _ | None -> leaf simplify ~visited value
   in
   simplify ~visited:[] value
+
+(* The common case: the value is flat, so a non-[Var] holds no reference. *)
+let simplify_typed_var visible ~read ~as_var ~of_var value =
+  simplify_nested_var visible ~read ~as_var ~of_var
+    ~leaf:(fun _simplify ~visited:_ value -> value)
+    value
 
 let simplify_unicode_range_descriptor visible =
   simplify_typed_var visible ~read:Properties.read_unicode_range
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Properties.Var v : Properties.unicode_range))
+
+(* CSS Fonts 4 sec. 2.1 makes [font-family] a [<family-name>#] list, so a
+   [var()] stands for a whole stack as readily as for one entry and the type
+   nests through [List]. That is the model the property already uses
+   ({!Context.simplify_font_family}), so read the descriptor the same way rather
+   than a second one. *)
+let simplify_font_family_descriptor visible =
+  simplify_nested_var visible ~read:Properties.read_font_family
+    ~as_var:(function Properties.Var v -> Some v | _ -> None)
+    ~of_var:(fun v -> (Properties.Var v : Properties.font_family))
+    ~leaf:(fun simplify ~visited value ->
+      match (value : Properties.font_family) with
+      | Properties.List items ->
+          (Properties.List (List.map (simplify ~visited) items)
+            : Properties.font_family)
+      | value -> value)
 
 let simplify_font_style_descriptor visible =
   simplify_typed_var visible ~read:Properties.read_font_style
@@ -645,6 +673,30 @@ let simplify_font_variation_settings_descriptor visible =
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Properties.Var v : Properties.font_variation_settings))
 
+let simplify_font_variant_descriptor visible =
+  simplify_typed_var visible ~read:read_font_variant_descriptor
+    ~as_var:(function Var v -> Some v | _ -> Option.None)
+    ~of_var:(fun v -> (Var v : font_variant_descriptor))
+
+(* One resolver covers [ascent-override], [descent-override] and
+   [line-gap-override]: CSS Fonts 4 sec. 4.10 gives the three the same
+   grammar. *)
+let simplify_metric_override_descriptor visible =
+  simplify_typed_var visible ~read:Font_face.read_metric_override
+    ~as_var:(function Font_face.Var v -> Some v | _ -> Option.None)
+    ~of_var:(fun v -> (Font_face.Var v : Font_face.metric_override))
+
+let simplify_font_tech_descriptor visible =
+  simplify_typed_var visible ~read:read_font_tech_descriptor
+    ~as_var:(function Var v -> Some v | Tech _ -> Option.None)
+    ~of_var:(fun v -> (Var v : font_tech_descriptor))
+
+let simplify_size_adjust_descriptor visible =
+  simplify_typed_var visible ~read:Font_face.read_size_adjust
+    ~as_var:(function
+      | Font_face.Var v -> Some v | Font_face.Pct _ -> Option.None)
+    ~of_var:(fun v -> (Font_face.Var v : Font_face.size_adjust))
+
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse
    and asks for one resolver each, so this pass and the parser cannot grow
    apart: a descriptor added to that table takes a resolver argument the call
@@ -654,13 +706,18 @@ let simplify_font_face_descriptor visible descriptor =
     resolve_font_face_var
       ~src:(simplify_font_src_descriptor visible)
       ~unicode_range:(List.map (simplify_unicode_range_descriptor visible))
+      ~font_family:(List.map (simplify_font_family_descriptor visible))
       ~font_style:(simplify_font_style_descriptor visible)
       ~font_weight:(simplify_font_weight_descriptor visible)
       ~font_stretch:(simplify_font_stretch_descriptor visible)
       ~font_display:(simplify_font_display_descriptor visible)
+      ~font_variant:(simplify_font_variant_descriptor visible)
       ~font_feature_settings:(simplify_font_feature_settings_descriptor visible)
       ~font_variation_settings:
         (simplify_font_variation_settings_descriptor visible)
+      ~metric_override:(simplify_metric_override_descriptor visible)
+      ~font_tech:(simplify_font_tech_descriptor visible)
+      ~size_adjust:(simplify_size_adjust_descriptor visible)
       descriptor
   with
   | Some resolved -> resolved

@@ -38,7 +38,7 @@ let font_face_descriptors =
     ("font-variant", "normal");
     ("font-feature-settings", "normal");
     ("font-variation-settings", "normal");
-    ("font-tech", "\"variations\"");
+    ("font-tech", "variations");
     ("size-adjust", "100%");
     ("ascent-override", "normal");
     ("descent-override", "normal");
@@ -89,14 +89,21 @@ let test_inline_font_face_var_descriptors () =
   Alcotest.(check (list string))
     "descriptors the parser keeps a var() for"
     [
+      "font-family";
       "src";
       "font-style";
       "font-weight";
       "font-stretch";
       "font-display";
       "unicode-range";
+      "font-variant";
       "font-feature-settings";
       "font-variation-settings";
+      "font-tech";
+      "size-adjust";
+      "ascent-override";
+      "descent-override";
+      "line-gap-override";
     ]
     kept
 
@@ -123,6 +130,7 @@ let test_inline_font_face_var_resolves () =
   in
   List.iter resolves
     [
+      ("font-family", "b");
       ("font-style", "italic");
       ("font-weight", "700");
       ("font-stretch", "50%");
@@ -130,9 +138,50 @@ let test_inline_font_face_var_resolves () =
       (* CSS Syntax 3 sec. 4.3.10 reads the range case-insensitively and the
          printer writes the hex digits upper-case. *)
       ("unicode-range", "U+0-7F");
+      ("font-variant", "normal");
+      ("font-variant", "small-caps");
       ("font-feature-settings", "normal");
       ("font-variation-settings", "normal");
+      ("ascent-override", "normal");
+      ("descent-override", "90%");
+      ("line-gap-override", "10%");
+      ("font-tech", "variations");
+      ("size-adjust", "100%");
     ]
+
+(* CSS Fonts 4 sec. 2.1 makes the [font-family] descriptor a [<family-name>#]
+   list, so a [var()] stands for a whole stack as readily as for one entry, and
+   a reference nested in the list has to be followed too. The property already
+   reads both shapes into the same type; the descriptor answers the same way. A
+   reference back onto its own name resolves once and then stands, as CSS
+   Variables 1 sec. 3 leaves an unresolvable reference in place. *)
+let test_inline_font_face_family_list () =
+  let check (name, css, expected) =
+    let inlined = minified (Css.inline_vars (parse css)) in
+    Alcotest.(check string) name expected inlined
+  in
+  List.iter check
+    [
+      ( "a var() standing for the whole stack",
+        ":root{--f:Arial,sans-serif}@font-face{font-family:var(--f);src:local(a)}",
+        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+      ( "a var() standing for one entry",
+        ":root{--f:sans-serif}@font-face{font-family:Arial,var(--f);src:local(a)}",
+        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+      ( "a var() naming itself inside a stack",
+        ":root{--f:Arial,var(--f)}@font-face{font-family:b,var(--f);src:local(a)}",
+        "@font-face{font-family:b,Arial,var(--f);src:local(a)}" );
+    ]
+
+(* CSS Fonts 4 sec. 4.4 takes the font-width descriptor as
+   [<'font-width'>{1,2}], so the range form has two endpoints and a [var()] can
+   stand for either. A range built from one raw endpoint and one reference has
+   to reach the output with neither reference left in it. *)
+let test_inline_font_face_var_stretch_range () =
+  check_inline_case "font-stretch range endpoint from a var()"
+    ":root{--wide:200%}@font-face{font-family:a;src:local(anchor);font-stretch:50% \
+     var(--wide)}"
+    "@font-face{font-family:a;src:local(anchor);font-stretch:50% 200%}"
 
 let test_inline_substitutes_vars () =
   check_inline ~optimized:".button{color:#00f}"
@@ -849,6 +898,8 @@ let suite =
     [
       Alcotest.test_case "inline vars resolve a typed @font-face descriptor"
         `Quick test_inline_font_face_var_resolves;
+      Alcotest.test_case "inline vars resolve a @font-face range endpoint"
+        `Quick test_inline_font_face_var_stretch_range;
       Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
         test_inline_vars_liveness_propagates_through_scopes;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"
@@ -927,4 +978,6 @@ let suite =
       Alcotest.test_case
         "inline vars resolve the @font-face descriptors the parser keeps" `Quick
         test_inline_font_face_var_descriptors;
+      Alcotest.test_case "inline vars resolve a @font-face family list" `Quick
+        test_inline_font_face_family_list;
     ] )

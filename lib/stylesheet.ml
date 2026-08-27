@@ -1090,11 +1090,16 @@ let pp_font_variant_descriptor_value ctx = function
   | Numeric value -> Properties.pp_font_variant_numeric_token ctx value
   | East_asian value -> Properties.pp_east_asian_feature ctx value
 
-let pp_font_variant_descriptor ctx = function
+let rec pp_font_tech_descriptor ctx : font_tech_descriptor -> unit = function
+  | Tech tech -> Pp.string ctx (Supports.string_of_font_tech tech)
+  | Var var -> Values.pp_var pp_font_tech_descriptor ctx var
+
+let rec pp_font_variant_descriptor ctx = function
   | Normal -> Pp.string ctx "normal"
   | None -> Pp.string ctx "none"
   | Values values ->
       Pp.list ~sep:Pp.space pp_font_variant_descriptor_value ctx values
+  | Var var -> Values.pp_var pp_font_variant_descriptor ctx var
 
 let pp_font_face_descriptor : font_face_descriptor Pp.t =
  fun ctx desc ->
@@ -1131,7 +1136,13 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (min_weight, max_weight)
   | Font_stretch stretch ->
       pp_descriptor "font-stretch" Properties.pp_font_stretch stretch
-  | Font_stretch_range value -> pp_descriptor "font-stretch" Pp.string value
+  | Font_stretch_range (min_stretch, max_stretch) ->
+      pp_descriptor "font-stretch"
+        (fun ctx (min_stretch, max_stretch) ->
+          Properties.pp_font_stretch ctx min_stretch;
+          Pp.space ctx ();
+          Properties.pp_font_stretch ctx max_stretch)
+        (min_stretch, max_stretch)
   | Font_display value ->
       pp_descriptor "font-display" Properties.pp_font_display value
   | Unicode_range values ->
@@ -1146,23 +1157,15 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_variation_settings value ->
       pp_descriptor "font-variation-settings"
         Properties.pp_font_variation_settings value
-  | Font_tech value -> pp_descriptor "font-tech" Pp.string value
+  | Font_tech value -> pp_descriptor "font-tech" pp_font_tech_descriptor value
   | Size_adjust value ->
-      pp_descriptor "size-adjust"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_size_adjust v))
-        value
+      pp_descriptor "size-adjust" Font_face.pp_size_adjust value
   | Ascent_override value ->
-      pp_descriptor "ascent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "ascent-override" Font_face.pp_metric_override value
   | Descent_override value ->
-      pp_descriptor "descent-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "descent-override" Font_face.pp_metric_override value
   | Line_gap_override value ->
-      pp_descriptor "line-gap-override"
-        (fun ctx v -> Pp.string ctx (Font_face.string_of_metric_override v))
-        value
+      pp_descriptor "line-gap-override" Font_face.pp_metric_override value
 
 let pp_counter_style_system ctx = function
   | Cyclic -> Pp.string ctx "cyclic"
@@ -2144,13 +2147,6 @@ let validate_nonempty_descriptor r name value =
   if String.trim value = "" then
     Cursor.err_invalid r ("empty " ^ name ^ " descriptor")
 
-let read_string_descriptor name constructor r =
-  read_descriptor_value Declaration.read_property_value
-    (fun value ->
-      validate_nonempty_descriptor r name value;
-      constructor value)
-    r
-
 let read_font_family_descriptor r =
   read_descriptor_value
     (fun r -> Cursor.list ~sep:Cursor.comma Properties.read_font_family r)
@@ -2164,14 +2160,11 @@ let read_font_stretch_descriptor r =
       let first = Properties.read_font_stretch c in
       Cursor.ws c;
       if Cursor.is_done c then Font_stretch first
-      else begin
-        (* The endpoint is parsed for validation only: the range keeps the raw
-           [value], which already carries both bounds. *)
-        ignore (Properties.read_font_stretch c : Properties.font_stretch);
+      else
+        let second = Properties.read_font_stretch c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        Font_stretch_range value
-      end)
+        Font_stretch_range (first, second))
     r
 
 let read_unicode_range_descriptor r =
@@ -2277,7 +2270,20 @@ let read_font_variant_descriptor_value r =
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 
-let read_font_variant_descriptor r =
+(* CSS Fonts 4 sec. 11.1 spells [<font-tech>] as a keyword, so an unknown ident
+   is a parse error rather than text to carry through. *)
+let rec read_font_tech_descriptor r : font_tech_descriptor =
+  match Cursor.peek r with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_font_tech_descriptor r)
+  | Some _ | Option.None -> (
+      let ident = Cursor.ident r in
+      match Supports.font_tech_of_string (String.lowercase_ascii ident) with
+      | Some tech -> Tech tech
+      | Option.None -> Cursor.err_invalid r ("font-tech descriptor: " ^ ident))
+
+let read_font_variant_keywords r : font_variant_descriptor =
   let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
   let snap = Cursor.save r in
   let first = Cursor.ident ~keep_case:false r in
@@ -2296,6 +2302,14 @@ let read_font_variant_descriptor r =
       if values = [] then Cursor.err_invalid r "font-variant descriptor";
       validate_font_variant_descriptor_values r values;
       Values values
+
+let rec read_font_variant_descriptor r : font_variant_descriptor =
+  Cursor.ws r;
+  match Cursor.peek r with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_font_variant_descriptor r)
+  | Some _ | None -> read_font_variant_keywords r
 
 let read_font_face_desc name r =
   match name with
@@ -2321,7 +2335,8 @@ let read_font_face_desc name r =
       read_descriptor_value Properties.read_font_variation_settings
         (fun v -> Font_variation_settings v)
         r
-  | "font-tech" -> read_string_descriptor "font-tech" (fun v -> Font_tech v) r
+  | "font-tech" ->
+      read_descriptor_value read_font_tech_descriptor (fun v -> Font_tech v) r
   | "size-adjust" ->
       read_descriptor_value Font_face.read_size_adjust
         (fun v -> Size_adjust v)
@@ -2375,9 +2390,11 @@ let descriptor_resolves_var name =
   | descriptor ->
       Option.is_some
         (resolve_font_face_var ~src:Fun.id ~unicode_range:Fun.id
-           ~font_style:Fun.id ~font_weight:Fun.id ~font_stretch:Fun.id
-           ~font_display:Fun.id ~font_feature_settings:Fun.id
-           ~font_variation_settings:Fun.id descriptor)
+           ~font_family:Fun.id ~font_style:Fun.id ~font_weight:Fun.id
+           ~font_stretch:Fun.id ~font_display:Fun.id ~font_variant:Fun.id
+           ~font_feature_settings:Fun.id ~font_variation_settings:Fun.id
+           ~metric_override:Fun.id ~font_tech:Fun.id ~size_adjust:Fun.id
+           descriptor)
   | exception Error.Parse_error _ -> false
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =

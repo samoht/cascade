@@ -8,7 +8,7 @@ let test_string_of_metric_override () =
     (string_of_metric_override (Percent 110.))
 
 let test_size_adjust () =
-  let s = string_of_size_adjust 90. in
+  let s = string_of_size_adjust (Pct 90.) in
   Alcotest.(check string) "size-adjust 90%" "90%" s
 
 let test_src () =
@@ -60,7 +60,8 @@ let expect_metric_rejected input =
 let expect_size_adjust_rejected input =
   try
     let size_adjust = size_adjust_of_string input in
-    Alcotest.failf "invalid font size-adjust parsed: %S -> %g" input size_adjust
+    Alcotest.failf "invalid font size-adjust parsed: %S -> %s" input
+      (string_of_size_adjust size_adjust)
   with
   | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
   ->
@@ -139,9 +140,9 @@ let test_spec_metric_parsing_edges () =
   Alcotest.(check string)
     "percentage parses" "92.5%"
     (metric_override_of_string "92.5%" |> string_of_metric_override);
-  Alcotest.(check (float 0.0001))
-    "size adjust percentage" 87.5
-    (size_adjust_of_string "87.5%")
+  Alcotest.(check string)
+    "size adjust percentage" "87.5%"
+    (size_adjust_of_string "87.5%" |> string_of_size_adjust)
 
 let test_spec_metric_negative_vectors () =
   List.iter expect_metric_rejected [ "-1%"; "auto"; "100"; "calc(1%)" ];
@@ -150,9 +151,9 @@ let test_spec_metric_negative_vectors () =
     (metric_override_of_string "120%" |> string_of_metric_override);
   List.iter expect_size_adjust_rejected
     [ "-10%"; "normal"; "auto"; "100"; "calc(100%)" ];
-  Alcotest.(check (float 0.0001))
-    "zero size adjust parses" 0.
-    (size_adjust_of_string "0%")
+  Alcotest.(check string)
+    "zero size adjust parses" "0%"
+    (size_adjust_of_string "0%" |> string_of_size_adjust)
 
 let spec_fontface_source_edges () =
   let check_normalized name input expected =
@@ -191,10 +192,15 @@ let spec_fontface_metric_edges () =
     ];
   List.iter
     (fun (input, expected) ->
-      Alcotest.(check (float 0.0001))
+      Alcotest.(check string)
         input expected
-        (size_adjust_of_string input))
-    [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5); (" 87.25% ", 87.25) ]
+        (size_adjust_of_string input |> string_of_size_adjust))
+    [
+      ("0%", "0%");
+      ("100%", "100%");
+      ("125.5%", "125.5%");
+      (" 87.25% ", "87.25%");
+    ]
 
 let spec_fontface_src_minify_edges () =
   let check_all cases =
@@ -292,16 +298,15 @@ let spec_fontface_metric_numeric_edges () =
     [ ("+10%", "10%"); (".5%", "0.5%"); ("1e2%", "100%"); ("0e0%", "0%") ];
   List.iter
     (fun (input, expected) ->
-      Alcotest.(check (float 0.0001))
+      Alcotest.(check string)
         input expected
-        (size_adjust_of_string input))
-    [ ("+10%", 10.); (".5%", 0.5); ("1e2%", 100.); ("0e0%", 0.) ];
+        (size_adjust_of_string input |> string_of_size_adjust))
+    [ ("+10%", "10%"); (".5%", "0.5%"); ("1e2%", "100%"); ("0e0%", "0%") ];
   let accepted =
     accepted_invalid_cases "font metric override" metric_override_of_string
       string_of_metric_override [ ""; "%"; "+%"; "NaN%" ]
     @ accepted_invalid_cases "font size-adjust" size_adjust_of_string
-        (fun v -> string_of_size_adjust v)
-        [ ""; "%"; "+%"; "NaN%" ]
+        string_of_size_adjust [ ""; "%"; "+%"; "NaN%" ]
   in
   match accepted with
   | [] -> ()
@@ -350,17 +355,7 @@ let spec_fontface_var_descriptor_edges () =
     in
     lenient @ strict
   in
-  match
-    List.concat_map mismatches
-      [
-        "size-adjust";
-        "ascent-override";
-        "descent-override";
-        "line-gap-override";
-        "font-family";
-        "font-tech";
-      ]
-  with
+  match List.concat_map mismatches [] with
   | [] -> ()
   | mismatches ->
       Alcotest.failf "@font-face descriptors keeping var():\n%s"
@@ -399,14 +394,21 @@ let spec_fontface_var_descriptor_kept () =
   match
     List.concat_map mismatches
       [
+        "font-family";
         "src";
         "unicode-range";
         "font-style";
         "font-weight";
         "font-stretch";
         "font-display";
+        "font-variant";
         "font-feature-settings";
         "font-variation-settings";
+        "ascent-override";
+        "descent-override";
+        "line-gap-override";
+        "font-tech";
+        "size-adjust";
       ]
   with
   | [] -> ()

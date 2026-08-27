@@ -1734,6 +1734,12 @@ let vars_of_stroke_linejoin (value : Properties.stroke_linejoin) =
 let vars_of_stroke_miterlimit (value : Properties.stroke_miterlimit) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_stroke_width (value : Properties.stroke_width) =
+  match value with
+  | Var v -> [ V v ]
+  | Length lp -> vars_of_length_percentage lp
+  | _ -> []
+
 let vars_of_stroke_dashoffset (value : Properties.stroke_dashoffset) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2010,7 +2016,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Other length properties *)
   | Border_spacing, value -> vars_of_border_spacing value
   | Perspective, value -> vars_of_length value
-  | Stroke_width, value -> vars_of_length value
+  | Stroke_width, value -> vars_of_stroke_width value
   | Scroll_margin, value -> List.concat_map vars_of_length value
   | Scroll_margin_top, value -> vars_of_length value
   | Scroll_margin_right, value -> vars_of_length value

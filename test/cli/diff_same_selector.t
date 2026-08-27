@@ -11,6 +11,12 @@ blue group and the indigo group in the opposite order. That order is
 cascade-significant for an element carrying both classes, so the difference
 is real and must still be reported.
 
+The projection keeps the feature query, since the declaration before it is
+what an engine without color-mix(in lab) paints, so each selector stays
+split over three rules with another selector's rules between them. Both
+groups keep every declaration they write, so each reports as one move
+rather than as a loss and a gain.
+
   $ cat > ref.css <<'EOF'
   > @layer utilities{.drop-shadow-sm{--tw-drop-shadow-size:drop-shadow(0 1px 2px var(--tw-drop-shadow-color,#00000026));--tw-drop-shadow:drop-shadow(var(--drop-shadow-sm));filter:var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)}.drop-shadow-blue-500\/50{--tw-drop-shadow-color:#3080ff80}@supports (color:color-mix(in lab, red, red)){.drop-shadow-blue-500\/50{--tw-drop-shadow-color:color-mix(in oklab, color-mix(in oklab, var(--color-blue-500) 50%, transparent) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-blue-500\/50{--tw-drop-shadow:var(--tw-drop-shadow-size)}.drop-shadow-indigo-500{--tw-drop-shadow-color:oklch(58.5% .233 277.117)}@supports (color:color-mix(in lab, red, red)){.drop-shadow-indigo-500{--tw-drop-shadow-color:color-mix(in oklab, var(--color-indigo-500) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-indigo-500{--tw-drop-shadow:var(--tw-drop-shadow-size)}}
   > EOF
@@ -23,10 +29,17 @@ is real and must still be reported.
   
   --- ref.css
   +++ tw.css
-  └─ @layer utilities (1 rearranged)
-     └─ .drop-shadow-indigo-500 (moved between rules)
-             --tw-drop-shadow-color color-mix(in oklab,var(--col...tw-drop-shadow-alpha),#0000)
-             --tw-drop-shadow var(--tw-drop-shadow-size)
+  └─ @layer utilities (2 reordered, 2 rearranged)
+     ├─ .drop-shadow-blue-500\/50 (position 3) ↔  .drop-shadow-indigo-500 (position 0)
+     ├─ .drop-shadow-blue-500\/50 (moved between rules)
+     │       --tw-drop-shadow-color #3080ff80
+     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     ├─ .drop-shadow-indigo-500 (moved between rules)
+     │       --tw-drop-shadow-color oklch(.585 .233 277.117)
+     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     ├─ .drop-shadow-indigo-500 (position 0) ↔  .drop-shadow-indigo-500 (position 4)
+     └─ @supports (color: color-mix(in lab, red, red)) (1 reordered)
+        └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
   
   [1]
 
@@ -111,3 +124,80 @@ an added !important changes what the selector writes.
   [1]
 
 
+
+
+
+The guard does not have to be one the optimizer can drop. Under a feature
+query no browser satisfies, each utility keeps all three of its rules and
+the two sides still differ only in which group comes first. Neither selector
+gains or loses a declaration, so neither may be reported as modified.
+
+  $ cat > guarded_ref.css <<'EOF'
+  > @layer utilities{.x{--c:1}@supports (zoo:bar){.x{--c:2}}.x{--d:3}.y{--c:4}@supports (zoo:bar){.y{--c:5}}.y{--d:6}}
+  > EOF
+  $ cat > guarded_tw.css <<'EOF'
+  > @layer utilities{.y{--c:4}@supports (zoo:bar){.y{--c:5}}.y{--d:6}.x{--c:1}@supports (zoo:bar){.x{--c:2}}.x{--d:3}}
+  > EOF
+  $ cascade diff --diff=canonical --depth=max guarded_ref.css guarded_tw.css
+  CSS: 115 chars vs 115 chars (0.0% diff)
+  Changes: 1 changed container
+  
+  --- guarded_ref.css
+  +++ guarded_tw.css
+  └─ @layer utilities (1 reordered, 2 rearranged)
+     ├─ .x (position 2) ↔  .y (position 0)
+     ├─ .x (moved between rules)
+     │       --c 1
+     │       --d 3
+     ├─ .y (moved between rules)
+     │       --c 4
+     │       --d 6
+     └─ @supports (zoo: bar) (1 reordered)
+        └─ .x ↔  .y
+  
+  [1]
+
+
+
+The tree view of the same pair names the move once. A [Reordered] entry
+carries the selector and the position that selector holds on each side, not
+the rule that carried it, so the two rules of `.x` crossing `.y` together
+are one fact stated once, and the summary counts what the node reports.
+
+  $ cascade diff --diff=tree --depth=max guarded_ref.css guarded_tw.css
+  CSS: 115 chars vs 115 chars (0.0% diff)
+  Changes: 1 changed container
+  
+  --- guarded_ref.css
+  +++ guarded_tw.css
+  └─ @layer utilities (1 reordered)
+     ├─ .x (position 3) ↔  .y (position 0)
+     └─ @supports (zoo: bar) (1 reordered)
+        └─ .x ↔  .y
+  
+  [1]
+
+
+
+Nothing about the walk that pairs the two sides position by position: a
+structural change elsewhere in the container sends the same selector down
+the exact-match path, which names the move once as well.
+
+  $ cat > swap_ref.css <<'EOF'
+  > @layer u{.x{--c:1}.x{--d:3}.y{--c:4}.z{--e:9}}
+  > EOF
+  $ cat > swap_tw.css <<'EOF'
+  > @layer u{.y{--c:4}.x{--c:1}.x{--d:3}}
+  > EOF
+  $ cascade diff --diff=tree --depth=max swap_ref.css swap_tw.css
+  CSS: 47 chars vs 38 chars (19.1% diff)
+  Changes: 1 changed container
+  
+  --- swap_ref.css
+  +++ swap_tw.css
+  └─ @layer u (1 removed, 1 reordered)
+     ├─ .z
+     │     - --e 9
+     └─ .x ↔  .y
+  
+  [1]

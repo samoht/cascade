@@ -440,23 +440,32 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
           ~new_declarations ~property_changes ~added_properties
           ~removed_properties ~has_any_changes))
 
+(* The index counts the rules of a container, while whether the selector moved
+   is judged against the selectors both sides share, so the two disagree: the
+   middle selector of a reversal keeps its index, and a rule dropped ahead of a
+   selector shifts it back onto the one it had. Pairing that index with itself
+   states nothing, so the move is named without a coordinate. *)
 let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
     ~swapped_with =
-  assert (expected_pos <> actual_pos);
   let truncate s = String_diff.truncate_middle 40 s in
-  match swapped_with with
-  | Some other when abs (expected_pos - actual_pos) = 1 ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other ^ "\n")
-  | Some other ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
-       ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
-       ^ string_of_int expected_pos ^ ")\n")
-  | None ->
-      Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position " ^ string_of_int expected_pos
-       ^ " \xe2\x86\x92 " ^ string_of_int actual_pos ^ ")\n")
+  if expected_pos = actual_pos then
+    Buffer.add_string buf (prefix ^ truncate selector ^ " (moved)\n")
+  else
+    match swapped_with with
+    | Some other when abs (expected_pos - actual_pos) = 1 ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other
+         ^ "\n")
+    | Some other ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
+         ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
+         ^ string_of_int expected_pos ^ ")\n")
+    | None ->
+        Buffer.add_string buf
+          (prefix ^ truncate selector ^ " (position "
+         ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
+         ^ string_of_int actual_pos ^ ")\n")
 
 let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
     =
@@ -2149,12 +2158,17 @@ let change_sides : rule_diff -> Css.declaration list * Css.declaration list =
       (old_declarations, new_declarations)
   | _ -> ([], [])
 
+(* A property arriving and a property leaving, judged on what the entry names
+   rather than on which constructor it is: a [Content_changed] that only
+   restates a value, or that names nothing at all, moves no declaration. *)
 let change_gains : rule_diff -> bool = function
-  | Added _ | Content_changed _ -> true
+  | Added _ -> true
+  | Content_changed { added_properties; _ } -> added_properties <> []
   | _ -> false
 
 let change_loses : rule_diff -> bool = function
-  | Removed _ | Content_changed _ -> true
+  | Removed _ -> true
+  | Content_changed { removed_properties; _ } -> removed_properties <> []
   | _ -> false
 
 (* Every declaration [sel] writes on one side, across all of its rules. *)
@@ -2190,7 +2204,12 @@ let merge_selector_group ~rules1 ~rules2 sel peers =
 
    Only a group that both gains and loses collapses: several rules added under
    one selector really are several additions, and merging those would hide the
-   count. *)
+   count. A single entry carries both sides of that on its own, and does when a
+   container sits between two rules of one selector: the two sheets then no
+   longer line up rule for rule, and the positional walk pairs one rule of the
+   selector against another, reading as a swap of declarations that never left
+   the selector. What the selector writes across all of its rules is what
+   settles it. *)
 let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
     rule_diff list =
   let done_ = Hashtbl.create 8 in
@@ -2204,12 +2223,66 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
             List.filter (fun d -> changed_selector d = Some sel) changes
           in
           match peers with
-          | _ :: _ :: _
+          | _ :: _
             when List.exists change_gains peers
                  && List.exists change_loses peers ->
               Hashtbl.replace done_ sel ();
               Some (merge_selector_group ~rules1 ~rules2 sel peers)
           | _ -> Some diff))
+    changes
+
+(* Everything a [Reordered] entry puts in the report, as one string; [None] for
+   any other entry. Two entries sharing a key print the same line. *)
+let reorder_key : rule_diff -> string option = function
+  | Reordered r ->
+      let buf = Buffer.create 64 in
+      let add_decls = function
+        | None -> Buffer.add_char buf '-'
+        | Some decls ->
+            List.iter
+              (fun decl ->
+                let name, value = decl_to_prop_value decl in
+                add_strings buf [ name; ":"; value; ";" ])
+              decls
+      in
+      add_strings buf
+        [
+          r.selector;
+          "|";
+          string_of_int r.expected_pos;
+          "|";
+          string_of_int r.actual_pos;
+          "|";
+          Option.value r.swapped_with ~default:"-";
+          "|";
+        ];
+      add_decls r.old_declarations;
+      Buffer.add_char buf '|';
+      add_decls r.new_declarations;
+      Some (Buffer.contents buf)
+  | Added _ | Removed _ | Content_changed _ | Selector_changed _ | Rearranged _
+  | Regrouped _ ->
+      None
+
+(* One move, one entry. A reorder names the selector and the position that
+   selector holds on each side; which of its rules carried the declarations
+   across is no part of it. A selector written by several rules that travel
+   together therefore builds the same entry once per rule, and the node then
+   states the move as many times as it has rules and counts it as many times
+   over. Keyed on what the entry prints rather than on the selector alone, so a
+   declaration-level reorder inside another rule of that selector is a different
+   entry and stays. *)
+let dedup_reorders (changes : rule_diff list) : rule_diff list =
+  let seen = Hashtbl.create 8 in
+  List.filter
+    (fun diff ->
+      match reorder_key diff with
+      | None -> true
+      | Some key ->
+          if Hashtbl.mem seen key then false
+          else (
+            Hashtbl.replace seen key ();
+            true))
     changes
 
 (* At-rules that carry neither a selector nor a condition the other processors
@@ -2337,6 +2410,7 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   @ List.filter_map (convert_modified_rule ~moved ~rules1 ~rules2) r_modified
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
+  |> dedup_reorders
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =

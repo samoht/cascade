@@ -160,6 +160,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `stroke-width` reads a bare number, so `stroke-width: 1.5` round-trips
+  through cascade's own parser instead of being printed and then refused. SVG 2
+  sec. 13.5.3 gives it `<length-percentage> | <number>`, where a number is a
+  width in user units and a negative value is invalid (#579)
+- A selector using the column combinator, such as `svg||td` or `a||b`, is read
+  and written back instead of dropped. The namespace read claimed the first
+  bar of the `||` that CSS Selectors 4 sec. 15.2 defines (#572)
 - A rule nested under a pseudo-element parent, such as `.b` in
   `.a::before{.b{color:red}}`, is dropped instead of flattened to
   `.a::before .b`. CSS Selectors 4 sec. 3.6.5 makes that selector invalid and
@@ -596,6 +603,19 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- A `var()` in the `ascent-override`, `descent-override`, `line-gap-override`
+  or `font-variant` descriptor of an `@font-face` is resolved by
+  `Css.inline_vars` instead of being dropped at parse time. Their value types
+  carry the `Var` arm the other typed descriptors already had (#573)
+- A `var()` in the `font-family` descriptor of an `@font-face` is resolved by
+  `Css.inline_vars` instead of being dropped at parse time. The descriptor is a
+  comma-separated list, so the reference may stand for one family or for the
+  whole stack (#575)
+- `Css.inline_vars` resolves a `var()` in the `size-adjust` and `font-tech`
+  descriptors of an `@font-face`, and in either endpoint of a `font-stretch`
+  range. The first two were dropped at parse time; the range carried the
+  reference through to the output, where a browser drops the whole
+  declaration (#577)
 - A `var()` in the `font-style`, `font-weight`, `font-stretch`,
   `font-display`, `font-feature-settings` or `font-variation-settings`
   descriptor of an `@font-face` is resolved by `Css.inline_vars` instead of
@@ -702,6 +722,15 @@ recorded cases carrying six minifiers' answers.
   alone, so `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin
   that fixes the order, or one over a position the projection cannot read, is
   kept (#475)
+- The canonical projection no longer deletes content that only a
+  browser-support assumption makes dead, which had it report no difference
+  between sheets that render differently: a progressive-enhancement fallback
+  under a baseline-true `@supports`, a vendor-prefixed declaration, an
+  `@import supports()` guard. The respellings gated with those, `min-width`
+  into the range form and the Level 3 `not all and (...)`, still compare equal
+- `cascade diff` no longer aborts on a reordered selector holding the same rule
+  index on both sides. The report is buffered, so the assertion that met such a
+  move cost the whole report; the move is now named without a coordinate (#582)
 
 ### Library
 
@@ -778,6 +807,12 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade diff --diff=tree` states a selector's move once. The entry names the
+  selector, not the rule, so a selector whose several rules cross together
+  printed the same line and counted the move once per rule (#581)
+- `cascade diff` names a selector whose rules a feature query splits once,
+  where two entries under it claimed a declaration gained and another lost
+  that the selector never stopped writing (#580)
 - `cascade apply` reads a `style` attribute as a declaration list in source
   order. The declarations came out reversed, so a longhand beat the shorthand
   it was written after, and a `}` inside the attribute closed the list early

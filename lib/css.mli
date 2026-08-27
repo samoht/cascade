@@ -6969,7 +6969,19 @@ val fill : svg_paint -> declaration
 val stroke : svg_paint -> declaration
 (** [stroke paint] is the SVG stroke property. *)
 
-val stroke_width : length -> declaration
+(** SVG 2 sec. 13.5.3 [stroke-width]: [<length-percentage> | <number>], where a
+    bare number is a width in user units rather than a CSS [<length>]. *)
+type stroke_width = Properties.stroke_width =
+  | Number of float  (** A width in user units *)
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_width var
+
+val stroke_width : stroke_width -> declaration
 (** [stroke_width width] is the SVG stroke-width property. *)
 
 (** {2:scroll_touch Scroll & Touch}
@@ -7711,13 +7723,15 @@ val canonicalize_rule_order : t -> t
     relative order, and named [@layer] blocks pin the layer order where they
     stand. A run of [@property] rules sorts by name, keeping the last
     registration of each, since CSS Properties and Values API 1 sec. 2 makes
-    registrations for different names order-independent. A
-    [@media not all and (X)] block is keyed as the [@media not (X)] that Media
-    Queries 4 makes it equal to, which emission cannot do because a Level 3
-    parser rejects the shorter form. A [color(srgb ...)] whose channels all land
-    on a whole byte is keyed as the [rgb()] spelling of the same colour, which
-    emission cannot do either because [color()] needs a browser that parses it.
-    This is a comparison-side normalisation; {!val-optimize} stays
+    registrations for different names order-independent. A [@media] prelude is
+    keyed as the Level 4 query Media Queries 4 makes it equal to -
+    [not all and (X)] as [not (X)], [min-X]/[max-X] as the range form, and a
+    lower bound met by an upper bound as the two-sided interval - and an
+    [@container] prelude the same way, which emission cannot do because a Level
+    3 parser rejects the shorter forms. A [color(srgb ...)] whose channels all
+    land on a whole byte is keyed as the [rgb()] spelling of the same colour,
+    which emission cannot do either because [color()] needs a browser that
+    parses it. This is a comparison-side normalisation; {!val-optimize} stays
     source-stable. *)
 
 val optimize :
