@@ -3483,6 +3483,37 @@ let hex_string_of_bytes r g b a =
   if a = 255 then shorten_hex rgb
   else shorten_hex (String.concat "" [ rgb; hex_of_byte a ])
 
+(* Only the functional notations carry CSS Color 4 sec. 4.1's [<alpha-value>]
+   slot, so a hex, a named colour and [transparent] are re-spelled as the
+   [rgb()] over the sRGB bytes sec. 6.1 and sec. 6.3 give them. A colour whose
+   channels are known only at used-value time has nothing to write into. *)
+let rec with_alpha (c : color) (a : alpha) : color =
+  let srgb r g b =
+    Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a }
+  in
+  match c with
+  | Hex { r; g; b; _ } | Authored_hex { r; g; b; _ } -> srgb r g b
+  | Transparent -> srgb 0 0 0
+  | Named n -> (
+      match rgba_of_hex (snd (color_name_hex n)) with
+      | Some (r, g, b, _) -> srgb r g b
+      | Option.None -> c)
+  | Rgb rgb | Rgba { rgb; _ } -> Rgba { rgb; a }
+  | Hsl { h; s; l; _ } -> Hsl { h; s; l; a }
+  | Hwb { h; w; b; _ } -> Hwb { h; w; b; a }
+  | Color { space; components; _ } -> Color { space; components; alpha = a }
+  | Lab { l; a = axis_a; b; _ } -> Lab { l; a = axis_a; b; alpha = a }
+  | Oklab { l; a = axis_a; b; _ } -> Oklab { l; a = axis_a; b; alpha = a }
+  | Lch { l; c = chroma; h; _ } -> Lch { l; c = chroma; h; alpha = a }
+  | Oklch { l; c = chroma; h; _ } -> Oklch { l; c = chroma; h; alpha = a }
+  (* [light-dark()] resolves to one of its two arguments, so both take it. *)
+  | Light_dark (light, dark) ->
+      Light_dark (with_alpha light a, with_alpha dark a)
+  | Relative_rgb _ | Relative_color _ | Contrast_color _ | Attribute _
+  | System _ | Var _ | Current | Mix _ | Auto | Inherit | Initial | Unset
+  | Revert | Revert_layer ->
+      c
+
 let minify_color : color -> color = function
   | Named n -> (
       let name, hex = color_name_hex n in

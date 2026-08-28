@@ -781,6 +781,16 @@ recorded cases carrying six minifiers' answers.
   serialises. `Css.Optimize.drop_empty_rules` is spelled over the statement
   list it walks, which states the scope it always had: the block it is given,
   not the tree below it (#592)
+- `Css.equal_statement` and `Css.hash_statement` answer whether two statements
+  are the same, and key one in a hash table, without rendering either to CSS
+  text. Each part is read through the equality its own module states, so two
+  `@media` blocks that select the same media are one statement however their
+  queries are spelled, and the fingerprint reuses the hash a declaration
+  already caches rather than walking its value tree. `Css.Values.hash_color`
+  is that pair for a colour, beside the `equal_color` it already had, and
+  `Css.Values.with_alpha` sets a colour's alpha: a hex or a named colour is
+  re-spelled as the `rgb()` carrying the alpha slot CSS Color 4 sec. 4.1 gives
+  only the functional notations (#595)
 - `Css.inline_vars` no longer costs a square in the variable count: liveness is
   decided through indexes and a worklist, and the customs a rule can see are
   indexed by name instead of scanned per declaration. A 12,800-variable sheet

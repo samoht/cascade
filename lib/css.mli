@@ -462,6 +462,16 @@ val rule_statements : t -> statement list
 val statements : t -> statement list
 (** [statements t] returns all top-level statements from the stylesheet. *)
 
+val equal_statement : statement -> statement -> bool
+(** [equal_statement a b] is {!Stylesheet.equal_statement}: whether [a] and [b]
+    are the same statement, each part read through the equality its own module
+    states. *)
+
+val hash_statement : statement -> int
+(** [hash_statement stmt] is {!Stylesheet.hash_statement}: a fingerprint
+    consistent with {!equal_statement}, for keying a statement in a hash table
+    without rendering it to CSS text. *)
+
 val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
 (** [fold f acc css] folds [f] over every statement in [css] and over every
     statement reachable from one, in source order: a rule nested in a rule, a

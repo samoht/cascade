@@ -83,6 +83,37 @@ val lcha : float -> float -> float -> float -> color
 val color_name : color_name -> color
 (** [color_name n] creates a named color. *)
 
+val with_alpha : color -> alpha -> color
+(** [with_alpha c a] is [c] carrying the alpha [a], replacing whatever alpha [c]
+    already spelled.
+
+    CSS Color 4 sec. 4.1 gives an [<alpha-value>] slot to the functional colour
+    notations and to no other. A hex spells its alpha as a fourth pair of
+    digits, which holds a byte rather than a percentage or a [calc()], and a
+    named colour has no channel at all, so a hex, a named colour and
+    {!val-transparent} are re-spelled as the [rgb()] over the same sRGB
+    channels: [red] becomes [rgb(255 0 0 / a)], and {!val-transparent} the
+    [rgb(0 0 0 / a)] of sec. 6.3. A notation that already has the slot keeps
+    both its notation and its channels. [light-dark()] resolves to exactly one
+    of its two arguments, so the alpha goes onto both.
+
+    A colour whose channels are known only at used-value time ([currentcolor], a
+    [var()], a system colour, [color-mix()], [contrast-color()], [attr()], a
+    relative colour) has nothing to write into and comes back unchanged, the
+    answer {!gamut_map_color} gives one too. So do the CSS-wide keywords and
+    [auto], which are not colours. *)
+
+val equal_color : color -> color -> bool
+(** [equal_color a b] tests colours for structural equality. Two spellings of
+    one colour are two colours: [#fff] and [white] name the same sRGB, and each
+    is its own node until {!normalize_color} folds it. *)
+
+val hash_color : color -> int
+(** [hash_color c] returns a hash consistent with {!equal_color}: two colours
+    that are equal always return the same value, and the converse may fail on a
+    collision, so use it as a cheap pre-filter before falling back to
+    {!equal_color}. *)
+
 val minify_color : color -> color
 (** [minify_color c] converts named colors to hex when the hex form is shorter
     or equal length, matching Lightning CSS behavior. *)

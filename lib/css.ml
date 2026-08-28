@@ -459,6 +459,8 @@ let rule_statements t =
 
 (* Function to extract all statements, not just rules *)
 let statements t = t
+let equal_statement = Stylesheet.equal_statement
+let hash_statement = Stylesheet.hash_statement
 let fold f acc t = Stylesheet.fold_statements f acc t
 
 let media_queries t =

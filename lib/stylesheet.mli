@@ -78,6 +78,26 @@ val equal_layer_name : layer_name -> layer_name -> bool
     how an ident is escaped are the same layer; [@layer a\2e b] and [@layer a.b]
     are not. *)
 
+val equal_statement : statement -> statement -> bool
+(** [equal_statement a b] is whether [a] and [b] are the same statement. Every
+    part is read through the equality its own module states, so two [\@media]
+    blocks whose queries select the same media are one statement even where the
+    two queries are spelled apart, while an [\@supports] guard naming a
+    different value stays a second statement. *)
+
+val hash_statement : statement -> int
+(** [hash_statement stmt] is a fingerprint of [stmt] consistent with
+    {!equal_statement}: two statements that are equal always return the same
+    value, and the converse may fail on a collision, so use it as a cheap
+    pre-filter before falling back to {!equal_statement}.
+
+    It reads the statement's shape, {!Declaration.hash} of every declaration it
+    holds, {!Selector.hash} of every selector, the names and descriptors it
+    carries, and, recursively, the statements of its block. It does not read the
+    condition of an [\@media], [\@container] or [\@supports] rule, since none of
+    the three states a hash agreeing with its equality; two statements differing
+    only in a condition share a bucket. *)
+
 val layer_block_name : statement -> layer_name option
 (** [layer_block_name stmt] returns the declared name for an [@layer] block
     rule. It returns [Some []] for anonymous layer blocks, [Some name] for named
