@@ -99,7 +99,7 @@ let rec read_shadow_single t : shadow =
   let snap = Cursor.save t in
   let inset_var : shadow option =
     match Cursor.ident_opt t with
-    | Some "inset" -> (
+    | Some s when String.lowercase_ascii_preserve s = "inset" -> (
         Cursor.ws t;
         match Cursor.peek t with
         | Some (Component.Func { node = { name; _ }; _ })

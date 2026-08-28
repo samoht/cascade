@@ -517,10 +517,13 @@ let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
       Cursor.err_invalid t
         (String.concat "" [ "unterminated function "; fn.node.name; "(...)" ])
   | Some (Component.Func fn)
-    when fn.node.name = "scroll" || fn.node.name = "view" ->
+    when String.lowercase_ascii_preserve fn.node.name = "scroll" ->
       let _ = Cursor.next t in
-      let args = Parser.string_of_components fn.node.arguments in
-      if fn.node.name = "scroll" then Scroll args else View args
+      Scroll (Parser.string_of_components fn.node.arguments)
+  | Some (Component.Func fn)
+    when String.lowercase_ascii_preserve fn.node.name = "view" ->
+      let _ = Cursor.next t in
+      View (Parser.string_of_components fn.node.arguments)
   | _ ->
       let keywords : (string * animation_timeline) list =
         [

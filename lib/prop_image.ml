@@ -1757,8 +1757,12 @@ let read_webkit_gradient_stop t =
     | _ -> assert false
   in
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = ("from" | "to") as name; _ }; _ }) ->
-      Cursor.call name t (color_arg name)
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "from" ->
+      Cursor.call "from" t (color_arg "from")
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "to" ->
+      Cursor.call "to" t (color_arg "to")
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii_preserve name = "color-stop" ->
       Cursor.call "color-stop" t (fun inner ->
