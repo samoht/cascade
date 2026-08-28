@@ -373,6 +373,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Printing
 
+- An ident that needs an escape to read back as one keeps it. `.x{--a:-\34 }`
+  printed `.x{--a:-4}`, a number rather than the ident `-4`, and
+  `@media (-\34 :1)` lost its feature name the same way: CSS Syntax 3 sec.
+  4.3.9 opens no ident sequence on a hyphen followed by a digit, and
+  `Parser.escape_ident` returned such a name unchanged (#598)
 - An unknown media type, media feature name or media identifier value keeps the
   escapes needed to read it back as one identifier. `@media (width\ \>\=\
   10px)` printed `@media (width >= 10px)`, turning an unknown boolean feature
