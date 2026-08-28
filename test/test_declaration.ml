@@ -456,7 +456,25 @@ let special_cases () =
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
-    "mask-position: 0 0, 10px 10px;"
+    "mask-position: 0 0, 10px 10px;";
+
+  (* CSS Box 4 sec. 7.1 box shorthands elide the same percentage token boundary
+     as background-position (CSS Syntax 3 sec. 4.3.3): a % closes the
+     percentage-token, so a following length starts a fresh token with no
+     re-tokenisation risk. A unit keeps its space: [10px0] would re-tokenise as
+     the single dimension 10px0. *)
+  check_declaration ~expected:"margin:10%0" "margin: 10% 0;";
+  check_declaration ~expected:"margin:10px 0" "margin: 10px 0;";
+  check_declaration ~expected:"padding:10%0" "padding: 10% 0;";
+  check_declaration ~expected:"inset:10%0" "inset: 10% 0;";
+  check_declaration ~expected:"border-radius:10%0" "border-radius: 10% 0;";
+  check_declaration ~expected:"border-radius:10%20%/30%0"
+    "border-radius: 10% 20% / 30% 0;";
+
+  (* border-color shares the same box-shorthand printer, so a colour function's
+     closing paren gets the same elision. *)
+  check_declaration ~expected:"border-color:var(--c)red"
+    "border-color: var(--c) red;"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The
