@@ -128,11 +128,15 @@ let scope_arg =
 
 let enforce_spec_arg =
   let doc =
-    "Keep feature queries that default $(b,--minify) would elide using \
-     evergreen-browser support facts. With $(b,--enforce-spec), $(tname) still \
-     serializes to the shortest CSS form but preserves $(b,@supports) and \
-     $(b,supports()) guards unless the CSS text and specification alone prove \
-     the rewrite. Has no effect without $(b,--minify)."
+    "Drop the evergreen-browser baseline that default $(b,--minify) targets. \
+     $(tname) still serializes to the shortest form the CSS text and the specs \
+     prove on their own, so it keeps a vendor-prefixed declaration written \
+     beside its unprefixed twin, the $(b,min-)/$(b,max-) spelling of a media \
+     or container feature, the $(b,&) prefix on a nested selector, the \
+     author's :not(:dir(ltr)) and input:not(:enabled), the number form of an \
+     oklab/oklch axis, and the quotes around a multi-word font family. It also \
+     holds the reader to the CSS Syntax 3 sec. 4.2 ident code points, which \
+     applies with or without $(b,--minify)."
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~doc)
 
