@@ -46,3 +46,13 @@ let _ : Stylesheet.statement list -> Stylesheet.statement list =
 
 let _ : Stylesheet.statement list -> Stylesheet.statement list =
   Optimize.drop_empty_rules
+
+(* Two statements can be compared and keyed on without rendering either to CSS
+   text, and a colour can be given an alpha without re-spelling it by hand. *)
+let _ : Css.statement -> Css.statement -> bool = Css.equal_statement
+let _ : Css.statement -> int = Css.hash_statement
+let _ : Css.Values.color -> Css.Values.color -> bool = Css.Values.equal_color
+let _ : Css.Values.color -> int = Css.Values.hash_color
+
+let _ : Css.Values.color -> Css.Values.alpha -> Css.Values.color =
+  Css.Values.with_alpha

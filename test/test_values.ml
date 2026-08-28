@@ -777,6 +777,117 @@ let test_gamut_map_color () =
      authored colour. *)
   check_color ~expected:"oklch(.7 .35 150)" "oklch(0.7 0.35 150)"
 
+(* CSS Color 4 sec. 4.1 gives [<alpha-value>] a slot in every functional colour
+   notation and in none of the others: a hex spells its alpha as a fourth pair
+   of digits, so it cannot hold [calc()] or a percentage, and a named colour has
+   no channel at all. Setting an alpha on one of those therefore has to re-spell
+   the colour in the sRGB notation that does carry the slot, keeping the
+   channels the author wrote. The sRGB bytes are the ones the spec's named
+   colour table gives, so [red] is [rgb(255 0 0 / .5)]. *)
+(* Not a roundtrip test *)
+let test_with_alpha () =
+  let open Css.Values in
+  let parse s =
+    match Css.parse_color s with
+    | Some c -> c
+    | None -> Alcotest.failf "failed to parse: %s" s
+  in
+  let check name a b = Alcotest.(check bool) name true (equal_color a b) in
+  check "a hex keeps its channels and gains the slot"
+    (with_alpha (hex "#3b82f6") (Num 0.5))
+    (rgb ~alpha:0.5 59 130 246);
+  check "an authored hex spelling reads the same channels"
+    (with_alpha (parse "#3B82F6") (Num 0.5))
+    (rgb ~alpha:0.5 59 130 246);
+  check "a named colour resolves to its sRGB channels"
+    (with_alpha (color_name Red) (Num 0.5))
+    (rgb ~alpha:0.5 255 0 0);
+  check "transparent is rgb(0 0 0) with an alpha of its own"
+    (with_alpha transparent (Num 0.5))
+    (rgb ~alpha:0.5 0 0 0);
+  check "an rgb() without an alpha gains one"
+    (with_alpha (rgb 59 130 246) (Num 0.5))
+    (rgb ~alpha:0.5 59 130 246);
+  (* A notation that already carries the slot keeps its own channels and
+     notation: only the alpha moves. *)
+  check "an alpha already written is replaced"
+    (with_alpha (rgb ~alpha:0.2 59 130 246) (Num 0.5))
+    (rgb ~alpha:0.5 59 130 246);
+  check "an oklch() alpha is replaced in place"
+    (with_alpha (parse "oklch(.5 .1 200/.2)") (Num 0.5))
+    (parse "oklch(.5 .1 200/.5)");
+  check "an oklch() without an alpha gains one"
+    (with_alpha (parse "oklch(.5 .1 200)") (Num 0.5))
+    (parse "oklch(.5 .1 200/.5)");
+  (* [light-dark()] resolves to exactly one of its two arguments, so the colour
+     with an alpha is the one whose arguments both carry it. *)
+  check "light-dark() carries the alpha into both arguments"
+    (with_alpha (Light_dark (hex "#3b82f6", hex "#000000")) (Num 0.5))
+    (Light_dark (rgb ~alpha:0.5 59 130 246, rgb ~alpha:0.5 0 0 0));
+  (* A colour whose channels are only known at used-value time has no channel to
+     write, the same answer {!gamut_map_color} gives for one. *)
+  check "a var() colour is left alone"
+    (with_alpha (parse "var(--brand)") (Num 0.5))
+    (parse "var(--brand)");
+  check "currentcolor is left alone"
+    (with_alpha current_color (Num 0.5))
+    current_color
+
+(* The rule [Declaration.hash] holds, one type down: a value that minifies to the
+   text another value minifies to has to hash the same, or a table keyed on the
+   fingerprint files one colour under two keys. As there, the rule is stated over
+   the canonicalised node - [normalize_color] is the pass that gets a colour
+   there - and equality is the finer relation, true for every pair below too.
+
+   CSS Color 4 sec. 6.1 gives [red] the sRGB bytes 255, 0, 0, and sec. 4.1 says
+   the functional notations name a colour by those same channels: [red],
+   [#f00], [#ff0000] and [rgb(255 0 0)] are four spellings of one colour, so
+   they are one node once canonicalised. *)
+(* Not a roundtrip test *)
+let test_hash_color () =
+  let open Css.Values in
+  let parse s =
+    match Css.parse_color s with
+    | Some c -> normalize_color c
+    | None -> Alcotest.failf "failed to parse: %s" s
+  in
+  let text c = Css.Pp.to_string ~minify:true pp_color c in
+  let same_text_same_hash label a b =
+    Alcotest.(check string) (label ^ ": one minified text") (text a) (text b);
+    Alcotest.(check int) (label ^ ": one hash") (hash_color a) (hash_color b);
+    Alcotest.(check bool) (label ^ ": one colour") true (equal_color a b)
+  in
+  let red = parse "red" in
+  same_text_same_hash "the three-digit hex" red (parse "#f00");
+  same_text_same_hash "the six-digit hex" red (parse "#ff0000");
+  same_text_same_hash "the sRGB function" red (parse "rgb(255 0 0)");
+  same_text_same_hash "the legacy comma form" red (parse "rgba(255, 0, 0, 1)");
+  (* Equal colours hash alike, whatever else they hold. *)
+  let equal_pairs =
+    [
+      (hex "#3b82f6", hex "#3b82f6");
+      (rgb ~alpha:0.5 1 2 3, rgb ~alpha:0.5 1 2 3);
+      (parse "oklch(.5 .1 200/.2)", parse "oklch(.5 .1 200/.2)");
+      (color_name Red, color_name Red);
+      ( parse "color-mix(in oklab, red, blue)",
+        parse "color-mix(in oklab, red, blue)" );
+      (current_color, current_color);
+    ]
+  in
+  let disagreeing =
+    List.filter_map
+      (fun (a, b) ->
+        if equal_color a b && hash_color a <> hash_color b then Some (text a)
+        else None)
+      equal_pairs
+  in
+  Alcotest.(check (list string)) "equal colours hash alike" [] disagreeing;
+  (* A hash that answered the same for every colour would satisfy the rules
+     above and be useless, so pin that it separates the colours it can. *)
+  Alcotest.(check bool)
+    "two colours are not one bucket" false
+    (hash_color (hex "#3b82f6") = hash_color (hex "#f63b82"))
+
 (* Not a roundtrip test *)
 let test_color_mix_printing () =
   let open Css.Values in
@@ -1518,6 +1629,8 @@ let value_tests =
     test_case "oklch none hue" `Quick test_color_oklch_none_hue;
     test_case "gamut map colour into sRGB" `Quick test_gamut_map_color;
     test_case "color-mix printing" `Quick test_color_mix_printing;
+    test_case "with_alpha" `Quick test_with_alpha;
+    test_case "hash_color" `Quick test_hash_color;
     test_case "var in calc other types" `Quick test_var_in_calc_types;
     test_case "number var printing" `Quick test_number_var_printing;
     test_case "var() with empty fallback" `Quick test_var_empty_fallback;
