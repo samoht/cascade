@@ -436,6 +436,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` drops the space between the components of a position value, so
+  `background-position:100% 0` prints as `background-position:100%0`. CSS
+  Syntax 3 sec. 4.3.3 consumes the `%` into the percentage token, so whatever
+  follows starts a fresh token and the space cannot change how the value
+  reads; `polygon()` and `animation-range` already elided at that boundary
+  and a position value did not. The rule now also covers a component that
+  ends in `)`, such as a `var()` inside `polygon()`. A unit keeps its space,
+  since `10px 0` would re-tokenise as the single dimension `10px0` (#614)
 - `--minify` merges rules whose colours differ only in how a hex was
   spelled. The digits are case-insensitive and `#RGB` expands by duplicating
   each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
