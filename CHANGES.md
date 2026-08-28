@@ -181,6 +181,15 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A `var()` or `-webkit-gradient()` `color-stop()` written in another case is
+  read as that function. CSS Values 4 sec. 4.1 makes a function name ASCII
+  case-insensitive, but `transition`'s shorthand read a capitalised `VAR(--x)`
+  as a duration instead of the property, turning
+  `transition: VAR(--x) 1s ease` into `transition: all var(--x) ease 1s`, and
+  a capitalised `COLOR-STOP()` inside `-webkit-gradient()` dropped the whole
+  `background` declaration. `display`, `animation-timeline`, `container`,
+  `box-shadow`'s `inset` and `@font-face`'s `unicode-range` had the same gap
+  (#620)
 - An argument a border width comparison cannot read invalidates the
   declaration. The reader stopped at the first such argument and compared the
   ones before it, so `border-width: max(1px, red)` became `1px` and
