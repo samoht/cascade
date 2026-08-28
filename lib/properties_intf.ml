@@ -641,6 +641,7 @@ type border_width =
   | Vmin of float
   | Vmax of float
   | Pct of float
+  | Dimension of { value : float; unit : string; repr : string }
   | Zero
   | Auto
   | Max_content

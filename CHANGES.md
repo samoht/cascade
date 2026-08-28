@@ -95,6 +95,13 @@ recorded cases carrying six minifiers' answers.
   statement holds; call that one instead (#348)
 - `Css.Stylesheet.moz_document_condition` gains `Url_exact`, `Domain`,
   `Media_document` and `Regexp`, so a match on it is no longer exhaustive (#461)
+- `Css.border_width` gains `Dimension`, so a match on it is no longer
+  exhaustive. `border-width` takes a `<length>`, but the reader named its own
+  units and refused every other one, so `border-width: 3dvh` was dropped as
+  invalid while `margin: 3dvh` was read. The physical and logical longhands and
+  the `border` shorthand refused them too. Every dimension `Css.length` carries
+  now reads, keeping its authored spelling, and a `min()` or `max()` over units
+  with no fixed ratio between them keeps both bounds (#612)
 - An author's `@supports` guard survives `--minify`. Cascade decided the
   condition against a generated support table, which is property-granular, so
   `@supports (height: stretch)` was read as a question about `height` and every
