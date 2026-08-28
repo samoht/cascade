@@ -227,6 +227,14 @@ val with_opaque_value : declaration -> string -> declaration
     unknown property's token stream, for a [value] {!with_value} rejects. The
     property is named as it parses back, not as it minifies. *)
 
+val value_of : declaration -> 'a Properties.property -> 'a option
+(** [value_of decl property] is [decl]'s value when {!property_key} names
+    [property], and [None] otherwise. The witness ties the result to the type
+    that property carries, so a caller reads the typed value without naming the
+    existential {!constructor-Declaration} binds, which no constructor name
+    resolves against. A theme guard is read through, as {!property_key} reads
+    through it. *)
+
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 

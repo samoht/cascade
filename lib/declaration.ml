@@ -556,6 +556,15 @@ let same_property d1 d2 =
 
 let pp_value = Properties.pp_value
 
+let rec value_of : type a. declaration -> a Properties.property -> a option =
+ fun decl property ->
+  match decl with
+  | Declaration { property = p; value; _ } -> (
+      match Properties.eq_property p property with
+      | Some Equal -> Some value
+      | None -> None)
+  | Theme_guarded { decl; _ } -> value_of decl property
+
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
   match decl with
   | Declaration { property; value; _ } ->

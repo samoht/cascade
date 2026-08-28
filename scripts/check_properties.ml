@@ -108,6 +108,18 @@ let extract_tag_table content =
   Re.all pattern region
   |> List.map (fun g -> (Re.Group.get g 1, int_of_string (Re.Group.get g 2)))
 
+(* Extract the constructor pairs from eq_property. Both sides are read so that a
+   table pairing two different constructors is caught, not just a missing
+   one. *)
+let extract_eq_table content =
+  let region = marked_region ~marker:"PROPERTY_EQ" content in
+  let pattern =
+    Re.Perl.compile_pat
+      "\\| ([A-Z][A-Za-z0-9_]*)(?: [a-z])?, ([A-Z][A-Za-z0-9_]*)(?: [a-z])? ->"
+  in
+  Re.all pattern region
+  |> List.map (fun g -> (Re.Group.get g 1, Re.Group.get g 2))
+
 let () =
   (* dune runs this runtest action from _build/default/scripts with the lib deps
      materialised at ../lib; anchor there, as Sys.executable_name is relative in
@@ -238,4 +250,47 @@ let () =
     exit 1);
   let n = Array.length keys in
   Fmt.pr "\u{2713} compare_prop_key agrees with equal_prop_key over %d pairs@."
+    (n * n);
+
+  (* [eq_property]'s table ends in a wildcard, so the compiler cannot see a
+     constructor left out of it: such a property would read back as [None] from
+     [Declaration.value_of] for ever. *)
+  let eq_table = extract_eq_table impl_content in
+  let mispaired = List.filter (fun (x, y) -> not (String.equal x y)) eq_table in
+  if not (List.is_empty mispaired) then (
+    Fmt.pr "ERROR: eq_property arms pairing two different constructors:@.";
+    List.iter (fun (x, y) -> Fmt.pr "  - %s, %s@." x y) mispaired;
+    exit 1);
+  let eq_set = StringSet.of_list (List.map fst eq_table) in
+  let uncovered = StringSet.diff declared_set eq_set in
+  let stray_eq = StringSet.diff eq_set declared_set in
+  if not (StringSet.is_empty uncovered) then (
+    Fmt.pr "ERROR: property constructors missing from eq_property:@.";
+    StringSet.iter (fun s -> Fmt.pr "  - %s@." s) uncovered;
+    exit 1);
+  if not (StringSet.is_empty stray_eq) then (
+    Fmt.pr "ERROR: eq_property lists names that are not constructors:@.";
+    StringSet.iter (fun s -> Fmt.pr "  - %s@." s) stray_eq;
+    exit 1);
+  Fmt.pr "\u{2713} eq_property answers for all %d property constructors@."
+    (StringSet.cardinal eq_set);
+
+  (* The proof has to arrive exactly where the comparison says the properties
+     are the same one. *)
+  let eq_disagreements = ref 0 in
+  Array.iter
+    (fun (Declaration.Key a) ->
+      Array.iter
+        (fun (Declaration.Key b) ->
+          let same = Int.equal (Properties.compare_property a b) 0 in
+          if not (Bool.equal same (Option.is_some (Properties.eq_property a b)))
+          then incr eq_disagreements)
+        keys)
+    keys;
+  if !eq_disagreements > 0 then (
+    Fmt.pr
+      "ERROR: %d key pairs where compare_property and eq_property disagree@."
+      !eq_disagreements;
+    exit 1);
+  Fmt.pr "\u{2713} eq_property agrees with compare_property over %d pairs@."
     (n * n)

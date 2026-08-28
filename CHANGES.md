@@ -823,6 +823,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Declaration.value_of` reads a declaration's value at a property witness, the
+  counterpart of `Declaration.property_key` on the property side. The value was
+  reachable only as text through `Declaration.string_of_value`, so a caller
+  telling a `var()` carrier apart from a declared value compared printed
+  spellings. Destructuring the declaration record is not an alternative: its
+  `property` field is typed over a module cascade does not install, and the
+  value's type is then an existential no constructor name resolves against, so
+  such a match compiles in a source build and fails against the installed
+  library. `Properties.eq_property` answers `Properties.compare_property`'s
+  question and carries the type equality the comparison cannot express (#616)
 - The library no longer links `unix`. Timing a factoring iteration for
   `--profile` was its only use of it, and `Unix.gettimeofday` reads a wall
   clock that NTP can step backwards, so an iteration could be reported as
