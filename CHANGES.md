@@ -181,15 +181,17 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
-- A `var()` or `-webkit-gradient()` `color-stop()` written in another case is
-  read as that function. CSS Values 4 sec. 4.1 makes a function name ASCII
-  case-insensitive, but `transition`'s shorthand read a capitalised `VAR(--x)`
-  as a duration instead of the property, turning
-  `transition: VAR(--x) 1s ease` into `transition: all var(--x) ease 1s`, and
-  a capitalised `COLOR-STOP()` inside `-webkit-gradient()` dropped the whole
-  `background` declaration. `display`, `animation-timeline`, `container`,
-  `box-shadow`'s `inset` and `@font-face`'s `unicode-range` had the same gap
-  (#620)
+- A `var()`, a `-webkit-gradient()` `color-stop()`/`from()`/`to()`, an
+  `animation-timeline` `scroll()`/`view()`, or `box-shadow`'s `inset` written
+  in another case is read as that keyword. CSS Values 4 sec. 4.1 makes a
+  keyword ASCII case-insensitive, but `transition`'s shorthand read a
+  capitalised `VAR(--x)` as a duration instead of the property, turning
+  `transition: VAR(--x) 1s ease` into `transition: all var(--x) ease 1s`; a
+  capitalised `COLOR-STOP()`, `FROM()`/`TO()` or `SCROLL()`/`VIEW()` dropped
+  the whole `background` or `animation-timeline` declaration; and
+  `box-shadow: INSET var(--x)` fell back to an unfolded raw value. `display`,
+  `container` and `@font-face`'s `unicode-range` had the var()-name gap too
+  (#620, #622)
 - An argument a border width comparison cannot read invalidates the
   declaration. The reader stopped at the first such argument and compared the
   ones before it, so `border-width: max(1px, red)` became `1px` and
