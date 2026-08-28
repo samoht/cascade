@@ -1751,7 +1751,60 @@ let spec_keyword_case_insensitive () =
     ~lower:".a{@media screen{color:red}}" ~expect:".a{@media screen{color:red}}";
   agrees "@font-face at-rule name"
     ~upper:"@Font-Face{font-family:F;src:url(a.woff)}"
-    ~lower:"@font-face{font-family:F;src:url(a.woff)}"
+    ~lower:"@font-face{font-family:F;src:url(a.woff)}";
+  (* CSS Custom Properties 1 sec. 3 names the substitution function [var()];
+     capitalising it names the same function, even where a typed reader still
+     matched the function name as a bare string. *)
+  agrees "display var()" ~upper:".a{display:VAR(--x)}"
+    ~lower:".a{display:var(--x)}";
+  agrees "animation-timeline var()" ~upper:".a{animation-timeline:VAR(--x)}"
+    ~lower:".a{animation-timeline:var(--x)}";
+  agrees "transition shorthand var() property"
+    ~upper:".a{transition:VAR(--x) 1s ease}"
+    ~lower:".a{transition:var(--x) 1s ease}";
+  agrees "box-shadow inset var()" ~upper:".a{box-shadow:inset VAR(--x)}"
+    ~lower:".a{box-shadow:inset var(--x)}";
+  agrees "container shorthand var()" ~upper:".a{container:VAR(--x)}"
+    ~lower:".a{container:var(--x)}";
+  agrees "@font-face unicode-range var()"
+    ~upper:"@font-face{font-family:F;src:url(a.woff);unicode-range:VAR(--x)}"
+    ~lower:"@font-face{font-family:F;src:url(a.woff);unicode-range:var(--x)}";
+  agrees "gradient position var()"
+    ~upper:".a{background:linear-gradient(VAR(--dir),red,blue)}"
+    ~lower:".a{background:linear-gradient(var(--dir),red,blue)}";
+  (* [shape-outside] is a [string property]: a valid value is handed back as
+     the raw source text, uppercase var() included, so there is no folded
+     form to agree on here. Only the empty-var() rejection below is a shared
+     path. *)
+  (* WebKit's legacy gradient names [color-stop()] as a helper function of
+     [-webkit-gradient()], so sec. 4.1 folds it exactly as any other function
+     name. *)
+  agrees "-webkit-gradient color-stop()"
+    ~upper:
+      ".a{background:-webkit-gradient(linear,left top,left \
+       bottom,from(red),COLOR-STOP(50%,green),to(blue))}"
+    ~lower:
+      ".a{background:-webkit-gradient(linear,left top,left \
+       bottom,from(red),color-stop(50%,green),to(blue))}";
+  (* An empty [var()] is invalid regardless of case (CSS Custom Properties 1
+     sec. 3); the diagnosis must agree, not just the rejection. *)
+  let empty_var_diagnostic input =
+    match of_string ~strict:true input with
+    | Ok _ -> Alcotest.failf "%s: strict parse accepted an empty var()" input
+    | Error err -> Cascade.Error.to_string err
+  in
+  let lower_diag = empty_var_diagnostic ".a{shape-outside:var()}" in
+  Alcotest.(check bool)
+    (String.concat ""
+       [ "lower-case empty var() names the reason, got "; lower_diag ])
+    true
+    (Astring.String.is_infix ~affix:"empty var()" lower_diag);
+  let upper_diag = empty_var_diagnostic ".a{shape-outside:VAR()}" in
+  Alcotest.(check bool)
+    (String.concat ""
+       [ "capitalised empty var() names the reason, got "; upper_diag ])
+    true
+    (Astring.String.is_infix ~affix:"empty var()" upper_diag)
 
 (* CSS Values 4 sec. 4.2: an author-defined identifier is "fully case-sensitive
    [...] even in the ASCII range (e.g. example and EXAMPLE are two different,
@@ -1813,6 +1866,22 @@ let spec_author_ident_case_sensitive () =
      property. *)
   keeps "custom property inside color-mix()"
     ".a{--Foo:red;color:color-mix(IN srgb,var(--Foo),blue)}" "var(--Foo)";
+  (* [var()]'s function name folds (sec. 4.1); the custom property name in its
+     argument does not (sec. 4.2). *)
+  keeps "display var() argument name" ".a{display:VAR(--Foo)}" "var(--Foo)";
+  keeps "animation-timeline var() argument name"
+    ".a{animation-timeline:VAR(--Foo)}" "var(--Foo)";
+  keeps "transition shorthand var() argument name"
+    ".a{transition:VAR(--Foo) 1s ease}" "var(--Foo)";
+  keeps "box-shadow inset var() argument name" ".a{box-shadow:inset VAR(--Foo)}"
+    "var(--Foo)";
+  keeps "container shorthand var() argument name" ".a{container:VAR(--Foo)}"
+    "var(--Foo)";
+  keeps "@font-face unicode-range var() argument name"
+    "@font-face{font-family:F;src:url(a.woff);unicode-range:VAR(--Foo)}"
+    "var(--Foo)";
+  keeps "gradient position var() argument name"
+    ".a{background:linear-gradient(VAR(--Foo),red,blue)}" "var(--Foo)";
   (* CSS Syntax 3 sec. 8.2 recognises [@charset] only as the exact byte
      sequence, so the encoding name is not a keyword to fold. *)
   (match of_string ~strict:true "@charset \"utf-8\";.a{color:red}" with
