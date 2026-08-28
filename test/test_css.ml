@@ -1759,10 +1759,21 @@ let spec_keyword_case_insensitive () =
     ~lower:".a{display:var(--x)}";
   agrees "animation-timeline var()" ~upper:".a{animation-timeline:VAR(--x)}"
     ~lower:".a{animation-timeline:var(--x)}";
+  (* scroll-animations-1 sec. 3/4 name [scroll()] and [view()] as the timeline
+     functions; sec. 4.1 folds a function name too. *)
+  agrees "animation-timeline scroll()"
+    ~upper:".a{animation-timeline:SCROLL(root block)}"
+    ~lower:".a{animation-timeline:scroll(root block)}";
+  agrees "animation-timeline view()" ~upper:".a{animation-timeline:VIEW(block)}"
+    ~lower:".a{animation-timeline:view(block)}";
   agrees "transition shorthand var() property"
     ~upper:".a{transition:VAR(--x) 1s ease}"
     ~lower:".a{transition:var(--x) 1s ease}";
   agrees "box-shadow inset var()" ~upper:".a{box-shadow:inset VAR(--x)}"
+    ~lower:".a{box-shadow:inset var(--x)}";
+  (* Sibling gap: #620 folded [var()]'s name here but left [inset] itself, so a
+     capitalised inset before [var()] still misses the typed reader. *)
+  agrees "box-shadow INSET var()" ~upper:".a{box-shadow:INSET VAR(--x)}"
     ~lower:".a{box-shadow:inset var(--x)}";
   agrees "container shorthand var()" ~upper:".a{container:VAR(--x)}"
     ~lower:".a{container:var(--x)}";
@@ -1776,6 +1787,15 @@ let spec_keyword_case_insensitive () =
      the raw source text, uppercase var() included, so there is no folded
      form to agree on here. Only the empty-var() rejection below is a shared
      path. *)
+  (* [from()]/[to()] name the two required stops of [-webkit-gradient()]; the
+     sibling [color-stop()] fold below (#620) left these two untouched. *)
+  agrees "-webkit-gradient from()/to()"
+    ~upper:
+      ".a{background:-webkit-gradient(linear,left top,left \
+       bottom,FROM(red),TO(blue))}"
+    ~lower:
+      ".a{background:-webkit-gradient(linear,left top,left \
+       bottom,from(red),to(blue))}";
   (* WebKit's legacy gradient names [color-stop()] as a helper function of
      [-webkit-gradient()], so sec. 4.1 folds it exactly as any other function
      name. *)
@@ -1871,9 +1891,15 @@ let spec_author_ident_case_sensitive () =
   keeps "display var() argument name" ".a{display:VAR(--Foo)}" "var(--Foo)";
   keeps "animation-timeline var() argument name"
     ".a{animation-timeline:VAR(--Foo)}" "var(--Foo)";
+  (* scroll-animations-1 sec. 3: a bare [<dashed-ident>] here names a
+     scroll-timeline/view-timeline, not the [scroll()]/[view()] function;
+     folding the function name (above) must not reach this. *)
+  keeps "animation-timeline name" ".a{animation-timeline:--Foo}" "--Foo";
   keeps "transition shorthand var() argument name"
     ".a{transition:VAR(--Foo) 1s ease}" "var(--Foo)";
   keeps "box-shadow inset var() argument name" ".a{box-shadow:inset VAR(--Foo)}"
+    "var(--Foo)";
+  keeps "box-shadow INSET var() argument name" ".a{box-shadow:INSET VAR(--Foo)}"
     "var(--Foo)";
   keeps "container shorthand var() argument name" ".a{container:VAR(--Foo)}"
     "var(--Foo)";
