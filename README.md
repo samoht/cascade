@@ -504,9 +504,11 @@ minified outputs are identical.
 ### Small runtime footprint
 
 The core `cascade` library links
-[uutf](https://erratique.ch/software/uutf), `uri`, `psq`, `logs` and `unix`;
-it does not pull `fmt`, so js_of_ocaml embedders stay lean. A local jsoo
-build that parses and minifies one stylesheet compresses to under 200 KiB
+[uutf](https://erratique.ch/software/uutf), `uri`, `psq`, `logs` and
+[mtime](https://erratique.ch/software/mtime), which supplies the monotonic
+clock `--profile` measures factoring iterations against; it does not pull
+`fmt` or `unix`, so js_of_ocaml embedders stay lean. A local jsoo build that
+parses and minifies one stylesheet compresses to under 200 KiB
 (`--opt 3 --no-source-map`, size-oriented runtime flags).
 
 ## Development and testing

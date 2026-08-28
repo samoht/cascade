@@ -29,6 +29,7 @@
   (re :with-test)
   (fmt (>= 0.10.0))
   base-unix
+  (mtime (>= 2.1.0))
   uutf
   uri
   psq

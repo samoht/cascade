@@ -808,6 +808,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- The library no longer links `unix`. Timing a factoring iteration for
+  `--profile` was its only use of it, and `Unix.gettimeofday` reads a wall
+  clock that NTP can step backwards, so an iteration could be reported as
+  having taken negative time. `mtime` reads the monotonic clock the
+  measurement wants and ships a js_of_ocaml implementation of it, which `unix`
+  does not, so embedding cascade in a browser no longer means linking an
+  operating system to time a loop. A cram test pins the closure (#609)
 - `Css.Resolve` answers the selectors Selectors 4 settles from the element tree
   a `NODE` supplies: `:nth-child()` and `:nth-last-child()` with or without
   their `of S` argument, the typed `:nth-of-type()`, `:nth-last-of-type()`,

@@ -113,12 +113,12 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
   let before_rules = List.length rules in
   let profile = Stats.profile stats in
   let before_bytes = if profile then rules_pp_size rules else 0 in
-  let started_at = Unix.gettimeofday () in
+  let timer = Mtime_clock.counter () in
   let graph = Rule_scheduler.run ~ctx ~finalize graph in
   let ordered = ordered_rules rules graph in
   let rules' = list_map_preserve finalize ordered in
   let after_bytes = if profile then rules_pp_size rules' else 0 in
-  let elapsed = Unix.gettimeofday () -. started_at in
+  let elapsed = Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9 in
   let bytes_saved = Stats.saving stats in
   (* Both return the input unchanged by physical identity on a no-op, so a
      pointer compare detects change without rendering to CSS. *)

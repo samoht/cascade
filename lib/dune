@@ -59,7 +59,7 @@
   prop_font
   prop_text
   prop_animation)
- (libraries uutf uri psq logs unix))
+ (libraries uutf uri psq logs mtime.clock))
 
 (mdx
  (files
