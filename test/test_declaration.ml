@@ -3277,12 +3277,53 @@ let nan_has_one_node () =
     (minified
        ".a{opacity:calc(NaN)}.c{opacity:calc(infinity)}.e{opacity:calc(-infinity)}")
 
+(* CSS Color 4 sec. 5.2 reads the hexadecimal digits ASCII case-insensitively
+   and expands [#RGB] to [#RRGGBB] by duplicating each digit, so [#FFF], [#fff]
+   and [#ffffff] name one colour. The source spelling is a pretty-printing
+   detail, not part of the value: once optimisation has canonicalised it away
+   the three are one declaration, they hash alike, and the rules holding them
+   merge. *)
+let hex_spellings_have_one_node () =
+  let short_upper = sole_declaration ".a{color:#FFF}" in
+  let short_lower = sole_declaration ".b{color:#fff}" in
+  let long = sole_declaration ".c{color:#ffffff}" in
+  Alcotest.(check string)
+    "the fold spells #fff" "color:#fff"
+    (Css.Declaration.to_string ~minify:true short_upper);
+  same_text_same_hash "#FFF vs #fff" short_upper short_lower;
+  same_text_same_hash "#fff vs #ffffff" short_lower long;
+  Alcotest.(check string)
+    "the three spellings merge" ".a,.b,.c{color:#fff}"
+    (minified ".a{color:#FFF}.b{color:#fff}.c{color:#ffffff}");
+  (* A colour with no shorter named form takes the same route. *)
+  let mixed = sole_declaration ".a{color:#AbC}" in
+  let expanded = sole_declaration ".b{color:#aabbcc}" in
+  same_text_same_hash "#AbC vs #aabbcc" mixed expanded;
+  Alcotest.(check string)
+    "a mixed-case spelling merges" ".a,.b{color:#abc}"
+    (minified ".a{color:#AbC}.b{color:#aabbcc}");
+  (* Sec. 5.2 also gives the fourth digit pair as alpha, and sec. 4.2 drops a
+     fully opaque one, so [#FFFF] is the same value again. *)
+  same_text_same_hash "#FFFF vs #fff"
+    (sole_declaration ".a{color:#FFFF}")
+    short_lower;
+  (* The control that already merged: a hex whose colour has a shorter name
+     folds across notations. *)
+  Alcotest.(check string)
+    "hex and name merge" ".a,.b,.c{color:red}"
+    (minified ".a{color:#FF0000}.b{color:#f00}.c{color:red}");
+  (* Different colours stay different values. *)
+  distinct_value "#fff vs #eee" short_lower (sole_declaration ".d{color:#EEE}");
+  distinct_value "#fff vs #fff8" short_lower
+    (sole_declaration ".e{color:#FFF8}")
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
+    test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;

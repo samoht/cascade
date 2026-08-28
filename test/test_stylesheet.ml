@@ -5208,7 +5208,15 @@ let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #FF0000 }" [ "#FF0000" ];
   pretty_preserves ".x { color: #ABCDEF }" [ "#ABCDEF" ];
   assert_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
-    ~optimized:".x{color:red}"
+    ~optimized:".x{color:red}";
+  (* Optimisation is the node-changing pass, and CSS Color 4 sec. 5.2 makes the
+     digit case carry no meaning, so the authored spelling does not survive it:
+     pretty output taken after [Css.optimize] carries the canonical colour, the
+     same way [#ff0000] already arrives there as [red]. *)
+  Alcotest.(check string)
+    "optimize drops the authored hex spelling" ".x {\n  color: #abcdef;\n}"
+    (Css.of_string_exn ".x { color: #ABCDEF }"
+    |> Css.optimize |> Css.to_string |> String.trim)
 
 (* CSS Color 4 section 5.1 + cascade convention: under non-minified output, the
    named-color and rgb() forms are preserved as written - no cross-form
