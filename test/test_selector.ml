@@ -2222,6 +2222,85 @@ let spec_selector_dir_argument_is_an_ident () =
   neg_cursor read ":dir(\"ltr\")";
   neg_cursor read ":dir(ltr, rtl)"
 
+(* CSS Selectors 4 sec. 12 makes each of these pseudo-class pairs a partition of
+   one set of elements only, and an element outside that set matches neither
+   half: sec. 12.1.1 "In a typical document most elements will be neither
+   :enabled nor :disabled", sec. 12.3.1 "An element which lacks data validity
+   semantics is neither :valid nor :invalid [...] a p element has no validity
+   semantics at all", sec. 12.3.3 "Elements that are not form elements are
+   neither required nor optional". So [:not()] over one half of a pair is the
+   other half only inside a compound that proves its subject carries that state,
+   and [HTML] names a different set of elements for each pair. *)
+let spec_selector_state_folds_need_a_carrier () =
+  (* A class names no element type, so [<p class=c>] matches [.c:not(:enabled)]
+     and none of the six positive halves. *)
+  check_minified_to ".c:not(:enabled)" ".c:not(:enabled)";
+  check_minified_to ".c:not(:disabled)" ".c:not(:disabled)";
+  check_minified_to ".c:not(:valid)" ".c:not(:valid)";
+  check_minified_to ".c:not(:invalid)" ".c:not(:invalid)";
+  check_minified_to ".c:not(:required)" ".c:not(:required)";
+  check_minified_to ".c:not(:optional)" ".c:not(:optional)";
+  (* Nothing at all around the negation proves even less. *)
+  check_minified_to ":not(:enabled)" ":not(:enabled)";
+  (* An attribute selector names no element type either: [type] is a plain
+     attribute on any element. *)
+  check_minified_to "[type=text]:not(:required)" "[type=text]:not(:required)";
+  (* HTML sec. 4.16.3: [:enabled] matches a non-disabled [button], [input],
+     [select], [textarea], [optgroup], [option] or [fieldset], and [:disabled]
+     matches an actually disabled one (sec. 4.15). [a] is on neither list. *)
+  check_minified_to "a:not(:enabled)" "a:not(:enabled)";
+  check_minified_to "input:disabled" "input:not(:enabled)";
+  check_minified_to "input:enabled" "input:not(:disabled)";
+  check_minified_to "option:enabled" "option:not(:disabled)";
+  check_minified_to "fieldset:disabled" "fieldset:not(:enabled)";
+  (* HTML sec. 4.16.3: [:valid] and [:invalid] split a [form] and a [fieldset]
+     whole, but reach a form control only while it is a candidate for constraint
+     validation. A disabled, readonly or [type=hidden] [input] is barred from it
+     (HTML sec. 4.10.19.5, sec. 4.10.5.3.3, sec. 4.10.5.1.1), so it matches
+     neither half. *)
+  check_minified_to "input:not(:invalid)" "input:not(:invalid)";
+  check_minified_to "input:not(:valid)" "input:not(:valid)";
+  check_minified_to "button:not(:valid)" "button:not(:valid)";
+  check_minified_to "form:invalid" "form:not(:valid)";
+  check_minified_to "fieldset:valid" "fieldset:not(:invalid)";
+  (* HTML sec. 4.16.3: [:optional] wants an [input] "to which the required
+     attribute applies". It does not apply in the Hidden or Submit Button state
+     (HTML sec. 4.10.5.1.1), so [<input type=hidden>] matches neither
+     [:required] nor [:optional], while every [select] and [textarea] carries
+     one or the other. *)
+  check_minified_to "input:not(:required)" "input:not(:required)";
+  check_minified_to "input:not(:optional)" "input:not(:optional)";
+  check_minified_to "select:optional" "select:not(:required)";
+  check_minified_to "textarea:required" "textarea:not(:optional)";
+  (* The three sets are distinct: an [input] proves the enabled pair and neither
+     of the other two. *)
+  check_minified_to "input:enabled:not(:required)"
+    "input:not(:disabled):not(:required)";
+  (* Selectors 4 sec. 3.5: the subject of a complex selector is its rightmost
+     compound, so an ancestor part neither proves nor blocks the fold. *)
+  check_minified_to "form input:disabled" "form input:not(:enabled)";
+  check_minified_to "form .c:not(:enabled)" "form .c:not(:enabled)";
+  check_minified_to "input.c:disabled" "input.c:not(:enabled)";
+  (* Selectors 4 sec. 4.2: [:is()] matches any element one of its branches
+     matches, so it proves the state only when every branch does. [:where()]
+     matches the same elements. *)
+  check_minified_to ":is(select,textarea):optional"
+    ":is(select,textarea):not(:required)";
+  check_minified_to ":is(input,textarea):not(:required)"
+    ":is(input,textarea):not(:required)";
+  check_minified_to ":is(input,.c):not(:enabled)" ":is(input,.c):not(:enabled)";
+  check_minified_to ":where(input):disabled" ":where(input):not(:enabled)";
+  (* Selectors 4 sec. 5: [:has()] constrains the subject's descendants, not its
+     element type. *)
+  check_minified_to ":has(input):not(:enabled)" ":has(input):not(:enabled)";
+  (* Selectors 4 sec. 12.1.1 leaves what counts as an enabled state, a disabled
+     state and a user interface element to the host language, so it is [HTML],
+     not the CSS text, that puts [input] on the list. [--enforce-spec] drops
+     that host fact. *)
+  check_enforce_spec_to "input:not(:enabled)" "input:not(:enabled)";
+  check_enforce_spec_to "select:not(:required)" "select:not(:required)";
+  check_enforce_spec_to "form:not(:valid)" "form:not(:valid)"
+
 (* ignore-test *)
 let test_spec_forgiving_selector_lists () =
   (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
@@ -2729,6 +2808,9 @@ let suite =
         spec_selector_dir_fold_is_a_host_fact;
       test_case "spec selector :dir() argument is an ident" `Quick
         spec_selector_dir_argument_is_an_ident;
+
+      test_case "spec selector state folds need a carrier" `Quick
+        spec_selector_state_folds_need_a_carrier;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick
