@@ -2644,7 +2644,6 @@ let spec_selector_serialization_invariant_matrix () =
       ":nth-last-of-type(odd even)";
       ":has(+)";
       ":lang(, en)";
-      ":dir(sideways)";
       "::part(tab, panel)";
       "::slotted(.a, .b)";
       "::cue-region()";
