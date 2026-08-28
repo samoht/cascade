@@ -32,8 +32,10 @@ type ctx = {
   out : out;  (** Output sink *)
   inline : bool;  (** Whether to inline variables or not *)
   in_function : bool;
-      (** Whether inside a CSS function (var fallback, color-mix). Affects
-          keyword casing: [currentColor] becomes [currentcolor]. *)
+      (** Whether inside a CSS function (var fallback, color-mix). Unminified
+          output spells the colour keyword [currentcolor] here and
+          [currentColor] elsewhere; minified output spells it [currentcolor]
+          either way. *)
   in_calc : bool;
       (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
           boundary ([calc] is type-aware so [<percentage>] and [<number>] are

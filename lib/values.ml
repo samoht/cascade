@@ -4691,7 +4691,13 @@ and pp_color_default : color Pp.t =
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_color_var ctx v
   | Current ->
-      Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
+      (* CSS Values 4 sec. 4.1 reads the keyword case-insensitively, so no
+         authored spelling survives the parse and minified output picks the CSS
+         Color 4 sec. 6.4 spelling everywhere: a typed [var()] fallback and a
+         custom-property stream already fold to it. *)
+      Pp.string ctx
+        (if Pp.minified ctx || ctx.in_function then "currentcolor"
+         else "currentColor")
   | Transparent -> pp_transparent_color ctx
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"

@@ -402,6 +402,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` gives the colour keyword `currentcolor` one spelling. CSS Values 4
+  sec. 4.1 reads it case-insensitively, so no authored spelling survives the
+  parse, and a declaration printed `currentColor` where a custom-property
+  stream and a `var()` fallback in the same stylesheet printed `currentcolor`
+  (#599)
 - `--minify` merges rules whose colours differ only in how a hex was
   spelled. The digits are case-insensitive and `#RGB` expands by duplicating
   each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
