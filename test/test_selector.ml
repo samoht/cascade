@@ -2222,6 +2222,34 @@ let spec_selector_dir_argument_is_an_ident () =
   neg_cursor read ":dir(\"ltr\")";
   neg_cursor read ":dir(ltr, rtl)"
 
+(* CSS Values 4 sec. 4.1: "Keywords are identifiers and are interpreted ASCII
+   case-insensitively (i.e., [a-z] and [A-Z] are equivalent)." CSS Selectors 4
+   sec. 7.1 names [ltr] and [rtl] as the two directionalities [:dir()] matches,
+   so [LTR] is that keyword and reaches the same node. The identifier sec. 7.1
+   leaves valid but non-matching is no keyword, so its case is the author's. *)
+let spec_selector_dir_keyword_is_case_insensitive () =
+  (* The keyword reaches its canonical node, so the sec. 7.1 fold applies. *)
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(LTR))";
+  check_minified_to ".a:dir(ltr)" ".a:not(:dir(RTL))";
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(Ltr))";
+  (* A positive [:dir()] carries the same keyword, in either mode. *)
+  check_minified_to ".a:dir(ltr)" ".a:dir(LTR)";
+  check_pretty_to ".a:dir(rtl)" ".a:dir(RTL)";
+  (* Case is a fact of the CSS text, so it holds under [--enforce-spec] too.
+     What that flag drops is the host partition of sec. 7.1, which is what keeps
+     the [:not()] here. *)
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(LTR))";
+  check_enforce_spec_to ".a:dir(ltr)" ".a:dir(LTR)";
+  (* An identifier that is neither keyword keeps its case and pairs with no
+     directionality, in either mode. *)
+  check_minified_to ".a:dir(Auto)" ".a:dir(Auto)";
+  check_minified_to ".a:not(:dir(AUTO))" ".a:not(:dir(AUTO))";
+  check_enforce_spec_to ".a:not(:dir(Auto))" ".a:not(:dir(Auto))";
+  (* The same holds for a node built rather than read. *)
+  Alcotest.(check string)
+    "an identifier that is neither keyword does not fold" ":not(:dir(auto))"
+    (to_string ~minify:true (Not [ Dir "auto" ]))
+
 (* CSS Selectors 4 sec. 12 makes each of these pseudo-class pairs a partition of
    one set of elements only, and an element outside that set matches neither
    half: sec. 12.1.1 "In a typical document most elements will be neither
@@ -2808,6 +2836,8 @@ let suite =
         spec_selector_dir_fold_is_a_host_fact;
       test_case "spec selector :dir() argument is an ident" `Quick
         spec_selector_dir_argument_is_an_ident;
+      test_case "spec selector :dir() keyword is case-insensitive" `Quick
+        spec_selector_dir_keyword_is_case_insensitive;
       test_case "spec selector state folds need a carrier" `Quick
         spec_selector_state_folds_need_a_carrier;
       test_case "spec forgiving selector lists" `Quick
