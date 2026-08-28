@@ -160,6 +160,65 @@ cascade diff --diff=canonical reference.css output.css
 NO_COLOR=1 cascade diff reference.css output.css
 ```
 
+## `cascade apply`: resolve a stylesheet into inline styles
+
+```text
+cascade apply [--minimal] PAGE.html [EXTRA.css]
+```
+
+Resolves the cascade against every element of `PAGE.html` and writes each
+element's winning declarations into its `style` attribute, printing the page to
+stdout. Selector matching, specificity, `!important` and inline-style priority
+decide which declaration wins, the way a browser decides it. The page's own
+`<style>` blocks supply the CSS, and `EXTRA.css` is applied on top of them.
+
+A declaration moves onto an element only when nothing left in CSS can overwrite
+it. A rule with no inline form (`:hover`, a `@media` block, a pseudo-element,
+`@keyframes`) cannot be projected onto an element at all, so it is kept in a
+single `<style>` block, and every declaration a kept rule competes for is kept
+beside it. A style attribute outranks every selector, so inlining a `.btn`
+colour past a `.btn:hover` colour would win a fight the browser gives to the
+hover rule:
+
+```html
+<html><body><p class="btn">Send</p></body></html>
+```
+
+```css
+.btn { color: #fff; padding: .5rem 1rem }
+.btn:hover { color: #eee }
+```
+
+`cascade apply page.html theme.css` writes the padding onto the element and
+leaves both colours in CSS, since `:hover` still has to be able to win:
+
+```html
+<html><head><style>.btn{color:#fff}.btn:hover{color:#eee}</style></head><body><p style="padding:.5rem 1rem" class="btn">Send</p></body></html>
+```
+
+A projected `<style>` block is emptied rather than removed. A `<style>` element
+is a sibling like any other, so unlinking it would stop a kept rule such as
+`.navbox + style + .portal-bar` from matching what it matches in the browser. A
+block the parser could not use keeps its text instead of being emptied with the
+rest: emptying it would ship a page with neither the inline styles it should
+have had nor the CSS a browser might still make something of.
+
+| Flag | Purpose |
+|---|---|
+| `--minimal` | Drop an inherited declaration that only restates the value the element already inherits from its ancestors, for the smallest styled page. |
+
+The exit code is 0 on success, including a parse that recovered part of its
+input, and 1 when a `<style>` block or `EXTRA.css` parsed to nothing. The page
+is still written in that case, without those styles, so a build can gate on the
+status rather than on the output.
+
+<!-- $MDX skip -->
+```bash
+cascade apply page.html > inlined.html
+cascade apply page.html theme.css > inlined.html
+cascade apply --minimal page.html theme.css > inlined.html
+```
+
 ## `cascade prune`: remove the rules a page cannot use
 
 ```text
