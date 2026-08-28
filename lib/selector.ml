@@ -330,12 +330,20 @@ let read_lang_content t =
   ensure_call_done t "lang";
   Lang langs
 
+(* CSS Values 4 sec. 4.1 interprets a keyword ASCII case-insensitively, so the
+   two directionalities Selectors 4 sec. 7.1 names reach one node however they
+   are spelled. Any other identifier is no keyword, so it keeps its case. *)
+let dir_keyword ident =
+  match String.lowercase_ascii ident with
+  | ("ltr" | "rtl") as keyword -> keyword
+  | _ -> ident
+
 let read_dir_content t =
   (* Selectors 4 sec. 7.1: the argument is a single identifier, and one other
      than [ltr] or [rtl] "is not invalid, but does not match anything". Keeping
      it verbatim also leaves room for a directionality a later markup spec
      defines. *)
-  let dir = Cursor.ident t in
+  let dir = dir_keyword (Cursor.ident t) in
   ensure_call_done t "dir";
   Dir dir
 

@@ -174,6 +174,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A `:dir()` argument written in another case, such as `:dir(LTR)`, names the
+  directionality it spells. CSS Values 4 sec. 4.1 makes a keyword ASCII
+  case-insensitive, so the two spellings reach one node, `:not(:dir(LTR))`
+  shortens to `:dir(rtl)` like its lower-case twin, and rules that differ only
+  in that case merge (#602)
 - `:dir()` accepts any single identifier, so `:dir(auto)` is read and written
   back instead of taking its whole rule down. CSS Selectors 4 sec. 7.1 says a
   value other than `ltr` or `rtl` "is not invalid, but does not match
