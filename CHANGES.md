@@ -181,6 +181,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An argument a border width comparison cannot read invalidates the
+  declaration. The reader stopped at the first such argument and compared the
+  ones before it, so `border-width: max(1px, red)` became `1px` and
+  `border-width: min(3px, red, 1px)` became `3px`, a narrower comparison than
+  the one written and one an author never asked for; `margin` dropped both
+  already. CSS Values 4 sec. 10.2 gives `min()` and `max()` a list of
+  `<calc-sum>` and `clamp()` three arguments, and CSS Syntax 3 sec. 8.2 makes
+  an invalid value invalidate the declaration. The four physical longhands,
+  their logical counterparts, the 1-4 value shorthand and the width slot of
+  `border` all read through that reader (#617)
 - An at-rule or function name written in another case names what it spells.
   CSS Values 4 sec. 4.1 makes both of them keywords, so `@MEDIA`,
   `@Font-Face`, `RGB()`, `color-mix(IN srgb, ...)`, `background: URL("a.png")`,
@@ -436,6 +446,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` drops the space between the components of a position value, so
+  `background-position:100% 0` prints as `background-position:100%0`. CSS
+  Syntax 3 sec. 4.3.3 consumes the `%` into the percentage token, so whatever
+  follows starts a fresh token and the space cannot change how the value
+  reads; `polygon()` and `animation-range` already elided at that boundary
+  and a position value did not. The rule now also covers a component that
+  ends in `)`, such as a `var()` inside `polygon()`. A unit keeps its space,
+  since `10px 0` would re-tokenise as the single dimension `10px0` (#614)
 - `--minify` merges rules whose colours differ only in how a hex was
   spelled. The digits are case-insensitive and `#RGB` expands by duplicating
   each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
@@ -815,6 +833,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Declaration.value_of` reads a declaration's value at a property witness, the
+  counterpart of `Declaration.property_key` on the property side. The value was
+  reachable only as text through `Declaration.string_of_value`, so a caller
+  telling a `var()` carrier apart from a declared value compared printed
+  spellings. Destructuring the declaration record is not an alternative: its
+  `property` field is typed over a module cascade does not install, and the
+  value's type is then an existential no constructor name resolves against, so
+  such a match compiles in a source build and fails against the installed
+  library. `Properties.eq_property` answers `Properties.compare_property`'s
+  question and carries the type equality the comparison cannot express (#616)
 - The library no longer links `unix`. Timing a factoring iteration for
   `--profile` was its only use of it, and `Unix.gettimeofday` reads a wall
   clock that NTP can step backwards, so an iteration could be reported as

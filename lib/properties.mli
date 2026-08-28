@@ -21,6 +21,12 @@ val compare_property : 'a property -> 'b property -> int
     exactly when [a] and [b] are the same property, so an ordered container
     keyed on a property agrees with equality on it. *)
 
+val eq_property : 'a property -> 'b property -> ('a, 'b) Type.eq option
+(** [eq_property a b] is [Some Equal] when [a] and [b] are the same property,
+    and [None] otherwise. It answers {!compare_property}'s question and carries
+    the proof that the two properties value the same type, which the comparison
+    on its own cannot express. *)
+
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)

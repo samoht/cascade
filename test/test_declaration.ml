@@ -452,7 +452,7 @@ let special_cases () =
 
   (* One position per background layer, comma-separated: joining the layers with
      spaces reads as a single four-value position. *)
-  check_declaration ~expected:"background-position:30% 50%,70% 50%"
+  check_declaration ~expected:"background-position:30%50%,70%50%"
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
@@ -2969,6 +2969,58 @@ let shape_outside_sheet () =
       "a{shape-outside:url(shape.png)}";
     ]
 
+(* Every property that reads a [<line-width>]: the four physical longhands and
+   their logical counterparts, the 1-4 value shorthand, the two-value logical
+   shorthands, and the width slot of [border]. *)
+let line_width_sites value =
+  List.map
+    (fun property -> String.concat "" [ property; ":"; value ])
+    [
+      "border-width";
+      "border-top-width";
+      "border-right-width";
+      "border-bottom-width";
+      "border-left-width";
+      "border-block-start-width";
+      "border-block-end-width";
+      "border-inline-start-width";
+      "border-inline-end-width";
+      "border-block-width";
+      "border-inline-width";
+      "border";
+    ]
+
+(* A [<length>] site reading the same comparison, for contrast. *)
+let length_math_sites value =
+  List.map
+    (fun property -> String.concat "" [ property; ":"; value ])
+    [ "margin"; "margin-top"; "outline-width"; "width" ]
+
+(* CSS Values 4 sec. 10.2 gives [min()] / [max()] a comma-separated list of
+   [<calc-sum>] and [clamp()] exactly three arguments, and CSS Syntax 3 sec. 8.2
+   drops a declaration whose value is invalid. The [<length>] sites answer that
+   way already. The [<line-width>] sites read arguments up to the first one they
+   could not read and compared those, so [max(1px,red)] answered [1px]: a
+   narrower comparison than the one written, and one the author never asked
+   for. *)
+let line_width_invalid_math_argument () =
+  List.iter
+    (fun value ->
+      List.iter (neg_cursor read_declaration) (line_width_sites value);
+      List.iter (neg_cursor read_declaration) (length_math_sites value))
+    [
+      "max(1px,red)";
+      "min(3px,red,1px)";
+      "max(1px 2px)";
+      "clamp(1px,2px,3px,4px)";
+    ];
+  (* Controls: two bounds no unit relates stand as written at every site, and
+     the 1-4 value shorthand still takes one per side. *)
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    (line_width_sites "max(3dvh,4px)" @ length_math_sites "max(3dvh,4px)");
+  check_declaration ~roundtrip:true "border-width:1px max(3dvh,4px)"
+
 (* CSS Backgrounds 3 sec. 5.1: [border-radius] is [<length-percentage
    [0,inf]>{1,4} [ / <length-percentage [0,inf]>{1,4} ]?], so an
    intrinsic-sizing keyword ([auto], [max-content], [stretch], ...) is no part
@@ -3401,6 +3453,8 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "shape-outside grammar" `Quick shape_outside_grammar;
     test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
+    test_case "line-width invalid math argument" `Quick
+      line_width_invalid_math_argument;
     test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
     test_case "border-radius CSS-wide keywords" `Quick
       border_radius_css_wide_keywords;

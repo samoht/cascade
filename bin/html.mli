@@ -25,9 +25,11 @@ and element = {
 }
 
 val parse : string -> t
-(** [parse html] is the document [html] denotes: a doctype, the [<html>] element
-    the parser builds whether or not the source wrote one, and any comment
-    outside it. *)
+(** [parse html] is the document [html] denotes: the top-level nodes the parser
+    leaves, in order - a doctype, any comment outside the markup, and the
+    elements themselves. The [<html>] wrapper is among them only when the source
+    wrote that tag or a doctype, so [<p>hi</p>] parses to the [<p>] alone and a
+    source carrying no element at all leaves {!roots} empty. *)
 
 val to_string : t -> string
 (** [to_string doc] serialises [doc] as HTML5. *)

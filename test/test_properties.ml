@@ -1871,6 +1871,21 @@ let test_border_width () =
   decl_optimizes ~prop:"border-width" ~held:"0px 1px 0 2rem"
     ~into:"0 1px 0 2rem" "0px 1px 0 2rem";
   decl_optimizes ~prop:"border-width" ~held:"2px" ~into:"2px" "2px";
+  (* Whitespace around an argument is not an argument, so the comparison still
+     reads as two bounds. *)
+  check_border_width ~expected:"max(3dvh,4px)" "max( 3dvh , 4px )";
+  (* CSS Values 4 sec. 10.2 gives [min()] / [max()] a comma-separated list of
+     [<calc-sum>] and [clamp()] exactly three arguments. An argument that is no
+     [<calc-sum>], a second bound with no comma before it, and a fourth
+     [clamp()] argument each make the function invalid, and CSS Syntax 3 sec.
+     8.2 makes an invalid value invalidate the declaration. Reading arguments up
+     to the first unreadable one and comparing those is a different function:
+     [min(3px,red,1px)] answers [3px] where the bound that decides the minimum
+     is [1px]. *)
+  neg_cursor read_border_width "max(1px,red)";
+  neg_cursor read_border_width "min(3px,red,1px)";
+  neg_cursor read_border_width "max(1px 2px)";
+  neg_cursor read_border_width "clamp(1px,2px,3px,4px)";
   neg_cursor read_border_width "invalid-width";
   neg_cursor read_border_width "-2px";
   (* negative width *)
@@ -2810,20 +2825,26 @@ let test_conic_gradient_config () =
   neg_cursor read_conic_gradient_config "center";
   neg_cursor read_conic_gradient_config "from"
 
+(* CSS Syntax 3 sec. 4.3.3 consumes the [%] into the percentage token, so
+   whatever follows starts a fresh token and the separating space carries no
+   meaning: it elides under minify, as it already does inside polygon() and
+   animation-range. A unit ends in an ident instead ([10px 0] would re-tokenise
+   as the single dimension [10px0]), so that space stays. *)
 let test_background_position () =
   check_background_position "center";
   check_background_position "left top";
-  check_background_position ~expected:"100% 0" "right 0";
-  check_background_position ~expected:"100% -15.625rem" "right -15.625rem";
+  check_background_position ~roundtrip:true ~expected:"100%0" "right 0";
+  check_background_position ~roundtrip:true ~expected:"100%-15.625rem"
+    "right -15.625rem";
   check_background_position "right .5rem center";
-  check_background_position "50% 25%";
+  check_background_position ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_background_position "inherit";
   neg_cursor ~allow_partial:true read_background_position "invalid-position"
 
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
-  check_position_value "50% 25%";
+  check_position_value ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_position_value "inherit";
   neg_cursor ~allow_partial:true read_position_value "invalid-position"
 

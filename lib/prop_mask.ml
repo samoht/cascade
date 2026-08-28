@@ -296,8 +296,7 @@ let pp_clip_path_polygon_sep spaced ctx () =
 
 let pp_clip_path_axis_pair ctx (x, y) =
   pp_length ctx x;
-  if not (Pp.minified ctx && match x with Pct _ -> true | _ -> false) then
-    Pp.space ctx ();
+  Pp.token_sp ctx ();
   pp_length ctx y
 
 let pp_clip_path_polygon_body ctx fill_rule points spaced =

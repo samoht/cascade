@@ -141,12 +141,27 @@ a[href^="https"], .card p { text-decoration: underline; color: #00f }
 .card p::before { content: "> "; background: red; background-position-x: 10px }
 |css}
 
+(* [of S] counted from the end. No corpus sheet carries the form and no pair
+   below pins it, since a sheet without it renders the same page; what it buys
+   is the probe - the driver reports a selector the derived document fails to
+   match. *)
+let nth_last_of_sheet = {css|li:nth-last-child(2 of .rd-c) { color: #090 }|css}
+
 (* A sheet paired with a form that renders differently: [gap] resets the row gap
    the longhand set, so the two orders give the rule a different row gap. The
    canary fails when the harness reports no difference - a harness that cannot
    see a known render change proves nothing about the ones it misses. *)
 let canary_sheet = {css|.k { row-gap: 9px; gap: 1px }|css}
 let canary_reordered = {css|.k { gap: 1px; row-gap: 9px }|css}
+
+(* Two more pairs, one per selector form the derived document has to get right.
+   The [i] flag has to build a value the unflagged selector misses, and [of S]
+   has to place the element among the siblings [S] matches; a document that
+   ignores either renders the pair the same way, and the harness says so. *)
+let attr_flag_sheet = {css|[data-rd="b" i] { color: #00f }|css}
+let attr_flag_unflagged = {css|[data-rd="b"] { color: #00f }|css}
+let nth_of_sheet = {css|:nth-child(2 of .rd-a) { color: #00f }|css}
+let nth_of_other = {css|:nth-child(2 of .rd-b) { color: #00f }|css}
 
 (* [Differs] is the expected-failure marker: the harness fails when the pair it
    names renders the same, so a fix cannot leave the pin behind. *)
@@ -283,12 +298,29 @@ let inputs () =
   let all =
     [
       sheet "smoke" smoke_sheet;
+      sheet "nth-last-child-of" nth_last_of_sheet;
       {
         id = "canary";
         source = canary_sheet;
         sheets =
           Some [ ("original", canary_sheet); ("reordered", canary_reordered) ];
         expect = Differs "gap resets the row gap the longhand set";
+      };
+      {
+        id = "attr-flag";
+        source = attr_flag_sheet;
+        sheets =
+          Some
+            [
+              ("original", attr_flag_sheet); ("unflagged", attr_flag_unflagged);
+            ];
+        expect = Differs "the i flag matches a value the unflagged form misses";
+      };
+      {
+        id = "nth-child-of";
+        source = nth_of_sheet;
+        sheets = Some [ ("original", nth_of_sheet); ("other-of", nth_of_other) ];
+        expect = Differs "the second .rd-a is not a .rd-b";
       };
     ]
     @ List.map (fun (id, file) -> sheet id (read_file file)) files
