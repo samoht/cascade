@@ -1708,7 +1708,50 @@ let spec_keyword_case_insensitive () =
     ~lower:".a{background:linear-gradient(to right,red,blue)}";
   agrees "@counter-style system"
     ~upper:"@counter-style c{system:FIXED;symbols:\"a\"}"
-    ~lower:"@counter-style c{system:fixed;symbols:\"a\"}"
+    ~lower:"@counter-style c{system:fixed;symbols:\"a\"}";
+  (* CSS Color 4 sec. 5 names each colour function; the name is a keyword, so
+     the capitalised spelling is the same function. *)
+  agrees "rgb() function name" ~upper:".a{color:RGB(1,2,3)}"
+    ~lower:".a{color:rgb(1,2,3)}";
+  agrees "oklch() function name" ~upper:".a{color:OKLCH(50% .1 30)}"
+    ~lower:".a{color:oklch(50% .1 30)}";
+  agrees "light-dark() function name" ~upper:".a{color:LIGHT-DARK(red,blue)}"
+    ~lower:".a{color:light-dark(red,blue)}";
+  (* CSS Color 5 sec. 3: [in] introduces the optional
+     [<color-interpolation-method>], so it is a keyword of the grammar. *)
+  agrees "color-mix() interpolation method"
+    ~upper:".a{color:color-mix(IN srgb,red,blue)}"
+    ~lower:".a{color:color-mix(in srgb,red,blue)}";
+  (* CSS Values 4 sec. 4.5.1 writes a [<url>] as the [url()] name over a
+     [<string>], or as the url-token a URL with nothing to quote spells
+     shorter. *)
+  pins "background url()" ~upper:".a{background:URL(\"a.png\")}"
+    ~lower:".a{background:url(\"a.png\")}" ~expect:".a{background:url(a.png)}";
+  (* CSS Paged Media 3 sec. 4.3: a [<pseudo-page>] comes from the closed set
+     [first | left | right | blank], so it is a keyword and not a page name. *)
+  pins "@page pseudo-page" ~upper:"@page :FIRST{margin:1in}"
+    ~lower:"@page :first{margin:1in}" ~expect:"@page:first{margin:1in}";
+  (* The legacy shadow-piercing combinator spells one fixed ident between its
+     two slashes, so that ident belongs to the combinator's syntax. *)
+  pins "/deep/ combinator" ~upper:".a /DEEP/ .b{color:red}"
+    ~lower:".a /deep/ .b{color:red}" ~expect:".a/deep/.b{color:red}";
+  (* CSS Paged Media 3 sec. 5.2 names the sixteen margin boxes, so each name is
+     a keyword of the [@page] body. *)
+  pins "@page margin box" ~upper:"@page{@TOP-LEFT{content:\"x\"}}"
+    ~lower:"@page{@top-left{content:\"x\"}}"
+    ~expect:"@page{@top-left{content:\"x\"}}";
+  (* An at-rule name is an identifier of the grammar, so sec. 4.1 reaches it
+     too. The name beside it is the author's and sec. 4.2 keeps it. *)
+  pins "@keyframes at-rule name" ~upper:"@KEYFRAMES Slide{FROM{opacity:0}}"
+    ~lower:"@keyframes Slide{from{opacity:0}}"
+    ~expect:"@keyframes Slide{0%{opacity:0}}";
+  pins "@media at-rule name" ~upper:"@MEDIA screen{a{color:red}}"
+    ~lower:"@media screen{a{color:red}}" ~expect:"@media screen{a{color:red}}";
+  pins "@media nested in a style rule" ~upper:".a{@MEDIA screen{color:red}}"
+    ~lower:".a{@media screen{color:red}}" ~expect:".a{@media screen{color:red}}";
+  agrees "@font-face at-rule name"
+    ~upper:"@Font-Face{font-family:F;src:url(a.woff)}"
+    ~lower:"@font-face{font-family:F;src:url(a.woff)}"
 
 (* CSS Values 4 sec. 4.2: an author-defined identifier is "fully case-sensitive
    [...] even in the ASCII range (e.g. example and EXAMPLE are two different,
@@ -1757,6 +1800,19 @@ let spec_author_ident_case_sensitive () =
      [base-palette], so any other ident there is the author's own. *)
   keeps "base-palette ident"
     "@font-palette-values --P{font-family:F;base-palette:MyPalette}" "MyPalette";
+  (* CSS Paged Media 3 sec. 4.3 puts an optional [<ident-token>] before the
+     pseudo-pages; that one is the page's own name. *)
+  keeps "@page name" "@page Invoice:FIRST{margin:1in}" "Invoice";
+  (* A class beside the folded [/deep/] ident is still a name the author
+     chose. *)
+  keeps "class next to /deep/" ".a /DEEP/ .DEEP{color:red}" ".DEEP";
+  (* CSS Values 4 sec. 4.5.1 carries the [<url>] as a string, not an identifier,
+     so nothing in it folds. *)
+  keeps "url path" ".a{background:URL(\"A.PNG\")}" "A.PNG";
+  (* A [var()] reference inside a folded colour function still names a custom
+     property. *)
+  keeps "custom property inside color-mix()"
+    ".a{--Foo:red;color:color-mix(IN srgb,var(--Foo),blue)}" "var(--Foo)";
   (* CSS Syntax 3 sec. 8.2 recognises [@charset] only as the exact byte
      sequence, so the encoding name is not a keyword to fold. *)
   (match of_string ~strict:true "@charset \"utf-8\";.a{color:red}" with
@@ -1808,6 +1864,57 @@ let unknown_at_rule_reaches_output () =
     "pretty output re-parses to the minified output"
     "@future x{a{color:red}}b{color:red}"
     (to_string ~minify:true (parse (to_string (parse input))))
+
+(* Reading an at-rule name as a keyword decides what a miscased name reaches: a
+   name cascade has a grammar for is that grammar, and only a name it has none
+   for stays the [Unknown_at_rule] above. *)
+let spec_at_rule_name_case_insensitive () =
+  let parse input =
+    match of_string ~strict:false input with
+    | Ok parsed -> parsed.stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" input
+          (Cascade.Error.to_string err)
+  in
+  let render input = to_string ~minify:true (parse input) in
+  let optimized input = to_string ~minify:true (optimize (parse input)) in
+  let rejects name input =
+    match of_string ~strict:true input with
+    | Ok _ -> Alcotest.failf "%s: strict parse accepted %S" name input
+    | Error _ -> ()
+  in
+  (* A name cascade has no grammar for is the keyword of nothing, so CSS Syntax
+     3 sec. 5.4.2 consumes it and it reaches the output as it was written. *)
+  Alcotest.(check string)
+    "an unknown at-rule keeps the case it was written in"
+    "@Foo bar;a{color:red}"
+    (render "@Foo bar;\na{color:red}");
+  Alcotest.(check string)
+    "an unknown at-rule nested in a block keeps its case"
+    "@layer x{@Bar baz;a{color:red}}"
+    (render "@layer x{@Bar baz;a{color:red}}");
+  (* CSS Syntax 3 sec. 8.2 matches [@charset] and the quote after it as an exact
+     byte sequence, so no other spelling of it is the charset rule. *)
+  Alcotest.(check string)
+    "@CHARSET is a name, not the charset rule" "@CHARSET \"UTF-8\";a{color:red}"
+    (render "@CHARSET \"UTF-8\";a{color:red}");
+  (* Read as [@media], the block is the node its lower-case spelling is, so the
+     optimizer treats the two as one. *)
+  let merged =
+    optimized "@media screen{a{color:red}}@media screen{b{color:blue}}"
+  in
+  Alcotest.(check bool)
+    (String.concat ""
+       [ "the lower-case control merges into one block, got "; merged ])
+    true
+    (not (Astring.String.is_infix ~affix:"}@media" merged));
+  Alcotest.(check string)
+    "@MEDIA merges with the @media beside it" merged
+    (optimized "@media screen{a{color:red}}@MEDIA screen{b{color:blue}}");
+  (* The grammar comes with its rejections: a prelude [@media] has no reading
+     for is rejected under every spelling of the name. *)
+  rejects "@media with a malformed prelude" "@media (bad{a{color:red}}";
+  rejects "@MEDIA with a malformed prelude" "@MEDIA (bad{a{color:red}}"
 
 let suite =
   ( "css",
@@ -1883,4 +1990,6 @@ let suite =
         spec_keyword_case_insensitive;
       Alcotest.test_case "spec section 4.2 author ident case is sensitive"
         `Quick spec_author_ident_case_sensitive;
+      Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
+        `Quick spec_at_rule_name_case_insensitive;
     ] )
