@@ -402,6 +402,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` merges rules whose colours differ only in how a hex was
+  spelled. The digits are case-insensitive and `#RGB` expands by duplicating
+  each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
+  optimisation, so `#FFF`, `#fff` and `#ffffff` reached the merge pass as
+  three declarations and stayed three rules (#597)
 - `--minify` keeps `.c:not(:enabled)` instead of rewriting it to
   `.c:disabled`. An element outside a state pseudo-class pair's own set matches
   neither half of it (CSS Selectors 4 sec. 12.1.1, 12.3.1, 12.3.3), so

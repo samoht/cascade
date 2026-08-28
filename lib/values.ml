@@ -7480,12 +7480,10 @@ let normalize_static_modern_color ~exact_srgb ~lossless c =
         | None -> drop_full_alpha c)
     | None -> drop_full_alpha c
 
+(* [canonical_color_of_hex] answers a name or the same bytes back, so a [Hex]
+   that reaches its own canonical form is shared rather than rebuilt. *)
 let normalize_hex_color c r g b a =
-  match canonical_color_of_hex r g b a with
-  | Hex { r = r'; g = g'; b = b'; a = a' }
-    when r' = r && g' = g && b' = b && a' = a ->
-      c
-  | color -> color
+  match canonical_color_of_hex r g b a with Hex _ -> c | color -> color
 
 let normalize_named_color c orig_name =
   (* Pick the shortest spelling: a named colour collapses to hex only when the
@@ -7566,8 +7564,11 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false) (c : color) :
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Color _ -> normalize_static_modern_color ~exact_srgb ~lossless c
-  | Hex { r; g; b; a } | Authored_hex { r; g; b; a; _ } ->
-      normalize_hex_color c r g b a
+  | Hex { r; g; b; a } -> normalize_hex_color c r g b a
+  (* The authored spelling is a pretty-printing detail the printer reads, not
+     part of the colour, so the fold drops it: two spellings of one colour have
+     to reach the same node or nothing downstream can see them as one value. *)
+  | Authored_hex { r; g; b; a; _ } -> canonical_color_of_hex r g b a
   | Named orig_name -> normalize_named_color c orig_name
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       let bytes =
