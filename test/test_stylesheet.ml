@@ -817,6 +817,28 @@ let property_rule_edges () =
   check_stylesheet
     ~expected:"@property --any-tokens{syntax:\"*\";inherits:true}"
     "@property --any-tokens { syntax: \"*\"; inherits: true; }";
+  (* The [+] multiplier repeats a component space-separated (CSS Values 4 sec.
+     2.3), and that space is the only thing separating the two: CSS Syntax 3
+     sec. 4.3.1 consumes [10px20px] as one dimension whose unit is [px20px]. The
+     [#] multiplier carries a comma of its own, so it is the control. *)
+  check_stylesheet
+    ~expected:
+      "@property \
+       --edges{syntax:\"<length>+\";inherits:false;initial-value:10px 20px}"
+    "@property --edges { syntax: \"<length>+\"; inherits: false; \
+     initial-value: 10px 20px; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --stops{syntax:\"<color>+\";inherits:false;initial-value:yellow blue}"
+    "@property --stops { syntax: \"<color>+\"; inherits: false; initial-value: \
+     yellow blue; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --palette{syntax:\"<color>#\";inherits:false;initial-value:yellow,blue}"
+    "@property --palette { syntax: \"<color>#\"; inherits: false; \
+     initial-value: yellow, blue; }";
   neg_cursor read
     "@property --bad { syntax: \"<length>+\"; inherits: false; initial-value: \
      red }";
