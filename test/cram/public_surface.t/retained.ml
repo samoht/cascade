@@ -66,3 +66,29 @@ let _ :
     unit ->
     (Css.statement, Error.t) result =
   Css.unknown_at_rule
+
+(* A declaration's typed value is reachable without naming an implementation
+   module. The witness ties the result to the type that property carries, so
+   telling a [var()] carrier apart from a declared [border-style] is a pattern
+   match rather than a comparison against printed text. *)
+let _ : Declaration.t -> bool =
+ fun d ->
+  match Declaration.value_of d Properties.Border_style with
+  | Some (Var _) -> true
+  | Some _ | None -> false
+
+(* The witness the value is read at is the one {!Declaration.property_key}
+   wraps, so a caller that already holds a key can spend it here. *)
+let _ : Declaration.t -> bool =
+ fun d ->
+  match Declaration.property_key d with
+  | Declaration.Key p -> Option.is_some (Declaration.value_of d p)
+
+(* Property identities compare and, where they agree, carry the type equality
+   the comparison alone cannot express. *)
+let _ : 'a Properties.property -> 'b Properties.property -> int =
+  Properties.compare_property
+
+let _ :
+    'a Properties.property -> 'b Properties.property -> ('a, 'b) Type.eq option =
+  Properties.eq_property
