@@ -92,3 +92,8 @@ let _ : 'a Properties.property -> 'b Properties.property -> int =
 let _ :
     'a Properties.property -> 'b Properties.property -> ('a, 'b) Type.eq option =
   Properties.eq_property
+
+(* A name is checked whole. Rebuilding CSS Syntax 3 sec. 4.3.11 out of the
+   per-character predicates drops the two cases they cannot see: a lone [-] and
+   a [-] followed by a digit open no ident. *)
+let _ : string -> bool = Syntax.is_ident
