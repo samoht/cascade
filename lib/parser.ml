@@ -156,14 +156,10 @@ let rec ascii_ident_continue_from s n i =
   || Syntax.is_ascii_ident_continue s.[i]
      && ascii_ident_continue_from s n (i + 1)
 
-(* An all-ASCII ident (start byte in ident-start, rest in ident-continue)
-   serialises to itself byte-for-byte, so [escape_ident]'s buffer + Uutf walk
-   would allocate nothing useful. A leading [-] is ident-start, so the
-   dash-digit shape passes that scan and has to be ruled out on its own. *)
-let escape_ident_needs_no_escape s n =
-  (not (escape_ident_starts_dash_digit s n))
-  && (n = 0
-     || (Syntax.is_ascii_ident_start s.[0] && ascii_ident_continue_from s n 1))
+(* An ident serialises to itself byte-for-byte, so the buffer + Uutf walk below
+   would allocate nothing useful. The empty name is not an ident and has nothing
+   to escape either. *)
+let escape_ident_needs_no_escape s n = n = 0 || Syntax.is_ident s
 
 let escape_ident s =
   let n = String.length s in

@@ -18,6 +18,41 @@ let is_ascii_ident_continue () =
   check_true "underscore" (Syntax.is_ascii_ident_continue '_');
   check_false "punctuation" (Syntax.is_ascii_ident_continue '!')
 
+let is_ident () =
+  (* CSS Syntax 3 sec. 4.3.11 for the opening code points, sec. 4.2 for the
+     rest. *)
+  check_true "letters" (Syntax.is_ident "foo");
+  check_true "underscore start" (Syntax.is_ident "_x");
+  check_true "digit and hyphen inside" (Syntax.is_ident "a-1");
+  check_true "dash then ident-start" (Syntax.is_ident "-foo");
+  check_true "dashed-ident" (Syntax.is_ident "--foo");
+  (* A second [-] opens an ident, so the reserved custom-property name is one
+     lexically even though it names no property. *)
+  check_true "two dashes" (Syntax.is_ident "--");
+  check_false "empty" (Syntax.is_ident "");
+  (* A lone [-] is a delim, and [-] before a digit opens no ident, so both slip
+     past a scan that reads [-] as ident-start. *)
+  check_false "bare hyphen" (Syntax.is_ident "-");
+  check_false "dash then digit" (Syntax.is_ident "-5px");
+  check_false "leading digit" (Syntax.is_ident "5px");
+  check_false "space" (Syntax.is_ident "a b");
+  check_false "backslash is no ident code point" (Syntax.is_ident "a\\b")
+
+let is_ident_non_ascii () =
+  (* Sec. 4.2 lists the non-ASCII ident code points as ranges rather than
+     admitting every code point [>= U+0080]. U+00B7, U+00F6 and U+200C are in
+     the list. *)
+  check_true "U+00B7" (Syntax.is_ident "\xc2\xb7mid");
+  check_true "U+00F6" (Syntax.is_ident "f\xc3\xb6o");
+  check_true "U+200C" (Syntax.is_ident "\xe2\x80\x8cz");
+  (* U+00D7 falls in the gap between U+00C0..U+00D6 and U+00D8..U+00F6, and
+     U+2197 between U+2070..U+218F and U+2C00..U+2FEF. *)
+  check_false "U+00D7" (Syntax.is_ident "a\xc3\x97b");
+  check_false "U+2197" (Syntax.is_ident "text-\xe2\x86\x97");
+  (* A byte [>= 0x80] is not a code point: a lone continuation byte decodes to
+     nothing an ident can hold. *)
+  check_false "lone continuation byte" (Syntax.is_ident "a\x80b")
+
 let is_hex () =
   check_true "digit" (Syntax.is_hex '0');
   check_true "lower a-f" (Syntax.is_hex 'a');
@@ -71,6 +106,8 @@ let suite =
       Alcotest.test_case "is_ascii_ident_start" `Quick is_ascii_ident_start;
       Alcotest.test_case "is_ascii_ident_continue" `Quick
         is_ascii_ident_continue;
+      Alcotest.test_case "is_ident" `Quick is_ident;
+      Alcotest.test_case "is_ident_non_ascii" `Quick is_ident_non_ascii;
       Alcotest.test_case "is_hex" `Quick is_hex;
       Alcotest.test_case "url_needs_quotes" `Quick url_needs_quotes;
       Alcotest.test_case "strip_url_suffix" `Quick strip_url_suffix;
