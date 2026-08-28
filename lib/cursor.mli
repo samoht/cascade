@@ -327,7 +327,9 @@ val at_keyword_opt : t -> string option
     token, returning the keyword name without the leading [@]. *)
 
 val expect_at_keyword : string -> t -> unit
-(** [expect_at_keyword name t] consumes the [@name] token or raises. *)
+(** [expect_at_keyword name t] consumes the [@name] token or raises. The name is
+    a keyword, matched ASCII case-insensitively (CSS Values 4 sec. 4.1), so
+    [name] is given lowercase. *)
 
 val drain_until_block : t -> Component.t list
 (** [drain_until_block t] consumes components up to (but not including) the next
@@ -386,6 +388,11 @@ val consume_if : char -> t -> bool
 val try_kind : Token.kind -> t -> bool
 (** [try_kind kind t] consumes [kind] if it is next and returns whether it
     matched. *)
+
+val try_ident : string -> t -> bool
+(** [try_ident name t] consumes the next component if it is the identifier
+    [name] and returns whether it matched. The ident is a keyword, matched ASCII
+    case-insensitively (CSS Values 4 sec. 4.1), so [name] is given lowercase. *)
 
 val try_kind_pair : Token.kind -> Token.kind -> t -> bool
 (** [try_kind_pair k1 k2 t] consumes [k1] followed by [k2] if both are next and

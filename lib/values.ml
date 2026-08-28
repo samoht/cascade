@@ -6645,7 +6645,7 @@ let rec read_color_mix t : color =
   (* CSS Color 5 sec. 3: an omitted [<color-interpolation-method>] defaults to
      [in oklab], so the [in <space> [<hue> hue]?] prefix (and its trailing
      comma) is optional. *)
-  let has_method = Cursor.peek_ident t = Some "in" in
+  let has_method = Cursor.looking_at_ident "in" t in
   let in_space, hue =
     if has_method then (
       Cursor.expect_string "in" t;
@@ -6856,11 +6856,14 @@ and read_color t : color =
           | Some (r, g, b, a) -> Authored_hex { value; r; g; b; a }
           | None -> Cursor.err_invalid t ("hex color digits: " ^ value))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
-        match List.assoc_opt name color_parsers with
+        (* CSS Values 4 sec. 4.1: a function name is a keyword, so it names the
+           same function in whatever case it was written. *)
+        let fn_name = Common.String.lowercase_ascii_preserve name in
+        match List.assoc_opt fn_name color_parsers with
         | Some parser ->
             Cursor.skip t;
             parser (Cursor.func_sub fn t)
-        | None when name = "var" -> Var (read_var read_color t)
+        | None when fn_name = "var" -> Var (read_var read_color t)
         | None -> Cursor.err t ("unknown color function: " ^ name))
     | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
         Cursor.skip t;

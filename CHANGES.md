@@ -174,6 +174,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An at-rule or function name written in another case names what it spells.
+  CSS Values 4 sec. 4.1 makes both of them keywords, so `@MEDIA`,
+  `@Font-Face`, `RGB()`, `color-mix(IN srgb, ...)`, `background: URL("a.png")`,
+  `@page :FIRST`, a `@page` margin box such as `@TOP-LEFT` and the legacy
+  `/DEEP/` combinator each read as the node their lower-case spelling reads as.
+  A miscased name cascade has a grammar for is no longer an unknown at-rule, so
+  it optimises and merges like that spelling and is rejected on the preludes
+  that spelling rejects. A name cascade has no grammar for still reaches the
+  output as written, and `@charset` stays the byte sequence CSS Syntax 3
+  sec. 8.2 matches (#604)
 - A keyword written in another case is read as that keyword. CSS Values 4
   sec. 4.1 makes a keyword ASCII case-insensitive, so `grid-column: SPAN 2` is
   a span of two tracks rather than the reordered `2 SPAN` it printed, and a
@@ -798,6 +808,19 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.Resolve` answers the selectors Selectors 4 settles from the element tree
+  a `NODE` supplies: `:nth-child()` and `:nth-last-child()` with or without
+  their `of S` argument, the typed `:nth-of-type()`, `:nth-last-of-type()`,
+  `:first-of-type`, `:last-of-type` and `:only-of-type`, the relational
+  `:has()`, the `i` and `s` attribute case flags, and `:scope`, which names the
+  root of the tree when no scoping root is given (sec. 8.4). Each read
+  `Unsupported` before, which says the matcher has no model rather than that
+  the selector missed, so a rule carrying one could neither be resolved against
+  an element nor pruned, and `Css.Apply` kept it in the sheet rather than
+  projecting it. `Unsupported` still carries through `:is()`, `:not()`,
+  `:has()`, an `of S` and a selector list, so a `No_match` is still a fact
+  about the element. A namespace and `:lang()` stay unsupported: a `NODE`
+  carries neither the namespace nor the document's content language (#607)
 - `Css.unknown_at_rule` builds an at-rule cascade has no grammar for, such as
   one a tool of the caller's own defines. Such a rule could be read from the AST
   but not constructed, so emitting one meant assembling a sheet as text and
@@ -902,6 +925,17 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
+  documents cannot use, and `--dry-run` reports instead, ranking what survives
+  by how few elements matched it. A rule goes only when the matcher has a model
+  for its selector and every element answers that it does not match, so
+  `:hover`, a pseudo-element and any selector list holding one such branch are
+  kept and counted apart from the rules the documents used. A `@media`,
+  `@supports` or `@container` condition is never evaluated, since it asks about
+  a device rather than about a document, and a statement naming no element
+  (`@keyframes`, `@font-face`, `@property`, `@layer`) is kept. The documents are
+  all the analysis sees: a class a script adds at runtime is in none of them, so
+  a rule waiting for one is removed (#605)
 - `cascade diff --diff=tree` states a selector's move once. The entry names the
   selector, not the rule, so a selector whose several rules cross together
   printed the same line and counted the move once per rule (#581)

@@ -1,8 +1,8 @@
 # Cascade
 
-A command-line tool for **formatting**, **minifying**, **inlining**, and
-**structurally diffing** CSS. Ships one binary (`cascade`) and, for OCaml users,
-the library it is built on.
+A command-line tool for **formatting**, **minifying**, **inlining**,
+**structurally diffing**, and **pruning** CSS. Ships one binary (`cascade`)
+and, for OCaml users, the library it is built on.
 
 ```text
 $ cascade --minify style.css > style.min.css
@@ -148,6 +148,58 @@ cascade diff reference.css output.css
 cascade diff --diff=tree reference.css output.css
 cascade diff --diff=canonical reference.css output.css
 NO_COLOR=1 cascade diff reference.css output.css
+```
+
+## `cascade prune`: remove the rules a page cannot use
+
+```text
+cascade prune [--dry-run] PAGE.html... STYLE.css
+```
+
+Matches every rule of `STYLE.css` against every element of the given documents
+and writes the stylesheet back without the rules that matched nothing. The
+transform is the output, as it is under `--minify`; `--dry-run` reports instead.
+
+A rule is removed only when the matcher has a model for its selector *and*
+every element answers that it does not match. Keeping those two negatives apart
+is the whole of the analysis: reading "no model" as "does not match" is how a
+dead-rule check deletes a live rule.
+
+- A selector outside what the matcher models (`:hover`, a pseudo-element,
+  `:nth-child()`) is kept and never counted as unused, and so is a selector
+  list holding one such branch. Every branch of a fully modelled list is judged
+  on its own, so `.card, .gone` keeps `.card` and drops `.gone`.
+- A `@media`, `@supports` or `@container` condition is never evaluated. It asks
+  about a device, a user agent or a layout container, none of which a document
+  carries, so the rules inside are judged by their own selectors alone.
+- A statement that names no element (`@keyframes`, `@font-face`, `@property`,
+  `@import`, `@layer`, `@charset`) is kept: a document says nothing about
+  whether it is reached.
+- Nesting is flattened before anything is judged, since a nested selector is
+  written against its parent. Pipe the result through `cascade --minify` to
+  nest it again.
+
+**The documents are the whole of what the analysis sees.** A class a script
+adds at runtime is in none of them, so a rule waiting for one is removed. That
+is the limit of an AST-level dead-rule check: [CILLA](#references) runs the page
+and reads matching off the live DOM instead, which is what answering for a class
+that appears only after a click takes. Check what your scripts add before
+shipping a pruned stylesheet.
+
+`--dry-run` writes the ranking instead. Rules that matched nothing come first,
+then the survivors by ascending matched-element count. The rules kept for want
+of a model are listed and counted apart, since that number is the measure of
+what the analysis could not see.
+
+| Flag | Purpose |
+|---|---|
+| `--dry-run` | Write the ranked report instead of the pruned stylesheet. Rules that matched nothing come first, then the survivors by ascending matched-element count; the rules kept because the matcher has no model for their selector are counted apart. |
+
+<!-- $MDX skip -->
+```bash
+cascade prune src/*.html style.css > style.pruned.css
+cascade prune --dry-run src/*.html style.css
+cascade prune src/*.html style.css | cascade --minify - > style.min.css
 ```
 
 ## In a build, CI, or pre-commit hook
@@ -365,6 +417,9 @@ frameworks.
   context.
 - **Comments and source positions** are not preserved across the
   parser/printer round trip.
+- **`cascade prune` sees only the documents it is given.** A rule whose class
+  a script adds at runtime matches nothing in the parsed HTML, so it is
+  removed.
 - **Unregistered custom properties** stay opaque token streams to the
   optimiser, apart from substreams whose type their own syntax fixes
   unambiguously (complete colour functions, and constant math functions

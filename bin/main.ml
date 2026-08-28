@@ -8,9 +8,10 @@ let info =
     [
       `S Manpage.s_description;
       `P
-        "Cascade ships three subcommands: $(b,fmt) (format, minify, inline \
-         imports), $(b,diff) (structural CSS diff) and $(b,apply) (resolve a \
-         stylesheet into an HTML page's inline styles). When no subcommand is \
+        "Cascade ships four subcommands: $(b,fmt) (format, minify, inline \
+         imports), $(b,diff) (structural CSS diff), $(b,apply) (resolve a \
+         stylesheet into an HTML page's inline styles) and $(b,prune) (remove \
+         the rules a set of documents cannot use). When no subcommand is \
          given, $(b,fmt) is used.";
       `S Manpage.s_bugs;
       `P "Report bugs at https://github.com/samoht/cascade";
@@ -20,9 +21,11 @@ let info =
 
 let cmd =
   Cmd.group info ~default:Cmd_fmt.term
-    [ Cmd_fmt.cmd; Cmd_diff.cmd; Cmd_apply.cmd ]
+    [ Cmd_fmt.cmd; Cmd_diff.cmd; Cmd_apply.cmd; Cmd_prune.cmd ]
 
-let known_subcommand = function "fmt" | "diff" | "apply" -> true | _ -> false
+let known_subcommand = function
+  | "fmt" | "diff" | "apply" | "prune" -> true
+  | _ -> false
 
 let help_or_version = function
   | "--help" | "-h" | "--version" -> true

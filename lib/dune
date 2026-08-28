@@ -97,6 +97,7 @@
   pool.mli
   preflight.mli
   pp.mli
+  prune.mli
   properties.mli
   reader.mli
   resolve.mli

@@ -8,26 +8,7 @@
 open Cmdliner
 module Sheet = Cascade.Stylesheet
 module Css = Cascade.Css
-
-(* ---------- the tree ---------- *)
-module Node = struct
-  type t = Html.element
-
-  let equal = ( == )
-  let name (n : t) = Some n.tag
-  let id n = Html.attribute n "id"
-  let classes = Html.classes
-  let attribute = Html.attribute
-  let parent (n : t) = n.parent
-
-  (* [children] is the element children the structural selectors count; text is
-     reported apart because [:empty] counts that too, and a comment counts for
-     neither. *)
-  let children = Html.element_children
-  let text_children = Html.text_children
-end
-
-module Apply = Cascade.Apply.Make (Node)
+module Apply = Cascade.Apply.Make (Html_node)
 
 let err_msg fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 

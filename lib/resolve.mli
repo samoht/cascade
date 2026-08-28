@@ -13,7 +13,10 @@ module type NODE = sig
   (** Node identity, used to locate a node among its siblings. *)
 
   val name : t -> string option
-  (** The element name (e.g. ["div"]), or [None] for an anonymous node. *)
+  (** The element name (e.g. ["div"]), or [None] for an anonymous node. A name
+      is read ASCII case-insensitively, against a type selector and between two
+      siblings alike, so an anonymous node is of the same type as another
+      anonymous node and of no named one. *)
 
   val id : t -> string option
   (** The [id] attribute, or [None]. *)
@@ -59,12 +62,35 @@ val supported : Selector.t -> bool
     why it needs no node.
 
     Modelled: the universal, type, class, id and attribute selectors, each
-    without a namespace and, for an attribute, without a case flag; [:root],
-    [:empty], [:first-child], [:last-child], [:only-child]; the descendant,
-    child and sibling combinators; and [:is()], [:where()], [:not()] and
-    selector lists over those - a list is only as modelled as its least modelled
-    branch. Everything else, every stateful pseudo-class and every
-    pseudo-element among it, is not. *)
+    without a namespace, an attribute carrying either case flag ([i], [s]) or
+    none; [:root] and [:scope], which name the same element here (selectors-4
+    sec. 8.4) since no scoping root is ever handed to the matcher; [:empty]; the
+    child-indexed [:first-child], [:last-child], [:only-child], [:nth-child()]
+    and [:nth-last-child()], the last two with or without their [of S] argument;
+    the typed [:first-of-type], [:last-of-type], [:only-of-type],
+    [:nth-of-type()] and [:nth-last-of-type()]; [:has()]; the descendant, child
+    and sibling combinators; and [:is()], [:where()], [:not()] and selector
+    lists over those - a list is only as modelled as its least modelled branch,
+    and so is an [of S] or a [:has()] argument.
+
+    Not modelled, and for two different reasons. Some forms would need a {!NODE}
+    to carry more than a tree of named elements: anything with a namespace,
+    which no accessor here reports, and [:lang()], whose content language the
+    document language defines rather than the element tree - HTML derives it
+    from a [lang] attribute but also from a [meta] pragma and from the
+    transport, so reading the attribute alone would answer
+    {!constructor-No_match} for a document that tags its language elsewhere. The
+    rest are outside any tree: every stateful pseudo-class, whether it needs the
+    user ([:hover], [:focus], [:active], [:focus-visible], [:focus-within]), the
+    document's history ([:visited], [:link], [:target]), or a form or media
+    element's own state ([:checked], [:indeterminate], [:default], [:playing],
+    [:paused], [:muted], [:open], [:closed]); every pseudo-element, which names
+    no element at all; the shadow-tree and column forms ([:host], [::part()],
+    [::slotted()], [||], [>>>], [/deep/]); and the nesting selector [&], which
+    {!prepare} resolves away before the matcher sees it. Two forms are simply
+    not selectors and are refused as such: [:nth-of-type(An+B of S)], which sec.
+    13.4.1 does not define, and an attribute presence test carrying a case flag,
+    which sec. 16's grammar admits only after a matcher and a value. *)
 
 val layer_order : Stylesheet.t -> string list
 (** [layer_order sheet] is the cascade layer order [sheet] declares, weakest

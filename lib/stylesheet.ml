@@ -2840,7 +2840,9 @@ let parse_page_selectors r selector =
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
   let pseudo_of_name name =
-    match name with
+    (* CSS Paged Media 3 sec. 4.3 closes [<pseudo-page>] over four names, so
+       each is a keyword and not the page name beside it. *)
+    match Common.String.lowercase_ascii_preserve name with
     | "first" -> First
     | "left" -> Left
     | "right" -> Right
@@ -2905,8 +2907,11 @@ let allowed_page_margin_names =
    that is no declaration at all. *)
 let read_page_margin_rule r =
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ })
-    when List.mem name allowed_page_margin_names ->
+  | Some (Component.Preserved { kind = Token.At_keyword raw; _ }) ->
+      (* Sec. 5.2 names the margin boxes, so each name is a keyword. *)
+      let name = Common.String.lowercase_ascii_preserve raw in
+      if not (List.mem name allowed_page_margin_names) then
+        Cursor.err_invalid r ("unknown page margin rule: @" ^ raw);
       Cursor.skip r;
       Cursor.ws r;
       (* Sec. 5 gives the margin at-rule a [<declaration-list>], which CSS
@@ -2917,8 +2922,6 @@ let read_page_margin_rule r =
         Cursor.braces (read_descriptor_block replace_descriptor) r
       in
       { name; descriptors }
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-      Cursor.err_invalid r ("unknown page margin rule: @" ^ name)
   | _ -> Cursor.err_expected r "page margin rule"
 
 (* CSS Paged Media 3 sec. 2: a [@page] body holds page properties and margin
@@ -3767,6 +3770,15 @@ let read_moz_document ~body (r : Cursor.t) : statement =
   Cursor.expect_eof prelude_cursor;
   Moz_document (conditions, Cursor.braces body r)
 
+(* CSS Values 4 sec. 4.1 reads an at-rule name as a keyword, so its case does
+   not pick between two grammars. Sec. 8.2 of CSS Syntax 3 is the one exception:
+   it matches [@charset] and the quote after it as an exact byte sequence, so
+   any other spelling of that name is a name with no grammar behind it. *)
+let at_rule_keyword name =
+  match Common.String.lowercase_ascii_preserve name with
+  | "charset" when name <> "charset" -> name
+  | folded -> folded
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -3801,7 +3813,7 @@ let rec read_statement (r : Cursor.t) : statement =
   in
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) -> (
-      match List.assoc_opt name table with
+      match List.assoc_opt (at_rule_keyword name) table with
       | Some p -> p r
       | None ->
           (* CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its name, so
@@ -4058,7 +4070,7 @@ and read_nested_layer_rule r =
 and read_nested_at_within_rule ~prev (r : Cursor.t) : statement option =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) ->
-      read_nested_at_keyword r ~loc ~prev name
+      read_nested_at_keyword r ~loc ~prev (at_rule_keyword name)
   | _ -> Some (read_statement r)
 
 (* CSS Nesting 1 sec. 3.3: "any at-rule whose body contains style rules can be

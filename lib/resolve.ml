@@ -63,6 +63,24 @@ let attr_key : Selector.attr_name -> string = function
   | Selector.Data s -> "data-" ^ s
   | Selector.Aria a -> Aria.to_string a
 
+(* The An+B microsyntax (css-syntax-3 sec. 6), where [odd] is [2n+1] and [even]
+   is [2n]. It "represents any index i = An + B for any non-negative integer n"
+   (selectors-4 sec. 13.3.1), so an index hits when [i - B] is [A] times a
+   non-negative integer: with [A] zero that leaves the single index [B], and
+   with [A] negative it counts back down towards the start of the list. Indices
+   run from 1 (sec. 13), so a B below it, as in [10n-1], simply drops the terms
+   the list has no room for. *)
+let an_plus_b : Selector.nth -> int * int = function
+  | Selector.Odd -> (2, 1)
+  | Selector.Even -> (2, 0)
+  | Selector.Index b -> (0, b)
+  | Selector.An_plus_b (a, b) -> (a, b)
+
+let nth_hits nth i =
+  let a, b = an_plus_b nth in
+  let d = i - b in
+  if a = 0 then d = 0 else d mod a = 0 && d / a >= 0
+
 (* Cascade layers. Layer names form a tree: [@layer a.b] names the sublayer [b]
    of [a], and so does [@layer a { @layer b { ... } }]. The cascade only needs
    the flattened pre-order of that tree, so a layer is keyed by its path - the
@@ -209,9 +227,22 @@ module Make (N : NODE) = struct
         in
         before [] (N.children p)
 
+  let following_siblings n =
+    match N.parent n with
+    | None -> []
+    | Some p ->
+        let rec after = function
+          | [] -> []
+          | x :: rest when N.equal x n -> rest
+          | _ :: rest -> after rest
+        in
+        after (N.children p)
+
   let imm_pred n =
     match List.rev (preceding_siblings n) with x :: _ -> Some x | [] -> None
 
+  let rec subtree n = n :: List.concat_map subtree (N.children n)
+  let descendants n = List.concat_map subtree (N.children n)
   let is_first n = preceding_siblings n = []
 
   let is_last n =
@@ -223,23 +254,97 @@ module Make (N : NODE) = struct
   let rec ancestors n =
     match N.parent n with None -> [] | Some p -> p :: ancestors p
 
-  let attr_matches n name (m : Selector.attribute_match) =
+  (* selectors-4 sec. 6.3: an [i] flag makes a UA "match the attribute's value
+     ASCII case-insensitively", an [s] flag makes it match "case-sensitively,
+     with 'identical to' semantics". With no flag the case-sensitivity "depends
+     on the document language", which a {!NODE} does not carry, so the value is
+     read as written - the answer [s] gives. Folding is ASCII-only, which is why
+     the spec has [green] match [GREEN] but not the umlauted [grun] match its
+     own upper case. *)
+  let attr_fold : Selector.attr_flag option -> string -> string = function
+    | Some Selector.Insensitive -> String.lowercase_ascii
+    | None | Some Selector.Sensitive -> Fun.id
+
+  let attr_matches ~fold n name (m : Selector.attribute_match) =
     match N.attribute n (attr_key name) with
     | None -> false
     | Some v -> (
+        let v = fold v in
         match m with
         | Selector.Presence -> true
-        | Selector.Exact s | Selector.Exact_quoted (s, _) -> v = s
+        | Selector.Exact s | Selector.Exact_quoted (s, _) -> v = fold s
         | Selector.Whitespace_list s | Selector.Whitespace_list_quoted (s, _) ->
-            List.mem s (words v)
+            List.mem (fold s) (words v)
         | Selector.Prefix s | Selector.Prefix_quoted (s, _) ->
-            s <> "" && starts v s
+            s <> "" && starts v (fold s)
         | Selector.Suffix s | Selector.Suffix_quoted (s, _) ->
-            s <> "" && ends v s
+            s <> "" && ends v (fold s)
         | Selector.Substring s | Selector.Substring_quoted (s, _) ->
-            s <> "" && contains v s
+            s <> "" && contains v (fold s)
         | Selector.Hyphen_list s | Selector.Hyphen_list_quoted (s, _) ->
-            v = s || starts v (s ^ "-"))
+            let s = fold s in
+            v = s || starts v (String.concat "" [ s; "-" ]))
+
+  (* selectors-4 sec. 13.3: the child-indexed pseudo-classes read an element's
+     "relative index amongst its siblings", counting the inclusive ones, since
+     there was "no reason to exclude them from matching elements without
+     parents". A parentless element is a list of one, not no list at all. *)
+  let inclusive_siblings n =
+    match N.parent n with None -> [ n ] | Some p -> N.children p
+
+  (* [nth_position ~from_end n keep] is [n]'s 1-based index among the inclusive
+     siblings [keep] admits, or [None] when [n] is not one of them and so is
+     among the An+Bth of nothing. Only elements are listed: a {!NODE} keeps text
+     out of [children], which is what sec. 13 asks for. *)
+  let nth_position ~from_end n keep =
+    let sibs = List.filter keep (inclusive_siblings n) in
+    let sibs = if from_end then List.rev sibs else sibs in
+    let rec index i = function
+      | [] -> None
+      | x :: _ when N.equal x n -> Some i
+      | _ :: rest -> index (i + 1) rest
+    in
+    index 1 sibs
+
+  let nth_matches ~from_end nth keep n =
+    match nth_position ~from_end n keep with
+    | None -> false
+    | Some i -> nth_hits nth i
+
+  (* selectors-4 sec. 13.4: the typed child-indexed pseudo-classes resolve on an
+     element's index "among elements of the same type (tag name) in their
+     sibling list", the type being the one a type selector matching the element
+     would name. So the comparison is the type selector's own, which is why
+     [:nth-of-type(2)] and [:nth-child(2 of <type>)] agree as sec. 13.4.1
+     requires. A node {!NODE} gives no name has no tag name to share with a
+     named one. *)
+  let same_type n x =
+    match (N.name n, N.name x) with
+    | Some a, Some b -> ci a b
+    | None, None -> true
+    | Some _, None | None, Some _ -> false
+
+  (* sec. 13.4.3 makes [:first-of-type] the same element as [:nth-of-type(1)]
+     and sec. 13.4.4 makes [:last-of-type] the same as [:nth-last-of-type(1)];
+     sec. 13.4.5 makes [:only-of-type] the two at once. *)
+  let first_of_type n =
+    nth_matches ~from_end:false (Selector.Index 1) (same_type n) n
+
+  let last_of_type n =
+    nth_matches ~from_end:true (Selector.Index 1) (same_type n) n
+
+  (* Every combinator reaches down the tree or to the right, so the subject of a
+     relative selector absolutised against [n] never lies before [n]: a [:has()]
+     over a descendant or child combinator looks no further than [n]'s subtree,
+     and one over a sibling combinator no further than the subtrees of [n]'s
+     following siblings. The three combinators {!relation} has no model for
+     never reach here, since it is asked first. *)
+  let has_subjects comb n =
+    match comb with
+    | Selector.Descendant | Selector.Child -> descendants n
+    | Selector.Next_sibling | Selector.Subsequent_sibling ->
+        List.concat_map subtree (following_siblings n)
+    | Selector.Column | Selector.Shadow_piercing | Selector.Shadow_deep -> []
 
   (* selectors-4 sec. 13.2: [:empty] represents "an element that has no children
      except, optionally, document white space characters", counting "only
@@ -271,8 +376,11 @@ module Make (N : NODE) = struct
         of_bool (match N.name n with Some nm -> ci nm name | None -> false)
     | Selector.Class c -> of_bool (List.mem c (N.classes n))
     | Selector.Id i -> of_bool (N.id n = Some i)
-    | Selector.Attribute (None, name, m, None) ->
-        of_bool (attr_matches n name m)
+    (* selectors-4 sec. 16: an [<attr-modifier>] follows a matcher and a value,
+       so a presence test carrying one is not an attribute selector. *)
+    | Selector.Attribute (None, _, Selector.Presence, Some _) -> Unsupported
+    | Selector.Attribute (None, name, m, flag) ->
+        of_bool (attr_matches ~fold:(attr_fold flag) n name m)
     | Selector.Compound ps ->
         List.fold_left (fun acc p -> conj acc (match_selector p n)) Matches ps
     | Selector.List ss | Selector.Is ss | Selector.Where ss -> any ss n
@@ -282,18 +390,84 @@ module Make (N : NODE) = struct
         | None -> Unsupported
         | Some [] -> No_match
         | Some (_ :: _) -> Matches)
-    | Selector.Root -> of_bool (N.parent n = None)
+    (* selectors-4 sec. 8.4: [:scope] is the scoping root, and "if there is no
+       scoping root then :scope represents the root of the tree the element is
+       in", which is [:root] outside a shadow tree. Nothing hands this matcher a
+       scoping root and a {!NODE} tree has no shadow boundary, so the two ask
+       the same question. *)
+    | Selector.Root | Selector.Scope -> of_bool (N.parent n = None)
     | Selector.First_child -> of_bool (is_first n)
     | Selector.Last_child -> of_bool (is_last n)
     | Selector.Only_child -> of_bool (is_first n && is_last n)
     | Selector.Empty -> of_bool (is_empty n)
-    (* A namespace, an attribute case flag, and every stateful, generated or
-       tree-external form. The values compared above are verbatim, so [i] and
-       [s] would both be ignored, and no node here carries a namespace. *)
+    | Selector.Nth_child (nth, of_) -> nth_child ~from_end:false nth of_ n
+    | Selector.Nth_last_child (nth, of_) -> nth_child ~from_end:true nth of_ n
+    | Selector.Nth_of_type (nth, None) ->
+        of_bool (nth_matches ~from_end:false nth (same_type n) n)
+    | Selector.Nth_last_of_type (nth, None) ->
+        of_bool (nth_matches ~from_end:true nth (same_type n) n)
+    | Selector.First_of_type -> of_bool (first_of_type n)
+    | Selector.Last_of_type -> of_bool (last_of_type n)
+    | Selector.Only_of_type -> of_bool (first_of_type n && last_of_type n)
+    | Selector.Has rs ->
+        List.fold_left (fun acc r -> disj acc (has_relative n r)) No_match rs
+    (* sec. 13.4.1 and sec. 13.4.2 give the typed forms an [An+B] and nothing
+       else, so an [of S] on one is not a selector any UA takes. *)
+    | Selector.Nth_of_type (_, Some _) | Selector.Nth_last_of_type (_, Some _)
+      ->
+        Unsupported
+    (* A namespace, which no node here carries; [:lang()], whose content
+       language the document language defines rather than the tree; and every
+       stateful, generated or tree-external form. *)
     | _ -> Unsupported
 
   and any ss n =
     List.fold_left (fun acc s -> disj acc (match_selector s n)) No_match ss
+
+  (* selectors-4 sec. 13.3.1: with [of S] the element must be among the An+Bth
+     of "their inclusive siblings that match the selector list S", so [S] both
+     filters the list and decides whether [n] is in it at all; without it, [S]
+     defaults to [*|*] and the list is every sibling. *)
+  and nth_child ~from_end nth of_ n =
+    match of_ with
+    | None -> of_bool (nth_matches ~from_end nth (fun _ -> true) n)
+    | Some s -> (
+        (* Whether [S] is modelled is a fact about [S] alone, so any node
+           settles it, and asking [n] keeps that answer clear of which siblings
+           happen to be there. *)
+        match any s n with
+        | Unsupported -> Unsupported
+        | Matches | No_match ->
+            of_bool (nth_matches ~from_end nth (fun x -> any s x = Matches) n))
+
+  (* selectors-4 sec. 4.5: [:has()] "represents an element if any of the
+     relative selectors would match at least one element when anchored against
+     this element". A relative selector is a combinator and a complex selector
+     with "a selector representing the anchor element implied at the start", the
+     descendant combinator standing in when none is written (sec. 3.4). So
+     absolutise it against [n] and ask whether anything in reach is its subject
+     with [n] as the anchor. [complex] is matched against [n] itself only for
+     the support it reports, which no node can change; stopping at an empty
+     subject list would let the tree decide whether the selector is modelled. *)
+  and has_relative n r =
+    let comb, complex =
+      match r with
+      | Selector.Relative (comb, complex) -> (comb, complex)
+      | complex -> (Selector.Descendant, complex)
+    in
+    match (relation comb, match_selector complex n) with
+    | Some _, complex_answer when complex_answer <> Unsupported ->
+        let absolute =
+          Selector.Combined (Selector.Universal None, comb, complex)
+        in
+        of_bool
+          (List.exists
+             (fun e ->
+               match anchors absolute e with
+               | None -> false
+               | Some found -> List.exists (N.equal n) found)
+             (has_subjects comb n))
+    | _ -> Unsupported
 
   (* [Selector] is right-leaning: [a b > c] is [Combined (a, Descendant,
      Combined (b, Child, c))], so the rightmost compound (the subject) sits at
