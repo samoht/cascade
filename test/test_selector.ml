@@ -2808,7 +2808,6 @@ let suite =
         spec_selector_dir_fold_is_a_host_fact;
       test_case "spec selector :dir() argument is an ident" `Quick
         spec_selector_dir_argument_is_an_ident;
-
       test_case "spec selector state folds need a carrier" `Quick
         spec_selector_state_folds_need_a_carrier;
       test_case "spec forgiving selector lists" `Quick

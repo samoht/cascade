@@ -402,6 +402,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` keeps `.c:not(:enabled)` instead of rewriting it to
+  `.c:disabled`. An element outside a state pseudo-class pair's own set matches
+  neither half of it (CSS Selectors 4 sec. 12.1.1, 12.3.1, 12.3.3), so
+  `<p class=c>` matched the rule before the rewrite and not after. The rewrite
+  now needs a compound that proves its subject carries the state, and the three
+  pairs reach three different sets: an `input` proves `:enabled`/`:disabled`
+  alone, since a disabled or `type=hidden` one is barred from constraint
+  validation and the `required` attribute does not apply to every input type.
+  Which elements carry a state is a host-document fact, so `--enforce-spec`
+  keeps `input:not(:enabled)` as well (#596)
 - `--minify --enforce-spec` keeps the author's `:not(:dir(ltr))` instead of
   shortening it to `:dir(rtl)`. CSS Selectors 4 sec. 7.1 leaves directionality
   to the document language, so only a host document like HTML makes `ltr` and
