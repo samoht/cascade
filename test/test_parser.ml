@@ -1552,6 +1552,91 @@ let alloc_hash () =
 let alloc_at_keyword () =
   check_token_kind_allocates_nothing ~hot:"@abcdef" ~cold:"abcdefg"
 
+let token_kinds s =
+  let lx = Lexer.of_string s in
+  let rec kinds acc =
+    match (Lexer.next lx).Token.kind with
+    | Token.Eof -> List.rev acc
+    | kind -> kinds (kind :: acc)
+  in
+  kinds []
+
+(* CSS Syntax 3 sec. 4.3.9 decides which code points may open an ident sequence,
+   so the contract {!Parser.escape_ident} states is checked by tokenizing what
+   it returns: one [Ident] token carrying the input back. *)
+let sole_ident s =
+  match token_kinds s with [ Token.Ident id ] -> Some id | _ -> None
+
+let holds_ident id s =
+  List.exists
+    (function Token.Ident i -> String.equal i id | _ -> false)
+    (token_kinds s)
+
+let check_escape_ident_retokenizes name s =
+  let escaped = Parser.escape_ident s in
+  Alcotest.(check (option string))
+    (String.concat "" [ name; " -> "; escaped ])
+    (Some s) (sole_ident escaped)
+
+let spec_escape_ident_dash_digit () =
+  (* Sec. 4.3.9, U+002D HYPHEN-MINUS branch: a leading [-] opens an ident only
+     when the second code point is ident-start, another [-], or the start of a
+     valid escape. A digit is none of those, so [-4] re-reads as a number and
+     [-4x] as a dimension unless the digit is escaped. *)
+  check_escape_ident_retokenizes "dash digit" "-4";
+  check_escape_ident_retokenizes "dash digit then letter" "-4x";
+  check_escape_ident_retokenizes "dash digit run" "-42";
+  (* Sec. 4.3.9 ident-start branch: a digit further in is an ident-continue code
+     point, so nothing is escaped there. *)
+  check_escape_ident_retokenizes "inner dash digit" "a-4"
+
+let spec_escape_ident_leading_dash () =
+  (* Sec. 4.3.9: [--] and [-] followed by an ident-start code point do open an
+     ident, so the custom-property spelling stays unescaped. *)
+  check_escape_ident_retokenizes "dashed ident" "--x";
+  check_escape_ident_retokenizes "dashed ident with digit" "--4";
+  check_escape_ident_retokenizes "two dashes" "--";
+  check_escape_ident_retokenizes "dash letter" "-a";
+  (* A lone [-] has no second code point, so the hyphen branch returns false;
+     sec. 4.3.8 makes [\-] a valid escape, which the reverse-solidus branch
+     accepts. *)
+  check_escape_ident_retokenizes "lone dash" "-";
+  (* [-] then a valid escape: the third code point decides, and sec. 4.3.8
+     admits a backslash escaping a backslash. *)
+  check_escape_ident_retokenizes "dash backslash" "-\\"
+
+let spec_escape_ident_leading_digit () =
+  (* Sec. 4.3.9 "anything else" branch: a digit never opens an ident. *)
+  check_escape_ident_retokenizes "leading digit" "4";
+  check_escape_ident_retokenizes "leading digit then letter" "4a";
+  check_escape_ident_retokenizes "letter" "a";
+  (* No ident sequence is empty, so the empty name has no escaped spelling and
+     is returned unchanged. *)
+  Alcotest.(check string) "empty name" "" (Parser.escape_ident "")
+
+(* Sec. 4.2 asks a serialisation to tokenize back to the stream it came from, so
+   the escape has to survive the printer, not only {!Parser.escape_ident}.
+   [CSS.escape("-4")] emits [-\34 ], which is what a codegen pipeline hands
+   over; printed as [-4] it leaves a number where the ident stood. *)
+let spec_escaped_ident_survives_minify () =
+  let minify source =
+    Css.of_string_exn ~strict:false source |> Css.to_string ~minify:true
+  in
+  let check_keeps_dash_digit name source =
+    let printed = minify source in
+    Alcotest.(check bool)
+      (String.concat "" [ name; " -> "; printed ])
+      true (holds_ident "-4" printed);
+    let reprinted = minify printed in
+    Alcotest.(check bool)
+      (String.concat "" [ name; " reprinted -> "; reprinted ])
+      true
+      (holds_ident "-4" reprinted)
+  in
+  check_keeps_dash_digit "custom-property value" {|.x{--a:-\34 }|};
+  check_keeps_dash_digit "media feature name"
+    {|@media (-\34 :1){.x{color:red}}|}
+
 let suite =
   ( "parser",
     [
@@ -1695,6 +1780,14 @@ let suite =
         alloc_at_keyword;
       Alcotest.test_case "spec comment recovery edges" `Quick
         spec_comment_recovery_edges;
+      Alcotest.test_case "spec section 4.3.9 escape_ident dash digit" `Quick
+        spec_escape_ident_dash_digit;
+      Alcotest.test_case "spec section 4.3.9 escape_ident leading dash" `Quick
+        spec_escape_ident_leading_dash;
+      Alcotest.test_case "spec section 4.3.9 escape_ident leading digit" `Quick
+        spec_escape_ident_leading_digit;
+      Alcotest.test_case "spec section 4.2 escaped ident survives minify" `Quick
+        spec_escaped_ident_survives_minify;
     ] )
 
 (* Keep helper constructors referenced. *)
