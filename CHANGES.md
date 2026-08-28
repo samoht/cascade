@@ -457,6 +457,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` drops the same `%`/`)` boundary space in `clip-path`'s and
+  `object-view-box`'s `inset()`, and in `margin-inline`/`margin-block`,
+  which share the box-shorthand shape (#619, #623)
 - `--minify` drops the space between the values of `margin`, `padding`,
   `inset` and `border-radius` (and `border-color`, which shares the same
   printer) at a `%` or `)` boundary, the token-boundary rule already applied
