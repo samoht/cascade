@@ -25,3 +25,44 @@ let _ = Pp.float
 let _ = Css.Gradient_direction.of_string
 let _ = Css.shadow
 let _ : Css.shadow Css.kind = Css.Shadow
+
+(* The statement-merging passes are callable on their own, so a caller that
+   does not run the whole optimizer can still collapse a run of blocks. *)
+type merge_block =
+  ?optimize_merged_block:
+    (Stylesheet.statement list -> Stylesheet.statement list) ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
+
+let _ : merge_block = Optimize.merge_consecutive_layers
+let _ : merge_block = Optimize.merge_consecutive_media
+let _ : merge_block = Optimize.merge_consecutive_supports
+let _ : merge_block = Optimize.merge_consecutive_containers
+let _ : merge_block = Optimize.merge_consecutive_starting_style
+let _ : ?owner:Stylesheet.rule -> merge_block = Optimize.merge_distant_media
+
+let _ : Stylesheet.statement list -> Stylesheet.statement list =
+  Optimize.merge_named_layers_by_name
+
+let _ : Stylesheet.statement list -> Stylesheet.statement list =
+  Optimize.drop_empty_rules
+
+(* Two statements can be compared and keyed on without rendering either to CSS
+   text, and a colour can be given an alpha without re-spelling it by hand. *)
+let _ : Css.statement -> Css.statement -> bool = Css.equal_statement
+let _ : Css.statement -> int = Css.hash_statement
+let _ : Css.Values.color -> Css.Values.color -> bool = Css.Values.equal_color
+let _ : Css.Values.color -> int = Css.Values.hash_color
+
+let _ : Css.Values.color -> Css.Values.alpha -> Css.Values.color =
+  Css.Values.with_alpha
+
+(* An at-rule cascade has no grammar for is constructible, so a caller emitting
+   one does not assemble a sheet as text and read it back to get a statement. *)
+let _ :
+    name:string ->
+    prelude:string ->
+    ?block:string ->
+    unit ->
+    (Css.statement, Error.t) result =
+  Css.unknown_at_rule

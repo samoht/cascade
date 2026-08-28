@@ -172,6 +172,28 @@ val as_declarations : statement -> declaration list option
 (** [as_declarations stmt] returns [Some decls] if the statement is a bare
     declarations block (used in CSS nesting), {!constructor-None} otherwise. *)
 
+val unknown_at_rule :
+  name:string ->
+  prelude:string ->
+  ?block:string ->
+  unit ->
+  (statement, Error.t) result
+(** [unknown_at_rule ~name ~prelude ?block ()] is the at-rule [\@name prelude]
+    with [block] as its body, or the reason its parts cannot make one. It is the
+    way to emit an at-rule cascade has no grammar for, such as one a tool of the
+    caller's own defines. Omitting [block] gives the statement form,
+    [\@name prelude;].
+
+    [name] is the at-keyword without its [@]. [block] is the text between the
+    at-rule's braces, since an unknown at-rule has no grammar to re-serialise a
+    body from; [to_string ~minify:true statements] is that text for a block
+    cascade does model, so placing one needs no re-read of a printed sheet.
+
+    A part that would not read back as that part is refused rather than printed,
+    and the refusal names one at-rule rather than the sheet it sits in: building
+    each at-rule on its own loses the malformed one, where re-reading an
+    assembled sheet loses every at-rule in it. *)
+
 val with_origin : cascade_origin -> statement list -> statement
 (** [with_origin cascade_origin statements] records the cascade origin for a
     stylesheet block. This is an API-level wrapper with no CSS syntax. *)
@@ -461,6 +483,16 @@ val rule_statements : t -> statement list
 
 val statements : t -> statement list
 (** [statements t] returns all top-level statements from the stylesheet. *)
+
+val equal_statement : statement -> statement -> bool
+(** [equal_statement a b] is {!Stylesheet.equal_statement}: whether [a] and [b]
+    are the same statement, each part read through the equality its own module
+    states. *)
+
+val hash_statement : statement -> int
+(** [hash_statement stmt] is {!Stylesheet.hash_statement}: a fingerprint
+    consistent with {!equal_statement}, for keying a statement in a hash table
+    without rendering it to CSS text. *)
 
 val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
 (** [fold f acc css] folds [f] over every statement in [css] and over every
@@ -7764,9 +7796,11 @@ val optimize :
     When [lossless] is [true] (default [false]), colour approximation is
     disabled while exact colour canonicalisation still runs.
 
-    When [enforce_spec] is [false] (default) the optimizer may treat baseline
-    feature queries as known facts and elide [@supports] guards satisfied in
-    maintained evergreen browsers; [true] keeps every feature query.
+    When [enforce_spec] is [true] (default [false]) the optimizer drops the
+    evergreen-browser target facts: a vendor-prefixed declaration is kept beside
+    its unprefixed twin, a media or container feature keeps its [min-]/[max-]
+    form rather than the shorter Media Queries 4 range grammar, and a nested
+    selector keeps its [&] prefix.
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
     runs even when the preflight predicts low gain, and the top-level

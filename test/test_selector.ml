@@ -50,6 +50,15 @@ let check_minified_to expected input =
     ("specificity preserved: " ^ input)
     (specificity original) (specificity reparsed)
 
+(* Minified serialisation under [--enforce-spec], where no fact about the
+   rendering browser or the host document language is available: a rewrite runs
+   only when the CSS text and the CSS specs prove it on their own. *)
+let check_enforce_spec_to expected input =
+  let actual =
+    Css.Pp.to_string ~minify:true ~enforce_spec:true pp (of_string input)
+  in
+  Alcotest.(check string) ("enforce-spec " ^ input) expected actual
+
 (* Extra minifier invariant: minify is idempotent (a second pass produces no
    further change), and specificity is preserved. Strict AST equality between
    [original] and [reparsed] does not hold for inputs the minifier rewrites
@@ -2163,6 +2172,163 @@ let spec_minifier_semantics () =
   neg_cursor read ".a::before.class";
   neg_cursor read ".a::before::before"
 
+(* CSS Selectors 4 sec. 7.1 defers directionality to the document language, and
+   an element the language gives no directionality matches neither [:dir(ltr)]
+   nor [:dir(rtl)], so the CSS text alone never proves the two are a partition.
+   [HTML] proves it for a host HTML document: the directionality of an element,
+   any element and not just an HTML one, is either 'ltr' or 'rtl'. Default
+   minify takes that host fact; [--enforce-spec] drops it and keeps the author's
+   [:not()]. *)
+let spec_selector_dir_fold_is_a_host_fact () =
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(ltr))";
+  check_minified_to ".a:dir(ltr)" ".a:not(:dir(rtl))";
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(ltr))";
+  check_enforce_spec_to ".a:not(:dir(rtl))" ".a:not(:dir(rtl))";
+  (* The author's own [:dir()] is a plain serialisation in either mode. *)
+  check_minified_to ".a:dir(rtl)" ".a:dir(rtl)";
+  check_enforce_spec_to ".a:dir(ltr)" ".a:dir(ltr)";
+  (* The gate is on the host fact alone: rewrites the CSS specs prove on their
+     own still run. Selectors 4 sec. 8.1 defines [:any-link] as equivalent to
+     [:is(:link, :visited)], and sec. 4.3 makes [:not(:not(X))] equivalent to
+     [X]. *)
+  check_enforce_spec_to ".a:any-link" ".a:is(:link,:visited)";
+  check_enforce_spec_to ".a:hover" ".a:not(:not(:hover))"
+
+(* CSS Selectors 4 sec. 7.1: "The argument to :dir() must be a single
+   identifier, otherwise the selector is invalid. [...] Values other than ltr
+   and rtl are not invalid, but do not match anything." An unrecognised
+   directionality is a valid selector that matches no element, so it parses and
+   round-trips; a non-identifier argument stays invalid. *)
+let spec_selector_dir_argument_is_an_ident () =
+  check ":dir(auto)";
+  check ":dir(sideways)";
+  check ":dir(--custom)";
+  check ~expected:":dir(auto)" ":dir( auto )";
+  check_minified_to ".a:dir(auto)" ".a:dir(auto)";
+  (* [:dir(auto)] matches nothing, so [:not(:dir(auto))] matches everything.
+     That is not [:dir(<the other one>)]: the sec. 7.1 fold speaks only for the
+     two directionalities the spec names, and must not fire here in either
+     mode. *)
+  check_minified_to ".a:not(:dir(auto))" ".a:not(:dir(auto))";
+  check_enforce_spec_to ".a:not(:dir(auto))" ".a:not(:dir(auto))";
+  (* The two directionalities sec. 7.1 does name still fold, which is what makes
+     the pair above a contrast rather than a blanket ban. *)
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(ltr))";
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(ltr))";
+  (* "a single identifier, otherwise the selector is invalid": no argument, a
+     number, a string, and two idents are all outside the grammar. *)
+  neg_cursor read ":dir()";
+  neg_cursor read ":dir(1)";
+  neg_cursor read ":dir(\"ltr\")";
+  neg_cursor read ":dir(ltr, rtl)"
+
+(* CSS Values 4 sec. 4.1: "Keywords are identifiers and are interpreted ASCII
+   case-insensitively (i.e., [a-z] and [A-Z] are equivalent)." CSS Selectors 4
+   sec. 7.1 names [ltr] and [rtl] as the two directionalities [:dir()] matches,
+   so [LTR] is that keyword and reaches the same node. The identifier sec. 7.1
+   leaves valid but non-matching is no keyword, so its case is the author's. *)
+let spec_selector_dir_keyword_is_case_insensitive () =
+  (* The keyword reaches its canonical node, so the sec. 7.1 fold applies. *)
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(LTR))";
+  check_minified_to ".a:dir(ltr)" ".a:not(:dir(RTL))";
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(Ltr))";
+  (* A positive [:dir()] carries the same keyword, in either mode. *)
+  check_minified_to ".a:dir(ltr)" ".a:dir(LTR)";
+  check_pretty_to ".a:dir(rtl)" ".a:dir(RTL)";
+  (* Case is a fact of the CSS text, so it holds under [--enforce-spec] too.
+     What that flag drops is the host partition of sec. 7.1, which is what keeps
+     the [:not()] here. *)
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(LTR))";
+  check_enforce_spec_to ".a:dir(ltr)" ".a:dir(LTR)";
+  (* An identifier that is neither keyword keeps its case and pairs with no
+     directionality, in either mode. *)
+  check_minified_to ".a:dir(Auto)" ".a:dir(Auto)";
+  check_minified_to ".a:not(:dir(AUTO))" ".a:not(:dir(AUTO))";
+  check_enforce_spec_to ".a:not(:dir(Auto))" ".a:not(:dir(Auto))";
+  (* The same holds for a node built rather than read. *)
+  Alcotest.(check string)
+    "an identifier that is neither keyword does not fold" ":not(:dir(auto))"
+    (to_string ~minify:true (Not [ Dir "auto" ]))
+
+(* CSS Selectors 4 sec. 12 makes each of these pseudo-class pairs a partition of
+   one set of elements only, and an element outside that set matches neither
+   half: sec. 12.1.1 "In a typical document most elements will be neither
+   :enabled nor :disabled", sec. 12.3.1 "An element which lacks data validity
+   semantics is neither :valid nor :invalid [...] a p element has no validity
+   semantics at all", sec. 12.3.3 "Elements that are not form elements are
+   neither required nor optional". So [:not()] over one half of a pair is the
+   other half only inside a compound that proves its subject carries that state,
+   and [HTML] names a different set of elements for each pair. *)
+let spec_selector_state_folds_need_a_carrier () =
+  (* A class names no element type, so [<p class=c>] matches [.c:not(:enabled)]
+     and none of the six positive halves. *)
+  check_minified_to ".c:not(:enabled)" ".c:not(:enabled)";
+  check_minified_to ".c:not(:disabled)" ".c:not(:disabled)";
+  check_minified_to ".c:not(:valid)" ".c:not(:valid)";
+  check_minified_to ".c:not(:invalid)" ".c:not(:invalid)";
+  check_minified_to ".c:not(:required)" ".c:not(:required)";
+  check_minified_to ".c:not(:optional)" ".c:not(:optional)";
+  (* Nothing at all around the negation proves even less. *)
+  check_minified_to ":not(:enabled)" ":not(:enabled)";
+  (* An attribute selector names no element type either: [type] is a plain
+     attribute on any element. *)
+  check_minified_to "[type=text]:not(:required)" "[type=text]:not(:required)";
+  (* HTML sec. 4.16.3: [:enabled] matches a non-disabled [button], [input],
+     [select], [textarea], [optgroup], [option] or [fieldset], and [:disabled]
+     matches an actually disabled one (sec. 4.15). [a] is on neither list. *)
+  check_minified_to "a:not(:enabled)" "a:not(:enabled)";
+  check_minified_to "input:disabled" "input:not(:enabled)";
+  check_minified_to "input:enabled" "input:not(:disabled)";
+  check_minified_to "option:enabled" "option:not(:disabled)";
+  check_minified_to "fieldset:disabled" "fieldset:not(:enabled)";
+  (* HTML sec. 4.16.3: [:valid] and [:invalid] split a [form] and a [fieldset]
+     whole, but reach a form control only while it is a candidate for constraint
+     validation. A disabled, readonly or [type=hidden] [input] is barred from it
+     (HTML sec. 4.10.19.5, sec. 4.10.5.3.3, sec. 4.10.5.1.1), so it matches
+     neither half. *)
+  check_minified_to "input:not(:invalid)" "input:not(:invalid)";
+  check_minified_to "input:not(:valid)" "input:not(:valid)";
+  check_minified_to "button:not(:valid)" "button:not(:valid)";
+  check_minified_to "form:invalid" "form:not(:valid)";
+  check_minified_to "fieldset:valid" "fieldset:not(:invalid)";
+  (* HTML sec. 4.16.3: [:optional] wants an [input] "to which the required
+     attribute applies". It does not apply in the Hidden or Submit Button state
+     (HTML sec. 4.10.5.1.1), so [<input type=hidden>] matches neither
+     [:required] nor [:optional], while every [select] and [textarea] carries
+     one or the other. *)
+  check_minified_to "input:not(:required)" "input:not(:required)";
+  check_minified_to "input:not(:optional)" "input:not(:optional)";
+  check_minified_to "select:optional" "select:not(:required)";
+  check_minified_to "textarea:required" "textarea:not(:optional)";
+  (* The three sets are distinct: an [input] proves the enabled pair and neither
+     of the other two. *)
+  check_minified_to "input:enabled:not(:required)"
+    "input:not(:disabled):not(:required)";
+  (* Selectors 4 sec. 3.5: the subject of a complex selector is its rightmost
+     compound, so an ancestor part neither proves nor blocks the fold. *)
+  check_minified_to "form input:disabled" "form input:not(:enabled)";
+  check_minified_to "form .c:not(:enabled)" "form .c:not(:enabled)";
+  check_minified_to "input.c:disabled" "input.c:not(:enabled)";
+  (* Selectors 4 sec. 4.2: [:is()] matches any element one of its branches
+     matches, so it proves the state only when every branch does. [:where()]
+     matches the same elements. *)
+  check_minified_to ":is(select,textarea):optional"
+    ":is(select,textarea):not(:required)";
+  check_minified_to ":is(input,textarea):not(:required)"
+    ":is(input,textarea):not(:required)";
+  check_minified_to ":is(input,.c):not(:enabled)" ":is(input,.c):not(:enabled)";
+  check_minified_to ":where(input):disabled" ":where(input):not(:enabled)";
+  (* Selectors 4 sec. 5: [:has()] constrains the subject's descendants, not its
+     element type. *)
+  check_minified_to ":has(input):not(:enabled)" ":has(input):not(:enabled)";
+  (* Selectors 4 sec. 12.1.1 leaves what counts as an enabled state, a disabled
+     state and a user interface element to the host language, so it is [HTML],
+     not the CSS text, that puts [input] on the list. [--enforce-spec] drops
+     that host fact. *)
+  check_enforce_spec_to "input:not(:enabled)" "input:not(:enabled)";
+  check_enforce_spec_to "select:not(:required)" "select:not(:required)";
+  check_enforce_spec_to "form:not(:valid)" "form:not(:valid)"
+
 (* ignore-test *)
 let test_spec_forgiving_selector_lists () =
   (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
@@ -2585,7 +2751,6 @@ let spec_selector_serialization_invariant_matrix () =
       ":nth-last-of-type(odd even)";
       ":has(+)";
       ":lang(, en)";
-      ":dir(sideways)";
       "::part(tab, panel)";
       "::slotted(.a, .b)";
       "::cue-region()";
@@ -2667,6 +2832,14 @@ let suite =
         test_spec_selector_specificity;
       test_case "spec selector minifier semantics" `Quick
         spec_minifier_semantics;
+      test_case "spec selector :dir() fold is a host fact" `Quick
+        spec_selector_dir_fold_is_a_host_fact;
+      test_case "spec selector :dir() argument is an ident" `Quick
+        spec_selector_dir_argument_is_an_ident;
+      test_case "spec selector :dir() keyword is case-insensitive" `Quick
+        spec_selector_dir_keyword_is_case_insensitive;
+      test_case "spec selector state folds need a carrier" `Quick
+        spec_selector_state_folds_need_a_carrier;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick

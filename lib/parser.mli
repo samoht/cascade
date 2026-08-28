@@ -67,7 +67,10 @@ val to_string_custom_minified :
 val escape_ident : string -> string
 (** [escape_ident s] returns [s] with non-ident-continue code points backslash-
     or hex-escaped per CSS Syntax 3 section 9.1, so that
-    [Cursor.of_string (escape_ident s) |> Cursor.ident] yields [s] again. *)
+    [Cursor.of_string (escape_ident s) |> Cursor.ident] yields [s] again. CSS
+    Syntax 3 section 4.3.9 opens no ident sequence on a digit, nor on [-]
+    followed by a digit, so that digit is hex-escaped even where it is an
+    ident-continue code point. *)
 
 val escape_name : string -> string
 (** [escape_name s] escapes [s] as CSS Syntax 3 section 4.3.7 name code points,

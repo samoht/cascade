@@ -1545,12 +1545,13 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: red; @else { color: green } background: blue }"
     ".a{color:red;background:#00f}" 1
 
-(* CSS Syntax 3 sec. 5.4.4 "consume a declaration" ends an invalid declaration
-   at the next top-level [;], and a [{}] met on the way is one component value
-   of the value being skipped, not a stopping point. A nested at-rule's body is
-   <block-contents> just like a style rule's (CSS Nesting 1 sec. 3.3), so the
-   same recovery applies inside it: Blink 146 drops the one declaration and
-   keeps every neighbour, the enclosing group rule and the rest of the sheet. *)
+(* CSS Syntax 3 sec. 5.4.4 "consume a style block's contents" ends an invalid
+   declaration at the next top-level [;], and a [{}] met on the way is one
+   component value of the value being skipped, not a stopping point. A nested
+   at-rule's body is <block-contents> just like a style rule's (CSS Nesting 1
+   sec. 3.3), so the same recovery applies inside it: Blink 146 drops the one
+   declaration and keeps every neighbour, the enclosing group rule and the rest
+   of the sheet. *)
 let spec_lenient_recovery_nested_at_rule_declarations () =
   let recovered = ".a{@media screen{color:red;background:#00f}}" in
   lenient_recover "bad declaration first in a nested at-rule"
@@ -2011,7 +2012,7 @@ let spec_lenient_recovery_font_palette_descriptors () =
     (".a{color:red}" ^ recovered ^ ".z{color:#0f0}")
     1
 
-(* CSS View Transitions 2 sec. 2.4 gives [@view-transition] a block of
+(* CSS View Transitions 2 sec. 2.3.1 gives [@view-transition] a block of
    descriptor declarations, so one descriptor cascade rejects costs that
    descriptor alone. Blink 146 keeps the rule in every case below. *)
 let spec_lenient_recovery_view_transition_descriptors () =
@@ -2718,6 +2719,130 @@ let s3431_unknown_at_rule_trailing_backslash () =
   Alcotest.(check string)
     "an escaped backslash needs no separator" "@o x{ a \\\\}"
     (printed [ at_rule " a \\\\" ])
+
+(* CSS Syntax 3 (editor's draft) sec. 5.5.2 "consume an at-rule": an at-rule is
+   an at-keyword, then a prelude ending at the first top-level [;] or [{], then
+   either that [;] or a block. Sec. 5.5.9 makes the block a balanced token
+   sequence ending at its matching [}], and sec. 4.3.3 reads [@] as an
+   at-keyword only when an ident follows it.
+
+   [unknown_at_rule] hands those parts to a caller as text, so it answers for
+   every boundary: a part carrying one of its own terminators prints a sheet
+   that re-consumes to statements nobody wrote, and an empty name prints an [@]
+   delim that re-consumes to nothing at all. *)
+let s552_unknown_at_rule_constructor () =
+  let printed stmt = String.trim (Css.to_string ~minify:true [ stmt ]) in
+  let built what = function
+    | Ok stmt -> stmt
+    | Error e ->
+        Alcotest.failf "%s: unexpected error %s" what
+          (Cascade.Error.to_string e)
+  in
+  let rejected what = function
+    | Error _ -> ()
+    | Ok stmt ->
+        Alcotest.failf "%s: expected an error, built %S" what (printed stmt)
+  in
+  let parts stmt =
+    match Css.of_string_exn (printed stmt) with
+    | [ Unknown_at_rule { name; prelude; block } ] -> (name, prelude, block)
+    | other ->
+        Alcotest.failf "expected one unknown at-rule, got %d statements"
+          (List.length other)
+  in
+  let at_rule = Alcotest.(triple string string (option string)) in
+  let block = Css.of_string_exn ".a{color:red}" in
+  (* A block cascade does model reaches the body through its own printer, so a
+     caller places one without assembling or re-reading a sheet. *)
+  let statements =
+    built "printed block body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:(Css.to_string ~minify:true block)
+         ())
+  in
+  Alcotest.(check string)
+    "a printed block sits inside the at-rule's block"
+    "@utility tab-4{.a{color:red}}" (printed statements);
+  Alcotest.check at_rule "a printed block re-consumes to the same at-rule"
+    ("utility", "tab-4", Some ".a{color:red}")
+    (parts statements);
+  (* The body of an at-rule cascade does not model travels whole. *)
+  let text =
+    built "text body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:".a{color:red}" ())
+  in
+  Alcotest.check at_rule "a text body re-consumes to the same at-rule"
+    ("utility", "tab-4", Some ".a{color:red}")
+    (parts text);
+  (* Sec. 5.5.2: with no block the at-rule ends at its [;]. *)
+  let bodyless =
+    built "no body" (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ())
+  in
+  Alcotest.(check string)
+    "an at-rule with no body ends at its semicolon" "@utility tab-4;"
+    (printed bodyless);
+  Alcotest.check at_rule "an at-rule with no body re-consumes to the same one"
+    ("utility", "tab-4", None) (parts bodyless);
+  (* Every part that carries a terminator of its own is refused, not printed. *)
+  rejected "a prelude holding its own block opener"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4{x:1}"
+       ~block:"color:red" ());
+  rejected "a prelude holding its own terminator"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4;.evil{color:red}" ());
+  rejected "a body closing the block early"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+       ~block:"x} .evil{color:red" ());
+  rejected "a body that never closes what it opens"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ~block:".a{color:red"
+       ());
+  rejected "an empty at-keyword"
+    (Css.unknown_at_rule ~name:"" ~prelude:"tab-4" ());
+  (* Sec. 4.3.2 "consume comments" runs an unclosed [/*] to EOF, so a part that
+     opens one swallows the closer written after it and every statement that
+     follows. A closed comment is only text and travels like the rest of the
+     body. *)
+  let commented =
+    built "closed comment body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:"/* keep */color:red" ())
+  in
+  Alcotest.check at_rule "a closed comment travels inside the body"
+    ("utility", "tab-4", Some "/* keep */color:red")
+    (parts commented);
+  rejected "a body opening a comment it never closes"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ~block:"/* color:red"
+       ());
+  rejected "a prelude opening a comment it never closes"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4 /*" ());
+  (* An at-keyword cascade does have a grammar for reads back as that at-rule,
+     so the statement would disagree with the sheet it prints to. Sec. 5.5.2
+     dispatches on the at-keyword, and [media] is one this AST already models
+     with a typed condition. *)
+  rejected "an at-keyword cascade already models"
+    (Css.unknown_at_rule ~name:"media" ~prelude:"screen" ~block:".a{color:red}"
+       ())
+
+(* The refusal is per at-rule. Assembling a sheet as text and re-parsing it
+   gives the whole buffer one error path, so a single malformed body takes every
+   other at-rule with it; building each statement on its own loses only the
+   malformed one. *)
+let s552_unknown_at_rule_error_is_local () =
+  let declared =
+    List.map
+      (fun (prelude, body) ->
+        Css.unknown_at_rule ~name:"utility" ~prelude ~block:body ())
+      [
+        ("tab-4", "color:red");
+        ("bad", "x} .evil{color:blue}");
+        ("tab-8", "color:lime");
+      ]
+  in
+  let kept = List.filter_map Result.to_option declared in
+  Alcotest.(check int) "only the malformed at-rule is lost" 2 (List.length kept);
+  Alcotest.(check int)
+    "the survivors print a sheet holding both of them" 2
+    (List.length (Css.of_string_exn (Css.to_string ~minify:true kept)))
 
 (* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
    re-serialise its body from, so the body travels as the source text between
@@ -3825,12 +3950,16 @@ let test_spec_snapshot_tracking_vectors () =
     "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
      } }"
   in
+  (* The condition keeps [0.1] as written: it is the declaration the browser is
+     asked to parse, not a value to re-spell. The guarded rule folds. *)
   check_stylesheet
-    ~expected:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~expected:
+      "@supports(color:oklch(50% 0.1 20)){.accent{color:oklch(50%.1 20)}}"
     oklch_support;
   assert_minify_and_optimize oklch_support
-    ~minified:"@supports(color:oklch(50%.1 20)){.accent{color:oklch(50%.1 20)}}"
-    ~optimized:"@supports(color:oklch(50%.1 20)){.accent{color:#944a4b}}";
+    ~minified:
+      "@supports(color:oklch(50% 0.1 20)){.accent{color:oklch(50%.1 20)}}"
+    ~optimized:"@supports(color:oklch(50% 0.1 20)){.accent{color:#944a4b}}";
   let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }"
@@ -5203,7 +5332,15 @@ let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #FF0000 }" [ "#FF0000" ];
   pretty_preserves ".x { color: #ABCDEF }" [ "#ABCDEF" ];
   assert_minify_and_optimize ".x { color: #ff0000 }" ~minified:".x{color:#f00}"
-    ~optimized:".x{color:red}"
+    ~optimized:".x{color:red}";
+  (* Optimisation is the node-changing pass, and CSS Color 4 sec. 5.2 makes the
+     digit case carry no meaning, so the authored spelling does not survive it:
+     pretty output taken after [Css.optimize] carries the canonical colour, the
+     same way [#ff0000] already arrives there as [red]. *)
+  Alcotest.(check string)
+    "optimize drops the authored hex spelling" ".x {\n  color: #abcdef;\n}"
+    (Css.of_string_exn ".x { color: #ABCDEF }"
+    |> Css.optimize |> Css.to_string |> String.trim)
 
 (* CSS Color 4 section 5.1 + cascade convention: under non-minified output, the
    named-color and rgb() forms are preserved as written - no cross-form
@@ -6795,7 +6932,7 @@ let s641_layer_name_parts () =
       ("@layer a\\3b b.c\\3b d;", "@layer a\\;b.c\\;d;");
     ]
 
-(* CSS Conditional 3 sec. 2.2: a [<supports-decl>] holds a declaration, and a
+(* CSS Conditional 3 sec. 6: a [<supports-decl>] holds a declaration, and a
    custom property's name can carry a [;] or a [}] through an escape (CSS Syntax
    3 sec. 4.3.7). The condition is a capability predicate for that exact name,
    so it survives the round trip with the escapes that read it back. *)
@@ -6900,11 +7037,11 @@ let fidelity_color_space_preserved () =
 
 (* {2 @supports (CSS Conditional L4 sec. 2)} *)
 
-(* CSS Conditional 4 sec. 2.5: a feature query asks the browser rendering the
+(* CSS Conditional 3 sec. 6.1: a feature query asks the browser rendering the
    sheet whether it supports a declaration, so the answer belongs to that
    browser and the guard stays whatever shape the condition takes. Chrome
    answers false to both [(-webkit-hyphens: none)] and [(-moz-orient: inline)];
-   a UA older than custom properties answers false to [(--x: y)], which sec. 2.5
+   a UA older than custom properties answers false to [(--x: y)], which sec. 6.1
    calls supported. *)
 let conditional4_2_supports_guard_kept () =
   let normalize css =
@@ -8996,6 +9133,12 @@ let additional_tests =
     ( "spec CSS Syntax 4.3.1 unknown at-rule trailing backslash",
       `Quick,
       s3431_unknown_at_rule_trailing_backslash );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule constructor",
+      `Quick,
+      s552_unknown_at_rule_constructor );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule constructor reports locally",
+      `Quick,
+      s552_unknown_at_rule_error_is_local );
     ("spec @-moz-document prelude forms", `Quick, moz_document_prelude_forms);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
@@ -10248,7 +10391,302 @@ let render_tests =
     ("to_string renders pretty once", `Quick, to_string_renders_once false);
   ]
 
+(* {2 Statement equality and fingerprint} *)
+
+(* One statement per shape, spelled in the CSS that produces it. Every shape is
+   parsed rather than assembled so the test reads what a stylesheet holds, not
+   what a constructor was handed. *)
+let parsed_shapes =
+  [
+    ("rule", ".a{color:red}");
+    ("bang comment", "/*! keep */");
+    ("charset", "@charset \"UTF-8\";");
+    ("import", "@import url(a.css) layer(x) supports(display:grid) screen;");
+    ("namespace", "@namespace svg url(http://www.w3.org/2000/svg);");
+    ( "property",
+      "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}" );
+    ("layer statement", "@layer a,b;");
+    ("layer block", "@layer a{.x{color:red}}");
+    ("media", "@media screen{.x{color:red}}");
+    ("container", "@container card (min-width:10px){.x{color:red}}");
+    ("supports", "@supports (display:grid){.x{color:red}}");
+    ("moz-document", "@-moz-document url-prefix(){.x{color:red}}");
+    ("starting-style", "@starting-style{.x{color:red}}");
+    ("when", "@when media(width>0px){.x{color:red}}");
+    ("supports-condition", "@supports-condition --n{color:red}");
+    ("scope", "@scope (.a) to (.b){.x{color:red}}");
+    ("keyframes", "@keyframes k{from{opacity:0}to{opacity:1}}");
+    ("webkit keyframes", "@-webkit-keyframes k{from{opacity:0}}");
+    ("moz keyframes", "@-moz-keyframes k{from{opacity:0}}");
+    ("font-face", "@font-face{font-family:A;src:url(a.woff2)}");
+    ("counter-style", "@counter-style c{system:cyclic;symbols:\"a\"}");
+    ("page with margins", "@page{margin:1cm;@top-left{content:\"x\"}}");
+    ( "font-palette-values",
+      "@font-palette-values --p{font-family:A;override-colors:0 red}" );
+    ("font-feature-values", "@font-feature-values A{@styleset{nice:1}}");
+    ("view-transition", "@view-transition{navigation:auto}");
+    ("position-try", "@position-try --p{top:0}");
+    ("viewport", "@viewport{width:100px}");
+    ("unknown at-rule", "@wibble foo{bar:1}");
+  ]
+
+let sole_statement css =
+  match Css.statements (Css.of_string_exn css) with
+  | [ s ] -> s
+  | l -> Alcotest.failf "%s: expected one statement, got %d" css (List.length l)
+
+(* The four shapes with no source text of their own. [Declarations] holds the
+   bare declarations of a nested block, [Else] needs the [@when] it answers,
+   [Origin] is an API-level wrapper the CSS grammar has no spelling for, and the
+   parser folds every [@page] into [Page_with_margins]. *)
+let bare_declarations () =
+  match
+    Css.statements (Css.of_string_exn ".a{color:red;@media screen{color:blue}}")
+  with
+  | [ Rule { nested = [ Media (_, [ (Declarations _ as d) ]) ]; _ } ] -> d
+  | _ -> Alcotest.fail "expected bare declarations inside a nested @media"
+
+let else_branch () =
+  match
+    Css.statements
+      (Css.of_string_exn
+         "@when media(width>0px){.x{color:red}}@else{.y{color:red}}")
+  with
+  | [ _; (Else _ as e) ] -> e
+  | _ -> Alcotest.fail "expected an @else branch"
+
+let statement_shapes () =
+  List.map (fun (label, css) -> (label, sole_statement css)) parsed_shapes
+  @ [
+      ("bare declarations", bare_declarations ());
+      ("else", else_branch ());
+      ("origin", with_origin User [ sole_statement ".x{color:red}" ]);
+      ("page", Page ([], [ Css.Declaration.of_string "margin:1cm" ]));
+    ]
+
+(* Two independent builds of the list, so no answer below can come from physical
+   equality of a shared node. *)
+let shape_matrix f =
+  let left = statement_shapes () and right = statement_shapes () in
+  List.concat_map
+    (fun (la, sa) -> List.filter_map (fun (lb, sb) -> f la sa lb sb) right)
+    left
+
+let statement_equality_separates_every_shape () =
+  let wrong =
+    shape_matrix (fun la sa lb sb ->
+        let same_shape = String.equal la lb in
+        if Bool.equal (Css.equal_statement sa sb) same_shape then None
+        else Some (String.concat "" [ la; " vs "; lb ]))
+  in
+  Alcotest.(check (list string))
+    "each shape equals its own copy and no other" [] wrong
+
+(* A hash that disagreed with the equality it serves would put one statement in
+   two buckets. The converse is not required: a collision is allowed. *)
+let statement_hash_agrees_with_equality () =
+  let wrong =
+    shape_matrix (fun la sa lb sb ->
+        if
+          Css.equal_statement sa sb
+          && Css.hash_statement sa <> Css.hash_statement sb
+        then Some (String.concat "" [ la; " vs "; lb ])
+        else None)
+  in
+  Alcotest.(check (list string)) "equal statements hash alike" [] wrong;
+  (* A constant hash would satisfy the rule above and be useless. *)
+  Alcotest.(check bool)
+    "two shapes are not one bucket" false
+    (Css.hash_statement (sole_statement ".a{color:red}")
+    = Css.hash_statement (sole_statement "@media screen{.x{color:red}}"))
+
+(* What a statement holds is read, not just its shape. *)
+let statement_equality_reads_the_payload () =
+  let differs label a b =
+    if Css.equal_statement (sole_statement a) (sole_statement b) then Some label
+    else None
+  in
+  let folded =
+    List.filter_map
+      (fun (label, a, b) -> differs label a b)
+      [
+        ("a selector", ".a{color:red}", ".b{color:red}");
+        ("a declaration", ".a{color:red}", ".a{color:blue}");
+        ( "a media query",
+          "@media screen{.x{color:red}}",
+          "@media print{.x{color:red}}" );
+        ( "a media block",
+          "@media screen{.x{color:red}}",
+          "@media screen{.x{color:blue}}" );
+        ( "a supports condition",
+          "@supports (display:grid){.x{color:red}}",
+          "@supports (display:flex){.x{color:red}}" );
+        ( "a container name",
+          "@container a (min-width:10px){.x{color:red}}",
+          "@container b (min-width:10px){.x{color:red}}" );
+        ( "a container condition",
+          "@container a (min-width:10px){.x{color:red}}",
+          "@container a (min-width:20px){.x{color:red}}" );
+        ("a layer name", "@layer a{.x{color:red}}", "@layer b{.x{color:red}}");
+        ( "a nested rule",
+          ".a{color:red;&:hover{color:blue}}",
+          ".a{color:red;&:focus{color:blue}}" );
+        ( "an import condition",
+          "@import url(a.css) supports(display:grid);",
+          "@import url(a.css) supports(display:flex);" );
+        ( "a @property name",
+          "@property --x{syntax:\"*\";inherits:false}",
+          "@property --y{syntax:\"*\";inherits:false}" );
+        (* A registration whose syntax is not [*] has to declare an initial
+           value, so the pair below holds one fixed and moves the syntax. *)
+        ( "a @property syntax",
+          "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}",
+          "@property \
+           --x{syntax:\"<length-percentage>\";inherits:false;initial-value:0px}"
+        );
+        ( "a @property initial value",
+          "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}",
+          "@property --x{syntax:\"<length>\";inherits:false;initial-value:1px}"
+        );
+        ( "a scope end selector",
+          "@scope (.a) to (.b){.x{color:red}}",
+          "@scope (.a) to (.c){.x{color:red}}" );
+      ]
+  in
+  Alcotest.(check (list string)) "each pair stays two statements" [] folded
+
+(* The pipeline [cascade --minify] runs: the optimiser over a parsed sheet, then
+   the minified printer. *)
+let optimized_statement css =
+  match Css.statements (Css.optimize (Css.of_string_exn css)) with
+  | [ s ] -> s
+  | l -> Alcotest.failf "%s: expected one statement, got %d" css (List.length l)
+
+let minified_statement s = Css.to_string ~minify:true (Css.v [ s ])
+
+(* The rule [Declaration.hash] already holds, one level up: a statement that
+   minifies to the text another statement minifies to has to hash the same, or a
+   table keyed on the fingerprint files one CSS statement under two keys. As
+   there, the rule is stated over the canonicalised sheet, and equality is the
+   finer relation, true for every pair below as well. *)
+let same_text_same_hash label a b =
+  let text = minified_statement a in
+  Alcotest.(check string)
+    (label ^ ": one minified text")
+    text (minified_statement b);
+  Alcotest.(check int)
+    (label ^ ": one hash") (Css.hash_statement a) (Css.hash_statement b);
+  Alcotest.(check bool)
+    (label ^ ": one statement")
+    true (Css.equal_statement a b)
+
+let statement_hash_follows_the_minified_text () =
+  let pair label a b =
+    same_text_same_hash label (optimized_statement a) (optimized_statement b)
+  in
+  (* Optional whitespace the printer drops. *)
+  pair "declaration spacing" ".a{color : red}" ".a{color:red}";
+  pair "selector spacing" ".a > .b{color:red}" ".a>.b{color:red}";
+  pair "media spacing" "@media screen and (min-width: 10px){.a{color:red}}"
+    "@media screen and (min-width:10px){.a{color:red}}";
+  pair "layer spacing" "@layer a {.x{color:red}}" "@layer a{.x{color:red}}";
+  pair "keyframe spacing" "@keyframes k{from{opacity: 0}}"
+    "@keyframes k{from{opacity:0}}";
+  (* A zero length keeps no unit under minify. *)
+  pair "zero length" ".a{margin:0px}" ".a{margin:0}";
+  (* CSS Color 4 sec. 6.1 gives [red] the sRGB bytes 255, 0, 0, so the three
+     spellings below are one colour and canonicalise to one node. *)
+  pair "a named colour" ".a{color:red}" ".a{color:#f00}";
+  pair "the sRGB function" ".a{color:red}" ".a{color:rgb(255 0 0)}";
+  (* An [\@supports] condition keeps the token stream the author wrote, and the
+     optimiser canonicalises the whitespace in it, so this pair reaches one
+     node. *)
+  pair "supports condition spacing"
+    "@supports(color:rgba(0, 0, 0, .5)){.b{color:red}}"
+    "@supports(color:rgba(0,0,0,.5)){.b{color:red}}"
+
+(* A fingerprint that stopped at the statement's shape would satisfy the rule
+   above and file every rule of a kind under one key. *)
+let statement_hash_reads_the_descriptors () =
+  let differs label a b =
+    if
+      Css.hash_statement (sole_statement a)
+      = Css.hash_statement (sole_statement b)
+    then Some label
+    else None
+  in
+  let colliding =
+    List.filter_map
+      (fun (label, a, b) -> differs label a b)
+      [
+        ( "@font-face descriptors",
+          "@font-face{font-family:A;src:url(a.woff2)}",
+          "@font-face{font-family:B;src:url(b.woff2)}" );
+        ( "@counter-style descriptors",
+          "@counter-style c{system:cyclic;symbols:\"a\"}",
+          "@counter-style c{system:cyclic;symbols:\"b\"}" );
+        ( "@view-transition descriptors",
+          "@view-transition{navigation:auto}",
+          "@view-transition{navigation:none}" );
+        ( "a keyframe selector",
+          "@keyframes k{from{opacity:0}}",
+          "@keyframes k{to{opacity:0}}" );
+        ( "a @property syntax",
+          "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}",
+          "@property \
+           --x{syntax:\"<length-percentage>\";inherits:false;initial-value:0px}"
+        );
+        ( "a @-moz-document condition",
+          "@-moz-document domain(\"a.test\"){.x{color:red}}",
+          "@-moz-document domain(\"b.test\"){.x{color:red}}" );
+      ]
+  in
+  Alcotest.(check (list string)) "each pair keys apart" [] colliding
+
+(* CSS Conditional 3 sec. 6 answers a declaration feature by handing that exact
+   declaration to the browser's own parser, so the value spelled in the
+   condition is the question. [calc(10px)] and [10.0px] name grammars a browser
+   can accept one of and refuse the other: two guards, not one, and the
+   optimiser keeps both spellings. *)
+let supports_spelling_stays_two_statements () =
+  let calc = optimized_statement "@supports(width:calc(10px)){.b{color:red}}" in
+  let plain = optimized_statement "@supports(width:10.0px){.b{color:red}}" in
+  Alcotest.(check bool)
+    "two texts" false
+    (String.equal (minified_statement calc) (minified_statement plain));
+  Alcotest.(check bool) "two statements" false (Css.equal_statement calc plain);
+  (* The control: the same guard over the same block is one statement, so the
+     verdict above is about the value and not about the parse. *)
+  let calc' =
+    optimized_statement "@supports(width:calc(10px)){.b{color:red}}"
+  in
+  Alcotest.(check bool)
+    "the same guard is one statement" true
+    (Css.equal_statement calc calc')
+
+let equality_tests =
+  [
+    ( "equal_statement separates every shape",
+      `Quick,
+      statement_equality_separates_every_shape );
+    ( "hash_statement agrees with equal_statement",
+      `Quick,
+      statement_hash_agrees_with_equality );
+    ( "equal_statement reads the payload",
+      `Quick,
+      statement_equality_reads_the_payload );
+    ( "hash_statement follows the minified text",
+      `Quick,
+      statement_hash_follows_the_minified_text );
+    ( "hash_statement reads the descriptors",
+      `Quick,
+      statement_hash_reads_the_descriptors );
+    ( "an @supports spelling stays two statements",
+      `Quick,
+      supports_spelling_stays_two_statements );
+  ]
+
 let suite =
   ( "stylesheet",
     stylesheet_tests @ additional_tests @ walker_tests @ deep_walker_tests
-    @ render_tests )
+    @ render_tests @ equality_tests )

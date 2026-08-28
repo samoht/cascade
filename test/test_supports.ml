@@ -188,7 +188,7 @@ let test_roundtrip () =
     cases
 
 (* [property] takes authored CSS text, so a pair it accepts has to write back as
-   the one feature test it names. css-conditional-3 sec. 2.2 gives
+   the one feature test it names. CSS Conditional 3 sec. 6 gives
    [<supports-decl>] the grammar [( <declaration> )], and CSS Syntax 3 sec. 8.2
    keeps out of a [<declaration-value>] any unmatched closing bracket, any
    top-level [;], and any [<bad-string-token>] or [<bad-url-token>]. Written
@@ -258,6 +258,79 @@ let property_guard () =
         (build "wibble-prop" value))
     [ ("1", "<round-trips>"); ("1) or (color:blue", "<refused>") ]
 
+(* The pipeline [cascade --minify] runs: the optimiser over a parsed sheet, then
+   the minified printer. *)
+let minified ?(enforce_spec = false) css =
+  Css.to_string ~minify:true ~enforce_spec
+    (Css.optimize ~enforce_spec (Css.of_string_exn css))
+
+(* Every input below is already in the minified spelling, so the sheet the
+   author wrote is the whole expectation. Rows are collected rather than
+   asserted one at a time, so a run names every condition that moved. *)
+let check_preserved name sheets =
+  let moved =
+    List.concat_map
+      (fun css ->
+        let one label actual =
+          if String.equal actual css then []
+          else [ String.concat "" [ label; actual ] ]
+        in
+        one "--minify -> " (minified css)
+        @ one "--minify --enforce-spec -> " (minified ~enforce_spec:true css))
+      sheets
+  in
+  Alcotest.(check (list string)) name [] moved
+
+(* Everywhere else in a stylesheet two spellings the spec calls equal are
+   interchangeable, and [--minify] takes the shorter one. A feature query is the
+   exception. CSS Conditional 3 sec. 6 gives the declaration feature the grammar
+   [( <declaration> )] and the UA answers it by handing that exact declaration
+   to its own parser, so the value there is the question, not a value. The
+   construct exists to find the parsers that deviate from the spec, which is why
+   spec-equivalence says nothing about whether two spellings come back with the
+   same answer: the author's spelling is what has to survive. *)
+let condition_value_preserved () =
+  check_preserved "the author's condition survives --minify"
+    [
+      (* Legacy and modern colour syntax are two grammars shipped years apart,
+         so a guard written in one does not ask what the other asks. *)
+      "@supports(color:rgba(0,0,0,.5)){.b{color:red}}";
+      "@supports(color:rgb(0,0,0)){.b{color:red}}";
+      "@supports(color:hsl(0,0%,0%)){.b{color:red}}";
+      (* Eight-digit hex is its own syntax, and dropping an opaque alpha channel
+         probes the six-digit one instead. *)
+      "@supports(color:#ff0000ff){.b{color:red}}";
+      (* The same rule with no divergence to name: a [calc()] wrapper, a
+         trailing zero and a quoted [url()] argument are the author's tokens
+         either way. *)
+      "@supports(width:calc(10px)){.b{color:red}}";
+      "@supports(width:10.0px){.b{color:red}}";
+      "@supports(background:url(\"a.png\")){.b{color:red}}";
+      (* The [supports()] clause of an [@import] is the same declaration feature
+         in prefix position, and it decides whether the sheet is fetched at
+         all. *)
+      "@import\"t.css\"supports(color:rgba(0,0,0,.5));.a{opacity:1}";
+      (* Two guards asking different questions must not be rewritten into one:
+         the UA that answers them differently loses the distinction. *)
+      "@supports(width:calc(10px)){.b{color:red}}@supports(width:10.0px){.c{color:red}}";
+    ]
+
+(* Controls for the rows above: conditions the default minify already hands back
+   unchanged. A [calc()] carrying arithmetic, a condition already in the modern
+   colour syntax, a zero length with its unit, a [scale()] with two equal
+   arguments, and a property cascade does not model at all, which keeps its
+   value byte for byte and is what the modelled rows are measured against. *)
+let condition_value_controls () =
+  check_preserved "conditions the default minify already keeps"
+    [
+      "@supports(width:calc(10px*2)){.b{color:red}}";
+      "@supports(color:rgb(0 0 0)){.b{color:red}}";
+      "@supports(margin:0px){.b{color:red}}";
+      "@supports(transform:scale(1,1)){.b{color:red}}";
+      "@supports(nonsense-prop:10.0px){.b{color:red}}";
+      "@supports(nonsense-prop:rgba(0,0,0,.5)){.b{color:red}}";
+    ]
+
 let suite =
   let open Alcotest in
   ( "supports",
@@ -277,4 +350,6 @@ let suite =
         spec_supports_context_vectors;
       test_case "roundtrip" `Quick test_roundtrip;
       test_case "property guard" `Quick property_guard;
+      test_case "condition value preserved" `Quick condition_value_preserved;
+      test_case "condition value controls" `Quick condition_value_controls;
     ] )

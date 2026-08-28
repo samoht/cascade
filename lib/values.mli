@@ -83,6 +83,37 @@ val lcha : float -> float -> float -> float -> color
 val color_name : color_name -> color
 (** [color_name n] creates a named color. *)
 
+val with_alpha : color -> alpha -> color
+(** [with_alpha c a] is [c] carrying the alpha [a], replacing whatever alpha [c]
+    already spelled.
+
+    CSS Color 4 sec. 4.1 gives an [<alpha-value>] slot to the functional colour
+    notations and to no other. A hex spells its alpha as a fourth pair of
+    digits, which holds a byte rather than a percentage or a [calc()], and a
+    named colour has no channel at all, so a hex, a named colour and
+    {!val-transparent} are re-spelled as the [rgb()] over the same sRGB
+    channels: [red] becomes [rgb(255 0 0 / a)], and {!val-transparent} the
+    [rgb(0 0 0 / a)] of sec. 6.3. A notation that already has the slot keeps
+    both its notation and its channels. [light-dark()] resolves to exactly one
+    of its two arguments, so the alpha goes onto both.
+
+    A colour whose channels are known only at used-value time ([currentcolor], a
+    [var()], a system colour, [color-mix()], [contrast-color()], [attr()], a
+    relative colour) has nothing to write into and comes back unchanged, the
+    answer {!gamut_map_color} gives one too. So do the CSS-wide keywords and
+    [auto], which are not colours. *)
+
+val equal_color : color -> color -> bool
+(** [equal_color a b] tests colours for structural equality. Two spellings of
+    one colour are two colours: [#fff] and [white] name the same sRGB, and each
+    is its own node until {!normalize_color} folds it. *)
+
+val hash_color : color -> int
+(** [hash_color c] returns a hash consistent with {!equal_color}: two colours
+    that are equal always return the same value, and the converse may fail on a
+    collision, so use it as a cheap pre-filter before falling back to
+    {!equal_color}. *)
+
 val minify_color : color -> color
 (** [minify_color c] converts named colors to hex when the hex form is shorter
     or equal length, matching Lightning CSS behavior. *)
@@ -93,6 +124,17 @@ val nonkeyword_color : color -> color
     unchanged. A bare colour keyword is also a valid [<custom-ident>], so it
     must not be introduced when folding a colour inside an opaque
     custom-property token stream. *)
+
+val gamut_map_color : color -> color
+(** [gamut_map_color c] is the sRGB colour a display renders for the static
+    colour [c], as a hex colour: CSS Color 4 sec. 14.2 reduces the chroma of a
+    colour sRGB cannot hold until it fits, holding lightness and hue. A colour
+    already inside the sRGB gamut keeps its bytes, and one that is not static (a
+    [var()], [currentcolor], a [color-mix()] over either) is returned unchanged.
+
+    Emission does not use this: the mapped colour is not the authored one, and a
+    display shows the wider colour on hardware that has it. It is for a caller
+    that has to commit to sRGB bytes. *)
 
 val current_color : color
 (** [current_color] is the CSS currentcolor value. *)
@@ -251,15 +293,12 @@ val normalize_duration : ?ctx:calc_ctx -> duration -> duration
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. *)
 
-val normalize_color :
-  ?lossless:bool -> ?exact_srgb:bool -> in_feature_query:bool -> color -> color
-(** [normalize_color ?lossless ~in_feature_query c] canonicalises a color to its
-    shortest spelling: a static colour in any space folds through sRGB to
-    hex/named, hex shortens, and named<->hex picks the shorter.
-    [in_feature_query] keeps a colour untouched inside an [@supports] test,
-    where the exact spelling is the capability being probed. [lossless] disables
-    lossy static colour-space and color-mix folds while preserving exact
-    named/hex and byte-exact rgb folds.
+val normalize_color : ?lossless:bool -> ?exact_srgb:bool -> color -> color
+(** [normalize_color ?lossless c] canonicalises a color to its shortest
+    spelling: a static colour in any space folds through sRGB to hex/named, hex
+    shortens, and named<->hex picks the shorter. [lossless] disables lossy
+    static colour-space and color-mix folds while preserving exact named/hex and
+    byte-exact rgb folds.
 
     [exact_srgb] (default [false], and only consulted under [lossless])
     additionally folds a [color(srgb ...)] whose channels all land on a whole

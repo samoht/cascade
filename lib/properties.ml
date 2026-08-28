@@ -2407,8 +2407,7 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color
-             (Values.normalize_color ~lossless ~in_feature_query:false col))
+          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -2502,10 +2501,7 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
   let normalize_body (body : shadow_body) : shadow_body =
     {
       body with
-      color =
-        option_map_preserve
-          (Values.normalize_color ~lossless ~in_feature_query:false)
-          body.color;
+      color = option_map_preserve (Values.normalize_color ~lossless) body.color;
     }
   in
   match shadow with
@@ -2952,9 +2948,7 @@ let normalize_property_value : type a.
     a =
  fun ?(lossless = false) ?(exact_srgb = false) ?(ctx = Values.default_calc_ctx)
      property value ->
-  let normalize_color =
-    Values.normalize_color ~lossless ~exact_srgb ~in_feature_query:false
-  in
+  let normalize_color = Values.normalize_color ~lossless ~exact_srgb in
   (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
@@ -3201,11 +3195,7 @@ let normalize_custom_property_value ?(lossless = false)
   | Typed { kind = Length; value } ->
       Typed { kind = Length; value = Values.normalize_length ~ctx value }
   | Typed { kind = Color; value } ->
-      Typed
-        {
-          kind = Color;
-          value = Values.normalize_color ~lossless ~in_feature_query:false value;
-        }
+      Typed { kind = Color; value = Values.normalize_color ~lossless value }
   | Typed { kind = Number; value } ->
       Typed { kind = Number; value = Values.normalize_number ~ctx value }
   | Typed { kind = Percentage; value } ->

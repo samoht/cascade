@@ -316,7 +316,11 @@ let rec add sp part =
   | Selector.Open ->
       want_tag sp "details";
       set_attr sp "open" ""
-  | Selector.Dir d -> set_attr sp "dir" d
+  | Selector.Dir (("ltr" | "rtl") as d) -> set_attr sp "dir" d
+  | Selector.Dir _ ->
+      (* Selectors 4 sec. 7.1: no element matches any other directionality, so
+         there is nothing to build. *)
+      raise (Skip "unknown :dir() directionality")
   | Selector.Lang (code :: _) -> set_attr sp "lang" code
   | Selector.Lang [] -> raise (Skip "empty :lang()")
   | Selector.Heading -> want_tag sp "h1"
@@ -412,7 +416,10 @@ and negate sp = function
   | Selector.Enabled ->
       want_tag sp "input";
       set_attr sp "disabled" ""
-  | Selector.Dir d -> set_attr sp "dir" (if d = "rtl" then "ltr" else "rtl")
+  (* Sec. 7.1 again: the negation of an unknown directionality holds for every
+     element, so any [dir] serves. *)
+  | Selector.Dir "rtl" -> set_attr sp "dir" "ltr"
+  | Selector.Dir _ -> set_attr sp "dir" "rtl"
   | Selector.Not l -> List.iter (add sp) l
   | Selector.Compound parts -> List.iter (negate sp) parts
   | Selector.List l | Selector.Is l | Selector.Where l ->

@@ -1,7 +1,6 @@
-(** Invariants of the generated {!Cascade.Baseline} greenfield lists, so a
-    broken regeneration (empty, everything, or the wrong side of the Baseline
-    cut) is caught rather than silently changing which [@supports] guards are
-    dropped. *)
+(** Invariants of the generated {!Cascade.Baseline} greenfield list, so a broken
+    regeneration (empty, everything, or the wrong side of the Baseline cut) is
+    caught rather than silently changing which vendor prefixes are dropped. *)
 
 open Cascade
 
@@ -11,10 +10,7 @@ let absent l name = Alcotest.(check bool) name false (List.mem name l)
 let test_greenfield_present () =
   List.iter
     (listed Baseline.greenfield_properties)
-    [ "anchor-name"; "view-transition-name"; "field-sizing"; "scroll-timeline" ];
-  List.iter
-    (listed Baseline.greenfield_value_functions)
-    [ "anchor"; "anchor-size"; "calc-size" ]
+    [ "anchor-name"; "view-transition-name"; "field-sizing"; "scroll-timeline" ]
 
 let test_baseline_absent () =
   List.iter
@@ -32,15 +28,14 @@ let test_well_formed () =
       (name ^ " no duplicates") (List.length l)
       (List.length (List.sort_uniq String.compare l))
   in
-  check "greenfield_properties" Baseline.greenfield_properties;
-  check "greenfield_value_functions" Baseline.greenfield_value_functions
+  check "greenfield_properties" Baseline.greenfield_properties
 
 let suite =
   ( "baseline",
     [
-      Alcotest.test_case "not-yet-Baseline features are listed" `Quick
+      Alcotest.test_case "not-yet-Baseline properties are listed" `Quick
         test_greenfield_present;
-      Alcotest.test_case "Baseline features are not listed" `Quick
+      Alcotest.test_case "Baseline properties are not listed" `Quick
         test_baseline_absent;
-      Alcotest.test_case "lists are well-formed" `Quick test_well_formed;
+      Alcotest.test_case "the list is well-formed" `Quick test_well_formed;
     ] )

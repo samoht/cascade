@@ -101,6 +101,14 @@ recorded cases carrying six minifiers' answers.
   browser lacking that value lost the guarded fallback and rendered with no
   height at all. `Css.Supports.simplify_baseline` is gone, and `--enforce-spec`
   no longer changes how a guard is treated (#584)
+- An `@supports` condition keeps the value the author wrote. Cascade re-spelled
+  it through the property's typed grammar, so `(color: rgba(0,0,0,.5))` asked
+  about CSS Color 4 instead, and `(width: calc(10px))` and `(width: 10.0px)`
+  became one question, merging the blocks two different guards protected.
+  `Css.Values.normalize_color` loses the `in_feature_query` argument nothing
+  ever set, along with the `Css.Pp` field and accessors behind it.
+  `Css.Declaration.parse_opaque_declaration` reads a declaration without its
+  typed grammar (#587)
 - `Css.Supports.property` raises `Failure` on a value that is not a
   `<declaration-value>`, where it wrote the text unchecked:
   `property "color" "red) or (color:blue"` emitted a condition a browser answers
@@ -166,6 +174,23 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A keyword written in another case is read as that keyword. CSS Values 4
+  sec. 4.1 makes a keyword ASCII case-insensitive, so `grid-column: SPAN 2` is
+  a span of two tracks rather than the reordered `2 SPAN` it printed, and a
+  `FROM` keyframe, an `@import URL()` and an `INSET` shadow reach the output
+  instead of being dropped. Sec. 4.2 still reads a custom property, a
+  `@keyframes`, `@layer`, container or grid line name, a class, an id and an
+  attribute value in the case the author wrote (#603)
+- A `:dir()` argument written in another case, such as `:dir(LTR)`, names the
+  directionality it spells. CSS Values 4 sec. 4.1 makes a keyword ASCII
+  case-insensitive, so the two spellings reach one node, `:not(:dir(LTR))`
+  shortens to `:dir(rtl)` like its lower-case twin, and rules that differ only
+  in that case merge (#602)
+- `:dir()` accepts any single identifier, so `:dir(auto)` is read and written
+  back instead of taking its whole rule down. CSS Selectors 4 sec. 7.1 says a
+  value other than `ltr` or `rtl` "is not invalid, but does not match
+  anything", which through `:not()` is the difference between a rule that
+  matches every element and no rule at all (#594)
 - `stroke-width` reads a bare number, so `stroke-width: 1.5` round-trips
   through cascade's own parser instead of being printed and then refused. SVG 2
   sec. 13.5.3 gives it `<length-percentage> | <number>`, where a number is a
@@ -360,6 +385,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Printing
 
+- An ident that needs an escape to read back as one keeps it. `.x{--a:-\34 }`
+  printed `.x{--a:-4}`, a number rather than the ident `-4`, and
+  `@media (-\34 :1)` lost its feature name the same way: CSS Syntax 3 sec.
+  4.3.9 opens no ident sequence on a hyphen followed by a digit, and
+  `Parser.escape_ident` returned such a name unchanged (#598)
 - An unknown media type, media feature name or media identifier value keeps the
   escapes needed to read it back as one identifier. `@media (width\ \>\=\
   10px)` printed `@media (width >= 10px)`, turning an unknown boolean feature
@@ -389,6 +419,29 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` merges rules whose colours differ only in how a hex was
+  spelled. The digits are case-insensitive and `#RGB` expands by duplicating
+  each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
+  optimisation, so `#FFF`, `#fff` and `#ffffff` reached the merge pass as
+  three declarations and stayed three rules (#597)
+- `--minify` keeps `.c:not(:enabled)` instead of rewriting it to
+  `.c:disabled`. An element outside a state pseudo-class pair's own set matches
+  neither half of it (CSS Selectors 4 sec. 12.1.1, 12.3.1, 12.3.3), so
+  `<p class=c>` matched the rule before the rewrite and not after. The rewrite
+  now needs a compound that proves its subject carries the state, and the three
+  pairs reach three different sets: an `input` proves `:enabled`/`:disabled`
+  alone, since a disabled or `type=hidden` one is barred from constraint
+  validation and the `required` attribute does not apply to every input type.
+  Which elements carry a state is a host-document fact, so `--enforce-spec`
+  keeps `input:not(:enabled)` as well (#596)
+- `--minify --enforce-spec` keeps the author's `:not(:dir(ltr))` instead of
+  shortening it to `:dir(rtl)`. CSS Selectors 4 sec. 7.1 leaves directionality
+  to the document language, so only a host document like HTML makes `ltr` and
+  `rtl` a partition, and that is one of the facts `--enforce-spec` drops (#593)
+- `--minify` merges a run of adjacent `@starting-style` blocks. The rule takes
+  no prelude (CSS Transitions 2 sec. 3.3), so the run holds the same starting
+  styles, in the same order, as one block over their concatenation, and the
+  four conditional groups beside it already collapsed such a run (#592)
 - `--minify` simplifies a nested `@supports` condition against the conditions
   enclosing it, by propositional logic over its feature tests and against no
   support table: under `@supports (A)`, an inner `@supports (A)` loses its
@@ -745,6 +798,37 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.unknown_at_rule` builds an at-rule cascade has no grammar for, such as
+  one a tool of the caller's own defines. Such a rule could be read from the AST
+  but not constructed, so emitting one meant assembling a sheet as text and
+  reading it back, where a single malformed body fails the whole buffer and
+  takes every other at-rule with it. The constructor reads the parts back and
+  refuses one that ends the at-rule early, naming that at-rule alone (#600)
+- `Css.Color_space.gamut_mapped_srgb_of_oklch` and `Css.Values.gamut_map_color`
+  name the sRGB colour to write for an OKLCh colour sRGB cannot hold, reducing
+  its chroma at constant lightness and hue per CSS Color 4 sec. 14.2. The
+  library could report that a colour was out of gamut, not what to render in
+  its place. Minify is untouched and still keeps the colour the author wrote
+  (#591)
+- The statement-merging passes are callable on their own:
+  `Css.Optimize.merge_consecutive_layers`, `merge_named_layers_by_name`,
+  `merge_consecutive_media`, `merge_distant_media`,
+  `merge_consecutive_supports`, `merge_consecutive_containers` and
+  `merge_consecutive_starting_style`. A caller that runs `Css.optimize` behind
+  a flag of its own can now collapse the block structure of a sheet it only
+  serialises. `Css.Optimize.drop_empty_rules` is spelled over the statement
+  list it walks, which states the scope it always had: the block it is given,
+  not the tree below it (#592)
+- `Css.equal_statement` and `Css.hash_statement` answer whether two statements
+  are the same, and key one in a hash table, without rendering either to CSS
+  text. Each part is read through the equality its own module states, so two
+  `@media` blocks that select the same media are one statement however their
+  queries are spelled, and the fingerprint reuses the hash a declaration
+  already caches rather than walking its value tree. `Css.Values.hash_color`
+  is that pair for a colour, beside the `equal_color` it already had, and
+  `Css.Values.with_alpha` sets a colour's alpha: a hex or a named colour is
+  re-spelled as the `rgb()` carrying the alpha slot CSS Color 4 sec. 4.1 gives
+  only the functional notations (#595)
 - `Css.inline_vars` no longer costs a square in the variable count: liveness is
   decided through indexes and a worklist, and the customs a rule can see are
   indexed by name instead of scanned per declaration. A 12,800-variable sheet

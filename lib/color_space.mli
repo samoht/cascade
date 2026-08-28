@@ -132,6 +132,19 @@ val srgb_bytes_of_linear : ?budget:float -> rgb -> (int * int * int) option
     its 8-bit quantisation lies more than [budget] (default [0.002]) in OKLab
     distance from the source. Alpha is not considered. *)
 
+val gamut_mapped_srgb_of_oklch : lch -> rgb
+(** [gamut_mapped_srgb_of_oklch (l, c, h)] is the sRGB colour, channels in
+    [[0, 1]], that CSS Color 4 sec. 14.2.2 renders for the OKLCh colour
+    [(l, c, h)]: a binary search that halves the chroma at constant lightness
+    and hue until the clipped result is within one just noticeable difference,
+    [0.02] in {!val-oklab_distance}, of the colour it searched. A colour already
+    inside the sRGB gamut converts unchanged; [l >= 1.] is white and [l <= 0.]
+    is black. Alpha is not considered.
+
+    This is the rendering answer {!val-srgb_bytes_of_linear} declines to give:
+    that one reports whether a colour is representable, this one names the
+    colour to write when it is not. *)
+
 (** {1 Hue interpolation} *)
 
 type hue_interpolation =

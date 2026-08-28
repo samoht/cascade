@@ -87,6 +87,15 @@ val parse_declaration : ?layer:string -> string -> string -> declaration option
     [layer] applies only to a custom property (a typed declaration has no
     layer). Unlike {!custom_property}, this parses the full property grammar. *)
 
+val parse_opaque_declaration : string -> string -> declaration option
+(** [parse_opaque_declaration property value] is {!parse_declaration} with the
+    typed grammar skipped: [value] keeps the component stream it was written as
+    even where [property] has a typed grammar, so nothing about its spelling is
+    canonicalised. A custom property already reads that way and is unaffected.
+    It serves an [\@supports] condition, where the declaration is handed to
+    another parser rather than rendered, so the spelling is the question being
+    asked. [None] on a [value] no declaration can hold. *)
+
 val parse_custom_property : string -> string -> declaration option
 (** [parse_custom_property name value] is {!parse_declaration} restricted to a
     custom property that a rule can hold. It is [None] unless [name] is a

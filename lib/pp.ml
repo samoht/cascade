@@ -18,11 +18,6 @@ type ctx = {
   inline : bool;
   in_function : bool;
   in_calc : bool;
-  in_feature_query : bool;
-      (** Set while serialising the value of an [@supports (property: value)]
-          feature test. The value is a capability predicate for that exact
-          syntax, so lossy rewrites (e.g. static colour folding) must be
-          suppressed there. *)
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -82,7 +77,6 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     inline;
     in_function = false;
     in_calc = false;
-    in_feature_query = false;
     in_style_rule = false;
     lossless;
     enforce_spec;
@@ -474,8 +468,6 @@ let space ctx () = char ctx ' '
 let block_open ctx () = char ctx '{'
 let block_close ctx () = char ctx '}'
 let minified ctx = ctx.minify
-let in_feature_query ctx = ctx.in_feature_query
-let enter_feature_query ctx = { ctx with in_feature_query = true }
 let in_style_rule ctx = ctx.in_style_rule
 let enter_style_rule ctx = { ctx with in_style_rule = true }
 let cond p a b ctx x = if p ctx then a ctx x else b ctx x

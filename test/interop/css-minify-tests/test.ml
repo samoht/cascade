@@ -319,11 +319,30 @@ let normalize_expected ~category ~id expected =
          pseudo-class changes selector specificity from (0,1,1) to (0,0,1). *)
       fixture ~category ~id ~upstream:"a{color:red}"
         ~cascade:"a:nth-child(n){color:red}" upstream
+  | "selectors-advanced", "0005" ->
+      (* [input:not(:invalid)] is not [input:valid]: HTML sec. 4.16.3 gives
+         [:valid] and [:invalid] to a form control only while it is a candidate
+         for constraint validation, and a disabled, readonly or [type=hidden]
+         input is barred from that, so it matches neither. *)
+      fixture ~category ~id ~upstream:"input:valid{color:red}"
+        ~cascade:"input:not(:invalid){color:red}" upstream
+  | "selectors-advanced", "0009" ->
+      (* [input:not(:required)] is not [input:optional]: HTML sec. 4.16.3 gives
+         [:optional] to an input "to which the required attribute applies", and
+         it applies to neither [type=hidden] nor [type=submit], so such an input
+         is neither [:required] nor [:optional]. *)
+      fixture ~category ~id ~upstream:"input:optional{color:red}"
+        ~cascade:"input:not(:required){color:red}" upstream
   | "selectors-advanced", "0010" ->
       (* [a:not(:link)] is not equivalent to [a:visited]: anchors without [href]
          are neither [:link] nor [:visited]. *)
       fixture ~category ~id ~upstream:"a:visited{color:red}"
         ~cascade:"a:not(:link){color:red}" upstream
+  | "selectors-advanced", "0012" ->
+      (* [:is()] proves the optionality pair only when every branch does, and
+         the [input] branch does not, for the reason recorded on 0009. *)
+      fixture ~category ~id ~upstream:":is(input,textarea):optional{color:red}"
+        ~cascade:":is(input,textarea):not(:required){color:red}" upstream
   | "selectors-advanced", "0013" ->
       (* [:heading] is an experimental Selectors 5 pseudo-class with limited
          browser availability. It is also not a drop-in replacement here:

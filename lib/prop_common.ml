@@ -155,13 +155,8 @@ let pp_box_shorthand pp ctx vs =
   let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
   Pp.list ~sep:Pp.space pp ctx vs
 
-(* Canonicalise a colour to its shortest spelling. The normalize pass only ever
-   visits real declarations, never an [@supports] feature-test condition (those
-   live in the unwalked [Supports] condition), so the static colour-space fold
-   is never suppressed here. *)
-let normalize_color ?(lossless = false) =
-  Values.normalize_color ~lossless ~in_feature_query:false
-
+(* Canonicalise a colour to its shortest spelling. *)
+let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
 let preserve_if_equal before after = if after == before then before else after
 
 let map_preserve f xs =

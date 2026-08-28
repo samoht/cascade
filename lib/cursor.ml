@@ -488,8 +488,13 @@ let consume_to_slash_or_semicolon ?(trim = false) t =
 
 (** {1 Token-shape helpers - raising variants} *)
 
-let ident ?keep_case:_ t =
-  match ident_opt t with Some s -> s | None -> err_expected t "identifier"
+(* CSS Values 4 sec. 4.1 reads a keyword ASCII case-insensitively; sec. 4.2
+   keeps an author-defined identifier case-sensitive. [keep_case] is which of
+   the two the caller is reading. *)
+let ident ?(keep_case = true) t =
+  match ident_opt t with
+  | Some s -> if keep_case then s else String.lowercase_ascii_preserve s
+  | None -> err_expected t "identifier"
 
 let number ?(allow_negative = true) t =
   match number_opt t with
@@ -556,7 +561,8 @@ let url t =
   | Some (Component.Preserved { kind = Token.Url s; _ }) ->
       skip t;
       s
-  | Some (Component.Func ({ node = { name = "url"; _ }; _ } as fn)) ->
+  | Some (Component.Func ({ node = { name; _ }; _ } as fn))
+    when String.lowercase_ascii_preserve name = "url" ->
       url_from_func t fn
   | _ -> err_expected t "url"
 
@@ -653,13 +659,15 @@ let try_kind k t =
 
 let looking_at_ident name t =
   match peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> s = name
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+      String.lowercase_ascii_preserve s = name
   | _ -> false
 
 let looking_at_func name t =
   drop_ws t;
   match t.cvs with
-  | Component.Func { node = { name = n; _ }; _ } :: _ -> n = name
+  | Component.Func { node = { name = n; _ }; _ } :: _ ->
+      String.lowercase_ascii_preserve n = name
   | _ -> false
 
 let looking_at_calc t =
@@ -675,9 +683,10 @@ let looking_at t s =
   else
     match peek t with
     | Some (Component.Preserved { kind = Token.Ident ident; _ }) ->
-        String.starts_with ~prefix:s ident
+        String.starts_with ~prefix:s (String.lowercase_ascii_preserve ident)
     | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-        String.starts_with ~prefix:s ("@" ^ name)
+        String.starts_with ~prefix:s
+          (String.concat "" [ "@"; String.lowercase_ascii_preserve name ])
     | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
         String.starts_with ~prefix:s ("#" ^ value)
     | Some (Component.Preserved { kind = Token.Url _; _ }) ->
@@ -714,7 +723,9 @@ let expect c t =
     err_expected t (String.concat "" [ "'"; String.make 1 c; "'" ])
 
 let expect_string name t =
-  match ident_opt t with Some s when s = name -> () | _ -> err_expected t name
+  match ident_opt t with
+  | Some s when String.lowercase_ascii_preserve s = name -> ()
+  | _ -> err_expected t name
 
 let expect_eof t = if not (is_done t) then err t "unexpected token"
 
@@ -744,7 +755,8 @@ let braces f t =
 
 let function_call name f t =
   match peek t with
-  | Some (Component.Func fn) when fn.node.name = name ->
+  | Some (Component.Func fn)
+    when String.lowercase_ascii_preserve fn.node.name = name ->
       let _ = next t in
       Some (f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
@@ -774,7 +786,7 @@ let call name t f =
 let try_enum table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match List.assoc_opt s table with
+      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
       | Some v ->
           let _ = next t in
           Some v

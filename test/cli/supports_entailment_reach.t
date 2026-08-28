@@ -6,7 +6,7 @@ block whose guard those conditions refute. CSS Conditional 3 sec. 2 says of a
 false condition that processors "must not apply any of rules inside the group
 rule", so the block has no effect left to preserve. Its cascade layers are the
 case worth pinning, because a layer declaration reaches past the block it sits
-in: CSS Cascade 5 sec. 6.4.1 answers it with "Layers that are defined inside of
+in: CSS Cascade 5 sec. 6.4.3 answers it with "Layers that are defined inside of
 a conditional group rule do not contribute to the layer order unless the
 condition is true or unless the conditional group rule can evaluate differently
 for different elements in the document." A feature query is answered once for

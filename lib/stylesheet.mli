@@ -57,6 +57,30 @@ val supports : condition:Supports.t -> block -> statement
 val starting_style : block -> statement
 (** [starting_style content] creates a [@starting-style] rule. *)
 
+val unknown_at_rule :
+  name:string ->
+  prelude:string ->
+  ?block:string ->
+  unit ->
+  (statement, Error.t) result
+(** [unknown_at_rule ~name ~prelude ?block ()] is the at-rule [\@name prelude]
+    with [block] as its body, or the reason its parts cannot make one. Omitting
+    [block] gives the statement form, [\@name prelude;].
+
+    [name] is the at-keyword without its [@]. An unknown at-rule has no grammar
+    to re-serialise a body from, so [block] is the text between its braces, the
+    same text {!read} slices out of the source. Pass
+    [to_string ~minify:true statements] to put a block cascade does model inside
+    one.
+
+    Text ends the at-rule wherever CSS Syntax 3 says it does: at a top-level [;]
+    or [{] in the prelude (sec. 5.5.2), at the closer matching an opener in the
+    block (sec. 5.5.9), at EOF once an unclosed [/*] has started (sec. 4.3.2). A
+    part reaching one of those first prints a sheet that re-consumes to
+    statements the caller never wrote, so the parts are read back and refused
+    when they do. The refusal names one at-rule, so a caller keeps the rest of
+    the sheet rather than losing it to one bad part. *)
+
 val with_origin : cascade_origin -> block -> statement
 (** [with_origin cascade_origin content] records the cascade origin for a
     stylesheet block. This is an API-level wrapper with no CSS syntax. *)
@@ -77,6 +101,26 @@ val equal_layer_name : layer_name -> layer_name -> bool
     the same idents in the same order. Two layers whose CSS text differs only in
     how an ident is escaped are the same layer; [@layer a\2e b] and [@layer a.b]
     are not. *)
+
+val equal_statement : statement -> statement -> bool
+(** [equal_statement a b] is whether [a] and [b] are the same statement. Every
+    part is read through the equality its own module states, so two [\@media]
+    blocks whose queries select the same media are one statement even where the
+    two queries are spelled apart, while an [\@supports] guard naming a
+    different value stays a second statement. *)
+
+val hash_statement : statement -> int
+(** [hash_statement stmt] is a fingerprint of [stmt] consistent with
+    {!equal_statement}: two statements that are equal always return the same
+    value, and the converse may fail on a collision, so use it as a cheap
+    pre-filter before falling back to {!equal_statement}.
+
+    It reads the statement's shape, {!Declaration.hash} of every declaration it
+    holds, {!Selector.hash} of every selector, the names and descriptors it
+    carries, and, recursively, the statements of its block. It does not read the
+    condition of an [\@media], [\@container] or [\@supports] rule, since none of
+    the three states a hash agreeing with its equality; two statements differing
+    only in a condition share a bucket. *)
 
 val layer_block_name : statement -> layer_name option
 (** [layer_block_name stmt] returns the declared name for an [@layer] block

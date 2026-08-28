@@ -330,11 +330,20 @@ let read_lang_content t =
   ensure_call_done t "lang";
   Lang langs
 
+(* CSS Values 4 sec. 4.1 interprets a keyword ASCII case-insensitively, so the
+   two directionalities Selectors 4 sec. 7.1 names reach one node however they
+   are spelled. Any other identifier is no keyword, so it keeps its case. *)
+let dir_keyword ident =
+  match String.lowercase_ascii ident with
+  | ("ltr" | "rtl") as keyword -> keyword
+  | _ -> ident
+
 let read_dir_content t =
-  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 sec. 7.1. *)
-  let dir = Cursor.ident t in
-  if dir <> "ltr" && dir <> "rtl" then
-    Cursor.err_invalid t (":dir() expects ltr or rtl, got: " ^ dir);
+  (* Selectors 4 sec. 7.1: the argument is a single identifier, and one other
+     than [ltr] or [rtl] "is not invalid, but does not match anything". Keeping
+     it verbatim also leaves room for a directionality a later markup spec
+     defines. *)
+  let dir = dir_keyword (Cursor.ident t) in
   ensure_call_done t "dir";
   Dir dir
 
@@ -2277,6 +2286,63 @@ let rec carries_type_selector = function
   | Compound parts -> List.exists carries_type_selector parts
   | _ -> false
 
+(* Which elements [HTML] gives each state pseudo-class pair to. The three sets
+   differ. [:enabled] and [:disabled] split every form control plus [optgroup],
+   [option] and [fieldset] (HTML sec. 4.15, sec. 4.16.3). [:valid] and
+   [:invalid] split a [form] and a [fieldset] whole, but reach a form control
+   only while it is a candidate for constraint validation, which a disabled,
+   readonly or [type=hidden] one is not. [:required] and [:optional] split
+   [select] and [textarea]; [:optional] wants an [input] "to which the required
+   attribute applies", and it does not apply in e.g. the Hidden state. *)
+let enabled_carriers =
+  [ "button"; "fieldset"; "input"; "optgroup"; "option"; "select"; "textarea" ]
+
+let validity_carriers = [ "fieldset"; "form" ]
+let optionality_carriers = [ "select"; "textarea" ]
+
+let state_pair = function
+  | Enabled -> Some (Disabled, enabled_carriers)
+  | Disabled -> Some (Enabled, enabled_carriers)
+  | Valid -> Some (Invalid, validity_carriers)
+  | Invalid -> Some (Valid, validity_carriers)
+  | Required -> Some (Optional, optionality_carriers)
+  | Optional -> Some (Required, optionality_carriers)
+  | _ -> None
+
+(* Whether every element [sel] can select is one of [carriers]. A type selector
+   proves it, and [:is()]/[:where()] prove it when every branch does; a class,
+   an attribute, a negation or [:has()] constrains something other than the
+   subject's element type, so it proves nothing. Selectors 4 sec. 3.5: the
+   subject of a complex selector is its rightmost compound. A namespaced type
+   selector is left out: the prefix binds to a namespace declared elsewhere in
+   the stylesheet, and these names are the HTML ones. *)
+let rec selects_only carriers = function
+  | Element (None, name) -> List.mem (String.lowercase_ascii name) carriers
+  | Compound parts -> List.exists (selects_only carriers) parts
+  | Is branches | Where branches ->
+      branches <> [] && List.for_all (selects_only carriers) branches
+  | Combined (_, _, right) -> selects_only carriers right
+  | _ -> false
+
+(* CSS Selectors 4 sec. 12.1.1, 12.3.1 and 12.3.3: an element outside a pair's
+   set matches neither half, so [X:not(:enabled)] is [X:disabled] only inside a
+   compound that proves its subject carries the state. Which elements those are
+   is a [HTML] fact rather than one the CSS text proves, hence the
+   [enforce_spec] gate. *)
+let fold_state_negations ctx components =
+  if (not (Pp.minified ctx)) || ctx.Pp.enforce_spec then components
+  else
+    List.map
+      (function
+        | Not [ state ] as component -> (
+            match state_pair state with
+            | Some (complement, carriers)
+              when List.exists (selects_only carriers) components ->
+                complement
+            | _ -> component)
+        | component -> component)
+      components
+
 let rec pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
   Pp.string ctx name;
@@ -2304,7 +2370,10 @@ and pp_nested_function_lists ctx = function
   | Is selectors -> func ctx "is" spaced_sels_nested_function_lists selectors
   | Where selectors ->
       func ctx "where" spaced_sels_nested_function_lists selectors
-  | Compound selectors -> List.iter (pp_nested_function_lists ctx) selectors
+  | Compound selectors ->
+      List.iter
+        (pp_nested_function_lists ctx)
+        (fold_state_negations ctx selectors)
   | Combined (left, comb, right) ->
       pp_nested_function_lists ctx left;
       pp_combinator ctx comb;
@@ -2487,17 +2556,15 @@ and pp : t Pp.t =
          whatever compound holds the [:not()], so a type-bearing one stays
          wrapped (Selectors 4 3.5, [carries_type_selector]). *)
       pp ctx inner
-  | Not [ Enabled ] when Pp.minified ctx -> pseudo ctx "disabled"
-  | Not [ Disabled ] when Pp.minified ctx -> pseudo ctx "enabled"
-  | Not [ Valid ] when Pp.minified ctx -> pseudo ctx "invalid"
-  | Not [ Invalid ] when Pp.minified ctx -> pseudo ctx "valid"
-  | Not [ Required ] when Pp.minified ctx -> pseudo ctx "optional"
-  | Not [ Optional ] when Pp.minified ctx -> pseudo ctx "required"
-  | Not [ Dir "ltr" ] when Pp.minified ctx ->
-      (* CSS Selectors 4 sec. 7.1: directionality is binary, so
-         [:not(:dir(ltr))] is spec-equivalent to [:dir(rtl)] (and shorter). *)
+  | Not [ Dir "ltr" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
+      (* CSS Selectors 4 sec. 7.1 leaves directionality to the document
+         language, so CSS alone does not make [ltr] and [rtl] a partition: an
+         element the language gives no directionality matches neither. [HTML]
+         makes it one for every element in an HTML document, which is the host
+         fact [enforce_spec] drops. *)
       func ctx "dir" Pp.string "rtl"
-  | Not [ Dir "rtl" ] when Pp.minified ctx -> func ctx "dir" Pp.string "ltr"
+  | Not [ Dir "rtl" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
+      func ctx "dir" Pp.string "ltr"
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (Index 1, None) when Pp.minified ctx ->
@@ -2550,7 +2617,8 @@ and pp : t Pp.t =
             (if Pp.minified ctx then Parser.to_string_minified args
              else Parser.string_of_components args))
         args
-  | Compound selectors -> List.iter (pp ctx) selectors
+  | Compound selectors ->
+      List.iter (pp ctx) (fold_state_negations ctx selectors)
   | Combined (left, comb, right) ->
       pp ctx left;
       pp_combinator ctx comb;

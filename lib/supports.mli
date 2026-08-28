@@ -7,6 +7,11 @@ type property_name
 
 type declaration_feature =
   | Declaration of Declaration.t
+      (** The declaration the feature tests. Its value is the component stream
+          the author wrote, read through
+          {!Declaration.parse_opaque_declaration}: a browser answers the feature
+          by parsing that exact declaration, so the property's typed grammar
+          never re-spells it. *)
   | Empty of property_name
   | Unsupported of property_name * string
   | Vendor_flag_enabled
@@ -61,7 +66,7 @@ type t =
 
 val property : string -> string -> t
 (** [property name value] parses [name: value] as a structured supports
-    declaration feature.
+    declaration feature. [value] keeps the spelling it is given.
 
     @raise Failure
       if [value] is not a [<declaration-value>] (CSS Syntax 3 sec. 8.2). The
