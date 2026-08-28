@@ -2194,6 +2194,34 @@ let spec_selector_dir_fold_is_a_host_fact () =
   check_enforce_spec_to ".a:any-link" ".a:is(:link,:visited)";
   check_enforce_spec_to ".a:hover" ".a:not(:not(:hover))"
 
+(* CSS Selectors 4 sec. 7.1: "The argument to :dir() must be a single
+   identifier, otherwise the selector is invalid. [...] Values other than ltr
+   and rtl are not invalid, but do not match anything." An unrecognised
+   directionality is a valid selector that matches no element, so it parses and
+   round-trips; a non-identifier argument stays invalid. *)
+let spec_selector_dir_argument_is_an_ident () =
+  check ":dir(auto)";
+  check ":dir(sideways)";
+  check ":dir(--custom)";
+  check ~expected:":dir(auto)" ":dir( auto )";
+  check_minified_to ".a:dir(auto)" ".a:dir(auto)";
+  (* [:dir(auto)] matches nothing, so [:not(:dir(auto))] matches everything.
+     That is not [:dir(<the other one>)]: the sec. 7.1 fold speaks only for the
+     two directionalities the spec names, and must not fire here in either
+     mode. *)
+  check_minified_to ".a:not(:dir(auto))" ".a:not(:dir(auto))";
+  check_enforce_spec_to ".a:not(:dir(auto))" ".a:not(:dir(auto))";
+  (* The two directionalities sec. 7.1 does name still fold, which is what makes
+     the pair above a contrast rather than a blanket ban. *)
+  check_minified_to ".a:dir(rtl)" ".a:not(:dir(ltr))";
+  check_enforce_spec_to ".a:not(:dir(ltr))" ".a:not(:dir(ltr))";
+  (* "a single identifier, otherwise the selector is invalid": no argument, a
+     number, a string, and two idents are all outside the grammar. *)
+  neg_cursor read ":dir()";
+  neg_cursor read ":dir(1)";
+  neg_cursor read ":dir(\"ltr\")";
+  neg_cursor read ":dir(ltr, rtl)"
+
 (* ignore-test *)
 let test_spec_forgiving_selector_lists () =
   (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
@@ -2700,6 +2728,8 @@ let suite =
         spec_minifier_semantics;
       test_case "spec selector :dir() fold is a host fact" `Quick
         spec_selector_dir_fold_is_a_host_fact;
+      test_case "spec selector :dir() argument is an ident" `Quick
+        spec_selector_dir_argument_is_an_ident;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick
