@@ -606,13 +606,17 @@ let grid_line_at_end t =
   | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
   | _ -> false
 
+(* CSS Grid 2 sec. 8.3 excludes [span] from the [<custom-ident>] of a grid line
+   name. That exclusion is on the keyword, so it reads case-insensitively while
+   the name itself keeps the author's case (CSS Values 4 sec. 4.1 and 4.2). *)
 let read_grid_line_name t =
   let name = Cursor.ident t in
-  if name = "span" then Cursor.err_invalid t "duplicate span grid line"
+  if String.lowercase_ascii_preserve name = "span" then
+    Cursor.err_invalid t "duplicate span grid line"
   else name
 
 let read_grid_span t =
-  let span_word = Cursor.ident t in
+  let span_word = Cursor.ident ~keep_case:false t in
   if span_word <> "span" then
     Cursor.err t ("Expected 'span' but got " ^ span_word);
   Cursor.ws t;

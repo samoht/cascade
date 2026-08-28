@@ -218,8 +218,10 @@ val with_context : t -> string -> (unit -> 'a) -> 'a
     These parse and advance the cursor, or raise {!Parse_error} on mismatch. *)
 
 val ident : ?keep_case:bool -> t -> string
-(** [ident t] consumes the next ident. The [keep_case] flag is accepted for
-    source compatibility; component idents are already case-preserved. *)
+(** [ident t] consumes the next ident. [keep_case] defaults to [true], the
+    author's spelling, which is what an author-defined identifier is (CSS Values
+    4 sec. 4.2). [~keep_case:false] lowercases it, which is what a keyword is
+    (sec. 4.1). *)
 
 val number : ?allow_negative:bool -> t -> float
 (** [number t] consumes the next numeric token. *)
@@ -392,15 +394,18 @@ val try_kind_pair : Token.kind -> Token.kind -> t -> bool
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] iff the next component (after leading whitespace)
     starts with [s] - matches an ident, a function name followed by [(], or a
-    delim-based prefix. *)
+    delim-based prefix. Idents and at-keywords match ASCII case-insensitively
+    (CSS Values 4 sec. 4.1), so [s] is given lowercase. *)
 
 val looking_at_ident : string -> t -> bool
 (** [looking_at_ident name t] is [true] if the next component is identifier
-    [name]. *)
+    [name], compared ASCII case-insensitively (CSS Values 4 sec. 4.1), so [name]
+    is given lowercase. *)
 
 val looking_at_func : string -> t -> bool
-(** [looking_at_func name t] is [true] if the next component is function [name].
-*)
+(** [looking_at_func name t] is [true] if the next component is function [name],
+    compared ASCII case-insensitively (CSS Values 4 sec. 4.1), so [name] is
+    given lowercase. *)
 
 val looking_at_calc : t -> bool
 (** [looking_at_calc t] is [true] if the next component is [calc()] or the
@@ -412,7 +417,9 @@ val expect : char -> t -> unit
 (** [expect c t] consumes the delim [c] or raises. *)
 
 val expect_string : string -> t -> unit
-(** [expect_string s t] consumes the ident [s] or raises. *)
+(** [expect_string s t] consumes the ident [s] or raises. The ident is a
+    keyword, matched ASCII case-insensitively (CSS Values 4 sec. 4.1), so [s] is
+    given lowercase. *)
 
 val expect_eof : t -> unit
 (** [expect_eof t] raises if any non-whitespace component remains. *)
@@ -436,7 +443,8 @@ val call : string -> t -> (t -> 'a) -> 'a
 val function_call : string -> (t -> 'a) -> t -> 'a option
 (** [function_call name f t] consumes a [name(...)] call and calls [f] over its
     arguments. Returns [None] without advancing if the next component is not a
-    function with that name. *)
+    function with that name, compared ASCII case-insensitively (CSS Values 4
+    sec. 4.1), so [name] is given lowercase. *)
 
 val any_function_call : (string -> t -> 'a) -> t -> 'a option
 (** [any_function_call f t] consumes any function call and applies [f] to its
@@ -450,7 +458,8 @@ val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
     raises. *)
 
 val try_enum : (string * 'a) list -> t -> 'a option
-(** [try_enum table t] is like {!enum} but returns [None] without raising. *)
+(** [try_enum table t] is like {!enum} but returns [None] without raising. Keys
+    are given lowercase. *)
 
 val enum_calls : ?default:(t -> 'a) -> (string * (t -> 'a)) list -> t -> 'a
 (** [enum_calls ?default table t] skips leading whitespace, then dispatches on

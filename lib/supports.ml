@@ -190,7 +190,7 @@ let property prop value =
 
 let single_ident name args =
   let cursor = Cursor.of_string args in
-  let ident = Cursor.ident ~keep_case:false cursor |> String.lowercase_ascii in
+  let ident = Cursor.ident ~keep_case:false cursor in
   Cursor.ws cursor;
   Cursor.expect_eof cursor;
   if ident = "" then failwith ("empty " ^ name ^ "() in @supports");

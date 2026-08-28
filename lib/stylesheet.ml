@@ -2454,7 +2454,7 @@ let validate_font_variant_descriptor_values r values =
 
 let read_font_variant_descriptor_value r =
   let ident = Cursor.ident ~keep_case:false r in
-  match font_variant_desc_value (String.lowercase_ascii ident) with
+  match font_variant_desc_value ident with
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 
@@ -2476,7 +2476,7 @@ let read_font_variant_keywords r : font_variant_descriptor =
   let snap = Cursor.save r in
   let first = Cursor.ident ~keep_case:false r in
   Cursor.ws r;
-  match (String.lowercase_ascii first, at_value_end ()) with
+  match (first, at_value_end ()) with
   | "normal", true -> Normal
   | "none", true -> None
   | _ ->
@@ -2633,7 +2633,7 @@ let read_font_face (r : Cursor.t) : statement =
 
 let read_counter_style_system_value r =
   let system = Cursor.ident ~keep_case:false r in
-  match String.lowercase_ascii system with
+  match system with
   | "cyclic" -> Cyclic
   | "numeric" -> Numeric
   | "alphabetic" -> Alphabetic
@@ -2699,7 +2699,7 @@ let read_counter_string_descriptor constructor r =
    takes, invalidates the declaration it follows rather than being left over as
    an item of its own, as it is in Blink 146. *)
 let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
-  let name = Cursor.ident ~keep_case:false r |> String.lowercase_ascii in
+  let name = Cursor.ident ~keep_case:false r in
   let descriptor =
     match name with
     | "system" -> read_counter_style_system_descriptor r
@@ -2972,10 +2972,13 @@ let read_base_palette_value inner =
         Cursor.err_invalid inner "base-palette index must be non-negative";
       Index (Float.to_int n)
   | exception Cursor.Parse_error _ -> (
-      match Cursor.ident ~keep_case:false inner with
+      (* [light] and [dark] are keywords, so CSS Values 4 sec. 4.1 reads them
+         case-insensitively; any other ident is the author's own. *)
+      let ident = Cursor.ident inner in
+      match Common.String.lowercase_ascii_preserve ident with
       | "light" -> Light
       | "dark" -> Dark
-      | ident when ident <> "" -> Palette_ident ident
+      | _ when ident <> "" -> Palette_ident ident
       | _ -> Cursor.err_expected inner "base-palette value")
 
 let read_override_color_entry c =

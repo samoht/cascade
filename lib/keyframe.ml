@@ -67,25 +67,26 @@ let parse_timeline_range_position s =
   match String.index_opt s ' ' with
   | None -> None
   | Some i ->
-      let name = String.sub s 0 i in
+      let name = Common.String.lowercase_ascii_preserve (String.sub s 0 i) in
       let rest = String.sub s (i + 1) (String.length s - i - 1) in
       let rest = String.trim rest in
-      if not (List.mem (String.lowercase_ascii name) timeline_range_names) then
-        None
+      if not (List.mem name timeline_range_names) then None
       else
         Option.bind (parse_percent rest) (fun p ->
             Some (Timeline_range (name, p)))
 
-(** Parse a position string like "from", "to", "50%", or "entry 0%". *)
+(** Parse a position string like "from", "to", "50%", or "entry 0%". CSS Values
+    4 sec. 4.1 reads each of these keywords case-insensitively. *)
 let position_of_string s =
   let s = String.trim s in
-  if String.equal s "from" then Some From
-  else if String.equal s "to" then Some To
-  else
-    match parse_percent s with
-    | Some p when p >= 0. && p <= 100. -> Some (Percent p)
-    | Some _ -> None
-    | None -> parse_timeline_range_position s
+  match Common.String.lowercase_ascii_preserve s with
+  | "from" -> Some From
+  | "to" -> Some To
+  | _ -> (
+      match parse_percent s with
+      | Some p when p >= 0. && p <= 100. -> Some (Percent p)
+      | Some _ -> None
+      | None -> parse_timeline_range_position s)
 
 (** Parse a selector string like "from", "50%", or "from, 50%". *)
 let selector_of_string s =

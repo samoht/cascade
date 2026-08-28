@@ -174,6 +174,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A keyword written in another case is read as that keyword. CSS Values 4
+  sec. 4.1 makes a keyword ASCII case-insensitive, so `grid-column: SPAN 2` is
+  a span of two tracks rather than the reordered `2 SPAN` it printed, and a
+  `FROM` keyframe, an `@import URL()` and an `INSET` shadow reach the output
+  instead of being dropped. Sec. 4.2 still reads a custom property, a
+  `@keyframes`, `@layer`, container or grid line name, a class, an id and an
+  attribute value in the case the author wrote (#603)
 - A `:dir()` argument written in another case, such as `:dir(LTR)`, names the
   directionality it spells. CSS Values 4 sec. 4.1 makes a keyword ASCII
   case-insensitive, so the two spellings reach one node, `:not(:dir(LTR))`
