@@ -353,9 +353,13 @@ let test_color () =
   check_color ~optimized:"#0ff" "aqua";
 
   (* Special keywords. Per CSS Color 4 section 6.3 [transparent] canonicalizes
-     to the shortest spec-equivalent spelling [#0000] under minify. *)
+     to the shortest spec-equivalent spelling [#0000] under minify. CSS Values 4
+     section 4.1 reads [currentcolor] case-insensitively, so no authored
+     spelling survives the parse and minified output takes the CSS Color 4
+     section 6.4 one. *)
   check_color ~optimized:"#0000" "transparent";
-  check_color ~expected:"currentColor" "currentcolor";
+  check_color "currentcolor";
+  check_color ~expected:"currentcolor" "currentColor";
   check_color "inherit";
 
   (* Test var() parsing in color context *)
@@ -1213,6 +1217,27 @@ let spec_values_color_current () =
   neg_cursor read_color "contrast-color()";
   neg_cursor read_color "light-dark(black)"
 
+(* CSS Values 4 sec. 4.1 reads a keyword ASCII case-insensitively, so no
+   authored spelling of [currentcolor] survives the parse and the printer picks
+   one. Under minify that is the CSS Color 4 sec. 6.4 spelling on every path: a
+   custom-property stream and a typed [var()] fallback already fold to it, and a
+   declaration spelling it [currentColor] would leave one value under two
+   spellings in one stylesheet. *)
+let spec_currentcolor_one_minified_spelling () =
+  let check name source expected =
+    let minified =
+      Css.of_string_exn ~strict:false source |> Css.to_string ~minify:true
+    in
+    Alcotest.(check string) name expected minified
+  in
+  check "custom-property stream" ".x { --c: currentColor }"
+    ".x{--c:currentcolor}";
+  check "typed var() fallback" ".x { color: var(--c, currentColor) }"
+    ".x{color:var(--c,currentcolor)}";
+  check "declaration" ".x { color: currentColor }" ".x{color:currentcolor}";
+  check "upper-case spelling" ".x { color: CURRENTCOLOR }"
+    ".x{color:currentcolor}"
+
 let spec_values_l45_math_color () =
   check_length "1cqw";
   check_length "1cqh";
@@ -1545,6 +1570,8 @@ let value_tests =
     test_case "rgb" `Quick test_rgb;
     test_case "spec values and color current-work" `Quick
       spec_values_color_current;
+    test_case "spec color 4 currentcolor one minified spelling" `Quick
+      spec_currentcolor_one_minified_spelling;
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
     test_case "spec color 5 function edges" `Quick spec_color5_function_edges;

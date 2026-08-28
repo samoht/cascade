@@ -502,8 +502,10 @@ let color_keywords () =
   (* Per CSS Color 4 section 6.3 the printer canonicalizes the fully-transparent
      color to the shortest equivalent spelling [#0000]. *)
   roundtrip ".x { color: transparent }" ".x{color:#0000}";
-  (* currentColor preserves its camelCase form *)
-  roundtrip ".x { color: currentColor }" ".x{color:currentColor}"
+  (* CSS Color 4 section 6.4 spells the keyword [currentcolor]; CSS Values 4
+     section 4.1 reads it case-insensitively, so minified output emits that
+     spelling whatever was authored. *)
+  roundtrip ".x { color: currentColor }" ".x{color:currentcolor}"
 
 (* {2 CSS Conditional Rules Level 3} https://www.w3.org/TR/css-conditional-3/ *)
 

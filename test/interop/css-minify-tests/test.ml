@@ -190,6 +190,15 @@ let normalize_expected ~category ~id expected =
   let upstream = expected in
   let expected = normalize_expected_tokens expected in
   match (category, id) with
+  | "colors", "0025" ->
+      (* CSS Values 4 sec. 4.1 reads a keyword ASCII case-insensitively, so
+         [currentColor] and [currentcolor] are one value and the imported oracle
+         simply records the authored spelling. Cascade parses the keyword to one
+         node with no spelling attached, and minified output emits the CSS Color
+         4 sec. 6.4 spelling on every path, so a declaration and a
+         custom-property stream cannot carry two spellings of it. *)
+      fixture ~category ~id ~upstream:"a{color:currentColor}"
+        ~cascade:"a{color:currentcolor}" upstream
   | "colors", "0029" ->
       (* color-mix(in oklch, red, blue) folds to a static oklch(). cascade keeps
          3 hue decimals (326.643) where the keithamus oracle rounds to 1

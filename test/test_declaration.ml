@@ -75,9 +75,9 @@ let complex_values () =
      <p1>, <color> <p2>], so adjacent stops of one colour fold into a
      double-position stop. pp holds the pair; the fold is an optimize step. *)
   check_declaration
-    ~expected:"background:linear-gradient(currentColor 0,currentColor 1px)"
+    ~expected:"background:linear-gradient(currentcolor 0,currentcolor 1px)"
     "background: linear-gradient(currentColor 0, currentColor 1px);";
-  decl_optimizes ~prop:"background" ~into:"linear-gradient(currentColor 0 1px)"
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(currentcolor 0 1px)"
     "linear-gradient(currentColor 0, currentColor 1px)";
   (* The colours fold first, so two spellings of one colour still pair up. *)
   decl_optimizes ~prop:"background" ~into:"linear-gradient(red 0 10px)"
@@ -125,7 +125,7 @@ let complex_values () =
      these a plain <color>, so they shorten like any other colour-valued
      property instead of surviving as opaque unknown-property text. *)
   check_declaration ~expected:"stop-color:#fff" "stop-color: #ffffff;";
-  check_declaration ~expected:"lighting-color:currentColor"
+  check_declaration ~expected:"lighting-color:currentcolor"
     "lighting-color: currentColor;";
   (* Cross-notation folds are node changes, so they belong to the optimizer
      rather than the printer. *)
@@ -2311,7 +2311,7 @@ let spec_remaining_prop_vectors () =
         "text-decoration-skip-spaces:start end" );
       ("text-emphasis: filled dot red", "text-emphasis:filled dot red");
       ("text-emphasis-style: open sesame", "text-emphasis-style:open sesame");
-      ("text-emphasis-color: currentColor", "text-emphasis-color:currentColor");
+      ("text-emphasis-color: currentColor", "text-emphasis-color:currentcolor");
       ("text-emphasis-position: over right", "text-emphasis-position:over right");
       ( "text-emphasis-skip: punctuation symbols",
         "text-emphasis-skip:punctuation symbols" );
