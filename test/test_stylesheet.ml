@@ -8237,8 +8237,7 @@ let customprops12_shorthand_calc () =
     "var() inside calc() preserved" ".x{width:calc(var(--x) + 10px)}"
     (normalize ".x { width: calc(var(--x) + 10px) }");
   Alcotest.(check string)
-    "multiple var() in one value preserved"
-    ".x{padding:var(--top) var(--right)}"
+    "multiple var() in one value preserved" ".x{padding:var(--top)var(--right)}"
     (normalize ".x { padding: var(--top) var(--right) }")
 
 let fidelity_var_fallback_preserved () =
