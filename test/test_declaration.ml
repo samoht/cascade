@@ -474,7 +474,22 @@ let special_cases () =
   (* border-color shares the same box-shorthand printer, so a colour function's
      closing paren gets the same elision. *)
   check_declaration ~expected:"border-color:var(--c)red"
-    "border-color: var(--c) red;"
+    "border-color: var(--c) red;";
+
+  (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
+     same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
+     above, but print through their own list combinator rather than the shared
+     pp_box_shorthand. A unit boundary still keeps its space. *)
+  check_declaration ~expected:"clip-path:inset(0 0 10%0)"
+    "clip-path: inset(0 0 10% 0);";
+  check_declaration ~expected:"clip-path:inset(0 0 10px 0)"
+    "clip-path: inset(0 0 10px 0);";
+  check_declaration ~expected:"object-view-box:inset(0 0 10%0)"
+    "object-view-box: inset(0 0 10% 0);";
+  check_declaration ~expected:"margin-inline:10%20%" "margin-inline: 10% 20%;";
+  check_declaration ~expected:"margin-inline:10px 20px"
+    "margin-inline: 10px 20px;";
+  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The
