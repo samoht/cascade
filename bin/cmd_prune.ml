@@ -118,9 +118,10 @@ let run dry_run files () =
 
 let dry_run_arg =
   let doc =
-    "Write the ranked report instead of the pruned stylesheet: what would go, \
-     what stays and how few elements matched it, and what was kept for want of \
-     a model."
+    "Write the ranked report instead of the pruned stylesheet. Rules that \
+     matched nothing come first, then the survivors by ascending \
+     matched-element count; the rules kept for want of a model are counted \
+     apart."
   in
   Arg.(value & flag & info [ "dry-run" ] ~doc)
 

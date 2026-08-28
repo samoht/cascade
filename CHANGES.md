@@ -912,6 +912,17 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
+  documents cannot use, and `--dry-run` reports instead, ranking what survives
+  by how few elements matched it. A rule goes only when the matcher has a model
+  for its selector and every element answers that it does not match, so
+  `:hover`, a pseudo-element and any selector list holding one such branch are
+  kept and counted apart from the rules the documents used. A `@media`,
+  `@supports` or `@container` condition is never evaluated, since it asks about
+  a device rather than about a document, and a statement naming no element
+  (`@keyframes`, `@font-face`, `@property`, `@layer`) is kept. The documents are
+  all the analysis sees: a class a script adds at runtime is in none of them, so
+  a rule waiting for one is removed (#605)
 - `cascade diff --diff=tree` states a selector's move once. The entry names the
   selector, not the rule, so a selector whose several rules cross together
   printed the same line and counted the move once per rule (#581)
