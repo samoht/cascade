@@ -1823,6 +1823,44 @@ let test_border_width () =
   check_border_width "thick";
   check_border_width "2px";
   check_border_width ".0625rem";
+  (* border-width takes a <length>, and CSS Values 4 sec. 6.1 and 6.2 give the
+     viewport-percentage and container-query units the same standing there as
+     [vh]. Every unit [length] names is a border width. *)
+  check_border_width "3vi";
+  check_border_width "3vb";
+  check_border_width "3dvh";
+  check_border_width "3svw";
+  check_border_width "3lvmin";
+  check_border_width "2cqw";
+  check_border_width "2cqi";
+  check_border_width "2cqmax";
+  (* Every property whose width component is a border width reads those units:
+     the four physical longhands, their logical counterparts, and the 1-4 value
+     shorthand. *)
+  decl_optimizes ~prop:"border-top-width" ~held:"3dvh" ~into:"3dvh" "3dvh";
+  decl_optimizes ~prop:"border-right-width" ~held:"2cqi" ~into:"2cqi" "2cqi";
+  decl_optimizes ~prop:"border-bottom-width" ~held:"3svw" ~into:"3svw" "3svw";
+  decl_optimizes ~prop:"border-left-width" ~held:"3lvmin" ~into:"3lvmin"
+    "3lvmin";
+  decl_optimizes ~prop:"border-block-start-width" ~held:"3dvh" ~into:"3dvh"
+    "3dvh";
+  decl_optimizes ~prop:"border-inline-end-width" ~held:"2cqw" ~into:"2cqw"
+    "2cqw";
+  decl_optimizes ~prop:"border-width" ~held:"3dvh 2cqi" ~into:"3dvh 2cqi"
+    "3dvh 2cqi";
+  (* Two units with no fixed ratio leave both bounds standing: [dvh] is a
+     fraction of the viewport and [px] is absolute (CSS Values 4 sec. 6.1 and
+     6.2), so neither argument of the comparison is redundant. *)
+  check_border_width "min(3dvh,4px)";
+  check_border_width "max(3dvh,4px)";
+  check_border_width "clamp(1dvh,3dvh,4px)";
+  (* One unit does compare with itself, and a container-query length grows with
+     its multiplier, so the smaller multiple is the minimum. *)
+  check_border_width ~expected:"2cqi" "min(2cqi,3cqi)";
+  check_border_width ~expected:"4dvh" "max(3dvh,4dvh)";
+  (* A bound nothing else measures stops only its own group: [1px] and [2px]
+     stay on one scale (CSS Values 4 sec. 6.2), so they collapse. *)
+  check_border_width ~expected:"max(2px,3dvh)" "max(1px,3dvh,2px)";
   (* A zero-valued border-width collapses the unit like any other zero length
      (border-width: 0px -> 0), matching width/outline-width. Holds for the
      longhand, the logical longhand, and the 1-4 value shorthand; non-zero
