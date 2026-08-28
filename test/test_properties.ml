@@ -2810,20 +2810,26 @@ let test_conic_gradient_config () =
   neg_cursor read_conic_gradient_config "center";
   neg_cursor read_conic_gradient_config "from"
 
+(* CSS Syntax 3 sec. 4.3.3 consumes the [%] into the percentage token, so
+   whatever follows starts a fresh token and the separating space carries no
+   meaning: it elides under minify, as it already does inside polygon() and
+   animation-range. A unit ends in an ident instead ([10px 0] would re-tokenise
+   as the single dimension [10px0]), so that space stays. *)
 let test_background_position () =
   check_background_position "center";
   check_background_position "left top";
-  check_background_position ~expected:"100% 0" "right 0";
-  check_background_position ~expected:"100% -15.625rem" "right -15.625rem";
+  check_background_position ~roundtrip:true ~expected:"100%0" "right 0";
+  check_background_position ~roundtrip:true ~expected:"100%-15.625rem"
+    "right -15.625rem";
   check_background_position "right .5rem center";
-  check_background_position "50% 25%";
+  check_background_position ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_background_position "inherit";
   neg_cursor ~allow_partial:true read_background_position "invalid-position"
 
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
-  check_position_value "50% 25%";
+  check_position_value ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_position_value "inherit";
   neg_cursor ~allow_partial:true read_position_value "invalid-position"
 
