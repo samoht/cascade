@@ -932,6 +932,13 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade fmt --help` says what `--enforce-spec` gates: the vendor-prefix
+  drop, the Media Queries 4 range grammar for a media or container feature,
+  the `&` prefix on a nested selector, the `:dir()` and form-control state
+  negations, the percentage spelling of an `oklab`/`oklch` axis, the unquoted
+  multi-word font family, and the ident code points the reader accepts. It
+  described an `@supports` elision that no longer exists, so the one place a
+  user reads about the flag contradicted every other (#611)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, and `--dry-run` reports instead, ranking what survives
   by how few elements matched it. A rule goes only when the matcher has a model
