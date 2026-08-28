@@ -1871,6 +1871,21 @@ let test_border_width () =
   decl_optimizes ~prop:"border-width" ~held:"0px 1px 0 2rem"
     ~into:"0 1px 0 2rem" "0px 1px 0 2rem";
   decl_optimizes ~prop:"border-width" ~held:"2px" ~into:"2px" "2px";
+  (* Whitespace around an argument is not an argument, so the comparison still
+     reads as two bounds. *)
+  check_border_width ~expected:"max(3dvh,4px)" "max( 3dvh , 4px )";
+  (* CSS Values 4 sec. 10.2 gives [min()] / [max()] a comma-separated list of
+     [<calc-sum>] and [clamp()] exactly three arguments. An argument that is no
+     [<calc-sum>], a second bound with no comma before it, and a fourth
+     [clamp()] argument each make the function invalid, and CSS Syntax 3 sec.
+     8.2 makes an invalid value invalidate the declaration. Reading arguments up
+     to the first unreadable one and comparing those is a different function:
+     [min(3px,red,1px)] answers [3px] where the bound that decides the minimum
+     is [1px]. *)
+  neg_cursor read_border_width "max(1px,red)";
+  neg_cursor read_border_width "min(3px,red,1px)";
+  neg_cursor read_border_width "max(1px 2px)";
+  neg_cursor read_border_width "clamp(1px,2px,3px,4px)";
   neg_cursor read_border_width "invalid-width";
   neg_cursor read_border_width "-2px";
   (* negative width *)
