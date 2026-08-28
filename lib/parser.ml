@@ -127,12 +127,14 @@ let escape_ident_emit_cp buf ~needs_leading_escape u =
   else if Lexer.spec_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
   else add_hex_escape_cp buf cp
 
+(* Sec. 4.3.9 opens no ident on [-] then a digit, so the digit is escaped even
+   though [-] is ident-start and the digit is ident-continue. *)
+let escape_ident_starts_dash_digit s n =
+  n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
+
 let escape_ident_starts s n =
   let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
-  let starts_dash_digit =
-    n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
-  in
-  (starts_with_digit, starts_dash_digit)
+  (starts_with_digit, escape_ident_starts_dash_digit s n)
 
 let escape_ident_needs_leading (starts_with_digit, starts_dash_digit) i =
   (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit)
@@ -156,9 +158,12 @@ let rec ascii_ident_continue_from s n i =
 
 (* An all-ASCII ident (start byte in ident-start, rest in ident-continue)
    serialises to itself byte-for-byte, so [escape_ident]'s buffer + Uutf walk
-   would allocate nothing useful. *)
+   would allocate nothing useful. A leading [-] is ident-start, so the
+   dash-digit shape passes that scan and has to be ruled out on its own. *)
 let escape_ident_needs_no_escape s n =
-  n = 0 || (Syntax.is_ascii_ident_start s.[0] && ascii_ident_continue_from s n 1)
+  (not (escape_ident_starts_dash_digit s n))
+  && (n = 0
+     || (Syntax.is_ascii_ident_start s.[0] && ascii_ident_continue_from s n 1))
 
 let escape_ident s =
   let n = String.length s in
