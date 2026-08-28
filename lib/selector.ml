@@ -331,10 +331,11 @@ let read_lang_content t =
   Lang langs
 
 let read_dir_content t =
-  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 sec. 7.1. *)
+  (* Selectors 4 sec. 7.1: the argument is a single identifier, and one other
+     than [ltr] or [rtl] "is not invalid, but does not match anything". Keeping
+     it verbatim also leaves room for a directionality a later markup spec
+     defines. *)
   let dir = Cursor.ident t in
-  if dir <> "ltr" && dir <> "rtl" then
-    Cursor.err_invalid t (":dir() expects ltr or rtl, got: " ^ dir);
   ensure_call_done t "dir";
   Dir dir
 

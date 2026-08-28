@@ -174,6 +174,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `:dir()` accepts any single identifier, so `:dir(auto)` is read and written
+  back instead of taking its whole rule down. CSS Selectors 4 sec. 7.1 says a
+  value other than `ltr` or `rtl` "is not invalid, but does not match
+  anything", which through `:not()` is the difference between a rule that
+  matches every element and no rule at all (#594)
 - `stroke-width` reads a bare number, so `stroke-width: 1.5` round-trips
   through cascade's own parser instead of being printed and then refused. SVG 2
   sec. 13.5.3 gives it `<length-percentage> | <number>`, where a number is a

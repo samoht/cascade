@@ -230,7 +230,7 @@ type t =
   | Nth_last_of_type of nth * t list option (* :nth-last-of-type(An+B [of S]) *)
   | Nth_col of nth (* :nth-col(An+B) *)
   | Nth_last_col of nth (* :nth-last-col(An+B) *)
-  | Dir of string (* :dir(ltr|rtl) *)
+  | Dir of string (* :dir(<ident>) *)
   | Lang of string list (* :lang(en|fr|...) - comma-separated language codes *)
   | Host of t list option (* :host or :host(selector) *)
   | Host_context of t list (* :host-context(selector) *)
