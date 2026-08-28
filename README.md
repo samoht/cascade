@@ -90,8 +90,8 @@ cat style.css | cascade -                                          # read stdin
 
 | Flag | Purpose |
 |---|---|
-| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing (capped at 5 iterations), so the output is a fixed point: rule-order canonicalisation can expose a merge a single pass would miss. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at roughly 10-30x the wall clock. Has no effect without `--minify`. |
+| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Also sorts each rule's declarations into a canonical cross-rule order (keeping cascade-significant pairs in place) so gzip back-references line up. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, and the author's `:not(:dir(ltr))` and `input:not(:enabled)`. Has no effect without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
@@ -99,7 +99,7 @@ cat style.css | cascade -                                          # read stdin
 | `--inline-imports` | Resolve `@import` against files relative to the input. Closed-world: assumes you control file resolution. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation of the variables it inlines. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
-| `--profile` | Print per-pass timings of the optimiser to stderr after the run. Useful to triage which pass dominates on a slow input. Has no effect without `--minify`. |
+| `--profile` | Print the optimiser's global factoring fixpoint to stderr after the run: one row per iteration with the rules, bytes and time on each side, then the committed savings and the preflight's own counters. Useful to triage a slow input. Has no effect without `--minify`. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
 
 ### Size
@@ -166,9 +166,9 @@ is the whole of the analysis: reading "no model" as "does not match" is how a
 dead-rule check deletes a live rule.
 
 - A selector outside what the matcher models (`:hover`, a pseudo-element,
-  `:nth-child()`) is kept and never counted as unused, and so is a selector
-  list holding one such branch. Every branch of a fully modelled list is judged
-  on its own, so `.card, .gone` keeps `.card` and drops `.gone`.
+  `:lang()`) is kept and never counted as unused, and so is a selector list
+  holding one such branch. Every branch of a fully modelled list is judged on
+  its own, so `.card, .gone` keeps `.card` and drops `.gone`.
 - A `@media`, `@supports` or `@container` condition is never evaluated. It asks
   about a device, a user agent or a layout container, none of which a document
   carries, so the rules inside are judged by their own selectors alone.
@@ -267,8 +267,8 @@ Rule-level rewrites:
   source-order key.
 - Shorthands with unordered components serialise in cascade's canonical order
   (`animation:1s slide` -> `animation:slide 1s`).
-- Dead-rule elimination, `@layer` consolidation, and `@media`/`@container`
-  flattening when the condition is satisfied for the evergreen target.
+- Dead-rule elimination, `@layer` consolidation, and the merging of `@media`,
+  `@supports` and `@container` blocks that carry the same condition.
 - A nested `@supports` condition is decided against the conditions enclosing it:
   a guard they already answer yes loses its wrapper, a guard they contradict
   takes its block with it, and anything else narrows to what they leave to ask.
@@ -390,7 +390,7 @@ optimisation; it is not a complete web-platform runtime.
 | [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting, specificity |
 | [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
 | [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colours, 15 colour spaces |
-| [Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/) | `@media` (recovering a failed condition parse as `not all`), `@supports` property and selector checks, `@when` / `@else`, `@supports-condition` |
+| [Conditional Rules Level 5](https://www.w3.org/TR/css-conditional-5/) | `@media` (a nested condition that fails to parse recovering as `not all`), `@supports` property and selector checks, `@when` / `@else`, `@supports-condition` |
 | [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimiser |
 | [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
 | [Container Queries Level 5](https://www.w3.org/TR/css-conditional-5/#container-queries) | `@container` with size queries and typed `style()` / `scroll-state()` queries, including range operators |
@@ -496,17 +496,17 @@ happens to reference it would confine and shadow it.
 
 ### Parsing modes
 
-`Css.of_string ~strict:false s` always returns
-`Ok { stylesheet; warnings }`, with `warnings` listing recovered syntax and
-declaration issues. `~strict:true` errors when the lenient parse would have
-warned. When both succeed, their minified outputs are identical.
+`Css.of_string ~strict:false s` returns `Ok { stylesheet; warnings }`, with
+`warnings` listing recovered syntax and declaration issues. `~strict:true`
+errors when the lenient parse would have warned. When both succeed, their
+minified outputs are identical.
 
 ### Small runtime footprint
 
-The core `cascade` library links only
-[uutf](https://erratique.ch/software/uutf) and the OCaml runtime; it does not
-pull `fmt`, so js_of_ocaml embedders stay lean. A local jsoo build that
-parses and minifies one stylesheet compresses to under 200 KiB
+The core `cascade` library links
+[uutf](https://erratique.ch/software/uutf), `uri`, `psq`, `logs` and `unix`;
+it does not pull `fmt`, so js_of_ocaml embedders stay lean. A local jsoo
+build that parses and minifies one stylesheet compresses to under 200 KiB
 (`--opt 3 --no-source-map`, size-oriented runtime flags).
 
 ## Development and testing
