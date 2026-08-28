@@ -3820,8 +3820,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Margin_right -> pp pp_length
   | Margin_top -> pp pp_length
   | Margin_bottom -> pp pp_length
-  | Margin_inline -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Margin_block -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Margin_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
+  | Margin_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Margin_block_start -> pp pp_length
   | Margin_block_end -> pp pp_length
   | Gap -> pp pp_gap
