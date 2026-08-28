@@ -103,3 +103,22 @@ let _ : string -> bool = Syntax.is_ident
    optimizer folds by. *)
 let _ : string -> bool = Properties.is_math_function
 let _ : string -> bool = Properties.is_color_function
+
+(* A registration read back at its syntax carries a value typed by it, so
+   assigning that value is one call and not a match over every syntax arm with
+   a printer per arm. The existential is the point: the name pins nothing
+   unless it takes the syntax and the value the same pack hands out. *)
+let _ : Css.statement -> Css.declaration option =
+ fun stmt ->
+  match Css.as_property stmt with
+  | Some (Css.Property_info { name; syntax; initial_value = Some v; _ }) ->
+      Some (Css.Variables.typed_custom_property name syntax v)
+  | Some (Css.Property_info { initial_value = None; _ }) | None -> None
+
+let _ :
+    ?layer:string ->
+    string ->
+    Values.length Css.Variables.syntax ->
+    Values.length ->
+    Css.declaration =
+  Css.Variables.typed_custom_property

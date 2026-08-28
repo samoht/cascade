@@ -421,6 +421,57 @@ let test_custom_property_roundtrip () =
       Alcotest.(check string) "correct name" "--primary" name
   | None -> Alcotest.fail "Expected custom declaration"
 
+let check_typed_custom name expected syntax value =
+  Alcotest.(check string)
+    name expected
+    (Css.Declaration.to_string ~minify:true
+       (typed_custom_property name syntax value))
+
+let spec_typed_custom_property () =
+  (* CSS Variables 1 sec. 2 substitutes the declared token stream verbatim, so
+     the value has to spell its own type. A unitless 0 is a <number> token
+     there, and CSS Values 4 sec. 10.1 rejects a <number> added to a <length>,
+     so the zero keeps its unit. *)
+  check_typed_custom "--w" "--w:0px" Length (Px 0.);
+  (* The multipliers of CSS Values 4 sec. 2.3: [+] repeats space-separated, [#]
+     comma-separated. *)
+  check_typed_custom "--edges" "--edges:10px 20px" (Plus Length)
+    [ Px 10.; Px 20. ];
+  check_typed_custom "--stops" "--stops:1px,2px" (Hash Length) [ Px 1.; Px 2. ];
+  (* Unquoted, CSS Syntax 3 sec. 4.3.1 reads [a b] as two idents, which is not
+     the one <string> the syntax names. *)
+  check_typed_custom "--label" "--label:\"a b\"" String "a b";
+  (* A disjunction writes the arm it holds, not both. *)
+  check_typed_custom "--edge" "--edge:auto"
+    (Or (Length, Ident_keyword "auto"))
+    (Either.Right ());
+  Alcotest.(check (option string))
+    "layer travels with the declaration" (Some "theme")
+    (Css.Declaration.custom_declaration_layer
+       (typed_custom_property ~layer:"theme" "--w" Length (Px 1.)));
+  (* CSS Variables 1 sec. 2 names a custom property with a <dashed-ident>, the
+     same check Declaration.custom_property makes. *)
+  Alcotest.check_raises "undashed name is no custom property"
+    (Failure "custom_property: w: not a custom-property name") (fun () ->
+      ignore (typed_custom_property "w" Length (Px 1.)))
+
+let spec_typed_custom_property_registration () =
+  (* A registration read back at its syntax assigns without a printer per arm,
+     and writes the value the registration registers. *)
+  let registration =
+    Css.property ~name:"--w" Length ~initial_value:(Px 0.) ~inherits:false ()
+  in
+  let declared =
+    match List.map Css.as_property registration with
+    | [ Some (Css.Property_info { name; syntax; initial_value = Some v; _ }) ]
+      ->
+        Css.Declaration.to_string ~minify:true
+          (typed_custom_property name syntax v)
+    | _ -> Alcotest.fail "expected one @property registration"
+  in
+  Alcotest.(check string)
+    "declares the registered initial value" "--w:0px" declared
+
 let test_any_syntax () =
   (* Test syntax parsing according to CSS @property spec
      https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax *)
@@ -608,6 +659,10 @@ let tests =
     ("custom declaration name", `Quick, test_custom_declaration_name);
     ("compare vars by name", `Quick, test_compare_vars_by_name);
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
+    ("spec typed custom property", `Quick, spec_typed_custom_property);
+    ( "spec typed custom property registration",
+      `Quick,
+      spec_typed_custom_property_registration );
     ("syntax", `Quick, test_syntax);
     ("read_reference", `Quick, test_read_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
