@@ -446,6 +446,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` drops the space between the values of `margin`, `padding`,
+  `inset` and `border-radius` (and `border-color`, which shares the same
+  printer) at a `%` or `)` boundary, the token-boundary rule already applied
+  to `background-position` (#614): `margin:10% 0` prints as `margin:10%0`. A
+  value ending in a unit still keeps its space, since `10px 0` would
+  re-tokenise as `10px0` (#619)
 - `--minify` drops the space between the components of a position value, so
   `background-position:100% 0` prints as `background-position:100%0`. CSS
   Syntax 3 sec. 4.3.3 consumes the `%` into the percentage token, so whatever
