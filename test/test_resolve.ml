@@ -6,17 +6,19 @@ type tree = {
   tname : string;
   tid : string option;
   tclasses : string list;
+  tattrs : (string * string) list;
   ttext : string list;
   mutable tparent : tree option;
   tchildren : tree list;
 }
 
-let elt ?id ?(classes = []) ?(text = []) name children =
+let elt ?id ?(classes = []) ?(attrs = []) ?(text = []) name children =
   let t =
     {
       tname = name;
       tid = id;
       tclasses = classes;
+      tattrs = attrs;
       ttext = text;
       tparent = None;
       tchildren = children;
@@ -32,7 +34,7 @@ module Node = struct
   let name t = Some t.tname
   let id t = t.tid
   let classes t = t.tclasses
-  let attribute _ _ = None
+  let attribute t k = List.assoc_opt k t.tattrs
   let parent t = t.tparent
   let children t = t.tchildren
   let text_children t = t.ttext
@@ -96,7 +98,7 @@ let test_unsupported_is_not_no_match () =
   answers "a modelled miss" Resolve.No_match "div" s2;
   answers "stateful" Resolve.Unsupported "span:hover" s2;
   answers "pseudo-element" Resolve.Unsupported "span::before" s2;
-  answers "attribute case flag" Resolve.Unsupported "[id=\"S2\" i]" s2;
+  answers "a case flag on a presence test" Resolve.Unsupported "[id i]" s2;
   answers "namespaced type" Resolve.Unsupported "*|span" s2;
   answers "shadow-piercing combinator" Resolve.Unsupported "div>>>span" s2;
   (* One unsupported part carries the whole selector, whichever side of the
@@ -119,7 +121,15 @@ let test_supported_needs_no_node () =
   check "attribute" true "[data-k=\"X\"]";
   check "structural" true "p:empty";
   check "descendant" true "div span";
-  check "attribute case flag" false "[data-k=\"X\" i]";
+  check "attribute case flag" true "[data-k=\"X\" i]";
+  check "child-indexed" true ":nth-child(2n+1)";
+  check "child-indexed over an of S" true ":nth-child(2 of .a)";
+  check "typed child-indexed" true ":nth-of-type(2)";
+  check "relational" true ":has(> .a)";
+  check "the reference element" true ":scope";
+  check "a case flag on a presence test" false "[data-k i]";
+  check "an of S on :nth-of-type" false ":nth-of-type(1 of p)";
+  check "the content language" false ":lang(en)";
   check "namespaced attribute" false "[svg|href]";
   check "shadow-piercing combinator" false "div>>>span";
   check "stateful" false ":hover";
@@ -138,6 +148,340 @@ let test_empty_counts_text_children () =
     (elt ~text:[ " "; "text" ] "p" []);
   no "a no-break space" ":empty" (elt ~text:[ "\u{00a0}" ] "p" []);
   no "an element child" ":empty" (elt "p" [ elt "span" [] ])
+
+(* A spec sentence about a child-indexed pseudo-class names a set of positions
+   ("the 2nd, 4th, 6th, etc elements"), so pin the whole set rather than probe
+   it: [indices s children] is the 1-based positions of [children] that [s]
+   matches. *)
+let indices s children =
+  List.mapi (fun i n -> (i + 1, n)) children
+  |> List.filter_map (fun (i, n) ->
+      if R.matches (sel s) n then Some i else None)
+
+let of_ten = List.init 10 (fun i -> i + 1)
+let items = List.map (fun _ -> elt "li" []) of_ten
+let _ : tree = elt "ol" items
+let item i = List.nth items (i - 1)
+
+(* selectors-4 sec. 13.3.1: [:nth-child(An+B)] represents the elements that are
+   among the An+Bth of their inclusive siblings, where An+B "represents any
+   index i = An + B for any non-negative integer n" and the list is 1-indexed
+   (sec. 13). The sets below are the spec's own: [2n+1] takes the first child
+   "because when n=0 the expression evaluates to 1", [even] "represents the 2nd,
+   4th, 6th, etc elements", [10n-1] "the 9th, 19th, 29th, etc elements", and
+   [10n+9] is the "Same". [odd] is [2n+1] and [even] is [2n] per the An+B
+   microsyntax (css-syntax-3 sec. 6). *)
+let test_nth_child_indices () =
+  let check name expected s =
+    Alcotest.(check (list int)) name expected (indices s items)
+  in
+  check "the index is 1-based" [ 1 ] ":nth-child(1)";
+  check "2n+1 takes the first child" [ 1; 3; 5; 7; 9 ] ":nth-child(2n+1)";
+  check "odd is 2n+1" [ 1; 3; 5; 7; 9 ] ":nth-child(odd)";
+  check "even is the 2nd, 4th, 6th" [ 2; 4; 6; 8; 10 ] ":nth-child(even)";
+  check "2n is even" [ 2; 4; 6; 8; 10 ] ":nth-child(2n)";
+  (* n=0 gives -1, which is no index at all, so 10n-1 starts at the 9th *)
+  check "a negative B skips the indices below 1" [ 9 ] ":nth-child(10n-1)";
+  check "10n+9 names the same set" [ 9 ] ":nth-child(10n+9)";
+  check "A=0 is the single index B" [ 3 ] ":nth-child(0n+3)";
+  check "B alone spells it" [ 3 ] ":nth-child(3)";
+  check "index 0 is no index" [] ":nth-child(0)";
+  check "a negative A counts down to 1" [ 1; 2; 3 ] ":nth-child(-n+3)";
+  check "n alone takes every index" of_ten ":nth-child(n)";
+  check "n+4 takes the rest" [ 4; 5; 6; 7; 8; 9; 10 ] ":nth-child(n+4)"
+
+(* selectors-4 sec. 13.3.2: the same list "counting backwards from the end". The
+   spec's [tr:nth-last-child(-n+2)] "represents the two last rows of an HTML
+   table". *)
+let test_nth_last_child_indices () =
+  let check name expected s =
+    Alcotest.(check (list int)) name expected (indices s items)
+  in
+  check "the last one" [ 10 ] ":nth-last-child(1)";
+  check "the two last ones" [ 9; 10 ] ":nth-last-child(-n+2)";
+  check "odd from the end" [ 2; 4; 6; 8; 10 ] ":nth-last-child(odd)";
+  check "10n-1 from the end" [ 2 ] ":nth-last-child(10n-1)"
+
+(* selectors-4 sec. 13.3: these pseudo-classes "have been rephrased to refer to
+   an element's relative index amongst its siblings", since there was "no reason
+   to exclude them from matching elements without parents". A parentless element
+   is the whole list, so it is both the first and the last of it. *)
+let test_child_index_without_a_parent () =
+  let orphan = elt "p" [] in
+  yes "the first of its inclusive siblings" ":nth-child(1)" orphan;
+  yes "and the last" ":nth-last-child(1)" orphan;
+  yes "so the only one" ":only-child" orphan;
+  no "not the second" ":nth-child(2)" orphan;
+  yes "a fixture root indexes the same way" ":nth-child(1)" section
+
+(* selectors-4 sec. 13: "Standalone text and other non-element nodes are not
+   counted when calculating the position of an element in the list of children
+   of its parent." A {!NODE} keeps text out of [children], so text around an
+   element leaves its index alone. *)
+let test_child_index_counts_elements_only () =
+  let bold = elt "b" [] and italic = elt "i" [] in
+  let _ : tree =
+    elt ~text:[ "lead "; " middle "; " tail" ] "p" [ bold; italic ]
+  in
+  yes "the first element child" ":nth-child(1)" bold;
+  yes "the second element child" ":nth-child(2)" italic
+
+(* selectors-4 sec. 13.3.1: with [of S] the list is "composed of their inclusive
+   siblings that match the selector list S", so [:nth-child(-n+3 of
+   li.important)] "matches the first three 'important' list items". The spec
+   contrasts it with moving the selector out of the function: [li.important:
+   nth-child(-n+3)] "instead just selects the first three children if they also
+   happen to be 'important' list items". *)
+let important = List.init 4 (fun _ -> elt ~classes:[ "important" ] "li" [])
+let plain = List.init 2 (fun _ -> elt "li" [])
+
+let important_items =
+  match (important, plain) with
+  | [ i2; i4; i5; i6 ], [ p1; p3 ] -> [ p1; i2; p3; i4; i5; i6 ]
+  | _ -> assert false
+
+let _ : tree = elt "ol" important_items
+
+(* The [hidden] rows of the zebra-striping example in the same section:
+   [tr:nth-child(even of :not([hidden]))] keeps "a proper alternating background
+   regardless of which rows are hidden". *)
+let rows =
+  List.mapi
+    (fun i _ ->
+      let attrs = if i = 2 then [ ("hidden", "") ] else [] in
+      elt ~attrs "tr" [])
+    [ 1; 2; 3; 4; 5; 6 ]
+
+let _ : tree = elt "tbody" rows
+
+let test_nth_child_of_selector () =
+  let check name expected s children =
+    Alcotest.(check (list int)) name expected (indices s children)
+  in
+  check "the first three important items" [ 2; 4; 5 ]
+    ":nth-child(-n+3 of li.important)" important_items;
+  check "the important ones among the first three" [ 2 ]
+    "li.important:nth-child(-n+3)" important_items;
+  check "even among the rows that are not hidden" [ 2; 5 ]
+    "tr:nth-child(even of :not([hidden]))" rows;
+  check "even among all the rows" [ 2; 4; 6 ] "tr:nth-child(even)" rows;
+  check "counted backwards over the same list" [ 5; 6 ]
+    ":nth-last-child(-n+2 of li.important)" important_items
+
+(* selectors-4 sec. 13.4: the typed child-indexed pseudo-classes "resolve based
+   on an element's index among elements of the same type (tag name) in their
+   sibling list". Sec. 13.4.3 makes [:first-of-type] the same element as
+   [:nth-of-type(1)], sec. 13.4.4 makes [:last-of-type] the same as
+   [:nth-last-of-type(1)], and sec. 13.4.5 makes [:only-of-type] the same as
+   [:first-of-type:last-of-type]. *)
+let typed_children =
+  [
+    elt "h2" []; elt "p" []; elt "h2" []; elt "span" []; elt "h2" []; elt "p" [];
+  ]
+
+let _ : tree = elt "div" typed_children
+
+let test_of_type_indices () =
+  let check name expected s =
+    Alcotest.(check (list int)) name expected (indices s typed_children)
+  in
+  check "the first h2" [ 1 ] "h2:first-of-type";
+  check "the last h2" [ 5 ] "h2:last-of-type";
+  check "the second h2" [ 3 ] "h2:nth-of-type(2)";
+  check "the second h2 from the end" [ 3 ] "h2:nth-last-of-type(2)";
+  check "the span is the only one of its type" [ 4 ] ":only-of-type";
+  check "no h2 is" [] "h2:only-of-type";
+  (* sec. 13.4.1: "img:nth-of-type(2) is equivalent to *:nth-child(2 of img)" *)
+  check "the same element as :nth-child(2 of h2)" [ 3 ] ":nth-child(2 of h2)";
+  (* sec. 13.4.2 gives both spellings of "all h2 children except the first and
+     last" *)
+  check "every h2 but the first and the last" [ 3 ]
+    "h2:nth-of-type(n+2):nth-last-of-type(n+2)";
+  check "the same set through :not" [ 3 ]
+    "h2:not(:first-of-type):not(:last-of-type)"
+
+(* An element with no parent is the whole list of its inclusive siblings here
+   too, so it is the only one of its type. *)
+let test_of_type_without_a_parent () =
+  let orphan = elt "p" [] in
+  yes "first of its type" ":first-of-type" orphan;
+  yes "last of its type" ":last-of-type" orphan;
+  yes "only of its type" ":only-of-type" orphan
+
+(* The type comparison is the type selector's own, which reads a name ASCII
+   case-insensitively, so sec. 13.4.1's equivalence between [:nth-of-type()] and
+   [:nth-child(An+B of <type>)] holds whichever case the tree spells the tag
+   in. *)
+let test_of_type_reads_the_name_case_insensitively () =
+  let upper = elt "DIV" [] and lower = elt "div" [] in
+  let _ : tree = elt "section" [ upper; lower ] in
+  yes "the first of the two" ":first-of-type" upper;
+  no "so the second is not" ":first-of-type" lower;
+  no "and neither is alone" ":only-of-type" upper;
+  yes "as :nth-child(2 of div) agrees" ":nth-child(2 of div)" lower
+
+(* selectors-4 sec. 4.5: [:has()] "represents an element if any of the relative
+   selectors would match at least one element when anchored against this
+   element". A relative selector "begins with a combinator, with a selector
+   representing the anchor element implied at the start"; with no combinator the
+   descendant combinator is implied (sec. 3.4). *)
+let nested_img = elt "img" []
+let link_direct = elt "a" [ elt "img" [] ]
+let link_nested = elt "a" [ elt "span" [ nested_img ] ]
+let link_none = elt "a" [ elt "span" [] ]
+let links = elt "nav" [ link_direct; link_nested; link_none ]
+
+let test_has_descendant_and_child () =
+  (* sec. 4.5: "a:has(> img)" "matches only <a> elements that contain an <img>
+     child" *)
+  yes "an img child" "a:has(> img)" link_direct;
+  no "a grandchild is not a child" "a:has(> img)" link_nested;
+  no "no img at all" "a:has(> img)" link_none;
+  (* with no combinator the descendant combinator is implied *)
+  yes "an img child is a descendant" "a:has(img)" link_direct;
+  yes "so is a grandchild" "a:has(img)" link_nested;
+  no "still no img" "a:has(img)" link_none;
+  (* the argument is a complex selector, anchored at the subject *)
+  yes "a child span holding an img" "a:has(> span img)" link_nested;
+  no "the img is not under a span" "a:has(> span img)" link_direct;
+  (* the anchor is the subject, not an ancestor of it *)
+  no "an ancestor of the match is not the anchor" "nav:has(> img)" links
+
+let dt_first = elt "dt" []
+let dt_second = elt "dt" []
+let dd_last = elt "dd" []
+let _ : tree = elt "dl" [ dt_first; dt_second; dd_last ]
+
+let test_has_sibling_combinators () =
+  (* sec. 4.5: "dt:has(+ dt)" "matches a <dt> element immediately followed by
+     another <dt> element" *)
+  yes "followed immediately by a dt" "dt:has(+ dt)" dt_first;
+  no "followed immediately by a dd" "dt:has(+ dt)" dt_second;
+  yes "a dd follows somewhere" "dt:has(~ dd)" dt_first;
+  yes "and follows this one too" "dt:has(~ dd)" dt_second;
+  yes "a dt follows this one" "dt:has(~ dt)" dt_first;
+  no "nothing follows the last dt" "dt:has(~ dt)" dt_second;
+  no "the dd has no dt after it" "dd:has(~ dt)" dd_last
+
+(* sec. 4.5 spells out that the order of [:not()] and [:has()] matters:
+   "section:not(:has(h1, h2, h3, h4, h5, h6))" "matches <section> elements that
+   don't contain any heading elements", while swapping the nesting "would result
+   in matching any <section> element which contains anything that's not a
+   heading element". *)
+let sec_bare = elt "section" []
+let sec_heading = elt "section" [ elt "h1" [] ]
+let sec_para = elt "section" [ elt "p" [] ]
+let _ : tree = elt "main" [ sec_bare; sec_heading; sec_para ]
+let headings = "h1, h2, h3, h4, h5, h6"
+
+let test_has_ordering_against_not () =
+  let holds_no_heading =
+    String.concat "" [ "section:not(:has("; headings; "))" ]
+  in
+  let holds_a_non_heading =
+    String.concat "" [ "section:has(:not("; headings; "))" ]
+  in
+  yes "an empty section holds no heading" holds_no_heading sec_bare;
+  no "this one holds one" holds_no_heading sec_heading;
+  yes "a paragraph is not a heading" holds_no_heading sec_para;
+  no "an empty section holds nothing at all" holds_a_non_heading sec_bare;
+  no "this one holds only a heading" holds_a_non_heading sec_heading;
+  yes "this one holds a paragraph" holds_a_non_heading sec_para
+
+(* selectors-4 sec. 6.3: the [i] identifier makes a UA "match the attribute's
+   value ASCII case-insensitively", and [s] makes it match "case-sensitively,
+   with 'identical to' semantics". With no flag the case-sensitivity "depends on
+   the document language", which a {!NODE} does not carry, so the value is read
+   as written. *)
+let framed =
+  elt
+    ~attrs:[ ("frame", "HSIDES"); ("data-k", "GR\u{00dc}N"); ("lang", "EN-GB") ]
+    "table" []
+
+let type_lower = elt ~attrs:[ ("type", "a") ] "ol" []
+let type_upper = elt ~attrs:[ ("type", "A") ] "ol" []
+
+let test_attribute_case_flags () =
+  (* sec. 6.3's own example: [frame=hsides i] styles the attribute "whether that
+     value is represented as hsides, HSIDES, hSides, etc." *)
+  yes "i folds the case" "[frame=hsides i]" framed;
+  no "without a flag the value is read as written" "[frame=hsides]" framed;
+  no "s is identical-to" "[frame=hsides s]" framed;
+  yes "and the written value is identical to itself" "[frame=HSIDES s]" framed;
+  (* "ASCII case insensitivity allows green to match GREEN. However, gruen [with
+     an umlaut] would not match GRUEN [with an umlaut]." *)
+  no "i folds ASCII only" "[data-k=\"gr\u{00fc}n\" i]" framed;
+  (* the flag applies to every matcher, not just [=] *)
+  yes "a prefix" "[frame^=hs i]" framed;
+  yes "a suffix" "[frame$=des i]" framed;
+  yes "a substring" "[frame*=sid i]" framed;
+  yes "a hyphen list" "[lang|=en i]" framed;
+  (* sec. 6.3's second example: [type="a" s] and [type="A" s] are two rules *)
+  yes "s keeps the two apart" "[type=\"a\" s]" type_lower;
+  no "the other way round" "[type=\"a\" s]" type_upper;
+  yes "and back" "[type=\"A\" s]" type_upper;
+  yes "i puts them together" "[type=\"a\" i]" type_lower;
+  yes "both ways" "[type=\"a\" i]" type_upper
+
+(* selectors-4 sec. 8.4: ":scope represents this scoping root", and "if there is
+   no scoping root then :scope represents the root of the tree the element is in
+   ... or :root otherwise". Nothing hands this matcher a scoping root and it has
+   no shadow tree, so [:scope] is [:root]. *)
+let test_scope_is_the_root () =
+  yes "the root of the tree" ":scope" section;
+  no "not an element inside it" ":scope" s1;
+  yes "and combines like :root" ":scope > div" a;
+  no "a child, not a descendant" ":scope > span" s1
+
+(* [Unsupported] beats every other answer in every combining form, so a caller
+   never reads a gap in the model as a rule that does not apply. Each selector
+   here is asked against a node the supported part of it misses, so a matcher
+   that settled on the first failing part would answer [No_match] instead. *)
+let test_unsupported_beats_the_structural_forms () =
+  let leaf = elt "p" [] in
+  answers "a stateful :has argument" Resolve.Unsupported ":has(:hover)"
+    link_direct;
+  answers "a stateful relative :has argument" Resolve.Unsupported
+    ":has(> :hover)" link_direct;
+  answers "no candidate to test it against" Resolve.Unsupported ":has(:hover)"
+    leaf;
+  answers "inside :not" Resolve.Unsupported ":not(:has(:hover))" link_direct;
+  answers "inside :is" Resolve.Unsupported ":is(:has(:hover))" link_direct;
+  answers "beside a type that already missed" Resolve.Unsupported
+    "p:has(:hover)" link_direct;
+  answers "a branch of a list" Resolve.Unsupported ".x, :has(:hover)"
+    link_direct;
+  answers "a stateful of S" Resolve.Unsupported ":nth-child(1 of :hover)"
+    (item 1);
+  answers "counting backwards" Resolve.Unsupported
+    ":nth-last-child(1 of :hover)" (item 1);
+  answers "one stateful branch of an of S" Resolve.Unsupported
+    ":nth-child(1 of .x, :hover)" (item 1);
+  answers "a namespace in an of S" Resolve.Unsupported ":nth-child(1 of *|li)"
+    (item 1);
+  answers "a namespace in a :has argument" Resolve.Unsupported ":has(*|img)"
+    link_direct;
+  (* sec. 13.4.1 gives :nth-of-type() an An+B and nothing else *)
+  answers "an of S on :nth-of-type" Resolve.Unsupported ":nth-of-type(1 of p)"
+    (item 1);
+  (* sec. 16: the modifier follows a matcher and a value *)
+  answers "a case flag on a presence test" Resolve.Unsupported "[frame i]"
+    framed;
+  (* the content language is the document's to define, not the tree's *)
+  answers ":lang" Resolve.Unsupported ":lang(en)" framed
+
+(* The other half of the same property: a form the matcher does model answers
+   [No_match] rather than hedging, even where it has nothing to look at. *)
+let test_the_new_forms_answer_no_match () =
+  let leaf = elt "p" [] in
+  answers "an empty subtree is a miss" Resolve.No_match ":has(> img)" leaf;
+  answers "so is one with no sibling after it" Resolve.No_match ":has(+ p)" leaf;
+  answers "an index nothing reaches" Resolve.No_match ":nth-child(0)" (item 1);
+  answers "an of S the node itself misses" Resolve.No_match
+    ":nth-child(1 of .absent)" (item 1);
+  answers "a type with no second of its kind" Resolve.No_match
+    "span:nth-of-type(2)"
+    (List.nth typed_children 3)
 
 let sheet_of css =
   match Css.of_string css with
@@ -426,6 +770,33 @@ let suite =
         test_supported_needs_no_node;
       Alcotest.test_case "empty counts text children" `Quick
         test_empty_counts_text_children;
+      Alcotest.test_case "nth-child indexes from one" `Quick
+        test_nth_child_indices;
+      Alcotest.test_case "nth-last-child counts from the end" `Quick
+        test_nth_last_child_indices;
+      Alcotest.test_case "a child index needs no parent" `Quick
+        test_child_index_without_a_parent;
+      Alcotest.test_case "a child index counts elements only" `Quick
+        test_child_index_counts_elements_only;
+      Alcotest.test_case "of S filters the sibling list" `Quick
+        test_nth_child_of_selector;
+      Alcotest.test_case "of-type indexes within the type" `Quick
+        test_of_type_indices;
+      Alcotest.test_case "an of-type index needs no parent" `Quick
+        test_of_type_without_a_parent;
+      Alcotest.test_case "of-type reads the name case-insensitively" `Quick
+        test_of_type_reads_the_name_case_insensitively;
+      Alcotest.test_case "has over descendants and children" `Quick
+        test_has_descendant_and_child;
+      Alcotest.test_case "has over siblings" `Quick test_has_sibling_combinators;
+      Alcotest.test_case "has and not do not commute" `Quick
+        test_has_ordering_against_not;
+      Alcotest.test_case "attribute case flags" `Quick test_attribute_case_flags;
+      Alcotest.test_case "scope is the root" `Quick test_scope_is_the_root;
+      Alcotest.test_case "unsupported beats the structural forms" `Quick
+        test_unsupported_beats_the_structural_forms;
+      Alcotest.test_case "the structural forms answer no-match" `Quick
+        test_the_new_forms_answer_no_match;
       Alcotest.test_case "resolve applies the cascade" `Quick
         test_resolve_cascade;
       Alcotest.test_case "nested layer names order as a tree" `Quick
