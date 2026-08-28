@@ -181,6 +181,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An argument a border width comparison cannot read invalidates the
+  declaration. The reader stopped at the first such argument and compared the
+  ones before it, so `border-width: max(1px, red)` became `1px` and
+  `border-width: min(3px, red, 1px)` became `3px`, a narrower comparison than
+  the one written and one an author never asked for; `margin` dropped both
+  already. CSS Values 4 sec. 10.2 gives `min()` and `max()` a list of
+  `<calc-sum>` and `clamp()` three arguments, and CSS Syntax 3 sec. 8.2 makes
+  an invalid value invalidate the declaration. The four physical longhands,
+  their logical counterparts, the 1-4 value shorthand and the width slot of
+  `border` all read through that reader (#617)
 - An at-rule or function name written in another case names what it spells.
   CSS Values 4 sec. 4.1 makes both of them keywords, so `@MEDIA`,
   `@Font-Face`, `RGB()`, `color-mix(IN srgb, ...)`, `background: URL("a.png")`,
