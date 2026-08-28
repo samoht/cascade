@@ -4524,6 +4524,44 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   let sheet = interleave bangs rule_ends sheet in
   (sheet, out.warnings @ typed_warnings)
 
+(** {1 Unknown At-Rule Construction} *)
+
+(* An at-rule cascade has no grammar for carries its parts as raw text, so the
+   constructor has to answer for text that ends the at-rule before its parts do:
+   CSS Syntax 3 sec. 5.5.2 ends the prelude at the first top-level [;] or [{],
+   sec. 5.5.9 ends the block at the closer matching its opener, sec. 4.3.2 runs
+   an unclosed [/*] to EOF, and sec. 4.3.7 lets a trailing backslash escape the
+   closer written after it. Enumerating those boundaries re-derives the
+   tokenizer and misses whichever one is not on the list, so read the parts back
+   instead: this sits after the parser because that read is the check.
+
+   A statement is whole when the text it prints to reads back as one unknown
+   at-rule of the same name printing that same text. Nothing else is required of
+   it - the printer's own separator before an escaped closer moves a byte the
+   caller did not write, and that byte is what keeps the at-rule closing where
+   the caller meant it to. *)
+let unknown_at_rule ~name ~prelude ?block () =
+  let printed statement = to_string ~minify:true [ statement ] in
+  let text = printed (Unknown_at_rule { name; prelude; block }) in
+  let reject reason =
+    let at_rule = String.concat "" [ "@"; name ] in
+    Error (Error.bad_condition Loc.dummy ~at_rule ~reason)
+  in
+  let read_back =
+    (* A name cascade does have a grammar for reads back as that at-rule and not
+       as this one, so [~name:"media"] is refused here rather than printed as a
+       statement whose type disagrees with the sheet it prints to. *)
+    match fst (parse_stylesheet_partial text) with
+    | [ (Unknown_at_rule at as statement) ] when String.equal at.name name ->
+        Option.Some statement
+    | _ | (exception Error.Parse_error _) -> Option.None
+  in
+  match read_back with
+  | Option.None -> reject "the parts do not read back as one at-rule"
+  | Option.Some statement ->
+      if String.equal (printed statement) text then Ok statement
+      else reject "a part carries text that ends the at-rule early"
+
 (** {1 Variable extraction from stylesheets} *)
 
 (* A [var()] is a reference wherever the declaration holding it sits, so this is

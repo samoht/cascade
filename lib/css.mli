@@ -172,6 +172,28 @@ val as_declarations : statement -> declaration list option
 (** [as_declarations stmt] returns [Some decls] if the statement is a bare
     declarations block (used in CSS nesting), {!constructor-None} otherwise. *)
 
+val unknown_at_rule :
+  name:string ->
+  prelude:string ->
+  ?block:string ->
+  unit ->
+  (statement, Error.t) result
+(** [unknown_at_rule ~name ~prelude ?block ()] is the at-rule [\@name prelude]
+    with [block] as its body, or the reason its parts cannot make one. It is the
+    way to emit an at-rule cascade has no grammar for, such as one a tool of the
+    caller's own defines. Omitting [block] gives the statement form,
+    [\@name prelude;].
+
+    [name] is the at-keyword without its [@]. [block] is the text between the
+    at-rule's braces, since an unknown at-rule has no grammar to re-serialise a
+    body from; [to_string ~minify:true statements] is that text for a block
+    cascade does model, so placing one needs no re-read of a printed sheet.
+
+    A part that would not read back as that part is refused rather than printed,
+    and the refusal names one at-rule rather than the sheet it sits in: building
+    each at-rule on its own loses the malformed one, where re-reading an
+    assembled sheet loses every at-rule in it. *)
+
 val with_origin : cascade_origin -> statement list -> statement
 (** [with_origin cascade_origin statements] records the cascade origin for a
     stylesheet block. This is an API-level wrapper with no CSS syntax. *)

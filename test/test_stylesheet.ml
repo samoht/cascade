@@ -2751,26 +2751,26 @@ let s552_unknown_at_rule_constructor () =
           (List.length other)
   in
   let at_rule = Alcotest.(triple string string (option string)) in
-  let body = List.hd (Css.of_string_exn ".a{color:red}") in
-  (* A body given as statements is serialized by the library, so the block it
-     prints is balanced whatever the caller holds. *)
+  let block = Css.of_string_exn ".a{color:red}" in
+  (* A block cascade does model reaches the body through its own printer, so a
+     caller places one without assembling or re-reading a sheet. *)
   let statements =
-    built "statement body"
+    built "printed block body"
       (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
-         ~block:(Statements [ body ]) ())
+         ~block:(Css.to_string ~minify:true block)
+         ())
   in
   Alcotest.(check string)
-    "a statement body prints inside the at-rule's block"
+    "a printed block sits inside the at-rule's block"
     "@utility tab-4{.a{color:red}}" (printed statements);
-  Alcotest.check at_rule "a statement body re-consumes to the same at-rule"
+  Alcotest.check at_rule "a printed block re-consumes to the same at-rule"
     ("utility", "tab-4", Some ".a{color:red}")
     (parts statements);
-  (* Text is the body of an at-rule cascade does not model, and travels
-     whole. *)
+  (* The body of an at-rule cascade does not model travels whole. *)
   let text =
     built "text body"
       (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
-         ~block:(Text ".a{color:red}") ())
+         ~block:".a{color:red}" ())
   in
   Alcotest.check at_rule "a text body re-consumes to the same at-rule"
     ("utility", "tab-4", Some ".a{color:red}")
@@ -2787,17 +2787,41 @@ let s552_unknown_at_rule_constructor () =
   (* Every part that carries a terminator of its own is refused, not printed. *)
   rejected "a prelude holding its own block opener"
     (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4{x:1}"
-       ~block:(Text "color:red") ());
+       ~block:"color:red" ());
   rejected "a prelude holding its own terminator"
     (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4;.evil{color:red}" ());
   rejected "a body closing the block early"
     (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
-       ~block:(Text "x} .evil{color:red") ());
+       ~block:"x} .evil{color:red" ());
   rejected "a body that never closes what it opens"
-    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
-       ~block:(Text ".a{color:red") ());
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ~block:".a{color:red"
+       ());
   rejected "an empty at-keyword"
-    (Css.unknown_at_rule ~name:"" ~prelude:"tab-4" ())
+    (Css.unknown_at_rule ~name:"" ~prelude:"tab-4" ());
+  (* Sec. 4.3.2 "consume comments" runs an unclosed [/*] to EOF, so a part that
+     opens one swallows the closer written after it and every statement that
+     follows. A closed comment is only text and travels like the rest of the
+     body. *)
+  let commented =
+    built "closed comment body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:"/* keep */color:red" ())
+  in
+  Alcotest.check at_rule "a closed comment travels inside the body"
+    ("utility", "tab-4", Some "/* keep */color:red")
+    (parts commented);
+  rejected "a body opening a comment it never closes"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ~block:"/* color:red"
+       ());
+  rejected "a prelude opening a comment it never closes"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4 /*" ());
+  (* An at-keyword cascade does have a grammar for reads back as that at-rule,
+     so the statement would disagree with the sheet it prints to. Sec. 5.5.2
+     dispatches on the at-keyword, and [media] is one this AST already models
+     with a typed condition. *)
+  rejected "an at-keyword cascade already models"
+    (Css.unknown_at_rule ~name:"media" ~prelude:"screen" ~block:".a{color:red}"
+       ())
 
 (* The refusal is per at-rule. Assembling a sheet as text and re-parsing it
    gives the whole buffer one error path, so a single malformed body takes every
@@ -2807,7 +2831,7 @@ let s552_unknown_at_rule_error_is_local () =
   let declared =
     List.map
       (fun (prelude, body) ->
-        Css.unknown_at_rule ~name:"utility" ~prelude ~block:(Text body) ())
+        Css.unknown_at_rule ~name:"utility" ~prelude ~block:body ())
       [
         ("tab-4", "color:red");
         ("bad", "x} .evil{color:blue}");

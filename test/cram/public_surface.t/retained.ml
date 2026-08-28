@@ -56,3 +56,13 @@ let _ : Css.Values.color -> int = Css.Values.hash_color
 
 let _ : Css.Values.color -> Css.Values.alpha -> Css.Values.color =
   Css.Values.with_alpha
+
+(* An at-rule cascade has no grammar for is constructible, so a caller emitting
+   one does not assemble a sheet as text and read it back to get a statement. *)
+let _ :
+    name:string ->
+    prelude:string ->
+    ?block:string ->
+    unit ->
+    (Css.statement, Error.t) result =
+  Css.unknown_at_rule

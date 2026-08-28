@@ -786,6 +786,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.unknown_at_rule` builds an at-rule cascade has no grammar for, such as
+  one a tool of the caller's own defines. Such a rule could be read from the AST
+  but not constructed, so emitting one meant assembling a sheet as text and
+  reading it back, where a single malformed body fails the whole buffer and
+  takes every other at-rule with it. The constructor reads the parts back and
+  refuses one that ends the at-rule early, naming that at-rule alone (#600)
 - `Css.Color_space.gamut_mapped_srgb_of_oklch` and `Css.Values.gamut_map_color`
   name the sRGB colour to write for an OKLCh colour sRGB cannot hold, reducing
   its chroma at constant lightness and hue per CSS Color 4 sec. 14.2. The
