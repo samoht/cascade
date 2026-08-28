@@ -2720,6 +2720,106 @@ let s3431_unknown_at_rule_trailing_backslash () =
     "an escaped backslash needs no separator" "@o x{ a \\\\}"
     (printed [ at_rule " a \\\\" ])
 
+(* CSS Syntax 3 (editor's draft) sec. 5.5.2 "consume an at-rule": an at-rule is
+   an at-keyword, then a prelude ending at the first top-level [;] or [{], then
+   either that [;] or a block. Sec. 5.5.9 makes the block a balanced token
+   sequence ending at its matching [}], and sec. 4.3.3 reads [@] as an
+   at-keyword only when an ident follows it.
+
+   [unknown_at_rule] hands those parts to a caller as text, so it answers for
+   every boundary: a part carrying one of its own terminators prints a sheet
+   that re-consumes to statements nobody wrote, and an empty name prints an [@]
+   delim that re-consumes to nothing at all. *)
+let s552_unknown_at_rule_constructor () =
+  let printed stmt = String.trim (Css.to_string ~minify:true [ stmt ]) in
+  let built what = function
+    | Ok stmt -> stmt
+    | Error e ->
+        Alcotest.failf "%s: unexpected error %s" what
+          (Cascade.Error.to_string e)
+  in
+  let rejected what = function
+    | Error _ -> ()
+    | Ok stmt ->
+        Alcotest.failf "%s: expected an error, built %S" what (printed stmt)
+  in
+  let parts stmt =
+    match Css.of_string_exn (printed stmt) with
+    | [ Unknown_at_rule { name; prelude; block } ] -> (name, prelude, block)
+    | other ->
+        Alcotest.failf "expected one unknown at-rule, got %d statements"
+          (List.length other)
+  in
+  let at_rule = Alcotest.(triple string string (option string)) in
+  let body = List.hd (Css.of_string_exn ".a{color:red}") in
+  (* A body given as statements is serialized by the library, so the block it
+     prints is balanced whatever the caller holds. *)
+  let statements =
+    built "statement body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:(Statements [ body ]) ())
+  in
+  Alcotest.(check string)
+    "a statement body prints inside the at-rule's block"
+    "@utility tab-4{.a{color:red}}" (printed statements);
+  Alcotest.check at_rule "a statement body re-consumes to the same at-rule"
+    ("utility", "tab-4", Some ".a{color:red}")
+    (parts statements);
+  (* Text is the body of an at-rule cascade does not model, and travels
+     whole. *)
+  let text =
+    built "text body"
+      (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+         ~block:(Text ".a{color:red}") ())
+  in
+  Alcotest.check at_rule "a text body re-consumes to the same at-rule"
+    ("utility", "tab-4", Some ".a{color:red}")
+    (parts text);
+  (* Sec. 5.5.2: with no block the at-rule ends at its [;]. *)
+  let bodyless =
+    built "no body" (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4" ())
+  in
+  Alcotest.(check string)
+    "an at-rule with no body ends at its semicolon" "@utility tab-4;"
+    (printed bodyless);
+  Alcotest.check at_rule "an at-rule with no body re-consumes to the same one"
+    ("utility", "tab-4", None) (parts bodyless);
+  (* Every part that carries a terminator of its own is refused, not printed. *)
+  rejected "a prelude holding its own block opener"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4{x:1}"
+       ~block:(Text "color:red") ());
+  rejected "a prelude holding its own terminator"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4;.evil{color:red}" ());
+  rejected "a body closing the block early"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+       ~block:(Text "x} .evil{color:red") ());
+  rejected "a body that never closes what it opens"
+    (Css.unknown_at_rule ~name:"utility" ~prelude:"tab-4"
+       ~block:(Text ".a{color:red") ());
+  rejected "an empty at-keyword"
+    (Css.unknown_at_rule ~name:"" ~prelude:"tab-4" ())
+
+(* The refusal is per at-rule. Assembling a sheet as text and re-parsing it
+   gives the whole buffer one error path, so a single malformed body takes every
+   other at-rule with it; building each statement on its own loses only the
+   malformed one. *)
+let s552_unknown_at_rule_error_is_local () =
+  let declared =
+    List.map
+      (fun (prelude, body) ->
+        Css.unknown_at_rule ~name:"utility" ~prelude ~block:(Text body) ())
+      [
+        ("tab-4", "color:red");
+        ("bad", "x} .evil{color:blue}");
+        ("tab-8", "color:lime");
+      ]
+  in
+  let kept = List.filter_map Result.to_option declared in
+  Alcotest.(check int) "only the malformed at-rule is lost" 2 (List.length kept);
+  Alcotest.(check int)
+    "the survivors print a sheet holding both of them" 2
+    (List.length (Css.of_string_exn (Css.to_string ~minify:true kept)))
+
 (* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
    re-serialise its body from, so the body travels as the source text between
    its braces. That text is what sits between the at-rule's own braces. Taking
@@ -9009,6 +9109,12 @@ let additional_tests =
     ( "spec CSS Syntax 4.3.1 unknown at-rule trailing backslash",
       `Quick,
       s3431_unknown_at_rule_trailing_backslash );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule constructor",
+      `Quick,
+      s552_unknown_at_rule_constructor );
+    ( "spec CSS Syntax 5.5.2 unknown at-rule constructor reports locally",
+      `Quick,
+      s552_unknown_at_rule_error_is_local );
     ("spec @-moz-document prelude forms", `Quick, moz_document_prelude_forms);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
