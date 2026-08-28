@@ -174,6 +174,16 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An at-rule or function name written in another case names what it spells.
+  CSS Values 4 sec. 4.1 makes both of them keywords, so `@MEDIA`,
+  `@Font-Face`, `RGB()`, `color-mix(IN srgb, ...)`, `background: URL("a.png")`,
+  `@page :FIRST`, a `@page` margin box such as `@TOP-LEFT` and the legacy
+  `/DEEP/` combinator each read as the node their lower-case spelling reads as.
+  A miscased name cascade has a grammar for is no longer an unknown at-rule, so
+  it optimises and merges like that spelling and is rejected on the preludes
+  that spelling rejects. A name cascade has no grammar for still reaches the
+  output as written, and `@charset` stays the byte sequence CSS Syntax 3
+  sec. 8.2 matches (#604)
 - A keyword written in another case is read as that keyword. CSS Values 4
   sec. 4.1 makes a keyword ASCII case-insensitive, so `grid-column: SPAN 2` is
   a span of two tracks rather than the reordered `2 SPAN` it printed, and a

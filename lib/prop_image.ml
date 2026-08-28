@@ -1732,7 +1732,8 @@ let read_bg_url_call t terminated =
 let read_bg_url t : background_image =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Url _; _ }) -> Url (Cursor.url t)
-  | Some (Component.Func { node = { name = "url"; terminated; _ }; _ }) ->
+  | Some (Component.Func { node = { name; terminated; _ }; _ })
+    when String.lowercase_ascii_preserve name = "url" ->
       read_bg_url_call t terminated
   | _ -> Cursor.err_expected t "url"
 

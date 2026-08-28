@@ -567,7 +567,7 @@ let try_shadow_deep t =
   let snap = Cursor.save t in
   if
     Cursor.try_kind (Token.Delim "/") t
-    && Cursor.try_kind (Token.Ident "deep") t
+    && Cursor.try_ident "deep" t
     && Cursor.try_kind (Token.Delim "/") t
   then true
   else (

@@ -421,7 +421,7 @@ let at_keyword_opt t =
 
 let expect_at_keyword name t =
   match at_keyword_opt t with
-  | Some s when s = name -> ()
+  | Some s when String.lowercase_ascii_preserve s = name -> ()
   | _ -> err_expected t ("@" ^ name)
 
 let drain_until_block t =
@@ -662,6 +662,12 @@ let looking_at_ident name t =
   | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
       String.lowercase_ascii_preserve s = name
   | _ -> false
+
+let try_ident name t =
+  if looking_at_ident name t then
+    let _ = next t in
+    true
+  else false
 
 let looking_at_func name t =
   drop_ws t;
