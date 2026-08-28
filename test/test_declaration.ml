@@ -452,7 +452,7 @@ let special_cases () =
 
   (* One position per background layer, comma-separated: joining the layers with
      spaces reads as a single four-value position. *)
-  check_declaration ~expected:"background-position:30% 50%,70% 50%"
+  check_declaration ~expected:"background-position:30%50%,70%50%"
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"

@@ -5815,7 +5815,7 @@ let bg336_position_keyword () =
     (normalize ".x { background-position: left top }");
   Alcotest.(check string)
     "background-position: bottom right -> 100% 100%"
-    ".x{background-position:100% 100%}"
+    ".x{background-position:100%100%}"
     (normalize ".x { background-position: bottom right }")
 
 (* CSS Cascade L5 section 6.1: when two rules with different selectors share the

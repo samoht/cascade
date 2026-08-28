@@ -204,14 +204,14 @@ let rec pp_position_value : position_value Pp.t =
   | Bottom_right -> Pp.string ctx "bottom right"
   | XY (a, b) ->
       pp_length ctx a;
-      Pp.space ctx ();
+      Pp.token_sp ctx ();
       pp_length ctx b
   | Single l -> pp_length ctx l
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
       pp_position_offset ctx offset;
-      Pp.space ctx ();
+      Pp.token_sp ctx ();
       Pp.string ctx axis
   | Axis_edge_offset (axis, edge, offset) ->
       Pp.string ctx axis;
@@ -223,7 +223,7 @@ let rec pp_position_value : position_value Pp.t =
       Pp.string ctx edge1;
       Pp.space ctx ();
       pp_position_offset ctx offset1;
-      Pp.space ctx ();
+      Pp.token_sp ctx ();
       Pp.string ctx edge2;
       Pp.space ctx ();
       pp_position_offset ctx offset2
