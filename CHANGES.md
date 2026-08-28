@@ -454,6 +454,10 @@ recorded cases carrying six minifiers' answers.
   and a position value did not. The rule now also covers a component that
   ends in `)`, such as a `var()` inside `polygon()`. A unit keeps its space,
   since `10px 0` would re-tokenise as the single dimension `10px0` (#614)
+- `--minify` folds a `color-mix()` in a wide-gamut rectangular space, and one in
+  `srgb` whose result leaves that gamut; both used to reach the browser
+  unfolded. The result keeps the space that was named rather than being gamut
+  mapped (#618)
 - `--minify` merges rules whose colours differ only in how a hex was
   spelled. The digits are case-insensitive and `#RGB` expands by duplicating
   each of them (CSS Color 4 sec. 5.2), but the authored spelling survived
