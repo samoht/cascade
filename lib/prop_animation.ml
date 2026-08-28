@@ -510,7 +510,8 @@ let rec pp_transition : transition Pp.t =
 let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
   Cursor.ws t;
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       (Var (Values.read_var read_animation_timeline t) : animation_timeline)
   | Some (Component.Func fn) when not fn.node.terminated ->
       Cursor.err_invalid t
@@ -862,9 +863,9 @@ let read_transition_part t read set =
 
 let transition_property_start t =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident _; _ })
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
-      true
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      String.lowercase_ascii_preserve name = "var"
   | _ -> false
 
 let read_transition_property_part parts t =

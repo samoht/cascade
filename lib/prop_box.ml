@@ -138,7 +138,9 @@ let rec read_display t : display =
   let read_var t : display = Var (read_var read_display t) in
   Cursor.ws t;
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) -> read_var t
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
+      read_var t
   | _ -> (
       match Cursor.option read_display_list_item t with
       | Some d -> d

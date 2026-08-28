@@ -586,7 +586,8 @@ let rec read_container_shorthand (t : Cursor.t) : container_shorthand =
   in
   Cursor.ws t;
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       (Var (Values.read_var read_container_shorthand t) : container_shorthand)
   | _ -> (
       let first = Cursor.ident t in

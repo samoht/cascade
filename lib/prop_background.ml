@@ -102,7 +102,8 @@ let rec read_shadow_single t : shadow =
     | Some "inset" -> (
         Cursor.ws t;
         match Cursor.peek t with
-        | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+        | Some (Component.Func { node = { name; _ }; _ })
+          when String.lowercase_ascii_preserve name = "var" ->
             Some (Inset (Var (read_var read_shadow_single t)))
         | _ -> Option.None)
     | _ -> Option.None

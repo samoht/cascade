@@ -1813,7 +1813,8 @@ let rec read_unicode_range t : unicode_range =
      Syntax section 4.3.14); we just translate it to the [unicode_range] ADT. *)
   Cursor.with_context t "unicode-range" @@ fun () ->
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       (Var (Values.read_var read_unicode_range t) : unicode_range)
   | Some
       (Component.Preserved
