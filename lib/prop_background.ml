@@ -351,6 +351,7 @@ let length_of_border_width : border_width -> length option = function
   | Vmin n -> Some (Vmin n)
   | Vmax n -> Some (Vmax n)
   | Pct n -> Some (Pct n)
+  | Dimension { value; unit; repr } -> Some (Dimension { value; unit; repr })
   | Zero -> Some Zero
   | _ -> None
 
@@ -495,54 +496,38 @@ let pp_length_calc_contents ctx calc =
   in
   pp_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
 
-let border_width_length_measure : length -> [ `Abs | `Unit of string ] * float =
-  function
-  | Px n -> (`Abs, n)
-  | In n -> (`Abs, n *. 96.)
-  | Cm n -> (`Abs, n *. 96. /. 2.54)
-  | Mm n -> (`Abs, n *. 96. /. 25.4)
-  | Q n -> (`Abs, n *. 96. /. 101.6)
-  | Pt n -> (`Abs, n *. 96. /. 72.)
-  | Pc n -> (`Abs, n *. 16.)
-  | Rem n -> (`Unit "rem", n)
-  | Em n -> (`Unit "em", n)
-  | Ex n -> (`Unit "ex", n)
-  | Cap n -> (`Unit "cap", n)
-  | Ic n -> (`Unit "ic", n)
-  | Ric n -> (`Unit "ric", n)
-  | Rlh n -> (`Unit "rlh", n)
-  | Ch n -> (`Unit "ch", n)
-  | Lh n -> (`Unit "lh", n)
-  | Vw n -> (`Unit "vw", n)
-  | Vh n -> (`Unit "vh", n)
-  | Vmin n -> (`Unit "vmin", n)
-  | Vmax n -> (`Unit "vmax", n)
-  | Pct n -> (`Unit "%", n)
-  | Zero -> (`Abs, 0.)
-  | _ -> (`Unit "", nan)
-
-let comparable_border_width_length length :
-    ([ `Abs | `Unit of string ] * float) option =
-  match border_width_length_measure length with
-  | `Unit "", _ -> None
-  | key, n -> Some (key, n)
+(* Two arguments of a [min()] / [max()] compare only when they share a unit. CSS
+   Values 4 sec. 6.2 puts the absolute units on one scale, so they share the
+   [px] key; every other unit compares only with itself. *)
+let border_width_length_measure length : (string * float) option =
+  match Values.calc_length_unit length with
+  | None -> None
+  | Some (unit, n) -> (
+      match Values.absolute_unit_px_ratio unit with
+      | Some ratio -> Some ("px", n *. ratio)
+      | None -> Some (unit, n))
 
 let border_width_calc_length = function Val length -> Some length | _ -> None
 
-let record_border_width_group kind groups pos length =
-  match comparable_border_width_length length with
-  | None -> ()
-  | Some (key, n) ->
-      let keep =
-        match Hashtbl.find_opt groups key with
-        | None -> (pos, length, n)
-        | Some (old_pos, old_length, old_n) ->
-            let better =
-              match kind with `Min -> n < old_n | `Max -> n > old_n
-            in
-            if better then (old_pos, length, n) else (old_pos, old_length, old_n)
-      in
-      Hashtbl.replace groups key keep
+let record_border_width_group kind groups pos (length, key, n) =
+  let keep =
+    match Hashtbl.find_opt groups key with
+    | None -> (pos, length, n)
+    | Some (old_pos, old_length, old_n) ->
+        let better = match kind with `Min -> n < old_n | `Max -> n > old_n in
+        if better then (old_pos, length, n) else (old_pos, old_length, old_n)
+  in
+  Hashtbl.replace groups key keep
+
+(* Grouping keeps one argument per unit, so an argument no unit measures has to
+   stop the reduction: dropping it would delete a bound from the function. *)
+let measured_border_width_lengths lengths =
+  List.fold_right
+    (fun length acc ->
+      match (border_width_length_measure length, acc) with
+      | Some (key, n), Some acc -> Some ((length, key, n) :: acc)
+      | _ -> None)
+    lengths (Some [])
 
 let reduce_border_width_minmax kind args : length calc list option =
   let simplified = List.map simplified_border_width_length args in
@@ -552,16 +537,18 @@ let reduce_border_width_minmax kind args : length calc list option =
     match List.map border_width_calc_length vals with
     | lengths when List.exists Option.is_none lengths -> None
     | lengths -> (
-        let lengths = List.map Option.get lengths in
-        let groups = Hashtbl.create 4 in
-        List.iteri (record_border_width_group kind groups) lengths;
-        let reduced =
-          Hashtbl.to_seq_values groups
-          |> List.of_seq
-          |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
-          |> List.map (fun (_, length, _) -> Val length)
-        in
-        match reduced with [] -> None | _ -> Some reduced)
+        match measured_border_width_lengths (List.map Option.get lengths) with
+        | None -> None
+        | Some measured -> (
+            let groups = Hashtbl.create 4 in
+            List.iteri (record_border_width_group kind groups) measured;
+            let reduced =
+              Hashtbl.to_seq_values groups
+              |> List.of_seq
+              |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
+              |> List.map (fun (_, length, _) -> Val length)
+            in
+            match reduced with [] -> None | _ -> Some reduced))
 
 let reduce_border_width_clamp lower value upper =
   match
@@ -571,21 +558,22 @@ let reduce_border_width_clamp lower value upper =
   with
   | Some (Val lower), Some (Val value), Some (Val upper) -> (
       match
-        ( comparable_border_width_length lower,
-          comparable_border_width_length value,
-          comparable_border_width_length upper )
+        ( border_width_length_measure lower,
+          border_width_length_measure value,
+          border_width_length_measure upper )
       with
       | ( Some (lower_key, lower_n),
           Some (value_key, value_n),
           Some (upper_key, upper_n) )
-        when lower_key = value_key && value_key = upper_key ->
+        when String.equal lower_key value_key
+             && String.equal value_key upper_key ->
           Some
             (`Length
                (if value_n < lower_n then lower
                 else if value_n > upper_n then upper
                 else value))
       | Some _, Some (value_key, value_n), Some (upper_key, upper_n)
-        when value_key = upper_key && value_n <= upper_n ->
+        when String.equal value_key upper_key && value_n <= upper_n ->
           Some (`Max [ Val lower; Val value ])
       | _ -> None)
   | _ -> None
@@ -616,6 +604,11 @@ let rec pp_border_width : border_width Pp.t =
   | Vmin f -> Pp.unit ctx f "vmin"
   | Vmax f -> Pp.unit ctx f "vmax"
   | Pct f -> Pp.pct ctx f
+  | Dimension { value; unit; repr } ->
+      if Pp.minified ctx then Pp.unit ctx value unit
+      else (
+        Pp.string ctx repr;
+        Pp.string ctx unit)
   | Zero -> Pp.char ctx '0'
   | Auto -> Pp.string ctx "auto"
   | Max_content -> Pp.string ctx "max-content"
@@ -1091,10 +1084,13 @@ let ensure_non_negative_border_width t value =
     err_invalid_value t "border-width" "negative values not allowed"
   else value
 
-(* Helper: convert length to border_width, ensuring non-negative values *)
+(* [border-width] takes a [<length>], so every dimension [length] carries is
+   one. The units [border_width] names get their own arm; the rest keep their
+   value and spelling in [Dimension], the way [length] itself does, so a unit
+   [length] learns needs no second table here. *)
 let length_to_border_width t (length : length) : border_width =
   let non_neg = ensure_non_negative_border_width t in
-  let typed_dimension value unit : border_width =
+  let typed_dimension ?repr value unit : border_width =
     let value = non_neg value in
     match String.lowercase_ascii unit with
     | "%" -> Pct value
@@ -1118,33 +1114,19 @@ let length_to_border_width t (length : length) : border_width =
     | "vw" -> Vw value
     | "vmin" -> Vmin value
     | "vmax" -> Vmax value
-    | _ -> err_invalid_value t "border-width" "unsupported length type"
+    | _ ->
+        let repr =
+          match repr with Some repr -> repr | None -> Pp.string_of_float value
+        in
+        Dimension { value; unit; repr }
   in
   match length with
   | Zero -> Zero
-  | Px n -> Px (non_neg n)
-  | Cm n -> Cm (non_neg n)
-  | Mm n -> Mm (non_neg n)
-  | Q n -> Q (non_neg n)
-  | In n -> In (non_neg n)
-  | Pt n -> Pt (non_neg n)
-  | Pc n -> Pc (non_neg n)
-  | Rem n -> Rem (non_neg n)
-  | Em n -> Em (non_neg n)
-  | Ex n -> Ex (non_neg n)
-  | Cap n -> Cap (non_neg n)
-  | Ic n -> Ic (non_neg n)
-  | Ric n -> Ric (non_neg n)
-  | Rlh n -> Rlh (non_neg n)
-  | Ch n -> Ch (non_neg n)
-  | Lh n -> Lh (non_neg n)
-  | Vh n -> Vh (non_neg n)
-  | Vw n -> Vw (non_neg n)
-  | Vmin n -> Vmin (non_neg n)
-  | Vmax n -> Vmax (non_neg n)
-  | Pct n -> Pct (non_neg n)
-  | Dimension { value; unit; _ } -> typed_dimension value unit
-  | _ -> err_invalid_value t "border-width" "unsupported length type"
+  | Dimension { value; unit; repr } -> typed_dimension ~repr value unit
+  | length -> (
+      match calc_length_unit length with
+      | Some (unit, value) -> typed_dimension value unit
+      | None -> err_invalid_value t "border-width" "unsupported length type")
 
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in

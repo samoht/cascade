@@ -1724,6 +1724,9 @@ type border_width = Properties.border_width =
   | Vmin of float
   | Vmax of float
   | Pct of float
+  | Dimension of { value : float; unit : string; repr : string }
+      (** A length in a unit [border_width] does not name, carrying the authored
+          spelling in [repr] the way {!length} does. *)
   | Zero
   | Auto
   | Max_content
