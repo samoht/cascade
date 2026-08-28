@@ -1644,6 +1644,130 @@ let option_value_parser_contracts () =
    its block. So [to_string] keeps it too, at every block depth, with a body or
    without one. [Optimize.drop_unknown_at_rules] stays available for a caller
    that does want user-agent-equivalent output. *)
+(* CSS Values 4 sec. 4.1: "Keywords are identifiers and are interpreted ASCII
+   case-insensitively (i.e., [a-z] and [A-Z] are equivalent)." A keyword the
+   author capitalised is the same keyword, so it reads to the same node and
+   prints as that node prints. *)
+let spec_keyword_case_insensitive () =
+  let render input =
+    match of_string ~strict:false input with
+    | Ok parsed -> to_string ~minify:true parsed.stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" input
+          (Cascade.Error.to_string err)
+  in
+  (* [expect] is the shortest spelling of the one node both inputs name. *)
+  let pins name ~upper ~lower ~expect =
+    Alcotest.(check string)
+      (String.concat "" [ name; " (lower-case control)" ])
+      expect (render lower);
+    Alcotest.(check string)
+      (String.concat "" [ name; " (capitalised keyword)" ])
+      expect (render upper)
+  in
+  (* Where the printed spelling is a canonicalisation of cascade's own, the pin
+     is that both spellings reach it, not what it is. *)
+  let agrees name ~upper ~lower =
+    let out = render lower in
+    Alcotest.(check bool)
+      (String.concat "" [ name; " (lower-case control parses)" ])
+      true (out <> "");
+    Alcotest.(check string)
+      (String.concat "" [ name; " (capitalised keyword)" ])
+      out (render upper)
+  in
+  (* CSS Grid 2 sec. 8.3: [span] is a keyword of [<grid-line>], so [SPAN 2] is
+     the span of 2 tracks and not the line named [SPAN] on track 2. *)
+  pins "grid-column span" ~upper:".a{grid-column:SPAN 2}"
+    ~lower:".a{grid-column:span 2}" ~expect:".a{grid-column:span 2}";
+  (* CSS Animations 1 sec. 4.1 makes [from] equivalent to [0%] and [to] to
+     [100%]; the shorter of each pair is the printed form. *)
+  pins "keyframe selector" ~upper:"@keyframes f{FROM{opacity:0}TO{opacity:1}}"
+    ~lower:"@keyframes f{from{opacity:0}to{opacity:1}}"
+    ~expect:"@keyframes f{0%{opacity:0}to{opacity:1}}";
+  (* CSS Cascade 5 sec. 2.1 takes a [<url>] or a [<string>]; they name the same
+     resource and the string is shorter. *)
+  pins "@import url()" ~upper:"@import URL(\"reset.css\");"
+    ~lower:"@import url(\"reset.css\");" ~expect:"@import\"reset.css\";";
+  (* CSS Backgrounds 3 sec. 6.2: [inset] is a keyword of [<shadow>]. *)
+  pins "box-shadow inset" ~upper:".a{box-shadow:INSET 1px 1px red}"
+    ~lower:".a{box-shadow:inset 1px 1px red}"
+    ~expect:".a{box-shadow:inset 1px 1px red}";
+  agrees "nth-child of" ~upper:".a:nth-child(2n OF .item){color:red}"
+    ~lower:".a:nth-child(2n of .item){color:red}";
+  agrees "@import layer()" ~upper:"@import \"a.css\" LAYER(base);"
+    ~lower:"@import \"a.css\" layer(base);";
+  agrees "@property descriptors"
+    ~upper:"@property --x{SYNTAX:\"<length>\";INHERITS:false;INITIAL-VALUE:0px}"
+    ~lower:"@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}";
+  agrees "@font-face descriptors"
+    ~upper:"@font-face{FONT-FAMILY:Foo;SRC:url(a.woff)}"
+    ~lower:"@font-face{font-family:Foo;src:url(a.woff)}";
+  agrees "gradient corner keywords"
+    ~upper:".a{background:linear-gradient(TO RIGHT,red,blue)}"
+    ~lower:".a{background:linear-gradient(to right,red,blue)}";
+  agrees "@counter-style system"
+    ~upper:"@counter-style c{system:FIXED;symbols:\"a\"}"
+    ~lower:"@counter-style c{system:fixed;symbols:\"a\"}"
+
+(* CSS Values 4 sec. 4.2: an author-defined identifier is "fully case-sensitive
+   [...] even in the ASCII range (e.g. example and EXAMPLE are two different,
+   unrelated user-defined identifiers)". Reading a keyword case-insensitively
+   must not reach any of these. *)
+let spec_author_ident_case_sensitive () =
+  let render input =
+    match of_string ~strict:false input with
+    | Ok parsed -> to_string ~minify:true parsed.stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse rejected %S: %s" input
+          (Cascade.Error.to_string err)
+  in
+  let keeps name input affix =
+    let out = render input in
+    Alcotest.(check bool)
+      (String.concat "" [ name; ": "; affix; " survives, got "; out ])
+      true
+      (Astring.String.is_infix ~affix out)
+  in
+  keeps "custom property name" ".a{--Foo:1px;color:var(--Foo)}" "--Foo:1px";
+  keeps "custom property name (var reference)" ".a{--Foo:1px;color:var(--Foo)}"
+    "var(--Foo)";
+  (* [--Foo] and [--foo] are two unrelated properties, so neither absorbs the
+     other. *)
+  keeps "custom property names stay distinct" ".a{--Foo:1px;--foo:2px}"
+    "--Foo:1px";
+  keeps "custom property names stay distinct" ".a{--Foo:1px;--foo:2px}"
+    "--foo:2px";
+  keeps "@keyframes name" "@keyframes Slide{from{opacity:0}}" "Slide";
+  keeps "@layer name" "@layer Base{a{color:red}}" "Base";
+  keeps "container name" "@container Card (width>0px){a{color:red}}" "Card";
+  keeps "view-transition type" "@view-transition{types:Foo}" "Foo";
+  keeps "counter name" ".a{counter-reset:Chapter}" "Chapter";
+  keeps "grid line name" ".a{grid-column:Foo}" "Foo";
+  (* [span] is excluded from the name, so [SPAN Foo] is a span of the line named
+     [Foo] and the name keeps its case. *)
+  keeps "grid line name after span" ".a{grid-column:SPAN Foo}" "span Foo";
+  keeps "class selector" ".Foo{color:red}" ".Foo";
+  keeps "id selector" "#Bar{color:red}" "#Bar";
+  keeps "class selectors stay distinct" ".Foo{color:red}.foo{color:red}" ".foo";
+  keeps "attribute value" "[data-x=\"Foo\"]{color:red}" "Foo";
+  keeps "font family name" ".a{font-family:MyFont,sans-serif}" "MyFont";
+  keeps "@property name" "@property --Foo{syntax:\"*\";inherits:false}" "--Foo";
+  (* CSS Fonts 4 sec. 12.1: [light] and [dark] are the keywords of
+     [base-palette], so any other ident there is the author's own. *)
+  keeps "base-palette ident"
+    "@font-palette-values --P{font-family:F;base-palette:MyPalette}" "MyPalette";
+  (* CSS Syntax 3 sec. 8.2 recognises [@charset] only as the exact byte
+     sequence, so the encoding name is not a keyword to fold. *)
+  (match of_string ~strict:true "@charset \"utf-8\";.a{color:red}" with
+  | Ok _ -> Alcotest.fail "@charset accepted a lower-case encoding name"
+  | Error _ -> ());
+  match of_string ~strict:true "@charset \"UTF-8\";.a{color:red}" with
+  | Ok _ -> ()
+  | Error err ->
+      Alcotest.failf "@charset rejected the exact encoding name: %s"
+        (Cascade.Error.to_string err)
+
 let unknown_at_rule_reaches_output () =
   let parse input =
     match of_string ~strict:false input with
@@ -1755,4 +1879,8 @@ let suite =
         public_bad_string_prelude_edges;
       Alcotest.test_case "spec unknown at-rule reaches the output" `Quick
         unknown_at_rule_reaches_output;
+      Alcotest.test_case "spec section 4.1 keyword case is insensitive" `Quick
+        spec_keyword_case_insensitive;
+      Alcotest.test_case "spec section 4.2 author ident case is sensitive"
+        `Quick spec_author_ident_case_sensitive;
     ] )
