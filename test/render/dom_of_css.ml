@@ -26,6 +26,7 @@ type spec = {
   mutable root : bool; (* :root / :scope *)
   mutable avoid : string list; (* tags :not() rules out *)
   mutable inner : node list; (* :has() content *)
+  mutable fill : node option; (* the sibling an [of S] position pads with *)
   mutable pseudos : string list; (* pseudo-elements to sample *)
 }
 
@@ -54,6 +55,7 @@ let new_spec () =
     root = false;
     avoid = [];
     inner = [];
+    fill = None;
     pseudos = [];
   }
 
@@ -68,6 +70,7 @@ let restore sp saved =
   sp.root <- saved.root;
   sp.avoid <- saved.avoid;
   sp.inner <- saved.inner;
+  sp.fill <- saved.fill;
   sp.pseudos <- saved.pseudos
 
 let is_pseudo_element = function
@@ -159,15 +162,34 @@ let note_pseudo sp name =
 
 (* A value that satisfies the match, built around the operand so the browser
    agrees rather than merely the synthesiser. *)
-let attribute_value = function
+let operand_value = function
   | Selector.Presence -> ""
   | Selector.Exact v | Selector.Exact_quoted (v, _) -> v
   | Selector.Whitespace_list v | Selector.Whitespace_list_quoted (v, _) ->
-      "zz " ^ v ^ " yy"
-  | Selector.Hyphen_list v | Selector.Hyphen_list_quoted (v, _) -> v ^ "-zz"
-  | Selector.Prefix v | Selector.Prefix_quoted (v, _) -> v ^ "zz"
-  | Selector.Suffix v | Selector.Suffix_quoted (v, _) -> "zz" ^ v
-  | Selector.Substring v | Selector.Substring_quoted (v, _) -> "zz" ^ v ^ "yy"
+      String.concat "" [ "zz "; v; " yy" ]
+  | Selector.Hyphen_list v | Selector.Hyphen_list_quoted (v, _) ->
+      String.concat "" [ v; "-zz" ]
+  | Selector.Prefix v | Selector.Prefix_quoted (v, _) ->
+      String.concat "" [ v; "zz" ]
+  | Selector.Suffix v | Selector.Suffix_quoted (v, _) ->
+      String.concat "" [ "zz"; v ]
+  | Selector.Substring v | Selector.Substring_quoted (v, _) ->
+      String.concat "" [ "zz"; v; "yy" ]
+
+let swap_case =
+  String.map (function
+    | 'a' .. 'z' as c -> Char.uppercase_ascii c
+    | 'A' .. 'Z' as c -> Char.lowercase_ascii c
+    | c -> c)
+
+(* Selectors 4 sec. 6.3: [i] folds ASCII case and [s] matches the value as
+   written. Building the same value under both leaves the flag untested, so an
+   [i] gets a value whose case differs from the operand: only a UA that folds
+   the case matches it. *)
+let attribute_value flag m =
+  match flag with
+  | Some Selector.Insensitive -> swap_case (operand_value m)
+  | None | Some Selector.Sensitive -> operand_value m
 
 (* The empty operand of [~=], [|=], [^=], [$=] and [*=] matches nothing, per
    Selectors 4 sec. 6.1 and 6.2. *)
@@ -240,11 +262,19 @@ let rec add sp part =
       if not (List.mem c sp.classes) then sp.classes <- sp.classes @ [ c ]
   | Selector.Id i -> sp.id <- Some i
   | Selector.Universal ns -> check_ns ns
-  | Selector.Attribute (ns, name, m, _flag) ->
+  | Selector.Attribute (ns, name, m, flag) -> (
       check_ns ns;
-      if not (attribute_matchable m) then
-        raise (Skip "attribute matches nothing");
-      set_attr sp (Pp.to_string Selector.pp_attr_name name) (attribute_value m)
+      match (m, flag) with
+      (* Sec. 16: a modifier follows a matcher and a value, so a presence test
+         carrying one is not a selector any UA takes. *)
+      | Selector.Presence, Some _ ->
+          raise (Skip "attribute flag on a presence test")
+      | _ ->
+          if not (attribute_matchable m) then
+            raise (Skip "attribute matches nothing");
+          set_attr sp
+            (Pp.to_string Selector.pp_attr_name name)
+            (attribute_value flag m))
   | Selector.Compound parts -> List.iter (add sp) parts
   (* :is() and :where() hold as soon as one branch does; the CSS Modules and
      legacy vendor spellings behave the same way. *)
@@ -278,11 +308,16 @@ let rec add sp part =
   | Selector.Nth_of_type (n, None) -> nth_pos sp true (fun i -> Nth i) n
   | Selector.Nth_last_of_type (n, None) ->
       nth_pos sp true (fun i -> Nth_last i) n
-  | Selector.Nth_child (_, Some _)
-  | Selector.Nth_last_child (_, Some _)
-  | Selector.Nth_of_type (_, Some _)
-  | Selector.Nth_last_of_type (_, Some _) ->
-      raise (Skip "An+B of S")
+  | Selector.Nth_child (n, Some s) ->
+      nth_of sp s;
+      nth_pos sp false (fun i -> Nth i) n
+  | Selector.Nth_last_child (n, Some s) ->
+      nth_of sp s;
+      nth_pos sp false (fun i -> Nth_last i) n
+  (* Sec. 13.4.1 and sec. 13.4.2 give the typed positions an An+B and nothing
+     else, so an [of S] on one is not a selector any UA takes. *)
+  | Selector.Nth_of_type (_, Some _) | Selector.Nth_last_of_type (_, Some _) ->
+      raise (Skip "An+B of S on a typed position")
   (* Pseudo-classes an attribute or a tag choice settles. *)
   | Selector.Link | Selector.Any_link ->
       want_tag sp "a";
@@ -440,6 +475,26 @@ and add_branch sp branches =
   in
   first branches
 
+(* [An+B of S] counts the siblings S matches, so the element has to match S and
+   the padding has to match it too. The branch that builds the element builds
+   the padding, since the two have to agree on which one holds. *)
+and nth_of sp branches =
+  let rec pick = function
+    | [] -> raise (Skip "no satisfiable of S branch")
+    | b :: rest -> (
+        let probe = new_spec () in
+        match add probe b with
+        | () -> (b, probe)
+        | exception Skip _ -> pick rest)
+  in
+  let branch, probe = pick branches in
+  if probe.root then raise (Skip ":root inside an of S");
+  if probe.pos <> Anywhere then raise (Skip "position inside an of S");
+  add sp branch;
+  match sp.fill with
+  | Some _ -> raise (Skip "two of S in one compound")
+  | None -> sp.fill <- Some (node_of_spec probe [])
+
 and add_has sp branches =
   let inner, relation =
     match branches with
@@ -467,11 +522,18 @@ let rec steps sel =
   | Selector.Relative _ -> raise (Skip "relative selector outside :has()")
   | s -> [ (None, s) ]
 
-let pad n tag = List.init (max 0 n) (fun _ -> filler tag)
+let pad n node = List.init (max 0 n) (fun _ -> node)
+
+(* The sibling the padding repeats: the one an [of S] named, otherwise a
+   same-tag element for a typed position and a neutral one for a plain one. *)
+let filler_of sp (self : node) =
+  match sp.fill with
+  | Some n -> n
+  | None -> filler (if sp.of_type then self.tag else "span")
 
 (* Lay the child out among its siblings so its position pseudo-class holds. *)
 let siblings ~parent_inner ~child_spec ~(child : node) before =
-  let tag = if child_spec.of_type then child.tag else "span" in
+  let fill = filler_of child_spec child in
   let list =
     match child_spec.pos with
     | Anywhere | Last -> before @ [ child ]
@@ -479,10 +541,15 @@ let siblings ~parent_inner ~child_spec ~(child : node) before =
         if before <> [] then raise (Skip "position conflicts with a sibling")
         else [ child ]
     | Nth n ->
+        (* An [of S] counts only the siblings S matches, and whether the ones a
+           sibling combinator put in front do is not decided here. *)
+        (match (child_spec.fill, before) with
+        | Some _, _ :: _ -> raise (Skip "position conflicts with a sibling")
+        | _ -> ());
         let need = n - 1 - List.length before in
         if need < 0 then raise (Skip "position conflicts with a sibling")
-        else pad need tag @ before @ [ child ]
-    | Nth_last n -> before @ [ child ] @ pad (n - 1) tag
+        else pad need fill @ before @ [ child ]
+    | Nth_last n -> before @ [ child ] @ pad (n - 1) fill
   in
   match (parent_inner, child_spec.pos) with
   | [], _ -> list
@@ -525,13 +592,13 @@ let build_fragment sel =
               before := []
           | Some Selector.Next_sibling | Some Selector.Subsequent_sibling -> (
               let node = node_of_spec sp [] in
-              let tag = if sp.of_type then node.tag else "span" in
+              let fill = filler_of sp node in
               (* The siblings are prepended right to left, so the padding an
                  An+B position needs goes in front of the node itself. *)
               before :=
                 match sp.pos with
                 | Anywhere | First -> node :: !before
-                | Nth n -> pad (n - 1) tag @ (node :: !before)
+                | Nth n -> pad (n - 1) fill @ (node :: !before)
                 | Last | Only | Nth_last _ ->
                     raise (Skip "position conflicts with a sibling"))
           | Some _ -> raise (Skip "legacy combinator"));
