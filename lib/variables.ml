@@ -140,9 +140,11 @@ let rec pp_value : type a. a syntax -> a Pp.t =
       | Left v -> pp_value syn1 ctx v
       | Right v -> pp_value syn2 ctx v)
   | Plus syn ->
+      (* The [+] separator is the whole of it: drop the space and [10px 20px] is
+         one dimension whose unit is [px20px]. *)
       List.iteri
         (fun i v ->
-          if i > 0 then Pp.sp ctx ();
+          if i > 0 then Pp.space ctx ();
           pp_value syn ctx v)
         value
   | Hash syn ->
