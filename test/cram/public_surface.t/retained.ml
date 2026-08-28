@@ -97,3 +97,9 @@ let _ :
    per-character predicates drops the two cases they cannot see: a lone [-] and
    a [-] followed by a digit open no ident. *)
 let _ : string -> bool = Syntax.is_ident
+
+(* The math and colour function names are one table each, not one per caller: a
+   generator that has to tell calc() from a colour asks the same list the
+   optimizer folds by. *)
+let _ : string -> bool = Properties.is_math_function
+let _ : string -> bool = Properties.is_color_function

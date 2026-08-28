@@ -8150,6 +8150,21 @@ let customprops13_registered_angle_time_calc () =
     ".x{--a:calc(50%*2)}"
     (normalize_minified ".x { --a: calc(50% * 2) }")
 
+let customprops13_trigonometric_calc () =
+  (* CSS Values 4 sec. 10.4 puts the trigonometric family among the math
+     functions, so a complete one reduces in a custom-property stream the way
+     the exponential family already does. The inverse functions resolve to an
+     <angle>, which is unambiguous in every var() site. *)
+  Alcotest.(check string)
+    "unregistered arc tangent custom property folds to an angle" ".x{--v:45deg}"
+    (normalize_minified ".x { --v: atan2(1, 1) }");
+  Alcotest.(check string)
+    "unregistered arc cosine custom property folds to an angle" ".x{--v:90deg}"
+    (normalize_minified ".x { --v: acos(0) }");
+  Alcotest.(check string)
+    "unregistered arc sine custom property folds to an angle" ".x{--v:90deg}"
+    (normalize_minified ".x { --v: asin(1) }")
+
 let customprops13_shortest_unresolved_calc_spacing () =
   Alcotest.(check string)
     "unregistered unresolved calc custom property keeps token stream"
@@ -9521,6 +9536,9 @@ let additional_tests =
     ( "spec custom-properties 1 3 registered angle and time calc",
       `Quick,
       customprops13_registered_angle_time_calc );
+    ( "spec custom-properties 1 3 trigonometric calc",
+      `Quick,
+      customprops13_trigonometric_calc );
     ( "spec custom-properties 1 3 unregistered unresolved calc spacing",
       `Quick,
       customprops13_shortest_unresolved_calc_spacing );
