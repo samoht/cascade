@@ -420,13 +420,16 @@ let unrelated_kept_property_still_inlines () =
     ~keep:"@media(min-width:1px){.q{color:red}}" ~kept:1
     (node ~classes:[ "m" ] "ul")
 
-(* The matcher compares attribute values verbatim, so it cannot represent the
-   [i] case flag. A selector it cannot represent has to stay in the sheet:
-   inlining it drops it from the sheet, and it then matches nobody, so the
-   declaration is lost. *)
-let keeps_rule_with_attribute_case_flag () =
+(* selectors-4 sec. 6.3: an [i] flag matches the attribute's value ASCII
+   case-insensitively and an [s] flag matches it "identical to", so the matcher
+   represents both and the rule projects or drops on the value the element
+   actually carries. *)
+let projects_attribute_rule_with_case_flag () =
   check_split "case-insensitive attribute" ~css:"p[data-k=\"X\" i]{color:red}"
-    ~inline:"" ~keep:"p[data-k=X i]{color:red}" ~kept:1
+    ~inline:"color:red" ~keep:"" ~kept:0
+    (node ~attrs:[ ("data-k", "x") ] "p");
+  check_split "case-sensitive attribute" ~css:"p[data-k=\"X\" s]{color:red}"
+    ~inline:"" ~keep:"" ~kept:0
     (node ~attrs:[ ("data-k", "x") ] "p")
 
 (* The control: without the flag the selector is representable, so it projects
@@ -569,8 +572,8 @@ let suite =
         `Quick keeps_logical_a_kept_physical_writes;
       Alcotest.test_case "unrelated kept property still inlines" `Quick
         unrelated_kept_property_still_inlines;
-      Alcotest.test_case "keeps a rule with an attribute case flag" `Quick
-        keeps_rule_with_attribute_case_flag;
+      Alcotest.test_case "projects an attribute rule with a case flag" `Quick
+        projects_attribute_rule_with_case_flag;
       Alcotest.test_case "projects an attribute rule to inline style" `Quick
         projects_attribute_rule_to_inline_style;
       Alcotest.test_case "keeps a rule with a namespaced element" `Quick

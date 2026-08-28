@@ -808,6 +808,19 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.Resolve` answers the selectors Selectors 4 settles from the element tree
+  a `NODE` supplies: `:nth-child()` and `:nth-last-child()` with or without
+  their `of S` argument, the typed `:nth-of-type()`, `:nth-last-of-type()`,
+  `:first-of-type`, `:last-of-type` and `:only-of-type`, the relational
+  `:has()`, the `i` and `s` attribute case flags, and `:scope`, which names the
+  root of the tree when no scoping root is given (sec. 8.4). Each read
+  `Unsupported` before, which says the matcher has no model rather than that
+  the selector missed, so a rule carrying one could neither be resolved against
+  an element nor pruned, and `Css.Apply` kept it in the sheet rather than
+  projecting it. `Unsupported` still carries through `:is()`, `:not()`,
+  `:has()`, an `of S` and a selector list, so a `No_match` is still a fact
+  about the element. A namespace and `:lang()` stay unsupported: a `NODE`
+  carries neither the namespace nor the document's content language (#607)
 - `Css.unknown_at_rule` builds an at-rule cascade has no grammar for, such as
   one a tool of the caller's own defines. Such a rule could be read from the AST
   but not constructed, so emitting one meant assembling a sheet as text and
