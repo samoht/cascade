@@ -4520,9 +4520,9 @@ let test_clip_path () =
   check_clip_path "inset(50%)";
   (* 1 value: all sides *)
   check_clip_path "inset(10px)";
-  check_clip_path "inset(10% 20%)";
+  check_clip_path ~expected:"inset(10%20%)" "inset(10% 20%)";
   (* 2 values: top/bottom, left/right *)
-  check_clip_path "inset(10% 20% 30%)";
+  check_clip_path ~expected:"inset(10%20%30%)" "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
   check_clip_path "inset(0px 10px 20px 30px)";
   (* CSS Values L4 sec. 6: a zero in <length>/<length-percentage> position drops

@@ -2378,7 +2378,7 @@ let spec_remaining_prop_vectors () =
       ("font-variant-east-asian: ruby", "font-variant-east-asian:ruby");
       ( "font-variant-east-asian: traditional proportional-width ruby",
         "font-variant-east-asian:traditional proportional-width ruby" );
-      ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10% 0)");
+      ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10%0)");
       ("image-rendering: pixelated", "image-rendering:pixelated");
       ("image-resolution: from-image 2dppx", "image-resolution:from-image 2dppx");
       ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg)30 fill");
