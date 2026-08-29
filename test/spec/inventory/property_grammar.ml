@@ -253,7 +253,18 @@ let matrix =
     };
     {
       property = "text-decoration";
-      positives = [ "underline"; "underline wavy red 2px" ];
+      positives =
+        [
+          "underline";
+          "underline wavy red 2px";
+          (* css-text-decor-4 sec. 2.6 combines the four components with [||],
+             so any one of them alone is a complete value. *)
+          "red";
+          "solid";
+          "2px";
+          "solid red";
+          "wavy 1px red";
+        ];
       negatives = [ "underline none"; "wavy solid" ];
     };
     {

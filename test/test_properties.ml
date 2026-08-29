@@ -1994,14 +1994,18 @@ let test_text_decoration () =
   check_text_decoration "underline";
   check_text_decoration "line-through";
   check_text_decoration ~expected:"none" "none";
+  (* css-text-decor-4 sec. 2.6: the four components are joined by [||], so a
+     lone style, colour or thickness is a complete value. *)
+  check_text_decoration ~roundtrip:true "solid";
+  check_text_decoration ~roundtrip:true "red";
+  check_text_decoration ~roundtrip:true "2px";
+  check_text_decoration ~roundtrip:true "solid red";
+  check_text_decoration ~roundtrip:true ~expected:"wavy red 1px" "wavy 1px red";
   neg_cursor ~allow_partial:true read_text_decoration "invalid-decoration";
   neg_cursor read_text_decoration "underline line-through underline";
   (* duplicate - per CSS spec, || combinator means each component at most
      once *)
-  neg_cursor read_text_decoration "solid";
-  (* that's a style *)
-  (* that's a color *)
-  neg_cursor read_text_decoration "red"
+  neg_cursor read_text_decoration "underline none"
 
 let test_text_decoration_shorthand () =
   (* Test individual parts. The printer holds every component it parsed;
