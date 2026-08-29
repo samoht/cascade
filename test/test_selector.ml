@@ -2504,9 +2504,17 @@ let spec_selector_tree_structural_pseudos () =
     ];
   check ~expected:":nth-last-child(odd of:not([hidden]))"
     ":nth-last-child(odd of :not([hidden]))";
+  check ~expected:":nth-child(odd of.a,.b)" ":nth-child(2n+1 of.a,.b)";
   List.iter
     (fun input -> neg_cursor read input)
-    [ ":nth-child(n+)"; ":nth-last-child(2n of)"; ":nth-of-type(odd even)" ]
+    [
+      ":nth-child(n+)";
+      ":nth-last-child(2n of)";
+      ":nth-of-type(odd even)";
+      (* CSS Values 4 sec. 5.7.3: the [of <complex-selector-list>] clause is a
+         [#] list, so a trailing comma is invalid. *)
+      ":nth-child(2n+1 of .a,.b,)";
+    ]
 
 let spec_selector_input_state_pseudos () =
   List.iter check

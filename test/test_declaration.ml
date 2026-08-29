@@ -3086,6 +3086,41 @@ let function_argument_validity () =
   check_declaration ~expected:"transform:skew(10deg,20deg)"
     "transform:skew( 10deg , 20deg )"
 
+(* CSS Values 4 sec. 5.7.3: a [#] multiplier's comma never trails the last item.
+   [min()]/[max()] take a comma-separated [<calc-sum>] list (sec. 10.2), and
+   [matrix()]/[matrix3d()] (CSS Transforms 1 sec. 12.1, 2 sec. 12.2) a
+   fixed-arity comma list of [<number>]; [list] committed a separator before it
+   knew whether another item followed it, so [min(1px,)] read as [min(1px)] and
+   [matrix(1,2,3,4,5,6,)] as [matrix(1,2,3,4,5,6)] instead of invalidating the
+   declaration (CSS Syntax 3 sec. 8.2). *)
+let list_trailing_separator_invalid () =
+  List.iter
+    (fun value ->
+      List.iter (neg_cursor read_declaration) (line_width_sites value);
+      List.iter (neg_cursor read_declaration) (length_math_sites value))
+    [ "min(1px,)"; "min(1px,2px,)"; "max(1px,2px,)" ];
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "transform:matrix(1,2,3,4,5,6,)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,)";
+    ];
+  (* Controls: no trailing separator, with and without interior whitespace, and
+     a single-item list, all still parse. *)
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    (line_width_sites "min(1px)"
+    @ length_math_sites "min(1px)"
+    @ line_width_sites "min(1px,2px)"
+    @ length_math_sites "min(1px,2px)");
+  check_declaration ~expected:"border-width:min(1px,2px)"
+    "border-width:min( 1px , 2px )";
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [ "transform:matrix(1,2,3,4,5,6)" ];
+  check_declaration ~expected:"transform:matrix(1,2,3,4,5,6)"
+    "transform:matrix( 1 , 2 , 3 , 4 , 5 , 6 )"
+
 (* CSS Backgrounds 3 sec. 5.1: [border-radius] is [<length-percentage
    [0,inf]>{1,4} [ / <length-percentage [0,inf]>{1,4} ]?], so an
    intrinsic-sizing keyword ([auto], [max-content], [stretch], ...) is no part
@@ -3521,6 +3556,8 @@ let declaration_tests =
     test_case "line-width invalid math argument" `Quick
       line_width_invalid_math_argument;
     test_case "function argument validity" `Quick function_argument_validity;
+    test_case "list rejects a trailing separator" `Quick
+      list_trailing_separator_invalid;
     test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
     test_case "border-radius CSS-wide keywords" `Quick
       border_radius_css_wide_keywords;
