@@ -132,17 +132,23 @@ module Transform = struct
               read_angle t)
             t
         in
+        Cursor.ws t;
+        Cursor.expect_eof t;
         Skew (x, y))
 
   let read_matrix t =
     Cursor.call "matrix" t (fun t ->
-        match Cursor.list ~sep:Cursor.comma Cursor.number t with
+        let args = Cursor.list ~sep:Cursor.comma Cursor.number t in
+        Cursor.expect_eof t;
+        match args with
         | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
         | _ -> err_invalid_value t "matrix" "expected 6 arguments")
 
   let read_matrix3d t =
     Cursor.call "matrix3d" t (fun t ->
-        match Cursor.list ~sep:Cursor.comma Cursor.number t with
+        let args = Cursor.list ~sep:Cursor.comma Cursor.number t in
+        Cursor.expect_eof t;
+        match args with
         | [
          m11;
          m12;
