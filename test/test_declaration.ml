@@ -915,6 +915,12 @@ let text_properties () =
     "text-decoration: underline dotted";
   check_declaration ~expected:"text-decoration:underline red"
     ~optimized:"text-decoration:underline red" "text-decoration: underline red";
+  (* CSS Masking 1 (ED) sec. 8.2 makes [alpha] the initial mask-border-mode, so
+     it folds away next to another slot but stays when it is the only one. *)
+  check_declaration ~expected:"mask-border:url(m.svg)30 alpha"
+    ~optimized:"mask-border:url(m.svg)30" "mask-border: url(m.svg) 30 alpha";
+  check_declaration ~expected:"mask-border:alpha" ~optimized:"mask-border:alpha"
+    "mask-border: alpha";
   (* An initial that is the only component stays: with nothing left to name the
      longhands it resets, the declaration would serialize to an empty value. *)
   check_declaration ~expected:"text-decoration:solid"

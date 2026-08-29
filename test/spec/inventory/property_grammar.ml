@@ -1683,7 +1683,16 @@ let matrix =
       {
         property = "mask-border";
         positives =
-          [ "none"; "url(mask.svg) 30 fill"; "url(mask.svg) 30 / 10px" ];
+          [
+            "none";
+            "url(mask.svg) 30 fill";
+            "url(mask.svg) 30 / 10px";
+            (* CSS Masking 1 sec. 8.7 joins the slots with [||], so the repeat
+               or the mode alone is a complete value. *)
+            "round";
+            "alpha";
+            "luminance";
+          ];
         negatives = [ "fill fill"; "fill fill fill" ];
       };
       {

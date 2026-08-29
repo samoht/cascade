@@ -1155,10 +1155,18 @@ let pp_border_image : border_image Pp.t =
 (* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
    and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
    explicit [alpha] declares what leaving the slot out declares. [luminance] is
-   the other mode and stays. *)
+   the other mode and stays, and so does an [alpha] that is the only slot filled
+   in: with nothing left the value would serialize empty. *)
 let normalize_mask_border (value : border_image) : border_image =
+  let fills_another_slot =
+    Option.is_some value.source
+    || Option.is_some value.slice || Option.is_some value.width
+    || Option.is_some value.outset
+    || Option.is_some value.repeat
+  in
   match value.mode with
-  | Some (Alpha : mask_border_mode) -> { value with mode = Option.None }
+  | Some (Alpha : mask_border_mode) when fills_another_slot ->
+      { value with mode = Option.None }
   | _ -> value
 
 let pp_background_shorthand : background_shorthand Pp.t =
@@ -2176,7 +2184,10 @@ let read_border_image t : border_image =
     else Cursor.option read_mask_border_mode t
   in
   let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice) with
-  | None, None -> Cursor.err_expected t "border-image source or slice"
+  (* css-backgrounds-3 sec. 5.7 joins source, slice and repeat with [||] (CSS
+     Masking 1 sec. 8.7 adds the mode), so any one of them makes a value; only
+     an empty one is invalid. *)
+  (match (source, slice, repeat, mode) with
+  | None, None, None, None -> Cursor.err_expected t "border-image"
   | _ -> ());
   { source; slice; width; outset; repeat; mode }
