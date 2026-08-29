@@ -155,6 +155,13 @@ let rec pp_value : type a. a syntax -> a Pp.t =
         value
   | Ident_keyword name -> Pp.string ctx name
 
+(* A value already typed by [syntax] is already spelled for the substitution
+   site (CSS Variables 1 sec. 2); [custom_property] still checks the name and
+   parses the printed text into the token stream a declaration holds. *)
+let typed_custom_property ?layer name syntax value =
+  custom_property ?layer name
+    (Pp.to_string ~minify:true (pp_value syntax) value)
+
 (* CSS Properties and Values API 1 section 2 lists the named [<...>] type
    references. Bare ident keywords match the [<custom-ident>] shape so a leading
    letter followed by ident-continue characters counts; this rejects stray
