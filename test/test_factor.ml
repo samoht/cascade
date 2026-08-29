@@ -224,6 +224,17 @@ let test_font_size_calc_factors () =
     "a folded calc factors with the percentage" ".a,.b{font-size:100%}"
     (optimize_str ".a{font-size:calc(50% + 50%)}.b{font-size:100%}")
 
+(* CSS Fonts 4 (ED) sec. 2.7 resets every subproperty of [font] to its initial
+   value before applying the slots given explicitly, so a slot holding its
+   longhand's initial and no slot at all name one value. Factoring compares
+   nodes, so the three rules only meet as one declaration if the drop happened
+   before they were compared. *)
+let test_font_shorthand_default_slots_factor () =
+  Alcotest.(check string)
+    "an initial slot factors with the slot left out" ".a,.b,.c{font:12px serif}"
+    (optimize_str
+       ".a{font:400 12px serif}.b{font:12px/normal serif}.c{font:12px serif}")
+
 let suite =
   ( "factor",
     [
@@ -247,6 +258,8 @@ let suite =
         `Quick test_font_stretch_spellings_factor;
       Alcotest.test_case "font-size calc factors with the folded length" `Quick
         test_font_size_calc_factors;
+      Alcotest.test_case "font shorthand initial slots factor together" `Quick
+        test_font_shorthand_default_slots_factor;
       Alcotest.test_case "display two-value and legacy spellings factor" `Quick
         test_display_spellings_factor;
       Alcotest.test_case "equal overflow axes factor with the single value"

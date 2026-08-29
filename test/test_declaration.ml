@@ -713,6 +713,30 @@ let font_properties () =
   check_declaration ~expected:"font:calc(1px + 1px) serif"
     ~optimized:"font:2px serif" "font: calc(1px + 1px) serif";
 
+  (* sec. 2.7 first resets every subproperty of [font] to its initial value and
+     then applies the slots given explicitly, so a slot carrying its longhand's
+     initial says exactly what leaving it out says. The initials are [normal]
+     for style, variant and width, [normal] (that is 400) for weight, and
+     [normal] for line-height. Dropping a slot is a node change, so pp holds
+     every slot it parsed and the optimizer drops. *)
+  check_declaration ~expected:"font:400 12px serif" ~optimized:"font:12px serif"
+    "font: 400 12px serif";
+  check_declaration ~expected:"font:12px/normal serif"
+    ~optimized:"font:12px serif" "font: 12px/normal serif";
+  check_declaration ~expected:"font:small-caps 400 12px/normal serif"
+    ~optimized:"font:small-caps 12px serif"
+    "font: normal small-caps 400 normal 12px/normal serif";
+  (* A bare [normal] in the prefix names the initial of whichever of the four
+     slots is still open, so the reader binds no slot for it and the two layers
+     agree from the start. *)
+  check_declaration ~expected:"font:12px serif" ~optimized:"font:12px serif"
+    "font: normal 12px serif";
+  (* A slot that is not its longhand's initial stays in both layers. *)
+  check_declaration ~expected:"font:italic 12px serif"
+    ~optimized:"font:italic 12px serif" "font: italic 12px serif";
+  check_declaration ~expected:"font:12px/1.5 serif"
+    ~optimized:"font:12px/1.5 serif" "font: 12px/1.5 serif";
+
   (* Font style *)
   check_declaration ~expected:"font-style:normal" "font-style: normal";
   check_declaration ~expected:"font-style:italic" "font-style: italic";
