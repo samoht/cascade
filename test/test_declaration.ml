@@ -959,6 +959,52 @@ let border_line_width () =
     "border: solid red";
   check_declaration ~expected:"border:red" ~optimized:"border:red" "border: red"
 
+(* CSS Backgrounds 3 (ED) sec. 3.2 gives the border-style properties the initial
+   value [none], and sec. 3.4 sets an omitted shorthand slot to its initial
+   value, so an explicit [none] beside another slot says what leaving the slot
+   out already says: the optimizer drops it, pp holds the node it was handed.
+   Drained of every slot the shorthand declares nothing but initial values,
+   which is what the [none] keyword declares, so that is the node it folds to -
+   and the node [border: none] parses to directly, which is how the two
+   spellings reach factoring as one. CSS UI 4 (ED) sec. 3.3 gives outline-style
+   the same initial value and sec. 3.1 the same shorthand rule. *)
+let border_line_style () =
+  check_declaration ~expected:"border:medium none" ~optimized:"border:none"
+    "border: medium none";
+  check_declaration ~expected:"outline:medium none" ~optimized:"outline:none"
+    "outline: medium none";
+  check_declaration ~expected:"border:none red" ~optimized:"border:red"
+    "border: none red";
+  check_declaration ~expected:"outline:none red" ~optimized:"outline:red"
+    "outline: none red";
+  (* The keyword itself is already that node, and must keep printing, not empty
+     out. *)
+  check_declaration ~expected:"border:none" ~optimized:"border:none"
+    "border: none";
+  check_declaration ~expected:"outline:none" ~optimized:"outline:none"
+    "outline: none";
+  (* The other shorthands reading the same production. *)
+  check_declaration ~expected:"border-top:medium none"
+    ~optimized:"border-top:none" "border-top: medium none";
+  check_declaration ~expected:"border-inline:medium none"
+    ~optimized:"border-inline:none" "border-inline: medium none";
+  check_declaration ~expected:"border-block-start:medium none"
+    ~optimized:"border-block-start:none" "border-block-start: medium none";
+  check_declaration ~expected:"column-rule:medium none"
+    ~optimized:"column-rule:none" "column-rule: medium none";
+  (* Controls: a style that is not the initial one stands, a zero width is not
+     the initial width, and [auto] is outline-style's own value, not [none]. *)
+  check_declaration ~expected:"border:1px solid red"
+    ~optimized:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
+    "border: solid red";
+  check_declaration ~expected:"border:0 none" ~optimized:"border:0"
+    "border: 0 none";
+  check_declaration ~expected:"border:0" ~optimized:"border:0" "border: 0";
+  check_declaration ~expected:"outline:0" ~optimized:"outline:0" "outline: 0";
+  check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
+    "outline: auto"
+
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
      border-inline-start and border-inline-end take <'border-top-width'> ||
@@ -3683,6 +3729,7 @@ let declaration_tests =
     test_case "borders" `Quick borders;
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
+    test_case "border line-style" `Quick border_line_style;
     test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;

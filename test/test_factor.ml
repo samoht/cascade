@@ -114,6 +114,44 @@ let test_initial_line_width_spellings_factor () =
     "outline medium factors with the omitted width" ".a,.b{outline:solid red}"
     (optimize_str ".a{outline:medium solid red}.b{outline:solid red}")
 
+(* The same argument one slot over. CSS Backgrounds 3 (ED) sec. 3.2 gives the
+   border-style properties the initial value [none], and CSS UI 4 (ED) sec. 3.3
+   gives outline-style the same one, so an explicit [none] and an absent style
+   are one declaration. A shorthand left holding nothing but initial values is
+   the [none] keyword, which is the other spelling these pairs meet on. *)
+let test_initial_line_style_spellings_factor () =
+  Alcotest.(check string)
+    "border medium none factors with the none keyword" ".a,.b{border:none}"
+    (optimize_str ".a{border:medium none}.b{border:none}");
+  Alcotest.(check string)
+    "outline medium none factors with the none keyword" ".c,.d{outline:none}"
+    (optimize_str ".c{outline:medium none}.d{outline:none}");
+  Alcotest.(check string)
+    "border none red factors with the omitted style" ".a,.b{border:red}"
+    (optimize_str ".a{border:none red}.b{border:red}");
+  Alcotest.(check string)
+    "outline none red factors with the omitted style" ".c,.d{outline:red}"
+    (optimize_str ".c{outline:none red}.d{outline:red}");
+  (* css-logical-1 sec. 4.4 and CSS Multi-column 1 (ED) sec. 4.5 route the other
+     border-family shorthands through the same production. *)
+  Alcotest.(check string)
+    "border-top medium none factors with the none keyword"
+    ".a,.b{border-top:none}"
+    (optimize_str ".a{border-top:medium none}.b{border-top:none}");
+  Alcotest.(check string)
+    "border-inline medium none factors with the none keyword"
+    ".a,.b{border-inline:none}"
+    (optimize_str ".a{border-inline:medium none}.b{border-inline:none}");
+  Alcotest.(check string)
+    "border-block-start medium none factors with the none keyword"
+    ".a,.b{border-block-start:none}"
+    (optimize_str
+       ".a{border-block-start:medium none}.b{border-block-start:none}");
+  Alcotest.(check string)
+    "column-rule medium none factors with the none keyword"
+    ".a,.b{column-rule:none}"
+    (optimize_str ".a{column-rule:medium none}.b{column-rule:none}")
+
 let suite =
   ( "factor",
     [
@@ -127,4 +165,6 @@ let suite =
         test_factoring_stable_under_unrelated_grouping;
       Alcotest.test_case "initial line-width spellings factor together" `Quick
         test_initial_line_width_spellings_factor;
+      Alcotest.test_case "initial line-style spellings factor together" `Quick
+        test_initial_line_style_spellings_factor;
     ] )
