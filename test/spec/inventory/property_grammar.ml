@@ -275,8 +275,39 @@ let matrix =
     };
     {
       property = "white-space";
-      positives = [ "normal"; "pre"; "preserve nowrap" ];
-      negatives = [ "pre normal"; "wrap nowrap preserve" ];
+      positives =
+        [
+          "normal";
+          "pre";
+          "pre-wrap";
+          "pre-line";
+          "nowrap";
+          "break-spaces";
+          "preserve nowrap";
+          (* css-text-4 sec. 3 makes the last four alternatives one [||] group
+             over white-space-collapse, text-wrap-mode and white-space-trim, so
+             any one of the three alone is a complete value. *)
+          "collapse";
+          "preserve";
+          "preserve-breaks";
+          "wrap";
+          "discard-before";
+          (* [none] is white-space-trim's own first alternative. *)
+          "none";
+          "collapse wrap";
+          "discard-before discard-after";
+          "preserve nowrap discard-inner";
+        ];
+      negatives =
+        [
+          "pre normal";
+          "wrap nowrap preserve";
+          "collapse preserve";
+          "discard-before discard-before";
+          (* text-wrap-style is not in the shorthand. *)
+          "balance";
+          "collapse balance";
+        ];
     };
     {
       property = "word-break";

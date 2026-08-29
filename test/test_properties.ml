@@ -1479,13 +1479,34 @@ let test_white_space () =
   check_white_space "pre-line";
   check_white_space "break-spaces";
   check_white_space "inherit";
+  check_white_space "preserve nowrap";
+  (* css-text-4 sec. 3: the tail of the propdef is one [||] group over
+     white-space-collapse, text-wrap-mode and white-space-trim, so each of the
+     three stands alone and the group takes them in any order. *)
+  check_white_space ~roundtrip:true "collapse";
+  check_white_space ~roundtrip:true "preserve";
+  check_white_space ~roundtrip:true "preserve-breaks";
+  check_white_space ~roundtrip:true "preserve-spaces";
+  check_white_space ~roundtrip:true "discard";
+  check_white_space ~roundtrip:true "wrap";
+  check_white_space ~roundtrip:true "discard-before";
+  (* [none] is white-space-trim's own first alternative. *)
+  check_white_space ~roundtrip:true "none";
+  check_white_space ~roundtrip:true "collapse wrap";
+  check_white_space ~roundtrip:true ~expected:"collapse wrap" "wrap collapse";
+  check_white_space ~roundtrip:true "discard-before discard-after";
+  check_white_space ~roundtrip:true "preserve nowrap discard-inner";
   neg_cursor read_white_space "invalid-space";
   (* hyphenated form incorrect *)
   neg_cursor read_white_space "no-wrap";
   (* contradictory *)
   neg_cursor ~allow_partial:true read_white_space "normal nowrap";
-  (* incomplete *)
-  neg_cursor read_white_space "preserve"
+  (* each slot of the [||] group takes at most one value *)
+  neg_cursor ~allow_partial:true read_white_space "collapse preserve";
+  neg_cursor ~allow_partial:true read_white_space
+    "discard-before discard-before";
+  (* text-wrap-style is not one of the three longhands *)
+  neg_cursor read_white_space "balance"
 
 let test_word_break () =
   check_word_break "normal";
