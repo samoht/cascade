@@ -3668,8 +3668,9 @@ let normalize_property_value : type a.
   | Padding_block ->
       normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Margin -> normalize_box_shorthand (Values.normalize_length ~ctx) value
-  | Margin_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Margin_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Margin_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Margin_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_inline -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_inline_start -> map_preserve (Values.normalize_length ~ctx) value
