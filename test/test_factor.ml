@@ -252,6 +252,21 @@ let test_transition_default_spellings_factor () =
     ".a{transition:opacity 0s 2s}.b{transition:opacity 2s}"
     (optimize_str ".a{transition:opacity 0s 2s}.b{transition:opacity 2s}")
 
+(* CSS Easing 1 (ED) sec. 2.2 and sec. 2.3 give the named curves and the
+   one-step easings a keyword spelling of the same function, so the two rules
+   set the same easing and have to reach factoring as one node. *)
+let test_timing_function_spellings_factor () =
+  Alcotest.(check string)
+    "the named curve factors with its keyword"
+    ".a,.b{transition-timing-function:ease-in}"
+    (optimize_str
+       ".a{transition-timing-function:cubic-bezier(.42,0,1,1)}.b{transition-timing-function:ease-in}");
+  Alcotest.(check string)
+    "the one-step easing factors with its keyword"
+    ".a,.b{transition-timing-function:step-end}"
+    (optimize_str
+       ".a{transition-timing-function:steps(1,end)}.b{transition-timing-function:step-end}")
+
 let suite =
   ( "factor",
     [
@@ -283,4 +298,6 @@ let suite =
         `Quick test_overflow_pair_spellings_factor;
       Alcotest.test_case "spelled-out transition initials factor away" `Quick
         test_transition_default_spellings_factor;
+      Alcotest.test_case "easing curves factor with their keywords" `Quick
+        test_timing_function_spellings_factor;
     ] )

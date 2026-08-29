@@ -1229,6 +1229,51 @@ let animations_timing () =
   check_declaration
     ~expected:"animation-timing-function:cubic-bezier(.4,0,.2,1)"
     "animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1)";
+  (* CSS Easing 1 (ED) sec. 2.2 gives each cubic bezier keyword its equivalent
+     curve, and sec. 2.3 computes [step-start] to [steps(1, start)] and
+     [step-end] to [steps(1, end)], with [start] behaving as [jump-start], [end]
+     as [jump-end], and an omitted step position assumed to be [end]. Every pair
+     below is one easing under two spellings and the keyword is the shorter one,
+     so pp prints what it parsed and the optimizer folds. *)
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.25,.1,.25,1)"
+    ~optimized:"animation-timing-function:ease"
+    "animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.42,0,1,1)"
+    ~optimized:"animation-timing-function:ease-in"
+    "animation-timing-function: cubic-bezier(0.42, 0, 1, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(0,0,.58,1)"
+    ~optimized:"animation-timing-function:ease-out"
+    "animation-timing-function: cubic-bezier(0, 0, 0.58, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.42,0,.58,1)"
+    ~optimized:"animation-timing-function:ease-in-out"
+    "animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1)";
+  check_declaration ~expected:"animation-timing-function:cubic-bezier(0,0,1,1)"
+    ~optimized:"animation-timing-function:linear"
+    "animation-timing-function: cubic-bezier(0, 0, 1, 1)";
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-start)"
+    ~optimized:"transition-timing-function:step-start"
+    "transition-timing-function: steps(1, jump-start)";
+  check_declaration ~expected:"transition-timing-function:steps(1,start)"
+    ~optimized:"transition-timing-function:step-start"
+    "transition-timing-function: steps(1, start)";
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-end)"
+    ~optimized:"transition-timing-function:step-end"
+    "transition-timing-function: steps(1, jump-end)";
+  check_declaration ~expected:"transition-timing-function:steps(1)"
+    ~optimized:"transition-timing-function:step-end"
+    "transition-timing-function: steps(1)";
+  (* [jump-none] and [jump-both] have no keyword spelling, and neither does a
+     step count above one. *)
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-both)"
+    ~optimized:"transition-timing-function:steps(1,jump-both)"
+    "transition-timing-function: steps(1, jump-both)";
+  check_declaration ~expected:"transition-timing-function:steps(2,jump-start)"
+    ~optimized:"transition-timing-function:steps(2,jump-start)"
+    "transition-timing-function: steps(2, jump-start)";
 
   (* Per CSS Values 4 section 7.2 the time unit ([s] or [ms]) is required for
      [<time>]. [0s] does not drop the unit. *)
