@@ -567,7 +567,14 @@ let test_read_var_reference () =
   (* Empty variable name *)
   neg "variable(--color)";
   (* Wrong function name *)
-  neg "var(--)" (* No name after -- *)
+  neg "var(--)";
+  (* No name after -- *)
+  (* CSS Custom Properties for Cascading Variables 1 sec. 3: content after the
+     name without a leading comma is not part of [var()]'s grammar.
+     [Cursor.call] did not require [read_reference] to consume its whole
+     sub-cursor, so [var(--x 10px)] silently dropped [ 10px] instead of
+     invalidating the reference. *)
+  neg "var(--x 10px)"
 
 let spec_custom_fallback_edges () =
   let check_var_ref input expected_name expected_fallback =
@@ -605,6 +612,30 @@ let spec_custom_fallback_edges () =
   neg "var(--color";
   check_var_ref "var(---)" "-" None;
   neg "var(--, red)"
+
+(* CSS Custom Properties 1 sec. 3: [var()] = [var( <custom-property-name> ,
+   <declaration-value>? )]. [read_reference_body] reads that argument list from
+   a cursor already positioned at it, without the surrounding [var(] and [)] a
+   caller would otherwise have to assemble and hand back to a parser - the same
+   relationship [Values.read_calc_expr] has to a [calc()] body. *)
+let spec_read_reference_body_edges () =
+  let check ?(expected = "") input =
+    check_value_cursor "var body"
+      (read_reference_body read_length)
+      (pp_var pp_length) ~minify:false ~expected input
+  in
+  (* No fallback: just the [<custom-property-name>]. *)
+  check "--x" ~expected:"var(--x)";
+  (* A fallback that itself parses as the target syntax is kept typed. *)
+  check "--x, 10px" ~expected:"var(--x, 10px)";
+  (* A trailing comma with nothing after it is an explicit empty fallback,
+     distinct from no fallback at all. *)
+  check "--x," ~expected:"var(--x,)";
+  (* A fallback that is not itself a <length> is preserved as the
+     declaration-value tokens it is, not rejected. *)
+  check "--x, red" ~expected:"var(--x, red)";
+  neg_cursor (read_reference_body read_length) "not-a-var";
+  neg_cursor (read_reference_body read_length) "--"
 
 let spec_custom_computed_edges () =
   let check_context name specified =
@@ -666,6 +697,7 @@ let tests =
     ("syntax", `Quick, test_syntax);
     ("read_reference", `Quick, test_read_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
+    ("spec read_reference_body edges", `Quick, spec_read_reference_body_edges);
     ( "spec custom property computed-time edges",
       `Quick,
       spec_custom_computed_edges );

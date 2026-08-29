@@ -1227,30 +1227,24 @@ let length_to_border_width t (length : length) : border_width =
       | Some (unit, value) -> typed_dimension value unit
       | None -> err_invalid_value t "border-width" "unsupported length type")
 
-(* CSS Values 4 sec. 10.2: every argument of a comparison function is a
-   [<calc-sum>], and [clamp()] takes three. [Cursor.list] stops at the first
-   argument it cannot read, so the body has to be read to its end: comparing the
-   prefix answers a different question, and CSS Syntax 3 sec. 8.2 makes an
-   invalid value invalidate the declaration. *)
-let read_math_args ?at_most ~at_least read_arg t =
-  let args = Cursor.list ~sep:Cursor.comma ~at_least ?at_most read_arg t in
-  Cursor.expect_eof t;
-  args
-
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
   let read_calc t : border_width = Calc (read_calc read_border_width t) in
   let read_math_arg t = read_calc_expr read_border_width t in
   let read_min t : border_width =
-    Min (Cursor.call "min" t (read_math_args ~at_least:1 read_math_arg))
+    Min
+      (Cursor.call "min" t
+         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
   in
   let read_max t : border_width =
-    Max (Cursor.call "max" t (read_math_args ~at_least:1 read_math_arg))
+    Max
+      (Cursor.call "max" t
+         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
   in
   let read_clamp t : border_width =
     match
       Cursor.call "clamp" t
-        (read_math_args ~at_least:3 ~at_most:3 read_math_arg)
+        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
     with
     | [ lower; value; upper ] -> Clamp (lower, value, upper)
     | _ -> Cursor.err_invalid t "invalid clamp"

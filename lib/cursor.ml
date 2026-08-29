@@ -143,10 +143,13 @@ let string_of_components ?(trim = false) cvs =
 let string_of_remaining ?(trim = false) t =
   string_of_components ~trim (remaining t)
 
-let consume_remaining_as_string ?(trim = false) t =
-  let cvs = remaining t in
+let consume_remaining t =
+  let cvs = t.cvs in
   t.cvs <- [];
-  string_of_components ~trim cvs
+  cvs
+
+let consume_remaining_as_string ?(trim = false) t =
+  string_of_components ~trim (consume_remaining t)
 
 let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
 
@@ -784,7 +787,12 @@ let call name t f =
       let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
       let arg = { arg with depth = t.depth + 1 } in
       if arg.depth > max_nesting_depth then err arg "nesting too deep";
-      f arg
+      (* A function's grammar ends at its closing paren, so whatever [f] left
+         behind is an invalid value, not a shorter one it may answer with (CSS
+         Syntax 3 sec. 8.2). [expect_eof] skips leading whitespace itself. *)
+      let v = f arg in
+      expect_eof arg;
+      v
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)

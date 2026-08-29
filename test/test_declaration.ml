@@ -224,7 +224,17 @@ let complex_values () =
 
   (* pp holds triple-nested calc; optimize reduces it fully. *)
   check_declaration ~expected:"width:calc(100% - calc(10px - calc(5px + 2px)))"
-    "width: calc(100% - calc(10px - calc(5px + 2px)));"
+    "width: calc(100% - calc(10px - calc(5px + 2px)));";
+  (* CSS Values 4 sec. 10.1 gives a [calc()] body exactly one [<calc-sum>]; a
+     top-level [calc()] already checks this (the comment above [read_calc] in
+     values.ml names [calc(1px 2px)] directly), but a nested [calc()] read
+     through [read_nested_calc_factor] shares the same [Cursor.call] and had no
+     such check, so [calc(calc(1px 2px) + 3px)] read only [1px] for the inner
+     factor and answered [calc(1px + 3px)] instead of invalidating the
+     declaration. *)
+  neg_cursor read_declaration "width:calc(calc(1px 2px) + 3px)";
+  check_declaration ~expected:"width:calc(calc(1px + 2px) + 3px)"
+    "width: calc( calc( 1px + 2px ) + 3px );"
 
 let quoted_strings () =
   (* Simple quoted strings *)
@@ -1186,7 +1196,15 @@ let custom_properties () =
 
   (* var() with empty fallback - declaration level coverage *)
   check_declaration ~expected:"color:var(--x,)" "color: var(--x,)";
-  check_declaration ~expected:"background:var(--bg,)" "background: var(--bg,)"
+  check_declaration ~expected:"background:var(--bg,)" "background: var(--bg,)";
+  (* CSS Custom Properties for Cascading Variables 1 sec. 3: [var()] takes a
+     name and an optional [, <fallback>]; content after the name without a
+     leading comma is not part of the grammar (CSS Syntax 3 sec. 8.2 invalidates
+     the declaration). [Cursor.call] did not require [var()]'s reader to consume
+     its whole sub-cursor, so [var(--x 10px)] silently dropped [ 10px] and
+     answered [var(--x)]. *)
+  neg_cursor read_declaration "color:var(--x 10px)";
+  check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
 let important () =
   (* Standard properties with !important *)

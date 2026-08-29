@@ -153,6 +153,37 @@ let test_list_single_item_no_separator () =
   Alcotest.(check (list string)) "items" [ "a" ] items;
   Alcotest.(check bool) "fully consumed" true (Cursor.is_done c)
 
+(* [call] hands [f] a sub-cursor over the function's argument list, but a reader
+   that only recognises a prefix of it (e.g. one built from [option] or
+   [one_of]) can return without raising. CSS Syntax 3 sec. 8.2 makes anything
+   left over after that an invalid value, not a truncated one, so [call] must
+   check the sub-cursor is exhausted itself once [f] returns. *)
+let test_call_requires_eof () =
+  let c = cursor_of_string "foo(1,2)" in
+  match Cursor.call "foo" c (fun inner -> Cursor.number inner) with
+  | (_ : float) -> Alcotest.fail "expected Parse_error"
+  | exception Cursor.Parse_error _ -> ()
+
+let test_call_full_consumption_succeeds () =
+  let c = cursor_of_string "foo(1)" in
+  let v = Cursor.call "foo" c (fun inner -> Cursor.number inner) in
+  Alcotest.(check (float 0.)) "value" 1. v;
+  Alcotest.(check bool)
+    "outer cursor advanced past the call" true (Cursor.is_done c)
+
+let test_call_interior_whitespace () =
+  let c = cursor_of_string "foo( 1 )" in
+  let v =
+    Cursor.call "foo" c (fun inner ->
+        Cursor.ws inner;
+        let n = Cursor.number inner in
+        Cursor.ws inner;
+        n)
+  in
+  Alcotest.(check (float 0.)) "value" 1. v;
+  Alcotest.(check bool)
+    "outer cursor advanced past the call" true (Cursor.is_done c)
+
 let suite =
   ( "cursor",
     [
@@ -180,4 +211,9 @@ let suite =
         test_list_interior_whitespace;
       Alcotest.test_case "list single item, no separator" `Quick
         test_list_single_item_no_separator;
+      Alcotest.test_case "call requires eof" `Quick test_call_requires_eof;
+      Alcotest.test_case "call full consumption succeeds" `Quick
+        test_call_full_consumption_succeeds;
+      Alcotest.test_case "call interior whitespace" `Quick
+        test_call_interior_whitespace;
     ] )

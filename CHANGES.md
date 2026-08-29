@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A function reader that could not read all of its arguments answered with
+  the ones it had, so `transform: translateX(10px red)` read as
+  `translateX(10px)`; the cause behind #617, #627 and #629 (#631)
 - `skew()`, `matrix()`, `matrix3d()` and `repeat()` read only up to the first
   argument they could not parse, so `skew(10deg,red)` became `skew(10deg)`
   instead of an invalid declaration; same gap #617 closed elsewhere (#627)
@@ -738,6 +741,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `Css.Variables.read_reference_body` reads a `var()` argument list - a name
+  and optional fallback - into a typed variable handle from a cursor
+  already positioned at the arguments, without the `var(`/`)` wrapper (#630)
 - `Css.Variables.typed_custom_property` writes a custom-property declaration
   from a value already typed by a `@property` registration's syntax;
   `Declaration.custom_property` takes a plain string (#626)

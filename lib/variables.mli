@@ -120,3 +120,10 @@ val read_reference : Cursor.t -> string * string option
 (** [read_reference t] parses a CSS var() function and returns the variable name
     (without -- prefix) and optional fallback string. This is a lower-level
     function that doesn't create a variable handle. *)
+
+val read_reference_body : (Cursor.t -> 'a) -> Cursor.t -> 'a var
+(** [read_reference_body read t] parses a [var()] reference body -- the name and
+    optional fallback -- from a cursor already positioned at the arguments,
+    without the surrounding [var(] and [)]. Unlike {!read_reference}, which
+    returns strings, this reads the fallback with [read] and returns a typed
+    variable handle. *)

@@ -122,3 +122,10 @@ let _ :
     Values.length ->
     Css.declaration =
   Css.Variables.typed_custom_property
+
+(* The contents of a [var()] - a name and optional fallback - are readable
+   from a cursor already positioned at them, without assembling the [var(]
+   and [)] wrapper around a string first: the same relationship
+   [Values.read_calc_expr] has to a [calc()] body. *)
+let _ : (Cursor.t -> Values.length) -> Cursor.t -> Values.length Css.var =
+  Css.Variables.read_reference_body

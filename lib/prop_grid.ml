@@ -843,8 +843,6 @@ module Grid_template = struct
                     ~sep:(fun i -> Cursor.ws i)
                     read_single_track inner
                 in
-                Cursor.ws inner;
-                Cursor.expect_eof inner;
                 (Repeat (count, tracks) : grid_template) );
           ]
         ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)

@@ -98,6 +98,9 @@ val string_of_remaining : ?trim:bool -> t -> string
 (** [string_of_remaining t] serializes the unconsumed tail without advancing
     [t]. *)
 
+val consume_remaining : t -> Component.t list
+(** [consume_remaining t] is {!val-remaining}, and also consumes the tail. *)
+
 val consume_remaining_as_string : ?trim:bool -> t -> string
 (** [consume_remaining_as_string t] serializes and consumes the unconsumed tail.
 *)
@@ -445,7 +448,9 @@ val braces : (t -> 'a) -> t -> 'a
 
 val call : string -> t -> (t -> 'a) -> 'a
 (** [call name t f] consumes a [name(...)] function call and applies [f] to a
-    cursor over its arguments. Raises if no such function is next. *)
+    cursor over its arguments. Raises if no such function is next, or if [f]
+    leaves any of the arguments unconsumed: trailing content makes the value
+    invalid, not truncated (CSS Syntax 3 sec. 8.2). *)
 
 val function_call : string -> (t -> 'a) -> t -> 'a option
 (** [function_call name f t] consumes a [name(...)] call and calls [f] over its

@@ -1656,7 +1656,39 @@ let test_transform () =
   (* A seventeenth, well-formed number is the same over-count as [red] above,
      not a different bug: the exact-arity match already rejects it, with or
      without the [expect_eof] fix. *)
-  neg_cursor read_transform "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,2)"
+  neg_cursor read_transform "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,2)";
+  (* The same gap in [Cursor.call] itself (not just the readers #617/#627
+     already patched): CSS Transforms 1 sec. 7.1 gives each one-argument
+     function exactly one [<length-percentage>] / [<angle>] / [<number>], CSS
+     Transforms 2 sec. 12.1-12.2 gives the 3d/axis forms a fixed comma count,
+     and none of these readers checked that its sub-cursor was exhausted, so
+     e.g. [translateX(10px red)] read only [10px] and answered
+     [translateX(10px)] instead of invalidating the declaration. *)
+  List.iter
+    (neg_cursor read_transform)
+    [
+      "translateX(10px red)";
+      "translateY(10px red)";
+      "translateZ(10px red)";
+      "translate3d(10px,20px,30px,red)";
+      "translate(10px red)";
+      "translate(10px,20px,red)";
+      "rotateX(45deg red)";
+      "rotateY(45deg red)";
+      "rotateZ(45deg red)";
+      "rotate(45deg red)";
+      "rotate3d(1,0,0,45deg,red)";
+      "scaleX(2 red)";
+      "scaleY(2 red)";
+      "scaleZ(2 red)";
+      "scale3d(2,3,4,red)";
+      "skewX(10deg red)";
+      "skewY(10deg red)";
+    ];
+  (* Controls: whitespace directly inside the parens still stands. *)
+  check_transform "translateX( 10px )" ~expected:"translateX(10px)";
+  check_transform "rotate( 45deg )" ~expected:"rotate(45deg)";
+  check_transform "scaleX( 2 )" ~expected:"scaleX(2)"
 
 let test_transforms () =
   (* Adjacent [var()] references in a transform list keep a single separating
@@ -1824,6 +1856,14 @@ let test_cursor () =
     "url(./cursor.cur) 4 12, pointer";
   check_cursor ~expected:"url(a.cur),url(b.cur) 1 2,move"
     "url(\"a.cur\"), url(b.cur) 1 2, move";
+  (* A quoted [url()] with the hotspot placed inside its own parens still
+     parses, and prints with the hotspot moved after the call like every other
+     form (CSS UI 4 sec. 5.4: [<url> [<x> <y>]?]). A third number past the
+     hotspot has nowhere to go in that grammar; [Cursor.call] did not require
+     the reader to consume its whole sub-cursor, so it was silently dropped
+     instead of invalidating the declaration. *)
+  check_cursor ~expected:"url(a.cur) 1 2,move" "url(\"a.cur\" 1 2), move";
+  neg_cursor read_cursor "url(\"a.cur\" 1 2 3), pointer";
   neg_cursor read_cursor "invalid-cursor";
   neg_cursor read_cursor "url(cursor.cur)";
   (* missing fallback *)
@@ -2166,7 +2206,17 @@ let test_list_style_type () =
   check_list_style_type "ethiopic-numeric";
   check_list_style_type "disclosure-open";
   (* An unknown bare identifier is still rejected (no @counter-style here). *)
-  neg_cursor read_list_style_type "invalid-style"
+  neg_cursor read_list_style_type "invalid-style";
+  (* CSS Lists 3 sec. 6.2: [symbols() = symbols( <symbols-type>? [ <string> |
+     <image> ]+ )]. [Cursor.call] did not require the reader to consume its
+     whole sub-cursor, so a trailing token the [<symbols-type>? [<string> |
+     <image>]+] grammar cannot place was silently dropped instead of
+     invalidating the declaration. *)
+  check_list_style_type "symbols(cyclic \"a\" \"b\")"
+    ~expected:"symbols(cyclic\"a\"\"b\")";
+  check_list_style_type "symbols( cyclic \"a\" \"b\" )"
+    ~expected:"symbols(cyclic\"a\"\"b\")";
+  neg_cursor read_list_style_type "symbols(\"a\" 5)"
 
 let test_list_style_position () =
   check_list_style_position "inside";
@@ -2444,7 +2494,20 @@ let test_timing_function () =
   check_timing_function "step-end";
   check_timing_function ~expected:"cubic-bezier(.1,.7,1,.1)"
     "cubic-bezier(0.1, 0.7, 1.0, 0.1)";
-  neg_cursor read_timing_function "cubic-bezier()"
+  neg_cursor read_timing_function "cubic-bezier()";
+  (* CSS Easing 1 sec. 4.2/4.3 give [cubic-bezier()] exactly four [<number>] and
+     [steps()] a count and an optional [<step-position>]; a trailing argument is
+     invalid (CSS Syntax 3 sec. 8.2). [Cursor.call] did not require either
+     reader to consume its whole sub-cursor, so e.g. [steps(4, red)] read only
+     the count and answered [steps(4)] instead of invalidating the
+     declaration. *)
+  check_timing_function "steps(4)";
+  check_timing_function "steps(4, jump-start)" ~expected:"steps(4,jump-start)";
+  check_timing_function "steps( 4 , jump-start )"
+    ~expected:"steps(4,jump-start)";
+  neg_cursor read_timing_function "steps(4, jump-start, red)";
+  neg_cursor read_timing_function "steps(4 red)";
+  neg_cursor read_timing_function "cubic-bezier(0.1,0.7,1,0.1,0.5)"
 
 let test_transition_property_value () =
   check_transition_property_value "all";
@@ -2805,6 +2868,30 @@ let test_background_image () =
   check_background_image ~minify:false
     ~expected:"conic-gradient(in hsl longer hue, red, blue)"
     "conic-gradient(in hsl longer hue, red, blue)";
+  (* CSS Images 4 sec. 3.5.6 gives the color-stop-list a comma-separated list of
+     stops and hints, so a trailing item outside that grammar is invalid (CSS
+     Syntax 3 sec. 8.2). [Cursor.call] did not require [linear-gradient()] /
+     [radial-gradient()]'s reader to consume its whole sub-cursor, so the list
+     was read up to the first unreadable stop and answered with a truncated
+     gradient instead. *)
+  check_background_image "linear-gradient(red,blue)";
+  check_background_image "radial-gradient(red,blue)";
+  neg_cursor read_background_image "linear-gradient(red, blue, bogus-token)";
+  neg_cursor read_background_image "radial-gradient(red, blue, bogus-token)";
+  (* CSS Images 4 sec. 6.2 gives [image-set()] a comma-separated
+     [<image-set-option>]#; same [Cursor.call] gap in the option list. *)
+  check_background_image ~expected:"image-set(\"a.png\"1x)"
+    "image-set(\"a.png\" 1x)";
+  neg_cursor read_background_image "image-set(\"a.png\" 1x, bogus-token)";
+  (* [conic-gradient()] (sec. 3.6) reads its stop list the same way. *)
+  neg_cursor read_background_image
+    "conic-gradient(from 45deg, red, bogus-token)";
+  (* Controls: whitespace around the commas and just inside the parens is not
+     trailing content, so each call still stands. *)
+  check_background_image ~expected:"linear-gradient(to right,red,blue)"
+    "linear-gradient( to right , red , blue )";
+  check_background_image ~expected:"image-set(\"a.png\"1x,\"b.png\"2x)"
+    "image-set( \"a.png\" 1x , \"b.png\" 2x )";
   neg_cursor read_background_image "invalid-image"
 
 let test_radial_shape () =
@@ -3322,7 +3409,32 @@ let test_filter () =
   check_filter "url(foo.svg#x)";
   check_filter ~expected:"url(#liquid)" "url(\"#liquid\")";
   check_filter ~expected:"url(#blur)blur(2px)" "url(#blur) blur(2px)";
-  neg_cursor read_filter "invalid-filter"
+  neg_cursor read_filter "invalid-filter";
+  (* CSS Filter Effects 1 sec. 6.1 gives each of these one operand ([<length>],
+     [<number>]/[<percentage>], or [<color> && <length>{2,3}] for
+     [drop-shadow]); [Cursor.call] did not require the reader to consume its
+     whole sub-cursor, so e.g. [blur(2px foo)] read only [2px] and answered
+     [blur(2px)] instead of invalidating the whole [filter] value ([filter]'s
+     top-level list is space-separated, so the truncated function was simply
+     followed by the next one). *)
+  List.iter (neg_cursor read_filter)
+    [
+      "blur(5px 5px)";
+      "brightness(1.2 1.2)";
+      "contrast(1.2 1.2)";
+      "grayscale(.5 .5)";
+      "hue-rotate(30deg 30deg)";
+      "invert(.5 .5)";
+      "opacity(.5 .5)";
+      "saturate(1.5 1.5)";
+      "sepia(.5 .5)";
+      "drop-shadow(2px 4px 6px red foo)";
+    ];
+  (* Controls: whitespace directly inside the parens still stands. *)
+  check_filter "blur( 5px )" ~expected:"blur(5px)";
+  check_filter "opacity( .5 )" ~expected:"opacity(.5)";
+  check_filter "drop-shadow( 2px 4px 6px red )"
+    ~expected:"drop-shadow(2px 4px 6px red)"
 
 let test_shadow () =
   check_shadow "none";
@@ -3566,7 +3678,15 @@ let test_grid_template () =
      to the first unreadable track and answered with a truncated [repeat()]
      instead. *)
   neg_cursor read_grid_template "repeat(2,1fr red)";
-  neg_cursor read_grid_template "repeat(2,1fr,red)"
+  neg_cursor read_grid_template "repeat(2,1fr,red)";
+  (* Same [Cursor.call] gap in the two comparison functions #627 did not reach:
+     CSS Grid 1 sec. 7.2.3 gives [minmax()] exactly two [<track-breadth>] and
+     [fit-content()] exactly one [<length-percentage>]; a trailing argument is
+     invalid (CSS Syntax 3 sec. 8.2). *)
+  check_grid_template "fit-content(10px)";
+  check_grid_template "fit-content( 10px )" ~expected:"fit-content(10px)";
+  neg_cursor read_grid_template "minmax(1px,2px,3px)";
+  neg_cursor read_grid_template "fit-content(10px 20px)"
 
 let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""
@@ -3845,7 +3965,16 @@ let test_opacity () =
     "calc(50% + 25%)";
   decl_optimizes ~prop:"opacity" ~held:"calc(.5*var(--x))"
     ~into:"calc(.5*var(--x))" "calc(50% * var(--x))";
-  neg_cursor read_opacity "invalid-opacity"
+  neg_cursor read_opacity "invalid-opacity";
+  (* CSS Values 4 sec. 11.4 gives [abs()]/[sign()] exactly one [<calc-sum>]
+     argument; [Cursor.call] did not require the reader to consume its whole
+     sub-cursor, so e.g. [abs(.5 .5)] read only the first [.5] and answered
+     [abs(.5)] instead of invalidating the declaration. *)
+  check_opacity "abs(.5)";
+  check_opacity "sign(.5)";
+  check_opacity "abs( .5 )" ~expected:"abs(.5)";
+  neg_cursor read_opacity "abs(.5 .5)";
+  neg_cursor read_opacity "sign(.5 red)"
 
 let test_order () =
   check_order "1";
@@ -3917,6 +4046,7 @@ let spec_property_grammar_edges () =
   check_scroll_snap_type "block proximity";
   check_clip_path "path(\"M 0 0 L 10 10\")";
   check_clip_path "xywh(0 0 100% 100% round 10px)";
+  check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
   check_content "counters(section, \".\")";
   neg_cursor read_font_feature_settings "\"kern\" 2";
@@ -3929,6 +4059,13 @@ let spec_property_grammar_edges () =
     "card / inline-size / size";
   neg_cursor read_scroll_snap_type "mandatory x";
   neg_cursor read_clip_path "xywh(0 0)";
+  (* CSS Shapes 1 sec. 3.1 gives [xywh()]/[rect()] a fixed quad plus an optional
+     [round <'border-radius'>] tail; when that tail is not present,
+     [Cursor.call] did not require the reader to consume its whole sub-cursor,
+     so a trailing token past the quad was silently dropped instead of
+     invalidating the declaration. *)
+  neg_cursor read_clip_path "xywh(0 0 1px 1px foo)";
+  neg_cursor read_clip_path "rect(0px 0px 10px 10px foo)";
   neg_cursor read_content "counter()"
 
 let spec_ui_property_edges () =
@@ -4143,6 +4280,7 @@ let spec_generated_position_interaction_edges () =
   check_nav "#next current";
   check_nav_scope "root";
   check_object_view_box "inset(10px 20px)";
+  check_object_view_box "rect(0px 0px 10px 10px)";
   check_offset_path "ray(45deg sides contain at center)";
   check_offset_rotate "auto 45deg";
   check_offset_rotate_mode "reverse";
@@ -4303,6 +4441,15 @@ let spec_generated_position_interaction_edges () =
   neg_cursor read_nav "next current";
   neg_cursor read_nav_scope "document";
   neg_cursor read_object_view_box "xywh(0 0 1px)";
+  (* CSS Images 5 sec. 4.1 gives [object-view-box]'s [inset()]/[xywh()]/[rect()]
+     a fixed quad (plus an optional [round] tail for the latter two);
+     [Cursor.call] did not require any of the three readers to consume their
+     whole sub-cursor, so trailing content past the quad (or, for [inset()],
+     even a fifth value) was silently dropped instead of invalidating the
+     declaration. *)
+  neg_cursor read_object_view_box "inset(10px 20px 30px 40px 50px)";
+  neg_cursor read_object_view_box "xywh(0 0 1px 1px foo)";
+  neg_cursor read_object_view_box "rect(0px 0px 10px 10px foo)";
   neg_cursor read_offset_path "ray()";
   neg_cursor ~allow_partial:true read_offset_rotate "auto reverse";
   neg_cursor read_offset_rotate_mode "left";
@@ -4539,9 +4686,16 @@ let test_will_change () =
 let test_clip () =
   check_clip "auto";
   check_clip "rect(0px,10px,20px,30px)";
+  check_clip "rect(0px 10px 20px 30px)" ~expected:"rect(0px,10px,20px,30px)";
   decl_optimizes ~prop:"clip" ~held:"rect(0px,10px,20px,30px)"
     ~into:"rect(0px,10px,20px,30px)" "rect(0px,10px,20px,30px)";
-  neg_cursor read_clip "invalid-clip"
+  neg_cursor read_clip "invalid-clip";
+  (* CSS Masking 1 Appendix A gives the deprecated [clip] property's [rect()]
+     exactly four [<top>, <right>, <bottom>, <left>]; a fifth value is invalid
+     (CSS Syntax 3 sec. 8.2). [Cursor.call] did not require the reader to
+     consume its whole sub-cursor, so it stopped after the fourth length and
+     answered with a truncated [rect()] instead. *)
+  neg_cursor read_clip "rect(0px,10px,20px,30px,40px)"
 
 let test_clip_path () =
   check_clip_path "none";
