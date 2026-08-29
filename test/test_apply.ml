@@ -526,11 +526,40 @@ let invalid_css_is_not_empty_css () =
       Alcotest.(check int) ("kept count: " ^ css) 0 result.kept)
     [ "@@@@ }}} {{{ !!! ;;;"; ""; "a{" ]
 
+(* [Apply] resolves through the same declaration reader, so a value the reader
+   dropped over its own [!important] never reached the resolved style. CSS
+   Syntax 3 (ED) sec. 5.5.6 lifts that tail out of the value before any grammar
+   sees it, and CSS Cascade 5 sec. 6.2 ranks what it flags above a normal
+   declaration of the same property. *)
+let important_declaration_reaches_the_resolved_style () =
+  List.iter
+    (fun (css, expected) ->
+      let n = node ~classes:[ "x" ] "p" in
+      let result = A.compute ~sheet:(parse css) [ n ] in
+      Alcotest.(check string)
+        ("inline declarations: " ^ css)
+        expected
+        (match result.styles with
+        | [ (_, decls) ] -> inline_style decls
+        | _ -> Alcotest.failf "expected one inline assignment for %s" css))
+    [
+      ( ".x{font-style:oblique !important;color:red}",
+        "font-style:oblique;color:red" );
+      ( ".x{color-scheme:dark !important;color:red}",
+        "color-scheme:dark;color:red" );
+      (".x{text-box:none;color:red}", "text-box:none;color:red");
+      (* The flag still decides the cascade: the important declaration wins over
+         a later normal one for the same property. *)
+      (".x{color:red !important}.x{color:blue}", "color:red");
+    ]
+
 let suite =
   ( "apply",
     [
       Alcotest.test_case "projects static rule to inline style" `Quick
         projects_static_rule_to_inline_style;
+      Alcotest.test_case "important declaration reaches the resolved style"
+        `Quick important_declaration_reaches_the_resolved_style;
       Alcotest.test_case "keeps stateful rule in css" `Quick
         keeps_stateful_rule_in_css;
       Alcotest.test_case "projects layered rule to inline style" `Quick
