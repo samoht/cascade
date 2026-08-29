@@ -490,6 +490,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` collapses repeated sides in the `scroll-margin` and
+  `scroll-padding` physical and logical shorthands before declaration hashes
+  are compared, so equivalent rules factor together (#650)
 - `--minify` canonicalises logical minimum sizes, duration units and stepped
   functions, transform origins and hue-angle units before declaration hashes
   are compared, so equivalent rules factor under all five spellings (#647)

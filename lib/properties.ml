@@ -4096,12 +4096,18 @@ let normalize_property_value : type a.
   | Right -> map_preserve (Values.normalize_length ~ctx) value
   | Bottom -> map_preserve (Values.normalize_length ~ctx) value
   | Left -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_margin -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_margin_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_margin_block -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_padding -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_padding_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Scroll_padding_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Scroll_margin ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Scroll_margin_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Scroll_margin_block ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Scroll_padding ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Scroll_padding_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Scroll_padding_block ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Custom_property _ -> (
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->
