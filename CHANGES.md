@@ -181,6 +181,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `display: flow-root list-item` and `display: flow list-item` are read as the
+  values they are. CSS Display 3 sec. 2 orders none of the three `list-item`
+  components, and the reader stopped at a leading inside keyword (#641)
+- `display: list-item table` and a repeated `list-item` are rejected.
+  `list-item` is not a `<display-outside>`, so it no longer stands in for one
+  (#641)
 - `outline-width` and the width slot of the `outline` shorthand read a
   `<length>` where CSS UI 4 sec. 3.2 gives them a `<line-width>`, so
   `outline: thin solid red` was dropped as invalid (#633)
@@ -470,18 +476,27 @@ recorded cases carrying six minifiers' answers.
 ### Minification
 
 - `--minify` folds a value's spelling before two rules are compared, so rules
-  that wrote one declaration two ways factor into one: an explicit initial
-  `medium` width or `none` style in the `border`, `column-rule` and `outline`
-  shorthands, `font-weight: bold` beside `700`, `font-stretch: condensed`
-  beside `75%`, a family repeated in `font-family`, a `font` slot left at its
-  longhand's initial, a two-value `display` beside its legacy keyword, and
-  `overflow: auto auto` beside `auto` (#635, #636, #637, #639)
+  that wrote one declaration two ways factor into one: a component left at its
+  longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,
+  `text-decoration`, `text-shadow`, `transition` and `font` shorthands, a
+  keyword beside the number or curve naming the same value, a repeated
+  `font-family` entry, a two-value `display` beside its legacy keyword, and a
+  box shorthand whose sides repeat (#635, #636, #637, #639, #641)
 - `--minify` folds a same-unit `calc()` in `font-size`, so `calc(1px + 1px)`
   prints as `2px` and merges with a rule that wrote `2px`; the property ran the
   untyped calc simplifier, which cannot add two typed lengths (#639)
+- `--minify` collapses `margin-inline` and `margin-block` to one value when the
+  two edges match, which the four-sided box shorthands already did (#641)
+- `--minify` folds `steps(1)` to `step-end`. CSS Easing 1 sec. 2.3 assumes
+  `end` when the step position is left out, so it names the easing
+  `steps(1, end)` already folded to (#641)
 - `--minify` keeps `display: block ruby`. It printed `ruby`, which CSS Display
   3 reads as `inline ruby`, so a block-level ruby container came back
   inline-level (#637)
+- `--minify` keeps the zero duration a `transition` delay stands behind.
+  `transition: opacity 0s 2s` printed `transition:opacity 2s`; CSS Transitions
+  1 sec. 2.5 gives the first time to the duration, so the delayed instant
+  change came back as a two-second one starting straight away (#641)
 - `--minify` folds the width slot of the `border` shorthands and of
   `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
   and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That
