@@ -279,26 +279,39 @@ let normalize_scale : scale -> scale =
   | XYZ (x, y, z) -> preserve_if_equal value (XYZ (np x, np y, np z))
   | other -> other
 
-(* [transform-origin] had no normalize pass, so [0px 50%] and [0% 50%] (and
-   [left center]) stayed in distinct spellings of the same origin. [0], [0px]
-   and [0%] all place the origin at the same edge, so fold every zero component
-   to the unitless [0] - the canonical form the [left]/[top] keywords already
-   minify to. *)
-let normalize_transform_origin : transform_origin -> transform_origin =
+(* Canonicalise equivalent origin keywords and coordinates before factoring.
+   [0], [0px] and [0%] all place the origin at the same edge. *)
+let rec normalize_transform_origin : transform_origin -> transform_origin =
   let z l =
     match (l : Values.length) with
     | Pct 0. -> (Zero : Values.length)
     | _ -> Values.normalize_length l
   in
+  let pct n = (Pct n : Values.length) in
+  let zero = (Zero : Values.length) in
   fun value ->
     match value with
+    | Center | Center_center -> X (pct 50.)
+    | Left | Left_center -> X zero
+    | Right | Right_center -> X (pct 100.)
+    | Left_top | Top_left -> XY (zero, zero)
+    | Right_top | Top_right -> XY (pct 100., zero)
+    | Left_bottom | Bottom_left -> XY (zero, pct 100.)
+    | Right_bottom | Bottom_right -> XY (pct 100., pct 100.)
+    | Center_top -> Top
+    | Center_bottom -> Bottom
     | X a -> preserve_if_equal value (X (z a))
-    | XY (a, b) -> preserve_if_equal value (XY (z a, z b))
+    | XY (a, b) -> (
+        let a = z a and b = z b in
+        match b with Pct 50. -> X a | _ -> preserve_if_equal value (XY (a, b)))
     | XYZ (a, b, c) -> preserve_if_equal value (XYZ (z a, z b, z c))
     | Position p ->
         preserve_if_equal value (Position (normalize_position_value p))
     | Position_z (p, c) ->
         preserve_if_equal value (Position_z (normalize_position_value p, z c))
+    | Var v ->
+        let v' = map_var_preserve normalize_transform_origin v in
+        if v' == v then value else Var v'
     | other -> other
 
 let normalize_offset_path : offset_path -> offset_path =
@@ -532,30 +545,6 @@ let rec pp_transform_style : transform_style Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_transform_origin_pair ctx a b =
-  pp_length ctx a;
-  Pp.space ctx ();
-  pp_length ctx b
-
-let pp_minified_transform_origin ctx value =
-  let pct n = (Pct n : length) in
-  let zero = (Zero : length) in
-  match value with
-  | Center | Center_center -> Some (fun () -> pp_length ctx (pct 50.))
-  | Left | Left_center -> Some (fun () -> pp_length ctx zero)
-  | Right | Right_center -> Some (fun () -> pp_length ctx (pct 100.))
-  | Left_top | Top_left ->
-      Some (fun () -> pp_transform_origin_pair ctx zero zero)
-  | Right_top | Top_right ->
-      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) zero)
-  | Left_bottom | Bottom_left ->
-      Some (fun () -> pp_transform_origin_pair ctx zero (pct 100.))
-  | Right_bottom | Bottom_right ->
-      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) (pct 100.))
-  | Center_top -> Some (fun () -> Pp.string ctx "top")
-  | Center_bottom -> Some (fun () -> Pp.string ctx "bottom")
-  | _ -> None
-
 let pp_transform_origin_keywords ctx = function
   | Center -> Pp.string ctx "center"
   | Center_center -> Pp.string ctx "center center"
@@ -578,41 +567,34 @@ let pp_transform_origin_keywords ctx = function
   | _ -> ()
 
 let rec pp_transform_origin : transform_origin Pp.t =
- fun ctx value ->
-  match
-    if Pp.minified ctx then pp_minified_transform_origin ctx value else None
-  with
-  | Some pp -> pp ()
-  | None -> (
-      match value with
-      | Inherit -> Pp.string ctx "inherit"
-      | Initial -> Pp.string ctx "initial"
-      | Unset -> Pp.string ctx "unset"
-      | Revert -> Pp.string ctx "revert"
-      | Revert_layer -> Pp.string ctx "revert-layer"
-      | Center | Center_center | Left | Right | Top | Bottom | Left_top
-      | Left_center | Left_bottom | Right_top | Right_center | Right_bottom
-      | Center_top | Center_bottom | Top_left | Top_right | Bottom_left
-      | Bottom_right ->
-          pp_transform_origin_keywords ctx value
-      | Position position -> pp_position_value ctx position
-      | X a -> pp_length ctx a
-      | XY (a, Pct 50.) when Pp.minified ctx -> pp_length ctx a
-      | XY (a, b) ->
-          pp_length ctx a;
-          Pp.space ctx ();
-          pp_length ctx b
-      | XYZ (a, b, z) ->
-          pp_length ctx a;
-          Pp.space ctx ();
-          pp_length ctx b;
-          Pp.space ctx ();
-          pp_length ctx z
-      | Position_z (position, z) ->
-          pp_position_value ctx position;
-          Pp.space ctx ();
-          pp_length ctx z
-      | Var v -> pp_var pp_transform_origin ctx v)
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | ( Center | Center_center | Left | Right | Top | Bottom | Left_top
+    | Left_center | Left_bottom | Right_top | Right_center | Right_bottom
+    | Center_top | Center_bottom | Top_left | Top_right | Bottom_left
+    | Bottom_right ) as value ->
+      pp_transform_origin_keywords ctx value
+  | Position position -> pp_position_value ctx position
+  | X a -> pp_length ctx a
+  | XY (a, b) ->
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b
+  | XYZ (a, b, z) ->
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b;
+      Pp.space ctx ();
+      pp_length ctx z
+  | Position_z (position, z) ->
+      pp_position_value ctx position;
+      Pp.space ctx ();
+      pp_length ctx z
+  | Var v -> pp_var pp_transform_origin ctx v
 
 let rec pp_transform_box : transform_box Pp.t =
  fun ctx -> function

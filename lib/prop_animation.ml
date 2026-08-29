@@ -505,8 +505,12 @@ let normalize_transition_shorthand (s : transition_shorthand) :
     | Option.Some d when transition_duration_is_zero d -> Option.None
     | d -> d
   in
-  let duration = drop_zero s.duration in
-  let delay = drop_zero s.delay in
+  let duration =
+    drop_zero (option_map_preserve Values.normalize_duration s.duration)
+  in
+  let delay =
+    drop_zero (option_map_preserve Values.normalize_duration s.delay)
+  in
   let timing_function =
     match option_map_preserve normalize_timing_function s.timing_function with
     | Option.Some Ease -> Option.None
@@ -1715,11 +1719,17 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
    same node question [normalize_timing_function] answers. *)
 let normalize_animation_shorthand (a : animation_shorthand) :
     animation_shorthand =
+  let duration = option_map_preserve Values.normalize_duration a.duration in
+  let delay = option_map_preserve Values.normalize_duration a.delay in
   let timing_function =
     option_map_preserve normalize_timing_function a.timing_function
   in
-  if option_is_phys_same timing_function a.timing_function then a
-  else { a with timing_function }
+  if
+    option_is_phys_same duration a.duration
+    && option_is_phys_same delay a.delay
+    && option_is_phys_same timing_function a.timing_function
+  then a
+  else { a with duration; timing_function; delay }
 
 let normalize_animation : animation -> animation = function
   | Shorthand a as value ->

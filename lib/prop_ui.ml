@@ -244,6 +244,20 @@ let rec read_interest_delay ?(longhand = false) t : interest_delay =
            read_non_negative_duration t))
     t
 
+let rec normalize_interest_delay : interest_delay -> interest_delay =
+ fun value ->
+  match value with
+  | Durations durations ->
+      preserve_if_equal value
+        (Durations
+           (map_preserve
+              (Values.normalize_duration ~canonicalize_ms:false)
+              durations))
+  | Var v ->
+      let v' = map_var_preserve normalize_interest_delay v in
+      if v' == v then value else Var v'
+  | _ -> value
+
 let read_nav_scope t : nav_scope =
   Cursor.one_of
     [

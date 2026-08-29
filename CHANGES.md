@@ -490,6 +490,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` canonicalises logical minimum sizes, duration units and stepped
+  functions, transform origins and hue-angle units before declaration hashes
+  are compared, so equivalent rules factor under all five spellings (#647)
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: a component left at its
   longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,

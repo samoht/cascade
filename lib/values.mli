@@ -227,8 +227,8 @@ val pp_duration : duration Pp.t
 (** [pp_duration] pretty-prints {!duration} values. *)
 
 val pp_duration_preserve_ms : duration Pp.t
-(** [pp_duration_preserve_ms] pretty-prints {!duration} values without
-    shortening milliseconds to seconds. *)
+(** [pp_duration_preserve_ms] is an alias of {!pp_duration}. Both printers hold
+    the parsed unit; millisecond shortening is an AST normalization. *)
 
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
@@ -297,10 +297,12 @@ val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
     [<percentage>] [calc()] ([calc(1 / 2 * 100%)] becomes [calc(.5*100%)]),
     keeping any [var()]. *)
 
-val normalize_duration : ?ctx:calc_ctx -> duration -> duration
+val normalize_duration :
+  ?ctx:calc_ctx -> ?canonicalize_ms:bool -> duration -> duration
 (** [normalize_duration d] folds the value-independent parts of a [<time>]
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
-    [var()]. *)
+    [var()]. It chooses the shorter seconds spelling by default;
+    [canonicalize_ms:false] preserves millisecond units. *)
 
 val normalize_color : ?lossless:bool -> ?exact_srgb:bool -> color -> color
 (** [normalize_color ?lossless c] canonicalises a color to its shortest

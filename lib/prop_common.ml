@@ -188,6 +188,20 @@ let option_is_phys_same a b =
   | Option.Some a, Option.Some b -> a == b
   | _ -> false
 
+let map_var_preserve f (v : 'a var) : 'a var =
+  let fallback =
+    match v.fallback with
+    | Fallback value ->
+        let value' = f value in
+        if value' == value then v.fallback else Fallback value'
+    | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as fallback
+      ->
+        fallback
+  in
+  let default = option_map_preserve f v.default in
+  if fallback == v.fallback && default == v.default then v
+  else { v with fallback; default }
+
 (* Drop a shorthand component that equals its longhand initial: a shorthand
    resets every component it leaves out to that initial, so the two spellings
    name one value. *)
@@ -280,15 +294,6 @@ let padded_hex width n =
 (* RGB color helpers *)
 let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
 let url path : background_image = Url path
-
-(* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
-   [min-block-size] have [auto] as their initial value (not the generic [0]), so
-   under minify [initial] rewrites to the shorter [auto]. *)
-let pp_length_min_max ctx (v : length_percentage) =
-  let v : length_percentage =
-    match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v
-  in
-  pp_length_percentage ctx v
 
 (* <dashed-ident>: shared by anchor-name, position-anchor, position-try
    fallbacks, font-palette and the animation timeline names. *)
