@@ -457,6 +457,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` folds `sin()` through `atan2()` inside a custom-property stream,
+  matching `calc()`'s family; the table gating the fold and the one exported as
+  `Properties.is_math_function`/`is_color_function` had drifted apart (#626)
 - `--minify` merges two rules whose `border-width` differ only in an
   unreduced `min()`/`max()`/`clamp()`, such as `min(2cqi,3cqi)` and `2cqi`; a
   second `--minify` pass used to be needed before they merged (#624)
@@ -729,6 +732,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `Css.Variables.typed_custom_property` writes a custom-property declaration
+  from a value already typed by a `@property` registration's syntax;
+  `Declaration.custom_property` takes a plain string (#626)
+- `--minify` keeps the space between the repetitions of a `@property`
+  `<type>+` initial value. CSS Values 4 sec. 2.3 makes it the separator, not
+  layout whitespace: dropped, `10px 20px` read back as one `px20px` dimension (#626)
 - A `var()` in the `ascent-override`, `descent-override`, `line-gap-override`
   or `font-variant` descriptor of an `@font-face` is resolved by
   `Css.inline_vars` instead of being dropped at parse time. Their value types
@@ -860,6 +869,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Syntax.is_ident` answers whether a whole string is one CSS ident (CSS
+  Syntax 3 sec. 4.3.11), the check `Parser.escape_ident` already made for
+  emission; a per-character scan reads a leading `-` as ident-start and misses `-4` (#626)
 - `Declaration.value_of` reads a declaration's value at a property witness, the
   counterpart of `Declaration.property_key` on the property side. The value was
   reachable only as text through `Declaration.string_of_value`, so a caller
