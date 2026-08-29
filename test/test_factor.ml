@@ -267,6 +267,18 @@ let test_timing_function_spellings_factor () =
     (optimize_str
        ".a{transition-timing-function:steps(1,end)}.b{transition-timing-function:step-end}")
 
+(* CSS Box 4 (ED) sec. 3.2 and sec. 4.2 assign one to four values around the
+   box, so a shorthand whose sides repeat names what the shorter spelling names.
+   Factoring compares nodes, so the two rules meet as one declaration only if
+   the fold happened first. *)
+let test_box_shorthand_spellings_factor () =
+  Alcotest.(check string)
+    "four equal sides factor with the single value" ".a,.b{margin:2px}"
+    (optimize_str ".a{margin:2px 2px 2px 2px}.b{margin:2px}");
+  Alcotest.(check string)
+    "an axis pair factors with the two-value form" ".a,.b{padding:1px 2px}"
+    (optimize_str ".a{padding:1px 2px 1px 2px}.b{padding:1px 2px}")
+
 let suite =
   ( "factor",
     [
@@ -300,4 +312,6 @@ let suite =
         test_transition_default_spellings_factor;
       Alcotest.test_case "easing curves factor with their keywords" `Quick
         test_timing_function_spellings_factor;
+      Alcotest.test_case "repeated box sides factor with the short form" `Quick
+        test_box_shorthand_spellings_factor;
     ] )

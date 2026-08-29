@@ -486,6 +486,41 @@ let special_cases () =
   check_declaration ~expected:"border-color:var(--c)red"
     "border-color: var(--c) red;";
 
+  (* CSS Box 4 (ED) sec. 3.2 and sec. 4.2: "If there is only one component
+     value, it applies to all sides. If there are two values, the top and bottom
+     margins are set to the first value and the right and left margins are set
+     to the second. If there are three values, the top is set to the first
+     value, the left and right are set to the second, and the bottom is set to
+     the third." A repeated side therefore has a shorter spelling naming the
+     same four sides, and picking it is a node change, so pp prints what it
+     parsed and the optimizer folds. *)
+  check_declaration ~expected:"margin:2px 2px 2px 2px" ~optimized:"margin:2px"
+    "margin: 2px 2px 2px 2px";
+  check_declaration ~expected:"margin:1px 2px 1px 2px"
+    ~optimized:"margin:1px 2px" "margin: 1px 2px 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 2px"
+    ~optimized:"margin:1px 2px 3px" "margin: 1px 2px 3px 2px";
+  check_declaration ~expected:"margin:1px 1px 1px" ~optimized:"margin:1px"
+    "margin: 1px 1px 1px";
+  check_declaration ~expected:"margin:1px 2px 1px" ~optimized:"margin:1px 2px"
+    "margin: 1px 2px 1px";
+  (* Four distinct sides have no shorter spelling. *)
+  check_declaration ~expected:"margin:1px 2px 3px 4px"
+    ~optimized:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"padding:0 0 0 0" ~optimized:"padding:0"
+    "padding: 0 0 0 0";
+  (* The logical shorthands take the same one-to-four assignment over their own
+     two sides. *)
+  check_declaration ~expected:"padding-inline:1px 1px"
+    ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
+     Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
+     one-to-four side assignment. *)
+  check_declaration ~expected:"inset:1px 1px 1px 1px" ~optimized:"inset:1px"
+    "inset: 1px 1px 1px 1px";
+  check_declaration ~expected:"border-color:red red red red"
+    ~optimized:"border-color:red" "border-color: red red red red";
+
   (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
      same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
      above, but print through their own list combinator rather than the shared
