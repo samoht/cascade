@@ -469,12 +469,15 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
-- `--minify` drops an explicit initial value from a slot of the `border`,
-  `column-rule` and `outline` shorthands: the `medium` width and the `none`
-  style an omitted slot already resolves to. A shorthand with no slot left
-  declares what `none` declares, so `border: medium none` and `border: none`
-  now factor into one rule, as do `border: none red` and `border: red`
-  (#635, #636)
+- `--minify` folds a value's spelling before two rules are compared, so rules
+  that wrote one declaration two ways factor into one: an explicit initial
+  `medium` width or `none` style in the `border`, `column-rule` and `outline`
+  shorthands, `font-weight: bold` beside `700`, a two-value `display` beside
+  its legacy keyword, and `overflow: auto auto` beside `auto`
+  (#635, #636, #637)
+- `--minify` keeps `display: block ruby`. It printed `ruby`, which CSS Display
+  3 reads as `inline ruby`, so a block-level ruby container came back
+  inline-level (#637)
 - `--minify` folds the width slot of the `border` shorthands and of
   `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
   and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That
