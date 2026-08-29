@@ -250,6 +250,21 @@ let test_box_shorthand_repeats_factor () =
     ".a{margin:1px 2px 3px 4px}.b{margin:1px 2px 3px}"
     (optimize_str ".a{margin:1px 2px 3px 4px}.b{margin:1px 2px 3px}")
 
+(* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
+   so an explicit [alpha] and an absent mode are one declaration. Factoring
+   compares nodes, so the drop has to have happened before the two rules
+   meet. *)
+let test_mask_border_mode_spellings_factor () =
+  Alcotest.(check string)
+    "an explicit alpha factors with the omitted mode"
+    ".a,.b{mask-border:url(a.png)}"
+    (optimize_str ".a{mask-border:url(a.png) alpha}.b{mask-border:url(a.png)}");
+  Alcotest.(check string)
+    "luminance does not factor with the omitted mode"
+    ".a{mask-border:url(a.png)luminance}.b{mask-border:url(a.png)}"
+    (optimize_str
+       ".a{mask-border:url(a.png) luminance}.b{mask-border:url(a.png)}")
+
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so the keyword and the number name one weight. Factoring
    compares nodes, so the two rules only meet as one declaration if the fold
@@ -422,6 +437,8 @@ let suite =
         test_repeat_style_spellings_factor;
       Alcotest.test_case "box shorthand repeats factor together" `Quick
         test_box_shorthand_repeats_factor;
+      Alcotest.test_case "mask-border mode spellings factor together" `Quick
+        test_mask_border_mode_spellings_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"

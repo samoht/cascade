@@ -1329,6 +1329,19 @@ let background_box_slots () =
     ~optimized:"background:content-box border-box red"
     "background: red content-box border-box"
 
+(* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
+   and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
+   explicit [alpha] says what leaving the slot out says. [luminance] is the
+   other mode and stays. *)
+let mask_border_mode_slot () =
+  check_declaration ~expected:"mask-border:url(a.png)alpha"
+    ~optimized:"mask-border:url(a.png)" "mask-border: url(a.png) alpha";
+  check_declaration ~expected:"mask-border:url(a.png)luminance"
+    ~optimized:"mask-border:url(a.png)luminance"
+    "mask-border: url(a.png) luminance";
+  check_declaration ~expected:"border-image:url(a.png)"
+    ~optimized:"border-image:url(a.png)" "border-image: url(a.png)"
+
 (* CSS Box 4 (ED) sec. 3.2 assigns the values of a one-to-four value box
    shorthand to the four sides: one value goes to all four, two to top-bottom
    then left-right, three to top, left-right, bottom. A repeat that those rules
@@ -4362,6 +4375,7 @@ let declaration_tests =
     test_case "background initial slots" `Quick background_initial_slots;
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
+    test_case "mask-border mode slot" `Quick mask_border_mode_slot;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "background drained layer" `Quick background_drained_layer;
