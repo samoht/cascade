@@ -152,6 +152,34 @@ let test_initial_line_style_spellings_factor () =
     ".a,.b{column-rule:none}"
     (optimize_str ".a{column-rule:medium none}.b{column-rule:none}")
 
+(* The same argument one slot further over. CSS Backgrounds 3 (ED) sec. 3.1
+   gives the border-color properties the initial value [currentColor], and CSS
+   Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 repeat it for
+   column-rule and the logical borders, so an explicit [currentColor] and an
+   absent colour are one declaration. CSS UI 4 (ED) sec. 3.4 gives outline-color
+   the initial value [auto] instead, so those two rules name different colours
+   and must stay apart. *)
+let test_initial_line_color_spellings_factor () =
+  Alcotest.(check string)
+    "border currentColor factors with the omitted colour" ".a,.b{border:solid}"
+    (optimize_str ".a{border:solid currentcolor}.b{border:solid}");
+  Alcotest.(check string)
+    "border currentColor alone factors with the none keyword"
+    ".a,.b{border:none}"
+    (optimize_str ".a{border:currentcolor}.b{border:none}");
+  Alcotest.(check string)
+    "column-rule currentColor factors with the omitted colour"
+    ".a,.b{column-rule:solid}"
+    (optimize_str ".a{column-rule:solid currentcolor}.b{column-rule:solid}");
+  Alcotest.(check string)
+    "border-inline currentColor factors with the omitted colour"
+    ".a,.b{border-inline:solid}"
+    (optimize_str ".a{border-inline:solid currentcolor}.b{border-inline:solid}");
+  Alcotest.(check string)
+    "outline currentColor does not factor with the omitted colour"
+    ".a{outline:solid currentColor}.b{outline:solid}"
+    (optimize_str ".a{outline:solid currentcolor}.b{outline:solid}")
+
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so the keyword and the number name one weight. Factoring
    compares nodes, so the two rules only meet as one declaration if the fold
@@ -316,6 +344,8 @@ let suite =
         test_initial_line_width_spellings_factor;
       Alcotest.test_case "initial line-style spellings factor together" `Quick
         test_initial_line_style_spellings_factor;
+      Alcotest.test_case "initial line-color spellings factor together" `Quick
+        test_initial_line_color_spellings_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"

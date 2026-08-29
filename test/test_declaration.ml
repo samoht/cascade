@@ -1251,6 +1251,44 @@ let border_line_style () =
   check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
     "outline: auto"
 
+(* CSS Backgrounds 3 (ED) sec. 3.1 gives the border-color properties the initial
+   value [currentColor], and sec. 3.4 sets an omitted shorthand slot to its
+   initial value, so an explicit [currentColor] beside another slot says what
+   leaving the colour out already says. Drained of every slot the shorthand
+   declares nothing but initial values, which is what [none] declares. CSS
+   Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give column-rule
+   and the logical borders the same initial colour, so they take the same fold.
+
+   CSS UI 4 (ED) sec. 3.4 does not: outline-color's initial value is [auto], a
+   UA-chosen colour that [currentColor] does not name, so the outline colour
+   slot holds whatever it was written with. *)
+let border_line_color () =
+  check_declaration ~expected:"border:solid currentColor"
+    ~optimized:"border:solid" "border: solid currentcolor";
+  check_declaration ~expected:"border:1px solid currentColor"
+    ~optimized:"border:1px solid" "border: 1px solid currentColor";
+  check_declaration ~expected:"border:currentColor" ~optimized:"border:none"
+    "border: currentcolor";
+  check_declaration ~expected:"border-top:solid currentColor"
+    ~optimized:"border-top:solid" "border-top: solid currentcolor";
+  check_declaration ~expected:"border-inline:solid currentColor"
+    ~optimized:"border-inline:solid" "border-inline: solid currentcolor";
+  check_declaration ~expected:"border-block-start:solid currentColor"
+    ~optimized:"border-block-start:solid"
+    "border-block-start: solid currentcolor";
+  check_declaration ~expected:"column-rule:solid currentColor"
+    ~optimized:"column-rule:solid" "column-rule: solid currentcolor";
+  (* outline-color's initial value is [auto], so nothing drops here. *)
+  check_declaration ~expected:"outline:solid currentColor"
+    ~optimized:"outline:solid currentColor" "outline: solid currentcolor";
+  check_declaration ~expected:"outline:currentColor"
+    ~optimized:"outline:currentColor" "outline: currentcolor";
+  (* Controls: a colour that is not the initial one stands. *)
+  check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
+    "border: solid red";
+  check_declaration ~expected:"column-rule:solid red"
+    ~optimized:"column-rule:solid red" "column-rule: solid red"
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 keeps a parsed declaration only if it "is valid
    in the current context", which for a non-custom property means its value
    matches the property's grammar. CSS Backgrounds 3 (ED) sec. 3.4 writes the
@@ -4144,6 +4182,7 @@ let declaration_tests =
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
+    test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;
     test_case "all-initial shorthand prints none" `Quick
       all_initial_shorthand_prints_none;
