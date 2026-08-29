@@ -513,6 +513,21 @@ let special_cases () =
      two sides. *)
   check_declaration ~expected:"padding-inline:1px 1px"
     ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  (* CSS Scroll Snap 1 sec. 4.1 and 5.1 use the same one-to-four side assignment
+     for the physical shorthands and the same one-to-two assignment for their
+     logical axis shorthands. *)
+  check_declaration ~expected:"scroll-margin:1px 1px 1px 1px"
+    ~optimized:"scroll-margin:1px" "scroll-margin: 1px 1px 1px 1px";
+  check_declaration ~expected:"scroll-margin-inline:2px 2px"
+    ~optimized:"scroll-margin-inline:2px" "scroll-margin-inline: 2px 2px";
+  check_declaration ~expected:"scroll-margin-block:3px 3px"
+    ~optimized:"scroll-margin-block:3px" "scroll-margin-block: 3px 3px";
+  check_declaration ~expected:"scroll-padding:4px 5px 4px 5px"
+    ~optimized:"scroll-padding:4px 5px" "scroll-padding: 4px 5px 4px 5px";
+  check_declaration ~expected:"scroll-padding-inline:6px 6px"
+    ~optimized:"scroll-padding-inline:6px" "scroll-padding-inline: 6px 6px";
+  check_declaration ~expected:"scroll-padding-block:7px 7px"
+    ~optimized:"scroll-padding-block:7px" "scroll-padding-block: 7px 7px";
   (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
      Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
      one-to-four side assignment. *)

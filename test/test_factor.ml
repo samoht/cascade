@@ -243,6 +243,30 @@ let test_box_shorthand_repeats_factor () =
   Alcotest.(check string)
     "border-color takes the same collapse" ".a,.b{border-color:red}"
     (optimize_str ".a{border-color:red red red red}.b{border-color:red}");
+  Alcotest.(check string)
+    "scroll-margin factors with the single value" ".a,.b{scroll-margin:1px}"
+    (optimize_str ".a{scroll-margin:1px 1px 1px 1px}.b{scroll-margin:1px}");
+  Alcotest.(check string)
+    "scroll-margin-inline factors with the single value"
+    ".a,.b{scroll-margin-inline:2px}"
+    (optimize_str ".a{scroll-margin-inline:2px 2px}.b{scroll-margin-inline:2px}");
+  Alcotest.(check string)
+    "scroll-margin-block factors with the single value"
+    ".a,.b{scroll-margin-block:3px}"
+    (optimize_str ".a{scroll-margin-block:3px 3px}.b{scroll-margin-block:3px}");
+  Alcotest.(check string)
+    "scroll-padding factors with the repeated axis"
+    ".a,.b{scroll-padding:4px 5px}"
+    (optimize_str ".a{scroll-padding:4px 5px 4px 5px}.b{scroll-padding:4px 5px}");
+  Alcotest.(check string)
+    "scroll-padding-inline factors with the single value"
+    ".a,.b{scroll-padding-inline:6px}"
+    (optimize_str
+       ".a{scroll-padding-inline:6px 6px}.b{scroll-padding-inline:6px}");
+  Alcotest.(check string)
+    "scroll-padding-block factors with the single value"
+    ".a,.b{scroll-padding-block:7px}"
+    (optimize_str ".a{scroll-padding-block:7px 7px}.b{scroll-padding-block:7px}");
   (* CSS Backgrounds 3 (ED) sec. 4.1 collapses each radii group on its own, and
      with no slash the values set both axes equally. *)
   Alcotest.(check string)
