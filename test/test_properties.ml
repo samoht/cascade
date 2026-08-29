@@ -4304,6 +4304,7 @@ let spec_generated_box_layout_edges () =
 let spec_generated_position_interaction_edges () =
   check_anchor_name ~expected:"--hero,--toast" "--hero, --toast";
   check_caret "red manual block";
+  check_caret "red auto";
   check_caret_animation "manual";
   check_caret_shape "underscore";
   check_container_name "main sidebar";
