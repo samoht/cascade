@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `skew()`, `matrix()`, `matrix3d()` and `repeat()` read only up to the first
+  argument they could not parse, so `skew(10deg,red)` became `skew(10deg)`
+  instead of an invalid declaration; same gap #617 closed elsewhere (#627)
 - A `var()`, a `-webkit-gradient()` `color-stop()`/`from()`/`to()`, an
   `animation-timeline` `scroll()`/`view()`, or `box-shadow`'s `inset` written
   in another case is read as that keyword. CSS Values 4 sec. 4.1 makes a
