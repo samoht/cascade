@@ -1009,6 +1009,9 @@ recorded cases carrying six minifiers' answers.
 
 ### CLI tools
 
+- `cascade fmt --profile` without `--minify` still printed an empty
+  factoring-fixpoint report, contradicting its own "has no effect without
+  --minify" warning; the report is now skipped when nothing ran (#628)
 - `cascade fmt --help` says what `--enforce-spec` gates: the vendor-prefix
   drop, the Media Queries 4 range grammar for a media or container feature,
   the `&` prefix on a nested selector, the `:dir()` and form-control state
