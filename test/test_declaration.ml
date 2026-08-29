@@ -3054,6 +3054,38 @@ let line_width_invalid_math_argument () =
     (line_width_sites "max(3dvh,4px)" @ length_math_sites "max(3dvh,4px)");
   check_declaration ~roundtrip:true "border-width:1px max(3dvh,4px)"
 
+(* [skew()] (CSS Transforms 1 sec. 13.2) takes one or two [<angle>], [matrix()]
+   (sec. 12.1) exactly six [<number>], [matrix3d()] (CSS Transforms 2 sec. 12.2)
+   exactly sixteen, and [repeat()] (CSS Grid 1 sec. 7.2.3) a count and a track
+   list; a trailing argument outside that grammar is invalid (CSS Syntax 3 sec.
+   8.2), which invalidates the declaration. The same [Cursor.call] gap #617
+   closed for the [<line-width>] readers left these four reading only up to the
+   first argument they could not read and answering with a truncated function,
+   e.g. [transform: skew(10deg, red)] as [skew(10deg)]. *)
+let function_argument_validity () =
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "transform:skew(10deg,red)";
+      "transform:matrix(1,2,3,4,5,6,red)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,red)";
+      "grid-template-columns:repeat(2,1fr red)";
+      "grid-template-columns:repeat(2,1fr,red)";
+    ];
+  (* Controls: a valid call at every site still stands, including interior
+     whitespace around commas and parens. *)
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [
+      "transform:skew(10deg)";
+      "transform:skew(10deg,20deg)";
+      "transform:matrix(1,2,3,4,5,6)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)";
+      "grid-template-columns:repeat(2,1fr)";
+    ];
+  check_declaration ~expected:"transform:skew(10deg,20deg)"
+    "transform:skew( 10deg , 20deg )"
+
 (* CSS Backgrounds 3 sec. 5.1: [border-radius] is [<length-percentage
    [0,inf]>{1,4} [ / <length-percentage [0,inf]>{1,4} ]?], so an
    intrinsic-sizing keyword ([auto], [max-content], [stretch], ...) is no part
@@ -3488,6 +3520,7 @@ let declaration_tests =
     test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
     test_case "line-width invalid math argument" `Quick
       line_width_invalid_math_argument;
+    test_case "function argument validity" `Quick function_argument_validity;
     test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
     test_case "border-radius CSS-wide keywords" `Quick
       border_radius_css_wide_keywords;
