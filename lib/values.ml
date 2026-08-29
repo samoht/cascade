@@ -3408,6 +3408,78 @@ let mix_in_lch_space c1 c2 ~p1 ~p2 hue : color option =
                }))
   | _ -> None
 
+let map3 f (x, y, z) = (f x, f y, f z)
+
+(* Inverse of the [Color] arm of [static_color_to_linear_srgb]: linear sRGB back
+   into the coordinates of a predefined [color()] space, by the CSS Color 4 sec.
+   19 reference conversions. [None] for the spaces [color()] cannot spell (the
+   lab and polar families), which have their own mixers. *)
+let coords_of_linear_srgb (space : color_space) lrgb :
+    (float * float * float) option =
+  match space with
+  | Srgb -> Some (Color_space.rgb_of_linear_rgb lrgb)
+  | Srgb_linear -> Some lrgb
+  | Display_p3 ->
+      Some
+        (map3 Color_space.display_p3_of_linear
+           (Color_space.linear_p3_of_xyz65
+              (Color_space.xyz65_of_linear_srgb lrgb)))
+  | A98_rgb ->
+      Some
+        (map3 Color_space.a98_rgb_of_linear
+           (Color_space.linear_a98_of_xyz65
+              (Color_space.xyz65_of_linear_srgb lrgb)))
+  | Prophoto_rgb ->
+      Some
+        (map3 Color_space.prophoto_rgb_of_linear
+           (Color_space.linear_prophoto_of_xyz50
+              (Color_space.d50_of_xyz65 (Color_space.xyz65_of_linear_srgb lrgb))))
+  | Rec2020 ->
+      Some
+        (map3 Color_space.rec2020_of_linear
+           (Color_space.linear_rec2020_of_xyz65
+              (Color_space.xyz65_of_linear_srgb lrgb)))
+  | Xyz | Xyz_d65 -> Some (Color_space.xyz65_of_linear_srgb lrgb)
+  | Xyz_d50 ->
+      Some (Color_space.d50_of_xyz65 (Color_space.xyz65_of_linear_srgb lrgb))
+  | Lab | Oklab | Lch | Oklch | Hsl | Hwb -> None
+
+(* CSS Color 5 sec. 3: mixing in one of the rectangular [color()] spaces. The
+   operands are carried into that space's own coordinates, mixed premultiplied
+   there (CSS Color 4 sec. 13.3), and the result named in the same space. CSS
+   Color 4 sec. 10.1 leaves [color()] coordinates unclamped, so a mix that ends
+   outside the space's gamut is still a value: gamut mapping it (sec. 14.2) is
+   what a display does, not what the colour is.
+
+   The coordinates come back through a conversion round trip, which leaves float
+   noise many orders of magnitude below a channel step. Rounding to six decimals
+   clears it; [color_channel_decimals] never prints more than six for a colour
+   channel, so no digit that would have been shown is lost. *)
+let mix_in_rectangular_space (space : color_space) c1 c2 ~p1 ~p2 : color option
+    =
+  let round6 v = Float.round (v *. 1e6) /. 1e6 in
+  match (static_color_to_linear_srgb c1, static_color_to_linear_srgb c2) with
+  | Some (lrgb1, alpha1), Some (lrgb2, alpha2) -> (
+      match
+        ( coords_of_linear_srgb space lrgb1,
+          coords_of_linear_srgb space lrgb2,
+          mix_weights p1 p2 )
+      with
+      | Some x1, Some x2, Some (w1, w2, alpha_mult) ->
+          let (c1, c2, c3), interp_alpha =
+            premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 x1 x2
+          in
+          Some
+            (Color
+               {
+                 space;
+                 components =
+                   [ Num (round6 c1); Num (round6 c2); Num (round6 c3) ];
+                 alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
+               })
+      | _ -> None)
+  | _ -> None
+
 (* CSS Color 5 sec. 3 percentage normalisation: an omitted [percentN] takes the
    complement of the other side ([100% - percentM], clamped to 0); both omitted
    defaults to [50% / 50%]. *)
@@ -7509,7 +7581,10 @@ let normalize_srgb_mix color1 color2 ~p1 ~p2 =
       ~p1 ~p2
   with
   | Some (r, g, b, a) -> Some (canonical_color_of_hex r g b a)
-  | Option.None -> None
+  (* The byte mixer only speaks sRGB bytes, so it declines a mix whose operands
+     or result leave the sRGB gamut. The result is a colour all the same, and
+     [color(srgb ...)] can hold it. *)
+  | Option.None -> mix_in_rectangular_space Srgb color1 color2 ~p1 ~p2
 
 let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
   match mix_lab_family effective color1 color2 ~p1 ~p2 with
@@ -7647,6 +7722,12 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
       match (in_space, hue, color_mix_percentages percent1 percent2) with
       | Some Srgb, Default, Some (p1, p2) ->
           normalize_srgb_mix color1 color2 ~p1 ~p2
+      | ( Some
+            (( Srgb_linear | Display_p3 | A98_rgb | Prophoto_rgb | Rec2020 | Xyz
+             | Xyz_d50 | Xyz_d65 ) as space),
+          Default,
+          Some (p1, p2) ) ->
+          mix_in_rectangular_space space color1 color2 ~p1 ~p2
       | ((Some (Lab | Oklab | Lch | Oklch) | None) as sp), Default, Some (p1, p2)
         ->
           (* CSS Color 5 sec. 3: [in oklab] is the default interpolation space,

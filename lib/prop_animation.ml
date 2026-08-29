@@ -510,16 +510,20 @@ let rec pp_transition : transition Pp.t =
 let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
   Cursor.ws t;
   match Cursor.peek t with
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       (Var (Values.read_var read_animation_timeline t) : animation_timeline)
   | Some (Component.Func fn) when not fn.node.terminated ->
       Cursor.err_invalid t
         (String.concat "" [ "unterminated function "; fn.node.name; "(...)" ])
   | Some (Component.Func fn)
-    when fn.node.name = "scroll" || fn.node.name = "view" ->
+    when String.lowercase_ascii_preserve fn.node.name = "scroll" ->
       let _ = Cursor.next t in
-      let args = Parser.string_of_components fn.node.arguments in
-      if fn.node.name = "scroll" then Scroll args else View args
+      Scroll (Parser.string_of_components fn.node.arguments)
+  | Some (Component.Func fn)
+    when String.lowercase_ascii_preserve fn.node.name = "view" ->
+      let _ = Cursor.next t in
+      View (Parser.string_of_components fn.node.arguments)
   | _ ->
       let keywords : (string * animation_timeline) list =
         [
@@ -862,9 +866,9 @@ let read_transition_part t read set =
 
 let transition_property_start t =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident _; _ })
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
-      true
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
+  | Some (Component.Func { node = { name; _ }; _ }) ->
+      String.lowercase_ascii_preserve name = "var"
   | _ -> false
 
 let read_transition_property_part parts t =

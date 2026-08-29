@@ -15,6 +15,16 @@ val is_hex : char -> bool
 (** [is_hex c] returns true if [c] is a hexadecimal digit ([0-9], [a-f], [A-F]).
 *)
 
+val is_ident : string -> bool
+(** [is_ident s] is true when the whole of [s] is one ident, per CSS Syntax 3
+    sec. 4.3.11 for its opening and sec. 4.2 for the rest: a bare [-] and a [-]
+    before a digit open no ident, a leading digit opens none, and every code
+    point is an ident code point. The non-ASCII half is
+    {!Lexer.spec_non_ascii_ident_cp}, the range list serialisers emit verbatim,
+    so [is_ident s] holds exactly when {!Parser.escape_ident} returns [s]
+    unchanged. An escape is not an ident code point: [s] is the decoded name,
+    not its CSS spelling. *)
+
 val url_needs_quotes : string -> bool
 (** [url_needs_quotes s] returns true when serializing [s] as a bare [url(...)]
     argument would change tokenization; the caller must wrap [s] in quotes. *)

@@ -504,8 +504,11 @@ val one_of : (t -> 'a) list -> t -> 'a
 val list :
   ?sep:(t -> unit) -> ?at_least:int -> ?at_most:int -> (t -> 'a) -> t -> 'a list
 (** [list ?sep ?at_least ?at_most item t] parses items separated by [sep]
-    (default: no separator). Enforces cardinality bounds. Too few items raise
-    ["expected at least N items (got M)"], the wording {!Reader.list} uses. *)
+    (default: no separator). A [sep] only commits once another [item] parses
+    after it, so a trailing separator with nothing following it is left
+    unconsumed for the caller rather than silently dropped. Enforces cardinality
+    bounds. Too few items raise ["expected at least N items (got M)"], the
+    wording {!Reader.list} uses. *)
 
 val fold_many :
   (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option

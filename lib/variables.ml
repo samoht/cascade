@@ -140,9 +140,11 @@ let rec pp_value : type a. a syntax -> a Pp.t =
       | Left v -> pp_value syn1 ctx v
       | Right v -> pp_value syn2 ctx v)
   | Plus syn ->
+      (* The [+] separator is the whole of it: drop the space and [10px 20px] is
+         one dimension whose unit is [px20px]. *)
       List.iteri
         (fun i v ->
-          if i > 0 then Pp.sp ctx ();
+          if i > 0 then Pp.space ctx ();
           pp_value syn ctx v)
         value
   | Hash syn ->
@@ -152,6 +154,13 @@ let rec pp_value : type a. a syntax -> a Pp.t =
           pp_value syn ctx v)
         value
   | Ident_keyword name -> Pp.string ctx name
+
+(* A value already typed by [syntax] is already spelled for the substitution
+   site (CSS Variables 1 sec. 2); [custom_property] still checks the name and
+   parses the printed text into the token stream a declaration holds. *)
+let typed_custom_property ?layer name syntax value =
+  custom_property ?layer name
+    (Pp.to_string ~minify:true (pp_value syntax) value)
 
 (* CSS Properties and Values API 1 section 2 lists the named [<...>] type
    references. Bare ident keywords match the [<custom-ident>] shape so a leading

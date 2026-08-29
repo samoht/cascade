@@ -31,6 +31,14 @@ val pp_syntax : 'a syntax Pp.t
 val pp_value : 'a syntax -> 'a Pp.t
 (** [pp_value syntax] pretty-prints a value according to its syntax type. *)
 
+val typed_custom_property :
+  ?layer:string -> string -> 'a syntax -> 'a -> declaration
+(** [typed_custom_property ?layer name syntax value] is the custom-property
+    declaration binding [name] to [value], spelled at [syntax] the way CSS
+    Variables 1 sec. 2 substitutes it (a unitless [0] is a [<number>] there, so
+    a [Length] keeps its unit). [name] and the printed value carry the same
+    checks as {!Declaration.custom_property}, which this calls. *)
+
 val read_syntax : Cursor.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
 

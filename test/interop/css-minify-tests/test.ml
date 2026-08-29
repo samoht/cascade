@@ -421,6 +421,26 @@ let normalize_expected ~category ~id expected =
       fixture ~category ~id
         ~upstream:"a{mask:linear-gradient(#000,transparent)}"
         ~cascade:"a{mask:linear-gradient(#000,#0000)}" upstream
+  | "shorthands", "0061" ->
+      (* Four longhands with a matching [@property] each merge into one
+         [padding] shorthand. A [var()] reference ends at [)], the same
+         self-delimiting token boundary as [url(...)], so the space before the
+         next [var()] is not part of the value. *)
+      fixture ~category ~id
+        ~upstream:
+          "@property \
+           --pt{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pr{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pb{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pl{syntax:\"<length>\";inherits:false;initial-value:0px}a{padding:var(--pt) \
+           var(--pr) var(--pb) var(--pl)}"
+        ~cascade:
+          "@property \
+           --pt{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pr{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pb{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --pl{syntax:\"<length>\";inherits:false;initial-value:0px}a{padding:var(--pt)var(--pr)var(--pb)var(--pl)}"
+        upstream
   | "shorthands", "0065" ->
       (* The fixture runs under stylesheet scope: [--custom] has no matching
          @position-try rule anywhere in the fixture, so the fallback list can

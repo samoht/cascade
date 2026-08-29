@@ -153,7 +153,7 @@ let collapse_box_shorthand vs =
 
 let pp_box_shorthand pp ctx vs =
   let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
-  Pp.list ~sep:Pp.space pp ctx vs
+  Pp.list ~sep:Pp.token_sp pp ctx vs
 
 (* Canonicalise a colour to its shortest spelling. *)
 let normalize_color ?(lossless = false) = Values.normalize_color ~lossless

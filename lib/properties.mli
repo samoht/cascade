@@ -2563,3 +2563,19 @@ val read_any_property : Cursor.t -> any_property
 val property_value_kind : 'a property -> 'a property_value_kind option
 (** [property_value_kind property] classifies property value shapes that have a
     shared typed evaluator. *)
+
+(** {2 Function names} *)
+
+val is_math_function : string -> bool
+(** [is_math_function name] is true for a CSS Values 4 sec. 10 math function:
+    [calc()], the comparison functions ([min()], [max()], [clamp()]), the
+    stepped-value ([round()], [mod()], [rem()]), trigonometric ([sin()] through
+    [atan2()]), exponential ([pow()], [sqrt()], [hypot()], [log()], [exp()]) and
+    sign-related ([abs()], [sign()]) families. [name] is matched case
+    insensitively, as CSS function names are. *)
+
+val is_color_function : string -> bool
+(** [is_color_function name] is true for a function whose own syntax fixes it as
+    a colour: the CSS Color 4 numeric notations, [color()] and [color-mix()],
+    and [light-dark()]. A gradient is not one: its type is fixed by the property
+    it lands in, not by the function. *)

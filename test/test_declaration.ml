@@ -456,7 +456,40 @@ let special_cases () =
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
-    "mask-position: 0 0, 10px 10px;"
+    "mask-position: 0 0, 10px 10px;";
+
+  (* CSS Box 4 sec. 7.1 box shorthands elide the same percentage token boundary
+     as background-position (CSS Syntax 3 sec. 4.3.3): a % closes the
+     percentage-token, so a following length starts a fresh token with no
+     re-tokenisation risk. A unit keeps its space: [10px0] would re-tokenise as
+     the single dimension 10px0. *)
+  check_declaration ~expected:"margin:10%0" "margin: 10% 0;";
+  check_declaration ~expected:"margin:10px 0" "margin: 10px 0;";
+  check_declaration ~expected:"padding:10%0" "padding: 10% 0;";
+  check_declaration ~expected:"inset:10%0" "inset: 10% 0;";
+  check_declaration ~expected:"border-radius:10%0" "border-radius: 10% 0;";
+  check_declaration ~expected:"border-radius:10%20%/30%0"
+    "border-radius: 10% 20% / 30% 0;";
+
+  (* border-color shares the same box-shorthand printer, so a colour function's
+     closing paren gets the same elision. *)
+  check_declaration ~expected:"border-color:var(--c)red"
+    "border-color: var(--c) red;";
+
+  (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
+     same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
+     above, but print through their own list combinator rather than the shared
+     pp_box_shorthand. A unit boundary still keeps its space. *)
+  check_declaration ~expected:"clip-path:inset(0 0 10%0)"
+    "clip-path: inset(0 0 10% 0);";
+  check_declaration ~expected:"clip-path:inset(0 0 10px 0)"
+    "clip-path: inset(0 0 10px 0);";
+  check_declaration ~expected:"object-view-box:inset(0 0 10%0)"
+    "object-view-box: inset(0 0 10% 0);";
+  check_declaration ~expected:"margin-inline:10%20%" "margin-inline: 10% 20%;";
+  check_declaration ~expected:"margin-inline:10px 20px"
+    "margin-inline: 10px 20px;";
+  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The
@@ -2345,7 +2378,7 @@ let spec_remaining_prop_vectors () =
       ("font-variant-east-asian: ruby", "font-variant-east-asian:ruby");
       ( "font-variant-east-asian: traditional proportional-width ruby",
         "font-variant-east-asian:traditional proportional-width ruby" );
-      ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10% 0)");
+      ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10%0)");
       ("image-rendering: pixelated", "image-rendering:pixelated");
       ("image-resolution: from-image 2dppx", "image-resolution:from-image 2dppx");
       ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg)30 fill");
@@ -3021,6 +3054,73 @@ let line_width_invalid_math_argument () =
     (line_width_sites "max(3dvh,4px)" @ length_math_sites "max(3dvh,4px)");
   check_declaration ~roundtrip:true "border-width:1px max(3dvh,4px)"
 
+(* [skew()] (CSS Transforms 1 sec. 13.2) takes one or two [<angle>], [matrix()]
+   (sec. 12.1) exactly six [<number>], [matrix3d()] (CSS Transforms 2 sec. 12.2)
+   exactly sixteen, and [repeat()] (CSS Grid 1 sec. 7.2.3) a count and a track
+   list; a trailing argument outside that grammar is invalid (CSS Syntax 3 sec.
+   8.2), which invalidates the declaration. The same [Cursor.call] gap #617
+   closed for the [<line-width>] readers left these four reading only up to the
+   first argument they could not read and answering with a truncated function,
+   e.g. [transform: skew(10deg, red)] as [skew(10deg)]. *)
+let function_argument_validity () =
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "transform:skew(10deg,red)";
+      "transform:matrix(1,2,3,4,5,6,red)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,red)";
+      "grid-template-columns:repeat(2,1fr red)";
+      "grid-template-columns:repeat(2,1fr,red)";
+    ];
+  (* Controls: a valid call at every site still stands, including interior
+     whitespace around commas and parens. *)
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [
+      "transform:skew(10deg)";
+      "transform:skew(10deg,20deg)";
+      "transform:matrix(1,2,3,4,5,6)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)";
+      "grid-template-columns:repeat(2,1fr)";
+    ];
+  check_declaration ~expected:"transform:skew(10deg,20deg)"
+    "transform:skew( 10deg , 20deg )"
+
+(* CSS Values 4 sec. 5.7.3: a [#] multiplier's comma never trails the last item.
+   [min()]/[max()] take a comma-separated [<calc-sum>] list (sec. 10.2), and
+   [matrix()]/[matrix3d()] (CSS Transforms 1 sec. 12.1, 2 sec. 12.2) a
+   fixed-arity comma list of [<number>]; [list] committed a separator before it
+   knew whether another item followed it, so [min(1px,)] read as [min(1px)] and
+   [matrix(1,2,3,4,5,6,)] as [matrix(1,2,3,4,5,6)] instead of invalidating the
+   declaration (CSS Syntax 3 sec. 8.2). *)
+let list_trailing_separator_invalid () =
+  List.iter
+    (fun value ->
+      List.iter (neg_cursor read_declaration) (line_width_sites value);
+      List.iter (neg_cursor read_declaration) (length_math_sites value))
+    [ "min(1px,)"; "min(1px,2px,)"; "max(1px,2px,)" ];
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "transform:matrix(1,2,3,4,5,6,)";
+      "transform:matrix3d(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,)";
+    ];
+  (* Controls: no trailing separator, with and without interior whitespace, and
+     a single-item list, all still parse. *)
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    (line_width_sites "min(1px)"
+    @ length_math_sites "min(1px)"
+    @ line_width_sites "min(1px,2px)"
+    @ length_math_sites "min(1px,2px)");
+  check_declaration ~expected:"border-width:min(1px,2px)"
+    "border-width:min( 1px , 2px )";
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [ "transform:matrix(1,2,3,4,5,6)" ];
+  check_declaration ~expected:"transform:matrix(1,2,3,4,5,6)"
+    "transform:matrix( 1 , 2 , 3 , 4 , 5 , 6 )"
+
 (* CSS Backgrounds 3 sec. 5.1: [border-radius] is [<length-percentage
    [0,inf]>{1,4} [ / <length-percentage [0,inf]>{1,4} ]?], so an
    intrinsic-sizing keyword ([auto], [max-content], [stretch], ...) is no part
@@ -3455,6 +3555,9 @@ let declaration_tests =
     test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
     test_case "line-width invalid math argument" `Quick
       line_width_invalid_math_argument;
+    test_case "function argument validity" `Quick function_argument_validity;
+    test_case "list rejects a trailing separator" `Quick
+      list_trailing_separator_invalid;
     test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
     test_case "border-radius CSS-wide keywords" `Quick
       border_radius_css_wide_keywords;

@@ -699,11 +699,11 @@ let read_shape_outside t =
   (match Cursor.peek t with
   | Some
       (Component.Func
-         { node = { name = "var"; terminated = true; arguments = []; _ }; _ })
-    ->
+         { node = { name; terminated = true; arguments = []; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       Cursor.err_invalid t "empty var()"
-  | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
-    ->
+  | Some (Component.Func { node = { name; terminated = true; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" ->
       let _ : string var =
         Values.read_var
           (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)

@@ -1625,6 +1625,7 @@ let test_transform () =
   check_transform "scale3d(2, 3, 4)" ~expected:"scale3d(2,3,4)";
   check_transform "skew(30deg)";
   check_transform "skew(30deg, 45deg)" ~expected:"skew(30deg,45deg)";
+  check_transform "skew( 10deg , 20deg )" ~expected:"skew(10deg,20deg)";
   check_transform "skewX(45deg)";
   check_transform "skewY(30deg)";
   check_transform "matrix(1, 0, 0, 1, 0, 0)" ~expected:"matrix(1,0,0,1,0,0)";
@@ -1641,7 +1642,21 @@ let test_transform () =
   neg_cursor read_transform "translate3d(10px,20px)";
   neg_cursor read_transform "scale3d(1,2)";
   neg_cursor read_transform "matrix(1,2,3,4,5)";
-  neg_cursor read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+  neg_cursor read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)";
+  (* CSS Transforms 1 sec. 13.2 gives [skew()] one or two [<angle>], and
+     [matrix()]/[matrix3d()] take exactly six/sixteen [<number>] (sec. 12.1, CSS
+     Transforms 2 sec. 12.2); a trailing argument outside that grammar is
+     invalid (CSS Syntax 3 sec. 8.2). [Cursor.call] did not require these
+     readers to consume their whole sub-cursor, so each read only its prefix and
+     answered with a truncated function, e.g. [skew(10deg,red)] as
+     [skew(10deg)]. *)
+  neg_cursor read_transform "skew(10deg,red)";
+  neg_cursor read_transform "matrix(1,2,3,4,5,6,red)";
+  neg_cursor read_transform "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,red)";
+  (* A seventeenth, well-formed number is the same over-count as [red] above,
+     not a different bug: the exact-arity match already rejects it, with or
+     without the [expect_eof] fix. *)
+  neg_cursor read_transform "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,2)"
 
 let test_transforms () =
   (* Adjacent [var()] references in a transform list keep a single separating
@@ -1855,12 +1870,18 @@ let test_border_width () =
   check_border_width "max(3dvh,4px)";
   check_border_width "clamp(1dvh,3dvh,4px)";
   (* One unit does compare with itself, and a container-query length grows with
-     its multiplier, so the smaller multiple is the minimum. *)
-  check_border_width ~expected:"2cqi" "min(2cqi,3cqi)";
-  check_border_width ~expected:"4dvh" "max(3dvh,4dvh)";
+     its multiplier, so the smaller multiple is the minimum. The fold is a
+     node-changing rewrite (two different ASTs would otherwise print the same
+     text and hash differently), so it runs in optimize, not pp: fmt/minify
+     alone hold the authored min()/max(), only minify+optimize collapses it. *)
+  decl_optimizes ~prop:"border-width" ~held:"min(2cqi,3cqi)" ~into:"2cqi"
+    "min(2cqi,3cqi)";
+  decl_optimizes ~prop:"border-width" ~held:"max(3dvh,4dvh)" ~into:"4dvh"
+    "max(3dvh,4dvh)";
   (* A bound nothing else measures stops only its own group: [1px] and [2px]
      stay on one scale (CSS Values 4 sec. 6.2), so they collapse. *)
-  check_border_width ~expected:"max(2px,3dvh)" "max(1px,3dvh,2px)";
+  decl_optimizes ~prop:"border-width" ~held:"max(1px,3dvh,2px)"
+    ~into:"max(2px,3dvh)" "max(1px,3dvh,2px)";
   (* A zero-valued border-width collapses the unit like any other zero length
      (border-width: 0px -> 0), matching width/outline-width. Holds for the
      longhand, the logical longhand, and the 1-4 value shorthand; non-zero
@@ -3536,7 +3557,16 @@ let test_grid_template () =
   check_grid_template "10cm";
   check_grid_template ~expected:"minmax(calc(var(--x)*2),1fr)"
     "minmax(calc(var(--x) * 2), 1fr)";
-  neg_cursor read_grid_template "invalid-template"
+  check_grid_template "repeat(2,1fr)";
+  check_grid_template "repeat( 2 , 1fr )" ~expected:"repeat(2,1fr)";
+  neg_cursor read_grid_template "invalid-template";
+  (* CSS Grid 1 sec. 7.2.3 gives [repeat()] a count and a track list; trailing
+     junk after the last track is invalid (CSS Syntax 3 sec. 8.2). [Cursor.call]
+     did not require the reader to consume its whole sub-cursor, so it read up
+     to the first unreadable track and answered with a truncated [repeat()]
+     instead. *)
+  neg_cursor read_grid_template "repeat(2,1fr red)";
+  neg_cursor read_grid_template "repeat(2,1fr,red)"
 
 let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""
@@ -4520,9 +4550,9 @@ let test_clip_path () =
   check_clip_path "inset(50%)";
   (* 1 value: all sides *)
   check_clip_path "inset(10px)";
-  check_clip_path "inset(10% 20%)";
+  check_clip_path ~expected:"inset(10%20%)" "inset(10% 20%)";
   (* 2 values: top/bottom, left/right *)
-  check_clip_path "inset(10% 20% 30%)";
+  check_clip_path ~expected:"inset(10%20%30%)" "inset(10% 20% 30%)";
   (* 3 values: top, left/right, bottom *)
   check_clip_path "inset(0px 10px 20px 30px)";
   (* CSS Values L4 sec. 6: a zero in <length>/<length-percentage> position drops

@@ -125,6 +125,34 @@ let test_list_at_least_message () =
       | _ -> Alcotest.fail "expected Bad_value")
   | _ -> Alcotest.fail "expected Parse_error"
 
+(* CSS Values 4 sec. 5.7.3: a [#] list's comma never trails the last item. [sep]
+   must only commit once another [item] parses after it, or a trailing separator
+   is silently dropped and the list looks complete when it is not. *)
+let test_list_trailing_separator () =
+  let c = cursor_of_string "a,b," in
+  let items = Cursor.list ~sep:Cursor.comma Cursor.ident c in
+  Alcotest.(check (list string)) "items" [ "a"; "b" ] items;
+  Alcotest.(check bool)
+    "trailing comma left for the caller, not consumed" false (Cursor.is_done c)
+
+let test_list_no_trailing_separator () =
+  let c = cursor_of_string "a,b" in
+  let items = Cursor.list ~sep:Cursor.comma Cursor.ident c in
+  Alcotest.(check (list string)) "items" [ "a"; "b" ] items;
+  Alcotest.(check bool) "fully consumed" true (Cursor.is_done c)
+
+let test_list_interior_whitespace () =
+  let c = cursor_of_string "a , b" in
+  let items = Cursor.list ~sep:Cursor.comma Cursor.ident c in
+  Alcotest.(check (list string)) "items" [ "a"; "b" ] items;
+  Alcotest.(check bool) "fully consumed" true (Cursor.is_done c)
+
+let test_list_single_item_no_separator () =
+  let c = cursor_of_string "a" in
+  let items = Cursor.list ~sep:Cursor.comma Cursor.ident c in
+  Alcotest.(check (list string)) "items" [ "a" ] items;
+  Alcotest.(check bool) "fully consumed" true (Cursor.is_done c)
+
 let suite =
   ( "cursor",
     [
@@ -144,4 +172,12 @@ let suite =
         test_triple_rewinds_on_failure;
       Alcotest.test_case "list ~at_least message" `Quick
         test_list_at_least_message;
+      Alcotest.test_case "list rejects a trailing separator" `Quick
+        test_list_trailing_separator;
+      Alcotest.test_case "list without a trailing separator" `Quick
+        test_list_no_trailing_separator;
+      Alcotest.test_case "list interior whitespace" `Quick
+        test_list_interior_whitespace;
+      Alcotest.test_case "list single item, no separator" `Quick
+        test_list_single_item_no_separator;
     ] )

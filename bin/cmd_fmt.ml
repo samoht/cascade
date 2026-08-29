@@ -77,7 +77,9 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
-    if profile then report_profile (Stats.snapshot stats)
+    (* Without --minify, Css.optimize never runs and the recorder stays empty:
+       report only when the fixpoint had a chance to run. *)
+    if profile && minify then report_profile (Stats.snapshot stats)
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
@@ -257,11 +259,12 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
+        (* --enforce-spec is excluded: it also gates the parser's non-ASCII
+           ident range, which acts with or without --minify. *)
         warn_minify_only ~minify
           [
             (scope = `Stylesheet, "--scope=stylesheet");
             (lossless, "--lossless");
-            (enforce_spec, "--enforce-spec");
             (closed_world, "--closed-world");
             (objective = `Raw, "--objective");
             (profile, "--profile");

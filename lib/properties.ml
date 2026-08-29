@@ -2968,21 +2968,25 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
       | Typed _ -> [ c ])
   | _ -> fallback ()
 
-(* A math function ([calc()], [min()], [clamp()], ...) is unconditionally a math
-   expression whose type is fixed by its operands' units, so when it reduces to
-   a single constant it has that value in every [var()] substitution site - fold
-   it inside an opaque custom-property stream like a complete colour. [<number>]
-   and the unit-unambiguous dimensions ([<angle>] / [<time>]) qualify;
-   [<percentage>] is ambiguous (length vs number percentage) so it stays
-   verbatim, as does a function that still references a [var()] (it does not
-   reduce to a leaf). *)
+(* CSS Values 4 sec. 10 names the whole set: [calc()], the comparison functions,
+   the stepped-value, trigonometric, exponential and sign-related families. One
+   table serves every caller - a second copy drifts, and the two passes over a
+   custom-property stream then disagree about the same token. *)
 let is_math_function name =
   match String.lowercase_ascii name with
-  | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "abs" | "sign"
-  | "hypot" | "pow" | "sqrt" | "exp" | "log" ->
+  | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "sin" | "cos"
+  | "tan" | "asin" | "acos" | "atan" | "atan2" | "pow" | "sqrt" | "hypot"
+  | "log" | "exp" | "abs" | "sign" ->
       true
   | _ -> false
 
+(* A math function is unconditionally a math expression whose type is fixed by
+   its operands' units, so when it reduces to a single constant it has that
+   value in every [var()] substitution site - fold it inside an opaque
+   custom-property stream like a complete colour. [<number>] and the
+   unit-unambiguous dimensions ([<angle>] / [<time>]) qualify; [<percentage>] is
+   ambiguous (length vs number percentage) so it stays verbatim, as does a
+   function that still references a [var()] (it does not reduce to a leaf). *)
 let fold_custom_calc (c : Component.t) ~fallback =
   let text = Parser.to_string_custom [ c ] in
   (* Parse the whole token as one typed value and fold only when it reduces to a
@@ -3355,34 +3359,6 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
    values where cascade preserves the author's whitespace verbatim by design.
    Nested non-math functions ([var()] etc.) get a recursive component walk but
    no whitespace stripping; nested math functions get their own. *)
-let math_function_names =
-  [
-    "calc";
-    "min";
-    "max";
-    "clamp";
-    "round";
-    "mod";
-    "rem";
-    "sin";
-    "cos";
-    "tan";
-    "asin";
-    "acos";
-    "atan";
-    "atan2";
-    "pow";
-    "sqrt";
-    "hypot";
-    "log";
-    "exp";
-    "abs";
-    "sign";
-  ]
-
-let is_math_function_name name =
-  List.mem (String.lowercase_ascii name) math_function_names
-
 let is_plus_or_minus_delim = function
   | Component.Preserved { kind = Token.Delim "+"; _ }
   | Component.Preserved { kind = Token.Delim "-"; _ } ->
@@ -3471,7 +3447,7 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
         match c with
         | Component.Func wrapped ->
             let func = wrapped.Component.node in
-            let nested_in_math = is_math_function_name func.name in
+            let nested_in_math = is_math_function func.name in
             let args =
               canonicalize_math_whitespace_components ~in_math:nested_in_math
                 func.arguments
@@ -3820,8 +3796,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Margin_right -> pp pp_length
   | Margin_top -> pp pp_length
   | Margin_bottom -> pp pp_length
-  | Margin_inline -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Margin_block -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Margin_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
+  | Margin_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Margin_block_start -> pp pp_length
   | Margin_block_end -> pp pp_length
   | Gap -> pp pp_gap

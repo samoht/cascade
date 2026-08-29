@@ -310,15 +310,15 @@ let pp_optional_inset_sides : type a.
  fun pp ctx right bottom left ->
   Option.iter
     (fun r ->
-      Pp.space ctx ();
+      Pp.token_sp ctx ();
       pp ctx r;
       Option.iter
         (fun b ->
-          Pp.space ctx ();
+          Pp.token_sp ctx ();
           pp ctx b;
           Option.iter
             (fun l ->
-              Pp.space ctx ();
+              Pp.token_sp ctx ();
               pp ctx l)
             left)
         bottom)

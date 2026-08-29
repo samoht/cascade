@@ -1478,6 +1478,67 @@ let spec_color5_function_edges () =
   neg_cursor read_color "color-mix(in, red, blue)";
   neg_cursor read_color "color-mix(in srgb red blue)"
 
+(* CSS Color 5 sec. 3: the result of [color-mix()] is a colour in the named
+   interpolation space, and CSS Color 4 sec. 10.1 keeps [color()] coordinates
+   unclamped, so a mix that lands outside the sRGB gamut is still a value the
+   fold can name - [color(srgb ...)] - not a reason to leave the [color-mix()]
+   standing for the browser to recompute. The coefficients are the CSS Color 4
+   sec. 19 reference conversions of each operand into sRGB, mixed premultiplied
+   per sec. 13.3. Gamut mapping the result (sec. 14.2) is a rendering answer,
+   not this value, so the fold must not reach for it. *)
+let spec_color5_mix_out_of_srgb_gamut () =
+  (* Display-P3 red is outside sRGB on the red axis and below zero on the other
+     two. *)
+  check_color
+    ~expected:"color-mix(in srgb,color(display-p3 1 0 0) 50%,transparent)"
+    ~optimized:"color(srgb 1.093-.227-.15/.5)"
+    "color-mix(in srgb, color(display-p3 1 0 0) 50%, transparent)";
+  (* The same holds for the other predefined RGB spaces and for XYZ: nothing
+     here is specific to one [color()] space. *)
+  check_color
+    ~expected:"color-mix(in srgb,color(a98-rgb .2 .4 .6) 50%,transparent)"
+    ~optimized:"color(srgb -.115 .401 .613/.5)"
+    "color-mix(in srgb, color(a98-rgb 0.2 0.4 0.6) 50%, transparent)";
+  check_color ~expected:"color-mix(in srgb,color(xyz .2 .3 .4) 50%,transparent)"
+    ~optimized:"color(srgb -.115 .654 .644/.5)"
+    "color-mix(in srgb, color(xyz 0.2 0.3 0.4) 50%, transparent)";
+  (* Nor to [color()]: an [oklch()] operand whose mix leaves the gamut was held
+     back by the same rule. *)
+  check_color ~expected:"color-mix(in srgb,oklch(70%.15 200) 50%,transparent)"
+    ~optimized:"color(srgb -.317 .724 .764/.5)"
+    "color-mix(in srgb, oklch(70% 0.15 200) 50%, transparent)"
+
+(* CSS Color 5 sec. 3 <rectangular-color-space>: [srgb], [srgb-linear],
+   [display-p3], [a98-rgb], [prophoto-rgb], [rec2020], [lab], [oklab], [xyz],
+   [xyz-d50] and [xyz-d65] are all interpolation spaces. Mixing red and blue in
+   each folds to the colour the CSS Color 4 sec. 19 conversions give, collapsed
+   to hex when sRGB can hold it. XYZ is a linear-light transform of linear sRGB,
+   so [in xyz], [in xyz-d50], [in xyz-d65] and [in srgb-linear] all agree. *)
+let spec_color5_mix_rectangular_spaces () =
+  check_color ~expected:"color-mix(in srgb-linear,red,blue)"
+    ~optimized:"#bc00bc" "color-mix(in srgb-linear, red, blue)";
+  check_color ~expected:"color-mix(in xyz,red,blue)" ~optimized:"#bc00bc"
+    "color-mix(in xyz, red, blue)";
+  check_color ~expected:"color-mix(in xyz,red,blue)" ~optimized:"#bc00bc"
+    "color-mix(in xyz-d65, red, blue)";
+  check_color ~expected:"color-mix(in xyz-d50,red,blue)" ~optimized:"#bc00bc"
+    "color-mix(in xyz-d50, red, blue)";
+  check_color ~expected:"color-mix(in display-p3,red,blue)" ~optimized:"#800a91"
+    "color-mix(in display-p3, red, blue)";
+  check_color ~expected:"color-mix(in a98-rgb,red,blue)" ~optimized:"#810081"
+    "color-mix(in a98-rgb, red, blue)";
+  check_color ~expected:"color-mix(in prophoto-rgb,red,blue)"
+    ~optimized:"#ba039d" "color-mix(in prophoto-rgb, red, blue)";
+  check_color ~expected:"color-mix(in rec2020,red,blue)" ~optimized:"#a21393"
+    "color-mix(in rec2020, red, blue)";
+  (* Half-strength Display-P3 primaries stay outside sRGB, so the mix keeps the
+     interpolation space it was asked for. *)
+  check_color
+    ~expected:
+      "color-mix(in display-p3,color(display-p3 1 0 0),color(display-p3 0 0 1))"
+    ~optimized:"color(display-p3 .5 0 .5)"
+    "color-mix(in display-p3, color(display-p3 1 0 0), color(display-p3 0 0 1))"
+
 let spec_color_invalid_mutation_matrix () =
   List.iter
     (fun input -> neg_cursor read_color input)
@@ -1661,6 +1722,10 @@ let value_tests =
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
     test_case "spec color 5 function edges" `Quick spec_color5_function_edges;
+    test_case "spec color 5 mix out of sRGB gamut" `Quick
+      spec_color5_mix_out_of_srgb_gamut;
+    test_case "spec color 5 mix in rectangular spaces" `Quick
+      spec_color5_mix_rectangular_spaces;
     test_case "spec color invalid mutation matrix" `Quick
       spec_color_invalid_mutation_matrix;
     test_case "spec math function edges" `Quick spec_math_function_edges;
