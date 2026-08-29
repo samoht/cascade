@@ -969,6 +969,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- Border-radius normalization uses the shared box-shorthand normalizer instead
+  of spelling its map-and-collapse composition inline (#663)
 - Property normalizers reuse `Common.List.map_preserve` instead of carrying a
   second implementation with the same contract (#662)
 - The colour-lightness printer returns its unchanged AST value once after

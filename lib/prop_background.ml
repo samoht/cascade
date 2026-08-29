@@ -224,9 +224,8 @@ let rec pp_border_radius : border_radius Pp.t =
    horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
-  let group vs =
-    collapse_box_shorthand
-      (map_preserve (Values.normalize_length_percentage ~strip) vs)
+  let group =
+    normalize_box_shorthand (Values.normalize_length_percentage ~strip)
   in
   match value with
   | Radius { horizontal; vertical } ->
