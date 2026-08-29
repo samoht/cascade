@@ -469,6 +469,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` folds the width slot of the `border` shorthands and of
+  `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
+  and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That
+  slot is a `<'border-width'>`, whose longhand already folded; #633 gave
+  `outline` the same fold (#634)
 - `--minify` folds `sin()` through `atan2()` inside a custom-property stream,
   matching `calc()`'s family; the table gating the fold and the one exported as
   `Properties.is_math_function`/`is_color_function` had drifted apart (#626)
