@@ -865,6 +865,65 @@ let outline_line_width () =
   check_declaration ~expected:"outline:red" "outline: red";
   check_declaration ~expected:"outline:solid red" "outline: solid red"
 
+(* CSS Backgrounds 3 (ED) sec. 3.3 gives border-width the value
+   [<line-width>{1,4}] and defines [<line-width>] as [<length [0,inf]> | thin |
+   medium | thick]; the border shorthands (sec. 3.4) read [<line-width> ||
+   <line-style> || <color>], so their width slot is that same production.
+   css-logical-1 sec. 4.4 repeats it for the logical shorthands, and CSS
+   Multi-column 1 (ED) sec. 4.5 gives column-rule [<'column-rule-width'> ||
+   <'column-rule-style'> || <'column-rule-color'>], whose width is a
+   [<line-width>] (sec. 4.4). Every fold the longhand performs is therefore due
+   in the shorthand width slot. *)
+let border_line_width () =
+  (* CSS Values 4 sec. 10.2: a sum or comparison over same-unit constants
+     denotes one length, so the optimizer reduces it to that length; pp holds
+     the call it was written as. *)
+  check_declaration ~expected:"border-width:calc(1px + 1px)"
+    ~optimized:"border-width:2px" "border-width: calc(1px + 1px)";
+  check_declaration ~expected:"border:calc(1px + 1px) solid red"
+    ~optimized:"border:2px solid red" "border: calc(1px + 1px) solid red";
+  check_declaration ~expected:"border:min(3px) solid red"
+    ~optimized:"border:3px solid red" "border: min(3px) solid red";
+  check_declaration ~expected:"border:clamp(1px,2px,3px) solid red"
+    ~optimized:"border:2px solid red" "border: clamp(1px,2px,3px) solid red";
+  check_declaration ~expected:"border-top:calc(1px + 1px) solid red"
+    ~optimized:"border-top:2px solid red"
+    "border-top: calc(1px + 1px) solid red";
+  check_declaration ~expected:"border-inline-start:min(3px) dotted red"
+    ~optimized:"border-inline-start:3px dotted red"
+    "border-inline-start: min(3px) dotted red";
+  check_declaration ~expected:"column-rule:clamp(1px,2px,3px) solid red"
+    ~optimized:"column-rule:2px solid red"
+    "column-rule: clamp(1px,2px,3px) solid red";
+  (* No unit relates dvh to px, so the comparison stands as written. *)
+  check_declaration ~expected:"border:max(3dvh,4px) solid red"
+    ~optimized:"border:max(3dvh,4px) solid red"
+    "border: max(3dvh,4px) solid red";
+  (* A zero length is the same length whatever unit carries it, so [0] is its
+     shortest spelling, in the shorthand slot as in the longhand. *)
+  check_declaration ~expected:"border-width:0px" ~optimized:"border-width:0"
+    "border-width: 0px";
+  check_declaration ~expected:"border:0px" ~optimized:"border:0" "border: 0px";
+  check_declaration ~expected:"border:0px solid red"
+    ~optimized:"border:0 solid red" "border: 0px solid red";
+  check_declaration ~expected:"border-top:0em dashed blue"
+    ~optimized:"border-top:0 dashed#00f" "border-top: 0em dashed blue";
+  check_declaration ~expected:"column-rule:0rem solid red"
+    ~optimized:"column-rule:0 solid red" "column-rule: 0rem solid red";
+  (* [thin] and [thick] name a UA-chosen thickness no length spells, so no fold
+     reaches them. *)
+  check_declaration ~expected:"border:thin solid red"
+    ~optimized:"border:thin solid red" "border: thin solid red";
+  check_declaration ~expected:"border:thick solid red"
+    ~optimized:"border:thick solid red" "border: thick solid red";
+  (* Controls: a plain length stands, and a shorthand that fills no width slot
+     is untouched. *)
+  check_declaration ~expected:"border:1px solid red"
+    ~optimized:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
+    "border: solid red";
+  check_declaration ~expected:"border:red" ~optimized:"border:red" "border: red"
+
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
      border-inline-start and border-inline-end take <'border-top-width'> ||
@@ -3588,6 +3647,7 @@ let declaration_tests =
     test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
     test_case "outline line-width" `Quick outline_line_width;
+    test_case "border line-width" `Quick border_line_width;
     test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;

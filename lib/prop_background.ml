@@ -261,14 +261,6 @@ let normalize_background ?(lossless = false) : background -> background =
       if s' == s then value else Shorthand s'
   | other -> other
 
-let normalize_border ?(lossless = false) : border -> border =
- fun value ->
-  match value with
-  | Shorthand s ->
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
-      if color == s.color then value else Shorthand { s with color }
-  | other -> other
-
 let normalize_logical_border_color ?(lossless = false) :
     logical_border_color -> logical_border_color =
  fun value ->
@@ -1862,6 +1854,18 @@ let normalize_logical_border_width :
   match value with
   | Single w -> Single (normalize_border_width w)
   | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
+  | other -> other
+
+(* The width slot of the border shorthands is a [<'border-width'>], so it takes
+   the same fold as the longhand; the colour slot is a [<color>]. *)
+let normalize_border ?(lossless = false) : border -> border =
+ fun value ->
+  match value with
+  | Shorthand s ->
+      let width = option_map_preserve normalize_border_width s.width in
+      let color = option_map_preserve (normalize_color ~lossless) s.color in
+      if width == s.width && color == s.color then value
+      else Shorthand { s with width; color }
   | other -> other
 
 let read_border_image_repeat_keyword t : border_image_repeat_keyword =
