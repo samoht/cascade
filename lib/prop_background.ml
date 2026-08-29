@@ -1135,14 +1135,16 @@ let pp_border_image : border_image Pp.t =
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat;
-  (* CSS Masking 1 sec. 8.2: [alpha] is the default mode, so drop it under
-     minify; [luminance] always prints. *)
-  let mode =
-    match mode with
-    | Some Alpha when Pp.minified ctx -> (None : mask_border_mode option)
-    | _ -> mode
-  in
   pp_bg_prop maybe_space pp_mask_border_mode ctx mode
+
+(* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
+   and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
+   explicit [alpha] declares what leaving the slot out declares. [luminance] is
+   the other mode and stays. *)
+let normalize_mask_border (value : border_image) : border_image =
+  match value.mode with
+  | Some (Alpha : mask_border_mode) -> { value with mode = Option.None }
+  | _ -> value
 
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->

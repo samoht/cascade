@@ -3537,6 +3537,7 @@ let normalize_property_value : type a.
   | Border_image_source -> normalize_background_image ~lossless value
   | Background -> map_preserve (normalize_background ~lossless) value
   | Background_repeat -> normalize_background_repeat value
+  | Mask_border -> normalize_mask_border value
   | Mask -> normalize_mask ~lossless value
   | Clip_path -> normalize_clip_path value
   | Object_view_box -> normalize_object_view_box value
