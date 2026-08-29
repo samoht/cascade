@@ -1289,6 +1289,7 @@ let rec pp_white_space : white_space Pp.t =
   | Pre_wrap -> Pp.string ctx "pre-wrap"
   | Pre_line -> Pp.string ctx "pre-line"
   | Break_spaces -> Pp.string ctx "break-spaces"
+  | Collapse -> Pp.string ctx "collapse"
   | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1755,6 +1756,7 @@ let rec read_white_space t : white_space =
           ("pre-wrap", Pre_wrap);
           ("pre-line", Pre_line);
           ("break-spaces", Break_spaces);
+          ("collapse", Collapse);
           ("inherit", Inherit);
           ("initial", Initial);
           ("unset", Unset);

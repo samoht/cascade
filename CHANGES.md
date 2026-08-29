@@ -184,6 +184,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `white-space: collapse` reads as the new public `white_space.Collapse` node;
+  a white-space-collapse component is valid without the shorthand's other
+  optional longhands (#666)
 - `text-decoration` accepts a colour, style or thickness without a line value;
   its four components are joined by `||`, so none is individually mandatory
   (#665)

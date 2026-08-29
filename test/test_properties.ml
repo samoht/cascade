@@ -1478,6 +1478,7 @@ let test_white_space () =
   check_white_space "pre-wrap";
   check_white_space "pre-line";
   check_white_space "break-spaces";
+  check_white_space "collapse";
   check_white_space "inherit";
   neg_cursor read_white_space "invalid-space";
   (* hyphenated form incorrect *)

@@ -4545,6 +4545,7 @@ type white_space = Properties.white_space =
   | Pre_wrap
   | Pre_line
   | Break_spaces
+  | Collapse
   | Preserve_nowrap
   | Inherit
   | Initial
