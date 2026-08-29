@@ -515,6 +515,32 @@ let reachability_settles_once () =
         true (spent <= count))
     [ 200; 400 ]
 
+(* Holding a reachable set per node costs a bit per node per node, so past a run
+   length the answers come from walking the edges again. Nothing else reaches
+   that path once the sets are held, and it decides rule order, so check it
+   against the same walk - and check that this length really does take it, by
+   asking one question twice and finding it cost the same again. Raising the
+   length a closure is held for has to revisit this. *)
+let a_long_run_answers_by_walking () =
+  let g = Rule_graph.of_rules (dense_conflict 16385) in
+  let count = Rule_graph.node_count g in
+  let spent () = Rule_graph.reachability_expansions g in
+  let ask i j =
+    let before = spent () in
+    Alcotest.(check bool)
+      (Fmt.str "precedes %d %d over a run of %d" i j count)
+      (reaches g i j)
+      (Rule_graph.precedes g (nid i) (nid j));
+    spent () - before
+  in
+  (* first, before any other question can settle the run *)
+  let once = ask 12 (count - 1) in
+  let again = ask 12 (count - 1) in
+  Alcotest.(check int)
+    (Fmt.str "a repeated question over a run of %d costs the same again" count)
+    once again;
+  List.iter (fun (i, j) -> ignore (ask i j)) [ (0, 1); (count - 1, 0); (7, 7) ]
+
 (* Rules that all write the same declaration have no order to discover: an
    identical pair is its own winner wherever the two sit. The run sits at one
    specificity, where partitioning candidates by specificity separates nothing,
@@ -743,6 +769,8 @@ let suite =
         precedes_agrees_with_a_walk;
       Alcotest.test_case "reachability settles once per node" `Quick
         reachability_settles_once;
+      Alcotest.test_case "a long run answers by walking" `Quick
+        a_long_run_answers_by_walking;
       Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick
         dense_graph_build_is_subquadratic;
       Alcotest.test_case "try_rewrite is sub-quadratic" `Quick
