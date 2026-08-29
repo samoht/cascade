@@ -760,12 +760,6 @@ let pp_border_shorthand : border_shorthand Pp.t =
     | Some Current when Pp.minified ctx -> (None : color option)
     | color -> color
   in
-  let style =
-    match (style, width, color) with
-    | Some (None : border_style), None, Some _ when Pp.minified ctx ->
-        (None : border_style option)
-    | style, _, _ -> style
-  in
   Option.iter
     (fun w ->
       add_space ();
@@ -1848,29 +1842,38 @@ let normalize_logical_border_width :
   | other -> other
 
 (* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,
-   so an omitted slot takes its initial value, and sec. 3.3 makes that [medium]
-   for the width. An explicit [medium] therefore declares what leaving the slot
-   out declares, and the shorter spelling wins - as long as some other slot
-   carries the declaration. The sole filled slot stays: emptied, the shorthand
-   has no value left to print. *)
-let drop_initial_line_width ~others_filled (width : border_width option) :
-    border_width option =
-  match width with
-  | Some Medium when others_filled -> Option.None
-  | width -> width
+   so an omitted slot takes its initial value - sec. 3.3 makes that [medium] for
+   the width, sec. 3.2 [none] for the style. An explicit initial value therefore
+   declares what leaving the slot out declares, and the shorter spelling
+   wins. *)
+let drop_initial_line_width (width : border_width option) : border_width option
+    =
+  match width with Some Medium -> Option.None | width -> width
+
+let drop_initial_line_style (style : border_style option) : border_style option
+    =
+  match style with Some (None : border_style) -> Option.None | style -> style
 
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
-   the same fold as the longhand; the colour slot is a [<color>]. *)
+   the same fold as the longhand; the style slot is a [<line-style>] and the
+   colour slot a [<color>]. Drained of every slot the shorthand declares nothing
+   but initial values, which is what [none] declares, and [none] is the node the
+   keyword parses to - so the two spellings meet there. *)
 let normalize_border ?(lossless = false) : border -> border =
  fun value ->
   match value with
   | Shorthand s ->
-      let width = option_map_preserve normalize_border_width s.width in
+      let width =
+        drop_initial_line_width
+          (option_map_preserve normalize_border_width s.width)
+      in
+      let style = drop_initial_line_style s.style in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
-      let others_filled = Option.is_some s.style || Option.is_some color in
-      let width = drop_initial_line_width ~others_filled width in
-      if width == s.width && color == s.color then value
-      else Shorthand { s with width; color }
+      if width == s.width && style == s.style && color == s.color then value
+      else if
+        Option.is_none width && Option.is_none style && Option.is_none color
+      then (None : border)
+      else Shorthand { width; style; color }
   | other -> other
 
 let read_border_image_repeat_keyword t : border_image_repeat_keyword =

@@ -833,8 +833,9 @@ let outline_line_width () =
      CSS Cascade 5 (ED) sec. 3 assigns an omitted sub-property its initial
      value, which sec. 3.2 gives as [medium]. Spelling [medium] beside another
      slot says what leaving the slot out already says, so the optimizer drops it
-     and pp prints the node it was handed. A lone [medium] fills the only slot
-     there is, and the shorthand needs one, so it stays. *)
+     and pp prints the node it was handed. A lone [medium] leaves the shorthand
+     declaring nothing but initial values, which is what [outline: none]
+     declares. *)
   check_declaration ~expected:"outline:medium solid red"
     ~optimized:"outline:solid red" "outline: medium solid red";
   check_declaration ~expected:"outline:medium dashed"
@@ -846,7 +847,7 @@ let outline_line_width () =
      spellings are the same declaration here too. *)
   check_declaration ~expected:"outline:medium auto" ~optimized:"outline:auto"
     "outline: medium auto";
-  check_declaration ~expected:"outline:medium" ~optimized:"outline:medium"
+  check_declaration ~expected:"outline:medium" ~optimized:"outline:none"
     "outline: medium";
   check_declaration ~expected:"outline:thick solid red"
     "outline: thick solid red";
@@ -936,8 +937,8 @@ let border_line_width () =
   (* [medium] is the initial [<line-width>], and sec. 3.4 sets an omitted
      shorthand slot to its initial value, so an explicit [medium] beside another
      slot is what omitting it already means: the optimizer drops it, pp holds
-     the node. A lone [medium] fills the only slot the shorthand has, so it
-     stays. *)
+     the node. A lone [medium] leaves the shorthand declaring nothing but
+     initial values, which is what [border: none] declares. *)
   check_declaration ~expected:"border:medium solid red"
     ~optimized:"border:solid red" "border: medium solid red";
   check_declaration ~expected:"border-top:medium dashed blue"
@@ -949,7 +950,7 @@ let border_line_width () =
     "border-inline-start: medium dotted red";
   check_declaration ~expected:"border:medium red" ~optimized:"border:red"
     "border: medium red";
-  check_declaration ~expected:"border:medium" ~optimized:"border:medium"
+  check_declaration ~expected:"border:medium" ~optimized:"border:none"
     "border: medium";
   (* Controls: a plain length stands, and a shorthand that fills no width slot
      is untouched. *)

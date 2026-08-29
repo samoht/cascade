@@ -469,10 +469,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
-- `--minify` drops an explicit `medium` width from the `border`, `column-rule`
-  and `outline` shorthands, the value an omitted width slot already resolves
-  to, and two rules that differ only in that spelling now factor into one
-  (#635)
+- `--minify` drops an explicit initial value from a slot of the `border`,
+  `column-rule` and `outline` shorthands: the `medium` width and the `none`
+  style an omitted slot already resolves to. A shorthand with no slot left
+  declares what `none` declares, so `border: medium none` and `border: none`
+  now factor into one rule, as do `border: none red` and `border: red`
+  (#635, #636)
 - `--minify` folds the width slot of the `border` shorthands and of
   `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
   and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That

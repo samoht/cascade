@@ -279,28 +279,35 @@ let rec read_nav t : nav =
           Target (target, scope))
     t
 
+(* CSS UI 4 (ED) sec. 3.3 gives outline-style the initial value [none]. *)
+let drop_initial_outline_style (style : outline_style option) :
+    outline_style option =
+  match style with Some (None : outline_style) -> Option.None | style -> style
+
 (* CSS UI 4 (ED) sec. 3.2 gives outline-width the values and meaning of
-   border-width, so the width slot takes the longhand's fold, and its initial
-   value is [medium]. sec. 3.1 makes the outline shorthand set all three
-   longhands, and CSS Cascade 5 (ED) sec. 3 assigns an omitted sub-property its
-   initial value, so an explicit [medium] beside another slot is the longer
-   spelling of the same declaration - the [auto] case included, since a lone
-   [auto] and an [auto] beside a width both set outline-style and outline-color
-   to [auto]. *)
+   border-width, so the width slot takes the longhand's fold and its initial
+   [medium] drops the same way. sec. 3.1 makes the outline shorthand set all
+   three longhands, and CSS Cascade 5 (ED) sec. 3 assigns an omitted
+   sub-property its initial value, so a shorthand left with no slot at all
+   declares what [outline: none] declares - the node the keyword parses to, so
+   the two spellings meet there. [auto] is not the initial style and stays: a
+   lone [auto] and an [auto] beside a width both set outline-style and
+   outline-color to [auto]. *)
 let normalize_outline ?(lossless = false) : outline -> outline =
  fun value ->
   match value with
   | Shorthand s ->
       let width =
-        option_map_preserve Prop_background.normalize_border_width s.width
+        Prop_background.drop_initial_line_width
+          (option_map_preserve Prop_background.normalize_border_width s.width)
       in
+      let style = drop_initial_outline_style s.style in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
-      let others_filled = Option.is_some s.style || Option.is_some color in
-      let width =
-        Prop_background.drop_initial_line_width ~others_filled width
-      in
-      if width == s.width && color == s.color then value
-      else Shorthand { s with width; color }
+      if width == s.width && style == s.style && color == s.color then value
+      else if
+        Option.is_none width && Option.is_none style && Option.is_none color
+      then (None : outline)
+      else Shorthand { width; style; color }
   | other -> other
 
 let normalize_caret ?(lossless = false) : caret -> caret =
