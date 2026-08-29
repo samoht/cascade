@@ -235,6 +235,23 @@ let test_font_shorthand_default_slots_factor () =
     (optimize_str
        ".a{font:400 12px serif}.b{font:12px/normal serif}.c{font:12px serif}")
 
+(* CSS Transitions 1 (ED) sec. 2.5 lets every component of a
+   [<single-transition>] fall back to its longhand initial, so a transition that
+   writes [ease] and [0s] out is the one the bare duration already names.
+   Factoring compares nodes, so the two rules meet as one declaration only if
+   the fold happened first. *)
+let test_transition_default_spellings_factor () =
+  Alcotest.(check string)
+    "spelled-out initials factor with the omitted form"
+    ".a,.b{transition:all 1s}"
+    (optimize_str ".a{transition:all 1s ease 0s}.b{transition:1s}");
+  (* The second time is the delay, so a zero duration in front of one is not a
+     default that can go: the two rules name different transitions. *)
+  Alcotest.(check string)
+    "a delayed transition does not factor with a plain one"
+    ".a{transition:opacity 0s 2s}.b{transition:opacity 2s}"
+    (optimize_str ".a{transition:opacity 0s 2s}.b{transition:opacity 2s}")
+
 let suite =
   ( "factor",
     [
@@ -264,4 +281,6 @@ let suite =
         test_display_spellings_factor;
       Alcotest.test_case "equal overflow axes factor with the single value"
         `Quick test_overflow_pair_spellings_factor;
+      Alcotest.test_case "spelled-out transition initials factor away" `Quick
+        test_transition_default_spellings_factor;
     ] )

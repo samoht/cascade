@@ -1494,7 +1494,31 @@ let list_properties () =
 
   (* Transition *)
   check_declaration ~expected:"transition:none" "transition: none";
-  check_declaration ~expected:"transition:all .3s" "transition: all 0.3s ease";
+  (* CSS Transitions 1 (ED) sec. 2.5 builds a [<single-transition>] out of
+     components that each fall back to their longhand initial when left out:
+     [0s] for the duration (sec. 2.2), [ease] for the easing (sec. 2.3), [0s]
+     for the delay (sec. 2.4). Spelling an initial out therefore names the value
+     the shorter form already names, and swapping the two is a node change, so
+     pp prints what it parsed and the optimizer folds. *)
+  check_declaration ~expected:"transition:all .3s ease"
+    ~optimized:"transition:all .3s" "transition: all 0.3s ease";
+  check_declaration ~expected:"transition:all 1s ease 0s"
+    ~optimized:"transition:all 1s" "transition: all 1s ease 0s";
+  check_declaration ~expected:"transition:opacity 1s normal"
+    ~optimized:"transition:opacity 1s" "transition: opacity 1s normal";
+  check_declaration ~expected:"transition:opacity 0s 0s"
+    ~optimized:"transition:opacity" "transition: opacity 0s 0s";
+  (* sec. 2.5: "the first value that can be parsed as a time is assigned to the
+     transition-duration, and the second value that can be parsed as a time is
+     assigned to transition-delay". A delay is only reachable behind a duration,
+     so a zero duration that carries a non-zero delay has to stay written out:
+     dropping it hands the delay to the duration slot and starts the transition
+     immediately instead of two seconds late. *)
+  check_declaration ~expected:"transition:opacity 0s 2s"
+    ~optimized:"transition:opacity 0s 2s" "transition: opacity 0s 2s";
+  check_declaration ~expected:"transition:opacity 0s linear 2s"
+    ~optimized:"transition:opacity 0s linear 2s"
+    "transition: opacity 0s linear 2s";
   check_declaration ~expected:"transition:all .3s linear"
     "transition: all .3s linear";
   check_declaration ~expected:"transition:opacity 1s ease-in .5s"
