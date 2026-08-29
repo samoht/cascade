@@ -684,12 +684,12 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** CSS calc operations. *)
 type calc_op = Values.calc_op = Add | Sub | Mul | Div
 
-(** CSS Values 4 sec. 10.7.1 math constants - emitted at the source byte
-    sequence so pretty pp preserves [calc(2 * pi)] instead of writing
+(** CSS Values 4 sec. 10.7 math constants - emitted at the source byte sequence
+    so pretty pp preserves [calc(2 * pi)] instead of writing
     [calc(6.28318530718)]. *)
 type math_const = Values.math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 sec. 9.1 numeric math function arguments. *)
+(** CSS Values 4 (ED) sec. 9.1 numeric math function arguments. *)
 type math_arg = Values.math_arg =
   | Lit of float
   | Dim of float * string  (** A dimension argument (e.g. [1vw], [1%]). *)
@@ -699,7 +699,7 @@ type math_arg = Values.math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 sec. 9.1 numeric math functions. *)
+(** CSS Values 4 (ED) sec. 9.1 numeric math functions. *)
 and math_fn = Values.math_fn =
   | Sin of angle_arg
   | Cos of angle_arg
@@ -734,14 +734,15 @@ type 'a calc = 'a Values.calc =
   | Val of 'a
   | Num of float  (** Unitless number *)
   | Math_const of math_const
-      (** CSS Values 4 sec. 10.7.1 math constant ([pi], [e], [infinity],
+      (** CSS Values 4 sec. 10.7 math constant ([pi], [e], [infinity],
           [-infinity], [NaN]) preserved verbatim through pretty pp. *)
   | Sibling_index  (** CSS [sibling-index()] math function. *)
   | Sibling_count  (** CSS [sibling-count()] math function. *)
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
-  | Math_fn of math_fn  (** CSS Values 4 sec. 9.1 numeric math function call. *)
+  | Math_fn of math_fn
+      (** CSS Values 4 (ED) sec. 9.1 numeric math function call. *)
 
 type component_values = Component.t list
 (** Parsed CSS component values preserved for fallback and invalid-value
@@ -6612,10 +6613,6 @@ val webkit_background_clip : background_box -> declaration
     @see <https://www.w3.org/TR/css-contain-2/> CSS Containment Module Level 2
 *)
 
-(** [aspect_ratio ratio] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio}
-     aspect-ratio} property. *)
-
 (** CSS container-type values *)
 type container_type = Properties.container_type =
   | Size
@@ -7739,19 +7736,21 @@ val of_string :
   ?enforce_spec:bool ->
   string ->
   (parse, Error.t) result
-(** [of_string ?strict css] parses [css] with CSS Syntax 3 section 5.4 recovery.
-    Returns [Ok { stylesheet; warnings }] when no fatal syntax error escapes
-    recovery; {!field-warnings} carries every typed diagnostic the parser
-    collected (unknown at-rules, unknown properties, invalid values, ...). With
-    [~strict:true] a non-empty {!field-warnings} list collapses to [Error]
-    (first warning) - useful in linters and CI gates that want to fail on any
-    spec deviation. [?meta] controls diagnostic richness; see {!Loc.meta_level}.
+(** [of_string ?strict css] parses [css] with CSS Syntax 3 (ED) section 5.4
+    recovery. Returns [Ok { stylesheet; warnings }] when no fatal syntax error
+    escapes recovery; {!field-warnings} carries every typed diagnostic the
+    parser collected (unknown at-rules, unknown properties, invalid values,
+    ...). With [~strict:true] a non-empty {!field-warnings} list collapses to
+    [Error] (first warning) - useful in linters and CI gates that want to fail
+    on any spec deviation. [?meta] controls diagnostic richness; see
+    {!Loc.meta_level}.
 
     [enforce_spec] (default [false]) restricts non-ASCII identifiers to the CSS
-    Syntax 3 sec. 4.2 range list, which excludes most BMP symbols. The default
-    accepts any code point [>= U+0080], so a selector such as [.text-\u{2197}]
-    reads rather than being dropped with a warning. Output is unaffected either
-    way: a code point outside the range list is hex-escaped. *)
+    Syntax 3 (ED) sec. 4.2 range list, which excludes most BMP symbols. The
+    default accepts any code point [>= U+0080], so a selector such as
+    [.text-\u{2197}] reads rather than being dropped with a warning. Output is
+    unaffected either way: a code point outside the range list is hex-escaped.
+*)
 
 val of_string_exn :
   ?strict:bool ->
@@ -7908,7 +7907,7 @@ val resolve_theme :
     [theme_defaults] maps a custom-property name to its value and is the source
     of global theme-token definitions. An answer binds only when the name and
     the value make one custom-property declaration - a [<dashed-ident>] name and
-    a CSS Syntax 3 sec. 8.2 [<declaration-value>], as
+    a CSS Syntax 3 (ED) sec. 7.2 [<declaration-value>], as
     {!Declaration.parse_custom_property} checks. Any other answer, such as one
     carrying a [}] or a top-level [;], reads as no default at all and leaves the
     reference live. Every [var()] reference that is undefined in [stylesheet]
