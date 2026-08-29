@@ -2152,7 +2152,9 @@ let test_background_shorthand () =
   check_background_shorthand "url(image.png)";
   check_background_shorthand "center";
   check_background_shorthand "no-repeat";
-  check_background_shorthand ~expected:"repeat" "repeat repeat";
+  (* pp prints the axis pair it was handed; the fold to the one-keyword spelling
+     is an optimize step (test_declaration pins it). *)
+  check_background_shorthand "repeat repeat";
   check_background_shorthand ~expected:"url(image.png)red" "red url(image.png)";
   check_background_shorthand ~expected:"url(image.png)center"
     "url(image.png) center";

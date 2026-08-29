@@ -296,6 +296,24 @@ let drained_background_layer : background_shorthand =
     origin = None;
   }
 
+(* CSS Backgrounds 3 (ED) sec. 2.4 lists the pair each single [<repeat-style>]
+   keyword computes to, so every pair that appears there has a one-keyword
+   spelling of the same value and the shorter one wins. The pairs with two
+   different axes and no alias stay as written. *)
+let rec normalize_background_repeat : background_repeat -> background_repeat =
+ fun value ->
+  match value with
+  | Layers layers ->
+      preserve_if_equal value
+        (Layers (map_preserve normalize_background_repeat layers))
+  | Repeat_repeat -> Repeat
+  | Space_space -> Space
+  | Round_round -> Round
+  | No_repeat_no_repeat -> No_repeat
+  | Repeat_no_repeat -> Repeat_x
+  | No_repeat_repeat -> Repeat_y
+  | other -> other
+
 let background_layer_is_empty (b : background_shorthand) =
   Option.is_none b.color && Option.is_none b.image && Option.is_none b.position
   && Option.is_none b.size && Option.is_none b.repeat
@@ -321,7 +339,11 @@ let normalize_background_shorthand ?(lossless = false)
       (normalize_background_image ~lossless)
       (drop_initial_slot (None : background_image) b.image)
   in
-  let repeat = drop_initial_slot (Repeat : background_repeat) b.repeat in
+  let repeat =
+    drop_initial_slot
+      (Repeat : background_repeat)
+      (option_map_preserve normalize_background_repeat b.repeat)
+  in
   let attachment =
     drop_initial_slot (Scroll : background_attachment) b.attachment
   in
@@ -940,15 +962,6 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | No_repeat -> Pp.string ctx "no-repeat"
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
-  (* CSS Backgrounds 3 sec. 2.6.1: the two-value forms collapse when both axes
-     match ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
-     no-repeat] -> [repeat-x], [no-repeat repeat] -> [repeat-y]). *)
-  | Repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat"
-  | Space_space when Pp.minified ctx -> Pp.string ctx "space"
-  | Round_round when Pp.minified ctx -> Pp.string ctx "round"
-  | No_repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "no-repeat"
-  | Repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "repeat-x"
-  | No_repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat-y"
   | Repeat_repeat -> Pp.string ctx "repeat repeat"
   | Repeat_space -> Pp.string ctx "repeat space"
   | Repeat_round -> Pp.string ctx "repeat round"
