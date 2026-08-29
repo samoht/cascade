@@ -181,6 +181,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An empty value is no longer a declaration. `border:`, its per-side and
+  logical variants and `column-rule:` read as `border: none`, and `outline:`
+  printed a value no parser reads back; an empty value matches none of these
+  shorthand grammars, so the declaration is now dropped with a warning like
+  any other invalid one (#640)
 - `display: flow-root list-item` and `display: flow list-item` are read as the
   values they are. CSS Display 3 sec. 2 orders none of the three `list-item`
   components, and the reader stopped at a leading inside keyword (#641)
@@ -481,7 +486,7 @@ recorded cases carrying six minifiers' answers.
   `text-decoration`, `text-shadow`, `transition` and `font` shorthands, a
   keyword beside the number or curve naming the same value, a repeated
   `font-family` entry, a two-value `display` beside its legacy keyword, and a
-  box shorthand whose sides repeat (#635, #636, #637, #639, #641)
+  box shorthand whose sides repeat (#635, #636, #637, #639, #640, #641)
 - `--minify` folds a same-unit `calc()` in `font-size`, so `calc(1px + 1px)`
   prints as `2px` and merges with a rule that wrote `2px`; the property ran the
   untyped calc simplifier, which cannot add two typed lengths (#639)
@@ -497,6 +502,12 @@ recorded cases carrying six minifiers' answers.
   `transition: opacity 0s 2s` printed `transition:opacity 2s`; CSS Transitions
   1 sec. 2.5 gives the first time to the duration, so the delayed instant
   change came back as a two-second one starting straight away (#641)
+- `--minify` keeps a lone `background` position value and both `<box>` values
+  of a layer that disagree. CSS Backgrounds 3 sec. 2.6 reads one position
+  value as `<x> center`, so `background: url(a.png) 0` came back top-aligned,
+  and sec. 2.10 reads a single `<box>` as setting `background-origin` and
+  `background-clip` together, so `background: red content-box border-box`
+  came back painted over the content box alone (#640)
 - `--minify` folds the width slot of the `border` shorthands and of
   `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
   and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That
