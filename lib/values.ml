@@ -5063,8 +5063,11 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
       if Cursor.is_done t then Empty
       else
         match Cursor.try_parse_full_err read_value t with
+        (* The fallback is a [<declaration-value>]: it swallows the rest of the
+           argument list whether or not it parses as the target syntax, so it is
+           consumed either way. *)
         | Ok fb -> Fallback fb
-        | Error _ -> Syntax_fallback (Cursor.remaining t))
+        | Error _ -> Syntax_fallback (Cursor.consume_remaining t))
   in
   var_ref ~fallback var_name
 

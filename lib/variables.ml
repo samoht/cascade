@@ -2602,10 +2602,10 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
    instead of re-serialising tokens. Falls back to component-based serialisation
    when the source is not retained on the cursor. *)
 let string_of_fallback inner =
-  let cvs = Cursor.remaining inner in
+  let cvs = Cursor.consume_remaining inner in
   match (cvs, Cursor.source inner) with
   | [], _ -> ""
-  | _, None -> Cursor.string_of_remaining ~trim:true inner
+  | _, None -> Cursor.string_of_components ~trim:true cvs
   | first :: _, Some src ->
       let start_pos = (Component.source_loc first).start_pos in
       let last = List.nth cvs (List.length cvs - 1) in

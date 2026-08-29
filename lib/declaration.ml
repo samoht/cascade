@@ -233,9 +233,17 @@ let invalid_var_arguments arguments =
   match
     List.filter (fun component -> not (is_ws_component component)) arguments
   with
-  | Component.Preserved { kind = Token.Ident name; _ } :: _
-    when Custom_property_name.is_valid name ->
-      false
+  | Component.Preserved { kind = Token.Ident name; _ } :: rest
+    when Custom_property_name.is_valid name -> (
+      (* CSS Custom Properties 1 sec. 3: nothing follows the name but a comma
+         opening the fallback. This raw-component check gates the opaque
+         keep-verbatim path, so it has to agree with the typed reader; without
+         the comma case [var(--x 10px)] took that path and was preserved instead
+         of invalidating the declaration. *)
+      match rest with
+      | [] -> false
+      | Component.Preserved { kind = Token.Comma; _ } :: _ -> false
+      | _ -> true)
   | _ -> true
 
 let rec components_have_invalid_var components =
