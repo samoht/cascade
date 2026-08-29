@@ -1693,6 +1693,12 @@ let matrix =
             "none";
             "linear-gradient(red, blue) 30";
             "linear-gradient(red, blue) 30 fill / 10px / 1 stretch";
+            (* css-backgrounds-3 sec. 5.7 joins source, slice and repeat with
+               [||] and sets omitted values to their initial values, so the
+               repeat alone is a complete value. *)
+            "round";
+            "stretch";
+            "round space";
           ];
         negatives = [ "none none"; "linear-gradient(red, blue) fill fill" ];
       };

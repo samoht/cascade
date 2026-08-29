@@ -4213,6 +4213,11 @@ let spec_generated_box_layout_edges () =
   check_baseline_shift "10%";
   check_baseline_source "first";
   check_border_image ~expected:"url(border.png)30" "url(border.png) 30";
+  (* css-backgrounds-3 sec. 5.7 sets omitted values to their initial values, so
+     [border-image-repeat] on its own is a complete value. *)
+  check_border_image ~roundtrip:true "round";
+  check_border_image ~roundtrip:true "stretch";
+  check_border_image ~roundtrip:true "round space";
   check_border_image_outset_item "2px";
   check_border_image_repeat_keyword "round";
   check_border_image_slice "30 fill";
