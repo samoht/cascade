@@ -1340,7 +1340,8 @@ type text_box_edge =
   | Var of text_box_edge var
 
 type text_box =
-  | Box of text_box_trim * text_box_edge option
+  | Normal
+  | Box of text_box_trim option * text_box_edge option
   | Inherit
   | Initial
   | Unset

@@ -4561,7 +4561,9 @@ let spec_generated_text_timeline_edges () =
   check_timeline_shorthand_item "--main block";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
-  neg_cursor read_text_box "trim-start trim-end";
+  (* Two trims: the reader takes the first and leaves the second, and the
+     declaration-level rejection is pinned in the shared inventory. *)
+  neg_cursor ~allow_partial:true read_text_box "trim-start trim-end";
   neg_cursor read_text_box_edge "text text";
   neg_cursor read_text_box_edge_keyword "baseline";
   neg_cursor read_text_box_trim "trim";

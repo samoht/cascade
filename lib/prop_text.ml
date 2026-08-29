@@ -1106,11 +1106,18 @@ let rec pp_text_box_edge : text_box_edge Pp.t =
 let rec pp_text_box : text_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_text_box ctx v
+  | Normal -> Pp.string ctx "normal"
   | Box (trim, edge) ->
-      pp_text_box_trim ctx trim;
+      let first = ref true in
+      let sep () = if !first then first := false else Pp.space ctx () in
+      Option.iter
+        (fun trim ->
+          sep ();
+          pp_text_box_trim ctx trim)
+        trim;
       Option.iter
         (fun edge ->
-          Pp.space ctx ();
+          sep ();
           pp_text_box_edge ctx edge)
         edge
   | Initial -> Pp.string ctx "initial"
@@ -1499,6 +1506,16 @@ let rec read_text_wrap_style t : text_wrap_style =
     ~var:(fun t -> Var (read_var read_text_wrap_style t))
     t
 
+let read_text_box_trim_keyword t : text_box_trim =
+  Cursor.enum "text-box-trim"
+    [
+      ("none", (None : text_box_trim));
+      ("trim-start", Trim_start);
+      ("trim-end", Trim_end);
+      ("trim-both", Trim_both);
+    ]
+    t
+
 let rec read_text_box_trim t : text_box_trim =
   Cursor.enum_or_var "text-box-trim"
     [
@@ -1555,10 +1572,14 @@ let rec read_text_box_edge ?(global = true) t : text_box_edge =
         (Var (Values.read_var read_text_box_edge t) : text_box_edge))
       ~default:read_text_box_edge_value t
 
+(* css-inline-3 (ED) sec. 6.1: [normal | <'text-box-trim'> ||
+   <'text-box-edge'>]. Either slot may be left out, in either order, and
+   omitting the trim sets it to [trim-both] rather than to its initial value. *)
 let rec read_text_box t : text_box =
   Cursor.enum_or_var "text-box"
     [
-      ("initial", (Initial : text_box));
+      ("normal", (Normal : text_box));
+      ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -1566,13 +1587,18 @@ let rec read_text_box t : text_box =
     ]
     ~var:(fun t -> (Var (Values.read_var read_text_box t) : text_box))
     ~default:(fun t ->
-      let trim = read_text_box_trim t in
+      let trim = Cursor.option read_text_box_trim_keyword t in
       Cursor.ws t;
-      let edge : text_box_edge option =
-        if Cursor.is_done t then None
-        else Some (read_text_box_edge ~global:false t)
+      let edge = Cursor.option (read_text_box_edge ~global:false) t in
+      Cursor.ws t;
+      let trim =
+        match trim with
+        | Some _ -> trim
+        | None -> Cursor.option read_text_box_trim_keyword t
       in
-      (Box (trim, edge) : text_box))
+      match (trim, edge) with
+      | None, None -> Cursor.err_expected t "text-box"
+      | _ -> (Box (trim, edge) : text_box))
     t
 
 let read_line_fit_edge_keyword t : line_fit_edge_keyword =
