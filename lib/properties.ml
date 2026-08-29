@@ -3601,6 +3601,8 @@ let normalize_property_value : type a.
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
+  | Font_weight -> normalize_font_weight value
+  | Font -> normalize_font value
   | Padding_left -> Values.normalize_length ~ctx value
   | Padding_right -> Values.normalize_length ~ctx value
   | Padding_bottom -> Values.normalize_length ~ctx value

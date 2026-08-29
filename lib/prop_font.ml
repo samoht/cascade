@@ -1204,13 +1204,7 @@ let rec pp_line_height : line_height Pp.t =
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
   | Weight n -> Pp.int ctx n
-  | Normal when Pp.minified ctx ->
-      (* CSS Fonts 4 5.1.2: [normal] is spec-equivalent to [400]. *)
-      Pp.string ctx "400"
   | Normal -> Pp.string ctx "normal"
-  | Bold when Pp.minified ctx ->
-      (* CSS Fonts 4 5.1.2: [bold] is spec-equivalent to [700]. *)
-      Pp.string ctx "700"
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
@@ -1990,6 +1984,24 @@ let normalize_line_height (lh : line_height) : line_height =
       | Values.Val v -> v
       | folded -> Calc folded)
   | _ -> lh
+
+(* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
+   "Same as 700", so each keyword and its number name one weight and the number
+   is the shorter spelling. *)
+let normalize_font_weight : font_weight -> font_weight = function
+  | Normal -> Weight 400
+  | Bold -> Weight 700
+  | value -> value
+
+(* sec. 2.7 gives the [font] shorthand a [<'font-weight'>] slot, so the slot
+   takes the longhand's fold. *)
+let normalize_font : font -> font =
+ fun value ->
+  match value with
+  | Shorthand s ->
+      let weight = option_map_preserve normalize_font_weight s.weight in
+      if weight == s.weight then value else Shorthand { s with weight }
+  | other -> other
 
 let rec read_font_variant_emoji t : font_variant_emoji =
   Cursor.enum_or_var "font-variant-emoji"

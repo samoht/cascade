@@ -3052,7 +3052,7 @@ let c64_layer_name_syntax () =
     "@layer framework.base, framework.theme;";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:700}}@layer \
+      "@layer reset.type{strong{font-weight:bold}}@layer \
        reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer reset { \
      [hidden] { display: none } }";
@@ -3087,7 +3087,7 @@ let c64_layer_nesting_examples () =
        framework.theme{blockquote{color:#639}}";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:700}}@layer \
+      "@layer reset.type{strong{font-weight:bold}}@layer \
        framework{.title{font-weight:100}@layer \
        theme{h1,h2{color:maroon}}}@layer reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer framework { \

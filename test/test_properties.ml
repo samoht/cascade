@@ -1804,10 +1804,12 @@ let test_background () =
   neg_cursor read_background "10px 20px 30px 40px 50px"
 
 let test_font_weight () =
-  (* CSS Fonts 4 section 2.2: [normal] and [bold] canonicalize to the numeric
-     forms [400] and [700] under minify. *)
-  check_font_weight ~expected:"400" "normal";
-  check_font_weight ~expected:"700" "bold";
+  (* CSS Fonts 4 (ED) sec. 2.2 makes [normal] and [bold] the numbers 400 and
+     700, but swapping one for the other is a node change, so pp prints the
+     keyword it was handed and the optimizer folds (test_declaration pins the
+     fold). *)
+  check_font_weight "normal";
+  check_font_weight "bold";
   check_font_weight "700";
   check_font_weight "1000";
   check_font_weight "lighter";
@@ -3628,7 +3630,7 @@ let test_grid_area () =
 let test_font () =
   check_font "16px serif";
   check_font "italic 700 16px/1.5 serif";
-  check_font ~expected:"italic 700 16px/1.5 serif" "italic bold 16px/1.5 serif";
+  check_font "italic bold 16px/1.5 serif";
   check_font "small-caps 12px monospace";
   check_font "inherit";
   check_font "caption";

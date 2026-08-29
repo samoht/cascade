@@ -1752,8 +1752,8 @@ let spec_cascade3_shorthands () =
   check_declaration ~expected:"padding:1em 2em" "padding: 1em 2em";
   check_declaration ~expected:"background:green" "background: green";
   check_declaration ~expected:"border:1px solid red" "border: 1px solid red";
-  check_declaration ~expected:"font:700 12pt/14pt Helvetica"
-    "font: bold 12pt/14pt Helvetica";
+  check_declaration ~expected:"font:bold 12pt/14pt Helvetica"
+    ~optimized:"font:700 12pt/14pt Helvetica" "font: bold 12pt/14pt Helvetica";
   check_declaration ~expected:"margin:inherit" "margin: inherit";
   check_declaration ~expected:"padding:initial" "padding: initial";
   check_declaration ~expected:"background:unset" "background: unset";
