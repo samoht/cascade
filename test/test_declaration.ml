@@ -1317,7 +1317,9 @@ let background_box_slots () =
   check_declaration ~expected:"background:content-box content-box red"
     ~optimized:"background:content-box red"
     "background: red content-box content-box";
-  check_declaration ~expected:"background:border-box border-box red"
+  (* A single [<box>] is one slot in the node, and pp holds the node: it is the
+     re-reading of that single keyword that sets both longhands. *)
+  check_declaration ~expected:"background:border-box red"
     ~optimized:"background:border-box red" "background: red border-box";
   (* Both are written out where a single [<box>] would name a different pair. *)
   check_declaration ~expected:"background:padding-box content-box red"

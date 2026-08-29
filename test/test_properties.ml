@@ -1812,7 +1812,9 @@ let test_background () =
      is the default and folds away; the second layer's [space] stays. *)
   decl_optimizes ~prop:"background" ~into:"url(a.png),url(b.png)space"
     "url(a.png) repeat,url(b.png) space";
-  check_background ~expected:"0 0" "none";
+  (* pp holds the [none] keyword; the fold to the equivalent, and shorter, [0 0]
+     layer is an optimize transform (test_declaration pins it). *)
+  check_background "none";
   neg_cursor read_background "invalid-background";
   neg_cursor ~allow_partial:true read_background "red blue";
   (* multiple colors without gradient *)
