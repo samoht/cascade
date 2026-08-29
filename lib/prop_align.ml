@@ -347,7 +347,6 @@ let rec read_justify_items t : justify_items =
         let _ = Cursor.ident t in
         Legacy_right
     | None -> Legacy
-    | Some _ when Cursor.peek_semicolon t -> Legacy
     | Some s -> err_invalid_value t "justify-items legacy" s
   in
   Cursor.enum_or_var "justify-items"

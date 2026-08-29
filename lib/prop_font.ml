@@ -76,11 +76,11 @@ let rec read_font_style t : font_style =
     ~default:(fun t ->
       Cursor.expect_string "oblique" t;
       Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then Oblique
+      if Cursor.is_done t then Oblique
       else
         let first = read_angle t in
         Cursor.ws t;
-        if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
+        if Cursor.is_done t then Oblique_angle first
         else
           (* CSS Fonts 4 sec. 4.4 swaps the endpoints of a descending [oblique
              <angle> <angle>] range rather than rejecting it, so the reader

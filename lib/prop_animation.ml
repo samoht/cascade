@@ -1808,8 +1808,7 @@ let animation_range_names =
 
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then
-    (None : length_percentage option)
+  if Cursor.is_done t then (None : length_percentage option)
   else
     match Cursor.peek_ident t with
     | Some "normal" -> (None : length_percentage option)
@@ -1871,7 +1870,7 @@ let rec read_animation_range t : animation_range =
     in
     let first = read_single t in
     Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_semicolon t then Range (first, None)
+    if Cursor.is_done t then Range (first, None)
     else
       let second = read_single t in
       Range (first, Some second)

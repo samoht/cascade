@@ -600,7 +600,7 @@ let rec read_grid_auto_flow t : grid_auto_flow =
     t
 
 let grid_line_at_end t =
-  Cursor.is_done t || Cursor.peek_semicolon t
+  Cursor.is_done t
   ||
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true

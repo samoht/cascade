@@ -537,7 +537,7 @@ let rec read_contain_intrinsic_size (t : Cursor.t) : contain_intrinsic_size =
   let read_intrinsic t =
     let first = read_contain_intrinsic_size_item t in
     Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_semicolon t then Intrinsic (first, None)
+    if Cursor.is_done t then Intrinsic (first, None)
     else
       let second = read_contain_intrinsic_size_item t in
       Intrinsic (first, Some second)

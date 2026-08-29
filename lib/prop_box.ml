@@ -185,17 +185,11 @@ let rec read_overflow_single (t : Cursor.t) : overflow =
 let read_overflow t : overflow =
   let first = read_overflow_single t in
   Cursor.ws t;
-  if
-    Cursor.is_done t || Cursor.peek_semicolon t
-    || Cursor.peek_delim t = Some '!'
-  then first
+  if Cursor.is_done t then first
   else
     let second = read_overflow_single t in
     Cursor.ws t;
-    if
-      (not (Cursor.is_done t))
-      && not (Cursor.peek_semicolon t || Cursor.peek_delim t = Some '!')
-    then Cursor.expect_eof t;
+    Cursor.expect_eof t;
     Overflow_pair (first, second)
 
 (* [object-view-box] has its own [Inset] / [Xywh] / [Rect] variants distinct
@@ -600,7 +594,7 @@ let read_overflow_clip_length_item (length : length option ref) t =
 
 let rec read_overflow_clip_margin_items box length consumed t =
   Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then consumed
+  if Cursor.is_done t then consumed
   else
     let snap = Cursor.save t in
     if

@@ -281,11 +281,7 @@ let rec read_text_indent_value t : text_indent_value =
       let length = ref Option.None in
       let hanging = ref false in
       let each_line = ref false in
-      let at_end t =
-        Cursor.is_done t || Cursor.peek_semicolon t
-        || Cursor.peek_delim t = Some '!'
-      in
-      while not (at_end t) do
+      while not (Cursor.is_done t) do
         Cursor.ws t;
         match Cursor.peek_ident t with
         | Some "hanging" when not !hanging ->
@@ -1964,8 +1960,7 @@ let rec read_initial_letter t : initial_letter =
     let size = Cursor.number t in
     if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
     Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_semicolon t then
-      (Size size : initial_letter)
+    if Cursor.is_done t then (Size size : initial_letter)
     else
       let sink = Cursor.int t in
       if sink < 1 then Cursor.err_invalid t "initial-letter sink must be >= 1";

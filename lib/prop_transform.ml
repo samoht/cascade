@@ -970,8 +970,7 @@ let read_rotate_angle_axis_tail angle t =
 let read_rotate_angle_then_axis t : rotate_value =
   let angle = read_angle t in
   Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then Angle angle
-  else read_rotate_angle_axis_tail angle t
+  if Cursor.is_done t then Angle angle else read_rotate_angle_axis_tail angle t
 
 let rec read_rotate_value t : rotate_value =
   Cursor.enum_or_calls "rotate"

@@ -1030,18 +1030,17 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
   in
   (* CSS Masking 1 sec. 5.1 [<basic-shape> || <geometry-box>]: a shape and a
      reference box may appear in either order, or just a box on its own. *)
-  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
   match read_clip_geometry_box_opt t with
   | Some box ->
       Cursor.ws t;
-      if at_end t then Clip_path_box box
+      if Cursor.is_done t then Clip_path_box box
       else
         let shape = read_basic_shape t in
         Clip_path_with_box { shape; box; box_first = true }
   | None -> (
       let shape = read_basic_shape t in
       Cursor.ws t;
-      if at_end t then shape
+      if Cursor.is_done t then shape
       else
         match read_clip_geometry_box_opt t with
         | Some box -> Clip_path_with_box { shape; box; box_first = false }
