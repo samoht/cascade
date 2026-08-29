@@ -4558,11 +4558,6 @@ let radial_gradient_var_has_one_node () =
 let conic_gradient_var_has_one_node () =
   gradient_var "conic-gradient" (fun var -> Css.Conic_gradient_var var)
 
-let public_flex_basis_constructor_is_readable () =
-  let constructed = Css.flex_basis (Css.From_font : Css.flex_basis) in
-  let printed = Css.Declaration.to_string ~minify:true constructed in
-  ignore (Css.Declaration.of_string printed : Css.Declaration.declaration)
-
 let nan_has_one_node () =
   (* The keyword and the calculation that lands on NaN are the same value. *)
   let keyword = sole_declaration ".a{opacity:calc(NaN)}" in
@@ -4661,8 +4656,6 @@ let declaration_tests =
       radial_gradient_var_has_one_node;
     test_case "conic gradient var has one node" `Quick
       conic_gradient_var_has_one_node;
-    test_case "public flex-basis constructor is readable" `Quick
-      public_flex_basis_constructor_is_readable;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;

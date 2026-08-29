@@ -600,7 +600,6 @@ type flex_basis =
   | Fit_content_arg of length
   | Max_content
   | Min_content
-  | From_font
   (* Math functions over [<length-percentage>] (CSS Values 4 sec. 10). Args
      reuse [length] (which already carries [Pct]) and mirror the [length]
      constructors; [flex_basis_of_length] carries them across and the printer

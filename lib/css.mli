@@ -3441,7 +3441,6 @@ type flex_basis = Properties.flex_basis =
   | Fit_content_arg of length
   | Max_content
   | Min_content
-  | From_font
   | Clamp of length * length * length
   | Min of length list
   | Max of length list

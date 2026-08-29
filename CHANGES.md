@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `flex_basis.From_font` is gone. `from-font` is not part of the `<width>`
+  grammar accepted by `flex-basis`; the constructor printed CSS that the
+  `flex-basis` reader correctly rejects (#658)
 - Implementation modules are no longer usable through accidental `Cascade.*`
   aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
   `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
