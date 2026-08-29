@@ -279,6 +279,14 @@ let rec read_nav t : nav =
           Target (target, scope))
     t
 
+(* CSS UI 4 (ED) sec. 3.2 gives outline-width the values and meaning of
+   border-width, so the width slot takes the longhand's fold, and its initial
+   value is [medium]. sec. 3.1 makes the outline shorthand set all three
+   longhands, and CSS Cascade 5 (ED) sec. 3 assigns an omitted sub-property its
+   initial value, so an explicit [medium] beside another slot is the longer
+   spelling of the same declaration - the [auto] case included, since a lone
+   [auto] and an [auto] beside a width both set outline-style and outline-color
+   to [auto]. *)
 let normalize_outline ?(lossless = false) : outline -> outline =
  fun value ->
   match value with
@@ -287,6 +295,10 @@ let normalize_outline ?(lossless = false) : outline -> outline =
         option_map_preserve Prop_background.normalize_border_width s.width
       in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
+      let others_filled = Option.is_some s.style || Option.is_some color in
+      let width =
+        Prop_background.drop_initial_line_width ~others_filled width
+      in
       if width == s.width && color == s.color then value
       else Shorthand { s with width; color }
   | other -> other

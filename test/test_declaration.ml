@@ -829,8 +829,25 @@ let outline_line_width () =
   check_declaration ~expected:"outline-width:medium" "outline-width: medium";
   check_declaration ~expected:"outline-width:thick" "outline-width: thick";
   check_declaration ~expected:"outline:thin solid red" "outline: thin solid red";
+  (* CSS UI 4 (ED) sec. 3.1: the outline shorthand sets all three longhands, and
+     CSS Cascade 5 (ED) sec. 3 assigns an omitted sub-property its initial
+     value, which sec. 3.2 gives as [medium]. Spelling [medium] beside another
+     slot says what leaving the slot out already says, so the optimizer drops it
+     and pp prints the node it was handed. A lone [medium] fills the only slot
+     there is, and the shorthand needs one, so it stays. *)
   check_declaration ~expected:"outline:medium solid red"
-    "outline: medium solid red";
+    ~optimized:"outline:solid red" "outline: medium solid red";
+  check_declaration ~expected:"outline:medium dashed"
+    ~optimized:"outline:dashed" "outline: medium dashed";
+  check_declaration ~expected:"outline:medium red" ~optimized:"outline:red"
+    "outline: medium red";
+  (* sec. 3.1: a lone [auto], and an [auto] beside a width but no explicit style
+     or colour, both set outline-style and outline-color to [auto], so the two
+     spellings are the same declaration here too. *)
+  check_declaration ~expected:"outline:medium auto" ~optimized:"outline:auto"
+    "outline: medium auto";
+  check_declaration ~expected:"outline:medium" ~optimized:"outline:medium"
+    "outline: medium";
   check_declaration ~expected:"outline:thick solid red"
     "outline: thick solid red";
   (* CSS Values 4 sec. 10.2: a comparison over same-unit constants denotes one
