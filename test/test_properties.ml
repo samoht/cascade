@@ -2903,6 +2903,7 @@ let test_background_image () =
      gradient instead. *)
   check_background_image "linear-gradient(red,blue)";
   check_background_image "radial-gradient(red,blue)";
+  check_background_image "repeating-linear-gradient(var(--stops))";
   check_background_image "repeating-radial-gradient(var(--stops))";
   check_background_image "repeating-conic-gradient(var(--stops))";
   check_background_image "-webkit-radial-gradient(var(--stops))";
