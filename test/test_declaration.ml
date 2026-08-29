@@ -2018,7 +2018,8 @@ let spec_property_grammar_table_expansion () =
               Some "background:url(bg.png)50%/cover no-repeat border-box" )
         | "scrollbar-color", "red blue" ->
             (Some "scrollbar-color:red blue", Some "scrollbar-color:red #00f")
-        | "border", "1px solid currentColor" -> (Some "border:1px solid", None)
+        | "border", "1px solid currentColor" ->
+            (Some "border:1px solid currentColor", Some "border:1px solid")
         | "background-position", "left 10px top 20px" ->
             ( Some "background-position:left 10px top 20px",
               Some "background-position:10px 20px" )
@@ -2975,7 +2976,8 @@ let spec_remaining_prop_vectors () =
       ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
       ("columns: 12rem 3", "columns:12rem 3");
-      ("column-rule: 1px solid currentColor", "column-rule:1px solid");
+      ( "column-rule: 1px solid currentColor",
+        "column-rule:1px solid currentColor" );
       ("column-span: all", "column-span:all");
       ("break-before: page", "break-before:page");
       ("break-after: avoid-page", "break-after:avoid-page");

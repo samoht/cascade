@@ -755,11 +755,6 @@ let pp_border_shorthand : border_shorthand Pp.t =
  fun ctx { width; style; color } ->
   let first = ref true in
   let add_space () = if !first then first := false else Pp.space ctx () in
-  let color =
-    match color with
-    | Some Current when Pp.minified ctx -> (None : color option)
-    | color -> color
-  in
   Option.iter
     (fun w ->
       add_space ();
@@ -1854,9 +1849,9 @@ let normalize_logical_border_width :
 
 (* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,
    so an omitted slot takes its initial value - sec. 3.3 makes that [medium] for
-   the width, sec. 3.2 [none] for the style. An explicit initial value therefore
-   declares what leaving the slot out declares, and the shorter spelling
-   wins. *)
+   the width, sec. 3.2 [none] for the style and sec. 3.1 [currentColor] for the
+   colour. An explicit initial value therefore declares what leaving the slot
+   out declares, and the shorter spelling wins. *)
 let drop_initial_line_width (width : border_width option) : border_width option
     =
   match width with Some Medium -> Option.None | width -> width
@@ -1864,6 +1859,14 @@ let drop_initial_line_width (width : border_width option) : border_width option
 let drop_initial_line_style (style : border_style option) : border_style option
     =
   match style with Some (None : border_style) -> Option.None | style -> style
+
+(* CSS Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give
+   column-rule and the logical borders the same initial colour, and they read
+   this production. CSS UI 4 (ED) sec. 3.4 does not: outline-color starts at
+   [auto], which [currentColor] does not name, so [normalize_outline] has no
+   colour drop. *)
+let drop_initial_line_color (color : color option) : color option =
+  match color with Some (Current : color) -> Option.None | color -> color
 
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
    the same fold as the longhand; the style slot is a [<line-style>] and the
@@ -1879,7 +1882,10 @@ let normalize_border ?(lossless = false) : border -> border =
           (option_map_preserve normalize_border_width s.width)
       in
       let style = drop_initial_line_style s.style in
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
+      let color =
+        drop_initial_line_color
+          (option_map_preserve (normalize_color ~lossless) s.color)
+      in
       if width == s.width && style == s.style && color == s.color then value
       else if
         Option.is_none width && Option.is_none style && Option.is_none color
