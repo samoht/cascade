@@ -534,7 +534,15 @@ let special_cases () =
   check_declaration ~expected:"margin-inline:10%20%" "margin-inline: 10% 20%;";
   check_declaration ~expected:"margin-inline:10px 20px"
     "margin-inline: 10px 20px;";
-  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;"
+  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;";
+  (* CSS Logical 1 (ED) sec. 4.2 defines [margin-inline] and [margin-block] as
+     [<'margin-top'>{1,2}]: "If only one value is given, it applies to both the
+     start and end edges." Two equal edges are therefore the longer spelling of
+     the single value, the way the physical shorthand's four sides are. *)
+  check_declaration ~expected:"margin-inline:1px 1px"
+    ~optimized:"margin-inline:1px" "margin-inline: 1px 1px";
+  check_declaration ~expected:"margin-block:1px 1px"
+    ~optimized:"margin-block:1px" "margin-block: 1px 1px"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The
