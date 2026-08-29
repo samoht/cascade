@@ -34,7 +34,7 @@ edit.
 Forcing colour on emits ANSI markers even into a pipe; the default
 resolves to plain off-tty, as the NO_COLOR run above shows.
 
-  $ cascade diff --color=always c.css d.css | cat -v | head -5
+  $ env -u NO_COLOR cascade diff --color=always c.css d.css | cat -v | head -5
   CSS: 18 chars vs 19 chars (5.6% diff)
   Changes: 1 modified rule
   
