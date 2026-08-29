@@ -1713,7 +1713,8 @@ let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   | Var v -> [ V v ]
   | Timelines items ->
       List.concat_map
-        (fun { Properties.axis; _ } -> vars_of_timeline_axis axis)
+        (fun { Properties.axis; _ } ->
+          Option.fold ~none:[] ~some:vars_of_timeline_axis axis)
         items
   | _ -> []
 

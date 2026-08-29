@@ -3920,9 +3920,9 @@ let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
   check_timeline_shorthand "--scroll inline";
   check_timeline_shorthand "--x x";
+  check_timeline_shorthand "--main";
   neg_cursor read_timeline_shorthand "main block";
-  neg_cursor read_timeline_shorthand "--main";
-  neg_cursor read_timeline_shorthand "--main z"
+  neg_cursor ~allow_partial:true read_timeline_shorthand "--main z"
 
 let test_caption_side () =
   check_caption_side "top";
@@ -4564,6 +4564,7 @@ let spec_generated_text_timeline_edges () =
   check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
   check_timeline_shorthand_item "--main block";
+  check_timeline_shorthand_item "--main";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
   neg_cursor read_text_box "trim-start trim-end";
@@ -4595,7 +4596,7 @@ let spec_generated_text_timeline_edges () =
   neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
   neg_cursor read_timeline_inset_item "-1px";
   neg_cursor ~allow_partial:true read_timeline_name "none --main";
-  neg_cursor read_timeline_shorthand_item "--main z";
+  neg_cursor ~allow_partial:true read_timeline_shorthand_item "--main z";
   neg_cursor ~allow_partial:true read_view_transition_class "none card";
   neg_cursor ~allow_partial:true read_view_transition_name "match-element card"
 

@@ -328,8 +328,11 @@ let rec pp_timeline_name : timeline_name Pp.t =
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
  fun ctx { name; axis } ->
   pp_ident ctx name;
-  Pp.space ctx ();
-  pp_timeline_axis ctx axis
+  match axis with
+  | None -> ()
+  | Some axis ->
+      Pp.space ctx ();
+      pp_timeline_axis ctx axis
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
@@ -673,7 +676,7 @@ let read_timeline_shorthand_item t : timeline_shorthand_item =
   if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid t "timeline name";
   Cursor.ws t;
-  let axis = read_timeline_axis t in
+  let axis = Cursor.option read_timeline_axis t in
   { name; axis }
 
 let rec read_timeline_shorthand t : timeline_shorthand =

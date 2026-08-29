@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `timeline_shorthand_item.axis` is optional. The scroll and view timeline
+  shorthand grammars make their axis slots optional; omitted axes now parse as
+  `None` and round-trip without being rewritten as `block` (#668)
 - `flex_basis.From_font` is gone. `from-font` is not part of the `<width>`
   grammar accepted by `flex-basis`; the constructor printed CSS that the
   `flex-basis` reader correctly rejects (#658)

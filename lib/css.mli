@@ -7123,7 +7123,7 @@ type timeline_axis = Properties.timeline_axis =
 
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
   name : string;
-  axis : timeline_axis;
+  axis : timeline_axis option;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =

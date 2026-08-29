@@ -3880,7 +3880,7 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = { name : string; axis : timeline_axis }
+type timeline_shorthand_item = { name : string; axis : timeline_axis option }
 
 type timeline_shorthand =
   | None
