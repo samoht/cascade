@@ -1251,6 +1251,76 @@ let border_line_style () =
   check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
     "outline: auto"
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 keeps a parsed declaration only if it "is valid
+   in the current context", which for a non-custom property means its value
+   matches the property's grammar. CSS Backgrounds 3 (ED) sec. 3.4 writes the
+   border shorthands as [<line-width> || <line-style> || <color>], css-logical-1
+   sec. 4.5.4 and CSS Multi-column 1 (ED) sec. 4.5 route the logical shorthands
+   and column-rule through the same production, and CSS UI 4 (ED) sec. 3.1
+   writes outline the same way. CSS Values 4 (ED) sec. 2.2 has [||] require one
+   or more of its options to occur, so nothing at all matches none of these
+   grammars: the declaration is dropped, not filled in with a value nobody
+   wrote. *)
+let empty_shorthand_value () =
+  List.iter
+    (fun prop -> neg_cursor read_declaration (prop ^ ": "))
+    [
+      "border";
+      "border-top";
+      "border-right";
+      "border-bottom";
+      "border-left";
+      "border-block";
+      "border-block-start";
+      "border-block-end";
+      "border-inline";
+      "border-inline-start";
+      "border-inline-end";
+      "column-rule";
+      "outline";
+    ];
+  (* Whitespace is discarded before the value is read, so a run of it is still
+     an empty value. *)
+  neg_cursor read_declaration "border:";
+  neg_cursor read_declaration "outline:   ";
+  (* Controls: every slot is optional, so any one of them is a whole value. *)
+  check_declaration ~expected:"border:none" ~optimized:"border:none"
+    "border: none";
+  check_declaration ~expected:"border:1px solid red"
+    ~optimized:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"outline:none" ~optimized:"outline:none"
+    "outline: none";
+  check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
+    "outline: auto";
+  check_declaration ~expected:"column-rule:1px solid red"
+    ~optimized:"column-rule:1px solid red" "column-rule: 1px solid red"
+
+(* The record behind each shorthand is public, so a caller can hand the printer
+   a value with no slot filled. That value declares nothing but the initial
+   longhands, which is what the [none] keyword declares (CSS Backgrounds 3 (ED)
+   sec. 3.4, CSS UI 4 (ED) sec. 3.1), and [none] is the spelling that says so.
+   An empty string is not a spelling of anything: no parser accepts it. *)
+let all_initial_shorthand_prints_none () =
+  let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
+  let border : Css.border =
+    Shorthand { width = None; style = None; color = None }
+  in
+  let outline : Css.outline =
+    Shorthand { width = None; style = None; color = None }
+  in
+  Alcotest.(check string)
+    "drained border shorthand" "border:none"
+    (pp (Css.Declaration.v Border border));
+  Alcotest.(check string)
+    "drained outline shorthand" "outline:none"
+    (pp (Css.Declaration.v Outline outline));
+  Alcotest.(check string)
+    "outline_shorthand with no slot" "outline:none"
+    (pp (Css.Declaration.outline (Css.outline_shorthand ())));
+  Alcotest.(check string)
+    "border_shorthand with no slot" "border:none"
+    (pp (Css.Declaration.v Border (Css.border_shorthand ())))
+
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
      border-inline-start and border-inline-end take <'border-top-width'> ||
@@ -4074,6 +4144,9 @@ let declaration_tests =
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
+    test_case "empty shorthand value" `Quick empty_shorthand_value;
+    test_case "all-initial shorthand prints none" `Quick
+      all_initial_shorthand_prints_none;
     test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;
