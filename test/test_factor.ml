@@ -279,6 +279,14 @@ let test_box_shorthand_spellings_factor () =
     "an axis pair factors with the two-value form" ".a,.b{padding:1px 2px}"
     (optimize_str ".a{padding:1px 2px 1px 2px}.b{padding:1px 2px}")
 
+(* CSS Lists 3 (ED) sec. 3.6 lets each component of [list-style] fall back to
+   its longhand initial, so the marker written with its initials spelled out is
+   the one the single keyword already names. *)
+let test_list_style_default_spellings_factor () =
+  Alcotest.(check string)
+    "spelled-out initials factor with the bare type" ".a,.b{list-style:disc}"
+    (optimize_str ".a{list-style:disc outside none}.b{list-style:disc}")
+
 let suite =
   ( "factor",
     [
@@ -314,4 +322,6 @@ let suite =
         test_timing_function_spellings_factor;
       Alcotest.test_case "repeated box sides factor with the short form" `Quick
         test_box_shorthand_spellings_factor;
+      Alcotest.test_case "spelled-out list-style initials factor away" `Quick
+        test_list_style_default_spellings_factor;
     ] )

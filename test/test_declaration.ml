@@ -521,6 +521,39 @@ let special_cases () =
   check_declaration ~expected:"border-color:red red red red"
     ~optimized:"border-color:red" "border-color: red red red red";
 
+  (* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
+     <'list-style-image'> || <'list-style-type'>], so a component left out takes
+     its longhand initial - [outside] (sec. 3.5), [none] (sec. 3.3) and [disc]
+     (sec. 3.4). Writing an initial out names what leaving it out names, and
+     dropping it is a node change, so pp holds it and the optimizer folds. *)
+  check_declaration ~expected:"list-style:disc outside"
+    ~optimized:"list-style:disc" "list-style: disc outside";
+  check_declaration ~expected:"list-style:outside" ~optimized:"list-style:disc"
+    "list-style: outside";
+  check_declaration ~expected:"list-style:disc outside none"
+    ~optimized:"list-style:disc" "list-style: disc outside none";
+  check_declaration ~expected:"list-style:square outside"
+    ~optimized:"list-style:square" "list-style: square outside";
+  (* sec. 3.6 resolves a bare [none] onto whichever of the image and the type
+     the shorthand does not otherwise set, so [list-style: none] sets both. That
+     makes [none] the shortest spelling of that one node rather than a fold, and
+     it is what both layers print. *)
+  check_declaration ~expected:"list-style:none" ~optimized:"list-style:none"
+    "list-style: none";
+  check_declaration ~expected:"list-style:none" ~optimized:"list-style:none"
+    "list-style: none none";
+  (* With the image set, the [none] lands on the type and both stay. *)
+  check_declaration ~expected:"list-style:none url(bullet.png)"
+    ~optimized:"list-style:none url(bullet.png)"
+    "list-style: none url(bullet.png)";
+  (* With the type set, the [none] lands on the image, which is its initial, so
+     what is left is the all-initial value the single [disc] names. *)
+  check_declaration ~expected:"list-style:disc none"
+    ~optimized:"list-style:disc" "list-style: none disc";
+  (* A non-initial position stands. *)
+  check_declaration ~expected:"list-style:square inside"
+    ~optimized:"list-style:square inside" "list-style: square inside";
+
   (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
      same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
      above, but print through their own list combinator rather than the shared
