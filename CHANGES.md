@@ -18,6 +18,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- The `white-space`, `text-box` and timeline shorthand values carry the
+  longhands their grammars name. `Css.white_space` replaces `Nowrap`,
+  `Break_spaces` and `Preserve_nowrap` with a `Components` record over
+  white-space-collapse, text-wrap-mode and white-space-trim; `Css.text_box`
+  gains `Normal` and its trim is optional; a timeline item carries an optional
+  axis and an optional inset, and `none` is one such item rather than a case of
+  `Css.timeline_shorthand` (#659)
 - Implementation modules are no longer usable through accidental `Cascade.*`
   aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
   `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
@@ -181,6 +188,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A shorthand that spells out one component and leaves the rest to their
+  initial values is read rather than dropped. `text-decoration: red`,
+  `white-space: collapse`, `border-image: round`, `mask-border: alpha`,
+  `scroll-timeline: --t`, `view-timeline: --v inline 10%` and `text-box: cap
+  alphabetic` each name a complete value (#659)
 - A declaration whose grammar ends in an optional component is no longer
   dropped over the tail the declaration consumer strips. `font-style: oblique
   !important`, `rotate: 45deg !important`, `text-box: none;` and
