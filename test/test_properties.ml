@@ -3981,9 +3981,19 @@ let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
   check_timeline_shorthand "--scroll inline";
   check_timeline_shorthand "--x x";
+  (* scroll-animations-1 sec. 2.3.3 is [[ <'scroll-timeline-name'>
+     <'scroll-timeline-axis'>? ]#]: the axis is optional and each name of the
+     list may be [none]. *)
+  check_timeline_shorthand ~roundtrip:true "--main";
+  check_timeline_shorthand ~roundtrip:true ~expected:"--x,--y" "--x, --y";
+  check_timeline_shorthand ~roundtrip:true "none block";
   neg_cursor read_timeline_shorthand "main block";
-  neg_cursor read_timeline_shorthand "--main";
-  neg_cursor read_timeline_shorthand "--main z"
+  (* The name is not optional, so a bare axis names nothing. *)
+  neg_cursor read_timeline_shorthand "inline";
+  (* The reader stops at [z] and the declaration rejects the leftovers. *)
+  neg_cursor ~allow_partial:true read_timeline_shorthand "--main z";
+  (* The inset is view-timeline's alone. *)
+  neg_cursor ~allow_partial:true read_timeline_shorthand "--main 10%"
 
 let test_caption_side () =
   check_caption_side "top";
@@ -4632,6 +4642,8 @@ let spec_generated_text_timeline_edges () =
   check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
   check_timeline_shorthand_item "--main block";
+  check_timeline_shorthand_item "--main";
+  check_timeline_shorthand_item "none";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
   (* Two trims: the reader takes the first and leaves the second, and the
@@ -4665,7 +4677,7 @@ let spec_generated_text_timeline_edges () =
   neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
   neg_cursor read_timeline_inset_item "-1px";
   neg_cursor ~allow_partial:true read_timeline_name "none --main";
-  neg_cursor read_timeline_shorthand_item "--main z";
+  neg_cursor ~allow_partial:true read_timeline_shorthand_item "--main z";
   neg_cursor ~allow_partial:true read_view_transition_class "none card";
   neg_cursor ~allow_partial:true read_view_transition_name "match-element card"
 

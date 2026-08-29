@@ -1590,8 +1590,27 @@ let matrix =
       };
       {
         property = "scroll-timeline";
-        positives = [ "none"; "--scroller block"; "--x x, --y y" ];
-        negatives = [ "block --scroller"; "--a --b" ];
+        positives =
+          [
+            "none";
+            "--scroller block";
+            "--x x, --y y";
+            (* scroll-animations-1 sec. 2.3.3 is [[ <'scroll-timeline-name'>
+               <'scroll-timeline-axis'>? ]#], so the axis is optional and each
+               name may be [none]. *)
+            "--t";
+            "--x, --y";
+            "none block";
+          ];
+        negatives =
+          [
+            "block --scroller";
+            "--a --b";
+            (* The name is not optional. *)
+            "inline";
+            (* The inset belongs to view-timeline only. *)
+            "--t 10%";
+          ];
       };
       {
         property = "scroll-timeline-name";
@@ -1605,8 +1624,28 @@ let matrix =
       };
       {
         property = "view-timeline";
-        positives = [ "none"; "--reveal inline"; "--x x, --y y" ];
-        negatives = [ "inline --reveal"; "--a --b" ];
+        positives =
+          [
+            "none";
+            "--reveal inline";
+            "--x x, --y y";
+            (* scroll-animations-1 sec. 3.4.4 is [[ <'view-timeline-name'> [
+               <'view-timeline-axis'> || <'view-timeline-inset'> ]? ]#]. *)
+            "--v";
+            "--x, --y";
+            "none block";
+            "--v auto";
+            "--v inline 10%";
+            "--v 10px 20px";
+          ];
+        negatives =
+          [
+            "inline --reveal";
+            "--a --b";
+            (* The name is not optional. *)
+            "inline";
+            "10%";
+          ];
       };
       {
         property = "view-timeline-name";
