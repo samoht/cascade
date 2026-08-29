@@ -287,6 +287,20 @@ let test_list_style_default_spellings_factor () =
     "spelled-out initials factor with the bare type" ".a,.b{list-style:disc}"
     (optimize_str ".a{list-style:disc outside none}.b{list-style:disc}")
 
+(* CSS Text Decoration 4 (ED) sec. 2.6 sets an omitted shorthand component to
+   its initial, and sec. 4 with CSS Backgrounds 3 (ED) sec. 6.1 reads an omitted
+   shadow length as zero, so each pair below is one value under two
+   spellings. *)
+let test_text_decoration_default_spellings_factor () =
+  Alcotest.(check string)
+    "the initial style factors away" ".a,.b{text-decoration:underline}"
+    (optimize_str
+       ".a{text-decoration:underline solid}.b{text-decoration:underline}");
+  Alcotest.(check string)
+    "a zero blur factors with the two-length shadow"
+    ".a,.b{text-shadow:1px 1px}"
+    (optimize_str ".a{text-shadow:1px 1px 0}.b{text-shadow:1px 1px}")
+
 let suite =
   ( "factor",
     [
@@ -324,4 +338,6 @@ let suite =
         test_box_shorthand_spellings_factor;
       Alcotest.test_case "spelled-out list-style initials factor away" `Quick
         test_list_style_default_spellings_factor;
+      Alcotest.test_case "spelled-out text decoration defaults factor away"
+        `Quick test_text_decoration_default_spellings_factor;
     ] )

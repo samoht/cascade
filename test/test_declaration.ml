@@ -880,6 +880,25 @@ let text_properties () =
     "text-decoration: overline";
   check_declaration ~expected:"text-decoration:line-through"
     "text-decoration: line-through";
+  (* CSS Text Decoration 4 (ED) sec. 2.6: the [text-decoration] shorthand sets
+     the line, thickness, style and colour longhands, and "Omitted values are
+     set to their initial values" - [solid] (sec. 2.2) and [currentcolor] (sec.
+     2.3). Writing one out names what leaving it out names, and dropping it is a
+     node change, so pp holds it and the optimizer folds. *)
+  check_declaration ~expected:"text-decoration:underline solid"
+    ~optimized:"text-decoration:underline" "text-decoration: underline solid";
+  check_declaration ~expected:"text-decoration:underline currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline currentcolor";
+  check_declaration ~expected:"text-decoration:underline solid currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline solid currentcolor";
+  (* A non-initial style or colour stands. *)
+  check_declaration ~expected:"text-decoration:underline dotted"
+    ~optimized:"text-decoration:underline dotted"
+    "text-decoration: underline dotted";
+  check_declaration ~expected:"text-decoration:underline red"
+    ~optimized:"text-decoration:underline red" "text-decoration: underline red";
 
   (* Text transform *)
   check_declaration ~expected:"text-transform:none" "text-transform: none";
@@ -1599,6 +1618,16 @@ let list_properties () =
   check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"
     ~optimized:"text-shadow:0 0 10px #00f,0 0 20px red"
     "text-shadow: 0 0 10px blue, 0 0 20px red";
+  (* CSS Text Decoration 4 (ED) sec. 4 reads a text shadow as a [<shadow>] "as
+     for box-shadow", and CSS Backgrounds 3 (ED) sec. 6.1 says "Omitted lengths
+     are 0". The blur is the last length here, so a zero blur is the spelled-out
+     form of leaving it off, and dropping it is a node change. *)
+  check_declaration ~expected:"text-shadow:1px 1px 0"
+    ~optimized:"text-shadow:1px 1px" "text-shadow: 1px 1px 0";
+  check_declaration ~expected:"text-shadow:1px 1px 0 red"
+    ~optimized:"text-shadow:1px 1px red" "text-shadow: 1px 1px 0 red";
+  check_declaration ~expected:"text-shadow:1px 1px 2px"
+    ~optimized:"text-shadow:1px 1px 2px" "text-shadow: 1px 1px 2px";
 
   (* Background image *)
   check_declaration ~expected:"background-image:none" "background-image: none";
