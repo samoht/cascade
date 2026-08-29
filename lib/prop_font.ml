@@ -97,9 +97,8 @@ let rec read_font_size t : font_size =
     Length len
   in
   let read_pct t : font_size =
-    let n = Cursor.number t in
+    let n = Cursor.pct t in
     if n < 0. then Cursor.err_invalid t "negative font-size percentage";
-    Cursor.expect '%' t;
     Pct n
   in
   Cursor.enum_or_calls "font-size"
@@ -1095,11 +1094,9 @@ let rec pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
 
 (* [<length-percentage>] is the whole of [font-size]'s numeric grammar, so a
    calc built from those leaves is a [<length>] calc and can be handed to the
-   length simplifier. The trip back lands under [Length], percentage included: a
-   [<percentage>] is one token, so the reader takes [font-size: 50%] through
-   [read_non_negative_length] and the [Pct] leaf it produces sits there. A
-   [var()] leaf carries a [font_size]-typed fallback, which does not survive the
-   trip either way. *)
+   length simplifier. The trip back restores the public [font_size.Pct] node for
+   a percentage leaf. A [var()] leaf carries a [font_size]-typed fallback, which
+   does not survive the trip either way. *)
 let rec length_of_font_size_calc : font_size calc -> length calc option =
   function
   | Val (Length l) -> Some (Val l)
@@ -1117,9 +1114,12 @@ let rec length_of_font_size_calc : font_size calc -> length calc option =
       | Some left, Some right -> Some (Expr (left, op, right))
       | _ -> None)
 
+let font_size_of_length (l : length) : font_size =
+  match l with Pct n -> Pct n | l -> Length l
+
 let rec font_size_of_length_calc : length calc -> font_size calc option =
   function
-  | Val l -> Some (Val (Length l))
+  | Val l -> Some (Val (font_size_of_length l))
   | Num n -> Some (Num n)
   | Math_const c -> Some (Math_const c)
   | Math_fn fn -> Some (Math_fn fn)
@@ -1945,7 +1945,7 @@ let normalize_font_size (fs : font_size) : font_size =
               match font_size_of_length_calc folded with
               | Some folded -> Calc folded
               | None -> fs)
-          | length -> Length length))
+          | length -> font_size_of_length length))
   | _ -> fs
 
 let normalize_line_height (lh : line_height) : line_height =

@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Percentage tokens in `color-mix()` variable fallbacks and `font-size` now
+  retain their typed percentage nodes. Both readers tried to consume a number
+  token followed by `%`, but CSS tokenizes the pair as one percentage (#651)
 - The animation and transition delay longhands read time-valued `round()`,
   `mod()` and `rem()` calls instead of dropping the declaration with an
   internal list-parser diagnostic (#646)

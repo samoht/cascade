@@ -6509,8 +6509,7 @@ let rec read_percentage_in_color_mix t : percentage =
        verbatim and let substitution-time clamping apply. *)
     Calc (read_calc read_color_mix_calc_pct t)
   else
-    let n = Cursor.number t in
-    Cursor.expect '%' t;
+    let n = Cursor.pct t in
     if n < 0. || n > 100. then
       Cursor.err_invalid t "color-mix percentage must be between 0% and 100%";
     (Pct n : percentage)
