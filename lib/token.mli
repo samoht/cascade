@@ -1,4 +1,4 @@
-(** CSS Syntax Module Level 3 section 4.2: token taxonomy.
+(** CSS Syntax 3 (ED) sec. 4.2: token taxonomy.
 
     Types only; the section 4.3 tokenization algorithm lives in {!Lexer}. Every
     token carries the source {!Loc.t} it was read from. *)
@@ -33,13 +33,13 @@ type kind =
   | Hash of { value : string; hash_flag : hash_flag }
   | String of { value : string; quote : char; terminated : bool }
       (** String literal. [quote] is the opening quote character (double or
-          single); the spec treats both as equivalent delimiters (CSS Syntax
-          section 4.3.5) but we record it for quote-sensitive rules (e.g.
-          [@charset] per CSS Syntax section 8.2) and to round-trip the input
+          single); the spec treats both as equivalent delimiters (CSS Syntax 3
+          (ED) sec. 4.3.5) but we record it for quote-sensitive rules (e.g.
+          [@charset] per CSS Syntax 3 (ED) sec. 8.3) and to round-trip the input
           style. [terminated] is [false] when the lexer reached EOF without
-          seeing the closing quote (CSS Syntax section 4.3.5 returns the string
-          token but flags a parse error); the serializer omits the closing quote
-          so the original byte sequence is preserved. *)
+          seeing the closing quote (CSS Syntax 3 (ED) sec. 4.3.5 returns the
+          string token but flags a parse error); the serializer omits the
+          closing quote so the original byte sequence is preserved. *)
   | Bad_string
       (** Unterminated string (newline or EOF before the closing quote). *)
   | Url of string
@@ -57,10 +57,11 @@ type kind =
       end_value : int;
       form : unicode_range_form;
     }
-      (** [U+XXXX] / [U+XXXX-YYYY] / [U+XX??] (CSS Syntax section 4.3.14). The
-          three syntactic forms are normalised to the [[start_value, end_value]]
-          inclusive range; [start_value = end_value] for the single-codepoint
-          form. [form] keeps the typed token shape for non-minified fidelity. *)
+      (** [U+XXXX] / [U+XXXX-YYYY] / [U+XX??] (CSS Syntax 3 (ED) sec. 4.3.14).
+          The three syntactic forms are normalised to the
+          [[start_value, end_value]] inclusive range; [start_value = end_value]
+          for the single-codepoint form. [form] keeps the typed token shape for
+          non-minified fidelity. *)
   | Cdo  (** [<!--] at top level. *)
   | Cdc  (** [-->] at top level. *)
   | Colon

@@ -3575,6 +3575,37 @@ let check_property_trailing_token_rejected (row : property_grammar_row) value =
         "%s positive vector accepted an extra trailing token: %s -> %s"
         row.property input serialized
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 stops a declaration's value at the top-level [;]
+   and lifts a trailing [!important] out of it into the important flag, so every
+   vector the grammar accepts bare it has to accept with either tail behind it,
+   and to the same value. *)
+let check_property_value_tail (row : property_grammar_row) value =
+  let bare = row.property ^ ":" ^ value in
+  match parse_property_decl row.property value with
+  | None -> Alcotest.failf "%s positive vector rejected: %s" row.property value
+  | Some (_, _, decl, _) ->
+      let expected = Css.Declaration.string_of_value ~minify:true decl in
+      List.iter
+        (fun (suffix, important) ->
+          let input = bare ^ suffix in
+          let c = Cursor.of_string input in
+          match read_declaration c with
+          | None ->
+              Alcotest.failf "%s dropped the declaration: %s" row.property input
+          | exception (Cursor.Parse_error _ | Reader.Parse_error _) ->
+              Alcotest.failf "%s rejected the declaration: %s" row.property
+                input
+          | Some tailed ->
+              Alcotest.(check string)
+                (Fmt.str "%s holds the value of %S" input bare)
+                expected
+                (Css.Declaration.string_of_value ~minify:true tailed);
+              Alcotest.(check bool)
+                (Fmt.str "%s important flag" input)
+                important
+                (Css.Declaration.is_important tailed))
+        [ (";", false); (" !important", true); (" !important;", true) ]
+
 let check_property_name (row : property_grammar_row) =
   if String.trim row.property <> row.property then
     Alcotest.failf "%S has leading or trailing property-name whitespace"
@@ -3682,6 +3713,7 @@ let check_property_row (row : property_grammar_row) =
   check_manifest_calc_surface row;
   List.iter (check_property_positive row) row.positives;
   List.iter (check_property_trailing_token_rejected row) row.positives;
+  List.iter (check_property_value_tail row) row.positives;
   List.iter (check_property_negative row) row.negatives;
   List.iter
     (check_property_css_wide row)
@@ -3832,6 +3864,166 @@ let check_sheet_roundtrip name css =
         css
         (String.trim (Css.to_string ~minify:true stylesheet))
   | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+
+(* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
+   [<semicolon-token>] as the stop token, then removes a trailing [!]
+   [important] pair from that value and sets the declaration's important flag
+   instead. A property grammar therefore never sees a [;] or an [!important],
+   and neither may change what the value in front of it parses to. *)
+let value_tail_forms property value =
+  let bare = String.concat "" [ property; ":"; value ] in
+  [
+    (bare, false);
+    (bare ^ ";", false);
+    (bare ^ " !important", true);
+    (bare ^ "!important", true);
+    (bare ^ " !important;", true);
+    (bare ^ " !IMPORTANT", true);
+  ]
+
+let read_one_declaration what input =
+  let c = Cursor.of_string input in
+  match read_declaration c with
+  | Some decl -> decl
+  | None -> Alcotest.failf "%s: %S read no declaration" what input
+  | exception Error.Parse_error e ->
+      Alcotest.failf "%s: %S was rejected: %s" what input (Error.to_string e)
+
+(* The value a declaration holds, and its important flag, are independent of the
+   tail the declaration consumer strips. Compared against the tail-free spelling
+   rather than a pinned string, so the invariant is what is asserted. *)
+let check_value_end property value =
+  let bare = String.concat "" [ property; ":"; value ] in
+  let expected =
+    Css.Declaration.string_of_value ~minify:true
+      (read_one_declaration "value end" bare)
+  in
+  List.iter
+    (fun (input, important) ->
+      let decl = read_one_declaration "value end" input in
+      Alcotest.(check string)
+        (Fmt.str "%S holds the value of %S" input bare)
+        expected
+        (Css.Declaration.string_of_value ~minify:true decl);
+      Alcotest.(check bool)
+        (Fmt.str "%S important flag" input)
+        important
+        (Css.Declaration.is_important decl);
+      (* A declaration cascade prints has to read back as itself: the minified
+         spelling of an important declaration ends in [!important], which is the
+         very tail the reader has to see past. *)
+      let printed = Css.Declaration.to_string ~minify:true decl in
+      Alcotest.(check string)
+        (Fmt.str "%S reparses" printed)
+        printed
+        (Css.Declaration.to_string ~minify:true
+           (read_one_declaration "value end reparse" printed)))
+    (value_tail_forms property value)
+
+(* One reader per spelling of the end-of-value question that was open-coded:
+   readers that ended on cursor exhaustion alone dropped the declaration over a
+   [;] as well as over an [!important], readers that also peeked for a [;]
+   dropped it over an [!important] only. Each entry is a property whose grammar
+   has an optional trailing component, so the reader has to ask the question at
+   all. *)
+let value_end_properties =
+  [
+    ("font-style", "oblique");
+    ("caret", "red");
+    ("color-scheme", "dark");
+    ("rotate", "45deg");
+    ("clip-path", "border-box");
+    ("animation-range", "normal");
+    ("contain-intrinsic-size", "auto 300px");
+    ("text-box", "none");
+    ("hyphenate-limit-chars", "6");
+    ("initial-letter", "2 3");
+    ("justify-items", "legacy");
+    ("overflow-clip-margin", "1px");
+    ("grid-row", "span 2");
+    ("border-image-slice", "30%");
+    ("size", "A4");
+    ("mask-border-slice", "30%");
+    ("column-rule", "1px");
+    ("text-emphasis", "filled");
+    ("scale", "2");
+    ("transform-origin", "left");
+    (* Controls: readers that already spelled the question with all three of its
+       answers, and a value with no optional tail at all. *)
+    ("overflow", "hidden");
+    ("color", "red");
+  ]
+
+let declaration_value_end () =
+  List.iter
+    (fun (property, value) -> check_value_end property value)
+    value_end_properties
+
+(* The pretty spelling of a declaration ends in a [;], so a reader that stops at
+   the value's last component and then fails on the [;] cannot read back what
+   cascade itself wrote. *)
+let declaration_value_end_sheet () =
+  List.iter
+    (fun (property, value) ->
+      List.iter
+        (fun (decl, _) ->
+          let css = String.concat "" [ "x{"; decl; "}" ] in
+          match Css.of_string ~strict:true css with
+          | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+          | Ok { stylesheet; _ } -> (
+              let minified =
+                String.trim (Css.to_string ~minify:true stylesheet)
+              in
+              let pretty = Css.to_string ~minify:false stylesheet in
+              match Css.of_string ~strict:true pretty with
+              | Error e ->
+                  Alcotest.failf "reparse of %S: %s" pretty (Error.to_string e)
+              | Ok p ->
+                  Alcotest.(check string)
+                    (Fmt.str "%S survives a pretty round trip" css)
+                    minified
+                    (String.trim (Css.to_string ~minify:true p.stylesheet))))
+        (value_tail_forms property value))
+    value_end_properties
+
+(* Seeing past the tail is not licence to accept it: a [!] that does not open
+   [!important], a second [!important], a value component after one, and a value
+   with more components than the grammar has slots all stay invalid. *)
+let declaration_value_end_negatives () =
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "color:red !foo";
+      "color:red !important !important";
+      "color:red !important blue";
+      "font-style:oblique !";
+      "text-box:none !foo";
+      "rotate:45deg 45deg 45deg 45deg";
+      "rotate:45deg 45deg !important";
+      "initial-letter:2 3 4";
+      "hyphenate-limit-chars:2 3 4 5";
+      "font-style:oblique 20deg 30deg 40deg";
+      (* CSS Sizing 4 sec. 5.2 spells [contain-intrinsic-size] as [[ auto? [
+         none | <length [0,inf]> ] ]{1,2}], so a third slot is one too many. *)
+      "contain-intrinsic-size:auto 300px 400px 500px";
+      "animation-range:normal normal normal";
+    ]
+
+(* A cursor over a function's arguments is asking a different question: its
+   grammar ends at the closing paren, where neither a [;] nor an [!] can stand,
+   so it must still be read to true end of input. Widening it would accept an
+   argument list longer than the function takes. *)
+let function_argument_end_negatives () =
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "transform:skew(10deg,red)";
+      "transform:matrix(1,2,3,4,5,6,7)";
+      "transform:translate(1px,2px,3px)";
+      "clip-path:inset(1px 2px 3px 4px 5px)";
+      "transform:rotate(45deg,45deg)";
+      "background:linear-gradient(red,blue) extra";
+    ]
 
 (* CSS Shapes 1 sec. 6.1: [shape-outside] is [none | [<basic-shape> ||
    <shape-box>] | <image>]. The reader only looked at the first component and
@@ -4450,6 +4642,12 @@ let declaration_tests =
     test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
     test_case "scroll-margin negative lengths (sheet)" `Quick
       scroll_margin_negative_sheet;
+    test_case "declaration value end" `Quick declaration_value_end;
+    test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
+    test_case "declaration value end negatives" `Quick
+      declaration_value_end_negatives;
+    test_case "function argument end negatives" `Quick
+      function_argument_end_negatives;
     test_case "shape-outside grammar" `Quick shape_outside_grammar;
     test_case "shape-outside grammar (sheet)" `Quick shape_outside_sheet;
     test_case "line-width invalid math argument" `Quick

@@ -90,7 +90,7 @@ let hex_digit n =
   if n < 10 then Char.chr (n + Char.code '0')
   else Char.chr (n - 10 + Char.code 'A')
 
-(* Hex-escape a control byte as "\HH " per CSS Syntax section 9.1. *)
+(* Hex-escape a control byte as "\HH " per CSS Syntax 3 (ED) sec. 9. *)
 let add_hex_escape buf c =
   let code = Char.code c in
   Buffer.add_char buf '\\';
@@ -217,7 +217,7 @@ let add_escaped_url buf s =
 let digit_at s i = i < String.length s && s.[i] >= '0' && s.[i] <= '9'
 let is_sign c = c = '+' || c = '-'
 
-(* CSS Syntax sec. 9.1 ambiguous-dimension rule: a unit of [e]/[E] then a
+(* CSS Syntax 3 (ED) sec. 9 ambiguous-dimension rule: a unit of [e]/[E] then a
    (signed) digit would re-read as scientific notation, so the leading letter is
    hex-escaped to keep it out of the number's exponent. [digit_at] and [is_sign]
    are top-level so this test costs no closure per dimension printed. *)
@@ -262,16 +262,16 @@ let add_token_kind buf : Token.kind -> unit = function
       Buffer.add_string buf (escape_name value)
   | Token.String { value; quote = _; terminated } ->
       (* Normalize quoting to double-quote (the original quote is kept on the
-         token only for quote-sensitive lookups like @charset). CSS Syntax sec.
-         4.3.5 recovers an unterminated string; the [terminated] flag is
-         preserved so one round-trips, emitting without its closing quote. *)
+         token only for quote-sensitive lookups like @charset). CSS Syntax 3
+         (ED) sec. 4.3.5 recovers an unterminated string; the [terminated] flag
+         is preserved so one round-trips, emitting without its closing quote. *)
       add_escaped_string buf ~quote:'"' ~terminated value
   | Token.Bad_string ->
       (* A bad string keeps no text, so serialize the shortest source that
          re-tokenizes as one, the way [Bad_url] serializes to [url(a b)]. CSS
-         Syntax sec. 4.3.5 makes one only from a newline inside a string and
-         reconsumes that newline, so the quote needs the newline after it and
-         the token is always followed by whitespace -- which is what the
+         Syntax 3 (ED) sec. 4.3.5 makes one only from a newline inside a string
+         and reconsumes that newline, so the quote needs the newline after it
+         and the token is always followed by whitespace -- which is what the
          reconsumed newline lexes as, keeping the component count stable. *)
       Buffer.add_string buf "\"\n"
   | Token.Url s -> add_escaped_url buf s
@@ -424,7 +424,7 @@ let string_of_components cvs =
   cvs_to_buffer buf cvs;
   Buffer.contents buf
 
-(* CSS Syntax 3 section 9.1: adjacent tokens must stay lexically separate.
+(* CSS Syntax 3 (ED) section 9.1: adjacent tokens must stay lexically separate.
    [word_like_end p]/[word_like_start n] test the byte [p] ends with / [n]
    starts with, since a merge depends on both. {!Func} is word-like at the start
    ([ident(]) but self-delimiting at the end ([)]); {!Block} is self-delimiting
@@ -473,9 +473,9 @@ let word_like_start : Component.t -> bool = function
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
 
-(* CSS Syntax section 9 fixed-pair separations: certain delim pairs would form a
-   multi-char token (comment, CDO) when emitted adjacently, even though neither
-   token is word-like. Force a separator for those. *)
+(* CSS Syntax 3 (ED) sec. 9 fixed-pair separations: certain delim pairs would
+   form a multi-char token (comment, CDO) when emitted adjacently, even though
+   neither token is word-like. Force a separator for those. *)
 let pair_forms_multichar_token prev next =
   match (prev, next) with
   | ( Component.Preserved { kind = Token.Delim "/"; _ },
@@ -825,7 +825,7 @@ let warn_unclosed ~meta lexer warnings (block : Component.block Component.node)
   if not block.node.closed then
     warn ~meta lexer warnings (Error.unterminated block.loc Sort.Block)
 
-(* CSS Syntax Level 3 section 5.5.2. [nested = true] also terminates on a stray
+(* CSS Syntax 3 (ED) sec. 5.5.2. [nested = true] also terminates on a stray
    ['}'] (the spec's "outermost block ended") so block-contents callers can
    recover instead of swallowing the closing delimiter. *)
 let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
@@ -853,7 +853,7 @@ let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
   in
   loop []
 
-(* CSS Syntax Level 3 section 5.5.3. [nested = true] makes a stray ['}'] or a
+(* CSS Syntax 3 (ED) sec. 5.5.3. [nested = true] makes a stray ['}'] or a
    top-level ';' before any block end the rule attempt with [None]; the spec
    groups those two with the EOF branch as parse errors, so they are reported
    the same way. The custom-property-shaped guard discards a rule whose first
@@ -1014,8 +1014,8 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
-(* Buffer component values until the terminating ';' or EOF (CSS Syntax section
-   5.4.6 declaration body). Shared by the list, single-declaration and
+(* Buffer component values until the terminating ';' or EOF (CSS Syntax 3 (ED)
+   sec. 5.5.6 declaration body). Shared by the list, single-declaration and
    block-contents entry points.
 
    Section 5.5.7 also stops on a '}' when [nested] is true, the flag section
@@ -1104,8 +1104,8 @@ let stylesheet ?(meta = Loc.default_meta_level) r =
 
 let stylesheet_contents = stylesheet
 
-(* CSS Syntax Level 3 section 5.4.5: a block's contents is a mix of declarations
-   and nested rules. Consecutive declarations are grouped into a single [`Decls]
+(* CSS Syntax 3 (ED) sec. 5.4.5: a block's contents is a mix of declarations and
+   nested rules. Consecutive declarations are grouped into a single [`Decls]
    item so callers can re-emit them as a contiguous run. *)
 
 (* Try to consume a nested qualified rule at the current [tok] position. On
@@ -1184,7 +1184,7 @@ let block_contents ?(meta = Loc.default_meta_level) r : block_item list output =
       let lexer = Lexer.of_reader r in
       consume_block_contents ~meta lexer ~warnings)
 
-(* CSS Syntax Level 3 section 5.4.6 "Parse a rule": skip surrounding whitespace,
+(* CSS Syntax 3 (ED) sec. 5.4.6 "Parse a rule": skip surrounding whitespace,
    consume one rule, require EOF, no extra rules or stray tokens afterwards. *)
 let rule ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
@@ -1210,10 +1210,10 @@ let rule ?(meta = Loc.default_meta_level) r =
           skip_whitespace_tokens lexer;
           if (Lexer.peek lexer).Token.kind = Token.Eof then r' else None)
 
-(* CSS Syntax Level 3 section 5.4.7 "Parse a declaration": skip leading
-   whitespace, require an ident, consume exactly one declaration, ignore
-   anything after the terminating ';' or EOF. The first non-whitespace token
-   must be the declaration name -- a stray ':' or [@x] is a syntax error. *)
+(* CSS Syntax 3 (ED) sec. 5.4.7 "Parse a declaration": skip leading whitespace,
+   require an ident, consume exactly one declaration, ignore anything after the
+   terminating ';' or EOF. The first non-whitespace token must be the
+   declaration name -- a stray ':' or [@x] is a syntax error. *)
 let declaration ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in

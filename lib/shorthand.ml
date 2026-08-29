@@ -4082,7 +4082,7 @@ let greenfield_keys =
 let unprefixed_is_widely_available twin =
   let key =
     match Declaration.property_key twin with
-    (* CSS Syntax 3 sec. 8.1: property names are case-insensitive. *)
+    (* CSS Syntax 3 (ED) sec. 8.1: property names are case-insensitive. *)
     | Key (Unknown_property name) ->
         Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
     | key -> key

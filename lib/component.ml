@@ -1,4 +1,4 @@
-(** Stage 3 IR: CSS Syntax section 5.1 component values and rules. *)
+(** Stage 3 IR: CSS Syntax 3 (ED) sec. 5.1 component values and rules. *)
 
 type 'a node = { node : 'a; loc : Loc.t }
 
@@ -9,8 +9,8 @@ and block = {
   value : t list;
   closed : bool;
       (** [false] when the lexer reached EOF before the matching closer (CSS
-          Syntax section 5.4.6 parse error). Typed validators inspect this to
-          reject values that the syntax level only forgives. *)
+          Syntax 3 (ED) sec. 5.5.9 parse error). Typed validators inspect this
+          to reject values that the syntax level only forgives. *)
 }
 
 and func = {
@@ -18,10 +18,10 @@ and func = {
   arguments : t list;
   terminated : bool;
       (** [false] when the lexer reached EOF before the matching [)] (CSS Syntax
-          section 5.4.6 parse error). The serializer still emits the synthetic
-          [)] so reserialised output round-trips through the lexer; typed
-          validators can inspect this flag to reject values that the syntax
-          level only forgives. *)
+          3 (ED) sec. 5.4.6 parse error). The serializer still emits the
+          synthetic [)] so reserialised output round-trips through the lexer;
+          typed validators can inspect this flag to reject values that the
+          syntax level only forgives. *)
 }
 
 type at_rule_body = {
@@ -83,9 +83,9 @@ let closing_char : Token.bracket -> char = function
   | Square -> ']'
 
 (* A debug dump, not source text: every node shows its own location and the CSS
-   Syntax section 5.4.6 flags [compare] separates values on. [Pp.space] rather
-   than [Pp.sp] because a dump has no minified form, and layout whitespace would
-   drop out and run the children together. *)
+   Syntax 3 (ED) sec. 5.5.9 and 5.5.10 flags [compare] separates values on.
+   [Pp.space] rather than [Pp.sp] because a dump has no minified form, and
+   layout whitespace would drop out and run the children together. *)
 let rec pp : t Pp.t =
  fun ctx cv ->
   match cv with

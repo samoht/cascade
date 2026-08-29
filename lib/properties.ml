@@ -220,7 +220,7 @@ let rec pp_list_style : list_style Pp.t =
 
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
-  (* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;], a [}] or any other
+  (* CSS Syntax 3 (ED) sec. 4.3.7 lets an escape carry a [;], a [}] or any other
      non-name code point into a custom-property name, so the name is written
      back with the escapes that read it as the same name. Printed raw it ends
      its own declaration or closes the rule around it. *)
@@ -2365,7 +2365,7 @@ let rec read_quotes t : quotes =
     ~default:read_pairs t
 
 let read_any_property t =
-  (* CSS property names are case-insensitive per Syntax sec. 8.1. *)
+  (* CSS property names are case-insensitive per CSS Syntax 3 (ED) sec. 8.1. *)
   let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
@@ -4383,8 +4383,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_family -> pp pp_font_family
 
 (* Cascade detected the value is spec-invalid (an [Invalid] arm in one of the
-   typed value types). The minify-time [Optimize.drop_invalid] pass uses this to
-   discard the declaration. *)
+   typed value types). [Optimize.drop_invalid], which every serialisation runs,
+   uses this to discard the declaration. *)
 let invalid_angle : angle -> bool = function Invalid _ -> true | _ -> false
 
 let invalid_length_percentage : length_percentage -> bool = function

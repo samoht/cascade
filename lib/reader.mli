@@ -6,7 +6,7 @@
     reports where it stopped, and nothing here reads a CSS construct.
 
     Cascade parses already-decoded UTF-8 text. It does not implement the CSS
-    Syntax section 3.2 byte-stream decoding layer: BOM handling, HTTP or
+    Syntax 3 (ED) sec. 3.2 byte-stream decoding layer: BOM handling, HTTP or
     environment charset fallback, and exact [@charset "...";] byte sniffing are
     caller responsibilities before constructing a {!Reader.t}. *)
 
@@ -49,7 +49,7 @@ val pp_parse_error : parse_error -> string
 val of_string : ?enforce_spec:bool -> string -> t
 (** [of_string s] creates a parser from an already-decoded UTF-8 string.
     [enforce_spec] (default [false]) restricts non-ASCII identifiers to the CSS
-    Syntax 3 sec. 4.2 range list. *)
+    Syntax 3 (ED) sec. 4.2 range list. *)
 
 val enforce_spec : t -> bool
 (** [enforce_spec t] is the identifier rule [t] was built with; see

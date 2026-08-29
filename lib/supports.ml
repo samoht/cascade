@@ -120,11 +120,11 @@ let string_of_font_tech = function
   | Palettes -> "palettes"
   | Incremental -> "incremental"
 
-(* CSS Syntax 3 sec. 4.3.7 lets an escape carry a [;] or a [}] into a custom
-   property's name, so the name is checked against the spelling it serializes to
-   (CSS Syntax 3 sec. 2.1) rather than against its own bytes: read raw, such a
-   name ends the declaration early and never looks like the single ident it
-   is. *)
+(* CSS Syntax 3 (ED) sec. 4.3.7 lets an escape carry a [;] or a [}] into a
+   custom property's name, so the name is checked against the spelling it
+   serializes to (CSS Syntax 3 (ED) sec. 9) rather than against its own bytes:
+   read raw, such a name ends the declaration early and never looks like the
+   single ident it is. *)
 let property_name name =
   let reader = Cursor.of_string (Parser.escape_ident name) in
   let parsed =
@@ -148,7 +148,7 @@ let declaration_feature prop value =
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       (* The name and the value stay apart: read as one text, a name carrying a
-         [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an
+         [;] or a [}] (CSS Syntax 3 (ED) sec. 4.3.7 puts either there through an
          escape) would end its own declaration.
 
          The value is read opaquely. CSS Conditional 3 sec. 6.1 answers a
@@ -164,8 +164,8 @@ let declaration_feature prop value =
 
 (* [property] takes authored CSS text and writes it between the feature's own
    parentheses, so the value has to be a [<declaration-value>] (CSS Syntax 3
-   sec. 8.2): an unmatched closing bracket closes those parentheses and the tail
-   becomes a second branch of the condition. The reader below hands
+   (ED) sec. 7.2): an unmatched closing bracket closes those parentheses and the
+   tail becomes a second branch of the condition. The reader below hands
    [declaration_feature] a value rendered from balanced components, so it needs
    no check. Rendering through the component stream closes a [<url-token>] the
    caller left open, the way the reader's own path already does. *)

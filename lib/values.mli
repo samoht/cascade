@@ -595,9 +595,9 @@ val eval_numeric_calc : 'a calc -> float option
     non-numeric values. *)
 
 val eval_math_fn : math_fn -> float option
-(** [eval_math_fn fn] evaluates a CSS Values 4 sec. 9.1 numeric math function
-    call to a float. Returns [None] when an arg references an unresolved
-    variable. *)
+(** [eval_math_fn fn] evaluates a CSS Values 4 (ED) sec. 9.1 numeric math
+    function call to a float. Returns [None] when an arg references an
+    unresolved variable. *)
 
 val read_numeric_expression : Cursor.t -> float
 (** [read_numeric_expression t] parses and evaluates a numeric math expression,

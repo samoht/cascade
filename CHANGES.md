@@ -181,6 +181,13 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A declaration whose grammar ends in an optional component is no longer
+  dropped over the tail the declaration consumer strips. `font-style: oblique
+  !important`, `rotate: 45deg !important`, `text-box: none;` and
+  `initial-letter: 2 3;` read the `;` and the `!important` as part of the
+  value and failed, so the declaration went missing from the output with
+  nothing but a warning; CSS Syntax 3 (ED) sec. 5.5.6 hands a property
+  grammar neither (#644)
 - An empty value is no longer a declaration. `border:`, its per-side and
   logical variants and `column-rule:` read as `border: none`, and `outline:`
   printed a value no parser reads back; an empty value matches none of these
@@ -792,7 +799,7 @@ recorded cases carrying six minifiers' answers.
   argument list as `read_reference_body` and returns the name and the fallback
   as text, for a caller with no value type to pick a typed fallback reader
   from. Such a caller had to assemble a `var(...)` wrapper for
-  `read_reference` (#XXX)
+  `read_reference` (#642)
 - `Css.Variables.read_reference_body` reads a `var()` argument list - a name
   and optional fallback - into a typed variable handle from a cursor
   already positioned at the arguments, without the `var(`/`)` wrapper (#630)

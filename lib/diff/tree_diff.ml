@@ -1068,9 +1068,9 @@ let pp_containers_section ~style buf containers =
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
-(* [Resolve.layer_order] escapes each ident of a path (CSS Syntax 3 sec. 2.1),
-   so only a bare [.] separates two of them: one an ident carries is written
-   [\.] and stays inside its own segment. *)
+(* [Resolve.layer_order] escapes each ident of a path (CSS Syntax 3 (ED) sec.
+   2.1), so only a bare [.] separates two of them: one an ident carries is
+   written [\.] and stays inside its own segment. *)
 let split_layer_path path =
   let len = String.length path in
   let rec go start i acc =

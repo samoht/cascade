@@ -69,8 +69,8 @@ val property : string -> string -> t
     declaration feature. [value] keeps the spelling it is given.
 
     @raise Failure
-      if [value] is not a [<declaration-value>] (CSS Syntax 3 sec. 8.2). The
-      feature writes the value between its own parentheses, so an unmatched
+      if [value] is not a [<declaration-value>] (CSS Syntax 3 (ED) sec. 7.2).
+      The feature writes the value between its own parentheses, so an unmatched
       closing bracket closes them and the tail becomes a second branch of the
       condition. *)
 

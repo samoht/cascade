@@ -350,7 +350,7 @@ val skip_past_semicolon : t -> unit
 (** [skip_past_semicolon t] consumes and discards components up to and including
     the next top-level semicolon, or up to end of input if none is left. A [{}]
     met on the way is one component value, not a stopping point, so this is the
-    recovery step CSS Syntax 3 sec. 5.4.4 prescribes for a declaration that
+    recovery step CSS Syntax 3 (ED) sec. 5.5.5 prescribes for a declaration that
     fails to parse. *)
 
 val consume_to_decl_end : ?trim:bool -> t -> string
@@ -361,6 +361,18 @@ val drain_to_decl_end : t -> Component.t list
 (** [drain_to_decl_end t] consumes components up to (but not including) the next
     semicolon or top-level [!] delimiter, returning the drained list without
     serialising it. *)
+
+val declaration_value : t -> t
+(** [declaration_value t] consumes a declaration's value off [t] and is a cursor
+    over it alone.
+
+    CSS Syntax 3 (ED) sec. 5.5.6 reads the value with [<semicolon-token>] as the
+    stop token, then lifts a trailing [!] [important] pair out of it into the
+    declaration's important flag. A property grammar is handed what is left,
+    which holds neither, so a reader whose grammar has an optional trailing
+    component asks {!is_done} and nothing more: the [;] and the [!] stay on [t]
+    for the declaration consumer to finish. End-of-input errors on the value
+    anchor at whichever of the two stopped it. *)
 
 val consume_to_slash_or_semicolon : ?trim:bool -> t -> string
 (** [consume_to_slash_or_semicolon t] consumes and serializes components up to,
@@ -450,7 +462,7 @@ val call : string -> t -> (t -> 'a) -> 'a
 (** [call name t f] consumes a [name(...)] function call and applies [f] to a
     cursor over its arguments. Raises if no such function is next, or if [f]
     leaves any of the arguments unconsumed: trailing content makes the value
-    invalid, not truncated (CSS Syntax 3 sec. 8.2). *)
+    invalid, not truncated (CSS Syntax 3 (ED) sec. 7.2). *)
 
 val function_call : string -> (t -> 'a) -> t -> 'a option
 (** [function_call name f t] consumes a [name(...)] call and calls [f] over its

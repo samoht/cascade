@@ -1,4 +1,4 @@
-(** Stage 3 stream: Token.t -> Component.t (CSS Syntax section 5).
+(** Stage 3 stream: Token.t -> Component.t (CSS Syntax 3 (ED) sec. 5).
 
     Ports the "consume a ..." algorithms from
     https://www.w3.org/TR/css-syntax-3/#parser-algorithms onto a {!Lexer.t}
@@ -66,18 +66,18 @@ val to_string_custom_minified :
 
 val escape_ident : string -> string
 (** [escape_ident s] returns [s] with non-ident-continue code points backslash-
-    or hex-escaped per CSS Syntax 3 section 9.1, so that
+    or hex-escaped per CSS Syntax 3 (ED) section 9.1, so that
     [Cursor.of_string (escape_ident s) |> Cursor.ident] yields [s] again. CSS
-    Syntax 3 section 4.3.9 opens no ident sequence on a digit, nor on [-]
+    Syntax 3 (ED) section 4.3.9 opens no ident sequence on a digit, nor on [-]
     followed by a digit, so that digit is hex-escaped even where it is an
     ident-continue code point. *)
 
 val escape_name : string -> string
-(** [escape_name s] escapes [s] as CSS Syntax 3 section 4.3.7 name code points,
-    with no ident-start rule applied to the first one. It is what serialises a
-    name written after a prefix the caller emits itself, such as the [#] of a
-    hash or the [--] of a dashed ident; {!escape_ident} serialises a whole
-    ident. *)
+(** [escape_name s] escapes [s] as CSS Syntax 3 (ED) section 4.3.7 name code
+    points, with no ident-start rule applied to the first one. It is what
+    serialises a name written after a prefix the caller emits itself, such as
+    the [#] of a hash or the [--] of a dashed ident; {!escape_ident} serialises
+    a whole ident. *)
 
 (** {1 Entry points (section 5.4)} *)
 
@@ -152,8 +152,9 @@ val csv_component_values : Reader.t -> Component.t list list output
     comma tokens. *)
 
 val declaration_value : Reader.t -> Component.t list option output
-(** [declaration_value r] matches CSS Syntax section 7.2's [<declaration-value>]
-    production. *)
+(** [declaration_value r] matches CSS Syntax 3 (ED) sec. 7.2's
+    [<declaration-value>] production. *)
 
 val any_value : Reader.t -> Component.t list option output
-(** [any_value r] matches CSS Syntax section 7.2's [<any-value>] production. *)
+(** [any_value r] matches CSS Syntax 3 (ED) sec. 7.2's [<any-value>] production.
+*)

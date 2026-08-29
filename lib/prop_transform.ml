@@ -740,7 +740,7 @@ let rec read_offset_rotate t : offset_rotate =
     ~default:(fun t -> Cursor.one_of [ read_mode_first; read_angle_first ] t)
     t
 
-(* CSS Syntax 3 sec. 4: two adjacent [<number-percentage>] tokens need a
+(* CSS Syntax 3 (ED) sec. 4: two adjacent [<number-percentage>] tokens need a
    separator unless the boundary is unambiguous - the previous ends with [%]
    (the unit terminates the token), or the next starts with [-]/[+] (a sign
    starts a new number). Render values to strings first since
@@ -970,8 +970,7 @@ let read_rotate_angle_axis_tail angle t =
 let read_rotate_angle_then_axis t : rotate_value =
   let angle = read_angle t in
   Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then Angle angle
-  else read_rotate_angle_axis_tail angle t
+  if Cursor.is_done t then Angle angle else read_rotate_angle_axis_tail angle t
 
 let rec read_rotate_value t : rotate_value =
   Cursor.enum_or_calls "rotate"

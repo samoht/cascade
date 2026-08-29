@@ -252,8 +252,8 @@ let rec pp_svg_paint : svg_paint Pp.t =
       match fallback with
       | None -> ()
       | Some fb ->
-          (* CSS Syntax 3 sec. 9: a [url(...)] token closes with [)], so the
-             whitespace before a fallback keyword/colour can be elided under
+          (* CSS Syntax 3 (ED) sec. 9: a [url(...)] token closes with [)], so
+             the whitespace before a fallback keyword/colour can be elided under
              minify. *)
           Pp.sp ctx ();
           pp_svg_paint ctx fb)

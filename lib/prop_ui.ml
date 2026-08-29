@@ -180,7 +180,7 @@ let read_caret_shape_component t : caret_shape =
 
 let read_caret_shorthand t : caret =
   let rec loop color animation shape count =
-    if Cursor.is_done t || Cursor.peek_semicolon t then
+    if Cursor.is_done t then
       if count = 0 then Cursor.err_expected t "caret"
       else (Caret (color, animation, shape) : caret)
     else
@@ -1153,7 +1153,7 @@ let color_scheme_of_idents t names : color_scheme =
 let rec read_color_scheme t : color_scheme =
   let rec read_idents acc =
     Cursor.ws t;
-    if Cursor.is_done t || Cursor.peek_semicolon t then List.rev acc
+    if Cursor.is_done t then List.rev acc
     else read_idents (Cursor.ident t :: acc)
   in
   match Cursor.peek t with
@@ -1216,9 +1216,6 @@ let outline_style_keywords =
 let outline_starts_style t =
   List.exists (fun kw -> Cursor.looking_at t kw) outline_style_keywords
 
-let outline_at_end t =
-  Cursor.is_done t || Cursor.peek_semicolon t || Cursor.peek_delim t = Some '!'
-
 let read_outline_part ~width ~style ~color t =
   if Cursor.looking_at_func "var" t then
     (* A var() is type-ambiguous; assign it to the next unfilled
@@ -1249,7 +1246,7 @@ let read_outline_part ~width ~style ~color t =
 let read_outline_parts ~width ~style ~color t =
   let rec loop () =
     Cursor.ws t;
-    if not (outline_at_end t) then (
+    if not (Cursor.is_done t) then (
       read_outline_part ~width ~style ~color t;
       loop ())
   in

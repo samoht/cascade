@@ -17,8 +17,8 @@ val is_hex : char -> bool
 
 val is_ident : string -> bool
 (** [is_ident s] is true when the whole of [s] is one ident, per CSS Syntax 3
-    sec. 4.3.11 for its opening and sec. 4.2 for the rest: a bare [-] and a [-]
-    before a digit open no ident, a leading digit opens none, and every code
+    (ED) sec. 4.3.9 for its opening and sec. 4.2 for the rest: a bare [-] and a
+    [-] before a digit open no ident, a leading digit opens none, and every code
     point is an ident code point. The non-ASCII half is
     {!Lexer.spec_non_ascii_ident_cp}, the range list serialisers emit verbatim,
     so [is_ident s] holds exactly when {!Parser.escape_ident} returns [s]

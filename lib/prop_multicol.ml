@@ -384,32 +384,30 @@ let read_page_size_orientation t : page_size_orientation =
 
 let rec read_page_size t : page_size =
   let read_var_ps t : page_size = Var (read_var read_page_size t) in
-  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
-  let expect_value_end t = if not (at_end t) then Cursor.expect_eof t in
   let read_named t =
     let name = read_page_size_name t in
     Cursor.ws t;
-    if at_end t then Named name
+    if Cursor.is_done t then Named name
     else
       let orientation = read_page_size_orientation t in
       Cursor.ws t;
-      expect_value_end t;
+      Cursor.expect_eof t;
       Named_oriented (name, orientation)
   in
   let read_oriented t =
     let orientation = read_page_size_orientation t in
     Cursor.ws t;
-    expect_value_end t;
+    Cursor.expect_eof t;
     Oriented orientation
   in
   let read_lengths t =
     let first = read_length t in
     Cursor.ws t;
-    if at_end t then Single first
+    if Cursor.is_done t then Single first
     else
       let second = read_length t in
       Cursor.ws t;
-      expect_value_end t;
+      Cursor.expect_eof t;
       Pair (first, second)
   in
   Cursor.enum_or_calls "page-size"

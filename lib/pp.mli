@@ -157,7 +157,7 @@ val token_sp : unit t
 (** [token_sp] writes a token-boundary space: a regular space in pretty mode,
     and a space under minify only when the previous output character would
     otherwise re-tokenise with the next one. Drops the space after [)] or [%]
-    since both cleanly close their token (CSS Syntax 3 sec. 4). *)
+    since both cleanly close their token (CSS Syntax 3 (ED) sec. 4). *)
 
 val cut : unit t
 (** [cut] writes a newline when not minifying. *)

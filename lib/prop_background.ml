@@ -154,7 +154,7 @@ let pp_shadow_body ctx { h_offset; v_offset; blur; spread; color } =
 let pp_inset_toggle ctx ~name ~no_fallback =
   Pp.string ctx "var(--";
   (* [name] is the custom property's name without its [--] prefix; CSS Syntax 3
-     sec. 4.3.7 lets an escape carry a [;] or a [}] into it. *)
+     (ED) sec. 4.3.7 lets an escape carry a [;] or a [}] into it. *)
   Pp.string ctx (Parser.escape_name name);
   if no_fallback then Pp.string ctx ")"
   else (
@@ -1124,8 +1124,8 @@ let pp_mask_border_mode ctx = function
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->
   let first = ref true in
-  (* CSS Syntax 3 sec. 9: tokens ending with [)] are self-delimiting, so the
-     inter-slot space after [url(...)] / [<image>] can be elided under
+  (* CSS Syntax 3 (ED) sec. 9: tokens ending with [)] are self-delimiting, so
+     the inter-slot space after [url(...)] / [<image>] can be elided under
      minify. *)
   let last_is_self_delim () =
     match Pp.last_char ctx with Some (')' | ']' | '}') -> true | _ -> false
@@ -1995,8 +1995,6 @@ let rec read_border_spacing t : border_spacing =
         : border_spacing))
     t
 
-let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
-
 let read_border_image_slice_item t : border_image_slice_item =
   match Cursor.percentage_opt t with
   | Some n when n >= 0. -> Pct n
@@ -2017,7 +2015,7 @@ let read_border_image_slice_value t values has_fill =
 
 let read_border_image_slice_step t values has_fill =
   Cursor.ws t;
-  if border_image_at_end t || Cursor.peek_delim t = Some '/' then `Stop
+  if Cursor.is_done t || Cursor.peek_delim t = Some '/' then `Stop
   else
     match Cursor.peek_ident t with
     | Some "fill" ->
@@ -2067,7 +2065,7 @@ let read_border_image_outset_item t : border_image_outset_item =
 
 let read_border_image_box_step ~what read_item t acc =
   Cursor.ws t;
-  if border_image_at_end t || Cursor.peek_delim t = Some '/' then `Stop
+  if Cursor.is_done t || Cursor.peek_delim t = Some '/' then `Stop
   else
     match Cursor.option read_item t with
     | Some value ->

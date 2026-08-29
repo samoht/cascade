@@ -234,10 +234,10 @@ let build_reorder_diff expected_css actual_css =
   else Some D.{ rules = List.rev !diffs; containers = []; layer_order = None }
 
 (* [css] is value text neither side has parsed yet, so the declaration context
-   [property] names is given as text too. CSS Syntax 3 sec. 4.3.7 lets an escape
-   carry a [;] or a [}] into a custom property's name: written raw here such a
-   name ends the declaration or closes the rule, and both values go with it, so
-   the name is spelled the way the printer spells it. *)
+   [property] names is given as text too. CSS Syntax 3 (ED) sec. 4.3.7 lets an
+   escape carry a [;] or a [}] into a custom property's name: written raw here
+   such a name ends the declaration or closes the rule, and both values go with
+   it, so the name is spelled the way the printer spells it. *)
 let css_for_semantic_comparison ?property css =
   match property with
   | None -> css

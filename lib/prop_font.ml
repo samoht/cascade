@@ -76,11 +76,11 @@ let rec read_font_style t : font_style =
     ~default:(fun t ->
       Cursor.expect_string "oblique" t;
       Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then Oblique
+      if Cursor.is_done t then Oblique
       else
         let first = read_angle t in
         Cursor.ws t;
-        if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
+        if Cursor.is_done t then Oblique_angle first
         else
           (* CSS Fonts 4 sec. 4.4 swaps the endpoints of a descending [oblique
              <angle> <angle>] range rather than rejecting it, so the reader
@@ -516,7 +516,7 @@ let rec read_font_variant_east_asian t : font_variant_east_asian =
       | features, _ -> (Features features : font_variant_east_asian))
     t
 
-(* CSS Syntax 3 sec. 4.3.9: an ident sequence starts with a name-start code
+(* CSS Syntax 3 (ED) sec. 4.3.9: an ident sequence starts with a name-start code
    point, or with a [-] followed by a name-start code point or by a second [-].
    Sec. 4.2 counts a letter, [_] and a non-ASCII code point as name-start, and
    adds the digits and [-] to the name code points that may follow. A name
@@ -1758,7 +1758,8 @@ let read_unicode_token t start_value end_value form =
 
 let rec read_unicode_range t : unicode_range =
   (* The lexer emits a single [Unicode_range] token for [U+...] forms (CSS
-     Syntax section 4.3.14); we just translate it to the [unicode_range] ADT. *)
+     Syntax 3 (ED) sec. 4.3.14); we just translate it to the [unicode_range]
+     ADT. *)
   Cursor.with_context t "unicode-range" @@ fun () ->
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })

@@ -585,13 +585,14 @@ let drop_invalid (stylesheet : t) : t =
     (list_filter_preserve (fun d -> not (Declaration.is_invalid d)))
     stylesheet
 
-(* CSS Syntax 3 sec. 5.4.2 keeps an unrecognised at-rule's body as raw source
-   text, so no typed node stands between the author's layout and the output and
-   the serializer may not touch it: rewriting the body is an AST change. Reading
-   it back as a component-value stream and writing it out with the separator
-   rules that already serve custom-property streams keeps every token boundary,
-   string, escape and nested block while the layout between them goes. A body
-   the lexer cannot re-serialise to the same stream is left alone. *)
+(* CSS Syntax 3 (ED) sec. 5.5.2 keeps an unrecognised at-rule's body as raw
+   source text, so no typed node stands between the author's layout and the
+   output and the serializer may not touch it: rewriting the body is an AST
+   change. Reading it back as a component-value stream and writing it out with
+   the separator rules that already serve custom-property streams keeps every
+   token boundary, string, escape and nested block while the layout between them
+   goes. A body the lexer cannot re-serialise to the same stream is left
+   alone. *)
 let compact_unknown_at_rule_body body =
   let reader = Reader.of_string body in
   let { Parser.value = components; warnings } =

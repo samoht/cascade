@@ -2640,8 +2640,8 @@ let read_reference_body_as_string (r : Cursor.t) : string * string option =
     information which would need to be resolved from a variable registry or
     context. *)
 let read_reference (r : Cursor.t) : string * string option =
-  (* CSS Syntax 3 sec. 4.3.6: EOF inside a function is a parse error, tolerated
-     only when the fallback list opened with a comma (a sec. 4.3.5
+  (* CSS Syntax 3 (ED) sec. 4.3.6: EOF inside a function is a parse error,
+     tolerated only when the fallback list opened with a comma (a sec. 4.3.5
      [<string-token>] may have eaten the closing [)]) so a recoverable name +
      fallback survives. Without a fallback there is no recovery signal, so it is
      rejected. *)

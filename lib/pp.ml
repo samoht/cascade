@@ -123,9 +123,9 @@ let is_hex_digit = function
   | '0' .. '9' | 'a' .. 'f' | 'A' .. 'F' -> true
   | _ -> false
 
-(* CSS Syntax 3 sec. 4.3.7: a hex escape consumes up to 6 hex digits and one
-   trailing whitespace. The space terminator is only needed when the following
-   character would otherwise be eaten by the escape - a hex digit or a
+(* CSS Syntax 3 (ED) sec. 4.3.7: a hex escape consumes up to 6 hex digits and
+   one trailing whitespace. The space terminator is only needed when the
+   following character would otherwise be eaten by the escape - a hex digit or a
    whitespace. Omit it everywhere else for the shortest spelling. *)
 let hex_escape_byte ctx ~next c =
   let code = Char.code c in
@@ -201,10 +201,10 @@ let list ?sep pp ctx l =
           pp ctx x)
         t
 
-(* CSS Syntax 3 sec. 4 token-boundary separator: under minify, drop the space
-   when the previous token ends with [)] or [%] - both close cleanly so the
-   following ident/number cannot be re-tokenised into a single token. Falls back
-   to a regular space in pretty mode. *)
+(* CSS Syntax 3 (ED) sec. 4 token-boundary separator: under minify, drop the
+   space when the previous token ends with [)] or [%] - both close cleanly so
+   the following ident/number cannot be re-tokenised into a single token. Falls
+   back to a regular space in pretty mode. *)
 let token_sp ctx () =
   if not ctx.minify then char ctx ' '
   else

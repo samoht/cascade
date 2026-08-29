@@ -125,7 +125,7 @@ val normalize : t -> t
     feature they spell. A [style()] or [scroll-state()] function name loses the
     case the source wrote it in (CSS Values 4 sec. 9), and a
     [<style-feature-plain>] loses the whitespace around its value (CSS Syntax 3
-    sec. 5.5.6).
+    (ED) sec. 5.5.6).
 
     Completeness is a separate property, and it stops there. Equivalences
     [normalize] leaves apart: a [style()] property name spelled in another case;

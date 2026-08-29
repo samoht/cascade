@@ -395,7 +395,7 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
 (** Pretty-printing functions *)
 
 (* Opens [var(] and writes the referenced name. [name] is the custom property's
-   name without its [--] prefix, and CSS Syntax 3 sec. 4.3.7 lets an escape
+   name without its [--] prefix, and CSS Syntax 3 (ED) sec. 4.3.7 lets an escape
    carry a [;] or a [}] into it, so the tail is written with the escapes that
    read the same name back. *)
 let pp_var_open ctx name =
@@ -891,9 +891,9 @@ and math_fn_result (fn : math_fn) : math_result option =
      place. *)
   | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
 
-(* CSS Values 4 sec. 10.9.2: NaN belongs to a calculation tree and has no leaf
-   spelling outside one, so folding a math function down to a NaN would lose the
-   only form the value can take. Leave the function in place. *)
+(* CSS Values 4 (ED) sec. 10.9.2: NaN belongs to a calculation tree and has no
+   leaf spelling outside one, so folding a math function down to a NaN would
+   lose the only form the value can take. Leave the function in place. *)
 let fold_math_result = function
   | Some r when Float.is_nan (math_result_value r) -> Option.none
   | result -> result
@@ -5289,8 +5289,8 @@ let math_constant_factor_of_name : type a. Cursor.t -> _ -> string -> a calc =
 
 let read_math_constant_factor : type a. Cursor.t -> a calc =
  fun t ->
-  (* CSS Values 4 sec. 10.7.1 math constants ([pi], [e], [infinity],
-     [-infinity], [NaN]) appear as bare identifiers inside [calc()]. *)
+  (* CSS Values 4 sec. 10.7 math constants ([pi], [e], [infinity], [-infinity],
+     [NaN]) appear as bare identifiers inside [calc()]. *)
   let snap = Cursor.save t in
   match Cursor.ident_opt t with
   | Some name -> math_constant_factor_of_name t snap name
@@ -5376,9 +5376,9 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
       | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
       | "clamp" -> read_numeric_clamp t
-      (* CSS Values 4 sec. 9.1 numeric math functions: parsed into the typed
-         [Math_fn] AST so pretty pp re-emits [name(args)]; the optimizer (or
-         minify pp) folds via [eval_math_fn]. *)
+      (* CSS Values 4 (ED) sec. 9.1 numeric math functions: parsed into the
+         typed [Math_fn] AST so pretty pp re-emits [name(args)]; the optimizer
+         (or minify pp) folds via [eval_math_fn]. *)
       | "sqrt" -> Math_fn (Sqrt (read_math_call_arg "sqrt" t))
       | "abs" -> Math_fn (Abs_n (read_math_call_arg "abs" t))
       | "sign" -> Math_fn (Sign_n (read_math_call_arg "sign" t))
@@ -6265,7 +6265,7 @@ let read_angle_trig kind name t =
           radians *. 180. /. Float.pi)
     in
     if Float.is_nan degrees then (
-      (* CSS Values 4 sec. 10.9.2: NaN lives inside a calculation tree and
+      (* CSS Values 4 (ED) sec. 10.9.2: NaN lives inside a calculation tree and
          nowhere else, so it has no leaf spelling. Re-read the call and keep the
          function the author wrote. *)
       Cursor.restore t snapshot;
