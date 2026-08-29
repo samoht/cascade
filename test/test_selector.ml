@@ -2677,6 +2677,13 @@ let spec_selector_pseudo_manifest () =
       ":dir()";
       ":has()";
       ":host-context()";
+      (* CSS Shadow Parts 1 sec. 3.2.3: [:host()] takes one
+         [<compound-selector>]. [Cursor.option] swallows a [Parse_error] from an
+         unparsable argument and restores the sub-cursor, so [Cursor.call] saw
+         it as untouched rather than left with trailing content; a bare digit is
+         not a compound selector, so [:host(1)] silently became [Host None]
+         (prints as bare [:host]) instead of invalidating the whole selector. *)
+      ":host(1)";
       ":lang()";
       ":not()";
       ":nth-child(2n of)";

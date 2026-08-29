@@ -567,7 +567,14 @@ let test_read_var_reference () =
   (* Empty variable name *)
   neg "variable(--color)";
   (* Wrong function name *)
-  neg "var(--)" (* No name after -- *)
+  neg "var(--)";
+  (* No name after -- *)
+  (* CSS Custom Properties for Cascading Variables 1 sec. 3: content after the
+     name without a leading comma is not part of [var()]'s grammar.
+     [Cursor.call] did not require [read_reference] to consume its whole
+     sub-cursor, so [var(--x 10px)] silently dropped [ 10px] instead of
+     invalidating the reference. *)
+  neg "var(--x 10px)"
 
 let spec_custom_fallback_edges () =
   let check_var_ref input expected_name expected_fallback =
