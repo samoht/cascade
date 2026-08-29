@@ -1001,6 +1001,9 @@ recorded cases carrying six minifiers' answers.
   multi-word font family, and the ident code points the reader accepts. It
   described an `@supports` elision that no longer exists, so the one place a
   user reads about the flag contradicted every other (#611)
+- `cascade fmt --enforce-spec` can drop a rule with a raw non-ASCII selector
+  without `--minify`: the flag also gates the parser's ident range, so the
+  "has no effect without --minify" warning was false (#625)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, and `--dry-run` reports instead, ranking what survives
   by how few elements matched it. A rule goes only when the matcher has a model

@@ -257,11 +257,12 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
+        (* --enforce-spec is excluded: it also gates the parser's non-ASCII
+           ident range, which acts with or without --minify. *)
         warn_minify_only ~minify
           [
             (scope = `Stylesheet, "--scope=stylesheet");
             (lossless, "--lossless");
-            (enforce_spec, "--enforce-spec");
             (closed_world, "--closed-world");
             (objective = `Raw, "--objective");
             (profile, "--profile");
