@@ -969,6 +969,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- Property normalizers reuse `Common.List.map_preserve` instead of carrying a
+  second implementation with the same contract (#662)
 - The colour-lightness printer returns its unchanged AST value once after
   serializing it, instead of repeating that identity result in every branch
   (#661)

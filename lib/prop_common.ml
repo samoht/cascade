@@ -161,15 +161,7 @@ let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 (* Canonicalise a colour to its shortest spelling. *)
 let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
 let preserve_if_equal before after = if after == before then before else after
-
-let map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
+let map_preserve = List.map_preserve
 
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the
    shortest of the spellings that name those sides. *)
