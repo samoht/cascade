@@ -1465,6 +1465,7 @@ let rec read_font_family_single t : font_family =
   | None -> Cursor.err t "expected font-family value"
 
 and read_font_family t : font_family =
+  let source = Cursor.remaining t in
   (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword ([inherit] / [initial] / [unset]
      / [revert] / [revert-layer]) must stand alone; mixed inside a
      [<custom-ident>#] list it makes the whole declaration invalid. *)
@@ -1485,9 +1486,9 @@ and read_font_family t : font_family =
   | [ x ] -> x
   | _ when List.exists is_css_wide items ->
       (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword must be the sole value; in a
-         [<family-name>#] list it makes the whole declaration invalid. *)
-      Cursor.err_invalid t
-        "font-family: a CSS-wide keyword cannot appear in a family list"
+         [<family-name>#] list it makes the whole declaration invalid. Keep the
+         source for the declaration-level invalid-value recovery pass. *)
+      Invalid source
   | l -> List l
 
 let read_shorthand_line_height_typed r : line_height =

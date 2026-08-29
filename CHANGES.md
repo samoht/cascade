@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A CSS-wide keyword mixed into a `font-family` list now reads as the exported
+  `font_family.Invalid` node, preserving the source for typed invalid-value
+  recovery instead of raising during property parsing (#657)
 - `repeating-linear-gradient(var(...))` now keeps its repeating function name
   instead of serializing back as a non-repeating linear gradient (#656)
 - A `var()` that supplies the complete body of a radial or conic gradient now
