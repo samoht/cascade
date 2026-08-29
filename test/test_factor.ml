@@ -202,6 +202,16 @@ let test_font_family_duplicate_factors () =
     "a repeated family factors with the single one" ".a,.b{font-family:Arial}"
     (optimize_str ".a{font-family:Arial,Arial}.b{font-family:Arial}")
 
+(* CSS Fonts 4 (ED) sec. 2.3 maps [condensed] onto 75%, and getComputedStyle()
+   serializes the property as a percentage whichever spelling was authored, so
+   the keyword and the percentage name one width. Factoring compares nodes, so
+   the two rules only meet as one declaration if the fold happened before they
+   were compared. *)
+let test_font_stretch_spellings_factor () =
+  Alcotest.(check string)
+    "condensed factors with 75%" ".a,.b{font-stretch:75%}"
+    (optimize_str ".a{font-stretch:condensed}.b{font-stretch:75%}")
+
 let suite =
   ( "factor",
     [
@@ -221,6 +231,8 @@ let suite =
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"
         `Quick test_font_family_duplicate_factors;
+      Alcotest.test_case "font-stretch keyword and percentage factor together"
+        `Quick test_font_stretch_spellings_factor;
       Alcotest.test_case "display two-value and legacy spellings factor" `Quick
         test_display_spellings_factor;
       Alcotest.test_case "equal overflow axes factor with the single value"

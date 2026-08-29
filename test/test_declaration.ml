@@ -667,6 +667,29 @@ let font_properties () =
   check_declaration ~expected:"font-weight:700" "font-weight: 700";
   check_declaration ~expected:"font-weight:900" "font-weight: 900";
 
+  (* CSS Fonts 4 (ED) sec. 2.3 maps every [font-width] keyword onto a percentage
+     ([condensed] is 75%, [normal] is 100%) and has getComputedStyle() serialize
+     the property as a percentage whichever spelling was authored, so keyword
+     and percentage are one value and the percentage is the shorter one.
+     Swapping them is a node change, so pp holds what it parsed and the
+     optimizer folds. *)
+  check_declaration ~expected:"font-stretch:condensed"
+    ~optimized:"font-stretch:75%" "font-stretch: condensed";
+  check_declaration ~expected:"font-stretch:normal"
+    ~optimized:"font-stretch:100%" "font-stretch: normal";
+  check_declaration ~expected:"font-stretch:semi-expanded"
+    ~optimized:"font-stretch:112.5%" "font-stretch: semi-expanded";
+  check_declaration ~expected:"font-stretch:ultra-expanded"
+    ~optimized:"font-stretch:200%" "font-stretch: ultra-expanded";
+  check_declaration ~expected:"font-stretch:75%" ~optimized:"font-stretch:75%"
+    "font-stretch: 75%";
+  (* sec. 2.7 gives the [font] shorthand's width slot the grammar
+     [<font-width-css3>], which is the keywords alone: the percentage the
+     longhand folds to is not a value the slot accepts, so neither layer folds
+     it here. *)
+  check_declaration ~expected:"font:condensed 12px serif"
+    ~optimized:"font:condensed 12px serif" "font: condensed 12px serif";
+
   (* Font style *)
   check_declaration ~expected:"font-style:normal" "font-style: normal";
   check_declaration ~expected:"font-style:italic" "font-style: italic";
