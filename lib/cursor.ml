@@ -920,31 +920,37 @@ let at_least_shortfall ~at_least ~got =
       ")";
     ]
 
-let list_consume_separator sep t =
-  match sep with
-  | None -> true
-  | Some s -> (
-      let snap = save t in
-      match s t with
-      | () -> true
-      | exception Parse_error _ ->
-          restore t snap;
-          false)
-
 type 'a collect_step = Done of 'a list | Continue of 'a list * int
 
+(* A separator only commits once the item after it parses: with [n > 0], [snap]
+   covers both, so a failing [sep] or a failing item after a successful [sep]
+   restores to before the separator instead of leaving it consumed. CSS Values 4
+   sec. 5.7.3 makes a [#] list's trailing comma invalid, and this is the one
+   place that comma is read. *)
 let list_collect_step sep item t acc n max =
   if n >= max then Done (List.rev acc)
   else
     let snap = save t in
-    match option item t with
-    | None -> Done (List.rev acc)
-    | Some v ->
-        if t.cvs == snap then err t "list item consumed no input";
-        let acc = v :: acc in
-        if n + 1 >= max then Done (List.rev acc)
-        else if list_consume_separator sep t then Continue (acc, n + 1)
-        else Done (List.rev acc)
+    let sep_ok =
+      n = 0
+      ||
+      match sep with
+      | None -> true
+      | Some s -> (
+          match s t with () -> true | exception Parse_error _ -> false)
+    in
+    if not sep_ok then (
+      restore t snap;
+      Done (List.rev acc))
+    else
+      let item_snap = save t in
+      match option item t with
+      | None ->
+          restore t snap;
+          Done (List.rev acc)
+      | Some v ->
+          if t.cvs == item_snap then err t "list item consumed no input";
+          Continue (v :: acc, n + 1)
 
 let rec list_collect sep item t acc n max =
   match list_collect_step sep item t acc n max with
