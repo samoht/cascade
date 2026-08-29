@@ -299,8 +299,8 @@ let rec pp_display : display Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_display ctx v
-  | Multi (Multi (Block, Block), List_item) when Pp.minified ctx ->
-      Pp.string ctx "list-item"
+  (* CSS Display 3 (ED) sec. 2.3: a [list-item] written with no inside display
+     type takes [flow], so leaving the [flow] out names the same value. *)
   | Multi (Multi (outside, Block), List_item) when Pp.minified ctx ->
       pp_display ctx outside;
       Pp.space ctx ();
@@ -311,25 +311,6 @@ let rec pp_display : display Pp.t =
       pp_display_inside ctx inside;
       Pp.space ctx ();
       Pp.string ctx "list-item"
-  (* CSS Display 3 sec. 2: [<display-outside> <display-inside>] with
-     [<display-inside>] = [flow] (encoded as the inner [Block] arm here)
-     collapses to just the outside keyword - [block flow] -> [block], [inline
-     flow] -> [inline]. *)
-  | Multi (Block, Block) when Pp.minified ctx -> Pp.string ctx "block"
-  | Multi (Inline, Block) when Pp.minified ctx -> Pp.string ctx "inline"
-  | Multi (Run_in, Block) when Pp.minified ctx -> Pp.string ctx "run-in"
-  | Multi (Block, Flow_root) when Pp.minified ctx -> Pp.string ctx "flow-root"
-  | Multi (Inline, Flow_root) when Pp.minified ctx ->
-      (* CSS Display 3 sec. 2.6: [inline flow-root] is the two-value equivalent
-         of the legacy [inline-block] keyword. *)
-      Pp.string ctx "inline-block"
-  | Multi (Block, Flex) when Pp.minified ctx -> Pp.string ctx "flex"
-  | Multi (Inline, Flex) when Pp.minified ctx -> Pp.string ctx "inline-flex"
-  | Multi (Block, Grid) when Pp.minified ctx -> Pp.string ctx "grid"
-  | Multi (Inline, Grid) when Pp.minified ctx -> Pp.string ctx "inline-grid"
-  | Multi (Block, Table) when Pp.minified ctx -> Pp.string ctx "table"
-  | Multi (Inline, Table) when Pp.minified ctx -> Pp.string ctx "inline-table"
-  | Multi (Block, Ruby) when Pp.minified ctx -> Pp.string ctx "ruby"
   | Multi (outside, inside) ->
       pp_display ctx outside;
       Pp.space ctx ();
@@ -339,6 +320,30 @@ and pp_display_inside ctx = function
   | Block -> Pp.string ctx "flow"
   | Flow_root -> Pp.string ctx "flow-root"
   | display -> pp_display ctx display
+
+(* CSS Display 3 (ED) sec. 2.1: a [<display-outside>] written without an inside
+   defaults the inner type to [flow]; sec. 2.2: an inside written alone defaults
+   the outer type to [block], "except for ruby, which defaults to inline"; sec.
+   2.3: a [list-item] with neither slot filled is [block flow list-item]; sec.
+   2.6 names the four precomposed inline-level keywords. Each pair below is one
+   value under two spellings, and the single keyword is the shorter one. That
+   ruby exception is why [block ruby] has no entry: the bare [ruby] keyword
+   names [inline ruby], so the two are different values. *)
+let normalize_display : display -> display = function
+  | Multi (Multi (Block, Block), List_item) -> List_item
+  | Multi (Block, Block) -> Block
+  | Multi (Inline, Block) -> Inline
+  | Multi (Run_in, Block) -> Run_in
+  | Multi (Block, Flow_root) -> Flow_root
+  | Multi (Inline, Flow_root) -> Inline_block
+  | Multi (Block, Flex) -> Flex
+  | Multi (Inline, Flex) -> Inline_flex
+  | Multi (Block, Grid) -> Grid
+  | Multi (Inline, Grid) -> Inline_grid
+  | Multi (Block, Table) -> Table
+  | Multi (Inline, Table) -> Inline_table
+  | Multi (Inline, Ruby) -> Ruby
+  | value -> value
 
 let rec pp_position : position Pp.t =
  fun ctx -> function
@@ -521,12 +526,18 @@ let rec pp_overflow : overflow Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Overflow_pair (x, y) when Pp.minified ctx && equal_overflow x y ->
-      pp_overflow ctx x
   | Overflow_pair (x, y) ->
       pp_overflow ctx x;
       Pp.space ctx ();
       pp_overflow ctx y
+
+(* CSS Overflow 3 (ED) sec. 3.1: [overflow] is [<'overflow-block'>{1,2}] and
+   "sets the specified values of overflow-x and overflow-y in that order. If the
+   second value is omitted, it is copied from the first." Repeating an axis
+   therefore says what the single value says. *)
+let normalize_overflow : overflow -> overflow = function
+  | Overflow_pair (x, y) when equal_overflow x y -> x
+  | value -> value
 
 let pp_overflow_clip_box : overflow_clip_box Pp.t =
  fun ctx -> function

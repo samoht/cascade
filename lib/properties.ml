@@ -3603,6 +3603,8 @@ let normalize_property_value : type a.
   | Font_size -> normalize_font_size value
   | Font_weight -> normalize_font_weight value
   | Font -> normalize_font value
+  | Display -> normalize_display value
+  | Overflow -> normalize_overflow value
   | Padding_left -> Values.normalize_length ~ctx value
   | Padding_right -> Values.normalize_length ~ctx value
   | Padding_bottom -> Values.normalize_length ~ctx value
