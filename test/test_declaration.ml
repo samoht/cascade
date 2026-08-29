@@ -1370,6 +1370,24 @@ let box_shorthand_repeats () =
     ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
   check_declaration ~expected:"border-radius:1px 1px 1px 1px"
     ~optimized:"border-radius:1px" "border-radius: 1px 1px 1px 1px";
+  (* CSS Backgrounds 3 (ED) sec. 4.1 puts the vertical radii after a [/], so
+     each group collapses on its own and neither reaches across the slash. With
+     no slash the values set both axes equally, so a vertical group equal to the
+     horizontal one says what omitting it says. *)
+  check_declaration
+    ~expected:"border-radius:5px 5px 5px 5px/10px 10px 10px 10px"
+    ~optimized:"border-radius:5px/10px"
+    "border-radius: 5px 5px 5px 5px / 10px 10px 10px 10px";
+  check_declaration ~expected:"border-radius:5px 10px 5px 10px/1px 2px 1px 2px"
+    ~optimized:"border-radius:5px 10px/1px 2px"
+    "border-radius: 5px 10px 5px 10px / 1px 2px 1px 2px";
+  check_declaration ~expected:"border-radius:5px/5px"
+    ~optimized:"border-radius:5px" "border-radius: 5px / 5px";
+  check_declaration ~expected:"border-radius:5px 10px/5px 10px"
+    ~optimized:"border-radius:5px 10px" "border-radius: 5px 10px / 5px 10px";
+  (* Control: the two axes differ, so both groups are written. *)
+  check_declaration ~expected:"border-radius:5px/10px"
+    ~optimized:"border-radius:5px/10px" "border-radius: 5px / 10px";
   (* The per-side folds run first, so sides that only agree once normalised
      still collapse. *)
   check_declaration ~expected:"margin:0px 0 0px 0" ~optimized:"margin:0"
@@ -1381,6 +1399,23 @@ let box_shorthand_repeats () =
     ~optimized:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
   check_declaration ~expected:"padding:1px 2px 1px 3px"
     ~optimized:"padding:1px 2px 1px 3px" "padding: 1px 2px 1px 3px"
+
+(* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
+   and reads a single one as "both the horizontal and vertical spacing", so a
+   pair of equal lengths is the longer spelling of that one value. The per-side
+   fold runs first, so a pair that only agrees once normalised collapses too. *)
+let border_spacing_pair () =
+  check_declaration ~expected:"border-spacing:1px 1px"
+    ~optimized:"border-spacing:1px" "border-spacing: 1px 1px";
+  check_declaration ~expected:"border-spacing:0px 0"
+    ~optimized:"border-spacing:0" "border-spacing: 0px 0";
+  check_declaration ~expected:"border-spacing:0px" ~optimized:"border-spacing:0"
+    "border-spacing: 0px";
+  (* Controls: two different lengths name two different spacings. *)
+  check_declaration ~expected:"border-spacing:1px 2px"
+    ~optimized:"border-spacing:1px 2px" "border-spacing: 1px 2px";
+  check_declaration ~expected:"border-spacing:1px"
+    ~optimized:"border-spacing:1px" "border-spacing: 1px"
 
 (* CSS Backgrounds 3 (ED) sec. 2.4 gives every single [<repeat-style>] keyword
    the pair it computes to: [repeat] is [repeat repeat], [space] is [space
@@ -4377,6 +4412,7 @@ let declaration_tests =
     test_case "background box slots" `Quick background_box_slots;
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
+    test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;

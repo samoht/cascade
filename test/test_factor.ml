@@ -243,6 +243,21 @@ let test_box_shorthand_repeats_factor () =
   Alcotest.(check string)
     "border-color takes the same collapse" ".a,.b{border-color:red}"
     (optimize_str ".a{border-color:red red red red}.b{border-color:red}");
+  (* CSS Backgrounds 3 (ED) sec. 4.1 collapses each radii group on its own, and
+     with no slash the values set both axes equally. *)
+  Alcotest.(check string)
+    "border-radius collapses each group" ".a,.b{border-radius:5px/10px}"
+    (optimize_str
+       ".a{border-radius:5px 5px 5px 5px/10px 10px 10px \
+        10px}.b{border-radius:5px/10px}");
+  Alcotest.(check string)
+    "equal radii axes factor with the omitted group" ".a,.b{border-radius:5px}"
+    (optimize_str ".a{border-radius:5px/5px}.b{border-radius:5px}");
+  (* CSS Tables 3 (ED) reads a single border-spacing length as both axes. *)
+  Alcotest.(check string)
+    "equal border-spacing axes factor with the single length"
+    ".a,.b{border-spacing:1px}"
+    (optimize_str ".a{border-spacing:1px 1px}.b{border-spacing:1px}");
   (* A list the rules cannot rebuild stays as written, and the two stay
      apart. *)
   Alcotest.(check string)
