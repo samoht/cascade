@@ -2911,8 +2911,7 @@ let rec is_unwrap_safe_is_arg : t -> bool = function
   | _ -> false
 
 let is_unwrap_safe selectors =
-  List.length selectors >= 2
-  && List.for_all is_unwrap_safe_is_arg selectors
+  List.for_all is_unwrap_safe_is_arg selectors
   &&
   match List.map specificity selectors with
   | [] -> false
@@ -2921,9 +2920,13 @@ let is_unwrap_safe selectors =
 (* Sound only where the [:is()] is a whole rule selector, or a whole member of
    one top-level list: there the split lands in a selector list, which weighs
    each branch on its own. Nested inside a [Compound] or a [Combined] it is a
-   grouping boundary and the split would change what matches. *)
+   grouping boundary and the split would change what matches. A lone argument
+   goes further than [canonicalize_is] can: that one is node-local and has to
+   leave a type or universal argument wrapped rather than splice it into a
+   compound it cannot see, and here there is no compound to splice into. *)
 let rec top_level_is_unwrap sel =
   match sel with
+  | Is [ single ] when is_unwrap_safe_is_arg single -> single
   | Is selectors when is_unwrap_safe selectors -> List selectors
   | List selectors ->
       let expanded =

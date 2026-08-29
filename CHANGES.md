@@ -553,6 +553,11 @@ recorded cases carrying six minifiers' answers.
 - `--minify` canonicalises programmatically constructed shared `<position>`
   nodes in `transform-origin` to the property's XY/XYZ nodes before hashing, so
   typed position nodes and coordinate origins now factor together (#672)
+- `--minify` splits a whole-rule `:is(a, b)` whose arguments share one
+  specificity into the selector list `a, b` before rules are compared, so it
+  factors with a rule that wrote the list out; the split reached the printed
+  output only, which left a second pass shorter than the first. A whole-rule
+  `:is(a)` or `:is(*)` loses its wrapper there too (#655)
 - `--minify` collapses repeated sides in the `scroll-margin` and
   `scroll-padding` physical and logical shorthands before declaration hashes
   are compared, so equivalent rules factor together (#650)
@@ -976,6 +981,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- `:is(a, b)` and the selector list `a, b` compare equal when the arguments
+  share one specificity, which is the split-against-grouped selector list the
+  mode promises to equate (#655)
 - The canonical projection keeps structurally distinct `@container` conditions
   in separate cascade slots even when their minified text is identical. An
   escaped unknown feature such as `(inline-size\>\=10px)` no longer merges into

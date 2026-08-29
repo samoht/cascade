@@ -6440,6 +6440,15 @@ let s417_is_unwrap_top_level () =
   Alcotest.(check string)
     "minify is a fixpoint" (normalize two_rules)
     (normalize (normalize two_rules));
+  (* A lone argument has nothing to disagree with, and at the top of a rule
+     selector it is not landing in a compound, so section 3.1 (a type or
+     universal selector comes first in a compound) does not hold it back. *)
+  Alcotest.(check string)
+    ":is(a) unwraps at the top" "a{color:red}"
+    (normalize ":is(a) { color: red }");
+  Alcotest.(check string)
+    ":is(*) unwraps at the top" "*{color:red}"
+    (normalize ":is(*) { color: red }");
   (* Unequal specificity, so the list would weigh an [a] match lighter than the
      wrapper does. *)
   Alcotest.(check string)

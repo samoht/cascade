@@ -1504,6 +1504,14 @@ let canonicalize_top_level_is_unwrap () =
      matches any of its selectors). *)
   canon "a,m,z" ":is(a,z),m";
   canon "a,m,z" "a,z,m";
+  (* A lone argument shares its own specificity, so the equality holds whatever
+     it is. [canonicalize_is] still holds a type or universal one back, because
+     it cannot see the compound it would land in; at the top of a rule selector
+     there is none. *)
+  canon "a" ":is(a)";
+  canon "*" ":is(*)";
+  canon ".x" ":is(.x)";
+  canon "a" ":is(a,a)";
   (* Unequal specificity: an [a] match weighs (0,0,1) as a list branch and
      (0,1,0) under the wrapper. *)
   canon ":is(.x,a)" ":is(.x,a)";
