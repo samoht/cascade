@@ -3945,6 +3945,12 @@ let white_space_collapse_only () =
   check_declaration ~roundtrip:true "white-space:collapse";
   check_sheet_roundtrip "white-space" "a{white-space:collapse}"
 
+(* CSS Backgrounds 3 sec. 5.7 sets omitted border-image shorthand slots to their
+   initial values, so the repeat component is valid on its own. *)
+let border_image_repeat_only () =
+  check_declaration ~roundtrip:true "border-image:round";
+  check_sheet_roundtrip "border-image" "a{border-image:round}"
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4764,6 +4770,7 @@ let declaration_tests =
     test_case "text-decoration optional line" `Quick
       text_decoration_optional_line;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
+    test_case "border-image repeat only" `Quick border_image_repeat_only;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
