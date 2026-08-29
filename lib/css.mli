@@ -1402,8 +1402,8 @@ type angle = Values.angle =
   | Calc of angle calc  (** Calculated angle expressions *)
   | Var of angle var
   | Invalid of invalid_value
-      (** Spec-invalid input preserved verbatim for round-trip; dropped by
-          [Optimize.drop_invalid] under [--minify]. *)
+      (** Spec-invalid input the parser keeps verbatim; [Optimize.drop_invalid]
+          drops the declaration on every serialisation. *)
 
 (** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number = Values.number =
@@ -4438,7 +4438,7 @@ type font_family = Properties.font_family =
   | Var of font_family var
   | Invalid of invalid_value
       (** CSS-wide keyword mixed in a [<custom-ident>#] list, preserved verbatim
-          and dropped by [Optimize.drop_invalid] under minify. *)
+          and dropped by [Optimize.drop_invalid] on every serialisation. *)
 
 val font_stack : font_family list -> font_family
 (** [font_stack fonts] is a comma-separated [font-family] stack. *)

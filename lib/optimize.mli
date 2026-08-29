@@ -95,8 +95,9 @@ val merge_overflow_longhands :
 val drop_invalid : t -> t
 (** [drop_invalid ss] removes every declaration whose typed value contains an
     [Invalid] arm cascade detected at parse time (CSS spec violations that
-    cascade preserved verbatim for round-trip). Run as part of minify-time
-    spec-based optimization. *)
+    cascade preserved verbatim for round-trip). Serialisation runs this on every
+    stylesheet, minified or not: a browser discards such a declaration at parse,
+    so dropping it keeps the output observationally equal to a fresh parse. *)
 
 val drop_unknown_at_rules : t -> t
 (** [drop_unknown_at_rules ss] removes every [Unknown_at_rule] statement at any

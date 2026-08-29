@@ -361,9 +361,9 @@ let is_decl_unknown_property_name name =
 
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known spec
     violation detected at parse time; [Optimize.drop_invalid] removes such
-    declarations under minify. An unknown property is not invalid: browsers keep
-    unrecognised declarations (CSS Syntax 3 sec. 5.4), and cascade emits them
-    (and vendor-prefix extensions) as raw component lists. *)
+    declarations on every serialisation. An unknown property is not invalid:
+    browsers keep unrecognised declarations (CSS Syntax 3 sec. 5.4), and cascade
+    emits them (and vendor-prefix extensions) as raw component lists. *)
 let rec is_invalid = function
   | Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property; value; _ } ->

@@ -4383,8 +4383,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_family -> pp pp_font_family
 
 (* Cascade detected the value is spec-invalid (an [Invalid] arm in one of the
-   typed value types). The minify-time [Optimize.drop_invalid] pass uses this to
-   discard the declaration. *)
+   typed value types). [Optimize.drop_invalid], which every serialisation runs,
+   uses this to discard the declaration. *)
 let invalid_angle : angle -> bool = function Invalid _ -> true | _ -> false
 
 let invalid_length_percentage : length_percentage -> bool = function

@@ -417,8 +417,8 @@ type angle =
       (** Spec-invalid [<angle>] input (e.g. [asin(<angle>)] - inverse trig
           takes [<number>], not [<angle>]) that upstream tools preserve
           verbatim. The pretty-printer emits the tokens unchanged; the
-          [Optimize.drop_invalid] pass removes any declaration whose typed value
-          reduces to this arm under [--minify]. *)
+          [Optimize.drop_invalid] pass, which every serialisation runs, removes
+          any declaration whose typed value reduces to this arm. *)
 
 type alpha =
   | None
@@ -453,7 +453,8 @@ type length_percentage =
       (** Spec-invalid input cascade detected (e.g. [width: asin(sin(45deg))]
           - the inner reduction yields an angle, but [<length-percentage>]
             doesn't accept angles). Pretty-printer emits the tokens verbatim;
-            [Optimize.drop_invalid] removes the declaration under [--minify]. *)
+            [Optimize.drop_invalid] removes the declaration on every
+            serialisation. *)
 
 type number_percentage =
   | Num of float

@@ -1915,7 +1915,7 @@ type font_family =
           valid as a sole top-level value. [font-family: Arial, inherit] mixes
           it inside a [<custom-ident>#] list and is therefore invalid. Cascade
           preserves the source verbatim for round-trip; [Optimize.drop_invalid]
-          removes the declaration under [--minify]. *)
+          removes the declaration on every serialisation. *)
 
 type font_stretch =
   | Pct of float
@@ -4456,8 +4456,8 @@ type clip_path =
       (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
           [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
           The pretty-printer round-trips the captured tokens; the
-          [Optimize.drop_invalid] pass removes the declaration under [--minify].
-      *)
+          [Optimize.drop_invalid] pass removes the declaration on every
+          serialisation. *)
 
 type _ kind =
   | Length : length kind

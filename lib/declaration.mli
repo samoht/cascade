@@ -167,9 +167,9 @@ val is_important : declaration -> bool
 
 val is_invalid : declaration -> bool
 (** [is_invalid decl] is [true] when [decl]'s typed value is a CSS
-    spec-violation cascade detected at parse time. The minify-time
-    [Optimize.drop_invalid] pass uses this predicate to remove the declaration.
-*)
+    spec-violation cascade detected at parse time. [Optimize.drop_invalid],
+    which every serialisation runs, uses this predicate to remove the
+    declaration. *)
 
 val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any

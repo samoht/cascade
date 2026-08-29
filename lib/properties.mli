@@ -60,8 +60,8 @@ val normalize_custom_property_value :
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
     arm cascade detected at parse time (CSS spec violations preserved verbatim
-    for round-trip). The minify-time [Optimize.drop_invalid] pass removes
-    declarations that satisfy this predicate. *)
+    for round-trip). [Optimize.drop_invalid], which every serialisation runs,
+    removes declarations that satisfy this predicate. *)
 
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] pretty-prints a typed custom property value. *)
