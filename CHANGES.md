@@ -469,6 +469,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` merges two rules that spell the initial `border` width
+  differently, so `border: medium solid red` and `border: solid red` factor
+  into one rule. `medium` is the value an omitted width slot takes, so the
+  keyword never reached the output; dropping it in the printer rather than in
+  the AST left the two declarations distinct and the rules apart (#NNN)
 - `--minify` folds the width slot of the `border` shorthands and of
   `column-rule`, so `border: 0px solid red` prints as `border:0 solid red`
   and `border: calc(1px + 1px) solid red` as `border:2px solid red`. That

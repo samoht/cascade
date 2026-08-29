@@ -766,15 +766,6 @@ let pp_border_shorthand : border_shorthand Pp.t =
         (None : border_style option)
     | style, _, _ -> style
   in
-  (* CSS Backgrounds 3 sec. 3.3: [<border-width>] defaults to [medium]. When the
-     user spelled it explicitly and another slot is non-default, the keyword is
-     redundant - drop it. *)
-  let width : border_width option =
-    match (width, style, color) with
-    | (Some Medium, Some _, _ | Some Medium, _, Some _) when Pp.minified ctx ->
-        None
-    | width, _, _ -> width
-  in
   Option.iter
     (fun w ->
       add_space ();
@@ -1856,6 +1847,18 @@ let normalize_logical_border_width :
   | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
   | other -> other
 
+(* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,
+   so an omitted slot takes its initial value, and sec. 3.3 makes that [medium]
+   for the width. An explicit [medium] therefore declares what leaving the slot
+   out declares, and the shorter spelling wins - as long as some other slot
+   carries the declaration. The sole filled slot stays: emptied, the shorthand
+   has no value left to print. *)
+let drop_initial_line_width ~others_filled (width : border_width option) :
+    border_width option =
+  match width with
+  | Some Medium when others_filled -> Option.None
+  | width -> width
+
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
    the same fold as the longhand; the colour slot is a [<color>]. *)
 let normalize_border ?(lossless = false) : border -> border =
@@ -1864,6 +1867,8 @@ let normalize_border ?(lossless = false) : border -> border =
   | Shorthand s ->
       let width = option_map_preserve normalize_border_width s.width in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
+      let others_filled = Option.is_some s.style || Option.is_some color in
+      let width = drop_initial_line_width ~others_filled width in
       if width == s.width && color == s.color then value
       else Shorthand { s with width; color }
   | other -> other
