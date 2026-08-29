@@ -3951,6 +3951,17 @@ let border_image_repeat_only () =
   check_declaration ~roundtrip:true "border-image:round";
   check_sheet_roundtrip "border-image" "a{border-image:round}"
 
+(* Scroll-driven Animations 1 sec. 2.3.3 and 3.4.4 make the axis optional in
+   both named timeline shorthands. *)
+let timeline_name_only () =
+  List.iter
+    (fun (property, name) ->
+      let declaration = String.concat "" [ property; ":"; name ] in
+      check_declaration ~roundtrip:true declaration;
+      check_sheet_roundtrip property
+        (String.concat "" [ "a{"; declaration; "}" ]))
+    [ ("scroll-timeline", "--t"); ("view-timeline", "--v") ]
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4771,6 +4782,7 @@ let declaration_tests =
       text_decoration_optional_line;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
     test_case "border-image repeat only" `Quick border_image_repeat_only;
+    test_case "timeline name only" `Quick timeline_name_only;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
