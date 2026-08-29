@@ -182,7 +182,10 @@ let read_caret_shorthand t : caret =
   let rec loop color animation shape count =
     if Cursor.is_done t then
       if count = 0 then Cursor.err_expected t "caret"
-      else (Caret (color, animation, shape) : caret)
+      else
+        match (color, animation, shape) with
+        | Some (Auto : color), Option.None, Option.None -> (Auto : caret)
+        | _ -> Caret (color, animation, shape)
     else
       let try_each =
         let attempts =

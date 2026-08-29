@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A literal `caret:auto` now reads as the exported `caret.Auto` node rather
+  than the same text encoded as a one-slot shorthand, so constructed and
+  parsed declarations compare and hash equally (#653)
 - Literal `aspect-ratio` values now use the exported `Ratio` and `Auto_ratio`
   nodes, matching declarations built through the public constructors and
   helpers so equal declarations have equal cached hashes (#652)
