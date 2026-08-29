@@ -1352,7 +1352,7 @@ let vars_of_outline (value : Properties.outline) =
   match value with
   | Var v -> [ V v ]
   | Shorthand { width; style; color } ->
-      Option.value ~default:[] (Option.map vars_of_length width)
+      Option.value ~default:[] (Option.map vars_of_border_width width)
       @ Option.value ~default:[] (Option.map vars_of_outline_style style)
       @ Option.value ~default:[] (Option.map vars_of_color color)
   | _ -> []
@@ -1975,7 +1975,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_inline_end_width, value -> vars_of_border_width value
   | Border_block_start_width, value -> vars_of_border_width value
   | Border_block_end_width, value -> vars_of_border_width value
-  | Outline_width, value -> vars_of_length value
+  | Outline_width, value -> vars_of_border_width value
   | Column_gap, value -> vars_of_length value
   | Row_gap, value -> vars_of_length value
   | Gap, Lengths { row_gap; column_gap } ->

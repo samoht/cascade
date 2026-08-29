@@ -5264,7 +5264,7 @@ type outline_style = Properties.outline_style =
   | Var of outline_style var
 
 type outline_shorthand = Properties.outline_shorthand = {
-  width : length option;
+  width : border_width option;
   style : outline_style option;
   color : color option;
 }
@@ -5282,7 +5282,7 @@ type outline = Properties.outline =
   | Var of outline var
 
 val outline_shorthand :
-  ?width:length -> ?style:outline_style -> ?color:color -> unit -> outline
+  ?width:border_width -> ?style:outline_style -> ?color:color -> unit -> outline
 (** [outline_shorthand ?width ?style ?color ()] is the outline shorthand. *)
 
 val border_shorthand :
@@ -5398,7 +5398,7 @@ val outline : outline -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline} outline}
     property. *)
 
-val outline_width : length -> declaration
+val outline_width : border_width -> declaration
 (** [outline_width width] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-width}
      outline-width} property. *)

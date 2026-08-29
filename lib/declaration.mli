@@ -910,7 +910,7 @@ val outline_style : outline_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}
      outline-style} property. *)
 
-val outline_width : length -> declaration
+val outline_width : border_width -> declaration
 (** [outline_width v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-width}
      outline-width} property. *)

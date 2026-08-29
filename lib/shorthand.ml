@@ -1936,7 +1936,8 @@ let outline_part_of : declaration -> outline_part option = function
   | Declaration { property = Outline_color; _ } -> Some Color
   | _ -> None
 
-let outline_width_value : declaration -> Values.length option = function
+let outline_width_value : declaration -> Properties.border_width option =
+  function
   | Declaration { property = Outline_width; value; _ } -> Some value
   | _ -> None
 
@@ -1975,7 +1976,7 @@ let try_compose_outline_at idx i =
         let color = List.find_map outline_color_value triple in
         let no_runtime =
           match width with
-          | Some w -> not (Values.length_has_runtime_subst w)
+          | Some w -> not (Properties.border_width_has_runtime_subst w)
           | None -> true
         in
         if no_runtime then

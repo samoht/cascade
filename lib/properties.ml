@@ -3629,7 +3629,7 @@ let normalize_property_value : type a.
   | Border_start_end_radius -> Values.normalize_length ~ctx value
   | Border_end_start_radius -> Values.normalize_length ~ctx value
   | Border_end_end_radius -> Values.normalize_length ~ctx value
-  | Outline_width -> Values.normalize_length ~ctx value
+  | Outline_width -> normalize_border_width value
   | Outline_offset -> Values.normalize_length ~ctx value
   | Line_height_step -> Values.normalize_length ~ctx value
   | Perspective -> Values.normalize_length ~ctx value
@@ -4196,7 +4196,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scale -> pp pp_scale
   | Outline -> pp pp_outline
   | Outline_style -> pp pp_outline_style
-  | Outline_width -> pp pp_length
+  | Outline_width -> pp pp_border_width
   | Outline_color -> pp pp_color
   | Forced_color_adjust -> pp pp_forced_color_adjust
   | Clip -> pp pp_clip
@@ -4420,7 +4420,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Border_start_end_radius -> Some Length
   | Border_end_start_radius -> Some Length
   | Border_end_end_radius -> Some Length
-  | Outline_width -> Some Length
+  | Outline_width -> Some Border_width
   | Border_top_width -> Some Border_width
   | Border_right_width -> Some Border_width
   | Border_bottom_width -> Some Border_width

@@ -1839,6 +1839,23 @@ let normalize_border_width (bw : border_width) : border_width =
   | _ when border_width_is_zero bw -> Zero
   | _ -> bw
 
+(* [<line-width>] and [<length>] share every shape but the three keywords, so
+   read the substitution question in length space; a node that does not map over
+   ([var()], a sibling index) answers as substituting, the safe side for a
+   caller deciding whether the value can be folded into a shorthand. *)
+let border_width_has_runtime_subst (bw : border_width) : bool =
+  let calc c =
+    match length_of_border_width_calc c with
+    | Some lc -> Values.length_has_runtime_subst (Calc lc)
+    | None -> true
+  in
+  match bw with
+  | Var _ -> true
+  | Calc c -> calc c
+  | Min args | Max args -> List.exists calc args
+  | Clamp (lower, value, upper) -> calc lower || calc value || calc upper
+  | _ -> false
+
 let normalize_logical_border_width :
     logical_border_width -> logical_border_width =
  fun value ->

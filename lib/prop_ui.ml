@@ -283,7 +283,9 @@ let normalize_outline ?(lossless = false) : outline -> outline =
  fun value ->
   match value with
   | Shorthand s ->
-      let width = option_map_preserve Values.normalize_length s.width in
+      let width =
+        option_map_preserve Prop_background.normalize_border_width s.width
+      in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
       if width == s.width && color == s.color then value
       else Shorthand { s with width; color }
@@ -609,7 +611,7 @@ let pp_outline_shorthand : outline_shorthand Pp.t =
   Option.iter
     (fun w ->
       add_space ();
-      pp_length ctx w)
+      Prop_background.pp_border_width ctx w)
     width;
   Option.iter
     (fun s ->
@@ -1187,13 +1189,6 @@ let outline_style_keywords =
     "auto";
   ]
 
-let outline_starts_length t =
-  Option.is_some
-    (Cursor.lookahead
-       (Cursor.option (fun t ->
-            ignore (Cursor.number_with_unit t : float * string option)))
-       t)
-
 let outline_starts_style t =
   List.exists (fun kw -> Cursor.looking_at t kw) outline_style_keywords
 
@@ -1205,17 +1200,27 @@ let read_outline_part ~width ~style ~color t =
     (* A var() is type-ambiguous; assign it to the next unfilled
        width/style/color slot, reading its fallback with that slot's reader. *)
     if Option.is_none !width then
-      width := Some (Var (read_var read_length t) : length)
+      width :=
+        Some (Var (read_var Prop_background.read_border_width t) : border_width)
     else if Option.is_none !style then
       style := Some (Var (read_var read_outline_style t) : outline_style)
     else if Option.is_none !color then color := Some (read_color t)
     else Cursor.err_expected t "outline"
   else if Option.is_none !style && outline_starts_style t then
     style := Some (read_outline_style t)
-  else if Option.is_none !width && outline_starts_length t then
-    width := Some (read_length t)
-  else if Option.is_none !color then color := Some (read_color t)
-  else Cursor.err_expected t "outline"
+  else
+    (* The width slot is a [<line-width>], so it takes the thin/medium/thick
+       keywords and the math functions as well as a length; bind it by trying
+       that reader rather than by guessing from the first token. *)
+    match
+      if Option.is_none !width then
+        Cursor.option Prop_background.read_border_width t
+      else Option.None
+    with
+    | Some w -> width := Some w
+    | Option.None ->
+        if Option.is_none !color then color := Some (read_color t)
+        else Cursor.err_expected t "outline"
 
 let read_outline_parts ~width ~style ~color t =
   let rec loop () =
