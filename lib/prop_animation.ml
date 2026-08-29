@@ -325,24 +325,6 @@ let rec pp_timeline_name : timeline_name Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
- fun ctx { name; axis } ->
-  pp_ident ctx name;
-  Pp.space ctx ();
-  pp_timeline_axis ctx axis
-
-let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
- fun ctx -> function
-  | None -> Pp.string ctx "none"
-  | Timelines items ->
-      Pp.list ~sep:Pp.comma pp_timeline_shorthand_item ctx items
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_timeline_shorthand ctx v
-
 let pp_timeline_inset_item : timeline_inset_item Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -363,6 +345,36 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let pp_timeline_item_name : timeline_item_name Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Name name -> pp_ident ctx name
+
+let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
+ fun ctx { name; axis; inset } ->
+  pp_timeline_item_name ctx name;
+  Option.iter
+    (fun axis ->
+      Pp.space ctx ();
+      pp_timeline_axis ctx axis)
+    axis;
+  Option.iter
+    (fun inset ->
+      Pp.space ctx ();
+      pp_timeline_inset ctx inset)
+    inset
+
+let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
+ fun ctx -> function
+  | Timelines items ->
+      Pp.list ~sep:Pp.comma pp_timeline_shorthand_item ctx items
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_timeline_shorthand ctx v
 
 let pp_timing_float ctx f =
   if Float.is_nan f then Pp.nan_value ctx ""
@@ -663,32 +675,6 @@ let rec read_timeline_name t : timeline_name =
         : timeline_name))
     t
 
-let read_timeline_shorthand_item t : timeline_shorthand_item =
-  Cursor.ws t;
-  let name = Cursor.ident ~keep_case:true t in
-  if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t "timeline name";
-  Cursor.ws t;
-  let axis = read_timeline_axis t in
-  { name; axis }
-
-let rec read_timeline_shorthand t : timeline_shorthand =
-  Cursor.enum_or_var "timeline"
-    [
-      ("none", (None : timeline_shorthand));
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_timeline_shorthand t))
-    ~default:(fun t ->
-      Timelines
-        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_shorthand_item
-           t))
-    t
-
 let read_timeline_inset_item t : timeline_inset_item =
   Cursor.enum "timeline-inset item"
     [ ("auto", (Auto : timeline_inset_item)) ]
@@ -697,6 +683,12 @@ let read_timeline_inset_item t : timeline_inset_item =
          (read_length_percentage ~allow_negative:false ~with_keywords:false t)
         : timeline_inset_item))
     t
+
+let read_timeline_inset_pair t : timeline_inset =
+  match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
+  | [ first ] -> (Inset (first, None) : timeline_inset)
+  | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
+  | _ -> Cursor.err_expected t "timeline-inset"
 
 let rec read_timeline_inset t : timeline_inset =
   Cursor.enum_or_var "timeline-inset"
@@ -709,11 +701,65 @@ let rec read_timeline_inset t : timeline_inset =
     ]
     ~var:(fun t ->
       (Var (Values.read_var read_timeline_inset t) : timeline_inset))
+    ~default:read_timeline_inset_pair t
+
+let read_timeline_axis_keyword t : timeline_axis =
+  Cursor.enum "timeline-axis"
+    [
+      ("block", (Block : timeline_axis));
+      ("inline", (Inline : timeline_axis));
+      ("x", (X : timeline_axis));
+      ("y", (Y : timeline_axis));
+    ]
+    t
+
+let read_timeline_item_name t : timeline_item_name =
+  Cursor.enum "timeline name"
+    [ ("none", (None : timeline_item_name)) ]
     ~default:(fun t ->
-      match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
-      | [ first ] -> (Inset (first, None) : timeline_inset)
-      | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
-      | _ -> Cursor.err_expected t "timeline-inset")
+      let name = Cursor.ident ~keep_case:true t in
+      if not (Custom_property_name.is_valid name) then
+        Cursor.err_invalid t "timeline name";
+      (Name name : timeline_item_name))
+    t
+
+(* Scroll-driven Animations 1 (ED) sec. 2.3.3 gives [scroll-timeline] items
+   [<'scroll-timeline-name'> <'scroll-timeline-axis'>?] and sec. 3.4.4 gives
+   [view-timeline] items [<'view-timeline-name'> [ <'view-timeline-axis'> ||
+   <'view-timeline-inset'> ]?]. The name is the only mandatory part, and the
+   inset slot is view-timeline's alone. *)
+let read_timeline_shorthand_item ?(inset = false) t : timeline_shorthand_item =
+  Cursor.ws t;
+  let name = read_timeline_item_name t in
+  Cursor.ws t;
+  let axis = Cursor.option read_timeline_axis_keyword t in
+  Cursor.ws t;
+  let inset =
+    if inset then Cursor.option read_timeline_inset_pair t else Option.None
+  in
+  Cursor.ws t;
+  let axis =
+    match axis with
+    | Some _ -> axis
+    | None -> Cursor.option read_timeline_axis_keyword t
+  in
+  { name; axis; inset }
+
+let rec read_timeline_shorthand ?(inset = false) t : timeline_shorthand =
+  Cursor.enum_or_var "timeline"
+    [
+      ("initial", (Initial : timeline_shorthand));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var (read_timeline_shorthand ~inset) t))
+    ~default:(fun t ->
+      Timelines
+        (Cursor.list ~sep:Cursor.comma ~at_least:1
+           (read_timeline_shorthand_item ~inset)
+           t))
     t
 
 let read_steps_direction t : steps_direction =

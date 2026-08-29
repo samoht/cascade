@@ -3897,18 +3897,6 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = { name : string; axis : timeline_axis }
-
-type timeline_shorthand =
-  | None
-  | Timelines of timeline_shorthand_item list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of timeline_shorthand var
-
 type timeline_inset_item = Auto | Length of length_percentage
 
 type timeline_inset =
@@ -3919,6 +3907,23 @@ type timeline_inset =
   | Revert
   | Revert_layer
   | Var of timeline_inset var
+
+type timeline_item_name = None | Name of string
+
+type timeline_shorthand_item = {
+  name : timeline_item_name;
+  axis : timeline_axis option;
+  inset : timeline_inset option;
+}
+
+type timeline_shorthand =
+  | Timelines of timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_shorthand var
 
 type overscroll_behavior =
   | Auto

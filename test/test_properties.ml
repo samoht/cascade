@@ -640,8 +640,13 @@ let check_page_size_orientation =
 let check_timeline_axis =
   check_value_cursor "axis" read_timeline_axis pp_timeline_axis
 
-let check_timeline_shorthand =
-  check_value_cursor "timeline_shorthand" read_timeline_shorthand
+let check_timeline_item_name =
+  check_value_cursor "timeline_item_name" read_timeline_item_name
+    pp_timeline_item_name
+
+let check_timeline_shorthand ?inset =
+  check_value_cursor "timeline_shorthand"
+    (read_timeline_shorthand ?inset)
     pp_timeline_shorthand
 
 let check_caption_side =
@@ -3977,6 +3982,11 @@ let test_timeline_axis () =
   neg_cursor read_timeline_axis "z";
   neg_cursor read_timeline_axis "auto"
 
+let test_timeline_item_name () =
+  check_timeline_item_name "none";
+  check_timeline_item_name "--main";
+  neg_cursor read_timeline_item_name "main"
+
 let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
   check_timeline_shorthand "--scroll inline";
@@ -3987,6 +3997,13 @@ let test_timeline_shorthand () =
   check_timeline_shorthand ~roundtrip:true "--main";
   check_timeline_shorthand ~roundtrip:true ~expected:"--x,--y" "--x, --y";
   check_timeline_shorthand ~roundtrip:true "none block";
+  (* Sec. 3.4.4 adds the inset to the view-timeline item, in either order with
+     the axis. *)
+  check_timeline_shorthand ~inset:true ~roundtrip:true "--v auto";
+  check_timeline_shorthand ~inset:true ~roundtrip:true "--v inline 10%";
+  check_timeline_shorthand ~inset:true ~roundtrip:true
+    ~expected:"--v inline 10%" "--v 10% inline";
+  check_timeline_shorthand ~inset:true ~roundtrip:true "--v 10px 20px";
   neg_cursor read_timeline_shorthand "main block";
   (* The name is not optional, so a bare axis names nothing. *)
   neg_cursor read_timeline_shorthand "inline";
@@ -5058,6 +5075,7 @@ let additional_tests =
     test_case "page_size_name" `Quick test_page_size_name;
     test_case "page_size_orientation" `Quick test_page_size_orientation;
     test_case "axis" `Quick test_timeline_axis;
+    test_case "timeline_item_name" `Quick test_timeline_item_name;
     test_case "timeline_shorthand" `Quick test_timeline_shorthand;
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;

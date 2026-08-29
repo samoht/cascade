@@ -7152,13 +7152,33 @@ type timeline_axis = Properties.timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
+(** One end of a [view-timeline-inset]. *)
+type timeline_inset_item = Properties.timeline_inset_item =
+  | Auto
+  | Length of length_percentage
+
+(** CSS view-timeline-inset values *)
+type timeline_inset = Properties.timeline_inset =
+  | Inset of timeline_inset_item * timeline_inset_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_inset var
+
+(** The name of one [scroll-timeline] or [view-timeline] item. *)
+type timeline_item_name = Properties.timeline_item_name =
+  | None
+  | Name of string
+
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
-  name : string;
-  axis : timeline_axis;
+  name : timeline_item_name;
+  axis : timeline_axis option;
+  inset : timeline_inset option;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =
-  | None
   | Timelines of timeline_shorthand_item list
   | Initial
   | Inherit

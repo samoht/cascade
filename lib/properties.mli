@@ -133,8 +133,17 @@ val pp_shadow : shadow Pp.t
 val read_shadow : Cursor.t -> shadow
 (** [read_shadow t] parses a {!val-shadow} value from [t]. *)
 
-val read_timeline_shorthand : Cursor.t -> timeline_shorthand
-(** [read_timeline_shorthand t] parses [scroll-timeline] and [view-timeline]. *)
+val pp_timeline_item_name : timeline_item_name Pp.t
+(** [pp_timeline_item_name] pretty-prints the name of one [scroll-timeline] or
+    [view-timeline] item. *)
+
+val read_timeline_item_name : Cursor.t -> timeline_item_name
+(** [read_timeline_item_name t] parses [none] or a dashed ident. *)
+
+val read_timeline_shorthand : ?inset:bool -> Cursor.t -> timeline_shorthand
+(** [read_timeline_shorthand ?inset t] parses [scroll-timeline] and, with
+    [inset] set, [view-timeline], whose items carry an inset the
+    [scroll-timeline] grammar has no slot for. *)
 
 val pp_timeline_shorthand : timeline_shorthand Pp.t
 (** [pp_timeline_shorthand] pretty-prints [scroll-timeline] and [view-timeline]
@@ -294,7 +303,8 @@ val pp_timeline_shorthand_item : timeline_shorthand_item Pp.t
 (** [pp_timeline_shorthand_item] pretty-prints one [scroll-timeline]/
     [view-timeline] shorthand item. *)
 
-val read_timeline_shorthand_item : Cursor.t -> timeline_shorthand_item
+val read_timeline_shorthand_item :
+  ?inset:bool -> Cursor.t -> timeline_shorthand_item
 (** [read_timeline_shorthand_item t] parses one [scroll-timeline]/
     [view-timeline] shorthand item. *)
 

@@ -1708,15 +1708,6 @@ let vars_of_timeline_axis (value : Properties.timeline_axis) =
 let vars_of_timeline_name (value : Properties.timeline_name) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
-  match value with
-  | Var v -> [ V v ]
-  | Timelines items ->
-      List.concat_map
-        (fun { Properties.axis; _ } -> vars_of_timeline_axis axis)
-        items
-  | _ -> []
-
 let vars_of_timeline_inset_item (value : Properties.timeline_inset_item) =
   match value with Auto -> [] | Length lp -> vars_of_length_percentage lp
 
@@ -1727,6 +1718,17 @@ let vars_of_timeline_inset (value : Properties.timeline_inset) =
       vars_of_timeline_inset_item first
       @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
+  match value with
+  | Var v -> [ V v ]
+  | Timelines items ->
+      List.concat_map
+        (fun { Properties.axis; inset; _ } ->
+          Option.value ~default:[] (Option.map vars_of_timeline_axis axis)
+          @ Option.value ~default:[] (Option.map vars_of_timeline_inset inset))
+        items
+  | _ -> []
 
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
