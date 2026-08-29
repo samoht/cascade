@@ -757,32 +757,6 @@ let rec pp_font_family : font_family Pp.t =
       let level_chars =
         match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
       in
-      (* CSS Fonts 4 sec. 2.1: [font-family] is a fallback list, so a duplicate
-         entry never wins under cascade resolution - drop it under minify (the
-         first occurrence keeps the source position). A bare generic keyword
-         (notably [monospace]) takes the UA generic-font size, so the
-         [monospace, monospace] idiom opts back into the normal size; a dedup
-         must not collapse a list to a single generic, which would shrink the
-         text. *)
-      let fonts =
-        if Pp.minified ctx then
-          let seen = Hashtbl.create 8 in
-          let deduped =
-            List.filter
-              (fun f ->
-                let key = Pp.to_string ~minify:true pp_font_family f in
-                if Hashtbl.mem seen key then false
-                else (
-                  Hashtbl.add seen key ();
-                  true))
-              fonts
-          in
-          match deduped with
-          | [ single ] when is_generic_family single && List.length fonts > 1 ->
-              fonts
-          | _ -> deduped
-        else fonts
-      in
       Pp.list_wrap ~threshold:90 ~sep:Pp.comma ~wrap_indent:(level_chars + 2)
         pp_font_family ctx fonts
   | Invalid tokens ->
@@ -1993,14 +1967,47 @@ let normalize_font_weight : font_weight -> font_weight = function
   | Bold -> Weight 700
   | value -> value
 
-(* sec. 2.7 gives the [font] shorthand a [<'font-weight'>] slot, so the slot
-   takes the longhand's fold. *)
+(* sec. 2.1 has the user agent walk the family list until one matches, so an
+   entry repeating an earlier one is never reached and names nothing: drop it,
+   keeping the first occurrence's position. The key is the minified spelling,
+   which is what makes [Arial] and ["Arial"] one entry. A one-entry list is that
+   entry, so the fold lands on the node the same text parses to. A bare generic
+   keyword (notably [monospace]) takes the UA generic-font size, so the
+   [monospace, monospace] idiom opts back into the normal size: a list that
+   would collapse to a lone generic keeps its duplicate. *)
+let normalize_font_family (value : font_family) : font_family =
+  match value with
+  | List fonts -> (
+      let seen = Hashtbl.create 8 in
+      let deduped =
+        List.filter
+          (fun f ->
+            let key = Pp.to_string ~minify:true pp_font_family f in
+            if Hashtbl.mem seen key then false
+            else (
+              Hashtbl.add seen key ();
+              true))
+          fonts
+      in
+      if List.compare_lengths deduped fonts = 0 then
+        match fonts with [ single ] -> single | _ -> value
+      else
+        match deduped with
+        | [ single ] when is_generic_family single -> value
+        | [ single ] -> single
+        | deduped -> List deduped)
+  | other -> other
+
+(* sec. 2.7 gives the [font] shorthand [<'font-weight'>] and [<'font-family'>#]
+   slots, so each slot takes its longhand's fold. *)
 let normalize_font : font -> font =
  fun value ->
   match value with
   | Shorthand s ->
       let weight = option_map_preserve normalize_font_weight s.weight in
-      if weight == s.weight then value else Shorthand { s with weight }
+      let family = normalize_font_family s.family in
+      if weight == s.weight && family == s.family then value
+      else Shorthand { s with weight; family }
   | other -> other
 
 let rec read_font_variant_emoji t : font_variant_emoji =
