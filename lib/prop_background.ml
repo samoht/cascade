@@ -373,6 +373,53 @@ let length_of_border_width_calc calc =
   in
   aux calc
 
+(* The reverse of [length_of_border_width]: every dimension the two types share
+   round-trips, so a fold done in [length] space (the [min()]/[max()]/ [clamp()]
+   reduction, [Values.normalize_length]) can rebuild a [border_width]
+   afterwards. *)
+let border_width_of_length : length -> border_width option = function
+  | Px n -> Some (Px n)
+  | Cm n -> Some (Cm n)
+  | Mm n -> Some (Mm n)
+  | Q n -> Some (Q n)
+  | In n -> Some (In n)
+  | Pt n -> Some (Pt n)
+  | Pc n -> Some (Pc n)
+  | Rem n -> Some (Rem n)
+  | Em n -> Some (Em n)
+  | Ex n -> Some (Ex n)
+  | Cap n -> Some (Cap n)
+  | Ic n -> Some (Ic n)
+  | Ric n -> Some (Ric n)
+  | Rlh n -> Some (Rlh n)
+  | Ch n -> Some (Ch n)
+  | Lh n -> Some (Lh n)
+  | Vh n -> Some (Vh n)
+  | Vw n -> Some (Vw n)
+  | Vmin n -> Some (Vmin n)
+  | Vmax n -> Some (Vmax n)
+  | Pct n -> Some (Pct n)
+  | Dimension { value; unit; repr } -> Some (Dimension { value; unit; repr })
+  | Zero -> Some Zero
+  | _ -> None
+
+let border_width_of_length_calc calc =
+  let rec aux : length calc -> border_width calc option = function
+    | Val length ->
+        Option.map (fun width -> Val width) (border_width_of_length length)
+    | Num n -> Some (Num n)
+    | Math_const c -> Some (Math_const c)
+    | Math_fn fn -> Some (Math_fn fn)
+    | Var _ | Sibling_index | Sibling_count -> None
+    | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
+    | Parens inner -> Option.map (fun inner -> Parens inner) (aux inner)
+    | Expr (left, op, right) -> (
+        match (aux left, aux right) with
+        | Some left, Some right -> Some (Expr (left, op, right))
+        | _ -> None)
+  in
+  aux calc
+
 let length_linear_term : length -> (string * float * (float -> length)) option =
   function
   | Zero -> Some ("px", 0., fun _ -> Zero)
@@ -579,6 +626,70 @@ let reduce_border_width_clamp lower value upper =
       | _ -> None)
   | _ -> None
 
+(* [pp] is a pure serialiser (see the module note); every node-changing fold
+   lives here instead, so it runs before [Declaration.hash] and two authored
+   spellings of the same value converge to one node.
+
+   A [min()]/[max()]/[clamp()] argument that survives grouping still gets its
+   own same-unit terms combined (mirrors what [pp] used to do per-argument via
+   [simplified_border_width_length]); the standalone [calc()] arm instead goes
+   through [Values.normalize_length], the stronger fold [pp] used only when
+   minifying. *)
+let normalize_border_width_calc_arg (c : border_width calc) : border_width calc
+    =
+  match simplified_border_width_length c with
+  | Some (Val length) -> (
+      match border_width_of_length length with Some bw -> Val bw | None -> c)
+  | Some simplified -> (
+      match border_width_of_length_calc simplified with
+      | Some c' -> c'
+      | None -> c)
+  | None -> c
+
+let normalize_border_width_calc (c : border_width calc) : border_width calc =
+  match length_of_border_width_calc c with
+  | None -> Values.eval_calc c
+  | Some lc -> (
+      match Values.normalize_length (Calc lc) with
+      | Calc lc' -> (
+          match border_width_of_length_calc lc' with Some c' -> c' | None -> c)
+      | length -> (
+          match border_width_of_length length with
+          | Some bw -> Val bw
+          | None -> c))
+
+let normalize_border_width_minmax kind (args : border_width calc list) :
+    border_width =
+  let rebuild args = match kind with `Min -> Min args | `Max -> Max args in
+  match reduce_border_width_minmax kind args with
+  | Some [ Val length ] -> (
+      match border_width_of_length length with
+      | Some bw -> bw
+      | None -> rebuild args)
+  | Some lengths -> (
+      match List.map border_width_of_length_calc lengths with
+      | terms when List.for_all Option.is_some terms ->
+          rebuild (List.map Option.get terms)
+      | _ -> rebuild args)
+  | None -> rebuild (List.map normalize_border_width_calc_arg args)
+
+let normalize_border_width_clamp lower value upper : border_width =
+  match reduce_border_width_clamp lower value upper with
+  | Some (`Length length) -> (
+      match border_width_of_length length with
+      | Some bw -> bw
+      | None -> Clamp (lower, value, upper))
+  | Some (`Max cargs) -> (
+      match List.map border_width_of_length_calc cargs with
+      | terms when List.for_all Option.is_some terms ->
+          Max (List.map Option.get terms)
+      | _ -> Clamp (lower, value, upper))
+  | None ->
+      Clamp
+        ( normalize_border_width_calc_arg lower,
+          normalize_border_width_calc_arg value,
+          normalize_border_width_calc_arg upper )
+
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
   | Thin -> Pp.string ctx "thin"
@@ -616,12 +727,9 @@ let rec pp_border_width : border_width Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
-  | Calc cv -> (
-      match (Pp.minified ctx, length_of_border_width_calc cv) with
-      | true, Some cv -> pp_length ctx (Values.normalize_length (Calc cv))
-      | _ -> pp_calc pp_border_width ctx cv)
-  | Min args -> pp_border_width_minmax "min" `Min ctx args
-  | Max args -> pp_border_width_minmax "max" `Max ctx args
+  | Calc cv -> pp_calc pp_border_width ctx cv
+  | Min args -> pp_border_width_minmax "min" ctx args
+  | Max args -> pp_border_width_minmax "max" ctx args
   | Clamp (lower, value, upper) -> pp_border_width_clamp ctx lower value upper
   | Var v -> pp_var pp_border_width ctx v
   | Inherit -> Pp.string ctx "inherit"
@@ -630,36 +738,26 @@ let rec pp_border_width : border_width Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* Structural only (no [simplified_border_width_length]/[reduce_border_width_*]
+   fold: those moved to [normalize_border_width]); [length_of_border_width_calc]
+   is a type-level reshape, not a value fold. *)
 and pp_border_width_calc_contents ctx calc =
-  match simplified_border_width_length calc with
-  | Some (Val length) -> pp_length ctx length
-  | Some calc -> pp_length_calc_contents ctx calc
+  match length_of_border_width_calc calc with
+  | Some lc -> pp_length_calc_contents ctx lc
   | None -> pp_calc pp_border_width ctx calc
 
-and pp_border_width_minmax name kind ctx args =
-  match reduce_border_width_minmax kind args with
-  | Some [ Val length ] -> pp_length ctx length
-  | Some args ->
-      Pp.call name (Pp.list ~sep:Pp.comma pp_length_calc_contents) ctx args
-  | None ->
-      Pp.call name
-        (Pp.list ~sep:Pp.comma pp_border_width_calc_contents)
-        ctx args
+and pp_border_width_minmax name ctx args =
+  Pp.call name (Pp.list ~sep:Pp.comma pp_border_width_calc_contents) ctx args
 
 and pp_border_width_clamp ctx lower value upper =
-  match reduce_border_width_clamp lower value upper with
-  | Some (`Length length) -> pp_length ctx length
-  | Some (`Max args) ->
-      Pp.call "max" (Pp.list ~sep:Pp.comma pp_length_calc_contents) ctx args
-  | None ->
-      Pp.call "clamp"
-        (fun ctx (lower, value, upper) ->
-          pp_border_width_calc_contents ctx lower;
-          Pp.comma ctx ();
-          pp_border_width_calc_contents ctx value;
-          Pp.comma ctx ();
-          pp_border_width_calc_contents ctx upper)
-        ctx (lower, value, upper)
+  Pp.call "clamp"
+    (fun ctx (lower, value, upper) ->
+      pp_border_width_calc_contents ctx lower;
+      Pp.comma ctx ();
+      pp_border_width_calc_contents ctx value;
+      Pp.comma ctx ();
+      pp_border_width_calc_contents ctx upper)
+    ctx (lower, value, upper)
 
 let pp_border_shorthand : border_shorthand Pp.t =
  fun ctx { width; style; color } ->
@@ -1737,7 +1835,13 @@ let border_width_is_zero (bw : border_width) =
 let normalize_border_width (bw : border_width) : border_width =
   match bw with
   | Calc c -> (
-      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+      match normalize_border_width_calc c with
+      | Val v -> v
+      | folded -> Calc folded)
+  | Min args -> normalize_border_width_minmax `Min args
+  | Max args -> normalize_border_width_minmax `Max args
+  | Clamp (lower, value, upper) ->
+      normalize_border_width_clamp lower value upper
   | _ when border_width_is_zero bw -> Zero
   | _ -> bw
 
