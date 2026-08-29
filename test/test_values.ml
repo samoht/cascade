@@ -1349,6 +1349,11 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb,var(--c) calc(var(--o)*100%),blue)"
     ~optimized:"color-mix(in srgb,var(--c) calc(var(--o)*100%),#00f)"
     "color-mix(in srgb, var(--c) calc(var(--o) * 100%), blue)";
+  (* A percentage token in a var fallback is still a typed color-mix weight, so
+     it takes the same numeric minification as a top-level weight. *)
+  check_color ~expected:"color-mix(in srgb,red var(--p,30%),blue)"
+    ~optimized:"color-mix(in srgb,red var(--p,30%),#00f)"
+    "color-mix(in srgb, red var(--p, 30.0%), blue)";
   (* Both the colour and the percentage are [var()]: the leading var is the
      colour, so source order is preserved (regression: the two were swapped,
      landing the alpha var in the colour slot). *)

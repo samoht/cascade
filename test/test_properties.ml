@@ -3946,6 +3946,11 @@ let test_field_sizing () =
 
 let test_font_size () =
   check_font_size "16px";
+  check_font_size "50%";
+  let parsed = read_font_size (Cursor.of_string "50%") in
+  (match parsed with
+  | Pct n -> Alcotest.(check (float 0.)) "public percentage node" 50. n
+  | _ -> Alcotest.fail "font-size percentage did not use Pct");
   check_font_size "small";
   check_font_size "medium";
   check_font_size "large";
