@@ -117,6 +117,18 @@ val precedes : t -> node_id -> node_id -> bool
     local candidate ordering; use {!val-canonical_order} when a full output
     projection is needed. *)
 
+val successors : t -> node_id -> node_id list
+(** [successors t i] is the nodes [i] has a direct edge to. A dense run is
+    stored as a transitive chain rather than one edge per constrained pair, so a
+    node that must precede another is not always a direct successor of it;
+    {!val-precedes} is the reachability question. *)
+
+val reachability_expansions : t -> int
+(** [reachability_expansions t] is how many nodes [t] has expanded to answer
+    {!val-precedes}. Each node's reachable set is settled once and reused, so
+    this stays bounded by the node count however many pairs a caller asks about.
+*)
+
 val canonical_order_by : t -> (node_id -> int) -> node_id array
 (** [canonical_order_by t rank] is the live node indices in a linear extension
     of the dependency DAG, choosing among the nodes currently free to come next

@@ -100,6 +100,9 @@ type t = {
   branch_index : node_id list String_table.t;
       (** selector branch -> node ids that carry it; same role as [key_index]
           for the [share_branch] dimension. *)
+  mutable expansions : int;
+      (** nodes expanded to answer reachability questions, for
+          {!reachability_expansions}. *)
 }
 
 (* The two dimensions of the CSS-graph dependency. Two rules conflict - their
@@ -759,6 +762,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       succ = [||];
       key_index = Key_tbl.create (max 16 (n * 2));
       branch_index = String_table.create (max 16 (n * 2));
+      expansions = 0;
     }
   in
   for i = 0 to n - 1 do
@@ -787,6 +791,7 @@ let path_exists t source target =
         else if Bytes.get seen i <> '\000' then visit rest
         else begin
           Bytes.set seen i '\001';
+          t.expansions <- t.expansions + 1;
           let next =
             List.fold_left (fun acc (j, _) -> j :: acc) rest t.succ.(i)
           in
@@ -796,6 +801,8 @@ let path_exists t source target =
   source <> target && visit [ source ]
 
 let precedes t i j = t.live.(i) && t.live.(j) && path_exists t i j
+let successors t i = List.map fst t.succ.(i)
+let reachability_expansions t = t.expansions
 let generation t = t.generation
 
 let live_nodes t =
@@ -1055,6 +1062,7 @@ let rewrite_base t ~consume ~produce :
                [add_external_edges] below sees the pre-rewrite index. *)
             key_index = t.key_index;
             branch_index = t.branch_index;
+            expansions = 0;
           }
         in
         Ok (total, consumed_set total consume, graph)
