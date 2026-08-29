@@ -209,6 +209,26 @@ let test_background_initial_slot_spellings_factor () =
     (optimize_str
        ".a{background:red content-box border-box}.b{background:red content-box}")
 
+(* CSS Backgrounds 3 (ED) sec. 2.4 gives each single [<repeat-style>] keyword
+   the axis pair it computes to, so the pair and the keyword name one value.
+   Factoring compares nodes, so the two rules meet only if the fold ran
+   first. *)
+let test_repeat_style_spellings_factor () =
+  Alcotest.(check string)
+    "repeat repeat factors with repeat" ".a,.b{background-repeat:repeat}"
+    (optimize_str
+       ".a{background-repeat:repeat repeat}.b{background-repeat:repeat}");
+  Alcotest.(check string)
+    "repeat no-repeat factors with repeat-x" ".a,.b{background-repeat:repeat-x}"
+    (optimize_str
+       ".a{background-repeat:repeat no-repeat}.b{background-repeat:repeat-x}");
+  (* Two different axes have no one-keyword spelling, so these stay apart. *)
+  Alcotest.(check string)
+    "repeat space does not factor with repeat"
+    ".a{background-repeat:repeat space}.b{background-repeat:repeat}"
+    (optimize_str
+       ".a{background-repeat:repeat space}.b{background-repeat:repeat}")
+
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so the keyword and the number name one weight. Factoring
    compares nodes, so the two rules only meet as one declaration if the fold
@@ -377,6 +397,8 @@ let suite =
         test_initial_line_color_spellings_factor;
       Alcotest.test_case "initial background slot spellings factor together"
         `Quick test_background_initial_slot_spellings_factor;
+      Alcotest.test_case "repeat-style spellings factor together" `Quick
+        test_repeat_style_spellings_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"

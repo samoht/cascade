@@ -1329,6 +1329,49 @@ let background_box_slots () =
     ~optimized:"background:content-box border-box red"
     "background: red content-box border-box"
 
+(* CSS Backgrounds 3 (ED) sec. 2.4 gives every single [<repeat-style>] keyword
+   the pair it computes to: [repeat] is [repeat repeat], [space] is [space
+   space], [round] is [round round], [no-repeat] is [no-repeat no-repeat],
+   [repeat-x] is [repeat no-repeat] and [repeat-y] is [no-repeat repeat]. Each
+   pair therefore has a one-keyword spelling of the same value, and the
+   optimizer picks it; pp prints the pair it was handed. *)
+let background_repeat_axes () =
+  check_declaration ~expected:"background-repeat:repeat repeat"
+    ~optimized:"background-repeat:repeat" "background-repeat: repeat repeat";
+  check_declaration ~expected:"background-repeat:space space"
+    ~optimized:"background-repeat:space" "background-repeat: space space";
+  check_declaration ~expected:"background-repeat:round round"
+    ~optimized:"background-repeat:round" "background-repeat: round round";
+  check_declaration ~expected:"background-repeat:no-repeat no-repeat"
+    ~optimized:"background-repeat:no-repeat"
+    "background-repeat: no-repeat no-repeat";
+  check_declaration ~expected:"background-repeat:repeat no-repeat"
+    ~optimized:"background-repeat:repeat-x"
+    "background-repeat: repeat no-repeat";
+  check_declaration ~expected:"background-repeat:no-repeat repeat"
+    ~optimized:"background-repeat:repeat-y"
+    "background-repeat: no-repeat repeat";
+  (* Each layer of the comma-separated list folds on its own. *)
+  check_declaration ~expected:"background-repeat:repeat repeat,space space"
+    ~optimized:"background-repeat:repeat,space"
+    "background-repeat: repeat repeat, space space";
+  (* The shorthand's repeat slot reads the same production, so the fold reaches
+     it and leaves the slot at its initial value (sec. 2.4). *)
+  check_declaration ~expected:"background:repeat repeat red"
+    ~optimized:"background:red" "background: red repeat repeat";
+  (* Controls: a pair with two different axes has no one-keyword spelling, and
+     the one-keyword forms are already the node they fold to. *)
+  check_declaration ~expected:"background-repeat:repeat space"
+    ~optimized:"background-repeat:repeat space"
+    "background-repeat: repeat space";
+  check_declaration ~expected:"background-repeat:space no-repeat"
+    ~optimized:"background-repeat:space no-repeat"
+    "background-repeat: space no-repeat";
+  check_declaration ~expected:"background-repeat:repeat-x"
+    ~optimized:"background-repeat:repeat-x" "background-repeat: repeat-x";
+  check_declaration ~expected:"background-repeat:repeat"
+    ~optimized:"background-repeat:repeat" "background-repeat: repeat"
+
 (* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
    so a layer that fills no slot declares what [background: none] declares. [0
    0] is the shortest spelling of that layer, so it is the node the spellings
@@ -4279,6 +4322,7 @@ let declaration_tests =
     test_case "background initial slots" `Quick background_initial_slots;
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
+    test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;
