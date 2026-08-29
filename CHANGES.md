@@ -457,6 +457,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` merges two rules whose `border-width` differ only in an
+  unreduced `min()`/`max()`/`clamp()`, such as `min(2cqi,3cqi)` and `2cqi`; a
+  second `--minify` pass used to be needed before they merged (#624)
 - `--minify` drops the same `%`/`)` boundary space in `clip-path`'s and
   `object-view-box`'s `inset()`, and in `margin-inline`/`margin-block`,
   which share the box-shorthand shape (#619, #623)
