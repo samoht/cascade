@@ -98,6 +98,17 @@ let test_factoring_stable_under_unrelated_grouping () =
     "unrelated grouping does not change factoring" (optimize_str separate)
     (optimize_str grouped)
 
+(* Two rules that declare the same thing must factor together, whatever spelling
+   the author used. CSS Backgrounds 3 (ED) sec. 3.4 makes every slot of the
+   border shorthands optional and sets an omitted one to its initial value,
+   which for the width slot is [medium] (sec. 3.3). An explicit [medium] and an
+   absent width are therefore the same declaration, and factoring compares
+   nodes, so the drop has to have happened before the two rules meet. *)
+let test_initial_line_width_spellings_factor () =
+  Alcotest.(check string)
+    "border medium factors with the omitted width" ".a,.b{border:solid red}"
+    (optimize_str ".a{border:medium solid red}.b{border:solid red}")
+
 let suite =
   ( "factor",
     [
@@ -109,4 +120,6 @@ let suite =
         test_split_shorthand_confluence;
       Alcotest.test_case "factoring stable under unrelated grouping" `Quick
         test_factoring_stable_under_unrelated_grouping;
+      Alcotest.test_case "initial line-width spellings factor together" `Quick
+        test_initial_line_width_spellings_factor;
     ] )

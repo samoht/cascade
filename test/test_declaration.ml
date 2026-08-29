@@ -916,6 +916,24 @@ let border_line_width () =
     ~optimized:"border:thin solid red" "border: thin solid red";
   check_declaration ~expected:"border:thick solid red"
     ~optimized:"border:thick solid red" "border: thick solid red";
+  (* [medium] is the initial [<line-width>], and sec. 3.4 sets an omitted
+     shorthand slot to its initial value, so an explicit [medium] beside another
+     slot is what omitting it already means: the optimizer drops it, pp holds
+     the node. A lone [medium] fills the only slot the shorthand has, so it
+     stays. *)
+  check_declaration ~expected:"border:medium solid red"
+    ~optimized:"border:solid red" "border: medium solid red";
+  check_declaration ~expected:"border-top:medium dashed blue"
+    ~optimized:"border-top:dashed#00f" "border-top: medium dashed blue";
+  check_declaration ~expected:"column-rule:medium solid red"
+    ~optimized:"column-rule:solid red" "column-rule: medium solid red";
+  check_declaration ~expected:"border-inline-start:medium dotted red"
+    ~optimized:"border-inline-start:dotted red"
+    "border-inline-start: medium dotted red";
+  check_declaration ~expected:"border:medium red" ~optimized:"border:red"
+    "border: medium red";
+  check_declaration ~expected:"border:medium" ~optimized:"border:medium"
+    "border: medium";
   (* Controls: a plain length stands, and a shorthand that fills no width slot
      is untouched. *)
   check_declaration ~expected:"border:1px solid red"
