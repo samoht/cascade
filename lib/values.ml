@@ -4491,20 +4491,14 @@ let starts_unsigned_number s =
    whichever node it is given ([Pct] -> [%], [Num] -> bare number). The
    precision is fixed in the AST normalize pass, so this prints in full. *)
 let pp_color_lightness ctx (l : percentage option) : percentage option =
-  match l with
+  (match l with
   | Some (Pct f) ->
       pp_lab_float ctx f;
-      Pp.char ctx '%';
-      l
-  | Some (Num f) ->
-      pp_lab_float ctx f;
-      l
-  | Some l ->
-      pp_percentage ctx l;
-      Some l
-  | None ->
-      Pp.string ctx "none";
-      None
+      Pp.char ctx '%'
+  | Some (Num f) -> pp_lab_float ctx f
+  | Some l -> pp_percentage ctx l
+  | None -> Pp.string ctx "none");
+  l
 
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =

@@ -969,6 +969,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- The colour-lightness printer returns its unchanged AST value once after
+  serializing it, instead of repeating that identity result in every branch
+  (#661)
 - Shadow serialization passes its spread value directly to the length printer;
   the fold migration left an identity helper and one needless binding (#660)
 - `Syntax.is_ident` answers whether a whole string is one CSS ident (CSS
