@@ -3069,7 +3069,7 @@ let shape_outside_sheet () =
 
 (* Every property that reads a [<line-width>]: the four physical longhands and
    their logical counterparts, the 1-4 value shorthand, the two-value logical
-   shorthands, and the width slot of [border]. *)
+   shorthands, and the width slot of [border] and of [outline]. *)
 let line_width_sites value =
   List.map
     (fun property -> String.concat "" [ property; ":"; value ])
@@ -3086,13 +3086,15 @@ let line_width_sites value =
       "border-block-width";
       "border-inline-width";
       "border";
+      "outline-width";
+      "outline";
     ]
 
 (* A [<length>] site reading the same comparison, for contrast. *)
 let length_math_sites value =
   List.map
     (fun property -> String.concat "" [ property; ":"; value ])
-    [ "margin"; "margin-top"; "outline-width"; "width" ]
+    [ "margin"; "margin-top"; "width" ]
 
 (* CSS Values 4 sec. 10.2 gives [min()] / [max()] a comma-separated list of
    [<calc-sum>] and [clamp()] exactly three arguments, and CSS Syntax 3 sec. 8.2
