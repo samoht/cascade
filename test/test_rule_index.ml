@@ -4,7 +4,7 @@ let red = Declaration.v Properties.Color (Current : Values.color)
 let blue = Declaration.v Properties.Color (Transparent : Values.color)
 
 let solid_outline_width =
-  Declaration.v Properties.Outline_width (Px 1.0 : Values.length)
+  Declaration.v Properties.Outline_width (Px 1.0 : Properties.border_width)
 
 let solid_outline_style =
   Declaration.v Properties.Outline_style (Solid : Properties.outline_style)

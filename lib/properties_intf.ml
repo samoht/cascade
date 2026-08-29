@@ -1789,7 +1789,7 @@ type outline_style =
 
 (* Outline shorthand type *)
 type outline_shorthand = {
-  width : length option;
+  width : border_width option;
   style : outline_style option;
   color : color option;
 }
@@ -4730,7 +4730,7 @@ type 'a property =
   | Z_index : z_index property
   | Outline : outline property
   | Outline_style : outline_style property
-  | Outline_width : length property
+  | Outline_width : border_width property
   | Outline_color : color property
   | Outline_offset : length property
   | Forced_color_adjust : forced_color_adjust property

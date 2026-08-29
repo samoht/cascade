@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `outline-width` and the width slot of the `outline` shorthand read a
+  `<length>` where CSS UI 4 sec. 3.2 gives them a `<line-width>`, so
+  `outline: thin solid red` was dropped as invalid (#633)
 - A function reader that could not read all of its arguments answered with
   the ones it had, so `transform: translateX(10px red)` read as
   `translateX(10px)`; the cause behind #617, #627 and #629 (#631)

@@ -504,7 +504,7 @@ let property_value_uses_runtime_subst (type a)
   | Border_top_right_radius -> Values.length_has_runtime_subst value
   | Border_bottom_left_radius -> Values.length_has_runtime_subst value
   | Border_bottom_right_radius -> Values.length_has_runtime_subst value
-  | Outline_width -> Values.length_has_runtime_subst value
+  | Outline_width -> Properties.border_width_has_runtime_subst value
   | Margin -> length_list_has_runtime_subst value
   | Padding -> length_list_has_runtime_subst value
   | Inset -> length_list_has_runtime_subst value
@@ -1439,7 +1439,7 @@ let read_position_value_prop : type a.
   | Left -> Some (v Left (read_inset_longhand t))
   | Outline -> Some (v Outline (read_outline t))
   | Outline_style -> Some (v Outline_style (read_outline_style t))
-  | Outline_width -> Some (v Outline_width (read_nn_length_or_global t))
+  | Outline_width -> Some (v Outline_width (read_border_width t))
   | Outline_offset -> Some (v Outline_offset (read_length_or_css_wide t))
   | Forced_color_adjust ->
       Some (v Forced_color_adjust (read_forced_color_adjust t))

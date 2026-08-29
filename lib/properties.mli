@@ -609,6 +609,10 @@ val pp_border_width : border_width Pp.t
 val read_border_width : Cursor.t -> border_width
 (** [read_border_width t] is the [border_width] parsed from [t]. *)
 
+val border_width_has_runtime_subst : border_width -> bool
+(** [border_width_has_runtime_subst w] is [true] when [w] is a [var()] or
+    reaches one through a math function. *)
+
 val pp_border : border Pp.t
 (** [pp_border] is the pretty-printer for [border]. *)
 

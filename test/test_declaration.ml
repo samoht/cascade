@@ -818,6 +818,53 @@ let borders () =
   check_declaration ~expected:"border-left-color:yellow"
     ~optimized:"border-left-color:#ff0" "border-left-color: yellow"
 
+(* CSS Basic User Interface 4 (ED) sec. 3.2 gives outline-width the value
+   [<line-width>] and says it "accepts the same values as border-width [...]
+   with the same meaning"; CSS Backgrounds 3 (ED) sec. 3.3 defines
+   [<line-width>] as [thin | medium | thick | <length>]. The width slot of the
+   outline shorthand (sec. 3.1) is [<'outline-width'>], so the keywords and the
+   math functions read there too. *)
+let outline_line_width () =
+  check_declaration ~expected:"outline-width:thin" "outline-width: thin";
+  check_declaration ~expected:"outline-width:medium" "outline-width: medium";
+  check_declaration ~expected:"outline-width:thick" "outline-width: thick";
+  check_declaration ~expected:"outline:thin solid red" "outline: thin solid red";
+  check_declaration ~expected:"outline:medium solid red"
+    "outline: medium solid red";
+  check_declaration ~expected:"outline:thick solid red"
+    "outline: thick solid red";
+  (* CSS Values 4 sec. 10.2: a comparison over same-unit constants denotes one
+     length, so the optimizer reduces it to that length, as at every other
+     [<line-width>]; pp holds the call it was written as. *)
+  check_declaration ~expected:"outline-width:calc(1px + 1px)"
+    ~optimized:"outline-width:2px" "outline-width: calc(1px + 1px)";
+  check_declaration ~expected:"outline-width:min(3px)"
+    ~optimized:"outline-width:3px" "outline-width: min(3px)";
+  check_declaration ~expected:"outline-width:clamp(1px,2px,3px)"
+    ~optimized:"outline-width:2px" "outline-width: clamp(1px,2px,3px)";
+  check_declaration ~expected:"outline:calc(1px + 1px) solid red"
+    ~optimized:"outline:2px solid red" "outline: calc(1px + 1px) solid red";
+  check_declaration ~expected:"outline:min(3px) solid red"
+    ~optimized:"outline:3px solid red" "outline: min(3px) solid red";
+  check_declaration ~expected:"outline:clamp(1px,2px,3px) solid red"
+    ~optimized:"outline:2px solid red" "outline: clamp(1px,2px,3px) solid red";
+  (* No unit relates dvh to px, so the comparison stands as written. *)
+  check_declaration ~roundtrip:true "outline-width:max(3dvh,4px)";
+  (* A [<line-width>] is non-negative. *)
+  neg_cursor read_declaration "outline-width:-1px";
+  (* Controls: a plain length still reads, and the other shorthand slots are
+     untouched. *)
+  check_declaration ~expected:"outline-width:0px" ~optimized:"outline-width:0"
+    "outline-width: 0px";
+  check_declaration ~expected:"outline-width:2px" "outline-width: 2px";
+  check_declaration ~expected:"outline:0px solid red"
+    ~optimized:"outline:0 solid red" "outline: 0px solid red";
+  check_declaration ~expected:"outline:2px solid red" "outline: 2px solid red";
+  check_declaration ~expected:"outline:none" "outline: none";
+  check_declaration ~expected:"outline:auto" "outline: auto";
+  check_declaration ~expected:"outline:red" "outline: red";
+  check_declaration ~expected:"outline:solid red" "outline: solid red"
+
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
      border-inline-start and border-inline-end take <'border-top-width'> ||
@@ -3022,7 +3069,7 @@ let shape_outside_sheet () =
 
 (* Every property that reads a [<line-width>]: the four physical longhands and
    their logical counterparts, the 1-4 value shorthand, the two-value logical
-   shorthands, and the width slot of [border]. *)
+   shorthands, and the width slot of [border] and of [outline]. *)
 let line_width_sites value =
   List.map
     (fun property -> String.concat "" [ property; ":"; value ])
@@ -3039,13 +3086,15 @@ let line_width_sites value =
       "border-block-width";
       "border-inline-width";
       "border";
+      "outline-width";
+      "outline";
     ]
 
 (* A [<length>] site reading the same comparison, for contrast. *)
 let length_math_sites value =
   List.map
     (fun property -> String.concat "" [ property; ":"; value ])
-    [ "margin"; "margin-top"; "outline-width"; "width" ]
+    [ "margin"; "margin-top"; "width" ]
 
 (* CSS Values 4 sec. 10.2 gives [min()] / [max()] a comma-separated list of
    [<calc-sum>] and [clamp()] exactly three arguments, and CSS Syntax 3 sec. 8.2
@@ -3538,6 +3587,7 @@ let declaration_tests =
     test_case "flexbox flex+basis" `Quick flexbox_flex_and_basis;
     test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
+    test_case "outline line-width" `Quick outline_line_width;
     test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;
