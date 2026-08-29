@@ -181,6 +181,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `repeating-linear-gradient(var(...))` now keeps its repeating function name
+  instead of serializing back as a non-repeating linear gradient (#656)
 - A `var()` that supplies the complete body of a radial or conic gradient now
   reads as the exported `Radial_gradient_var` or `Conic_gradient_var` node,
   matching declarations built through those public constructors (#654)

@@ -1890,6 +1890,8 @@ let read_image_set_body t : background_image =
 let read_repeating_linear_gradient t =
   match Cursor.call "repeating-linear-gradient" t read_linear_gradient_body with
   | Linear_gradient (d, stops) -> Repeating_linear_gradient (d, stops)
+  | Linear_gradient_var v ->
+      Repeating_linear_gradient (Default_direction, [ Var v ])
   | other -> other
 
 let read_repeating_radial_gradient t =
