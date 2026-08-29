@@ -969,6 +969,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- Shadow serialization passes its spread value directly to the length printer;
+  the fold migration left an identity helper and one needless binding (#660)
 - `Syntax.is_ident` answers whether a whole string is one CSS ident (CSS
   Syntax 3 sec. 4.3.11), the check `Parser.escape_ident` already made for
   emission; a per-character scan reads a leading `-` as ident-start and misses `-4` (#626)

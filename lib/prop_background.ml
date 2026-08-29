@@ -133,17 +133,10 @@ let pp_color_after_length ctx color =
   Pp.space ctx ();
   pp_color ctx color
 
-(* Faithful: a default-zero spread is dropped in [normalize_shadow], not here.
-   [Some Zero] re-parses differently from [None] ([0 1px 3px 0] vs [0 1px 3px]),
-   so collapsing it is a node-changing fold that belongs in the AST normalize
-   pass, leaving pp a pure serialiser. *)
-let pp_shadow_spread _ctx (spread : length option) : length option = spread
-
 let pp_shadow_body ctx { h_offset; v_offset; blur; spread; color } =
   pp_length ctx h_offset;
   Pp.space ctx ();
   pp_length ctx v_offset;
-  let spread = pp_shadow_spread ctx spread in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
   match color with Some c -> pp_color_after_length ctx c | None -> ()
