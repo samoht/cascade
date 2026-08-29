@@ -606,6 +606,9 @@ let colors () =
     "color: hsl(0, 100%, 50%)";
   decl_optimizes_to ~held:"color:hsl(120 100% 50%/.5)" ~into:"color:#00ff0080"
     "color: hsla(120, 100%, 50%, 0.5)";
+  decl_optimizes_to ~held:"color:hsl(.5turn 50% 50%/var(--a))"
+    ~into:"color:hsl(180 50% 50%/var(--a))"
+    "color: hsl(.5turn 50% 50% / var(--a))";
 
   check_declaration ~expected:"background-color:red" "background-color: red";
   decl_optimizes_to ~held:"border-color:blue" ~into:"border-color:#00f"
@@ -642,6 +645,8 @@ let lengths () =
   check_declaration ~expected:"margin:auto" "margin: auto";
   check_declaration ~expected:"width:auto" "width: auto";
   check_declaration ~expected:"height:auto" "height: auto";
+  check_declaration ~expected:"min-inline-size:initial"
+    ~optimized:"min-inline-size:auto" "min-inline-size: initial";
 
   (* Min/max content *)
   check_declaration ~expected:"width:min-content" "width: min-content";
@@ -1653,8 +1658,10 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:none" "animation-name: none";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
-  check_declaration ~expected:"animation-duration:.5s" (* 500ms -> .5s *)
-    "animation-duration: 500ms";
+  check_declaration ~expected:"animation-duration:500ms"
+    ~optimized:"animation-duration:.5s" "animation-duration: 500ms";
+  check_declaration ~expected:"transition-duration:round(1.1s,.5s)"
+    ~optimized:"transition-duration:1s" "transition-duration: round(1.1s, .5s)";
   check_declaration ~expected:"animation-duration:2.5s"
     "animation-duration: 2.5s";
 
@@ -1721,15 +1728,21 @@ let animations_timing () =
      [<time>]. [0s] does not drop the unit. *)
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms";
+  check_declaration ~expected:"animation-delay:-500ms"
+    ~optimized:"animation-delay:-.5s" "animation-delay: -500ms";
   (* CSS Values 4 sec. 10.3 gives these functions the type of their arguments,
      so time-valued calls fit the delay longhands' [<time>] grammar. *)
-  check_declaration ~expected:"transition-delay:1s"
-    "transition-delay:round(1.1s,.5s)";
-  check_declaration ~expected:"animation-delay:.1s"
-    "animation-delay:mod(1.1s,.5s)";
-  check_declaration ~expected:"animation-delay:.1s"
-    "animation-delay:rem(1.1s,.5s)";
+  check_declaration ~expected:"transition-delay:round(1.1s,.5s)"
+    ~optimized:"transition-delay:1s" "transition-delay:round(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:mod(1.1s,.5s)"
+    ~optimized:"animation-delay:.1s" "animation-delay:mod(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:rem(1.1s,.5s)"
+    ~optimized:"animation-delay:.1s" "animation-delay:rem(1.1s,.5s)";
+  check_declaration ~expected:"transition-duration:var(--d,500ms)"
+    ~optimized:"transition-duration:var(--d,.5s)"
+    "transition-duration:var(--d,500ms)";
+  check_declaration ~expected:"interest-delay:round(1100ms,500ms)"
+    ~optimized:"interest-delay:1000ms" "interest-delay:round(1100ms,500ms)";
   let c = Cursor.of_string "transition-delay:bogus" in
   match read_declaration c with
   | exception
@@ -1802,10 +1815,15 @@ let transforms () =
   (* Per CSS Transforms 1 sec. 4 [center] is shorthand for [50% 50%] and the
      keyword pair [top left] is [0 0]. A single [0] would mean [0 50%], so the
      two-value form must be preserved. *)
-  check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
-  check_declaration ~expected:"transform-origin:0 0"
-    "transform-origin: top left";
-  check_declaration ~expected:"transform-origin:50%" "transform-origin: 50% 50%";
+  check_declaration ~expected:"transform-origin:center"
+    ~optimized:"transform-origin:50%" "transform-origin: center";
+  check_declaration ~expected:"transform-origin:top left"
+    ~optimized:"transform-origin:0 0" "transform-origin: top left";
+  check_declaration ~expected:"transform-origin:50% 50%"
+    ~optimized:"transform-origin:50%" "transform-origin: 50% 50%";
+  check_declaration ~expected:"transform-origin:var(--o,center)"
+    ~optimized:"transform-origin:var(--o,50%)"
+    "transform-origin:var(--o,center)";
   check_declaration ~expected:"transform-origin:10px 20px"
     "transform-origin: 10px 20px"
 
@@ -2039,13 +2057,17 @@ let list_properties () =
     "transition: opacity 1s ease-in .5s";
   check_declaration ~expected:"transition:opacity .3s,transform .3s"
     "transition: opacity 0.3s, transform 0.3s";
+  check_declaration ~expected:"transition:all 500ms"
+    ~optimized:"transition:all .5s" "transition: all 500ms";
 
   (* Animation *)
   check_declaration ~expected:"animation:none" "animation: none";
   check_declaration ~expected:"animation:spin 1s linear infinite"
     "animation: spin 1s linear infinite";
   check_declaration ~expected:"animation:slide .5s ease-out"
-    "animation: slide 0.5s ease-out"
+    "animation: slide 0.5s ease-out";
+  check_declaration ~expected:"animation:spin 500ms"
+    ~optimized:"animation:spin .5s" "animation: spin 500ms"
 
 let custom_properties () =
   (* Basic custom properties *)

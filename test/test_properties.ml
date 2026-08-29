@@ -3394,10 +3394,10 @@ let test_text_decoration_skip_ink () =
 
 let test_transform_origin () =
   (* Per CSS Transforms 1 sec. 4 the keyword [center] is shorthand for [50%] and
-     matched-pair shorthand collapses to a single value. Per shortest- wins
-     (Lightning CSS) the printer emits the numeric form. *)
-  check_transform_origin ~expected:"50%" "center";
-  check_transform_origin ~expected:"0 0" "left top";
+     matched-pair shorthand collapses to a single value during optimization. The
+     value printer preserves the parsed node. *)
+  check_transform_origin "center";
+  check_transform_origin "left top";
   (* A single value sets the X origin; Y defaults to center (50%), so it must
      not be duplicated onto the Y axis: [100%] means [100% 50%], not [100%
      100%], and [0] means [0 50%], not [0 0]. Only [50%] coincides with center.

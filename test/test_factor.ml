@@ -429,6 +429,29 @@ let test_text_decoration_default_spellings_factor () =
     ".a,.b{text-shadow:1px 1px}"
     (optimize_str ".a{text-shadow:1px 1px 0}.b{text-shadow:1px 1px}")
 
+(* These equivalent spellings were still canonicalised by their printers, too
+   late for declaration hashes to meet during factoring. *)
+let test_remaining_printer_fold_spellings_factor () =
+  Alcotest.(check string)
+    "logical minimum initial factors with auto" ".a,.b{min-inline-size:auto}"
+    (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:auto}");
+  Alcotest.(check string)
+    "milliseconds factor with seconds" ".a,.b{transition-duration:.5s}"
+    (optimize_str ".a{transition-duration:500ms}.b{transition-duration:.5s}");
+  Alcotest.(check string)
+    "origin keyword factors with percentage" ".a,.b{transform-origin:50%}"
+    (optimize_str ".a{transform-origin:center}.b{transform-origin:50%}");
+  Alcotest.(check string)
+    "stepped duration factors with its result" ".a,.b{transition-duration:1s}"
+    (optimize_str
+       ".a{transition-duration:round(1.1s,.5s)}.b{transition-duration:1s}");
+  Alcotest.(check string)
+    "angle hue factors with bare degrees"
+    ".a,.b{color:hsl(180 50% 50%/var(--a))}"
+    (optimize_str
+       ".a{color:hsl(.5turn 50% 50%/var(--a))}.b{color:hsl(180 50% \
+        50%/var(--a))}")
+
 let suite =
   ( "factor",
     [
@@ -478,4 +501,6 @@ let suite =
         test_list_style_default_spellings_factor;
       Alcotest.test_case "spelled-out text decoration defaults factor away"
         `Quick test_text_decoration_default_spellings_factor;
+      Alcotest.test_case "remaining printer folds factor together" `Quick
+        test_remaining_printer_fold_spellings_factor;
     ] )
