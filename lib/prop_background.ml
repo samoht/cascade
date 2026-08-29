@@ -225,27 +225,28 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
+(* CSS Backgrounds 3 (ED) sec. 4.1 puts the vertical radii after a [/], so each
+   group collapses on its own and neither reaches across the slash. With no
+   slash the values set both axes equally, so a vertical group equal to the
+   horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
+  let group vs =
+    collapse_box_shorthand
+      (map_preserve (Values.normalize_length_percentage ~strip) vs)
+  in
   match value with
   | Radius { horizontal; vertical } ->
-      preserve_if_equal value
-        (Radius
-           {
-             horizontal =
-               collapse_box_shorthand
-                 (map_preserve
-                    (Values.normalize_length_percentage ~strip)
-                    horizontal);
-             vertical =
-               option_map_preserve
-                 (fun vs ->
-                   collapse_box_shorthand
-                     (map_preserve
-                        (Values.normalize_length_percentage ~strip)
-                        vs))
-                 vertical;
-           })
+      let horizontal = group horizontal in
+      let vertical = option_map_preserve group vertical in
+      let vertical =
+        match vertical with
+        | Some vs when List.equal Values.equal_length_percentage horizontal vs
+          ->
+            Option.None
+        | _ -> vertical
+      in
+      preserve_if_equal value (Radius { horizontal; vertical })
   | other -> other
 
 (* CSS Backgrounds 3 (ED) sec. 2.10: the shorthand resets every longhand it
@@ -939,10 +940,24 @@ let rec pp_logical_border_width : logical_border_width Pp.t =
 
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
-  | Lengths [ a; b ] when Values.equal_length a b -> pp_length ctx a
   | (Lengths lengths : border_spacing) ->
       Pp.list ~sep:Pp.space pp_length ctx lengths
   | Var v -> pp_var pp_border_spacing ctx v
+
+(* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
+   and reads a single one as "both the horizontal and vertical spacing", so a
+   pair of equal lengths is the longer spelling of that one value. The per-side
+   fold runs first, so a pair that only agrees once normalised collapses too. *)
+and normalize_border_spacing : border_spacing -> border_spacing =
+ fun value ->
+  match value with
+  | Lengths lengths -> (
+      let normalized = map_preserve Values.normalize_length lengths in
+      match normalized with
+      | [ a; b ] when Values.equal_length a b -> Lengths [ a ]
+      | _ when normalized == lengths -> value
+      | _ -> Lengths normalized)
+  | Var _ -> value
 
 let rec pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
