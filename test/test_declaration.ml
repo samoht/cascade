@@ -4511,6 +4511,18 @@ let distinct_value label a b =
     false
     (Css.Declaration.equal_declaration a b)
 
+let aspect_ratio_has_one_node () =
+  let parsed = Css.Declaration.of_string "aspect-ratio:16/9" in
+  same_text_same_hash "Ratio constructor vs parsed"
+    (Css.aspect_ratio (Css.Ratio (16., 9.)))
+    parsed;
+  same_text_same_hash "ratio helper vs parsed"
+    (Css.aspect_ratio (Css.ratio 16. 9.))
+    parsed;
+  same_text_same_hash "Auto_ratio constructor vs parsed"
+    (Css.aspect_ratio (Css.Auto_ratio (16., 9.)))
+    (Css.Declaration.of_string "aspect-ratio:auto 16/9")
+
 let nan_has_one_node () =
   (* The keyword and the calculation that lands on NaN are the same value. *)
   let keyword = sole_declaration ".a{opacity:calc(NaN)}" in
@@ -4603,6 +4615,7 @@ let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
