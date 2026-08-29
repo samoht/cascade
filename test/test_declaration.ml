@@ -713,7 +713,23 @@ let display () =
   c ~expected:"display:block list-item" ~optimized:"display:list-item"
     "display: block flow list-item";
   c ~expected:"display:inline list-item" ~optimized:"display:inline list-item"
-    "display: inline flow list-item"
+    "display: inline flow list-item";
+  (* sec. 2 orders none of the three: [<display-outside>? && [ flow | flow-root
+     ]? && list-item] reads the inside keyword on either side of the
+     [list-item]. sec. 2.3 defaults the unwritten inside to [flow] and the
+     unwritten outside to [block], so [flow-root list-item] is what [block
+     flow-root list-item] says and pp writes the shorter one. *)
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item" "display: flow-root list-item";
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item" "display: list-item flow-root";
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item"
+    "display: block flow-root list-item";
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: flow list-item";
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: list-item flow"
 
 let position () =
   let c = check_declaration in

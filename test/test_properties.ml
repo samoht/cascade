@@ -1187,6 +1187,25 @@ let test_display () =
   check_display "table-row-group";
   check_display "inline-table";
   check_display "list-item";
+  (* CSS Display 3 (ED) sec. 2 defines [<display-listitem>] as
+     [<display-outside>? && [ flow | flow-root ]? && list-item], all three
+     order-free, so the inside keyword reads whether it comes before or after
+     the [list-item]. sec. 2.3: "If no inner display type value is specified,
+     the principal box's inner display type defaults to flow. If no outer
+     display type value is specified, the principal box's outer display type
+     defaults to block", so each default is left unwritten. *)
+  check_display "flow-root list-item";
+  check_display ~expected:"flow-root list-item" "list-item flow-root";
+  check_display ~expected:"block list-item" "flow list-item";
+  check_display ~expected:"block list-item" "list-item flow";
+  check_display "inline flow-root list-item";
+  check_display ~expected:"inline flow-root list-item"
+    "list-item inline flow-root";
+  (* [list-item] is not a [<display-outside>] and appears once in the
+     production, so neither a second [list-item] nor an inside outside the [flow
+     | flow-root] pair is a display value. *)
+  neg_cursor ~allow_partial:true read_display "list-item list-item";
+  neg_cursor ~allow_partial:true read_display "list-item table";
   check_display "contents";
   (* Intentional legacy: accepted for compatibility in some engines *)
   check_display "-webkit-box";
