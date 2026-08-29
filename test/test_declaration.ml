@@ -679,15 +679,28 @@ let font_properties () =
     "font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif";
   check_declaration ~expected:"font-family:Georgia,serif"
     "font-family: Georgia, serif";
-  (* minify dedups a repeated family, but must not collapse the list to a lone
-     generic keyword - [monospace, monospace] opts a bare generic back into the
-     normal UA size, so dropping the duplicate would shrink the text. *)
-  check_declaration ~expected:"font-family:Arial,Helvetica"
+  (* CSS Fonts 4 (ED) sec. 2.1 has the user agent iterate the list until a
+     family matches, so a repeat of an earlier entry is unreachable and names
+     the same value as the list without it. Dropping it is a node change, so pp
+     holds the list it parsed and the optimizer folds. A one-entry list is the
+     entry, so the fold has to land on the node [font-family: Arial] parses to.
+     The exception is a list that would collapse to a lone generic keyword:
+     [monospace, monospace] opts a bare generic back into the normal UA size, so
+     dropping the duplicate would shrink the text. *)
+  check_declaration ~expected:"font-family:Arial,Helvetica,Arial"
+    ~optimized:"font-family:Arial,Helvetica"
     "font-family: Arial, Helvetica, Arial";
+  check_declaration ~expected:"font-family:Arial,Arial"
+    ~optimized:"font-family:Arial" "font-family: Arial, Arial";
   check_declaration ~expected:"font-family:monospace,monospace"
+    ~optimized:"font-family:monospace,monospace"
     "font-family: monospace, monospace";
   check_declaration ~expected:"font-family:serif,serif"
-    "font-family: serif, serif";
+    ~optimized:"font-family:serif,serif" "font-family: serif, serif";
+  (* sec. 2.7 gives the [font] shorthand a [<'font-family'>#] slot, so the slot
+     takes the longhand's fold. *)
+  check_declaration ~expected:"font:12px Arial,Arial"
+    ~optimized:"font:12px Arial" "font: 12px Arial, Arial";
   (* CSS Fonts 4 defines font-family names as <custom-ident> sequences. Quoted
      reserved words are family names; unquoted CSS-wide keywords remain CSS-wide
      keywords and must not be reinterpreted as family names. *)
