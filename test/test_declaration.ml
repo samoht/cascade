@@ -1251,6 +1251,96 @@ let border_line_style () =
   check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
     "outline: auto"
 
+(* CSS Backgrounds 3 (ED) sec. 2.10 has the [background] shorthand reset every
+   longhand it covers and then set the ones written, so a slot holding its own
+   initial value says what leaving it out says: sec. 2.3 makes that [none] for
+   the image, sec. 2.4 [repeat] for the repeat, sec. 2.5 [scroll] for the
+   attachment, sec. 2.9 [auto] for the size and sec. 2.2 [transparent] for the
+   colour. The fold is the optimizer's; pp holds the node it was handed. *)
+let background_initial_slots () =
+  check_declaration ~expected:"background:none red" ~optimized:"background:red"
+    "background: none red";
+  check_declaration ~expected:"background:repeat red"
+    ~optimized:"background:red" "background: red repeat";
+  check_declaration ~expected:"background:scroll red"
+    ~optimized:"background:red" "background: red scroll";
+  check_declaration ~expected:"background:url(a.png)transparent"
+    ~optimized:"background:url(a.png)" "background: url(a.png) transparent";
+  (* Controls: a slot that is not at its initial value stands. *)
+  check_declaration ~expected:"background:no-repeat red"
+    ~optimized:"background:no-repeat red" "background: red no-repeat";
+  check_declaration ~expected:"background:fixed red"
+    ~optimized:"background:fixed red" "background: red fixed";
+  check_declaration ~expected:"background:url(a.png)red"
+    ~optimized:"background:url(a.png)red" "background: url(a.png) red"
+
+(* CSS Backgrounds 3 (ED) sec. 2.6 gives background-position the initial value
+   [0% 0%], which [0 0] and [left top] both name, so the slot drops with the
+   rest. It also reads a lone value as "the second value is assumed to be
+   center", so [0] names [0 50%] and stays: no initial position is spelled that
+   way. sec. 2.10 writes the size after the position and a [/], so the position
+   can only leave once the size has. *)
+let background_position_slot () =
+  check_declaration ~expected:"background:0 0 red" ~optimized:"background:red"
+    "background: red 0 0";
+  check_declaration ~expected:"background:left top red"
+    ~optimized:"background:red" "background: red left top";
+  check_declaration ~expected:"background:0 0/auto red"
+    ~optimized:"background:red" "background: red 0 0 / auto";
+  (* A single value is horizontal, with [center] vertically: not the initial
+     position, so it stays whatever the layer carries. *)
+  check_declaration ~expected:"background:0 red" ~optimized:"background:0 red"
+    "background: red 0";
+  check_declaration ~expected:"background:left red"
+    ~optimized:"background:0 red" "background: red left";
+  check_declaration ~expected:"background:url(a.png)0"
+    ~optimized:"background:url(a.png)0" "background: url(a.png) 0";
+  check_declaration ~expected:"background:url(a.png)left"
+    ~optimized:"background:url(a.png)0" "background: url(a.png) left";
+  (* A size keeps its position, which has to be written for the [/] to attach
+     to. *)
+  check_declaration ~expected:"background:0 0/cover red"
+    ~optimized:"background:0 0/cover red" "background: red 0 0 / cover"
+
+(* CSS Backgrounds 3 (ED) sec. 2.10 reads one [<box>] as setting both
+   background-origin and background-clip and two as setting origin then clip, so
+   the pair drops together or not at all: sec. 2.8 makes [padding-box] the
+   initial origin and sec. 2.7 [border-box] the initial clip. Dropping just the
+   one at its initial value would leave a single [<box>] that reassigns the
+   other. *)
+let background_box_slots () =
+  check_declaration ~expected:"background:padding-box border-box red"
+    ~optimized:"background:red" "background: red padding-box border-box";
+  check_declaration ~expected:"background:border-box border-box red"
+    ~optimized:"background:border-box red"
+    "background: red border-box border-box";
+  check_declaration ~expected:"background:content-box content-box red"
+    ~optimized:"background:content-box red"
+    "background: red content-box content-box";
+  check_declaration ~expected:"background:border-box border-box red"
+    ~optimized:"background:border-box red" "background: red border-box";
+  (* Both are written out where a single [<box>] would name a different pair. *)
+  check_declaration ~expected:"background:padding-box content-box red"
+    ~optimized:"background:padding-box content-box red"
+    "background: red padding-box content-box";
+  check_declaration ~expected:"background:content-box border-box red"
+    ~optimized:"background:content-box border-box red"
+    "background: red content-box border-box"
+
+(* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
+   so a layer that fills no slot declares what [background: none] declares. [0
+   0] is the shortest spelling of that layer, so it is the node the spellings
+   meet on. *)
+let background_drained_layer () =
+  check_declaration ~expected:"background:none" ~optimized:"background:0 0"
+    "background: none";
+  check_declaration ~expected:"background:0 0" ~optimized:"background:0 0"
+    "background: 0 0";
+  check_declaration ~expected:"background:left top" ~optimized:"background:0 0"
+    "background: left top";
+  check_declaration ~expected:"background:transparent"
+    ~optimized:"background:0 0" "background: transparent"
+
 (* CSS Backgrounds 3 (ED) sec. 3.1 gives the border-color properties the initial
    value [currentColor], and sec. 3.4 sets an omitted shorthand slot to its
    initial value, so an explicit [currentColor] beside another slot says what
@@ -4184,6 +4274,10 @@ let declaration_tests =
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
+    test_case "background initial slots" `Quick background_initial_slots;
+    test_case "background position slot" `Quick background_position_slot;
+    test_case "background box slots" `Quick background_box_slots;
+    test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;
     test_case "all-initial shorthand prints none" `Quick

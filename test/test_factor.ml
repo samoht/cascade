@@ -180,6 +180,35 @@ let test_initial_line_color_spellings_factor () =
     ".a{outline:solid currentColor}.b{outline:solid}"
     (optimize_str ".a{outline:solid currentcolor}.b{outline:solid}")
 
+(* The [background] shorthand resets every longhand it covers (CSS Backgrounds 3
+   (ED) sec. 2.10), so a slot written at its own initial value is the longer
+   spelling of the same declaration, and a layer that fills no slot is what
+   [background: none] declares. Factoring compares nodes, so the fold has to
+   have happened before the two rules meet. *)
+let test_background_initial_slot_spellings_factor () =
+  Alcotest.(check string)
+    "an initial position factors with the omitted one" ".a,.b{background:red}"
+    (optimize_str ".a{background:red 0 0}.b{background:red}");
+  Alcotest.(check string)
+    "an initial repeat factors with the omitted one" ".a,.b{background:red}"
+    (optimize_str ".a{background:red repeat}.b{background:red}");
+  Alcotest.(check string)
+    "the none keyword factors with the drained layer" ".a,.b{background:0 0}"
+    (optimize_str ".a{background:none}.b{background:0 0}");
+  (* sec. 2.6 reads a lone position value as [<x> center], which is not the
+     initial [0% 0%], so these two layers put the image in different places. *)
+  Alcotest.(check string)
+    "a lone position does not factor with the omitted one"
+    ".a{background:url(a.png)0}.b{background:url(a.png)}"
+    (optimize_str ".a{background:url(a.png) 0}.b{background:url(a.png)}");
+  (* sec. 2.10 reads a single [<box>] as both origin and clip, so dropping the
+     clip alone would repaint the layer over a smaller area. *)
+  Alcotest.(check string)
+    "an initial clip beside a non-initial origin does not factor"
+    ".a{background:content-box border-box red}.b{background:content-box red}"
+    (optimize_str
+       ".a{background:red content-box border-box}.b{background:red content-box}")
+
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so the keyword and the number name one weight. Factoring
    compares nodes, so the two rules only meet as one declaration if the fold
@@ -346,6 +375,8 @@ let suite =
         test_initial_line_style_spellings_factor;
       Alcotest.test_case "initial line-color spellings factor together" `Quick
         test_initial_line_color_spellings_factor;
+      Alcotest.test_case "initial background slot spellings factor together"
+        `Quick test_background_initial_slot_spellings_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"
