@@ -1855,12 +1855,18 @@ let test_border_width () =
   check_border_width "max(3dvh,4px)";
   check_border_width "clamp(1dvh,3dvh,4px)";
   (* One unit does compare with itself, and a container-query length grows with
-     its multiplier, so the smaller multiple is the minimum. *)
-  check_border_width ~expected:"2cqi" "min(2cqi,3cqi)";
-  check_border_width ~expected:"4dvh" "max(3dvh,4dvh)";
+     its multiplier, so the smaller multiple is the minimum. The fold is a
+     node-changing rewrite (two different ASTs would otherwise print the same
+     text and hash differently), so it runs in optimize, not pp: fmt/minify
+     alone hold the authored min()/max(), only minify+optimize collapses it. *)
+  decl_optimizes ~prop:"border-width" ~held:"min(2cqi,3cqi)" ~into:"2cqi"
+    "min(2cqi,3cqi)";
+  decl_optimizes ~prop:"border-width" ~held:"max(3dvh,4dvh)" ~into:"4dvh"
+    "max(3dvh,4dvh)";
   (* A bound nothing else measures stops only its own group: [1px] and [2px]
      stay on one scale (CSS Values 4 sec. 6.2), so they collapse. *)
-  check_border_width ~expected:"max(2px,3dvh)" "max(1px,3dvh,2px)";
+  decl_optimizes ~prop:"border-width" ~held:"max(1px,3dvh,2px)"
+    ~into:"max(2px,3dvh)" "max(1px,3dvh,2px)";
   (* A zero-valued border-width collapses the unit like any other zero length
      (border-width: 0px -> 0), matching width/outline-width. Holds for the
      longhand, the logical longhand, and the 1-4 value shorthand; non-zero
