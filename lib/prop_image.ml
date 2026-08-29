@@ -1629,11 +1629,11 @@ let read_linear_gradient_body_stops t =
     Cursor.err_expected t "at least one color stop in linear-gradient()";
   Linear_gradient (direction, stops)
 
-let read_linear_gradient_body t =
+let read_gradient_var_only t =
   Cursor.ws t;
   (* CSS Variables 1 sec. 3: a single [var()] can stand in for the entire body
-     of [linear-gradient(...)], since the variable's value may itself contain
-     commas and stops. Check this case first so the var() does not get
+     of a gradient, since the variable's value may itself contain commas and
+     stops. Check this case first so a linear gradient's var() does not get
      mis-parsed as an [Angle (Var _)] direction by the prelude reader. *)
   let var_only =
     Cursor.lookahead
@@ -1648,7 +1648,12 @@ let read_linear_gradient_body t =
       let v = Values.read_var read_gradient_stop t in
       Cursor.ws t;
       Cursor.expect_eof t;
-      Linear_gradient_var v
+      Some v
+  | None -> None
+
+let read_linear_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Linear_gradient_var v
   | None -> read_linear_gradient_body_stops t
 
 let read_webkit_linear_gradient_body t =
@@ -1670,7 +1675,7 @@ let read_webkit_linear_gradient_body t =
     Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
   Webkit_linear_gradient (Option.value ~default:To_bottom direction, stops)
 
-let read_radial_gradient_body t =
+let read_radial_gradient_body_stops t =
   Cursor.ws t;
   let config =
     match
@@ -1695,7 +1700,12 @@ let read_radial_gradient_body t =
     Cursor.err_expected t "at least one color stop in radial-gradient()";
   Radial_gradient (config, stops)
 
-let read_conic_gradient_body t =
+let read_radial_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Radial_gradient_var v
+  | None -> read_radial_gradient_body_stops t
+
+let read_conic_gradient_body_stops t =
   (* [conic-gradient([from <angle>]? [at <position>]? ,? <color-stop-list>)] *)
   let config = Cursor.option read_conic_gradient_config t in
   Cursor.ws t;
@@ -1714,6 +1724,11 @@ let read_conic_gradient_body t =
           : conic_gradient_config)
   in
   Conic_gradient (config, stops)
+
+let read_conic_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Conic_gradient_var v
+  | None -> read_conic_gradient_body_stops t
 
 let read_bg_url_arg inner =
   Cursor.ws inner;
@@ -1878,12 +1893,16 @@ let read_repeating_linear_gradient t =
   | other -> other
 
 let read_repeating_radial_gradient t =
-  match Cursor.call "repeating-radial-gradient" t read_radial_gradient_body with
+  match
+    Cursor.call "repeating-radial-gradient" t read_radial_gradient_body_stops
+  with
   | Radial_gradient (c, stops) -> Repeating_radial_gradient (c, stops)
   | other -> other
 
 let read_repeating_conic_gradient t =
-  match Cursor.call "repeating-conic-gradient" t read_conic_gradient_body with
+  match
+    Cursor.call "repeating-conic-gradient" t read_conic_gradient_body_stops
+  with
   | Conic_gradient (c, stops) -> Repeating_conic_gradient (c, stops)
   | other -> other
 
@@ -1962,12 +1981,12 @@ let webkit_bg_image_calls =
     ("-webkit-repeating-linear-gradient", read_webkit_repeating_linear_gradient);
     ( "-webkit-radial-gradient",
       fun t ->
-        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body_stops
         |> webkit_radial_gradient_of_radial );
     ( "-webkit-repeating-radial-gradient",
       fun t ->
         Cursor.call "-webkit-repeating-radial-gradient" t
-          read_radial_gradient_body
+          read_radial_gradient_body_stops
         |> webkit_repeat_radial_of_radial );
   ]
 
@@ -1984,11 +2003,12 @@ let legacy_bg_image_calls =
         |> moz_repeat_linear_of_webkit );
     ( "-moz-radial-gradient",
       fun t ->
-        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body_stops
         |> moz_radial_gradient_of_radial );
     ( "-moz-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-moz-repeating-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-moz-repeating-radial-gradient" t
+          read_radial_gradient_body_stops
         |> moz_repeat_radial_of_radial );
     ( "-o-linear-gradient",
       fun t ->
@@ -2001,11 +2021,12 @@ let legacy_bg_image_calls =
         |> o_repeat_linear_of_webkit );
     ( "-o-radial-gradient",
       fun t ->
-        Cursor.call "-o-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-o-radial-gradient" t read_radial_gradient_body_stops
         |> o_radial_gradient_of_radial );
     ( "-o-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-o-repeating-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-o-repeating-radial-gradient" t
+          read_radial_gradient_body_stops
         |> o_repeat_radial_of_radial );
   ]
 
