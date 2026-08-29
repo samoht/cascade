@@ -212,6 +212,18 @@ let test_font_stretch_spellings_factor () =
     "condensed factors with 75%" ".a,.b{font-stretch:75%}"
     (optimize_str ".a{font-stretch:condensed}.b{font-stretch:75%}")
 
+(* CSS Values 4 (ED) sec. 10.10.1 sums a calc's same-unit children and returns
+   the lone remaining child, so [calc(1px + 1px)] and [2px] name one size.
+   Factoring compares nodes, so the two rules only meet as one declaration if
+   the fold happened before they were compared. *)
+let test_font_size_calc_factors () =
+  Alcotest.(check string)
+    "a folded calc factors with the length" ".a,.b{font-size:2px}"
+    (optimize_str ".a{font-size:calc(1px + 1px)}.b{font-size:2px}");
+  Alcotest.(check string)
+    "a folded calc factors with the percentage" ".a,.b{font-size:100%}"
+    (optimize_str ".a{font-size:calc(50% + 50%)}.b{font-size:100%}")
+
 let suite =
   ( "factor",
     [
@@ -233,6 +245,8 @@ let suite =
         `Quick test_font_family_duplicate_factors;
       Alcotest.test_case "font-stretch keyword and percentage factor together"
         `Quick test_font_stretch_spellings_factor;
+      Alcotest.test_case "font-size calc factors with the folded length" `Quick
+        test_font_size_calc_factors;
       Alcotest.test_case "display two-value and legacy spellings factor" `Quick
         test_display_spellings_factor;
       Alcotest.test_case "equal overflow axes factor with the single value"

@@ -690,6 +690,29 @@ let font_properties () =
   check_declaration ~expected:"font:condensed 12px serif"
     ~optimized:"font:condensed 12px serif" "font: condensed 12px serif";
 
+  (* CSS Values 4 (ED) sec. 10.10.1 simplifies a Sum by replacing each set of
+     children with identical units by their sum, and returns the lone remaining
+     child, so a same-unit [font-size] calc folds the way a [width] one does.
+     [em] and [%] resolve against the parent font size here rather than the
+     element's own, but both terms of one declaration share that reference, so
+     the sum is the same value whatever it turns out to be. *)
+  check_declaration ~expected:"font-size:calc(1px + 1px)"
+    ~optimized:"font-size:2px" "font-size: calc(1px + 1px)";
+  check_declaration ~expected:"font-size:calc(1em + 1em)"
+    ~optimized:"font-size:2em" "font-size: calc(1em + 1em)";
+  check_declaration ~expected:"font-size:calc(50% + 50%)"
+    ~optimized:"font-size:100%" "font-size: calc(50% + 50%)";
+  check_declaration ~expected:"font-size:calc(2*3px)" ~optimized:"font-size:6px"
+    "font-size: calc(2 * 3px)";
+  (* Terms of different units carry no conversion factor until layout, so the
+     Sum keeps both children and both layers hold the call. *)
+  check_declaration ~expected:"font-size:calc(1em + 1px)"
+    ~optimized:"font-size:calc(1em + 1px)" "font-size: calc(1em + 1px)";
+  (* sec. 2.7 of CSS Fonts 4 gives the [font] shorthand a [<'font-size'>] slot,
+     so the slot takes the longhand's fold. *)
+  check_declaration ~expected:"font:calc(1px + 1px) serif"
+    ~optimized:"font:2px serif" "font: calc(1px + 1px) serif";
+
   (* Font style *)
   check_declaration ~expected:"font-style:normal" "font-style: normal";
   check_declaration ~expected:"font-style:italic" "font-style: italic";
