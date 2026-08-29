@@ -2903,6 +2903,14 @@ let test_background_image () =
      gradient instead. *)
   check_background_image "linear-gradient(red,blue)";
   check_background_image "radial-gradient(red,blue)";
+  check_background_image "repeating-radial-gradient(var(--stops))";
+  check_background_image "repeating-conic-gradient(var(--stops))";
+  check_background_image "-webkit-radial-gradient(var(--stops))";
+  check_background_image "-webkit-repeating-radial-gradient(var(--stops))";
+  check_background_image "-moz-radial-gradient(var(--stops))";
+  check_background_image "-moz-repeating-radial-gradient(var(--stops))";
+  check_background_image "-o-radial-gradient(var(--stops))";
+  check_background_image "-o-repeating-radial-gradient(var(--stops))";
   neg_cursor read_background_image "linear-gradient(red, blue, bogus-token)";
   neg_cursor read_background_image "radial-gradient(red, blue, bogus-token)";
   (* CSS Images 4 sec. 6.2 gives [image-set()] a comma-separated
