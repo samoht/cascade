@@ -152,6 +152,18 @@ let test_initial_line_style_spellings_factor () =
     ".a,.b{column-rule:none}"
     (optimize_str ".a{column-rule:medium none}.b{column-rule:none}")
 
+(* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
+   "Same as 700", so the keyword and the number name one weight. Factoring
+   compares nodes, so the two rules only meet as one declaration if the fold
+   happened before they were compared. *)
+let test_font_weight_spellings_factor () =
+  Alcotest.(check string)
+    "bold factors with 700" ".a,.b{font-weight:700}"
+    (optimize_str ".a{font-weight:bold}.b{font-weight:700}");
+  Alcotest.(check string)
+    "normal factors with 400" ".a,.b{font-weight:400}"
+    (optimize_str ".a{font-weight:normal}.b{font-weight:400}")
+
 let suite =
   ( "factor",
     [
@@ -167,4 +179,6 @@ let suite =
         test_initial_line_width_spellings_factor;
       Alcotest.test_case "initial line-style spellings factor together" `Quick
         test_initial_line_style_spellings_factor;
+      Alcotest.test_case "font-weight keyword and number factor together" `Quick
+        test_font_weight_spellings_factor;
     ] )

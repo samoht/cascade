@@ -604,11 +604,18 @@ let position () =
   c ~expected:"position:sticky" "position: sticky"
 
 let font_properties () =
-  (* Font weight. Per CSS Fonts 4 section 2.2 the keywords [normal] and [bold]
-     map to [400] / [700]; the printer canonicalizes to the numeric form under
-     minify. *)
-  check_declaration ~expected:"font-weight:400" "font-weight: normal";
-  check_declaration ~expected:"font-weight:700" "font-weight: bold";
+  (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
+     "Same as 700", so each keyword and its number are one value with two
+     spellings, and the number is the shorter one. Swapping them is a node
+     change, so pp holds what it was handed and the optimizer folds. *)
+  check_declaration ~expected:"font-weight:normal" ~optimized:"font-weight:400"
+    "font-weight: normal";
+  check_declaration ~expected:"font-weight:bold" ~optimized:"font-weight:700"
+    "font-weight: bold";
+  (* sec. 2.7 gives the [font] shorthand a [<'font-weight'>] slot, so the slot
+     takes the longhand's fold. *)
+  check_declaration ~expected:"font:bold 12px serif"
+    ~optimized:"font:700 12px serif" "font: bold 12px serif";
   check_declaration ~expected:"font-weight:lighter" "font-weight: lighter";
   check_declaration ~expected:"font-weight:bolder" "font-weight: bolder";
   check_declaration ~expected:"font-weight:100" "font-weight: 100";
@@ -1592,7 +1599,8 @@ let spec_property_grammar_table_expansion () =
             (Some "transform:translateX(10px)rotate(45deg)scale(1.2)", None)
         | "rotate", "1 0 0 45deg" -> (Some "rotate:x 45deg", None)
         | "font", "italic small-caps bold 16px/1.5 serif" ->
-            (Some "font:italic small-caps 700 16px/1.5 serif", None)
+            ( Some "font:italic small-caps bold 16px/1.5 serif",
+              Some "font:italic small-caps 700 16px/1.5 serif" )
         | "animation", "fade 1s linear 2 alternate both running" ->
             (Some "animation:fade 1s linear 2 alternate both", None)
         | "animation-range", "entry 10% exit 90%" ->
