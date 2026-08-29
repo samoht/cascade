@@ -3531,7 +3531,7 @@ let normalize_property_value : type a.
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
   | Color -> normalize_color value
-  | Border_color -> map_preserve normalize_color value
+  | Border_color -> normalize_box_shorthand normalize_color value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -3662,17 +3662,19 @@ let normalize_property_value : type a.
   | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
   | Scroll_padding_block_start -> Values.normalize_length ~ctx value
   | Scroll_padding_block_end -> Values.normalize_length ~ctx value
-  | Padding -> map_preserve (Values.normalize_length ~ctx) value
-  | Padding_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Padding_block -> map_preserve (Values.normalize_length ~ctx) value
-  | Margin -> map_preserve (Values.normalize_length ~ctx) value
+  | Padding -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Padding_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Padding_block ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Margin -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Margin_inline -> map_preserve (Values.normalize_length ~ctx) value
   | Margin_block -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Inset_inline -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_inline_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_inline_end -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_block_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_block_end -> map_preserve (Values.normalize_length ~ctx) value
   | Top -> map_preserve (Values.normalize_length ~ctx) value
@@ -3778,7 +3780,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | All -> pp pp_css_wide
   | Background_color -> pp pp_color
   | Color -> pp pp_color
-  | Border_color -> pp (pp_box_shorthand pp_color)
+  | Border_color -> pp (Pp.list ~sep:Pp.token_sp pp_color)
   | Border_style -> pp pp_border_style
   | Border_top_style -> pp pp_border_style
   | Border_right_style -> pp pp_border_style
@@ -3788,18 +3790,18 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_end_style -> pp pp_border_style
   | Border_block_start_style -> pp pp_border_style
   | Border_block_end_style -> pp pp_border_style
-  | Padding -> pp (pp_box_shorthand pp_length)
+  | Padding -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_left -> pp pp_length
   | Padding_right -> pp pp_length
   | Padding_bottom -> pp pp_length
   | Padding_top -> pp pp_length
-  | Padding_inline -> pp (pp_box_shorthand pp_length)
+  | Padding_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_inline_start -> pp pp_length
   | Padding_inline_end -> pp pp_length
-  | Padding_block -> pp (pp_box_shorthand pp_length)
+  | Padding_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_block_start -> pp pp_length
   | Padding_block_end -> pp pp_length
-  | Margin -> pp (pp_box_shorthand pp_length)
+  | Margin -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Margin_inline_end -> pp pp_length
   | Margin_inline_start -> pp pp_length
   | Margin_left -> pp pp_length
@@ -3852,11 +3854,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Zoom -> pp pp_zoom
   | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
-  | Inset -> pp (pp_box_shorthand pp_length)
-  | Inset_inline -> pp (pp_box_shorthand pp_length)
+  | Inset -> pp (Pp.list ~sep:Pp.token_sp pp_length)
+  | Inset_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Inset_inline_start -> pp (Pp.list ~sep:Pp.space pp_length)
   | Inset_inline_end -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Inset_block -> pp (pp_box_shorthand pp_length)
+  | Inset_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Inset_block_start -> pp (Pp.list ~sep:Pp.space pp_length)
   | Inset_block_end -> pp (Pp.list ~sep:Pp.space pp_length)
   | Top -> pp (Pp.list ~sep:Pp.space pp_length)

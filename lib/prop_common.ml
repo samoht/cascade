@@ -138,9 +138,11 @@ let is_zero_length : length -> bool = function
       true
   | _ -> false
 
-(* CSS Box 4 7.1: a 1-to-4 value box shorthand ([margin], [padding],
-   [border-radius] sides, [background-position]) collapses when sides repeat. [a
-   a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. *)
+(* CSS Box 4 (ED) sec. 3.2 and sec. 4.2: one value applies to all four sides,
+   two set the top/bottom and the right/left pairs, three set the top, then the
+   left and right, then the bottom. A shorthand whose sides repeat therefore has
+   a shorter spelling naming the same sides: [a a a a] -> [a]; [a b a b] -> [a
+   b]; [a b c b] -> [a b c]. *)
 let collapse_box_shorthand vs =
   match vs with
   | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
@@ -167,6 +169,10 @@ let map_preserve f xs =
         loop (changed || not (y == x)) (y :: acc) rest
   in
   loop false [] xs
+
+(* Canonicalise a box shorthand: normalise each side with [f], then pick the
+   shortest of the spellings that name those sides. *)
+let normalize_box_shorthand f vs = collapse_box_shorthand (map_preserve f vs)
 
 let option_map_preserve f opt =
   match opt with
