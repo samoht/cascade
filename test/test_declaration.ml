@@ -2151,6 +2151,18 @@ let important () =
 
 let invalid () =
   let neg = none_cursor read_declaration in
+  let typed_invalid input =
+    let cursor = Cursor.of_string input in
+    match read_declaration cursor with
+    | Some declaration ->
+        Alcotest.(check bool)
+          (input ^ " is represented as invalid")
+          true
+          (Css.Declaration.is_invalid declaration)
+    | None -> Alcotest.failf "expected a typed invalid declaration for %S" input
+    | exception Error.Parse_error _ ->
+        Alcotest.failf "expected a typed invalid declaration for %S" input
+  in
   (* Unknown property names are syntactically valid declarations. *)
   check_declaration ~expected:"not-a-property:value" "not-a-property: value";
   (* Invalid property names *)
@@ -2167,7 +2179,8 @@ let invalid () =
   neg "font-weight: green";
   neg "font-family: default";
   neg "font-family: system-ui default";
-  neg "font-family: revert-layer, serif";
+  typed_invalid "font-family: Arial, inherit";
+  typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
 
   (* CSS-wide keywords mixing - should fail when mixed with other values *)
@@ -3580,6 +3593,7 @@ let check_property_positive (row : property_grammar_row) value =
 let check_property_negative (row : property_grammar_row) value =
   match parse_property_decl row.property value with
   | None -> ()
+  | Some (_, _, decl, _) when Css.Declaration.is_invalid decl -> ()
   | Some (input, serialized, _, _) ->
       Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
         serialized

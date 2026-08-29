@@ -2418,6 +2418,13 @@ let test_font_family () =
   check_font_family ~roundtrip:true ~expected:"Foo sans" "\"Foo sans\"";
   check_font_family ~roundtrip:true ~expected:"Times New Roman"
     "\"Times New Roman\"";
+  let invalid = read_font_family (Cursor.of_string "Arial, inherit") in
+  (match invalid with
+  | Invalid tokens ->
+      Alcotest.(check string)
+        "invalid family list source is preserved" "Arial, inherit"
+        (Parser.string_of_components tokens)
+  | _ -> Alcotest.fail "expected an Invalid font-family node");
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)
