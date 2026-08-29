@@ -363,6 +363,11 @@ val read_var : (Cursor.t -> 'a) -> Cursor.t -> 'a var
     for the payload. Expects to be positioned at [var(] and parses the full
     expression. *)
 
+val read_var_body : (Cursor.t -> 'a) -> Cursor.t -> 'a var
+(** [read_var_body read t] parses a [var()] reference body -- the contents of a
+    [var(...)] form without the surrounding [var(] and [)] -- using [read] for
+    the fallback's payload. *)
+
 (** {1 Calc Module} *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc

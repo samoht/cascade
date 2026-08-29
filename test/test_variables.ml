@@ -606,6 +606,30 @@ let spec_custom_fallback_edges () =
   check_var_ref "var(---)" "-" None;
   neg "var(--, red)"
 
+(* CSS Custom Properties 1 sec. 3: [var()] = [var( <custom-property-name> ,
+   <declaration-value>? )]. [read_reference_body] reads that argument list from
+   a cursor already positioned at it, without the surrounding [var(] and [)] a
+   caller would otherwise have to assemble and hand back to a parser - the same
+   relationship [Values.read_calc_expr] has to a [calc()] body. *)
+let spec_read_reference_body_edges () =
+  let check ?(expected = "") input =
+    check_value_cursor "var body"
+      (read_reference_body read_length)
+      (pp_var pp_length) ~minify:false ~expected input
+  in
+  (* No fallback: just the [<custom-property-name>]. *)
+  check "--x" ~expected:"var(--x)";
+  (* A fallback that itself parses as the target syntax is kept typed. *)
+  check "--x, 10px" ~expected:"var(--x, 10px)";
+  (* A trailing comma with nothing after it is an explicit empty fallback,
+     distinct from no fallback at all. *)
+  check "--x," ~expected:"var(--x,)";
+  (* A fallback that is not itself a <length> is preserved as the
+     declaration-value tokens it is, not rejected. *)
+  check "--x, red" ~expected:"var(--x, red)";
+  neg_cursor (read_reference_body read_length) "not-a-var";
+  neg_cursor (read_reference_body read_length) "--"
+
 let spec_custom_computed_edges () =
   let check_context name specified =
     let decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
@@ -666,6 +690,7 @@ let tests =
     ("syntax", `Quick, test_syntax);
     ("read_reference", `Quick, test_read_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
+    ("spec read_reference_body edges", `Quick, spec_read_reference_body_edges);
     ( "spec custom property computed-time edges",
       `Quick,
       spec_custom_computed_edges );

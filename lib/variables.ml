@@ -2654,3 +2654,5 @@ let read_reference (r : Cursor.t) : string * string option =
   if not (Cursor.is_done r) then
     Cursor.err_invalid r "trailing tokens after var()";
   result
+
+let read_reference_body = read_var_body
