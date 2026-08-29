@@ -559,6 +559,10 @@ recorded cases carrying six minifiers' answers.
 - `--minify` canonicalises logical minimum sizes, duration units and stepped
   functions, transform origins and hue-angle units before declaration hashes
   are compared, so equivalent rules factor under all five spellings (#647)
+- `--minify` settles each rule's reachable set in the dependency graph once
+  instead of re-walking the graph per question, so ordering a run no longer
+  costs the cube of its rule count. The slowest corpus stylesheet took about
+  80s of CPU and now takes under 2s, for byte-identical output (#664)
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: a component left at its
   longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,
