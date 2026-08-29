@@ -138,11 +138,14 @@ let is_zero_length : length -> bool = function
       true
   | _ -> false
 
-(* CSS Box 4 (ED) sec. 3.2 and sec. 4.2: one value applies to all four sides,
-   two set the top/bottom and the right/left pairs, three set the top, then the
-   left and right, then the bottom. A shorthand whose sides repeat therefore has
-   a shorter spelling naming the same sides: [a a a a] -> [a]; [a b a b] -> [a
-   b]; [a b c b] -> [a b c]. *)
+(* CSS Box 4 (ED) sec. 3.2 fills the four sides from a one-to-four value box
+   shorthand: one value goes to all four, two to top-bottom then left-right,
+   three to top, left-right, bottom. A list that repeats what those rules
+   already supply is the longer spelling of the same declaration, so it
+   collapses: [a a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. sec.
+   4.2 says the same for padding, css-logical-1 sec. 4.3 and sec. 4.4 for the
+   inset and logical padding/margin shorthands, and CSS Backgrounds 3 (ED) sec.
+   3.1 and sec. 4.1 for border-color and border-radius. *)
 let collapse_box_shorthand vs =
   match vs with
   | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
@@ -153,9 +156,7 @@ let collapse_box_shorthand vs =
   | [ a; b ] when a = b -> [ a ]
   | _ -> vs
 
-let pp_box_shorthand pp ctx vs =
-  let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
-  Pp.list ~sep:Pp.token_sp pp ctx vs
+let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 
 (* Canonicalise a colour to its shortest spelling. *)
 let normalize_color ?(lossless = false) = Values.normalize_color ~lossless

@@ -233,12 +233,17 @@ let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
         (Radius
            {
              horizontal =
-               map_preserve
-                 (Values.normalize_length_percentage ~strip)
-                 horizontal;
+               collapse_box_shorthand
+                 (map_preserve
+                    (Values.normalize_length_percentage ~strip)
+                    horizontal);
              vertical =
                option_map_preserve
-                 (map_preserve (Values.normalize_length_percentage ~strip))
+                 (fun vs ->
+                   collapse_box_shorthand
+                     (map_preserve
+                        (Values.normalize_length_percentage ~strip)
+                        vs))
                  vertical;
            })
   | other -> other
