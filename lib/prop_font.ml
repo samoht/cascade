@@ -901,12 +901,6 @@ let font_stretch_pct = function
   | _ -> None
 
 let rec pp_font_stretch : font_stretch Pp.t =
- fun ctx v ->
-  match if Pp.minified ctx then font_stretch_pct v else None with
-  | Some pct -> Pp.pct ctx pct
-  | None -> pp_font_stretch_keyword ctx v
-
-and pp_font_stretch_keyword : font_stretch Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
@@ -1249,9 +1243,7 @@ let pp_font_prefix ctx style variant weight stretch =
   emit pp_font_style style;
   emit pp_font_variant_css21 variant;
   emit pp_font_weight weight;
-  (* The [font] shorthand's stretch component takes only the keywords, so the
-     percentage the standalone property minifies to would be invalid here. *)
-  emit pp_font_stretch_keyword stretch;
+  emit pp_font_stretch stretch;
   !first
 
 let pp_font_shorthand : font_shorthand Pp.t =
@@ -1967,6 +1959,13 @@ let normalize_font_weight : font_weight -> font_weight = function
   | Bold -> Weight 700
   | value -> value
 
+(* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()
+   serializes the property as a percentage however the value was written, so the
+   keyword and its percentage name one width and the percentage is never
+   longer. *)
+let normalize_font_stretch (value : font_stretch) : font_stretch =
+  match font_stretch_pct value with Some pct -> Pct pct | None -> value
+
 (* sec. 2.1 has the user agent walk the family list until one matches, so an
    entry repeating an earlier one is never reached and names nothing: drop it,
    keeping the first occurrence's position. The key is the minified spelling,
@@ -1999,7 +1998,9 @@ let normalize_font_family (value : font_family) : font_family =
   | other -> other
 
 (* sec. 2.7 gives the [font] shorthand [<'font-weight'>] and [<'font-family'>#]
-   slots, so each slot takes its longhand's fold. *)
+   slots, so each slot takes its longhand's fold. Its width slot is
+   [<font-width-css3>], the keywords alone, so the percentage the longhand folds
+   to is not a value the slot can hold. *)
 let normalize_font : font -> font =
  fun value ->
   match value with

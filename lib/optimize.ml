@@ -110,13 +110,17 @@ let factor_rules_incremental ?cache ~ctx rules =
    selector so a list bound is de-duplicated and ordered consistently. *)
 let canonicalize_scope_selector sel = Selector.canonicalize sel
 
-(* CSS Fonts 4 (ED) sec. 4.4 gives the [font-weight] descriptor the values of
-   the property of the same name, so the descriptor takes the property's fold. A
-   descriptor is not a declaration and never reaches factoring, but the fold is
-   still a node question, so it belongs here and not in the serializer. *)
+(* CSS Fonts 4 (ED) sec. 4.4 gives the [font-weight] and [font-width]
+   descriptors the values of the properties of the same name, so a descriptor
+   takes its property's fold. A descriptor is not a declaration and never
+   reaches factoring, but the fold is still a node question, so it belongs here
+   and not in the serializer. *)
 let normalize_font_face_descriptor (desc : font_face_descriptor) :
     font_face_descriptor =
   let weight w = Properties.normalize_property_value Properties.Font_weight w in
+  let stretch w =
+    Properties.normalize_property_value Properties.Font_stretch w
+  in
   match desc with
   | Font_weight value ->
       let value' = weight value in
@@ -126,11 +130,18 @@ let normalize_font_face_descriptor (desc : font_face_descriptor) :
       let high' = weight high in
       if low' == low && high' == high then desc
       else Font_weight_range (low', high')
-  | Font_family _ | Src _ | Font_style _ | Font_style_range _ | Font_stretch _
-  | Font_stretch_range _ | Font_display _ | Unicode_range _ | Font_variant _
-  | Font_feature_settings _ | Font_variation_settings _ | Font_tech _
-  | Size_adjust _ | Ascent_override _ | Descent_override _ | Line_gap_override _
-    ->
+  | Font_stretch value ->
+      let value' = stretch value in
+      if value' == value then desc else Font_stretch value'
+  | Font_stretch_range (low, high) ->
+      let low' = stretch low in
+      let high' = stretch high in
+      if low' == low && high' == high then desc
+      else Font_stretch_range (low', high')
+  | Font_family _ | Src _ | Font_style _ | Font_style_range _ | Font_display _
+  | Unicode_range _ | Font_variant _ | Font_feature_settings _
+  | Font_variation_settings _ | Font_tech _ | Size_adjust _ | Ascent_override _
+  | Descent_override _ | Line_gap_override _ ->
       desc
 
 (* [stmt] is returned unchanged when no descriptor moved: the factoring fixpoint

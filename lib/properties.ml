@@ -3603,6 +3603,7 @@ let normalize_property_value : type a.
   | Font_size -> normalize_font_size value
   | Font_weight -> normalize_font_weight value
   | Font_family -> normalize_font_family value
+  | Font_stretch -> normalize_font_stretch value
   | Font -> normalize_font value
   | Display -> normalize_display value
   | Overflow -> normalize_overflow value

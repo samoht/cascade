@@ -2418,12 +2418,12 @@ let test_font_stretch () =
   check_font_stretch "50%";
   check_font_stretch "inherit";
   neg_cursor read_font_stretch "invalid-stretch";
-  (* CSS Fonts 4 sec. 2.3 defines each keyword as a percentage, never longer, so
-     minified output uses it, but only for the standalone property: the [font]
-     shorthand's stretch component takes the keyword alone. *)
-  check_font_stretch ~expected:"100%" "normal";
-  check_font_stretch ~expected:"50%" "ultra-condensed";
-  check_font_stretch ~expected:"200%" "ultra-expanded"
+  (* CSS Fonts 4 (ED) sec. 2.3 makes each keyword a percentage, but swapping one
+     for the other is a node change, so pp prints the keyword it was handed and
+     the optimizer folds (test_declaration pins the fold). *)
+  check_font_stretch "normal";
+  check_font_stretch "ultra-condensed";
+  check_font_stretch "ultra-expanded"
 
 let test_font_variant_numeric () =
   check_font_variant_numeric "normal";
