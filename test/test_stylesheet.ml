@@ -6420,6 +6420,36 @@ let s417_is_unwrap () =
     (normalize ".x .a.b { color: red }")
     (normalize ".x :is(.a):is(.b) { color: red }")
 
+(* CSS Selectors L4 section 4.2 again, at the top of a rule selector: [:is()]
+   takes the specificity of its most specific argument, so equal-specificity
+   arguments make [:is(a, b)] and the selector list [a, b] the same rule. Two
+   rules with the same selector are one rule, and factoring reads selector
+   nodes, so the split has to be an AST rewrite: printed only, the two rules
+   below show one selector, never merge, and a second pass over the output finds
+   the merge the first missed. *)
+let s417_is_unwrap_top_level () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let two_rules = ":is(a, b) { color: red } a, b { margin: 0 }" in
+  Alcotest.(check string)
+    ":is(a,b) and a,b are one rule" "a,b{color:red;margin:0}"
+    (normalize two_rules);
+  Alcotest.(check string)
+    "minify is a fixpoint" (normalize two_rules)
+    (normalize (normalize two_rules));
+  (* Unequal specificity, so the list would weigh an [a] match lighter than the
+     wrapper does. *)
+  Alcotest.(check string)
+    ":is(.x,a) keeps its wrapper" ":is(.x,a){color:red}"
+    (normalize ":is(.x, a) { color: red }");
+  (* [:where()] contributes zero specificity, so it never becomes a list. *)
+  Alcotest.(check string)
+    ":where(a,b) keeps its wrapper" ":where(a,b){color:red}"
+    (normalize ":where(a, b) { color: red }")
+
 (* CSS Selectors L4 section 4.2 (compound selector): "if it contains a type
    selector or universal selector, that selector must come first". So a
    single-argument [:is(<type>)] unwraps only into a compound it leads: spliced
@@ -9368,6 +9398,9 @@ let additional_tests =
       `Quick,
       v4107_minmax_reduction );
     ("spec selectors 4 17 :is single-argument unwrap", `Quick, s417_is_unwrap);
+    ( "spec selectors 4 17 :is top-level unwrap",
+      `Quick,
+      s417_is_unwrap_top_level );
     ( "spec selectors 4 4.2 compound type selector first",
       `Quick,
       s442_compound_type_first );
