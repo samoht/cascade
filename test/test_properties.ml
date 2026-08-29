@@ -4519,6 +4519,14 @@ let spec_generated_position_interaction_edges () =
 (* ignore-test: grouped generated-surface vectors. *)
 let spec_generated_text_timeline_edges () =
   check_text_box "trim-both text alphabetic";
+  (* css-inline-3 sec. 6.1: [<'text-box-trim'> || <'text-box-edge'>], and
+     omitting the trim sets it to trim-both, so an edge alone is a value. *)
+  check_text_box ~roundtrip:true "normal";
+  check_text_box ~roundtrip:true "text";
+  check_text_box ~roundtrip:true "cap alphabetic";
+  check_text_box ~roundtrip:true "ex text";
+  (* sec. 5.2 puts [cap] only in the two-value branch of <text-edge>. *)
+  neg_cursor read_text_box "cap";
   check_text_box_edge "text ideographic";
   check_text_box_edge_keyword "ideographic-ink";
   check_text_box_trim "trim-both";

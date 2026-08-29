@@ -891,8 +891,28 @@ let matrix =
       };
       {
         property = "text-box";
-        positives = [ "none"; "trim-both cap alphabetic"; "trim-start text" ];
-        negatives = [ "cap trim-both"; "trim-start cap alphabetic text" ];
+        positives =
+          [
+            "none";
+            "normal";
+            "trim-both cap alphabetic";
+            "trim-start text";
+            (* css-inline-3 sec. 6.1 joins trim and edge with [||], and omitting
+               the trim sets it to trim-both, so the edge alone is a complete
+               value. *)
+            "text";
+            "cap alphabetic";
+            "ex text";
+          ];
+        negatives =
+          [
+            "cap trim-both";
+            "trim-start cap alphabetic text";
+            "trim-start trim-end";
+            (* [cap] is only in the two-value branch of <text-edge> (sec. 5.2),
+               so it names no edge on its own. *)
+            "cap";
+          ];
       };
       {
         property = "text-box-edge";
