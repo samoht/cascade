@@ -1936,6 +1936,11 @@ let spec_property_grammar_table_expansion () =
             (Some "animation-range:entry 10%exit 90%", None)
         | "display", "inline flow-root" ->
             (Some "display:inline flow-root", Some "display:inline-block")
+        | "display", "list-item flow-root" ->
+            (* CSS Display 3 (ED) sec. 2 combines the list-item components with
+               [&&], so the two spellings are one value; sec. 2.3 leaves the
+               [block] outside unwritten. *)
+            (Some "display:flow-root list-item", None)
         | "position-try-fallbacks", "--below, flip-block" ->
             (Some "position-try-fallbacks:--below,flip-block", None)
         | "cursor", "url(cursor.cur), pointer" ->

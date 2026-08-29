@@ -19,13 +19,11 @@ open Prop_mask
 (* CSS Display 3 sec. 2.1 [display-outside]: pre-existing aliases inside the
    single-value vocabulary that compose with a [display-inside] in the two-value
    form. The composite [<outside> <inside>] is a [Multi]. *)
+(* CSS Display 3 (ED) sec. 2: [<display-outside> = block | inline | run-in].
+   [list-item] belongs to [<display-listitem>], which spells it out separately,
+   so it is not one of these. *)
 let display_outside_idents : (string * display) list =
-  [
-    ("block", Block);
-    ("inline", Inline);
-    ("run-in", Run_in);
-    ("list-item", List_item);
-  ]
+  [ ("block", Block); ("inline", Inline); ("run-in", Run_in) ]
 
 let display_inside_idents : (string * display) list =
   [
@@ -108,21 +106,21 @@ let read_display_list_item t : display =
         ignore (Cursor.ident t : string);
         list_item := true;
         true
-    | Some s when Option.is_none !outside -> (
-        match List.assoc_opt s display_outside_idents with
-        | Some value ->
-            ignore (Cursor.ident t : string);
-            outside := Option.Some value;
-            true
-        | Option.None -> false)
-    | Some s when Option.is_none !inside -> (
-        match List.assoc_opt s list_item_inside_idents with
-        | Some value ->
-            ignore (Cursor.ident t : string);
-            inside := Option.Some value;
-            true
-        | Option.None -> false)
-    | _ -> false
+    | Some s ->
+        (* The three components are combined with [&&], so each keyword fills
+           whichever slot it belongs to wherever it appears; testing the outside
+           slot alone would stop the loop at a leading inside keyword. *)
+        let fill slot idents =
+          match (!slot, List.assoc_opt s idents) with
+          | Option.None, Some value ->
+              ignore (Cursor.ident t : string);
+              slot := Option.Some value;
+              true
+          | _ -> false
+        in
+        fill outside display_outside_idents
+        || fill inside list_item_inside_idents
+    | Option.None -> false
   in
   while consume_slot () do
     ()
@@ -303,6 +301,14 @@ let rec pp_display : display Pp.t =
      type takes [flow], so leaving the [flow] out names the same value. *)
   | Multi (Multi (outside, Block), List_item) when Pp.minified ctx ->
       pp_display ctx outside;
+      Pp.space ctx ();
+      Pp.string ctx "list-item"
+  (* sec. 2.3 defaults the unwritten outside to [block] the same way, so with an
+     inside written the [block] can go. One of the two has to stay: with both
+     left out the value is the bare [list-item] keyword, which is a different
+     node for the optimizer to fold to. *)
+  | Multi (Multi (Block, inside), List_item) when Pp.minified ctx ->
+      pp_display_inside ctx inside;
       Pp.space ctx ();
       Pp.string ctx "list-item"
   | Multi (Multi (outside, inside), List_item) ->
