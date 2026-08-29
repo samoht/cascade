@@ -1983,12 +1983,14 @@ let test_text_decoration () =
   neg_cursor read_text_decoration "red"
 
 let test_text_decoration_shorthand () =
-  (* Test individual parts *)
+  (* Test individual parts. The printer holds every component it parsed;
+     dropping one that equals its longhand initial is a node change the
+     optimizer makes (pinned in test_declaration). *)
   check_text_decoration_shorthand "underline";
-  check_text_decoration_shorthand ~expected:"underline" "underline solid";
-  check_text_decoration_shorthand ~expected:"underline red"
+  check_text_decoration_shorthand "underline solid";
+  check_text_decoration_shorthand ~expected:"underline solid red"
     "underline solid red";
-  check_text_decoration_shorthand ~expected:"underline red 2px"
+  check_text_decoration_shorthand ~expected:"underline solid red 2px"
     "underline solid red 2px";
   (* Test multiple lines *)
   check_text_decoration_shorthand ~expected:"underline overline"
@@ -1996,7 +1998,7 @@ let test_text_decoration_shorthand () =
   check_text_decoration_shorthand ~expected:"underline overline dashed"
     "underline overline dashed";
   (* Test order independence *)
-  check_text_decoration_shorthand ~expected:"underline red"
+  check_text_decoration_shorthand ~expected:"underline solid red"
     "red solid underline";
   check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
     "3px wavy blue underline";
