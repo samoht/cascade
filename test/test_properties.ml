@@ -1187,6 +1187,25 @@ let test_display () =
   check_display "table-row-group";
   check_display "inline-table";
   check_display "list-item";
+  (* CSS Display 3 (ED) sec. 2 defines [<display-listitem>] as
+     [<display-outside>? && [ flow | flow-root ]? && list-item], all three
+     order-free, so the inside keyword reads whether it comes before or after
+     the [list-item]. sec. 2.3: "If no inner display type value is specified,
+     the principal box's inner display type defaults to flow. If no outer
+     display type value is specified, the principal box's outer display type
+     defaults to block", so each default is left unwritten. *)
+  check_display "flow-root list-item";
+  check_display ~expected:"flow-root list-item" "list-item flow-root";
+  check_display ~expected:"block list-item" "flow list-item";
+  check_display ~expected:"block list-item" "list-item flow";
+  check_display "inline flow-root list-item";
+  check_display ~expected:"inline flow-root list-item"
+    "list-item inline flow-root";
+  (* [list-item] is not a [<display-outside>] and appears once in the
+     production, so neither a second [list-item] nor an inside outside the [flow
+     | flow-root] pair is a display value. *)
+  neg_cursor ~allow_partial:true read_display "list-item list-item";
+  neg_cursor ~allow_partial:true read_display "list-item table";
   check_display "contents";
   (* Intentional legacy: accepted for compatibility in some engines *)
   check_display "-webkit-box";
@@ -1793,7 +1812,9 @@ let test_background () =
      is the default and folds away; the second layer's [space] stays. *)
   decl_optimizes ~prop:"background" ~into:"url(a.png),url(b.png)space"
     "url(a.png) repeat,url(b.png) space";
-  check_background ~expected:"0 0" "none";
+  (* pp holds the [none] keyword; the fold to the equivalent, and shorter, [0 0]
+     layer is an optimize transform (test_declaration pins it). *)
+  check_background "none";
   neg_cursor read_background "invalid-background";
   neg_cursor ~allow_partial:true read_background "red blue";
   (* multiple colors without gradient *)
@@ -1804,10 +1825,12 @@ let test_background () =
   neg_cursor read_background "10px 20px 30px 40px 50px"
 
 let test_font_weight () =
-  (* CSS Fonts 4 section 2.2: [normal] and [bold] canonicalize to the numeric
-     forms [400] and [700] under minify. *)
-  check_font_weight ~expected:"400" "normal";
-  check_font_weight ~expected:"700" "bold";
+  (* CSS Fonts 4 (ED) sec. 2.2 makes [normal] and [bold] the numbers 400 and
+     700, but swapping one for the other is a node change, so pp prints the
+     keyword it was handed and the optimizer folds (test_declaration pins the
+     fold). *)
+  check_font_weight "normal";
+  check_font_weight "bold";
   check_font_weight "700";
   check_font_weight "1000";
   check_font_weight "lighter";
@@ -1981,12 +2004,14 @@ let test_text_decoration () =
   neg_cursor read_text_decoration "red"
 
 let test_text_decoration_shorthand () =
-  (* Test individual parts *)
+  (* Test individual parts. The printer holds every component it parsed;
+     dropping one that equals its longhand initial is a node change the
+     optimizer makes (pinned in test_declaration). *)
   check_text_decoration_shorthand "underline";
-  check_text_decoration_shorthand ~expected:"underline" "underline solid";
-  check_text_decoration_shorthand ~expected:"underline red"
+  check_text_decoration_shorthand "underline solid";
+  check_text_decoration_shorthand ~expected:"underline solid red"
     "underline solid red";
-  check_text_decoration_shorthand ~expected:"underline red 2px"
+  check_text_decoration_shorthand ~expected:"underline solid red 2px"
     "underline solid red 2px";
   (* Test multiple lines *)
   check_text_decoration_shorthand ~expected:"underline overline"
@@ -1994,7 +2019,7 @@ let test_text_decoration_shorthand () =
   check_text_decoration_shorthand ~expected:"underline overline dashed"
     "underline overline dashed";
   (* Test order independence *)
-  check_text_decoration_shorthand ~expected:"underline red"
+  check_text_decoration_shorthand ~expected:"underline solid red"
     "red solid underline";
   check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
     "3px wavy blue underline";
@@ -2127,7 +2152,9 @@ let test_background_shorthand () =
   check_background_shorthand "url(image.png)";
   check_background_shorthand "center";
   check_background_shorthand "no-repeat";
-  check_background_shorthand ~expected:"repeat" "repeat repeat";
+  (* pp prints the axis pair it was handed; the fold to the one-keyword spelling
+     is an optimize step (test_declaration pins it). *)
+  check_background_shorthand "repeat repeat";
   check_background_shorthand ~expected:"url(image.png)red" "red url(image.png)";
   check_background_shorthand ~expected:"url(image.png)center"
     "url(image.png) center";
@@ -2416,12 +2443,12 @@ let test_font_stretch () =
   check_font_stretch "50%";
   check_font_stretch "inherit";
   neg_cursor read_font_stretch "invalid-stretch";
-  (* CSS Fonts 4 sec. 2.3 defines each keyword as a percentage, never longer, so
-     minified output uses it, but only for the standalone property: the [font]
-     shorthand's stretch component takes the keyword alone. *)
-  check_font_stretch ~expected:"100%" "normal";
-  check_font_stretch ~expected:"50%" "ultra-condensed";
-  check_font_stretch ~expected:"200%" "ultra-expanded"
+  (* CSS Fonts 4 (ED) sec. 2.3 makes each keyword a percentage, but swapping one
+     for the other is a node change, so pp prints the keyword it was handed and
+     the optimizer folds (test_declaration pins the fold). *)
+  check_font_stretch "normal";
+  check_font_stretch "ultra-condensed";
+  check_font_stretch "ultra-expanded"
 
 let test_font_variant_numeric () =
   check_font_variant_numeric "normal";
@@ -3596,23 +3623,28 @@ let test_border_image_outset () =
 let test_list_style () =
   (* All-initial values collapse to the canonical single token [disc], never the
      position initial [outside] (which would change which longhand is set). *)
+  (* The printer holds every component it parsed; dropping one that equals its
+     longhand initial is a node change the optimizer makes (pinned in
+     test_declaration). *)
   check_list_style "disc";
-  check_list_style ~expected:"disc" "outside";
-  check_list_style ~expected:"disc" "disc outside";
-  check_list_style ~expected:"disc" "disc outside none";
+  check_list_style "outside";
+  check_list_style "disc outside";
+  check_list_style "disc outside none";
   check_list_style "square inside";
-  check_list_style ~expected:"square" "square outside";
+  check_list_style "square outside";
   check_list_style "inside";
+  (* CSS Lists 3 (ED) sec. 3.6 sends a lone [none] to both the type and the
+     image, so the single keyword is the same node the pair spells out. *)
   check_list_style "none";
   check_list_style "url(a.png)";
-  check_list_style ~expected:"square url(a.png)" "square outside url(a.png)";
+  check_list_style "square outside url(a.png)";
   check_list_style "inherit";
   check_list_style "initial";
   neg_cursor read_list_style "12px"
 
 let test_list_style_shorthand () =
   check_list_style_shorthand "disc";
-  check_list_style_shorthand ~expected:"disc" "disc outside";
+  check_list_style_shorthand "disc outside";
   check_list_style_shorthand "square inside";
   check_list_style_shorthand "square";
   check_list_style_shorthand "none";
@@ -3628,7 +3660,7 @@ let test_grid_area () =
 let test_font () =
   check_font "16px serif";
   check_font "italic 700 16px/1.5 serif";
-  check_font ~expected:"italic 700 16px/1.5 serif" "italic bold 16px/1.5 serif";
+  check_font "italic bold 16px/1.5 serif";
   check_font "small-caps 12px monospace";
   check_font "inherit";
   check_font "caption";

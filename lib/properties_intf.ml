@@ -5119,6 +5119,7 @@ let equal_initial_letter_align_keyword (a : initial_letter_align_keyword) b =
 
 let equal_ruby_position_keyword (a : ruby_position_keyword) b = a = b
 let equal_background_shorthand (a : background_shorthand) b = a = b
+let equal_background_box (a : background_box) b = a = b
 let equal_mask_layer (a : mask_layer) b = a = b
 let equal_position_area_keyword (a : position_area_keyword) b = a = b
 

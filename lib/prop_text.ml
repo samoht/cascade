@@ -755,13 +755,29 @@ let normalize_text_indent : text_indent_value -> text_indent_value =
       if length == r.length then value else Indent { r with length }
   | other -> other
 
+(* CSS Text Decoration 4 (ED) sec. 2.6: the [text-decoration] shorthand sets the
+   line, thickness, style and colour longhands, and "Omitted values are set to
+   their initial values" - [solid] (sec. 2.2) and [currentcolor] (sec. 2.3).
+   Writing an initial out names what leaving it out names, and leaving it out is
+   the shorter spelling. *)
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
   match value with
   | Shorthand s ->
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
-      if color == s.color then value else Shorthand { s with color }
+      let style =
+        drop_default
+          ~is_default:(fun (d : text_decoration_style) -> d = Solid)
+          s.style
+      in
+      let color =
+        drop_default
+          ~is_default:(fun (c : Values.color) -> c = Values.Current)
+          (option_map_preserve (normalize_color ~lossless) s.color)
+      in
+      if option_is_phys_same style s.style && option_is_phys_same color s.color
+      then value
+      else Shorthand { s with style; color }
   | other -> other
 
 let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
@@ -773,6 +789,10 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
         (Emphasis (style, option_map_preserve (normalize_color ~lossless) color))
   | other -> other
 
+(* CSS Text Decoration 4 (ED) sec. 4 reads a text shadow as a [<shadow>] "as for
+   box-shadow", and CSS Backgrounds 3 (ED) sec. 6.1 says "Omitted lengths are
+   0". The blur is the last length a text shadow carries, so a zero blur is the
+   spelled-out form of leaving it off. *)
 let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
  fun value ->
   match value with
@@ -782,7 +802,9 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            {
              h_offset = Values.normalize_length s.h_offset;
              v_offset = Values.normalize_length s.v_offset;
-             blur = option_map_preserve Values.normalize_length s.blur;
+             blur =
+               drop_default ~is_default:is_zero_length
+                 (option_map_preserve Values.normalize_length s.blur);
              color = option_map_preserve (normalize_color ~lossless) s.color;
            })
   | other -> other
@@ -866,18 +888,6 @@ let pp_text_decoration_shorthand : text_decoration_shorthand Pp.t =
  fun ctx { lines; style; color; thickness } ->
   let first = ref true in
   let space_if_needed () = if !first then first := false else Pp.space ctx () in
-  (* CSS Text Decoration 4 sec. 2: under minify, drop components that equal the
-     longhand default ([style: solid], [color: currentcolor]); the shorthand is
-     interpreted with the dropped fields restored to default. *)
-  let drop_default = Pp.minified ctx in
-  let style : text_decoration_style option =
-    if drop_default then match style with Some Solid -> None | s -> s
-    else style
-  in
-  let color : Values.color option =
-    if drop_default then match color with Some Values.Current -> None | c -> c
-    else color
-  in
   (match lines with
   | [] -> ()
   | ls ->
@@ -1365,10 +1375,10 @@ let rec pp_text_shadow : text_shadow Pp.t =
       Pp.space ctx ();
       pp_length ctx v_offset;
       (match blur with
-      | Some b when not (Pp.minified ctx && is_zero_length b) ->
+      | Some b ->
           Pp.space ctx ();
           pp_length ctx b
-      | Some _ | None -> ());
+      | None -> ());
       match color with Some c -> pp_color_after_length ctx c | None -> ())
 
 let rec pp_text_size_adjust : text_size_adjust Pp.t =

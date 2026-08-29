@@ -225,33 +225,149 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
+(* CSS Backgrounds 3 (ED) sec. 4.1 puts the vertical radii after a [/], so each
+   group collapses on its own and neither reaches across the slash. With no
+   slash the values set both axes equally, so a vertical group equal to the
+   horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
+  let group vs =
+    collapse_box_shorthand
+      (map_preserve (Values.normalize_length_percentage ~strip) vs)
+  in
   match value with
   | Radius { horizontal; vertical } ->
-      preserve_if_equal value
-        (Radius
-           {
-             horizontal =
-               map_preserve
-                 (Values.normalize_length_percentage ~strip)
-                 horizontal;
-             vertical =
-               option_map_preserve
-                 (map_preserve (Values.normalize_length_percentage ~strip))
-                 vertical;
-           })
+      let horizontal = group horizontal in
+      let vertical = option_map_preserve group vertical in
+      let vertical =
+        match vertical with
+        | Some vs when List.equal Values.equal_length_percentage horizontal vs
+          ->
+            Option.None
+        | _ -> vertical
+      in
+      preserve_if_equal value (Radius { horizontal; vertical })
   | other -> other
+
+(* CSS Backgrounds 3 (ED) sec. 2.10: the shorthand resets every longhand it
+   covers before setting the ones written, so a slot holding its own initial
+   value declares what leaving it out declares and the shorter spelling wins. *)
+let drop_initial_slot : 'a. 'a -> 'a option -> 'a option =
+ fun initial opt ->
+  match opt with Some x when x = initial -> (None : _ option) | _ -> opt
+
+(* sec. 2.6 gives background-position the initial value [0% 0%] and reads a lone
+   value as the horizontal offset with [center] vertically, so a [Single] names
+   [<x> 50%] and never the initial position however small [<x>] is. *)
+let position_is_layer_initial (p : position_value) =
+  match p with
+  | XY (x, y) -> is_zero_length x && is_zero_length y
+  | Left_top | Top_left -> true
+  | _ -> false
+
+(* sec. 2.10 reads a single [<box>] as setting both background-origin and
+   background-clip, and a pair as setting origin then clip, so an absent clip
+   means the origin's box wherever one is written, and only sec. 2.7's initial
+   [border-box] when none is. Read the pair back to those two boxes and write
+   the shortest spelling of them: both initial (sec. 2.8 [padding-box] for the
+   origin) and neither is written, equal and the origin alone says both,
+   otherwise both are written. Dropping just the one at its initial value would
+   leave a [<box>] that reassigns the other. *)
+let drop_initial_boxes (origin : background_box option)
+    (clip : background_box option) :
+    background_box option * background_box option =
+  let o = Option.value origin ~default:(Padding_box : background_box) in
+  let c =
+    match (clip, origin) with
+    | Option.Some c, _ -> c
+    | Option.None, Option.Some o -> o
+    | Option.None, Option.None -> (Border_box : background_box)
+  in
+  if o = Padding_box && c = Border_box then (Option.None, Option.None)
+  else if equal_background_box o c then (Option.Some o, Option.None)
+  else (Option.Some o, Option.Some c)
+
+(* A layer that fills no slot declares what [background: none] declares, and
+   sec. 2.6's initial position is the shortest spelling of it, so that is where
+   the two meet. *)
+let drained_background_layer : background_shorthand =
+  {
+    color = None;
+    image = None;
+    position = Some (XY (Zero, Zero) : position_value);
+    size = None;
+    repeat = None;
+    attachment = None;
+    clip = None;
+    origin = None;
+  }
+
+(* CSS Backgrounds 3 (ED) sec. 2.4 lists the pair each single [<repeat-style>]
+   keyword computes to, so every pair that appears there has a one-keyword
+   spelling of the same value and the shorter one wins. The pairs with two
+   different axes and no alias stay as written. *)
+let rec normalize_background_repeat : background_repeat -> background_repeat =
+ fun value ->
+  match value with
+  | Layers layers ->
+      preserve_if_equal value
+        (Layers (map_preserve normalize_background_repeat layers))
+  | Repeat_repeat -> Repeat
+  | Space_space -> Space
+  | Round_round -> Round
+  | No_repeat_no_repeat -> No_repeat
+  | Repeat_no_repeat -> Repeat_x
+  | No_repeat_repeat -> Repeat_y
+  | other -> other
+
+let background_layer_is_empty (b : background_shorthand) =
+  Option.is_none b.color && Option.is_none b.image && Option.is_none b.position
+  && Option.is_none b.size && Option.is_none b.repeat
+  && Option.is_none b.attachment
+  && Option.is_none b.clip && Option.is_none b.origin
+
+let background_layer_slots_shared (a : background_shorthand)
+    (b : background_shorthand) =
+  a.color == b.color && a.image == b.image && a.position == b.position
+  && a.size == b.size && a.repeat == b.repeat
+  && a.attachment == b.attachment
+  && a.clip == b.clip && a.origin == b.origin
 
 let normalize_background_shorthand ?(lossless = false)
     (b : background_shorthand) =
-  let color = option_map_preserve (normalize_color ~lossless) b.color in
-  let image =
-    option_map_preserve (normalize_background_image ~lossless) b.image
+  let color =
+    option_map_preserve
+      (normalize_color ~lossless)
+      (drop_initial_slot (Transparent : color) b.color)
   in
+  let image =
+    option_map_preserve
+      (normalize_background_image ~lossless)
+      (drop_initial_slot (None : background_image) b.image)
+  in
+  let repeat =
+    drop_initial_slot
+      (Repeat : background_repeat)
+      (option_map_preserve normalize_background_repeat b.repeat)
+  in
+  let attachment =
+    drop_initial_slot (Scroll : background_attachment) b.attachment
+  in
+  let size = drop_initial_slot (Auto : background_size) b.size in
+  (* The size is written after the position and a [/], so the position can only
+     go once the size has. *)
   let position = option_map_preserve normalize_position_value b.position in
-  if color == b.color && image == b.image && position == b.position then b
-  else { b with color; image; position }
+  let position =
+    match position with
+    | Some p when Option.is_none size && position_is_layer_initial p ->
+        (None : position_value option)
+    | _ -> position
+  in
+  let origin, clip = drop_initial_boxes b.origin b.clip in
+  let b' = { color; image; position; size; repeat; attachment; clip; origin } in
+  if background_layer_is_empty b' then drained_background_layer
+  else if background_layer_slots_shared b b' then b
+  else b'
 
 let normalize_background ?(lossless = false) : background -> background =
  fun value ->
@@ -259,6 +375,7 @@ let normalize_background ?(lossless = false) : background -> background =
   | Shorthand s ->
       let s' = normalize_background_shorthand ~lossless s in
       if s' == s then value else Shorthand s'
+  | None -> Shorthand drained_background_layer
   | other -> other
 
 let normalize_logical_border_color ?(lossless = false) :
@@ -755,26 +872,6 @@ let pp_border_shorthand : border_shorthand Pp.t =
  fun ctx { width; style; color } ->
   let first = ref true in
   let add_space () = if !first then first := false else Pp.space ctx () in
-  let color =
-    match color with
-    | Some Current when Pp.minified ctx -> (None : color option)
-    | color -> color
-  in
-  let style =
-    match (style, width, color) with
-    | Some (None : border_style), None, Some _ when Pp.minified ctx ->
-        (None : border_style option)
-    | style, _, _ -> style
-  in
-  (* CSS Backgrounds 3 sec. 3.3: [<border-width>] defaults to [medium]. When the
-     user spelled it explicitly and another slot is non-default, the keyword is
-     redundant - drop it. *)
-  let width : border_width option =
-    match (width, style, color) with
-    | (Some Medium, Some _, _ | Some Medium, _, Some _) when Pp.minified ctx ->
-        None
-    | width, _, _ -> width
-  in
   Option.iter
     (fun w ->
       add_space ();
@@ -843,10 +940,24 @@ let rec pp_logical_border_width : logical_border_width Pp.t =
 
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
-  | Lengths [ a; b ] when Values.equal_length a b -> pp_length ctx a
   | (Lengths lengths : border_spacing) ->
       Pp.list ~sep:Pp.space pp_length ctx lengths
   | Var v -> pp_var pp_border_spacing ctx v
+
+(* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
+   and reads a single one as "both the horizontal and vertical spacing", so a
+   pair of equal lengths is the longer spelling of that one value. The per-side
+   fold runs first, so a pair that only agrees once normalised collapses too. *)
+and normalize_border_spacing : border_spacing -> border_spacing =
+ fun value ->
+  match value with
+  | Lengths lengths -> (
+      let normalized = map_preserve Values.normalize_length lengths in
+      match normalized with
+      | [ a; b ] when Values.equal_length a b -> Lengths [ a ]
+      | _ when normalized == lengths -> value
+      | _ -> Lengths normalized)
+  | Var _ -> value
 
 let rec pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
@@ -871,15 +982,6 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | No_repeat -> Pp.string ctx "no-repeat"
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
-  (* CSS Backgrounds 3 sec. 2.6.1: the two-value forms collapse when both axes
-     match ([X X] -> [X]) or when they alias a single-keyword shorthand ([repeat
-     no-repeat] -> [repeat-x], [no-repeat repeat] -> [repeat-y]). *)
-  | Repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat"
-  | Space_space when Pp.minified ctx -> Pp.string ctx "space"
-  | Round_round when Pp.minified ctx -> Pp.string ctx "round"
-  | No_repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "no-repeat"
-  | Repeat_no_repeat when Pp.minified ctx -> Pp.string ctx "repeat-x"
-  | No_repeat_repeat when Pp.minified ctx -> Pp.string ctx "repeat-y"
   | Repeat_repeat -> Pp.string ctx "repeat repeat"
   | Repeat_space -> Pp.string ctx "repeat space"
   | Repeat_round -> Pp.string ctx "repeat round"
@@ -1048,90 +1150,41 @@ let pp_border_image : border_image Pp.t =
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat;
-  (* CSS Masking 1 sec. 8.2: [alpha] is the default mode, so drop it under
-     minify; [luminance] always prints. *)
-  let mode =
-    match mode with
-    | Some Alpha when Pp.minified ctx -> (None : mask_border_mode option)
-    | _ -> mode
-  in
   pp_bg_prop maybe_space pp_mask_border_mode ctx mode
 
-(* CSS Backgrounds 3 2.1: the [background] shorthand's default position is [0%
-   0%]; when no [<bg-size>] is also set the position is redundant and elided
-   under minify. *)
-let position_is_default_origin (p : position_value) =
-  match p with
-  | XY (x, y) -> is_zero_length x && is_zero_length y
-  | Single x -> is_zero_length x
-  | Left_top | Top_left -> true
-  | _ -> false
-
-(* CSS Backgrounds 3 sec. 2.10: under minify, drop a longhand whose value equals
-   its [background] shorthand initial. The resolved cascade is unchanged because
-   the omitted slot inherits that same initial. *)
-let drop_initial_when_minified : 'a. Pp.ctx -> 'a -> 'a option -> 'a option =
- fun ctx initial opt ->
-  match opt with
-  | Some x when Pp.minified ctx && x = initial -> (None : _ option)
-  | _ -> opt
-
-let drop_default_position ctx (opt : position_value option) :
-    position_value option =
-  match opt with
-  | Some pos when Pp.minified ctx && position_is_default_origin pos ->
-      (None : _ option)
-  | _ -> opt
+(* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
+   and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
+   explicit [alpha] declares what leaving the slot out declares. [luminance] is
+   the other mode and stays. *)
+let normalize_mask_border (value : border_image) : border_image =
+  match value.mode with
+  | Some (Alpha : mask_border_mode) -> { value with mode = Option.None }
+  | _ -> value
 
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->
   let first = ref true in
   let maybe_space () = if !first then first := false else Pp.token_sp ctx () in
-
-  let size = drop_initial_when_minified ctx (Auto : background_size) bg.size in
-  let position =
-    if size = None then drop_default_position ctx bg.position else bg.position
-  in
-  let image =
-    drop_initial_when_minified ctx (None : background_image) bg.image
-  in
-  let color = drop_initial_when_minified ctx (Transparent : color) bg.color in
-  let repeat =
-    drop_initial_when_minified ctx (Repeat : background_repeat) bg.repeat
-  in
-  let attachment =
-    drop_initial_when_minified ctx
-      (Scroll : background_attachment)
-      bg.attachment
-  in
-  let origin =
-    drop_initial_when_minified ctx (Padding_box : background_box) bg.origin
-  in
-  let clip =
-    drop_initial_when_minified ctx (Border_box : background_box) bg.clip
-  in
-
-  pp_bg_prop maybe_space pp_background_image ctx image;
-  pp_bg_prop maybe_space pp_position_value ctx position;
-  pp_bg_size_with_position maybe_space { bg with position; size } ctx;
-  pp_bg_prop maybe_space pp_background_repeat ctx repeat;
-  pp_bg_prop maybe_space pp_background_attachment ctx attachment;
-  pp_bg_prop maybe_space pp_background_box ctx origin;
-  pp_bg_prop maybe_space pp_background_box ctx clip;
-  pp_bg_prop maybe_space pp_color ctx color;
-
-  if !first then Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
+  pp_bg_prop maybe_space pp_background_image ctx bg.image;
+  pp_bg_prop maybe_space pp_position_value ctx bg.position;
+  pp_bg_size_with_position maybe_space bg ctx;
+  pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
+  pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
+  pp_bg_prop maybe_space pp_background_box ctx bg.origin;
+  pp_bg_prop maybe_space pp_background_box ctx bg.clip;
+  pp_bg_prop maybe_space pp_color ctx bg.color;
+  (* The record is public, so a caller can hand over a layer with no slot
+     filled. It declares nothing but the initial longhands, which is what
+     [background: none] declares (CSS Backgrounds 3 (ED) sec. 2.10); the empty
+     string is not a value any parser reads back. *)
+  if !first then Pp.string ctx "none"
 
 let rec pp_background : background Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
-  | None ->
-      (* CSS Backgrounds 3 sec. 2.10: [background: none] and [background: 0 0]
-         are computed-value-equivalent (both clear the image and set position to
-         [0 0]). Pick the shorter form under minify. *)
-      Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
+  | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_background ctx v
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_background) ctx vars
   | Shorthand s -> pp_background_shorthand ctx s
@@ -1306,6 +1359,12 @@ module Border = struct
     }
 end
 
+(* CSS Backgrounds 3 (ED) sec. 3.4 writes the shorthand as [<line-width> ||
+   <line-style> || <color>], and CSS Values 4 (ED) sec. 2.2 has [||] require one
+   or more of its options to occur, so an empty value matches no border grammar.
+   CSS Syntax 3 (ED) sec. 5.5.6 keeps only a declaration valid in its context,
+   so the whole declaration goes; filling the slots in from nowhere would
+   declare something the author did not write. *)
 let read_border_shorthand t : border_shorthand =
   (* A [var()] in the border shorthand is type-ambiguous (it could substitute a
      width, style, or colour), so it cannot be assigned by matching a typed
@@ -1336,7 +1395,12 @@ let read_border_shorthand t : border_shorthand =
             true
         | Option.None -> false
   done;
-  Border.to_shorthand !acc
+  let acc = !acc in
+  if
+    Option.is_none acc.width && Option.is_none acc.style
+    && Option.is_none acc.color
+  then Cursor.err_expected t "border width, style or color";
+  Border.to_shorthand acc
 
 let border_keyword = function
   | "inherit" -> Some (Inherit : border)
@@ -1856,16 +1920,50 @@ let normalize_logical_border_width :
   | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
   | other -> other
 
+(* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,
+   so an omitted slot takes its initial value - sec. 3.3 makes that [medium] for
+   the width, sec. 3.2 [none] for the style and sec. 3.1 [currentColor] for the
+   colour. An explicit initial value therefore declares what leaving the slot
+   out declares, and the shorter spelling wins. *)
+let drop_initial_line_width (width : border_width option) : border_width option
+    =
+  match width with Some Medium -> Option.None | width -> width
+
+let drop_initial_line_style (style : border_style option) : border_style option
+    =
+  match style with Some (None : border_style) -> Option.None | style -> style
+
+(* CSS Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give
+   column-rule and the logical borders the same initial colour, and they read
+   this production. CSS UI 4 (ED) sec. 3.4 does not: outline-color starts at
+   [auto], which [currentColor] does not name, so [normalize_outline] has no
+   colour drop. *)
+let drop_initial_line_color (color : color option) : color option =
+  match color with Some (Current : color) -> Option.None | color -> color
+
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
-   the same fold as the longhand; the colour slot is a [<color>]. *)
+   the same fold as the longhand; the style slot is a [<line-style>] and the
+   colour slot a [<color>]. Drained of every slot the shorthand declares nothing
+   but initial values, which is what [none] declares, and [none] is the node the
+   keyword parses to - so the two spellings meet there. *)
 let normalize_border ?(lossless = false) : border -> border =
  fun value ->
   match value with
   | Shorthand s ->
-      let width = option_map_preserve normalize_border_width s.width in
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
-      if width == s.width && color == s.color then value
-      else Shorthand { s with width; color }
+      let width =
+        drop_initial_line_width
+          (option_map_preserve normalize_border_width s.width)
+      in
+      let style = drop_initial_line_style s.style in
+      let color =
+        drop_initial_line_color
+          (option_map_preserve (normalize_color ~lossless) s.color)
+      in
+      if width == s.width && style == s.style && color == s.color then value
+      else if
+        Option.is_none width && Option.is_none style && Option.is_none color
+      then (None : border)
+      else Shorthand { width; style; color }
   | other -> other
 
 let read_border_image_repeat_keyword t : border_image_repeat_keyword =

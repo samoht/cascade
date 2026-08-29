@@ -4263,8 +4263,13 @@ let drop_longhands_after_covering_shorthand props =
     &&
     match implied_longhand arr.(j) li with
     | Some implied ->
+        (* [implied] is built here from the shorthand's slots and the initials
+           it resets the rest to, so it has not been through the normalisation
+           every declaration in [props] already carries. Canonicalise it before
+           comparing, or a slot filled by an initial reads as different from the
+           same value written out. *)
         String.equal
-          (string_of_value ~minify:true implied)
+          (string_of_value ~minify:true (Declaration.normalize implied))
           (string_of_value ~minify:true li)
     | None -> false
   in

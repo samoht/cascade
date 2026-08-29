@@ -637,6 +637,40 @@ let spec_read_reference_body_edges () =
   neg_cursor (read_reference_body read_length) "not-a-var";
   neg_cursor (read_reference_body read_length) "--"
 
+(* The string-returning counterpart of {!read_reference_body}: same [var(
+   <custom-property-name> , <declaration-value>? )] argument list, read from a
+   cursor already positioned at it, but handing back the name and the fallback
+   text rather than a typed handle. A caller that has no value type to pick a
+   fallback reader from needs the [<declaration-value>] as the text
+   {!Values.syntax_fallback} consumes. *)
+let spec_read_reference_body_as_string_edges () =
+  let check input expected_name expected_fallback =
+    let r = Cursor.of_string input in
+    let name, fallback = read_reference_body_as_string r in
+    Alcotest.(check string) (input ^ " name") expected_name name;
+    Alcotest.(check (option string))
+      (input ^ " fallback") expected_fallback fallback
+  in
+  (* No fallback: just the [<custom-property-name>], [--] stripped as
+     {!read_reference} strips it. *)
+  check "--x" "x" None;
+  check "--x, 10px" "x" (Some "10px");
+  (* A trailing comma with nothing after it is an explicit empty fallback,
+     distinct from no fallback at all. *)
+  check "--x," "x" (Some "");
+  (* The fallback is a [<declaration-value>]: commas inside it belong to it. *)
+  check "--x, red, blue" "x" (Some "red, blue");
+  check "--shadow, 0 0 0 var(--f, black)" "shadow"
+    (Some "0 0 0 var(--f, black)");
+  (* CSS Custom Properties 1 sec. 3 round-trips author comments in a
+     fallback. *)
+  check "--commented, a /*x*/ b" "commented" (Some "a /*x*/ b");
+  (* A third dash starts the ident body; it is not forbidden. *)
+  check "---" "-" None;
+  neg_cursor read_reference_body_as_string "not-a-var";
+  neg_cursor read_reference_body_as_string "--";
+  neg_cursor read_reference_body_as_string "--, red"
+
 let spec_custom_computed_edges () =
   let check_context name specified =
     let decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
@@ -698,6 +732,9 @@ let tests =
     ("read_reference", `Quick, test_read_var_reference);
     ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
     ("spec read_reference_body edges", `Quick, spec_read_reference_body_edges);
+    ( "spec read_reference_body_as_string edges",
+      `Quick,
+      spec_read_reference_body_as_string_edges );
     ( "spec custom property computed-time edges",
       `Quick,
       spec_custom_computed_edges );

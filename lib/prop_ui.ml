@@ -279,16 +279,35 @@ let rec read_nav t : nav =
           Target (target, scope))
     t
 
+(* CSS UI 4 (ED) sec. 3.3 gives outline-style the initial value [none]. *)
+let drop_initial_outline_style (style : outline_style option) :
+    outline_style option =
+  match style with Some (None : outline_style) -> Option.None | style -> style
+
+(* CSS UI 4 (ED) sec. 3.2 gives outline-width the values and meaning of
+   border-width, so the width slot takes the longhand's fold and its initial
+   [medium] drops the same way. sec. 3.1 makes the outline shorthand set all
+   three longhands, and CSS Cascade 5 (ED) sec. 3 assigns an omitted
+   sub-property its initial value, so a shorthand left with no slot at all
+   declares what [outline: none] declares - the node the keyword parses to, so
+   the two spellings meet there. [auto] is not the initial style and stays: a
+   lone [auto] and an [auto] beside a width both set outline-style and
+   outline-color to [auto]. *)
 let normalize_outline ?(lossless = false) : outline -> outline =
  fun value ->
   match value with
   | Shorthand s ->
       let width =
-        option_map_preserve Prop_background.normalize_border_width s.width
+        Prop_background.drop_initial_line_width
+          (option_map_preserve Prop_background.normalize_border_width s.width)
       in
+      let style = drop_initial_outline_style s.style in
       let color = option_map_preserve (normalize_color ~lossless) s.color in
-      if width == s.width && color == s.color then value
-      else Shorthand { s with width; color }
+      if width == s.width && style == s.style && color == s.color then value
+      else if
+        Option.is_none width && Option.is_none style && Option.is_none color
+      then (None : outline)
+      else Shorthand { width; style; color }
   | other -> other
 
 let normalize_caret ?(lossless = false) : caret -> caret =
@@ -622,7 +641,12 @@ let pp_outline_shorthand : outline_shorthand Pp.t =
     (fun c ->
       add_space ();
       pp_color ctx c)
-    color
+    color;
+  (* The record is public, so a caller can hand over a value with no slot
+     filled. It declares nothing but the initial longhands, which is what
+     [outline: none] declares (CSS UI 4 (ED) sec. 3.1); the empty string is not
+     a value any parser reads back. *)
+  if !first then Pp.string ctx "none"
 
 let rec pp_outline : outline Pp.t =
  fun ctx -> function
@@ -1231,6 +1255,10 @@ let read_outline_parts ~width ~style ~color t =
   in
   loop ()
 
+(* CSS UI 4 (ED) sec. 3.1 writes the shorthand as [<'outline-width'> ||
+   <'outline-style'> || <'outline-color'>], and CSS Values 4 (ED) sec. 2.2 has
+   [||] require one or more of its options to occur, so an empty value matches
+   no outline grammar and CSS Syntax 3 (ED) sec. 5.5.6 drops the declaration. *)
 let read_outline_shorthand_value t : outline =
   let width = ref Option.None in
   let style = ref Option.None in
@@ -1238,6 +1266,8 @@ let read_outline_shorthand_value t : outline =
   read_outline_parts ~width ~style ~color t;
   match (!width, !style, !color) with
   | Option.None, Some (None : outline_style), Option.None -> None
+  | Option.None, Option.None, Option.None ->
+      Cursor.err_expected t "outline width, style or color"
   | _ -> Shorthand { width = !width; style = !style; color = !color }
 
 let rec read_outline t : outline =

@@ -110,6 +110,48 @@ let factor_rules_incremental ?cache ~ctx rules =
    selector so a list bound is de-duplicated and ordered consistently. *)
 let canonicalize_scope_selector sel = Selector.canonicalize sel
 
+(* CSS Fonts 4 (ED) sec. 4.4 gives the [font-weight] and [font-width]
+   descriptors the values of the properties of the same name, so a descriptor
+   takes its property's fold. A descriptor is not a declaration and never
+   reaches factoring, but the fold is still a node question, so it belongs here
+   and not in the serializer. *)
+let normalize_font_face_descriptor (desc : font_face_descriptor) :
+    font_face_descriptor =
+  let weight w = Properties.normalize_property_value Properties.Font_weight w in
+  let stretch w =
+    Properties.normalize_property_value Properties.Font_stretch w
+  in
+  match desc with
+  | Font_weight value ->
+      let value' = weight value in
+      if value' == value then desc else Font_weight value'
+  | Font_weight_range (low, high) ->
+      let low' = weight low in
+      let high' = weight high in
+      if low' == low && high' == high then desc
+      else Font_weight_range (low', high')
+  | Font_stretch value ->
+      let value' = stretch value in
+      if value' == value then desc else Font_stretch value'
+  | Font_stretch_range (low, high) ->
+      let low' = stretch low in
+      let high' = stretch high in
+      if low' == low && high' == high then desc
+      else Font_stretch_range (low', high')
+  | Font_family _ | Src _ | Font_style _ | Font_style_range _ | Font_display _
+  | Unicode_range _ | Font_variant _ | Font_feature_settings _
+  | Font_variation_settings _ | Font_tech _ | Size_adjust _ | Ascent_override _
+  | Descent_override _ | Line_gap_override _ ->
+      desc
+
+(* [stmt] is returned unchanged when no descriptor moved: the factoring fixpoint
+   reads a no-op off physical identity. *)
+let normalize_font_face stmt descriptors =
+  let descriptors' =
+    list_map_preserve normalize_font_face_descriptor descriptors
+  in
+  if descriptors' == descriptors then stmt else Font_face descriptors'
+
 (* Nested rule selectors are implicitly relative to the parent [&], so drop a
    redundant leading [& <combinator>] (CSS Nesting 1 sec. 3). *)
 let drop_nesting_prefix (stmt : statement) : statement =
@@ -249,14 +291,18 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   | (Declarations decls as stmt) :: rest ->
       process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~owner
         ~supports acc stmt decls rest
+  | (Font_face descriptors as stmt) :: rest ->
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+        (normalize_font_face stmt descriptors :: acc)
+        rest
   (* Listed rather than closed with a wildcard: everything left holds no block,
      so a statement that grows one has to be classified above before it
      compiles. *)
   | (( Property _ | Bang_comment _ | Charset _ | Namespace _ | Layer_decl _
      | Supports_condition _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-     | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
-     | Font_palette_values _ | Font_feature_values _ | View_transition _
-     | Position_try _ | Viewport _ | Unknown_at_rule _ ) as hd)
+     | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+     | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+     | Unknown_at_rule _ ) as hd)
     :: rest ->
       process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         (hd :: acc) rest

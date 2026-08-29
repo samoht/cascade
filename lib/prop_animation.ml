@@ -383,13 +383,6 @@ let rec pp_timing_function : timing_function Pp.t =
   | Ease_in_out -> Pp.string ctx "ease-in-out"
   | Step_start -> Pp.string ctx "step-start"
   | Step_end -> Pp.string ctx "step-end"
-  | Steps (1, Some (Jump_start | Start)) when Pp.minified ctx ->
-      (* CSS Easing 1 sec. 2: [steps(1, jump-start)] = [steps(1, start)] = the
-         [step-start] alias; the [end] / [jump-end] equivalents fold to
-         [step-end]. *)
-      Pp.string ctx "step-start"
-  | Steps (1, Some (Jump_end | End)) when Pp.minified ctx ->
-      Pp.string ctx "step-end"
   | Steps (n, jump_term_opt) ->
       Pp.string ctx "steps(";
       Pp.int ctx n;
@@ -400,20 +393,6 @@ let rec pp_timing_function : timing_function Pp.t =
           pp_steps_direction ctx d
       | None -> ());
       Pp.char ctx ')'
-  | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx ->
-      (* CSS Easing 1 2: the named cubic-bezier aliases canonicalise to the
-         keyword form, which is shorter than the four-argument call. *)
-      Pp.string ctx "ease"
-  | Cubic_bezier (0.42, 0.0, 1.0, 1.0) when Pp.minified ctx ->
-      Pp.string ctx "ease-in"
-  | Cubic_bezier (0.0, 0.0, 0.58, 1.0) when Pp.minified ctx ->
-      Pp.string ctx "ease-out"
-  | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
-      Pp.string ctx "ease-in-out"
-  | Cubic_bezier (0.0, 0.0, 1.0, 1.0) when Pp.minified ctx ->
-      (* CSS Easing 1 sec. 2.2: [cubic-bezier(0, 0, 1, 1)] is the identity
-         curve, equivalent to the [linear] keyword. *)
-      Pp.string ctx "linear"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
   | Timing_functions timings ->
       Pp.list ~sep:Pp.comma pp_timing_function ctx timings
@@ -427,6 +406,29 @@ let rec pp_timing_function : timing_function Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_timing_function ctx v
+
+(* CSS Easing 1 (ED) sec. 2.2 defines [ease] as [cubic-bezier(0.25, 0.1, 0.25,
+   1)], [ease-in] as [cubic-bezier(0.42, 0, 1, 1)], [ease-out] as
+   [cubic-bezier(0, 0, 0.58, 1)] and [ease-in-out] as [cubic-bezier(0.42, 0,
+   0.58, 1)]; [cubic-bezier(0, 0, 1, 1)] is the identity curve the [linear]
+   keyword names. sec. 2.3 computes [step-start] to [steps(1, start)] and
+   [step-end] to [steps(1, end)], reads [start] as [jump-start] and [end] as
+   [jump-end], and assumes [end] when the step position is left out. Each pair
+   is one easing under two spellings, and the keyword is the shorter one. *)
+let rec normalize_timing_function : timing_function -> timing_function =
+ fun value ->
+  match value with
+  | Cubic_bezier (0.25, 0.1, 0.25, 1.0) -> Ease
+  | Cubic_bezier (0.42, 0.0, 1.0, 1.0) -> Ease_in
+  | Cubic_bezier (0.0, 0.0, 0.58, 1.0) -> Ease_out
+  | Cubic_bezier (0.42, 0.0, 0.58, 1.0) -> Ease_in_out
+  | Cubic_bezier (0.0, 0.0, 1.0, 1.0) -> Linear
+  | Steps (1, (Option.None | Some (Jump_end | End))) -> Step_end
+  | Steps (1, Some (Jump_start | Start)) -> Step_start
+  | Timing_functions timings ->
+      let normalized = map_preserve normalize_timing_function timings in
+      if normalized == timings then value else Timing_functions normalized
+  | _ -> value
 
 let rec pp_transition_property_value : transition_property_value Pp.t =
  fun ctx -> function
@@ -454,11 +456,6 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let transition_timing_is_default ctx = function
-  | Ease when Pp.minified ctx -> true
-  | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx -> true
-  | _ -> false
-
 let rec pp_overlay : overlay Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_overlay ctx v
@@ -470,31 +467,67 @@ let rec pp_overlay : overlay Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let transition_duration_is_zero : duration -> bool = function
+  | S 0. | Ms 0. -> true
+  | _ -> false
+
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay; behavior } ->
+  let slot pp v =
+    Pp.space ctx ();
+    pp ctx v
+  in
   pp_transition_property_value ctx property;
-  (* Only output non-default values: defaults are 0s, ease, 0s *)
-  (match duration with
-  | Some (S 0.) | Some (Ms 0.) | None -> ()
-  | Some d ->
-      Pp.space ctx ();
-      pp_duration ctx d);
-  (match timing_function with
-  | None -> ()
-  | Some tf when transition_timing_is_default ctx tf -> ()
-  | Some tf ->
-      Pp.space ctx ();
-      pp_timing_function ctx tf);
-  (match delay with
-  | Some (S 0.) | Some (Ms 0.) | None -> ()
-  | Some d ->
-      Pp.space ctx ();
-      pp_duration ctx d);
-  match behavior with
-  | None | Some Normal -> ()
-  | Some b ->
-      Pp.space ctx ();
-      pp_transition_behavior ctx b
+  (* CSS Transitions 1 (ED) sec. 2.5: "the first value that can be parsed as a
+     time is assigned to the transition-duration, and the second value that can
+     be parsed as a time is assigned to transition-delay". The delay is only
+     reachable behind a duration, so a value carrying a delay and no duration
+     writes the duration initial [0s] out to hold the slot. *)
+  (match (duration, delay) with
+  | Option.Some d, _ -> slot pp_duration d
+  | Option.None, Option.Some _ -> slot Pp.string "0s"
+  | Option.None, Option.None -> ());
+  Option.iter (slot pp_timing_function) timing_function;
+  Option.iter (slot pp_duration) delay;
+  Option.iter (slot pp_transition_behavior) behavior
+
+(* CSS Transitions 1 (ED) sec. 2.5 assembles a [<single-transition>] out of
+   components that each fall back to their longhand initial when left out: [0s]
+   for the duration (sec. 2.2), [ease] for the easing (sec. 2.3), [0s] for the
+   delay (sec. 2.4), and [normal] for the Transitions 2 behaviour. Writing an
+   initial out says what leaving it out says, and the shorter spelling is the
+   canonical node. A zero duration goes with the rest: where the grammar still
+   needs the slot to reach a delay, the printer writes it back. *)
+let normalize_transition_shorthand (s : transition_shorthand) :
+    transition_shorthand =
+  let drop_zero d =
+    match d with
+    | Option.Some d when transition_duration_is_zero d -> Option.None
+    | d -> d
+  in
+  let duration = drop_zero s.duration in
+  let delay = drop_zero s.delay in
+  let timing_function =
+    match option_map_preserve normalize_timing_function s.timing_function with
+    | Option.Some Ease -> Option.None
+    | tf -> tf
+  in
+  let behavior =
+    match s.behavior with Option.Some Normal -> Option.None | b -> b
+  in
+  if
+    option_is_phys_same duration s.duration
+    && option_is_phys_same delay s.delay
+    && option_is_phys_same timing_function s.timing_function
+    && option_is_phys_same behavior s.behavior
+  then s
+  else { s with duration; timing_function; delay; behavior }
+
+let normalize_transition : transition -> transition = function
+  | Shorthand s as value ->
+      let s' = normalize_transition_shorthand s in
+      if s' == s then value else Shorthand s'
+  | value -> value
 
 let rec pp_transition : transition Pp.t =
  fun ctx -> function
@@ -1421,24 +1454,11 @@ module Animation = struct
   let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
   let pp_iter_count = pp_animation_iteration_count
 
-  (* Check if a timing function prints with a trailing ')'. Some function values
-     canonicalise to keyword aliases in minified output. *)
-  let rec ends_with_paren ctx = function
-    | Cubic_bezier (0.25, 0.1, 0.25, 1.0)
-    | Cubic_bezier (0.42, 0.0, 1.0, 1.0)
-    | Cubic_bezier (0.0, 0.0, 0.58, 1.0)
-    | Cubic_bezier (0.42, 0.0, 0.58, 1.0)
-      when Pp.minified ctx ->
-        false
-    | (Steps (1, Some (Jump_start | Start)) | Steps (1, Some (Jump_end | End)))
-      when Pp.minified ctx ->
-        (* These fold to the [step-start] / [step-end] keywords in
-           [pp_timing_function], so the rendered output is keyword-shaped, no
-           closing paren. *)
-        false
+  (* Check if a timing function prints with a trailing ')'. *)
+  let rec ends_with_paren = function
     | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
     | Timing_functions [] -> false
-    | Timing_functions values -> ends_with_paren ctx (List.hd (List.rev values))
+    | Timing_functions values -> ends_with_paren (List.hd (List.rev values))
     | Inherit | Initial | Unset | Revert | Revert_layer -> false
     | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
       ->
@@ -1450,14 +1470,11 @@ module Animation = struct
     | Some d when not (is_zero_duration d) -> true
     | _ -> false
 
-  let is_default_timing ctx = function
-    | Ease -> true
-    | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx -> true
-    | _ -> false
+  let is_default_timing = function Ease -> true | _ -> false
 
-  let is_timing ctx : timing_function option -> bool = function
+  let is_timing : timing_function option -> bool = function
     | Some Ease | None -> false
-    | Some tf -> not (is_default_timing ctx tf)
+    | Some tf -> not (is_default_timing tf)
 
   let is_iteration : animation_iteration_count option -> bool = function
     | Some (Num 1.) | None -> false
@@ -1479,9 +1496,9 @@ module Animation = struct
     | Some Auto | None -> false
     | Some _ -> true
 
-  let has_non_defaults ctx (anim : animation_shorthand) =
+  let has_non_defaults (anim : animation_shorthand) =
     is_duration anim.duration
-    || is_timing ctx anim.timing_function
+    || is_timing anim.timing_function
     || is_duration anim.delay
     || is_iteration anim.iteration_count
     || is_direction anim.direction
@@ -1505,12 +1522,12 @@ module Animation = struct
      re-parse: the slot fills first, and the second occurrence falls through to
      the keyframes-name. In that case the printer can skip the quoting trick
      entirely. *)
-  let bare_ambiguous_safe ctx (anim : animation_shorthand) =
+  let bare_ambiguous_safe (anim : animation_shorthand) =
     match ambiguous_name_kind anim with
     | None -> false
     | Some Timing -> (
         match anim.timing_function with
-        | Some tf -> not (is_default_timing ctx tf)
+        | Some tf -> not (is_default_timing tf)
         | None -> false)
     | Some Iteration -> is_iteration anim.iteration_count
     | Some Direction -> is_direction anim.direction
@@ -1527,11 +1544,11 @@ module Animation = struct
         | Some d when not (is_zero_duration d) -> Some d
         | _ -> None)
 
-  let timing ?(quote_name = false) ctx (anim : animation_shorthand) :
+  let timing ?(quote_name = false) (anim : animation_shorthand) :
       timing_function option =
     match (anim.timing_function, effective_ambiguous_kind ~quote_name anim) with
     | (Some Ease | None), Some Timing -> Some Ease
-    | Some tf, _ when is_default_timing ctx tf -> None
+    | Some tf, _ when is_default_timing tf -> None
     | None, _ -> None
     | Some t, _ -> Some t
 
@@ -1619,7 +1636,7 @@ let animation_name_is_default_none ctx = function
 let animation_quote_ambiguous_name ctx anim =
   Pp.minified ctx
   && Animation.ambiguous_name_kind anim <> None
-  && not (Animation.bare_ambiguous_safe ctx anim)
+  && not (Animation.bare_ambiguous_safe anim)
 
 let pp_animation_initial_none ctx (anim : animation_shorthand)
     ~name_is_default_none ~has_any_non_default =
@@ -1645,9 +1662,9 @@ let pp_animation_name_slot ctx state ~quote_ambiguous_name
       anim.name
 
 let pp_animation_timing_slot ctx state ~quote_ambiguous_name anim =
-  match Animation.timing ~quote_name:quote_ambiguous_name ctx anim with
+  match Animation.timing ~quote_name:quote_ambiguous_name anim with
   | Some tf ->
-      let ends = Animation.ends_with_paren ctx tf in
+      let ends = Animation.ends_with_paren tf in
       pp_animation_space_before state ~ends_with_paren:ends Animation.pp_timing
         ctx tf
   | None -> ()
@@ -1655,7 +1672,7 @@ let pp_animation_timing_slot ctx state ~quote_ambiguous_name anim =
 let pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
   let state = animation_pp_state () in
-  let has_any_non_default = Animation.has_non_defaults ctx anim in
+  let has_any_non_default = Animation.has_non_defaults anim in
   let name_is_default_none = animation_name_is_default_none ctx anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
   pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
@@ -1691,6 +1708,23 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
     (pp_animation_space_before state pp_animation_timeline)
     ctx
     (Animation.timeline ~quote_name:quote_ambiguous_name anim)
+
+(* The animation reader fills every slot with its longhand initial, so only the
+   easing needs canonicalising here: its keyword and curve spellings are the
+   same node question [normalize_timing_function] answers. *)
+let normalize_animation_shorthand (a : animation_shorthand) :
+    animation_shorthand =
+  let timing_function =
+    option_map_preserve normalize_timing_function a.timing_function
+  in
+  if option_is_phys_same timing_function a.timing_function then a
+  else { a with timing_function }
+
+let normalize_animation : animation -> animation = function
+  | Shorthand a as value ->
+      let a' = normalize_animation_shorthand a in
+      if a' == a then value else Shorthand a'
+  | value -> value
 
 let rec pp_animation : animation Pp.t =
  fun ctx -> function

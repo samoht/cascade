@@ -151,26 +151,14 @@ let rec pp_list_style_image : list_style_image Pp.t =
 
 let pp_list_style_shorthand : list_style_shorthand Pp.t =
  fun ctx { type_; position; image } ->
-  let drop = Pp.minified ctx in
-  let type_ =
-    drop_default_if ~drop
-      ~is_default:(fun (t : list_style_type) -> t = Disc)
-      type_
-  in
-  let position =
-    drop_default_if ~drop
-      ~is_default:(fun (p : list_style_position) -> p = Outside)
-      position
-  in
-  let image =
-    drop_default_if ~drop
-      ~is_default:(fun (i : list_style_image) -> i = None)
-      image
-  in
   let is_none_type = type_ = Some (None : list_style_type) in
   let is_none_image = image = Some (None : list_style_image) in
-  if is_none_type && is_none_image && position = Option.None && drop then
-    Pp.string ctx "none"
+  (* CSS Lists 3 (ED) sec. 3.6: "a value of none in the shorthand must be
+     applied to whichever of the two properties aren't otherwise set by the
+     shorthand", so a lone [none] with no position reads back as the same pair
+     of nones the two keywords spell out. *)
+  if is_none_type && is_none_image && position = Option.None && Pp.minified ctx
+  then Pp.string ctx "none"
   else
     let first = ref true in
     let emit pp = function
@@ -188,6 +176,37 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
        [outside] would set the position, changing nothing, but [disc] is shorter
        and is the canonical single-value form. *)
     if !first then Pp.string ctx "disc"
+
+(* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
+   <'list-style-image'> || <'list-style-type'>], so a component left out of the
+   shorthand takes its longhand initial - [outside] (sec. 3.5), [none] (sec.
+   3.3) and [disc] (sec. 3.4). Writing an initial out names what leaving it out
+   names, and leaving it out is the shorter spelling. *)
+let normalize_list_style_shorthand (s : list_style_shorthand) :
+    list_style_shorthand =
+  let type_ =
+    drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
+  in
+  let position =
+    drop_default
+      ~is_default:(fun (p : list_style_position) -> p = Outside)
+      s.position
+  in
+  let image =
+    drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
+  in
+  if
+    option_is_phys_same type_ s.type_
+    && option_is_phys_same position s.position
+    && option_is_phys_same image s.image
+  then s
+  else { type_; position; image }
+
+let normalize_list_style : list_style -> list_style = function
+  | Shorthand s as value ->
+      let s' = normalize_list_style_shorthand s in
+      if s' == s then value else Shorthand s'
+  | value -> value
 
 let rec pp_list_style : list_style Pp.t =
  fun ctx -> function
@@ -3517,6 +3536,9 @@ let normalize_property_value : type a.
   | Webkit_mask_image -> normalize_background_image ~lossless value
   | Border_image_source -> normalize_background_image ~lossless value
   | Background -> map_preserve (normalize_background ~lossless) value
+  | Background_repeat -> normalize_background_repeat value
+  | Mask_border -> normalize_mask_border value
+  | Border_spacing -> normalize_border_spacing value
   | Mask -> normalize_mask ~lossless value
   | Clip_path -> normalize_clip_path value
   | Object_view_box -> normalize_object_view_box value
@@ -3531,7 +3553,7 @@ let normalize_property_value : type a.
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
   | Color -> normalize_color value
-  | Border_color -> map_preserve normalize_color value
+  | Border_color -> normalize_box_shorthand normalize_color value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -3601,6 +3623,17 @@ let normalize_property_value : type a.
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
+  | Font_weight -> normalize_font_weight value
+  | Font_family -> normalize_font_family value
+  | Font_stretch -> normalize_font_stretch value
+  | Font -> normalize_font value
+  | Display -> normalize_display value
+  | Overflow -> normalize_overflow value
+  | Transition -> map_preserve normalize_transition value
+  | List_style -> normalize_list_style value
+  | Transition_timing_function -> normalize_timing_function value
+  | Animation -> map_preserve normalize_animation value
+  | Animation_timing_function -> normalize_timing_function value
   | Padding_left -> Values.normalize_length ~ctx value
   | Padding_right -> Values.normalize_length ~ctx value
   | Padding_bottom -> Values.normalize_length ~ctx value
@@ -3652,17 +3685,20 @@ let normalize_property_value : type a.
   | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
   | Scroll_padding_block_start -> Values.normalize_length ~ctx value
   | Scroll_padding_block_end -> Values.normalize_length ~ctx value
-  | Padding -> map_preserve (Values.normalize_length ~ctx) value
-  | Padding_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Padding_block -> map_preserve (Values.normalize_length ~ctx) value
-  | Margin -> map_preserve (Values.normalize_length ~ctx) value
-  | Margin_inline -> map_preserve (Values.normalize_length ~ctx) value
-  | Margin_block -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset_inline -> map_preserve (Values.normalize_length ~ctx) value
+  | Padding -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Padding_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Padding_block ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Margin -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Margin_inline ->
+      normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Margin_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Inset -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Inset_inline -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_inline_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_inline_end -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset_block -> map_preserve (Values.normalize_length ~ctx) value
+  | Inset_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
   | Inset_block_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_block_end -> map_preserve (Values.normalize_length ~ctx) value
   | Top -> map_preserve (Values.normalize_length ~ctx) value
@@ -3768,7 +3804,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | All -> pp pp_css_wide
   | Background_color -> pp pp_color
   | Color -> pp pp_color
-  | Border_color -> pp (pp_box_shorthand pp_color)
+  | Border_color -> pp (Pp.list ~sep:Pp.token_sp pp_color)
   | Border_style -> pp pp_border_style
   | Border_top_style -> pp pp_border_style
   | Border_right_style -> pp pp_border_style
@@ -3778,18 +3814,18 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_end_style -> pp pp_border_style
   | Border_block_start_style -> pp pp_border_style
   | Border_block_end_style -> pp pp_border_style
-  | Padding -> pp (pp_box_shorthand pp_length)
+  | Padding -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_left -> pp pp_length
   | Padding_right -> pp pp_length
   | Padding_bottom -> pp pp_length
   | Padding_top -> pp pp_length
-  | Padding_inline -> pp (pp_box_shorthand pp_length)
+  | Padding_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_inline_start -> pp pp_length
   | Padding_inline_end -> pp pp_length
-  | Padding_block -> pp (pp_box_shorthand pp_length)
+  | Padding_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Padding_block_start -> pp pp_length
   | Padding_block_end -> pp pp_length
-  | Margin -> pp (pp_box_shorthand pp_length)
+  | Margin -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Margin_inline_end -> pp pp_length
   | Margin_inline_start -> pp pp_length
   | Margin_left -> pp pp_length
@@ -3842,11 +3878,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Zoom -> pp pp_zoom
   | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
-  | Inset -> pp (pp_box_shorthand pp_length)
-  | Inset_inline -> pp (pp_box_shorthand pp_length)
+  | Inset -> pp (Pp.list ~sep:Pp.token_sp pp_length)
+  | Inset_inline -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Inset_inline_start -> pp (Pp.list ~sep:Pp.space pp_length)
   | Inset_inline_end -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Inset_block -> pp (pp_box_shorthand pp_length)
+  | Inset_block -> pp (Pp.list ~sep:Pp.token_sp pp_length)
   | Inset_block_start -> pp (Pp.list ~sep:Pp.space pp_length)
   | Inset_block_end -> pp (Pp.list ~sep:Pp.space pp_length)
   | Top -> pp (Pp.list ~sep:Pp.space pp_length)

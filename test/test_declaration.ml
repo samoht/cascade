@@ -486,6 +486,74 @@ let special_cases () =
   check_declaration ~expected:"border-color:var(--c)red"
     "border-color: var(--c) red;";
 
+  (* CSS Box 4 (ED) sec. 3.2 and sec. 4.2: "If there is only one component
+     value, it applies to all sides. If there are two values, the top and bottom
+     margins are set to the first value and the right and left margins are set
+     to the second. If there are three values, the top is set to the first
+     value, the left and right are set to the second, and the bottom is set to
+     the third." A repeated side therefore has a shorter spelling naming the
+     same four sides, and picking it is a node change, so pp prints what it
+     parsed and the optimizer folds. *)
+  check_declaration ~expected:"margin:2px 2px 2px 2px" ~optimized:"margin:2px"
+    "margin: 2px 2px 2px 2px";
+  check_declaration ~expected:"margin:1px 2px 1px 2px"
+    ~optimized:"margin:1px 2px" "margin: 1px 2px 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 2px"
+    ~optimized:"margin:1px 2px 3px" "margin: 1px 2px 3px 2px";
+  check_declaration ~expected:"margin:1px 1px 1px" ~optimized:"margin:1px"
+    "margin: 1px 1px 1px";
+  check_declaration ~expected:"margin:1px 2px 1px" ~optimized:"margin:1px 2px"
+    "margin: 1px 2px 1px";
+  (* Four distinct sides have no shorter spelling. *)
+  check_declaration ~expected:"margin:1px 2px 3px 4px"
+    ~optimized:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"padding:0 0 0 0" ~optimized:"padding:0"
+    "padding: 0 0 0 0";
+  (* The logical shorthands take the same one-to-four assignment over their own
+     two sides. *)
+  check_declaration ~expected:"padding-inline:1px 1px"
+    ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
+     Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
+     one-to-four side assignment. *)
+  check_declaration ~expected:"inset:1px 1px 1px 1px" ~optimized:"inset:1px"
+    "inset: 1px 1px 1px 1px";
+  check_declaration ~expected:"border-color:red red red red"
+    ~optimized:"border-color:red" "border-color: red red red red";
+
+  (* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
+     <'list-style-image'> || <'list-style-type'>], so a component left out takes
+     its longhand initial - [outside] (sec. 3.5), [none] (sec. 3.3) and [disc]
+     (sec. 3.4). Writing an initial out names what leaving it out names, and
+     dropping it is a node change, so pp holds it and the optimizer folds. *)
+  check_declaration ~expected:"list-style:disc outside"
+    ~optimized:"list-style:disc" "list-style: disc outside";
+  check_declaration ~expected:"list-style:outside" ~optimized:"list-style:disc"
+    "list-style: outside";
+  check_declaration ~expected:"list-style:disc outside none"
+    ~optimized:"list-style:disc" "list-style: disc outside none";
+  check_declaration ~expected:"list-style:square outside"
+    ~optimized:"list-style:square" "list-style: square outside";
+  (* sec. 3.6 resolves a bare [none] onto whichever of the image and the type
+     the shorthand does not otherwise set, so [list-style: none] sets both. That
+     makes [none] the shortest spelling of that one node rather than a fold, and
+     it is what both layers print. *)
+  check_declaration ~expected:"list-style:none" ~optimized:"list-style:none"
+    "list-style: none";
+  check_declaration ~expected:"list-style:none" ~optimized:"list-style:none"
+    "list-style: none none";
+  (* With the image set, the [none] lands on the type and both stay. *)
+  check_declaration ~expected:"list-style:none url(bullet.png)"
+    ~optimized:"list-style:none url(bullet.png)"
+    "list-style: none url(bullet.png)";
+  (* With the type set, the [none] lands on the image, which is its initial, so
+     what is left is the all-initial value the single [disc] names. *)
+  check_declaration ~expected:"list-style:disc none"
+    ~optimized:"list-style:disc" "list-style: none disc";
+  (* A non-initial position stands. *)
+  check_declaration ~expected:"list-style:square inside"
+    ~optimized:"list-style:square inside" "list-style: square inside";
+
   (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
      same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
      above, but print through their own list combinator rather than the shared
@@ -499,7 +567,15 @@ let special_cases () =
   check_declaration ~expected:"margin-inline:10%20%" "margin-inline: 10% 20%;";
   check_declaration ~expected:"margin-inline:10px 20px"
     "margin-inline: 10px 20px;";
-  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;"
+  check_declaration ~expected:"margin-block:10%20%" "margin-block: 10% 20%;";
+  (* CSS Logical 1 (ED) sec. 4.2 defines [margin-inline] and [margin-block] as
+     [<'margin-top'>{1,2}]: "If only one value is given, it applies to both the
+     start and end edges." Two equal edges are therefore the longer spelling of
+     the single value, the way the physical shorthand's four sides are. *)
+  check_declaration ~expected:"margin-inline:1px 1px"
+    ~optimized:"margin-inline:1px" "margin-inline: 1px 1px";
+  check_declaration ~expected:"margin-block:1px 1px"
+    ~optimized:"margin-block:1px" "margin-block: 1px 1px"
 
 let colors () =
   (* Same-node spellings the printer keeps (case-fold, hex shorten). The
@@ -593,7 +669,67 @@ let display () =
   c ~expected:"display:table-cell" "display: table-cell";
   c ~expected:"display:list-item" "display: list-item";
   c ~expected:"display:contents" "display: contents";
-  c ~expected:"display:flow-root" "display: flow-root"
+  c ~expected:"display:flow-root" "display: flow-root";
+  (* CSS Display 3 (ED) sec. 2.1: a [<display-outside>] written without an
+     inside defaults the inner type to [flow]. sec. 2.2: an inside written alone
+     defaults the outer type to [block], except [ruby], which defaults to
+     [inline]. sec. 2.6 names the four precomposed inline-level keywords. Each
+     two-value form below therefore has a single-keyword spelling of the same
+     value, and the keyword is the shorter one; swapping them is a node change,
+     so pp prints what it parsed and the optimizer folds. *)
+  c ~expected:"display:block flow" ~optimized:"display:block"
+    "display: block flow";
+  c ~expected:"display:inline flow" ~optimized:"display:inline"
+    "display: inline flow";
+  c ~expected:"display:run-in flow" ~optimized:"display:run-in"
+    "display: run-in flow";
+  c ~expected:"display:block flow-root" ~optimized:"display:flow-root"
+    "display: block flow-root";
+  c ~expected:"display:inline flow-root" ~optimized:"display:inline-block"
+    "display: inline flow-root";
+  c ~expected:"display:block flex" ~optimized:"display:flex"
+    "display: block flex";
+  c ~expected:"display:inline flex" ~optimized:"display:inline-flex"
+    "display: inline flex";
+  c ~expected:"display:block grid" ~optimized:"display:grid"
+    "display: block grid";
+  c ~expected:"display:inline grid" ~optimized:"display:inline-grid"
+    "display: inline grid";
+  c ~expected:"display:block table" ~optimized:"display:table"
+    "display: block table";
+  c ~expected:"display:inline table" ~optimized:"display:inline-table"
+    "display: inline table";
+  c ~expected:"display:inline ruby" ~optimized:"display:ruby"
+    "display: inline ruby";
+  (* sec. 2.2's ruby exception cuts the other way too: the bare [ruby] keyword
+     means [inline ruby], so [block ruby] is the one two-value form with no
+     shorter spelling and both layers hold it. *)
+  c ~expected:"display:block ruby" ~optimized:"display:block ruby"
+    "display: block ruby";
+  (* sec. 2.3: a [list-item] with no inside takes [flow] and with no outside
+     takes [block], so [block flow list-item] is what [list-item] alone says.
+     Dropping the [flow] alone names the same value either way, which is why pp
+     may do it and the outer keyword has to wait for the optimizer. *)
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: block flow list-item";
+  c ~expected:"display:inline list-item" ~optimized:"display:inline list-item"
+    "display: inline flow list-item";
+  (* sec. 2 orders none of the three: [<display-outside>? && [ flow | flow-root
+     ]? && list-item] reads the inside keyword on either side of the
+     [list-item]. sec. 2.3 defaults the unwritten inside to [flow] and the
+     unwritten outside to [block], so [flow-root list-item] is what [block
+     flow-root list-item] says and pp writes the shorter one. *)
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item" "display: flow-root list-item";
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item" "display: list-item flow-root";
+  c ~expected:"display:flow-root list-item"
+    ~optimized:"display:flow-root list-item"
+    "display: block flow-root list-item";
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: flow list-item";
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: list-item flow"
 
 let position () =
   let c = check_declaration in
@@ -604,17 +740,94 @@ let position () =
   c ~expected:"position:sticky" "position: sticky"
 
 let font_properties () =
-  (* Font weight. Per CSS Fonts 4 section 2.2 the keywords [normal] and [bold]
-     map to [400] / [700]; the printer canonicalizes to the numeric form under
-     minify. *)
-  check_declaration ~expected:"font-weight:400" "font-weight: normal";
-  check_declaration ~expected:"font-weight:700" "font-weight: bold";
+  (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
+     "Same as 700", so each keyword and its number are one value with two
+     spellings, and the number is the shorter one. Swapping them is a node
+     change, so pp holds what it was handed and the optimizer folds. *)
+  check_declaration ~expected:"font-weight:normal" ~optimized:"font-weight:400"
+    "font-weight: normal";
+  check_declaration ~expected:"font-weight:bold" ~optimized:"font-weight:700"
+    "font-weight: bold";
+  (* sec. 2.7 gives the [font] shorthand a [<'font-weight'>] slot, so the slot
+     takes the longhand's fold. *)
+  check_declaration ~expected:"font:bold 12px serif"
+    ~optimized:"font:700 12px serif" "font: bold 12px serif";
   check_declaration ~expected:"font-weight:lighter" "font-weight: lighter";
   check_declaration ~expected:"font-weight:bolder" "font-weight: bolder";
   check_declaration ~expected:"font-weight:100" "font-weight: 100";
   check_declaration ~expected:"font-weight:400" "font-weight: 400";
   check_declaration ~expected:"font-weight:700" "font-weight: 700";
   check_declaration ~expected:"font-weight:900" "font-weight: 900";
+
+  (* CSS Fonts 4 (ED) sec. 2.3 maps every [font-width] keyword onto a percentage
+     ([condensed] is 75%, [normal] is 100%) and has getComputedStyle() serialize
+     the property as a percentage whichever spelling was authored, so keyword
+     and percentage are one value and the percentage is the shorter one.
+     Swapping them is a node change, so pp holds what it parsed and the
+     optimizer folds. *)
+  check_declaration ~expected:"font-stretch:condensed"
+    ~optimized:"font-stretch:75%" "font-stretch: condensed";
+  check_declaration ~expected:"font-stretch:normal"
+    ~optimized:"font-stretch:100%" "font-stretch: normal";
+  check_declaration ~expected:"font-stretch:semi-expanded"
+    ~optimized:"font-stretch:112.5%" "font-stretch: semi-expanded";
+  check_declaration ~expected:"font-stretch:ultra-expanded"
+    ~optimized:"font-stretch:200%" "font-stretch: ultra-expanded";
+  check_declaration ~expected:"font-stretch:75%" ~optimized:"font-stretch:75%"
+    "font-stretch: 75%";
+  (* sec. 2.7 gives the [font] shorthand's width slot the grammar
+     [<font-width-css3>], which is the keywords alone: the percentage the
+     longhand folds to is not a value the slot accepts, so neither layer folds
+     it here. *)
+  check_declaration ~expected:"font:condensed 12px serif"
+    ~optimized:"font:condensed 12px serif" "font: condensed 12px serif";
+
+  (* CSS Values 4 (ED) sec. 10.10.1 simplifies a Sum by replacing each set of
+     children with identical units by their sum, and returns the lone remaining
+     child, so a same-unit [font-size] calc folds the way a [width] one does.
+     [em] and [%] resolve against the parent font size here rather than the
+     element's own, but both terms of one declaration share that reference, so
+     the sum is the same value whatever it turns out to be. *)
+  check_declaration ~expected:"font-size:calc(1px + 1px)"
+    ~optimized:"font-size:2px" "font-size: calc(1px + 1px)";
+  check_declaration ~expected:"font-size:calc(1em + 1em)"
+    ~optimized:"font-size:2em" "font-size: calc(1em + 1em)";
+  check_declaration ~expected:"font-size:calc(50% + 50%)"
+    ~optimized:"font-size:100%" "font-size: calc(50% + 50%)";
+  check_declaration ~expected:"font-size:calc(2*3px)" ~optimized:"font-size:6px"
+    "font-size: calc(2 * 3px)";
+  (* Terms of different units carry no conversion factor until layout, so the
+     Sum keeps both children and both layers hold the call. *)
+  check_declaration ~expected:"font-size:calc(1em + 1px)"
+    ~optimized:"font-size:calc(1em + 1px)" "font-size: calc(1em + 1px)";
+  (* sec. 2.7 of CSS Fonts 4 gives the [font] shorthand a [<'font-size'>] slot,
+     so the slot takes the longhand's fold. *)
+  check_declaration ~expected:"font:calc(1px + 1px) serif"
+    ~optimized:"font:2px serif" "font: calc(1px + 1px) serif";
+
+  (* sec. 2.7 first resets every subproperty of [font] to its initial value and
+     then applies the slots given explicitly, so a slot carrying its longhand's
+     initial says exactly what leaving it out says. The initials are [normal]
+     for style, variant and width, [normal] (that is 400) for weight, and
+     [normal] for line-height. Dropping a slot is a node change, so pp holds
+     every slot it parsed and the optimizer drops. *)
+  check_declaration ~expected:"font:400 12px serif" ~optimized:"font:12px serif"
+    "font: 400 12px serif";
+  check_declaration ~expected:"font:12px/normal serif"
+    ~optimized:"font:12px serif" "font: 12px/normal serif";
+  check_declaration ~expected:"font:small-caps 400 12px/normal serif"
+    ~optimized:"font:small-caps 12px serif"
+    "font: normal small-caps 400 normal 12px/normal serif";
+  (* A bare [normal] in the prefix names the initial of whichever of the four
+     slots is still open, so the reader binds no slot for it and the two layers
+     agree from the start. *)
+  check_declaration ~expected:"font:12px serif" ~optimized:"font:12px serif"
+    "font: normal 12px serif";
+  (* A slot that is not its longhand's initial stays in both layers. *)
+  check_declaration ~expected:"font:italic 12px serif"
+    ~optimized:"font:italic 12px serif" "font: italic 12px serif";
+  check_declaration ~expected:"font:12px/1.5 serif"
+    ~optimized:"font:12px/1.5 serif" "font: 12px/1.5 serif";
 
   (* Font style *)
   check_declaration ~expected:"font-style:normal" "font-style: normal";
@@ -628,15 +841,28 @@ let font_properties () =
     "font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif";
   check_declaration ~expected:"font-family:Georgia,serif"
     "font-family: Georgia, serif";
-  (* minify dedups a repeated family, but must not collapse the list to a lone
-     generic keyword - [monospace, monospace] opts a bare generic back into the
-     normal UA size, so dropping the duplicate would shrink the text. *)
-  check_declaration ~expected:"font-family:Arial,Helvetica"
+  (* CSS Fonts 4 (ED) sec. 2.1 has the user agent iterate the list until a
+     family matches, so a repeat of an earlier entry is unreachable and names
+     the same value as the list without it. Dropping it is a node change, so pp
+     holds the list it parsed and the optimizer folds. A one-entry list is the
+     entry, so the fold has to land on the node [font-family: Arial] parses to.
+     The exception is a list that would collapse to a lone generic keyword:
+     [monospace, monospace] opts a bare generic back into the normal UA size, so
+     dropping the duplicate would shrink the text. *)
+  check_declaration ~expected:"font-family:Arial,Helvetica,Arial"
+    ~optimized:"font-family:Arial,Helvetica"
     "font-family: Arial, Helvetica, Arial";
+  check_declaration ~expected:"font-family:Arial,Arial"
+    ~optimized:"font-family:Arial" "font-family: Arial, Arial";
   check_declaration ~expected:"font-family:monospace,monospace"
+    ~optimized:"font-family:monospace,monospace"
     "font-family: monospace, monospace";
   check_declaration ~expected:"font-family:serif,serif"
-    "font-family: serif, serif";
+    ~optimized:"font-family:serif,serif" "font-family: serif, serif";
+  (* sec. 2.7 gives the [font] shorthand a [<'font-family'>#] slot, so the slot
+     takes the longhand's fold. *)
+  check_declaration ~expected:"font:12px Arial,Arial"
+    ~optimized:"font:12px Arial" "font: 12px Arial, Arial";
   (* CSS Fonts 4 defines font-family names as <custom-ident> sequences. Quoted
      reserved words are family names; unquoted CSS-wide keywords remain CSS-wide
      keywords and must not be reinterpreted as family names. *)
@@ -670,6 +896,25 @@ let text_properties () =
     "text-decoration: overline";
   check_declaration ~expected:"text-decoration:line-through"
     "text-decoration: line-through";
+  (* CSS Text Decoration 4 (ED) sec. 2.6: the [text-decoration] shorthand sets
+     the line, thickness, style and colour longhands, and "Omitted values are
+     set to their initial values" - [solid] (sec. 2.2) and [currentcolor] (sec.
+     2.3). Writing one out names what leaving it out names, and dropping it is a
+     node change, so pp holds it and the optimizer folds. *)
+  check_declaration ~expected:"text-decoration:underline solid"
+    ~optimized:"text-decoration:underline" "text-decoration: underline solid";
+  check_declaration ~expected:"text-decoration:underline currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline currentcolor";
+  check_declaration ~expected:"text-decoration:underline solid currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline solid currentcolor";
+  (* A non-initial style or colour stands. *)
+  check_declaration ~expected:"text-decoration:underline dotted"
+    ~optimized:"text-decoration:underline dotted"
+    "text-decoration: underline dotted";
+  check_declaration ~expected:"text-decoration:underline red"
+    ~optimized:"text-decoration:underline red" "text-decoration: underline red";
 
   (* Text transform *)
   check_declaration ~expected:"text-transform:none" "text-transform: none";
@@ -829,8 +1074,26 @@ let outline_line_width () =
   check_declaration ~expected:"outline-width:medium" "outline-width: medium";
   check_declaration ~expected:"outline-width:thick" "outline-width: thick";
   check_declaration ~expected:"outline:thin solid red" "outline: thin solid red";
+  (* CSS UI 4 (ED) sec. 3.1: the outline shorthand sets all three longhands, and
+     CSS Cascade 5 (ED) sec. 3 assigns an omitted sub-property its initial
+     value, which sec. 3.2 gives as [medium]. Spelling [medium] beside another
+     slot says what leaving the slot out already says, so the optimizer drops it
+     and pp prints the node it was handed. A lone [medium] leaves the shorthand
+     declaring nothing but initial values, which is what [outline: none]
+     declares. *)
   check_declaration ~expected:"outline:medium solid red"
-    "outline: medium solid red";
+    ~optimized:"outline:solid red" "outline: medium solid red";
+  check_declaration ~expected:"outline:medium dashed"
+    ~optimized:"outline:dashed" "outline: medium dashed";
+  check_declaration ~expected:"outline:medium red" ~optimized:"outline:red"
+    "outline: medium red";
+  (* sec. 3.1: a lone [auto], and an [auto] beside a width but no explicit style
+     or colour, both set outline-style and outline-color to [auto], so the two
+     spellings are the same declaration here too. *)
+  check_declaration ~expected:"outline:medium auto" ~optimized:"outline:auto"
+    "outline: medium auto";
+  check_declaration ~expected:"outline:medium" ~optimized:"outline:none"
+    "outline: medium";
   check_declaration ~expected:"outline:thick solid red"
     "outline: thick solid red";
   (* CSS Values 4 sec. 10.2: a comparison over same-unit constants denotes one
@@ -916,6 +1179,24 @@ let border_line_width () =
     ~optimized:"border:thin solid red" "border: thin solid red";
   check_declaration ~expected:"border:thick solid red"
     ~optimized:"border:thick solid red" "border: thick solid red";
+  (* [medium] is the initial [<line-width>], and sec. 3.4 sets an omitted
+     shorthand slot to its initial value, so an explicit [medium] beside another
+     slot is what omitting it already means: the optimizer drops it, pp holds
+     the node. A lone [medium] leaves the shorthand declaring nothing but
+     initial values, which is what [border: none] declares. *)
+  check_declaration ~expected:"border:medium solid red"
+    ~optimized:"border:solid red" "border: medium solid red";
+  check_declaration ~expected:"border-top:medium dashed blue"
+    ~optimized:"border-top:dashed#00f" "border-top: medium dashed blue";
+  check_declaration ~expected:"column-rule:medium solid red"
+    ~optimized:"column-rule:solid red" "column-rule: medium solid red";
+  check_declaration ~expected:"border-inline-start:medium dotted red"
+    ~optimized:"border-inline-start:dotted red"
+    "border-inline-start: medium dotted red";
+  check_declaration ~expected:"border:medium red" ~optimized:"border:red"
+    "border: medium red";
+  check_declaration ~expected:"border:medium" ~optimized:"border:none"
+    "border: medium";
   (* Controls: a plain length stands, and a shorthand that fills no width slot
      is untouched. *)
   check_declaration ~expected:"border:1px solid red"
@@ -923,6 +1204,383 @@ let border_line_width () =
   check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
     "border: solid red";
   check_declaration ~expected:"border:red" ~optimized:"border:red" "border: red"
+
+(* CSS Backgrounds 3 (ED) sec. 3.2 gives the border-style properties the initial
+   value [none], and sec. 3.4 sets an omitted shorthand slot to its initial
+   value, so an explicit [none] beside another slot says what leaving the slot
+   out already says: the optimizer drops it, pp holds the node it was handed.
+   Drained of every slot the shorthand declares nothing but initial values,
+   which is what the [none] keyword declares, so that is the node it folds to -
+   and the node [border: none] parses to directly, which is how the two
+   spellings reach factoring as one. CSS UI 4 (ED) sec. 3.3 gives outline-style
+   the same initial value and sec. 3.1 the same shorthand rule. *)
+let border_line_style () =
+  check_declaration ~expected:"border:medium none" ~optimized:"border:none"
+    "border: medium none";
+  check_declaration ~expected:"outline:medium none" ~optimized:"outline:none"
+    "outline: medium none";
+  check_declaration ~expected:"border:none red" ~optimized:"border:red"
+    "border: none red";
+  check_declaration ~expected:"outline:none red" ~optimized:"outline:red"
+    "outline: none red";
+  (* The keyword itself is already that node, and must keep printing, not empty
+     out. *)
+  check_declaration ~expected:"border:none" ~optimized:"border:none"
+    "border: none";
+  check_declaration ~expected:"outline:none" ~optimized:"outline:none"
+    "outline: none";
+  (* The other shorthands reading the same production. *)
+  check_declaration ~expected:"border-top:medium none"
+    ~optimized:"border-top:none" "border-top: medium none";
+  check_declaration ~expected:"border-inline:medium none"
+    ~optimized:"border-inline:none" "border-inline: medium none";
+  check_declaration ~expected:"border-block-start:medium none"
+    ~optimized:"border-block-start:none" "border-block-start: medium none";
+  check_declaration ~expected:"column-rule:medium none"
+    ~optimized:"column-rule:none" "column-rule: medium none";
+  (* Controls: a style that is not the initial one stands, a zero width is not
+     the initial width, and [auto] is outline-style's own value, not [none]. *)
+  check_declaration ~expected:"border:1px solid red"
+    ~optimized:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
+    "border: solid red";
+  check_declaration ~expected:"border:0 none" ~optimized:"border:0"
+    "border: 0 none";
+  check_declaration ~expected:"border:0" ~optimized:"border:0" "border: 0";
+  check_declaration ~expected:"outline:0" ~optimized:"outline:0" "outline: 0";
+  check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
+    "outline: auto"
+
+(* CSS Backgrounds 3 (ED) sec. 2.10 has the [background] shorthand reset every
+   longhand it covers and then set the ones written, so a slot holding its own
+   initial value says what leaving it out says: sec. 2.3 makes that [none] for
+   the image, sec. 2.4 [repeat] for the repeat, sec. 2.5 [scroll] for the
+   attachment, sec. 2.9 [auto] for the size and sec. 2.2 [transparent] for the
+   colour. The fold is the optimizer's; pp holds the node it was handed. *)
+let background_initial_slots () =
+  check_declaration ~expected:"background:none red" ~optimized:"background:red"
+    "background: none red";
+  check_declaration ~expected:"background:repeat red"
+    ~optimized:"background:red" "background: red repeat";
+  check_declaration ~expected:"background:scroll red"
+    ~optimized:"background:red" "background: red scroll";
+  check_declaration ~expected:"background:url(a.png)transparent"
+    ~optimized:"background:url(a.png)" "background: url(a.png) transparent";
+  (* Controls: a slot that is not at its initial value stands. *)
+  check_declaration ~expected:"background:no-repeat red"
+    ~optimized:"background:no-repeat red" "background: red no-repeat";
+  check_declaration ~expected:"background:fixed red"
+    ~optimized:"background:fixed red" "background: red fixed";
+  check_declaration ~expected:"background:url(a.png)red"
+    ~optimized:"background:url(a.png)red" "background: url(a.png) red"
+
+(* CSS Backgrounds 3 (ED) sec. 2.6 gives background-position the initial value
+   [0% 0%], which [0 0] and [left top] both name, so the slot drops with the
+   rest. It also reads a lone value as "the second value is assumed to be
+   center", so [0] names [0 50%] and stays: no initial position is spelled that
+   way. sec. 2.10 writes the size after the position and a [/], so the position
+   can only leave once the size has. *)
+let background_position_slot () =
+  check_declaration ~expected:"background:0 0 red" ~optimized:"background:red"
+    "background: red 0 0";
+  check_declaration ~expected:"background:left top red"
+    ~optimized:"background:red" "background: red left top";
+  check_declaration ~expected:"background:0 0/auto red"
+    ~optimized:"background:red" "background: red 0 0 / auto";
+  (* A single value is horizontal, with [center] vertically: not the initial
+     position, so it stays whatever the layer carries. *)
+  check_declaration ~expected:"background:0 red" ~optimized:"background:0 red"
+    "background: red 0";
+  check_declaration ~expected:"background:left red"
+    ~optimized:"background:0 red" "background: red left";
+  check_declaration ~expected:"background:url(a.png)0"
+    ~optimized:"background:url(a.png)0" "background: url(a.png) 0";
+  check_declaration ~expected:"background:url(a.png)left"
+    ~optimized:"background:url(a.png)0" "background: url(a.png) left";
+  (* A size keeps its position, which has to be written for the [/] to attach
+     to. *)
+  check_declaration ~expected:"background:0 0/cover red"
+    ~optimized:"background:0 0/cover red" "background: red 0 0 / cover"
+
+(* CSS Backgrounds 3 (ED) sec. 2.10 reads one [<box>] as setting both
+   background-origin and background-clip and two as setting origin then clip, so
+   the pair drops together or not at all: sec. 2.8 makes [padding-box] the
+   initial origin and sec. 2.7 [border-box] the initial clip. Dropping just the
+   one at its initial value would leave a single [<box>] that reassigns the
+   other. *)
+let background_box_slots () =
+  check_declaration ~expected:"background:padding-box border-box red"
+    ~optimized:"background:red" "background: red padding-box border-box";
+  check_declaration ~expected:"background:border-box border-box red"
+    ~optimized:"background:border-box red"
+    "background: red border-box border-box";
+  check_declaration ~expected:"background:content-box content-box red"
+    ~optimized:"background:content-box red"
+    "background: red content-box content-box";
+  (* A single [<box>] is one slot in the node, and pp holds the node: it is the
+     re-reading of that single keyword that sets both longhands. *)
+  check_declaration ~expected:"background:border-box red"
+    ~optimized:"background:border-box red" "background: red border-box";
+  (* Both are written out where a single [<box>] would name a different pair. *)
+  check_declaration ~expected:"background:padding-box content-box red"
+    ~optimized:"background:padding-box content-box red"
+    "background: red padding-box content-box";
+  check_declaration ~expected:"background:content-box border-box red"
+    ~optimized:"background:content-box border-box red"
+    "background: red content-box border-box"
+
+(* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
+   and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
+   explicit [alpha] says what leaving the slot out says. [luminance] is the
+   other mode and stays. *)
+let mask_border_mode_slot () =
+  check_declaration ~expected:"mask-border:url(a.png)alpha"
+    ~optimized:"mask-border:url(a.png)" "mask-border: url(a.png) alpha";
+  check_declaration ~expected:"mask-border:url(a.png)luminance"
+    ~optimized:"mask-border:url(a.png)luminance"
+    "mask-border: url(a.png) luminance";
+  check_declaration ~expected:"border-image:url(a.png)"
+    ~optimized:"border-image:url(a.png)" "border-image: url(a.png)"
+
+(* CSS Box 4 (ED) sec. 3.2 assigns the values of a one-to-four value box
+   shorthand to the four sides: one value goes to all four, two to top-bottom
+   then left-right, three to top, left-right, bottom. A repeat that those rules
+   already supply is the longer spelling of the same declaration, so the
+   optimizer drops it and pp prints the list it was handed. sec. 4.2 says the
+   same for padding, css-logical-1 sec. 4.3 assigns inset's values "as for
+   margin" and sec. 4.4 padding-block/padding-inline's, and CSS Backgrounds 3
+   (ED) sec. 3.1 and sec. 4.1 give border-color and border-radius the same
+   four-value form. *)
+let box_shorthand_repeats () =
+  check_declaration ~expected:"inset:0 0 0 0" ~optimized:"inset:0"
+    "inset: 0 0 0 0";
+  check_declaration ~expected:"margin:1px 1px 1px 1px" ~optimized:"margin:1px"
+    "margin: 1px 1px 1px 1px";
+  check_declaration ~expected:"padding:1px 2px 1px 2px"
+    ~optimized:"padding:1px 2px" "padding: 1px 2px 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 2px"
+    ~optimized:"margin:1px 2px 3px" "margin: 1px 2px 3px 2px";
+  check_declaration ~expected:"margin:1px 1px 2px"
+    ~optimized:"margin:1px 1px 2px" "margin: 1px 1px 2px";
+  check_declaration ~expected:"border-color:red red red red"
+    ~optimized:"border-color:red" "border-color: red red red red";
+  check_declaration ~expected:"inset-block:0 0" ~optimized:"inset-block:0"
+    "inset-block: 0 0";
+  check_declaration ~expected:"padding-inline:1px 1px"
+    ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  check_declaration ~expected:"border-radius:1px 1px 1px 1px"
+    ~optimized:"border-radius:1px" "border-radius: 1px 1px 1px 1px";
+  (* CSS Backgrounds 3 (ED) sec. 4.1 puts the vertical radii after a [/], so
+     each group collapses on its own and neither reaches across the slash. With
+     no slash the values set both axes equally, so a vertical group equal to the
+     horizontal one says what omitting it says. *)
+  check_declaration
+    ~expected:"border-radius:5px 5px 5px 5px/10px 10px 10px 10px"
+    ~optimized:"border-radius:5px/10px"
+    "border-radius: 5px 5px 5px 5px / 10px 10px 10px 10px";
+  check_declaration ~expected:"border-radius:5px 10px 5px 10px/1px 2px 1px 2px"
+    ~optimized:"border-radius:5px 10px/1px 2px"
+    "border-radius: 5px 10px 5px 10px / 1px 2px 1px 2px";
+  check_declaration ~expected:"border-radius:5px/5px"
+    ~optimized:"border-radius:5px" "border-radius: 5px / 5px";
+  check_declaration ~expected:"border-radius:5px 10px/5px 10px"
+    ~optimized:"border-radius:5px 10px" "border-radius: 5px 10px / 5px 10px";
+  (* Control: the two axes differ, so both groups are written. *)
+  check_declaration ~expected:"border-radius:5px/10px"
+    ~optimized:"border-radius:5px/10px" "border-radius: 5px / 10px";
+  (* The per-side folds run first, so sides that only agree once normalised
+     still collapse. *)
+  check_declaration ~expected:"margin:0px 0 0px 0" ~optimized:"margin:0"
+    "margin: 0px 0 0px 0";
+  (* Controls: a list the rules cannot rebuild stays as written. *)
+  check_declaration ~expected:"margin:1px 2px" ~optimized:"margin:1px 2px"
+    "margin: 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 4px"
+    ~optimized:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"padding:1px 2px 1px 3px"
+    ~optimized:"padding:1px 2px 1px 3px" "padding: 1px 2px 1px 3px"
+
+(* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
+   and reads a single one as "both the horizontal and vertical spacing", so a
+   pair of equal lengths is the longer spelling of that one value. The per-side
+   fold runs first, so a pair that only agrees once normalised collapses too. *)
+let border_spacing_pair () =
+  check_declaration ~expected:"border-spacing:1px 1px"
+    ~optimized:"border-spacing:1px" "border-spacing: 1px 1px";
+  check_declaration ~expected:"border-spacing:0px 0"
+    ~optimized:"border-spacing:0" "border-spacing: 0px 0";
+  check_declaration ~expected:"border-spacing:0px" ~optimized:"border-spacing:0"
+    "border-spacing: 0px";
+  (* Controls: two different lengths name two different spacings. *)
+  check_declaration ~expected:"border-spacing:1px 2px"
+    ~optimized:"border-spacing:1px 2px" "border-spacing: 1px 2px";
+  check_declaration ~expected:"border-spacing:1px"
+    ~optimized:"border-spacing:1px" "border-spacing: 1px"
+
+(* CSS Backgrounds 3 (ED) sec. 2.4 gives every single [<repeat-style>] keyword
+   the pair it computes to: [repeat] is [repeat repeat], [space] is [space
+   space], [round] is [round round], [no-repeat] is [no-repeat no-repeat],
+   [repeat-x] is [repeat no-repeat] and [repeat-y] is [no-repeat repeat]. Each
+   pair therefore has a one-keyword spelling of the same value, and the
+   optimizer picks it; pp prints the pair it was handed. *)
+let background_repeat_axes () =
+  check_declaration ~expected:"background-repeat:repeat repeat"
+    ~optimized:"background-repeat:repeat" "background-repeat: repeat repeat";
+  check_declaration ~expected:"background-repeat:space space"
+    ~optimized:"background-repeat:space" "background-repeat: space space";
+  check_declaration ~expected:"background-repeat:round round"
+    ~optimized:"background-repeat:round" "background-repeat: round round";
+  check_declaration ~expected:"background-repeat:no-repeat no-repeat"
+    ~optimized:"background-repeat:no-repeat"
+    "background-repeat: no-repeat no-repeat";
+  check_declaration ~expected:"background-repeat:repeat no-repeat"
+    ~optimized:"background-repeat:repeat-x"
+    "background-repeat: repeat no-repeat";
+  check_declaration ~expected:"background-repeat:no-repeat repeat"
+    ~optimized:"background-repeat:repeat-y"
+    "background-repeat: no-repeat repeat";
+  (* Each layer of the comma-separated list folds on its own. *)
+  check_declaration ~expected:"background-repeat:repeat repeat,space space"
+    ~optimized:"background-repeat:repeat,space"
+    "background-repeat: repeat repeat, space space";
+  (* The shorthand's repeat slot reads the same production, so the fold reaches
+     it and leaves the slot at its initial value (sec. 2.4). *)
+  check_declaration ~expected:"background:repeat repeat red"
+    ~optimized:"background:red" "background: red repeat repeat";
+  (* Controls: a pair with two different axes has no one-keyword spelling, and
+     the one-keyword forms are already the node they fold to. *)
+  check_declaration ~expected:"background-repeat:repeat space"
+    ~optimized:"background-repeat:repeat space"
+    "background-repeat: repeat space";
+  check_declaration ~expected:"background-repeat:space no-repeat"
+    ~optimized:"background-repeat:space no-repeat"
+    "background-repeat: space no-repeat";
+  check_declaration ~expected:"background-repeat:repeat-x"
+    ~optimized:"background-repeat:repeat-x" "background-repeat: repeat-x";
+  check_declaration ~expected:"background-repeat:repeat"
+    ~optimized:"background-repeat:repeat" "background-repeat: repeat"
+
+(* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
+   so a layer that fills no slot declares what [background: none] declares. [0
+   0] is the shortest spelling of that layer, so it is the node the spellings
+   meet on. *)
+let background_drained_layer () =
+  check_declaration ~expected:"background:none" ~optimized:"background:0 0"
+    "background: none";
+  check_declaration ~expected:"background:0 0" ~optimized:"background:0 0"
+    "background: 0 0";
+  check_declaration ~expected:"background:left top" ~optimized:"background:0 0"
+    "background: left top";
+  check_declaration ~expected:"background:transparent"
+    ~optimized:"background:0 0" "background: transparent"
+
+(* CSS Backgrounds 3 (ED) sec. 3.1 gives the border-color properties the initial
+   value [currentColor], and sec. 3.4 sets an omitted shorthand slot to its
+   initial value, so an explicit [currentColor] beside another slot says what
+   leaving the colour out already says. Drained of every slot the shorthand
+   declares nothing but initial values, which is what [none] declares. CSS
+   Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give column-rule
+   and the logical borders the same initial colour, so they take the same fold.
+
+   CSS UI 4 (ED) sec. 3.4 does not: outline-color's initial value is [auto], a
+   UA-chosen colour that [currentColor] does not name, so the outline colour
+   slot holds whatever it was written with. *)
+let border_line_color () =
+  check_declaration ~expected:"border:solid currentColor"
+    ~optimized:"border:solid" "border: solid currentcolor";
+  check_declaration ~expected:"border:1px solid currentColor"
+    ~optimized:"border:1px solid" "border: 1px solid currentColor";
+  check_declaration ~expected:"border:currentColor" ~optimized:"border:none"
+    "border: currentcolor";
+  check_declaration ~expected:"border-top:solid currentColor"
+    ~optimized:"border-top:solid" "border-top: solid currentcolor";
+  check_declaration ~expected:"border-inline:solid currentColor"
+    ~optimized:"border-inline:solid" "border-inline: solid currentcolor";
+  check_declaration ~expected:"border-block-start:solid currentColor"
+    ~optimized:"border-block-start:solid"
+    "border-block-start: solid currentcolor";
+  check_declaration ~expected:"column-rule:solid currentColor"
+    ~optimized:"column-rule:solid" "column-rule: solid currentcolor";
+  (* outline-color's initial value is [auto], so nothing drops here. *)
+  check_declaration ~expected:"outline:solid currentColor"
+    ~optimized:"outline:solid currentColor" "outline: solid currentcolor";
+  check_declaration ~expected:"outline:currentColor"
+    ~optimized:"outline:currentColor" "outline: currentcolor";
+  (* Controls: a colour that is not the initial one stands. *)
+  check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
+    "border: solid red";
+  check_declaration ~expected:"column-rule:solid red"
+    ~optimized:"column-rule:solid red" "column-rule: solid red"
+
+(* CSS Syntax 3 (ED) sec. 5.5.6 keeps a parsed declaration only if it "is valid
+   in the current context", which for a non-custom property means its value
+   matches the property's grammar. CSS Backgrounds 3 (ED) sec. 3.4 writes the
+   border shorthands as [<line-width> || <line-style> || <color>], css-logical-1
+   sec. 4.5.4 and CSS Multi-column 1 (ED) sec. 4.5 route the logical shorthands
+   and column-rule through the same production, and CSS UI 4 (ED) sec. 3.1
+   writes outline the same way. CSS Values 4 (ED) sec. 2.2 has [||] require one
+   or more of its options to occur, so nothing at all matches none of these
+   grammars: the declaration is dropped, not filled in with a value nobody
+   wrote. *)
+let empty_shorthand_value () =
+  List.iter
+    (fun prop -> neg_cursor read_declaration (prop ^ ": "))
+    [
+      "border";
+      "border-top";
+      "border-right";
+      "border-bottom";
+      "border-left";
+      "border-block";
+      "border-block-start";
+      "border-block-end";
+      "border-inline";
+      "border-inline-start";
+      "border-inline-end";
+      "column-rule";
+      "outline";
+    ];
+  (* Whitespace is discarded before the value is read, so a run of it is still
+     an empty value. *)
+  neg_cursor read_declaration "border:";
+  neg_cursor read_declaration "outline:   ";
+  (* Controls: every slot is optional, so any one of them is a whole value. *)
+  check_declaration ~expected:"border:none" ~optimized:"border:none"
+    "border: none";
+  check_declaration ~expected:"border:1px solid red"
+    ~optimized:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"outline:none" ~optimized:"outline:none"
+    "outline: none";
+  check_declaration ~expected:"outline:auto" ~optimized:"outline:auto"
+    "outline: auto";
+  check_declaration ~expected:"column-rule:1px solid red"
+    ~optimized:"column-rule:1px solid red" "column-rule: 1px solid red"
+
+(* The record behind each shorthand is public, so a caller can hand the printer
+   a value with no slot filled. That value declares nothing but the initial
+   longhands, which is what the [none] keyword declares (CSS Backgrounds 3 (ED)
+   sec. 3.4, CSS UI 4 (ED) sec. 3.1), and [none] is the spelling that says so.
+   An empty string is not a spelling of anything: no parser accepts it. *)
+let all_initial_shorthand_prints_none () =
+  let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
+  let border : Css.border =
+    Shorthand { width = None; style = None; color = None }
+  in
+  let outline : Css.outline =
+    Shorthand { width = None; style = None; color = None }
+  in
+  Alcotest.(check string)
+    "drained border shorthand" "border:none"
+    (pp (Css.Declaration.v Border border));
+  Alcotest.(check string)
+    "drained outline shorthand" "outline:none"
+    (pp (Css.Declaration.v Outline outline));
+  Alcotest.(check string)
+    "outline_shorthand with no slot" "outline:none"
+    (pp (Css.Declaration.outline (Css.outline_shorthand ())));
+  Alcotest.(check string)
+    "border_shorthand with no slot" "border:none"
+    (pp (Css.Declaration.v Border (Css.border_shorthand ())))
 
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
@@ -965,6 +1623,18 @@ let overflow () =
   check_declaration ~expected:"overflow:scroll" "overflow: scroll";
   check_declaration ~expected:"overflow:auto" "overflow: auto";
   check_declaration ~expected:"overflow:clip" "overflow: clip";
+  (* CSS Overflow 3 (ED) sec. 3.1: [overflow] is [<'overflow-block'>{1,2}] and
+     "sets the specified values of overflow-x and overflow-y in that order. If
+     the second value is omitted, it is copied from the first." A pair of equal
+     values therefore says what the single value says, and dropping the second
+     is a node change, so pp holds the pair and the optimizer folds. *)
+  check_declaration ~expected:"overflow:auto auto" ~optimized:"overflow:auto"
+    "overflow: auto auto";
+  check_declaration ~expected:"overflow:hidden hidden"
+    ~optimized:"overflow:hidden" "overflow: hidden hidden";
+  (* Two different values name two axes, so the pair stands. *)
+  check_declaration ~expected:"overflow:visible hidden"
+    ~optimized:"overflow:visible hidden" "overflow: visible hidden";
 
   check_declaration ~expected:"overflow-x:visible" "overflow-x: visible";
   check_declaration ~expected:"overflow-x:hidden" "overflow-x: hidden";
@@ -1001,6 +1671,51 @@ let animations_timing () =
   check_declaration
     ~expected:"animation-timing-function:cubic-bezier(.4,0,.2,1)"
     "animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1)";
+  (* CSS Easing 1 (ED) sec. 2.2 gives each cubic bezier keyword its equivalent
+     curve, and sec. 2.3 computes [step-start] to [steps(1, start)] and
+     [step-end] to [steps(1, end)], with [start] behaving as [jump-start], [end]
+     as [jump-end], and an omitted step position assumed to be [end]. Every pair
+     below is one easing under two spellings and the keyword is the shorter one,
+     so pp prints what it parsed and the optimizer folds. *)
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.25,.1,.25,1)"
+    ~optimized:"animation-timing-function:ease"
+    "animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.42,0,1,1)"
+    ~optimized:"animation-timing-function:ease-in"
+    "animation-timing-function: cubic-bezier(0.42, 0, 1, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(0,0,.58,1)"
+    ~optimized:"animation-timing-function:ease-out"
+    "animation-timing-function: cubic-bezier(0, 0, 0.58, 1)";
+  check_declaration
+    ~expected:"animation-timing-function:cubic-bezier(.42,0,.58,1)"
+    ~optimized:"animation-timing-function:ease-in-out"
+    "animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1)";
+  check_declaration ~expected:"animation-timing-function:cubic-bezier(0,0,1,1)"
+    ~optimized:"animation-timing-function:linear"
+    "animation-timing-function: cubic-bezier(0, 0, 1, 1)";
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-start)"
+    ~optimized:"transition-timing-function:step-start"
+    "transition-timing-function: steps(1, jump-start)";
+  check_declaration ~expected:"transition-timing-function:steps(1,start)"
+    ~optimized:"transition-timing-function:step-start"
+    "transition-timing-function: steps(1, start)";
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-end)"
+    ~optimized:"transition-timing-function:step-end"
+    "transition-timing-function: steps(1, jump-end)";
+  check_declaration ~expected:"transition-timing-function:steps(1)"
+    ~optimized:"transition-timing-function:step-end"
+    "transition-timing-function: steps(1)";
+  (* [jump-none] and [jump-both] have no keyword spelling, and neither does a
+     step count above one. *)
+  check_declaration ~expected:"transition-timing-function:steps(1,jump-both)"
+    ~optimized:"transition-timing-function:steps(1,jump-both)"
+    "transition-timing-function: steps(1, jump-both)";
+  check_declaration ~expected:"transition-timing-function:steps(2,jump-start)"
+    ~optimized:"transition-timing-function:steps(2,jump-start)"
+    "transition-timing-function: steps(2, jump-start)";
 
   (* Per CSS Values 4 section 7.2 the time unit ([s] or [ms]) is required for
      [<time>]. [0s] does not drop the unit. *)
@@ -1250,6 +1965,16 @@ let list_properties () =
   check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"
     ~optimized:"text-shadow:0 0 10px #00f,0 0 20px red"
     "text-shadow: 0 0 10px blue, 0 0 20px red";
+  (* CSS Text Decoration 4 (ED) sec. 4 reads a text shadow as a [<shadow>] "as
+     for box-shadow", and CSS Backgrounds 3 (ED) sec. 6.1 says "Omitted lengths
+     are 0". The blur is the last length here, so a zero blur is the spelled-out
+     form of leaving it off, and dropping it is a node change. *)
+  check_declaration ~expected:"text-shadow:1px 1px 0"
+    ~optimized:"text-shadow:1px 1px" "text-shadow: 1px 1px 0";
+  check_declaration ~expected:"text-shadow:1px 1px 0 red"
+    ~optimized:"text-shadow:1px 1px red" "text-shadow: 1px 1px 0 red";
+  check_declaration ~expected:"text-shadow:1px 1px 2px"
+    ~optimized:"text-shadow:1px 1px 2px" "text-shadow: 1px 1px 2px";
 
   (* Background image *)
   check_declaration ~expected:"background-image:none" "background-image: none";
@@ -1266,7 +1991,31 @@ let list_properties () =
 
   (* Transition *)
   check_declaration ~expected:"transition:none" "transition: none";
-  check_declaration ~expected:"transition:all .3s" "transition: all 0.3s ease";
+  (* CSS Transitions 1 (ED) sec. 2.5 builds a [<single-transition>] out of
+     components that each fall back to their longhand initial when left out:
+     [0s] for the duration (sec. 2.2), [ease] for the easing (sec. 2.3), [0s]
+     for the delay (sec. 2.4). Spelling an initial out therefore names the value
+     the shorter form already names, and swapping the two is a node change, so
+     pp prints what it parsed and the optimizer folds. *)
+  check_declaration ~expected:"transition:all .3s ease"
+    ~optimized:"transition:all .3s" "transition: all 0.3s ease";
+  check_declaration ~expected:"transition:all 1s ease 0s"
+    ~optimized:"transition:all 1s" "transition: all 1s ease 0s";
+  check_declaration ~expected:"transition:opacity 1s normal"
+    ~optimized:"transition:opacity 1s" "transition: opacity 1s normal";
+  check_declaration ~expected:"transition:opacity 0s 0s"
+    ~optimized:"transition:opacity" "transition: opacity 0s 0s";
+  (* sec. 2.5: "the first value that can be parsed as a time is assigned to the
+     transition-duration, and the second value that can be parsed as a time is
+     assigned to transition-delay". A delay is only reachable behind a duration,
+     so a zero duration that carries a non-zero delay has to stay written out:
+     dropping it hands the delay to the duration slot and starts the transition
+     immediately instead of two seconds late. *)
+  check_declaration ~expected:"transition:opacity 0s 2s"
+    ~optimized:"transition:opacity 0s 2s" "transition: opacity 0s 2s";
+  check_declaration ~expected:"transition:opacity 0s linear 2s"
+    ~optimized:"transition:opacity 0s linear 2s"
+    "transition: opacity 0s linear 2s";
   check_declaration ~expected:"transition:all .3s linear"
     "transition: all .3s linear";
   check_declaration ~expected:"transition:opacity 1s ease-in .5s"
@@ -1492,7 +2241,8 @@ let spec_property_grammar_table_expansion () =
               Some "background:url(bg.png)50%/cover no-repeat border-box" )
         | "scrollbar-color", "red blue" ->
             (Some "scrollbar-color:red blue", Some "scrollbar-color:red #00f")
-        | "border", "1px solid currentColor" -> (Some "border:1px solid", None)
+        | "border", "1px solid currentColor" ->
+            (Some "border:1px solid currentColor", Some "border:1px solid")
         | "background-position", "left 10px top 20px" ->
             ( Some "background-position:left 10px top 20px",
               Some "background-position:10px 20px" )
@@ -1510,12 +2260,19 @@ let spec_property_grammar_table_expansion () =
             (Some "transform:translateX(10px)rotate(45deg)scale(1.2)", None)
         | "rotate", "1 0 0 45deg" -> (Some "rotate:x 45deg", None)
         | "font", "italic small-caps bold 16px/1.5 serif" ->
-            (Some "font:italic small-caps 700 16px/1.5 serif", None)
+            ( Some "font:italic small-caps bold 16px/1.5 serif",
+              Some "font:italic small-caps 700 16px/1.5 serif" )
         | "animation", "fade 1s linear 2 alternate both running" ->
             (Some "animation:fade 1s linear 2 alternate both", None)
         | "animation-range", "entry 10% exit 90%" ->
             (Some "animation-range:entry 10%exit 90%", None)
-        | "display", "inline flow-root" -> (Some "display:inline-block", None)
+        | "display", "inline flow-root" ->
+            (Some "display:inline flow-root", Some "display:inline-block")
+        | "display", "list-item flow-root" ->
+            (* CSS Display 3 (ED) sec. 2 combines the list-item components with
+               [&&], so the two spellings are one value; sec. 2.3 leaves the
+               [block] outside unwritten. *)
+            (Some "display:flow-root list-item", None)
         | "position-try-fallbacks", "--below, flip-block" ->
             (Some "position-try-fallbacks:--below,flip-block", None)
         | "cursor", "url(cursor.cur), pointer" ->
@@ -1662,8 +2419,8 @@ let spec_cascade3_shorthands () =
   check_declaration ~expected:"padding:1em 2em" "padding: 1em 2em";
   check_declaration ~expected:"background:green" "background: green";
   check_declaration ~expected:"border:1px solid red" "border: 1px solid red";
-  check_declaration ~expected:"font:700 12pt/14pt Helvetica"
-    "font: bold 12pt/14pt Helvetica";
+  check_declaration ~expected:"font:bold 12pt/14pt Helvetica"
+    ~optimized:"font:700 12pt/14pt Helvetica" "font: bold 12pt/14pt Helvetica";
   check_declaration ~expected:"margin:inherit" "margin: inherit";
   check_declaration ~expected:"padding:initial" "padding: initial";
   check_declaration ~expected:"background:unset" "background: unset";
@@ -2254,7 +3011,7 @@ let spec_platform_property_vectors () =
         "content:attr(data-label string,var(--label,\"x y\"))" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
         "font:italic small-caps 650 condensed 16px/1.5 Brand,serif" );
-      ("display: block flex", "display:flex");
+      ("display: block flex", "display:block flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
         "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
       ( "transition: opacity 1s ease-in .2s allow-discrete",
@@ -2442,7 +3199,8 @@ let spec_remaining_prop_vectors () =
       ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
       ("columns: 12rem 3", "columns:12rem 3");
-      ("column-rule: 1px solid currentColor", "column-rule:1px solid");
+      ( "column-rule: 1px solid currentColor",
+        "column-rule:1px solid currentColor" );
       ("column-span: all", "column-span:all");
       ("break-before: page", "break-before:page");
       ("break-after: avoid-page", "break-after:avoid-page");
@@ -3648,6 +4406,19 @@ let declaration_tests =
     test_case "borders" `Quick borders;
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
+    test_case "border line-style" `Quick border_line_style;
+    test_case "background initial slots" `Quick background_initial_slots;
+    test_case "background position slot" `Quick background_position_slot;
+    test_case "background box slots" `Quick background_box_slots;
+    test_case "mask-border mode slot" `Quick mask_border_mode_slot;
+    test_case "box shorthand repeats" `Quick box_shorthand_repeats;
+    test_case "border-spacing pair" `Quick border_spacing_pair;
+    test_case "background repeat axes" `Quick background_repeat_axes;
+    test_case "background drained layer" `Quick background_drained_layer;
+    test_case "border line-color" `Quick border_line_color;
+    test_case "empty shorthand value" `Quick empty_shorthand_value;
+    test_case "all-initial shorthand prints none" `Quick
+      all_initial_shorthand_prints_none;
     test_case "logical border shorthands" `Quick logical_border_shorthands;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;

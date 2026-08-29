@@ -138,9 +138,14 @@ let is_zero_length : length -> bool = function
       true
   | _ -> false
 
-(* CSS Box 4 7.1: a 1-to-4 value box shorthand ([margin], [padding],
-   [border-radius] sides, [background-position]) collapses when sides repeat. [a
-   a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. *)
+(* CSS Box 4 (ED) sec. 3.2 fills the four sides from a one-to-four value box
+   shorthand: one value goes to all four, two to top-bottom then left-right,
+   three to top, left-right, bottom. A list that repeats what those rules
+   already supply is the longer spelling of the same declaration, so it
+   collapses: [a a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. sec.
+   4.2 says the same for padding, css-logical-1 sec. 4.3 and sec. 4.4 for the
+   inset and logical padding/margin shorthands, and CSS Backgrounds 3 (ED) sec.
+   3.1 and sec. 4.1 for border-color and border-radius. *)
 let collapse_box_shorthand vs =
   match vs with
   | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
@@ -151,9 +156,7 @@ let collapse_box_shorthand vs =
   | [ a; b ] when a = b -> [ a ]
   | _ -> vs
 
-let pp_box_shorthand pp ctx vs =
-  let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
-  Pp.list ~sep:Pp.token_sp pp ctx vs
+let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 
 (* Canonicalise a colour to its shortest spelling. *)
 let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
@@ -168,6 +171,10 @@ let map_preserve f xs =
   in
   loop false [] xs
 
+(* Canonicalise a box shorthand: normalise each side with [f], then pick the
+   shortest of the spellings that name those sides. *)
+let normalize_box_shorthand f vs = collapse_box_shorthand (map_preserve f vs)
+
 let option_map_preserve f opt =
   match opt with
   | Option.None -> opt
@@ -181,13 +188,11 @@ let option_is_phys_same a b =
   | Option.Some a, Option.Some b -> a == b
   | _ -> false
 
-(* CSS Lists 3 sec. 3.6: under minify, drop components equal to their longhand
-   initial ([type_: Disc], [position: Outside], [image: None]). When both
-   [type_] and [image] are [None] and [position] is omitted, emit the single
-   [none] keyword. If every component is defaulted, leave [outside] so the value
-   isn't empty. *)
-let drop_default_if ~drop ~is_default v =
-  match v with Some x when drop && is_default x -> Option.None | _ -> v
+(* Drop a shorthand component that equals its longhand initial: a shorthand
+   resets every component it leaves out to that initial, so the two spellings
+   name one value. *)
+let drop_default ~is_default v =
+  match v with Some x when is_default x -> Option.None | _ -> v
 
 let rec eval_number_value : number -> float option = function
   | Num f -> Some f

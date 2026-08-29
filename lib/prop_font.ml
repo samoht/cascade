@@ -757,32 +757,6 @@ let rec pp_font_family : font_family Pp.t =
       let level_chars =
         match ctx.Pp.indent with Some w -> w * ctx.Pp.level | None -> 0
       in
-      (* CSS Fonts 4 sec. 2.1: [font-family] is a fallback list, so a duplicate
-         entry never wins under cascade resolution - drop it under minify (the
-         first occurrence keeps the source position). A bare generic keyword
-         (notably [monospace]) takes the UA generic-font size, so the
-         [monospace, monospace] idiom opts back into the normal size; a dedup
-         must not collapse a list to a single generic, which would shrink the
-         text. *)
-      let fonts =
-        if Pp.minified ctx then
-          let seen = Hashtbl.create 8 in
-          let deduped =
-            List.filter
-              (fun f ->
-                let key = Pp.to_string ~minify:true pp_font_family f in
-                if Hashtbl.mem seen key then false
-                else (
-                  Hashtbl.add seen key ();
-                  true))
-              fonts
-          in
-          match deduped with
-          | [ single ] when is_generic_family single && List.length fonts > 1 ->
-              fonts
-          | _ -> deduped
-        else fonts
-      in
       Pp.list_wrap ~threshold:90 ~sep:Pp.comma ~wrap_indent:(level_chars + 2)
         pp_font_family ctx fonts
   | Invalid tokens ->
@@ -927,12 +901,6 @@ let font_stretch_pct = function
   | _ -> None
 
 let rec pp_font_stretch : font_stretch Pp.t =
- fun ctx v ->
-  match if Pp.minified ctx then font_stretch_pct v else None with
-  | Some pct -> Pp.pct ctx pct
-  | None -> pp_font_stretch_keyword ctx v
-
-and pp_font_stretch_keyword : font_stretch Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
@@ -1125,27 +1093,53 @@ let rec pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* [<length-percentage>] is the whole of [font-size]'s numeric grammar, so a
+   calc built from those leaves is a [<length>] calc and can be handed to the
+   length simplifier. The trip back lands under [Length], percentage included: a
+   [<percentage>] is one token, so the reader takes [font-size: 50%] through
+   [read_non_negative_length] and the [Pct] leaf it produces sits there. A
+   [var()] leaf carries a [font_size]-typed fallback, which does not survive the
+   trip either way. *)
+let rec length_of_font_size_calc : font_size calc -> length calc option =
+  function
+  | Val (Length l) -> Some (Val l)
+  | Val (Pct n) -> Some (Val (Pct n : length))
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count | Val _ -> None
+  | Nested inner ->
+      Option.map (fun c -> Nested c) (length_of_font_size_calc inner)
+  | Parens inner ->
+      Option.map (fun c -> Parens c) (length_of_font_size_calc inner)
+  | Expr (left, op, right) -> (
+      match (length_of_font_size_calc left, length_of_font_size_calc right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
+
+let rec font_size_of_length_calc : length calc -> font_size calc option =
+  function
+  | Val l -> Some (Val (Length l))
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count -> None
+  | Nested inner ->
+      Option.map (fun c -> Nested c) (font_size_of_length_calc inner)
+  | Parens inner ->
+      Option.map (fun c -> Parens c) (font_size_of_length_calc inner)
+  | Expr (left, op, right) -> (
+      match (font_size_of_length_calc left, font_size_of_length_calc right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
+
 let rec pp_font_size : font_size Pp.t =
  fun ctx -> function
   | Length l -> pp_length ctx l
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_font_size ctx v
   | Calc c -> (
-      let rec to_length_calc : font_size calc -> length calc option = function
-        | Val (Length l) -> Some (Val l)
-        | Val (Pct n) -> Some (Val (Pct n : length))
-        | Num n -> Some (Num n)
-        | Math_const c -> Some (Math_const c)
-        | Math_fn fn -> Some (Math_fn fn)
-        | Var _ | Sibling_index | Sibling_count | Val _ -> None
-        | Nested inner -> Option.map (fun c -> Nested c) (to_length_calc inner)
-        | Parens inner -> Option.map (fun c -> Parens c) (to_length_calc inner)
-        | Expr (left, op, right) -> (
-            match (to_length_calc left, to_length_calc right) with
-            | Some left, Some right -> Some (Expr (left, op, right))
-            | _ -> None)
-      in
-      match (Pp.minified ctx, to_length_calc c) with
+      match (Pp.minified ctx, length_of_font_size_calc c) with
       | true, Some c -> pp_length ctx (Calc c)
       | _ -> pp_calc pp_font_size ctx c)
   | Xx_small -> Pp.string ctx "xx-small"
@@ -1204,13 +1198,7 @@ let rec pp_line_height : line_height Pp.t =
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
   | Weight n -> Pp.int ctx n
-  | Normal when Pp.minified ctx ->
-      (* CSS Fonts 4 5.1.2: [normal] is spec-equivalent to [400]. *)
-      Pp.string ctx "400"
   | Normal -> Pp.string ctx "normal"
-  | Bold when Pp.minified ctx ->
-      (* CSS Fonts 4 5.1.2: [bold] is spec-equivalent to [700]. *)
-      Pp.string ctx "700"
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
@@ -1221,10 +1209,9 @@ let rec pp_font_weight : font_weight Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_weight ctx v
 
-(* CSS Fonts 4 sec. 2.7: under minify, drop [<style>? <weight>? <stretch>?]
-   components that equal their longhand initial value, and drop [line-height]
-   when it's [normal]. The shorthand body itself is always [<size>
-   [/<line-height>]? <family>+]; size and family are required. *)
+(* CSS Fonts 4 sec. 2.7: the shorthand body is [<size> [/<line-height>]?
+   <family>+], so size and family are always emitted and the four prefix slots
+   only when the value carries them. *)
 let pp_font_variant_css21 ctx = function
   | (Normal : font_variant_css21) -> Pp.string ctx "normal"
   | Small_caps -> Pp.string ctx "small-caps"
@@ -1233,40 +1220,6 @@ let read_font_variant_css21 t : font_variant_css21 =
   Cursor.enum "font-variant-css21"
     [ ("normal", (Normal : font_variant_css21)); ("small-caps", Small_caps) ]
     t
-
-let drop_font_default ctx (type a) ~(is_default : a -> bool) (opt : a option) :
-    a option =
-  if Pp.minified ctx then
-    match opt with Some v when is_default v -> None | _ -> opt
-  else opt
-
-let drop_font_shorthand_defaults ctx style variant weight stretch line_height =
-  let style =
-    drop_font_default ctx style ~is_default:(function
-      | (Normal : font_style) -> true
-      | _ -> false)
-  in
-  let variant =
-    drop_font_default ctx variant ~is_default:(function
-      | (Normal : font_variant_css21) -> true
-      | _ -> false)
-  in
-  let weight =
-    drop_font_default ctx weight ~is_default:(function
-      | (Normal : font_weight) | Weight 400 -> true
-      | _ -> false)
-  in
-  let stretch =
-    drop_font_default ctx stretch ~is_default:(function
-      | (Normal : font_stretch) -> true
-      | _ -> false)
-  in
-  let line_height =
-    drop_font_default ctx line_height ~is_default:(function
-      | (Normal : line_height) -> true
-      | _ -> false)
-  in
-  (style, variant, weight, stretch, line_height)
 
 let pp_font_prefix ctx style variant weight stretch =
   let first = ref true in
@@ -1281,16 +1234,11 @@ let pp_font_prefix ctx style variant weight stretch =
   emit pp_font_style style;
   emit pp_font_variant_css21 variant;
   emit pp_font_weight weight;
-  (* The [font] shorthand's stretch component takes only the keywords, so the
-     percentage the standalone property minifies to would be invalid here. *)
-  emit pp_font_stretch_keyword stretch;
+  emit pp_font_stretch stretch;
   !first
 
 let pp_font_shorthand : font_shorthand Pp.t =
  fun ctx { style; variant; weight; stretch; size; line_height; family } ->
-  let style, variant, weight, stretch, line_height =
-    drop_font_shorthand_defaults ctx style variant weight stretch line_height
-  in
   if not (pp_font_prefix ctx style variant weight stretch) then Pp.space ctx ();
   pp_font_size ctx size;
   Option.iter
@@ -1975,11 +1923,28 @@ let rec read_font_variation_settings t : font_variation_settings =
 let pp_font_src : Font_face.src Pp.t = Font_face.pp
 let read_font_src = Font_face.read_src
 
+(* CSS Values 4 (ED) sec. 10.10.1 sums a calc's same-unit children and returns
+   the lone remaining child, which needs the typed length simplifier: the
+   untyped one cannot add two [Val] leaves. [em] and [%] resolve against the
+   parent font size rather than the element's own, but every term of one
+   declaration shares that reference, so their sum is the same value whatever
+   the reference turns out to be. *)
 let normalize_font_size (fs : font_size) : font_size =
   match fs with
   | Length l -> preserve_if_equal fs (Length (Values.normalize_length l))
   | Calc c -> (
-      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+      match length_of_font_size_calc c with
+      | None -> (
+          match Values.eval_calc c with
+          | Values.Val v -> v
+          | folded -> Calc folded)
+      | Some lc -> (
+          match Values.normalize_length (Calc lc) with
+          | Calc folded -> (
+              match font_size_of_length_calc folded with
+              | Some folded -> Calc folded
+              | None -> fs)
+          | length -> Length length))
   | _ -> fs
 
 let normalize_line_height (lh : line_height) : line_height =
@@ -1990,6 +1955,108 @@ let normalize_line_height (lh : line_height) : line_height =
       | Values.Val v -> v
       | folded -> Calc folded)
   | _ -> lh
+
+(* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
+   "Same as 700", so each keyword and its number name one weight and the number
+   is the shorter spelling. *)
+let normalize_font_weight : font_weight -> font_weight = function
+  | Normal -> Weight 400
+  | Bold -> Weight 700
+  | value -> value
+
+(* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()
+   serializes the property as a percentage however the value was written, so the
+   keyword and its percentage name one width and the percentage is never
+   longer. *)
+let normalize_font_stretch (value : font_stretch) : font_stretch =
+  match font_stretch_pct value with Some pct -> Pct pct | None -> value
+
+(* sec. 2.1 has the user agent walk the family list until one matches, so an
+   entry repeating an earlier one is never reached and names nothing: drop it,
+   keeping the first occurrence's position. The key is the minified spelling,
+   which is what makes [Arial] and ["Arial"] one entry. A one-entry list is that
+   entry, so the fold lands on the node the same text parses to. A bare generic
+   keyword (notably [monospace]) takes the UA generic-font size, so the
+   [monospace, monospace] idiom opts back into the normal size: a list that
+   would collapse to a lone generic keeps its duplicate. *)
+let normalize_font_family (value : font_family) : font_family =
+  match value with
+  | List fonts -> (
+      let seen = Hashtbl.create 8 in
+      let deduped =
+        List.filter
+          (fun f ->
+            let key = Pp.to_string ~minify:true pp_font_family f in
+            if Hashtbl.mem seen key then false
+            else (
+              Hashtbl.add seen key ();
+              true))
+          fonts
+      in
+      if List.compare_lengths deduped fonts = 0 then
+        match fonts with [ single ] -> single | _ -> value
+      else
+        match deduped with
+        | [ single ] when is_generic_family single -> value
+        | [ single ] -> single
+        | deduped -> List deduped)
+  | other -> other
+
+let drop_font_initial_slot (type a) ~(is_initial : a -> bool) (opt : a option) :
+    a option =
+  match opt with Some v when is_initial v -> None | _ -> opt
+
+(* sec. 2.7 gives the [font] shorthand [<'font-weight'>], [<'font-size'>] and
+   [<'font-family'>#] slots, so each slot takes its longhand's fold. Its width
+   slot is [<font-width-css3>], the keywords alone, so the percentage the
+   longhand folds to is not a value the slot can hold.
+
+   sec. 2.7 also resets every subproperty to its initial value before applying
+   the slots given explicitly, so a slot holding its longhand's initial says
+   what leaving it out says: drop it. The initials are [normal] for style,
+   variant and width, [normal] (that is 400) for weight and [normal] for
+   line-height; size and family are required and stay. *)
+let normalize_font : font -> font =
+ fun value ->
+  match value with
+  | Shorthand s ->
+      let style =
+        drop_font_initial_slot s.style ~is_initial:(function
+          | (Normal : font_style) -> true
+          | _ -> false)
+      in
+      let variant =
+        drop_font_initial_slot s.variant ~is_initial:(function
+          | (Normal : font_variant_css21) -> true
+          | _ -> false)
+      in
+      let weight =
+        option_map_preserve normalize_font_weight s.weight
+        |> drop_font_initial_slot ~is_initial:(function
+          | (Normal : font_weight) | Weight 400 -> true
+          | _ -> false)
+      in
+      let stretch =
+        drop_font_initial_slot s.stretch ~is_initial:(function
+          | (Normal : font_stretch) -> true
+          | _ -> false)
+      in
+      let line_height =
+        drop_font_initial_slot s.line_height ~is_initial:(function
+          | (Normal : line_height) -> true
+          | _ -> false)
+      in
+      let family = normalize_font_family s.family in
+      let size = normalize_font_size s.size in
+      if
+        style == s.style && variant == s.variant && weight == s.weight
+        && stretch == s.stretch
+        && line_height == s.line_height
+        && family == s.family && size == s.size
+      then value
+      else
+        Shorthand { style; variant; weight; stretch; size; line_height; family }
+  | other -> other
 
 let rec read_font_variant_emoji t : font_variant_emoji =
   Cursor.enum_or_var "font-variant-emoji"

@@ -2616,6 +2616,25 @@ let string_of_fallback inner =
       in
       String.trim slice
 
+(* CSS Custom Properties 1 sec. 3: [var( <custom-property-name> ,
+   <declaration-value>? )], read from a cursor already positioned at the
+   argument list. The string-returning counterpart of [read_var_body], for a
+   caller with no value type to read the fallback at. *)
+let read_reference_body_as_string (r : Cursor.t) : string * string option =
+  Cursor.ws r;
+  let raw_name = Cursor.ident ~keep_case:true r in
+  (* css-variables-1: a <custom-property-name> is a <dashed-ident> other than
+     the bare reserved [--] keyword. A further leading dash is part of the
+     name. *)
+  if not (Custom_property_name.is_valid raw_name) then
+    Cursor.err_invalid r ("not a custom property: " ^ raw_name);
+  let name = Custom_property_name.strip_prefix raw_name in
+  Cursor.ws r;
+  let fallback =
+    if Cursor.comma_opt r then Some (string_of_fallback r) else None
+  in
+  (name, fallback)
+
 (** Parse a CSS variable reference with optional fallback value. This creates a
     variable handle for parsing purposes only - it doesn't have type or layer
     information which would need to be resolved from a variable registry or
@@ -2631,22 +2650,7 @@ let read_reference (r : Cursor.t) : string * string option =
     | Some (Component.Func fn) -> fn.node.terminated
     | _ -> true
   in
-  let result =
-    Cursor.call "var" r (fun inner ->
-        let raw_name = Cursor.ident ~keep_case:true inner in
-        (* css-variables-1: a <custom-property-name> is a <dashed-ident> other
-           than the bare reserved [--] keyword. A further leading dash is part
-           of the name. *)
-        if not (Custom_property_name.is_valid raw_name) then
-          Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
-        let name = Custom_property_name.strip_prefix raw_name in
-        Cursor.ws inner;
-        let fallback =
-          if Cursor.comma_opt inner then Some (string_of_fallback inner)
-          else None
-        in
-        (name, fallback))
-  in
+  let result = Cursor.call "var" r read_reference_body_as_string in
   (match (terminated, snd result) with
   | false, None -> Cursor.err_invalid r "unterminated var()"
   | _ -> ());

@@ -739,6 +739,25 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-variant: \
      common-ligatures no-common-ligatures; }";
+  (* sec. 4.4 gives the font-width descriptor the values of the property of the
+     same name, so a keyword endpoint takes the property's percentage fold. A
+     descriptor never reaches factoring, but the fold is still a node change and
+     so waits for the optimizer. *)
+  assert_minify_and_optimize
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     condensed; }"
+    ~minified:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:condensed}"
+    ~optimized:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:75%}";
+  assert_minify_and_optimize
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     condensed expanded; }"
+    ~minified:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:condensed \
+       expanded}"
+    ~optimized:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:75% 125%}";
   (* A descending font-stretch range is kept like the font-weight / oblique
      ranges below: CSS Fonts 4 sec. 4.4 swaps the endpoints for font matching
      and leaves the descriptor as it was written. *)
@@ -3052,7 +3071,7 @@ let c64_layer_name_syntax () =
     "@layer framework.base, framework.theme;";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:700}}@layer \
+      "@layer reset.type{strong{font-weight:bold}}@layer \
        reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer reset { \
      [hidden] { display: none } }";
@@ -3087,7 +3106,7 @@ let c64_layer_nesting_examples () =
        framework.theme{blockquote{color:#639}}";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:700}}@layer \
+      "@layer reset.type{strong{font-weight:bold}}@layer \
        framework{.title{font-weight:100}@layer \
        theme{h1,h2{color:maroon}}}@layer reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer framework { \
