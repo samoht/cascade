@@ -3962,6 +3962,12 @@ let timeline_name_only () =
         (String.concat "" [ "a{"; declaration; "}" ]))
     [ ("scroll-timeline", "--t"); ("view-timeline", "--v") ]
 
+(* Scroll-driven Animations 1 sec. 3.4.4 includes the optional
+   view-timeline-inset slot in each view-timeline shorthand item. *)
+let view_timeline_inset_slot () =
+  check_declaration ~roundtrip:true "view-timeline:--v 10% 20%";
+  check_sheet_roundtrip "view-timeline" "a{view-timeline:--v 10% 20%}"
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4783,6 +4789,7 @@ let declaration_tests =
     test_case "white-space collapse only" `Quick white_space_collapse_only;
     test_case "border-image repeat only" `Quick border_image_repeat_only;
     test_case "timeline name only" `Quick timeline_name_only;
+    test_case "view-timeline inset slot" `Quick view_timeline_inset_slot;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
