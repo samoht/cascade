@@ -641,7 +641,12 @@ let pp_outline_shorthand : outline_shorthand Pp.t =
     (fun c ->
       add_space ();
       pp_color ctx c)
-    color
+    color;
+  (* The record is public, so a caller can hand over a value with no slot
+     filled. It declares nothing but the initial longhands, which is what
+     [outline: none] declares (CSS UI 4 (ED) sec. 3.1); the empty string is not
+     a value any parser reads back. *)
+  if !first then Pp.string ctx "none"
 
 let rec pp_outline : outline Pp.t =
  fun ctx -> function
@@ -1250,6 +1255,10 @@ let read_outline_parts ~width ~style ~color t =
   in
   loop ()
 
+(* CSS UI 4 (ED) sec. 3.1 writes the shorthand as [<'outline-width'> ||
+   <'outline-style'> || <'outline-color'>], and CSS Values 4 (ED) sec. 2.2 has
+   [||] require one or more of its options to occur, so an empty value matches
+   no outline grammar and CSS Syntax 3 (ED) sec. 5.5.6 drops the declaration. *)
 let read_outline_shorthand_value t : outline =
   let width = ref Option.None in
   let style = ref Option.None in
@@ -1257,6 +1266,8 @@ let read_outline_shorthand_value t : outline =
   read_outline_parts ~width ~style ~color t;
   match (!width, !style, !color) with
   | Option.None, Some (None : outline_style), Option.None -> None
+  | Option.None, Option.None, Option.None ->
+      Cursor.err_expected t "outline width, style or color"
   | _ -> Shorthand { width = !width; style = !style; color = !color }
 
 let rec read_outline t : outline =

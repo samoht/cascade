@@ -1291,6 +1291,12 @@ module Border = struct
     }
 end
 
+(* CSS Backgrounds 3 (ED) sec. 3.4 writes the shorthand as [<line-width> ||
+   <line-style> || <color>], and CSS Values 4 (ED) sec. 2.2 has [||] require one
+   or more of its options to occur, so an empty value matches no border grammar.
+   CSS Syntax 3 (ED) sec. 5.5.6 keeps only a declaration valid in its context,
+   so the whole declaration goes; filling the slots in from nowhere would
+   declare something the author did not write. *)
 let read_border_shorthand t : border_shorthand =
   (* A [var()] in the border shorthand is type-ambiguous (it could substitute a
      width, style, or colour), so it cannot be assigned by matching a typed
@@ -1321,7 +1327,12 @@ let read_border_shorthand t : border_shorthand =
             true
         | Option.None -> false
   done;
-  Border.to_shorthand !acc
+  let acc = !acc in
+  if
+    Option.is_none acc.width && Option.is_none acc.style
+    && Option.is_none acc.color
+  then Cursor.err_expected t "border width, style or color";
+  Border.to_shorthand acc
 
 let border_keyword = function
   | "inherit" -> Some (Inherit : border)
