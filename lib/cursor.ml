@@ -166,11 +166,8 @@ type head_shape =
   | `Func
   | `Other ]
 
-let peek_head_shape t : head_shape =
-  drop_ws t;
-  match t.cvs with
-  | [] -> `Eof
-  | Component.Preserved { kind; _ } :: _ -> (
+let component_head_shape : Component.t -> head_shape = function
+  | Component.Preserved { kind; _ } -> (
       match kind with
       | Token.Semicolon -> `Semicolon
       | Token.Colon -> `Colon
@@ -178,12 +175,16 @@ let peek_head_shape t : head_shape =
       | Token.Delim "!" -> `Bang
       | Token.Ident _ -> `Ident
       | _ -> `Other)
-  | Component.Block { node = { opening; _ }; _ } :: _ -> (
+  | Component.Block { node = { opening; _ }; _ } -> (
       match opening with
       | Token.Curly -> `Curly_block
       | Token.Paren -> `Paren_block
       | Token.Square -> `Square_block)
-  | Component.Func _ :: _ -> `Func
+  | Component.Func _ -> `Func
+
+let peek_head_shape t : head_shape =
+  drop_ws t;
+  match t.cvs with [] -> `Eof | cv :: _ -> component_head_shape cv
 
 let next_raw t =
   match t.cvs with
@@ -462,10 +463,6 @@ let is_semicolon_cv = function
   | Component.Preserved { kind = Token.Semicolon; _ } -> true
   | _ -> false
 
-let is_bang_cv = function
-  | Component.Preserved { kind = Token.Delim "!"; _ } -> true
-  | _ -> false
-
 let consume_until_semicolon ?(trim = false) t =
   string_of_components ~trim (drain_until_raw is_semicolon_cv t)
 
@@ -474,12 +471,23 @@ let rec skip_past_semicolon t =
   | None -> ()
   | Some cv -> if not (is_semicolon_cv cv) then skip_past_semicolon t
 
-let consume_to_decl_end ?(trim = false) t =
-  string_of_components ~trim
-    (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
+(* CSS Syntax 3 (ED) sec. 5.5.6 reads a declaration's value with
+   [<semicolon-token>] as the stop token, then removes a trailing [!]
+   [important] pair from that value and sets the declaration's important flag
+   instead. Both are therefore the declaration consumer's to read, never the
+   property grammar's, and [head_shape] is what says which is which. *)
+let ends_declaration_value cv =
+  match component_head_shape cv with `Semicolon | `Bang -> true | _ -> false
 
-let drain_to_decl_end t =
-  drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t
+let consume_to_decl_end ?(trim = false) t =
+  string_of_components ~trim (drain_until_raw ends_declaration_value t)
+
+let drain_to_decl_end t = drain_until_raw ends_declaration_value t
+
+let declaration_value t =
+  let cvs = drain_to_decl_end t in
+  let eof_loc = Option.map Component.source_loc (peek_raw t) in
+  sub ?eof_loc t cvs
 
 let is_slash_cv = function
   | Component.Preserved { kind = Token.Delim "/"; _ } -> true

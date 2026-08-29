@@ -362,6 +362,18 @@ val drain_to_decl_end : t -> Component.t list
     semicolon or top-level [!] delimiter, returning the drained list without
     serialising it. *)
 
+val declaration_value : t -> t
+(** [declaration_value t] consumes a declaration's value off [t] and is a cursor
+    over it alone.
+
+    CSS Syntax 3 (ED) sec. 5.5.6 reads the value with [<semicolon-token>] as the
+    stop token, then lifts a trailing [!] [important] pair out of it into the
+    declaration's important flag. A property grammar is handed what is left,
+    which holds neither, so a reader whose grammar has an optional trailing
+    component asks {!is_done} and nothing more: the [;] and the [!] stay on [t]
+    for the declaration consumer to finish. End-of-input errors on the value
+    anchor at whichever of the two stopped it. *)
+
 val consume_to_slash_or_semicolon : ?trim:bool -> t -> string
 (** [consume_to_slash_or_semicolon t] consumes and serializes components up to,
     but not including, the next top-level slash delimiter or semicolon. *)
