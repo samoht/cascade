@@ -77,7 +77,9 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
-    if profile then report_profile (Stats.snapshot stats)
+    (* Without --minify, Css.optimize never runs and the recorder stays empty:
+       report only when the fixpoint had a chance to run. *)
+    if profile && minify then report_profile (Stats.snapshot stats)
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
