@@ -238,15 +238,24 @@ let normalize_object_view_box (value : object_view_box) : object_view_box =
       else Rect { top; right; bottom; left; rounded }
   | other -> other
 
+let aspect_ratio_of_numbers ~auto (a : number) (b : number) : aspect_ratio =
+  match (auto, a, b) with
+  | false, Num a, Num b -> Ratio (a, b)
+  | true, Num a, Num b -> Auto_ratio (a, b)
+  | false, a, b -> Ratio_calc (a, b)
+  | true, a, b -> Auto_ratio_calc (a, b)
+
 let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
  fun value ->
   match value with
   | Auto_ratio_calc (a, b) ->
-      preserve_if_equal value
-        (Auto_ratio_calc (Values.normalize_number a, Values.normalize_number b))
+      aspect_ratio_of_numbers ~auto:true
+        (Values.normalize_number a)
+        (Values.normalize_number b)
   | Ratio_calc (a, b) ->
-      preserve_if_equal value
-        (Ratio_calc (Values.normalize_number a, Values.normalize_number b))
+      aspect_ratio_of_numbers ~auto:false
+        (Values.normalize_number a)
+        (Values.normalize_number b)
   | other -> other
 
 let rec pp_display : display Pp.t =
@@ -890,8 +899,8 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
     match Cursor.peek_ident t with
     | Some "auto" ->
         Cursor.skip t;
-        Auto_ratio_calc (w, h)
-    | _ -> Ratio_calc (w, h)
+        aspect_ratio_of_numbers ~auto:true w h
+    | _ -> aspect_ratio_of_numbers ~auto:false w h
   in
   let read_auto t : aspect_ratio =
     match Cursor.peek_ident t with
@@ -901,7 +910,7 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
            following number as a ratio so a trailing separator / whitespace
            (e.g. [aspect-ratio: auto;]) resolves to plain [Auto]. *)
         match Cursor.option read_ratio t with
-        | Some (w, h) -> Auto_ratio_calc (w, h)
+        | Some (w, h) -> aspect_ratio_of_numbers ~auto:true w h
         | None -> Auto)
     | _ -> Cursor.err_expected t "auto"
   in

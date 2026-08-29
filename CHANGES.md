@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Literal `aspect-ratio` values now use the exported `Ratio` and `Auto_ratio`
+  nodes, matching declarations built through the public constructors and
+  helpers so equal declarations have equal cached hashes (#652)
 - Percentage tokens in `color-mix()` variable fallbacks and `font-size` now
   retain their typed percentage nodes. Both readers tried to consume a number
   token followed by `%`, but CSS tokenizes the pair as one percentage (#651)
