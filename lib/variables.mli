@@ -127,3 +127,11 @@ val read_reference_body : (Cursor.t -> 'a) -> Cursor.t -> 'a var
     without the surrounding [var(] and [)]. Unlike {!read_reference}, which
     returns strings, this reads the fallback with [read] and returns a typed
     variable handle. *)
+
+val read_reference_body_as_string : Cursor.t -> string * string option
+(** [read_reference_body_as_string t] parses a [var()] reference body from a
+    cursor already positioned at the arguments, as {!read_reference_body} does,
+    and returns the name without its [--] prefix and the fallback as the
+    [<declaration-value>] text, as {!read_reference} does. It is what a caller
+    with no value type to pick a fallback reader from needs, and the fallback it
+    hands back is what {!Values.syntax_fallback} consumes. *)

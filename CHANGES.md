@@ -788,6 +788,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `Css.Variables.read_reference_body_as_string` reads the same `var()`
+  argument list as `read_reference_body` and returns the name and the fallback
+  as text, for a caller with no value type to pick a typed fallback reader
+  from. Such a caller had to assemble a `var(...)` wrapper for
+  `read_reference` (#XXX)
 - `Css.Variables.read_reference_body` reads a `var()` argument list - a name
   and optional fallback - into a typed variable handle from a cursor
   already positioned at the arguments, without the `var(`/`)` wrapper (#630)
