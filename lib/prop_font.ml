@@ -1093,27 +1093,53 @@ let rec pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* [<length-percentage>] is the whole of [font-size]'s numeric grammar, so a
+   calc built from those leaves is a [<length>] calc and can be handed to the
+   length simplifier. The trip back lands under [Length], percentage included: a
+   [<percentage>] is one token, so the reader takes [font-size: 50%] through
+   [read_non_negative_length] and the [Pct] leaf it produces sits there. A
+   [var()] leaf carries a [font_size]-typed fallback, which does not survive the
+   trip either way. *)
+let rec length_of_font_size_calc : font_size calc -> length calc option =
+  function
+  | Val (Length l) -> Some (Val l)
+  | Val (Pct n) -> Some (Val (Pct n : length))
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count | Val _ -> None
+  | Nested inner ->
+      Option.map (fun c -> Nested c) (length_of_font_size_calc inner)
+  | Parens inner ->
+      Option.map (fun c -> Parens c) (length_of_font_size_calc inner)
+  | Expr (left, op, right) -> (
+      match (length_of_font_size_calc left, length_of_font_size_calc right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
+
+let rec font_size_of_length_calc : length calc -> font_size calc option =
+  function
+  | Val l -> Some (Val (Length l))
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count -> None
+  | Nested inner ->
+      Option.map (fun c -> Nested c) (font_size_of_length_calc inner)
+  | Parens inner ->
+      Option.map (fun c -> Parens c) (font_size_of_length_calc inner)
+  | Expr (left, op, right) -> (
+      match (font_size_of_length_calc left, font_size_of_length_calc right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
+
 let rec pp_font_size : font_size Pp.t =
  fun ctx -> function
   | Length l -> pp_length ctx l
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_font_size ctx v
   | Calc c -> (
-      let rec to_length_calc : font_size calc -> length calc option = function
-        | Val (Length l) -> Some (Val l)
-        | Val (Pct n) -> Some (Val (Pct n : length))
-        | Num n -> Some (Num n)
-        | Math_const c -> Some (Math_const c)
-        | Math_fn fn -> Some (Math_fn fn)
-        | Var _ | Sibling_index | Sibling_count | Val _ -> None
-        | Nested inner -> Option.map (fun c -> Nested c) (to_length_calc inner)
-        | Parens inner -> Option.map (fun c -> Parens c) (to_length_calc inner)
-        | Expr (left, op, right) -> (
-            match (to_length_calc left, to_length_calc right) with
-            | Some left, Some right -> Some (Expr (left, op, right))
-            | _ -> None)
-      in
-      match (Pp.minified ctx, to_length_calc c) with
+      match (Pp.minified ctx, length_of_font_size_calc c) with
       | true, Some c -> pp_length ctx (Calc c)
       | _ -> pp_calc pp_font_size ctx c)
   | Xx_small -> Pp.string ctx "xx-small"
@@ -1935,11 +1961,28 @@ let rec read_font_variation_settings t : font_variation_settings =
 let pp_font_src : Font_face.src Pp.t = Font_face.pp
 let read_font_src = Font_face.read_src
 
+(* CSS Values 4 (ED) sec. 10.10.1 sums a calc's same-unit children and returns
+   the lone remaining child, which needs the typed length simplifier: the
+   untyped one cannot add two [Val] leaves. [em] and [%] resolve against the
+   parent font size rather than the element's own, but every term of one
+   declaration shares that reference, so their sum is the same value whatever
+   the reference turns out to be. *)
 let normalize_font_size (fs : font_size) : font_size =
   match fs with
   | Length l -> preserve_if_equal fs (Length (Values.normalize_length l))
   | Calc c -> (
-      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+      match length_of_font_size_calc c with
+      | None -> (
+          match Values.eval_calc c with
+          | Values.Val v -> v
+          | folded -> Calc folded)
+      | Some lc -> (
+          match Values.normalize_length (Calc lc) with
+          | Calc folded -> (
+              match font_size_of_length_calc folded with
+              | Some folded -> Calc folded
+              | None -> fs)
+          | length -> Length length))
   | _ -> fs
 
 let normalize_line_height (lh : line_height) : line_height =
@@ -1997,18 +2040,19 @@ let normalize_font_family (value : font_family) : font_family =
         | deduped -> List deduped)
   | other -> other
 
-(* sec. 2.7 gives the [font] shorthand [<'font-weight'>] and [<'font-family'>#]
-   slots, so each slot takes its longhand's fold. Its width slot is
-   [<font-width-css3>], the keywords alone, so the percentage the longhand folds
-   to is not a value the slot can hold. *)
+(* sec. 2.7 gives the [font] shorthand [<'font-weight'>], [<'font-size'>] and
+   [<'font-family'>#] slots, so each slot takes its longhand's fold. Its width
+   slot is [<font-width-css3>], the keywords alone, so the percentage the
+   longhand folds to is not a value the slot can hold. *)
 let normalize_font : font -> font =
  fun value ->
   match value with
   | Shorthand s ->
       let weight = option_map_preserve normalize_font_weight s.weight in
       let family = normalize_font_family s.family in
-      if weight == s.weight && family == s.family then value
-      else Shorthand { s with weight; family }
+      let size = normalize_font_size s.size in
+      if weight == s.weight && family == s.family && size == s.size then value
+      else Shorthand { s with weight; family; size }
   | other -> other
 
 let rec read_font_variant_emoji t : font_variant_emoji =
