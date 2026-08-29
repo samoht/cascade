@@ -1291,16 +1291,60 @@ let rec pp_ruby_position : ruby_position Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_ruby_position ctx v
 
+let pp_white_space_collapse_keyword : white_space_collapse_keyword Pp.t =
+ fun ctx -> function
+  | Collapse -> Pp.string ctx "collapse"
+  | Discard -> Pp.string ctx "discard"
+  | Preserve -> Pp.string ctx "preserve"
+  | Preserve_breaks -> Pp.string ctx "preserve-breaks"
+  | Preserve_spaces -> Pp.string ctx "preserve-spaces"
+  | Break_spaces -> Pp.string ctx "break-spaces"
+
+let pp_text_wrap_mode_keyword : text_wrap_mode_keyword Pp.t =
+ fun ctx -> function
+  | Wrap -> Pp.string ctx "wrap"
+  | No_wrap -> Pp.string ctx "nowrap"
+
+let pp_white_space_trim_keyword : white_space_trim_keyword Pp.t =
+ fun ctx -> function
+  | Before -> Pp.string ctx "discard-before"
+  | After -> Pp.string ctx "discard-after"
+  | Inner -> Pp.string ctx "discard-inner"
+
+let pp_white_space_trim : white_space_trim Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Discards keywords ->
+      Pp.list ~sep:Pp.space pp_white_space_trim_keyword ctx keywords
+
+let pp_white_space_components : white_space_components Pp.t =
+ fun ctx { collapse; wrap; trim } ->
+  let first = ref true in
+  let sep () = if !first then first := false else Pp.space ctx () in
+  Option.iter
+    (fun c ->
+      sep ();
+      pp_white_space_collapse_keyword ctx c)
+    collapse;
+  Option.iter
+    (fun w ->
+      sep ();
+      pp_text_wrap_mode_keyword ctx w)
+    wrap;
+  Option.iter
+    (fun t ->
+      sep ();
+      pp_white_space_trim ctx t)
+    trim
+
 let rec pp_white_space : white_space Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_white_space ctx v
   | Normal -> Pp.string ctx "normal"
-  | Nowrap -> Pp.string ctx "nowrap"
   | Pre -> Pp.string ctx "pre"
   | Pre_wrap -> Pp.string ctx "pre-wrap"
   | Pre_line -> Pp.string ctx "pre-line"
-  | Break_spaces -> Pp.string ctx "break-spaces"
-  | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
+  | Components components -> pp_white_space_components ctx components
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1768,31 +1812,122 @@ let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
     ~calls:[ ("var", fun t -> Var (read_var read_hyphenate_limit_chars t)) ]
     ~default:read_counts t
 
+let read_white_space_collapse_keyword t : white_space_collapse_keyword =
+  Cursor.enum "white-space-collapse"
+    [
+      ("collapse", (Collapse : white_space_collapse_keyword));
+      ("discard", Discard);
+      ("preserve", Preserve);
+      ("preserve-breaks", Preserve_breaks);
+      ("preserve-spaces", Preserve_spaces);
+      ("break-spaces", Break_spaces);
+    ]
+    t
+
+let read_text_wrap_mode_keyword t : text_wrap_mode_keyword =
+  Cursor.enum "text-wrap-mode"
+    [ ("wrap", (Wrap : text_wrap_mode_keyword)); ("nowrap", No_wrap) ]
+    t
+
+let read_white_space_trim_keyword t : white_space_trim_keyword =
+  Cursor.enum "white-space-trim"
+    [
+      ("discard-before", (Before : white_space_trim_keyword));
+      ("discard-after", After);
+      ("discard-inner", Inner);
+    ]
+    t
+
+(* css-text-4 (ED) sec. 3: [white-space-trim] is [none | discard-before ||
+   discard-after || discard-inner], so the discards form one run and each names
+   itself at most once. *)
+let rank_white_space_trim_keyword : white_space_trim_keyword -> int = function
+  | Before -> 0
+  | After -> 1
+  | Inner -> 2
+
+let read_white_space_trim t : white_space_trim =
+  Cursor.enum "white-space-trim"
+    [ ("none", (None : white_space_trim)) ]
+    ~default:(fun t ->
+      let keywords =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3
+          read_white_space_trim_keyword t
+      in
+      let distinct =
+        List.sort_uniq
+          (fun a b ->
+            Int.compare
+              (rank_white_space_trim_keyword a)
+              (rank_white_space_trim_keyword b))
+          keywords
+      in
+      if List.compare_lengths distinct keywords <> 0 then
+        Cursor.err_invalid t "white-space-trim";
+      (Discards keywords : white_space_trim))
+    t
+
+(* css-text-4 (ED) sec. 3: [normal | pre | pre-wrap | pre-line |
+   <'white-space-collapse'> || <'text-wrap-mode'> || <'white-space-trim'>]. The
+   [||] binds tighter than the [|], so the last three longhands are one group:
+   each stands alone, in any order, and any left out takes its initial value. *)
+module White_space = struct
+  type component =
+    | Collapse_slot of white_space_collapse_keyword
+    | Wrap_slot of text_wrap_mode_keyword
+    | Trim_slot of white_space_trim
+
+  let empty = { collapse = Option.None; wrap = Option.None; trim = Option.None }
+
+  let read_component t =
+    Cursor.one_of
+      [
+        (fun t -> Collapse_slot (read_white_space_collapse_keyword t));
+        (fun t -> Wrap_slot (read_text_wrap_mode_keyword t));
+        (fun t -> Trim_slot (read_white_space_trim t));
+      ]
+      t
+
+  let merge t acc = function
+    | Collapse_slot c when Option.is_none acc.collapse ->
+        { acc with collapse = Option.Some c }
+    | Wrap_slot w when Option.is_none acc.wrap ->
+        { acc with wrap = Option.Some w }
+    | Trim_slot tr when Option.is_none acc.trim ->
+        { acc with trim = Option.Some tr }
+    | Collapse_slot _ -> Cursor.err t "duplicate white-space-collapse"
+    | Wrap_slot _ -> Cursor.err t "duplicate text-wrap-mode"
+    | Trim_slot _ -> Cursor.err t "duplicate white-space-trim"
+end
+
+let read_white_space_components t : white_space_components =
+  let components, _ =
+    Cursor.fold_many White_space.read_component ~init:White_space.empty
+      ~f:(White_space.merge t) t
+  in
+  if
+    Option.is_none components.collapse
+    && Option.is_none components.wrap
+    && Option.is_none components.trim
+  then Cursor.err_expected t "white-space";
+  components
+
 let rec read_white_space t : white_space =
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some "preserve" ->
-      ignore (Cursor.ident t : string);
-      Cursor.ws t;
-      Cursor.expect_string "nowrap" t;
-      Preserve_nowrap
-  | _ ->
-      Cursor.enum_or_var "white-space"
-        [
-          ("normal", (Normal : white_space));
-          ("nowrap", Nowrap);
-          ("pre", Pre);
-          ("pre-wrap", Pre_wrap);
-          ("pre-line", Pre_line);
-          ("break-spaces", Break_spaces);
-          ("inherit", Inherit);
-          ("initial", Initial);
-          ("unset", Unset);
-          ("revert", Revert);
-          ("revert-layer", Revert_layer);
-        ]
-        ~var:(fun t -> Var (read_var read_white_space t))
-        t
+  Cursor.enum_or_var "white-space"
+    [
+      ("normal", (Normal : white_space));
+      ("pre", Pre);
+      ("pre-wrap", Pre_wrap);
+      ("pre-line", Pre_line);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_white_space t))
+    ~default:(fun t -> Components (read_white_space_components t))
+    t
 
 let rec read_word_break t : word_break =
   Cursor.enum_or_var "word-break"

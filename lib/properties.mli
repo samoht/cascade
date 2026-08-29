@@ -1081,6 +1081,40 @@ val pp_initial_letter : initial_letter Pp.t
 val pp_text_size_adjust : text_size_adjust Pp.t
 (** [pp_text_size_adjust] pretty-prints a text-size-adjust value. *)
 
+val pp_white_space_collapse_keyword : white_space_collapse_keyword Pp.t
+(** [pp_white_space_collapse_keyword] pretty-prints a white-space-collapse
+    keyword. *)
+
+val read_white_space_collapse_keyword : Cursor.t -> white_space_collapse_keyword
+(** [read_white_space_collapse_keyword t] parses a white-space-collapse keyword.
+*)
+
+val pp_text_wrap_mode_keyword : text_wrap_mode_keyword Pp.t
+(** [pp_text_wrap_mode_keyword] pretty-prints a text-wrap-mode keyword. *)
+
+val read_text_wrap_mode_keyword : Cursor.t -> text_wrap_mode_keyword
+(** [read_text_wrap_mode_keyword t] parses a text-wrap-mode keyword. *)
+
+val pp_white_space_trim_keyword : white_space_trim_keyword Pp.t
+(** [pp_white_space_trim_keyword] pretty-prints one white-space-trim discard. *)
+
+val read_white_space_trim_keyword : Cursor.t -> white_space_trim_keyword
+(** [read_white_space_trim_keyword t] parses one white-space-trim discard. *)
+
+val pp_white_space_trim : white_space_trim Pp.t
+(** [pp_white_space_trim] pretty-prints a white-space-trim value. *)
+
+val read_white_space_trim : Cursor.t -> white_space_trim
+(** [read_white_space_trim t] parses a white-space-trim value. *)
+
+val pp_white_space_components : white_space_components Pp.t
+(** [pp_white_space_components] pretty-prints the longhands [white-space] spells
+    out, in grammar order. *)
+
+val read_white_space_components : Cursor.t -> white_space_components
+(** [read_white_space_components t] parses the [||] group of
+    white-space-collapse, text-wrap-mode and white-space-trim. *)
+
 val pp_white_space : white_space Pp.t
 (** [pp_white_space] is the pretty-printer for [white_space]. *)
 

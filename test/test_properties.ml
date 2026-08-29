@@ -55,6 +55,26 @@ let check_text_overflow =
 
 let check_text_wrap = check_value_cursor "text-wrap" read_text_wrap pp_text_wrap
 
+let check_white_space_collapse_keyword =
+  check_value_cursor "white-space-collapse" read_white_space_collapse_keyword
+    pp_white_space_collapse_keyword
+
+let check_text_wrap_mode_keyword =
+  check_value_cursor "text-wrap-mode" read_text_wrap_mode_keyword
+    pp_text_wrap_mode_keyword
+
+let check_white_space_trim_keyword =
+  check_value_cursor "white-space-trim keyword" read_white_space_trim_keyword
+    pp_white_space_trim_keyword
+
+let check_white_space_trim =
+  check_value_cursor "white-space-trim" read_white_space_trim
+    pp_white_space_trim
+
+let check_white_space_components =
+  check_value_cursor "white-space components" read_white_space_components
+    pp_white_space_components
+
 let check_white_space =
   check_value_cursor "white-space" read_white_space pp_white_space
 
@@ -1507,6 +1527,38 @@ let test_white_space () =
     "discard-before discard-before";
   (* text-wrap-style is not one of the three longhands *)
   neg_cursor read_white_space "balance"
+
+let test_white_space_collapse_keyword () =
+  check_white_space_collapse_keyword "collapse";
+  check_white_space_collapse_keyword "discard";
+  check_white_space_collapse_keyword "preserve";
+  check_white_space_collapse_keyword "preserve-breaks";
+  check_white_space_collapse_keyword "preserve-spaces";
+  check_white_space_collapse_keyword "break-spaces";
+  neg_cursor read_white_space_collapse_keyword "normal"
+
+let test_text_wrap_mode_keyword () =
+  check_text_wrap_mode_keyword "wrap";
+  check_text_wrap_mode_keyword "nowrap";
+  neg_cursor read_text_wrap_mode_keyword "balance"
+
+let test_white_space_trim_keyword () =
+  check_white_space_trim_keyword "discard-before";
+  check_white_space_trim_keyword "discard-after";
+  check_white_space_trim_keyword "discard-inner";
+  neg_cursor read_white_space_trim_keyword "none"
+
+let test_white_space_trim () =
+  check_white_space_trim "none";
+  check_white_space_trim "discard-before discard-inner";
+  neg_cursor ~allow_partial:true read_white_space_trim "discard-before none"
+
+let test_white_space_components () =
+  check_white_space_components ~roundtrip:true "preserve nowrap";
+  check_white_space_components ~roundtrip:true "discard-after";
+  check_white_space_components ~roundtrip:true ~expected:"collapse wrap"
+    "wrap collapse";
+  neg_cursor read_white_space_components "normal"
 
 let test_word_break () =
   check_word_break "normal";
@@ -4668,6 +4720,12 @@ let tests =
     test_case "text-overflow" `Quick test_text_overflow;
     test_case "text-wrap" `Quick test_text_wrap;
     test_case "white-space" `Quick test_white_space;
+    test_case "white-space-collapse keyword" `Quick
+      test_white_space_collapse_keyword;
+    test_case "text-wrap-mode keyword" `Quick test_text_wrap_mode_keyword;
+    test_case "white-space-trim keyword" `Quick test_white_space_trim_keyword;
+    test_case "white-space-trim" `Quick test_white_space_trim;
+    test_case "white-space components" `Quick test_white_space_components;
     test_case "word-break" `Quick test_word_break;
     test_case "overflow-wrap" `Quick test_overflow_wrap;
     test_case "hyphens" `Quick test_hyphens;

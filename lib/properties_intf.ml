@@ -1527,14 +1527,30 @@ type dominant_baseline =
   | Revert_layer
   | Var of dominant_baseline var
 
+type white_space_collapse_keyword =
+  | Collapse
+  | Discard
+  | Preserve
+  | Preserve_breaks
+  | Preserve_spaces
+  | Break_spaces
+
+type text_wrap_mode_keyword = Wrap | No_wrap
+type white_space_trim_keyword = Before | After | Inner
+type white_space_trim = None | Discards of white_space_trim_keyword list
+
+type white_space_components = {
+  collapse : white_space_collapse_keyword option;
+  wrap : text_wrap_mode_keyword option;
+  trim : white_space_trim option;
+}
+
 type white_space =
   | Normal
-  | Nowrap
   | Pre
   | Pre_wrap
   | Pre_line
-  | Break_spaces
-  | Preserve_nowrap
+  | Components of white_space_components
   | Inherit
   | Initial
   | Unset
