@@ -151,26 +151,14 @@ let rec pp_list_style_image : list_style_image Pp.t =
 
 let pp_list_style_shorthand : list_style_shorthand Pp.t =
  fun ctx { type_; position; image } ->
-  let drop = Pp.minified ctx in
-  let type_ =
-    drop_default_if ~drop
-      ~is_default:(fun (t : list_style_type) -> t = Disc)
-      type_
-  in
-  let position =
-    drop_default_if ~drop
-      ~is_default:(fun (p : list_style_position) -> p = Outside)
-      position
-  in
-  let image =
-    drop_default_if ~drop
-      ~is_default:(fun (i : list_style_image) -> i = None)
-      image
-  in
   let is_none_type = type_ = Some (None : list_style_type) in
   let is_none_image = image = Some (None : list_style_image) in
-  if is_none_type && is_none_image && position = Option.None && drop then
-    Pp.string ctx "none"
+  (* CSS Lists 3 (ED) sec. 3.6: "a value of none in the shorthand must be
+     applied to whichever of the two properties aren't otherwise set by the
+     shorthand", so a lone [none] with no position reads back as the same pair
+     of nones the two keywords spell out. *)
+  if is_none_type && is_none_image && position = Option.None && Pp.minified ctx
+  then Pp.string ctx "none"
   else
     let first = ref true in
     let emit pp = function
@@ -188,6 +176,37 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
        [outside] would set the position, changing nothing, but [disc] is shorter
        and is the canonical single-value form. *)
     if !first then Pp.string ctx "disc"
+
+(* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
+   <'list-style-image'> || <'list-style-type'>], so a component left out of the
+   shorthand takes its longhand initial - [outside] (sec. 3.5), [none] (sec.
+   3.3) and [disc] (sec. 3.4). Writing an initial out names what leaving it out
+   names, and leaving it out is the shorter spelling. *)
+let normalize_list_style_shorthand (s : list_style_shorthand) :
+    list_style_shorthand =
+  let type_ =
+    drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
+  in
+  let position =
+    drop_default
+      ~is_default:(fun (p : list_style_position) -> p = Outside)
+      s.position
+  in
+  let image =
+    drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
+  in
+  if
+    option_is_phys_same type_ s.type_
+    && option_is_phys_same position s.position
+    && option_is_phys_same image s.image
+  then s
+  else { type_; position; image }
+
+let normalize_list_style : list_style -> list_style = function
+  | Shorthand s as value ->
+      let s' = normalize_list_style_shorthand s in
+      if s' == s then value else Shorthand s'
+  | value -> value
 
 let rec pp_list_style : list_style Pp.t =
  fun ctx -> function
@@ -3608,6 +3627,7 @@ let normalize_property_value : type a.
   | Display -> normalize_display value
   | Overflow -> normalize_overflow value
   | Transition -> map_preserve normalize_transition value
+  | List_style -> normalize_list_style value
   | Transition_timing_function -> normalize_timing_function value
   | Animation -> map_preserve normalize_animation value
   | Animation_timing_function -> normalize_timing_function value

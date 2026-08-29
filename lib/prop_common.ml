@@ -187,13 +187,11 @@ let option_is_phys_same a b =
   | Option.Some a, Option.Some b -> a == b
   | _ -> false
 
-(* CSS Lists 3 sec. 3.6: under minify, drop components equal to their longhand
-   initial ([type_: Disc], [position: Outside], [image: None]). When both
-   [type_] and [image] are [None] and [position] is omitted, emit the single
-   [none] keyword. If every component is defaulted, leave [outside] so the value
-   isn't empty. *)
-let drop_default_if ~drop ~is_default v =
-  match v with Some x when drop && is_default x -> Option.None | _ -> v
+(* Drop a shorthand component that equals its longhand initial: a shorthand
+   resets every component it leaves out to that initial, so the two spellings
+   name one value. *)
+let drop_default ~is_default v =
+  match v with Some x when is_default x -> Option.None | _ -> v
 
 let rec eval_number_value : number -> float option = function
   | Num f -> Some f

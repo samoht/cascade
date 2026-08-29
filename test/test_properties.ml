@@ -3598,23 +3598,28 @@ let test_border_image_outset () =
 let test_list_style () =
   (* All-initial values collapse to the canonical single token [disc], never the
      position initial [outside] (which would change which longhand is set). *)
+  (* The printer holds every component it parsed; dropping one that equals its
+     longhand initial is a node change the optimizer makes (pinned in
+     test_declaration). *)
   check_list_style "disc";
-  check_list_style ~expected:"disc" "outside";
-  check_list_style ~expected:"disc" "disc outside";
-  check_list_style ~expected:"disc" "disc outside none";
+  check_list_style "outside";
+  check_list_style "disc outside";
+  check_list_style "disc outside none";
   check_list_style "square inside";
-  check_list_style ~expected:"square" "square outside";
+  check_list_style "square outside";
   check_list_style "inside";
+  (* CSS Lists 3 (ED) sec. 3.6 sends a lone [none] to both the type and the
+     image, so the single keyword is the same node the pair spells out. *)
   check_list_style "none";
   check_list_style "url(a.png)";
-  check_list_style ~expected:"square url(a.png)" "square outside url(a.png)";
+  check_list_style "square outside url(a.png)";
   check_list_style "inherit";
   check_list_style "initial";
   neg_cursor read_list_style "12px"
 
 let test_list_style_shorthand () =
   check_list_style_shorthand "disc";
-  check_list_style_shorthand ~expected:"disc" "disc outside";
+  check_list_style_shorthand "disc outside";
   check_list_style_shorthand "square inside";
   check_list_style_shorthand "square";
   check_list_style_shorthand "none";
