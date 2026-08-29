@@ -405,9 +405,12 @@ let test_inline_cycle_fallbacks () =
     ":root{--a:var(--b)}.x{color:var(--a,red)}" ".x{color:red}"
 
 let test_inline_shorthand_functions () =
+  (* CSS Transitions 1 (ED) sec. 2.5: [ease] is the easing initial, so pp holds
+     the spelled-out form and the optimizer folds it away. *)
   check_inline_case "transition variable resolves into property slot"
+    ~optimized:".a{transition:opacity .3s}"
     ":root{--prop:opacity}.a{transition:var(--prop) .3s ease}"
-    ".a{transition:opacity .3s}";
+    ".a{transition:opacity .3s ease}";
   check_inline_case "animation variable resolves into name slot"
     ":root{--anim:slide}.b{animation:var(--anim) 1s ease infinite}"
     ".b{animation:slide 1s infinite}";

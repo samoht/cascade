@@ -3607,6 +3607,10 @@ let normalize_property_value : type a.
   | Font -> normalize_font value
   | Display -> normalize_display value
   | Overflow -> normalize_overflow value
+  | Transition -> map_preserve normalize_transition value
+  | Transition_timing_function -> normalize_timing_function value
+  | Animation -> map_preserve normalize_animation value
+  | Animation_timing_function -> normalize_timing_function value
   | Padding_left -> Values.normalize_length ~ctx value
   | Padding_right -> Values.normalize_length ~ctx value
   | Padding_bottom -> Values.normalize_length ~ctx value
