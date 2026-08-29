@@ -593,7 +593,51 @@ let display () =
   c ~expected:"display:table-cell" "display: table-cell";
   c ~expected:"display:list-item" "display: list-item";
   c ~expected:"display:contents" "display: contents";
-  c ~expected:"display:flow-root" "display: flow-root"
+  c ~expected:"display:flow-root" "display: flow-root";
+  (* CSS Display 3 (ED) sec. 2.1: a [<display-outside>] written without an
+     inside defaults the inner type to [flow]. sec. 2.2: an inside written alone
+     defaults the outer type to [block], except [ruby], which defaults to
+     [inline]. sec. 2.6 names the four precomposed inline-level keywords. Each
+     two-value form below therefore has a single-keyword spelling of the same
+     value, and the keyword is the shorter one; swapping them is a node change,
+     so pp prints what it parsed and the optimizer folds. *)
+  c ~expected:"display:block flow" ~optimized:"display:block"
+    "display: block flow";
+  c ~expected:"display:inline flow" ~optimized:"display:inline"
+    "display: inline flow";
+  c ~expected:"display:run-in flow" ~optimized:"display:run-in"
+    "display: run-in flow";
+  c ~expected:"display:block flow-root" ~optimized:"display:flow-root"
+    "display: block flow-root";
+  c ~expected:"display:inline flow-root" ~optimized:"display:inline-block"
+    "display: inline flow-root";
+  c ~expected:"display:block flex" ~optimized:"display:flex"
+    "display: block flex";
+  c ~expected:"display:inline flex" ~optimized:"display:inline-flex"
+    "display: inline flex";
+  c ~expected:"display:block grid" ~optimized:"display:grid"
+    "display: block grid";
+  c ~expected:"display:inline grid" ~optimized:"display:inline-grid"
+    "display: inline grid";
+  c ~expected:"display:block table" ~optimized:"display:table"
+    "display: block table";
+  c ~expected:"display:inline table" ~optimized:"display:inline-table"
+    "display: inline table";
+  c ~expected:"display:inline ruby" ~optimized:"display:ruby"
+    "display: inline ruby";
+  (* sec. 2.2's ruby exception cuts the other way too: the bare [ruby] keyword
+     means [inline ruby], so [block ruby] is the one two-value form with no
+     shorter spelling and both layers hold it. *)
+  c ~expected:"display:block ruby" ~optimized:"display:block ruby"
+    "display: block ruby";
+  (* sec. 2.3: a [list-item] with no inside takes [flow] and with no outside
+     takes [block], so [block flow list-item] is what [list-item] alone says.
+     Dropping the [flow] alone names the same value either way, which is why pp
+     may do it and the outer keyword has to wait for the optimizer. *)
+  c ~expected:"display:block list-item" ~optimized:"display:list-item"
+    "display: block flow list-item";
+  c ~expected:"display:inline list-item" ~optimized:"display:inline list-item"
+    "display: inline flow list-item"
 
 let position () =
   let c = check_declaration in
@@ -1054,6 +1098,18 @@ let overflow () =
   check_declaration ~expected:"overflow:scroll" "overflow: scroll";
   check_declaration ~expected:"overflow:auto" "overflow: auto";
   check_declaration ~expected:"overflow:clip" "overflow: clip";
+  (* CSS Overflow 3 (ED) sec. 3.1: [overflow] is [<'overflow-block'>{1,2}] and
+     "sets the specified values of overflow-x and overflow-y in that order. If
+     the second value is omitted, it is copied from the first." A pair of equal
+     values therefore says what the single value says, and dropping the second
+     is a node change, so pp holds the pair and the optimizer folds. *)
+  check_declaration ~expected:"overflow:auto auto" ~optimized:"overflow:auto"
+    "overflow: auto auto";
+  check_declaration ~expected:"overflow:hidden hidden"
+    ~optimized:"overflow:hidden" "overflow: hidden hidden";
+  (* Two different values name two axes, so the pair stands. *)
+  check_declaration ~expected:"overflow:visible hidden"
+    ~optimized:"overflow:visible hidden" "overflow: visible hidden";
 
   check_declaration ~expected:"overflow-x:visible" "overflow-x: visible";
   check_declaration ~expected:"overflow-x:hidden" "overflow-x: hidden";
@@ -1605,7 +1661,8 @@ let spec_property_grammar_table_expansion () =
             (Some "animation:fade 1s linear 2 alternate both", None)
         | "animation-range", "entry 10% exit 90%" ->
             (Some "animation-range:entry 10%exit 90%", None)
-        | "display", "inline flow-root" -> (Some "display:inline-block", None)
+        | "display", "inline flow-root" ->
+            (Some "display:inline flow-root", Some "display:inline-block")
         | "position-try-fallbacks", "--below, flip-block" ->
             (Some "position-try-fallbacks:--below,flip-block", None)
         | "cursor", "url(cursor.cur), pointer" ->
@@ -2344,7 +2401,7 @@ let spec_platform_property_vectors () =
         "content:attr(data-label string,var(--label,\"x y\"))" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
         "font:italic small-caps 650 condensed 16px/1.5 Brand,serif" );
-      ("display: block flex", "display:flex");
+      ("display: block flex", "display:block flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
         "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
       ( "transition: opacity 1s ease-in .2s allow-discrete",

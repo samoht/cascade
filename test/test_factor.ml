@@ -164,6 +164,34 @@ let test_font_weight_spellings_factor () =
     "normal factors with 400" ".a,.b{font-weight:400}"
     (optimize_str ".a{font-weight:normal}.b{font-weight:400}")
 
+(* CSS Display 3 (ED) sec. 2.1, 2.2 and 2.6 give most two-value [display] forms
+   a single-keyword spelling of the same value, and sec. 2.3 gives [block flow
+   list-item] one. Factoring compares nodes, so the two rules meet as one
+   declaration only if the fold happened first. *)
+let test_display_spellings_factor () =
+  Alcotest.(check string)
+    "block flow factors with block" ".a,.b{display:block}"
+    (optimize_str ".a{display:block flow}.b{display:block}");
+  Alcotest.(check string)
+    "inline flow-root factors with inline-block" ".a,.b{display:inline-block}"
+    (optimize_str ".a{display:inline flow-root}.b{display:inline-block}");
+  Alcotest.(check string)
+    "block flow list-item factors with list-item" ".a,.b{display:list-item}"
+    (optimize_str ".a{display:block flow list-item}.b{display:list-item}");
+  (* sec. 2.2 reads [ruby] as [inline ruby], so [block ruby] names a different
+     value and the two rules stay apart. *)
+  Alcotest.(check string)
+    "block ruby does not factor with ruby"
+    ".a{display:block ruby}.b{display:ruby}"
+    (optimize_str ".a{display:block ruby}.b{display:ruby}")
+
+(* CSS Overflow 3 (ED) sec. 3.1: the omitted second value is copied from the
+   first, so a repeated axis is the longer spelling of the single value. *)
+let test_overflow_pair_spellings_factor () =
+  Alcotest.(check string)
+    "auto auto factors with auto" ".a,.b{overflow:auto}"
+    (optimize_str ".a{overflow:auto auto}.b{overflow:auto}")
+
 let suite =
   ( "factor",
     [
@@ -181,4 +209,8 @@ let suite =
         test_initial_line_style_spellings_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
+      Alcotest.test_case "display two-value and legacy spellings factor" `Quick
+        test_display_spellings_factor;
+      Alcotest.test_case "equal overflow axes factor with the single value"
+        `Quick test_overflow_pair_spellings_factor;
     ] )
