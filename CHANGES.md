@@ -184,6 +184,9 @@ recorded cases carrying six minifiers' answers.
 - `skew()`, `matrix()`, `matrix3d()` and `repeat()` read only up to the first
   argument they could not parse, so `skew(10deg,red)` became `skew(10deg)`
   instead of an invalid declaration; same gap #617 closed elsewhere (#627)
+- A trailing comma in a comma-separated list read as `matrix(1,2,3,4,5,6,)`
+  or `border-width: min(1px,)` instead of invalidating the declaration (CSS
+  Values 4 sec. 5.7.3); same family of gaps as #617, #627 (#629)
 - A `var()`, a `-webkit-gradient()` `color-stop()`/`from()`/`to()`, an
   `animation-timeline` `scroll()`/`view()`, or `box-shadow`'s `inset` written
   in another case is read as that keyword. CSS Values 4 sec. 4.1 makes a
