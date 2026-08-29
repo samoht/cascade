@@ -495,7 +495,10 @@ let where_is_cases () =
   (* Test :where() and :is() *)
   check_construct ":where(div)" (where [ element "div" ]);
   check_construct ":where(.a,.b)" (where [ class_ "a"; class_ "b" ]);
-  check_construct "h1,h2" (is_ [ element "h1"; element "h2" ]);
+  (* Splitting an equal-specificity [:is()] into a selector list is a node
+     change reserved for [Selector.canonicalize]; pp is lexical-only and holds
+     the wrapper. *)
+  check_construct ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
   check_construct ":not(.active)" (not [ class_ "active" ]);
   ()
 
@@ -541,7 +544,7 @@ let roundtrip () =
     "div.class#id[href]:hover::after";
   check ~expected:".a,.b,.c" ".a, .b, .c";
   check ":where(.a,.b)";
-  check ~expected:"h1,h2,h3" ":is(h1,h2,h3)";
+  check ":is(h1,h2,h3)";
   check ":not(.active)";
 
   (* Escaping roundtrip tests *)
@@ -2816,7 +2819,9 @@ let spec_selector_serialization_invariant_matrix () =
       "::highlight(search-results)";
       "::cue-region(.speaker)";
     ];
-  check_minified_to ".a,.b" ":is(.a, [=bad], .b)";
+  (* Forgiving parsing drops the invalid branch; the split of what is left is
+     [Selector.canonicalize]'s, not pp's. *)
+  check_minified_to ":is(.a,.b)" ":is(.a, [=bad], .b)";
   List.iter
     (fun input -> neg_cursor read input)
     [

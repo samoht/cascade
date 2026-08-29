@@ -2741,8 +2741,10 @@ let canonicalize_is node selectors =
    a one-part compound, and dedup/sort selector-list alternatives by printed
    form (both [List] and the set-based [:is]/[:where]/[:not]/[:has] lists, incl.
    the [:-moz-any]/[:-webkit-any] aliases, whose order Selectors 4 makes
-   irrelevant to matching and specificity). *)
-let canonicalize sel =
+   irrelevant to matching and specificity). [map] hands each node over without
+   saying where it sits, so every rewrite below has to be sound in any position;
+   the one that needs the top of a rule selector is [canonicalize]. *)
+let canonicalize_nodes sel =
   map
     (fun node ->
       let canon ctor selectors =
@@ -2896,24 +2898,33 @@ let rec specificity = function
   | Relative (_, sel) -> specificity sel
   | List xs -> xs |> List.map specificity |> max_specificity
 
-(* Unwrap [:is(s1, s2, ...)] to a selector list only when every argument has the
-   same specificity AND is structurally simple. Selectors 4 sec. 4.2 gives [:is]
-   the [max] specificity of its arguments, so unwrapping changes specificity
-   unless all are already equal. *)
+(* Selectors 4 sec. 4.2 replaces the specificity of [:is()] with that of its
+   most specific argument, so splitting [:is(s1, s2, ...)] into the selector
+   list [s1, s2, ...] holds the weight of every match only when the arguments
+   already agree on one specificity. The arguments also have to be structurally
+   simple: [&] is out because [specificity] reads [Nesting] as zero while CSS
+   Nesting 1 sec. 3 weighs it as the most specific selector in the parent rule,
+   so the equality below would pass on a weight it never measured. *)
 let rec is_unwrap_safe_is_arg : t -> bool = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
   | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
   | _ -> false
 
-let rec top_level_is_unwrap : t -> t = function
-  | Is selectors
-    when List.length selectors >= 2
-         && List.for_all is_unwrap_safe_is_arg selectors
-         &&
-         match List.map specificity selectors with
-         | [] -> false
-         | s :: rest -> List.for_all (fun s' -> s' = s) rest ->
-      List selectors
+let is_unwrap_safe selectors =
+  List.length selectors >= 2
+  && List.for_all is_unwrap_safe_is_arg selectors
+  &&
+  match List.map specificity selectors with
+  | [] -> false
+  | s :: rest -> List.for_all (fun s' -> s' = s) rest
+
+(* Sound only where the [:is()] is a whole rule selector, or a whole member of
+   one top-level list: there the split lands in a selector list, which weighs
+   each branch on its own. Nested inside a [Compound] or a [Combined] it is a
+   grouping boundary and the split would change what matches. *)
+let rec top_level_is_unwrap sel =
+  match sel with
+  | Is selectors when is_unwrap_safe selectors -> List selectors
   | List selectors ->
       let expanded =
         List.concat_map
@@ -2923,19 +2934,11 @@ let rec top_level_is_unwrap : t -> t = function
             | other -> [ other ])
           selectors
       in
-      List expanded
-  | other -> other
+      if list_same expanded selectors then sel
+      else List (canonicalize_unordered_list expanded)
+  | _ -> sel
 
-(* Public [pp] applies the top-level [:is()] unwrap under [minify] so every
-   caller sees the canonical form. The internal [pp] recurses through the
-   un-unwrapped tree because the unwrap is sound only at the entry point: a
-   nested [Is] inside [Combinator]/[Compound] would change matching. *)
-let pp_inner = pp
-
-let pp ctx sel =
-  let sel = if Pp.minified ctx then top_level_is_unwrap sel else sel in
-  pp_inner ctx sel
-
+let canonicalize sel = top_level_is_unwrap (canonicalize_nodes sel)
 let to_string ?minify t = Pp.to_string ?minify pp t
 let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
 
