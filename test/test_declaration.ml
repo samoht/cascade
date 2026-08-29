@@ -1721,7 +1721,24 @@ let animations_timing () =
      [<time>]. [0s] does not drop the unit. *)
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms"
+  check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms";
+  (* CSS Values 4 sec. 10.3 gives these functions the type of their arguments,
+     so time-valued calls fit the delay longhands' [<time>] grammar. *)
+  check_declaration ~expected:"transition-delay:1s"
+    "transition-delay:round(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:.1s"
+    "animation-delay:mod(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:.1s"
+    "animation-delay:rem(1.1s,.5s)";
+  let c = Cursor.of_string "transition-delay:bogus" in
+  match read_declaration c with
+  | exception
+      Error.Parse_error { kind = Error.Bad_value { property; reason }; _ } ->
+      Alcotest.(check string) "diagnostic property" "transition-delay" property;
+      Alcotest.(check string) "diagnostic reason" "expected time value" reason
+  | exception Error.Parse_error e ->
+      Alcotest.failf "unexpected diagnostic: %s" (Error.to_string e)
+  | _ -> Alcotest.fail "expected an invalid delay to be rejected"
 
 let animations_state () =
   check_declaration ~expected:"animation-iteration-count:1"
