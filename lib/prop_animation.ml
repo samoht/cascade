@@ -803,7 +803,8 @@ let read_timing_function_list t =
 
 let read_duration_list (read_one : Cursor.t -> Values.duration) t :
     Values.duration =
-  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_one t with
+  match Cursor.list ~sep:Cursor.comma read_one t with
+  | [] -> Cursor.err_expected t "time value"
   | [ value ] -> value
   | values -> Durations values
 

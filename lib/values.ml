@@ -7118,6 +7118,11 @@ let rec read_time_with ?(css_wide = true) t : duration =
       [
         ("var", fun t -> Var (read_var read_time t));
         ("calc", fun t -> Calc (read_calc read_time_in_calc t));
+        ("round", read_duration_round read_time);
+        ( "rem",
+          read_duration_binary_call "rem" (fun a b -> Rem (a, b)) read_time );
+        ( "mod",
+          read_duration_binary_call "mod" (fun a b -> Mod (a, b)) read_time );
       ]
     t
 

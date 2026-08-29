@@ -181,6 +181,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- The animation and transition delay longhands read time-valued `round()`,
+  `mod()` and `rem()` calls instead of dropping the declaration with an
+  internal list-parser diagnostic (#646)
 - A declaration whose grammar ends in an optional component is no longer
   dropped over the tail the declaration consumer strips. `font-style: oblique
   !important`, `rotate: 45deg !important`, `text-box: none;` and
