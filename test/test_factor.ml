@@ -229,6 +229,27 @@ let test_repeat_style_spellings_factor () =
     (optimize_str
        ".a{background-repeat:repeat space}.b{background-repeat:repeat}")
 
+(* CSS Box 4 (ED) sec. 3.2 fills the four sides from one, two or three values,
+   so a list that repeats what those rules already supply is the longer spelling
+   of the same declaration. Factoring compares nodes, so the two rules meet only
+   if the collapse ran first. *)
+let test_box_shorthand_repeats_factor () =
+  Alcotest.(check string)
+    "four equal sides factor with the single value" ".a,.b{inset:0}"
+    (optimize_str ".a{inset:0 0 0 0}.b{inset:0}");
+  Alcotest.(check string)
+    "a repeated axis factors with the pair" ".a,.b{padding:1px 2px}"
+    (optimize_str ".a{padding:1px 2px 1px 2px}.b{padding:1px 2px}");
+  Alcotest.(check string)
+    "border-color takes the same collapse" ".a,.b{border-color:red}"
+    (optimize_str ".a{border-color:red red red red}.b{border-color:red}");
+  (* A list the rules cannot rebuild stays as written, and the two stay
+     apart. *)
+  Alcotest.(check string)
+    "four distinct sides do not factor with three"
+    ".a{margin:1px 2px 3px 4px}.b{margin:1px 2px 3px}"
+    (optimize_str ".a{margin:1px 2px 3px 4px}.b{margin:1px 2px 3px}")
+
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so the keyword and the number name one weight. Factoring
    compares nodes, so the two rules only meet as one declaration if the fold
@@ -399,6 +420,8 @@ let suite =
         `Quick test_background_initial_slot_spellings_factor;
       Alcotest.test_case "repeat-style spellings factor together" `Quick
         test_repeat_style_spellings_factor;
+      Alcotest.test_case "box shorthand repeats factor together" `Quick
+        test_box_shorthand_repeats_factor;
       Alcotest.test_case "font-weight keyword and number factor together" `Quick
         test_font_weight_spellings_factor;
       Alcotest.test_case "font-family duplicate factors with the single family"

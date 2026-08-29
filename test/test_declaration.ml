@@ -1329,6 +1329,46 @@ let background_box_slots () =
     ~optimized:"background:content-box border-box red"
     "background: red content-box border-box"
 
+(* CSS Box 4 (ED) sec. 3.2 assigns the values of a one-to-four value box
+   shorthand to the four sides: one value goes to all four, two to top-bottom
+   then left-right, three to top, left-right, bottom. A repeat that those rules
+   already supply is the longer spelling of the same declaration, so the
+   optimizer drops it and pp prints the list it was handed. sec. 4.2 says the
+   same for padding, css-logical-1 sec. 4.3 assigns inset's values "as for
+   margin" and sec. 4.4 padding-block/padding-inline's, and CSS Backgrounds 3
+   (ED) sec. 3.1 and sec. 4.1 give border-color and border-radius the same
+   four-value form. *)
+let box_shorthand_repeats () =
+  check_declaration ~expected:"inset:0 0 0 0" ~optimized:"inset:0"
+    "inset: 0 0 0 0";
+  check_declaration ~expected:"margin:1px 1px 1px 1px" ~optimized:"margin:1px"
+    "margin: 1px 1px 1px 1px";
+  check_declaration ~expected:"padding:1px 2px 1px 2px"
+    ~optimized:"padding:1px 2px" "padding: 1px 2px 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 2px"
+    ~optimized:"margin:1px 2px 3px" "margin: 1px 2px 3px 2px";
+  check_declaration ~expected:"margin:1px 1px 2px"
+    ~optimized:"margin:1px 1px 2px" "margin: 1px 1px 2px";
+  check_declaration ~expected:"border-color:red red red red"
+    ~optimized:"border-color:red" "border-color: red red red red";
+  check_declaration ~expected:"inset-block:0 0" ~optimized:"inset-block:0"
+    "inset-block: 0 0";
+  check_declaration ~expected:"padding-inline:1px 1px"
+    ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  check_declaration ~expected:"border-radius:1px 1px 1px 1px"
+    ~optimized:"border-radius:1px" "border-radius: 1px 1px 1px 1px";
+  (* The per-side folds run first, so sides that only agree once normalised
+     still collapse. *)
+  check_declaration ~expected:"margin:0px 0 0px 0" ~optimized:"margin:0"
+    "margin: 0px 0 0px 0";
+  (* Controls: a list the rules cannot rebuild stays as written. *)
+  check_declaration ~expected:"margin:1px 2px" ~optimized:"margin:1px 2px"
+    "margin: 1px 2px";
+  check_declaration ~expected:"margin:1px 2px 3px 4px"
+    ~optimized:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"padding:1px 2px 1px 3px"
+    ~optimized:"padding:1px 2px 1px 3px" "padding: 1px 2px 1px 3px"
+
 (* CSS Backgrounds 3 (ED) sec. 2.4 gives every single [<repeat-style>] keyword
    the pair it computes to: [repeat] is [repeat repeat], [space] is [space
    space], [round] is [round round], [no-repeat] is [no-repeat no-repeat],
@@ -4322,6 +4362,7 @@ let declaration_tests =
     test_case "background initial slots" `Quick background_initial_slots;
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
+    test_case "box shorthand repeats" `Quick box_shorthand_repeats;
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
