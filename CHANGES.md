@@ -472,9 +472,13 @@ recorded cases carrying six minifiers' answers.
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: an explicit initial
   `medium` width or `none` style in the `border`, `column-rule` and `outline`
-  shorthands, `font-weight: bold` beside `700`, a two-value `display` beside
-  its legacy keyword, and `overflow: auto auto` beside `auto`
-  (#635, #636, #637)
+  shorthands, `font-weight: bold` beside `700`, `font-stretch: condensed`
+  beside `75%`, a family repeated in `font-family`, a `font` slot left at its
+  longhand's initial, a two-value `display` beside its legacy keyword, and
+  `overflow: auto auto` beside `auto` (#635, #636, #637, #639)
+- `--minify` folds a same-unit `calc()` in `font-size`, so `calc(1px + 1px)`
+  prints as `2px` and merges with a rule that wrote `2px`; the property ran the
+  untyped calc simplifier, which cannot add two typed lengths (#639)
 - `--minify` keeps `display: block ruby`. It printed `ruby`, which CSS Display
   3 reads as `inline ruby`, so a block-level ruby container came back
   inline-level (#637)
