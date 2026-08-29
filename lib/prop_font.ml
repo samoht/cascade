@@ -1209,10 +1209,9 @@ let rec pp_font_weight : font_weight Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_weight ctx v
 
-(* CSS Fonts 4 sec. 2.7: under minify, drop [<style>? <weight>? <stretch>?]
-   components that equal their longhand initial value, and drop [line-height]
-   when it's [normal]. The shorthand body itself is always [<size>
-   [/<line-height>]? <family>+]; size and family are required. *)
+(* CSS Fonts 4 sec. 2.7: the shorthand body is [<size> [/<line-height>]?
+   <family>+], so size and family are always emitted and the four prefix slots
+   only when the value carries them. *)
 let pp_font_variant_css21 ctx = function
   | (Normal : font_variant_css21) -> Pp.string ctx "normal"
   | Small_caps -> Pp.string ctx "small-caps"
@@ -1221,40 +1220,6 @@ let read_font_variant_css21 t : font_variant_css21 =
   Cursor.enum "font-variant-css21"
     [ ("normal", (Normal : font_variant_css21)); ("small-caps", Small_caps) ]
     t
-
-let drop_font_default ctx (type a) ~(is_default : a -> bool) (opt : a option) :
-    a option =
-  if Pp.minified ctx then
-    match opt with Some v when is_default v -> None | _ -> opt
-  else opt
-
-let drop_font_shorthand_defaults ctx style variant weight stretch line_height =
-  let style =
-    drop_font_default ctx style ~is_default:(function
-      | (Normal : font_style) -> true
-      | _ -> false)
-  in
-  let variant =
-    drop_font_default ctx variant ~is_default:(function
-      | (Normal : font_variant_css21) -> true
-      | _ -> false)
-  in
-  let weight =
-    drop_font_default ctx weight ~is_default:(function
-      | (Normal : font_weight) | Weight 400 -> true
-      | _ -> false)
-  in
-  let stretch =
-    drop_font_default ctx stretch ~is_default:(function
-      | (Normal : font_stretch) -> true
-      | _ -> false)
-  in
-  let line_height =
-    drop_font_default ctx line_height ~is_default:(function
-      | (Normal : line_height) -> true
-      | _ -> false)
-  in
-  (style, variant, weight, stretch, line_height)
 
 let pp_font_prefix ctx style variant weight stretch =
   let first = ref true in
@@ -1274,9 +1239,6 @@ let pp_font_prefix ctx style variant weight stretch =
 
 let pp_font_shorthand : font_shorthand Pp.t =
  fun ctx { style; variant; weight; stretch; size; line_height; family } ->
-  let style, variant, weight, stretch, line_height =
-    drop_font_shorthand_defaults ctx style variant weight stretch line_height
-  in
   if not (pp_font_prefix ctx style variant weight stretch) then Pp.space ctx ();
   pp_font_size ctx size;
   Option.iter
@@ -2040,19 +2002,60 @@ let normalize_font_family (value : font_family) : font_family =
         | deduped -> List deduped)
   | other -> other
 
+let drop_font_initial_slot (type a) ~(is_initial : a -> bool) (opt : a option) :
+    a option =
+  match opt with Some v when is_initial v -> None | _ -> opt
+
 (* sec. 2.7 gives the [font] shorthand [<'font-weight'>], [<'font-size'>] and
    [<'font-family'>#] slots, so each slot takes its longhand's fold. Its width
    slot is [<font-width-css3>], the keywords alone, so the percentage the
-   longhand folds to is not a value the slot can hold. *)
+   longhand folds to is not a value the slot can hold.
+
+   sec. 2.7 also resets every subproperty to its initial value before applying
+   the slots given explicitly, so a slot holding its longhand's initial says
+   what leaving it out says: drop it. The initials are [normal] for style,
+   variant and width, [normal] (that is 400) for weight and [normal] for
+   line-height; size and family are required and stay. *)
 let normalize_font : font -> font =
  fun value ->
   match value with
   | Shorthand s ->
-      let weight = option_map_preserve normalize_font_weight s.weight in
+      let style =
+        drop_font_initial_slot s.style ~is_initial:(function
+          | (Normal : font_style) -> true
+          | _ -> false)
+      in
+      let variant =
+        drop_font_initial_slot s.variant ~is_initial:(function
+          | (Normal : font_variant_css21) -> true
+          | _ -> false)
+      in
+      let weight =
+        option_map_preserve normalize_font_weight s.weight
+        |> drop_font_initial_slot ~is_initial:(function
+          | (Normal : font_weight) | Weight 400 -> true
+          | _ -> false)
+      in
+      let stretch =
+        drop_font_initial_slot s.stretch ~is_initial:(function
+          | (Normal : font_stretch) -> true
+          | _ -> false)
+      in
+      let line_height =
+        drop_font_initial_slot s.line_height ~is_initial:(function
+          | (Normal : line_height) -> true
+          | _ -> false)
+      in
       let family = normalize_font_family s.family in
       let size = normalize_font_size s.size in
-      if weight == s.weight && family == s.family && size == s.size then value
-      else Shorthand { s with weight; family; size }
+      if
+        style == s.style && variant == s.variant && weight == s.weight
+        && stretch == s.stretch
+        && line_height == s.line_height
+        && family == s.family && size == s.size
+      then value
+      else
+        Shorthand { style; variant; weight; stretch; size; line_height; family }
   | other -> other
 
 let rec read_font_variant_emoji t : font_variant_emoji =
