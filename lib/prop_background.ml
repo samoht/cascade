@@ -2168,7 +2168,8 @@ let read_border_image t : border_image =
     else Cursor.option read_mask_border_mode t
   in
   let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice) with
-  | None, None -> Cursor.err_expected t "border-image source or slice"
+  (match (source, slice, repeat) with
+  | None, None, None ->
+      Cursor.err_expected t "border-image source, slice, or repeat"
   | _ -> ());
   { source; slice; width; outset; repeat; mode }

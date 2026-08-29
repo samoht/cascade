@@ -184,6 +184,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `border-image` accepts a repeat keyword without a source or slice; omitted
+  shorthand slots take their initial values, so `border-image: round` is valid
+  and no longer dropped (#667)
 - `white-space: collapse` reads as the new public `white_space.Collapse` node;
   a white-space-collapse component is valid without the shorthand's other
   optional longhands (#666)
