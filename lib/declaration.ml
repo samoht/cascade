@@ -2164,8 +2164,9 @@ let allows_unknown_fallback name raw_value =
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
-  let decl = v Source (Properties.read_font_src t) in
-  validate_no_extra_tokens t;
+  let value = Cursor.declaration_value t in
+  let decl = v Source (Properties.read_font_src value) in
+  validate_no_extra_tokens value;
   let is_important = read_importance t in
   validate_no_extra_tokens t;
   if is_important then important decl else decl
@@ -2203,8 +2204,9 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
          Stamp the property back on so the warning names it ([bad value for
          background-image:]). *)
       let read () =
-        let decl = read_value prop_type t in
-        validate_no_extra_tokens t;
+        let value = Cursor.declaration_value t in
+        let decl = read_value prop_type value in
+        validate_no_extra_tokens value;
         let is_important = read_importance t in
         validate_no_extra_tokens t;
         (match Cursor.peek_delim t with

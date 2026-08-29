@@ -530,27 +530,47 @@ let invalid_css_is_not_empty_css () =
    dropped over its own [!important] never reached the resolved style. CSS
    Syntax 3 (ED) sec. 5.5.6 lifts that tail out of the value before any grammar
    sees it, and CSS Cascade 5 sec. 6.2 ranks what it flags above a normal
-   declaration of the same property. *)
+   declaration of the same property. Asserted on the declaration rather than on
+   the serialised attribute, which orders the two ranks. *)
 let important_declaration_reaches_the_resolved_style () =
   List.iter
-    (fun (css, expected) ->
+    (fun (css, property, value, important) ->
       let n = node ~classes:[ "x" ] "p" in
       let result = A.compute ~sheet:(parse css) [ n ] in
-      Alcotest.(check string)
-        ("inline declarations: " ^ css)
-        expected
-        (match result.styles with
-        | [ (_, decls) ] -> inline_style decls
-        | _ -> Alcotest.failf "expected one inline assignment for %s" css))
+      let decls =
+        match result.styles with
+        | [ (_, decls) ] -> decls
+        | _ -> Alcotest.failf "expected one inline assignment for %s" css
+      in
+      match
+        List.find_opt
+          (fun d -> String.equal (Css.Declaration.property_name d) property)
+          decls
+      with
+      | None ->
+          Alcotest.failf "%s: %s did not reach the resolved style" css property
+      | Some d ->
+          Alcotest.(check string)
+            (css ^ ": " ^ property)
+            value
+            (Css.Declaration.string_of_value ~minify:true d);
+          Alcotest.(check bool)
+            (css ^ ": " ^ property ^ " keeps its flag")
+            important
+            (Css.Declaration.is_important d))
     [
       ( ".x{font-style:oblique !important;color:red}",
-        "font-style:oblique;color:red" );
+        "font-style",
+        "oblique",
+        true );
       ( ".x{color-scheme:dark !important;color:red}",
-        "color-scheme:dark;color:red" );
-      (".x{text-box:none;color:red}", "text-box:none;color:red");
+        "color-scheme",
+        "dark",
+        true );
+      (".x{text-box:none;color:red}", "text-box", "none", false);
       (* The flag still decides the cascade: the important declaration wins over
          a later normal one for the same property. *)
-      (".x{color:red !important}.x{color:blue}", "color:red");
+      (".x{color:red !important}.x{color:blue}", "color", "red", true);
     ]
 
 let suite =
