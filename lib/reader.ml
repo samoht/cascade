@@ -3,7 +3,7 @@
 type t = {
   input : string;
   len : int;
-  (* Restrict non-ASCII identifiers to the CSS Syntax 3 sec. 4.2 range list
+  (* Restrict non-ASCII identifiers to the CSS Syntax 3 (ED) sec. 4.2 range list
      rather than accepting any code point >= U+0080. Rides on the reader so
      every [_at] predicate reaches it without threading a parameter through the
      tokenizer. *)
@@ -78,7 +78,7 @@ let pp (ctx : Pp.ctx) (t : t) =
 
 (** {1 Creation} *)
 
-(* CSS Syntax Level 3 section 3.3 "Preprocessing the input stream": - Strip a
+(* CSS Syntax 3 (ED) sec. 3.3 "Preprocessing the input stream": - Strip a
    leading U+FEFF BYTE ORDER MARK. - Replace any U+0000 NULL or surrogate code
    point with U+FFFD REPLACEMENT. (We operate post-UTF-8-decode; surrogates
    don't occur in valid UTF-8 so the NUL byte is the practical concern.) -

@@ -53,8 +53,8 @@ let string_of_range_operator = function
   | Gt -> ">"
   | Gte -> ">="
 
-(* CSS Syntax 3 sec. 4.3.7: a [style()] query names a custom property, and an
-   escape can carry a [;] or a [}] into that name, so it is written back with
+(* CSS Syntax 3 (ED) sec. 4.3.7: a [style()] query names a custom property, and
+   an escape can carry a [;] or a [}] into that name, so it is written back with
    the escapes that read the same name (see [Properties.pp_property]). *)
 let rec string_of_style_query ~minify = function
   | Boolean name -> Parser.escape_ident name
@@ -815,8 +815,8 @@ let min_width l : Media.t =
   Media.Cond
     (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
 
-(* CSS Syntax 3 sec. 5.5.6 consumes a declaration by discarding the whitespace
-   after the colon and removing the trailing whitespace tokens, so a
+(* CSS Syntax 3 (ED) sec. 5.5.6 consumes a declaration by discarding the
+   whitespace after the colon and removing the trailing whitespace tokens, so a
    [<style-feature-plain>] means the same however much space the source left
    around its value. A [<style-range>] carries no whitespace at all: the parser
    strips it before splitting on the comparison. *)

@@ -1,4 +1,4 @@
-(** CSS Syntax Module Level 3 section 4.2: token taxonomy.
+(** CSS Syntax 3 (ED) sec. 4.2: token taxonomy.
 
     Types only; the sec. 4.3 tokenization algorithm lives in {!Lexer}. *)
 

@@ -56,8 +56,8 @@ val is_declaration_value : string -> bool
 (** [is_declaration_value s] is whether [s] is a [<declaration-value>]: one or
     more component values with no unmatched closing bracket, no top-level [;],
     no [<bad-string-token>] or [<bad-url-token>] and no unterminated function,
-    block or string (CSS Syntax 3 sec. 8.2). Text outside it stops being part of
-    the declaration it is written into. *)
+    block or string (CSS Syntax 3 (ED) sec. 7.2). Text outside it stops being
+    part of the declaration it is written into. *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
@@ -99,9 +99,9 @@ val parse_opaque_declaration : string -> string -> declaration option
 val parse_custom_property : string -> string -> declaration option
 (** [parse_custom_property name value] is {!parse_declaration} restricted to a
     custom property that a rule can hold. It is [None] unless [name] is a
-    [<dashed-ident>] and [value] is one [<declaration-value>] (CSS Syntax 3 sec.
-    8.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched closing
-    bracket, no unterminated function or block, and no top-level [;].
+    [<dashed-ident>] and [value] is one [<declaration-value>] (CSS Syntax 3 (ED)
+    sec. 7.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched
+    closing bracket, no unterminated function or block, and no top-level [;].
 
     Use it for a name or value that comes from outside the parser, where the
     string may close the block it is placed in or start a second declaration.

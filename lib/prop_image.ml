@@ -331,7 +331,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       match pos1_opt with
       | None -> ()
       | Some pos1 -> (
-          (* CSS Syntax 3 sec. 4: ident- and hash-typed colours absorb the
+          (* CSS Syntax 3 (ED) sec. 4: ident- and hash-typed colours absorb the
              following digit/hex into the same token ([red0%] -> ident [red0] +
              [%]), so the separator is mandatory there; and when the stop lives
              in a custom-property token stream, the whitespace token between a

@@ -1,6 +1,6 @@
 (** Stage 2 stream: characters -> Token.t.
 
-    Wraps a {!Reader.t} char cursor and exposes the CSS Syntax section 4
+    Wraps a {!Reader.t} char cursor and exposes the CSS Syntax 3 (ED) sec. 4
     tokenizer through the uniform [next / peek / reconsume] triple. The token
     buffer doubles as a backtracking stack: {!save}/{!restore} mark and replay,
     mirroring {!Reader.save}/{!Reader.restore} for the Token layer. *)
@@ -33,8 +33,8 @@ let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let is_ws c = c = ' ' || c = '\n' || c = '\t' || c = '\r' || c = '\012'
 let is_newline c = c = '\n' || c = '\r' || c = '\012'
 
-(* CSS Syntax 3 section 4.2 "non-ASCII ident code point" ranges: a sealed list
-   that excludes most BMP symbols, among them the arrows.
+(* CSS Syntax 3 (ED) section 4.2 "non-ASCII ident code point" ranges: a sealed
+   list that excludes most BMP symbols, among them the arrows.
 
    Real stylesheets carry those anyway - Tailwind emits [.text-\u{2197}] - and
    dropping a rule is a worse failure for a minifier than accepting a code point
@@ -413,9 +413,9 @@ let consume_url_token r =
   skip_ws ();
   let rec loop () =
     match Reader.peek r with
-    (* CSS Syntax 3 section 4.3.6: EOF inside [url(] is a parse error but still
-       returns a [<url-token>], surfacing via recovery warnings rather than a
-       [<bad-url-token>]. *)
+    (* CSS Syntax 3 (ED) section 4.3.6: EOF inside [url(] is a parse error but
+       still returns a [<url-token>], surfacing via recovery warnings rather
+       than a [<bad-url-token>]. *)
     | None -> Url (Buffer.contents buf)
     | Some ')' ->
         Reader.skip r;
@@ -571,8 +571,8 @@ let rec skip_comment_body r =
     Reader.skip r;
     skip_comment_body r)
 
-(* Skip a run of comments without consuming surrounding whitespace: CSS Syntax
-   sec. 4.3.2 treats comments as "nothing", so a comment between two
+(* Skip a run of comments without consuming surrounding whitespace: CSS Syntax 3
+   (ED) sec. 4.3.2 treats comments as "nothing", so a comment between two
    non-whitespace points disappears rather than becoming a
    <whitespace-token>. *)
 let rec skip_comment_run r =
@@ -756,8 +756,9 @@ let record_consume t tok =
 
 (* True iff the previous token was [Url(...)] with no separator (whitespace or
    comment) after: the next [url(...)] would re-enter the url branch and merge,
-   so force a function-call to keep them distinct. Per CSS Syntax 4.3.2 comments
-   act like whitespace, so a [/* */] between the urls also disarms this. *)
+   so force a function-call to keep them distinct. Per CSS Syntax 3 (ED) sec.
+   4.3.2 comments act like whitespace, so a [/* */] between the urls also
+   disarms this. *)
 let force_url_function t =
   match t.history with
   | { kind = Url _; loc; _ } :: _ when loc.end_pos = Reader.position t.reader

@@ -740,7 +740,7 @@ let rec read_offset_rotate t : offset_rotate =
     ~default:(fun t -> Cursor.one_of [ read_mode_first; read_angle_first ] t)
     t
 
-(* CSS Syntax 3 sec. 4: two adjacent [<number-percentage>] tokens need a
+(* CSS Syntax 3 (ED) sec. 4: two adjacent [<number-percentage>] tokens need a
    separator unless the boundary is unambiguous - the previous ends with [%]
    (the unit terminates the token), or the next starts with [-]/[+] (a sign
    starts a new number). Render values to strings first since

@@ -476,7 +476,7 @@ let rec pp_mask_box : mask_box Pp.t =
 let pp_mask_layer : mask_layer Pp.t =
  fun ctx layer ->
   let first = ref true in
-  (* CSS Syntax 3 sec. 9: a token ending with [)], [\]] or [}] is
+  (* CSS Syntax 3 (ED) sec. 9: a token ending with [)], [\]] or [}] is
      self-delimiting, so under minify we can drop the inter-slot space after
      [url(...)] / [<image>]. *)
   let last_is_self_delim () =

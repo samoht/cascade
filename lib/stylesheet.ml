@@ -731,9 +731,9 @@ let pp_property_rule : 'a property_rule Pp.t =
       match initial_value with None -> () | Some v -> pp_initial_value ctx v
   in
   Pp.string ctx "@property ";
-  (* CSS Syntax 3 sec. 4.3.7: the prelude names the custom property this rule
-     registers, so it is written with the escapes that read the same name back
-     (see [Properties.pp_property]). *)
+  (* CSS Syntax 3 (ED) sec. 4.3.7: the prelude names the custom property this
+     rule registers, so it is written with the escapes that read the same name
+     back (see [Properties.pp_property]). *)
   Pp.string ctx (Parser.escape_ident name);
   Pp.sp ctx ();
   Pp.braces
@@ -888,7 +888,7 @@ let trim_unknown_at_prelude prelude =
   let n = String.length prelude in
   String.sub prelude 0 (trim_end (n - 1))
 
-(* CSS Syntax 3 sec. 4.3.1: a backslash starts an escape unless a newline
+(* CSS Syntax 3 (ED) sec. 4.3.1: a backslash starts an escape unless a newline
    follows it. A raw body ending on an odd run of backslashes therefore escapes
    the closer written straight after it, and the at-rule swallows whatever comes
    next instead of ending. *)
@@ -899,21 +899,21 @@ let body_escapes_its_closer body =
   backslashes (String.length body - 1) 0 land 1 = 1
 
 let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
-  (* CSS Syntax 3 section 5.5.2: an at-rule terminates on [;], [}], or EOF. When
-     the Parser captures an unterminated nested block ([(...], [[...], [{...])
-     its source slice can include the at-rule terminator or the enclosing
-     block's close - don't echo them as part of the prelude or each round-trip
-     stacks another [;]/[}]. *)
+  (* CSS Syntax 3 (ED) section 5.5.2: an at-rule terminates on [;], [}], or EOF.
+     When the Parser captures an unterminated nested block ([(...], [[...],
+     [{...]) its source slice can include the at-rule terminator or the
+     enclosing block's close - don't echo them as part of the prelude or each
+     round-trip stacks another [;]/[}]. *)
   let prelude = trim_unknown_at_prelude prelude in
   Pp.char ctx '@';
-  (* CSS Syntax 3 section 9.1: an at-rule name with non-ident-continue code
+  (* CSS Syntax 3 (ED) section 9.1: an at-rule name with non-ident-continue code
      points (control chars, escapes, non-ASCII) must round-trip through
      [escape_ident] so the serialized [\6 T] re-tokenizes back to the same
      at-keyword token. *)
   Pp.string ctx (Parser.escape_ident name);
-  (* CSS Syntax 3 sec. 4.3.1: the at-keyword consumes an ident sequence, so the
-     whitespace before the prelude is the only thing keeping them apart. It is a
-     hard space, not layout - minifying [@foo bar] to [@foobar] names a
+  (* CSS Syntax 3 (ED) sec. 4.3.1: the at-keyword consumes an ident sequence, so
+     the whitespace before the prelude is the only thing keeping them apart. It
+     is a hard space, not layout - minifying [@foo bar] to [@foobar] names a
      different at-rule. *)
   if prelude <> "" then (
     Pp.space ctx ();
@@ -946,11 +946,11 @@ let printable_statements ctx statements =
 module String_set = Pp.String_set
 
 let normalise_charset statements =
-  (* CSS Syntax 3 sec. 8.3: [@charset] is an encoding-declaration byte pattern
-     recognised before tokenization, not a stylesheet at-rule after parsing. In
-     minified output the serializer emits UTF-8, so [@charset "UTF-8"] is
-     redundant; keep at most the first non-UTF-8 declaration for byte-level
-     compatibility. *)
+  (* CSS Syntax 3 (ED) sec. 8.3: [@charset] is an encoding-declaration byte
+     pattern recognised before tokenization, not a stylesheet at-rule after
+     parsing. In minified output the serializer emits UTF-8, so [@charset
+     "UTF-8"] is redundant; keep at most the first non-UTF-8 declaration for
+     byte-level compatibility. *)
   let is_utf8 encoding =
     String.equal (String.lowercase_ascii encoding) "utf-8"
   in
@@ -1107,9 +1107,10 @@ let import_url_inner_string url len : string option =
 
 let pp_import_url_minified ctx url len =
   (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
-     (CSS Syntax 4.3.5 prefers double quotes). The [url()] wrapping is five
-     characters of overhead that the bare-string form omits per CSS Conditional
-     Rules 3, and a single-quoted source string re-emits with double quotes. *)
+     (CSS Syntax 3 (ED) sec. 4.3.5 prefers double quotes). The [url()] wrapping
+     is five characters of overhead that the bare-string form omits per CSS
+     Conditional Rules 3, and a single-quoted source string re-emits with double
+     quotes. *)
   match import_url_inner_string url len with
   | Some s -> Pp.quoted_string ctx s
   | None -> (
@@ -1130,7 +1131,7 @@ let pp_import_url ctx url =
   else Pp.quoted_string ctx url
 
 (* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so
-   each ident takes the escapes CSS Syntax 3 sec. 4.3.7 needs (see
+   each ident takes the escapes CSS Syntax 3 (ED) sec. 4.3.7 needs (see
    [Properties.pp_property]) and the [.] separators stay bare. A [.] an ident
    carries is escaped, and so never reads back as a separator. *)
 let string_of_layer_name name =
@@ -1451,9 +1452,9 @@ let pp_view_transition_descriptor : view_transition_descriptor Pp.t =
       Pp.list ~sep:Pp.space Pp.string ctx types
 
 (* Under minify a [Declarations] statement carries no trailing [;] of its own,
-   so whoever sequences the statements owes it a separator: CSS Syntax 3 sec.
-   5.4.4 runs a declaration to the next [;] or to the block's [}], and a sibling
-   that follows would otherwise be read as part of its value. *)
+   so whoever sequences the statements owes it a separator: CSS Syntax 3 (ED)
+   sec. 5.5.5 runs a declaration to the next [;] or to the block's [}], and a
+   sibling that follows would otherwise be read as part of its value. *)
 let pp_declarations_sep ctx = function
   | Declarations decls when decls <> [] && Pp.minified ctx ->
       Pp.semicolon ctx ()
@@ -1891,10 +1892,10 @@ let read_keyframe (r : Cursor.t) : keyframe =
 
 (* Helper functions for reading specific at-rules *)
 
-(* CSS Syntax section 8.2 reserves [@charset "UTF-8";] as the byte-stream
+(* CSS Syntax 3 (ED) sec. 8.3 reserves [@charset "UTF-8";] as the byte-stream
    decoder hint. The exact form -- uppercase label, double quotes, semicolon --
    is recognised; any other [@charset] (lowercase, single quotes, different
-   label, no terminating ';') is a syntax error per section 8.3. *)
+   label, no terminating ';') is a syntax error. *)
 let read_charset (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "charset" r;
   Cursor.ws r;
@@ -2084,12 +2085,12 @@ let read_namespace (r : Cursor.t) : statement =
   Namespace (prefix, uri)
 
 (* Discard the rule the cursor sits on, stopping at its [{}] block or at a
-   top-level [;]: CSS Syntax 3 sec. 5.4.2 ends an at-rule at whichever comes
-   first, and sec. 5.4.3 ends a qualified rule at its block. Consuming exactly
-   that far leaves what was written after the rule - the declarations around it,
-   or the next rule - to be read on its own. A [(] or a [[] met before the block
-   is a component value of the prelude being discarded, so stopping there would
-   offer the tail of that prelude as a rule of its own. *)
+   top-level [;]: CSS Syntax 3 (ED) sec. 5.5.2 ends an at-rule at whichever
+   comes first, and sec. 5.5.3 ends a qualified rule at its block. Consuming
+   exactly that far leaves what was written after the rule - the declarations
+   around it, or the next rule - to be read on its own. A [(] or a [[] met
+   before the block is a component value of the prelude being discarded, so
+   stopping there would offer the tail of that prelude as a rule of its own. *)
 let rec skip_past_rule r =
   match Cursor.next_raw r with
   | None -> ()
@@ -2111,13 +2112,13 @@ let skip_invalid_item r =
 
 (* Read a body one item at a time, [step] committing each item to the
    accumulator before the next is read, so an item dropped in recovery costs
-   only itself and the items around it are kept. CSS Syntax 3 sec. 5.4.3 keeps
-   what a block's contents already yielded when one item fails to parse, and CSS
-   Paged Media 3 sec. 4.1 says as much of a page or a margin context in so many
-   words: "valid declarations within the block are applied". Strict mode ([not
-   (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly what the
-   lenient parse warns about. [skip] discards the item that failed, and which
-   one it is depends on the body: {!skip_invalid_item} for a body of
+   only itself and the items around it are kept. CSS Syntax 3 (ED) sec. 5.5.5
+   keeps what a block's contents already yielded when one item fails to parse,
+   and CSS Paged Media 3 sec. 4.1 says as much of a page or a margin context in
+   so many words: "valid declarations within the block are applied". Strict mode
+   ([not (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly
+   what the lenient parse warns about. [skip] discards the item that failed, and
+   which one it is depends on the body: {!skip_invalid_item} for a body of
    declarations, {!skip_past_rule} for a body of rules, where an item that opens
    a block ends at that block rather than at a [;] it does not have. *)
 let read_items_with_recovery ~skip step r init =
@@ -2231,7 +2232,7 @@ let read_moz_document_function r name arguments : moz_document_condition =
 (* Gecko's [@document] prelude takes [<url>], [url-prefix(<string>)],
    [domain(<string>)], [media-document(<string>)] and [regexp(<string>)]. A
    prelude function outside that list has no grammar, so the at-rule goes down
-   with it, which is what CSS Syntax 3 sec. 5.4.2 does with any prelude no
+   with it, which is what CSS Syntax 3 (ED) sec. 5.5.2 does with any prelude no
    grammar accepts. *)
 let read_moz_document_condition r : moz_document_condition =
   Cursor.ws r;
@@ -2254,10 +2255,10 @@ let read_descriptor_value read_fn constructor r =
   constructor (read_fn r)
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
-   sec. 5.4.3 discards with no declaration to validate, or the end of the body.
-   [Declaration.read_declaration] answers [None] for an item that opens a block
-   instead; a descriptor body holds no rules, so that item is invalid and is
-   reported rather than left for the caller to loop on. *)
+   (ED) sec. 5.5.5 discards with no declaration to validate, or the end of the
+   body. [Declaration.read_declaration] answers [None] for an item that opens a
+   block instead; a descriptor body holds no rules, so that item is invalid and
+   is reported rather than left for the caller to loop on. *)
 let read_descriptor_item (r : Cursor.t) =
   Cursor.ws r;
   if Cursor.is_done r then `Done
@@ -2603,10 +2604,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         if Cursor.peek_semicolon r then Cursor.skip r;
         Some descriptor
     | exception Error.Parse_error e ->
-        (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 sec. 5.5.5: a descriptor that
-           does not parse - an unknown name (Fontsource's [font-named-instance])
-           or an invalid value of a known one ([font-display:maybe]) - is
-           dropped and the rest of the @font-face is kept, matching browsers. *)
+        (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
+           that does not parse - an unknown name (Fontsource's
+           [font-named-instance]) or an invalid value of a known one
+           ([font-display:maybe]) - is dropped and the rest of the @font-face is
+           kept, matching browsers. *)
         Cursor.push_warning r e;
         Cursor.skip_past_semicolon r;
         None
@@ -2742,7 +2744,7 @@ let replace_counter_style_descriptor desc acc =
        acc
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
-   sec. 5.4.3 discards with no declaration to validate, or the end of the
+   (ED) sec. 5.5.5 discards with no declaration to validate, or the end of the
    body. *)
 let read_descriptor_body_step read_one replace inner acc =
   Cursor.ws inner;
@@ -2915,8 +2917,8 @@ let read_page_margin_rule r =
       Cursor.skip r;
       Cursor.ws r;
       (* Sec. 5 gives the margin at-rule a [<declaration-list>], which CSS
-         Syntax 3 sec. 5.4.4 consumes even when it holds nothing, so an empty
-         box is valid and Blink 146 keeps one. That it paints nothing is
+         Syntax 3 (ED) sec. 5.5.5 consumes even when it holds nothing, so an
+         empty box is valid and Blink 146 keeps one. That it paints nothing is
          [Block.drop_empty_rules]'s call to make, not the reader's. *)
       let descriptors =
         Cursor.braces (read_descriptor_block replace_descriptor) r
@@ -3112,9 +3114,9 @@ let read_font_feature_values_block outer inner =
 
 (* CSS Fonts 4 sec. 11.1 fills the body with feature value blocks, so it is a
    list of rules rather than of declarations: a block the body rejects ends at
-   its own [{}] or at a [;] (CSS Syntax 3 sec. 5.4.2), which leaves the blocks
-   written around it in the rule. A [;] with nothing before it has no
-   declaration to validate and is discarded (sec. 5.4.3). *)
+   its own [{}] or at a [;] (CSS Syntax 3 (ED) sec. 5.5.2), which leaves the
+   blocks written around it in the rule. A [;] with nothing before it has no
+   declaration to validate and is discarded (sec. 5.5.5). *)
 let read_font_feature_values_step outer inner acc =
   Cursor.ws inner;
   if Cursor.is_done inner then `Done (List.rev acc)
@@ -3365,8 +3367,8 @@ let rec close_raw fuel text =
    [\] at end of input escapes before it lands. *)
 let close_open_constructs = close_raw 3
 
-(* CSS Syntax 3 sec. 5.4.6: an unclosed block runs to EOF, so its slice has no
-   closer to exclude and instead carries whatever [}] an unterminated nested
+(* CSS Syntax 3 (ED) sec. 5.5.9: an unclosed block runs to EOF, so its slice has
+   no closer to exclude and instead carries whatever [}] an unterminated nested
    construct swallowed on the way. The serializer supplies its own closer, so
    drop those or each round-trip stacks another one. *)
 let trim_unknown_block_body body =
@@ -3390,10 +3392,10 @@ let unknown_block_body slice (block : Component.block Component.node) =
     slice start block.loc.Loc.end_pos
     |> trim_unknown_block_body |> close_open_constructs
 
-(* CSS Syntax 3 sec. 5.5.2 "consume an at-rule": after the at-keyword has been
-   consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
-   prelude/block strings are sliced from the original source so the at-rule
-   round-trips byte-for-byte even when its grammar is unknown. *)
+(* CSS Syntax 3 (ED) sec. 5.5.2 "consume an at-rule": after the at-keyword has
+   been consumed, walk components until we hit [;] (no block) or [{...}]
+   (block). Raw prelude/block strings are sliced from the original source so the
+   at-rule round-trips byte-for-byte even when its grammar is unknown. *)
 let read_unknown_at_rule name (r : Cursor.t) : statement =
   let source = Option.value (Cursor.source r) ~default:"" in
   let source_len = String.length source in
@@ -3701,8 +3703,8 @@ let item_opens_block inner =
   found
 
 (* Discard an at-rule that is invalid in a style rule and resume at the next
-   item, the recovery CSS Syntax 3 sec. 5.4.4 describes. The warning is what
-   [~strict:true] turns into an error. *)
+   item, the recovery CSS Syntax 3 (ED) sec. 5.5.5 describes. The warning is
+   what [~strict:true] turns into an error. *)
 let drop_nested_at_rule r ~loc reason : statement option =
   skip_past_rule r;
   Cursor.push_warning r (Error.bad_value loc ~property:"rule" ~reason);
@@ -3771,9 +3773,10 @@ let read_moz_document ~body (r : Cursor.t) : statement =
   Moz_document (conditions, Cursor.braces body r)
 
 (* CSS Values 4 sec. 4.1 reads an at-rule name as a keyword, so its case does
-   not pick between two grammars. Sec. 8.2 of CSS Syntax 3 is the one exception:
-   it matches [@charset] and the quote after it as an exact byte sequence, so
-   any other spelling of that name is a name with no grammar behind it. *)
+   not pick between two grammars. CSS Syntax 3 (ED) sec. 8.3 is the one
+   exception: it matches [@charset] and the quote after it as an exact byte
+   sequence, so any other spelling of that name is a name with no grammar behind
+   it. *)
 let at_rule_keyword name =
   match Common.String.lowercase_ascii_preserve name with
   | "charset" when name <> "charset" -> name
@@ -3816,8 +3819,8 @@ let rec read_statement (r : Cursor.t) : statement =
       match List.assoc_opt (at_rule_keyword name) table with
       | Some p -> p r
       | None ->
-          (* CSS Syntax 3 sec. 5.4.2 consumes an at-rule whatever its name, so
-             the prelude and block stay in the AST as [Unknown_at_rule] and
+          (* CSS Syntax 3 (ED) sec. 5.5.2 consumes an at-rule whatever its name,
+             so the prelude and block stay in the AST as [Unknown_at_rule] and
              reach the output. The typed warning tells the caller cascade could
              not interpret it; [Optimize.drop_unknown_at_rules] is there for a
              caller that wants it gone. *)
@@ -3835,10 +3838,10 @@ and read_block (r : Cursor.t) : block =
       let loc = Cursor.position r in
       let snap = Cursor.save r in
       match read_statement r with
-      (* CSS Syntax 3 sec. 5.4.1: a rule that fails to parse (e.g. an invalid
-         selector) is dropped, and parsing resumes at the next rule - one bad
-         rule must not take the rest of the [@layer] / [@media] block with it.
-         Strict mode ([not (Cursor.recover r)]) still raises. *)
+      (* CSS Syntax 3 (ED) sec. 5.5.1: a rule that fails to parse (e.g. an
+         invalid selector) is dropped, and parsing resumes at the next rule -
+         one bad rule must not take the rest of the [@layer] / [@media] block
+         with it. Strict mode ([not (Cursor.recover r)]) still raises. *)
       | exception Error.Parse_error e when Cursor.recover r ->
           Cursor.restore r snap;
           Cursor.push_warning r e;
@@ -3967,12 +3970,13 @@ and read_nesting_block (r : Cursor.t) : block =
     Cursor.ws r;
     if Cursor.recover r then read_recovering_item acc
     else add_item acc (read_nesting_item ~prev:acc r)
-  (* CSS Syntax 3 sec. 5.4.4: a declaration that fails to parse is dropped and
-     reading resumes past the next top-level [;], a [{}] met on the way counting
-     as one component value of the value being skipped. A nested at-rule's body
-     is <block-contents> like a style rule's, so it recovers the same way and
-     one bad declaration takes neither the group rule holding it nor the rest of
-     the sheet. Strict mode ([not (Cursor.recover r)]) still raises. *)
+  (* CSS Syntax 3 (ED) sec. 5.5.5: a declaration that fails to parse is dropped
+     and reading resumes past the next top-level [;], a [{}] met on the way
+     counting as one component value of the value being skipped. A nested
+     at-rule's body is <block-contents> like a style rule's, so it recovers the
+     same way and one bad declaration takes neither the group rule holding it
+     nor the rest of the sheet. Strict mode ([not (Cursor.recover r)]) still
+     raises. *)
   and read_recovering_item acc =
     match read_nesting_item ~prev:acc r with
     | item -> add_item acc item
@@ -4468,8 +4472,8 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
   (statements, List.rev !warnings)
 
 (* Scan [source] for top-level [/*! ... */] bang comments. The lexer drops
-   ordinary comments per CSS Syntax 3 sec. 4.3.2; bang comments are the minifier
-   convention for license headers and need to round-trip. Returns pairs
+   ordinary comments per CSS Syntax 3 (ED) sec. 4.3.2; bang comments are the
+   minifier convention for license headers and need to round-trip. Returns pairs
    [(start_offset, body)] in source order; nested comments inside strings or
    other comments are not handled because CSS comments don't nest. *)
 let extract_bang_comments (source : string) : (int * string) list =
@@ -4543,10 +4547,10 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
 
 (* An at-rule cascade has no grammar for carries its parts as raw text, so the
    constructor has to answer for text that ends the at-rule before its parts do:
-   CSS Syntax 3 sec. 5.5.2 ends the prelude at the first top-level [;] or [{],
-   sec. 5.5.9 ends the block at the closer matching its opener, sec. 4.3.2 runs
-   an unclosed [/*] to EOF, and sec. 4.3.7 lets a trailing backslash escape the
-   closer written after it. Enumerating those boundaries re-derives the
+   CSS Syntax 3 (ED) sec. 5.5.2 ends the prelude at the first top-level [;] or
+   [{], sec. 5.5.9 ends the block at the closer matching its opener, sec. 4.3.2
+   runs an unclosed [/*] to EOF, and sec. 4.3.7 lets a trailing backslash escape
+   the closer written after it. Enumerating those boundaries re-derives the
    tokenizer and misses whichever one is not on the list, so read the parts back
    instead: this sits after the parser because that read is the check.
 

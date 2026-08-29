@@ -286,8 +286,8 @@ let unescape_selector_name s =
       len
     else if is_hex s.[i + 1] then (
       let codepoint, final_idx = process_hex_escape s i len in
-      (* CSS Syntax 4.3.7: U+0000, surrogates, and out-of-range code points are
-         replaced with U+FFFD rather than passed through. *)
+      (* CSS Syntax 3 (ED) sec. 4.3.7: U+0000, surrogates, and out-of-range code
+         points are replaced with U+FFFD rather than passed through. *)
       let cp =
         if
           codepoint <= 0 || codepoint > 0x10FFFF
@@ -680,7 +680,7 @@ let read_attribute t =
       Attribute (ns, attr_name, matcher, flag))
     t
 
-(** Parse the An+B microsyntax (Selectors 4 section 13.3.1 / CSS Syntax 3
+(** Parse the An+B microsyntax (Selectors 4 section 13.3.1 / CSS Syntax 3 (ED)
     section 6) as shape patterns over the component stream: [odd]/[even], bare
     [<integer>], [<n-dimension>] with optional offset, the [5n-5]/[5n-] token
     variants, and the [n]/[-n]/[n-5]/... ident forms with an optional leading
@@ -784,7 +784,7 @@ let ensure_no_ws_after_plus t =
   | _ -> ()
 
 (* Dimension forms [<n-dimension>, <ndashdigit-dimension>, <ndash-dimension>]
-   from CSS Syntax 3 section 6.2. Assumes the cursor is positioned on a
+   from CSS Syntax 3 (ED) section 6.2. Assumes the cursor is positioned on a
    [Dimension] component. *)
 let read_nth_dimension t number unit_ =
   if is_n_unit unit_ then (

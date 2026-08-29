@@ -133,9 +133,9 @@ let ua_declared =
         m names)
     SMap.empty ua_groups
 
-(* CSS Syntax 3 sec. 5.4: a style attribute is a declaration list, not a rule
-   body, so a declaration's value runs to the next top-level [;] or the end of
-   input, where only [{], [(] and [[] open a block. A [}] is then a preserved
+(* CSS Syntax 3 (ED) sec. 5.5: a style attribute is a declaration list, not a
+   rule body, so a declaration's value runs to the next top-level [;] or the end
+   of input, where only [{], [(] and [[] open a block. A [}] is then a preserved
    token inside the value rather than a terminator, and splicing the attribute
    into [a{...}] lets it close the rule instead, reviving a declaration no
    browser applies. Recovery drops the invalid declaration and keeps the rest,

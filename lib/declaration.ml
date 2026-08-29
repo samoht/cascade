@@ -64,7 +64,7 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
 
 let is_custom_property_name = Custom_property_name.is_valid
 
-(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] is one or more component
+(* CSS Syntax 3 (ED) sec. 7.2: a [<declaration-value>] is one or more component
    values with no [<bad-string-token>], no [<bad-url-token>] and no unmatched
    closing bracket. A component breaking one of those does not stay inside the
    declaration it is written into: it closes the enclosing block, or turns the
@@ -117,7 +117,7 @@ let custom_property ?layer name value =
      an unmatched closing bracket, an unterminated function, block or string -
      leaves the declaration as soon as the text is read back. A name carrying
      one of those is written back with the escapes that read it (CSS Syntax 3
-     sec. 4.3.7), so it stays the name of this declaration. *)
+     (ED) sec. 4.3.7), so it stays the name of this declaration. *)
   if not (is_custom_property_name name) then
     refuse name "not a custom-property name";
   if not (is_optional_declaration_value value) then
@@ -362,8 +362,8 @@ let is_decl_unknown_property_name name =
 (** [is_invalid decl] is [true] when [decl]'s typed value is a known spec
     violation detected at parse time; [Optimize.drop_invalid] removes such
     declarations on every serialisation. An unknown property is not invalid:
-    browsers keep unrecognised declarations (CSS Syntax 3 sec. 5.4), and cascade
-    emits them (and vendor-prefix extensions) as raw component lists. *)
+    browsers keep unrecognised declarations (CSS Syntax 3 (ED) sec. 5.5), and
+    cascade emits them (and vendor-prefix extensions) as raw component lists. *)
 let rec is_invalid = function
   | Declaration { property = Unknown_property _; _ } -> false
   | Declaration { property; value; _ } ->
@@ -2027,7 +2027,7 @@ let read_custom_value_declaration t name : declaration =
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
-  (* CSS Syntax 3 sec. 4.3.7 lets [\X] escapes carry any code point into an
+  (* CSS Syntax 3 (ED) sec. 4.3.7 lets [\X] escapes carry any code point into an
      ident, so the name may contain characters ([/], whitespace, etc.) that
      don't tokenize as a bare ident on a string round-trip. We trust the
      original lexer's tokenization: the only validation we still run is the
@@ -2191,7 +2191,7 @@ let read_unknown_property_declaration t name =
 let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
     =
  fun prop_type t ->
-  (* CSS Syntax 3 sec. 2.2 / sec. 4.3.5 auto-close unterminated functions,
+  (* CSS Syntax 3 (ED) sec. 2.2 / sec. 4.3.5 auto-close unterminated functions,
      brackets and strings at EOF. Typed readers consume the spec-recovered
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
@@ -2356,7 +2356,7 @@ let read_declaration_step t acc =
   if Cursor.recover t then read_declaration_with_recovery t acc
   else read_declaration_no_recovery t acc
 
-(* CSS Syntax 3 sec. 5.5.5 ("consume a block's contents"): the invalid
+(* CSS Syntax 3 (ED) sec. 5.5.5 ("consume a block's contents"): the invalid
    declaration is dropped, reading resumes past the next [;], and the
    surrounding rule survives. *)
 let recover_declaration_step t acc e =
@@ -2394,9 +2394,9 @@ let of_string s =
 (* The declaration [property] and [value] name, as the tokens they are. The name
    is one [<ident-token>] by construction and the value is parsed on its own, so
    neither reaches the other's position: written into one text, a name carrying
-   a [;] or a [}] (CSS Syntax 3 sec. 4.3.7 puts either there through an escape)
-   would end its own declaration, and one carrying a [:] would name the property
-   in front of it. *)
+   a [;] or a [}] (CSS Syntax 3 (ED) sec. 4.3.7 puts either there through an
+   escape) would end its own declaration, and one carrying a [:] would name the
+   property in front of it. *)
 let name_value_components property value =
   Component.Preserved (Token.synthetic (Token.Ident property))
   :: Component.Preserved (Token.synthetic Token.Colon)

@@ -350,7 +350,7 @@ val skip_past_semicolon : t -> unit
 (** [skip_past_semicolon t] consumes and discards components up to and including
     the next top-level semicolon, or up to end of input if none is left. A [{}]
     met on the way is one component value, not a stopping point, so this is the
-    recovery step CSS Syntax 3 sec. 5.4.4 prescribes for a declaration that
+    recovery step CSS Syntax 3 (ED) sec. 5.5.5 prescribes for a declaration that
     fails to parse. *)
 
 val consume_to_decl_end : ?trim:bool -> t -> string
@@ -450,7 +450,7 @@ val call : string -> t -> (t -> 'a) -> 'a
 (** [call name t f] consumes a [name(...)] function call and applies [f] to a
     cursor over its arguments. Raises if no such function is next, or if [f]
     leaves any of the arguments unconsumed: trailing content makes the value
-    invalid, not truncated (CSS Syntax 3 sec. 8.2). *)
+    invalid, not truncated (CSS Syntax 3 (ED) sec. 7.2). *)
 
 val function_call : string -> (t -> 'a) -> t -> 'a option
 (** [function_call name f t] consumes a [name(...)] call and calls [f] over its

@@ -39,15 +39,14 @@ type 'a var = {
 type 'a env = { name : string; indices : int list; fallback : 'a option }
 type calc_op = Add | Sub | Mul | Div
 
-(** CSS Values 4 sec. 10.7.1 math constants - emitted at the source byte
-    sequence (e.g. [pi], [e]) rather than their floating-point evaluation, so
-    pretty pp preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)].
-*)
+(** CSS Values 4 sec. 10.7 math constants - emitted at the source byte sequence
+    (e.g. [pi], [e]) rather than their floating-point evaluation, so pretty pp
+    preserves [calc(2 * pi)] instead of writing [calc(6.28318530718)]. *)
 type math_const = Pi | E | Infinity | Neg_infinity | Nan
 
-(** CSS Values 4 sec. 9.1 numeric math function arguments. Self-recursive so
-    nested calls round-trip ([pow(2, sqrt(100))]) and arithmetic with constants
-    stays as a tree ([(e - exp(1))]). *)
+(** CSS Values 4 (ED) sec. 9.1 numeric math function arguments. Self-recursive
+    so nested calls round-trip ([pow(2, sqrt(100))]) and arithmetic with
+    constants stays as a tree ([(e - exp(1))]). *)
 type math_arg =
   | Lit of float
   | Dim of float * string
@@ -60,9 +59,9 @@ type math_arg =
   | Parens_arg of math_arg
   | Math_call of math_fn
 
-(** CSS Values 4 sec. 9.1 numeric math functions. Each arm preserves its source
-    arg shape so pretty pp re-emits [name(args)]; the optimizer evaluates to
-    [Num] under minify. *)
+(** CSS Values 4 (ED) sec. 9.1 numeric math functions. Each arm preserves its
+    source arg shape so pretty pp re-emits [name(args)]; the optimizer evaluates
+    to [Num] under minify. *)
 and math_fn =
   | Sin of angle_arg
   | Cos of angle_arg
@@ -102,9 +101,9 @@ type 'a calc =
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
   | Math_fn of math_fn
-(* CSS Values 4 sec. 9.1 numeric math functions ([sin], [cos], [hypot], ...).
-   Pretty pp emits [name(args)] preserving source shape; minify pp / optimizer
-   evaluates to [Num]. *)
+(* CSS Values 4 (ED) sec. 9.1 numeric math functions ([sin], [cos], [hypot],
+   ...). Pretty pp emits [name(args)] preserving source shape; minify pp /
+   optimizer evaluates to [Num]. *)
 
 type attr_syntax = Length | Length_percentage | Color | Number | Percentage
 

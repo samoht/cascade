@@ -1,11 +1,11 @@
-(** Stage 2 stream: characters -> Token.t (CSS Syntax section 4).
+(** Stage 2 stream: characters -> Token.t (CSS Syntax 3 (ED) sec. 4).
 
     Wraps a {!Reader.t} and produces {!Token.t} values via the section 4.3
     tokenization algorithm. Exposes the uniform [next / peek / reconsume] triple
     used across parse stages.
 
-    The input is already-decoded UTF-8 text. CSS Syntax section 3.2 byte-stream
-    decoding is outside this layer. *)
+    The input is already-decoded UTF-8 text. CSS Syntax 3 (ED) sec. 3.2
+    byte-stream decoding is outside this layer. *)
 
 type t
 (** A lexer stream: a character cursor plus one-token pushback. *)
@@ -51,7 +51,7 @@ val is_done : t -> bool
 (** [is_done t] is [true] when no more tokens remain. *)
 
 val spec_non_ascii_ident_cp : int -> bool
-(** [spec_non_ascii_ident_cp cp] is the CSS Syntax section 4.2 predicate: is
+(** [spec_non_ascii_ident_cp cp] is the CSS Syntax 3 (ED) sec. 4.2 predicate: is
     [cp] in that section's range list of non-ASCII ident code points? Exposed
     for serialisers, which hex-escape anything outside it; an escape is read by
     every parser, so emission stays on this list even though reading accepts any

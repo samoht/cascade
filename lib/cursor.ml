@@ -57,7 +57,7 @@ let lex_to_cv_list parser =
   in
   loop []
 
-(* [source] must be the post-preprocessing buffer (CSS Syntax section 3.3),
+(* [source] must be the post-preprocessing buffer (CSS Syntax 3 (ED) sec. 3.3),
    which is what the lexer indexes against. Using the caller's raw string would
    desync [Loc.offset] from [Loc.snippet] when the input contains BOM, NUL, CR,
    FF, or CRLF. *)
@@ -789,7 +789,8 @@ let call name t f =
       if arg.depth > max_nesting_depth then err arg "nesting too deep";
       (* A function's grammar ends at its closing paren, so whatever [f] left
          behind is an invalid value, not a shorter one it may answer with (CSS
-         Syntax 3 sec. 8.2). [expect_eof] skips leading whitespace itself. *)
+         Syntax 3 (ED) sec. 7.2). [expect_eof] skips leading whitespace
+         itself. *)
       let v = f arg in
       expect_eof arg;
       v

@@ -8,10 +8,10 @@ type layer_name = string list
 (** A CSS [\@layer] name: the idents of [<ident> ['.' <ident>]*] (CSS Cascade 5
     sec. 6.4.1), outermost first. The separators are not part of any ident, so
     they are not stored: an escape can carry a [.] into an ident (CSS Syntax 3
-    sec. 4.3.7), and one string would make [\@layer a\2e b], the layer named
-    [a.b], the same value as [\@layer a.b], the sublayer [b] of [a]. The empty
-    list is not a name; where an anonymous layer is admissible it is spelled
-    that way. *)
+    (ED) sec. 4.3.7), and one string would make [\@layer a\2e b], the layer
+    named [a.b], the same value as [\@layer a.b], the sublayer [b] of [a]. The
+    empty list is not a name; where an anonymous layer is admissible it is
+    spelled that way. *)
 
 (** {2 Import Rule} *)
 
@@ -199,7 +199,7 @@ and statement =
       prelude : string;
       block : string option;
     }
-      (** CSS Syntax 3 sec. 5.5.2 "consume an at-rule" preserves any
+      (** CSS Syntax 3 (ED) sec. 5.5.2 "consume an at-rule" preserves any
           unrecognised at-rule as raw text so authors can ship unknown vendor or
           future at-rules without dropping the whole stylesheet. *)
 

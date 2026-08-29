@@ -511,9 +511,9 @@ val read_font_tech_descriptor : Cursor.t -> font_tech_descriptor
 
 val pp_layer_name : layer_name Pp.t
 (** [pp_layer_name] prints a [<layer-name>]: each ident with the escapes that
-    read it back (CSS Syntax 3 sec. 2.1), joined by the [.] separators of CSS
-    Cascade 5 sec. 6.4.1. A [.] an ident carries is escaped, so it never reads
-    back as a separator. *)
+    read it back (CSS Syntax 3 (ED) sec. 2.1), joined by the [.] separators of
+    CSS Cascade 5 sec. 6.4.1. A [.] an ident carries is escaped, so it never
+    reads back as a separator. *)
 
 val read_layer_name : Cursor.t -> layer_name
 (** [read_layer_name r] parses a [<layer-name>]. It rejects a CSS-wide keyword,

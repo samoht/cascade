@@ -1,4 +1,4 @@
-(** Stage 3 IR: CSS Syntax section 5.1 component values and rules.
+(** Stage 3 IR: CSS Syntax 3 (ED) sec. 5.1 component values and rules.
 
     Stage 3 of the pipeline (chars -> lexer stream -> token stream -> AST): the
     output of {!Parser}, consumed by the typed-AST validators.
@@ -19,7 +19,7 @@ and block = {
   value : t list;
   closed : bool;
       (** [false] when the lexer reached EOF before the matching closer (CSS
-          Syntax sec. 5.4.6 parse error). The serializer still emits the
+          Syntax 3 (ED) sec. 5.5.9 parse error). The serializer still emits the
           synthetic closer so reserialised output round-trips. *)
 }
 
@@ -28,10 +28,10 @@ and func = {
   arguments : t list;
   terminated : bool;
       (** [false] when the lexer reached EOF before the matching [)] (CSS Syntax
-          section 5.4.6 parse error). The serializer still emits the synthetic
-          [)] so reserialised output round-trips through the lexer; typed
-          validators can inspect this flag to reject values that the syntax
-          level only forgives. *)
+          3 (ED) sec. 5.5.10 parse error). The serializer still emits the
+          synthetic [)] so reserialised output round-trips through the lexer;
+          typed validators can inspect this flag to reject values that the
+          syntax level only forgives. *)
 }
 
 type at_rule_body = {
