@@ -174,12 +174,12 @@ let rec read_text_decoration t : text_decoration =
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let shorthand = read_text_decoration_shorthand t in
-      (* For the main text-decoration property, require at least one line
-         decoration *)
-      if shorthand.lines = [] then
-        Cursor.err t
-          "text-decoration requires at least one line decoration (underline, \
-           overline, or line-through)"
+      (* css-text-decor-4 sec. 2.6 joins the four components with [||], so any
+         single one of them stands alone; only an empty value is invalid. *)
+      if
+        shorthand.lines = [] && shorthand.style = None && shorthand.color = None
+        && shorthand.thickness = None
+      then Cursor.err_expected t "text-decoration"
       else (Shorthand shorthand : text_decoration))
     t
 
@@ -755,7 +755,8 @@ let normalize_text_indent : text_indent_value -> text_indent_value =
    line, thickness, style and colour longhands, and "Omitted values are set to
    their initial values" - [solid] (sec. 2.2) and [currentcolor] (sec. 2.3).
    Writing an initial out names what leaving it out names, and leaving it out is
-   the shorter spelling. *)
+   the shorter spelling. The last component has to stay: a value with nothing
+   left in it serializes to an empty declaration, which names nothing at all. *)
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
@@ -771,7 +772,10 @@ let normalize_text_decoration ?(lossless = false) :
           ~is_default:(fun (c : Values.color) -> c = Values.Current)
           (option_map_preserve (normalize_color ~lossless) s.color)
       in
-      if option_is_phys_same style s.style && option_is_phys_same color s.color
+      if
+        (s.lines = [] && style = None && color = None && s.thickness = None)
+        || option_is_phys_same style s.style
+           && option_is_phys_same color s.color
       then value
       else Shorthand { s with style; color }
   | other -> other

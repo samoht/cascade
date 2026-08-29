@@ -915,6 +915,12 @@ let text_properties () =
     "text-decoration: underline dotted";
   check_declaration ~expected:"text-decoration:underline red"
     ~optimized:"text-decoration:underline red" "text-decoration: underline red";
+  (* An initial that is the only component stays: with nothing left to name the
+     longhands it resets, the declaration would serialize to an empty value. *)
+  check_declaration ~expected:"text-decoration:solid"
+    ~optimized:"text-decoration:solid" "text-decoration: solid";
+  check_declaration ~expected:"text-decoration:currentColor"
+    ~optimized:"text-decoration:currentColor" "text-decoration: currentcolor";
 
   (* Text transform *)
   check_declaration ~expected:"text-transform:none" "text-transform: none";
