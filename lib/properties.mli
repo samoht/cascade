@@ -411,6 +411,20 @@ val pp_offset_anchor : offset_anchor Pp.t
 val read_offset_anchor : Cursor.t -> offset_anchor
 (** [read_offset_anchor t] parses [offset-anchor]. *)
 
+val pp_offset : offset Pp.t
+(** [pp_offset] pretty-prints the [offset] shorthand. *)
+
+val read_offset : Cursor.t -> offset
+(** [read_offset t] parses the [offset] shorthand. *)
+
+val pp_offset_target : offset_target Pp.t
+(** [pp_offset_target] pretty-prints the required leading group of the [offset]
+    shorthand. *)
+
+val read_offset_target : Cursor.t -> offset_target
+(** [read_offset_target t] parses the required leading group of the [offset]
+    shorthand. *)
+
 val pp_offset_position : offset_position Pp.t
 (** [pp_offset_position] pretty-prints [offset-position]. *)
 

@@ -953,6 +953,13 @@ let check_object_view_box =
 let check_offset_path =
   check_value_cursor "offset_path" read_offset_path pp_offset_path
 
+let check_offset =
+  check_value_cursor "offset" read_offset pp_offset ~roundtrip:true
+
+let check_offset_target =
+  check_value_cursor "offset_target" read_offset_target pp_offset_target
+    ~roundtrip:true
+
 let check_offset_anchor =
   check_value_cursor "offset_anchor" read_offset_anchor pp_offset_anchor
 
@@ -3077,9 +3084,9 @@ let test_offset_position () =
    <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?
 
    and says "Omitted values are set to their initial values". The [!] makes the
-   first group required, so a declaration writes at least a position or a path;
-   [offset-distance] and [offset-rotate] live inside the path branch and are
-   unreachable without one. *)
+   leading group required, so a declaration writes at least a position or a
+   path; [offset-distance] and [offset-rotate] live inside the path branch and
+   are unreachable without one. *)
 let offset_sheet css : Css.parse =
   match Css.of_string ~strict:false css with
   | Ok parse -> parse
@@ -3105,26 +3112,49 @@ let offset_roundtrips css =
     (css ^ " roundtrip is stable")
     once (offset_minified once)
 
-let test_offset_shorthand_slots () =
+let test_offset () =
   (* Each slot on its own: the position branch takes [normal | auto |
      <position>] (sec. 2.3), the path branch [none | <offset-path>] (sec.
      2.1). *)
-  offset_roundtrips ".x{offset:auto}";
-  offset_roundtrips ".x{offset:none}";
-  offset_roundtrips ".x{offset:100px}";
-  offset_roundtrips ".x{offset:path(\"M 0 0 H 1\")}";
-  (* The path branch carries the distance and the rotation behind it. *)
-  offset_roundtrips ".x{offset:none 50px}";
-  offset_roundtrips ".x{offset:none reverse}";
-  offset_roundtrips ".x{offset:none 50px reverse 30deg}";
-  offset_roundtrips ".x{offset:path(\"M 0 0 H 1\")-200%}";
+  check_offset "normal";
+  check_offset "auto";
+  check_offset "left top";
+  check_offset "100px";
+  check_offset "none";
+  check_offset "path(\"M 0 0 H 1\")";
+  (* The path branch carries the distance and the rotation behind it, in the
+     grammar's order whichever order the [||] pair was written in. *)
+  check_offset "none 50px";
+  check_offset "none reverse";
+  check_offset ~expected:"none 50px reverse 30deg" "none reverse 30deg 50px";
   (* The anchor sits behind the slash (sec. 2.4). *)
-  offset_roundtrips ".x{offset:none/50%}";
-  offset_roundtrips ".x{offset:100px/50%}";
+  check_offset "none/50%";
+  check_offset "100px/50%";
   (* Every slot at once. *)
-  offset_roundtrips ".x{offset:0 0 path(\"M 0 0 H 1\")10px reverse 45deg/50%}"
+  check_offset
+    ~expected:"left bottom ray(0rad closest-corner)10px auto 30deg/right bottom"
+    "left bottom ray(0rad closest-corner) 10px auto 30deg / right bottom";
+  (* A CSS-wide keyword and a whole-value [var()] stand for the shorthand. *)
+  check_offset "inherit";
+  check_offset "var(--motion,none)";
+  neg_cursor read_offset "total nonsense here";
+  neg_cursor read_offset "path(\"m 0 0 h 100\") auto reverse"
 
-let test_offset_shorthand_canonical () =
+let test_offset_target () =
+  (* The [!] group on its own: a position, a path, or a position then a path. *)
+  check_offset_target "normal";
+  check_offset_target "left top";
+  check_offset_target "none";
+  check_offset_target "normal none";
+  check_offset_target "100px none";
+  check_offset_target "none 50px reverse 30deg";
+  (* The group must produce a value, and the rotation needs a path in front of
+     it. *)
+  neg_cursor read_offset_target "";
+  neg_cursor read_offset_target "30deg";
+  neg_cursor read_offset_target "reverse"
+
+let offset_canonical_slots () =
   (* Each slot canonicalises the way its longhand does. *)
   decl_optimizes ~prop:"offset" ~held:"none/center" ~into:"none/50%"
     "none / center";
@@ -3132,11 +3162,6 @@ let test_offset_shorthand_canonical () =
     "none / left top";
   decl_optimizes ~prop:"offset" ~held:"left top none" ~into:"0 0"
     "left top none";
-  (* The [||] pair goes into two slots, so the canonical grammar order comes
-     back out whichever order it went in. *)
-  decl_optimizes ~prop:"offset" ~held:"path(\"M 0 0 H 1\")50px reverse 30deg"
-    ~into:"path(\"M 0 0 H 1\")50px reverse 30deg"
-    "path('M 0 0 H 1') reverse 30deg 50px";
   (* A slot holding its longhand's initial says what leaving it out says, so it
      drops: [normal] (sec. 2.3), [0] (sec. 2.2), [auto] (secs. 2.5, 2.4). *)
   decl_optimizes ~prop:"offset" ~held:"normal none reverse" ~into:"none reverse"
@@ -3145,6 +3170,9 @@ let test_offset_shorthand_canonical () =
   decl_optimizes ~prop:"offset" ~held:"path(\"M 0 0 H 1\")auto"
     ~into:"path(\"M 0 0 H 1\")" "path('M 0 0 H 1') auto";
   decl_optimizes ~prop:"offset" ~held:"none/auto" ~into:"none" "none / auto";
+  (* [offset: initial] resets the same five longhands a bare [none] path leaves
+     at their initials. *)
+  decl_optimizes ~prop:"offset" ~held:"initial" ~into:"none" "initial";
   (* The path is the group's initial too, but dropping it is behaviour
      preserving only when no distance and no rotation are left behind it: both
      are reachable only through a path, and a bare [50%] re-reads as the
@@ -3158,9 +3186,9 @@ let test_offset_shorthand_canonical () =
   decl_optimizes ~prop:"offset" ~held:"normal none/auto" ~into:"none"
     "normal none / auto"
 
-let test_offset_shorthand_invalid () =
+let offset_invalid_values () =
   offset_rejects "total nonsense here";
-  (* The [!] multiplier: the first group must produce a value. *)
+  (* The [!] multiplier: the leading group must produce a value. *)
   offset_rejects "/ center";
   (* The anchor is required once the slash is written. *)
   offset_rejects "none /";
@@ -3182,17 +3210,24 @@ let test_offset_shorthand_invalid () =
   offset_rejects "initial none";
   offset_rejects "none/inherit"
 
-(* Motion Path 1 (ED) sec. 2.2 gives [offset-distance] a plain
-   [<length-percentage>] with no [[0,inf]] bound, so a negative distance is
-   valid on the longhand and in the shorthand slot. *)
-let test_offset_distance_negative () =
-  offset_roundtrips ".x{offset-distance:-200%}";
-  offset_roundtrips ".x{offset-distance:-50px}";
-  offset_roundtrips ".x{offset:path(\"M 0 0 H 1\")-200%}"
+let offset_slots_roundtrip () =
+  offset_roundtrips ".x{offset:auto}";
+  offset_roundtrips ".x{offset:none}";
+  offset_roundtrips ".x{offset:100px}";
+  offset_roundtrips ".x{offset:path(\"M 0 0 H 1\")}";
+  offset_roundtrips ".x{offset:none 50px}";
+  offset_roundtrips ".x{offset:none reverse}";
+  offset_roundtrips ".x{offset:none 50px reverse 30deg}";
+  offset_roundtrips ".x{offset:none/50%}";
+  offset_roundtrips ".x{offset:100px/50%}";
+  offset_roundtrips ".x{offset:0 0 path(\"M 0 0 H 1\")10px reverse 45deg/50%}";
+  (* A [var()] the shorthand cannot assign to one slot keeps its authored
+     text. *)
+  offset_roundtrips ".x{offset:var(--a) var(--b)}"
 
 (* The five longhands keep the behaviour secs. 2.1 to 2.5 give them once the
    shorthand that resets them is modelled. *)
-let test_offset_longhands_unchanged () =
+let offset_longhand_guards () =
   offset_roundtrips ".x{offset-path:none}";
   offset_roundtrips ".x{offset-path:path(\"M 0 0 H 1\")}";
   offset_roundtrips ".x{offset-distance:50%}";
@@ -3206,7 +3241,7 @@ let test_offset_longhands_unchanged () =
 
 (* Two spellings that print alike are one declaration, so the rules carrying
    them factor into a single selector list. *)
-let test_offset_shorthand_factors () =
+let offset_spellings_factor () =
   let css = ".a{offset:none/auto}.b{offset:none 0}.c{offset:normal}" in
   Alcotest.(check string)
     "offset spellings coalesce" ".a,.b,.c{offset:none}"
@@ -5146,14 +5181,13 @@ let additional_tests =
     test_case "position_value" `Quick test_position_value;
     test_case "offset_anchor" `Quick test_offset_anchor;
     test_case "offset_position" `Quick test_offset_position;
-    test_case "offset shorthand slots" `Quick test_offset_shorthand_slots;
-    test_case "offset shorthand canonical" `Quick
-      test_offset_shorthand_canonical;
-    test_case "offset shorthand invalid" `Quick test_offset_shorthand_invalid;
-    test_case "offset distance negative" `Quick test_offset_distance_negative;
-    test_case "offset longhands unchanged" `Quick
-      test_offset_longhands_unchanged;
-    test_case "offset shorthand factors" `Quick test_offset_shorthand_factors;
+    test_case "offset" `Quick test_offset;
+    test_case "offset_target" `Quick test_offset_target;
+    test_case "offset canonical slots" `Quick offset_canonical_slots;
+    test_case "offset invalid values" `Quick offset_invalid_values;
+    test_case "offset slots roundtrip" `Quick offset_slots_roundtrip;
+    test_case "offset longhand guards" `Quick offset_longhand_guards;
+    test_case "offset spellings factor" `Quick offset_spellings_factor;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;

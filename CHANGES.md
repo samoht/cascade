@@ -200,6 +200,11 @@ recorded cases carrying six minifiers' answers.
 - `mask-border` accepts a lone mode keyword, and `border-image` rejects one
   anywhere: only mask-border's grammar carries a `<'mask-border-mode'>` slot
   (#682)
+- `offset` is a typed shorthand. It validates the Motion Path grammar, so an
+  invalid value such as `offset: total nonsense here` is dropped rather than
+  carried as opaque text; its slots canonicalize the way the longhands do, and
+  a slot left at its longhand's initial is dropped where the grammar allows it
+  (#683)
 - `transform-origin` rejects four-component edge-offset `<position>` forms.
   Its grammar accepts one or two X/Y components followed by an optional Z
   length, unlike `perspective-origin`, which accepts a full `<position>` (#680)
