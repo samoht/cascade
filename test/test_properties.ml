@@ -4560,6 +4560,8 @@ let spec_generated_position_interaction_edges () =
 (* ignore-test: grouped generated-surface vectors. *)
 let spec_generated_text_timeline_edges () =
   check_text_box "trim-both text alphabetic";
+  check_text_box "cap alphabetic";
+  check_text_box ~expected:"trim-both cap alphabetic" "cap alphabetic trim-both";
   check_text_box_edge "text ideographic";
   check_text_box_edge_keyword "ideographic-ink";
   check_text_box_trim "trim-both";
@@ -4595,7 +4597,8 @@ let spec_generated_text_timeline_edges () =
   check_timeline_shorthand_item "--main";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
-  neg_cursor read_text_box "trim-start trim-end";
+  neg_cursor ~allow_partial:true read_text_box "trim-start trim-end";
+  neg_cursor read_text_box "cap";
   neg_cursor read_text_box_edge "text text";
   neg_cursor read_text_box_edge_keyword "baseline";
   neg_cursor read_text_box_trim "trim";

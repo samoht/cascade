@@ -1272,7 +1272,7 @@ let vars_of_text_box (value : Properties.text_box) =
   match value with
   | Var v -> [ V v ]
   | Box (trim, edge) ->
-      vars_of_text_box_trim trim
+      Option.value ~default:[] (Option.map vars_of_text_box_trim trim)
       @ Option.value ~default:[] (Option.map vars_of_text_box_edge edge)
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 

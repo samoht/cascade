@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `text_box.Box` carries an optional trim value. The `text-box` grammar makes
+  both shorthand slots optional; edge-only values such as `cap alphabetic` now
+  parse and preserve the omitted trim slot (#670)
 - `Properties.View_timeline` carries a `view_timeline_shorthand` instead of a
   `timeline_shorthand`. Its items include the shorthand's optional inset slot,
   so values such as `view-timeline:--v 10% 20%` parse and round-trip (#669)
