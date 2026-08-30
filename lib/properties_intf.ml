@@ -51,7 +51,7 @@ type line_height =
   | Var of line_height var
 
 type font_weight =
-  | Weight of int
+  | Weight of float
   | Normal
   | Bold
   | Bolder
@@ -2050,26 +2050,29 @@ type font_variant_numeric =
     }
   | Var of font_variant_numeric var
 
+type font_feature_value = On | Off | Index of int
+type font_feature_setting = { tag : string; value : font_feature_value option }
+
 type font_feature_settings =
   | Normal
-  | Feature_list of string
+  | Feature_list of font_feature_setting list
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
-  | String of string
   | Var of font_feature_settings var
+
+type font_variation_setting = { tag : string; value : float }
 
 type font_variation_settings =
   | Normal
-  | Axis_list of string
+  | Axis_list of font_variation_setting list
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
-  | String of string
   | Var of font_variation_settings var
 
 (* Transform & Animation Types *)

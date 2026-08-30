@@ -2496,6 +2496,15 @@ let test_font_feature_settings () =
      is a CSS string, so its decoded quote must be escaped again by pp. *)
   check_font_feature_settings "\"swsh\" 2";
   check_font_feature_settings ~expected:"\"a\\\"bc\" 3" "\"a\\22 bc\" 3";
+  let structured =
+    Feature_list
+      [
+        { tag = "a\"bc"; value = Some (Index 2) };
+        { tag = "kern"; value = Some On };
+      ]
+  in
+  check string "structured font feature settings" "\"a\\\"bc\" 2,\"kern\" on"
+    (Css.Pp.to_string ~minify:true pp_font_feature_settings structured);
   neg_cursor read_font_feature_settings "\"éab\" 1";
   neg_cursor read_font_feature_settings "\"kern\" 1.5";
   neg_cursor read_font_feature_settings "invalid-feature"
@@ -2509,6 +2518,13 @@ let test_font_variation_settings () =
   check_font_variation_settings "\"wght\" 123.5";
   check_font_variation_settings ~expected:"\"a\\\"bc\" 123.5"
     "\"a\\22 bc\" 123.5";
+  let structured =
+    Axis_list
+      [ { tag = "a\"bc"; value = 123.5 }; { tag = "wght"; value = 650.25 } ]
+  in
+  check string "structured font variation settings"
+    "\"a\\\"bc\" 123.5,\"wght\" 650.25"
+    (Css.Pp.to_string ~minify:true pp_font_variation_settings structured);
   neg_cursor read_font_variation_settings "invalid-variation"
 
 let test_transform_style () =
@@ -4369,7 +4385,8 @@ let test_css_wide () =
 
 let spec_property_grammar_edges () =
   check_font_feature_settings "\"kern\" on";
-  check_font_feature_settings "\"liga\" off, \"calt\" 1";
+  check_font_feature_settings ~expected:"\"liga\" off,\"calt\" 1"
+    "\"liga\" off, \"calt\" 1";
   check_font_variation_settings ~expected:"\"wght\" 650,\"wdth\" 75"
     "\"wght\" 650, \"wdth\" 75";
   check_timing_function "linear(0, .25 50%, 1)";
@@ -4388,7 +4405,7 @@ let spec_property_grammar_edges () =
   check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
   check_content "counters(section, \".\")";
-  neg_cursor read_font_feature_settings "\"kern\" 2";
+  neg_cursor read_font_feature_settings "\"kern\" -1";
   neg_cursor read_font_variation_settings "\"wg\" 400";
   neg_cursor read_timing_function "linear()";
   neg_cursor read_timing_function "steps(0, jump-end)";
