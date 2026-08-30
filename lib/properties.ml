@@ -3383,10 +3383,14 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Height, Length Initial -> Length Auto
   | Min_width, Length Initial -> Length Auto
   | Min_height, Length Initial -> Length Auto
-  (* CSS Logical 1 sec. 4.1 keeps the logical minimum-size initial value at [0],
-     unlike the physical properties' [auto] from CSS Sizing 3 sec. 3.1.2. *)
-  | Min_inline_size, Length Initial -> Length Zero
-  | Min_block_size, Length Initial -> Length Zero
+  (* The logical twins fold to [auto] too. Two stale tables say [0] and neither
+     governs: CSS2 sec. 10.4 predates CSS Sizing 3, and CSS Logical 1 sec. 4.1's
+     own [Initial: 0] line copies that superseded CSS2 value while its [Value:
+     <'min-width'>] line and sec. 4 ("paired properties share a computed value")
+     both bind these to min-width. [auto] is the automatic minimum size, not
+     zero, so folding to [0] would let a flex item shrink below its content. *)
+  | Min_inline_size, Length Initial -> Length Auto
+  | Min_block_size, Length Initial -> Length Auto
   (* Keep this fallback exhaustive: a new property must make this match fail to
      compile until its initial-value fold has been considered. *)
   | Custom_property _, value -> value
