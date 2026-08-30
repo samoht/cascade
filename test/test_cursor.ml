@@ -138,6 +138,16 @@ let test_list_at_least_message () =
       | _ -> Alcotest.fail "expected Bad_value")
   | _ -> Alcotest.fail "expected Parse_error"
 
+let test_list_default_cardinality () =
+  let required = cursor_of_string "" in
+  (match Cursor.list Cursor.ident required with
+  | exception Cursor.Parse_error _ -> ()
+  | _ -> Alcotest.fail "expected the default list to require an item");
+  let optional = cursor_of_string "" in
+  Alcotest.(check (list string))
+    "an empty list is explicit" []
+    (Cursor.list ~at_least:0 Cursor.ident optional)
+
 (* CSS Values 4 sec. 5.7.3: a [#] list's comma never trails the last item. [sep]
    must only commit once another [item] parses after it, or a trailing separator
    is silently dropped and the list looks complete when it is not. *)
@@ -217,6 +227,8 @@ let suite =
         test_triple_rewinds_on_failure;
       Alcotest.test_case "list ~at_least message" `Quick
         test_list_at_least_message;
+      Alcotest.test_case "list default cardinality" `Quick
+        test_list_default_cardinality;
       Alcotest.test_case "list rejects a trailing separator" `Quick
         test_list_trailing_separator;
       Alcotest.test_case "list without a trailing separator" `Quick

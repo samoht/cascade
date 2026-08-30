@@ -4492,6 +4492,34 @@ let function_argument_validity () =
   check_declaration ~expected:"transform:skew(10deg,20deg)"
     "transform:skew( 10deg , 20deg )"
 
+(* CSS list productions are non-empty unless their grammar says otherwise.
+   Backgrounds 3 gives both longhands a comma-separated item list, CSS Values 4
+   gives [hypot()] one or more calculations, and Grid 2 gives [repeat()] a
+   positive explicit count followed by one or more tracks. *)
+let non_empty_list_grammar () =
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "background-image:";
+      "background-blend-mode:";
+      "width:hypot()";
+      "grid-template-columns:repeat(2,)";
+      "grid-template-columns:repeat(0,1px)";
+      "grid-template-columns:repeat(-2,1px)";
+    ];
+  List.iter
+    (fun css -> check_declaration ~roundtrip:true css)
+    [
+      "background-image:none";
+      "background-blend-mode:normal";
+      "width:hypot(3px,4px)";
+      "grid-template-columns:repeat(2,1px)";
+    ];
+  (* Grid 2 defines a line-name block with a [*] multiplier, so this is the one
+     audited grammar list that deliberately remains empty. *)
+  check_declaration ~expected:"grid-template-columns:[]1px"
+    "grid-template-columns:[] 1px"
+
 (* CSS Values 4 sec. 5.7.3: a [#] multiplier's comma never trails the last item.
    [min()]/[max()] take a comma-separated [<calc-sum>] list (sec. 10.2), and
    [matrix()]/[matrix3d()] (CSS Transforms 1 sec. 12.1, 2 sec. 12.2) a
@@ -5036,6 +5064,7 @@ let declaration_tests =
     test_case "line-width invalid math argument" `Quick
       line_width_invalid_math_argument;
     test_case "function argument validity" `Quick function_argument_validity;
+    test_case "non-empty list grammar" `Quick non_empty_list_grammar;
     test_case "list rejects a trailing separator" `Quick
       list_trailing_separator_invalid;
     test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;

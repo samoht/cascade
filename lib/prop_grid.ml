@@ -789,7 +789,9 @@ module Grid_template = struct
     if Cursor.looking_at t "var(" then Var (Values.read_var read_repeat_count t)
     else
       match Cursor.option Cursor.int t with
-      | Some n -> Count n
+      | Some n ->
+          if n <= 0 then Cursor.err_invalid t "repeat count must be positive";
+          Count n
       | None -> (
           match Cursor.ident t with
           | "auto-fill" -> Auto_fill
@@ -801,7 +803,7 @@ module Grid_template = struct
       (fun inner ->
         Cursor.ws inner;
         let names =
-          Cursor.list
+          Cursor.list ~at_least:0
             ~sep:(fun i -> Cursor.ws i)
             (fun i -> Cursor.ident i)
             inner

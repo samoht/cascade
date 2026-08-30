@@ -1302,7 +1302,7 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_family families ->
       pp_descriptor "font-family"
         (fun ctx fams ->
-          Pp.list ~sep:Pp.comma Properties.pp_font_family ctx fams)
+          Pp.list ~sep:Pp.comma Properties.pp_font_family_name ctx fams)
         families
   | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
@@ -1409,7 +1409,7 @@ let pp_font_palette_descriptor : font_palette_descriptor Pp.t =
   | Palette_font_family families ->
       Pp.string ctx "font-family:";
       Pp.space_if_pretty ctx ();
-      Pp.list ~sep:Pp.comma Properties.pp_font_family ctx families
+      Pp.list ~sep:Pp.comma Properties.pp_font_family_name ctx families
   | Base_palette base ->
       Pp.string ctx "base-palette:";
       Pp.space_if_pretty ctx ();
@@ -2338,7 +2338,12 @@ let validate_nonempty_descriptor r name value =
 
 let read_font_family_descriptor r =
   read_descriptor_value
-    (fun r -> Cursor.list ~sep:Cursor.comma Properties.read_font_family r)
+    (fun r ->
+      let family = Properties.read_font_family_name r in
+      Cursor.ws r;
+      if not (Cursor.is_done r || Cursor.peek_semicolon r) then
+        Cursor.err_invalid r "trailing tokens after @font-face font-family";
+      [ family ])
     (fun v -> Font_family v)
     r
 
@@ -3008,7 +3013,7 @@ let read_font_palette_descriptor outer inner : font_palette_descriptor =
     match desc_name with
     | "font-family" ->
         Palette_font_family
-          (Cursor.list ~sep:Cursor.comma Properties.read_font_family inner)
+          (Cursor.list ~sep:Cursor.comma Properties.read_font_family_name inner)
     | "base-palette" -> Base_palette (read_base_palette_value inner)
     | "override-colors" ->
         Override_colors

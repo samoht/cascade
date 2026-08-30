@@ -149,13 +149,12 @@ let test_inline_font_face_var_resolves () =
       ("size-adjust", "100%");
     ]
 
-(* CSS Fonts 4 sec. 2.1 makes the [font-family] descriptor a [<family-name>#]
-   list, so a [var()] stands for a whole stack as readily as for one entry, and
-   a reference nested in the list has to be followed too. The property already
-   reads both shapes into the same type; the descriptor answers the same way. A
-   reference back onto its own name resolves once and then stands, as CSS
-   Variables 1 sec. 3 leaves an unresolvable reference in place. *)
-let test_inline_font_face_family_list () =
+(* CSS Fonts 4 sec. 4.2 makes the [font-family] descriptor exactly one
+   [<font-family-name>]. A build-time [var()] may stand for that name, but a
+   property-style family stack does not become valid when it arrives through a
+   reference. Raw and referenced list entries are rejected at the same
+   descriptor boundary. *)
+let test_inline_font_face_family_name () =
   let check (name, css, expected) =
     let inlined = minified (Css.inline_vars (parse css)) in
     Alcotest.(check string) name expected inlined
@@ -164,13 +163,13 @@ let test_inline_font_face_family_list () =
     [
       ( "a var() standing for the whole stack",
         ":root{--f:Arial,sans-serif}@font-face{font-family:var(--f);src:local(a)}",
-        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+        "" );
       ( "a var() standing for one entry",
         ":root{--f:sans-serif}@font-face{font-family:Arial,var(--f);src:local(a)}",
-        "@font-face{font-family:Arial,sans-serif;src:local(a)}" );
+        "" );
       ( "a var() naming itself inside a stack",
         ":root{--f:Arial,var(--f)}@font-face{font-family:b,var(--f);src:local(a)}",
-        "@font-face{font-family:b,Arial,var(--f);src:local(a)}" );
+        "" );
     ]
 
 (* CSS Fonts 4 sec. 4.4 takes the font-width descriptor as
@@ -981,6 +980,6 @@ let suite =
       Alcotest.test_case
         "inline vars resolve the @font-face descriptors the parser keeps" `Quick
         test_inline_font_face_var_descriptors;
-      Alcotest.test_case "inline vars resolve a @font-face family list" `Quick
-        test_inline_font_face_family_list;
+      Alcotest.test_case "inline vars reject @font-face family lists" `Quick
+        test_inline_font_face_family_name;
     ] )

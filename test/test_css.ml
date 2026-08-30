@@ -63,12 +63,33 @@ let optimization_flag () =
   Alcotest.(check string) "optimized exact" ".btn{color:#00f}" css_optimized
 
 let nonempty_declaration_lists () =
-  Alcotest.check_raises "box-shadow list"
-    (Invalid_argument "box_shadows: empty list") (fun () ->
-      ignore (box_shadows []));
-  Alcotest.check_raises "font-family list"
-    (Invalid_argument "font_families: empty list") (fun () ->
-      ignore (font_families []))
+  let rejects_empty name helper =
+    Alcotest.check_raises name
+      (Invalid_argument (String.concat "" [ name; ": empty list" ]))
+      (fun () -> ignore (helper []))
+  in
+  rejects_empty "padding" padding;
+  rejects_empty "margin" margin;
+  rejects_empty "padding_inline" padding_inline;
+  rejects_empty "padding_block" padding_block;
+  rejects_empty "inset" inset;
+  rejects_empty "inset_inline" inset_inline;
+  rejects_empty "inset_block" inset_block;
+  rejects_empty "text_shadows" text_shadows;
+  rejects_empty "transitions" transitions;
+  rejects_empty "transforms" transforms;
+  rejects_empty "box_shadows" box_shadows;
+  rejects_empty "background_position" background_position;
+  rejects_empty "webkit_mask_position" webkit_mask_position;
+  rejects_empty "mask_position" mask_position;
+  rejects_empty "scroll_margin" scroll_margin;
+  rejects_empty "scroll_margin_inline" scroll_margin_inline;
+  rejects_empty "scroll_margin_block" scroll_margin_block;
+  rejects_empty "scroll_padding" scroll_padding;
+  rejects_empty "scroll_padding_inline" scroll_padding_inline;
+  rejects_empty "scroll_padding_block" scroll_padding_block;
+  rejects_empty "overscroll_behavior" overscroll_behavior;
+  rejects_empty "font_families" font_families
 
 let grid_template_areas_values () =
   let render value =

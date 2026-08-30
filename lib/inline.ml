@@ -627,11 +627,11 @@ let simplify_unicode_range_descriptor visible =
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Properties.Var v : Properties.unicode_range))
 
-(* CSS Fonts 4 sec. 2.1 makes [font-family] a [<family-name>#] list, so a
-   [var()] stands for a whole stack as readily as for one entry and the type
-   nests through [List]. That is the model the property already uses
-   ({!Context.simplify_font_family}), so read the descriptor the same way rather
-   than a second one. *)
+(* Read a referenced custom value with the property parser so a property-style
+   stack remains visible as [List]. [substitute_font_face] validates the result
+   against the descriptor's single-name grammar below. Using the narrower reader
+   here would conflate an invalid referenced value with a missing custom
+   property and retain the unresolved [var()] instead. *)
 let simplify_font_family_descriptor visible =
   simplify_nested_var visible ~read:Properties.read_font_family
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
@@ -752,7 +752,15 @@ let universal_eval ~scopes ~at_path =
 
 let substitute_font_face ~scopes ~at_path descriptors =
   let visible = universal_visible_customs ~scopes ~at_path in
-  List.map (simplify_font_face_descriptor visible) descriptors
+  List.filter_map
+    (fun descriptor ->
+      match simplify_font_face_descriptor visible descriptor with
+      | Font_family [ family ] as descriptor
+        when Properties.is_font_family_name_value family ->
+          Some descriptor
+      | Font_family _ -> None
+      | descriptor -> Some descriptor)
+    descriptors
 
 let substitute_page_with_margins ~scopes ~at_path sel descriptors margins =
   let visible = universal_visible_customs ~scopes ~at_path in

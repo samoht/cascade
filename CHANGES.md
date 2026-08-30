@@ -18,6 +18,12 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- Public declaration helpers whose CSS values require a non-empty list now
+  raise `Invalid_argument` for `[]` instead of emitting a declaration with no
+  value.
+- `Cursor.list` requires at least one item by default. Grammars that permit an
+  empty list must now opt into it with `~at_least:0`. Empty CSS grammar lists
+  and non-positive explicit `repeat()` counts are rejected.
 - `font_weight.Weight` carries a number rather than an integer, and font
   feature and variation settings carry structured tag/value lists rather than
   pre-rendered strings. Fractional weights and variation values are preserved,
@@ -201,6 +207,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `@font-face` and `@font-palette-values` use their descriptor-specific
+  `font-family` grammars. The former accepts exactly one named family, the
+  latter accepts a non-empty comma-separated list, and both reject unquoted
+  generic-family and CSS-wide keywords.
 - `steps()` rejects fractional counts, and `jump-none` requires at least two
   steps. Other step positions continue to require a positive integer count.
 - `mask-border` accepts a lone mode keyword, and `border-image` rejects one

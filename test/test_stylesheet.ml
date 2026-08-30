@@ -719,7 +719,7 @@ let spec_fontface_descriptors () =
      url(\"sparse.woff2\"); ; }";
   check_stylesheet
     ~expected:
-      "@font-face{font-family:emoji;src:url(emoji.woff2);unicode-range:U+1F600-1F64F,U+???}"
+      "@font-face{font-family:Emoji;src:url(emoji.woff2);unicode-range:U+1F600-1F64F,U+???}"
     "@font-face { font-family: Emoji; src: url(emoji.woff2); unicode-range: \
      U+1F600-1F64F, U+???; }";
   check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
@@ -1259,6 +1259,36 @@ let strict_reject name css =
         ("lenient parse warns for " ^ name)
         true
         (List.length warnings > 0)
+
+let font_family_descriptor_grammar () =
+  strict_accept "single named @font-face family"
+    "@font-face { font-family: Brand; src: url(brand.woff2) }";
+  strict_accept "quoted generic word as @font-face family name"
+    "@font-face { font-family: \"serif\"; src: url(serif.woff2) }";
+  strict_accept "named @font-palette-values family list"
+    "@font-palette-values --brand { font-family: Brand, \"Color Font\" }";
+  strict_accept "quoted generic word as palette family name"
+    "@font-palette-values --serif { font-family: \"serif\" }";
+  strict_reject "empty @font-face font-family"
+    "@font-face { font-family:; src: url(brand.woff2) }";
+  strict_reject "multiple @font-face families"
+    "@font-face { font-family: Brand, Other; src: url(brand.woff2) }";
+  strict_reject "generic @font-face family"
+    "@font-face { font-family: serif; src: url(serif.woff2) }";
+  strict_reject "generic word in an unquoted @font-face family"
+    "@font-face { font-family: Brand serif; src: url(brand.woff2) }";
+  strict_reject "CSS-wide @font-face family"
+    "@font-face { font-family: inherit; src: url(brand.woff2) }";
+  strict_reject "empty @font-palette-values font-family"
+    "@font-palette-values --brand { font-family: }";
+  strict_reject "generic @font-palette-values family"
+    "@font-palette-values --serif { font-family: serif }";
+  strict_reject "generic in an @font-palette-values family list"
+    "@font-palette-values --brand { font-family: Brand, serif }";
+  strict_reject "generic word in an unquoted palette family"
+    "@font-palette-values --brand { font-family: Brand serif }";
+  strict_reject "CSS-wide @font-palette-values family"
+    "@font-palette-values --brand { font-family: inherit }"
 
 let lenient_recover name css expected min_warnings =
   let { Css.stylesheet; warnings } =
@@ -2295,6 +2325,7 @@ let stylesheet_tests =
     ( "spec font-face descriptor matrix",
       `Quick,
       spec_font_face_descriptor_matrix );
+    ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);
