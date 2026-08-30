@@ -1675,7 +1675,7 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:none" "animation-name: none";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
-  check_declaration ~expected:"animation-duration:500ms"
+  check_declaration ~expected:"animation-duration:.5s"
     ~optimized:"animation-duration:.5s" "animation-duration: 500ms";
   check_declaration ~expected:"transition-duration:round(1.1s,.5s)"
     ~optimized:"transition-duration:1s" "transition-duration: round(1.1s, .5s)";
@@ -1745,7 +1745,7 @@ let animations_timing () =
      [<time>]. [0s] does not drop the unit. *)
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-500ms"
+  check_declaration ~expected:"animation-delay:-.5s"
     ~optimized:"animation-delay:-.5s" "animation-delay: -500ms";
   (* CSS Values 4 sec. 10.3 gives these functions the type of their arguments,
      so time-valued calls fit the delay longhands' [<time>] grammar. *)
@@ -1755,7 +1755,7 @@ let animations_timing () =
     ~optimized:"animation-delay:.1s" "animation-delay:mod(1.1s,.5s)";
   check_declaration ~expected:"animation-delay:rem(1.1s,.5s)"
     ~optimized:"animation-delay:.1s" "animation-delay:rem(1.1s,.5s)";
-  check_declaration ~expected:"transition-duration:var(--d,500ms)"
+  check_declaration ~expected:"transition-duration:var(--d,.5s)"
     ~optimized:"transition-duration:var(--d,.5s)"
     "transition-duration:var(--d,500ms)";
   check_declaration ~expected:"interest-delay:round(1100ms,500ms)"
@@ -2074,7 +2074,7 @@ let list_properties () =
     "transition: opacity 1s ease-in .5s";
   check_declaration ~expected:"transition:opacity .3s,transform .3s"
     "transition: opacity 0.3s, transform 0.3s";
-  check_declaration ~expected:"transition:all 500ms"
+  check_declaration ~expected:"transition:all .5s"
     ~optimized:"transition:all .5s" "transition: all 500ms";
 
   (* Animation *)
@@ -2083,7 +2083,7 @@ let list_properties () =
     "animation: spin 1s linear infinite";
   check_declaration ~expected:"animation:slide .5s ease-out"
     "animation: slide 0.5s ease-out";
-  check_declaration ~expected:"animation:spin 500ms"
+  check_declaration ~expected:"animation:spin .5s"
     ~optimized:"animation:spin .5s" "animation: spin 500ms"
 
 let custom_properties () =

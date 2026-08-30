@@ -284,9 +284,9 @@ let test_color () =
 
   (* Modern color notations. pp preserves the authored function node; the
      equivalent hex form is the optimize+minify oracle. *)
-  check_color ~expected:"hsl(180deg 50% 25%)" ~optimized:"#206060"
+  check_color ~expected:"hsl(180 50% 25%)" ~optimized:"#206060"
     "hsl(180deg 50% 25%)";
-  check_color ~expected:"hwb(90deg 10% 20%)" ~optimized:"#73cc1a"
+  check_color ~expected:"hwb(90 10% 20%)" ~optimized:"#73cc1a"
     "hwb(90deg 10% 20%)";
   check_color ~expected:"hsl(180 50% 25%/.5)" ~optimized:"#20606080"
     "hsl(180 50% 25% / 0.5)";
@@ -296,7 +296,7 @@ let test_color () =
   (* CSS Color 4 section 4.2: alpha [<percentage>] is spec-equivalent to the
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
-  check_color ~expected:"hsl(180deg 50% 25%/30%)" ~optimized:"#2060604d"
+  check_color ~expected:"hsl(180 50% 25%/30%)" ~optimized:"#2060604d"
     "hsl(180deg 50% 25% / 30%)";
   check_color ~optimized:"red" "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
@@ -372,7 +372,7 @@ let test_color () =
   check_color ~expected:"var(--color,)" "var(--color,)";
 
   (* Custom properties inline mode tests with complex color fallbacks *)
-  check_color ~expected:"var(--theme-primary,hsl(210deg 75% 50%))"
+  check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
     ~optimized:"var(--theme-primary,#2080df)"
     "var(--theme-primary, hsl(210deg 75% 50%))";
   check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
@@ -556,8 +556,9 @@ let test_angle () =
   neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
-  (* CSS Values 4 section 7.2: [<time>] requires a unit. pp holds the parsed
-     unit; choosing the shorter equivalent [s] spelling is an optimize fold. *)
+  (* CSS Values 4 section 7.2: [<time>] requires a unit, and [ms] / [s] are
+     interchangeable. Pure minified serialization chooses the shorter exact
+     spelling without running the optimizer. *)
   check_duration "1s";
   check_duration "0s";
   check_duration ~expected:".5s" "0.5s";
@@ -565,14 +566,14 @@ let test_duration () =
   check_duration "10s";
   check_duration "999s";
 
-  check_duration "500ms";
-  check_duration "0ms";
+  check_duration ~expected:".5s" "500ms";
+  check_duration ~expected:"0s" "0ms";
   check_duration "1ms";
-  check_duration "1000ms";
-  check_duration "50.5ms";
-  check_duration "999999ms";
+  check_duration ~expected:"1s" "1000ms";
+  check_duration ~expected:".0505s" "50.5ms";
+  check_duration ~expected:"999.999s" "999999ms";
   check_duration ".1s";
-  check_duration "150ms";
+  check_duration ~expected:".15s" "150ms";
   check_duration "1.5s";
 
   (* CSS Values 4 sec. 10.10.1: a typed <time> scales by a number and same-unit
@@ -697,9 +698,9 @@ let test_minified_value_formatting () =
   check string "minified rem" ".5rem" s;
   let s = Css.Pp.to_string ~minify:true pp_number (Num 0.5) in
   check string "minified number" ".5" s;
-  (* The duration printer holds the unit in minified mode. *)
+  (* The duration printer chooses the shorter exact unit in minified mode. *)
   let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500.) in
-  check string "minified ms" "500ms" s;
+  check string "minified ms" ".5s" s;
   (* Zero stays zero without unit *)
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
   check string "minified zero" "0" s
@@ -989,7 +990,7 @@ let test_color_space () =
   neg_cursor read_color_space ""
 
 let test_hue () =
-  check_hue "180deg";
+  check_hue ~expected:"180" "180deg";
   check_hue ~expected:".5turn" "0.5turn";
   check_hue "200grad";
   check_hue "3.14159rad";
