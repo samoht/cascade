@@ -4023,6 +4023,61 @@ let edge_offset_position_grammar () =
       "perspective-origin:left top 1px";
     ]
 
+(* Motion Path 1 secs. 2.3-2.4 define offset-position as [normal | auto |
+   <position>] and offset-anchor as [auto | <position>]. Both use the generic
+   <position> grammar, not background's three-value extension. *)
+let offset_position_properties () =
+  List.iter
+    (fun (declaration, expected) ->
+      check_declaration ~expected ~roundtrip:true declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      let expected_css = String.concat "" [ "a{"; expected; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+      | Ok { stylesheet; _ } ->
+          Alcotest.(check string)
+            "offset position property sheet roundtrip" expected_css
+            (String.trim (Css.to_string ~minify:true stylesheet)))
+    [
+      ("offset-anchor:auto", "offset-anchor:auto");
+      ("offset-anchor:center", "offset-anchor:center");
+      ("offset-anchor:left top", "offset-anchor:left top");
+      ("offset-anchor:20% 30%", "offset-anchor:20%30%");
+      ("offset-anchor:left 10px top 20px", "offset-anchor:left 10px top 20px");
+      ("offset-position:normal", "offset-position:normal");
+      ("offset-position:auto", "offset-position:auto");
+      ("offset-position:center", "offset-position:center");
+      ("offset-position:left top", "offset-position:left top");
+      ("offset-position:20% 30%", "offset-position:20%30%");
+      ( "offset-position:left 10px top 20px",
+        "offset-position:left 10px top 20px" );
+    ];
+  decl_optimizes ~prop:"offset-anchor" ~into:"50%" "center";
+  decl_optimizes ~prop:"offset-anchor" ~into:"0 0" "left top";
+  decl_optimizes ~prop:"offset-anchor" ~into:"auto" "initial";
+  decl_optimizes ~prop:"offset-position" ~into:"50%" "center";
+  decl_optimizes ~prop:"offset-position" ~into:"0 0" "left top";
+  decl_optimizes ~prop:"offset-position" ~into:"normal" "initial";
+  List.iter
+    (fun declaration ->
+      none_cursor read_declaration declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error _ -> ()
+      | Ok _ -> Alcotest.failf "strict parsing accepted %s" css)
+    [
+      "offset-anchor:foo bar baz";
+      "offset-anchor:normal";
+      "offset-anchor:size";
+      "offset-anchor:auto center";
+      "offset-anchor:left top 10px";
+      "offset-position:foo bar baz";
+      "offset-position:none";
+      "offset-position:normal center";
+      "offset-position:left top 10px";
+      "object-position:normal";
+    ]
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4848,6 +4903,7 @@ let declaration_tests =
     test_case "text-box edge only" `Quick text_box_edge_only;
     test_case "text-box normal" `Quick text_box_normal;
     test_case "edge-offset position grammar" `Quick edge_offset_position_grammar;
+    test_case "offset position properties" `Quick offset_position_properties;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
