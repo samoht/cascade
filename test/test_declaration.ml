@@ -661,7 +661,9 @@ let lengths () =
   check_declaration ~expected:"width:auto" "width: auto";
   check_declaration ~expected:"height:auto" "height: auto";
   check_declaration ~expected:"min-inline-size:initial"
-    ~optimized:"min-inline-size:auto" "min-inline-size: initial";
+    ~optimized:"min-inline-size:0" "min-inline-size: initial";
+  check_declaration ~expected:"min-block-size:initial"
+    ~optimized:"min-block-size:0" "min-block-size: initial";
 
   (* Min/max content *)
   check_declaration ~expected:"width:min-content" "width: min-content";
