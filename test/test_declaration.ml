@@ -660,10 +660,15 @@ let lengths () =
   check_declaration ~expected:"margin:auto" "margin: auto";
   check_declaration ~expected:"width:auto" "width: auto";
   check_declaration ~expected:"height:auto" "height: auto";
+  (* CSS Logical 1 sec. 4 pairs each logical minimum-size property with its
+     physical counterpart and gives the pair one shared computed value, so
+     [initial] resolves through min-width / min-height to CSS Sizing 3 sec.
+     3.1.2's [auto]. [expected] pins the pp-held form (the keyword is not folded
+     at print time); [optimized] pins the normalize fold. *)
   check_declaration ~expected:"min-inline-size:initial"
-    ~optimized:"min-inline-size:0" "min-inline-size: initial";
+    ~optimized:"min-inline-size:auto" "min-inline-size: initial";
   check_declaration ~expected:"min-block-size:initial"
-    ~optimized:"min-block-size:0" "min-block-size: initial";
+    ~optimized:"min-block-size:auto" "min-block-size: initial";
 
   (* Min/max content *)
   check_declaration ~expected:"width:min-content" "width: min-content";

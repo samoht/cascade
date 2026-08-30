@@ -140,6 +140,33 @@ let pure_minify_value_fallbacks () =
     ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50% 50%)}"
     (Css.to_string ~minify:true stylesheet)
 
+(* [to_string ~minify:true] is a pure formatter, so a constructed AST reaches
+   the printer without the normalize pass. A keyword whose spec-equivalent value
+   the optimiser substitutes must therefore survive pure minification verbatim:
+   holding [initial] is always correct, whereas printing the wrong equivalent
+   would change layout for a consumer that never calls [Css.optimize]. Every
+   test around the initial-value fold otherwise goes through the parser, which
+   runs normalization. *)
+let constructed_initial_keyword_fold () =
+  let sheet keyword =
+    v [ rule ~selector:btn [ min_inline_size keyword; min_block_size keyword ] ]
+  in
+  Alcotest.(check string)
+    "pure minify holds the initial keyword"
+    ".btn{min-inline-size:initial;min-block-size:initial}"
+    (Css.to_string ~minify:true (sheet Initial));
+  (* CSS Logical 1 sec. 4 gives each logical minimum-size property and its
+     physical counterpart one shared computed value, so [initial] resolves
+     through min-width / min-height to CSS Sizing 3 sec. 3.1.2's [auto]. *)
+  Alcotest.(check string)
+    "optimize folds the keyword to auto"
+    ".btn{min-inline-size:auto;min-block-size:auto}"
+    (minify (sheet Initial));
+  Alcotest.(check string)
+    "both phases hold an explicit auto"
+    ".btn{min-inline-size:auto;min-block-size:auto}"
+    (Css.to_string ~minify:true (sheet Auto))
+
 let explicit_phase_pipeline () =
   let stylesheet =
     v
@@ -2044,6 +2071,8 @@ let suite =
       Alcotest.test_case "minify flag" `Quick minify_flag;
       Alcotest.test_case "pure minify value fallbacks" `Quick
         pure_minify_value_fallbacks;
+      Alcotest.test_case "constructed initial keyword fold" `Quick
+        constructed_initial_keyword_fold;
       Alcotest.test_case "explicit phase pipeline" `Quick
         explicit_phase_pipeline;
       Alcotest.test_case "important declarations" `Quick important_integration;

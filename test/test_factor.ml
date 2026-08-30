@@ -491,12 +491,16 @@ let test_transform_origin_position_nodes_factor () =
    late for declaration hashes to meet during factoring. *)
 let test_remaining_printer_fold_spellings_factor () =
   Alcotest.(check string)
-    "logical minimum initial factors with zero" ".a,.b{min-inline-size:0}"
+    "logical minimum initial factors with auto" ".a,.b{min-inline-size:auto}"
+    (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:auto}");
+  Alcotest.(check string)
+    "logical minimum initial stays distinct from zero"
+    ".a{min-inline-size:auto}.b{min-inline-size:0}"
     (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:0}");
   Alcotest.(check string)
-    "logical minimum initial stays distinct from auto"
-    ".a{min-inline-size:0}.b{min-inline-size:auto}"
-    (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:auto}");
+    "logical block minimum initial factors with auto"
+    ".a,.b{min-block-size:auto}"
+    (optimize_str ".a{min-block-size:initial}.b{min-block-size:auto}");
   Alcotest.(check string)
     "milliseconds factor with seconds" ".a,.b{transition-duration:.5s}"
     (optimize_str ".a{transition-duration:500ms}.b{transition-duration:.5s}");
