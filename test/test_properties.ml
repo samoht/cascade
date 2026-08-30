@@ -624,6 +624,10 @@ let check_timeline_shorthand =
   check_value_cursor "timeline_shorthand" read_timeline_shorthand
     pp_timeline_shorthand
 
+let check_view_timeline_shorthand =
+  check_value_cursor "view_timeline_shorthand" read_view_timeline_shorthand
+    pp_view_timeline_shorthand
+
 let check_caption_side =
   check_value_cursor "caption_side" read_caption_side pp_caption_side
 
@@ -1147,6 +1151,10 @@ let check_timeline_name =
 let check_timeline_shorthand_item =
   check_value_cursor "timeline_shorthand_item" read_timeline_shorthand_item
     pp_timeline_shorthand_item
+
+let check_view_timeline_shorthand_item =
+  check_value_cursor "view_timeline_shorthand_item"
+    read_view_timeline_shorthand_item pp_view_timeline_shorthand_item
 
 let check_view_transition_class =
   check_value_cursor "view_transition_class" read_view_transition_class
@@ -3924,6 +3932,26 @@ let test_timeline_shorthand () =
   neg_cursor read_timeline_shorthand "main block";
   neg_cursor ~allow_partial:true read_timeline_shorthand "--main z"
 
+let test_view_timeline_shorthand () =
+  check_view_timeline_shorthand "--main";
+  check_view_timeline_shorthand "--main block";
+  check_view_timeline_shorthand "--main 10%";
+  check_view_timeline_shorthand "--main x 10% 20%";
+  check_view_timeline_shorthand ~expected:"--main x 10%" "--main 10% x";
+  check_view_timeline_shorthand "--main 10%,--alt y auto";
+  neg_cursor read_view_timeline_shorthand "main 10%";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand "--main x y";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand
+    "--main 10% 20% 30%"
+
+let test_view_timeline_shorthand_item () =
+  check_view_timeline_shorthand_item "--main";
+  check_view_timeline_shorthand_item "--main inline";
+  check_view_timeline_shorthand_item "--main auto 10%";
+  check_view_timeline_shorthand_item ~expected:"--main x 10%" "--main 10% x";
+  neg_cursor read_view_timeline_shorthand_item "main 10%";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand_item "--main x y"
+
 let test_caption_side () =
   check_caption_side "top";
   check_caption_side "bottom";
@@ -4972,6 +5000,9 @@ let additional_tests =
     test_case "page_size_orientation" `Quick test_page_size_orientation;
     test_case "axis" `Quick test_timeline_axis;
     test_case "timeline_shorthand" `Quick test_timeline_shorthand;
+    test_case "view_timeline_shorthand" `Quick test_view_timeline_shorthand;
+    test_case "view_timeline_shorthand_item" `Quick
+      test_view_timeline_shorthand_item;
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;
     test_case "columns_value" `Quick test_columns_value;

@@ -1711,9 +1711,9 @@ let vars_of_timeline_name (value : Properties.timeline_name) =
 let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   match value with
   | Var v -> [ V v ]
-  | Timelines items ->
+  | (Timelines items : Properties.timeline_shorthand) ->
       List.concat_map
-        (fun { Properties.axis; _ } ->
+        (fun ({ Properties.axis; _ } : Properties.timeline_shorthand_item) ->
           Option.fold ~none:[] ~some:vars_of_timeline_axis axis)
         items
   | _ -> []
@@ -1728,6 +1728,18 @@ let vars_of_timeline_inset (value : Properties.timeline_inset) =
       vars_of_timeline_inset_item first
       @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_view_timeline_shorthand (value : Properties.view_timeline_shorthand)
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Timelines items ->
+      List.concat_map
+        (fun { Properties.axis; inset; _ } ->
+          Option.fold ~none:[] ~some:vars_of_timeline_axis axis
+          @ Option.fold ~none:[] ~some:vars_of_timeline_inset inset)
+        items
+  | _ -> []
 
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
@@ -2403,7 +2415,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | View_timeline_name, value -> vars_of_timeline_name value
   | View_timeline_axis, value -> vars_of_timeline_axis value
   | View_timeline_inset, value -> vars_of_timeline_inset value
-  | View_timeline, value -> vars_of_timeline_shorthand value
+  | View_timeline, value -> vars_of_view_timeline_shorthand value
   | Timeline_scope, value -> vars_of_timeline_name value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value

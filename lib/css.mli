@@ -7136,6 +7136,22 @@ type timeline_shorthand = Properties.timeline_shorthand =
   | Revert_layer
   | Var of timeline_shorthand var
 
+type view_timeline_shorthand_item = Properties.view_timeline_shorthand_item = {
+  name : string;
+  axis : timeline_axis option;
+  inset : Properties.timeline_inset option;
+}
+
+type view_timeline_shorthand = Properties.view_timeline_shorthand =
+  | None
+  | Timelines of view_timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_timeline_shorthand var
+
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action}

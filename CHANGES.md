@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `Properties.View_timeline` carries a `view_timeline_shorthand` instead of a
+  `timeline_shorthand`. Its items include the shorthand's optional inset slot,
+  so values such as `view-timeline:--v 10% 20%` parse and round-trip (#669)
 - `timeline_shorthand_item.axis` is optional. The scroll and view timeline
   shorthand grammars make their axis slots optional; omitted axes now parse as
   `None` and round-trip without being rewritten as `block` (#668)

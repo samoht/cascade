@@ -3623,7 +3623,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Animation_timeline, value -> value
   | Animation_range, value -> value
   | (Animation_range_start | Animation_range_end), value -> value
-  | (Scroll_timeline | View_timeline), value -> value
+  | Scroll_timeline, value -> value
+  | View_timeline, value -> value
   | (Scroll_timeline_name | View_timeline_name | Timeline_scope), value -> value
   | (Scroll_timeline_axis | View_timeline_axis), value -> value
   | View_transition_name, value -> value
@@ -4585,7 +4586,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | View_timeline_name -> pp pp_timeline_name
   | View_timeline_axis -> pp pp_timeline_axis
   | View_timeline_inset -> pp pp_timeline_inset
-  | View_timeline -> pp pp_timeline_shorthand
+  | View_timeline -> pp pp_view_timeline_shorthand
   | Timeline_scope -> pp pp_timeline_name
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value

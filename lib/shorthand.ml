@@ -858,13 +858,17 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Container -> [ key "container-name"; key "container-type" ]
   | Container_name -> [ key "container-name" ]
   | Container_type -> [ key "container-type" ]
-  (* Scroll-driven Animations 1 sec. 2.3.3 and 3.4.4. [view-timeline-inset] is
-     not part of [view-timeline]. *)
+  (* Scroll-driven Animations 1 sec. 2.3.3 and 3.4.4. *)
   | Scroll_timeline ->
       [ key "scroll-timeline-name"; key "scroll-timeline-axis" ]
   | Scroll_timeline_name -> [ key "scroll-timeline-name" ]
   | Scroll_timeline_axis -> [ key "scroll-timeline-axis" ]
-  | View_timeline -> [ key "view-timeline-name"; key "view-timeline-axis" ]
+  | View_timeline ->
+      [
+        key "view-timeline-name";
+        key "view-timeline-axis";
+        key "view-timeline-inset";
+      ]
   | View_timeline_name -> [ key "view-timeline-name" ]
   | View_timeline_axis -> [ key "view-timeline-axis" ]
   (* CSS UI 4 sec. 5.2.4. *)

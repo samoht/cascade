@@ -3903,6 +3903,22 @@ type timeline_inset =
   | Revert_layer
   | Var of timeline_inset var
 
+type view_timeline_shorthand_item = {
+  name : string;
+  axis : timeline_axis option;
+  inset : timeline_inset option;
+}
+
+type view_timeline_shorthand =
+  | None
+  | Timelines of view_timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_timeline_shorthand var
+
 type overscroll_behavior =
   | Auto
   | Contain
@@ -4881,7 +4897,7 @@ type 'a property =
   | View_timeline_name : timeline_name property
   | View_timeline_axis : timeline_axis property
   | View_timeline_inset : timeline_inset property
-  | View_timeline : timeline_shorthand property
+  | View_timeline : view_timeline_shorthand property
   | Timeline_scope : timeline_name property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
