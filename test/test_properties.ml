@@ -1854,9 +1854,11 @@ let test_font_weight () =
   check_font_weight "normal";
   check_font_weight "bold";
   check_font_weight "700";
+  check_font_weight "650.5";
   check_font_weight "1000";
   check_font_weight "lighter";
   neg_cursor read_font_weight "invalid-weight";
+  neg_cursor read_font_weight "0.5";
   neg_cursor read_font_weight "1001";
   (* out of range *)
   neg_cursor ~allow_partial:true read_font_weight "normal bold";
@@ -2489,12 +2491,24 @@ let test_font_feature_settings () =
   check_font_feature_settings "inherit";
   check_font_feature_settings "\"kern\"";
   check_font_feature_settings "\"liga\" 0";
+  (* CSS Fonts 4 sec. 6.12 permits every non-negative integer as a feature
+     selection index and requires a four-character printable ASCII tag. The tag
+     is a CSS string, so its decoded quote must be escaped again by pp. *)
+  check_font_feature_settings "\"swsh\" 2";
+  check_font_feature_settings ~expected:"\"a\\\"bc\" 3" "\"a\\22 bc\" 3";
+  neg_cursor read_font_feature_settings "\"éab\" 1";
+  neg_cursor read_font_feature_settings "\"kern\" 1.5";
   neg_cursor read_font_feature_settings "invalid-feature"
 
 let test_font_variation_settings () =
   check_font_variation_settings "normal";
   check_font_variation_settings "inherit";
   check_font_variation_settings "\"wght\" 400";
+  (* CSS Fonts 4 sec. 8.2 pairs a printable four-character tag with a number,
+     not an integer. Re-serialize the decoded tag through the CSS printer. *)
+  check_font_variation_settings "\"wght\" 123.5";
+  check_font_variation_settings ~expected:"\"a\\\"bc\" 123.5"
+    "\"a\\22 bc\" 123.5";
   neg_cursor read_font_variation_settings "invalid-variation"
 
 let test_transform_style () =
