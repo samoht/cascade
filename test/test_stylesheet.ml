@@ -5248,11 +5248,9 @@ let bg35_radius_collapse () =
     "border-radius: 1px 1px 1px 1px collapses to 1px" ".x{border-radius:1px}"
     (normalize ".x { border-radius: 1px 1px 1px 1px }")
 
-(* CSS Values and Units Module Level 4, section 10 (Mathematical Expressions):
-   [calc(<dimension> + 0)] simplifies to [<dimension>] because adding zero is
-   the identity in that dimension. The spec permits the implementation to
-   simplify - cssnano takes the freedom; the shortest spec-equivalent form is
-   the bare dimension. *)
+(* CSS Values 4 sec. 10.10.1 only combines sum children with identical units and
+   explicitly warns that a zero term cannot otherwise be removed: its type can
+   affect the calculation. A unitless zero is not a [<length>] calc term. *)
 let v410_calc_add_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -5260,11 +5258,17 @@ let v410_calc_add_zero () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "calc(1px + 0) simplifies to 1px" ".x{width:1px}"
+    "unitless zero stays in a length sum" ".x{width:calc(1px + 0)}"
     (normalize ".x { width: calc(1px + 0) }");
   Alcotest.(check string)
-    "calc(0 + 1px) simplifies to 1px" ".x{width:1px}"
+    "leading unitless zero stays in a length sum" ".x{width:calc(0 + 1px)}"
     (normalize ".x { width: calc(0 + 1px) }");
+  Alcotest.(check string)
+    "a cross-unit zero stays in a length sum" ".x{width:calc(1em + 0px)}"
+    (normalize ".x { width: calc(1em + 0px) }");
+  Alcotest.(check string)
+    "a zero percentage stays in a length sum" ".x{width:calc(1px + 0%)}"
+    (normalize ".x { width: calc(1px + 0%) }");
   Alcotest.(check string)
     "calc(1px + 0px) simplifies to 1px" ".x{width:1px}"
     (normalize ".x { width: calc(1px + 0px) }")
@@ -6246,7 +6250,7 @@ let v4_10_2_calc_arithmetic () =
     "calc(1px * 0) -> 0" ".x{width:0}"
     (normalize ".x { width: calc(1px * 0) }");
   Alcotest.(check string)
-    "calc(0 + 0) -> 0" ".x{width:0}"
+    "unitless calc zero stays untyped" ".x{width:calc(0)}"
     (normalize ".x { width: calc(0 + 0) }")
 
 let v4102_calc_addition () =
@@ -6545,21 +6549,17 @@ let customprops12_inlining () =
     ".x{padding:calc(var(--spacing))}"
     (normalize ".x { padding: calc(var(--spacing) / 1) }");
   Alcotest.(check string)
-    "calc var plus zero folds, keeping the var reference"
-    ".x{padding:calc(var(--spacing))}"
+    "calc var plus zero keeps the typed term"
+    ".x{padding:calc(var(--spacing) + 0px)}"
     (normalize ".x { padding: calc(var(--spacing) + 0px) }");
   Alcotest.(check string)
-    "calc zero plus var folds, keeping the var reference"
-    ".x{padding:calc(var(--spacing))}"
+    "calc zero plus var keeps the typed term"
+    ".x{padding:calc(0px + var(--spacing))}"
     (normalize ".x { padding: calc(0px + var(--spacing)) }");
   Alcotest.(check string)
-    "calc var minus zero folds, keeping the var reference"
-    ".x{padding:calc(var(--spacing))}"
+    "calc var minus zero keeps the typed term"
+    ".x{padding:calc(var(--spacing) - 0px)}"
     (normalize ".x { padding: calc(var(--spacing) - 0px) }");
-  Alcotest.(check string)
-    "calc nested var identities fold, keeping the var reference"
-    ".x{padding:calc(var(--spacing))}"
-    (normalize ".x { padding: calc((var(--spacing) * 1) + 0px) }");
   Alcotest.(check string)
     "calc var-free left subtree may fold before var"
     ".x{padding:calc(3px + var(--spacing))}"
@@ -7391,7 +7391,7 @@ let v4_10_7_identity_operations () =
     "calc(10px / 1) -> 10px" ".x{width:10px}"
     (normalize ".x { width: calc(10px / 1) }");
   Alcotest.(check string)
-    "calc(0 * 100%) -> 0" ".x{width:0}"
+    "calc(0 * 100%) keeps its percentage type" ".x{width:0%}"
     (normalize ".x { width: calc(0 * 100%) }")
 
 let v4_10_7_percentage_arithmetic () =

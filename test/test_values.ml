@@ -211,8 +211,8 @@ let test_length () =
   check_length "0vi";
   check_length "0svh";
 
-  (* calc() is held verbatim by pp (a typed boundary); the zero-operand
-     simplification [calc(X + 0)] -> [X] is an optimize fold. *)
+  (* calc() is held verbatim by pp. A unitless zero cannot be removed from a
+     typed sum: it is not a [<length>] operand. *)
   check_length "calc(100% - 0)";
   check_length "calc(10px + 0)";
   check_length "calc(0 + 10px)";
@@ -224,11 +224,11 @@ let test_length () =
   decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
   decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
   decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
-  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"100%"
+  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"calc(100% - 0)"
     "calc(100% - 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"calc(10px + 0)"
     "calc(10px + 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"calc(0 + 10px)"
     "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
