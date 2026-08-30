@@ -337,6 +337,24 @@ let normalize_offset_path : offset_path -> offset_path =
            })
   | other -> other
 
+let rec normalize_offset_anchor (value : offset_anchor) =
+  match value with
+  | Position position ->
+      preserve_if_equal value (Position (normalize_position_value position))
+  | Var var ->
+      let var' = map_var_preserve normalize_offset_anchor var in
+      if var' == var then value else Var var'
+  | other -> other
+
+let rec normalize_offset_position (value : offset_position) =
+  match value with
+  | Position position ->
+      preserve_if_equal value (Position (normalize_position_value position))
+  | Var var ->
+      let var' = map_var_preserve normalize_offset_position var in
+      if var' == var then value else Var var'
+  | other -> other
+
 let normalize_offset_rotate : offset_rotate -> offset_rotate =
   let na = Values.normalize_angle in
   fun value ->
@@ -673,6 +691,58 @@ let rec pp_offset_path : offset_path Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_offset_anchor : offset_anchor Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Position position -> pp_position_value ctx position
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var var -> pp_var pp_offset_anchor ctx var
+
+let rec pp_offset_position : offset_position Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Auto -> Pp.string ctx "auto"
+  | Position position -> pp_position_value ctx position
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var var -> pp_var pp_offset_position ctx var
+
+let rec read_offset_anchor t : offset_anchor =
+  Cursor.enum_or_calls "offset-anchor"
+    [
+      ("auto", Auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_offset_anchor t)) ]
+    ~default:(fun t -> (Position (read_position_value t) : offset_anchor))
+    t
+
+let rec read_offset_position t : offset_position =
+  Cursor.enum_or_calls "offset-position"
+    [
+      ("normal", Normal);
+      ("auto", Auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_offset_position t)) ]
+    ~default:(fun t -> (Position (read_position_value t) : offset_position))
+    t
 
 let pp_offset_rotate_mode : offset_rotate_mode Pp.t =
  fun ctx -> function

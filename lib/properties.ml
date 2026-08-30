@@ -517,6 +517,8 @@ let pp_property : type a. a property Pp.t =
       Pp.string ctx "contain-intrinsic-inline-size"
   | Margin_trim -> Pp.string ctx "margin-trim"
   | Offset_path -> Pp.string ctx "offset-path"
+  | Offset_anchor -> Pp.string ctx "offset-anchor"
+  | Offset_position -> Pp.string ctx "offset-position"
   | Offset_distance -> Pp.string ctx "offset-distance"
   | Offset_rotate -> Pp.string ctx "offset-rotate"
   | Font_size_adjust -> Pp.string ctx "font-size-adjust"
@@ -1335,6 +1337,8 @@ let property_tag : type a. a property -> int = function
   | Overscroll_behavior_inline -> 531
   | Accent_color -> 532
   | Caret_color -> 533
+  | Offset_anchor -> 534
+  | Offset_position -> 535
 (* PROPERTY_TAG_END *)
 
 (* Two property identities order by tag, and the two payload-carrying
@@ -1696,6 +1700,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Contain_intrinsic_inline_size, Contain_intrinsic_inline_size -> Some Equal
   | Margin_trim, Margin_trim -> Some Equal
   | Offset_path, Offset_path -> Some Equal
+  | Offset_anchor, Offset_anchor -> Some Equal
+  | Offset_position, Offset_position -> Some Equal
   | Offset_distance, Offset_distance -> Some Equal
   | Offset_rotate, Offset_rotate -> Some Equal
   | Font_size_adjust, Font_size_adjust -> Some Equal
@@ -2700,6 +2706,8 @@ let read_any_property t =
   | "contain-intrinsic-inline-size" -> Prop Contain_intrinsic_inline_size
   | "margin-trim" -> Prop Margin_trim
   | "offset-path" -> Prop Offset_path
+  | "offset-anchor" -> Prop Offset_anchor
+  | "offset-position" -> Prop Offset_position
   | "offset-distance" -> Prop Offset_distance
   | "offset-rotate" -> Prop Offset_rotate
   | "font-size-adjust" -> Prop Font_size_adjust
@@ -3349,6 +3357,9 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
  fun prop value ->
   match (prop, value) with
   | Z_index, Initial -> Auto
+  (* Motion Path 1 secs. 2.3-2.4: the initial values are [normal] and [auto]. *)
+  | Offset_anchor, Initial -> Auto
+  | Offset_position, Initial -> Normal
   | Opacity, Initial -> Opacity_number 1.
   | Margin, vs when box_is_all_initial vs -> [ Px 0. ]
   | Padding, vs when box_is_all_initial vs -> [ Px 0. ]
@@ -3639,6 +3650,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       value
   | Margin_trim, value -> value
   | Offset_path, value -> value
+  | Offset_anchor, value -> value
+  | Offset_position, value -> value
   | Offset_rotate, value -> value
   | Font_size_adjust, value -> value
   | Font_variant_emoji, value -> value
@@ -3902,6 +3915,8 @@ let normalize_property_value : type a.
   | Translate -> normalize_translate_value value
   | Transform_origin -> normalize_transform_origin value
   | Offset_path -> normalize_offset_path value
+  | Offset_anchor -> normalize_offset_anchor value
+  | Offset_position -> normalize_offset_position value
   | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
   | Width -> Values.normalize_length_percentage ~ctx value
@@ -4573,6 +4588,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Contain_intrinsic_inline_size -> pp pp_contain_intrinsic_longhand
   | Margin_trim -> pp pp_margin_trim
   | Offset_path -> pp pp_offset_path
+  | Offset_anchor -> pp pp_offset_anchor
+  | Offset_position -> pp pp_offset_position
   | Offset_distance -> pp (pp_length_percentage ~always:true)
   | Offset_rotate -> pp pp_offset_rotate
   | Font_size_adjust -> pp pp_font_size_adjust

@@ -3611,6 +3611,27 @@ type offset_path =
   | Revert_layer
   | Var of offset_path var
 
+type offset_anchor =
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_anchor var
+
+type offset_position =
+  | Normal
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_position var
+
 type offset_rotate_mode = Auto | Reverse
 
 type offset_rotate =
@@ -5087,6 +5108,8 @@ type 'a property =
   | Overscroll_behavior_inline : overscroll_behavior property
   | Accent_color : color property
   | Caret_color : color property
+  | Offset_anchor : offset_anchor property
+  | Offset_position : offset_position property
 
 type any_property = Prop : 'a property -> any_property
 

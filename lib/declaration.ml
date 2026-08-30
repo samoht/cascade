@@ -1611,6 +1611,8 @@ let read_motion_value : type a. a property -> Cursor.t -> declaration option =
   match prop with
   | Margin_trim -> Some (v Margin_trim (read_margin_trim t))
   | Offset_path -> Some (v Offset_path (read_offset_path t))
+  | Offset_anchor -> Some (v Offset_anchor (read_offset_anchor t))
+  | Offset_position -> Some (v Offset_position (read_offset_position t))
   | Offset_rotate -> Some (v Offset_rotate (read_offset_rotate t))
   | Font_size_adjust -> Some (v Font_size_adjust (read_font_size_adjust t))
   | Font_variant_emoji ->

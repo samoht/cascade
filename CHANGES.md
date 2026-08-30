@@ -197,6 +197,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `offset-anchor` and `offset-position` are typed properties. They validate
+  their Motion Path grammars, expose `offset_anchor` / `offset_position`
+  values, and canonicalize their `<position>` branches. Generic positions no
+  longer accept length-only keywords such as `normal` as coordinates (#674)
 - Three- and four-value position readers validate horizontal/vertical edge
   pairs instead of accepting arbitrary identifiers or two edges on one axis.
   Generic `<position>` rejects three-value forms, `background-position` keeps

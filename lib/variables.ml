@@ -1171,6 +1171,18 @@ let vars_of_offset_path (value : Properties.offset_path) =
   | None | Url _ | Path _ | Initial | Inherit | Unset | Revert | Revert_layer ->
       []
 
+let vars_of_offset_anchor (value : Properties.offset_anchor) =
+  match value with
+  | Var var -> [ V var ]
+  | Position position -> vars_of_position_value position
+  | Auto | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_offset_position (value : Properties.offset_position) =
+  match value with
+  | Var var -> [ V var ]
+  | Position position -> vars_of_position_value position
+  | Normal | Auto | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
 let vars_of_offset_rotate (value : Properties.offset_rotate) =
   match value with
   | Var v -> [ V v ]
@@ -2287,6 +2299,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
       vars_of_contain_intrinsic_longhand value
   | Margin_trim, value -> vars_of_margin_trim value
   | Offset_path, value -> vars_of_offset_path value
+  | Offset_anchor, value -> vars_of_offset_anchor value
+  | Offset_position, value -> vars_of_offset_position value
   | Offset_rotate, value -> vars_of_offset_rotate value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value

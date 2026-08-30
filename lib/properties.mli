@@ -405,6 +405,18 @@ val pp_offset_path : offset_path Pp.t
 val read_offset_path : Cursor.t -> offset_path
 (** [read_offset_path t] parses [offset-path]. *)
 
+val pp_offset_anchor : offset_anchor Pp.t
+(** [pp_offset_anchor] pretty-prints [offset-anchor]. *)
+
+val read_offset_anchor : Cursor.t -> offset_anchor
+(** [read_offset_anchor t] parses [offset-anchor]. *)
+
+val pp_offset_position : offset_position Pp.t
+(** [pp_offset_position] pretty-prints [offset-position]. *)
+
+val read_offset_position : Cursor.t -> offset_position
+(** [read_offset_position t] parses [offset-position]. *)
+
 val pp_animation_range_item : animation_range_item Pp.t
 (** [pp_animation_range_item] pretty-prints one [<single-animation-range>]. *)
 

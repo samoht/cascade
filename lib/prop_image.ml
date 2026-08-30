@@ -1323,14 +1323,9 @@ module Position_value = struct
     || (vertical edge && (horizontal axis || axis = "center"))
 
   let read_xy (t : Cursor.t) : position_value =
-    let x = read_length t in
-    (* Reject global keywords - they should be parsed by read_1_value *)
-    (match x with
-    | Inherit | Initial | Unset | Revert | Revert_layer ->
-        Cursor.err_invalid t "global keywords must be used alone"
-    | _ -> ());
+    let x = read_length ~with_keywords:false t in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option (read_length ~with_keywords:false) t with
     | Some y -> XY (x, y)
     | None -> Single x
 
@@ -1402,7 +1397,7 @@ module Position_value = struct
   let read_3_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length_percentage t in
+    let offset = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
     let axis = Cursor.ident t in
     if valid_edge_axis edge1 axis then Edge_offset_axis (edge1, offset, axis)
@@ -1413,14 +1408,14 @@ module Position_value = struct
     Cursor.ws t;
     let edge = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length_percentage t in
+    let offset = read_length_percentage ~with_keywords:false t in
     if valid_edge_axis edge axis then Axis_edge_offset (axis, edge, offset)
     else Cursor.err_invalid t "invalid position axis edge offset"
 
   let read_horizontal_keyword_length t : position_value =
     let keyword = Cursor.ident t in
     Cursor.ws t;
-    let y = read_length t in
+    let y = read_length ~with_keywords:false t in
     match keyword with
     | "left" -> XY ((Pct 0. : length), y)
     | "right" -> XY ((Pct 100. : length), y)
@@ -1428,7 +1423,7 @@ module Position_value = struct
     | _ -> Cursor.err_invalid t "invalid horizontal position keyword length"
 
   let read_length_keyword t : position_value =
-    let offset = read_length t in
+    let offset = read_length ~with_keywords:false t in
     Cursor.ws t;
     match Cursor.ident t with
     | "center" -> Single offset
@@ -1438,11 +1433,11 @@ module Position_value = struct
   let read_4_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset1 = read_length_percentage t in
+    let offset1 = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
     let edge2 = Cursor.ident t in
     Cursor.ws t;
-    let offset2 = read_length_percentage t in
+    let offset2 = read_length_percentage ~with_keywords:false t in
     if
       (horizontal edge1 && vertical edge2)
       || (vertical edge1 && horizontal edge2)

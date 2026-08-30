@@ -953,6 +953,12 @@ let check_object_view_box =
 let check_offset_path =
   check_value_cursor "offset_path" read_offset_path pp_offset_path
 
+let check_offset_anchor =
+  check_value_cursor "offset_anchor" read_offset_anchor pp_offset_anchor
+
+let check_offset_position =
+  check_value_cursor "offset_position" read_offset_position pp_offset_position
+
 let check_offset_rotate =
   check_value_cursor "offset_rotate" read_offset_rotate pp_offset_rotate
 
@@ -3044,6 +3050,27 @@ let test_position_value () =
   neg_cursor ~allow_partial:true read_position_value "left 1px top";
   neg_cursor ~allow_partial:true read_position_value "left top 1px"
 
+let test_offset_anchor () =
+  check_offset_anchor "auto";
+  check_offset_anchor "center";
+  check_offset_anchor "left top";
+  check_offset_anchor "left 10px top 20px";
+  check_offset_anchor "var(--anchor,left top)";
+  check_offset_anchor "inherit";
+  neg_cursor read_offset_anchor "normal";
+  neg_cursor read_offset_anchor "size"
+
+let test_offset_position () =
+  check_offset_position "normal";
+  check_offset_position "auto";
+  check_offset_position "center";
+  check_offset_position "20% 30%" ~expected:"20%30%";
+  check_offset_position "left 10px top 20px";
+  check_offset_position "var(--position,center)";
+  check_offset_position "inherit";
+  neg_cursor read_offset_position "none";
+  neg_cursor read_offset_position "size"
+
 let test_translate_value () =
   check_translate_value "none";
   check_translate_value "10px";
@@ -4975,6 +5002,8 @@ let additional_tests =
     test_case "background_image" `Quick test_background_image;
     test_case "background_position" `Quick test_background_position;
     test_case "position_value" `Quick test_position_value;
+    test_case "offset_anchor" `Quick test_offset_anchor;
+    test_case "offset_position" `Quick test_offset_position;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;
