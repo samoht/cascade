@@ -18,6 +18,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `position_value.Axis_edge_offset` carries a `length_percentage`, matching the
+  percentage-capable `<bg-position>` offset it represents (#673)
 - `text_box.Normal` represents the `normal` shorthand branch, which now parses
   and round-trips instead of being dropped (#671)
 - `text_box.Box` carries an optional trim value. The `text-box` grammar makes
@@ -195,6 +197,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Three- and four-value position readers validate horizontal/vertical edge
+  pairs instead of accepting arbitrary identifiers or two edges on one axis.
+  Generic `<position>` rejects three-value forms, `background-position` keeps
+  its valid three-value extension, and `transform-origin` greedily separates
+  an optional Z length from its position (#673)
 - `border-image` accepts a repeat keyword without a source or slice; omitted
   shorthand slots take their initial values, so `border-image: round` is valid
   and no longer dropped (#667)

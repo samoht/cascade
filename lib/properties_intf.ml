@@ -2593,7 +2593,7 @@ type position_value =
   | Revert_layer
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
   | Edge_offset_axis of string * length_percentage * string
-  | Axis_edge_offset of string * string * length
+  | Axis_edge_offset of string * string * length_percentage
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage

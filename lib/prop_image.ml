@@ -218,7 +218,7 @@ let rec pp_position_value : position_value Pp.t =
       Pp.space ctx ();
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_length ctx offset
+      pp_position_offset ctx offset
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
@@ -767,8 +767,8 @@ let position_pair x y =
   match (x, y) with Some x, Some y -> Some (x, y) | _ -> None
 
 (* The horizontal and vertical components of a statically-known position; [None]
-   when a component is dynamic ([var()], [calc()], [env()]) or offset from a
-   non-zero edge ([right]/[bottom] offsets need the box size). *)
+   when a component is dynamic ([var()], [calc()], [env()]) or uses a non-zero
+   length offset from [right]/[bottom], which needs the box size. *)
 let position_xy : position_value -> (Values.length * Values.length) option =
   function
   | Center -> Some (position_pct 50., position_pct 50.)
@@ -791,8 +791,7 @@ let position_xy : position_value -> (Values.length * Values.length) option =
   | Edge_offset_axis ((("top" | "bottom") as edge), off, axis) ->
       position_pair (horizontal_position axis) (position_edge_offset edge off)
   | Axis_edge_offset (axis, (("top" | "bottom") as edge), off) ->
-      position_pair (horizontal_position axis)
-        (position_edge_offset edge (Length off))
+      position_pair (horizontal_position axis) (position_edge_offset edge off)
   | Edge_offset_edge_offset
       ((("left" | "right") as x_edge), x, (("top" | "bottom") as y_edge), y) ->
       position_pair
@@ -830,7 +829,7 @@ let normalize_position_value ?(strip = true) : position_value -> position_value
       | Edge_offset_axis (e, lp, a) ->
           preserve_if_equal value (Edge_offset_axis (e, offset lp, a))
       | Axis_edge_offset (a, e, l) ->
-          preserve_if_equal value (Axis_edge_offset (a, e, length l))
+          preserve_if_equal value (Axis_edge_offset (a, e, offset l))
       | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
           preserve_if_equal value
             (Edge_offset_edge_offset (e1, offset lp1, e2, offset lp2))
@@ -1316,6 +1315,13 @@ module Position_value = struct
     | Revert
     | Revert_layer
 
+  let horizontal = function "left" | "right" -> true | _ -> false
+  let vertical = function "top" | "bottom" -> true | _ -> false
+
+  let valid_edge_axis edge axis =
+    (horizontal edge && (vertical axis || axis = "center"))
+    || (vertical edge && (horizontal axis || axis = "center"))
+
   let read_xy (t : Cursor.t) : position_value =
     let x = read_length t in
     (* Reject global keywords - they should be parsed by read_1_value *)
@@ -1399,17 +1405,17 @@ module Position_value = struct
     let offset = read_length_percentage t in
     Cursor.ws t;
     let axis = Cursor.ident t in
-    Edge_offset_axis (edge1, offset, axis)
+    if valid_edge_axis edge1 axis then Edge_offset_axis (edge1, offset, axis)
+    else Cursor.err_invalid t "invalid three-value position"
 
   let read_axis_edge_offset t : position_value =
     let axis = Cursor.ident t in
     Cursor.ws t;
     let edge = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length t in
-    match (axis, edge) with
-    | "center", ("top" | "bottom") -> Axis_edge_offset (axis, edge, offset)
-    | _ -> Cursor.err_invalid t "invalid position axis edge offset"
+    let offset = read_length_percentage t in
+    if valid_edge_axis edge axis then Axis_edge_offset (axis, edge, offset)
+    else Cursor.err_invalid t "invalid position axis edge offset"
 
   let read_horizontal_keyword_length t : position_value =
     let keyword = Cursor.ident t in
@@ -1437,23 +1443,37 @@ module Position_value = struct
     let edge2 = Cursor.ident t in
     Cursor.ws t;
     let offset2 = read_length_percentage t in
-    Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
+    if
+      (horizontal edge1 && vertical edge2)
+      || (vertical edge1 && horizontal edge2)
+    then Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
+    else Cursor.err_invalid t "invalid four-value position"
 end
+
+let common_position_readers read_var =
+  [
+    Position_value.read_horizontal_keyword_length;
+    Position_value.read_length_keyword;
+    Position_value.read_xy;
+    Position_value.read_2_value;
+    Position_value.read_1_value;
+    read_var;
+  ]
 
 let rec read_position_value t : position_value =
   let read_var t : position_value = Var (read_var read_position_value t) in
   Cursor.one_of
-    [
-      Position_value.read_4_value;
-      Position_value.read_axis_edge_offset;
-      Position_value.read_3_value;
-      Position_value.read_horizontal_keyword_length;
-      Position_value.read_length_keyword;
-      Position_value.read_xy;
-      Position_value.read_2_value;
-      Position_value.read_1_value;
-      read_var;
-    ]
+    (Position_value.read_4_value :: common_position_readers read_var)
+    t
+
+let rec read_background_position_value t : position_value =
+  let read_var t : position_value =
+    Var (read_var read_background_position_value t)
+  in
+  Cursor.one_of
+    (Position_value.read_4_value :: Position_value.read_axis_edge_offset
+   :: Position_value.read_3_value
+    :: common_position_readers read_var)
     t
 
 module Radial_config = struct

@@ -1658,7 +1658,7 @@ let read_background_box_list t : background_box =
   | many -> Layers many
 
 let read_background_position t : background_position =
-  Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_background_position_value t
 
 module Background_shorthand = struct
   let read_image_item t =
@@ -1670,7 +1670,7 @@ module Background_shorthand = struct
       if bg.image = None then { bg with image = Some img } else bg
 
   let read_position_size_item t =
-    let pos = read_position_value t in
+    let pos = read_background_position_value t in
     Cursor.ws t;
     let size_opt =
       if Cursor.slash_opt t then Some (read_background_size t) else None

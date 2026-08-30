@@ -2387,7 +2387,7 @@ type position_value = Properties.position_value =
   | Revert
   | Revert_layer
   | Edge_offset_axis of string * length_percentage * string
-  | Axis_edge_offset of string * string * length
+  | Axis_edge_offset of string * string * length_percentage
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
   | Var of position_value var

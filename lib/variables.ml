@@ -720,7 +720,7 @@ let vars_of_position_value (value : Properties.position_value) : any_var list =
   | Single l -> vars_of_length l
   | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
   | Edge_offset_axis (_, lp, _) -> vars_of_length_percentage lp
-  | Axis_edge_offset (_, _, length) -> vars_of_length length
+  | Axis_edge_offset (_, _, offset) -> vars_of_length_percentage offset
   | Edge_offset_edge_offset (_, lp1, _, lp2) ->
       vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
   | _ -> []

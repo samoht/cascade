@@ -1064,15 +1064,19 @@ module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
   let read_position t : transform_origin =
-    let position =
-      Cursor.one_of
-        [ Position_value.read_4_value; Position_value.read_3_value ]
-        t
-    in
+    let position = read_position_value t in
     Cursor.ws t;
     match Cursor.option read_length t with
-    | Some z -> Position_z (position, z)
-    | None -> Position position
+    | Some z -> (
+        match position with
+        | XY (x, y) -> XYZ (x, y, z)
+        | Single x -> XYZ (x, (Pct 50. : length), z)
+        | position -> Position_z (position, z))
+    | None -> (
+        match position with
+        | XY (x, y) -> XY (x, y)
+        | Single x -> X x
+        | position -> Position position)
 
   let read_xyz (t : Cursor.t) : transform_origin =
     let x = read_length t in
@@ -1127,7 +1131,10 @@ module Transform_origin = struct
 
   let read_keywords t =
     let keywords = Cursor.list ~at_least:1 ~at_most:2 read_keyword t in
-    merge_keywords t keywords
+    let origin = merge_keywords t keywords in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    origin
 
   let read_center_center t =
     let first = Cursor.ident t in
@@ -1151,9 +1158,9 @@ let rec read_transform_origin (t : Cursor.t) : transform_origin =
       Cursor.one_of
         [
           Transform_origin.read_center_center;
-          Transform_origin.read_position;
-          Transform_origin.read_keywords;
           Transform_origin.read_xyz;
+          Transform_origin.read_keywords;
+          Transform_origin.read_position;
         ]
         t)
     t
