@@ -1003,6 +1003,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `min-inline-size:initial` and `min-block-size:initial` minify to `0`, their
+  CSS Logical Level 1 initial value, rather than the physical minimum-size
+  properties' `auto` initial value (#675)
 - Border-radius normalization uses the shared box-shorthand normalizer instead
   of spelling its map-and-collapse composition inline (#663)
 - Property normalizers reuse `Common.List.map_preserve` instead of carrying a

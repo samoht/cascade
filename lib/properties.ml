@@ -3375,8 +3375,10 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Height, Length Initial -> Length Auto
   | Min_width, Length Initial -> Length Auto
   | Min_height, Length Initial -> Length Auto
-  | Min_inline_size, Length Initial -> Length Auto
-  | Min_block_size, Length Initial -> Length Auto
+  (* CSS Logical 1 sec. 4.1 keeps the logical minimum-size initial value at [0],
+     unlike the physical properties' [auto] from CSS Sizing 3 sec. 3.1.2. *)
+  | Min_inline_size, Length Initial -> Length Zero
+  | Min_block_size, Length Initial -> Length Zero
   (* Keep this fallback exhaustive: a new property must make this match fail to
      compile until its initial-value fold has been considered. *)
   | Custom_property _, value -> value
