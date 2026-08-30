@@ -1369,6 +1369,27 @@ let mask_border_mode_slot () =
   check_declaration ~expected:"border-image:url(a.png)"
     ~optimized:"border-image:url(a.png)" "border-image: url(a.png)"
 
+(* CSS Masking 1 (ED) sec. 8.7 writes mask-border as [<'mask-border-source'> ||
+   <'mask-border-slice'> [ / <'mask-border-width'>? [ / <'mask-border-outset'>
+   ]? ]? || <'mask-border-repeat'> || <'mask-border-mode'>], and CSS Values 4
+   (ED) sec. 2.2 has [||] ask for one or more of its options, so the mode on its
+   own is a whole value. sec. 8.2 gives mask-border-mode the initial value
+   [alpha], so [alpha] drains the shorthand and what is left is the six
+   initials, which is what [none] declares (sec. 8.1). CSS Backgrounds 3 (ED)
+   sec. 5.7 writes border-image without a mode slot, so neither keyword is a
+   border-image value wherever it is written. *)
+let mask_border_mode_only () =
+  check_declaration ~roundtrip:true ~expected:"mask-border:alpha"
+    ~optimized:"mask-border:none" "mask-border: alpha";
+  check_declaration ~roundtrip:true ~expected:"mask-border:luminance"
+    ~optimized:"mask-border:luminance" "mask-border: luminance";
+  check_declaration ~expected:"mask-border:none" ~optimized:"mask-border:none"
+    "mask-border: none";
+  neg_cursor read_declaration "border-image: alpha";
+  neg_cursor read_declaration "border-image: luminance";
+  neg_cursor read_declaration "border-image: url(a.png) alpha";
+  neg_cursor read_declaration "border-image: url(a.png) luminance"
+
 (* CSS Box 4 (ED) sec. 3.2 assigns the values of a one-to-four value box
    shorthand to the four sides: one value goes to all four, two to top-bottom
    then left-right, three to top, left-right, bottom. A repeat that those rules
@@ -1586,10 +1607,11 @@ let empty_shorthand_value () =
 (* The record behind each shorthand is public, so a caller can hand the printer
    a value with no slot filled. That value declares nothing but the initial
    longhands, which is what the [none] keyword declares (CSS Backgrounds 3 (ED)
-   sec. 3.4, CSS UI 4 (ED) sec. 3.1, CSS Text Decoration 4 (ED) sec. 2.6), and
-   [none] is the spelling that says so. An empty string is not a spelling of
-   anything: no parser accepts it. [Css.to_string] does not normalize, so the
-   printer is the only thing standing between such a record and the output. *)
+   sec. 3.4 and sec. 5.7, CSS UI 4 (ED) sec. 3.1, CSS Text Decoration 4 (ED)
+   sec. 2.6, CSS Masking 1 (ED) sec. 8.7), and [none] is the spelling that says
+   so. An empty string is not a spelling of anything: no parser accepts it.
+   [Css.to_string] does not normalize, so the printer is the only thing standing
+   between such a record and the output. *)
 let all_initial_shorthand_prints_none () =
   let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
   let border : Css.border =
@@ -1600,6 +1622,16 @@ let all_initial_shorthand_prints_none () =
   in
   let text_decoration : Css.text_decoration =
     Shorthand { lines = []; style = None; color = None; thickness = None }
+  in
+  let border_image : Css.Properties.border_image =
+    {
+      source = None;
+      slice = None;
+      width = None;
+      outset = None;
+      repeat = None;
+      mode = None;
+    }
   in
   Alcotest.(check string)
     "drained border shorthand" "border:none"
@@ -1618,7 +1650,13 @@ let all_initial_shorthand_prints_none () =
     (pp (Css.Declaration.v Border (Css.border_shorthand ())));
   Alcotest.(check string)
     "text_decoration_shorthand with no slot" "text-decoration:none"
-    (pp (Css.Declaration.v Text_decoration (Css.text_decoration_shorthand ())))
+    (pp (Css.Declaration.v Text_decoration (Css.text_decoration_shorthand ())));
+  Alcotest.(check string)
+    "drained mask-border shorthand" "mask-border:none"
+    (pp (Css.Declaration.v Mask_border border_image));
+  Alcotest.(check string)
+    "drained border-image shorthand" "border-image:none"
+    (pp (Css.Declaration.v Border_image border_image))
 
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
@@ -4905,6 +4943,7 @@ let declaration_tests =
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
+    test_case "mask-border mode only" `Quick mask_border_mode_only;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
     test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
