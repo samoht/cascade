@@ -3974,6 +3974,11 @@ let text_box_edge_only () =
   check_declaration ~roundtrip:true "text-box:cap alphabetic";
   check_sheet_roundtrip "text-box" "a{text-box:cap alphabetic}"
 
+(* CSS Inline 3 sec. 6.1 gives [normal] its own text-box shorthand branch. *)
+let text_box_normal () =
+  check_declaration ~roundtrip:true "text-box:normal";
+  check_sheet_roundtrip "text-box" "a{text-box:normal}"
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4797,6 +4802,7 @@ let declaration_tests =
     test_case "timeline name only" `Quick timeline_name_only;
     test_case "view-timeline inset slot" `Quick view_timeline_inset_slot;
     test_case "text-box edge only" `Quick text_box_edge_only;
+    test_case "text-box normal" `Quick text_box_normal;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick

@@ -4561,6 +4561,7 @@ let spec_generated_position_interaction_edges () =
 let spec_generated_text_timeline_edges () =
   check_text_box "trim-both text alphabetic";
   check_text_box "cap alphabetic";
+  check_text_box "normal";
   check_text_box ~expected:"trim-both cap alphabetic" "cap alphabetic trim-both";
   check_text_box_edge "text ideographic";
   check_text_box_edge_keyword "ideographic-ink";
