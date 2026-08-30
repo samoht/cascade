@@ -18,6 +18,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `text_box.Normal` represents the `normal` shorthand branch, which now parses
+  and round-trips instead of being dropped (#671)
 - `text_box.Box` carries an optional trim value. The `text-box` grammar makes
   both shorthand slots optional; edge-only values such as `cap alphabetic` now
   parse and preserve the omitted trim slot (#670)

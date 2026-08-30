@@ -1102,6 +1102,7 @@ let rec pp_text_box_edge : text_box_edge Pp.t =
 let rec pp_text_box : text_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_text_box ctx v
+  | Normal -> Pp.string ctx "normal"
   | Box (None, None) -> pp_text_box_trim ctx Trim_both
   | Box (trim, edge) ->
       Option.iter (pp_text_box_trim ctx) trim;
@@ -1562,6 +1563,7 @@ let rec read_text_box_edge ?(global = true) t : text_box_edge =
 let rec read_text_box t : text_box =
   Cursor.enum_or_var "text-box"
     [
+      ("normal", (Normal : text_box));
       ("initial", (Initial : text_box));
       ("inherit", Inherit);
       ("unset", Unset);
