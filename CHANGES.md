@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- Public declaration helpers whose CSS values require a non-empty list now
+  raise `Invalid_argument` for `[]` instead of emitting a declaration with no
+  value.
 - `Cursor.list` requires at least one item by default. Grammars that permit an
   empty list must now opt into it with `~at_least:0`. Empty CSS grammar lists
   and non-positive explicit `repeat()` counts are rejected.

@@ -2532,17 +2532,23 @@ let to_string ?(minify = false) (decl : t) =
   Buffer.contents buf
 
 (* Single-to-list property helpers *)
+let require_nonempty name = function [] -> invalid_arg name | values -> values
 let background_image value = v Background_image [ value ]
 let text_shadow value = v Text_shadow [ value ]
-let text_shadows values = v Text_shadow values
+
+let text_shadows values =
+  v Text_shadow (require_nonempty "text_shadows: empty list" values)
+
 let transition value = v Transition [ value ]
-let transitions values = v Transition values
+
+let transitions values =
+  v Transition (require_nonempty "transitions: empty list" values)
+
 let animation value = v Animation [ value ]
 let box_shadow value = v Box_shadow value
 
-let box_shadows = function
-  | [] -> invalid_arg "box_shadows: empty list"
-  | values -> v Box_shadow (List values)
+let box_shadows values =
+  v Box_shadow (List (require_nonempty "box_shadows: empty list" values))
 
 (* Special helpers *)
 let z_index_auto = v Z_index Auto
@@ -2570,12 +2576,12 @@ let font_style fs = v Font_style fs
 let list_style_type lst = v List_style_type lst
 let list_style_position ls = v List_style_position ls
 let list_style_image is = v List_style_image is
-let padding (values : length list) = v Padding values
+let padding values = v Padding (require_nonempty "padding: empty list" values)
 let padding_left len = v Padding_left len
 let padding_right len = v Padding_right len
 let padding_bottom len = v Padding_bottom len
 let padding_top len = v Padding_top len
-let margin (values : length list) = v Margin values
+let margin values = v Margin (require_nonempty "margin: empty list" values)
 let margin_left len = v Margin_left len
 let margin_right len = v Margin_right len
 let margin_top len = v Margin_top len
@@ -2637,11 +2643,17 @@ let white_space value = v White_space value
 let display d = v Display d
 let position p = v Position p
 let visibility p = v Visibility p
-let inset len = v Inset len
-let inset_inline len = v Inset_inline len
+let inset values = v Inset (require_nonempty "inset: empty list" values)
+
+let inset_inline values =
+  v Inset_inline (require_nonempty "inset_inline: empty list" values)
+
 let inset_inline_start len = v Inset_inline_start [ len ]
 let inset_inline_end len = v Inset_inline_end [ len ]
-let inset_block len = v Inset_block len
+
+let inset_block values =
+  v Inset_block (require_nonempty "inset_block: empty list" values)
+
 let inset_block_start len = v Inset_block_start [ len ]
 let inset_block_end len = v Inset_block_end [ len ]
 let top len = v Top [ len ]
@@ -2715,29 +2727,55 @@ let animation_direction value = v Animation_direction value
 let animation_fill_mode value = v Animation_fill_mode value
 let animation_play_state value = v Animation_play_state value
 let background_blend_mode value = v Background_blend_mode [ value ]
-let scroll_margin value = v Scroll_margin value
+
+let scroll_margin values =
+  v Scroll_margin (require_nonempty "scroll_margin: empty list" values)
+
 let scroll_margin_top value = v Scroll_margin_top value
 let scroll_margin_right value = v Scroll_margin_right value
 let scroll_margin_bottom value = v Scroll_margin_bottom value
 let scroll_margin_left value = v Scroll_margin_left value
-let scroll_margin_inline value = v Scroll_margin_inline value
+
+let scroll_margin_inline values =
+  v Scroll_margin_inline
+    (require_nonempty "scroll_margin_inline: empty list" values)
+
 let scroll_margin_inline_start value = v Scroll_margin_inline_start value
 let scroll_margin_inline_end value = v Scroll_margin_inline_end value
-let scroll_margin_block value = v Scroll_margin_block value
+
+let scroll_margin_block values =
+  v Scroll_margin_block
+    (require_nonempty "scroll_margin_block: empty list" values)
+
 let scroll_margin_block_start value = v Scroll_margin_block_start value
 let scroll_margin_block_end value = v Scroll_margin_block_end value
-let scroll_padding value = v Scroll_padding value
+
+let scroll_padding values =
+  v Scroll_padding (require_nonempty "scroll_padding: empty list" values)
+
 let scroll_padding_top value = v Scroll_padding_top value
 let scroll_padding_right value = v Scroll_padding_right value
 let scroll_padding_bottom value = v Scroll_padding_bottom value
 let scroll_padding_left value = v Scroll_padding_left value
-let scroll_padding_inline value = v Scroll_padding_inline value
+
+let scroll_padding_inline values =
+  v Scroll_padding_inline
+    (require_nonempty "scroll_padding_inline: empty list" values)
+
 let scroll_padding_inline_start value = v Scroll_padding_inline_start value
 let scroll_padding_inline_end value = v Scroll_padding_inline_end value
-let scroll_padding_block value = v Scroll_padding_block value
+
+let scroll_padding_block values =
+  v Scroll_padding_block
+    (require_nonempty "scroll_padding_block: empty list" values)
+
 let scroll_padding_block_start value = v Scroll_padding_block_start value
 let scroll_padding_block_end value = v Scroll_padding_block_end value
-let overscroll_behavior value = v Overscroll_behavior value
+
+let overscroll_behavior values =
+  v Overscroll_behavior
+    (require_nonempty "overscroll_behavior: empty list" values)
+
 let overscroll_behavior_x value = v Overscroll_behavior_x value
 let overscroll_behavior_y value = v Overscroll_behavior_y value
 let accent_color value = v Accent_color value
@@ -2832,9 +2870,8 @@ let background_origin value = v Background_origin value
 let background_clip value = v Background_clip value
 let webkit_background_clip value = v Webkit_background_clip value
 
-let font_families = function
-  | [] -> invalid_arg "font_families: empty list"
-  | fonts -> v Font_family (List fonts)
+let font_families fonts =
+  v Font_family (List (require_nonempty "font_families: empty list" fonts))
 
 let background_attachment value = v Background_attachment value
 let border_top value = v Border_top value
@@ -2854,8 +2891,14 @@ let mask_mode value = v Mask_mode value
 let mask_type value = v Mask_type value
 let webkit_mask_size value = v Webkit_mask_size value
 let mask_size value = v Mask_size value
-let webkit_mask_position value = v Webkit_mask_position value
-let mask_position value = v Mask_position value
+
+let webkit_mask_position values =
+  v Webkit_mask_position
+    (require_nonempty "webkit_mask_position: empty list" values)
+
+let mask_position values =
+  v Mask_position (require_nonempty "mask_position: empty list" values)
+
 let webkit_mask_repeat value = v Webkit_mask_repeat value
 let mask_repeat value = v Mask_repeat value
 let webkit_mask_clip value = v Webkit_mask_clip value
@@ -2900,7 +2943,11 @@ let font_variant_position value = v Font_variant_position value
 let font_variant_east_asian value = v East_asian value
 let backdrop_filter value = v Backdrop_filter value
 let webkit_backdrop_filter value = v Webkit_backdrop_filter value
-let background_position value = v Background_position value
+
+let background_position values =
+  v Background_position
+    (require_nonempty "background_position: empty list" values)
+
 let background_repeat value = v Background_repeat value
 let background_size value = v Background_size value
 let content value = v Content value
@@ -2952,16 +2999,25 @@ let container ?type_ name =
   v Container (Shorthand { name = Some name; ctype = type_ })
 
 let transform value = v Transform [ value ]
-let transforms value = v Transform value
+
+let transforms values =
+  v Transform (require_nonempty "transforms: empty list" values)
+
 let rotate (value : Properties_intf.rotate_value) = v Rotate value
 let scale (value : Properties_intf.scale) = v Scale value
 let translate (value : Properties_intf.translate_value) = v Translate value
 let perspective value = v Perspective value
 let perspective_origin value = v Perspective_origin value
-let padding_inline value = v Padding_inline value
+
+let padding_inline values =
+  v Padding_inline (require_nonempty "padding_inline: empty list" values)
+
 let padding_inline_start value = v Padding_inline_start value
 let padding_inline_end value = v Padding_inline_end value
-let padding_block value = v Padding_block value
+
+let padding_block values =
+  v Padding_block (require_nonempty "padding_block: empty list" values)
+
 let padding_block_start value = v Padding_block_start value
 let padding_block_end value = v Padding_block_end value
 let margin_inline value = v Margin_inline [ value ]
