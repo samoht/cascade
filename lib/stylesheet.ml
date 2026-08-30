@@ -2971,11 +2971,11 @@ let replace_font_palette_descriptor desc acc =
        acc
 
 let read_base_palette_value inner =
-  match Cursor.number inner with
+  match Cursor.int inner with
   | n ->
-      if n < 0. || Float.floor n <> n then
+      if n < 0 then
         Cursor.err_invalid inner "base-palette index must be non-negative";
-      Index (Float.to_int n)
+      Index n
   | exception Cursor.Parse_error _ -> (
       (* [light] and [dark] are keywords, so CSS Values 4 sec. 4.1 reads them
          case-insensitively; any other ident is the author's own. *)
@@ -2987,13 +2987,13 @@ let read_base_palette_value inner =
       | _ -> Cursor.err_expected inner "base-palette value")
 
 let read_override_color_entry c =
-  let index = Cursor.number c in
-  if index < 0. || Float.floor index <> index then
+  let index = Cursor.int c in
+  if index < 0 then
     Cursor.err_invalid c "override-colors index must be non-negative";
   Cursor.ws c;
   let color = Values.read_color c in
   Cursor.ws c;
-  (Float.to_int index, color)
+  (index, color)
 
 (* CSS Fonts 4 sec. 12.1 gives each [@font-palette-values] descriptor a grammar
    of its own, and the declaration is the whole of it: a trailing [!important]

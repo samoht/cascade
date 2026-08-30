@@ -270,7 +270,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader
-  | Integer -> int_of_float (Cursor.number reader)
+  | Integer -> Cursor.int reader
   | Percentage -> Values.read_percentage reader
   | Length_percentage -> Values.read_length_percentage reader
   | Angle -> Values.read_angle_unit_required reader

@@ -55,10 +55,11 @@ let rec read_font_weight t : font_weight =
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let n = Cursor.number t in
-      let weight = int_of_float n in
-      if weight >= 1 && weight <= 1000 then (Weight weight : font_weight)
-      else err_invalid_value t "font-weight" (string_of_int weight))
+      let weight = Cursor.number t in
+      if weight >= 1. && weight <= 1000. then (Weight weight : font_weight)
+      else
+        err_invalid_value t "font-weight"
+          (Pp.string_of_float ~drop_leading_zero:true weight))
     t
 
 let rec read_font_style t : font_style =
@@ -796,61 +797,47 @@ let rec pp_font_style : font_style Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_font_feature_value ctx (value : font_feature_value) =
+  match value with
+  | On -> Pp.string ctx "on"
+  | Off -> Pp.string ctx "off"
+  | Index value -> Pp.int ctx value
+
+let pp_font_feature_setting ctx ({ tag; value } : font_feature_setting) =
+  Pp.quoted_string ctx tag;
+  match value with
+  | None -> ()
+  | Some value ->
+      Pp.space ctx ();
+      pp_font_feature_value ctx value
+
 let rec pp_font_feature_settings : font_feature_settings Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Feature_list s ->
-      (* Feature list contains quoted tags already in the stored string *)
-      Pp.string ctx s
+  | Feature_list settings ->
+      Pp.list ~sep:Pp.comma pp_font_feature_setting ctx settings
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_feature_settings ctx v
 
-(* Collapse the optional whitespace after each axis-separator comma in a
-   [font-variation-settings] list. Commas inside a quoted axis tag (a 4-char tag
-   may contain U+2C) are left untouched. *)
-let minify_axis_list s =
-  let buf = Buffer.create (String.length s) in
-  let n = String.length s in
-  let in_quote = ref false in
-  let i = ref 0 in
-  while !i < n do
-    let c = s.[!i] in
-    if !in_quote then (
-      Buffer.add_char buf c;
-      if c = '"' then in_quote := false;
-      incr i)
-    else if c = '"' then (
-      Buffer.add_char buf c;
-      in_quote := true;
-      incr i)
-    else if c = ',' then (
-      Buffer.add_char buf ',';
-      incr i;
-      while !i < n && s.[!i] = ' ' do
-        incr i
-      done)
-    else (
-      Buffer.add_char buf c;
-      incr i)
-  done;
-  Buffer.contents buf
+let pp_font_variation_setting ctx ({ tag; value } : font_variation_setting) =
+  Pp.quoted_string ctx tag;
+  Pp.space ctx ();
+  Pp.float ctx value
 
 let rec pp_font_variation_settings : font_variation_settings Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Axis_list s ->
-      Pp.string ctx (if Pp.minified ctx then minify_axis_list s else s)
+  | Axis_list settings ->
+      Pp.list ~sep:Pp.comma pp_font_variation_setting ctx settings
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_variation_settings ctx v
 
 let rec pp_font_palette : font_palette Pp.t =
@@ -1197,7 +1184,7 @@ let rec pp_line_height : line_height Pp.t =
 
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
-  | Weight n -> Pp.int ctx n
+  | Weight n -> Pp.float ctx n
   | Normal -> Pp.string ctx "normal"
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
@@ -1843,31 +1830,50 @@ let rec read_font_variant_numeric t : font_variant_numeric =
     ~var:(fun t -> Var (read_var read_font_variant_numeric t))
     ~default:read_font_variant_numeric_tokens t
 
+let read_opentype_tag t =
+  let tag = Cursor.string t in
+  let printable_ascii c =
+    let code = Char.code c in
+    code >= 0x20 && code <= 0x7E
+  in
+  if String.length tag <> 4 || not (String.for_all printable_ascii tag) then
+    Cursor.err t
+      "OpenType tag must contain exactly four printable ASCII characters";
+  tag
+
+let read_font_feature_value t : font_feature_value =
+  match Cursor.option Cursor.int t with
+  | Some value ->
+      if value < 0 then
+        Cursor.err t "font-feature-settings value must be non-negative";
+      Index value
+  | None ->
+      Cursor.enum "font-feature-settings value"
+        [ ("on", (On : font_feature_value)); ("off", Off) ]
+        t
+
+let read_font_feature_setting t : font_feature_setting =
+  let tag = read_opentype_tag t in
+  Cursor.ws t;
+  let value =
+    match Cursor.peek t with
+    | Some
+        (Component.Preserved { kind = Token.Number_tok _ | Token.Ident _; _ })
+      ->
+        Some (read_font_feature_value t)
+    | _ -> None
+  in
+  { tag; value }
+
 let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
     Var (read_var read_font_feature_settings t)
   in
-  let read_feature t =
-    let tag_content = Cursor.string t in
-    if String.length tag_content <> 4 then
-      Cursor.err t "font-feature-settings tag must be exactly 4 characters";
-    let tag = "\"" ^ tag_content ^ "\"" in
-    Cursor.ws t;
-    match Cursor.option Cursor.number t with
-    | Some n ->
-        if n <> 0.0 && n <> 1.0 then
-          Cursor.err t "font-feature-settings value must be 0 or 1";
-        tag ^ " " ^ string_of_int (int_of_float n)
-    | None -> (
-        match Cursor.option Cursor.ident t with
-        | Some "on" -> tag ^ " on"
-        | Some "off" -> tag ^ " off"
-        | Some _ -> Cursor.err t "font-feature-settings value must be on/off"
-        | None -> tag)
-  in
   let read_feature_list t =
-    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_feature t in
-    Feature_list (String.concat ", " items)
+    let items =
+      Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_feature_setting t
+    in
+    Feature_list items
   in
   Cursor.enum_or_calls "font-feature-settings"
     [
@@ -1881,31 +1887,21 @@ let rec read_font_feature_settings t : font_feature_settings =
     ~calls:[ ("var", read_var) ]
     ~default:read_feature_list t
 
+let read_font_variation_setting t : font_variation_setting =
+  let tag = read_opentype_tag t in
+  Cursor.ws t;
+  let value = Cursor.number t in
+  { tag; value }
+
 let rec read_font_variation_settings t : font_variation_settings =
   let read_var t : font_variation_settings =
     Var (read_var read_font_variation_settings t)
   in
-  let read_axis t =
-    let tag_content = Cursor.string t in
-    if String.length tag_content <> 4 then
-      Cursor.err t
-        "font-variation-settings axis tag must be exactly 4 characters";
-    String.iter
-      (fun c ->
-        let code = Char.code c in
-        if code < 0x20 || code > 0x7E then
-          Cursor.err t
-            "font-variation-settings axis tag must contain only ASCII \
-             characters (U+20 - U+7E)")
-      tag_content;
-    let tag = "\"" ^ tag_content ^ "\"" in
-    Cursor.ws t;
-    let value = Cursor.number t in
-    tag ^ " " ^ string_of_int (int_of_float value)
-  in
   let read_axis_list t =
-    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_axis t in
-    Axis_list (String.concat ", " items)
+    let items =
+      Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_variation_setting t
+    in
+    Axis_list items
   in
   Cursor.enum_or_calls "font-variation-settings"
     [
@@ -1962,8 +1958,8 @@ let normalize_line_height (lh : line_height) : line_height =
    "Same as 700", so each keyword and its number name one weight and the number
    is the shorter spelling. *)
 let normalize_font_weight : font_weight -> font_weight = function
-  | Normal -> Weight 400
-  | Bold -> Weight 700
+  | Normal -> Weight 400.
+  | Bold -> Weight 700.
   | value -> value
 
 (* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()
@@ -2035,7 +2031,7 @@ let normalize_font : font -> font =
       let weight =
         option_map_preserve normalize_font_weight s.weight
         |> drop_font_initial_slot ~is_initial:(function
-          | (Normal : font_weight) | Weight 400 -> true
+          | (Normal : font_weight) | Weight 400. -> true
           | _ -> false)
       in
       let stretch =

@@ -741,13 +741,21 @@ let repr_is_signed (number : Token.number) =
   let r = number.repr in
   String.length r > 0 && (r.[0] = '+' || r.[0] = '-')
 
+let integer_token t (number : Token.number) =
+  match Token.integer_opt number with
+  | Some value -> value
+  | None when number.number_flag = Token.Integer ->
+      Cursor.err_invalid t "integer outside supported range"
+  | None -> Cursor.err_expected t "integer"
+
 (* Parse a [<signless-integer>] (no leading [+]/[-] in the token repr). *)
 let read_signless_integer t =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Number_tok n; _ })
     when not (repr_is_signed n) ->
+      let value = integer_token t n in
       Cursor.skip t;
-      int_of_float n.value
+      value
   | _ -> Cursor.err_expected t "signless integer"
 
 (* Parse a [<signed-integer>]: a single number token whose repr starts with [+]
@@ -755,9 +763,12 @@ let read_signless_integer t =
 let read_signed_integer_opt t =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Number_tok n; _ })
-    when repr_is_signed n ->
-      Cursor.skip t;
-      Some (int_of_float n.value)
+    when repr_is_signed n && n.number_flag = Token.Integer -> (
+      match Token.integer_opt n with
+      | Some value ->
+          Cursor.skip t;
+          Some value
+      | None -> None)
   | _ -> None
 
 (* After an [<n-dimension>] or n-ident, consume the optional offset tail: -
@@ -790,18 +801,19 @@ let ensure_no_ws_after_plus t =
    from CSS Syntax 3 (ED) section 6.2. Assumes the cursor is positioned on a
    [Dimension] component. *)
 let read_nth_dimension t number unit_ =
+  let coefficient = integer_token t number in
   if is_n_unit unit_ then (
     Cursor.skip t;
-    An_plus_b (int_of_float number.Token.value, read_an_tail t))
+    An_plus_b (coefficient, read_an_tail t))
   else
     match ndashdigit_b unit_ with
     | Some b ->
         Cursor.skip t;
-        An_plus_b (int_of_float number.Token.value, -b)
+        An_plus_b (coefficient, -b)
     | None ->
         if is_ndash unit_ then (
           Cursor.skip t;
-          An_plus_b (int_of_float number.Token.value, -read_signless_integer t))
+          An_plus_b (coefficient, -read_signless_integer t))
         else Cursor.err_expected t "An+B dimension (n / n-N / n-)"
 
 (* Fall-through for ident forms not caught by the explicit predicates: must be

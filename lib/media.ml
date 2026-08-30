@@ -617,8 +617,9 @@ let typed_function_value component : value option =
 
 let value_of_number (number : Token.number) =
   match number.number_flag with
-  | Token.Integer -> Integer (int_of_float number.value)
-  | Token.Number -> Number number.value
+  | Token.Integer ->
+      Option.map (fun value -> Integer value) (Token.integer_opt number)
+  | Token.Number -> Some (Number number.value)
 
 let read_value_with_unit value unit : value option =
   match length_of_value value unit with
@@ -631,7 +632,7 @@ let read_value_with_unit value unit : value option =
 let value_of_components_opt components =
   match non_whitespace_components components with
   | [ Component.Preserved { kind = Token.Number_tok number; _ } ] ->
-      Some (value_of_number number)
+      value_of_number number
   | [ Component.Preserved { kind = Token.Percentage number; _ } ] ->
       Some (Length (Values_intf.Pct number.value))
   | [ Component.Preserved { kind = Token.Dimension { number; unit_ }; _ } ] ->

@@ -18,6 +18,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `font_weight.Weight` carries a number rather than an integer, and font
+  feature and variation settings carry structured tag/value lists rather than
+  pre-rendered strings. Fractional weights and variation values are preserved,
+  feature indexes may exceed one, and decoded tags are escaped as CSS strings.
 - `position_value.Axis_edge_offset` carries a `length_percentage`, matching the
   percentage-capable `<bg-position>` offset it represents (#673)
 - `text_box.Normal` represents the `normal` shorthand branch, which now parses
@@ -197,6 +201,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `steps()` rejects fractional counts, and `jump-none` requires at least two
+  steps. Other step positions continue to require a positive integer count.
 - `mask-border` accepts a lone mode keyword, and `border-image` rejects one
   anywhere: only mask-border's grammar carries a `<'mask-border-mode'>` slot
   (#682)

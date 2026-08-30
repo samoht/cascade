@@ -293,9 +293,21 @@ let check_font_variant_numeric =
   check_value_cursor "font-variant-numeric" read_font_variant_numeric
     pp_font_variant_numeric
 
+let check_font_feature_value =
+  check_value_cursor "font-feature-value" read_font_feature_value
+    pp_font_feature_value
+
+let check_font_feature_setting =
+  check_value_cursor "font-feature-setting" read_font_feature_setting
+    pp_font_feature_setting
+
 let check_font_feature_settings =
   check_value_cursor "font-feature-settings" read_font_feature_settings
     pp_font_feature_settings
+
+let check_font_variation_setting =
+  check_value_cursor "font-variation-setting" read_font_variation_setting
+    pp_font_variation_setting
 
 let check_font_variation_settings =
   check_value_cursor "font-variation-settings" read_font_variation_settings
@@ -1854,9 +1866,11 @@ let test_font_weight () =
   check_font_weight "normal";
   check_font_weight "bold";
   check_font_weight "700";
+  check_font_weight "650.5";
   check_font_weight "1000";
   check_font_weight "lighter";
   neg_cursor read_font_weight "invalid-weight";
+  neg_cursor read_font_weight "0.5";
   neg_cursor read_font_weight "1001";
   (* out of range *)
   neg_cursor ~allow_partial:true read_font_weight "normal bold";
@@ -2484,18 +2498,65 @@ let test_font_variant_numeric () =
   check_font_variant_numeric "tabular-nums";
   neg_cursor read_font_variant_numeric "invalid-variant"
 
+let test_font_feature_value () =
+  check_font_feature_value "on";
+  check_font_feature_value "off";
+  check_font_feature_value "2";
+  neg_cursor read_font_feature_value "-1";
+  neg_cursor read_font_feature_value "1.5"
+
+let test_font_feature_setting () =
+  check_font_feature_setting "\"kern\"";
+  check_font_feature_setting "\"swsh\" 2";
+  check_font_feature_setting ~expected:"\"a\\\"bc\" on" "\"a\\22 bc\" on";
+  neg_cursor read_font_feature_setting "\"bad\""
+
 let test_font_feature_settings () =
   check_font_feature_settings "normal";
   check_font_feature_settings "inherit";
   check_font_feature_settings "\"kern\"";
   check_font_feature_settings "\"liga\" 0";
+  (* CSS Fonts 4 sec. 6.12 permits every non-negative integer as a feature
+     selection index and requires a four-character printable ASCII tag. The tag
+     is a CSS string, so its decoded quote must be escaped again by pp. *)
+  check_font_feature_settings "\"swsh\" 2";
+  check_font_feature_settings ~expected:"\"a\\\"bc\" 3" "\"a\\22 bc\" 3";
+  let structured =
+    Feature_list
+      [
+        { tag = "a\"bc"; value = Some (Index 2) };
+        { tag = "kern"; value = Some On };
+      ]
+  in
+  check string "structured font feature settings" "\"a\\\"bc\" 2,\"kern\" on"
+    (Css.Pp.to_string ~minify:true pp_font_feature_settings structured);
+  neg_cursor read_font_feature_settings "\"\\e9 ab\" 1";
+  neg_cursor read_font_feature_settings "\"kern\" 1.5";
   neg_cursor read_font_feature_settings "invalid-feature"
 
 let test_font_variation_settings () =
   check_font_variation_settings "normal";
   check_font_variation_settings "inherit";
   check_font_variation_settings "\"wght\" 400";
+  (* CSS Fonts 4 sec. 8.2 pairs a printable four-character tag with a number,
+     not an integer. Re-serialize the decoded tag through the CSS printer. *)
+  check_font_variation_settings "\"wght\" 123.5";
+  check_font_variation_settings ~expected:"\"a\\\"bc\" 123.5"
+    "\"a\\22 bc\" 123.5";
+  let structured =
+    Axis_list
+      [ { tag = "a\"bc"; value = 123.5 }; { tag = "wght"; value = 650.25 } ]
+  in
+  check string "structured font variation settings"
+    "\"a\\\"bc\" 123.5,\"wght\" 650.25"
+    (Css.Pp.to_string ~minify:true pp_font_variation_settings structured);
   neg_cursor read_font_variation_settings "invalid-variation"
+
+let test_font_variation_setting () =
+  check_font_variation_setting "\"wght\" 123.5";
+  check_font_variation_setting ~expected:"\"a\\\"bc\" 123.5"
+    "\"a\\22 bc\" 123.5";
+  neg_cursor read_font_variation_setting "\"bad\" 1"
 
 let test_transform_style () =
   check_transform_style "flat";
@@ -2560,6 +2621,9 @@ let test_timing_function () =
   check_timing_function "steps(4, jump-start)" ~expected:"steps(4,jump-start)";
   check_timing_function "steps( 4 , jump-start )"
     ~expected:"steps(4,jump-start)";
+  check_timing_function "steps(2, jump-none)" ~expected:"steps(2,jump-none)";
+  neg_cursor read_timing_function "steps(1.9)";
+  neg_cursor read_timing_function "steps(1, jump-none)";
   neg_cursor read_timing_function "steps(4, jump-start, red)";
   neg_cursor read_timing_function "steps(4 red)";
   neg_cursor read_timing_function "cubic-bezier(0.1,0.7,1,0.1,0.5)"
@@ -4355,7 +4419,8 @@ let test_css_wide () =
 
 let spec_property_grammar_edges () =
   check_font_feature_settings "\"kern\" on";
-  check_font_feature_settings "\"liga\" off, \"calt\" 1";
+  check_font_feature_settings ~expected:"\"liga\" off,\"calt\" 1"
+    "\"liga\" off, \"calt\" 1";
   check_font_variation_settings ~expected:"\"wght\" 650,\"wdth\" 75"
     "\"wght\" 650, \"wdth\" 75";
   check_timing_function "linear(0, .25 50%, 1)";
@@ -4374,7 +4439,7 @@ let spec_property_grammar_edges () =
   check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
   check_content "counters(section, \".\")";
-  neg_cursor read_font_feature_settings "\"kern\" 2";
+  neg_cursor read_font_feature_settings "\"kern\" -1";
   neg_cursor read_font_variation_settings "\"wg\" 400";
   neg_cursor read_timing_function "linear()";
   neg_cursor read_timing_function "steps(0, jump-end)";
@@ -5149,7 +5214,10 @@ let additional_tests =
     test_case "vertical_align" `Quick test_vertical_align;
     test_case "font_stretch" `Quick test_font_stretch;
     test_case "font_variant_numeric" `Quick test_font_variant_numeric;
+    test_case "font_feature_value" `Quick test_font_feature_value;
+    test_case "font_feature_setting" `Quick test_font_feature_setting;
     test_case "font_feature_settings" `Quick test_font_feature_settings;
+    test_case "font_variation_setting" `Quick test_font_variation_setting;
     test_case "font_variation_settings" `Quick test_font_variation_settings;
     test_case "transform_style" `Quick test_transform_style;
     test_case "backface_visibility" `Quick test_backface_visibility;

@@ -2718,6 +2718,16 @@ let number_formats () =
   (* Scientific notation IS valid in CSS per the spec *)
   check_declaration ~expected:"opacity:100" "opacity: 1e2"
 
+let integer_precision () =
+  check_declaration "order:9007199254740993";
+  check_declaration "grid-template-columns:repeat(9007199254740993,1px)";
+  List.iter
+    (neg_cursor read_declaration)
+    [
+      "order:999999999999999999999999999999999999";
+      "grid-template-columns:repeat(999999999999999999999999999999999999,1px)";
+    ]
+
 let unterminated () =
   (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and
      function calls at EOF. Assert the recovered declaration matches the shape
@@ -5046,6 +5056,7 @@ let declaration_tests =
     test_case "comments handling" `Quick comments;
     test_case "unit case-insensitivity" `Quick unit_case;
     test_case "number formats" `Quick number_formats;
+    test_case "integer precision" `Quick integer_precision;
     test_case "property name case" `Quick property_case;
     test_case "special cases" `Quick special_cases;
     test_case "edge cases" `Quick edge_cases;

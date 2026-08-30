@@ -26,6 +26,19 @@ let test_number () =
     "first" (Some 1.5) (Cursor.number_opt c);
   Alcotest.(check (option int)) "second" (Some 42) (Cursor.integer_opt c)
 
+(* CSS Values 4 sec. 5 represents an authored integer as an abstract integer.
+   The lexer also retains its decimal representation, so converting through the
+   rounded float must not change an integer that OCaml can represent. A token
+   outside that finite range is not an unrelated machine integer. *)
+let test_integer_precision () =
+  let exact = cursor_of_string "9007199254740993" in
+  Alcotest.(check (option int))
+    "past float precision" (Some 9007199254740993) (Cursor.integer_opt exact);
+  let unsupported = cursor_of_string "999999999999999999999999999999999999" in
+  Alcotest.(check (option int))
+    "outside the OCaml int range" None
+    (Cursor.integer_opt unsupported)
+
 let test_percentage_dimension () =
   let c = cursor_of_string "50% 10px" in
   Alcotest.(check (option (float 0.001)))
@@ -189,6 +202,7 @@ let suite =
     [
       Alcotest.test_case "ident" `Quick test_ident;
       Alcotest.test_case "number" `Quick test_number;
+      Alcotest.test_case "integer precision" `Quick test_integer_precision;
       Alcotest.test_case "percentage / dimension" `Quick
         test_percentage_dimension;
       Alcotest.test_case "parens" `Quick test_parens;

@@ -832,8 +832,7 @@ module Timing_function = struct
 
   let read_steps t : timing_function =
     Cursor.call "steps" t (fun t ->
-        let n = int_of_float (Cursor.number t) in
-        if n <= 0 then Cursor.err t "steps() requires a positive step count";
+        let n = Cursor.int t in
         let kind =
           Cursor.option
             (fun t ->
@@ -841,6 +840,11 @@ module Timing_function = struct
               read_steps_direction t)
             t
         in
+        (match kind with
+        | Some Jump_none when n < 2 ->
+            Cursor.err t "steps() with jump-none requires at least two steps"
+        | _ when n < 1 -> Cursor.err t "steps() requires a positive step count"
+        | _ -> ());
         Steps (n, kind))
 
   let read_cubic_bezier t : timing_function =

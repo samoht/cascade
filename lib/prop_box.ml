@@ -846,7 +846,7 @@ let rec read_visibility t : visibility =
     t
 
 let rec read_z_index t : z_index =
-  let read_calc_z t =
+  let read_calc_z t : z_index =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
       read_calc (fun _ -> Cursor.err t "unexpected value in z-index calc") t
@@ -867,10 +867,7 @@ let rec read_z_index t : z_index =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
-    ~default:(fun t ->
-      let n = Cursor.number t in
-      if Float.is_integer n then Index (int_of_float n)
-      else Cursor.err_invalid t "z-index must be integer")
+    ~default:(fun t -> (Index (Cursor.int t) : z_index))
     t
 
 let read_aspect_ratio_number t =

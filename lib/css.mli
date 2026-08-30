@@ -1469,28 +1469,44 @@ type blend_mode = Properties.blend_mode =
   | Revert_layer
   | Var of blend_mode var
 
-(** CSS font-feature-settings values *)
+(** The optional value paired with an OpenType feature tag. *)
+type font_feature_value = Properties.font_feature_value =
+  | On
+  | Off
+  | Index of int
+
+type font_feature_setting = Properties.font_feature_setting = {
+  tag : string;
+  value : font_feature_value option;
+}
+(** One OpenType feature tag and its optional value. *)
+
+(** CSS font-feature-settings values. *)
 type font_feature_settings = Properties.font_feature_settings =
   | Normal
-  | Feature_list of string
+  | Feature_list of font_feature_setting list
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
-  | String of string
   | Var of font_feature_settings var
 
-(** CSS font-variation-settings values *)
+type font_variation_setting = Properties.font_variation_setting = {
+  tag : string;
+  value : float;
+}
+(** One OpenType variation axis and its numeric value. *)
+
+(** CSS font-variation-settings values. *)
 type font_variation_settings = Properties.font_variation_settings =
   | Normal
-  | Axis_list of string
+  | Axis_list of font_variation_setting list
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
-  | String of string
   | Var of font_variation_settings var
 
 val important : declaration -> declaration
@@ -4119,7 +4135,7 @@ val place_self : align_self * justify_self -> declaration
 
 (** CSS font weight values. *)
 type font_weight = Properties.font_weight =
-  | Weight of int
+  | Weight of float
   | Normal
   | Bold
   | Bolder
