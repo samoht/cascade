@@ -4514,7 +4514,11 @@ let non_empty_list_grammar () =
       "background-blend-mode:normal";
       "width:hypot(3px,4px)";
       "grid-template-columns:repeat(2,1px)";
-    ]
+    ];
+  (* Grid 2 defines a line-name block with a [*] multiplier, so this is the one
+     audited grammar list that deliberately remains empty. *)
+  check_declaration ~expected:"grid-template-columns:[]1px"
+    "grid-template-columns:[] 1px"
 
 (* CSS Values 4 sec. 5.7.3: a [#] multiplier's comma never trails the last item.
    [min()]/[max()] take a comma-separated [<calc-sum>] list (sec. 10.2), and

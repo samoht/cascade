@@ -521,7 +521,8 @@ val one_of : (t -> 'a) list -> t -> 'a
 val list :
   ?sep:(t -> unit) -> ?at_least:int -> ?at_most:int -> (t -> 'a) -> t -> 'a list
 (** [list ?sep ?at_least ?at_most item t] parses items separated by [sep]
-    (default: no separator). A [sep] only commits once another [item] parses
+    (default: no separator). Lists require at least one item unless [at_least]
+    is specified explicitly. A [sep] only commits once another [item] parses
     after it, so a trailing separator with nothing following it is left
     unconsumed for the caller rather than silently dropped. Enforces cardinality
     bounds. Too few items raise ["expected at least N items (got M)"], the

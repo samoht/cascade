@@ -971,7 +971,7 @@ let rec list_collect sep item t acc n max =
   | Done items -> items
   | Continue (acc, n) -> list_collect sep item t acc n max
 
-let list ?sep ?(at_least = 0) ?at_most item t =
+let list ?sep ?(at_least = 1) ?at_most item t =
   let max = Option.value at_most ~default:max_int in
   let items = list_collect sep item t [] 0 max in
   let len = List.length items in

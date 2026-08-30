@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `Cursor.list` requires at least one item by default. Grammars that permit an
+  empty list must now opt into it with `~at_least:0`. Empty CSS grammar lists
+  and non-positive explicit `repeat()` counts are rejected.
 - `font_weight.Weight` carries a number rather than an integer, and font
   feature and variation settings carry structured tag/value lists rather than
   pre-rendered strings. Fractional weights and variation values are preserved,
