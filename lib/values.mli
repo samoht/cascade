@@ -227,8 +227,8 @@ val pp_duration : duration Pp.t
 (** [pp_duration] pretty-prints {!duration} values. *)
 
 val pp_duration_preserve_ms : duration Pp.t
-(** [pp_duration_preserve_ms] is an alias of {!pp_duration}. Both printers hold
-    the parsed unit; millisecond shortening is an AST normalization. *)
+(** [pp_duration_preserve_ms] pretty-prints {!duration} values without
+    shortening milliseconds to seconds. *)
 
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)

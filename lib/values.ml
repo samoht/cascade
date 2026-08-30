@@ -3669,16 +3669,17 @@ let rec pp_angle : angle Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(* A bare or [deg] hue prints in full in both modes: reducing its precision
-   changes the rendered colour, so that is a lossy fold owned by the AST
-   normalize pass ([round_hue]), not the printer, and a consumer serialising a
-   typed oklch with [to_string ~minify:true] round-trips the authored hue. *)
+(* A bare or [deg] hue prints in full precision. Minified output can omit an
+   explicit [deg] exactly; converting another angle unit or reducing precision
+   remains a node-changing fold owned by the AST normalize pass
+   ([round_hue]). *)
 let pp_hue_float ctx f =
   Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f)
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
   | Unitless f -> pp_hue_float ctx f
+  | Angle (Deg f) when Pp.minified ctx -> pp_hue_float ctx f
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
@@ -4827,10 +4828,30 @@ and pp_color_default : color Pp.t =
 
 let pp_specified_color = pp_color_default
 
+(* CSS Values 4 sec. 7.2: [ms] and [s] are interchangeable. Pure minified
+   serialization picks the shorter exact leaf spelling as a fallback for callers
+   that deliberately skip AST normalization. [shorten_ms:false] keeps the unit
+   where its surrounding grammar asks for source-unit fidelity. *)
+let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
+  if f = 0. then
+    if Pp.minified ctx then Pp.string ctx "0s" else pp_unit ctx f suffix
+  else if (not shorten_ms) || (not (Pp.minified ctx)) || suffix <> "ms" then
+    pp_unit ctx f suffix
+  else
+    let seconds = f /. 1000. in
+    let ms = Pp.string_of_float ~drop_leading_zero:true f in
+    let s = Pp.string_of_float ~drop_leading_zero:true seconds in
+    if String.length s + 1 <= String.length ms + 2 then (
+      Pp.string ctx s;
+      Pp.char ctx 's')
+    else (
+      Pp.string ctx ms;
+      Pp.string ctx "ms")
+
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit ctx f "ms"
-  | S f -> pp_unit ctx f "s"
+  | Ms f -> pp_duration_unit ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
   | Durations durations -> Pp.list ~sep:Pp.comma pp_duration ctx durations
   | Round (strategy, value, step) ->
       Pp.call "round"
@@ -4866,14 +4887,14 @@ let rec pp_duration : duration Pp.t =
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit ctx f "ms"
-  | S f -> pp_unit ctx f "s"
+  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
   | Durations durations ->
       Pp.list ~sep:Pp.comma pp_duration_in_calc ctx durations
   | Round (strategy, value, step) ->
-      pp_duration ctx (Round (strategy, value, step))
-  | Rem (a, b) -> pp_duration ctx (Rem (a, b))
-  | Mod (a, b) -> pp_duration ctx (Mod (a, b))
+      pp_duration_preserve_ms ctx (Round (strategy, value, step))
+  | Rem (a, b) -> pp_duration_preserve_ms ctx (Rem (a, b))
+  | Mod (a, b) -> pp_duration_preserve_ms ctx (Mod (a, b))
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -4882,7 +4903,43 @@ and pp_duration_in_calc : duration Pp.t =
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
-let pp_duration_preserve_ms = pp_duration
+and pp_duration_preserve_ms : duration Pp.t =
+ fun ctx -> function
+  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
+  | Durations durations ->
+      Pp.list ~sep:Pp.comma pp_duration_preserve_ms ctx durations
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_duration_preserve_ms ctx value;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx step)
+        ctx (strategy, value, step)
+  | Rem (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_duration_preserve_ms ctx v
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
 let rec pp_number : number Pp.t =
  fun ctx -> function

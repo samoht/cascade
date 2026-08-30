@@ -541,6 +541,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
+  constructed millisecond durations and degree hues without running the AST
+  optimisation phase (#678)
 - `--minify` keeps zero terms in `calc()` sums unless their units match another
   term. Removing a mixed-unit zero can change the calculation's type, and a
   unitless zero is not a valid typed length operand (#676)
