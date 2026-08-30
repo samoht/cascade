@@ -201,6 +201,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `steps()` rejects fractional counts, and `jump-none` requires at least two
+  steps. Other step positions continue to require a positive integer count.
 - `mask-border` accepts a lone mode keyword, and `border-image` rejects one
   anywhere: only mask-border's grammar carries a `<'mask-border-mode'>` slot
   (#682)
