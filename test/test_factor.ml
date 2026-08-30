@@ -453,6 +453,40 @@ let test_text_decoration_default_spellings_factor () =
     ".a,.b{text-shadow:1px 1px}"
     (optimize_str ".a{text-shadow:1px 1px 0}.b{text-shadow:1px 1px}")
 
+(* A typed caller can build transform-origin with the shared [position_value]
+   nodes even though authored CSS uses the property's narrower grammar. Those
+   nodes must canonicalise to XY/XYZ before declarations are hashed. *)
+let test_transform_origin_position_nodes_factor () =
+  let optimize_with parsed value =
+    match Css.of_string parsed with
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        let declaration = Declaration.v Properties.Transform_origin value in
+        Css.concat
+          [
+            stylesheet;
+            Css.v
+              [ Css.rule ~selector:(Selector.of_string ".b") [ declaration ] ];
+          ]
+        |> Css.optimize |> Css.to_string ~minify:true
+  in
+  let offset edge amount = (edge, (Length amount : Values.length_percentage)) in
+  let position x_edge x y_edge y =
+    let x_edge, x = offset x_edge x and y_edge, y = offset y_edge y in
+    (Properties.Edge_offset_edge_offset (x_edge, x, y_edge, y)
+      : Properties.position_value)
+  in
+  Alcotest.(check string)
+    "position node factors with an XY origin"
+    ".a,.b{transform-origin:10px 20px}"
+    (optimize_with ".a{transform-origin:10px 20px}"
+       (Properties.Position (position "left" (Px 10.) "top" (Px 20.))));
+  Alcotest.(check string)
+    "position node factors with an XYZ origin"
+    ".a,.b{transform-origin:10px 20px 30px}"
+    (optimize_with ".a{transform-origin:10px 20px 30px}"
+       (Properties.Position_z (position "left" (Px 10.) "top" (Px 20.), Px 30.)))
+
 (* These equivalent spellings were still canonicalised by their printers, too
    late for declaration hashes to meet during factoring. *)
 let test_remaining_printer_fold_spellings_factor () =
@@ -525,6 +559,8 @@ let suite =
         test_list_style_default_spellings_factor;
       Alcotest.test_case "spelled-out text decoration defaults factor away"
         `Quick test_text_decoration_default_spellings_factor;
+      Alcotest.test_case "transform origin position nodes factor" `Quick
+        test_transform_origin_position_nodes_factor;
       Alcotest.test_case "remaining printer folds factor together" `Quick
         test_remaining_printer_fold_spellings_factor;
     ] )
