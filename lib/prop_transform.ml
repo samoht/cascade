@@ -305,10 +305,17 @@ let rec normalize_transform_origin : transform_origin -> transform_origin =
         let a = z a and b = z b in
         match b with Pct 50. -> X a | _ -> preserve_if_equal value (XY (a, b)))
     | XYZ (a, b, c) -> preserve_if_equal value (XYZ (z a, z b, z c))
-    | Position p ->
-        preserve_if_equal value (Position (normalize_position_value p))
-    | Position_z (p, c) ->
-        preserve_if_equal value (Position_z (normalize_position_value p, z c))
+    | Position p -> (
+        let p = normalize_position_value p in
+        match position_xy p with
+        | Some (a, b) -> normalize_transform_origin (XY (a, b))
+        | None -> preserve_if_equal value (Position p))
+    | Position_z (p, c) -> (
+        let p = normalize_position_value p in
+        let c = z c in
+        match position_xy p with
+        | Some (a, b) -> normalize_transform_origin (XYZ (a, b, c))
+        | None -> preserve_if_equal value (Position_z (p, c)))
     | Var v ->
         let v' = map_var_preserve normalize_transform_origin v in
         if v' == v then value else Var v'

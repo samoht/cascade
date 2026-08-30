@@ -729,42 +729,80 @@ let position_offset_zero (lp : Values.length_percentage) :
     Values.length_percentage =
   match lp with Pct 0. | Length (Pct 0.) -> Length Zero | lp -> lp
 
+let position_pct n : Values.length = Pct n
+
+let static_position_offset : Values.length_percentage -> Values.length option =
+  function
+  | Length l -> Some l
+  | Pct n -> Some (position_pct n)
+  | Env _ | Var _ | Calc _ | Invalid _ -> None
+
+let position_edge_offset edge offset =
+  match edge with
+  | "left" | "top" -> static_position_offset offset
+  | "right" | "bottom" -> (
+      match offset with
+      | Pct n -> Some (position_pct (100. -. n))
+      | Length l -> (
+          match Values.normalize_length l with
+          | Zero -> Some (position_pct 100.)
+          | Pct n -> Some (position_pct (100. -. n))
+          | _ -> None)
+      | Env _ | Var _ | Calc _ | Invalid _ -> None)
+  | _ -> None
+
+let horizontal_position = function
+  | "left" -> Some (position_pct 0.)
+  | "center" -> Some (position_pct 50.)
+  | "right" -> Some (position_pct 100.)
+  | _ -> None
+
+let vertical_position = function
+  | "top" -> Some (position_pct 0.)
+  | "center" -> Some (position_pct 50.)
+  | "bottom" -> Some (position_pct 100.)
+  | _ -> None
+
+let position_pair x y =
+  match (x, y) with Some x, Some y -> Some (x, y) | _ -> None
+
 (* The horizontal and vertical components of a statically-known position; [None]
    when a component is dynamic ([var()], [calc()], [env()]) or offset from a
    non-zero edge ([right]/[bottom] offsets need the box size). *)
 let position_xy : position_value -> (Values.length * Values.length) option =
-  let pct n : Values.length = Pct n in
-  let static_offset : Values.length_percentage -> Values.length option =
-    function
-    | Length l -> Some l
-    | Pct n -> Some (pct n)
-    | Env _ | Var _ | Calc _ | Invalid _ -> None
-  in
   function
-  | Center -> Some (pct 50., pct 50.)
-  | Left -> Some (pct 0., pct 50.)
-  | Right -> Some (pct 100., pct 50.)
-  | Top -> Some (pct 50., pct 0.)
-  | Bottom -> Some (pct 50., pct 100.)
-  | Left_top | Top_left -> Some (pct 0., pct 0.)
-  | Left_center -> Some (pct 0., pct 50.)
-  | Left_bottom | Bottom_left -> Some (pct 0., pct 100.)
-  | Right_top | Top_right -> Some (pct 100., pct 0.)
-  | Right_center -> Some (pct 100., pct 50.)
-  | Right_bottom | Bottom_right -> Some (pct 100., pct 100.)
-  | Center_top -> Some (pct 50., pct 0.)
-  | Center_bottom -> Some (pct 50., pct 100.)
+  | Center -> Some (position_pct 50., position_pct 50.)
+  | Left -> Some (position_pct 0., position_pct 50.)
+  | Right -> Some (position_pct 100., position_pct 50.)
+  | Top -> Some (position_pct 50., position_pct 0.)
+  | Bottom -> Some (position_pct 50., position_pct 100.)
+  | Left_top | Top_left -> Some (position_pct 0., position_pct 0.)
+  | Left_center -> Some (position_pct 0., position_pct 50.)
+  | Left_bottom | Bottom_left -> Some (position_pct 0., position_pct 100.)
+  | Right_top | Top_right -> Some (position_pct 100., position_pct 0.)
+  | Right_center -> Some (position_pct 100., position_pct 50.)
+  | Right_bottom | Bottom_right -> Some (position_pct 100., position_pct 100.)
+  | Center_top -> Some (position_pct 50., position_pct 0.)
+  | Center_bottom -> Some (position_pct 50., position_pct 100.)
   | XY (x, y) -> Some (x, y)
-  | Single x -> Some (x, pct 50.)
-  | Edge_offset_axis ("left", off, "center") ->
-      Option.map (fun x -> (x, pct 50.)) (static_offset off)
-  | Edge_offset_axis ("left", off, "top") ->
-      Option.map (fun x -> (x, pct 0.)) (static_offset off)
-  | Axis_edge_offset ("center", "top", off) -> Some (pct 50., off)
-  | Edge_offset_edge_offset ("left", x, "top", y) -> (
-      match (static_offset x, static_offset y) with
-      | Some x, Some y -> Some (x, y)
-      | _ -> None)
+  | Single x -> Some (x, position_pct 50.)
+  | Edge_offset_axis ((("left" | "right") as edge), off, axis) ->
+      position_pair (position_edge_offset edge off) (vertical_position axis)
+  | Edge_offset_axis ((("top" | "bottom") as edge), off, axis) ->
+      position_pair (horizontal_position axis) (position_edge_offset edge off)
+  | Axis_edge_offset (axis, (("top" | "bottom") as edge), off) ->
+      position_pair (horizontal_position axis)
+        (position_edge_offset edge (Length off))
+  | Edge_offset_edge_offset
+      ((("left" | "right") as x_edge), x, (("top" | "bottom") as y_edge), y) ->
+      position_pair
+        (position_edge_offset x_edge x)
+        (position_edge_offset y_edge y)
+  | Edge_offset_edge_offset
+      ((("top" | "bottom") as y_edge), y, (("left" | "right") as x_edge), x) ->
+      position_pair
+        (position_edge_offset x_edge x)
+        (position_edge_offset y_edge y)
   | _ -> None
 
 (* The parser's node for the shortest spelling of a static (x, y) position: [x]

@@ -530,6 +530,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` canonicalises programmatically constructed shared `<position>`
+  nodes in `transform-origin` to the property's XY/XYZ nodes before hashing, so
+  typed position nodes and coordinate origins now factor together (#672)
 - `--minify` collapses repeated sides in the `scroll-margin` and
   `scroll-padding` physical and logical shorthands before declaration hashes
   are compared, so equivalent rules factor together (#650)
