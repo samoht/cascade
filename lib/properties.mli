@@ -1272,12 +1272,34 @@ val read_font_variant_numeric : Cursor.t -> font_variant_numeric
 (** [read_font_variant_numeric t] is the [font_variant_numeric] parsed from [t].
 *)
 
+val pp_font_feature_value : font_feature_value Pp.t
+(** [pp_font_feature_value] is the pretty-printer for [font_feature_value]. *)
+
+val read_font_feature_value : Cursor.t -> font_feature_value
+(** [read_font_feature_value t] is the [font_feature_value] parsed from [t]. *)
+
+val pp_font_feature_setting : font_feature_setting Pp.t
+(** [pp_font_feature_setting] is the pretty-printer for [font_feature_setting].
+*)
+
+val read_font_feature_setting : Cursor.t -> font_feature_setting
+(** [read_font_feature_setting t] is the [font_feature_setting] parsed from [t].
+*)
+
 val pp_font_feature_settings : font_feature_settings Pp.t
 (** [pp_font_feature_settings] is the pretty-printer for
     [font_feature_settings]. *)
 
 val read_font_feature_settings : Cursor.t -> font_feature_settings
 (** [read_font_feature_settings t] is the [font_feature_settings] parsed from
+    [t]. *)
+
+val pp_font_variation_setting : font_variation_setting Pp.t
+(** [pp_font_variation_setting] is the pretty-printer for
+    [font_variation_setting]. *)
+
+val read_font_variation_setting : Cursor.t -> font_variation_setting
+(** [read_font_variation_setting t] is the [font_variation_setting] parsed from
     [t]. *)
 
 val pp_font_variation_settings : font_variation_settings Pp.t

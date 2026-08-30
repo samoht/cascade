@@ -293,9 +293,21 @@ let check_font_variant_numeric =
   check_value_cursor "font-variant-numeric" read_font_variant_numeric
     pp_font_variant_numeric
 
+let check_font_feature_value =
+  check_value_cursor "font-feature-value" read_font_feature_value
+    pp_font_feature_value
+
+let check_font_feature_setting =
+  check_value_cursor "font-feature-setting" read_font_feature_setting
+    pp_font_feature_setting
+
 let check_font_feature_settings =
   check_value_cursor "font-feature-settings" read_font_feature_settings
     pp_font_feature_settings
+
+let check_font_variation_setting =
+  check_value_cursor "font-variation-setting" read_font_variation_setting
+    pp_font_variation_setting
 
 let check_font_variation_settings =
   check_value_cursor "font-variation-settings" read_font_variation_settings
@@ -2486,6 +2498,19 @@ let test_font_variant_numeric () =
   check_font_variant_numeric "tabular-nums";
   neg_cursor read_font_variant_numeric "invalid-variant"
 
+let test_font_feature_value () =
+  check_font_feature_value "on";
+  check_font_feature_value "off";
+  check_font_feature_value "2";
+  neg_cursor read_font_feature_value "-1";
+  neg_cursor read_font_feature_value "1.5"
+
+let test_font_feature_setting () =
+  check_font_feature_setting "\"kern\"";
+  check_font_feature_setting "\"swsh\" 2";
+  check_font_feature_setting ~expected:"\"a\\\"bc\" on" "\"a\\22 bc\" on";
+  neg_cursor read_font_feature_setting "\"bad\""
+
 let test_font_feature_settings () =
   check_font_feature_settings "normal";
   check_font_feature_settings "inherit";
@@ -2505,7 +2530,7 @@ let test_font_feature_settings () =
   in
   check string "structured font feature settings" "\"a\\\"bc\" 2,\"kern\" on"
     (Css.Pp.to_string ~minify:true pp_font_feature_settings structured);
-  neg_cursor read_font_feature_settings "\"éab\" 1";
+  neg_cursor read_font_feature_settings "\"\\e9 ab\" 1";
   neg_cursor read_font_feature_settings "\"kern\" 1.5";
   neg_cursor read_font_feature_settings "invalid-feature"
 
@@ -2526,6 +2551,12 @@ let test_font_variation_settings () =
     "\"a\\\"bc\" 123.5,\"wght\" 650.25"
     (Css.Pp.to_string ~minify:true pp_font_variation_settings structured);
   neg_cursor read_font_variation_settings "invalid-variation"
+
+let test_font_variation_setting () =
+  check_font_variation_setting "\"wght\" 123.5";
+  check_font_variation_setting ~expected:"\"a\\\"bc\" 123.5"
+    "\"a\\22 bc\" 123.5";
+  neg_cursor read_font_variation_setting "\"bad\" 1"
 
 let test_transform_style () =
   check_transform_style "flat";
@@ -5180,7 +5211,10 @@ let additional_tests =
     test_case "vertical_align" `Quick test_vertical_align;
     test_case "font_stretch" `Quick test_font_stretch;
     test_case "font_variant_numeric" `Quick test_font_variant_numeric;
+    test_case "font_feature_value" `Quick test_font_feature_value;
+    test_case "font_feature_setting" `Quick test_font_feature_setting;
     test_case "font_feature_settings" `Quick test_font_feature_settings;
+    test_case "font_variation_setting" `Quick test_font_variation_setting;
     test_case "font_variation_settings" `Quick test_font_variation_settings;
     test_case "transform_style" `Quick test_transform_style;
     test_case "backface_visibility" `Quick test_backface_visibility;

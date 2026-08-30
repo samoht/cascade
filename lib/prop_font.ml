@@ -1841,36 +1841,38 @@ let read_opentype_tag t =
       "OpenType tag must contain exactly four printable ASCII characters";
   tag
 
+let read_font_feature_value t : font_feature_value =
+  match Cursor.option Cursor.int t with
+  | Some value ->
+      if value < 0 then
+        Cursor.err t "font-feature-settings value must be non-negative";
+      Index value
+  | None ->
+      Cursor.enum "font-feature-settings value"
+        [ ("on", (On : font_feature_value)); ("off", Off) ]
+        t
+
+let read_font_feature_setting t : font_feature_setting =
+  let tag = read_opentype_tag t in
+  Cursor.ws t;
+  let value =
+    match Cursor.peek t with
+    | Some
+        (Component.Preserved { kind = Token.Number_tok _ | Token.Ident _; _ })
+      ->
+        Some (read_font_feature_value t)
+    | _ -> None
+  in
+  { tag; value }
+
 let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
     Var (read_var read_font_feature_settings t)
   in
-  let read_feature t =
-    let tag = read_opentype_tag t in
-    Cursor.ws t;
-    let value =
-      match Cursor.option Cursor.int t with
-      | Some value ->
-          if value < 0 then
-            Cursor.err t "font-feature-settings value must be non-negative";
-          Some (Index value)
-      | None -> (
-          match Cursor.peek t with
-          | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-              Cursor.err t
-                "font-feature-settings value must be a non-negative integer"
-          | _ -> (
-              match Cursor.option (Cursor.ident ~keep_case:false) t with
-              | Some "on" -> Some On
-              | Some "off" -> Some Off
-              | Some _ ->
-                  Cursor.err t "font-feature-settings value must be on/off"
-              | None -> None))
-    in
-    ({ tag; value } : font_feature_setting)
-  in
   let read_feature_list t =
-    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_feature t in
+    let items =
+      Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_feature_setting t
+    in
     Feature_list items
   in
   Cursor.enum_or_calls "font-feature-settings"
@@ -1885,18 +1887,20 @@ let rec read_font_feature_settings t : font_feature_settings =
     ~calls:[ ("var", read_var) ]
     ~default:read_feature_list t
 
+let read_font_variation_setting t : font_variation_setting =
+  let tag = read_opentype_tag t in
+  Cursor.ws t;
+  let value = Cursor.number t in
+  { tag; value }
+
 let rec read_font_variation_settings t : font_variation_settings =
   let read_var t : font_variation_settings =
     Var (read_var read_font_variation_settings t)
   in
-  let read_axis t =
-    let tag = read_opentype_tag t in
-    Cursor.ws t;
-    let value = Cursor.number t in
-    ({ tag; value } : font_variation_setting)
-  in
   let read_axis_list t =
-    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_axis t in
+    let items =
+      Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_variation_setting t
+    in
     Axis_list items
   in
   Cursor.enum_or_calls "font-variation-settings"
