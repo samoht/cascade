@@ -386,11 +386,12 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
     let blur = option_map_preserve Values.normalize_length s.blur in
     let spread = option_map_preserve Values.normalize_length s.spread in
     let color = option_map_preserve (normalize_color ~lossless) s.color in
-    (* Drop a trailing optional length equal to its [0] default, contiguously
-       from the end. [spread] is always the last token, so a zero spread drops
-       freely; a zero blur drops only when no spread follows - otherwise it is
-       positional and dropping it would re-bind the spread as the blur (e.g. [0
-       1px 0 5px] must keep the [0] blur). *)
+    (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
+       and defaults each missing value to [0]. Drop a trailing zero contiguously
+       from the end: [spread] is last and drops freely; a zero blur drops only
+       when no spread follows - otherwise it is positional and dropping it would
+       re-bind the spread as the blur (e.g. [0 1px 0 5px] must keep the [0]
+       blur). *)
     let spread : length option =
       match spread with Some sp when is_zero_length sp -> None | _ -> spread
     in

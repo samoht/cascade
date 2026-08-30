@@ -3356,11 +3356,15 @@ let box_is_all_initial : length list -> bool = function
 let canonical_initial_for_minify : type a. a property -> a -> a =
  fun prop value ->
   match (prop, value) with
+  (* CSS2 sec. 9.9.1 gives [z-index] the initial value [auto]. *)
   | Z_index, Initial -> Auto
   (* Motion Path 1 secs. 2.3-2.4: the initial values are [normal] and [auto]. *)
   | Offset_anchor, Initial -> Auto
   | Offset_position, Initial -> Normal
+  (* CSS Color 4 sec. 3.3 gives [opacity] the initial value [1]. *)
   | Opacity, Initial -> Opacity_number 1.
+  (* CSS Box 4 secs. 3.1 and 4.1 give the margin and padding longhands the
+     initial value [0]. *)
   | Margin, vs when box_is_all_initial vs -> [ Px 0. ]
   | Padding, vs when box_is_all_initial vs -> [ Px 0. ]
   | Margin_top, Initial -> Px 0.
@@ -3371,6 +3375,10 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Padding_right, Initial -> Px 0.
   | Padding_bottom, Initial -> Px 0.
   | Padding_left, Initial -> Px 0.
+  (* CSS Sizing 3 secs. 3.1.1-3.1.2 gives [width] / [height] and their physical
+     minimum-size properties the initial value [auto]. This is level-sensitive:
+     CSS2 sec. 10.4 instead gives [min-width] / [min-height] the initial value
+     [0]. *)
   | Width, Length Initial -> Length Auto
   | Height, Length Initial -> Length Auto
   | Min_width, Length Initial -> Length Auto

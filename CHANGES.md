@@ -1006,6 +1006,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- Load-bearing minification, parsing, and serialization comments name the CSS
+  spec sections that define their initial values, equivalences, grammars, and
+  defaults (#677)
 - `min-inline-size:initial` and `min-block-size:initial` minify to `0`, their
   CSS Logical Level 1 initial value, rather than the physical minimum-size
   properties' `auto` initial value (#675)

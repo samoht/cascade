@@ -4184,8 +4184,9 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
-(* AST-level [<number-percentage>] canonicalisation: at a typed leaf where [%] and
-   number are spec-equivalent (100% = 1), pick the shorter so
+(* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
+   12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
+   number are equivalent (100% = 1). Pick the shorter leaf so
    [pp_number_percentage] serialises a canonical node. [Var] / [Calc] are left
    alone (inside calc() [%] and number aren't interchangeable). *)
 (* [<number-percentage>] shares [<percentage>]'s scaling/combining; the type is
@@ -7386,8 +7387,8 @@ let drop_full_alpha (c : color) : color =
   | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
-(* oklch/oklab/lch/lab lightness: [<percentage>] and [<number>] are
-   spec-equivalent at this leaf ([num = pct *. pct_scale]: ok* L 100% = 1,
+(* CSS Color 4 secs. 16.3-16.4 makes [<percentage>] and [<number>] equivalent
+   for oklch/oklab/lch/lab lightness ([num = pct *. pct_scale]: ok* L 100% = 1,
    lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
    normalize pass, so [pp_color_lightness] serialises the node faithfully rather
    than swapping percentage for number at print time. *)
