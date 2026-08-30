@@ -1072,13 +1072,13 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
-(* CSS Values 4 sec. 10.10.1 value-independent calc identities: hold for any
-   finite operand, so they fold even across a kept [var()] (single-valued inside
-   [calc()], so [var * 1 = var]). Identity cases ([x * 1], [x / 1], [x + 0],
-   ...) return the operand verbatim; zero-producing cases take the type's
-   canonical zero from [~zero], and [~is_zero] recognises a typed zero leaf
-   ([0px], not just [0]) so [0px * x] collapses too. Operands are
-   already-evaluated; numeric op numeric is the caller's job. *)
+(* CSS Values 4 sec. 10.10.1 value-independent multiplicative calc identities:
+   these fold even across a kept [var()] ([var * 1 = var]). A zero sum term is
+   deliberately not an identity here: the spec only combines sum children with
+   identical units and warns that removing any other zero can change the calc's
+   type. Zero-producing products take the type's canonical zero from [~zero],
+   and [~is_zero] recognises a typed zero leaf ([0px], not just [0]). Operands
+   are already evaluated; numeric op numeric is the caller's job. *)
 let calc_identity : type a.
     zero:a calc ->
     is_zero:(a -> bool) ->
@@ -1090,12 +1090,6 @@ let calc_identity : type a.
   match (l, op, r) with
   | _, Mul, Num 1. | _, Div, Num 1. -> Some l
   | Num 1., Mul, _ -> Some r
-  (* Additive identity holds for the unitless [0] and for a typed zero ([0px]).
-     [0 - x] is [-x], not [x], so only the [0 +] direction folds on the left. *)
-  | _, (Add | Sub), Num 0. -> Some l
-  | _, (Add | Sub), Val v when is_zero v -> Some l
-  | Num 0., Add, _ -> Some r
-  | Val v, Add, _ when is_zero v -> Some r
   | _, Mul, Num 0. | Num 0., Mul, _ -> Some zero
   (* A typed zero ([0px]) keeps its own spelling here; the optimizer's
      zero-length strip canonicalises it, so a non-optimised serialisation still
@@ -1281,8 +1275,8 @@ let eval_typed_calc : type a.
   in
   settle_computed round (reduce calc)
 
-let pp_calc : type a. a Pp.t -> a calc Pp.t =
- fun pp_value ctx calc ->
+let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1290,16 +1284,18 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
      [calc(var(--x))] to bare [var(--x)] would change which substitution shape
      is valid. *)
   | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc_presolved : type a. a Pp.t -> a calc Pp.t =
- fun pp_value ctx calc ->
+let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
+
+let pp_calc_presolved : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) pp_value ctx calc ->
   match calc with
   | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
@@ -1385,10 +1381,9 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
    are left untouched. *)
-(* In a length calc tree, any zero-valued length and the unitless [0] are
-   spec-equivalent additive identities; rewriting typed zeros to [Num 0.] lets
-   the generic [eval_calc] simplifier collapse [calc(1px + 0px)] the same way it
-   collapses [calc(1px + 0)]. *)
+(* Recognise literal zeros for top-level canonicalisation and typed products.
+   This does not make them interchangeable in a calc sum: CSS Values 4 sec.
+   10.10.1 only combines identical units and requires other zero terms to stay. *)
 let length_is_zero = function
   | Zero -> true
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
@@ -1816,6 +1811,11 @@ let length_of_unit unit n =
   | Cqmin -> Cqmin n
   | Cqmax -> Cqmax n
 
+(* A zero [px] term inside calc() must retain its unit. Only a completed
+   top-level [<length>] can use the shorter unitless-zero representation. *)
+let length_of_calc_unit (unit : length_unit) n : length =
+  match unit with Px -> Px n | _ -> length_of_unit unit n
+
 type linear_term = {
   unit : length_unit;
   value : float;
@@ -1860,23 +1860,11 @@ let ordered_linear_terms terms =
           Hashtbl.replace table unit
             { term with value = term.value +. n; count = term.count + 1 })
     terms;
-  (* CSS Values 4 sec. 10.10: a calc()'s type is the union of its argument
-     types. Dropping [0%] from [calc(100px + 0%)] would narrow
-     [<length-percentage>] to [<length>] and break interpolation, so [0%] is
-     kept as a type sentinel. Other zero terms (e.g. [0px] beside another [px])
-     drop, their unit already in the result. *)
-  let keep_zero_term term =
-    length_unit_is_pct term.unit
-    && Hashtbl.fold
-         (fun _ t acc -> acc + if t.unit = term.unit then 0 else 1)
-         table 0
-       > 0
-  in
-  let terms =
-    Hashtbl.to_seq_values table
-    |> List.of_seq
-    |> List.filter (fun term -> term.value <> 0. || keep_zero_term term)
-  in
+  (* CSS Values 4 sec. 10.10.1 combines identical units, but explicitly keeps
+     zero-valued sum children otherwise: their unit contributes to the calc's
+     type. The table has already combined each identical-unit set, so retain
+     every resulting term, including zero. *)
+  let terms = Hashtbl.to_seq_values table |> List.of_seq in
   let first_pos =
     List.fold_left (fun acc term -> min acc term.first_pos) max_int terms
   in
@@ -1896,7 +1884,7 @@ let linear_terms_with unit_of_value calc =
   in
   let rec aux = function
     | Val v -> Option.map (fun term -> [ term ]) (unit_of_value v)
-    | Num 0. -> Some []
+    (* A unitless zero is still a [<number>] inside calc(), not a typed zero. *)
     | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
       ->
         None
@@ -1934,8 +1922,8 @@ let linear_length_calc calc =
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op first_unit first_value unit n in
-              Expr (acc, op, Val (length_of_unit unit n)))
-            (Val (length_of_unit unit n))
+              Expr (acc, op, Val (length_of_calc_unit unit n)))
+            (Val (length_of_calc_unit unit n))
             rest)
 
 let lp_of_default_string value : length_percentage option =
@@ -2035,7 +2023,7 @@ let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Env _ | Var _ | Calc _ | Invalid _ -> None
 
 let lp_of_unit unit n : length_percentage =
-  match unit with Pct -> Pct n | unit -> Length (length_of_unit unit n)
+  match unit with Pct -> Pct n | unit -> Length (length_of_calc_unit unit n)
 
 let linear_lp_terms calc = linear_terms_with unit_of_lp calc
 
@@ -2373,7 +2361,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_presolved (pp_length ~always) ctx cv
+      pp_calc_presolved ~unwrap_num:false (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3674,7 +3662,7 @@ let rec pp_angle : angle Pp.t =
   (* A math function is itself an [<angle>] production, so the [calc()] around
      one is redundant (CSS Values 4 sec. 10.8). *)
   | Calc (Math_fn fn) -> pp_math_fn ctx fn
-  | Calc c -> pp_calc_presolved pp_angle ctx c
+  | Calc c -> pp_calc_presolved ~unwrap_num:false pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
       Pp.string ctx
@@ -4179,7 +4167,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_presolved (pp_length_percentage ~always) ctx c
+      pp_calc_presolved ~unwrap_num:false (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -4873,7 +4861,7 @@ let rec pp_duration : duration Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc pp_duration_in_calc ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
@@ -4891,7 +4879,7 @@ and pp_duration_in_calc : duration Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc pp_duration_in_calc ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
 let pp_duration_preserve_ms = pp_duration
 

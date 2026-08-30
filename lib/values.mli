@@ -629,9 +629,10 @@ val calc_identity :
     Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
     the folded operand when one applies. These hold for any operand including a
     kept [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
-    [x / 1], [x + 0], [0 + x], [x - 0] keep [x]; [x * 0] / [0 * x] reduce to
-    [zero]. [is_zero] recognises a typed zero leaf ([0px]). Numeric [op] numeric
-    is the caller's job. *)
+    and [x / 1] keep [x]; [x * 0] / [0 * x] reduce to [zero]. [is_zero]
+    recognises a typed zero leaf ([0px]). Additive zero terms do not fold here:
+    the spec only combines sum children with identical units. Numeric [op]
+    numeric is the caller's job. *)
 
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)

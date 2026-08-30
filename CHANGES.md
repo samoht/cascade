@@ -541,6 +541,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` keeps zero terms in `calc()` sums unless their units match another
+  term. Removing a mixed-unit zero can change the calculation's type, and a
+  unitless zero is not a valid typed length operand (#676)
 - `--minify` canonicalises programmatically constructed shared `<position>`
   nodes in `transform-origin` to the property's XY/XYZ nodes before hashing, so
   typed position nodes and coordinate origins now factor together (#672)
