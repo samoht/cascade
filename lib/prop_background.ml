@@ -1133,25 +1133,52 @@ let pp_border_image : border_image Pp.t =
   (match width with
   | None -> ()
   | Some width ->
+      first := false;
       Pp.char ctx '/';
       Pp.list ~sep:Pp.space pp_border_image_width_item ctx width);
   (match outset with
   | None -> ()
   | Some outset ->
+      first := false;
       Pp.char ctx '/';
       Pp.list ~sep:Pp.space pp_border_image_outset_item ctx outset);
   pp_bg_prop maybe_space
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat;
-  pp_bg_prop maybe_space pp_mask_border_mode ctx mode
+  pp_bg_prop maybe_space pp_mask_border_mode ctx mode;
+  (* The record is public, so a caller can hand over a value with no slot
+     filled. It declares nothing but the initial longhands, which is what
+     [border-image: none] and [mask-border: none] declare (CSS Backgrounds 3
+     (ED) sec. 5.7, CSS Masking 1 (ED) sec. 8.7); the empty string is not a
+     value any parser reads back. *)
+  if !first then Pp.string ctx "none"
+
+(* A mask-border that fills no slot declares what [mask-border: none] declares,
+   and CSS Masking 1 (ED) sec. 8.1 gives mask-border-source the initial value
+   [none], so that keyword is where the two spellings meet. *)
+let drained_mask_border : border_image =
+  {
+    source = Some (None : background_image);
+    slice = None;
+    width = None;
+    outset = None;
+    repeat = None;
+    mode = None;
+  }
 
 (* CSS Masking 1 (ED) sec. 8.2 gives mask-border-mode the initial value [alpha],
    and sec. 8.7 sets an omitted shorthand slot to its initial value, so an
    explicit [alpha] declares what leaving the slot out declares. [luminance] is
-   the other mode and stays. *)
+   the other mode and stays. Written on its own the mode is the whole value, so
+   dropping it drains the shorthand. *)
 let normalize_mask_border (value : border_image) : border_image =
   match value.mode with
-  | Some (Alpha : mask_border_mode) -> { value with mode = Option.None }
+  | Some (Alpha : mask_border_mode) -> (
+      match
+        (value.source, value.slice, value.width, value.outset, value.repeat)
+      with
+      | None, None, None, None, None -> drained_mask_border
+      | _ -> { value with mode = Option.None })
   | _ -> value
 
 let pp_background_shorthand : background_shorthand Pp.t =
@@ -2134,14 +2161,24 @@ let read_mask_border_mode t =
     [ ("alpha", (Alpha : mask_border_mode)); ("luminance", Luminance) ]
     t
 
-let read_border_image t : border_image =
+(* CSS Backgrounds 3 (ED) sec. 5.7 gives border-image a source, a slice with its
+   width and outset, and a repeat. CSS Masking 1 (ED) sec. 8.7 gives mask-border
+   those same slots and one more, [|| <'mask-border-mode'>]. Nothing else tells
+   the two grammars apart, so [mask_mode] is what says which one the reader is
+   holding. CSS Values 4 (ED) sec. 2.2 has [||] ask for one or more of its
+   options, so a value that fills no slot matches neither grammar. *)
+let read_border_image_shorthand ~mask_mode t : border_image =
+  let read_mode t =
+    if mask_mode then Cursor.option read_mask_border_mode t
+    else (None : mask_border_mode option)
+  in
   let source = Cursor.option read_background_image t in
   Cursor.ws t;
-  (* CSS Masking 1 sec. 8.7 [mask-border-mode] is in [&&] juxtaposition with the
-     other slots, so the keyword may appear after [<source>] (before the slice)
-     or after [<repeat>]. Try the early slot first; combine with the trailing
-     slot below. *)
-  let mode_early = Cursor.option read_mask_border_mode t in
+  (* sec. 8.7 puts [mask-border-mode] in [||] combination with the other slots,
+     so the keyword may appear after [<source>] (before the slice) or after
+     [<repeat>]. Try the early slot first; combine with the trailing slot
+     below. *)
+  let mode_early = read_mode t in
   Cursor.ws t;
   let slice = Cursor.option read_border_image_slice t in
   let width, outset =
@@ -2166,11 +2203,19 @@ let read_border_image t : border_image =
   Cursor.ws t;
   let mode_late : mask_border_mode option =
     if Option.is_some mode_early then (None : mask_border_mode option)
-    else Cursor.option read_mask_border_mode t
+    else read_mode t
   in
   let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice, repeat) with
-  | None, None, None ->
-      Cursor.err_expected t "border-image source, slice, or repeat"
+  (match (source, slice, repeat, mode) with
+  | None, None, None, None ->
+      Cursor.err_expected t
+        (if mask_mode then "mask-border source, slice, repeat, or mode"
+         else "border-image source, slice, or repeat")
   | _ -> ());
   { source; slice; width; outset; repeat; mode }
+
+let read_border_image t : border_image =
+  read_border_image_shorthand ~mask_mode:false t
+
+let read_mask_border t : border_image =
+  read_border_image_shorthand ~mask_mode:true t

@@ -475,6 +475,11 @@ val pp_border_image : border_image Pp.t
 val read_border_image : Cursor.t -> border_image
 (** [read_border_image t] parses the [border-image] shorthand. *)
 
+val read_mask_border : Cursor.t -> border_image
+(** [read_mask_border t] parses the [mask-border] shorthand. It shares
+    {!read_border_image}'s slots and adds the [<'mask-border-mode'>] one, which
+    border-image has no grammar for. *)
+
 val read_grid_template_areas : Cursor.t -> grid_template_areas
 (** [read_grid_template_areas t] parses [grid-template-areas]. *)
 
