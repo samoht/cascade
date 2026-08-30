@@ -2621,6 +2621,9 @@ let test_timing_function () =
   check_timing_function "steps(4, jump-start)" ~expected:"steps(4,jump-start)";
   check_timing_function "steps( 4 , jump-start )"
     ~expected:"steps(4,jump-start)";
+  check_timing_function "steps(2, jump-none)" ~expected:"steps(2,jump-none)";
+  neg_cursor read_timing_function "steps(1.9)";
+  neg_cursor read_timing_function "steps(1, jump-none)";
   neg_cursor read_timing_function "steps(4, jump-start, red)";
   neg_cursor read_timing_function "steps(4 red)";
   neg_cursor read_timing_function "cubic-bezier(0.1,0.7,1,0.1,0.5)"
