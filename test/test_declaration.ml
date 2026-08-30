@@ -2257,7 +2257,7 @@ let spec_property_grammar_table_expansion () =
       ("translate", "10px 20px");
       ("rotate", "1 0 0 45deg");
       ("scale", "1.2 2");
-      ("transform-origin", "left 10px top 20px");
+      ("perspective-origin", "left 10px top 20px");
       ("transition", "opacity 1s ease-in .2s");
       ("transition-behavior", "allow-discrete");
       ("animation", "fade 1s linear 2 alternate both running");
@@ -3983,8 +3983,8 @@ let text_box_normal () =
 
 (* CSS Values 4 sec. 8.3 allows four edge-offset components but excludes the
    three-value form. CSS Backgrounds 3 sec. 2.6 retains valid three-value
-   <bg-position>s, while CSS Transforms 1 sec. 4 can place a Z length after a
-   two-value origin. *)
+   <bg-position>s, while CSS Transforms 1 sec. 4 gives transform-origin a
+   narrower grammar with an optional Z length after a two-value origin. *)
 let edge_offset_position_grammar () =
   List.iter
     (fun (declaration, expected) ->
@@ -4005,6 +4005,8 @@ let edge_offset_position_grammar () =
       ( "background-position:center left 10px",
         "background-position:center left 10px" );
       ("background-position:top 10px left", "background-position:top 10px left");
+      ( "perspective-origin:left 10px top 20px",
+        "perspective-origin:left 10px top 20px" );
       ("transform-origin:left 10px", "transform-origin:0% 10px");
       ("transform-origin:left top 10px", "transform-origin:left top 10px");
       ("transform-origin:center top 10px", "transform-origin:center top 10px");
@@ -4018,6 +4020,10 @@ let edge_offset_position_grammar () =
       | Ok _ -> Alcotest.failf "strict parsing accepted %s" css)
     [
       "transform-origin:foo 1px bar 2px";
+      "transform-origin:left 1px top 2px";
+      "transform-origin:right 10% bottom 20%";
+      "transform-origin:top 2px left 1px";
+      "transform-origin:left 1px top 2px 3px";
       "background-position:left 1px right 2px";
       "object-position:left 1px middle";
       "perspective-origin:top 1px bottom";
