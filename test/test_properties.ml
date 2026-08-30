@@ -1995,13 +1995,12 @@ let test_text_decoration () =
   check_text_decoration "line-through";
   check_text_decoration ~expected:"none" "none";
   neg_cursor ~allow_partial:true read_text_decoration "invalid-decoration";
-  neg_cursor read_text_decoration "underline line-through underline";
   (* duplicate - per CSS spec, || combinator means each component at most
      once *)
-  neg_cursor read_text_decoration "solid";
-  (* that's a style *)
-  (* that's a color *)
-  neg_cursor read_text_decoration "red"
+  neg_cursor read_text_decoration "underline line-through underline";
+  (* A style or colour is valid without a line: every component is optional. *)
+  check_text_decoration "solid";
+  check_text_decoration "red"
 
 let test_text_decoration_shorthand () =
   (* Test individual parts. The printer holds every component it parsed;

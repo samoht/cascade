@@ -98,6 +98,10 @@ module Text_decoration = struct
 
   let empty = { lines = []; style = None; color = None; thickness = None }
 
+  let is_empty { lines; style; color; thickness } =
+    lines = [] && Option.is_none style && Option.is_none color
+    && Option.is_none thickness
+
   let read_component t =
     Cursor.one_of
       [
@@ -158,6 +162,8 @@ let read_text_decoration_shorthand t : text_decoration_shorthand =
     Cursor.fold_many Text_decoration.read_component ~init:Text_decoration.empty
       ~f:(Text_decoration.merge t) t
   in
+  if Text_decoration.is_empty acc then
+    Cursor.err_expected t "text-decoration value";
   Text_decoration.to_shorthand acc
 
 let rec read_text_decoration t : text_decoration =
@@ -174,13 +180,7 @@ let rec read_text_decoration t : text_decoration =
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let shorthand = read_text_decoration_shorthand t in
-      (* For the main text-decoration property, require at least one line
-         decoration *)
-      if shorthand.lines = [] then
-        Cursor.err t
-          "text-decoration requires at least one line decoration (underline, \
-           overline, or line-through)"
-      else (Shorthand shorthand : text_decoration))
+      (Shorthand shorthand : text_decoration))
     t
 
 let rec read_text_decoration_skip t : text_decoration_skip =

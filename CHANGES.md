@@ -184,6 +184,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `text-decoration` accepts a colour, style or thickness without a line value;
+  its four components are joined by `||`, so none is individually mandatory
+  (#665)
 - A CSS-wide keyword mixed into a `font-family` list now reads as the exported
   `font_family.Invalid` node, preserving the source for typed invalid-value
   recovery instead of raising during property parsing (#657)
