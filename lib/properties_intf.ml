@@ -600,7 +600,6 @@ type flex_basis =
   | Fit_content_arg of length
   | Max_content
   | Min_content
-  | From_font
   (* Math functions over [<length-percentage>] (CSS Values 4 sec. 10). Args
      reuse [length] (which already carries [Pct]) and mirror the [length]
      constructors; [flex_basis_of_length] carries them across and the printer
@@ -1340,7 +1339,8 @@ type text_box_edge =
   | Var of text_box_edge var
 
 type text_box =
-  | Box of text_box_trim * text_box_edge option
+  | Normal
+  | Box of text_box_trim option * text_box_edge option
   | Inherit
   | Initial
   | Unset
@@ -1533,6 +1533,7 @@ type white_space =
   | Pre_wrap
   | Pre_line
   | Break_spaces
+  | Collapse
   | Preserve_nowrap
   | Inherit
   | Initial
@@ -2592,7 +2593,7 @@ type position_value =
   | Revert_layer
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
   | Edge_offset_axis of string * length_percentage * string
-  | Axis_edge_offset of string * string * length
+  | Axis_edge_offset of string * string * length_percentage
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
@@ -3610,6 +3611,27 @@ type offset_path =
   | Revert_layer
   | Var of offset_path var
 
+type offset_anchor =
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_anchor var
+
+type offset_position =
+  | Normal
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_position var
+
 type offset_rotate_mode = Auto | Reverse
 
 type offset_rotate =
@@ -3880,7 +3902,7 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = { name : string; axis : timeline_axis }
+type timeline_shorthand_item = { name : string; axis : timeline_axis option }
 
 type timeline_shorthand =
   | None
@@ -3902,6 +3924,22 @@ type timeline_inset =
   | Revert
   | Revert_layer
   | Var of timeline_inset var
+
+type view_timeline_shorthand_item = {
+  name : string;
+  axis : timeline_axis option;
+  inset : timeline_inset option;
+}
+
+type view_timeline_shorthand =
+  | None
+  | Timelines of view_timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_timeline_shorthand var
 
 type overscroll_behavior =
   | Auto
@@ -4881,7 +4919,7 @@ type 'a property =
   | View_timeline_name : timeline_name property
   | View_timeline_axis : timeline_axis property
   | View_timeline_inset : timeline_inset property
-  | View_timeline : timeline_shorthand property
+  | View_timeline : view_timeline_shorthand property
   | Timeline_scope : timeline_name property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
@@ -5070,6 +5108,8 @@ type 'a property =
   | Overscroll_behavior_inline : overscroll_behavior property
   | Accent_color : color property
   | Caret_color : color property
+  | Offset_anchor : offset_anchor property
+  | Offset_position : offset_position property
 
 type any_property = Prop : 'a property -> any_property
 

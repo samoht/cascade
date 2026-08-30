@@ -624,6 +624,10 @@ let check_timeline_shorthand =
   check_value_cursor "timeline_shorthand" read_timeline_shorthand
     pp_timeline_shorthand
 
+let check_view_timeline_shorthand =
+  check_value_cursor "view_timeline_shorthand" read_view_timeline_shorthand
+    pp_view_timeline_shorthand
+
 let check_caption_side =
   check_value_cursor "caption_side" read_caption_side pp_caption_side
 
@@ -949,6 +953,12 @@ let check_object_view_box =
 let check_offset_path =
   check_value_cursor "offset_path" read_offset_path pp_offset_path
 
+let check_offset_anchor =
+  check_value_cursor "offset_anchor" read_offset_anchor pp_offset_anchor
+
+let check_offset_position =
+  check_value_cursor "offset_position" read_offset_position pp_offset_position
+
 let check_offset_rotate =
   check_value_cursor "offset_rotate" read_offset_rotate pp_offset_rotate
 
@@ -1147,6 +1157,10 @@ let check_timeline_name =
 let check_timeline_shorthand_item =
   check_value_cursor "timeline_shorthand_item" read_timeline_shorthand_item
     pp_timeline_shorthand_item
+
+let check_view_timeline_shorthand_item =
+  check_value_cursor "view_timeline_shorthand_item"
+    read_view_timeline_shorthand_item pp_view_timeline_shorthand_item
 
 let check_view_transition_class =
   check_value_cursor "view_transition_class" read_view_transition_class
@@ -1478,6 +1492,7 @@ let test_white_space () =
   check_white_space "pre-wrap";
   check_white_space "pre-line";
   check_white_space "break-spaces";
+  check_white_space "collapse";
   check_white_space "inherit";
   neg_cursor read_white_space "invalid-space";
   (* hyphenated form incorrect *)
@@ -1995,13 +2010,12 @@ let test_text_decoration () =
   check_text_decoration "line-through";
   check_text_decoration ~expected:"none" "none";
   neg_cursor ~allow_partial:true read_text_decoration "invalid-decoration";
-  neg_cursor read_text_decoration "underline line-through underline";
   (* duplicate - per CSS spec, || combinator means each component at most
      once *)
-  neg_cursor read_text_decoration "solid";
-  (* that's a style *)
-  (* that's a color *)
-  neg_cursor read_text_decoration "red"
+  neg_cursor read_text_decoration "underline line-through underline";
+  (* A style or colour is valid without a line: every component is optional. *)
+  check_text_decoration "solid";
+  check_text_decoration "red"
 
 let test_text_decoration_shorthand () =
   (* Test individual parts. The printer holds every component it parsed;
@@ -2418,6 +2432,13 @@ let test_font_family () =
   check_font_family ~roundtrip:true ~expected:"Foo sans" "\"Foo sans\"";
   check_font_family ~roundtrip:true ~expected:"Times New Roman"
     "\"Times New Roman\"";
+  let invalid = read_font_family (Cursor.of_string "Arial, inherit") in
+  (match invalid with
+  | Invalid tokens ->
+      Alcotest.(check string)
+        "invalid family list source is preserved" "Arial, inherit"
+        (Parser.string_of_components tokens)
+  | _ -> Alcotest.fail "expected an Invalid font-family node");
   (* Test actual invalid cases *)
   neg_cursor read_font_family "123invalid";
   (* identifier can't start with number *)
@@ -2903,6 +2924,15 @@ let test_background_image () =
      gradient instead. *)
   check_background_image "linear-gradient(red,blue)";
   check_background_image "radial-gradient(red,blue)";
+  check_background_image "repeating-linear-gradient(var(--stops))";
+  check_background_image "repeating-radial-gradient(var(--stops))";
+  check_background_image "repeating-conic-gradient(var(--stops))";
+  check_background_image "-webkit-radial-gradient(var(--stops))";
+  check_background_image "-webkit-repeating-radial-gradient(var(--stops))";
+  check_background_image "-moz-radial-gradient(var(--stops))";
+  check_background_image "-moz-repeating-radial-gradient(var(--stops))";
+  check_background_image "-o-radial-gradient(var(--stops))";
+  check_background_image "-o-repeating-radial-gradient(var(--stops))";
   neg_cursor read_background_image "linear-gradient(red, blue, bogus-token)";
   neg_cursor read_background_image "radial-gradient(red, blue, bogus-token)";
   (* CSS Images 4 sec. 6.2 gives [image-set()] a comma-separated
@@ -2966,12 +2996,42 @@ let test_conic_gradient_config () =
    animation-range. A unit ends in an ident instead ([10px 0] would re-tokenise
    as the single dimension [10px0]), so that space stays. *)
 let test_background_position () =
+  let assert_complete input =
+    let t = Cursor.of_string input in
+    ignore (read_background_position t);
+    Cursor.ws t;
+    if not (Cursor.is_done t) then
+      Alcotest.failf "background-position left input after %S" input
+  in
+  let assert_axis_edge input axis edge =
+    let t = Cursor.of_string input in
+    match read_background_position t with
+    | [ Axis_edge_offset (got_axis, got_edge, _) ] ->
+        Alcotest.(check string) input axis got_axis;
+        Alcotest.(check string) input edge got_edge
+    | _ -> Alcotest.failf "background-position lost edge offset in %S" input
+  in
   check_background_position "center";
   check_background_position "left top";
   check_background_position ~roundtrip:true ~expected:"100%0" "right 0";
   check_background_position ~roundtrip:true ~expected:"100%-15.625rem"
     "right -15.625rem";
   check_background_position "right .5rem center";
+  check_background_position "left top 10px";
+  check_background_position "left top 10%";
+  check_background_position "center top 10px";
+  check_background_position "center left 10px";
+  check_background_position "top 10px left";
+  List.iter assert_complete
+    [
+      "left top 10px";
+      "left top 10%";
+      "center top 10px";
+      "center left 10px";
+      "top 10px left";
+    ];
+  assert_axis_edge "center top 10px" "center" "top";
+  assert_axis_edge "center left 10px" "center" "left";
   check_background_position ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_background_position "inherit";
   neg_cursor ~allow_partial:true read_background_position "invalid-position"
@@ -2979,9 +3039,37 @@ let test_background_position () =
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
+  check_position_value "top 20px left 10px";
   check_position_value ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_position_value "inherit";
-  neg_cursor ~allow_partial:true read_position_value "invalid-position"
+  neg_cursor ~allow_partial:true read_position_value "invalid-position";
+  neg_cursor read_position_value "foo 1px bar 2px";
+  neg_cursor ~allow_partial:true read_position_value "left 1px right 2px";
+  neg_cursor ~allow_partial:true read_position_value "left 1px middle";
+  neg_cursor ~allow_partial:true read_position_value "top 1px bottom";
+  neg_cursor ~allow_partial:true read_position_value "left 1px top";
+  neg_cursor ~allow_partial:true read_position_value "left top 1px"
+
+let test_offset_anchor () =
+  check_offset_anchor "auto";
+  check_offset_anchor "center";
+  check_offset_anchor "left top";
+  check_offset_anchor "left 10px top 20px";
+  check_offset_anchor "var(--anchor,left top)";
+  check_offset_anchor "inherit";
+  neg_cursor read_offset_anchor "normal";
+  neg_cursor read_offset_anchor "size"
+
+let test_offset_position () =
+  check_offset_position "normal";
+  check_offset_position "auto";
+  check_offset_position "center";
+  check_offset_position "20% 30%" ~expected:"20%30%";
+  check_offset_position "left 10px top 20px";
+  check_offset_position "var(--position,center)";
+  check_offset_position "inherit";
+  neg_cursor read_offset_position "none";
+  neg_cursor read_offset_position "size"
 
 let test_translate_value () =
   check_translate_value "none";
@@ -3394,10 +3482,10 @@ let test_text_decoration_skip_ink () =
 
 let test_transform_origin () =
   (* Per CSS Transforms 1 sec. 4 the keyword [center] is shorthand for [50%] and
-     matched-pair shorthand collapses to a single value. Per shortest- wins
-     (Lightning CSS) the printer emits the numeric form. *)
-  check_transform_origin ~expected:"50%" "center";
-  check_transform_origin ~expected:"0 0" "left top";
+     matched-pair shorthand collapses to a single value during optimization. The
+     value printer preserves the parsed node. *)
+  check_transform_origin "center";
+  check_transform_origin "left top";
   (* A single value sets the X origin; Y defaults to center (50%), so it must
      not be duplicated onto the Y axis: [100%] means [100% 50%], not [100%
      100%], and [0] means [0 50%], not [0 0]. Only [50%] coincides with center.
@@ -3406,6 +3494,9 @@ let test_transform_origin () =
   check_transform_origin "0";
   check_transform_origin "50% 25%";
   check_transform_origin "50% 50% 10px";
+  check_transform_origin ~expected:"0% 10px" "left 10px";
+  check_transform_origin "left top 10px";
+  check_transform_origin "center top 10px";
   check_transform_origin "inherit";
   neg_cursor read_transform_origin "invalid-origin"
 
@@ -3904,9 +3995,29 @@ let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
   check_timeline_shorthand "--scroll inline";
   check_timeline_shorthand "--x x";
+  check_timeline_shorthand "--main";
   neg_cursor read_timeline_shorthand "main block";
-  neg_cursor read_timeline_shorthand "--main";
-  neg_cursor read_timeline_shorthand "--main z"
+  neg_cursor ~allow_partial:true read_timeline_shorthand "--main z"
+
+let test_view_timeline_shorthand () =
+  check_view_timeline_shorthand "--main";
+  check_view_timeline_shorthand "--main block";
+  check_view_timeline_shorthand "--main 10%";
+  check_view_timeline_shorthand "--main x 10% 20%";
+  check_view_timeline_shorthand ~expected:"--main x 10%" "--main 10% x";
+  check_view_timeline_shorthand "--main 10%,--alt y auto";
+  neg_cursor read_view_timeline_shorthand "main 10%";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand "--main x y";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand
+    "--main 10% 20% 30%"
+
+let test_view_timeline_shorthand_item () =
+  check_view_timeline_shorthand_item "--main";
+  check_view_timeline_shorthand_item "--main inline";
+  check_view_timeline_shorthand_item "--main auto 10%";
+  check_view_timeline_shorthand_item ~expected:"--main x 10%" "--main 10% x";
+  neg_cursor read_view_timeline_shorthand_item "main 10%";
+  neg_cursor ~allow_partial:true read_view_timeline_shorthand_item "--main x y"
 
 let test_caption_side () =
   check_caption_side "top";
@@ -3946,6 +4057,11 @@ let test_field_sizing () =
 
 let test_font_size () =
   check_font_size "16px";
+  check_font_size "50%";
+  let parsed = read_font_size (Cursor.of_string "50%") in
+  (match parsed with
+  | Pct n -> Alcotest.(check (float 0.)) "public percentage node" 50. n
+  | _ -> Alcotest.fail "font-size percentage did not use Pct");
   check_font_size "small";
   check_font_size "medium";
   check_font_size "large";
@@ -4299,6 +4415,7 @@ let spec_generated_box_layout_edges () =
 let spec_generated_position_interaction_edges () =
   check_anchor_name ~expected:"--hero,--toast" "--hero, --toast";
   check_caret "red manual block";
+  check_caret "red auto";
   check_caret_animation "manual";
   check_caret_shape "underscore";
   check_container_name "main sidebar";
@@ -4510,6 +4627,9 @@ let spec_generated_position_interaction_edges () =
 (* ignore-test: grouped generated-surface vectors. *)
 let spec_generated_text_timeline_edges () =
   check_text_box "trim-both text alphabetic";
+  check_text_box "cap alphabetic";
+  check_text_box "normal";
+  check_text_box ~expected:"trim-both cap alphabetic" "cap alphabetic trim-both";
   check_text_box_edge "text ideographic";
   check_text_box_edge_keyword "ideographic-ink";
   check_text_box_trim "trim-both";
@@ -4542,9 +4662,11 @@ let spec_generated_text_timeline_edges () =
   check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
   check_timeline_shorthand_item "--main block";
+  check_timeline_shorthand_item "--main";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
-  neg_cursor read_text_box "trim-start trim-end";
+  neg_cursor ~allow_partial:true read_text_box "trim-start trim-end";
+  neg_cursor read_text_box "cap";
   neg_cursor read_text_box_edge "text text";
   neg_cursor read_text_box_edge_keyword "baseline";
   neg_cursor read_text_box_trim "trim";
@@ -4573,7 +4695,7 @@ let spec_generated_text_timeline_edges () =
   neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
   neg_cursor read_timeline_inset_item "-1px";
   neg_cursor ~allow_partial:true read_timeline_name "none --main";
-  neg_cursor read_timeline_shorthand_item "--main z";
+  neg_cursor ~allow_partial:true read_timeline_shorthand_item "--main z";
   neg_cursor ~allow_partial:true read_view_transition_class "none card";
   neg_cursor ~allow_partial:true read_view_transition_name "match-element card"
 
@@ -4880,6 +5002,8 @@ let additional_tests =
     test_case "background_image" `Quick test_background_image;
     test_case "background_position" `Quick test_background_position;
     test_case "position_value" `Quick test_position_value;
+    test_case "offset_anchor" `Quick test_offset_anchor;
+    test_case "offset_position" `Quick test_offset_position;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;
@@ -4949,6 +5073,9 @@ let additional_tests =
     test_case "page_size_orientation" `Quick test_page_size_orientation;
     test_case "axis" `Quick test_timeline_axis;
     test_case "timeline_shorthand" `Quick test_timeline_shorthand;
+    test_case "view_timeline_shorthand" `Quick test_view_timeline_shorthand;
+    test_case "view_timeline_shorthand_item" `Quick
+      test_view_timeline_shorthand_item;
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;
     test_case "columns_value" `Quick test_columns_value;

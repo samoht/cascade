@@ -720,7 +720,7 @@ let vars_of_position_value (value : Properties.position_value) : any_var list =
   | Single l -> vars_of_length l
   | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
   | Edge_offset_axis (_, lp, _) -> vars_of_length_percentage lp
-  | Axis_edge_offset (_, _, length) -> vars_of_length length
+  | Axis_edge_offset (_, _, offset) -> vars_of_length_percentage offset
   | Edge_offset_edge_offset (_, lp1, _, lp2) ->
       vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
   | _ -> []
@@ -1171,6 +1171,18 @@ let vars_of_offset_path (value : Properties.offset_path) =
   | None | Url _ | Path _ | Initial | Inherit | Unset | Revert | Revert_layer ->
       []
 
+let vars_of_offset_anchor (value : Properties.offset_anchor) =
+  match value with
+  | Var var -> [ V var ]
+  | Position position -> vars_of_position_value position
+  | Auto | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_offset_position (value : Properties.offset_position) =
+  match value with
+  | Var var -> [ V var ]
+  | Position position -> vars_of_position_value position
+  | Normal | Auto | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
 let vars_of_offset_rotate (value : Properties.offset_rotate) =
   match value with
   | Var v -> [ V v ]
@@ -1272,9 +1284,9 @@ let vars_of_text_box (value : Properties.text_box) =
   match value with
   | Var v -> [ V v ]
   | Box (trim, edge) ->
-      vars_of_text_box_trim trim
+      Option.value ~default:[] (Option.map vars_of_text_box_trim trim)
       @ Option.value ~default:[] (Option.map vars_of_text_box_edge edge)
-  | Initial | Inherit | Unset | Revert | Revert_layer -> []
+  | Normal | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_inline_sizing (value : Properties.inline_sizing) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1711,9 +1723,10 @@ let vars_of_timeline_name (value : Properties.timeline_name) =
 let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   match value with
   | Var v -> [ V v ]
-  | Timelines items ->
+  | (Timelines items : Properties.timeline_shorthand) ->
       List.concat_map
-        (fun { Properties.axis; _ } -> vars_of_timeline_axis axis)
+        (fun ({ Properties.axis; _ } : Properties.timeline_shorthand_item) ->
+          Option.fold ~none:[] ~some:vars_of_timeline_axis axis)
         items
   | _ -> []
 
@@ -1727,6 +1740,18 @@ let vars_of_timeline_inset (value : Properties.timeline_inset) =
       vars_of_timeline_inset_item first
       @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_view_timeline_shorthand (value : Properties.view_timeline_shorthand)
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Timelines items ->
+      List.concat_map
+        (fun { Properties.axis; inset; _ } ->
+          Option.fold ~none:[] ~some:vars_of_timeline_axis axis
+          @ Option.fold ~none:[] ~some:vars_of_timeline_inset inset)
+        items
+  | _ -> []
 
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
@@ -2274,6 +2299,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
       vars_of_contain_intrinsic_longhand value
   | Margin_trim, value -> vars_of_margin_trim value
   | Offset_path, value -> vars_of_offset_path value
+  | Offset_anchor, value -> vars_of_offset_anchor value
+  | Offset_position, value -> vars_of_offset_position value
   | Offset_rotate, value -> vars_of_offset_rotate value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
@@ -2402,7 +2429,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | View_timeline_name, value -> vars_of_timeline_name value
   | View_timeline_axis, value -> vars_of_timeline_axis value
   | View_timeline_inset, value -> vars_of_timeline_inset value
-  | View_timeline, value -> vars_of_timeline_shorthand value
+  | View_timeline, value -> vars_of_view_timeline_shorthand value
   | Timeline_scope, value -> vars_of_timeline_name value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value

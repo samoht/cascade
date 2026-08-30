@@ -29,7 +29,8 @@ let pp_attr_flag ctx = function
       Pp.char ctx 's'
   | None -> ()
 
-(* Check if an attribute value needs quoting according to CSS specs *)
+(* CSS Selectors 4 sec. 6.2 accepts an [<ident-token>] or [<string-token>] as an
+   attribute match value. Quotes can drop only when this text is a CSS ident. *)
 let attr_value_needs_quoting value =
   if value = "" then true
   else
@@ -61,10 +62,11 @@ let pp_quoted_attr_value quote ctx value =
 
 let pp_attr_value ?quote ctx value =
   (* Under minify, drop the surrounding quotes when the value is a CSS ident
-     since the two forms are spec-equivalent and the bare form is shorter. The
-     non-minified path keeps the quotes for source fidelity - the user who wrote
-     [type="text"] expects to read [type="text"] back, even if [type=text] would
-     parse the same way. *)
+     since CSS Selectors 4 sec. 6.2 accepts the ident and string forms at the
+     same grammar position and the bare form is shorter. The non-minified path
+     keeps the quotes for source fidelity - the user who wrote [type="text"]
+     expects to read [type="text"] back, even if [type=text] would parse the
+     same way. *)
   if String.contains value '\\' then Pp.string ctx value
   else if Pp.minified ctx && not (attr_value_needs_quoting value) then
     Pp.string ctx value
@@ -262,8 +264,9 @@ let int_of_hex c =
   | 'A' .. 'F' -> Char.code c - Char.code 'A' + 10
   | _ -> invalid_arg "not a hex digit"
 
-(* Unescape CSS escapes per spec: \XX...XX (1-6 hex) or \X (any char). Handles
-   both hex escapes (e.g., \3A for ':') and simple escapes (e.g., \:). *)
+(* Unescape CSS escapes per CSS Syntax 3 sec. 4.3.7: \XX...XX (1-6 hex) or \X
+   (any char). Handles both hex escapes (e.g., \3A for ':') and simple escapes
+   (e.g., \:). *)
 (* Helper to process hex escape sequences. Returns (codepoint, next_index) *)
 let process_hex_escape s i len =
   let rec consume_hex acc n idx =

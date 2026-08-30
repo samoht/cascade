@@ -98,6 +98,10 @@ module Text_decoration = struct
 
   let empty = { lines = []; style = None; color = None; thickness = None }
 
+  let is_empty { lines; style; color; thickness } =
+    lines = [] && Option.is_none style && Option.is_none color
+    && Option.is_none thickness
+
   let read_component t =
     Cursor.one_of
       [
@@ -158,6 +162,8 @@ let read_text_decoration_shorthand t : text_decoration_shorthand =
     Cursor.fold_many Text_decoration.read_component ~init:Text_decoration.empty
       ~f:(Text_decoration.merge t) t
   in
+  if Text_decoration.is_empty acc then
+    Cursor.err_expected t "text-decoration value";
   Text_decoration.to_shorthand acc
 
 let rec read_text_decoration t : text_decoration =
@@ -174,13 +180,7 @@ let rec read_text_decoration t : text_decoration =
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let shorthand = read_text_decoration_shorthand t in
-      (* For the main text-decoration property, require at least one line
-         decoration *)
-      if shorthand.lines = [] then
-        Cursor.err t
-          "text-decoration requires at least one line decoration (underline, \
-           overline, or line-through)"
-      else (Shorthand shorthand : text_decoration))
+      (Shorthand shorthand : text_decoration))
     t
 
 let rec read_text_decoration_skip t : text_decoration_skip =
@@ -1102,11 +1102,13 @@ let rec pp_text_box_edge : text_box_edge Pp.t =
 let rec pp_text_box : text_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_text_box ctx v
+  | Normal -> Pp.string ctx "normal"
+  | Box (None, None) -> pp_text_box_trim ctx Trim_both
   | Box (trim, edge) ->
-      pp_text_box_trim ctx trim;
+      Option.iter (pp_text_box_trim ctx) trim;
       Option.iter
         (fun edge ->
-          Pp.space ctx ();
+          if Option.is_some trim then Pp.space ctx ();
           pp_text_box_edge ctx edge)
         edge
   | Initial -> Pp.string ctx "initial"
@@ -1289,6 +1291,7 @@ let rec pp_white_space : white_space Pp.t =
   | Pre_wrap -> Pp.string ctx "pre-wrap"
   | Pre_line -> Pp.string ctx "pre-line"
   | Break_spaces -> Pp.string ctx "break-spaces"
+  | Collapse -> Pp.string ctx "collapse"
   | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1495,13 +1498,19 @@ let rec read_text_wrap_style t : text_wrap_style =
     ~var:(fun t -> Var (read_var read_text_wrap_style t))
     t
 
-let rec read_text_box_trim t : text_box_trim =
-  Cursor.enum_or_var "text-box-trim"
+let read_text_box_trim_value t : text_box_trim =
+  Cursor.enum "text-box-trim"
     [
       ("none", (None : text_box_trim));
       ("trim-start", Trim_start);
       ("trim-end", Trim_end);
       ("trim-both", Trim_both);
+    ]
+    t
+
+let rec read_text_box_trim t : text_box_trim =
+  Cursor.enum_or_var "text-box-trim"
+    [
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -1509,7 +1518,7 @@ let rec read_text_box_trim t : text_box_trim =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_text_box_trim t))
-    t
+    ~default:read_text_box_trim_value t
 
 let read_text_box_edge_keyword t : text_box_edge_keyword =
   Cursor.enum "text-box-edge"
@@ -1554,6 +1563,7 @@ let rec read_text_box_edge ?(global = true) t : text_box_edge =
 let rec read_text_box t : text_box =
   Cursor.enum_or_var "text-box"
     [
+      ("normal", (Normal : text_box));
       ("initial", (Initial : text_box));
       ("inherit", Inherit);
       ("unset", Unset);
@@ -1562,13 +1572,36 @@ let rec read_text_box t : text_box =
     ]
     ~var:(fun t -> (Var (Values.read_var read_text_box t) : text_box))
     ~default:(fun t ->
-      let trim = read_text_box_trim t in
-      Cursor.ws t;
-      let edge : text_box_edge option =
-        if Cursor.is_done t then None
-        else Some (read_text_box_edge ~global:false t)
+      (* CSS Inline 3 sec. 6.1 joins the trim and edge slots with [||], so
+         either may be omitted and they may appear in either order. *)
+      let trim = ref Option.None in
+      let edge = ref Option.None in
+      let try_trim () =
+        if !trim <> Option.None then false
+        else
+          match Cursor.option read_text_box_trim_value t with
+          | Some value ->
+              trim := Some value;
+              true
+          | None -> false
       in
-      (Box (trim, edge) : text_box))
+      let try_edge () =
+        if !edge <> Option.None then false
+        else
+          match Cursor.option (read_text_box_edge ~global:false) t with
+          | Some value ->
+              edge := Some value;
+              true
+          | None -> false
+      in
+      let rec loop () =
+        Cursor.ws t;
+        if try_trim () || try_edge () then loop ()
+      in
+      loop ();
+      if !trim = Option.None && !edge = Option.None then
+        Cursor.err_invalid t "text-box";
+      (Box (!trim, !edge) : text_box))
     t
 
 let read_line_fit_edge_keyword t : line_fit_edge_keyword =
@@ -1755,6 +1788,7 @@ let rec read_white_space t : white_space =
           ("pre-wrap", Pre_wrap);
           ("pre-line", Pre_line);
           ("break-spaces", Break_spaces);
+          ("collapse", Collapse);
           ("inherit", Inherit);
           ("initial", Initial);
           ("unset", Unset);

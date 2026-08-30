@@ -2387,7 +2387,7 @@ type position_value = Properties.position_value =
   | Revert
   | Revert_layer
   | Edge_offset_axis of string * length_percentage * string
-  | Axis_edge_offset of string * string * length
+  | Axis_edge_offset of string * string * length_percentage
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
   | Var of position_value var
@@ -3441,7 +3441,6 @@ type flex_basis = Properties.flex_basis =
   | Fit_content_arg of length
   | Max_content
   | Min_content
-  | From_font
   | Clamp of length * length * length
   | Min of length list
   | Max of length list
@@ -4546,6 +4545,7 @@ type white_space = Properties.white_space =
   | Pre_wrap
   | Pre_line
   | Break_spaces
+  | Collapse
   | Preserve_nowrap
   | Inherit
   | Initial
@@ -7123,7 +7123,7 @@ type timeline_axis = Properties.timeline_axis =
 
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
   name : string;
-  axis : timeline_axis;
+  axis : timeline_axis option;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =
@@ -7135,6 +7135,22 @@ type timeline_shorthand = Properties.timeline_shorthand =
   | Revert
   | Revert_layer
   | Var of timeline_shorthand var
+
+type view_timeline_shorthand_item = Properties.view_timeline_shorthand_item = {
+  name : string;
+  axis : timeline_axis option;
+  inset : Properties.timeline_inset option;
+}
+
+type view_timeline_shorthand = Properties.view_timeline_shorthand =
+  | None
+  | Timelines of view_timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_timeline_shorthand var
 
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the

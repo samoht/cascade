@@ -218,7 +218,7 @@ let rec pp_position_value : position_value Pp.t =
       Pp.space ctx ();
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_length ctx offset
+      pp_position_offset ctx offset
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
@@ -729,42 +729,79 @@ let position_offset_zero (lp : Values.length_percentage) :
     Values.length_percentage =
   match lp with Pct 0. | Length (Pct 0.) -> Length Zero | lp -> lp
 
-(* The horizontal and vertical components of a statically-known position; [None]
-   when a component is dynamic ([var()], [calc()], [env()]) or offset from a
-   non-zero edge ([right]/[bottom] offsets need the box size). *)
-let position_xy : position_value -> (Values.length * Values.length) option =
-  let pct n : Values.length = Pct n in
-  let static_offset : Values.length_percentage -> Values.length option =
-    function
-    | Length l -> Some l
-    | Pct n -> Some (pct n)
-    | Env _ | Var _ | Calc _ | Invalid _ -> None
-  in
+let position_pct n : Values.length = Pct n
+
+let static_position_offset : Values.length_percentage -> Values.length option =
   function
-  | Center -> Some (pct 50., pct 50.)
-  | Left -> Some (pct 0., pct 50.)
-  | Right -> Some (pct 100., pct 50.)
-  | Top -> Some (pct 50., pct 0.)
-  | Bottom -> Some (pct 50., pct 100.)
-  | Left_top | Top_left -> Some (pct 0., pct 0.)
-  | Left_center -> Some (pct 0., pct 50.)
-  | Left_bottom | Bottom_left -> Some (pct 0., pct 100.)
-  | Right_top | Top_right -> Some (pct 100., pct 0.)
-  | Right_center -> Some (pct 100., pct 50.)
-  | Right_bottom | Bottom_right -> Some (pct 100., pct 100.)
-  | Center_top -> Some (pct 50., pct 0.)
-  | Center_bottom -> Some (pct 50., pct 100.)
+  | Length l -> Some l
+  | Pct n -> Some (position_pct n)
+  | Env _ | Var _ | Calc _ | Invalid _ -> None
+
+let position_edge_offset edge offset =
+  match edge with
+  | "left" | "top" -> static_position_offset offset
+  | "right" | "bottom" -> (
+      match offset with
+      | Pct n -> Some (position_pct (100. -. n))
+      | Length l -> (
+          match Values.normalize_length l with
+          | Zero -> Some (position_pct 100.)
+          | Pct n -> Some (position_pct (100. -. n))
+          | _ -> None)
+      | Env _ | Var _ | Calc _ | Invalid _ -> None)
+  | _ -> None
+
+let horizontal_position = function
+  | "left" -> Some (position_pct 0.)
+  | "center" -> Some (position_pct 50.)
+  | "right" -> Some (position_pct 100.)
+  | _ -> None
+
+let vertical_position = function
+  | "top" -> Some (position_pct 0.)
+  | "center" -> Some (position_pct 50.)
+  | "bottom" -> Some (position_pct 100.)
+  | _ -> None
+
+let position_pair x y =
+  match (x, y) with Some x, Some y -> Some (x, y) | _ -> None
+
+(* The horizontal and vertical components of a statically-known position; [None]
+   when a component is dynamic ([var()], [calc()], [env()]) or uses a non-zero
+   length offset from [right]/[bottom], which needs the box size. *)
+let position_xy : position_value -> (Values.length * Values.length) option =
+  function
+  | Center -> Some (position_pct 50., position_pct 50.)
+  | Left -> Some (position_pct 0., position_pct 50.)
+  | Right -> Some (position_pct 100., position_pct 50.)
+  | Top -> Some (position_pct 50., position_pct 0.)
+  | Bottom -> Some (position_pct 50., position_pct 100.)
+  | Left_top | Top_left -> Some (position_pct 0., position_pct 0.)
+  | Left_center -> Some (position_pct 0., position_pct 50.)
+  | Left_bottom | Bottom_left -> Some (position_pct 0., position_pct 100.)
+  | Right_top | Top_right -> Some (position_pct 100., position_pct 0.)
+  | Right_center -> Some (position_pct 100., position_pct 50.)
+  | Right_bottom | Bottom_right -> Some (position_pct 100., position_pct 100.)
+  | Center_top -> Some (position_pct 50., position_pct 0.)
+  | Center_bottom -> Some (position_pct 50., position_pct 100.)
   | XY (x, y) -> Some (x, y)
-  | Single x -> Some (x, pct 50.)
-  | Edge_offset_axis ("left", off, "center") ->
-      Option.map (fun x -> (x, pct 50.)) (static_offset off)
-  | Edge_offset_axis ("left", off, "top") ->
-      Option.map (fun x -> (x, pct 0.)) (static_offset off)
-  | Axis_edge_offset ("center", "top", off) -> Some (pct 50., off)
-  | Edge_offset_edge_offset ("left", x, "top", y) -> (
-      match (static_offset x, static_offset y) with
-      | Some x, Some y -> Some (x, y)
-      | _ -> None)
+  | Single x -> Some (x, position_pct 50.)
+  | Edge_offset_axis ((("left" | "right") as edge), off, axis) ->
+      position_pair (position_edge_offset edge off) (vertical_position axis)
+  | Edge_offset_axis ((("top" | "bottom") as edge), off, axis) ->
+      position_pair (horizontal_position axis) (position_edge_offset edge off)
+  | Axis_edge_offset (axis, (("top" | "bottom") as edge), off) ->
+      position_pair (horizontal_position axis) (position_edge_offset edge off)
+  | Edge_offset_edge_offset
+      ((("left" | "right") as x_edge), x, (("top" | "bottom") as y_edge), y) ->
+      position_pair
+        (position_edge_offset x_edge x)
+        (position_edge_offset y_edge y)
+  | Edge_offset_edge_offset
+      ((("top" | "bottom") as y_edge), y, (("left" | "right") as x_edge), x) ->
+      position_pair
+        (position_edge_offset x_edge x)
+        (position_edge_offset y_edge y)
   | _ -> None
 
 (* The parser's node for the shortest spelling of a static (x, y) position: [x]
@@ -792,7 +829,7 @@ let normalize_position_value ?(strip = true) : position_value -> position_value
       | Edge_offset_axis (e, lp, a) ->
           preserve_if_equal value (Edge_offset_axis (e, offset lp, a))
       | Axis_edge_offset (a, e, l) ->
-          preserve_if_equal value (Axis_edge_offset (a, e, length l))
+          preserve_if_equal value (Axis_edge_offset (a, e, offset l))
       | Edge_offset_edge_offset (e1, lp1, e2, lp2) ->
           preserve_if_equal value
             (Edge_offset_edge_offset (e1, offset lp1, e2, offset lp2))
@@ -1278,15 +1315,17 @@ module Position_value = struct
     | Revert
     | Revert_layer
 
+  let horizontal = function "left" | "right" -> true | _ -> false
+  let vertical = function "top" | "bottom" -> true | _ -> false
+
+  let valid_edge_axis edge axis =
+    (horizontal edge && (vertical axis || axis = "center"))
+    || (vertical edge && (horizontal axis || axis = "center"))
+
   let read_xy (t : Cursor.t) : position_value =
-    let x = read_length t in
-    (* Reject global keywords - they should be parsed by read_1_value *)
-    (match x with
-    | Inherit | Initial | Unset | Revert | Revert_layer ->
-        Cursor.err_invalid t "global keywords must be used alone"
-    | _ -> ());
+    let x = read_length ~with_keywords:false t in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option (read_length ~with_keywords:false) t with
     | Some y -> XY (x, y)
     | None -> Single x
 
@@ -1358,25 +1397,25 @@ module Position_value = struct
   let read_3_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length_percentage t in
+    let offset = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
     let axis = Cursor.ident t in
-    Edge_offset_axis (edge1, offset, axis)
+    if valid_edge_axis edge1 axis then Edge_offset_axis (edge1, offset, axis)
+    else Cursor.err_invalid t "invalid three-value position"
 
   let read_axis_edge_offset t : position_value =
     let axis = Cursor.ident t in
     Cursor.ws t;
     let edge = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length t in
-    match (axis, edge) with
-    | "center", ("top" | "bottom") -> Axis_edge_offset (axis, edge, offset)
-    | _ -> Cursor.err_invalid t "invalid position axis edge offset"
+    let offset = read_length_percentage ~with_keywords:false t in
+    if valid_edge_axis edge axis then Axis_edge_offset (axis, edge, offset)
+    else Cursor.err_invalid t "invalid position axis edge offset"
 
   let read_horizontal_keyword_length t : position_value =
     let keyword = Cursor.ident t in
     Cursor.ws t;
-    let y = read_length t in
+    let y = read_length ~with_keywords:false t in
     match keyword with
     | "left" -> XY ((Pct 0. : length), y)
     | "right" -> XY ((Pct 100. : length), y)
@@ -1384,7 +1423,7 @@ module Position_value = struct
     | _ -> Cursor.err_invalid t "invalid horizontal position keyword length"
 
   let read_length_keyword t : position_value =
-    let offset = read_length t in
+    let offset = read_length ~with_keywords:false t in
     Cursor.ws t;
     match Cursor.ident t with
     | "center" -> Single offset
@@ -1394,28 +1433,42 @@ module Position_value = struct
   let read_4_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset1 = read_length_percentage t in
+    let offset1 = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
     let edge2 = Cursor.ident t in
     Cursor.ws t;
-    let offset2 = read_length_percentage t in
-    Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
+    let offset2 = read_length_percentage ~with_keywords:false t in
+    if
+      (horizontal edge1 && vertical edge2)
+      || (vertical edge1 && horizontal edge2)
+    then Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
+    else Cursor.err_invalid t "invalid four-value position"
 end
+
+let common_position_readers read_var =
+  [
+    Position_value.read_horizontal_keyword_length;
+    Position_value.read_length_keyword;
+    Position_value.read_xy;
+    Position_value.read_2_value;
+    Position_value.read_1_value;
+    read_var;
+  ]
 
 let rec read_position_value t : position_value =
   let read_var t : position_value = Var (read_var read_position_value t) in
   Cursor.one_of
-    [
-      Position_value.read_4_value;
-      Position_value.read_axis_edge_offset;
-      Position_value.read_3_value;
-      Position_value.read_horizontal_keyword_length;
-      Position_value.read_length_keyword;
-      Position_value.read_xy;
-      Position_value.read_2_value;
-      Position_value.read_1_value;
-      read_var;
-    ]
+    (Position_value.read_4_value :: common_position_readers read_var)
+    t
+
+let rec read_background_position_value t : position_value =
+  let read_var t : position_value =
+    Var (read_var read_background_position_value t)
+  in
+  Cursor.one_of
+    (Position_value.read_4_value :: Position_value.read_axis_edge_offset
+   :: Position_value.read_3_value
+    :: common_position_readers read_var)
     t
 
 module Radial_config = struct
@@ -1629,11 +1682,11 @@ let read_linear_gradient_body_stops t =
     Cursor.err_expected t "at least one color stop in linear-gradient()";
   Linear_gradient (direction, stops)
 
-let read_linear_gradient_body t =
+let read_gradient_var_only t =
   Cursor.ws t;
   (* CSS Variables 1 sec. 3: a single [var()] can stand in for the entire body
-     of [linear-gradient(...)], since the variable's value may itself contain
-     commas and stops. Check this case first so the var() does not get
+     of a gradient, since the variable's value may itself contain commas and
+     stops. Check this case first so a linear gradient's var() does not get
      mis-parsed as an [Angle (Var _)] direction by the prelude reader. *)
   let var_only =
     Cursor.lookahead
@@ -1648,7 +1701,12 @@ let read_linear_gradient_body t =
       let v = Values.read_var read_gradient_stop t in
       Cursor.ws t;
       Cursor.expect_eof t;
-      Linear_gradient_var v
+      Some v
+  | None -> None
+
+let read_linear_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Linear_gradient_var v
   | None -> read_linear_gradient_body_stops t
 
 let read_webkit_linear_gradient_body t =
@@ -1670,7 +1728,7 @@ let read_webkit_linear_gradient_body t =
     Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
   Webkit_linear_gradient (Option.value ~default:To_bottom direction, stops)
 
-let read_radial_gradient_body t =
+let read_radial_gradient_body_stops t =
   Cursor.ws t;
   let config =
     match
@@ -1695,7 +1753,12 @@ let read_radial_gradient_body t =
     Cursor.err_expected t "at least one color stop in radial-gradient()";
   Radial_gradient (config, stops)
 
-let read_conic_gradient_body t =
+let read_radial_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Radial_gradient_var v
+  | None -> read_radial_gradient_body_stops t
+
+let read_conic_gradient_body_stops t =
   (* [conic-gradient([from <angle>]? [at <position>]? ,? <color-stop-list>)] *)
   let config = Cursor.option read_conic_gradient_config t in
   Cursor.ws t;
@@ -1714,6 +1777,11 @@ let read_conic_gradient_body t =
           : conic_gradient_config)
   in
   Conic_gradient (config, stops)
+
+let read_conic_gradient_body t =
+  match read_gradient_var_only t with
+  | Some v -> Conic_gradient_var v
+  | None -> read_conic_gradient_body_stops t
 
 let read_bg_url_arg inner =
   Cursor.ws inner;
@@ -1875,15 +1943,21 @@ let read_image_set_body t : background_image =
 let read_repeating_linear_gradient t =
   match Cursor.call "repeating-linear-gradient" t read_linear_gradient_body with
   | Linear_gradient (d, stops) -> Repeating_linear_gradient (d, stops)
+  | Linear_gradient_var v ->
+      Repeating_linear_gradient (Default_direction, [ Var v ])
   | other -> other
 
 let read_repeating_radial_gradient t =
-  match Cursor.call "repeating-radial-gradient" t read_radial_gradient_body with
+  match
+    Cursor.call "repeating-radial-gradient" t read_radial_gradient_body_stops
+  with
   | Radial_gradient (c, stops) -> Repeating_radial_gradient (c, stops)
   | other -> other
 
 let read_repeating_conic_gradient t =
-  match Cursor.call "repeating-conic-gradient" t read_conic_gradient_body with
+  match
+    Cursor.call "repeating-conic-gradient" t read_conic_gradient_body_stops
+  with
   | Conic_gradient (c, stops) -> Repeating_conic_gradient (c, stops)
   | other -> other
 
@@ -1962,12 +2036,12 @@ let webkit_bg_image_calls =
     ("-webkit-repeating-linear-gradient", read_webkit_repeating_linear_gradient);
     ( "-webkit-radial-gradient",
       fun t ->
-        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body_stops
         |> webkit_radial_gradient_of_radial );
     ( "-webkit-repeating-radial-gradient",
       fun t ->
         Cursor.call "-webkit-repeating-radial-gradient" t
-          read_radial_gradient_body
+          read_radial_gradient_body_stops
         |> webkit_repeat_radial_of_radial );
   ]
 
@@ -1984,11 +2058,12 @@ let legacy_bg_image_calls =
         |> moz_repeat_linear_of_webkit );
     ( "-moz-radial-gradient",
       fun t ->
-        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body_stops
         |> moz_radial_gradient_of_radial );
     ( "-moz-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-moz-repeating-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-moz-repeating-radial-gradient" t
+          read_radial_gradient_body_stops
         |> moz_repeat_radial_of_radial );
     ( "-o-linear-gradient",
       fun t ->
@@ -2001,11 +2076,12 @@ let legacy_bg_image_calls =
         |> o_repeat_linear_of_webkit );
     ( "-o-radial-gradient",
       fun t ->
-        Cursor.call "-o-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-o-radial-gradient" t read_radial_gradient_body_stops
         |> o_radial_gradient_of_radial );
     ( "-o-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-o-repeating-radial-gradient" t read_radial_gradient_body
+        Cursor.call "-o-repeating-radial-gradient" t
+          read_radial_gradient_body_stops
         |> o_repeat_radial_of_radial );
   ]
 

@@ -134,11 +134,17 @@ val read_shadow : Cursor.t -> shadow
 (** [read_shadow t] parses a {!val-shadow} value from [t]. *)
 
 val read_timeline_shorthand : Cursor.t -> timeline_shorthand
-(** [read_timeline_shorthand t] parses [scroll-timeline] and [view-timeline]. *)
+(** [read_timeline_shorthand t] parses [scroll-timeline]. *)
 
 val pp_timeline_shorthand : timeline_shorthand Pp.t
-(** [pp_timeline_shorthand] pretty-prints [scroll-timeline] and [view-timeline]
-    shorthand values. *)
+(** [pp_timeline_shorthand] pretty-prints [scroll-timeline] shorthand values. *)
+
+val read_view_timeline_shorthand : Cursor.t -> view_timeline_shorthand
+(** [read_view_timeline_shorthand t] parses [view-timeline]. *)
+
+val pp_view_timeline_shorthand : view_timeline_shorthand Pp.t
+(** [pp_view_timeline_shorthand] pretty-prints [view-timeline] shorthand values.
+*)
 
 val pp_timeline_axis : timeline_axis Pp.t
 (** [pp_timeline_axis] pretty-prints a timeline axis. *)
@@ -291,12 +297,20 @@ val read_timeline_inset_item : Cursor.t -> timeline_inset_item
 (** [read_timeline_inset_item t] parses one [view-timeline-inset] item. *)
 
 val pp_timeline_shorthand_item : timeline_shorthand_item Pp.t
-(** [pp_timeline_shorthand_item] pretty-prints one [scroll-timeline]/
-    [view-timeline] shorthand item. *)
+(** [pp_timeline_shorthand_item] pretty-prints one [scroll-timeline] shorthand
+    item. *)
 
 val read_timeline_shorthand_item : Cursor.t -> timeline_shorthand_item
-(** [read_timeline_shorthand_item t] parses one [scroll-timeline]/
-    [view-timeline] shorthand item. *)
+(** [read_timeline_shorthand_item t] parses one [scroll-timeline] shorthand
+    item. *)
+
+val pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t
+(** [pp_view_timeline_shorthand_item] pretty-prints one [view-timeline]
+    shorthand item. *)
+
+val read_view_timeline_shorthand_item : Cursor.t -> view_timeline_shorthand_item
+(** [read_view_timeline_shorthand_item t] parses one [view-timeline] shorthand
+    item. *)
 
 val pp_font_variant_emoji : font_variant_emoji Pp.t
 (** [pp_font_variant_emoji] pretty-prints [font-variant-emoji]. *)
@@ -390,6 +404,18 @@ val pp_offset_path : offset_path Pp.t
 
 val read_offset_path : Cursor.t -> offset_path
 (** [read_offset_path t] parses [offset-path]. *)
+
+val pp_offset_anchor : offset_anchor Pp.t
+(** [pp_offset_anchor] pretty-prints [offset-anchor]. *)
+
+val read_offset_anchor : Cursor.t -> offset_anchor
+(** [read_offset_anchor t] parses [offset-anchor]. *)
+
+val pp_offset_position : offset_position Pp.t
+(** [pp_offset_position] pretty-prints [offset-position]. *)
+
+val read_offset_position : Cursor.t -> offset_position
+(** [read_offset_position t] parses [offset-position]. *)
 
 val pp_animation_range_item : animation_range_item Pp.t
 (** [pp_animation_range_item] pretty-prints one [<single-animation-range>]. *)

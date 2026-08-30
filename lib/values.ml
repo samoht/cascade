@@ -1072,13 +1072,13 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
-(* CSS Values 4 sec. 10.10.1 value-independent calc identities: hold for any
-   finite operand, so they fold even across a kept [var()] (single-valued inside
-   [calc()], so [var * 1 = var]). Identity cases ([x * 1], [x / 1], [x + 0],
-   ...) return the operand verbatim; zero-producing cases take the type's
-   canonical zero from [~zero], and [~is_zero] recognises a typed zero leaf
-   ([0px], not just [0]) so [0px * x] collapses too. Operands are
-   already-evaluated; numeric op numeric is the caller's job. *)
+(* CSS Values 4 sec. 10.10.1 value-independent multiplicative calc identities:
+   these fold even across a kept [var()] ([var * 1 = var]). A zero sum term is
+   deliberately not an identity here: the spec only combines sum children with
+   identical units and warns that removing any other zero can change the calc's
+   type. Zero-producing products take the type's canonical zero from [~zero],
+   and [~is_zero] recognises a typed zero leaf ([0px], not just [0]). Operands
+   are already evaluated; numeric op numeric is the caller's job. *)
 let calc_identity : type a.
     zero:a calc ->
     is_zero:(a -> bool) ->
@@ -1090,12 +1090,6 @@ let calc_identity : type a.
   match (l, op, r) with
   | _, Mul, Num 1. | _, Div, Num 1. -> Some l
   | Num 1., Mul, _ -> Some r
-  (* Additive identity holds for the unitless [0] and for a typed zero ([0px]).
-     [0 - x] is [-x], not [x], so only the [0 +] direction folds on the left. *)
-  | _, (Add | Sub), Num 0. -> Some l
-  | _, (Add | Sub), Val v when is_zero v -> Some l
-  | Num 0., Add, _ -> Some r
-  | Val v, Add, _ when is_zero v -> Some r
   | _, Mul, Num 0. | Num 0., Mul, _ -> Some zero
   (* A typed zero ([0px]) keeps its own spelling here; the optimizer's
      zero-length strip canonicalises it, so a non-optimised serialisation still
@@ -1281,8 +1275,8 @@ let eval_typed_calc : type a.
   in
   settle_computed round (reduce calc)
 
-let pp_calc : type a. a Pp.t -> a calc Pp.t =
- fun pp_value ctx calc ->
+let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1290,16 +1284,18 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
      [calc(var(--x))] to bare [var(--x)] would change which substitution shape
      is valid. *)
   | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc_presolved : type a. a Pp.t -> a calc Pp.t =
- fun pp_value ctx calc ->
+let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
+
+let pp_calc_presolved : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) pp_value ctx calc ->
   match calc with
   | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
@@ -1385,10 +1381,9 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
    are left untouched. *)
-(* In a length calc tree, any zero-valued length and the unitless [0] are
-   spec-equivalent additive identities; rewriting typed zeros to [Num 0.] lets
-   the generic [eval_calc] simplifier collapse [calc(1px + 0px)] the same way it
-   collapses [calc(1px + 0)]. *)
+(* Recognise literal zeros for top-level canonicalisation and typed products.
+   This does not make them interchangeable in a calc sum: CSS Values 4 sec.
+   10.10.1 only combines identical units and requires other zero terms to stay. *)
 let length_is_zero = function
   | Zero -> true
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
@@ -1816,6 +1811,11 @@ let length_of_unit unit n =
   | Cqmin -> Cqmin n
   | Cqmax -> Cqmax n
 
+(* A zero [px] term inside calc() must retain its unit. Only a completed
+   top-level [<length>] can use the shorter unitless-zero representation. *)
+let length_of_calc_unit (unit : length_unit) n : length =
+  match unit with Px -> Px n | _ -> length_of_unit unit n
+
 type linear_term = {
   unit : length_unit;
   value : float;
@@ -1860,23 +1860,11 @@ let ordered_linear_terms terms =
           Hashtbl.replace table unit
             { term with value = term.value +. n; count = term.count + 1 })
     terms;
-  (* CSS Values 4 sec. 10.10: a calc()'s type is the union of its argument
-     types. Dropping [0%] from [calc(100px + 0%)] would narrow
-     [<length-percentage>] to [<length>] and break interpolation, so [0%] is
-     kept as a type sentinel. Other zero terms (e.g. [0px] beside another [px])
-     drop, their unit already in the result. *)
-  let keep_zero_term term =
-    length_unit_is_pct term.unit
-    && Hashtbl.fold
-         (fun _ t acc -> acc + if t.unit = term.unit then 0 else 1)
-         table 0
-       > 0
-  in
-  let terms =
-    Hashtbl.to_seq_values table
-    |> List.of_seq
-    |> List.filter (fun term -> term.value <> 0. || keep_zero_term term)
-  in
+  (* CSS Values 4 sec. 10.10.1 combines identical units, but explicitly keeps
+     zero-valued sum children otherwise: their unit contributes to the calc's
+     type. The table has already combined each identical-unit set, so retain
+     every resulting term, including zero. *)
+  let terms = Hashtbl.to_seq_values table |> List.of_seq in
   let first_pos =
     List.fold_left (fun acc term -> min acc term.first_pos) max_int terms
   in
@@ -1896,7 +1884,7 @@ let linear_terms_with unit_of_value calc =
   in
   let rec aux = function
     | Val v -> Option.map (fun term -> [ term ]) (unit_of_value v)
-    | Num 0. -> Some []
+    (* A unitless zero is still a [<number>] inside calc(), not a typed zero. *)
     | Num _ | Math_const _ | Var _ | Sibling_index | Sibling_count | Math_fn _
       ->
         None
@@ -1934,8 +1922,8 @@ let linear_length_calc calc =
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op first_unit first_value unit n in
-              Expr (acc, op, Val (length_of_unit unit n)))
-            (Val (length_of_unit unit n))
+              Expr (acc, op, Val (length_of_calc_unit unit n)))
+            (Val (length_of_calc_unit unit n))
             rest)
 
 let lp_of_default_string value : length_percentage option =
@@ -2035,7 +2023,7 @@ let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Env _ | Var _ | Calc _ | Invalid _ -> None
 
 let lp_of_unit unit n : length_percentage =
-  match unit with Pct -> Pct n | unit -> Length (length_of_unit unit n)
+  match unit with Pct -> Pct n | unit -> Length (length_of_calc_unit unit n)
 
 let linear_lp_terms calc = linear_terms_with unit_of_lp calc
 
@@ -2373,7 +2361,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_presolved (pp_length ~always) ctx cv
+      pp_calc_presolved ~unwrap_num:false (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3674,39 +3662,24 @@ let rec pp_angle : angle Pp.t =
   (* A math function is itself an [<angle>] production, so the [calc()] around
      one is redundant (CSS Values 4 sec. 10.8). *)
   | Calc (Math_fn fn) -> pp_math_fn ctx fn
-  | Calc c -> pp_calc_presolved pp_angle ctx c
+  | Calc c -> pp_calc_presolved ~unwrap_num:false pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(* A bare or [deg] hue prints in full in both modes: reducing its precision
-   changes the rendered colour, so that is a lossy fold owned by the AST
-   normalize pass ([round_hue]), not the printer, and a consumer serialising a
-   typed oklch with [to_string ~minify:true] round-trips the authored hue. *)
+(* A bare or [deg] hue prints in full precision. Minified output can omit an
+   explicit [deg] exactly; converting another angle unit or reducing precision
+   remains a node-changing fold owned by the AST normalize pass
+   ([round_hue]). *)
 let pp_hue_float ctx f =
   Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f)
 
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
   | Unitless f -> pp_hue_float ctx f
-  | Angle (Deg f) when ctx.minify ->
-      (* During minification, omit 'deg' since it's the default unit *)
-      pp_hue_float ctx f
-  | Angle a when ctx.minify -> (
-      match deg_of_hue (Angle a) with
-      | Some f ->
-          (* A non-degree angle unit canonicalises to bare degrees; the
-             conversion is approximate (radians go through pi), so it rounds
-             here rather than emitting a noise-precision tail. *)
-          let f = normalize_hue f in
-          let s =
-            if ctx.Pp.lossless then Pp.string_of_float ~drop_leading_zero:true f
-            else Pp.string_of_float ~drop_leading_zero:true ~max_decimals:3 f
-          in
-          Pp.string ctx s
-      | None -> pp_angle ctx a)
+  | Angle (Deg f) when Pp.minified ctx -> pp_hue_float ctx f
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
@@ -3984,10 +3957,63 @@ let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     ~zero:(Val (S 0.) : duration calc)
     ~ctx c
 
-let normalize_duration ?(ctx = default_calc_ctx) (d : duration) : duration =
+(* Choose equivalent time units and evaluate static stepped functions in the
+   AST, before declaration hashes are compared. *)
+let rec normalize_duration ?(ctx = default_calc_ctx) ?(canonicalize_ms = true)
+    (d : duration) : duration =
+  let normalize = normalize_duration ~ctx ~canonicalize_ms in
+  let preserve rebuilt = if rebuilt = d then d else rebuilt in
   match d with
+  | Ms f when canonicalize_ms ->
+      let seconds = f /. 1000. in
+      let ms = Pp.string_of_float ~drop_leading_zero:true f in
+      let s = Pp.string_of_float ~drop_leading_zero:true seconds in
+      if String.length s + 1 <= String.length ms + 2 then S seconds else d
+  | Durations durations ->
+      preserve (Durations (Common.List.map_preserve normalize durations))
+  | Round (strategy, value, step) -> (
+      let value = normalize value and step = normalize step in
+      match (value, step) with
+      | Ms value, Ms step when step <> 0. ->
+          normalize (Ms (round_to_step strategy value step))
+      | S value, S step when step <> 0. ->
+          normalize (S (round_to_step strategy value step))
+      | _ -> preserve (Round (strategy, value, step)))
+  | Rem (a, b) -> (
+      let a = normalize a and b = normalize b in
+      match (a, b) with
+      | Ms a, Ms b when b <> 0. -> normalize (Ms (Float.rem a b))
+      | S a, S b when b <> 0. -> normalize (S (Float.rem a b))
+      | _ -> preserve (Rem (a, b)))
+  | Mod (a, b) -> (
+      let a = normalize a and b = normalize b in
+      match (a, b) with
+      | Ms a, Ms b when b <> 0. -> normalize (Ms (mod_value a b))
+      | S a, S b when b <> 0. -> normalize (S (mod_value a b))
+      | _ -> preserve (Mod (a, b)))
   | Calc c -> (
-      match eval_time_calc ~ctx c with Val v -> v | folded -> Calc folded)
+      match eval_time_calc ~ctx c with
+      | Val v -> normalize v
+      | folded -> preserve (Calc folded))
+  | Var v ->
+      let fallback =
+        match v.fallback with
+        | Fallback value ->
+            let value' = normalize value in
+            if value' == value then v.fallback else Fallback value'
+        | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as other
+          ->
+            other
+      in
+      let default =
+        match v.default with
+        | Some value ->
+            let value' = normalize value in
+            if value' == value then v.default else Some value'
+        | None -> v.default
+      in
+      if fallback == v.fallback && default == v.default then d
+      else Var { v with fallback; default }
   | _ -> d
 
 (* CSS Values 4 sec. 10.10.1: a typed [<angle>] multiplied or divided by a
@@ -4142,7 +4168,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_presolved (pp_length_percentage ~always) ctx c
+      pp_calc_presolved ~unwrap_num:false (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -4159,8 +4185,9 @@ let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
-(* AST-level [<number-percentage>] canonicalisation: at a typed leaf where [%] and
-   number are spec-equivalent (100% = 1), pick the shorter so
+(* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
+   12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
+   number are equivalent (100% = 1). Pick the shorter leaf so
    [pp_number_percentage] serialises a canonical node. [Var] / [Calc] are left
    alone (inside calc() [%] and number aren't interchangeable). *)
 (* [<number-percentage>] shares [<percentage>]'s scaling/combining; the type is
@@ -4454,20 +4481,14 @@ let starts_unsigned_number s =
    whichever node it is given ([Pct] -> [%], [Num] -> bare number). The
    precision is fixed in the AST normalize pass, so this prints in full. *)
 let pp_color_lightness ctx (l : percentage option) : percentage option =
-  match l with
+  (match l with
   | Some (Pct f) ->
       pp_lab_float ctx f;
-      Pp.char ctx '%';
-      l
-  | Some (Num f) ->
-      pp_lab_float ctx f;
-      l
-  | Some l ->
-      pp_percentage ctx l;
-      Some l
-  | None ->
-      Pp.string ctx "none";
-      None
+      Pp.char ctx '%'
+  | Some (Num f) -> pp_lab_float ctx f
+  | Some l -> pp_percentage ctx l
+  | None -> Pp.string ctx "none");
+  l
 
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
     (percentage option * float option * hue * alpha) Pp.t =
@@ -4807,30 +4828,24 @@ and pp_color_default : color Pp.t =
 
 let pp_specified_color = pp_color_default
 
-(* CSS Values 4 sec. 7.2: [ms] and [s] are interchangeable; pick the shorter
-   spelling when minifying. The "s" suffix is one character shorter than "ms",
-   so a millisecond value collapses to seconds when its second-form digits are
-   no longer than the millisecond-form digits. *)
+(* CSS Values 4 sec. 7.2: [ms] and [s] are interchangeable. Pure minified
+   serialization picks the shorter exact leaf spelling as a fallback for callers
+   that deliberately skip AST normalization. [shorten_ms:false] keeps the unit
+   where its surrounding grammar asks for source-unit fidelity. *)
 let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
   if f = 0. then
-    (* CSS Values 4 6.6: a zero [<time>] still requires the unit (unlike
-       [<length>] where [0] is valid). Pretty mode keeps the source unit; under
-       minify pick [s] as the canonical short spelling. *)
-    if ctx.Pp.minify then Pp.string ctx "0s"
-    else (
-      Pp.string ctx "0";
-      Pp.string ctx suffix)
-  else if (not shorten_ms) || (not ctx.Pp.minify) || suffix <> "ms" then
+    if Pp.minified ctx then Pp.string ctx "0s" else pp_unit ctx f suffix
+  else if (not shorten_ms) || (not (Pp.minified ctx)) || suffix <> "ms" then
     pp_unit ctx f suffix
   else
-    let in_seconds = f /. 1000. in
-    let ms_str = Pp.string_of_float ~drop_leading_zero:true f in
-    let s_str = Pp.string_of_float ~drop_leading_zero:true in_seconds in
-    if String.length s_str + 1 <= String.length ms_str + 2 then (
-      Pp.string ctx s_str;
-      Pp.string ctx "s")
+    let seconds = f /. 1000. in
+    let ms = Pp.string_of_float ~drop_leading_zero:true f in
+    let s = Pp.string_of_float ~drop_leading_zero:true seconds in
+    if String.length s + 1 <= String.length ms + 2 then (
+      Pp.string ctx s;
+      Pp.char ctx 's')
     else (
-      Pp.string ctx ms_str;
+      Pp.string ctx ms;
       Pp.string ctx "ms")
 
 let rec pp_duration : duration Pp.t =
@@ -4838,12 +4853,6 @@ let rec pp_duration : duration Pp.t =
   | Ms f -> pp_duration_unit ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
   | Durations durations -> Pp.list ~sep:Pp.comma pp_duration ctx durations
-  | Round (strategy, Ms value, Ms step) when Pp.minified ctx && step <> 0. ->
-      pp_duration_unit ~shorten_ms:false ctx
-        (round_to_step strategy value step)
-        "ms"
-  | Round (strategy, S value, S step) when Pp.minified ctx && step <> 0. ->
-      pp_duration ctx (S (round_to_step strategy value step))
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -4854,10 +4863,6 @@ let rec pp_duration : duration Pp.t =
           Pp.comma ctx ();
           pp_duration ctx step)
         ctx (strategy, value, step)
-  | Rem (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
-      pp_duration ctx (Ms (Float.rem a b))
-  | Rem (S a, S b) when Pp.minified ctx && b <> 0. ->
-      pp_duration ctx (S (Float.rem a b))
   | Rem (a, b) ->
       Pp.call "rem"
         (fun ctx (a, b) ->
@@ -4865,10 +4870,6 @@ let rec pp_duration : duration Pp.t =
           Pp.comma ctx ();
           pp_duration ctx b)
         ctx (a, b)
-  | Mod (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
-      pp_duration ctx (Ms (mod_value a b))
-  | Mod (S a, S b) when Pp.minified ctx && b <> 0. ->
-      pp_duration ctx (S (mod_value a b))
   | Mod (a, b) ->
       Pp.call "mod"
         (fun ctx (a, b) ->
@@ -4882,57 +4883,7 @@ let rec pp_duration : duration Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc pp_duration_in_calc ctx c
-
-and pp_duration_preserve_ms : duration Pp.t =
- fun ctx -> function
-  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
-  | S f -> pp_duration_unit ctx f "s"
-  | Durations durations ->
-      Pp.list ~sep:Pp.comma pp_duration_preserve_ms ctx durations
-  | Round (strategy, Ms value, Ms step) when Pp.minified ctx && step <> 0. ->
-      pp_duration_preserve_ms ctx (Ms (round_to_step strategy value step))
-  | Round (strategy, S value, S step) when Pp.minified ctx && step <> 0. ->
-      pp_duration_preserve_ms ctx (S (round_to_step strategy value step))
-  | Round (strategy, value, step) ->
-      Pp.call "round"
-        (fun ctx (strategy, value, step) ->
-          if strategy <> "nearest" then (
-            Pp.string ctx strategy;
-            Pp.comma ctx ());
-          pp_duration_preserve_ms ctx value;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx step)
-        ctx (strategy, value, step)
-  | Rem (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
-      pp_duration_preserve_ms ctx (Ms (Float.rem a b))
-  | Rem (S a, S b) when Pp.minified ctx && b <> 0. ->
-      pp_duration_preserve_ms ctx (S (Float.rem a b))
-  | Rem (a, b) ->
-      Pp.call "rem"
-        (fun ctx (a, b) ->
-          pp_duration_preserve_ms ctx a;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx b)
-        ctx (a, b)
-  | Mod (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
-      pp_duration_preserve_ms ctx (Ms (mod_value a b))
-  | Mod (S a, S b) when Pp.minified ctx && b <> 0. ->
-      pp_duration_preserve_ms ctx (S (mod_value a b))
-  | Mod (a, b) ->
-      Pp.call "mod"
-        (fun ctx (a, b) ->
-          pp_duration_preserve_ms ctx a;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx b)
-        ctx (a, b)
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_duration_preserve_ms ctx v
-  | Calc c -> pp_calc pp_duration_in_calc ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
@@ -4950,7 +4901,45 @@ and pp_duration_in_calc : duration Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc pp_duration_in_calc ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
+
+and pp_duration_preserve_ms : duration Pp.t =
+ fun ctx -> function
+  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
+  | Durations durations ->
+      Pp.list ~sep:Pp.comma pp_duration_preserve_ms ctx durations
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_duration_preserve_ms ctx value;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx step)
+        ctx (strategy, value, step)
+  | Rem (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_duration_preserve_ms ctx v
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
 
 let rec pp_number : number Pp.t =
  fun ctx -> function
@@ -6560,8 +6549,7 @@ let rec read_percentage_in_color_mix t : percentage =
        verbatim and let substitution-time clamping apply. *)
     Calc (read_calc read_color_mix_calc_pct t)
   else
-    let n = Cursor.number t in
-    Cursor.expect '%' t;
+    let n = Cursor.pct t in
     if n < 0. || n > 100. then
       Cursor.err_invalid t "color-mix percentage must be between 0% and 100%";
     (Pct n : percentage)
@@ -7118,6 +7106,11 @@ let rec read_time_with ?(css_wide = true) t : duration =
       [
         ("var", fun t -> Var (read_var read_time t));
         ("calc", fun t -> Calc (read_calc read_time_in_calc t));
+        ("round", read_duration_round read_time);
+        ( "rem",
+          read_duration_binary_call "rem" (fun a b -> Rem (a, b)) read_time );
+        ( "mod",
+          read_duration_binary_call "mod" (fun a b -> Mod (a, b)) read_time );
       ]
     t
 
@@ -7451,8 +7444,8 @@ let drop_full_alpha (c : color) : color =
   | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
   | _ -> c
 
-(* oklch/oklab/lch/lab lightness: [<percentage>] and [<number>] are
-   spec-equivalent at this leaf ([num = pct *. pct_scale]: ok* L 100% = 1,
+(* CSS Color 4 secs. 16.3-16.4 makes [<percentage>] and [<number>] equivalent
+   for oklch/oklab/lch/lab lightness ([num = pct *. pct_scale]: ok* L 100% = 1,
    lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
    normalize pass, so [pp_color_lightness] serialises the node faithfully rather
    than swapping percentage for number at print time. *)
@@ -7469,21 +7462,34 @@ let round_color_axis ~lossless ~decimals f =
     let m = 10. ** float_of_int decimals in
     Float.round (f *. m) /. m
 
-(* Round an oklch/lch hue to 3 decimals for the canonical (optimize) form: a
-   bare or [deg] hue keeps its representation, other angle units collapse to the
-   canonical bare degree. A [var()] / [calc()] / [none] hue is left opaque. *)
+(* Round an oklch/lch hue to 3 decimals for the canonical (optimize) form and
+   collapse every concrete angle unit to canonical bare degrees. A [var()] /
+   [calc()] / [none] hue is left opaque. *)
 let round_hue ~lossless (h : hue) : hue =
-  if lossless then h
-  else
-    let r f = round_color_axis ~lossless ~decimals:3 f in
-    match h with
-    | Unitless f -> Unitless (r f)
-    | Angle (Deg f) -> Angle (Deg (r f))
-    | Angle a -> (
-        match deg_of_hue (Angle a) with
-        | Some f -> Unitless (r (normalize_hue f))
-        | None -> h)
-    | Hue_none | Var _ -> h
+  let r f = round_color_axis ~lossless ~decimals:3 f in
+  match h with
+  | Unitless f -> Unitless (r f)
+  | Angle (Deg f) -> Unitless (r f)
+  | Angle a -> (
+      match deg_of_hue (Angle a) with
+      | Some f -> Unitless (r (normalize_hue f))
+      | None -> h)
+  | Hue_none | Var _ -> h
+
+let canonical_hsl_hue ~lossless (h : hue) : hue =
+  match h with
+  | Angle (Deg f) -> Unitless f
+  | Angle a -> (
+      match deg_of_hue (Angle a) with
+      | Some f ->
+          Unitless (round_color_axis ~lossless ~decimals:3 (normalize_hue f))
+      | None -> h)
+  | Unitless _ | Hue_none | Var _ -> h
+
+let canonical_hsl_hue_in_color ~lossless = function
+  | Hsl r -> Hsl { r with h = canonical_hsl_hue ~lossless r.h }
+  | Hwb r -> Hwb { r with h = canonical_hsl_hue ~lossless r.h }
+  | color -> color
 
 let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
     (l : percentage option) : percentage option =
@@ -7658,7 +7664,7 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false) (c : color) :
       in
       match bytes with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
-      | Option.None -> drop_full_alpha c)
+      | Option.None -> canonical_hsl_hue_in_color ~lossless (drop_full_alpha c))
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         ~percent2

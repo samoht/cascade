@@ -196,10 +196,11 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       in
       (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
-         invalid and ignored by browsers, so it must not act as a cascade
-         boundary. Stripping it up front lets the rules it falsely separated
-         merge in this same pass, keeping [statements] idempotent (stripping
-         after the merge would leave a re-run to combine them). *)
+         invalid and ignored by browsers (CSS Cascade L6 sec. 2), so it must not
+         act as a cascade boundary. Stripping it up front lets the rules it
+         falsely separated merge in this same pass, keeping [statements]
+         idempotent (stripping after the merge would leave a re-run to combine
+         them). *)
       let stmts' =
         let stmts =
           drop_misplaced_imports stmts

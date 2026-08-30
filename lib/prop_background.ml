@@ -133,17 +133,10 @@ let pp_color_after_length ctx color =
   Pp.space ctx ();
   pp_color ctx color
 
-(* Faithful: a default-zero spread is dropped in [normalize_shadow], not here.
-   [Some Zero] re-parses differently from [None] ([0 1px 3px 0] vs [0 1px 3px]),
-   so collapsing it is a node-changing fold that belongs in the AST normalize
-   pass, leaving pp a pure serialiser. *)
-let pp_shadow_spread _ctx (spread : length option) : length option = spread
-
 let pp_shadow_body ctx { h_offset; v_offset; blur; spread; color } =
   pp_length ctx h_offset;
   Pp.space ctx ();
   pp_length ctx v_offset;
-  let spread = pp_shadow_spread ctx spread in
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
   match color with Some c -> pp_color_after_length ctx c | None -> ()
@@ -231,9 +224,8 @@ let rec pp_border_radius : border_radius Pp.t =
    horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
-  let group vs =
-    collapse_box_shorthand
-      (map_preserve (Values.normalize_length_percentage ~strip) vs)
+  let group =
+    normalize_box_shorthand (Values.normalize_length_percentage ~strip)
   in
   match value with
   | Radius { horizontal; vertical } ->
@@ -394,11 +386,12 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
     let blur = option_map_preserve Values.normalize_length s.blur in
     let spread = option_map_preserve Values.normalize_length s.spread in
     let color = option_map_preserve (normalize_color ~lossless) s.color in
-    (* Drop a trailing optional length equal to its [0] default, contiguously
-       from the end. [spread] is always the last token, so a zero spread drops
-       freely; a zero blur drops only when no spread follows - otherwise it is
-       positional and dropping it would re-bind the spread as the blur (e.g. [0
-       1px 0 5px] must keep the [0] blur). *)
+    (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
+       and defaults each missing value to [0]. Drop a trailing zero contiguously
+       from the end: [spread] is last and drops freely; a zero blur drops only
+       when no spread follows - otherwise it is positional and dropping it would
+       re-bind the spread as the blur (e.g. [0 1px 0 5px] must keep the [0]
+       blur). *)
     let spread : length option =
       match spread with Some sp when is_zero_length sp -> None | _ -> spread
     in
@@ -1666,7 +1659,7 @@ let read_background_box_list t : background_box =
   | many -> Layers many
 
 let read_background_position t : background_position =
-  Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_background_position_value t
 
 module Background_shorthand = struct
   let read_image_item t =
@@ -1678,7 +1671,7 @@ module Background_shorthand = struct
       if bg.image = None then { bg with image = Some img } else bg
 
   let read_position_size_item t =
-    let pos = read_position_value t in
+    let pos = read_background_position_value t in
     Cursor.ws t;
     let size_opt =
       if Cursor.slash_opt t then Some (read_background_size t) else None
@@ -2176,7 +2169,8 @@ let read_border_image t : border_image =
     else Cursor.option read_mask_border_mode t
   in
   let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice) with
-  | None, None -> Cursor.err_expected t "border-image source or slice"
+  (match (source, slice, repeat) with
+  | None, None, None ->
+      Cursor.err_expected t "border-image source, slice, or repeat"
   | _ -> ());
   { source; slice; width; outset; repeat; mode }

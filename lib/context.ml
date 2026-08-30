@@ -976,11 +976,11 @@ module Calc_residual = struct
           (ops.combine_value_num value Values.Mul n)
     | _ -> None
 
-  (* Value-independent identities ([x * 0], [x * 1], [x + 0], ...) live in
+  (* Value-independent multiplicative identities ([x * 0], [x * 1], ...) live in
      [Values.calc_identity], shared with the AST evaluators so the paths never
      drift. They hold for any operand, so they apply to an unresolved [var()]
-     too; [ops.is_zero] collapses a literal zero ([0px], not just [0]). Tried
-     after the numeric/value folds so a resolved [Val] keeps its typed zero. *)
+     too; [ops.is_zero] collapses a literal zero ([0px], not just [0]). Additive
+     terms fold only through the preceding same-type value combination. *)
   let fold_identity_expr ops left op right =
     Values.calc_identity ~zero:ops.zero ~is_zero:ops.is_zero left op right
 
@@ -1354,10 +1354,12 @@ module Length = struct
     in
     let ops : Values.length Calc_residual.ops =
       let to_number = to_px ctx in
-      let of_number px = Values.Px px in
+      let of_number px =
+        if Float.equal px 0. then Values.Zero else Values.Px px
+      in
       {
         of_unitless_number = (fun _ -> None);
-        zero = Values.Num 0.;
+        zero = Values.Val Values.Zero;
         is_zero = Values.length_is_zero;
         combine_values = combine_numeric_values ~to_number ~of_number;
         combine_value_num = combine_numeric_value_num ~to_number ~of_number;
@@ -1842,7 +1844,9 @@ let simplify_length_percentage ?layer_order ?layer cascade length_ctx value =
     | value -> value
   in
   let ops =
-    let of_number px = Values.Length (Values.Px px) in
+    let of_number px =
+      Values.Length (if Float.equal px 0. then Values.Zero else Values.Px px)
+    in
     let combine_values (left : Values.length_percentage) op
         (right : Values.length_percentage) =
       match (left, op, right) with
@@ -1862,7 +1866,7 @@ let simplify_length_percentage ?layer_order ?layer cascade length_ctx value =
     in
     {
       Calc_residual.of_unitless_number = (fun _ -> None);
-      zero = Values.Num 0.;
+      zero = Values.Val (Values.Length Values.Zero);
       is_zero = (fun v -> match to_px v with Some n -> n = 0. | None -> false);
       combine_values;
       combine_value_num;

@@ -230,7 +230,6 @@ let rec pp_flex_basis : flex_basis Pp.t =
       Pp.char ctx ')'
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
-  | From_font -> Pp.string ctx "from-font"
   (* Math functions mirror [length]; reuse its printer. *)
   | Clamp (a, b, c) -> pp_length ctx (Clamp (a, b, c))
   | Min xs -> pp_length ctx (Min xs)

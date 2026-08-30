@@ -1568,7 +1568,7 @@ let matrix =
       };
       {
         property = "perspective-origin";
-        positives = [ "center"; "left top"; "10px 20%" ];
+        positives = [ "center"; "left top"; "left 10px top 20px"; "10px 20%" ];
         negatives = [ "left right"; "top bottom" ];
       };
       {
@@ -1645,14 +1645,8 @@ let matrix =
       {
         property = "transform-origin";
         positives =
-          [
-            "center";
-            "left top";
-            "left 10px top 20px";
-            "10px 20px";
-            "calc(10% + 1px) 20px";
-          ];
-        negatives = [ "left right"; "top bottom" ];
+          [ "center"; "left top"; "10px 20px"; "calc(10% + 1px) 20px" ];
+        negatives = [ "left right"; "top bottom"; "left 10px top 20px" ];
       };
       {
         property = "transform-box";

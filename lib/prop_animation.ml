@@ -328,8 +328,11 @@ let rec pp_timeline_name : timeline_name Pp.t =
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
  fun ctx { name; axis } ->
   pp_ident ctx name;
-  Pp.space ctx ();
-  pp_timeline_axis ctx axis
+  match axis with
+  | None -> ()
+  | Some axis ->
+      Pp.space ctx ();
+      pp_timeline_axis ctx axis
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
@@ -363,6 +366,32 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t =
+ fun ctx { name; axis; inset } ->
+  pp_ident ctx name;
+  Option.iter
+    (fun axis ->
+      Pp.space ctx ();
+      pp_timeline_axis ctx axis)
+    axis;
+  Option.iter
+    (fun inset ->
+      Pp.space ctx ();
+      pp_timeline_inset ctx inset)
+    inset
+
+let rec pp_view_timeline_shorthand : view_timeline_shorthand Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Timelines items ->
+      Pp.list ~sep:Pp.comma pp_view_timeline_shorthand_item ctx items
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_view_timeline_shorthand ctx v
 
 let pp_timing_float ctx f =
   if Float.is_nan f then Pp.nan_value ctx ""
@@ -505,8 +534,12 @@ let normalize_transition_shorthand (s : transition_shorthand) :
     | Option.Some d when transition_duration_is_zero d -> Option.None
     | d -> d
   in
-  let duration = drop_zero s.duration in
-  let delay = drop_zero s.delay in
+  let duration =
+    drop_zero (option_map_preserve Values.normalize_duration s.duration)
+  in
+  let delay =
+    drop_zero (option_map_preserve Values.normalize_duration s.delay)
+  in
   let timing_function =
     match option_map_preserve normalize_timing_function s.timing_function with
     | Option.Some Ease -> Option.None
@@ -669,7 +702,7 @@ let read_timeline_shorthand_item t : timeline_shorthand_item =
   if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid t "timeline name";
   Cursor.ws t;
-  let axis = read_timeline_axis t in
+  let axis = Cursor.option read_timeline_axis t in
   { name; axis }
 
 let rec read_timeline_shorthand t : timeline_shorthand =
@@ -684,9 +717,10 @@ let rec read_timeline_shorthand t : timeline_shorthand =
     ]
     ~var:(fun t -> Var (Values.read_var read_timeline_shorthand t))
     ~default:(fun t ->
-      Timelines
-        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_shorthand_item
-           t))
+      (Timelines
+         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_shorthand_item
+            t)
+        : timeline_shorthand))
     t
 
 let read_timeline_inset_item t : timeline_inset_item =
@@ -714,6 +748,58 @@ let rec read_timeline_inset t : timeline_inset =
       | [ first ] -> (Inset (first, None) : timeline_inset)
       | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
       | _ -> Cursor.err_expected t "timeline-inset")
+    t
+
+let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
+  (* Scroll-driven Animations 1 sec. 3.4.4: the name is followed by
+     [<'view-timeline-axis'> || <'view-timeline-inset'>]?, so try each missing
+     slot until neither consumes input. *)
+  Cursor.ws t;
+  let name = Cursor.ident ~keep_case:true t in
+  if not (Custom_property_name.is_valid name) then
+    Cursor.err_invalid t "timeline name";
+  let axis = ref Option.None in
+  let inset = ref Option.None in
+  let try_axis () =
+    if !axis <> Option.None then false
+    else
+      match Cursor.option read_timeline_axis t with
+      | Some value ->
+          axis := Some value;
+          true
+      | None -> false
+  in
+  let try_inset () =
+    if !inset <> Option.None then false
+    else
+      match Cursor.option read_timeline_inset t with
+      | Some value ->
+          inset := Some value;
+          true
+      | None -> false
+  in
+  let rec loop () =
+    Cursor.ws t;
+    if try_axis () || try_inset () then loop ()
+  in
+  loop ();
+  { name; axis = !axis; inset = !inset }
+
+let rec read_view_timeline_shorthand t : view_timeline_shorthand =
+  Cursor.enum_or_var "view-timeline"
+    [
+      ("none", (None : view_timeline_shorthand));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_view_timeline_shorthand t))
+    ~default:(fun t ->
+      Timelines
+        (Cursor.list ~sep:Cursor.comma ~at_least:1
+           read_view_timeline_shorthand_item t))
     t
 
 let read_steps_direction t : steps_direction =
@@ -803,7 +889,8 @@ let read_timing_function_list t =
 
 let read_duration_list (read_one : Cursor.t -> Values.duration) t :
     Values.duration =
-  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_one t with
+  match Cursor.list ~sep:Cursor.comma read_one t with
+  | [] -> Cursor.err_expected t "time value"
   | [ value ] -> value
   | values -> Durations values
 
@@ -1714,11 +1801,17 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
    same node question [normalize_timing_function] answers. *)
 let normalize_animation_shorthand (a : animation_shorthand) :
     animation_shorthand =
+  let duration = option_map_preserve Values.normalize_duration a.duration in
+  let delay = option_map_preserve Values.normalize_duration a.delay in
   let timing_function =
     option_map_preserve normalize_timing_function a.timing_function
   in
-  if option_is_phys_same timing_function a.timing_function then a
-  else { a with timing_function }
+  if
+    option_is_phys_same duration a.duration
+    && option_is_phys_same delay a.delay
+    && option_is_phys_same timing_function a.timing_function
+  then a
+  else { a with duration; timing_function; delay }
 
 let normalize_animation : animation -> animation = function
   | Shorthand a as value ->

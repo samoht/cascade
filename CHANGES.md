@@ -18,6 +18,22 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `position_value.Axis_edge_offset` carries a `length_percentage`, matching the
+  percentage-capable `<bg-position>` offset it represents (#673)
+- `text_box.Normal` represents the `normal` shorthand branch, which now parses
+  and round-trips instead of being dropped (#671)
+- `text_box.Box` carries an optional trim value. The `text-box` grammar makes
+  both shorthand slots optional; edge-only values such as `cap alphabetic` now
+  parse and preserve the omitted trim slot (#670)
+- `Properties.View_timeline` carries a `view_timeline_shorthand` instead of a
+  `timeline_shorthand`. Its items include the shorthand's optional inset slot,
+  so values such as `view-timeline:--v 10% 20%` parse and round-trip (#669)
+- `timeline_shorthand_item.axis` is optional. The scroll and view timeline
+  shorthand grammars make their axis slots optional; omitted axes now parse as
+  `None` and round-trip without being rewritten as `block` (#668)
+- `flex_basis.From_font` is gone. `from-font` is not part of the `<width>`
+  grammar accepted by `flex-basis`; the constructor printed CSS that the
+  `flex-basis` reader correctly rejects (#658)
 - Implementation modules are no longer usable through accidental `Cascade.*`
   aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
   `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
@@ -181,6 +197,47 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `transform-origin` rejects four-component edge-offset `<position>` forms.
+  Its grammar accepts one or two X/Y components followed by an optional Z
+  length, unlike `perspective-origin`, which accepts a full `<position>` (#680)
+- `offset-anchor` and `offset-position` are typed properties. They validate
+  their Motion Path grammars, expose `offset_anchor` / `offset_position`
+  values, and canonicalize their `<position>` branches. Generic positions no
+  longer accept length-only keywords such as `normal` as coordinates (#674)
+- Three- and four-value position readers validate horizontal/vertical edge
+  pairs instead of accepting arbitrary identifiers or two edges on one axis.
+  Generic `<position>` rejects three-value forms, `background-position` keeps
+  its valid three-value extension, and `transform-origin` greedily separates
+  an optional Z length from its position (#673)
+- `border-image` accepts a repeat keyword without a source or slice; omitted
+  shorthand slots take their initial values, so `border-image: round` is valid
+  and no longer dropped (#667)
+- `white-space: collapse` reads as the new public `white_space.Collapse` node;
+  a white-space-collapse component is valid without the shorthand's other
+  optional longhands (#666)
+- `text-decoration` accepts a colour, style or thickness without a line value;
+  its four components are joined by `||`, so none is individually mandatory
+  (#665)
+- A CSS-wide keyword mixed into a `font-family` list now reads as the exported
+  `font_family.Invalid` node, preserving the source for typed invalid-value
+  recovery instead of raising during property parsing (#657)
+- `repeating-linear-gradient(var(...))` now keeps its repeating function name
+  instead of serializing back as a non-repeating linear gradient (#656)
+- A `var()` that supplies the complete body of a radial or conic gradient now
+  reads as the exported `Radial_gradient_var` or `Conic_gradient_var` node,
+  matching declarations built through those public constructors (#654)
+- A literal `caret:auto` now reads as the exported `caret.Auto` node rather
+  than the same text encoded as a one-slot shorthand, so constructed and
+  parsed declarations compare and hash equally (#653)
+- Literal `aspect-ratio` values now use the exported `Ratio` and `Auto_ratio`
+  nodes, matching declarations built through the public constructors and
+  helpers so equal declarations have equal cached hashes (#652)
+- Percentage tokens in `color-mix()` variable fallbacks and `font-size` now
+  retain their typed percentage nodes. Both readers tried to consume a number
+  token followed by `%`, but CSS tokenizes the pair as one percentage (#651)
+- The animation and transition delay longhands read time-valued `round()`,
+  `mod()` and `rem()` calls instead of dropping the declaration with an
+  internal list-parser diagnostic (#646)
 - A declaration whose grammar ends in an optional component is no longer
   dropped over the tail the declaration consumer strips. `font-style: oblique
   !important`, `rotate: 45deg !important`, `text-box: none;` and
@@ -487,6 +544,21 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
+  constructed millisecond durations and degree hues without running the AST
+  optimisation phase (#678)
+- `--minify` keeps zero terms in `calc()` sums unless their units match another
+  term. Removing a mixed-unit zero can change the calculation's type, and a
+  unitless zero is not a valid typed length operand (#676)
+- `--minify` canonicalises programmatically constructed shared `<position>`
+  nodes in `transform-origin` to the property's XY/XYZ nodes before hashing, so
+  typed position nodes and coordinate origins now factor together (#672)
+- `--minify` collapses repeated sides in the `scroll-margin` and
+  `scroll-padding` physical and logical shorthands before declaration hashes
+  are compared, so equivalent rules factor together (#650)
+- `--minify` canonicalises logical minimum sizes, duration units and stepped
+  functions, transform origins and hue-angle units before declaration hashes
+  are compared, so equivalent rules factor under all five spellings (#647)
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: a component left at its
   longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,
@@ -940,6 +1012,21 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- Load-bearing minification, parsing, and serialization comments name the CSS
+  spec sections that define their initial values, equivalences, grammars, and
+  defaults (#677)
+- `min-inline-size:initial` and `min-block-size:initial` minify to `0`, their
+  CSS Logical Level 1 initial value, rather than the physical minimum-size
+  properties' `auto` initial value (#675)
+- Border-radius normalization uses the shared box-shorthand normalizer instead
+  of spelling its map-and-collapse composition inline (#663)
+- Property normalizers reuse `Common.List.map_preserve` instead of carrying a
+  second implementation with the same contract (#662)
+- The colour-lightness printer returns its unchanged AST value once after
+  serializing it, instead of repeating that identity result in every branch
+  (#661)
+- Shadow serialization passes its spread value directly to the length printer;
+  the fold migration left an identity helper and one needless binding (#660)
 - `Syntax.is_ident` answers whether a whole string is one CSS ident (CSS
   Syntax 3 sec. 4.3.11), the check `Parser.escape_ident` already made for
   emission; a per-character scan reads a leading `-` as ident-start and misses `-4` (#626)

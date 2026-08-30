@@ -161,15 +161,7 @@ let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 (* Canonicalise a colour to its shortest spelling. *)
 let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
 let preserve_if_equal before after = if after == before then before else after
-
-let map_preserve f xs =
-  let rec loop changed acc = function
-    | [] -> if changed then List.rev acc else xs
-    | x :: rest ->
-        let y = f x in
-        loop (changed || not (y == x)) (y :: acc) rest
-  in
-  loop false [] xs
+let map_preserve = List.map_preserve
 
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the
    shortest of the spellings that name those sides. *)
@@ -187,6 +179,20 @@ let option_is_phys_same a b =
   | Option.None, Option.None -> true
   | Option.Some a, Option.Some b -> a == b
   | _ -> false
+
+let map_var_preserve f (v : 'a var) : 'a var =
+  let fallback =
+    match v.fallback with
+    | Fallback value ->
+        let value' = f value in
+        if value' == value then v.fallback else Fallback value'
+    | (Empty | Empty2 | None | Syntax_fallback _ | Var_fallback _) as fallback
+      ->
+        fallback
+  in
+  let default = option_map_preserve f v.default in
+  if fallback == v.fallback && default == v.default then v
+  else { v with fallback; default }
 
 (* Drop a shorthand component that equals its longhand initial: a shorthand
    resets every component it leaves out to that initial, so the two spellings
@@ -280,15 +286,6 @@ let padded_hex width n =
 (* RGB color helpers *)
 let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
 let url path : background_image = Url path
-
-(* CSS Sizing 3 sec. 3.1: [min-width] / [min-height] / [min-inline-size] /
-   [min-block-size] have [auto] as their initial value (not the generic [0]), so
-   under minify [initial] rewrites to the shorter [auto]. *)
-let pp_length_min_max ctx (v : length_percentage) =
-  let v : length_percentage =
-    match v with Length Initial when Pp.minified ctx -> Length Auto | _ -> v
-  in
-  pp_length_percentage ctx v
 
 (* <dashed-ident>: shared by anchor-name, position-anchor, position-try
    fallbacks, font-palette and the animation timeline names. *)

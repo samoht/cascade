@@ -122,6 +122,24 @@ let minify_flag () =
   Alcotest.(check string)
     "minified optimize+minify" ".btn{color:red}" (minify stylesheet)
 
+let pure_minify_value_fallbacks () =
+  let stylesheet =
+    v
+      [
+        rule ~selector:btn
+          [
+            Css.Variables.typed_custom_property "--tw-duration" Time (Ms 200.);
+            transition_duration (Ms 200.);
+            color
+              (Hsl { h = Angle (Deg 120.); s = Pct 50.; l = Pct 50.; a = None });
+          ];
+      ]
+  in
+  Alcotest.(check string)
+    "constructed value fallbacks"
+    ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50% 50%)}"
+    (Css.to_string ~minify:true stylesheet)
+
 let explicit_phase_pipeline () =
   let stylesheet =
     v
@@ -2024,6 +2042,8 @@ let suite =
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
+      Alcotest.test_case "pure minify value fallbacks" `Quick
+        pure_minify_value_fallbacks;
       Alcotest.test_case "explicit phase pipeline" `Quick
         explicit_phase_pipeline;
       Alcotest.test_case "important declarations" `Quick important_integration;

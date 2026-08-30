@@ -211,8 +211,8 @@ let test_length () =
   check_length "0vi";
   check_length "0svh";
 
-  (* calc() is held verbatim by pp (a typed boundary); the zero-operand
-     simplification [calc(X + 0)] -> [X] is an optimize fold. *)
+  (* calc() is held verbatim by pp. A unitless zero cannot be removed from a
+     typed sum: it is not a [<length>] operand. *)
   check_length "calc(100% - 0)";
   check_length "calc(10px + 0)";
   check_length "calc(0 + 10px)";
@@ -224,11 +224,11 @@ let test_length () =
   decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
   decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
   decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
-  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"100%"
+  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"calc(100% - 0)"
     "calc(100% - 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"calc(10px + 0)"
     "calc(10px + 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"10px"
+  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"calc(0 + 10px)"
     "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
@@ -556,11 +556,9 @@ let test_angle () =
   neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
-  (* CSS Values 4 section 7.2: [<time>] requires a unit. s and ms convert
-     exactly (1s = 1000ms), so a duration decodes to one canonical magnitude and
-     pp prints its shortest spelling - whichever of s/ms is shorter - as a
-     same-node choice. (Contrast <angle>, where rad does not convert exactly, so
-     the units stay distinct nodes and conversion is an optimize transform.) *)
+  (* CSS Values 4 section 7.2: [<time>] requires a unit, and [ms] / [s] are
+     interchangeable. Pure minified serialization chooses the shorter exact
+     spelling without running the optimizer. *)
   check_duration "1s";
   check_duration "0s";
   check_duration ~expected:".5s" "0.5s";
@@ -700,10 +698,9 @@ let test_minified_value_formatting () =
   check string "minified rem" ".5rem" s;
   let s = Css.Pp.to_string ~minify:true pp_number (Num 0.5) in
   check string "minified number" ".5" s;
-  (* Duration normalizes to shorter form in minified mode *)
+  (* The duration printer chooses the shorter exact unit in minified mode. *)
   let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500.) in
   check string "minified ms" ".5s" s;
-  (* 500ms -> .5s is shorter *)
   (* Zero stays zero without unit *)
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
   check string "minified zero" "0" s
@@ -994,9 +991,9 @@ let test_color_space () =
 
 let test_hue () =
   check_hue ~expected:"180" "180deg";
-  check_hue ~expected:"180" "0.5turn";
-  check_hue ~expected:"180" "200grad";
-  check_hue ~expected:"180" "3.14159rad";
+  check_hue ~expected:".5turn" "0.5turn";
+  check_hue "200grad";
+  check_hue "3.14159rad";
   neg_cursor read_hue "invalid";
   neg_cursor read_hue "abc";
   check_hue "180";
@@ -1353,6 +1350,11 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb,var(--c) calc(var(--o)*100%),blue)"
     ~optimized:"color-mix(in srgb,var(--c) calc(var(--o)*100%),#00f)"
     "color-mix(in srgb, var(--c) calc(var(--o) * 100%), blue)";
+  (* A percentage token in a var fallback is still a typed color-mix weight, so
+     it takes the same numeric minification as a top-level weight. *)
+  check_color ~expected:"color-mix(in srgb,red var(--p,30%),blue)"
+    ~optimized:"color-mix(in srgb,red var(--p,30%),#00f)"
+    "color-mix(in srgb, red var(--p, 30.0%), blue)";
   (* Both the colour and the percentage are [var()]: the leading var is the
      colour, so source order is preserved (regression: the two were swapped,
      landing the alpha var in the colour slot). *)

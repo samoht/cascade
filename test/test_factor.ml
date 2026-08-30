@@ -243,6 +243,30 @@ let test_box_shorthand_repeats_factor () =
   Alcotest.(check string)
     "border-color takes the same collapse" ".a,.b{border-color:red}"
     (optimize_str ".a{border-color:red red red red}.b{border-color:red}");
+  Alcotest.(check string)
+    "scroll-margin factors with the single value" ".a,.b{scroll-margin:1px}"
+    (optimize_str ".a{scroll-margin:1px 1px 1px 1px}.b{scroll-margin:1px}");
+  Alcotest.(check string)
+    "scroll-margin-inline factors with the single value"
+    ".a,.b{scroll-margin-inline:2px}"
+    (optimize_str ".a{scroll-margin-inline:2px 2px}.b{scroll-margin-inline:2px}");
+  Alcotest.(check string)
+    "scroll-margin-block factors with the single value"
+    ".a,.b{scroll-margin-block:3px}"
+    (optimize_str ".a{scroll-margin-block:3px 3px}.b{scroll-margin-block:3px}");
+  Alcotest.(check string)
+    "scroll-padding factors with the repeated axis"
+    ".a,.b{scroll-padding:4px 5px}"
+    (optimize_str ".a{scroll-padding:4px 5px 4px 5px}.b{scroll-padding:4px 5px}");
+  Alcotest.(check string)
+    "scroll-padding-inline factors with the single value"
+    ".a,.b{scroll-padding-inline:6px}"
+    (optimize_str
+       ".a{scroll-padding-inline:6px 6px}.b{scroll-padding-inline:6px}");
+  Alcotest.(check string)
+    "scroll-padding-block factors with the single value"
+    ".a,.b{scroll-padding-block:7px}"
+    (optimize_str ".a{scroll-padding-block:7px 7px}.b{scroll-padding-block:7px}");
   (* CSS Backgrounds 3 (ED) sec. 4.1 collapses each radii group on its own, and
      with no slash the values set both axes equally. *)
   Alcotest.(check string)
@@ -429,6 +453,67 @@ let test_text_decoration_default_spellings_factor () =
     ".a,.b{text-shadow:1px 1px}"
     (optimize_str ".a{text-shadow:1px 1px 0}.b{text-shadow:1px 1px}")
 
+(* A typed caller can build transform-origin with the shared [position_value]
+   nodes even though authored CSS uses the property's narrower grammar. Those
+   nodes must canonicalise to XY/XYZ before declarations are hashed. *)
+let test_transform_origin_position_nodes_factor () =
+  let optimize_with parsed value =
+    match Css.of_string parsed with
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        let declaration = Declaration.v Properties.Transform_origin value in
+        Css.concat
+          [
+            stylesheet;
+            Css.v
+              [ Css.rule ~selector:(Selector.of_string ".b") [ declaration ] ];
+          ]
+        |> Css.optimize |> Css.to_string ~minify:true
+  in
+  let offset edge amount = (edge, (Length amount : Values.length_percentage)) in
+  let position x_edge x y_edge y =
+    let x_edge, x = offset x_edge x and y_edge, y = offset y_edge y in
+    (Properties.Edge_offset_edge_offset (x_edge, x, y_edge, y)
+      : Properties.position_value)
+  in
+  Alcotest.(check string)
+    "position node factors with an XY origin"
+    ".a,.b{transform-origin:10px 20px}"
+    (optimize_with ".a{transform-origin:10px 20px}"
+       (Properties.Position (position "left" (Px 10.) "top" (Px 20.))));
+  Alcotest.(check string)
+    "position node factors with an XYZ origin"
+    ".a,.b{transform-origin:10px 20px 30px}"
+    (optimize_with ".a{transform-origin:10px 20px 30px}"
+       (Properties.Position_z (position "left" (Px 10.) "top" (Px 20.), Px 30.)))
+
+(* These equivalent spellings were still canonicalised by their printers, too
+   late for declaration hashes to meet during factoring. *)
+let test_remaining_printer_fold_spellings_factor () =
+  Alcotest.(check string)
+    "logical minimum initial factors with zero" ".a,.b{min-inline-size:0}"
+    (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:0}");
+  Alcotest.(check string)
+    "logical minimum initial stays distinct from auto"
+    ".a{min-inline-size:0}.b{min-inline-size:auto}"
+    (optimize_str ".a{min-inline-size:initial}.b{min-inline-size:auto}");
+  Alcotest.(check string)
+    "milliseconds factor with seconds" ".a,.b{transition-duration:.5s}"
+    (optimize_str ".a{transition-duration:500ms}.b{transition-duration:.5s}");
+  Alcotest.(check string)
+    "origin keyword factors with percentage" ".a,.b{transform-origin:50%}"
+    (optimize_str ".a{transform-origin:center}.b{transform-origin:50%}");
+  Alcotest.(check string)
+    "stepped duration factors with its result" ".a,.b{transition-duration:1s}"
+    (optimize_str
+       ".a{transition-duration:round(1.1s,.5s)}.b{transition-duration:1s}");
+  Alcotest.(check string)
+    "angle hue factors with bare degrees"
+    ".a,.b{color:hsl(180 50% 50%/var(--a))}"
+    (optimize_str
+       ".a{color:hsl(.5turn 50% 50%/var(--a))}.b{color:hsl(180 50% \
+        50%/var(--a))}")
+
 let suite =
   ( "factor",
     [
@@ -478,4 +563,8 @@ let suite =
         test_list_style_default_spellings_factor;
       Alcotest.test_case "spelled-out text decoration defaults factor away"
         `Quick test_text_decoration_default_spellings_factor;
+      Alcotest.test_case "transform origin position nodes factor" `Quick
+        test_transform_origin_position_nodes_factor;
+      Alcotest.test_case "remaining printer folds factor together" `Quick
+        test_remaining_printer_fold_spellings_factor;
     ] )

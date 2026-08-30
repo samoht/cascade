@@ -283,9 +283,10 @@ val normalize_number_percentage :
 (** [normalize_number_percentage np] picks the shorter spelling for a typed
     [<number-percentage>] leaf where percentage and number are spec-equivalent
     (100% = 1, e.g. transform [scale()], the [scale] property, and the [filter]
-    [brightness()]/[contrast()]/... functions). [Var] and {!module-Calc}
-    sub-forms stay opaque - inside a [calc()], the two spellings are not
-    interchangeable. *)
+    [brightness()]/[contrast()]/... functions; CSS Transforms 2 secs. 5 and
+    12.1-12.2 and Filter Effects 1 sec. 6.1). [Var] and {!module-Calc} sub-forms
+    stay opaque - inside a [calc()], the two spellings are not interchangeable.
+*)
 
 val normalize_number : ?ctx:calc_ctx -> number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
@@ -297,10 +298,12 @@ val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
     [<percentage>] [calc()] ([calc(1 / 2 * 100%)] becomes [calc(.5*100%)]),
     keeping any [var()]. *)
 
-val normalize_duration : ?ctx:calc_ctx -> duration -> duration
+val normalize_duration :
+  ?ctx:calc_ctx -> ?canonicalize_ms:bool -> duration -> duration
 (** [normalize_duration d] folds the value-independent parts of a [<time>]
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
-    [var()]. *)
+    [var()]. It chooses the shorter seconds spelling by default;
+    [canonicalize_ms:false] preserves millisecond units. *)
 
 val normalize_color : ?lossless:bool -> ?exact_srgb:bool -> color -> color
 (** [normalize_color ?lossless c] canonicalises a color to its shortest
@@ -443,17 +446,17 @@ val read_length :
 
 val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
-    non-negative. Used for padding properties which cannot have negative values
-    per CSS specification. *)
+    non-negative. Used for padding properties, whose CSS Box 4 sec. 4.1 grammar
+    excludes negative values. *)
 
 val read_padding_shorthand : Cursor.t -> length list
 (** [read_padding_shorthand reader] parses a padding shorthand property
-    accepting 1-4 space-separated non-negative length values according to CSS
-    specification. *)
+    accepting 1-4 space-separated non-negative length values (CSS Box 4 sec.
+    4.2). *)
 
 val read_margin_shorthand : Cursor.t -> length list
 (** [read_margin_shorthand reader] parses a margin shorthand property accepting
-    1-4 space-separated length values according to CSS specification. *)
+    1-4 space-separated length values (CSS Box 4 sec. 3.2). *)
 
 val read_color : Cursor.t -> color
 (** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
@@ -553,8 +556,8 @@ val read_angle : Cursor.t -> angle
 
 val read_angle_unit_required : Cursor.t -> angle
 (** [read_angle_unit_required t] parses a generic CSS [<angle>] value, where
-    bare zero is invalid. Legacy property contexts that allow unitless zero use
-    {!read_angle}. *)
+    bare zero is invalid under CSS Values 4 sec. 7.1. Legacy property contexts
+    that allow unitless zero use {!read_angle}. *)
 
 val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
@@ -627,9 +630,10 @@ val calc_identity :
     Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
     the folded operand when one applies. These hold for any operand including a
     kept [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
-    [x / 1], [x + 0], [0 + x], [x - 0] keep [x]; [x * 0] / [0 * x] reduce to
-    [zero]. [is_zero] recognises a typed zero leaf ([0px]). Numeric [op] numeric
-    is the caller's job. *)
+    and [x / 1] keep [x]; [x * 0] / [0 * x] reduce to [zero]. [is_zero]
+    recognises a typed zero leaf ([0px]). Additive zero terms do not fold here:
+    the spec only combines sum children with identical units. Numeric [op]
+    numeric is the caller's job. *)
 
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)

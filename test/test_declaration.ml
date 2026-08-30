@@ -513,6 +513,21 @@ let special_cases () =
      two sides. *)
   check_declaration ~expected:"padding-inline:1px 1px"
     ~optimized:"padding-inline:1px" "padding-inline: 1px 1px";
+  (* CSS Scroll Snap 1 sec. 4.1 and 5.1 use the same one-to-four side assignment
+     for the physical shorthands and the same one-to-two assignment for their
+     logical axis shorthands. *)
+  check_declaration ~expected:"scroll-margin:1px 1px 1px 1px"
+    ~optimized:"scroll-margin:1px" "scroll-margin: 1px 1px 1px 1px";
+  check_declaration ~expected:"scroll-margin-inline:2px 2px"
+    ~optimized:"scroll-margin-inline:2px" "scroll-margin-inline: 2px 2px";
+  check_declaration ~expected:"scroll-margin-block:3px 3px"
+    ~optimized:"scroll-margin-block:3px" "scroll-margin-block: 3px 3px";
+  check_declaration ~expected:"scroll-padding:4px 5px 4px 5px"
+    ~optimized:"scroll-padding:4px 5px" "scroll-padding: 4px 5px 4px 5px";
+  check_declaration ~expected:"scroll-padding-inline:6px 6px"
+    ~optimized:"scroll-padding-inline:6px" "scroll-padding-inline: 6px 6px";
+  check_declaration ~expected:"scroll-padding-block:7px 7px"
+    ~optimized:"scroll-padding-block:7px" "scroll-padding-block: 7px 7px";
   (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
      Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
      one-to-four side assignment. *)
@@ -606,6 +621,9 @@ let colors () =
     "color: hsl(0, 100%, 50%)";
   decl_optimizes_to ~held:"color:hsl(120 100% 50%/.5)" ~into:"color:#00ff0080"
     "color: hsla(120, 100%, 50%, 0.5)";
+  decl_optimizes_to ~held:"color:hsl(.5turn 50% 50%/var(--a))"
+    ~into:"color:hsl(180 50% 50%/var(--a))"
+    "color: hsl(.5turn 50% 50% / var(--a))";
 
   check_declaration ~expected:"background-color:red" "background-color: red";
   decl_optimizes_to ~held:"border-color:blue" ~into:"border-color:#00f"
@@ -642,6 +660,10 @@ let lengths () =
   check_declaration ~expected:"margin:auto" "margin: auto";
   check_declaration ~expected:"width:auto" "width: auto";
   check_declaration ~expected:"height:auto" "height: auto";
+  check_declaration ~expected:"min-inline-size:initial"
+    ~optimized:"min-inline-size:0" "min-inline-size: initial";
+  check_declaration ~expected:"min-block-size:initial"
+    ~optimized:"min-block-size:0" "min-block-size: initial";
 
   (* Min/max content *)
   check_declaration ~expected:"width:min-content" "width: min-content";
@@ -1653,8 +1675,10 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:none" "animation-name: none";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
-  check_declaration ~expected:"animation-duration:.5s" (* 500ms -> .5s *)
-    "animation-duration: 500ms";
+  check_declaration ~expected:"animation-duration:.5s"
+    ~optimized:"animation-duration:.5s" "animation-duration: 500ms";
+  check_declaration ~expected:"transition-duration:round(1.1s,.5s)"
+    ~optimized:"transition-duration:1s" "transition-duration: round(1.1s, .5s)";
   check_declaration ~expected:"animation-duration:2.5s"
     "animation-duration: 2.5s";
 
@@ -1721,7 +1745,30 @@ let animations_timing () =
      [<time>]. [0s] does not drop the unit. *)
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms"
+  check_declaration ~expected:"animation-delay:-.5s"
+    ~optimized:"animation-delay:-.5s" "animation-delay: -500ms";
+  (* CSS Values 4 sec. 10.3 gives these functions the type of their arguments,
+     so time-valued calls fit the delay longhands' [<time>] grammar. *)
+  check_declaration ~expected:"transition-delay:round(1.1s,.5s)"
+    ~optimized:"transition-delay:1s" "transition-delay:round(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:mod(1.1s,.5s)"
+    ~optimized:"animation-delay:.1s" "animation-delay:mod(1.1s,.5s)";
+  check_declaration ~expected:"animation-delay:rem(1.1s,.5s)"
+    ~optimized:"animation-delay:.1s" "animation-delay:rem(1.1s,.5s)";
+  check_declaration ~expected:"transition-duration:var(--d,.5s)"
+    ~optimized:"transition-duration:var(--d,.5s)"
+    "transition-duration:var(--d,500ms)";
+  check_declaration ~expected:"interest-delay:round(1100ms,500ms)"
+    ~optimized:"interest-delay:1000ms" "interest-delay:round(1100ms,500ms)";
+  let c = Cursor.of_string "transition-delay:bogus" in
+  match read_declaration c with
+  | exception
+      Error.Parse_error { kind = Error.Bad_value { property; reason }; _ } ->
+      Alcotest.(check string) "diagnostic property" "transition-delay" property;
+      Alcotest.(check string) "diagnostic reason" "expected time value" reason
+  | exception Error.Parse_error e ->
+      Alcotest.failf "unexpected diagnostic: %s" (Error.to_string e)
+  | _ -> Alcotest.fail "expected an invalid delay to be rejected"
 
 let animations_state () =
   check_declaration ~expected:"animation-iteration-count:1"
@@ -1785,10 +1832,15 @@ let transforms () =
   (* Per CSS Transforms 1 sec. 4 [center] is shorthand for [50% 50%] and the
      keyword pair [top left] is [0 0]. A single [0] would mean [0 50%], so the
      two-value form must be preserved. *)
-  check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
-  check_declaration ~expected:"transform-origin:0 0"
-    "transform-origin: top left";
-  check_declaration ~expected:"transform-origin:50%" "transform-origin: 50% 50%";
+  check_declaration ~expected:"transform-origin:center"
+    ~optimized:"transform-origin:50%" "transform-origin: center";
+  check_declaration ~expected:"transform-origin:top left"
+    ~optimized:"transform-origin:0 0" "transform-origin: top left";
+  check_declaration ~expected:"transform-origin:50% 50%"
+    ~optimized:"transform-origin:50%" "transform-origin: 50% 50%";
+  check_declaration ~expected:"transform-origin:var(--o,center)"
+    ~optimized:"transform-origin:var(--o,50%)"
+    "transform-origin:var(--o,center)";
   check_declaration ~expected:"transform-origin:10px 20px"
     "transform-origin: 10px 20px"
 
@@ -2022,13 +2074,17 @@ let list_properties () =
     "transition: opacity 1s ease-in .5s";
   check_declaration ~expected:"transition:opacity .3s,transform .3s"
     "transition: opacity 0.3s, transform 0.3s";
+  check_declaration ~expected:"transition:all .5s"
+    ~optimized:"transition:all .5s" "transition: all 500ms";
 
   (* Animation *)
   check_declaration ~expected:"animation:none" "animation: none";
   check_declaration ~expected:"animation:spin 1s linear infinite"
     "animation: spin 1s linear infinite";
   check_declaration ~expected:"animation:slide .5s ease-out"
-    "animation: slide 0.5s ease-out"
+    "animation: slide 0.5s ease-out";
+  check_declaration ~expected:"animation:spin .5s"
+    ~optimized:"animation:spin .5s" "animation: spin 500ms"
 
 let custom_properties () =
   (* Basic custom properties *)
@@ -2097,6 +2153,18 @@ let important () =
 
 let invalid () =
   let neg = none_cursor read_declaration in
+  let typed_invalid input =
+    let cursor = Cursor.of_string input in
+    match read_declaration cursor with
+    | Some declaration ->
+        Alcotest.(check bool)
+          (input ^ " is represented as invalid")
+          true
+          (Css.Declaration.is_invalid declaration)
+    | None -> Alcotest.failf "expected a typed invalid declaration for %S" input
+    | exception Error.Parse_error _ ->
+        Alcotest.failf "expected a typed invalid declaration for %S" input
+  in
   (* Unknown property names are syntactically valid declarations. *)
   check_declaration ~expected:"not-a-property:value" "not-a-property: value";
   (* Invalid property names *)
@@ -2113,7 +2181,8 @@ let invalid () =
   neg "font-weight: green";
   neg "font-family: default";
   neg "font-family: system-ui default";
-  neg "font-family: revert-layer, serif";
+  typed_invalid "font-family: Arial, inherit";
+  typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
 
   (* CSS-wide keywords mixing - should fail when mixed with other values *)
@@ -2188,7 +2257,7 @@ let spec_property_grammar_table_expansion () =
       ("translate", "10px 20px");
       ("rotate", "1 0 0 45deg");
       ("scale", "1.2 2");
-      ("transform-origin", "left 10px top 20px");
+      ("perspective-origin", "left 10px top 20px");
       ("transition", "opacity 1s ease-in .2s");
       ("transition-behavior", "allow-discrete");
       ("animation", "fade 1s linear 2 alternate both running");
@@ -3526,6 +3595,7 @@ let check_property_positive (row : property_grammar_row) value =
 let check_property_negative (row : property_grammar_row) value =
   match parse_property_decl row.property value with
   | None -> ()
+  | Some (_, _, decl, _) when Css.Declaration.is_invalid decl -> ()
   | Some (input, serialized, _, _) ->
       Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
         serialized
@@ -3864,6 +3934,157 @@ let check_sheet_roundtrip name css =
         css
         (String.trim (Css.to_string ~minify:true stylesheet))
   | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+
+(* CSS Text Decoration 4 sec. 2.6 joins the line, thickness, style and colour
+   components with [||], so no single component is mandatory. *)
+let text_decoration_optional_line () =
+  check_declaration ~roundtrip:true "text-decoration:red";
+  check_sheet_roundtrip "text-decoration" "a{text-decoration:red}"
+
+(* CSS Text 4 sec. 3 allows each longhand component of [white-space] on its own;
+   omitted components take their initial values. *)
+let white_space_collapse_only () =
+  check_declaration ~roundtrip:true "white-space:collapse";
+  check_sheet_roundtrip "white-space" "a{white-space:collapse}"
+
+(* CSS Backgrounds 3 sec. 5.7 sets omitted border-image shorthand slots to their
+   initial values, so the repeat component is valid on its own. *)
+let border_image_repeat_only () =
+  check_declaration ~roundtrip:true "border-image:round";
+  check_sheet_roundtrip "border-image" "a{border-image:round}"
+
+(* Scroll-driven Animations 1 sec. 2.3.3 and 3.4.4 make the axis optional in
+   both named timeline shorthands. *)
+let timeline_name_only () =
+  List.iter
+    (fun (property, name) ->
+      let declaration = String.concat "" [ property; ":"; name ] in
+      check_declaration ~roundtrip:true declaration;
+      check_sheet_roundtrip property
+        (String.concat "" [ "a{"; declaration; "}" ]))
+    [ ("scroll-timeline", "--t"); ("view-timeline", "--v") ]
+
+(* Scroll-driven Animations 1 sec. 3.4.4 includes the optional
+   view-timeline-inset slot in each view-timeline shorthand item. *)
+let view_timeline_inset_slot () =
+  check_declaration ~roundtrip:true "view-timeline:--v 10% 20%";
+  check_sheet_roundtrip "view-timeline" "a{view-timeline:--v 10% 20%}"
+
+(* CSS Inline 3 sec. 6.1 joins text-box-trim and text-box-edge with [||], so the
+   edge is valid without an explicit trim value. *)
+let text_box_edge_only () =
+  check_declaration ~roundtrip:true "text-box:cap alphabetic";
+  check_sheet_roundtrip "text-box" "a{text-box:cap alphabetic}"
+
+(* CSS Inline 3 sec. 6.1 gives [normal] its own text-box shorthand branch. *)
+let text_box_normal () =
+  check_declaration ~roundtrip:true "text-box:normal";
+  check_sheet_roundtrip "text-box" "a{text-box:normal}"
+
+(* CSS Values 4 sec. 8.3 allows four edge-offset components but excludes the
+   three-value form. CSS Backgrounds 3 sec. 2.6 retains valid three-value
+   <bg-position>s, while CSS Transforms 1 sec. 4 gives transform-origin a
+   narrower grammar with an optional Z length after a two-value origin. *)
+let edge_offset_position_grammar () =
+  List.iter
+    (fun (declaration, expected) ->
+      check_declaration ~expected ~roundtrip:true declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      let expected_css = String.concat "" [ "a{"; expected; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+      | Ok { stylesheet; _ } ->
+          Alcotest.(check string)
+            "edge-offset position sheet roundtrip" expected_css
+            (String.trim (Css.to_string ~minify:true stylesheet)))
+    [
+      ("background-position:left top 10px", "background-position:left top 10px");
+      ("background-position:left top 10%", "background-position:left top 10%");
+      ( "background-position:center top 10px",
+        "background-position:center top 10px" );
+      ( "background-position:center left 10px",
+        "background-position:center left 10px" );
+      ("background-position:top 10px left", "background-position:top 10px left");
+      ( "perspective-origin:left 10px top 20px",
+        "perspective-origin:left 10px top 20px" );
+      ("transform-origin:left 10px", "transform-origin:0% 10px");
+      ("transform-origin:left top 10px", "transform-origin:left top 10px");
+      ("transform-origin:center top 10px", "transform-origin:center top 10px");
+    ];
+  List.iter
+    (fun declaration ->
+      none_cursor read_declaration declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error _ -> ()
+      | Ok _ -> Alcotest.failf "strict parsing accepted %s" css)
+    [
+      "transform-origin:foo 1px bar 2px";
+      "transform-origin:left 1px top 2px";
+      "transform-origin:right 10% bottom 20%";
+      "transform-origin:top 2px left 1px";
+      "transform-origin:left 1px top 2px 3px";
+      "background-position:left 1px right 2px";
+      "object-position:left 1px middle";
+      "perspective-origin:top 1px bottom";
+      "object-position:left 1px top";
+      "perspective-origin:left top 1px";
+    ]
+
+(* Motion Path 1 secs. 2.3-2.4 define offset-position as [normal | auto |
+   <position>] and offset-anchor as [auto | <position>]. Both use the generic
+   <position> grammar, not background's three-value extension. *)
+let offset_position_properties () =
+  List.iter
+    (fun (declaration, expected) ->
+      check_declaration ~expected ~roundtrip:true declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      let expected_css = String.concat "" [ "a{"; expected; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+      | Ok { stylesheet; _ } ->
+          Alcotest.(check string)
+            "offset position property sheet roundtrip" expected_css
+            (String.trim (Css.to_string ~minify:true stylesheet)))
+    [
+      ("offset-anchor:auto", "offset-anchor:auto");
+      ("offset-anchor:center", "offset-anchor:center");
+      ("offset-anchor:left top", "offset-anchor:left top");
+      ("offset-anchor:20% 30%", "offset-anchor:20%30%");
+      ("offset-anchor:left 10px top 20px", "offset-anchor:left 10px top 20px");
+      ("offset-position:normal", "offset-position:normal");
+      ("offset-position:auto", "offset-position:auto");
+      ("offset-position:center", "offset-position:center");
+      ("offset-position:left top", "offset-position:left top");
+      ("offset-position:20% 30%", "offset-position:20%30%");
+      ( "offset-position:left 10px top 20px",
+        "offset-position:left 10px top 20px" );
+    ];
+  decl_optimizes ~prop:"offset-anchor" ~into:"50%" "center";
+  decl_optimizes ~prop:"offset-anchor" ~into:"0 0" "left top";
+  decl_optimizes ~prop:"offset-anchor" ~into:"auto" "initial";
+  decl_optimizes ~prop:"offset-position" ~into:"50%" "center";
+  decl_optimizes ~prop:"offset-position" ~into:"0 0" "left top";
+  decl_optimizes ~prop:"offset-position" ~into:"normal" "initial";
+  List.iter
+    (fun declaration ->
+      none_cursor read_declaration declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error _ -> ()
+      | Ok _ -> Alcotest.failf "strict parsing accepted %s" css)
+    [
+      "offset-anchor:foo bar baz";
+      "offset-anchor:normal";
+      "offset-anchor:size";
+      "offset-anchor:auto center";
+      "offset-anchor:left top 10px";
+      "offset-position:foo bar baz";
+      "offset-position:none";
+      "offset-position:normal center";
+      "offset-position:left top 10px";
+      "object-position:normal";
+    ]
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
@@ -4457,6 +4678,39 @@ let distinct_value label a b =
     false
     (Css.Declaration.equal_declaration a b)
 
+let aspect_ratio_has_one_node () =
+  let parsed = Css.Declaration.of_string "aspect-ratio:16/9" in
+  same_text_same_hash "Ratio constructor vs parsed"
+    (Css.aspect_ratio (Css.Ratio (16., 9.)))
+    parsed;
+  same_text_same_hash "ratio helper vs parsed"
+    (Css.aspect_ratio (Css.ratio 16. 9.))
+    parsed;
+  same_text_same_hash "Auto_ratio constructor vs parsed"
+    (Css.aspect_ratio (Css.Auto_ratio (16., 9.)))
+    (Css.Declaration.of_string "aspect-ratio:auto 16/9")
+
+let caret_auto_has_one_node () =
+  same_text_same_hash "caret Auto constructor vs parsed"
+    (Css.caret (Css.Auto : Css.caret))
+    (Css.Declaration.of_string "caret:auto")
+
+let gradient_var kind constructor =
+  let var =
+    Css.Values.read_var Css.Properties.read_gradient_stop
+      (Cursor.of_string "var(--stops)")
+  in
+  same_text_same_hash
+    (kind ^ " var constructor vs parsed")
+    (Css.background_image (constructor var))
+    (Css.Declaration.of_string ("background-image:" ^ kind ^ "(var(--stops))"))
+
+let radial_gradient_var_has_one_node () =
+  gradient_var "radial-gradient" (fun var -> Css.Radial_gradient_var var)
+
+let conic_gradient_var_has_one_node () =
+  gradient_var "conic-gradient" (fun var -> Css.Conic_gradient_var var)
+
 let nan_has_one_node () =
   (* The keyword and the calculation that lands on NaN are the same value. *)
   let keyword = sole_declaration ".a{opacity:calc(NaN)}" in
@@ -4549,6 +4803,12 @@ let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
+    test_case "caret auto has one node" `Quick caret_auto_has_one_node;
+    test_case "radial gradient var has one node" `Quick
+      radial_gradient_var_has_one_node;
+    test_case "conic gradient var has one node" `Quick
+      conic_gradient_var_has_one_node;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
@@ -4642,6 +4902,16 @@ let declaration_tests =
     test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
     test_case "scroll-margin negative lengths (sheet)" `Quick
       scroll_margin_negative_sheet;
+    test_case "text-decoration optional line" `Quick
+      text_decoration_optional_line;
+    test_case "white-space collapse only" `Quick white_space_collapse_only;
+    test_case "border-image repeat only" `Quick border_image_repeat_only;
+    test_case "timeline name only" `Quick timeline_name_only;
+    test_case "view-timeline inset slot" `Quick view_timeline_inset_slot;
+    test_case "text-box edge only" `Quick text_box_edge_only;
+    test_case "text-box normal" `Quick text_box_normal;
+    test_case "edge-offset position grammar" `Quick edge_offset_position_grammar;
+    test_case "offset position properties" `Quick offset_position_properties;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick

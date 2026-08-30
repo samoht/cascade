@@ -198,11 +198,8 @@ include Stylesheet
 let radius value = Radius { horizontal = [ Length value ]; vertical = None }
 let gaps ?column row : gap = Lengths { row_gap = Some row; column_gap = column }
 let font_stack fonts = (List fonts : font_family)
-let ratio width height = (Ratio_calc (Num width, Num height) : aspect_ratio)
-
-let auto_ratio width height =
-  (Auto_ratio_calc (Num width, Num height) : aspect_ratio)
-
+let ratio width height = (Ratio (width, height) : aspect_ratio)
+let auto_ratio width height = (Auto_ratio (width, height) : aspect_ratio)
 let position_xy x y = (XY (x, y) : position_value)
 let position_length value = (Single value : position_value)
 let text_overflow_string value = (String value : text_overflow)

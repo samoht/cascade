@@ -279,26 +279,46 @@ let normalize_scale : scale -> scale =
   | XYZ (x, y, z) -> preserve_if_equal value (XYZ (np x, np y, np z))
   | other -> other
 
-(* [transform-origin] had no normalize pass, so [0px 50%] and [0% 50%] (and
-   [left center]) stayed in distinct spellings of the same origin. [0], [0px]
-   and [0%] all place the origin at the same edge, so fold every zero component
-   to the unitless [0] - the canonical form the [left]/[top] keywords already
-   minify to. *)
-let normalize_transform_origin : transform_origin -> transform_origin =
+(* Canonicalise equivalent origin keywords and coordinates before factoring.
+   [0], [0px] and [0%] all place the origin at the same edge. *)
+let rec normalize_transform_origin : transform_origin -> transform_origin =
   let z l =
     match (l : Values.length) with
     | Pct 0. -> (Zero : Values.length)
     | _ -> Values.normalize_length l
   in
+  let pct n = (Pct n : Values.length) in
+  let zero = (Zero : Values.length) in
   fun value ->
     match value with
+    | Center | Center_center -> X (pct 50.)
+    | Left | Left_center -> X zero
+    | Right | Right_center -> X (pct 100.)
+    | Left_top | Top_left -> XY (zero, zero)
+    | Right_top | Top_right -> XY (pct 100., zero)
+    | Left_bottom | Bottom_left -> XY (zero, pct 100.)
+    | Right_bottom | Bottom_right -> XY (pct 100., pct 100.)
+    | Center_top -> Top
+    | Center_bottom -> Bottom
     | X a -> preserve_if_equal value (X (z a))
-    | XY (a, b) -> preserve_if_equal value (XY (z a, z b))
+    | XY (a, b) -> (
+        let a = z a and b = z b in
+        match b with Pct 50. -> X a | _ -> preserve_if_equal value (XY (a, b)))
     | XYZ (a, b, c) -> preserve_if_equal value (XYZ (z a, z b, z c))
-    | Position p ->
-        preserve_if_equal value (Position (normalize_position_value p))
-    | Position_z (p, c) ->
-        preserve_if_equal value (Position_z (normalize_position_value p, z c))
+    | Position p -> (
+        let p = normalize_position_value p in
+        match position_xy p with
+        | Some (a, b) -> normalize_transform_origin (XY (a, b))
+        | None -> preserve_if_equal value (Position p))
+    | Position_z (p, c) -> (
+        let p = normalize_position_value p in
+        let c = z c in
+        match position_xy p with
+        | Some (a, b) -> normalize_transform_origin (XYZ (a, b, c))
+        | None -> preserve_if_equal value (Position_z (p, c)))
+    | Var v ->
+        let v' = map_var_preserve normalize_transform_origin v in
+        if v' == v then value else Var v'
     | other -> other
 
 let normalize_offset_path : offset_path -> offset_path =
@@ -315,6 +335,24 @@ let normalize_offset_path : offset_path -> offset_path =
                  (normalize_position_value ~strip:false)
                  ray.position;
            })
+  | other -> other
+
+let rec normalize_offset_anchor (value : offset_anchor) =
+  match value with
+  | Position position ->
+      preserve_if_equal value (Position (normalize_position_value position))
+  | Var var ->
+      let var' = map_var_preserve normalize_offset_anchor var in
+      if var' == var then value else Var var'
+  | other -> other
+
+let rec normalize_offset_position (value : offset_position) =
+  match value with
+  | Position position ->
+      preserve_if_equal value (Position (normalize_position_value position))
+  | Var var ->
+      let var' = map_var_preserve normalize_offset_position var in
+      if var' == var then value else Var var'
   | other -> other
 
 let normalize_offset_rotate : offset_rotate -> offset_rotate =
@@ -532,30 +570,6 @@ let rec pp_transform_style : transform_style Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_transform_origin_pair ctx a b =
-  pp_length ctx a;
-  Pp.space ctx ();
-  pp_length ctx b
-
-let pp_minified_transform_origin ctx value =
-  let pct n = (Pct n : length) in
-  let zero = (Zero : length) in
-  match value with
-  | Center | Center_center -> Some (fun () -> pp_length ctx (pct 50.))
-  | Left | Left_center -> Some (fun () -> pp_length ctx zero)
-  | Right | Right_center -> Some (fun () -> pp_length ctx (pct 100.))
-  | Left_top | Top_left ->
-      Some (fun () -> pp_transform_origin_pair ctx zero zero)
-  | Right_top | Top_right ->
-      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) zero)
-  | Left_bottom | Bottom_left ->
-      Some (fun () -> pp_transform_origin_pair ctx zero (pct 100.))
-  | Right_bottom | Bottom_right ->
-      Some (fun () -> pp_transform_origin_pair ctx (pct 100.) (pct 100.))
-  | Center_top -> Some (fun () -> Pp.string ctx "top")
-  | Center_bottom -> Some (fun () -> Pp.string ctx "bottom")
-  | _ -> None
-
 let pp_transform_origin_keywords ctx = function
   | Center -> Pp.string ctx "center"
   | Center_center -> Pp.string ctx "center center"
@@ -578,41 +592,34 @@ let pp_transform_origin_keywords ctx = function
   | _ -> ()
 
 let rec pp_transform_origin : transform_origin Pp.t =
- fun ctx value ->
-  match
-    if Pp.minified ctx then pp_minified_transform_origin ctx value else None
-  with
-  | Some pp -> pp ()
-  | None -> (
-      match value with
-      | Inherit -> Pp.string ctx "inherit"
-      | Initial -> Pp.string ctx "initial"
-      | Unset -> Pp.string ctx "unset"
-      | Revert -> Pp.string ctx "revert"
-      | Revert_layer -> Pp.string ctx "revert-layer"
-      | Center | Center_center | Left | Right | Top | Bottom | Left_top
-      | Left_center | Left_bottom | Right_top | Right_center | Right_bottom
-      | Center_top | Center_bottom | Top_left | Top_right | Bottom_left
-      | Bottom_right ->
-          pp_transform_origin_keywords ctx value
-      | Position position -> pp_position_value ctx position
-      | X a -> pp_length ctx a
-      | XY (a, Pct 50.) when Pp.minified ctx -> pp_length ctx a
-      | XY (a, b) ->
-          pp_length ctx a;
-          Pp.space ctx ();
-          pp_length ctx b
-      | XYZ (a, b, z) ->
-          pp_length ctx a;
-          Pp.space ctx ();
-          pp_length ctx b;
-          Pp.space ctx ();
-          pp_length ctx z
-      | Position_z (position, z) ->
-          pp_position_value ctx position;
-          Pp.space ctx ();
-          pp_length ctx z
-      | Var v -> pp_var pp_transform_origin ctx v)
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | ( Center | Center_center | Left | Right | Top | Bottom | Left_top
+    | Left_center | Left_bottom | Right_top | Right_center | Right_bottom
+    | Center_top | Center_bottom | Top_left | Top_right | Bottom_left
+    | Bottom_right ) as value ->
+      pp_transform_origin_keywords ctx value
+  | Position position -> pp_position_value ctx position
+  | X a -> pp_length ctx a
+  | XY (a, b) ->
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b
+  | XYZ (a, b, z) ->
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b;
+      Pp.space ctx ();
+      pp_length ctx z
+  | Position_z (position, z) ->
+      pp_position_value ctx position;
+      Pp.space ctx ();
+      pp_length ctx z
+  | Var v -> pp_var pp_transform_origin ctx v
 
 let rec pp_transform_box : transform_box Pp.t =
  fun ctx -> function
@@ -684,6 +691,58 @@ let rec pp_offset_path : offset_path Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_offset_anchor : offset_anchor Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Position position -> pp_position_value ctx position
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var var -> pp_var pp_offset_anchor ctx var
+
+let rec pp_offset_position : offset_position Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Auto -> Pp.string ctx "auto"
+  | Position position -> pp_position_value ctx position
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var var -> pp_var pp_offset_position ctx var
+
+let rec read_offset_anchor t : offset_anchor =
+  Cursor.enum_or_calls "offset-anchor"
+    [
+      ("auto", Auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_offset_anchor t)) ]
+    ~default:(fun t -> (Position (read_position_value t) : offset_anchor))
+    t
+
+let rec read_offset_position t : offset_position =
+  Cursor.enum_or_calls "offset-position"
+    [
+      ("normal", Normal);
+      ("auto", Auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_offset_position t)) ]
+    ~default:(fun t -> (Position (read_position_value t) : offset_position))
+    t
 
 let pp_offset_rotate_mode : offset_rotate_mode Pp.t =
  fun ctx -> function
@@ -1076,14 +1135,23 @@ module Transform_origin = struct
 
   let read_position t : transform_origin =
     let position =
-      Cursor.one_of
-        [ Position_value.read_4_value; Position_value.read_3_value ]
-        t
+      match read_position_value t with
+      | Edge_offset_axis _ | Axis_edge_offset _ | Edge_offset_edge_offset _ ->
+          err_invalid_value t "transform-origin" "edge-offset position"
+      | position -> position
     in
     Cursor.ws t;
     match Cursor.option read_length t with
-    | Some z -> Position_z (position, z)
-    | None -> Position position
+    | Some z -> (
+        match position with
+        | XY (x, y) -> XYZ (x, y, z)
+        | Single x -> XYZ (x, (Pct 50. : length), z)
+        | position -> Position_z (position, z))
+    | None -> (
+        match position with
+        | XY (x, y) -> XY (x, y)
+        | Single x -> X x
+        | position -> Position position)
 
   let read_xyz (t : Cursor.t) : transform_origin =
     let x = read_length t in
@@ -1138,7 +1206,10 @@ module Transform_origin = struct
 
   let read_keywords t =
     let keywords = Cursor.list ~at_least:1 ~at_most:2 read_keyword t in
-    merge_keywords t keywords
+    let origin = merge_keywords t keywords in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    origin
 
   let read_center_center t =
     let first = Cursor.ident t in
@@ -1162,9 +1233,9 @@ let rec read_transform_origin (t : Cursor.t) : transform_origin =
       Cursor.one_of
         [
           Transform_origin.read_center_center;
-          Transform_origin.read_position;
-          Transform_origin.read_keywords;
           Transform_origin.read_xyz;
+          Transform_origin.read_keywords;
+          Transform_origin.read_position;
         ]
         t)
     t
