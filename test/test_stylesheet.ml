@@ -1260,6 +1260,12 @@ let strict_reject name css =
         true
         (List.length warnings > 0)
 
+let non_empty_font_family_descriptors () =
+  strict_reject "empty @font-face font-family"
+    "@font-face { font-family:; src: url(brand.woff2) }";
+  strict_reject "empty @font-palette-values font-family"
+    "@font-palette-values --brand { font-family: }"
+
 let lenient_recover name css expected min_warnings =
   let { Css.stylesheet; warnings } =
     match Css.of_string ~strict:false css with
@@ -2295,6 +2301,9 @@ let stylesheet_tests =
     ( "spec font-face descriptor matrix",
       `Quick,
       spec_font_face_descriptor_matrix );
+    ( "non-empty font-family descriptors",
+      `Quick,
+      non_empty_font_family_descriptors );
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);
