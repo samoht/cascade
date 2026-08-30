@@ -1973,6 +1973,11 @@ let test_nth () =
   check_nth ~expected:"n-6" "n - 6";
   check_nth ~expected:"6" "+6";
 
+  (* The coefficient and offset are integer tokens, not the rounded float the
+     lexer also carries for number-valued grammars. *)
+  check_nth "9007199254740993";
+  check_nth "9007199254740993n+9007199254740993";
+
   (* Test invalid nth values *)
   (* Nothing here is an [<an+b>], so the reader refuses each outright. *)
   List.iter (neg_cursor read_nth)
@@ -1983,6 +1988,11 @@ let test_nth () =
      enforced. *)
   List.iter (neg_cursor read)
     [ ":nth-child(2 n)"; ":nth-child(3 n)"; ":nth-child(odd+1)" ];
+  List.iter (neg_cursor read_nth)
+    [
+      "999999999999999999999999999999999999";
+      "999999999999999999999999999999999999n+1";
+    ];
   ()
 
 let test_selector () =
