@@ -1134,7 +1134,12 @@ module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
   let read_position t : transform_origin =
-    let position = read_position_value t in
+    let position =
+      match read_position_value t with
+      | Edge_offset_axis _ | Axis_edge_offset _ | Edge_offset_edge_offset _ ->
+          err_invalid_value t "transform-origin" "edge-offset position"
+      | position -> position
+    in
     Cursor.ws t;
     match Cursor.option read_length t with
     | Some z -> (

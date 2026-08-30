@@ -197,6 +197,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `transform-origin` rejects four-component edge-offset `<position>` forms.
+  Its grammar accepts one or two X/Y components followed by an optional Z
+  length, unlike `perspective-origin`, which accepts a full `<position>` (#680)
 - `offset-anchor` and `offset-position` are typed properties. They validate
   their Motion Path grammars, expose `offset_anchor` / `offset_position`
   values, and canonicalize their `<position>` branches. Generic positions no
