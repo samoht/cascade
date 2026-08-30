@@ -1855,6 +1855,25 @@ let animations_state () =
   check_declaration ~expected:"animation-play-state:paused"
     "animation-play-state: paused"
 
+(* CSS Animations 1 (ED) sec. 4.9 joins the eight components of a
+   [<single-animation>] with [||] and assigns a keyword to a property other than
+   animation-name wherever that property has not been filled yet, so the first
+   [none] of [animation: none none] is the fill mode and the second the name.
+   Both are the initial values of their longhands, so every slot written here
+   holds one, and what the whole declares is what [animation: none] declares. *)
+let animation_drained_shorthand () =
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: none none";
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: 0s ease 0s 1 normal none running none";
+  (* Controls: the drop still runs wherever a slot outlives it. *)
+  check_declaration ~expected:"animation:1s" ~optimized:"animation:1s"
+    "animation: 1s none";
+  check_declaration ~expected:"animation:slide" ~optimized:"animation:slide"
+    "animation: none slide";
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: none"
+
 let transforms () =
   (* Transform functions *)
   check_declaration ~expected:"transform:none" "transform: none";
@@ -4956,6 +4975,7 @@ let declaration_tests =
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;
     test_case "animations (state)" `Quick animations_state;
+    test_case "animation drained shorthand" `Quick animation_drained_shorthand;
     test_case "transforms" `Quick transforms;
     test_case "angle units" `Quick angle_units;
     test_case "grid" `Quick grid;
