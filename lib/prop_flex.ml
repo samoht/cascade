@@ -306,10 +306,7 @@ let rec read_order t : order =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
-    ~default:(fun t ->
-      let n = Cursor.number t in
-      if Float.is_integer n then (Int (int_of_float n) : order)
-      else Cursor.err_invalid t "order must be integer")
+    ~default:(fun t -> (Int (Cursor.int t) : order))
     t
 
 let rec read_flex_wrap t : flex_wrap =

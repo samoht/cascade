@@ -80,6 +80,10 @@ val equal_hash_flag : hash_flag -> hash_flag -> bool
 val equal_number_flag : number_flag -> number_flag -> bool
 (** [equal_number_flag a b] tests number token flags for equality. *)
 
+val integer_opt : number -> int option
+(** [integer_opt n] is the exact integer represented by [n], when [n] is an
+    integer token within the native integer range. *)
+
 val equal_bracket : bracket -> bracket -> bool
 (** [equal_bracket a b] tests bracket kinds for equality. *)
 

@@ -298,10 +298,7 @@ let number_opt t =
 
 let integer_opt t =
   take_token_if
-    (function
-      | Token.Number_tok { value; number_flag = Token.Integer; _ } ->
-          Some (int_of_float value)
-      | _ -> None)
+    (function Token.Number_tok number -> Token.integer_opt number | _ -> None)
     t
 
 let percentage_opt t =

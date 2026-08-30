@@ -44,6 +44,12 @@ type t = { kind : kind; loc : Loc.t }
 
 let equal_hash_flag (a : hash_flag) b = a = b
 let equal_number_flag (a : number_flag) b = a = b
+
+let integer_opt number =
+  match number.number_flag with
+  | Integer -> int_of_string_opt number.repr
+  | Number -> None
+
 let equal_bracket (a : bracket) b = a = b
 let bracket_rank = function Curly -> 0 | Paren -> 1 | Square -> 2
 let compare_bracket a b = Int.compare (bracket_rank a) (bracket_rank b)

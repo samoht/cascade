@@ -867,10 +867,7 @@ let rec read_z_index t : z_index =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
-    ~default:(fun t ->
-      let n = Cursor.number t in
-      if Float.is_integer n then Index (int_of_float n)
-      else Cursor.err_invalid t "z-index must be integer")
+    ~default:(fun t -> Index (Cursor.int t))
     t
 
 let read_aspect_ratio_number t =
