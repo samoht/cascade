@@ -2990,12 +2990,42 @@ let test_conic_gradient_config () =
    animation-range. A unit ends in an ident instead ([10px 0] would re-tokenise
    as the single dimension [10px0]), so that space stays. *)
 let test_background_position () =
+  let assert_complete input =
+    let t = Cursor.of_string input in
+    ignore (read_background_position t);
+    Cursor.ws t;
+    if not (Cursor.is_done t) then
+      Alcotest.failf "background-position left input after %S" input
+  in
+  let assert_axis_edge input axis edge =
+    let t = Cursor.of_string input in
+    match read_background_position t with
+    | [ Axis_edge_offset (got_axis, got_edge, _) ] ->
+        Alcotest.(check string) input axis got_axis;
+        Alcotest.(check string) input edge got_edge
+    | _ -> Alcotest.failf "background-position lost edge offset in %S" input
+  in
   check_background_position "center";
   check_background_position "left top";
   check_background_position ~roundtrip:true ~expected:"100%0" "right 0";
   check_background_position ~roundtrip:true ~expected:"100%-15.625rem"
     "right -15.625rem";
   check_background_position "right .5rem center";
+  check_background_position "left top 10px";
+  check_background_position "left top 10%";
+  check_background_position "center top 10px";
+  check_background_position "center left 10px";
+  check_background_position "top 10px left";
+  List.iter assert_complete
+    [
+      "left top 10px";
+      "left top 10%";
+      "center top 10px";
+      "center left 10px";
+      "top 10px left";
+    ];
+  assert_axis_edge "center top 10px" "center" "top";
+  assert_axis_edge "center left 10px" "center" "left";
   check_background_position ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_background_position "inherit";
   neg_cursor ~allow_partial:true read_background_position "invalid-position"
@@ -3003,9 +3033,16 @@ let test_background_position () =
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
+  check_position_value "top 20px left 10px";
   check_position_value ~roundtrip:true ~expected:"50%25%" "50% 25%";
   check_position_value "inherit";
-  neg_cursor ~allow_partial:true read_position_value "invalid-position"
+  neg_cursor ~allow_partial:true read_position_value "invalid-position";
+  neg_cursor read_position_value "foo 1px bar 2px";
+  neg_cursor ~allow_partial:true read_position_value "left 1px right 2px";
+  neg_cursor ~allow_partial:true read_position_value "left 1px middle";
+  neg_cursor ~allow_partial:true read_position_value "top 1px bottom";
+  neg_cursor ~allow_partial:true read_position_value "left 1px top";
+  neg_cursor ~allow_partial:true read_position_value "left top 1px"
 
 let test_translate_value () =
   check_translate_value "none";
@@ -3430,6 +3467,9 @@ let test_transform_origin () =
   check_transform_origin "0";
   check_transform_origin "50% 25%";
   check_transform_origin "50% 50% 10px";
+  check_transform_origin ~expected:"0% 10px" "left 10px";
+  check_transform_origin "left top 10px";
+  check_transform_origin "center top 10px";
   check_transform_origin "inherit";
   neg_cursor read_transform_origin "invalid-origin"
 

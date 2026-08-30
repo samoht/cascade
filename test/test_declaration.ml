@@ -3979,6 +3979,50 @@ let text_box_normal () =
   check_declaration ~roundtrip:true "text-box:normal";
   check_sheet_roundtrip "text-box" "a{text-box:normal}"
 
+(* CSS Values 4 sec. 8.3 allows four edge-offset components but excludes the
+   three-value form. CSS Backgrounds 3 sec. 2.6 retains valid three-value
+   <bg-position>s, while CSS Transforms 1 sec. 4 can place a Z length after a
+   two-value origin. *)
+let edge_offset_position_grammar () =
+  List.iter
+    (fun (declaration, expected) ->
+      check_declaration ~expected ~roundtrip:true declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      let expected_css = String.concat "" [ "a{"; expected; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+      | Ok { stylesheet; _ } ->
+          Alcotest.(check string)
+            "edge-offset position sheet roundtrip" expected_css
+            (String.trim (Css.to_string ~minify:true stylesheet)))
+    [
+      ("background-position:left top 10px", "background-position:left top 10px");
+      ("background-position:left top 10%", "background-position:left top 10%");
+      ( "background-position:center top 10px",
+        "background-position:center top 10px" );
+      ( "background-position:center left 10px",
+        "background-position:center left 10px" );
+      ("background-position:top 10px left", "background-position:top 10px left");
+      ("transform-origin:left 10px", "transform-origin:0% 10px");
+      ("transform-origin:left top 10px", "transform-origin:left top 10px");
+      ("transform-origin:center top 10px", "transform-origin:center top 10px");
+    ];
+  List.iter
+    (fun declaration ->
+      none_cursor read_declaration declaration;
+      let css = String.concat "" [ "a{"; declaration; "}" ] in
+      match Css.of_string ~strict:true css with
+      | Error _ -> ()
+      | Ok _ -> Alcotest.failf "strict parsing accepted %s" css)
+    [
+      "transform-origin:foo 1px bar 2px";
+      "background-position:left 1px right 2px";
+      "object-position:left 1px middle";
+      "perspective-origin:top 1px bottom";
+      "object-position:left 1px top";
+      "perspective-origin:left top 1px";
+    ]
+
 (* CSS Syntax 3 (ED) sec. 5.5.6 "consume a declaration" reads the value with
    [<semicolon-token>] as the stop token, then removes a trailing [!]
    [important] pair from that value and sets the declaration's important flag
@@ -4803,6 +4847,7 @@ let declaration_tests =
     test_case "view-timeline inset slot" `Quick view_timeline_inset_slot;
     test_case "text-box edge only" `Quick text_box_edge_only;
     test_case "text-box normal" `Quick text_box_normal;
+    test_case "edge-offset position grammar" `Quick edge_offset_position_grammar;
     test_case "declaration value end" `Quick declaration_value_end;
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
