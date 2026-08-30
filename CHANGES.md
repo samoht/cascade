@@ -197,6 +197,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `mask-border` accepts a lone mode keyword, and `border-image` rejects one
+  anywhere: only mask-border's grammar carries a `<'mask-border-mode'>` slot
+  (#682)
+- `offset` is a typed shorthand. It validates the Motion Path grammar, so an
+  invalid value such as `offset: total nonsense here` is dropped rather than
+  carried as opaque text; its slots canonicalize the way the longhands do, and
+  a slot left at its longhand's initial is dropped where the grammar allows it
+  (#683)
 - `transform-origin` rejects four-component edge-offset `<position>` forms.
   Its grammar accepts one or two X/Y components followed by an optional Z
   length, unlike `perspective-origin`, which accepts a full `<position>` (#680)
@@ -510,6 +518,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Printing
 
+- `text-decoration`, `mask-border` and `animation` no longer minify to an
+  empty value. `text-decoration:solid` printed `text-decoration:`, which no
+  parser reads back, once dropping the initial style left no slot (#682)
 - An ident that needs an escape to read back as one keeps it. `.x{--a:-\34 }`
   printed `.x{--a:-4}`, a number rather than the ident `-4`, and
   `@media (-\34 :1)` lost its feature name the same way: CSS Syntax 3 sec.
@@ -553,12 +564,21 @@ recorded cases carrying six minifiers' answers.
 - `--minify` canonicalises programmatically constructed shared `<position>`
   nodes in `transform-origin` to the property's XY/XYZ nodes before hashing, so
   typed position nodes and coordinate origins now factor together (#672)
+- `--minify` splits a whole-rule `:is(a, b)` whose arguments share one
+  specificity into the selector list `a, b` before rules are compared, so it
+  factors with a rule that wrote the list out; the split reached the printed
+  output only, which left a second pass shorter than the first. A whole-rule
+  `:is(a)` or `:is(*)` loses its wrapper there too (#655)
 - `--minify` collapses repeated sides in the `scroll-margin` and
   `scroll-padding` physical and logical shorthands before declaration hashes
   are compared, so equivalent rules factor together (#650)
 - `--minify` canonicalises logical minimum sizes, duration units and stepped
   functions, transform origins and hue-angle units before declaration hashes
   are compared, so equivalent rules factor under all five spellings (#647)
+- `--minify` settles each rule's reachable set in the dependency graph once
+  instead of re-walking the graph per question, so ordering a run no longer
+  costs the cube of its rule count. The slowest corpus stylesheet took about
+  80s of CPU and now takes under 2s, for byte-identical output (#664)
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: a component left at its
   longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,
@@ -972,6 +992,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- `:is(a, b)` and the selector list `a, b` compare equal when the arguments
+  share one specificity, which is the split-against-grouped selector list the
+  mode promises to equate (#655)
 - The canonical projection keeps structurally distinct `@container` conditions
   in separate cascade slots even when their minified text is identical. An
   escaped unknown feature such as `(inline-size\>\=10px)` no longer merges into
@@ -1015,9 +1038,9 @@ recorded cases carrying six minifiers' answers.
 - Load-bearing minification, parsing, and serialization comments name the CSS
   spec sections that define their initial values, equivalences, grammars, and
   defaults (#677)
-- `min-inline-size:initial` and `min-block-size:initial` minify to `0`, their
-  CSS Logical Level 1 initial value, rather than the physical minimum-size
-  properties' `auto` initial value (#675)
+- `min-inline-size:initial` and `min-block-size:initial` minify to `auto`, the
+  initial value they share with `min-width` and `min-height`, rather than to a
+  zero that drops a flex item's automatic minimum size (#675, #681)
 - Border-radius normalization uses the shared box-shorthand normalizer instead
   of spelling its map-and-collapse composition inline (#663)
 - Property normalizers reuse `Common.List.map_preserve` instead of carrying a

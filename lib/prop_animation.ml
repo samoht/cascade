@@ -1725,13 +1725,18 @@ let animation_quote_ambiguous_name ctx anim =
   && Animation.ambiguous_name_kind anim <> None
   && not (Animation.bare_ambiguous_safe anim)
 
+(* Every other slot holding its initial and the name absent or holding [none]
+   leaves the slot printers with nothing to write. What the value declares then
+   is the eight initials and nothing else, which is what [animation: none]
+   declares (CSS Animations 1 (ED) sec. 4.9); the empty string is not a value
+   any parser reads back. A name that is not the initial writes itself. *)
 let pp_animation_initial_none ctx (anim : animation_shorthand)
     ~name_is_default_none ~has_any_non_default =
   match (anim.name, name_is_default_none, has_any_non_default) with
-  | _, true, true -> ()
+  | _, _, true -> ()
   | Option.None, _, false -> Pp.string ctx "none"
-  | Option.None, _, true -> ()
-  | Option.Some _, _, _ -> ()
+  | Option.Some _, true, false -> Pp.string ctx "none"
+  | Option.Some _, false, false -> ()
 
 let pp_animation_name_slot ctx state ~quote_ambiguous_name
     (anim : animation_shorthand) =

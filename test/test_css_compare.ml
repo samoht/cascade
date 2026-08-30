@@ -17,6 +17,27 @@ let contains_substring s needle =
 
 (* ===== equal tests ===== *)
 
+(* The canonical mode promises that split and grouped selector lists compare
+   equal. Selectors 4 sec. 4.2 weighs [:is()] as its most specific argument, so
+   with equal-specificity arguments [:is(a, b)] and [a, b] select the same
+   elements at the same weight and are the same rule written two ways. Where the
+   arguments disagree they are not: the list weighs an [a] match at (0,0,1), the
+   wrapper at (0,1,0). *)
+let equal_canonical_top_level_is_unwrap () =
+  Alcotest.(check bool)
+    ":is(a,b) and a,b are one rule" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ":is(a,b){color:red}"
+       "a,b{color:red}");
+  Alcotest.(check bool)
+    ":is(.x,a) and .x,a are not" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ":is(.x,a){color:red}"
+       ".x,a{color:red}");
+  (* Sec. 4.4: neither [:where()] nor its arguments contribute specificity. *)
+  Alcotest.(check bool)
+    ":where(a,b) and a,b are not" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ":where(a,b){color:red}"
+       "a,b{color:red}")
+
 let equal_identical () =
   let css = ".a { color: red }" in
   Alcotest.(check bool)
@@ -1543,6 +1564,8 @@ let suite =
         canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
         equal_canonical_ignores_property_order;
+      Alcotest.test_case "canonical splits a top-level :is()" `Quick
+        equal_canonical_top_level_is_unwrap;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
       Alcotest.test_case "canonical keeps target-gated content" `Quick

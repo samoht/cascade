@@ -495,7 +495,10 @@ let where_is_cases () =
   (* Test :where() and :is() *)
   check_construct ":where(div)" (where [ element "div" ]);
   check_construct ":where(.a,.b)" (where [ class_ "a"; class_ "b" ]);
-  check_construct "h1,h2" (is_ [ element "h1"; element "h2" ]);
+  (* Splitting an equal-specificity [:is()] into a selector list is a node
+     change reserved for [Selector.canonicalize]; pp is lexical-only and holds
+     the wrapper. *)
+  check_construct ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
   check_construct ":not(.active)" (not [ class_ "active" ]);
   ()
 
@@ -541,7 +544,7 @@ let roundtrip () =
     "div.class#id[href]:hover::after";
   check ~expected:".a,.b,.c" ".a, .b, .c";
   check ":where(.a,.b)";
-  check ~expected:"h1,h2,h3" ":is(h1,h2,h3)";
+  check ":is(h1,h2,h3)";
   check ":not(.active)";
 
   (* Escaping roundtrip tests *)
@@ -1465,6 +1468,76 @@ let canonicalize_pseudo_compound_is () =
   canon ".x .a" ".x :is(:is(.a))";
   (* [:where()] never unwraps: it contributes zero specificity. *)
   canon ".a:before:where(.b)" ".a::before:where(.b)"
+
+(* Selectors 4 sec. 4.2 replaces the specificity of [:is()] with that of its
+   most specific argument, and its own note contrasts [:is(ul, ol, .list) >
+   [hidden]] with the split list to show the two do not agree. They agree
+   exactly when the arguments already share one specificity, and then a
+   whole-rule [:is(s1, ..., sn)] is the selector list [s1, ..., sn]. The split
+   has to reach the AST: everything downstream that groups rules compares
+   selector nodes. *)
+let canonicalize_top_level_is_unwrap () =
+  let canon expected input =
+    let actual = canonicalize (of_string input) in
+    Alcotest.(check string)
+      ("canonicalize " ^ input) expected
+      (to_string ~minify:true actual);
+    Alcotest.(check bool)
+      (input ^ " canonicalizes to the AST of " ^ expected)
+      true
+      (equal actual (canonicalize (of_string expected)));
+    match Cursor.option read (Cursor.of_string expected) with
+    | Some _ -> ()
+    | None ->
+        Alcotest.failf "canonicalized selector does not parse: %s" expected
+  in
+  let distinct a b =
+    Alcotest.(check bool)
+      (a ^ " and " ^ b ^ " are different selectors")
+      false
+      (equal (canonicalize (of_string a)) (canonicalize (of_string b)))
+  in
+  canon "a,b" ":is(a,b)";
+  canon ".a,.b" ":is(.a,.b)";
+  (* Split into a list that already had members, the alternatives are one
+     unordered set again (sec. 4.1: an element matches a selector list when it
+     matches any of its selectors). *)
+  canon "a,m,z" ":is(a,z),m";
+  canon "a,m,z" "a,z,m";
+  (* A lone argument shares its own specificity, so the equality holds whatever
+     it is. [canonicalize_is] still holds a type or universal one back, because
+     it cannot see the compound it would land in; at the top of a rule selector
+     there is none. *)
+  canon "a" ":is(a)";
+  canon "*" ":is(*)";
+  canon ".x" ":is(.x)";
+  canon "a" ":is(a,a)";
+  (* Unequal specificity: an [a] match weighs (0,0,1) as a list branch and
+     (0,1,0) under the wrapper. *)
+  canon ":is(.x,a)" ":is(.x,a)";
+  canon ":is(#i,a)" ":is(#i,a)";
+  distinct ":is(.x,a)" ".x,a";
+  distinct ":is(#i,a)" "#i,a";
+  (* Sec. 4.4: neither [:where()] nor any of its arguments contribute
+     specificity, so it never becomes a list, not even one its arguments agree
+     on. *)
+  canon ":where(.x,a)" ":where(.x,a)";
+  canon ":where(a,b)" ":where(a,b)";
+  distinct ":where(a,b)" "a,b";
+  distinct ":where(.x,a)" ".x,a";
+  (* Not the whole selector: there is no enclosing list to split into. *)
+  canon "p:is(.x,a)" "p:is(.x,a)";
+  canon ":is(.x,a) .z" ":is(.x,a) .z";
+  canon "p:is(a,b)" "p:is(a,b)";
+  canon ":is(a,b) .z" ":is(a,b) .z";
+  (* CSS Nesting 1 sec. 3 weighs [&] as the most specific selector in the parent
+     rule, a weight the selector text alone does not name, so an argument
+     holding one never enters the equality test. Split, [&, *] would weigh a
+     universal match at zero where the wrapper weighs it at the parent
+     specificity. *)
+  canon ":is(&,*)" ":is(&,*)";
+  canon ":is(&,.b)" ":is(&,.b)";
+  distinct ":is(&,*)" "&,*"
 
 (* WebKit, "Styling Scrollbars" defines eleven pseudo-classes for the state a
    scrollbar part is in. They are not in any spec, and Chrome 151 and WebKit
@@ -2754,7 +2827,9 @@ let spec_selector_serialization_invariant_matrix () =
       "::highlight(search-results)";
       "::cue-region(.speaker)";
     ];
-  check_minified_to ".a,.b" ":is(.a, [=bad], .b)";
+  (* Forgiving parsing drops the invalid branch; the split of what is left is
+     [Selector.canonicalize]'s, not pp's. *)
+  check_minified_to ":is(.a,.b)" ":is(.a, [=bad], .b)";
   List.iter
     (fun input -> neg_cursor read input)
     [
@@ -2835,6 +2910,8 @@ let suite =
         scrollbar_state_pseudo_classes_read;
       test_case "canonicalize pseudo-compound :is()" `Quick
         canonicalize_pseudo_compound_is;
+      test_case "canonicalize top-level :is()" `Quick
+        canonicalize_top_level_is_unwrap;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;

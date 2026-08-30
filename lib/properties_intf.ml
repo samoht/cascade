@@ -3646,6 +3646,33 @@ type offset_rotate =
   | Revert_layer
   | Var of offset_rotate var
 
+(* Motion Path 1 (ED) sec. 2.6 gives the [offset] shorthand
+
+   [ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+   <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?
+
+   The [!] makes the leading group required: a declaration writes a position, a
+   path, or both, and never nothing. [offset-distance] and [offset-rotate] sit
+   inside the path branch, so [With_path] is the only shape that carries them
+   and neither can be written without a path in front. *)
+type offset_target =
+  | Position_only of offset_position
+  | With_path of {
+      position : offset_position option;
+      path : offset_path;
+      distance : length_percentage option;
+      rotate : offset_rotate option;
+    }
+
+type offset =
+  | Shorthand of { target : offset_target; anchor : offset_anchor option }
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset var
+
 (* Container shorthand: name / type *)
 type container_shorthand =
   | Shorthand of { name : string option; ctype : container_type option }
@@ -5110,6 +5137,7 @@ type 'a property =
   | Caret_color : color property
   | Offset_anchor : offset_anchor property
   | Offset_position : offset_position property
+  | Offset : offset property
 
 type any_property = Prop : 'a property -> any_property
 

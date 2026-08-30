@@ -1189,6 +1189,35 @@ let vars_of_offset_rotate (value : Properties.offset_rotate) =
   | Angle angle | With_angle (_, angle) -> vars_of_angle angle
   | Auto | Reverse | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
+let vars_of_offset_target (value : Properties.offset_target) =
+  match value with
+  | Position_only position -> vars_of_offset_position position
+  | With_path { position; path; distance; rotate } ->
+      List.concat
+        [
+          (match position with
+          | Some position -> vars_of_offset_position position
+          | None -> []);
+          vars_of_offset_path path;
+          (match distance with
+          | Some distance -> vars_of_length_percentage distance
+          | None -> []);
+          (match rotate with
+          | Some rotate -> vars_of_offset_rotate rotate
+          | None -> []);
+        ]
+
+let vars_of_offset (value : Properties.offset) =
+  match value with
+  | Var var -> [ V var ]
+  | Shorthand { target; anchor } ->
+      List.append
+        (vars_of_offset_target target)
+        (match anchor with
+        | Some anchor -> vars_of_offset_anchor anchor
+        | None -> [])
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
 let vars_of_flex_basis (value : Properties.flex_basis) =
   match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
 
@@ -2299,6 +2328,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
       vars_of_contain_intrinsic_longhand value
   | Margin_trim, value -> vars_of_margin_trim value
   | Offset_path, value -> vars_of_offset_path value
+  | Offset, value -> vars_of_offset value
   | Offset_anchor, value -> vars_of_offset_anchor value
   | Offset_position, value -> vars_of_offset_position value
   | Offset_rotate, value -> vars_of_offset_rotate value

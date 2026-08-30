@@ -1374,3 +1374,244 @@ let read_ray t : ray =
   Cursor.ws inner;
   Cursor.expect_eof inner;
   { angle; size; contain; position }
+
+(* Motion Path 1 (ED) sec. 2.6: the [offset] shorthand is
+
+   [ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+   <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?
+
+   Serialised in that order, so the [||] pair always comes back out as the
+   distance then the rotation. Pure serialiser: the initial-slot drops are
+   [normalize_offset]'s. *)
+let pp_offset_target : offset_target Pp.t =
+ fun ctx -> function
+  | Position_only position -> pp_offset_position ctx position
+  | With_path { position; path; distance; rotate } ->
+      Option.iter
+        (fun position ->
+          pp_offset_position ctx position;
+          Pp.token_sp ctx ())
+        position;
+      pp_offset_path ctx path;
+      Option.iter
+        (fun distance ->
+          Pp.token_sp ctx ();
+          pp_length_percentage ~always:true ctx distance)
+        distance;
+      Option.iter
+        (fun rotate ->
+          Pp.token_sp ctx ();
+          pp_offset_rotate ctx rotate)
+        rotate
+
+let rec pp_offset : offset Pp.t =
+ fun ctx -> function
+  | Shorthand { target; anchor } ->
+      pp_offset_target ctx target;
+      Option.iter
+        (fun anchor ->
+          Pp.slash ctx ();
+          pp_offset_anchor ctx anchor)
+        anchor
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_offset ctx v
+
+(* Whether the cursor sits on a value [read_offset_path] takes as a path rather
+   than as a CSS-wide keyword or a [var()]. None of [none], [path()], [ray()]
+   and a url can start an [<'offset-position'>], so a single lookahead settles
+   which of the two leading slots is being read and the two readers cannot drift
+   apart. *)
+let starts_offset_path t =
+  Cursor.lookahead
+    (fun t ->
+      match Cursor.option read_offset_path t with
+      | Some (None | Url _ | Path _ | Ray _ : offset_path) -> true
+      | Some _ | Option.None -> false)
+    t
+
+(* A [var()] in the leading group could substitute into any of its four slots,
+   so it names no longhand before substitution and the shorthand refuses it; the
+   declaration then keeps its authored text through the unknown-property
+   fallback. The anchor stands alone behind the [/] and takes one. *)
+let reject_var_slot t =
+  if Cursor.looking_at_func "var" t then
+    Cursor.err_invalid t "var() spans no single offset slot"
+
+(* Sec. 2.2 writes [offset-distance] as a plain [<length-percentage>], but
+   cascade's longhand reader is non-negative and an existing oracle
+   ([test_declaration.ml], "offset-distance: -10%") pins that. The slot takes
+   exactly what the longhand takes rather than splitting the model in two; the
+   range itself is one arbitration, not this change. *)
+let read_offset_slot_distance t =
+  reject_var_slot t;
+  Values.read_length_percentage ~allow_negative:false ~with_keywords:false t
+
+let read_offset_slot_rotate t =
+  reject_var_slot t;
+  read_offset_rotate t
+
+(* [<'offset-distance'> || <'offset-rotate'>]: either order, each at most
+   once. *)
+let read_offset_path_tail t =
+  let distance : length_percentage option ref = ref Option.None in
+  let rotate : offset_rotate option ref = ref Option.None in
+  let try_slot : 'a. 'a option ref -> (Cursor.t -> 'a) -> bool =
+   fun slot reader ->
+    if Option.is_some !slot then false
+    else (
+      Cursor.ws t;
+      match Cursor.option reader t with
+      | Option.Some value ->
+          slot := Option.Some value;
+          true
+      | Option.None -> false)
+  in
+  let rec loop () =
+    if
+      try_slot distance read_offset_slot_distance
+      || try_slot rotate read_offset_slot_rotate
+    then loop ()
+  in
+  loop ();
+  (!distance, !rotate)
+
+let read_offset_target t : offset_target =
+  Cursor.ws t;
+  reject_var_slot t;
+  let position =
+    if starts_offset_path t then Option.None
+    else Option.Some (read_offset_position t)
+  in
+  Cursor.ws t;
+  reject_var_slot t;
+  if starts_offset_path t then
+    let path = read_offset_path t in
+    let distance, rotate = read_offset_path_tail t in
+    With_path { position; path; distance; rotate }
+  else
+    match position with
+    | Option.Some position -> Position_only position
+    | Option.None -> Cursor.err_expected t "offset-position or offset-path"
+
+let read_offset_body t : offset =
+  let target = read_offset_target t in
+  Cursor.ws t;
+  let anchor =
+    if Cursor.slash_opt t then (
+      Cursor.ws t;
+      Option.Some (read_offset_anchor t))
+    else Option.None
+  in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Shorthand { target; anchor }
+
+let rec read_offset t : offset =
+  let raw = Cursor.consume_to_decl_end ~trim:true t in
+  match String.lowercase_ascii (String.trim raw) with
+  | "inherit" -> Inherit
+  | "initial" -> Initial
+  | "unset" -> Unset
+  | "revert" -> Revert
+  | "revert-layer" -> Revert_layer
+  | _ -> (
+      let is_whole_var () =
+        let r = Cursor.of_string raw in
+        match Values.read_var read_offset r with
+        | (_ : offset var) ->
+            Cursor.ws r;
+            Cursor.is_done r
+        | exception Cursor.Parse_error _ -> false
+      in
+      if is_whole_var () then
+        Var (Values.read_var read_offset (Cursor.of_string raw))
+      else if value_has_css_wide_mix raw then
+        Cursor.err_invalid t "CSS-wide keyword mixed with other values"
+      else
+        try read_offset_body (Cursor.of_string raw)
+        with Cursor.Parse_error _ ->
+          Cursor.err_invalid t "invalid offset shorthand")
+
+(* Sec. 2.2 gives [offset-distance] the initial value [0]. A zero percentage is
+   a different computed value from a zero length, so only a zero length says
+   what omitting the slot says. *)
+let offset_distance_is_initial : length_percentage -> bool = function
+  | Length (Pct _) | Pct _ -> false
+  | Length length -> Values.length_is_zero length
+  | Env _ | Var _ | Calc _ | Invalid _ -> false
+
+let drop_offset_initial_slot (type a) ~(is_initial : a -> bool)
+    (slot : a option) : a option =
+  match slot with Option.Some v when is_initial v -> Option.None | _ -> slot
+
+let normalize_offset_anchor_slot anchor =
+  option_map_preserve normalize_offset_anchor anchor
+  |> drop_offset_initial_slot ~is_initial:(function
+    | (Auto : offset_anchor) -> true
+    | _ -> false)
+
+(* Sec. 2.6 resets all five longhands before applying the slots written
+   explicitly, so a slot holding its longhand's initial says exactly what
+   leaving it out says: drop it. The initials are [normal] (sec. 2.3), [none]
+   (sec. 2.1), [0] (sec. 2.2), [auto] (sec. 2.5) and [auto] (sec. 2.4).
+
+   The path is the one slot whose drop is conditional. [offset-distance] and
+   [offset-rotate] are reachable only behind a path, so dropping it would leave
+   a trailing [50%] to re-read as the position; and the [!] forbids emptying the
+   group, so when every other slot has gone the path [none] stays behind and
+   spells the whole value. *)
+let normalize_offset_target ~ctx (target : offset_target) : offset_target =
+  match target with
+  | Position_only position -> (
+      match normalize_offset_position position with
+      | (Normal : offset_position) ->
+          With_path
+            {
+              position = Option.None;
+              path = (None : offset_path);
+              distance = Option.None;
+              rotate = Option.None;
+            }
+      | position -> Position_only position)
+  | With_path group -> (
+      let position =
+        option_map_preserve normalize_offset_position group.position
+        |> drop_offset_initial_slot ~is_initial:(function
+          | (Normal : offset_position) -> true
+          | _ -> false)
+      in
+      let path = normalize_offset_path group.path in
+      let distance =
+        option_map_preserve
+          (Values.normalize_length_percentage ~ctx)
+          group.distance
+        |> drop_offset_initial_slot ~is_initial:offset_distance_is_initial
+      in
+      let rotate =
+        option_map_preserve normalize_offset_rotate group.rotate
+        |> drop_offset_initial_slot ~is_initial:(function
+          | (Auto : offset_rotate) -> true
+          | _ -> false)
+      in
+      match (position, path, distance, rotate) with
+      | Option.Some position, (None : offset_path), Option.None, Option.None ->
+          Position_only position
+      | _ ->
+          if
+            position == group.position && path == group.path
+            && distance == group.distance && rotate == group.rotate
+          then target
+          else With_path { position; path; distance; rotate })
+
+let normalize_offset ~ctx (value : offset) : offset =
+  match value with
+  | Shorthand { target; anchor } ->
+      let target' = normalize_offset_target ~ctx target in
+      let anchor' = normalize_offset_anchor_slot anchor in
+      if target' == target && anchor' == anchor then value
+      else Shorthand { target = target'; anchor = anchor' }
+  | Initial | Inherit | Unset | Revert | Revert_layer | Var _ -> value

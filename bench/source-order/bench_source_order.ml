@@ -37,13 +37,42 @@ let words rules =
   let w3 = run 3 in
   (w3 -. w1) /. 2.
 
+(* What a graph costs to build says nothing about what it costs to use, and this
+   bench weighed only the build while an asymptotic regression shipped in the
+   questions. Orienting a factoring asks which of two nodes has to come first,
+   once per ordered pair, so a run of N rules is asked about N^2 pairs; counting
+   the nodes those answers expand is immune to whatever else the machine is
+   doing, and stays flat per node when the edges are only passed over once. *)
+let expansions rules =
+  let g = Rule_graph.of_rules rules in
+  let n = Rule_graph.node_count g in
+  for i = 0 to n - 1 do
+    for j = 0 to n - 1 do
+      ignore
+        (Sys.opaque_identity
+           (Rule_graph.precedes g
+              (Rule_graph.Node_id.of_int_exn i)
+              (Rule_graph.Node_id.of_int_exn j)))
+    done
+  done;
+  (n, Rule_graph.reachability_expansions g)
+
+let sizes = [ 500; 1000; 2000; 4000 ]
+let shapes = [ "A"; "B"; "C"; "D" ]
+
 let () =
   print_endline "shape n words_per_build";
   List.iter
     (fun s ->
+      List.iter (fun n -> Fmt.pr "%s %d %.0f@." s n (words (shape s n))) sizes)
+    shapes;
+  print_endline "shape n pairs expansions per_node";
+  List.iter
+    (fun s ->
       List.iter
         (fun n ->
-          let rules = shape s n in
-          Fmt.pr "%s %d %.0f@." s n (words rules))
-        [ 500; 1000; 2000; 4000 ])
-    [ "A"; "B"; "C"; "D" ]
+          let nodes, spent = expansions (shape s n) in
+          Fmt.pr "%s %d %d %d %.2f@." s n (nodes * nodes) spent
+            (float_of_int spent /. float_of_int (max nodes 1)))
+        sizes)
+    shapes

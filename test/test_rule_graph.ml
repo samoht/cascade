@@ -412,6 +412,135 @@ let second_specificity_costs_no_pair () =
     true
     (a1 = 0. || a2 < a1 *. 2.5)
 
+(* An independent oracle for {!Rule_graph.precedes}: a plain walk of the edges
+   the graph exposes, reusing nothing between questions. Dead nodes are walked
+   through, since a compact chain can carry a live-to-live constraint across a
+   node a rewrite consumed. *)
+let reaches g source target =
+  let seen = Array.make (max (Rule_graph.node_count g) 1) false in
+  let rec walk = function
+    | [] -> false
+    | i :: rest ->
+        let i = Rule_graph.Node_id.to_int i in
+        if i = target then true
+        else if seen.(i) then walk rest
+        else begin
+          seen.(i) <- true;
+          walk (Rule_graph.successors g (nid i) @ rest)
+        end
+  in
+  source <> target && walk (Rule_graph.successors g (nid source))
+
+let check_reachability label g =
+  let count = Rule_graph.node_count g in
+  for i = 0 to count - 1 do
+    for j = 0 to count - 1 do
+      let expected =
+        reaches g i j
+        && Rule_graph.is_live g (nid i)
+        && Rule_graph.is_live g (nid j)
+      in
+      Alcotest.(check bool)
+        (Fmt.str "%s: precedes %d %d" label i j)
+        expected
+        (Rule_graph.precedes g (nid i) (nid j))
+    done
+  done
+
+(* [precedes] answers a reachability question over edges that never change once
+   a graph is published, so however it is answered it must agree with a walk of
+   those edges on every ordered pair - including pairs joined only through a
+   node a rewrite consumed, and pairs a compact chain relates without a direct
+   edge. This pins the answer itself, not the rule order it feeds. *)
+let precedes_agrees_with_a_walk () =
+  List.iter
+    (fun (label, css) -> check_reachability label (g_of css))
+    [
+      ("chain", ".a{color:red}.a{color:blue}.a{color:green}.a{color:teal}");
+      ( "forks",
+        ".a{color:red}.b{margin:0}.a{color:blue}.b{margin:1px}.a,.b{top:0}" );
+      ( "mixed specificity",
+        "#i{color:red}.a{color:blue}#i{color:teal}.a.c{color:teal}.a{color:lime}"
+      );
+      ("disjoint", "#a{color:red}#b{color:blue}#c{color:teal}");
+    ];
+  (* A committed rewrite leaves its inputs behind as dead relays, so the walk
+     has to cross them. *)
+  let g =
+    g_of ".early{color:black}.mid{color:red}.mid{color:blue}.late{color:white}"
+  in
+  match
+    Rule_graph.try_rewrite g
+      ~consume:(nids [ 1; 2 ])
+      ~produce:(rules_of ".mid{color:red}.mid{color:blue}")
+  with
+  | None -> Alcotest.fail "replacement should commit"
+  | Some g' -> check_reachability "after rewrite" g'
+
+(* Orienting a factoring asks which of two nodes has to come first, once per
+   ordered pair of source references, so a run of N rules is asked about N^2
+   pairs. The edges are settled the moment the graph is published, so all of
+   those answers follow from one pass over them: the nodes expanded to answer
+   them must stay bounded by the node count, not grow with the pairs asked
+   about. Every rule below writes a distinct value for one property on one
+   element, the shape that makes the run one long chain. *)
+let reachability_settles_once () =
+  let expansions n =
+    let g = Rule_graph.of_rules (dense_conflict n) in
+    let count = Rule_graph.node_count g in
+    let ask i j = ignore (Sys.opaque_identity (Rule_graph.precedes g i j)) in
+    (* Deepest source first, then shallowest: asking the deepest first leaves
+       every later question facing a cone an earlier one already settled, which
+       only stays cheap if a settled node is read rather than descended again.
+       Asking the shallowest first hides that. *)
+    for i = count - 1 downto 0 do
+      for j = 0 to count - 1 do
+        ask (nid i) (nid j)
+      done
+    done;
+    for i = 0 to count - 1 do
+      for j = 0 to count - 1 do
+        ask (nid i) (nid j)
+      done
+    done;
+    (count, Rule_graph.reachability_expansions g)
+  in
+  List.iter
+    (fun n ->
+      let count, spent = expansions n in
+      Alcotest.(check bool)
+        (Fmt.str "%d nodes, %d pairs asked: %d nodes expanded" count
+           (2 * count * count)
+           spent)
+        true (spent <= count))
+    [ 200; 400 ]
+
+(* Holding a reachable set per node costs a bit per node per node, so past a run
+   length the answers come from walking the edges again. Nothing else reaches
+   that path once the sets are held, and it decides rule order, so check it
+   against the same walk - and check that this length really does take it, by
+   asking one question twice and finding it cost the same again. Raising the
+   length a closure is held for has to revisit this. *)
+let a_long_run_answers_by_walking () =
+  let g = Rule_graph.of_rules (dense_conflict 16385) in
+  let count = Rule_graph.node_count g in
+  let spent () = Rule_graph.reachability_expansions g in
+  let ask i j =
+    let before = spent () in
+    Alcotest.(check bool)
+      (Fmt.str "precedes %d %d over a run of %d" i j count)
+      (reaches g i j)
+      (Rule_graph.precedes g (nid i) (nid j));
+    spent () - before
+  in
+  (* first, before any other question can settle the run *)
+  let once = ask 12 (count - 1) in
+  let again = ask 12 (count - 1) in
+  Alcotest.(check int)
+    (Fmt.str "a repeated question over a run of %d costs the same again" count)
+    once again;
+  List.iter (fun (i, j) -> ignore (ask i j)) [ (0, 1); (count - 1, 0); (7, 7) ]
+
 (* Rules that all write the same declaration have no order to discover: an
    identical pair is its own winner wherever the two sit. The run sits at one
    specificity, where partitioning candidates by specificity separates nothing,
@@ -636,6 +765,12 @@ let suite =
         try_rewrite_bumps_generation;
       Alcotest.test_case "declaration_body_key buckets identical bodies" `Quick
         declaration_body_key_buckets;
+      Alcotest.test_case "precedes agrees with a walk of the edges" `Quick
+        precedes_agrees_with_a_walk;
+      Alcotest.test_case "reachability settles once per node" `Quick
+        reachability_settles_once;
+      Alcotest.test_case "a long run answers by walking" `Quick
+        a_long_run_answers_by_walking;
       Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick
         dense_graph_build_is_subquadratic;
       Alcotest.test_case "try_rewrite is sub-quadratic" `Quick

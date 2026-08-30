@@ -1611,6 +1611,7 @@ let read_motion_value : type a. a property -> Cursor.t -> declaration option =
   match prop with
   | Margin_trim -> Some (v Margin_trim (read_margin_trim t))
   | Offset_path -> Some (v Offset_path (read_offset_path t))
+  | Offset -> Some (v Offset (read_offset t))
   | Offset_anchor -> Some (v Offset_anchor (read_offset_anchor t))
   | Offset_position -> Some (v Offset_position (read_offset_position t))
   | Offset_rotate -> Some (v Offset_rotate (read_offset_rotate t))
@@ -1886,7 +1887,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Mask_image -> Some (v Mask_image (read_background_image t))
   | Mask_composite -> Some (v Mask_composite (read_mask_composite_list t))
   | Mask_mode -> Some (v Mask_mode (read_mask_mode t))
-  | Mask_border -> Some (v Mask_border (read_border_image t))
+  | Mask_border -> Some (v Mask_border (read_mask_border t))
   | Mask_size -> Some (v Mask_size (read_background_size_list t))
   | Mask_position -> Some (v Mask_position (read_background_position t))
   | Mask_repeat -> Some (v Mask_repeat (read_background_repeat_list t))

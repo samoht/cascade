@@ -953,6 +953,13 @@ let check_object_view_box =
 let check_offset_path =
   check_value_cursor "offset_path" read_offset_path pp_offset_path
 
+let check_offset =
+  check_value_cursor "offset" read_offset pp_offset ~roundtrip:true
+
+let check_offset_target =
+  check_value_cursor "offset_target" read_offset_target pp_offset_target
+    ~roundtrip:true
+
 let check_offset_anchor =
   check_value_cursor "offset_anchor" read_offset_anchor pp_offset_anchor
 
@@ -3071,6 +3078,176 @@ let test_offset_position () =
   neg_cursor read_offset_position "none";
   neg_cursor read_offset_position "size"
 
+(* Motion Path 1 (ED) sec. 2.6 gives the [offset] shorthand
+
+   [ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+   <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?
+
+   and says "Omitted values are set to their initial values". The [!] makes the
+   leading group required, so a declaration writes at least a position or a
+   path; [offset-distance] and [offset-rotate] live inside the path branch and
+   are unreachable without one. *)
+let offset_sheet css : Css.parse =
+  match Css.of_string ~strict:false css with
+  | Ok parse -> parse
+  | Error e -> Alcotest.failf "%s: %s" css (Error.to_string e)
+
+let offset_minified css =
+  String.trim (Css.to_string ~minify:true (offset_sheet css).stylesheet)
+
+(* A value the grammar rejects is dropped from the sheet and reported, not
+   carried through as opaque text. *)
+let offset_rejects value =
+  let css = String.concat "" [ ".x{offset:"; value; "}" ] in
+  Alcotest.(check string) (css ^ " is dropped") "" (offset_minified css);
+  Alcotest.(check bool)
+    (css ^ " warns") true
+    (match (offset_sheet css).warnings with [] -> false | _ :: _ -> true)
+
+(* [css] survives parse / print / parse unchanged. *)
+let offset_roundtrips css =
+  let once = offset_minified css in
+  Alcotest.(check string) (css ^ " roundtrip") css once;
+  Alcotest.(check string)
+    (css ^ " roundtrip is stable")
+    once (offset_minified once)
+
+let test_offset () =
+  (* Each slot on its own: the position branch takes [normal | auto |
+     <position>] (sec. 2.3), the path branch [none | <offset-path>] (sec.
+     2.1). *)
+  check_offset "normal";
+  check_offset "auto";
+  check_offset "left top";
+  check_offset "100px";
+  check_offset "none";
+  check_offset "path(\"M 0 0 H 1\")";
+  (* The path branch carries the distance and the rotation behind it, in the
+     grammar's order whichever order the [||] pair was written in. *)
+  check_offset "none 50px";
+  check_offset "none reverse";
+  check_offset ~expected:"none 50px reverse 30deg" "none reverse 30deg 50px";
+  (* The anchor sits behind the slash (sec. 2.4). *)
+  check_offset "none/50%";
+  check_offset "100px/50%";
+  (* Every slot at once. *)
+  check_offset
+    ~expected:"left bottom ray(0rad closest-corner)10px auto 30deg/right bottom"
+    "left bottom ray(0rad closest-corner) 10px auto 30deg / right bottom";
+  (* A CSS-wide keyword and a whole-value [var()] stand for the shorthand. *)
+  check_offset "inherit";
+  check_offset "var(--motion,none)";
+  neg_cursor read_offset "total nonsense here";
+  neg_cursor read_offset "path(\"m 0 0 h 100\") auto reverse"
+
+let test_offset_target () =
+  (* The [!] group on its own: a position, a path, or a position then a path. *)
+  check_offset_target "normal";
+  check_offset_target "left top";
+  check_offset_target "none";
+  check_offset_target "normal none";
+  check_offset_target "100px none";
+  check_offset_target "none 50px reverse 30deg";
+  (* The group must produce a value, and the rotation needs a path in front of
+     it. *)
+  neg_cursor read_offset_target "";
+  neg_cursor read_offset_target "30deg";
+  neg_cursor read_offset_target "reverse"
+
+let offset_canonical_slots () =
+  (* Each slot canonicalises the way its longhand does. *)
+  decl_optimizes ~prop:"offset" ~held:"none/center" ~into:"none/50%"
+    "none / center";
+  decl_optimizes ~prop:"offset" ~held:"none/left top" ~into:"none/0 0"
+    "none / left top";
+  decl_optimizes ~prop:"offset" ~held:"left top none" ~into:"0 0"
+    "left top none";
+  (* A slot holding its longhand's initial says what leaving it out says, so it
+     drops: [normal] (sec. 2.3), [0] (sec. 2.2), [auto] (secs. 2.5, 2.4). *)
+  decl_optimizes ~prop:"offset" ~held:"normal none reverse" ~into:"none reverse"
+    "normal none reverse";
+  decl_optimizes ~prop:"offset" ~held:"none 0" ~into:"none" "none 0";
+  decl_optimizes ~prop:"offset" ~held:"path(\"M 0 0 H 1\")auto"
+    ~into:"path(\"M 0 0 H 1\")" "path('M 0 0 H 1') auto";
+  decl_optimizes ~prop:"offset" ~held:"none/auto" ~into:"none" "none / auto";
+  (* [offset: initial] resets the same five longhands a bare [none] path leaves
+     at their initials. *)
+  decl_optimizes ~prop:"offset" ~held:"initial" ~into:"none" "initial";
+  (* The path is the group's initial too, but dropping it is behaviour
+     preserving only when no distance and no rotation are left behind it: both
+     are reachable only through a path, and a bare [50%] re-reads as the
+     position. *)
+  decl_optimizes ~prop:"offset" ~held:"50%none" ~into:"50%" "50% none";
+  decl_optimizes ~prop:"offset" ~held:"none 50%" ~into:"none 50%" "none 50%";
+  (* Dropping every slot would leave an empty value, which is not a declaration.
+     The path [none] is the shortest spelling of the whole group, so it is what
+     stays behind. *)
+  decl_optimizes ~prop:"offset" ~held:"normal" ~into:"none" "normal";
+  decl_optimizes ~prop:"offset" ~held:"normal none/auto" ~into:"none"
+    "normal none / auto"
+
+let offset_invalid_values () =
+  offset_rejects "total nonsense here";
+  (* The [!] multiplier: the leading group must produce a value. *)
+  offset_rejects "/ center";
+  (* The anchor is required once the slash is written. *)
+  offset_rejects "none /";
+  (* The distance and the rotation need a path in front of them. *)
+  offset_rejects "30deg";
+  offset_rejects "auto 30deg 90px";
+  (* The path may not follow the distance or the rotation. *)
+  offset_rejects "100px 0deg path(\"m 0 0 h 100\")";
+  (* Neither half of the [||] pair may be filled twice. *)
+  offset_rejects "path(\"m 0 0 h 100\") 100px 200px";
+  offset_rejects "path(\"m 0 0 h 100\") auto reverse";
+  offset_rejects "path(\"m 0 0 h 100\") reverse 100px 30deg";
+  offset_rejects "path(\"m 0 0 h 100\") 200% auto 100px";
+  (* Nothing follows the group but the anchor. *)
+  offset_rejects "path(\"m 0 0 h 100\") bottom";
+  (* The anchor is one [<position>]: at most four components. *)
+  offset_rejects "none/10px 20px 30deg";
+  (* A CSS-wide keyword stands alone (CSS Cascade 5 sec. 7.3). *)
+  offset_rejects "initial none";
+  offset_rejects "none/inherit"
+
+let offset_slots_roundtrip () =
+  offset_roundtrips ".x{offset:auto}";
+  offset_roundtrips ".x{offset:none}";
+  offset_roundtrips ".x{offset:100px}";
+  offset_roundtrips ".x{offset:path(\"M 0 0 H 1\")}";
+  offset_roundtrips ".x{offset:none 50px}";
+  offset_roundtrips ".x{offset:none reverse}";
+  offset_roundtrips ".x{offset:none 50px reverse 30deg}";
+  offset_roundtrips ".x{offset:none/50%}";
+  offset_roundtrips ".x{offset:100px/50%}";
+  offset_roundtrips ".x{offset:0 0 path(\"M 0 0 H 1\")10px reverse 45deg/50%}";
+  (* A [var()] the shorthand cannot assign to one slot keeps its authored
+     text. *)
+  offset_roundtrips ".x{offset:var(--a) var(--b)}"
+
+(* The five longhands keep the behaviour secs. 2.1 to 2.5 give them once the
+   shorthand that resets them is modelled. *)
+let offset_longhand_guards () =
+  offset_roundtrips ".x{offset-path:none}";
+  offset_roundtrips ".x{offset-path:path(\"M 0 0 H 1\")}";
+  offset_roundtrips ".x{offset-distance:50%}";
+  offset_roundtrips ".x{offset-rotate:auto}";
+  offset_roundtrips ".x{offset-rotate:reverse 30deg}";
+  offset_roundtrips ".x{offset-position:normal}";
+  offset_roundtrips ".x{offset-anchor:auto}";
+  decl_optimizes ~prop:"offset-anchor" ~held:"center" ~into:"50%" "center";
+  decl_optimizes ~prop:"offset-position" ~held:"left top" ~into:"0 0" "left top";
+  decl_optimizes ~prop:"offset-distance" ~held:"0px" ~into:"0" "0px"
+
+(* Two spellings that print alike are one declaration, so the rules carrying
+   them factor into a single selector list. *)
+let offset_spellings_factor () =
+  let css = ".a{offset:none/auto}.b{offset:none 0}.c{offset:normal}" in
+  Alcotest.(check string)
+    "offset spellings coalesce" ".a,.b,.c{offset:none}"
+    (String.trim
+       (Css.to_string ~minify:true (Css.optimize (offset_sheet css).stylesheet)))
+
 let test_translate_value () =
   check_translate_value "none";
   check_translate_value "10px";
@@ -5004,6 +5181,13 @@ let additional_tests =
     test_case "position_value" `Quick test_position_value;
     test_case "offset_anchor" `Quick test_offset_anchor;
     test_case "offset_position" `Quick test_offset_position;
+    test_case "offset" `Quick test_offset;
+    test_case "offset_target" `Quick test_offset_target;
+    test_case "offset canonical slots" `Quick offset_canonical_slots;
+    test_case "offset invalid values" `Quick offset_invalid_values;
+    test_case "offset slots roundtrip" `Quick offset_slots_roundtrip;
+    test_case "offset longhand guards" `Quick offset_longhand_guards;
+    test_case "offset spellings factor" `Quick offset_spellings_factor;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;

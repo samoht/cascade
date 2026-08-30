@@ -83,7 +83,6 @@ let merge_named_layers_by_name = Block.merge_named_layers_by_name
 let merge_lone_nested_rule = Nest.merge_lone
 let hoist_declaration_runs = Nest.hoist_declaration_runs
 let synthesize_nesting_statements = Nest.statements
-let stylesheet_key stmts = Pp.to_string ~minify:true pp_stylesheet stmts
 
 (* Pop the run of [Rule]s most recently pushed onto a reversed accumulator, in
    forward order, with the remaining accumulator. Unwrapping an [@supports] its
@@ -901,17 +900,14 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
     else 5
   in
   let factor_cache = Factor.cache () in
-  let rec loop n key stmts =
+  let rec loop n stmts =
     if n <= 0 then stmts
     else
       let next = statements_top_level ~factor_cache ~ctx ~enforce_spec stmts in
-      if next == stmts then stmts
-      else if Stylesheet.equal next stmts then stmts
-      else
-        let next_key = stylesheet_key next in
-        if String.equal key next_key then next else loop (n - 1) next_key next
+      if next == stmts || Stylesheet.equal next stmts then stmts
+      else loop (n - 1) next
   in
-  loop cap (stylesheet_key stylesheet) stylesheet
+  loop cap stylesheet
 
 (* Bare names of every custom property referenced through [var()] in the tree.
    Scans the serialized declarations, so it sees references inside opaque values

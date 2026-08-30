@@ -174,6 +174,12 @@ let covers_longhand : type a b.
   | Font, Font_size_adjust -> true
   | Font, Font_kerning -> true
   | Font, Font_optical_sizing -> true
+  (* Motion Path 1 sec. 2.6: [offset] resets the five motion path longhands. *)
+  | Offset, Offset_position -> true
+  | Offset, Offset_path -> true
+  | Offset, Offset_distance -> true
+  | Offset, Offset_rotate -> true
+  | Offset, Offset_anchor -> true
   | _ -> false
 
 (* CSS Fragmentation 3 sec. 3.4 aliases [page-break-before/after/inside] to
@@ -684,6 +690,15 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "font-language-override";
         key "font-palette";
       ]
+  (* Motion Path 1 sec. 2.6. *)
+  | Offset ->
+      [
+        key "offset-position";
+        key "offset-path";
+        key "offset-distance";
+        key "offset-rotate";
+        key "offset-anchor";
+      ]
   | Font_style -> [ key "font-style" ]
   | Font_weight -> [ key "font-weight" ]
   | Font_stretch -> [ key "font-stretch" ]
@@ -1052,6 +1067,7 @@ let layout_footprint_family_heads =
       Prop Column_rule;
       Prop Contain_intrinsic_size;
       Prop Container;
+      Prop Offset;
     ]
 
 let paint_footprint_family_heads =

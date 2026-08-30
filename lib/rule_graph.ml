@@ -55,6 +55,14 @@ type decl_overlap = {
   footprint : Shorthand.overlap_key list;
 }
 
+(* Which nodes each node can reach, as a bitset per node. Orienting a factoring
+   asks the question once per ordered pair of source references, so a run of [n]
+   rules is asked about [n^2] pairs, while the edges are settled the moment a
+   graph is published. Holding the answers turns the pairs into bit tests over
+   one pass of the edges. [Unbuilt] until the first question; [Walked] for a run
+   long enough that holding them costs more than re-asking. *)
+type reachability = Unbuilt | Held of Bytes.t array | Walked
+
 type t = {
   generation : int;
   closed_world : bool;
@@ -100,6 +108,12 @@ type t = {
   branch_index : node_id list String_table.t;
       (** selector branch -> node ids that carry it; same role as [key_index]
           for the [share_branch] dimension. *)
+  mutable reach : reachability;
+      (** reachable set per node, over the [succ] above. Filled on demand: a
+          graph whose order is never questioned holds nothing. *)
+  mutable expansions : int;
+      (** nodes expanded to answer reachability questions, for
+          {!reachability_expansions}. *)
 }
 
 (* The two dimensions of the CSS-graph dependency. Two rules conflict - their
@@ -759,6 +773,8 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
       succ = [||];
       key_index = Key_tbl.create (max 16 (n * 2));
       branch_index = String_table.create (max 16 (n * 2));
+      reach = Unbuilt;
+      expansions = 0;
     }
   in
   for i = 0 to n - 1 do
@@ -778,7 +794,7 @@ let order_constrained = conflict
    by retaining every transitive edge. Dead rewrite inputs remain in the graph
    as relay vertices, so paths through them continue to constrain the surviving
    nodes. *)
-let path_exists t source target =
+let walk_to t source target =
   let seen = Bytes.make (max t.count 1) '\000' in
   let rec visit = function
     | [] -> false
@@ -787,15 +803,133 @@ let path_exists t source target =
         else if Bytes.get seen i <> '\000' then visit rest
         else begin
           Bytes.set seen i '\001';
+          t.expansions <- t.expansions + 1;
           let next =
             List.fold_left (fun acc (j, _) -> j :: acc) rest t.succ.(i)
           in
           visit next
         end
   in
-  source <> target && visit [ source ]
+  visit [ source ]
+
+(* A node's reachable set, one bit per node. The union below runs once per edge
+   of the cone being closed, so it goes a word at a time. *)
+module Reach = struct
+  let v count = Bytes.make ((count + 7) / 8) '\000'
+  let is_set set = Bytes.length set > 0
+
+  let mem set i =
+    Char.code (Bytes.get set (i lsr 3)) land (1 lsl (i land 7)) <> 0
+
+  let add set i =
+    let byte = i lsr 3 in
+    Bytes.set set byte
+      (Char.chr (Char.code (Bytes.get set byte) lor (1 lsl (i land 7))))
+
+  let union ~into set =
+    let len = Bytes.length into in
+    let words = len / 8 in
+    for w = 0 to words - 1 do
+      let at = w * 8 in
+      Bytes.set_int64_ne into at
+        (Int64.logor (Bytes.get_int64_ne into at) (Bytes.get_int64_ne set at))
+    done;
+    for at = words * 8 to len - 1 do
+      Bytes.set into at
+        (Char.chr
+           (Char.code (Bytes.get into at) lor Char.code (Bytes.get set at)))
+    done
+end
+
+(* A run of [n] nodes closes into [n * n / 8] bytes. Past this length each
+   question walks the edges again and the graph holds nothing. *)
+let closure_node_limit = 16384
+
+(* One step of the closure walk: [Open] descends into a node, [Close] unions the
+   sets of its successors - by then settled - into its own. *)
+type reach_step = Open of int | Close of int
+
+let rec union_successors sets set = function
+  | [] -> true
+  | (j, _) :: rest ->
+      let j = Node_id.to_int j in
+      Reach.add set j;
+      (* An unsettled successor at this point is a back edge, which the graph's
+         acyclicity rules out: [of_rules] only ever points a node at a later
+         one, and [rewrite] rejects a rewrite that would close a loop. Answering
+         from an incomplete set would reorder declarations, so say so instead
+         and let the caller fall back to walking. *)
+      Reach.is_set sets.(j)
+      &&
+      (Reach.union ~into:set sets.(j);
+       union_successors sets set rest)
+
+let close_node t sets i =
+  let set = Reach.v t.count in
+  union_successors sets set t.succ.(i)
+  && begin
+    sets.(i) <- set;
+    t.expansions <- t.expansions + 1;
+    true
+  end
+
+(* Settle every node in [source]'s cone, deepest first, skipping what an earlier
+   question already settled. The stack is explicit because a source-order chain
+   is as deep as the run is long, and [opened] keeps a node reached twice within
+   one cone from being descended twice. *)
+let close_cone t sets source =
+  let opened = Bytes.make (max t.count 1) '\000' in
+  let rec loop = function
+    | [] -> true
+    | Close i :: rest -> close_node t sets i && loop rest
+    | Open i :: rest ->
+        if Reach.is_set sets.(i) || Bytes.get opened i <> '\000' then loop rest
+        else begin
+          Bytes.set opened i '\001';
+          loop
+            (List.fold_left
+               (fun acc (j, _) -> Open (Node_id.to_int j) :: acc)
+               (Close i :: rest) t.succ.(i))
+        end
+  in
+  loop [ Open source ]
+
+let reach_sets t =
+  match t.reach with
+  | Held sets -> Option.Some sets
+  | Walked -> Option.None
+  | Unbuilt ->
+      if t.count > closure_node_limit then begin
+        t.reach <- Walked;
+        Option.None
+      end
+      else begin
+        let sets = Array.make (max t.count 1) Bytes.empty in
+        t.reach <- Held sets;
+        Option.Some sets
+      end
+
+let reachable_set t source =
+  match reach_sets t with
+  | Option.None -> Option.None
+  | Option.Some sets ->
+      if Reach.is_set sets.(source) then Option.Some sets.(source)
+      else if close_cone t sets source then Option.Some sets.(source)
+      else begin
+        t.reach <- Walked;
+        Option.None
+      end
+
+let path_exists t source target =
+  source <> target
+  &&
+  match reachable_set t source with
+  | Option.Some set -> Reach.mem set target
+  | Option.None -> walk_to t source target
 
 let precedes t i j = t.live.(i) && t.live.(j) && path_exists t i j
+let successors t i = List.map fst t.succ.(i)
+let reachability_expansions t = t.expansions
 let generation t = t.generation
 
 let live_nodes t =
@@ -1005,6 +1139,47 @@ let produced_metadata t produced =
     decl_overlaps,
     overlap_keys )
 
+let produced_graph t ~consume ~total ~new_n produced =
+  let ( p_summaries,
+        p_selectors,
+        p_selector_summaries,
+        p_specificities,
+        p_branches,
+        p_decl_overlaps,
+        p_overlap_keys ) =
+    produced_metadata t produced
+  in
+  {
+    generation = t.generation + 1;
+    closed_world = t.closed_world;
+    parent = t.parent;
+    count = new_n;
+    rules = append_slack t.rules ~count:total produced;
+    summaries = append_slack t.summaries ~count:total p_summaries;
+    origin =
+      append_slack t.origin ~count:total (produced_origins t consume p_branches);
+    live = rewrite_live t ~total ~new_n ~consume;
+    selectors = append_slack t.selectors ~count:total p_selectors;
+    selector_summaries =
+      append_slack t.selector_summaries ~count:total p_selector_summaries;
+    specificities = append_slack t.specificities ~count:total p_specificities;
+    branches = append_slack t.branches ~count:total p_branches;
+    decl_overlaps = append_slack t.decl_overlaps ~count:total p_decl_overlaps;
+    overlap_keys = append_slack t.overlap_keys ~count:total p_overlap_keys;
+    succ =
+      Array.append (Array.sub t.succ 0 total)
+        (Array.make (Array.length produced) []);
+    (* shared with [t]: holds the existing nodes; produced nodes are added by
+       {!rewrite} only once the rewrite is accepted, so [add_external_edges]
+       below sees the pre-rewrite index. *)
+    key_index = t.key_index;
+    branch_index = t.branch_index;
+    (* the produced graph's edges are still being written; it holds no answers
+       until it is published and questioned *)
+    reach = Unbuilt;
+    expansions = 0;
+  }
+
 let rewrite_base t ~consume ~produce :
     (int * bool array * t, rewrite_error) result =
   match validate_consume t consume with
@@ -1015,49 +1190,10 @@ let rewrite_base t ~consume ~produce :
         let total = node_count t in
         let produced = Array.of_list produce in
         let new_n = total + Array.length produced in
-        let ( p_summaries,
-              p_selectors,
-              p_selector_summaries,
-              p_specificities,
-              p_branches,
-              p_decl_overlaps,
-              p_overlap_keys ) =
-          produced_metadata t produced
-        in
-        let graph =
-          {
-            generation = t.generation + 1;
-            closed_world = t.closed_world;
-            parent = t.parent;
-            count = new_n;
-            rules = append_slack t.rules ~count:total produced;
-            summaries = append_slack t.summaries ~count:total p_summaries;
-            origin =
-              append_slack t.origin ~count:total
-                (produced_origins t consume p_branches);
-            live = rewrite_live t ~total ~new_n ~consume;
-            selectors = append_slack t.selectors ~count:total p_selectors;
-            selector_summaries =
-              append_slack t.selector_summaries ~count:total
-                p_selector_summaries;
-            specificities =
-              append_slack t.specificities ~count:total p_specificities;
-            branches = append_slack t.branches ~count:total p_branches;
-            decl_overlaps =
-              append_slack t.decl_overlaps ~count:total p_decl_overlaps;
-            overlap_keys =
-              append_slack t.overlap_keys ~count:total p_overlap_keys;
-            succ =
-              Array.append (Array.sub t.succ 0 total)
-                (Array.make (Array.length produced) []);
-            (* shared with [t]: holds the existing nodes; produced nodes are
-               added by {!rewrite} only once the rewrite is accepted, so
-               [add_external_edges] below sees the pre-rewrite index. *)
-            key_index = t.key_index;
-            branch_index = t.branch_index;
-          }
-        in
-        Ok (total, consumed_set total consume, graph)
+        Ok
+          ( total,
+            consumed_set total consume,
+            produced_graph t ~consume ~total ~new_n produced )
 
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
 let old_edge = path_exists

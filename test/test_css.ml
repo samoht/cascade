@@ -140,6 +140,81 @@ let pure_minify_value_fallbacks () =
     ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50% 50%)}"
     (Css.to_string ~minify:true stylesheet)
 
+(* [to_string ~minify:true] is a pure formatter, so a constructed AST reaches
+   the printer without the normalize pass. A keyword whose spec-equivalent value
+   the optimiser substitutes must therefore survive pure minification verbatim:
+   holding [initial] is always correct, whereas printing the wrong equivalent
+   would change layout for a consumer that never calls [Css.optimize]. Every
+   test around the initial-value fold otherwise goes through the parser, which
+   runs normalization. *)
+let constructed_initial_keyword_fold () =
+  let sheet keyword =
+    v [ rule ~selector:btn [ min_inline_size keyword; min_block_size keyword ] ]
+  in
+  Alcotest.(check string)
+    "pure minify holds the initial keyword"
+    ".btn{min-inline-size:initial;min-block-size:initial}"
+    (Css.to_string ~minify:true (sheet Initial));
+  (* CSS Logical 1 sec. 4 gives each logical minimum-size property and its
+     physical counterpart one shared computed value, so [initial] resolves
+     through min-width / min-height to CSS Sizing 3 sec. 3.1.2's [auto]. *)
+  Alcotest.(check string)
+    "optimize folds the keyword to auto"
+    ".btn{min-inline-size:auto;min-block-size:auto}"
+    (minify (sheet Initial));
+  Alcotest.(check string)
+    "both phases hold an explicit auto"
+    ".btn{min-inline-size:auto;min-block-size:auto}"
+    (Css.to_string ~minify:true (sheet Auto))
+
+(* Motion Path 1 (ED) sec. 2.6 puts a [!] on the leading group of the [offset]
+   shorthand, so no combination of slots may serialise to an empty value and
+   none may serialise to a value that reads back as a different one.
+   [Css.to_string ~minify:true] never runs the normalizers, so the printer has
+   to hold that on its own for a caller that builds the AST rather than parsing
+   it. *)
+let constructed_offset_shorthand () =
+  let offset value = Css.Declaration.v Css.Properties.Offset value in
+  let empty_slots : Css.Properties.offset =
+    Shorthand
+      {
+        target =
+          With_path
+            {
+              position = None;
+              path = (None : Css.Properties.offset_path);
+              distance = None;
+              rotate = None;
+            };
+        anchor = None;
+      }
+  in
+  let initial_slots : Css.Properties.offset =
+    Shorthand
+      {
+        target = Position_only (Normal : Css.Properties.offset_position);
+        anchor = Some (Auto : Css.Properties.offset_anchor);
+      }
+  in
+  let stylesheet =
+    v
+      [
+        rule ~selector:btn [ offset empty_slots ];
+        rule ~selector:card [ offset initial_slots ];
+      ]
+  in
+  let printed = Css.to_string ~minify:true stylesheet in
+  Alcotest.(check string)
+    "constructed offset shorthand" ".btn{offset:none}.card{offset:normal/auto}"
+    printed;
+  (* The printed sheet reads back as the sheet that printed it. *)
+  match Css.of_string ~strict:true printed with
+  | Ok { stylesheet; _ } ->
+      Alcotest.(check string)
+        "constructed offset shorthand reparses" printed
+        (String.trim (Css.to_string ~minify:true stylesheet))
+  | Error e -> Alcotest.failf "%s: %s" printed (Error.to_string e)
+
 let explicit_phase_pipeline () =
   let stylesheet =
     v
@@ -2044,6 +2119,10 @@ let suite =
       Alcotest.test_case "minify flag" `Quick minify_flag;
       Alcotest.test_case "pure minify value fallbacks" `Quick
         pure_minify_value_fallbacks;
+      Alcotest.test_case "constructed offset shorthand" `Quick
+        constructed_offset_shorthand;
+      Alcotest.test_case "constructed initial keyword fold" `Quick
+        constructed_initial_keyword_fold;
       Alcotest.test_case "explicit phase pipeline" `Quick
         explicit_phase_pipeline;
       Alcotest.test_case "important declarations" `Quick important_integration;

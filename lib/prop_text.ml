@@ -755,12 +755,14 @@ let normalize_text_indent : text_indent_value -> text_indent_value =
    line, thickness, style and colour longhands, and "Omitted values are set to
    their initial values" - [solid] (sec. 2.2) and [currentcolor] (sec. 2.3).
    Writing an initial out names what leaving it out names, and leaving it out is
-   the shorter spelling. *)
+   the shorter spelling. Written on its own the initial is the whole value, and
+   dropping it drains the shorthand: what is left declares the four initials and
+   nothing else, which is what [none] declares. *)
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
   match value with
-  | Shorthand s ->
+  | Shorthand s -> (
       let style =
         drop_default
           ~is_default:(fun (d : text_decoration_style) -> d = Solid)
@@ -771,9 +773,14 @@ let normalize_text_decoration ?(lossless = false) :
           ~is_default:(fun (c : Values.color) -> c = Values.Current)
           (option_map_preserve (normalize_color ~lossless) s.color)
       in
-      if option_is_phys_same style s.style && option_is_phys_same color s.color
-      then value
-      else Shorthand { s with style; color }
+      match (s.lines, style, color, s.thickness) with
+      | [], Option.None, Option.None, Option.None -> (None : text_decoration)
+      | _ ->
+          if
+            option_is_phys_same style s.style
+            && option_is_phys_same color s.color
+          then value
+          else Shorthand { s with style; color })
   | other -> other
 
 let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
@@ -899,11 +906,16 @@ let pp_text_decoration_shorthand : text_decoration_shorthand Pp.t =
   | Some c ->
       space_if_needed ();
       pp_color ctx c);
-  match thickness with
+  (match thickness with
   | None -> ()
   | Some l ->
       space_if_needed ();
-      pp_length ctx l
+      pp_length ctx l);
+  (* The record is public, so a caller can hand over a value with no slot
+     filled. It declares nothing but the initial longhands, which is what
+     [text-decoration: none] declares (CSS Text Decoration 4 (ED) sec. 2.6); the
+     empty string is not a value any parser reads back. *)
+  if !first then Pp.string ctx "none"
 
 let rec pp_text_decoration : text_decoration Pp.t =
  fun ctx -> function

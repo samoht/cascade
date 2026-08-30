@@ -660,10 +660,15 @@ let lengths () =
   check_declaration ~expected:"margin:auto" "margin: auto";
   check_declaration ~expected:"width:auto" "width: auto";
   check_declaration ~expected:"height:auto" "height: auto";
+  (* CSS Logical 1 sec. 4 pairs each logical minimum-size property with its
+     physical counterpart and gives the pair one shared computed value, so
+     [initial] resolves through min-width / min-height to CSS Sizing 3 sec.
+     3.1.2's [auto]. [expected] pins the pp-held form (the keyword is not folded
+     at print time); [optimized] pins the normalize fold. *)
   check_declaration ~expected:"min-inline-size:initial"
-    ~optimized:"min-inline-size:0" "min-inline-size: initial";
+    ~optimized:"min-inline-size:auto" "min-inline-size: initial";
   check_declaration ~expected:"min-block-size:initial"
-    ~optimized:"min-block-size:0" "min-block-size: initial";
+    ~optimized:"min-block-size:auto" "min-block-size: initial";
 
   (* Min/max content *)
   check_declaration ~expected:"width:min-content" "width: min-content";
@@ -1364,6 +1369,27 @@ let mask_border_mode_slot () =
   check_declaration ~expected:"border-image:url(a.png)"
     ~optimized:"border-image:url(a.png)" "border-image: url(a.png)"
 
+(* CSS Masking 1 (ED) sec. 8.7 writes mask-border as [<'mask-border-source'> ||
+   <'mask-border-slice'> [ / <'mask-border-width'>? [ / <'mask-border-outset'>
+   ]? ]? || <'mask-border-repeat'> || <'mask-border-mode'>], and CSS Values 4
+   (ED) sec. 2.2 has [||] ask for one or more of its options, so the mode on its
+   own is a whole value. sec. 8.2 gives mask-border-mode the initial value
+   [alpha], so [alpha] drains the shorthand and what is left is the six
+   initials, which is what [none] declares (sec. 8.1). CSS Backgrounds 3 (ED)
+   sec. 5.7 writes border-image without a mode slot, so neither keyword is a
+   border-image value wherever it is written. *)
+let mask_border_mode_only () =
+  check_declaration ~roundtrip:true ~expected:"mask-border:alpha"
+    ~optimized:"mask-border:none" "mask-border: alpha";
+  check_declaration ~roundtrip:true ~expected:"mask-border:luminance"
+    ~optimized:"mask-border:luminance" "mask-border: luminance";
+  check_declaration ~expected:"mask-border:none" ~optimized:"mask-border:none"
+    "mask-border: none";
+  neg_cursor read_declaration "border-image: alpha";
+  neg_cursor read_declaration "border-image: luminance";
+  neg_cursor read_declaration "border-image: url(a.png) alpha";
+  neg_cursor read_declaration "border-image: url(a.png) luminance"
+
 (* CSS Box 4 (ED) sec. 3.2 assigns the values of a one-to-four value box
    shorthand to the four sides: one value goes to all four, two to top-bottom
    then left-right, three to top, left-right, bottom. A repeat that those rules
@@ -1581,8 +1607,11 @@ let empty_shorthand_value () =
 (* The record behind each shorthand is public, so a caller can hand the printer
    a value with no slot filled. That value declares nothing but the initial
    longhands, which is what the [none] keyword declares (CSS Backgrounds 3 (ED)
-   sec. 3.4, CSS UI 4 (ED) sec. 3.1), and [none] is the spelling that says so.
-   An empty string is not a spelling of anything: no parser accepts it. *)
+   sec. 3.4 and sec. 5.7, CSS UI 4 (ED) sec. 3.1, CSS Text Decoration 4 (ED)
+   sec. 2.6, CSS Masking 1 (ED) sec. 8.7), and [none] is the spelling that says
+   so. An empty string is not a spelling of anything: no parser accepts it.
+   [Css.to_string] does not normalize, so the printer is the only thing standing
+   between such a record and the output. *)
 let all_initial_shorthand_prints_none () =
   let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
   let border : Css.border =
@@ -1591,6 +1620,19 @@ let all_initial_shorthand_prints_none () =
   let outline : Css.outline =
     Shorthand { width = None; style = None; color = None }
   in
+  let text_decoration : Css.text_decoration =
+    Shorthand { lines = []; style = None; color = None; thickness = None }
+  in
+  let border_image : Css.Properties.border_image =
+    {
+      source = None;
+      slice = None;
+      width = None;
+      outset = None;
+      repeat = None;
+      mode = None;
+    }
+  in
   Alcotest.(check string)
     "drained border shorthand" "border:none"
     (pp (Css.Declaration.v Border border));
@@ -1598,11 +1640,23 @@ let all_initial_shorthand_prints_none () =
     "drained outline shorthand" "outline:none"
     (pp (Css.Declaration.v Outline outline));
   Alcotest.(check string)
+    "drained text-decoration shorthand" "text-decoration:none"
+    (pp (Css.Declaration.v Text_decoration text_decoration));
+  Alcotest.(check string)
     "outline_shorthand with no slot" "outline:none"
     (pp (Css.Declaration.outline (Css.outline_shorthand ())));
   Alcotest.(check string)
     "border_shorthand with no slot" "border:none"
-    (pp (Css.Declaration.v Border (Css.border_shorthand ())))
+    (pp (Css.Declaration.v Border (Css.border_shorthand ())));
+  Alcotest.(check string)
+    "text_decoration_shorthand with no slot" "text-decoration:none"
+    (pp (Css.Declaration.v Text_decoration (Css.text_decoration_shorthand ())));
+  Alcotest.(check string)
+    "drained mask-border shorthand" "mask-border:none"
+    (pp (Css.Declaration.v Mask_border border_image));
+  Alcotest.(check string)
+    "drained border-image shorthand" "border-image:none"
+    (pp (Css.Declaration.v Border_image border_image))
 
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
@@ -1800,6 +1854,25 @@ let animations_state () =
     "animation-play-state: running";
   check_declaration ~expected:"animation-play-state:paused"
     "animation-play-state: paused"
+
+(* CSS Animations 1 (ED) sec. 4.9 joins the eight components of a
+   [<single-animation>] with [||] and assigns a keyword to a property other than
+   animation-name wherever that property has not been filled yet, so the first
+   [none] of [animation: none none] is the fill mode and the second the name.
+   Both are the initial values of their longhands, so every slot written here
+   holds one, and what the whole declares is what [animation: none] declares. *)
+let animation_drained_shorthand () =
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: none none";
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: 0s ease 0s 1 normal none running none";
+  (* Controls: the drop still runs wherever a slot outlives it. *)
+  check_declaration ~expected:"animation:1s" ~optimized:"animation:1s"
+    "animation: 1s none";
+  check_declaration ~expected:"animation:slide" ~optimized:"animation:slide"
+    "animation: none slide";
+  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+    "animation: none"
 
 let transforms () =
   (* Transform functions *)
@@ -3941,6 +4014,32 @@ let text_decoration_optional_line () =
   check_declaration ~roundtrip:true "text-decoration:red";
   check_sheet_roundtrip "text-decoration" "a{text-decoration:red}"
 
+(* CSS Text Decoration 4 (ED) sec. 2.6 sets an omitted shorthand slot to its
+   initial value - [solid] (sec. 2.2) and [currentcolor] (sec. 2.3) - so a slot
+   written with that value says what leaving it out says. Written alone the slot
+   is all there is, and dropping it drains the shorthand: what is left declares
+   nothing but the four initials, which is what [none] declares. *)
+let text_decoration_drained_shorthand () =
+  check_declaration ~expected:"text-decoration:solid"
+    ~optimized:"text-decoration:none" "text-decoration: solid";
+  check_declaration ~expected:"text-decoration:currentColor"
+    ~optimized:"text-decoration:none" "text-decoration: currentcolor";
+  check_declaration ~expected:"text-decoration:solid currentColor"
+    ~optimized:"text-decoration:none" "text-decoration: solid currentcolor";
+  check_sheet_roundtrip "text-decoration solid" "a{text-decoration:solid}";
+  (* The drop still runs wherever a slot outlives it. *)
+  check_declaration ~expected:"text-decoration:solid red"
+    ~optimized:"text-decoration:red" "text-decoration: solid red";
+  check_declaration ~expected:"text-decoration:underline solid"
+    ~optimized:"text-decoration:underline" "text-decoration: underline solid";
+  check_declaration ~expected:"text-decoration:underline currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline currentcolor";
+  check_declaration ~expected:"text-decoration:solid 2px"
+    ~optimized:"text-decoration:2px" "text-decoration: solid 2px";
+  check_declaration ~expected:"text-decoration:none"
+    ~optimized:"text-decoration:none" "text-decoration: none"
+
 (* CSS Text 4 sec. 3 allows each longhand component of [white-space] on its own;
    omitted components take their initial values. *)
 let white_space_collapse_only () =
@@ -4863,6 +4962,7 @@ let declaration_tests =
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
+    test_case "mask-border mode only" `Quick mask_border_mode_only;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
     test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
@@ -4875,6 +4975,7 @@ let declaration_tests =
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;
     test_case "animations (state)" `Quick animations_state;
+    test_case "animation drained shorthand" `Quick animation_drained_shorthand;
     test_case "transforms" `Quick transforms;
     test_case "angle units" `Quick angle_units;
     test_case "grid" `Quick grid;
@@ -4904,6 +5005,8 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "text-decoration optional line" `Quick
       text_decoration_optional_line;
+    test_case "text-decoration drained shorthand" `Quick
+      text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
     test_case "border-image repeat only" `Quick border_image_repeat_only;
     test_case "timeline name only" `Quick timeline_name_only;

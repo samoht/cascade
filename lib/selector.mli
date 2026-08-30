@@ -75,14 +75,6 @@ val ( || ) : t -> t -> t
 val pp : t Pp.t
 (** [pp] pretty-prints selectors. *)
 
-val top_level_is_unwrap : t -> t
-(** [top_level_is_unwrap sel] applies the CSS Selectors 4 sec. 4.2 [:is()]
-    unwrap at the top level of a rule selector: a whole-selector
-    [:is(s1, s2, ...)] or [:is] members of a top-level list flatten into the
-    enclosing selector list when each argument is a structurally simple selector
-    ([Element] / [Class] / [Id] / [Universal] / [Attribute], or a [Compound] of
-    those). Returns [sel] unchanged otherwise. *)
-
 val to_string : ?minify:bool -> t -> string
 (** [to_string ?minify sel] renders a selector to a string. *)
 
@@ -122,8 +114,12 @@ val map : (t -> t) -> t -> t
 val canonicalize : t -> t
 (** [canonicalize selector] removes lexical-only redundancy so that distinct
     ASTs denoting the same selector become structurally equal: the implied
-    universal in a compound is dropped ([*::before] -> [::before]) and a
-    one-part compound collapses to that part. Idempotent. *)
+    universal in a compound is dropped ([*::before] -> [::before]), a one-part
+    compound collapses to that part, and a whole-selector [:is(s1, s2, ...)]
+    whose arguments share one specificity becomes the selector list
+    [s1, s2, ...] (CSS Selectors 4 sec. 4.2). [selector] is read as a rule
+    selector, so the split applies at its top level and to the members of its
+    top-level list. Idempotent. *)
 
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)
