@@ -1586,8 +1586,10 @@ let empty_shorthand_value () =
 (* The record behind each shorthand is public, so a caller can hand the printer
    a value with no slot filled. That value declares nothing but the initial
    longhands, which is what the [none] keyword declares (CSS Backgrounds 3 (ED)
-   sec. 3.4, CSS UI 4 (ED) sec. 3.1), and [none] is the spelling that says so.
-   An empty string is not a spelling of anything: no parser accepts it. *)
+   sec. 3.4, CSS UI 4 (ED) sec. 3.1, CSS Text Decoration 4 (ED) sec. 2.6), and
+   [none] is the spelling that says so. An empty string is not a spelling of
+   anything: no parser accepts it. [Css.to_string] does not normalize, so the
+   printer is the only thing standing between such a record and the output. *)
 let all_initial_shorthand_prints_none () =
   let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
   let border : Css.border =
@@ -1596,6 +1598,9 @@ let all_initial_shorthand_prints_none () =
   let outline : Css.outline =
     Shorthand { width = None; style = None; color = None }
   in
+  let text_decoration : Css.text_decoration =
+    Shorthand { lines = []; style = None; color = None; thickness = None }
+  in
   Alcotest.(check string)
     "drained border shorthand" "border:none"
     (pp (Css.Declaration.v Border border));
@@ -1603,11 +1608,17 @@ let all_initial_shorthand_prints_none () =
     "drained outline shorthand" "outline:none"
     (pp (Css.Declaration.v Outline outline));
   Alcotest.(check string)
+    "drained text-decoration shorthand" "text-decoration:none"
+    (pp (Css.Declaration.v Text_decoration text_decoration));
+  Alcotest.(check string)
     "outline_shorthand with no slot" "outline:none"
     (pp (Css.Declaration.outline (Css.outline_shorthand ())));
   Alcotest.(check string)
     "border_shorthand with no slot" "border:none"
-    (pp (Css.Declaration.v Border (Css.border_shorthand ())))
+    (pp (Css.Declaration.v Border (Css.border_shorthand ())));
+  Alcotest.(check string)
+    "text_decoration_shorthand with no slot" "text-decoration:none"
+    (pp (Css.Declaration.v Text_decoration (Css.text_decoration_shorthand ())))
 
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
@@ -3946,6 +3957,32 @@ let text_decoration_optional_line () =
   check_declaration ~roundtrip:true "text-decoration:red";
   check_sheet_roundtrip "text-decoration" "a{text-decoration:red}"
 
+(* CSS Text Decoration 4 (ED) sec. 2.6 sets an omitted shorthand slot to its
+   initial value - [solid] (sec. 2.2) and [currentcolor] (sec. 2.3) - so a slot
+   written with that value says what leaving it out says. Written alone the slot
+   is all there is, and dropping it drains the shorthand: what is left declares
+   nothing but the four initials, which is what [none] declares. *)
+let text_decoration_drained_shorthand () =
+  check_declaration ~expected:"text-decoration:solid"
+    ~optimized:"text-decoration:none" "text-decoration: solid";
+  check_declaration ~expected:"text-decoration:currentColor"
+    ~optimized:"text-decoration:none" "text-decoration: currentcolor";
+  check_declaration ~expected:"text-decoration:solid currentColor"
+    ~optimized:"text-decoration:none" "text-decoration: solid currentcolor";
+  check_sheet_roundtrip "text-decoration solid" "a{text-decoration:solid}";
+  (* The drop still runs wherever a slot outlives it. *)
+  check_declaration ~expected:"text-decoration:solid red"
+    ~optimized:"text-decoration:red" "text-decoration: solid red";
+  check_declaration ~expected:"text-decoration:underline solid"
+    ~optimized:"text-decoration:underline" "text-decoration: underline solid";
+  check_declaration ~expected:"text-decoration:underline currentColor"
+    ~optimized:"text-decoration:underline"
+    "text-decoration: underline currentcolor";
+  check_declaration ~expected:"text-decoration:solid 2px"
+    ~optimized:"text-decoration:2px" "text-decoration: solid 2px";
+  check_declaration ~expected:"text-decoration:none"
+    ~optimized:"text-decoration:none" "text-decoration: none"
+
 (* CSS Text 4 sec. 3 allows each longhand component of [white-space] on its own;
    omitted components take their initial values. *)
 let white_space_collapse_only () =
@@ -4909,6 +4946,8 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "text-decoration optional line" `Quick
       text_decoration_optional_line;
+    test_case "text-decoration drained shorthand" `Quick
+      text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
     test_case "border-image repeat only" `Quick border_image_repeat_only;
     test_case "timeline name only" `Quick timeline_name_only;
