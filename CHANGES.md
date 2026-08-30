@@ -513,9 +513,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Printing
 
-- `text-decoration` and `mask-border` no longer minify to an empty value.
-  `text-decoration:solid` printed `text-decoration:`, which no parser reads
-  back, once dropping the initial style left the shorthand with no slot (#682)
+- `text-decoration`, `mask-border` and `animation` no longer minify to an
+  empty value. `text-decoration:solid` printed `text-decoration:`, which no
+  parser reads back, once dropping the initial style left no slot (#682)
 - An ident that needs an escape to read back as one keeps it. `.x{--a:-\34 }`
   printed `.x{--a:-4}`, a number rather than the ident `-4`, and
   `@media (-\34 :1)` lost its feature name the same way: CSS Syntax 3 sec.
