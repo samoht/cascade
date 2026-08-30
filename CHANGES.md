@@ -207,6 +207,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `@font-face` and `@font-palette-values` use their descriptor-specific
+  `font-family` grammars. The former accepts exactly one named family, the
+  latter accepts a non-empty comma-separated list, and both reject unquoted
+  generic-family and CSS-wide keywords.
 - `steps()` rejects fractional counts, and `jump-none` requires at least two
   steps. Other step positions continue to require a positive integer count.
 - `mask-border` accepts a lone mode keyword, and `border-image` rejects one

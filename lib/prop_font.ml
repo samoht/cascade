@@ -640,14 +640,19 @@ let unquote_font_family_strings components =
    words include a reserved word, since dropping the quotes there turns the word
    into the keyword. The unquoted multi-word form is shorter but is not the
    CSSOM-canonical serialization, so [enforce_spec] keeps the quotes. *)
-let pp_family_name ctx s =
+let pp_family_name_with_keywords is_keyword ctx s =
   if
     Pp.minified ctx && (not ctx.Pp.enforce_spec)
     && can_unquote_font_family_name s
   then Pp.string ctx s
-  else if is_font_family_keyword_name s || not (is_font_family_ident_word s)
-  then Pp.quoted_string ctx s
+  else if is_keyword s || not (is_font_family_ident_word s) then
+    Pp.quoted_string ctx s
   else Pp.string ctx s
+
+let pp_family_name = pp_family_name_with_keywords is_font_family_keyword_name
+
+let pp_descriptor_family_name =
+  pp_family_name_with_keywords is_font_family_reserved_word
 
 let is_generic_family : font_family -> bool = function
   | Sans_serif | Serif | Monospace | Cursive | Fantasy | System_ui
@@ -765,6 +770,12 @@ let rec pp_font_family : font_family Pp.t =
         else Parser.string_of_components tokens
       in
       Pp.string ctx rendered
+
+let rec pp_font_family_name : font_family Pp.t =
+ fun ctx -> function
+  | Name name -> pp_descriptor_family_name ctx name
+  | Var var -> pp_var pp_font_family_name ctx var
+  | family -> pp_font_family ctx family
 
 let normalize_font_style : font_style -> font_style =
   let na = Values.normalize_angle in
@@ -1391,6 +1402,53 @@ let font_family_css_keywords : (string * font_family) list =
    authored. *)
 let font_family_keywords : (string * font_family) list =
   font_family_generic_css @ font_family_css_keywords
+
+(* CSS Fonts 4 sec. 2.1.1: descriptors whose grammar is [<font-family-name>]
+   accept strings and non-empty custom-ident sequences, but not the
+   generic-family or CSS-wide keywords accepted by the [font-family] property.
+   Quoting keeps a keyword available as a family name. *)
+let rec read_font_family_name t : font_family =
+  let read_var t : font_family = Var (read_var read_font_family_name t) in
+  Cursor.ws t;
+  match Cursor.string_opt t with
+  | Some name -> Name name
+  | None when Cursor.looking_at_func "var" t -> read_var t
+  | None ->
+      let rec read_words acc : font_family =
+        match Cursor.peek_ident t with
+        | Some _ ->
+            let word = Cursor.ident ~keep_case:true t in
+            if is_font_family_reserved_word word then
+              Cursor.err_invalid t
+                "reserved word in an unquoted font-family name";
+            Cursor.ws t;
+            read_words (word :: acc)
+        | None -> (
+            match acc with
+            | [] -> Cursor.err_expected t "font-family name"
+            | _ -> Name (String.concat " " (List.rev acc)))
+      in
+      read_words []
+
+let is_font_family_name_value : font_family -> bool = function
+  | Sans_serif | Serif | Monospace | Cursive | Fantasy | System_ui
+  | Ui_sans_serif | Ui_serif | Ui_monospace | Ui_rounded | Math | Inherit
+  | Initial | Unset | Revert | Revert_layer | List _ | Invalid _ ->
+      false
+  | Emoji | Fangsong | Inter | Roboto | Open_sans | Lato | Montserrat | Poppins
+  | Source_sans_pro | Raleway | Oswald | Noto_sans | Ubuntu | Playfair_display
+  | Merriweather | Lora | PT_sans | PT_serif | Nunito | Nunito_sans | Work_sans
+  | Rubik | Fira_sans | Fira_code | JetBrains_mono | IBM_plex_sans
+  | IBM_plex_serif | IBM_plex_mono | Source_code_pro | Space_mono | DM_sans
+  | DM_serif_display | Bebas_neue | Barlow | Mulish | Josefin_sans | Helvetica
+  | Helvetica_neue | Arial | Verdana | Tahoma | Trebuchet_ms | Times_new_roman
+  | Times | Georgia | Cambria | Garamond | Courier_new | Courier
+  | Lucida_console | SF_pro | SF_pro_display | SF_pro_text | SF_mono | NY
+  | Segoe_ui | Segoe_ui_emoji | Segoe_ui_symbol | Apple_color_emoji
+  | Noto_color_emoji | Android_emoji | Twemoji_mozilla | Menlo | Monaco
+  | Consolas | Liberation_mono | SFMono_regular | Cascadia_code | Cascadia_mono
+  | Victor_mono | Inconsolata | Hack | Name _ | Var _ ->
+      true
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in

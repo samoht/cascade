@@ -1214,8 +1214,20 @@ val read_outline : Cursor.t -> outline
 val pp_font_family : font_family Pp.t
 (** [pp_font_family] is the pretty-printer for [font_family]. *)
 
+val pp_font_family_name : font_family Pp.t
+(** [pp_font_family_name] is the pretty-printer for a descriptor
+    [<font-family-name>]. *)
+
 val read_font_family : Cursor.t -> font_family
 (** [read_font_family t] is the [font_family] parsed from [t]. *)
+
+val read_font_family_name : Cursor.t -> font_family
+(** [read_font_family_name t] is the descriptor [<font-family-name>] parsed from
+    [t]. Unquoted generic-family and CSS-wide keywords are rejected. *)
+
+val is_font_family_name_value : font_family -> bool
+(** [is_font_family_name_value family] is true when [family] can fill a
+    descriptor [<font-family-name>] slot. *)
 
 val pp_font : font Pp.t
 (** [pp_font] is the pretty-printer for the [font] shorthand. *)
