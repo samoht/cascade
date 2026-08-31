@@ -623,16 +623,21 @@ let read_grid_line_name t =
       (String.concat "" [ "reserved grid line name: "; name ])
   else name
 
+let read_grid_span_count t =
+  let n = Cursor.int t in
+  if n < 1 then Cursor.err_invalid t "grid span count must be positive";
+  n
+
 (* [ <integer [1,inf]> || <custom-ident> ]: one or both, in either order. *)
 let read_grid_span_parts t : grid_line =
-  match Cursor.option Cursor.int t with
+  match Cursor.option read_grid_span_count t with
   | Some n -> (
       match Cursor.option read_grid_line_name t with
       | Some name -> Span_num_name (n, name)
       | None -> Span n)
   | None -> (
       let name = read_grid_line_name t in
-      match Cursor.option Cursor.int t with
+      match Cursor.option read_grid_span_count t with
       | Some n -> Span_num_name (n, name)
       | None -> Span_name name)
 
@@ -648,9 +653,10 @@ let read_grid_span t : grid_line =
 
 let read_grid_line_number t : grid_line =
   let n = Cursor.int t in
+  if n = 0 then Cursor.err_invalid t "grid line index cannot be zero";
   Cursor.ws t;
   let name : string option =
-    if grid_line_at_end t then None else Cursor.option read_grid_line_name t
+    if grid_line_at_end t then None else Some (read_grid_line_name t)
   in
   match name with Some name -> Num_name (n, name) | None -> Num n
 

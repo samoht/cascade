@@ -210,6 +210,9 @@ recorded cases carrying six minifiers' answers.
 - The span form of `<grid-line>` takes its operands in any order, as the `&&`
   and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
   kept and printed `span 3`, where cascade used to drop the declaration (#711)
+- A grid line index cannot be zero and a grid span count must be positive.
+  Values such as `grid-column-start: 0`, `span 0` and `span -1` now drop the
+  declaration the way a browser does instead of being applied (#714)
 - `grid-auto-columns` and `grid-auto-rows` take a list of track sizes. They
   used to read the wider `grid-template-*` grammar, so a line-name block, a
   `repeat()`, `none` or a slash form parsed and applied where a browser drops
