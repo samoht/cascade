@@ -215,6 +215,11 @@ recorded cases carrying six minifiers' answers.
   case. `grid-template-columns: [span] 1px` and `grid-row-start: 3 auto` are
   dropped the way a browser drops them, rather than kept as a declaration that
   then applies (#708)
+- A `@property` syntax multiplying `<transform-function>`, `<transform-list>`
+  or `<resolution>` no longer hangs the parser. Those readers reported success
+  on an empty stream, and the multiplier repeated them forever (#710)
+- `*` is a `@property` syntax on its own only, so `"*+"` and `"* | <length>"`
+  are rejected the way a browser rejects them (#710)
 - Trailing content inside a parenthesised or bracketed sub-expression makes the
   whole value invalid, as it does in a browser. `width: calc((1px 2px))` used
   to keep the prefix a reader recognised and drop the rest (#701)
