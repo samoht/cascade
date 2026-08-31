@@ -1296,6 +1296,108 @@ let wholesale_block_shows_every_child () =
         wanted)
     cases
 
+(* ===== Whitespace the matching key folds ===== *)
+
+(* Each side is one rule holding one declaration, so the report is empty exactly
+   when the two spellings share a matching key. *)
+let value_pair ~folds ~name one other () =
+  let wrap decl = String.concat "" [ "a{"; decl; "}" ] in
+  let d = diff_of ~expected:(wrap one) ~actual:(wrap other) in
+  Alcotest.(check bool) name folds (Cascade_diff.Tree_diff.is_empty d)
+
+let folded_value = value_pair ~folds:true
+let distinct_value = value_pair ~folds:false
+
+(* CSS Values 4 (ED) sec. 10.8 leaves the whitespace around [*] and [/] optional
+   inside a math function, so both streams substitute the same tokens. *)
+let key_folds_whitespace_in_calc =
+  folded_value ~name:"a spaced calc division is the spaceless one"
+    "--k:calc(2 / 1.5)" "--k:calc(2/1.5)"
+
+(* Outside a math function the whitespace next to a [*] or [/] is insignificant
+   too (CSS Values 4 sec. 10.1): [16 / 9] and [16/9] re-tokenise identically. *)
+let key_folds_whitespace_around_a_bare_slash =
+  folded_value ~name:"a spaced ratio is the spaceless one" "--k:16 / 9"
+    "--k:16/9"
+
+(* A function that is not a substitution function closes on [)], a token
+   boundary nothing on its right can merge across, so the space after it
+   separates nothing. *)
+let key_folds_whitespace_after_a_function =
+  folded_value ~name:"a space after a closed function is nothing"
+    "--k:cubic-bezier(.4,0,.6,1) infinite" "--k:cubic-bezier(.4,0,.6,1)infinite"
+
+(* CSS Syntax 3 ends a percentage token at the [%], so the number that follows
+   cannot merge into it and the space between them carries nothing. *)
+let key_folds_whitespace_after_a_percentage =
+  folded_value ~name:"a space after a percentage is nothing"
+    "--k:oklch(63.7% .237 25.331)" "--k:oklch(63.7%.237 25.331)"
+
+(* The key reads a typed value through the same minified spelling, so a number
+   written long and a number written short stop reading as a change. *)
+let key_folds_a_typed_number_spelling =
+  folded_value ~name:"a padded number is the short one" "padding:0.50px"
+    "padding:.5px"
+
+(* ===== Whitespace the matching key keeps ===== *)
+
+(* Sec. 10.8 requires the whitespace around a binary [+] or [-]: [100%- 10px] is
+   not the same declaration written shorter, it is one the browser drops. *)
+let key_keeps_whitespace_around_a_calc_sum =
+  distinct_value ~name:"a calc sum missing its space is a difference"
+    "--k:calc(100% - 10px)" "--k:calc(100%- 10px)"
+
+(* CSS Values 4 sec. 2.5 substitutes a [var()] body textually, so the space
+   after one separates the two substituted streams and is part of the value. *)
+let key_keeps_whitespace_between_two_vars =
+  distinct_value ~name:"a space between two var() is a difference"
+    "--k:var(--a) var(--b)" "--k:var(--a)var(--b)"
+
+let key_keeps_whitespace_after_a_var =
+  distinct_value ~name:"a space after a var() is a difference"
+    "--k:var(--a) 10px" "--k:var(--a)10px"
+
+(* Two idents against one: the streams hold different tokens, whatever the
+   property they are substituted into reads them as. *)
+let key_keeps_whitespace_between_two_idents =
+  distinct_value ~name:"two idents are not one" "--k:a b" "--k:ab"
+
+(* No generic family in the stream, so nothing proves it is a font-family list
+   and a [<string>] there is not the equivalent [<ident>] sequence. *)
+let key_keeps_quotes_without_a_generic_family =
+  distinct_value ~name:"an unproven quoted family is a difference"
+    "--k:a,\"Segoe UI\",b" "--k:a,Segoe UI,b"
+
+(* Two typed values that differ still differ, however far the minified spelling
+   shortens each of them. *)
+let key_keeps_two_typed_values_apart =
+  distinct_value ~name:"two colours are a difference" "color:#ff0000"
+    "color:#ff1100"
+
+(* The key is for matching, not for display: a pair that still differs prints
+   the bytes each side's author wrote, not the spelling the key folded them
+   onto, which is a value neither file holds. *)
+let report_quotes_the_author_spelling () =
+  let quotes ~name ~expected ~actual affixes =
+    let out = render (diff_of ~expected ~actual) in
+    List.iter
+      (fun affix ->
+        Alcotest.(check bool)
+          (String.concat "" [ name; " reads "; affix ])
+          true
+          (Astring.String.is_infix ~affix out))
+      affixes
+  in
+  quotes ~name:"a custom stream" ~expected:"a{--k:calc(100% - 10px)}"
+    ~actual:"a{--k:calc(100%- 10px)}"
+    [ "calc(100% - 10px)"; "calc(100%- 10px)" ];
+  quotes ~name:"a typed colour" ~expected:"a{color:#ff0000}"
+    ~actual:"a{color:#ff1100}" [ "#ff0000"; "#ff1100" ];
+  quotes ~name:"a quoted family"
+    ~expected:"a{--f:ui-sans-serif,\"Noto Color Emoji\"}"
+    ~actual:"a{--f:ui-serif,\"Noto Color Emoji\"}"
+    [ "ui-sans-serif,\"Noto Color Emoji\""; "ui-serif,\"Noto Color Emoji\"" ]
+
 let suite =
   ( "tree_diff",
     [
@@ -1458,6 +1560,30 @@ let suite =
         deeply_nested_identical_is_empty;
       Alcotest.test_case "wholesale block shows every child" `Quick
         wholesale_block_shows_every_child;
+      Alcotest.test_case "key folds whitespace in calc" `Quick
+        key_folds_whitespace_in_calc;
+      Alcotest.test_case "key folds whitespace around a bare slash" `Quick
+        key_folds_whitespace_around_a_bare_slash;
+      Alcotest.test_case "key folds whitespace after a function" `Quick
+        key_folds_whitespace_after_a_function;
+      Alcotest.test_case "key folds whitespace after a percentage" `Quick
+        key_folds_whitespace_after_a_percentage;
+      Alcotest.test_case "key folds a typed number spelling" `Quick
+        key_folds_a_typed_number_spelling;
+      Alcotest.test_case "key keeps whitespace around a calc sum" `Quick
+        key_keeps_whitespace_around_a_calc_sum;
+      Alcotest.test_case "key keeps whitespace between two vars" `Quick
+        key_keeps_whitespace_between_two_vars;
+      Alcotest.test_case "key keeps whitespace after a var" `Quick
+        key_keeps_whitespace_after_a_var;
+      Alcotest.test_case "key keeps whitespace between two idents" `Quick
+        key_keeps_whitespace_between_two_idents;
+      Alcotest.test_case "key keeps quotes without a generic family" `Quick
+        key_keeps_quotes_without_a_generic_family;
+      Alcotest.test_case "key keeps two typed values apart" `Quick
+        key_keeps_two_typed_values_apart;
+      Alcotest.test_case "report quotes the author spelling" `Quick
+        report_quotes_the_author_spelling;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
