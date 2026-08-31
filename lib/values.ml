@@ -4489,24 +4489,15 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
 let space_after_color_percentage ctx (l : percentage option) ~next =
   (* The space between the L channel and the next colour component elides when
      the L spelling closes its token cleanly: a [%] ends its percentage token
-     whatever follows, a [)] from [Var] / [Calc] needs the next token to start
-     its own boundary, and a bare-number end ([4] in [.654]) needs a sign-token
-     [+] / [-] to start the next number. [None] / unknown left-hand stays
-     conservative. *)
+     whatever follows, and a bare-number end ([4] in [.654]) needs a sign-token
+     [+] / [-] to start the next number. Functions and [None] / unknown
+     left-hand values stay conservative. *)
   let starts_signed s = String.length s > 0 && (s.[0] = '+' || s.[0] = '-') in
-  let next_safe_after_paren s =
-    String.length s > 0
-    &&
-    match s.[0] with
-    | '0' .. '9' | '.' | '+' | '-' | '#' -> true
-    | _ -> false
-  in
   let elidable =
     Pp.minified ctx
     && (Pp.last_char ctx = Some '%'
        ||
        match (l, next) with
-       | Some (Var _ | Calc _), Some s -> next_safe_after_paren s
        | Some (Num _), Some s -> starts_signed s
        | _ -> false)
   in

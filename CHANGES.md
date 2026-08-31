@@ -1075,6 +1075,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- Typed position and colour printers retain a component separator after a
+  function-closing parenthesis, matching custom-value serialisation (#722)
 - Calc printers preserve authored grouping nodes. Redundant parentheses are
   removed by value normalization instead, while precedence-sensitive groups
   are reconstructed from the expression tree (#721)
