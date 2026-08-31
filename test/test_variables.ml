@@ -607,6 +607,17 @@ let spec_multiplied_component_terminates () =
   check_any_syntax "\"<transform-function>+\"";
   check_any_syntax "\"<resolution>+\""
 
+(* CSS Properties and Values API 1 (ED) secs. 5.1, 5.2 and 5.4.3 define
+   [<transform-list>] as a pre-multiplied data type name. Consuming one returns
+   before the optional multiplier step, so applying [+] or [#] makes the whole
+   syntax definition invalid. *)
+let spec_premultiplied_component_rejects_multiplier () =
+  check_any_syntax "\"<transform-list>\"";
+  neg_cursor read_any_syntax "\"<transform-list>+\"";
+  neg_cursor read_any_syntax "\"<transform-list>#\"";
+  neg_cursor read_any_syntax "\"auto | <transform-list>+\"";
+  neg_cursor read_any_syntax "\"<transform-list># | <length>\""
+
 (* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
@@ -798,6 +809,9 @@ let tests =
     ( "spec multiplied component terminates",
       `Quick,
       spec_multiplied_component_terminates );
+    ( "spec premultiplied component rejects multiplier",
+      `Quick,
+      spec_premultiplied_component_rejects_multiplier );
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);
