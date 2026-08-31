@@ -206,8 +206,8 @@ the first file given, then the second.
   --- one.css
   +++ many.css
   ├─ .y
-  │     + top 0
+  │     + top: 0
   └─ .z
-        + left 0
+        + left: 0
   
   [1]

@@ -43,6 +43,6 @@ declaration in the selector column.
   │     - color
   └─ .a { & } (1 added)
      └─ &
-           + color red
+           + color: red
   
   [1]

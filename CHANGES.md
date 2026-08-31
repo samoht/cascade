@@ -1085,6 +1085,11 @@ recorded cases carrying six minifiers' answers.
 - A one-word family name in a custom property compares equal quoted and
   unquoted when a generic family proves the value is a font stack. `"serif"`
   and the other CSS Fonts 4 sec. 2.1.1 exclusions stay distinct (#705)
+- `--diff=tree` prints the body of an added or removed rule as declarations,
+  with the separator and the `!important` flag. A rule gaining
+  `color: red !important` read like one gaining `color: red`, and a value
+  holding a colon of its own gave no sign of where the property name ended
+  (#706)
 
 ### Library
 

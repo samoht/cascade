@@ -184,6 +184,17 @@ let pp_children ~style ~parent_prefix buf render =
         add_strings buf
           [ child_indent ~style ~parent_prefix; "..."; string_of_int n; noun ]
 
+let decl_with_important decl value =
+  if Css.declaration_is_important decl then
+    String.concat "" [ value; " !important" ]
+  else value
+
+(* The one answer to how a declaration reads in the report: the author's own
+   spelling, which keeps a unit difference like [0px] against [0] visible, and
+   the flag, without which a declaration and the one it outranks read alike. *)
+let decl_shown_value decl =
+  decl_with_important decl (Css.declaration_value ~minify:false decl)
+
 (* Print a list of CSS declarations with an action prefix *)
 let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
     decls =
@@ -200,17 +211,16 @@ let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
   in
   List.iter
     (fun decl ->
-      let prop_name = Css.declaration_name decl in
-      (* Use non-minified values to preserve unit differences like 0px vs 0 *)
-      let prop_value = Css.declaration_value ~minify:false decl in
-      let truncated_value =
-        String_diff.truncate_middle default_truncation_length prop_value
+      let shown =
+        String_diff.truncate_middle default_truncation_length
+          (decl_shown_value decl)
       in
-      Buffer.add_string buf
-        (indent
-        ^ style_text ~color:style.color action
-            (prefix_symbol ^ " " ^ prop_name ^ " " ^ truncated_value)
-        ^ "\n"))
+      let line =
+        String.concat ""
+          [ prefix_symbol; " "; Css.declaration_name decl; ": "; shown ]
+      in
+      add_strings buf
+        [ indent; style_text ~color:style.color action line; "\n" ])
     decls
 
 let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
@@ -1196,11 +1206,6 @@ let strings_of_rule (stmt : Css.statement) =
       | Declarations decls -> ("&", decls)
       | _ -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt))
 
-let decl_with_important decl value =
-  if Css.declaration_is_important decl then
-    String.concat "" [ value; " !important" ]
-  else value
-
 let decl_to_prop_value decl =
   ( Css.declaration_name decl,
     decl_with_important decl (Css.declaration_value_for_equivalence decl) )
@@ -1211,9 +1216,7 @@ let decl_to_prop_value decl =
    folds the spellings the two sides chose onto one. *)
 let decl_to_reported_value decl =
   let name, key = decl_to_prop_value decl in
-  ( name,
-    (key, decl_with_important decl (Css.declaration_value ~minify:false decl))
-  )
+  (name, (key, decl_shown_value decl))
 
 let compare_prop_value (name1, value1) (name2, value2) =
   let by_name = String.compare name1 name2 in
@@ -1954,7 +1957,8 @@ let handle_structural_diff rules1 rules2 =
 
 let rule_diffs rules1 rules2 = handle_structural_diff rules1 rules2
 
-(* The values a rule writes for [name], in the order it writes them. *)
+(* Each key and shown value a rule writes for [name], in the order it writes
+   them. *)
 let occurrences_of name props =
   List.filter_map (fun (p, v) -> if p = name then Some v else None) props
 

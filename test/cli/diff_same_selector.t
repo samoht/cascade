@@ -32,11 +32,11 @@ rather than as a loss and a gain.
   └─ @layer utilities (2 reordered, 2 rearranged)
      ├─ .drop-shadow-blue-500\/50 (position 3) ↔  .drop-shadow-indigo-500 (position 0)
      ├─ .drop-shadow-blue-500\/50 (moved between rules)
-     │       --tw-drop-shadow-color #3080ff80
-     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     │       --tw-drop-shadow-color: #3080ff80
+     │       --tw-drop-shadow: var(--tw-drop-shadow-size)
      ├─ .drop-shadow-indigo-500 (moved between rules)
-     │       --tw-drop-shadow-color oklch(.585 .233 277.117)
-     │       --tw-drop-shadow var(--tw-drop-shadow-size)
+     │       --tw-drop-shadow-color: oklch(.585 .233 277.117)
+     │       --tw-drop-shadow: var(--tw-drop-shadow-size)
      ├─ .drop-shadow-indigo-500 (position 0) ↔  .drop-shadow-indigo-500 (position 4)
      └─ @supports (color: color-mix(in lab,red,red)) (1 reordered)
         └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
@@ -60,8 +60,8 @@ A top-level group reports the same way as one inside a container.
   --- split.css
   +++ joined.css
   └─ .a (moved between rules)
-          color red
-          margin 0
+          color: red
+          margin: 0
   
   [1]
 
@@ -81,8 +81,8 @@ A top-level group reports the same way as one inside a container.
   +++ joined_layer.css
   └─ @layer u (1 rearranged)
      └─ .a (moved between rules)
-             color red
-             margin 0
+             color: red
+             margin: 0
   
   [1]
 
@@ -100,7 +100,7 @@ A declaration that does not survive is reported as a loss.
   --- split.css
   +++ lost.css
   └─ .a
-        - margin 0
+        - margin: 0
   
   [1]
 
@@ -147,11 +147,11 @@ gains or loses a declaration, so neither may be reported as modified.
   └─ @layer utilities (1 reordered, 2 rearranged)
      ├─ .x (position 2) ↔  .y (position 0)
      ├─ .x (moved between rules)
-     │       --c 1
-     │       --d 3
+     │       --c: 1
+     │       --d: 3
      ├─ .y (moved between rules)
-     │       --c 4
-     │       --d 6
+     │       --c: 4
+     │       --d: 6
      └─ @supports (zoo: bar) (1 reordered)
         └─ .x ↔  .y
   
@@ -197,7 +197,7 @@ the exact-match path, which names the move once as well.
   +++ swap_tw.css
   └─ @layer u (1 removed, 1 reordered)
      ├─ .z
-     │     - --e 9
+     │     - --e: 9
      └─ .x ↔  .y
   
   [1]
