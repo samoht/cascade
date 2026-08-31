@@ -207,6 +207,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Trailing content inside a parenthesised or bracketed sub-expression makes the
+  whole value invalid, as it does in a browser. `width: calc((1px 2px))` used
+  to keep the prefix a reader recognised and drop the rest (#701)
 - A math function requires whitespace on both sides of its `+` and `-`
   operators. Values such as `calc(100%- 10px)` are dropped the way a browser
   drops them, where cascade used to accept them and print back the valid
