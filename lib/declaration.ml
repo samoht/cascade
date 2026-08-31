@@ -1338,20 +1338,8 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
   | Grid_template -> Some (v Grid_template (read_grid_template t))
   | Grid -> Some (v Grid (read_grid t))
   | Grid_area -> Some (v Grid_area (read_grid_area t))
-  | Grid_auto_columns ->
-      let value = read_grid_template t in
-      (match value with
-      | Subgrid | Masonry ->
-          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
-      | _ -> ());
-      Some (v Grid_auto_columns value)
-  | Grid_auto_rows ->
-      let value = read_grid_template t in
-      (match value with
-      | Subgrid | Masonry ->
-          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
-      | _ -> ());
-      Some (v Grid_auto_rows value)
+  | Grid_auto_columns -> Some (v Grid_auto_columns (read_grid_auto_tracks t))
+  | Grid_auto_rows -> Some (v Grid_auto_rows (read_grid_auto_tracks t))
   | Grid_column -> Some (v Grid_column (read_grid_line_pair t))
   | Grid_row -> Some (v Grid_row (read_grid_line_pair t))
   | _ -> None
@@ -2066,14 +2054,13 @@ let read_custom_property_declaration t : declaration =
 
 (* Properties whose grammar allows multi-token values where a CSS-wide keyword
    can legitimately appear as a non-special ident. [animation-name] /
-   [grid-area] / [will-change] / etc. accept arbitrary ident lists.
-   [font-family] also takes a [<custom-ident>#] list, so a CSS-wide keyword
-   inside the list is invalid CSS (CSS Cascade 5 sec. 7.3) but upstream tools
-   (lightningcss, csso) preserve the source verbatim. *)
+   [will-change] / etc. accept arbitrary ident lists. [font-family] also takes a
+   [<custom-ident>#] list, so a CSS-wide keyword inside the list is invalid CSS
+   (CSS Cascade 5 sec. 7.3) but upstream tools (lightningcss, csso) preserve the
+   source verbatim. *)
 let property_allows_keyword_as_ident = function
-  | "animation-name" | "grid-area" | "grid-row" | "grid-column"
-  | "grid-row-start" | "grid-row-end" | "grid-column-start" | "grid-column-end"
-  | "will-change" | "view-transition-name" | "font-family" | "font" ->
+  | "animation-name" | "will-change" | "view-transition-name" | "font-family"
+  | "font" ->
       true
   | _ -> false
 

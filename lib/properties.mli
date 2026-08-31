@@ -924,6 +924,13 @@ val pp_grid_template_areas : grid_template_areas Pp.t
 val read_grid_template : Cursor.t -> grid_template
 (** [read_grid_template t] is the [grid_template] parsed from [t]. *)
 
+val read_grid_auto_tracks : Cursor.t -> grid_template
+(** [read_grid_auto_tracks t] is the [grid-auto-columns] / [grid-auto-rows]
+    value parsed from [t]. CSS Grid 2 (ED) sec. 7.6 gives those properties
+    [<track-size>+], so the value shares the [grid_template] type with
+    [grid-template-columns] but takes none of its line-name, [repeat()] or slash
+    forms. *)
+
 val read_grid : Cursor.t -> grid_template
 (** [read_grid t] is the [grid] shorthand parsed from [t]. *)
 

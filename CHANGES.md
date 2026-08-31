@@ -210,6 +210,17 @@ recorded cases carrying six minifiers' answers.
 - The span form of `<grid-line>` takes its operands in any order, as the `&&`
   and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
   kept and printed `span 3`, where cascade used to drop the declaration (#711)
+- `grid-auto-columns` and `grid-auto-rows` take a list of track sizes. They
+  used to read the wider `grid-template-*` grammar, so a line-name block, a
+  `repeat()`, `none` or a slash form parsed and applied where a browser drops
+  the declaration (#712)
+- A grid track list carries at least one track size, and never two line-name
+  blocks in a row. `grid-template-columns: [a]` and `1px [a] [b] 2px` are
+  dropped the way a browser drops them, inside a `repeat()` body and in the
+  `grid` and `grid-template` shorthands as well (#712)
+- The grid placement properties go through the CSS-wide keyword check.
+  `grid-column: 2 / initial` and `grid-area: 1 / 2 / 3 / initial` are dropped,
+  while a lone `grid-column: initial` still reads as explicit defaulting (#712)
 - An `@property` syntax component carries at most one multiplier. A chained one
   such as `"<custom-ident>+#"` drops the registration the way a browser does,
   where cascade used to accept it and type a property left unregistered (#707)

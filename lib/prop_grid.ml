@@ -744,6 +744,29 @@ let read_grid_area t : grid_area =
   in
   Lines { row_start; column_start; row_end; column_end }
 
+(* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |
+   <track-repeat> ] ]+ <line-names>?] puts every [<line-names>] in front of a
+   track size, or last in the list. So a track list carries at least one track
+   size, and never two [<line-names>] in a row. The sec. 7.2.3 [repeat()]
+   bodies, [<explicit-track-list>] and [<auto-track-list>] have the same shape.
+   ([subgrid <line-name-list>?] is the exception, and
+   [read_grid_template_tracks] rejects [subgrid] in a track list before either
+   check runs.) *)
+let track_list_has_track_size (tracks : grid_template list) =
+  List.exists (function Line_names _ -> false | _ -> true) tracks
+
+let rec track_list_names_separated (tracks : grid_template list) =
+  match tracks with
+  | Line_names _ :: Line_names _ :: _ -> false
+  | _ :: rest -> track_list_names_separated rest
+  | [] -> true
+
+let validate_track_list t tracks =
+  if not (track_list_has_track_size tracks) then
+    Cursor.err_invalid t "grid track list without a track size";
+  if not (track_list_names_separated tracks) then
+    Cursor.err_invalid t "grid track list with adjacent line names"
+
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
     (* [~with_keywords:false]: track keywords (auto / min-content / ...) are a
@@ -860,6 +883,7 @@ module Grid_template = struct
                     ~sep:(fun i -> Cursor.ws i)
                     read_single_track inner
                 in
+                validate_track_list inner tracks;
                 (Repeat (count, tracks) : grid_template) );
           ]
         ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
@@ -929,14 +953,18 @@ let read_grid_template_tracks t =
   in
   match tracks with
   | [] -> Cursor.err t "Expected at least one grid track"
-  | [ single ] -> single
-  | multiple
-    when List.exists
-           (fun (track : grid_template) ->
-             match track with None | Subgrid | Masonry -> true | _ -> false)
-           multiple ->
-      Cursor.err_invalid t "grid-template standalone keyword in track list"
-  | multiple -> Tracks multiple
+  | [ single ] ->
+      validate_track_list t tracks;
+      single
+  | multiple ->
+      if
+        List.exists
+          (fun (track : grid_template) ->
+            match track with None | Subgrid | Masonry -> true | _ -> false)
+          multiple
+      then Cursor.err_invalid t "grid-template standalone keyword in track list";
+      validate_track_list t multiple;
+      Tracks multiple
 
 let rec read_grid_template t : grid_template =
   if Cursor.looking_at_func "var" t then
@@ -963,6 +991,35 @@ let rec read_grid_template t : grid_template =
           err_invalid_value t "grid-template" "none in slash form"
       | _ -> Split (rows, columns))
     else rows
+
+(* CSS Grid 2 (ED) sec. 7.6: [grid-auto-columns] and [grid-auto-rows] take
+   [<track-size>+], the sec. 7.2 [<track-size>] repeated. That grammar has no
+   [<line-names>] position, no [<track-repeat>], and none of the [<track-list>]
+   keywords ([none], [subgrid], [masonry]) nor its slash form. *)
+let rec is_track_size : grid_template -> bool = function
+  | Px _ | Rem _ | Em _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Zero
+  | Length _ | Fr _ | Auto | Min_content | Max_content | Fit_content _ ->
+      true
+  | Min_max (min, max) -> is_track_size min && is_track_size max
+  | Var _ -> true
+  | None | Inherit | Initial | Unset | Revert | Revert_layer | Repeat _
+  | Tracks _ | Split _ | Auto_flow_columns _ | Auto_flow_rows _ | Named_tracks _
+  | Line_names _ | Template _ | Subgrid | Masonry ->
+      false
+
+let read_grid_auto_tracks t : grid_template =
+  let value = read_grid_template t in
+  let valid =
+    match value with
+    (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
+       declaration, so a CSS-wide keyword reaches the reader alone. *)
+    | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> true
+    | Tracks tracks -> List.for_all is_track_size tracks
+    | single -> is_track_size single
+  in
+  if not valid then
+    Cursor.err_invalid t "grid-auto tracks accept a track size only";
+  value
 
 let read_grid_auto_flow_clause side t =
   let rec loop seen_auto_flow seen_dense =
