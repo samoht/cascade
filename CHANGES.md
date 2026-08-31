@@ -220,6 +220,9 @@ recorded cases carrying six minifiers' answers.
 - `grid-template-columns` and `grid-template-rows` reject the slash and string
   area forms reserved for the `grid-template` shorthand instead of applying
   them as longhand values (#717)
+- A `subgrid` track list accepts its optional line-name list, including
+  adjacent blocks and name-only `repeat()` forms. Values such as
+  `subgrid [a] [b]` now apply instead of being dropped (#718)
 - A grid track list carries at least one track size, and never two line-name
   blocks in a row. `grid-template-columns: [a]` and `1px [a] [b] 2px` are
   dropped the way a browser drops them, inside a `repeat()` body and in the

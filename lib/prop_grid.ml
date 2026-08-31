@@ -755,9 +755,8 @@ let read_grid_area t : grid_area =
    track size, or last in the list. So a track list carries at least one track
    size, and never two [<line-names>] in a row. The sec. 7.2.3 [repeat()]
    bodies, [<explicit-track-list>] and [<auto-track-list>] have the same shape.
-   ([subgrid <line-name-list>?] is the exception, and
-   [read_grid_template_tracks] rejects [subgrid] in a track list before either
-   check runs.) *)
+   ([subgrid <line-name-list>?] is the exception and is read separately by
+   [Grid_template.read_subgrid].) *)
 let track_list_has_track_size (tracks : grid_template list) =
   List.exists (function Line_names _ -> false | _ -> true) tracks
 
@@ -854,6 +853,30 @@ module Grid_template = struct
         in
         Line_names names)
       t
+
+  let read_name_repeat t : grid_template =
+    Cursor.call "repeat" t @@ fun inner ->
+    Cursor.ws inner;
+    let count = read_repeat_count inner in
+    (match count with
+    | Auto_fit -> Cursor.err_invalid inner "auto-fit subgrid name repeat"
+    | Count _ | Auto_fill | Var _ -> ());
+    Cursor.ws inner;
+    Cursor.comma inner;
+    Cursor.ws inner;
+    let names = Cursor.list ~sep:(fun i -> Cursor.ws i) read_line_names inner in
+    (Repeat (count, names) : grid_template)
+
+  let read_subgrid_item t =
+    if Cursor.peek_block t = Some Token.Square then read_line_names t
+    else read_name_repeat t
+
+  let read_subgrid t : grid_template =
+    if not (Cursor.try_ident "subgrid" t) then Cursor.err_expected t "subgrid";
+    let line_names =
+      Cursor.list ~at_least:0 ~sep:(fun i -> Cursor.ws i) read_subgrid_item t
+    in
+    match line_names with [] -> Subgrid | _ -> Tracks (Subgrid :: line_names)
 
   let rec read_single_track t =
     if Cursor.peek_block t = Some Token.Square then read_line_names t
@@ -954,23 +977,26 @@ let rec grid_template_line_names_valid = function
   | _ :: rest -> grid_template_line_names_valid rest
 
 let read_grid_template_tracks t =
-  let tracks =
-    Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
-  in
-  match tracks with
-  | [] -> Cursor.err t "Expected at least one grid track"
-  | [ single ] ->
-      validate_track_list t tracks;
-      single
-  | multiple ->
-      if
-        List.exists
-          (fun (track : grid_template) ->
-            match track with None | Subgrid | Masonry -> true | _ -> false)
-          multiple
-      then Cursor.err_invalid t "grid-template standalone keyword in track list";
-      validate_track_list t multiple;
-      Tracks multiple
+  if Cursor.looking_at_ident "subgrid" t then Grid_template.read_subgrid t
+  else
+    let tracks =
+      Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
+    in
+    match tracks with
+    | [] -> Cursor.err t "Expected at least one grid track"
+    | [ single ] ->
+        validate_track_list t tracks;
+        single
+    | multiple ->
+        if
+          List.exists
+            (fun (track : grid_template) ->
+              match track with None | Subgrid | Masonry -> true | _ -> false)
+            multiple
+        then
+          Cursor.err_invalid t "grid-template standalone keyword in track list";
+        validate_track_list t multiple;
+        Tracks multiple
 
 let rec read_grid_template t : grid_template =
   if Cursor.looking_at_func "var" t then
