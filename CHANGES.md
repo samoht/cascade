@@ -575,6 +575,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` spells a token boundary after a percentage one way. A constructed
+  `--brand: oklch(63.7% 0.237 25.331)` printed `oklch(63.7%.237 25.331)` while a
+  parse of those same bytes printed `oklch(63.7% .237 25.331)`, so minified
+  output did not read back as itself, and the separator the reader inserted made
+  `--x:10%5px` come out longer than it went in (#700)
 - `--minify` keeps the whitespace CSS Values 4 requires on both sides of a math
   function's `+` and `-` when it prints a custom property or an unknown
   property. `--w: calc(100% - 10px)` came out as `--w:calc(100%- 10px)`, which
