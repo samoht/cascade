@@ -4018,6 +4018,16 @@ let test_grid_line () =
   check_grid_line "content-end";
   check_grid_line "inherit";
   neg_cursor read_grid_line "span";
+  (* The ordinary integer branch in sec. 8.3 excludes zero, with or without a
+     line name. Negative indexes remain valid. *)
+  neg_cursor read_grid_line "0";
+  neg_cursor read_grid_line "0 foo";
+  (* CSS Grid 2 (ED) sec. 8.3 restricts the integer in a span to [1,inf].
+     Negative integers and zero are invalid in either operand order. *)
+  neg_cursor read_grid_line "span 0";
+  neg_cursor read_grid_line "0 span";
+  neg_cursor read_grid_line "span -1";
+  neg_cursor read_grid_line "-1 span";
   (* CSS Grid 2 (ED) sec. 8.3 gives the span branch as [span && [ <integer
      [1,inf]> || <custom-ident> ]]. CSS Values 4 (ED) sec. 2.2 makes both [&&]
      and [||] reorderable, so [span] sits on either side of the group and the
