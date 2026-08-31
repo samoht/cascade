@@ -1374,29 +1374,53 @@ let key_keeps_two_typed_values_apart =
   distinct_value ~name:"two colours are a difference" "color:#ff0000"
     "color:#ff1100"
 
+(* Every affix the report of [expected] against [actual] has to read. *)
+let report_reads ~name ~expected ~actual affixes =
+  let out = render (diff_of ~expected ~actual) in
+  List.iter
+    (fun affix ->
+      Alcotest.(check bool)
+        (String.concat "" [ name; " reads "; affix ])
+        true
+        (Astring.String.is_infix ~affix out))
+    affixes
+
 (* The key is for matching, not for display: a pair that still differs prints
    the bytes each side's author wrote, not the spelling the key folded them
    onto, which is a value neither file holds. *)
 let report_quotes_the_author_spelling () =
-  let quotes ~name ~expected ~actual affixes =
-    let out = render (diff_of ~expected ~actual) in
-    List.iter
-      (fun affix ->
-        Alcotest.(check bool)
-          (String.concat "" [ name; " reads "; affix ])
-          true
-          (Astring.String.is_infix ~affix out))
-      affixes
-  in
-  quotes ~name:"a custom stream" ~expected:"a{--k:calc(100% - 10px)}"
+  report_reads ~name:"a custom stream" ~expected:"a{--k:calc(100% - 10px)}"
     ~actual:"a{--k:calc(100%- 10px)}"
     [ "calc(100% - 10px)"; "calc(100%- 10px)" ];
-  quotes ~name:"a typed colour" ~expected:"a{color:#ff0000}"
+  report_reads ~name:"a typed colour" ~expected:"a{color:#ff0000}"
     ~actual:"a{color:#ff1100}" [ "#ff0000"; "#ff1100" ];
-  quotes ~name:"a quoted family"
+  report_reads ~name:"a quoted family"
     ~expected:"a{--f:ui-sans-serif,\"Noto Color Emoji\"}"
     ~actual:"a{--f:ui-serif,\"Noto Color Emoji\"}"
     [ "ui-sans-serif,\"Noto Color Emoji\""; "ui-serif,\"Noto Color Emoji\"" ]
+
+(* An added or removed rule shows its whole body, and that body decides which
+   declaration wins: [color:red] and [color:red !important] are not the same
+   rule. Dropping the flag reports the two as one. *)
+let whole_rule_body_carries_the_flag () =
+  let base = "a{color:blue}" in
+  let gained = "a{color:blue}b{color:red!important;margin:0}" in
+  report_reads ~name:"an added rule" ~expected:base ~actual:gained
+    [ "+ color: red !important"; "+ margin: 0" ];
+  report_reads ~name:"a removed rule" ~expected:gained ~actual:base
+    [ "- color: red !important"; "- margin: 0" ]
+
+(* A value may hold a colon of its own, so the body needs the separator a
+   declaration is written with to say where the property name ended. *)
+let whole_rule_body_separates_name_from_value () =
+  let base = "a{color:blue}" in
+  let gained =
+    "a{color:blue}b{background:url(http://x/y.png);--k:var(--u, 1px)}"
+  in
+  report_reads ~name:"a url value" ~expected:base ~actual:gained
+    [ "+ background: url(http://x/y.png)" ];
+  report_reads ~name:"a custom property" ~expected:base ~actual:gained
+    [ "+ --k: var(--u, 1px)" ]
 
 let suite =
   ( "tree_diff",
@@ -1584,6 +1608,10 @@ let suite =
         key_keeps_two_typed_values_apart;
       Alcotest.test_case "report quotes the author spelling" `Quick
         report_quotes_the_author_spelling;
+      Alcotest.test_case "whole rule body carries the flag" `Quick
+        whole_rule_body_carries_the_flag;
+      Alcotest.test_case "whole rule body separates name from value" `Quick
+        whole_rule_body_separates_name_from_value;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
