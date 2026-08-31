@@ -5301,6 +5301,17 @@ let test_ray_size () =
     sizes;
   neg_cursor read_ray_size "10px"
 
+(* A square or curly block is not a grouping operand in the CSS math grammar.
+   Canonical whitespace therefore leaves math context when it enters one, just
+   as the component-value printer does. *)
+let canonical_math_block_context () =
+  let components = Cursor.remaining (Cursor.of_string "calc([f() + 1])") in
+  let actual =
+    components |> canonicalize_math_whitespace_components
+    |> Parser.to_string_custom
+  in
+  check string "square block ends math context" "calc([f()+ 1])" actual
+
 let additional_tests =
   [
     test_case "will_change" `Quick test_will_change;
@@ -5311,6 +5322,8 @@ let additional_tests =
     test_case "outline" `Quick test_outline;
     test_case "outline_shorthand" `Quick test_outline_shorthand;
     test_case "ray_size" `Quick test_ray_size;
+    test_case "canonical math block context" `Quick
+      canonical_math_block_context;
     test_case "background" `Quick test_background;
     test_case "font_family" `Quick test_font_family;
     test_case "text_shadow" `Quick test_text_shadow;
