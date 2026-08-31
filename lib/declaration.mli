@@ -28,6 +28,11 @@ val pp_property : 'a Properties.property Pp.t
 val pp : t Pp.t
 (** [pp] is the pretty-printer for declarations. *)
 
+val pp_opaque : t Pp.t
+(** [pp_opaque] minifies separators but preserves authored numeric token
+    spellings in an opaque declaration value. It serves declaration feature
+    queries, where the spelling is the compatibility question. *)
+
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] is the pretty-printer for typed values. *)
 

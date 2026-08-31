@@ -2532,6 +2532,36 @@ let rec pp : declaration Pp.t =
          print time, emit the wrapped declaration. *)
       pp ctx decl
 
+(* A declaration feature query hands the authored declaration to another parser.
+   Minify its separators, but keep opaque numeric token spellings: the spelling
+   itself is the compatibility question. *)
+let rec pp_opaque : declaration Pp.t =
+ fun ctx decl ->
+  let pp_components property components important =
+    pp_property ctx property;
+    Pp.char ctx ':';
+    Pp.space_if_pretty ctx ();
+    Pp.string ctx
+      (if Pp.minified ctx then Parser.to_string_minified components
+       else Parser.string_of_components components);
+    if important then
+      Pp.string ctx (if ctx.minify then "!important" else " !important")
+  in
+  match decl with
+  | Declaration
+      { property = Unknown_property _ as property; value; important; _ } ->
+      pp_components property value important
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value { value = Tokens components; _ };
+        important;
+        _;
+      } ->
+      pp_components property components important
+  | Declaration _ -> pp ctx decl
+  | Theme_guarded { decl; _ } -> pp_opaque ctx decl
+
 (* Convert a declaration to its string representation *)
 let to_string ?(minify = false) (decl : t) =
   let buf = Buffer.create 32 in

@@ -4241,7 +4241,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Custom_property _ -> pp pp_custom_property
   | Unknown_property _ ->
       let rendered =
-        if Pp.minified ctx then Parser.to_string_minified value
+        if Pp.minified ctx then Parser.to_string_minified_numbers value
         else Parser.string_of_components value
       in
       Pp.string ctx rendered

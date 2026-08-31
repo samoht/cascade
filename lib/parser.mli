@@ -45,6 +45,12 @@ val to_string_minified : Component.t list -> string
     into a single token, and so does either side of a [+] or [-] operator inside
     a math function, where CSS Values 4 (ED) section 10.8 requires one. *)
 
+val to_string_minified_numbers : Component.t list -> string
+(** [to_string_minified_numbers] additionally chooses shorter exact spellings
+    for numeric tokens. It is a separate operation because some opaque streams,
+    such as declaration feature queries, ask another parser about the author's
+    exact spelling. *)
+
 val is_math_function : string -> bool
 (** [is_math_function name] is true for a CSS Values 4 (ED) section 10 math
     function: [calc()], the comparison functions ([min()], [max()], [clamp()]),

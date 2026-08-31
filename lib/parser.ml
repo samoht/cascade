@@ -301,6 +301,41 @@ let add_token_kind buf : Token.kind -> unit = function
   | Token.Close Curly -> Buffer.add_char buf '}'
   | Token.Eof -> ()
 
+let is_signed_number_repr repr =
+  String.length repr > 0 && (repr.[0] = '-' || repr.[0] = '+')
+
+(* A numeric token's value, rather than its source representation, determines
+   its meaning. Use the typed printer's compact spelling when it is shorter and
+   reparses to the same float; the equality guard keeps high-precision authored
+   values exact when the printer's decimal bound would round them. *)
+let minified_number_repr ?(preserve_sign = false)
+    ({ value; repr; _ } : Token.number) =
+  let compact = Pp.string_of_float ~drop_leading_zero:true value in
+  if preserve_sign && is_signed_number_repr repr then repr
+  else if
+    String.length compact < String.length repr
+    &&
+    match float_of_string_opt compact with
+    | Some parsed -> Float.equal value parsed
+    | None -> false
+  then compact
+  else repr
+
+let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
+    Token.kind -> unit = function
+  | Token.Number_tok number ->
+      Buffer.add_string buf
+        (minified_number_repr ~preserve_sign:preserve_numeric_sign number)
+  | Token.Percentage number ->
+      Buffer.add_string buf
+        (minified_number_repr ~preserve_sign:preserve_numeric_sign number);
+      Buffer.add_char buf '%'
+  | Token.Dimension { number; unit_ } ->
+      Buffer.add_string buf
+        (minified_number_repr ~preserve_sign:preserve_numeric_sign number);
+      add_dimension_unit buf unit_
+  | kind -> add_token_kind buf kind
+
 let opening_char : Token.bracket -> char = function
   | Curly -> '{'
   | Paren -> '('
@@ -319,29 +354,29 @@ let is_whitespace = function
   | Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
-let is_signed_number_repr repr =
-  String.length repr > 0 && (repr.[0] = '-' || repr.[0] = '+')
+let numeric_repr ~minify number =
+  if minify then minified_number_repr number else number.Token.repr
 
-let signed_number_pair prev next =
+let signed_number_pair ~minify prev next =
   match (prev, next) with
   | ( Component.Preserved { kind = Token.Number_tok _; _ },
-      Component.Preserved { kind = Token.Number_tok { repr; _ }; _ } ) ->
-      is_signed_number_repr repr
+      Component.Preserved { kind = Token.Number_tok number; _ } ) ->
+      is_signed_number_repr (numeric_repr ~minify number)
   | _ -> false
 
 (* The sign a numeric token's serialisation opens with, per the [+]/[-] of the
    CSS Syntax 3 (ED) sec. 4.3.12 number grammar. *)
-let numeric_leading_sign = function
+let numeric_leading_sign ~minify = function
   | Component.Preserved
       {
         kind =
-          ( Token.Number_tok { repr; _ }
-          | Token.Percentage { repr; _ }
-          | Token.Dimension { number = { repr; _ }; _ } );
+          ( Token.Number_tok number
+          | Token.Percentage number
+          | Token.Dimension { number; _ } );
         _;
       }
-    when is_signed_number_repr repr ->
-      Some repr.[0]
+    when is_signed_number_repr (numeric_repr ~minify number) ->
+      Some (numeric_repr ~minify number).[0]
   | _ -> None
 
 (* A [+] is no ident code point (CSS Syntax 3 (ED) sec. 4.2) and continues no
@@ -351,8 +386,8 @@ let numeric_leading_sign = function
    minus-signed one only stands apart after a number or a [+]. Emitting a
    separator for either would hand the next reader a token sequence the source
    never held. *)
-let signed_numeric_self_separates prev next =
-  match numeric_leading_sign next with
+let signed_numeric_self_separates ~minify prev next =
+  match numeric_leading_sign ~minify next with
   | None -> false
   | Some '+' -> true
   | Some _ -> (
@@ -364,7 +399,7 @@ let signed_numeric_self_separates prev next =
 
 let normal_pair_needs_token_boundary prev next =
   match (prev, next) with
-  | _ when signed_numeric_self_separates prev next -> false
+  | _ when signed_numeric_self_separates ~minify:false prev next -> false
   (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
      a dimension all end their name at the [(], so the block stays apart. *)
   | ( Component.Preserved { kind = Token.Ident _; _ },
@@ -410,11 +445,12 @@ let normal_pair_needs_token_boundary prev next =
       Component.Preserved
         {
           kind =
-            ( Token.Number_tok { repr; _ }
-            | Token.Percentage { repr; _ }
-            | Token.Dimension { number = { repr; _ }; _ } );
+            ( Token.Number_tok number
+            | Token.Percentage number
+            | Token.Dimension { number; _ } );
           _;
         } ) ->
+      let repr = numeric_repr ~minify:false number in
       repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
   | ( Component.Preserved { kind = Token.Hash _; _ },
       Component.Preserved { kind = Token.Delim "-"; _ } ) ->
@@ -525,9 +561,10 @@ let pair_forms_multichar_token prev next =
       true
   | _ -> false
 
-let pair_needs_token_boundary prev next =
+let pair_needs_token_boundary ~minify_numeric prev next =
   match (prev, next) with
-  | _ when signed_numeric_self_separates prev next -> false
+  | _ when signed_numeric_self_separates ~minify:minify_numeric prev next ->
+      false
   | _ when pair_forms_multichar_token prev next -> true
   (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
      a dimension all end their name at the [(], so the block stays apart. *)
@@ -574,11 +611,12 @@ let pair_needs_token_boundary prev next =
       Component.Preserved
         {
           kind =
-            ( Token.Number_tok { repr; _ }
-            | Token.Percentage { repr; _ }
-            | Token.Dimension { number = { repr; _ }; _ } );
+            ( Token.Number_tok number
+            | Token.Percentage number
+            | Token.Dimension { number; _ } );
           _;
         } ) ->
+      let repr = numeric_repr ~minify:minify_numeric number in
       repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
   (* A hash token absorbs trailing name code points; a following [-] (which is a
      name code point) would extend it on re-tokenization. *)
@@ -586,6 +624,17 @@ let pair_needs_token_boundary prev next =
       Component.Preserved { kind = Token.Delim "-"; _ } ) ->
       true
   | _ -> false
+
+let preserve_minified_numeric_sign ~in_math ~keep_authored_whitespace
+    ~after_whitespace prev cv =
+  match prev with
+  | None -> false
+  | Some p ->
+      Option.is_some (numeric_leading_sign ~minify:false cv)
+      && (in_math
+         || (not (keep_authored_whitespace && after_whitespace))
+            && signed_numeric_self_separates ~minify:false p cv
+            && pair_needs_token_boundary ~minify_numeric:true p cv)
 
 (* CSS Values 4 (ED) sec. 10.8 "Syntax" requires whitespace on both sides of the
    [+] and [-] operators of a math function, and allows [*] and [/] without any.
@@ -617,62 +666,93 @@ let block_in_math ~in_math : Token.bracket -> bool = function
   | Token.Paren -> in_math
   | Token.Square | Token.Curly -> false
 
-let rec cv_to_buffer_min ~in_math buf = function
-  | Preserved t -> add_token_kind buf t.kind
+let minified_stream_needs_separator ~minify_numbers ~in_math prev next =
+  match prev with
+  | None -> false
+  | Some p ->
+      let preserve_numeric_sign =
+        minify_numbers
+        && preserve_minified_numeric_sign ~in_math
+             ~keep_authored_whitespace:false ~after_whitespace:true prev next
+      in
+      pair_forms_multichar_token p next
+      || math_sign_boundary ~in_math p next
+      || (not
+            (signed_number_pair
+               ~minify:(minify_numbers && not preserve_numeric_sign)
+               p next))
+         && word_like_end p
+         && (not (is_backslash_delim p))
+         && word_like_start next
+
+let rec cv_to_buffer_min ~minify_numbers ~in_math ~preserve_numeric_sign buf =
+  function
+  | Preserved t ->
+      if minify_numbers then
+        add_minified_token_kind ~preserve_numeric_sign buf t.kind
+      else add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_min ~in_math:(block_in_math ~in_math opening) buf value;
+      cvs_to_buffer_min ~minify_numbers
+        ~in_math:(block_in_math ~in_math opening)
+        buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min ~in_math:(is_math_function name) buf arguments;
+      cvs_to_buffer_min ~minify_numbers ~in_math:(is_math_function name) buf
+        arguments;
       Buffer.add_char buf ')'
 
-and cvs_to_buffer_min ~in_math buf cvs =
+and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
   let rec drop_ws = function
     | cv :: rest when is_whitespace cv -> drop_ws rest
     | other -> other
   in
-  let needs_separator prev next =
-    match prev with
-    | None -> false
-    | Some p ->
-        pair_forms_multichar_token p next
-        || math_sign_boundary ~in_math p next
-        || (not (signed_number_pair p next))
-           && word_like_end p
-           && (not (is_backslash_delim p))
-           && word_like_start next
-  in
-  let rec loop prev separated = function
+  let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_ws rest in
         let separated' =
           match rest' with
-          | next :: _ when needs_separator prev next ->
+          | next :: _
+            when minified_stream_needs_separator ~minify_numbers ~in_math prev
+                   next ->
               Buffer.add_char buf ' ';
               true
           | _ -> separated
         in
-        loop prev separated' rest'
+        loop prev separated' true rest'
     | cv :: rest ->
+        let preserve_numeric_sign =
+          minify_numbers
+          && preserve_minified_numeric_sign ~in_math
+               ~keep_authored_whitespace:false ~after_whitespace prev cv
+        in
         (match prev with
-        | Some p when (not separated) && pair_needs_token_boundary p cv ->
+        | Some p
+          when (not separated)
+               && (not preserve_numeric_sign)
+               && pair_needs_token_boundary ~minify_numeric:minify_numbers p cv
+          ->
             Buffer.add_char buf ' '
         | _ -> ());
-        cv_to_buffer_min ~in_math buf cv;
-        loop (Some cv) false rest
+        cv_to_buffer_min ~minify_numbers ~in_math ~preserve_numeric_sign buf cv;
+        loop (Some cv) false false rest
   in
-  loop None false cvs
+  loop None false false cvs
 
-let to_string_minified cvs =
+let to_string_minified_with ~minify_numbers cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min ~in_math:false buf cvs;
+    cvs_to_buffer_min ~minify_numbers ~in_math:false buf cvs;
     Buffer.contents buf
+
+let to_string_minified cvs = to_string_minified_with ~minify_numbers:false cvs
+
+let to_string_minified_numbers cvs =
+  to_string_minified_with ~minify_numbers:true cvs
 
 let to_string_custom cvs =
   let buf = Buffer.create 64 in
@@ -737,8 +817,8 @@ let custom_min_bang_boundary prev next rest =
   | Some p, _ when custom_min_is_bang p && custom_min_is_important next -> true
   | _ -> false
 
-let custom_min_word_boundary p next =
-  (not (signed_number_pair p next))
+let custom_min_word_boundary ~minify p next =
+  (not (signed_number_pair ~minify p next))
   && word_like_end p
   && (not (is_backslash_delim p))
   && word_like_start next
@@ -751,12 +831,16 @@ let custom_min_needs_separator ~in_math prev next rest =
   match prev with
   | None -> false
   | Some p ->
+      let minify_numeric =
+        (not in_math)
+        || Option.is_none (numeric_leading_sign ~minify:false next)
+      in
       pair_forms_multichar_token p next
       || custom_min_is_math_delim p
       || custom_min_is_math_delim next
       || math_sign_boundary ~in_math p next
       || custom_min_bang_boundary prev next rest
-      || custom_min_word_boundary p next
+      || custom_min_word_boundary ~minify:minify_numeric p next
 
 let custom_min_ws_separator ~in_math buf prev separated rest =
   match rest with
@@ -765,9 +849,12 @@ let custom_min_ws_separator ~in_math buf prev separated rest =
       true
   | _ -> separated
 
-let custom_min_item_separator buf prev separated cv =
+let custom_min_item_separator ~preserve_numeric_sign buf prev separated cv =
   match prev with
-  | Some p when (not separated) && pair_needs_token_boundary p cv ->
+  | Some p
+    when (not separated)
+         && (not preserve_numeric_sign)
+         && pair_needs_token_boundary ~minify_numeric:true p cv ->
       Buffer.add_char buf ' '
   | _ -> ()
 
@@ -796,13 +883,15 @@ let fold_value_ident s =
   let lower = String.lowercase_ascii s in
   if Hashtbl.mem case_insensitive_value_idents lower then lower else s
 
-let add_custom_value_token ~fold_ident buf : Token.kind -> unit = function
+let add_custom_value_token ~fold_ident ~preserve_numeric_sign buf :
+    Token.kind -> unit = function
   | Token.Ident s -> Buffer.add_string buf (escape_ident (fold_ident s))
-  | other -> add_token_kind buf other
+  | other -> add_minified_token_kind ~preserve_numeric_sign buf other
 
-let rec cv_to_buffer_custom_min ~fold_ident ~in_math buf : Component.t -> unit =
-  function
-  | Preserved t -> add_custom_value_token ~fold_ident buf t.kind
+let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~preserve_numeric_sign buf
+    : Component.t -> unit = function
+  | Preserved t ->
+      add_custom_value_token ~fold_ident ~preserve_numeric_sign buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom ~fold_ident
@@ -832,20 +921,25 @@ let rec cv_to_buffer_custom_min ~fold_ident ~in_math buf : Component.t -> unit =
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
 and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
-  let rec loop prev separated = function
+  let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_whitespace_components rest in
         let separated' =
           custom_min_ws_separator ~in_math buf prev separated rest'
         in
-        loop prev separated' rest'
+        loop prev separated' true rest'
     | cv :: rest ->
-        custom_min_item_separator buf prev separated cv;
-        cv_to_buffer_custom_min ~fold_ident ~in_math buf cv;
-        loop (Some cv) false rest
+        let preserve_numeric_sign =
+          preserve_minified_numeric_sign ~in_math ~keep_authored_whitespace:true
+            ~after_whitespace prev cv
+        in
+        custom_min_item_separator ~preserve_numeric_sign buf prev separated cv;
+        cv_to_buffer_custom_min ~fold_ident ~in_math ~preserve_numeric_sign buf
+          cv;
+        loop (Some cv) false false rest
   in
-  loop None false cvs
+  loop None false false cvs
 
 let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "

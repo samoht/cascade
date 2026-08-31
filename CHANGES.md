@@ -617,6 +617,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- Numeric tokens in custom-property and unknown-property declaration streams
+  use their shortest exact spelling under `--minify`, so `--x: 1.0px` becomes
+  `--x:1px` without changing adjacent token boundaries. Declaration feature
+  queries keep the author's spelling because that is the compatibility question
+  they ask another parser (#719)
 - `--minify` writes no separator into a pair of tokens the source held side by
   side. `--t: x 1px+2px` came out as `--t:x 1px +2px` and `--t: 1px(a)` as
   `--t:1px (a)`, handing every `var()` that read them a whitespace token the
