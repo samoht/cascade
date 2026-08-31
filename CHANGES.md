@@ -615,15 +615,9 @@ recorded cases carrying six minifiers' answers.
   side. `--t: x 1px+2px` came out as `--t:x 1px +2px` and `--t: 1px(a)` as
   `--t:1px (a)`, handing every `var()` that read them a whitespace token the
   author never wrote (#709)
-- `--minify` spells the boundary after a percentage the same way inside every
-  colour function. A constructed `hsl(120 50% 50%)` or `oklch(.659 76% 203.274)`
-  kept a separator that a parse of those same bytes dropped, so a colour built
-  through the API did not read back as itself (#703)
-- `--minify` spells a token boundary after a percentage one way. A constructed
-  `--brand: oklch(63.7% 0.237 25.331)` printed `oklch(63.7%.237 25.331)` while a
-  parse of those same bytes printed `oklch(63.7% .237 25.331)`, so minified
-  output did not read back as itself, and the separator the reader inserted made
-  `--x:10%5px` come out longer than it went in (#700)
+- `--minify` spells a percentage boundary one way in colour functions and
+  custom-property token streams. Constructed and parsed values now read back as
+  themselves without adding or dropping a separator (#700, #703)
 - `--minify` keeps the whitespace CSS Values 4 requires on both sides of a math
   function's `+` and `-` when it prints a custom property or an unknown
   property. `--w: calc(100% - 10px)` came out as `--w:calc(100%- 10px)`, which
