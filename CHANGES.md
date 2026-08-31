@@ -224,6 +224,9 @@ recorded cases carrying six minifiers' answers.
 - An `@property` syntax component carries at most one multiplier. A chained one
   such as `"<custom-ident>+#"` drops the registration the way a browser does,
   where cascade used to accept it and type a property left unregistered (#707)
+- The pre-multiplied `@property` syntax `<transform-list>` cannot take `+` or
+  `#`. Those spellings now drop the registration the way a browser does instead
+  of registering a different list type (#713)
 - Grid line names reject the idents that are not `<custom-ident>`s in that
   position: `span`, `auto`, `default` and the CSS-wide keywords, in every ASCII
   case. `grid-template-columns: [span] 1px` and `grid-row-start: 3 auto` are

@@ -202,11 +202,14 @@ let read_simple_syntax_component r s : any_syntax =
    syntax multipliers. *)
 let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
     =
-  match modifier with
-  | None -> Syntax inner
-  | Some '+' -> Syntax (Plus inner)
-  | Some '#' -> Syntax (Hash inner)
-  | Some c ->
+  match (inner, modifier) with
+  | Transform_list, Some ('+' | '#') ->
+      Cursor.err_invalid r
+        "a pre-multiplied CSS syntax component cannot take a multiplier"
+  | inner, None -> Syntax inner
+  | inner, Some '+' -> Syntax (Plus inner)
+  | inner, Some '#' -> Syntax (Hash inner)
+  | _, Some c ->
       Cursor.err_invalid r
         (String.concat ""
            [ "Unsupported CSS syntax modifier: '"; String.make 1 c; "'" ])

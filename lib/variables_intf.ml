@@ -6,7 +6,7 @@ open Properties
 (** {1 Custom Property Syntax} *)
 
 (** Type-safe CSS [@property] syntax descriptors per CSS Properties and Values
-    API 1 sec. 2 (https://drafts.css-houdini.org/css-properties-values-api-1/).
+    API 1 sec. 5 (https://drafts.css-houdini.org/css-properties-values-api-1/).
     The spec admits only the named [<...>] type references below, the universal
     [*], bare [<ident>] keywords, and the [+]/[#] multipliers; alternatives are
     joined by [|]. *)
