@@ -212,6 +212,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Custom-property declarations containing a `<bad-string-token>` are dropped
+  during stylesheet recovery, preventing minified output from swallowing the
+  containing rule's closing brace when it is parsed again (#727)
 - Declarations containing a non-empty `var()`, `env()` or `attr()` call defer
   CSS-wide keyword mix validation until substitution, instead of being dropped
   while the substituted token stream is still unknown (#726)

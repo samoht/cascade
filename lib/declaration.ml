@@ -203,13 +203,15 @@ let is_decl_value_stop = function
   | Component.Preserved { kind = Token.Semicolon | Token.Delim "!"; _ } -> true
   | _ -> false
 
-let value_components t =
+let components_before stop t =
   let rec take acc = function
     | [] -> List.rev acc
-    | cv :: _ when is_decl_value_stop cv -> List.rev acc
+    | cv :: _ when stop cv -> List.rev acc
     | cv :: rest -> take (cv :: acc) rest
   in
   take [] (Cursor.remaining t)
+
+let value_components t = components_before is_decl_value_stop t
 
 let rec component_is_complete = function
   | Component.Preserved _ -> true
@@ -247,6 +249,19 @@ let rec component_has_unterminated_string = function
 let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
+
+let rec component_has_bad_string = function
+  | Component.Preserved { kind = Token.Bad_string; _ } -> true
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists component_has_bad_string value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      List.exists component_has_bad_string arguments
+  | Component.Preserved _ -> false
+
+let reject_custom_bad_string t =
+  if
+    List.exists component_has_bad_string (components_before is_top_level_stop t)
+  then Cursor.err_invalid t "bad string in custom property value"
 
 let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
@@ -2050,6 +2065,7 @@ let read_custom_value_declaration t name : declaration =
      sequence of one or more tokens", so the whitespace after [:] IS the value
      when nothing else follows ([--foo: ;]). Don't skip it before
      [consume_until_semicolon], or the token count becomes input-dependent. *)
+  reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_custom_important raw_value in
