@@ -137,6 +137,13 @@ let sig_of_decls decls =
       let c = String.compare a1 a2 in
       if c <> 0 then c else String.compare b1 b2)
 
+let reported_declaration d =
+  let value = Css.declaration_value ~minify:false d in
+  let value =
+    if Css.declaration_is_important d then value ^ " !important" else value
+  in
+  (Css.declaration_name d, value)
+
 let restore_group_order table =
   Hashtbl.to_seq_keys table |> List.of_seq
   |> List.iter (fun key ->
@@ -182,12 +189,18 @@ let diff_same_key_pair key d1 d2 =
            property_changes = [];
            added_properties =
              List.filter_map
-               (fun (p, _) -> if List.mem_assoc p sig1 then None else Some p)
-               sig2;
+               (fun d ->
+                 let p = Css.declaration_name d in
+                 if List.mem_assoc p sig1 then None
+                 else Some (reported_declaration d))
+               d2;
            removed_properties =
              List.filter_map
-               (fun (p, _) -> if List.mem_assoc p sig2 then None else Some p)
-               sig1;
+               (fun d ->
+                 let p = Css.declaration_name d in
+                 if List.mem_assoc p sig2 then None
+                 else Some (reported_declaration d))
+               d1;
          })
   else None
 

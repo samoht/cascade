@@ -18,6 +18,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `Tree_diff.Content_changed` carries property/value pairs in
+  `added_properties` and `removed_properties`, so callers can report the value
+  and priority of a declaration that exists on only one side (#723)
 - Public declaration helpers whose CSS values require a non-empty list now
   raise `Invalid_argument` for `[]` instead of emitting a declaration with no
   value.
