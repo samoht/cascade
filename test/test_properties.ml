@@ -4157,7 +4157,23 @@ let test_grid_template () =
      and its bracketed positions are [<line-names>] just the same. *)
   check_grid_template ~expected:"[a]\"x\" 1px" "[a] \"x\" 1px";
   neg_cursor read_grid_template "[span] \"x\" 1px";
-  neg_cursor read_grid_template "\"x\" 1px [auto]"
+  neg_cursor read_grid_template "\"x\" 1px [auto]";
+  (* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |
+     <track-repeat> ] ]+ <line-names>?] places a [<line-names>] before a track
+     size or at the very end, so a track list carries at least one track size
+     and never two [<line-names>] in a row. sec. 7.2.3 gives the [repeat()] body
+     the same shape. *)
+  check_grid_template ~expected:"[a]1px[b]" "[a] 1px [b]";
+  check_grid_template ~expected:"1px[a]2px" "1px [a] 2px";
+  check_grid_template ~expected:"repeat(2,1px[a])" "repeat(2, 1px [a])";
+  neg_cursor read_grid_template "[a]";
+  neg_cursor read_grid_template "[a] [b]";
+  neg_cursor read_grid_template "[a] [b] 1px";
+  neg_cursor read_grid_template "1px [a] [b]";
+  neg_cursor read_grid_template "1px [a] [b] 2px";
+  neg_cursor read_grid_template "1px / [a]";
+  neg_cursor read_grid_template "repeat(2,[a])";
+  neg_cursor read_grid_template "repeat(2,[a] [b] 1px)"
 
 let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""

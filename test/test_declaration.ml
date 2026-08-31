@@ -1983,6 +1983,49 @@ let grid () =
     ~into:"grid-auto-flow:dense" "grid-auto-flow: dense row";
   decl_optimizes ~prop:"grid-auto-flow" ~into:"column dense" "column dense";
 
+  (* CSS Grid 2 (ED) sec. 7.6 gives grid-auto-columns and grid-auto-rows
+     [<track-size>+], so they route to a reader with no [<line-names>] position
+     and none of the sec. 7.2 [<track-list>] forms. *)
+  check_declaration ~expected:"grid-auto-rows:1px" "grid-auto-rows: 1px";
+  check_declaration ~expected:"grid-auto-rows:minmax(1px,2px)"
+    "grid-auto-rows: minmax(1px, 2px)";
+  check_declaration ~expected:"grid-auto-columns:1fr 2fr"
+    "grid-auto-columns: 1fr 2fr";
+  check_declaration ~expected:"grid-auto-rows:fit-content(10px)"
+    "grid-auto-rows: fit-content(10px)";
+  check_declaration ~expected:"grid-auto-rows:auto" "grid-auto-rows: auto";
+  check_declaration ~expected:"grid-auto-rows:initial" "grid-auto-rows: initial";
+  neg_cursor read_declaration "grid-auto-rows: [a] 1px";
+  neg_cursor read_declaration "grid-auto-rows: [a]";
+  neg_cursor read_declaration "grid-auto-rows: 1px [a]";
+  neg_cursor read_declaration "grid-auto-columns: [a] 1px";
+  neg_cursor read_declaration "grid-auto-rows: none";
+  neg_cursor read_declaration "grid-auto-rows: subgrid";
+  neg_cursor read_declaration "grid-auto-rows: repeat(2, 1px)";
+  neg_cursor read_declaration "grid-auto-rows: 1px / 2px";
+
+  (* sec. 7.2 keeps every [<line-names>] next to a track size, in the shorthands
+     as well as in grid-template-columns / grid-template-rows. *)
+  check_declaration ~expected:"grid-template-columns:[a]1px"
+    "grid-template-columns: [a] 1px";
+  check_declaration ~expected:"grid-template-columns:1px[a]2px"
+    "grid-template-columns: 1px [a] 2px";
+  neg_cursor read_declaration "grid-template-columns: [a]";
+  neg_cursor read_declaration "grid-template-rows: [a] [b] 1px";
+  neg_cursor read_declaration "grid-template: 1px / [a]";
+  neg_cursor read_declaration "grid: auto-flow [a] / 1px";
+
+  (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
+     declaration, so a CSS-wide keyword is a placement value on its own and
+     never one slot of one. *)
+  check_declaration ~expected:"grid-column:initial" "grid-column: initial";
+  check_declaration ~expected:"grid-area:initial" "grid-area: initial";
+  neg_cursor read_declaration "grid-column: 2 / initial";
+  neg_cursor read_declaration "grid-row: 2 / initial";
+  neg_cursor read_declaration "grid-area: 1 / 2 / 3 / initial";
+  neg_cursor read_declaration "grid-column: initial / 2";
+  neg_cursor read_declaration "grid-column-start: 2 initial";
+
   (* Grid gaps *)
   check_declaration ~expected:"gap:10px" "gap: 10px";
   check_declaration ~expected:"gap:10px 20px" "gap: 10px 20px";
