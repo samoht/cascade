@@ -606,13 +606,21 @@ let grid_line_at_end t =
   | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
   | _ -> false
 
-(* CSS Grid 2 sec. 8.3 excludes [span] from the [<custom-ident>] of a grid line
-   name. That exclusion is on the keyword, so it reads case-insensitively while
-   the name itself keeps the author's case (CSS Values 4 sec. 4.1 and 4.2). *)
+(* CSS Grid 2 sec. 8.3 and sec. 7.2.2 exclude [span] and [auto] from the
+   [<custom-ident>] of a grid line name; CSS Values 4 sec. 4.2 excludes the
+   CSS-wide keywords and the reserved [default] from every [<custom-ident>].
+   Each exclusion is on a keyword, so it reads case-insensitively while the name
+   itself keeps the author's case (sec. 4.1 and 4.2). *)
+let excluded_grid_line_name name =
+  match String.lowercase_ascii_preserve name with
+  | "span" | "auto" | "default" -> true
+  | lowered -> is_css_wide_keyword lowered
+
 let read_grid_line_name t =
   let name = Cursor.ident t in
-  if String.lowercase_ascii_preserve name = "span" then
-    Cursor.err_invalid t "duplicate span grid line"
+  if excluded_grid_line_name name then
+    Cursor.err_invalid t
+      (String.concat "" [ "reserved grid line name: "; name ])
   else name
 
 let read_grid_span t =
@@ -654,12 +662,24 @@ let read_grid_line_number t : grid_line =
   match name with Some name -> Num_name (n, name) | None -> Num n
 
 let read_grid_line_name_value t : grid_line =
-  let name = read_grid_line_name t in
-  Cursor.ws t;
-  let n : int option =
-    if grid_line_at_end t then None else Cursor.option Cursor.int t
-  in
-  match n with Some n -> Num_name (n, name) | None -> Name name
+  match Cursor.peek_ident t with
+  | Some keyword when is_css_wide_keyword keyword ->
+      (* CSS Cascade 5 sec. 7.3: explicit defaulting takes the whole
+         declaration, so a CSS-wide keyword reaches a [<grid-line>] as the
+         entire value and never as the [<custom-ident>] of a line. [Name]
+         carries it. *)
+      let name = Cursor.ident t in
+      Cursor.ws t;
+      if not (Cursor.is_done t) then
+        Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+      Name name
+  | _ -> (
+      let name = read_grid_line_name t in
+      Cursor.ws t;
+      let n : int option =
+        if grid_line_at_end t then None else Cursor.option Cursor.int t
+      in
+      match n with Some n -> Num_name (n, name) | None -> Name name)
 
 let read_grid_line_calc t : grid_line =
   (* read_calc handles the calc(...) wrapper itself *)
@@ -805,8 +825,7 @@ module Grid_template = struct
         let names =
           Cursor.list ~at_least:0
             ~sep:(fun i -> Cursor.ws i)
-            (fun i -> Cursor.ident i)
-            inner
+            read_grid_line_name inner
         in
         Line_names names)
       t
@@ -885,6 +904,29 @@ let grid_template_components_well_formed cvs =
   in
   well_formed cvs
 
+(* CSS Grid 2 sec. 7.4: every [[...]] block in a [grid-template] value is a
+   [<line-names>], so the sec. 7.2.2 exclusions reach the blocks the [<string>]
+   form keeps as raw text as well. *)
+let line_names_block_valid value =
+  List.for_all
+    (function
+      | Component.Preserved { kind = Token.Ident name; _ } ->
+          not (excluded_grid_line_name name)
+      | _ -> true)
+    value
+
+let rec grid_template_line_names_valid = function
+  | [] -> true
+  | Component.Block { node = { opening; value; _ }; _ } :: rest ->
+      (match opening with
+        | Token.Square -> line_names_block_valid value
+        | Token.Curly | Token.Paren -> grid_template_line_names_valid value)
+      && grid_template_line_names_valid rest
+  | Component.Func { node = { arguments; _ }; _ } :: rest ->
+      grid_template_line_names_valid arguments
+      && grid_template_line_names_valid rest
+  | _ :: rest -> grid_template_line_names_valid rest
+
 let read_grid_template_tracks t =
   let tracks =
     Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
@@ -909,6 +951,8 @@ let rec read_grid_template t : grid_template =
       Cursor.err_invalid t "grid-template duplicate slash form";
     if not (grid_template_components_well_formed cvs) then
       Cursor.err_invalid t "grid-template malformed raw template";
+    if not (grid_template_line_names_valid cvs) then
+      Cursor.err_invalid t "grid-template reserved line name";
     let raw = Cursor.consume_to_decl_end ~trim:true t in
     Template
       (Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))))

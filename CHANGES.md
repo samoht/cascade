@@ -210,6 +210,11 @@ recorded cases carrying six minifiers' answers.
 - An `@property` syntax component carries at most one multiplier. A chained one
   such as `"<custom-ident>+#"` drops the registration the way a browser does,
   where cascade used to accept it and type a property left unregistered (#707)
+- Grid line names reject the idents that are not `<custom-ident>`s in that
+  position: `span`, `auto`, `default` and the CSS-wide keywords, in every ASCII
+  case. `grid-template-columns: [span] 1px` and `grid-row-start: 3 auto` are
+  dropped the way a browser drops them, rather than kept as a declaration that
+  then applies (#708)
 - Trailing content inside a parenthesised or bracketed sub-expression makes the
   whole value invalid, as it does in a browser. `width: calc((1px 2px))` used
   to keep the prefix a reader recognised and drop the rest (#701)
