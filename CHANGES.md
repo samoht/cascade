@@ -18,6 +18,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `place_items` gains `First_baseline` and `Last_baseline`, preserving the two
+  modifier-first baseline positions accepted by `place-items` (#725)
 - `Tree_diff.Content_changed` carries property/value pairs in
   `added_properties` and `removed_properties`, so callers can report the value
   and priority of a declaration that exists on only one side (#723)

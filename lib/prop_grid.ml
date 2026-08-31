@@ -416,6 +416,8 @@ let rec pp_place_items : place_items Pp.t =
   | Center -> Pp.string ctx "center"
   | Stretch -> Pp.string ctx "stretch"
   | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
   | Start_safe -> Pp.string ctx "safe start"
   | End_safe -> Pp.string ctx "safe end"
   | Center_safe -> Pp.string ctx "safe center"
@@ -530,8 +532,23 @@ let place_items_align : place_items -> align_items option = function
   | End -> Some End
   | Center -> Some Center
   | Baseline -> Some Baseline
+  | First_baseline -> Some First_baseline
+  | Last_baseline -> Some Last_baseline
   | Stretch -> Some Stretch
   | _ -> None
+
+(* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
+   baseline. The [&&] is order-free, but only the modifier-first spelling is
+   read: no browser takes the modifier after the keyword. *)
+let read_place_items_baseline t =
+  let value =
+    Cursor.enum "place-items"
+      [ ("first", (First_baseline : place_items)); ("last", Last_baseline) ]
+      t
+  in
+  Cursor.ws t;
+  Cursor.expect_string "baseline" t;
+  value
 
 let read_place_items_first t =
   Cursor.enum "place-items"
@@ -543,7 +560,7 @@ let read_place_items_first t =
       ("baseline", Baseline);
       ("inherit", Inherit);
     ]
-    t
+    ~default:read_place_items_baseline t
 
 let read_place_items_default t =
   if Cursor.looking_at t "safe" then read_place_items_safe t

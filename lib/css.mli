@@ -4088,6 +4088,8 @@ type place_items = Properties.place_items =
   | Center
   | Stretch
   | Baseline
+  | First_baseline
+  | Last_baseline
   | Start_safe
   | End_safe
   | Center_safe
