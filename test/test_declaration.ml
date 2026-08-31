@@ -3012,6 +3012,42 @@ let spec_custom_tokens () =
   neg_cursor read_declaration "-x: value";
   neg_cursor read_declaration "--x"
 
+(* The structural-diff key unquotes a multi-word family name in a custom
+   property only when a generic family in the stream proves the stream is a
+   font-family list, where CSS Fonts 4 sec. 2.1.1 spells the one name both ways.
+   A custom property is otherwise an arbitrary token stream, and dropping the
+   quotes turns one [<string>] into two [<ident>]s, which is a different value
+   wherever the property substitutes into another grammar. *)
+let custom_font_equivalence_key () =
+  let key css =
+    Css.declaration_value_for_equivalence (Css.Declaration.of_string css)
+  in
+  List.iter
+    (fun (css, expected) -> Alcotest.(check string) css expected (key css))
+    [
+      (* [sans-serif] is only valid in a font-family list, so both spellings of
+         the multi-word name reach the unquoted one. *)
+      ({|--f: a,"Segoe UI",sans-serif|}, "a,Segoe UI,sans-serif");
+      ({|--f: a,Segoe UI,sans-serif|}, "a,Segoe UI,sans-serif");
+      (* No generic family, no proof: the quotes are part of the value. *)
+      ({|--f: a,"Segoe UI",b|}, {|a,"Segoe UI",b|});
+      ({|--f: a,Segoe UI,b|}, "a,Segoe UI,b");
+      (* The rewrite spans a [<string>] holding an [<ident>] sequence, so a
+         single-word name keeps whichever spelling it was written with. *)
+      ({|--f: "Arial",sans-serif|}, {|"Arial",sans-serif|});
+      ({|--f: Arial,sans-serif|}, "Arial,sans-serif");
+    ];
+  let equal a b = String.equal (key a) (key b) in
+  Alcotest.(check bool)
+    "a generic family equates the two spellings" true
+    (equal {|--f: a,"Segoe UI",sans-serif|} {|--f: a,Segoe UI,sans-serif|});
+  Alcotest.(check bool)
+    "without one they stay distinct" false
+    (equal {|--f: a,"Segoe UI",b|} {|--f: a,Segoe UI,b|});
+  Alcotest.(check bool)
+    "a single-word name stays distinct" false
+    (equal {|--f: "Arial",sans-serif|} {|--f: Arial,sans-serif|})
+
 let color_functions () =
   (* color() with alternate spaces and alpha *)
   check_declaration ~expected:"color:color(display-p3 1 0 0/.5)"
@@ -4977,6 +5013,8 @@ let declaration_tests =
       parse_declaration_name_case;
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
+    test_case "a generic family gates the equivalence key" `Quick
+      custom_font_equivalence_key;
     test_case "vendor prefixes" `Quick vendor_prefixes;
     test_case "vendor-prefixed shorthand readers" `Quick
       vendor_prefixed_shorthands;
