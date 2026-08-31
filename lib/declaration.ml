@@ -752,8 +752,6 @@ let read_shape_outside t =
   Cursor.expect_eof t;
   raw
 
-let read_grid_template_list t = read_grid_template t
-
 (* Some properties (shape-margin, scroll-padding, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
@@ -1325,9 +1323,9 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
   | Grid_template_columns ->
-      Some (v Grid_template_columns (read_grid_template_list t))
+      Some (v Grid_template_columns (read_grid_template_tracks t))
   | Grid_template_rows ->
-      Some (v Grid_template_rows (read_grid_template_list t))
+      Some (v Grid_template_rows (read_grid_template_tracks t))
   | Grid_row_start -> Some (v Grid_row_start (read_grid_line t))
   | Grid_row_end -> Some (v Grid_row_end (read_grid_line t))
   | Grid_column_start -> Some (v Grid_column_start (read_grid_line t))

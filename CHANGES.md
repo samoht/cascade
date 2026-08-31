@@ -217,6 +217,9 @@ recorded cases carrying six minifiers' answers.
   used to read the wider `grid-template-*` grammar, so a line-name block, a
   `repeat()`, `none` or a slash form parsed and applied where a browser drops
   the declaration (#712)
+- `grid-template-columns` and `grid-template-rows` reject the slash and string
+  area forms reserved for the `grid-template` shorthand instead of applying
+  them as longhand values (#717)
 - A grid track list carries at least one track size, and never two line-name
   blocks in a row. `grid-template-columns: [a]` and `1px [a] [b] 2px` are
   dropped the way a browser drops them, inside a `repeat()` body and in the
@@ -1124,6 +1127,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.Properties.read_grid_template_tracks` parses the track-list grammar of
+  `grid-template-columns` and `grid-template-rows` without accepting the wider
+  shorthand forms handled by `read_grid_template` (#717)
 - The `Css.declaration_value_for_equivalence` docstring names the generic
   family that gates its unquoting: without one in the stream,
   `--font: "Noto Color Emoji"` and `--font: Noto Color Emoji` are distinct diff
