@@ -465,6 +465,8 @@ let special_cases () =
   check_declaration ~expected:"background-position:30%50%,70%50%"
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
+  check_declaration ~expected:"background-position:var(--x) 20%"
+    "background-position: var(--x) 20%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
     "mask-position: 0 0, 10px 10px;";
 

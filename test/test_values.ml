@@ -764,7 +764,20 @@ let test_color_oklch_printing () =
   let open Css.Values in
   let c = oklch 50.0 0.123 30.0 in
   let s = Css.Pp.to_string pp_color c in
-  Alcotest.(check string) "oklch printing" "oklch(50% .123 30)" s
+  Alcotest.(check string) "oklch printing" "oklch(50% .123 30)" s;
+  let dynamic =
+    Oklch
+      {
+        l = Some (Var (var_ref "l"));
+        c = Some 0.237;
+        h = Unitless 25.;
+        alpha = None;
+      }
+  in
+  Alcotest.(check string)
+    "a dynamic lightness keeps its following separator"
+    "oklch(var(--l) .237 25)"
+    (Css.Pp.to_string ~minify:true pp_color dynamic)
 
 (* A [none] hue is a missing component, not the number zero: it stays [none]
    through printing, and the colour cannot fold to a hex because a hex would pin
