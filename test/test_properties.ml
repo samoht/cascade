@@ -4073,9 +4073,11 @@ let test_grid_line () =
   neg_cursor ~allow_partial:true read_grid_line "3 unset";
   neg_cursor ~allow_partial:true read_grid_line "3 revert";
   neg_cursor ~allow_partial:true read_grid_line "3 revert-layer";
+  neg_cursor ~allow_partial:true read_grid_line "3 revert-rule";
   (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
      declaration, so a CSS-wide keyword is a [<grid-line>] on its own only. *)
   check_grid_line "initial";
+  check_grid_line "revert-rule";
   neg_cursor read_grid_line "initial 3";
   (* [<grid-line>] has no [none] and no [dense] keyword, so neither is excluded
      from its [<custom-ident>]. *)
@@ -4149,6 +4151,7 @@ let test_grid_template () =
   neg_cursor read_grid_template "[unset] 1px";
   neg_cursor read_grid_template "[revert] 1px";
   neg_cursor read_grid_template "[revert-layer] 1px";
+  neg_cursor read_grid_template "[revert-rule] 1px";
   neg_cursor read_grid_template "[a span] 1px";
   neg_cursor ~allow_partial:true read_grid_template "1px [span]";
   (* Nothing else is excluded: the brackets make the position unambiguous, so a
