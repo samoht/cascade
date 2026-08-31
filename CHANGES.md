@@ -1082,6 +1082,9 @@ recorded cases carrying six minifiers' answers.
   value shown was read off the comparison key, so a custom property holding a
   quoted multi-word family name was reported unquoted on both sides, a spelling
   neither file held (#702)
+- A one-word family name in a custom property compares equal quoted and
+  unquoted when a generic family proves the value is a font stack. `"serif"`
+  and the other CSS Fonts 4 sec. 2.1.1 exclusions stay distinct (#705)
 
 ### Library
 

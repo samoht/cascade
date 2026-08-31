@@ -78,13 +78,13 @@ val read_custom_property_value :
 
 val unquote_font_family_strings : custom_value -> custom_value
 (** [unquote_font_family_strings components] rewrites each [<string>] token
-    whose content is a multi-word identifier sequence as the equivalent
-    [<ident> <whitespace> <ident> ...] component sequence. Used by the
-    [@property]-registered custom-property promotion when the registered syntax
-    accepts [<custom-ident>+] (CSS Fonts 4 sec. 2.1.1 makes the two forms
-    equivalent in font-family-typed positions). A single-word string, a string
+    whose content is an identifier sequence as the equivalent
+    [<ident> <whitespace> <ident> ...] component sequence, which CSS Fonts 4
+    sec. 2.1.1 spells as the same [<font-family-name>], one word or several.
+    Only for a stream a generic family has proven to be a font stack. A string
     holding a word that sec. 2.1.1 excludes from [<custom-ident>], and any token
-    that isn't a [<string>] pass through unchanged. *)
+    that isn't a [<string>], pass through unchanged; a name of one word also
+    clears [emoji], [fangsong] and [none]. *)
 
 val canonicalize_math_whitespace_components : custom_value -> custom_value
 (** [canonicalize_math_whitespace_components components] drops the whitespace of

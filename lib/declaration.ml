@@ -138,12 +138,12 @@ let rec custom_declaration_layer = function
   | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
 (* Equivalence-only normalisation for structural diffing: rewrite a quoted
-   multi-word [<string>] in a custom-property stream as the equivalent unquoted
-   [<ident>] sequence. The forms substitute identically into [font-family] so
-   cascade treats them as equal, but keeps both verbatim on output (unquoting an
-   opaque custom property could corrupt a [content] use). Gated on a generic
-   family being present, since an unregistered property is otherwise
-   type-unknown. *)
+   family name in a custom-property stream as the equivalent unquoted [<ident>]
+   sequence, one word or several. The forms substitute identically into
+   [font-family] so cascade treats them as equal, but keeps both verbatim on
+   output (unquoting an opaque custom property could corrupt a [content] use).
+   Gated on a generic family being present, since an unregistered property is
+   otherwise type-unknown. *)
 let unquote_custom_font_strings = function
   | Declaration
       {

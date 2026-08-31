@@ -588,6 +588,12 @@ let is_font_family_keyword_name s =
 
 let can_unquote_font_family_name s =
   match String.split_on_char ' ' s with
+  | [] -> false
+  | [ w ] ->
+      (* A [<custom-ident>+] of one word is still a [<custom-ident>+], so a lone
+         name unquotes as a sequence does, against the wider exclusion: the
+         words only a lone position reads as a keyword are excluded too. *)
+      is_font_family_ident_word w && not (is_font_family_keyword_name w)
   | _ :: _ :: _ as words ->
       (* The exclusion is stated per identifier, so it holds at every word of a
          [<custom-ident>+] sequence and not only at a lone one: [inherit test]
@@ -597,16 +603,13 @@ let can_unquote_font_family_name s =
         (fun w ->
           is_font_family_ident_word w && not (is_font_family_reserved_word w))
         words
-  | _ -> false
 
-(* Walk a component stream and rewrite each [<string>] token whose content is a
-   multi-word identifier sequence (the [can_unquote_font_family_name] guard) as
-   an explicit [<ident>] sequence. Used by the [@property]-registered custom
-   property promotion path when the registered syntax accepts [<custom-ident>+]
-   - the two forms ([custom-ident>+] vs [<string>]) are spec-equivalent there
-   (CSS Fonts 4 sec. 2.1.1), so the rewrite produces a single canonical AST. The
-   guard keeps a name holding a reserved word quoted, so no rewrite turns a word
-   of the sequence into a keyword. *)
+(* Walk a component stream and rewrite each [<string>] token whose content is an
+   identifier sequence (the [can_unquote_font_family_name] guard) as an explicit
+   [<ident>] sequence. Only for a stream a generic family has proven to be a
+   font stack, where CSS Fonts 4 sec. 2.1.1 makes the two forms one name. The
+   guard keeps a name holding an excluded word quoted, so no rewrite turns a
+   word of the sequence into a keyword. *)
 let unquote_font_family_strings components =
   let changed = ref false in
   let words_of s =

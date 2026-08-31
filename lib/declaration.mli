@@ -118,11 +118,12 @@ val map_custom_value : (string -> string) -> declaration -> declaration
     unchanged. *)
 
 val unquote_custom_font_strings : declaration -> declaration
-(** [unquote_custom_font_strings d] rewrites a quoted multi-word [<string>] in a
+(** [unquote_custom_font_strings d] rewrites a quoted family name in a
     custom-property token stream as the equivalent unquoted [<ident>] sequence,
-    when a generic family in the stream proves the stream is a font-family list.
-    Equivalence-only normalisation for structural diffing; a stream without that
-    proof, and any other declaration, passes through unchanged. *)
+    one word or several, when a generic family in the stream proves the stream
+    is a font-family list. Equivalence-only normalisation for structural
+    diffing; a stream without that proof, and any other declaration, passes
+    through unchanged. *)
 
 val canonicalize_custom_whitespace : declaration -> declaration
 (** [canonicalize_custom_whitespace d] drops from a custom-property token stream

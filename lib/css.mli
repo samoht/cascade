@@ -1538,13 +1538,14 @@ val declaration_value_for_equivalence : declaration -> string
     [+] or [-], and the space beside a [var()], [env()] or [attr()] that sec.
     2.5 substitutes textually into its neighbour, keep two spellings apart.
 
-    A quoted multi-word [<string>] in that stream is rewritten as the equivalent
-    unquoted [<ident>] sequence, when a generic family in the stream proves the
-    stream is a font-family list, where CSS Fonts 4 sec. 2.1.1 spells the one
-    name both ways: [--font: ui-sans-serif,"Noto Color Emoji"] and
-    [--font: ui-sans-serif,Noto Color Emoji] compare equal. Without that proof
-    the stream is arbitrary tokens, in which one [<string>] is not an [<ident>]
-    sequence, and the two spellings keep distinct keys.
+    A quoted family name in that stream is rewritten as the equivalent unquoted
+    [<ident>] sequence, one word or several, when a generic family in the stream
+    proves the stream is a font-family list, where CSS Fonts 4 sec. 2.1.1 spells
+    the one name both ways: [--font: ui-sans-serif,"Noto Color Emoji"] and
+    [--font: ui-sans-serif,Noto Color Emoji] compare equal, as do
+    [--font: "Arial",sans-serif] and [--font: Arial,sans-serif]. Without that
+    proof the stream is arbitrary tokens, in which one [<string>] is not an
+    [<ident>] sequence, and the two spellings keep distinct keys.
 
     Not for emission, where every one of these forms stays verbatim. *)
 
