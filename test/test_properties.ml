@@ -5322,8 +5322,7 @@ let additional_tests =
     test_case "outline" `Quick test_outline;
     test_case "outline_shorthand" `Quick test_outline_shorthand;
     test_case "ray_size" `Quick test_ray_size;
-    test_case "canonical math block context" `Quick
-      canonical_math_block_context;
+    test_case "canonical math block context" `Quick canonical_math_block_context;
     test_case "background" `Quick test_background;
     test_case "font_family" `Quick test_font_family;
     test_case "text_shadow" `Quick test_text_shadow;

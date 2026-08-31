@@ -3827,7 +3827,7 @@ let is_mul_or_div_delim = function
   | _ -> false
 
 (* Outside a math function only the whitespace adjacent to a [*] or [/] delim is
-   insignificant (CSS Values 4 sec. 10.1): [16 / 9] and [16/9] re-tokenise
+   insignificant (CSS Values 4 sec. 10.8): [16 / 9] and [16/9] re-tokenise
    identically wherever the stream is substituted. Every other separator stays
    (a whitespace token between two values is part of the stream). *)
 let strip_mul_div_whitespace comps =
@@ -3887,9 +3887,9 @@ let strip_after_close_paren ~in_math comps =
 
 (* [in_math] tracks whether the current component list is inside a math
    function's grammar. It enters at the args of a [calc()] / [min()] / ... call,
-   propagates through grouping parens ([Block]s) since those are math operands,
-   and turns off when entering a nested non-math function like [var()] which has
-   its own grammar. *)
+   propagates through grouping paren [Block]s since those are math operands, and
+   turns off in square or curly blocks and nested non-math functions like
+   [var()], which have their own grammars. *)
 let rec canonicalize_math_whitespace ~in_math comps =
   let comps' =
     List.map
@@ -3906,7 +3906,14 @@ let rec canonicalize_math_whitespace ~in_math comps =
               { wrapped with node = { func with arguments = args } }
         | Component.Block wrapped ->
             let block = wrapped.Component.node in
-            let value = canonicalize_math_whitespace ~in_math block.value in
+            let nested_in_math =
+              match block.opening with
+              | Token.Paren -> in_math
+              | Token.Square | Token.Curly -> false
+            in
+            let value =
+              canonicalize_math_whitespace ~in_math:nested_in_math block.value
+            in
             Component.Block { wrapped with node = { block with value } }
         | Component.Preserved _ -> c)
       comps

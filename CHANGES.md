@@ -1075,6 +1075,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- Math-whitespace canonicalisation leaves math context in square and curly
+  blocks, matching the component-value printer and the `()`-only grouping
+  grammar (#720)
 - `:is(a, b)` and the selector list `a, b` compare equal when the arguments
   share one specificity, which is the split-against-grouped selector list the
   mode promises to equate (#655)

@@ -5318,9 +5318,9 @@ let skip_sum_operator t ~ws_before =
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  (* CSS Values 4 10.7: [+] and [-] are left-associative, so [a - b - c] groups
-     as [(a - b) - c]. Loop on subsequent operators rather than recursing on the
-     right, which would group it as [a - (b - c)]. *)
+  (* CSS Values 4 sec. 10.1 evaluates same-precedence operators left-to-right,
+     so [a - b - c] groups as [(a - b) - c]. Loop on subsequent operators rather
+     than recursing on the right, which would group it as [a - (b - c)]. *)
   let rec loop left =
     let ws_before = Cursor.skip_ws t in
     match Cursor.peek_delim t with
