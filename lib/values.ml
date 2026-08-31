@@ -947,6 +947,25 @@ let rec calc_contains_var : type a. a calc -> bool = function
   | Nested inner | Parens inner -> calc_contains_var inner
   | Expr (l, _, r) -> calc_contains_var l || calc_contains_var r
 
+(* Drop authored grouping nodes while retaining the expression tree that gives
+   them their meaning. The printer's precedence rules reconstruct parentheses
+   exactly where serialization still needs them. This is an AST normalization,
+   so a non-normalized value keeps every authored [Parens] node. *)
+let rec normalize_calc_parens : type a. a calc -> a calc =
+ fun calc ->
+  match calc with
+  | Parens inner -> normalize_calc_parens inner
+  | Nested inner ->
+      let inner' = normalize_calc_parens inner in
+      if inner' == inner then calc else Nested inner'
+  | Expr (left, op, right) ->
+      let left' = normalize_calc_parens left in
+      let right' = normalize_calc_parens right in
+      if left' == left && right' == right then calc else Expr (left', op, right')
+  | Val _ | Var _ | Num _ | Math_const _ | Math_fn _ | Sibling_index
+  | Sibling_count ->
+      calc
+
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
@@ -967,8 +986,6 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
           (fun ctx inner ->
             pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
           ctx inner
-    | Parens inner when Pp.minified ctx ->
-        pp_calc_inner ~parent_prec ~right_of_noncommut ctx inner
     | Parens inner ->
         Pp.char ctx '(';
         pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
@@ -1123,8 +1140,8 @@ let unwrap_grouping : type a.
   | Var v as leaf when ctx.var_is_single_valued v.name -> leaf
   | reduced -> rewrap reduced
 
-let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
- fun ?(ctx = default_calc_ctx) -> function
+let rec eval_calc_inner : type a. ctx:calc_ctx -> a calc -> a calc =
+ fun ~ctx -> function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
@@ -1136,12 +1153,16 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
       | Some (Scalar v) -> Num v
       | Some (United _) | None -> Math_fn fn)
   | Nested inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Nested r) (eval_calc ~ctx inner)
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Nested r)
+        (eval_calc_inner ~ctx inner)
   | Parens inner ->
-      unwrap_grouping ~ctx ~rewrap:(fun r -> Parens r) (eval_calc ~ctx inner)
+      unwrap_grouping ~ctx
+        ~rewrap:(fun r -> Parens r)
+        (eval_calc_inner ~ctx inner)
   | Expr (l, op, r) -> (
-      let l = eval_calc ~ctx l in
-      let r = eval_calc ~ctx r in
+      let l = eval_calc_inner ~ctx l in
+      let r = eval_calc_inner ~ctx r in
       (* Match on the const-folded operands but keep [l] / [r] in the no-fold
          results, so an unreduced expression keeps the short [calc(.. pi ..)].
          Identity rules need a type-aware [Val] inspection (runtime subst?);
@@ -1165,6 +1186,9 @@ let rec eval_calc : type a. ?ctx:calc_ctx -> a calc -> a calc =
               match fold_zero_numeric_expr lc op rc with
               | Some zero -> zero
               | None -> Expr (l, op, r))))
+
+let eval_calc ?(ctx = default_calc_ctx) calc =
+  normalize_calc_parens (eval_calc_inner ~ctx calc)
 
 (* A subtree Cascade has to evaluate to a float of its own: a math constant or a
    math function. A fold that consumes one lands a computed coefficient in the
@@ -1273,7 +1297,7 @@ let eval_typed_calc : type a.
     let reduced, computed = reduce inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
   in
-  settle_computed round (reduce calc)
+  normalize_calc_parens (settle_computed round (reduce calc))
 
 let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
  fun ?(unwrap_num = true) pp_value ctx calc ->

@@ -2897,9 +2897,9 @@ let unterminated () =
      an explicit closer would have produced -- the parser must not silently drop
      content. *)
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
-  (* The auto-closed inner parens collapse to a single value, leaving the outer
-     mixed-unit calc preserved. *)
-  check_declaration ~expected:"width:calc(100% - 10px)"
+  (* The cursor parser preserves the auto-closed inner parens. The stylesheet
+     recovery path drops this incomplete declaration before normalization. *)
+  check_declaration ~expected:"width:calc(100% - (10px))"
     "width: calc(100% - (10px)";
   (* Declaration-level recovery can accept the unterminated color function; the
      stylesheet parser drops it, so assert the optimize oracle directly through

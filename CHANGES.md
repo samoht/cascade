@@ -1075,6 +1075,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- Calc printers preserve authored grouping nodes. Redundant parentheses are
+  removed by value normalization instead, while precedence-sensitive groups
+  are reconstructed from the expression tree (#721)
 - Math-whitespace canonicalisation leaves math context in square and curly
   blocks, matching the component-value printer and the `()`-only grouping
   grammar (#720)
