@@ -2016,6 +2016,15 @@ let grid () =
     "grid-template-columns: [a] 1px";
   check_declaration ~expected:"grid-template-columns:1px[a]2px"
     "grid-template-columns: 1px [a] 2px";
+  (* CSS Grid 2 sec. 7.2 gives [subgrid] its own [<line-name-list>] grammar.
+     Unlike an ordinary track list, that list may contain adjacent line-name
+     blocks or a name-only [repeat()]. *)
+  check_declaration ~expected:"grid-template-columns:subgrid[a]"
+    "grid-template-columns: subgrid [a]";
+  check_declaration ~expected:"grid-template-rows:subgrid[a][b]"
+    "grid-template-rows: subgrid [a] [b]";
+  check_declaration ~expected:"grid-template-columns:subgrid repeat(2,[a])"
+    "grid-template-columns: subgrid repeat(2, [a])";
   neg_cursor read_declaration "grid-template-columns: [a]";
   neg_cursor read_declaration "grid-template-rows: [a] [b] 1px";
   neg_cursor read_declaration "grid-template: 1px / [a]";
