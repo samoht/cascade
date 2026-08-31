@@ -3050,12 +3050,15 @@ let spec_custom_tokens () =
   neg_cursor read_declaration "-x: value";
   neg_cursor read_declaration "--x"
 
-(* The structural-diff key unquotes a multi-word family name in a custom
-   property only when a generic family in the stream proves the stream is a
-   font-family list, where CSS Fonts 4 sec. 2.1.1 spells the one name both ways.
-   A custom property is otherwise an arbitrary token stream, and dropping the
-   quotes turns one [<string>] into two [<ident>]s, which is a different value
-   wherever the property substitutes into another grammar. *)
+(* CSS Fonts 4 sec. 2.1.1 gives a [<font-family-name>] two spellings, a
+   [<string>] and a [<custom-ident>+], and they name the same family whether
+   that ident sequence runs to one word or several, so the structural-diff key
+   folds the quoted spelling onto the bare one. The fold needs a generic family
+   in the stream to prove the stream is a font-family list: a custom property is
+   otherwise an arbitrary token stream, in which dropping the quotes is a
+   different value wherever the property substitutes into another grammar. A
+   name the section excludes from [<custom-ident>] keeps its quotes, since
+   unquoting it would name the keyword instead of the family. *)
 let custom_font_equivalence_key () =
   let key css =
     Css.declaration_value_for_equivalence (Css.Declaration.of_string css)
@@ -3070,10 +3073,27 @@ let custom_font_equivalence_key () =
       (* No generic family, no proof: the quotes are part of the value. *)
       ({|--f: a,"Segoe UI",b|}, {|a,"Segoe UI",b|});
       ({|--f: a,Segoe UI,b|}, "a,Segoe UI,b");
-      (* The rewrite spans a [<string>] holding an [<ident>] sequence, so a
-         single-word name keeps whichever spelling it was written with. *)
-      ({|--f: "Arial",sans-serif|}, {|"Arial",sans-serif|});
+      (* A [<custom-ident>+] of one word is still a [<custom-ident>+], so the
+         lone name reaches the unquoted spelling from either side of the generic
+         family. *)
+      ({|--f: "Arial",sans-serif|}, "Arial,sans-serif");
       ({|--f: Arial,sans-serif|}, "Arial,sans-serif");
+      ({|--f: sans-serif,"Arial"|}, "sans-serif,Arial");
+      (* The gate rules the lone name as it rules the sequence. *)
+      ({|--f: "Arial",b|}, {|"Arial",b|});
+      ({|--f: Arial,b|}, "Arial,b");
+      (* The words sec. 2.1.1 excludes from [<custom-ident>] keep their quotes:
+         [font-family:serif] names the generic family and [font-family:inherit]
+         the CSS-wide keyword, so unquoting either loses the author's family. *)
+      ({|--f: "serif",sans-serif|}, {|"serif",sans-serif|});
+      ({|--f: "default",sans-serif|}, {|"default",sans-serif|});
+      ({|--f: "inherit",sans-serif|}, {|"inherit",sans-serif|});
+      ({|--f: "emoji",sans-serif|}, {|"emoji",sans-serif|});
+      (* A name with no [<custom-ident>] spelling at all keeps its quotes: [+]
+         is no ident code point, and a word opening on a digit tokenises as a
+         number rather than an ident. *)
+      ({|--f: "Foo+Bar",sans-serif|}, {|"Foo+Bar",sans-serif|});
+      ({|--f: "Foo Bar 2",sans-serif|}, {|"Foo Bar 2",sans-serif|});
     ];
   let equal a b = String.equal (key a) (key b) in
   Alcotest.(check bool)
@@ -3083,8 +3103,14 @@ let custom_font_equivalence_key () =
     "without one they stay distinct" false
     (equal {|--f: a,"Segoe UI",b|} {|--f: a,Segoe UI,b|});
   Alcotest.(check bool)
-    "a single-word name stays distinct" false
-    (equal {|--f: "Arial",sans-serif|} {|--f: Arial,sans-serif|})
+    "a single-word name equates too" true
+    (equal {|--f: "Arial",sans-serif|} {|--f: Arial,sans-serif|});
+  Alcotest.(check bool)
+    "a single-word name without a generic family stays distinct" false
+    (equal {|--f: "Arial",b|} {|--f: Arial,b|});
+  Alcotest.(check bool)
+    "a quoted generic family stays distinct from the keyword" false
+    (equal {|--f: "serif",sans-serif|} {|--f: serif,sans-serif|})
 
 let color_functions () =
   (* color() with alternate spaces and alpha *)
