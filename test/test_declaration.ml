@@ -2228,6 +2228,58 @@ let math_sign_whitespace () =
     "--a: cubic-bezier(.4,0,.6,1) infinite";
   check_declaration ~expected:"--t:100%x" ~optimized:"--t:100%x" "--t: 100% x"
 
+(* CSS Syntax 3 (ED) sec. 4.3.9 "Would start an identifier" and sec. 4.3.10
+   "Would start a number" fix what a token absorbs on re-lexing. A [+] is
+   neither a name code point nor a continuation of the number in front of it, so
+   a plus-signed numeric always re-lexes on its own; a [-] is a name code point,
+   so it only does after a number. A [(] joins the ident before it and nothing
+   else. Writing a separator into any of those pairs hands [var()] a token
+   sequence the source never held, which is the one thing minification may not
+   do. *)
+let inserted_token_boundary () =
+  (* A plus-signed numeric after a name, a number or a dimension. *)
+  check_declaration ~expected:"--t:x 1px+2px" ~optimized:"--t:x 1px+2px"
+    "--t: x 1px+2px";
+  check_declaration ~expected:"--t:span+2" ~optimized:"--t:span+2" "--t: span+2";
+  check_declaration ~expected:"--t:#abc+1px" ~optimized:"--t:#abc+1px"
+    "--t: #abc+1px";
+  check_declaration ~expected:"--t:@foo+2px" ~optimized:"--t:@foo+2px"
+    "--t: @foo+2px";
+  check_declaration ~expected:"--t:1e3+2%" ~optimized:"--t:1e3+2%" "--t: 1e3+2%";
+  (* A minus-signed numeric after a number: the number cannot absorb the [-]. *)
+  check_declaration ~expected:"--t:9-9px" ~optimized:"--t:9-9px" "--t: 9-9px";
+  (* A parenthesised block only makes a function token of a preceding ident. *)
+  check_declaration ~expected:"--t:1px(a)" ~optimized:"--t:1px(a)" "--t: 1px(a)";
+  check_declaration ~expected:"--t:#abc(a)" ~optimized:"--t:#abc(a)"
+    "--t: #abc(a)";
+  check_declaration ~expected:"--t:@foo(a)" ~optimized:"--t:@foo(a)"
+    "--t: @foo(a)";
+  (* An unknown property carries the same opaque stream. *)
+  check_declaration ~expected:"-x-y:1px+2px" ~optimized:"-x-y:1px+2px"
+    "-x-y: 1px+2px";
+  (* Controls. A [-] after a dimension is read into the unit, so the separator
+     carries the boundary and stays. *)
+  check_declaration ~expected:"--t:x 1px -2px" ~optimized:"--t:x 1px -2px"
+    "--t: x 1px -2px";
+  check_declaration ~expected:"-x-y:1px -2px" ~optimized:"-x-y:1px -2px"
+    "-x-y: 1px -2px";
+  (* An unsigned numeric merges into the number or the unit before it. *)
+  check_declaration ~expected:"--t:1 2px" ~optimized:"--t:1 2px" "--t: 1 2px";
+  check_declaration ~expected:"--t:1px solid" ~optimized:"--t:1px solid"
+    "--t: 1px solid";
+  check_declaration ~expected:"--t:foo bar" ~optimized:"--t:foo bar"
+    "--t: foo bar";
+  (* [ident(] is a function token, and a hash absorbs a following name. *)
+  check_declaration ~expected:"--t:translate (1px)"
+    ~optimized:"--t:translate (1px)" "--t: translate (1px)";
+  check_declaration ~expected:"--t:#abc var(--x)" ~optimized:"--t:#abc var(--x)"
+    "--t: #abc var(--x)";
+  (* [/] then [*] would open a comment (CSS Syntax 3 (ED) sec. 4.3.2). *)
+  check_declaration ~expected:"-x-y:a/ *b" ~optimized:"-x-y:a/ *b"
+    "-x-y: a / *b";
+  (* Two numbers already fold: the second carries its own sign. *)
+  check_declaration ~expected:"-x-y:1+2" ~optimized:"-x-y:1+2" "-x-y: 1 +2"
+
 let important () =
   (* Standard properties with !important *)
   check_declaration ~expected:"color:red!important" "color: red !important";
@@ -5067,6 +5119,7 @@ let declaration_tests =
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
     test_case "math sign whitespace" `Quick math_sign_whitespace;
+    test_case "inserted token boundary" `Quick inserted_token_boundary;
     test_case "custom property values" `Quick custom_property_values;
     test_case "typed custom font family layers print alike" `Quick
       typed_custom_font_family_layer_printing;
