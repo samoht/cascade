@@ -231,6 +231,12 @@ let test_length () =
   decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"calc(0 + 10px)"
     "calc(0 + 10px)";
 
+  (* CSS Values 4 sec. 10.8 makes a parenthesised operand a whole [<calc-sum>],
+     so a trailing token inside one invalidates the value rather than shortening
+     it to the prefix; browsers drop both declarations. *)
+  neg_cursor read_length "calc((1px 2px))";
+  neg_cursor read_length "min((1px 2px))";
+
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
   neg_cursor read_length "10";
