@@ -2248,6 +2248,21 @@ let custom_properties () =
   neg_cursor read_declaration "color:var(--x 10px)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
+(* A numeric token's source spelling is not part of its value. Opaque custom-
+   and unknown-property streams therefore use the same shortest numeric spelling
+   as typed values, while retaining separators when dropping a sign would
+   otherwise merge two tokens. *)
+let opaque_numeric_tokens () =
+  check_declaration ~expected:"--t:1px" "--t: 1.0px";
+  check_declaration ~expected:"--t:.5px" "--t: 0.5px";
+  check_declaration ~expected:"--t:.5" "--t: .50";
+  check_declaration ~expected:"--t:1px" "--t: 01px";
+  check_declaration ~expected:"--t:1" "--t: +1";
+  check_declaration ~expected:"-x-y:.5%" "-x-y: 0.50%";
+  check_declaration ~expected:"--t:x 1" "--t: x +1";
+  check_declaration ~expected:"--t:1 2px" "--t: 1 +2px";
+  check_declaration ~expected:"--t:- 1" "--t: - +1"
+
 (* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
    required on both sides of the [+] and [-] operators, while [*] and [/] may be
    written without any. A custom property and an unknown property both carry an
@@ -5176,6 +5191,7 @@ let declaration_tests =
     (* Custom properties and vendor prefixes *)
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
+    test_case "opaque numeric tokens" `Quick opaque_numeric_tokens;
     test_case "math sign whitespace" `Quick math_sign_whitespace;
     test_case "inserted token boundary" `Quick inserted_token_boundary;
     test_case "custom property values" `Quick custom_property_values;
