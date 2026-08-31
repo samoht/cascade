@@ -562,6 +562,51 @@ let spec_property_syntax_multiplier_chain () =
     "chained multipliers drop the registration" ".x{color:red}"
     (render (sheet "<custom-ident>+#"))
 
+(* CSS Properties and Values API 1 (ED) sec. 5.4.3 gives a component a [+] or
+   [#] multiplier, and [read_value] repeats the component reader to read the
+   list. A reader that reports success without consuming anything never lets
+   that repetition end, so every component reader has to reject an empty stream.
+   The universal syntax is the one reader that may match nothing, and sec. 5.4.2
+   returns it only for a syntax string that is [*] and nothing else, so it takes
+   no multiplier and joins no alternation. *)
+let spec_multiplied_component_terminates () =
+  let rejects_empty_stream name =
+    let quoted = String.concat "" [ "\""; name; "\"" ] in
+    match read_any_syntax (Cursor.of_string quoted) with
+    | Syntax syntax -> (
+        match read_value (Cursor.of_string "") syntax with
+        | exception Error.Parse_error _ -> ()
+        | _ -> Alcotest.failf "%s read a value from an empty stream" name)
+  in
+  List.iter rejects_empty_stream
+    [
+      "<length>";
+      "<color>";
+      "<number>";
+      "<integer>";
+      "<percentage>";
+      "<length-percentage>";
+      "<angle>";
+      "<time>";
+      "<resolution>";
+      "<custom-ident>";
+      "<string>";
+      "<url>";
+      "<image>";
+      "<transform-function>";
+      "<transform-list>";
+      "auto";
+    ];
+  (* The universal syntax stands alone. *)
+  check_any_syntax "\"*\"";
+  neg_cursor read_any_syntax "\"*+\"";
+  neg_cursor read_any_syntax "\"*#\"";
+  neg_cursor read_any_syntax "\"* | <length>\"";
+  neg_cursor read_any_syntax "\"<length> | *\"";
+  (* The multipliers these readers sit under stay readable. *)
+  check_any_syntax "\"<transform-function>+\"";
+  check_any_syntax "\"<resolution>+\""
+
 (* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
@@ -750,6 +795,9 @@ let tests =
     ( "spec property syntax multiplier chain",
       `Quick,
       spec_property_syntax_multiplier_chain );
+    ( "spec multiplied component terminates",
+      `Quick,
+      spec_multiplied_component_terminates );
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);
