@@ -4018,6 +4018,28 @@ let test_grid_line () =
   check_grid_line "content-end";
   check_grid_line "inherit";
   neg_cursor read_grid_line "span";
+  (* CSS Grid 2 (ED) sec. 8.3 gives the span branch as [span && [ <integer
+     [1,inf]> || <custom-ident> ]]. CSS Values 4 (ED) sec. 2.2 makes both [&&]
+     and [||] reorderable, so [span] sits on either side of the group and the
+     group's own two parts come in either order. Sec. 8.3 sets "Canonical order:
+     per grammar", which fixes the serialisation at [span <integer>
+     <custom-ident>]. *)
+  check_grid_line "span foo";
+  check_grid_line "span 3 foo";
+  check_grid_line ~expected:"span 3 foo" "span foo 3";
+  check_grid_line ~expected:"span 3" "3 span";
+  check_grid_line ~expected:"span foo" "foo span";
+  check_grid_line ~expected:"span 3 foo" "3 foo span";
+  check_grid_line ~expected:"span 3 foo" "foo 3 span";
+  (* [span] is a keyword, so it matches in any ASCII case (sec. 4.1). *)
+  check_grid_line ~expected:"span 3" "3 SPAN";
+  (* Sec. 2.2 reorders only components in the same grouping, so [span] cannot
+     sit between the two parts of the bracketed [||] group, and only one [span]
+     is part of the value. *)
+  neg_cursor ~allow_partial:true read_grid_line "3 span foo";
+  neg_cursor ~allow_partial:true read_grid_line "foo span 3";
+  neg_cursor ~allow_partial:true read_grid_line "span 3 span";
+  neg_cursor read_grid_line "span span";
   (* CSS Grid 2 (ED) sec. 8.3: "In all the above productions, the
      [<custom-ident>] additionally excludes the keywords span and auto." CSS
      Values 4 (ED) sec. 4.2 excludes the CSS-wide keywords and the reserved
@@ -4026,8 +4048,15 @@ let test_grid_line () =
   neg_cursor ~allow_partial:true read_grid_line "3 AUTO";
   neg_cursor read_grid_line "span auto";
   neg_cursor ~allow_partial:true read_grid_line "span 2 auto";
+  neg_cursor ~allow_partial:true read_grid_line "auto span";
+  neg_cursor ~allow_partial:true read_grid_line "3 span auto";
+  neg_cursor ~allow_partial:true read_grid_line "auto span 3";
+  neg_cursor ~allow_partial:true read_grid_line "3 auto span";
   neg_cursor read_grid_line "default";
   neg_cursor read_grid_line "span default";
+  neg_cursor read_grid_line "default span";
+  neg_cursor ~allow_partial:true read_grid_line "3 default span";
+  neg_cursor read_grid_line "initial span";
   neg_cursor ~allow_partial:true read_grid_line "3 default";
   neg_cursor ~allow_partial:true read_grid_line "3 initial";
   neg_cursor ~allow_partial:true read_grid_line "3 inherit";
@@ -4047,7 +4076,10 @@ let test_grid_line () =
    twice, so both slots carry the sec. 8.3 [<custom-ident>] exclusions. *)
 let test_grid_line_pair () =
   check_grid_line_pair ~expected:"span foo/4" "span foo / 4";
+  check_grid_line_pair ~expected:"span 3/4" "3 span / 4";
+  check_grid_line_pair ~expected:"span foo/span 2 bar" "foo span / span 2 bar";
   neg_cursor ~allow_partial:true read_grid_line_pair "3 auto / 4";
+  neg_cursor ~allow_partial:true read_grid_line_pair "3 span auto / 4";
   neg_cursor read_grid_line_pair "span auto / 2"
 
 let test_grid_template () =
