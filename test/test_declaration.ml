@@ -3869,6 +3869,24 @@ let css_wide_custom_property_vectors () =
     "--is-important: 1 !important";
   none_cursor read_declaration "--: invalid"
 
+let substitution_defers_css_wide_mix_validation () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("margin: var(--x) inherit", "margin:var(--x) inherit");
+      ("color: var(--x) initial", "color:var(--x) initial");
+      ("all: var(--x) initial", "all:var(--x) initial");
+      ( "margin: env(safe-area-inset-top) inherit",
+        "margin:env(safe-area-inset-top) inherit" );
+      ("width: attr(data-width px) initial", "width:attr(data-width px) initial");
+    ];
+  (* With no substitution, the CSS-wide keyword is still invalid beside any
+     other component. Empty calls match none of the substitution grammars and do
+     not defer validation either. *)
+  List.iter
+    (fun value -> none_cursor read_declaration ("margin:" ^ value))
+    [ "1px inherit"; "var() inherit"; "env() inherit"; "attr() inherit" ]
+
 type property_grammar_row = Cascade_spec_inventory.Property_grammar.row
 
 let property_grammar_matrix = Cascade_spec_inventory.Property_grammar.rows
@@ -3947,13 +3965,22 @@ let check_property_var (row : property_grammar_row) =
             row.property fallback)
     (row.positives @ token_stream_fallbacks)
 
+let property_value_has_substitution value =
+  let value = String.lowercase_ascii value in
+  List.exists
+    (fun name -> Astring.String.is_infix ~affix:(name ^ "(") value)
+    [ "var"; "env"; "attr" ]
+
 let check_property_trailing_token_rejected (row : property_grammar_row) value =
-  match parse_property_decl row.property (value ^ " )") with
-  | None -> ()
-  | Some (input, serialized, _, _) ->
-      Alcotest.failf
-        "%s positive vector accepted an extra trailing token: %s -> %s"
-        row.property input serialized
+  (* Arbitrary substitutions defer property-grammar validation, including an
+     otherwise-unexpected token beside the function. *)
+  if not (property_value_has_substitution value) then
+    match parse_property_decl row.property (value ^ " )") with
+    | None -> ()
+    | Some (input, serialized, _, _) ->
+        Alcotest.failf
+          "%s positive vector accepted an extra trailing token: %s -> %s"
+          row.property input serialized
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 stops a declaration's value at the top-level [;]
    and lifts a trailing [!important] out of it into the important flag, so every
@@ -5270,6 +5297,8 @@ let declaration_tests =
     test_case "error unclosed block" `Quick error_unclosed_block;
     test_case "unterminated parsing" `Quick unterminated;
     test_case "invalid declarations" `Quick invalid;
+    test_case "substitution defers CSS-wide mix validation" `Quick
+      substitution_defers_css_wide_mix_validation;
     test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
     test_case "scroll-margin negative lengths (sheet)" `Quick
       scroll_margin_negative_sheet;
