@@ -450,7 +450,9 @@ val expect_eof : t -> unit
 
 val parens : (t -> 'a) -> t -> 'a
 (** [parens f t] consumes a [(...)] block and calls [f] with a fresh cursor over
-    its contents. Raises if the next component is not a parenthesised block. *)
+    its contents. Raises if the next component is not a parenthesised block, or
+    if [f] leaves any of the contents unconsumed: trailing content makes the
+    value invalid, not truncated (CSS Syntax 3 (ED) sec. 5.4.1). *)
 
 val brackets : (t -> 'a) -> t -> 'a
 (** [brackets t f] consumes a [[...]] block similarly. *)
@@ -462,17 +464,19 @@ val call : string -> t -> (t -> 'a) -> 'a
 (** [call name t f] consumes a [name(...)] function call and applies [f] to a
     cursor over its arguments. Raises if no such function is next, or if [f]
     leaves any of the arguments unconsumed: trailing content makes the value
-    invalid, not truncated (CSS Syntax 3 (ED) sec. 7.2). *)
+    invalid, not truncated (CSS Syntax 3 (ED) sec. 5.4.1). *)
 
 val function_call : string -> (t -> 'a) -> t -> 'a option
 (** [function_call name f t] consumes a [name(...)] call and calls [f] over its
-    arguments. Returns [None] without advancing if the next component is not a
-    function with that name, compared ASCII case-insensitively (CSS Values 4
-    sec. 4.1), so [name] is given lowercase. *)
+    arguments, raising if [f] leaves any of them unconsumed, as {!call} does.
+    Returns [None] without advancing if the next component is not a function
+    with that name, compared ASCII case-insensitively (CSS Values 4 sec. 4.1),
+    so [name] is given lowercase. *)
 
 val any_function_call : (string -> t -> 'a) -> t -> 'a option
 (** [any_function_call f t] consumes any function call and applies [f] to its
-    name and argument cursor. *)
+    name and argument cursor, raising if [f] leaves any argument unconsumed, as
+    {!call} does. *)
 
 (** {1 Enums} *)
 

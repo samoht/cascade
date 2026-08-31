@@ -804,10 +804,14 @@ let canonical_unregistered_custom_font_distinct () =
     "unregistered --font custom property: quoted/unquoted stays distinct" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
-(* Registered custom property whose syntax matches the font-family grammar gets
-   typed-promoted to the font-family AST, so normalize_font_family applies the
-   same fold as the typed leaf. *)
-let canonical_registered_font_family_quoted_unquoted_equal () =
+(* [<custom-ident>+#] chains two multipliers where CSS Properties and Values API
+   1 (ED) sec. 5.2 allows one per syntax component, so the registration is
+   invalid and [--font] stays an ordinary unregistered custom property. The
+   unregistered case above already settles that state: the consumer is unknown,
+   so the two spellings stay distinct. No registration reaches the font-family
+   position that would make them one name either, [<family-name>] not being
+   among the syntax component names ED sec. 5.1 supports. *)
+let canonical_invalid_registration_font_distinct () =
   let registration =
     "@property \
      --font{syntax:\"<custom-ident>+#\";inherits:true;initial-value:serif}"
@@ -815,7 +819,7 @@ let canonical_registered_font_family_quoted_unquoted_equal () =
   let expected = registration ^ ".x{--font:\"Segoe UI Symbol\"}" in
   let actual = registration ^ ".x{--font:Segoe UI Symbol}" in
   Alcotest.(check bool)
-    "@property-registered font-family custom prop: quoted equals unquoted" true
+    "invalid @property registration: quoted/unquoted stays distinct" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 (* Custom-property declarations in :root/:host don't have cascade-relevant
@@ -1485,8 +1489,8 @@ let suite =
         canonical_font_family_generic_keyword_distinct;
       Alcotest.test_case "canonical unregistered --font distinct" `Quick
         canonical_unregistered_custom_font_distinct;
-      Alcotest.test_case "canonical registered --font quoted vs unquoted" `Quick
-        canonical_registered_font_family_quoted_unquoted_equal;
+      Alcotest.test_case "canonical invalid --font registration distinct" `Quick
+        canonical_invalid_registration_font_distinct;
       Alcotest.test_case "canonical :root custom-props alphabetised" `Quick
         canonical_root_custom_props_permutation_equal;
       Alcotest.test_case "canonical :host custom-props alphabetised" `Quick

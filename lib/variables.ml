@@ -162,7 +162,7 @@ let typed_custom_property ?layer name syntax value =
   custom_property ?layer name
     (Pp.to_string ~minify:true (pp_value syntax) value)
 
-(* CSS Properties and Values API 1 section 2 lists the named [<...>] type
+(* CSS Properties and Values API 1 (ED) sec. 5.1 lists the named [<...>] type
    references. Bare ident keywords match the [<custom-ident>] shape so a leading
    letter followed by ident-continue characters counts; this rejects stray
    punctuation. *)
@@ -195,12 +195,11 @@ let read_simple_syntax_component r s : any_syntax =
   | "<image>" -> Syntax Image
   | "<transform-function>" -> Syntax Transform_function
   | "<transform-list>" -> Syntax Transform_list
-  | "*" -> Syntax Universal
   | s when is_ident_keyword s -> Syntax (Ident_keyword s)
   | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
-(* CSS Properties and Values API 1 sec. 2: only [+] and [#] are valid syntax
-   multipliers. *)
+(* CSS Properties and Values API 1 (ED) sec. 5.2: only [+] and [#] are valid
+   syntax multipliers. *)
 let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
     =
   match modifier with
@@ -212,32 +211,34 @@ let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
         (String.concat ""
            [ "Unsupported CSS syntax modifier: '"; String.make 1 c; "'" ])
 
-(* CSS Properties and Values API 1 allows one modifier per syntax-component, but
-   the [+#] chain is the natural shape for font-family-like registrations, so
-   allow exactly that ([<custom-ident>+#]); [++], [##] and the reverse [#+]
-   still reject via the unrecognised body. *)
-let split_syntax_modifiers s : string * char list =
+(* CSS Properties and Values API 1 (ED) sec. 5.4.3 sets a component's multiplier
+   from a single [+] or [#] and returns, so a component carries at most one.
+   Sec. 5.4.2 accepts only EOF or [|] after a component, which fails the whole
+   syntax definition on a second multiplier; here that one is left in the body
+   for [read_simple_syntax_component] to reject, the route [++], [##] and [#+]
+   already take. *)
+let split_syntax_modifier s : string * char option =
   let n = String.length s in
-  if n = 0 then (s, [])
+  if n = 0 then (s, None)
   else
     let last = s.[n - 1] in
-    if last <> '+' && last <> '#' then (s, [])
-    else if n >= 2 && s.[n - 2] = '+' && last = '#' then
-      (String.sub s 0 (n - 2), [ '+'; '#' ])
-    else (String.sub s 0 (n - 1), [ last ])
+    if last <> '+' && last <> '#' then (s, None)
+    else (String.sub s 0 (n - 1), Some last)
 
 let read_syntax (r : Cursor.t) : any_syntax =
   (* CSS @property syntax values must be quoted strings per spec *)
-  let s = Cursor.string r in
+  let s = String.trim (Cursor.string r) in
   let read_component part =
-    let body, modifiers = split_syntax_modifiers (String.trim part) in
+    let body, modifier = split_syntax_modifier (String.trim part) in
     if body = "" then Cursor.err_invalid r "empty CSS syntax component";
-    let base = read_simple_syntax_component r body in
-    List.fold_left
-      (fun acc m -> apply_syntax_modifier r acc (Some m))
-      base modifiers
+    apply_syntax_modifier r (read_simple_syntax_component r body) modifier
   in
-  if String.contains s '|' then
+  (* Sec. 5.4.2 strips the surrounding whitespace, then returns the universal
+     syntax definition only for a string that is [*] and nothing else. As a
+     component [*] is none of the shapes sec. 5.4.3 accepts, so it carries no
+     multiplier and joins no alternation. *)
+  if s = "*" then Syntax Universal
+  else if String.contains s '|' then
     let parts = String.split_on_char '|' s in
     let components = List.map read_component parts in
     match components with
@@ -250,6 +251,14 @@ let read_syntax (r : Cursor.t) : any_syntax =
           (fun (Syntax left) (Syntax right) -> Syntax (Or (left, right)))
           first rest
   else read_component s
+
+(* These types have no reader of their own and take whatever is left. None of
+   them spells a value as nothing, and a reader that succeeded on an empty
+   stream would leave the [+] and [#] repetitions below with no way to stop. *)
+let read_remaining_typed reader what =
+  let value = Cursor.consume_remaining_as_string ~trim:true reader in
+  if value = "" then Cursor.err_expected reader what;
+  value
 
 (** Read a value according to its syntax type *)
 let rec read_value : type a. Cursor.t -> a syntax -> a =
@@ -264,9 +273,9 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader
   | Image -> Properties.read_background_image reader
-  | Transform_function -> Cursor.consume_remaining_as_string ~trim:true reader
-  | Transform_list -> Cursor.consume_remaining_as_string ~trim:true reader
-  | Resolution -> Cursor.consume_remaining_as_string ~trim:true reader
+  | Transform_function -> read_remaining_typed reader "<transform-function>"
+  | Transform_list -> read_remaining_typed reader "<transform-list>"
+  | Resolution -> read_remaining_typed reader "<resolution>"
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader

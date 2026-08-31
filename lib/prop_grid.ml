@@ -606,44 +606,45 @@ let grid_line_at_end t =
   | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
   | _ -> false
 
-(* CSS Grid 2 sec. 8.3 excludes [span] from the [<custom-ident>] of a grid line
-   name. That exclusion is on the keyword, so it reads case-insensitively while
-   the name itself keeps the author's case (CSS Values 4 sec. 4.1 and 4.2). *)
+(* CSS Grid 2 sec. 8.3 and sec. 7.2.2 exclude [span] and [auto] from the
+   [<custom-ident>] of a grid line name; CSS Values 4 sec. 4.2 excludes the
+   CSS-wide keywords and the reserved [default] from every [<custom-ident>].
+   Each exclusion is on a keyword, so it reads case-insensitively while the name
+   itself keeps the author's case (sec. 4.1 and 4.2). *)
+let excluded_grid_line_name name =
+  match String.lowercase_ascii_preserve name with
+  | "span" | "auto" | "default" -> true
+  | lowered -> is_css_wide_keyword lowered
+
 let read_grid_line_name t =
   let name = Cursor.ident t in
-  if String.lowercase_ascii_preserve name = "span" then
-    Cursor.err_invalid t "duplicate span grid line"
+  if excluded_grid_line_name name then
+    Cursor.err_invalid t
+      (String.concat "" [ "reserved grid line name: "; name ])
   else name
 
-let read_grid_span t =
-  let span_word = Cursor.ident ~keep_case:false t in
-  if span_word <> "span" then
-    Cursor.err t ("Expected 'span' but got " ^ span_word);
-  Cursor.ws t;
-  let first_int : int option = Cursor.option Cursor.int t in
-  Cursor.ws t;
-  let first_name : string option =
-    if Option.is_none first_int && not (grid_line_at_end t) then
-      Cursor.option read_grid_line_name t
-    else None
-  in
-  Cursor.ws t;
-  let second : [ `Name of string | `Num of int ] option =
-    if grid_line_at_end t then None
-    else
-      match first_int with
-      | Some _ ->
-          Option.map
-            (fun name -> `Name name)
-            (Cursor.option read_grid_line_name t)
-      | None -> Option.map (fun n -> `Num n) (Cursor.option Cursor.int t)
-  in
-  match (first_int, first_name, second) with
-  | Some n, None, Some (`Name name) -> Span_num_name (n, name)
-  | Some n, None, None -> Span n
-  | None, Some name, Some (`Num n) -> Span_num_name (n, name)
-  | None, Some name, None -> Span_name name
-  | _ -> Cursor.err_invalid t "invalid span grid line"
+(* [ <integer [1,inf]> || <custom-ident> ]: one or both, in either order. *)
+let read_grid_span_parts t : grid_line =
+  match Cursor.option Cursor.int t with
+  | Some n -> (
+      match Cursor.option read_grid_line_name t with
+      | Some name -> Span_num_name (n, name)
+      | None -> Span n)
+  | None -> (
+      let name = read_grid_line_name t in
+      match Cursor.option Cursor.int t with
+      | Some n -> Span_num_name (n, name)
+      | None -> Span_name name)
+
+(* CSS Grid 2 sec. 8.3: [span && [ <integer [1,inf]> || <custom-ident> ]]. CSS
+   Values 4 sec. 2.2 makes [&&] reorderable, so [span] sits on either side of
+   the group; it reorders only components in the same grouping, so [span] never
+   splits the bracketed [||] pair ([3 span foo] is not a value). *)
+let read_grid_span t : grid_line =
+  let span_first = Cursor.try_ident "span" t in
+  let value = read_grid_span_parts t in
+  if not span_first then Cursor.expect_string "span" t;
+  value
 
 let read_grid_line_number t : grid_line =
   let n = Cursor.int t in
@@ -654,12 +655,24 @@ let read_grid_line_number t : grid_line =
   match name with Some name -> Num_name (n, name) | None -> Num n
 
 let read_grid_line_name_value t : grid_line =
-  let name = read_grid_line_name t in
-  Cursor.ws t;
-  let n : int option =
-    if grid_line_at_end t then None else Cursor.option Cursor.int t
-  in
-  match n with Some n -> Num_name (n, name) | None -> Name name
+  match Cursor.peek_ident t with
+  | Some keyword when is_css_wide_keyword keyword ->
+      (* CSS Cascade 5 sec. 7.3: explicit defaulting takes the whole
+         declaration, so a CSS-wide keyword reaches a [<grid-line>] as the
+         entire value and never as the [<custom-ident>] of a line. [Name]
+         carries it. *)
+      let name = Cursor.ident t in
+      Cursor.ws t;
+      if not (Cursor.is_done t) then
+        Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+      Name name
+  | _ -> (
+      let name = read_grid_line_name t in
+      Cursor.ws t;
+      let n : int option =
+        if grid_line_at_end t then None else Cursor.option Cursor.int t
+      in
+      match n with Some n -> Num_name (n, name) | None -> Name name)
 
 let read_grid_line_calc t : grid_line =
   (* read_calc handles the calc(...) wrapper itself *)
@@ -680,8 +693,11 @@ let rec read_grid_line t : grid_line =
         ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line));
       ]
     ~default:(fun t ->
+      (* The span form is tried first: it is the only alternative that reads a
+         trailing [span], and the other two match its group on their own and
+         would leave that [span] behind. *)
       Cursor.one_of
-        [ read_grid_line_number; read_grid_span; read_grid_line_name_value ]
+        [ read_grid_span; read_grid_line_number; read_grid_line_name_value ]
         t)
     t
 
@@ -727,6 +743,29 @@ let read_grid_area t : grid_area =
     | _ -> err_invalid_value t "grid-area" "too many grid lines"
   in
   Lines { row_start; column_start; row_end; column_end }
+
+(* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |
+   <track-repeat> ] ]+ <line-names>?] puts every [<line-names>] in front of a
+   track size, or last in the list. So a track list carries at least one track
+   size, and never two [<line-names>] in a row. The sec. 7.2.3 [repeat()]
+   bodies, [<explicit-track-list>] and [<auto-track-list>] have the same shape.
+   ([subgrid <line-name-list>?] is the exception, and
+   [read_grid_template_tracks] rejects [subgrid] in a track list before either
+   check runs.) *)
+let track_list_has_track_size (tracks : grid_template list) =
+  List.exists (function Line_names _ -> false | _ -> true) tracks
+
+let rec track_list_names_separated (tracks : grid_template list) =
+  match tracks with
+  | Line_names _ :: Line_names _ :: _ -> false
+  | _ :: rest -> track_list_names_separated rest
+  | [] -> true
+
+let validate_track_list t tracks =
+  if not (track_list_has_track_size tracks) then
+    Cursor.err_invalid t "grid track list without a track size";
+  if not (track_list_names_separated tracks) then
+    Cursor.err_invalid t "grid track list with adjacent line names"
 
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
@@ -805,8 +844,7 @@ module Grid_template = struct
         let names =
           Cursor.list ~at_least:0
             ~sep:(fun i -> Cursor.ws i)
-            (fun i -> Cursor.ident i)
-            inner
+            read_grid_line_name inner
         in
         Line_names names)
       t
@@ -845,6 +883,7 @@ module Grid_template = struct
                     ~sep:(fun i -> Cursor.ws i)
                     read_single_track inner
                 in
+                validate_track_list inner tracks;
                 (Repeat (count, tracks) : grid_template) );
           ]
         ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
@@ -885,20 +924,47 @@ let grid_template_components_well_formed cvs =
   in
   well_formed cvs
 
+(* CSS Grid 2 sec. 7.4: every [[...]] block in a [grid-template] value is a
+   [<line-names>], so the sec. 7.2.2 exclusions reach the blocks the [<string>]
+   form keeps as raw text as well. *)
+let line_names_block_valid value =
+  List.for_all
+    (function
+      | Component.Preserved { kind = Token.Ident name; _ } ->
+          not (excluded_grid_line_name name)
+      | _ -> true)
+    value
+
+let rec grid_template_line_names_valid = function
+  | [] -> true
+  | Component.Block { node = { opening; value; _ }; _ } :: rest ->
+      (match opening with
+        | Token.Square -> line_names_block_valid value
+        | Token.Curly | Token.Paren -> grid_template_line_names_valid value)
+      && grid_template_line_names_valid rest
+  | Component.Func { node = { arguments; _ }; _ } :: rest ->
+      grid_template_line_names_valid arguments
+      && grid_template_line_names_valid rest
+  | _ :: rest -> grid_template_line_names_valid rest
+
 let read_grid_template_tracks t =
   let tracks =
     Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
   in
   match tracks with
   | [] -> Cursor.err t "Expected at least one grid track"
-  | [ single ] -> single
-  | multiple
-    when List.exists
-           (fun (track : grid_template) ->
-             match track with None | Subgrid | Masonry -> true | _ -> false)
-           multiple ->
-      Cursor.err_invalid t "grid-template standalone keyword in track list"
-  | multiple -> Tracks multiple
+  | [ single ] ->
+      validate_track_list t tracks;
+      single
+  | multiple ->
+      if
+        List.exists
+          (fun (track : grid_template) ->
+            match track with None | Subgrid | Masonry -> true | _ -> false)
+          multiple
+      then Cursor.err_invalid t "grid-template standalone keyword in track list";
+      validate_track_list t multiple;
+      Tracks multiple
 
 let rec read_grid_template t : grid_template =
   if Cursor.looking_at_func "var" t then
@@ -909,6 +975,8 @@ let rec read_grid_template t : grid_template =
       Cursor.err_invalid t "grid-template duplicate slash form";
     if not (grid_template_components_well_formed cvs) then
       Cursor.err_invalid t "grid-template malformed raw template";
+    if not (grid_template_line_names_valid cvs) then
+      Cursor.err_invalid t "grid-template reserved line name";
     let raw = Cursor.consume_to_decl_end ~trim:true t in
     Template
       (Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))))
@@ -923,6 +991,35 @@ let rec read_grid_template t : grid_template =
           err_invalid_value t "grid-template" "none in slash form"
       | _ -> Split (rows, columns))
     else rows
+
+(* CSS Grid 2 (ED) sec. 7.6: [grid-auto-columns] and [grid-auto-rows] take
+   [<track-size>+], the sec. 7.2 [<track-size>] repeated. That grammar has no
+   [<line-names>] position, no [<track-repeat>], and none of the [<track-list>]
+   keywords ([none], [subgrid], [masonry]) nor its slash form. *)
+let rec is_track_size : grid_template -> bool = function
+  | Px _ | Rem _ | Em _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Zero
+  | Length _ | Fr _ | Auto | Min_content | Max_content | Fit_content _ ->
+      true
+  | Min_max (min, max) -> is_track_size min && is_track_size max
+  | Var _ -> true
+  | None | Inherit | Initial | Unset | Revert | Revert_layer | Repeat _
+  | Tracks _ | Split _ | Auto_flow_columns _ | Auto_flow_rows _ | Named_tracks _
+  | Line_names _ | Template _ | Subgrid | Masonry ->
+      false
+
+let read_grid_auto_tracks t : grid_template =
+  let value = read_grid_template t in
+  let valid =
+    match value with
+    (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
+       declaration, so a CSS-wide keyword reaches the reader alone. *)
+    | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> true
+    | Tracks tracks -> List.for_all is_track_size tracks
+    | single -> is_track_size single
+  in
+  if not valid then
+    Cursor.err_invalid t "grid-auto tracks accept a track size only";
+  value
 
 let read_grid_auto_flow_clause side t =
   let rec loop seen_auto_flow seen_dense =

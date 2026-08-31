@@ -617,12 +617,12 @@ let colors () =
     "color: rgb(0, 255, 0)";
   decl_optimizes_to ~held:"color:rgb(255 0 0/.5)" ~into:"color:#ff000080"
     "color: rgba(255, 0, 0, 0.5)";
-  decl_optimizes_to ~held:"color:hsl(0 100% 50%)" ~into:"color:red"
+  decl_optimizes_to ~held:"color:hsl(0 100%50%)" ~into:"color:red"
     "color: hsl(0, 100%, 50%)";
-  decl_optimizes_to ~held:"color:hsl(120 100% 50%/.5)" ~into:"color:#00ff0080"
+  decl_optimizes_to ~held:"color:hsl(120 100%50%/.5)" ~into:"color:#00ff0080"
     "color: hsla(120, 100%, 50%, 0.5)";
-  decl_optimizes_to ~held:"color:hsl(.5turn 50% 50%/var(--a))"
-    ~into:"color:hsl(180 50% 50%/var(--a))"
+  decl_optimizes_to ~held:"color:hsl(.5turn 50%50%/var(--a))"
+    ~into:"color:hsl(180 50%50%/var(--a))"
     "color: hsl(.5turn 50% 50% / var(--a))";
 
   check_declaration ~expected:"background-color:red" "background-color: red";
@@ -1983,6 +1983,49 @@ let grid () =
     ~into:"grid-auto-flow:dense" "grid-auto-flow: dense row";
   decl_optimizes ~prop:"grid-auto-flow" ~into:"column dense" "column dense";
 
+  (* CSS Grid 2 (ED) sec. 7.6 gives grid-auto-columns and grid-auto-rows
+     [<track-size>+], so they route to a reader with no [<line-names>] position
+     and none of the sec. 7.2 [<track-list>] forms. *)
+  check_declaration ~expected:"grid-auto-rows:1px" "grid-auto-rows: 1px";
+  check_declaration ~expected:"grid-auto-rows:minmax(1px,2px)"
+    "grid-auto-rows: minmax(1px, 2px)";
+  check_declaration ~expected:"grid-auto-columns:1fr 2fr"
+    "grid-auto-columns: 1fr 2fr";
+  check_declaration ~expected:"grid-auto-rows:fit-content(10px)"
+    "grid-auto-rows: fit-content(10px)";
+  check_declaration ~expected:"grid-auto-rows:auto" "grid-auto-rows: auto";
+  check_declaration ~expected:"grid-auto-rows:initial" "grid-auto-rows: initial";
+  neg_cursor read_declaration "grid-auto-rows: [a] 1px";
+  neg_cursor read_declaration "grid-auto-rows: [a]";
+  neg_cursor read_declaration "grid-auto-rows: 1px [a]";
+  neg_cursor read_declaration "grid-auto-columns: [a] 1px";
+  neg_cursor read_declaration "grid-auto-rows: none";
+  neg_cursor read_declaration "grid-auto-rows: subgrid";
+  neg_cursor read_declaration "grid-auto-rows: repeat(2, 1px)";
+  neg_cursor read_declaration "grid-auto-rows: 1px / 2px";
+
+  (* sec. 7.2 keeps every [<line-names>] next to a track size, in the shorthands
+     as well as in grid-template-columns / grid-template-rows. *)
+  check_declaration ~expected:"grid-template-columns:[a]1px"
+    "grid-template-columns: [a] 1px";
+  check_declaration ~expected:"grid-template-columns:1px[a]2px"
+    "grid-template-columns: 1px [a] 2px";
+  neg_cursor read_declaration "grid-template-columns: [a]";
+  neg_cursor read_declaration "grid-template-rows: [a] [b] 1px";
+  neg_cursor read_declaration "grid-template: 1px / [a]";
+  neg_cursor read_declaration "grid: auto-flow [a] / 1px";
+
+  (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
+     declaration, so a CSS-wide keyword is a placement value on its own and
+     never one slot of one. *)
+  check_declaration ~expected:"grid-column:initial" "grid-column: initial";
+  check_declaration ~expected:"grid-area:initial" "grid-area: initial";
+  neg_cursor read_declaration "grid-column: 2 / initial";
+  neg_cursor read_declaration "grid-row: 2 / initial";
+  neg_cursor read_declaration "grid-area: 1 / 2 / 3 / initial";
+  neg_cursor read_declaration "grid-column: initial / 2";
+  neg_cursor read_declaration "grid-column-start: 2 initial";
+
   (* Grid gaps *)
   check_declaration ~expected:"gap:10px" "gap: 10px";
   check_declaration ~expected:"gap:10px 20px" "gap: 10px 20px";
@@ -2189,6 +2232,96 @@ let custom_properties () =
      answered [var(--x)]. *)
   neg_cursor read_declaration "color:var(--x 10px)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
+
+(* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
+   required on both sides of the [+] and [-] operators, while [*] and [/] may be
+   written without any. A custom property and an unknown property both carry an
+   opaque token stream that is minified token by token, so deleting that
+   whitespace hands the browser a declaration it drops on the floor. *)
+let math_sign_whitespace () =
+  check_declaration ~expected:"--t:calc(100% - 10px)"
+    ~optimized:"--t:calc(100% - 10px)" "--t: calc(100% - 10px)";
+  check_declaration ~expected:"--t:calc(100% + 10px)"
+    ~optimized:"--t:calc(100% + 10px)" "--t: calc(100% + 10px)";
+  check_declaration ~expected:"--t:calc((100%) - 10px)"
+    ~optimized:"--t:calc((100%) - 10px)" "--t: calc((100%) - 10px)";
+  check_declaration ~expected:"--t:calc(min(1px,2px) - 3px)"
+    ~optimized:"--t:calc(min(1px,2px) - 3px)" "--t: calc(min(1px,2px) - 3px)";
+  check_declaration ~expected:"--t:calc(50% + var(--a))"
+    ~optimized:"--t:calc(50% + var(--a))" "--t: calc(50% + var(--a))";
+  (* An unknown property holds the same opaque stream. *)
+  check_declaration ~expected:"-x-y:calc(100% - 10px)"
+    ~optimized:"-x-y:calc(100% - 10px)" "-x-y: calc(100% - 10px)";
+  check_declaration ~expected:"-x-y:calc(min(1px,2px) - 3px)"
+    ~optimized:"-x-y:calc(min(1px,2px) - 3px)" "-x-y: calc(min(1px,2px) - 3px)";
+  (* The rule is about a [+] / [-] delim token. [calc(1 +2)] lexes as two number
+     tokens with nothing between them but whitespace, so it keeps folding. *)
+  check_declaration ~expected:"--t:calc(1+2)" ~optimized:"--t:calc(1+2)"
+    "--t: calc(1 +2)";
+  (* The reader keeps what it read: the whitespace-free spelling is a different
+     (invalid) declaration, and minifying never inserts a separator. *)
+  check_declaration ~expected:"--t:calc(100%- 10px)"
+    ~optimized:"--t:calc(100%- 10px)" "--t: calc(100%- 10px)";
+  (* Whitespace that no grammar asks for still folds. *)
+  check_declaration ~expected:"--t:16 / 9" ~optimized:"--t:16/9" "--t: 16 / 9";
+  check_declaration ~expected:"--t:calc(var(--base) * 2)"
+    ~optimized:"--t:calc(var(--base)*2)" "--t: calc(var(--base) * 2)";
+  check_declaration ~expected:"--a:cubic-bezier(.4,0,.6,1) infinite"
+    ~optimized:"--a:cubic-bezier(.4,0,.6,1)infinite"
+    "--a: cubic-bezier(.4,0,.6,1) infinite";
+  check_declaration ~expected:"--t:100%x" ~optimized:"--t:100%x" "--t: 100% x"
+
+(* CSS Syntax 3 (ED) sec. 4.3.9 "Would start an identifier" and sec. 4.3.10
+   "Would start a number" fix what a token absorbs on re-lexing. A [+] is
+   neither a name code point nor a continuation of the number in front of it, so
+   a plus-signed numeric always re-lexes on its own; a [-] is a name code point,
+   so it only does after a number. A [(] joins the ident before it and nothing
+   else. Writing a separator into any of those pairs hands [var()] a token
+   sequence the source never held, which is the one thing minification may not
+   do. *)
+let inserted_token_boundary () =
+  (* A plus-signed numeric after a name, a number or a dimension. *)
+  check_declaration ~expected:"--t:x 1px+2px" ~optimized:"--t:x 1px+2px"
+    "--t: x 1px+2px";
+  check_declaration ~expected:"--t:span+2" ~optimized:"--t:span+2" "--t: span+2";
+  check_declaration ~expected:"--t:#abc+1px" ~optimized:"--t:#abc+1px"
+    "--t: #abc+1px";
+  check_declaration ~expected:"--t:@foo+2px" ~optimized:"--t:@foo+2px"
+    "--t: @foo+2px";
+  check_declaration ~expected:"--t:1e3+2%" ~optimized:"--t:1e3+2%" "--t: 1e3+2%";
+  (* A minus-signed numeric after a number: the number cannot absorb the [-]. *)
+  check_declaration ~expected:"--t:9-9px" ~optimized:"--t:9-9px" "--t: 9-9px";
+  (* A parenthesised block only makes a function token of a preceding ident. *)
+  check_declaration ~expected:"--t:1px(a)" ~optimized:"--t:1px(a)" "--t: 1px(a)";
+  check_declaration ~expected:"--t:#abc(a)" ~optimized:"--t:#abc(a)"
+    "--t: #abc(a)";
+  check_declaration ~expected:"--t:@foo(a)" ~optimized:"--t:@foo(a)"
+    "--t: @foo(a)";
+  (* An unknown property carries the same opaque stream. *)
+  check_declaration ~expected:"-x-y:1px+2px" ~optimized:"-x-y:1px+2px"
+    "-x-y: 1px+2px";
+  (* Controls. A [-] after a dimension is read into the unit, so the separator
+     carries the boundary and stays. *)
+  check_declaration ~expected:"--t:x 1px -2px" ~optimized:"--t:x 1px -2px"
+    "--t: x 1px -2px";
+  check_declaration ~expected:"-x-y:1px -2px" ~optimized:"-x-y:1px -2px"
+    "-x-y: 1px -2px";
+  (* An unsigned numeric merges into the number or the unit before it. *)
+  check_declaration ~expected:"--t:1 2px" ~optimized:"--t:1 2px" "--t: 1 2px";
+  check_declaration ~expected:"--t:1px solid" ~optimized:"--t:1px solid"
+    "--t: 1px solid";
+  check_declaration ~expected:"--t:foo bar" ~optimized:"--t:foo bar"
+    "--t: foo bar";
+  (* [ident(] is a function token, and a hash absorbs a following name. *)
+  check_declaration ~expected:"--t:translate (1px)"
+    ~optimized:"--t:translate (1px)" "--t: translate (1px)";
+  check_declaration ~expected:"--t:#abc var(--x)" ~optimized:"--t:#abc var(--x)"
+    "--t: #abc var(--x)";
+  (* [/] then [*] would open a comment (CSS Syntax 3 (ED) sec. 4.3.2). *)
+  check_declaration ~expected:"-x-y:a/ *b" ~optimized:"-x-y:a/ *b"
+    "-x-y: a / *b";
+  (* Two numbers already fold: the second carries its own sign. *)
+  check_declaration ~expected:"-x-y:1+2" ~optimized:"-x-y:1+2" "-x-y: 1 +2"
 
 let important () =
   (* Standard properties with !important *)
@@ -3011,6 +3144,68 @@ let spec_custom_tokens () =
   neg_cursor read_declaration "--: value";
   neg_cursor read_declaration "-x: value";
   neg_cursor read_declaration "--x"
+
+(* CSS Fonts 4 sec. 2.1.1 gives a [<font-family-name>] two spellings, a
+   [<string>] and a [<custom-ident>+], and they name the same family whether
+   that ident sequence runs to one word or several, so the structural-diff key
+   folds the quoted spelling onto the bare one. The fold needs a generic family
+   in the stream to prove the stream is a font-family list: a custom property is
+   otherwise an arbitrary token stream, in which dropping the quotes is a
+   different value wherever the property substitutes into another grammar. A
+   name the section excludes from [<custom-ident>] keeps its quotes, since
+   unquoting it would name the keyword instead of the family. *)
+let custom_font_equivalence_key () =
+  let key css =
+    Css.declaration_value_for_equivalence (Css.Declaration.of_string css)
+  in
+  List.iter
+    (fun (css, expected) -> Alcotest.(check string) css expected (key css))
+    [
+      (* [sans-serif] is only valid in a font-family list, so both spellings of
+         the multi-word name reach the unquoted one. *)
+      ({|--f: a,"Segoe UI",sans-serif|}, "a,Segoe UI,sans-serif");
+      ({|--f: a,Segoe UI,sans-serif|}, "a,Segoe UI,sans-serif");
+      (* No generic family, no proof: the quotes are part of the value. *)
+      ({|--f: a,"Segoe UI",b|}, {|a,"Segoe UI",b|});
+      ({|--f: a,Segoe UI,b|}, "a,Segoe UI,b");
+      (* A [<custom-ident>+] of one word is still a [<custom-ident>+], so the
+         lone name reaches the unquoted spelling from either side of the generic
+         family. *)
+      ({|--f: "Arial",sans-serif|}, "Arial,sans-serif");
+      ({|--f: Arial,sans-serif|}, "Arial,sans-serif");
+      ({|--f: sans-serif,"Arial"|}, "sans-serif,Arial");
+      (* The gate rules the lone name as it rules the sequence. *)
+      ({|--f: "Arial",b|}, {|"Arial",b|});
+      ({|--f: Arial,b|}, "Arial,b");
+      (* The words sec. 2.1.1 excludes from [<custom-ident>] keep their quotes:
+         [font-family:serif] names the generic family and [font-family:inherit]
+         the CSS-wide keyword, so unquoting either loses the author's family. *)
+      ({|--f: "serif",sans-serif|}, {|"serif",sans-serif|});
+      ({|--f: "default",sans-serif|}, {|"default",sans-serif|});
+      ({|--f: "inherit",sans-serif|}, {|"inherit",sans-serif|});
+      ({|--f: "emoji",sans-serif|}, {|"emoji",sans-serif|});
+      (* A name with no [<custom-ident>] spelling at all keeps its quotes: [+]
+         is no ident code point, and a word opening on a digit tokenises as a
+         number rather than an ident. *)
+      ({|--f: "Foo+Bar",sans-serif|}, {|"Foo+Bar",sans-serif|});
+      ({|--f: "Foo Bar 2",sans-serif|}, {|"Foo Bar 2",sans-serif|});
+    ];
+  let equal a b = String.equal (key a) (key b) in
+  Alcotest.(check bool)
+    "a generic family equates the two spellings" true
+    (equal {|--f: a,"Segoe UI",sans-serif|} {|--f: a,Segoe UI,sans-serif|});
+  Alcotest.(check bool)
+    "without one they stay distinct" false
+    (equal {|--f: a,"Segoe UI",b|} {|--f: a,Segoe UI,b|});
+  Alcotest.(check bool)
+    "a single-word name equates too" true
+    (equal {|--f: "Arial",sans-serif|} {|--f: Arial,sans-serif|});
+  Alcotest.(check bool)
+    "a single-word name without a generic family stays distinct" false
+    (equal {|--f: "Arial",b|} {|--f: Arial,b|});
+  Alcotest.(check bool)
+    "a quoted generic family stays distinct from the keyword" false
+    (equal {|--f: "serif",sans-serif|} {|--f: serif,sans-serif|})
 
 let color_functions () =
   (* color() with alternate spaces and alpha *)
@@ -4966,6 +5161,8 @@ let declaration_tests =
     (* Custom properties and vendor prefixes *)
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
+    test_case "math sign whitespace" `Quick math_sign_whitespace;
+    test_case "inserted token boundary" `Quick inserted_token_boundary;
     test_case "custom property values" `Quick custom_property_values;
     test_case "typed custom font family layers print alike" `Quick
       typed_custom_font_family_layer_printing;
@@ -4977,6 +5174,8 @@ let declaration_tests =
       parse_declaration_name_case;
     test_case "spec custom property token stream values" `Quick
       spec_custom_tokens;
+    test_case "a generic family gates the equivalence key" `Quick
+      custom_font_equivalence_key;
     test_case "vendor prefixes" `Quick vendor_prefixes;
     test_case "vendor-prefixed shorthand readers" `Quick
       vendor_prefixed_shorthands;

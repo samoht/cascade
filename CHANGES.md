@@ -207,6 +207,40 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- The span form of `<grid-line>` takes its operands in any order, as the `&&`
+  and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
+  kept and printed `span 3`, where cascade used to drop the declaration (#711)
+- `grid-auto-columns` and `grid-auto-rows` take a list of track sizes. They
+  used to read the wider `grid-template-*` grammar, so a line-name block, a
+  `repeat()`, `none` or a slash form parsed and applied where a browser drops
+  the declaration (#712)
+- A grid track list carries at least one track size, and never two line-name
+  blocks in a row. `grid-template-columns: [a]` and `1px [a] [b] 2px` are
+  dropped the way a browser drops them, inside a `repeat()` body and in the
+  `grid` and `grid-template` shorthands as well (#712)
+- The grid placement properties go through the CSS-wide keyword check.
+  `grid-column: 2 / initial` and `grid-area: 1 / 2 / 3 / initial` are dropped,
+  while a lone `grid-column: initial` still reads as explicit defaulting (#712)
+- An `@property` syntax component carries at most one multiplier. A chained one
+  such as `"<custom-ident>+#"` drops the registration the way a browser does,
+  where cascade used to accept it and type a property left unregistered (#707)
+- Grid line names reject the idents that are not `<custom-ident>`s in that
+  position: `span`, `auto`, `default` and the CSS-wide keywords, in every ASCII
+  case. `grid-template-columns: [span] 1px` and `grid-row-start: 3 auto` are
+  dropped the way a browser drops them, rather than kept as a declaration that
+  then applies (#708)
+- A `@property` syntax multiplying `<transform-function>`, `<transform-list>`
+  or `<resolution>` no longer hangs the parser. Those readers reported success
+  on an empty stream, and the multiplier repeated them forever (#710)
+- `*` is a `@property` syntax on its own only, so `"*+"` and `"* | <length>"`
+  are rejected the way a browser rejects them (#710)
+- Trailing content inside a parenthesised or bracketed sub-expression makes the
+  whole value invalid, as it does in a browser. `width: calc((1px 2px))` used
+  to keep the prefix a reader recognised and drop the rest (#701)
+- A math function requires whitespace on both sides of its `+` and `-`
+  operators. Values such as `calc(100%- 10px)` are dropped the way a browser
+  drops them, where cascade used to accept them and print back the valid
+  spelling (#699)
 - `@font-face` and `@font-palette-values` use their descriptor-specific
   `font-family` grammars. The former accepts exactly one named family, the
   latter accepts a non-empty comma-separated list, and both reject unquoted
@@ -571,6 +605,23 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` writes no separator into a pair of tokens the source held side by
+  side. `--t: x 1px+2px` came out as `--t:x 1px +2px` and `--t: 1px(a)` as
+  `--t:1px (a)`, handing every `var()` that read them a whitespace token the
+  author never wrote (#709)
+- `--minify` spells the boundary after a percentage the same way inside every
+  colour function. A constructed `hsl(120 50% 50%)` or `oklch(.659 76% 203.274)`
+  kept a separator that a parse of those same bytes dropped, so a colour built
+  through the API did not read back as itself (#703)
+- `--minify` spells a token boundary after a percentage one way. A constructed
+  `--brand: oklch(63.7% 0.237 25.331)` printed `oklch(63.7%.237 25.331)` while a
+  parse of those same bytes printed `oklch(63.7% .237 25.331)`, so minified
+  output did not read back as itself, and the separator the reader inserted made
+  `--x:10%5px` come out longer than it went in (#700)
+- `--minify` keeps the whitespace CSS Values 4 requires on both sides of a math
+  function's `+` and `-` when it prints a custom property or an unknown
+  property. `--w: calc(100% - 10px)` came out as `--w:calc(100%- 10px)`, which
+  browsers discard, taking every `var(--w)` that read it with them (#697)
 - `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
   constructed millisecond durations and degree hues without running the AST
   optimisation phase (#678)
@@ -903,6 +954,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `--minify` keeps the quotes on a `<string>` written to a custom property
+  whose `@property` syntax accepts only an ident sequence. The string matches
+  no arm of that registration, so it is invalid at computed-value time (CSS
+  Properties and Values API 1 (ED) sec. 2.4) and computes to the initial
+  value; unquoted, it computed the name instead (#704)
 - `Css.Variables.read_reference_body_as_string` reads the same `var()`
   argument list as `read_reference_body` and returns the name and the fallback
   as text, for a caller with no value type to pick a typed fallback reader
@@ -1048,9 +1104,30 @@ recorded cases carrying six minifiers' answers.
 - `cascade diff` no longer aborts on a reordered selector holding the same rule
   index on both sides. The report is buffered, so the assertion that met such a
   move cost the whole report; the move is now named without a coordinate (#582)
+- `--diff=tree` compares a value on its minified spelling, so insignificant
+  whitespace stops reading as a change: a custom property written `16 / 9`
+  matches `16/9`, and a typed `padding: 0.50px` matches `padding: .5px`. The
+  space CSS Values 4 (ED) sec. 10.8 requires around a math `+` or `-`, and the
+  space beside a `var()`, still separate two values (#702)
+- `--diff=tree` prints a changed declaration the way its own file spells it. The
+  value shown was read off the comparison key, so a custom property holding a
+  quoted multi-word family name was reported unquoted on both sides, a spelling
+  neither file held (#702)
+- A one-word family name in a custom property compares equal quoted and
+  unquoted when a generic family proves the value is a font stack. `"serif"`
+  and the other CSS Fonts 4 sec. 2.1.1 exclusions stay distinct (#705)
+- `--diff=tree` prints the body of an added or removed rule as declarations,
+  with the separator and the `!important` flag. A rule gaining
+  `color: red !important` read like one gaining `color: red`, and a value
+  holding a colon of its own gave no sign of where the property name ended
+  (#706)
 
 ### Library
 
+- The `Css.declaration_value_for_equivalence` docstring names the generic
+  family that gates its unquoting: without one in the stream,
+  `--font: "Noto Color Emoji"` and `--font: Noto Color Emoji` are distinct diff
+  keys (#696)
 - Load-bearing minification, parsing, and serialization comments name the CSS
   spec sections that define their initial values, equivalences, grammars, and
   defaults (#677)

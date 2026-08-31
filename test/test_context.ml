@@ -2175,7 +2175,7 @@ let test_loader_import_layer_contract () =
   check_layered_import_loaded "tailwind theme import enters theme layer" ~loader
     ~layer_order
     ~expected:
-      "@layer theme{:root{--color-brand-500:oklch(70% 0.15 \
+      "@layer theme{:root{--color-brand-500:oklch(70%0.15 \
        250);--spacing:0.25rem}}"
     "@import url(theme.css) layer(theme);";
   check_layered_import_loaded "tailwind base import enters base layer" ~loader

@@ -41,8 +41,9 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     is the identity media type. That direction loses support in a Level 3
     parser, so it belongs to the projection rather than to emission.
 
-    A custom property holding a font stack has each quoted multi-word family
-    name rewritten as the [<ident>] sequence it unquotes to, which CSS Fonts 4
+    A bare generic family in a custom property's token stream proves the stream
+    is a font stack, and each quoted family name in it is then rewritten as the
+    [<ident>] sequence it unquotes to, one word or several, which CSS Fonts 4
     sec. 2.1.1 makes the same family name. Emission keeps whichever spelling the
     author wrote, since unquoting an opaque token stream could corrupt a
     [content] use, so again only the projection can bring the two together.

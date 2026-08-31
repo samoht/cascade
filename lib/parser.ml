@@ -329,9 +329,47 @@ let signed_number_pair prev next =
       is_signed_number_repr repr
   | _ -> false
 
+(* The sign a numeric token's serialisation opens with, per the [+]/[-] of the
+   CSS Syntax 3 (ED) sec. 4.3.12 number grammar. *)
+let numeric_leading_sign = function
+  | Component.Preserved
+      {
+        kind =
+          ( Token.Number_tok { repr; _ }
+          | Token.Percentage { repr; _ }
+          | Token.Dimension { number = { repr; _ }; _ } );
+        _;
+      }
+    when is_signed_number_repr repr ->
+      Some repr.[0]
+  | _ -> None
+
+(* A [+] is no ident code point (CSS Syntax 3 (ED) sec. 4.2) and continues no
+   number in front of it (sec. 4.3.12), so a plus-signed numeric re-lexes as its
+   own token after every token the arms below would otherwise separate. A [-] is
+   an ident code point and [--] starts an ident sequence (sec. 4.3.9), so a
+   minus-signed one only stands apart after a number or a [+]. Emitting a
+   separator for either would hand the next reader a token sequence the source
+   never held. *)
+let signed_numeric_self_separates prev next =
+  match numeric_leading_sign next with
+  | None -> false
+  | Some '+' -> true
+  | Some _ -> (
+      match prev with
+      | Component.Preserved { kind = Token.Number_tok _ | Token.Delim "+"; _ }
+        ->
+          true
+      | _ -> false)
+
 let normal_pair_needs_token_boundary prev next =
   match (prev, next) with
-  | _ when signed_number_pair prev next -> false
+  | _ when signed_numeric_self_separates prev next -> false
+  (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
+     a dimension all end their name at the [(], so the block stays apart. *)
+  | ( Component.Preserved { kind = Token.Ident _; _ },
+      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      true
   | ( Component.Preserved
         {
           kind =
@@ -346,8 +384,7 @@ let normal_pair_needs_token_boundary prev next =
               | Token.Percentage _ | Token.Dimension _ );
             _;
           }
-      | Component.Func _
-      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      | Component.Func _ ) ) ->
       true
   | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved
@@ -435,8 +472,9 @@ let word_like_end : Component.t -> bool = function
         kind =
           ( Whitespace | Open _ | Close _ | Colon | Semicolon | Comma | Cdo
           | Cdc | Bad_string | Bad_url | Eof
-          (* These delim characters are self-delimiting at the end, so a
-             trailing [<delim>] never merges with what follows. *)
+          (* Self-delimiting at the end: [%] closes its percentage token and
+             these delims close themselves, so nothing that follows merges into
+             them. Same rule the typed printer applies as [Pp.token_sp]. *)
           | Hash _ | Percentage _
           | Delim
               ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "%"
@@ -487,22 +525,15 @@ let pair_forms_multichar_token prev next =
       true
   | _ -> false
 
-let pair_prefers_component_separator prev next =
-  match (prev, next) with
-  | ( Component.Preserved { kind = Token.Percentage _; _ },
-      Component.Preserved
-        {
-          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
-          _;
-        } ) ->
-      true
-  | _ -> false
-
 let pair_needs_token_boundary prev next =
   match (prev, next) with
-  | _ when signed_number_pair prev next -> false
+  | _ when signed_numeric_self_separates prev next -> false
   | _ when pair_forms_multichar_token prev next -> true
-  | _ when pair_prefers_component_separator prev next -> true
+  (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
+     a dimension all end their name at the [(], so the block stays apart. *)
+  | ( Component.Preserved { kind = Token.Ident _; _ },
+      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      true
   | ( Component.Preserved
         {
           kind =
@@ -517,8 +548,7 @@ let pair_needs_token_boundary prev next =
               | Token.Percentage _ | Token.Dimension _ );
             _;
           }
-      | Component.Func _
-      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      | Component.Func _ ) ) ->
       true
   | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved
@@ -557,19 +587,49 @@ let pair_needs_token_boundary prev next =
       true
   | _ -> false
 
-let rec cv_to_buffer_min buf = function
+(* CSS Values 4 (ED) sec. 10.8 "Syntax" requires whitespace on both sides of the
+   [+] and [-] operators of a math function, and allows [*] and [/] without any.
+   Sec. 10 names the whole set: [calc()], the comparison functions, the
+   stepped-value, trigonometric, exponential and sign-related families. One
+   table serves every caller - a second copy drifts, and the passes over a
+   custom-property stream then disagree about the same token. *)
+let is_math_function name =
+  match String.lowercase_ascii name with
+  | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "sin" | "cos"
+  | "tan" | "asin" | "acos" | "atan" | "atan2" | "pow" | "sqrt" | "hypot"
+  | "log" | "exp" | "abs" | "sign" ->
+      true
+  | _ -> false
+
+let is_plus_or_minus_delim = function
+  | Component.Preserved { kind = Token.Delim ("+" | "-"); _ } -> true
+  | _ -> false
+
+(* Dropping a required separator gives a stream the browser rejects, so a
+   minified serialiser keeps it even though neither neighbour is word-like.
+   [in_math] enters at a math function's arguments and carries through a
+   grouping paren, itself a math operand; a nested function has its own
+   grammar. *)
+let math_sign_boundary ~in_math prev next =
+  in_math && (is_plus_or_minus_delim prev || is_plus_or_minus_delim next)
+
+let block_in_math ~in_math : Token.bracket -> bool = function
+  | Token.Paren -> in_math
+  | Token.Square | Token.Curly -> false
+
+let rec cv_to_buffer_min ~in_math buf = function
   | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_min buf value;
+      cvs_to_buffer_min ~in_math:(block_in_math ~in_math opening) buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min buf arguments;
+      cvs_to_buffer_min ~in_math:(is_math_function name) buf arguments;
       Buffer.add_char buf ')'
 
-and cvs_to_buffer_min buf cvs =
+and cvs_to_buffer_min ~in_math buf cvs =
   let rec drop_ws = function
     | cv :: rest when is_whitespace cv -> drop_ws rest
     | other -> other
@@ -579,6 +639,7 @@ and cvs_to_buffer_min buf cvs =
     | None -> false
     | Some p ->
         pair_forms_multichar_token p next
+        || math_sign_boundary ~in_math p next
         || (not (signed_number_pair p next))
            && word_like_end p
            && (not (is_backslash_delim p))
@@ -590,11 +651,7 @@ and cvs_to_buffer_min buf cvs =
         let rest' = drop_ws rest in
         let separated' =
           match rest' with
-          | next :: _
-            when needs_separator prev next
-                 || Option.fold ~none:false
-                      ~some:(fun p -> pair_prefers_component_separator p next)
-                      prev ->
+          | next :: _ when needs_separator prev next ->
               Buffer.add_char buf ' ';
               true
           | _ -> separated
@@ -605,7 +662,7 @@ and cvs_to_buffer_min buf cvs =
         | Some p when (not separated) && pair_needs_token_boundary p cv ->
             Buffer.add_char buf ' '
         | _ -> ());
-        cv_to_buffer_min buf cv;
+        cv_to_buffer_min ~in_math buf cv;
         loop (Some cv) false rest
   in
   loop None false cvs
@@ -614,7 +671,7 @@ let to_string_minified cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min buf cvs;
+    cvs_to_buffer_min ~in_math:false buf cvs;
     Buffer.contents buf
 
 let to_string_custom cvs =
@@ -688,20 +745,22 @@ let custom_min_word_boundary p next =
 
 (* Whitespace in a custom-property value is part of the stream a var()
    substitution receives, so a separator around [*] and [/] is collapsed to one
-   space, never deleted: [16 / 9] and [16/9] are distinct streams. *)
-let custom_min_needs_separator prev next rest =
+   space, never deleted: [16 / 9] and [16/9] are distinct streams. Around a
+   math-function [+] or [-] the space is required outright. *)
+let custom_min_needs_separator ~in_math prev next rest =
   match prev with
   | None -> false
   | Some p ->
       pair_forms_multichar_token p next
       || custom_min_is_math_delim p
       || custom_min_is_math_delim next
+      || math_sign_boundary ~in_math p next
       || custom_min_bang_boundary prev next rest
       || custom_min_word_boundary p next
 
-let custom_min_ws_separator buf prev separated rest =
+let custom_min_ws_separator ~in_math buf prev separated rest =
   match rest with
-  | next :: _ when custom_min_needs_separator prev next rest ->
+  | next :: _ when custom_min_needs_separator ~in_math prev next rest ->
       Buffer.add_char buf ' ';
       true
   | _ -> separated
@@ -741,11 +800,14 @@ let add_custom_value_token ~fold_ident buf : Token.kind -> unit = function
   | Token.Ident s -> Buffer.add_string buf (escape_ident (fold_ident s))
   | other -> add_token_kind buf other
 
-let rec cv_to_buffer_custom_min ~fold_ident buf : Component.t -> unit = function
+let rec cv_to_buffer_custom_min ~fold_ident ~in_math buf : Component.t -> unit =
+  function
   | Preserved t -> add_custom_value_token ~fold_ident buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_min_custom ~fold_ident buf value;
+      cvs_to_buffer_min_custom ~fold_ident
+        ~in_math:(block_in_math ~in_math opening)
+        buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ }
     when String.lowercase_ascii name = "url" -> (
@@ -757,27 +819,30 @@ let rec cv_to_buffer_custom_min ~fold_ident buf : Component.t -> unit = function
       | None ->
           Buffer.add_string buf (escape_ident name);
           Buffer.add_char buf '(';
-          cvs_to_buffer_min_custom ~fold_ident buf arguments;
+          cvs_to_buffer_min_custom ~fold_ident ~in_math:false buf arguments;
           Buffer.add_char buf ')')
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min_custom ~fold_ident buf arguments;
+      cvs_to_buffer_min_custom ~fold_ident ~in_math:(is_math_function name) buf
+        arguments;
       Buffer.add_char buf ')'
 
 (* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
-and cvs_to_buffer_min_custom ~fold_ident buf cvs =
+and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
   let rec loop prev separated = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_whitespace_components rest in
-        let separated' = custom_min_ws_separator buf prev separated rest' in
+        let separated' =
+          custom_min_ws_separator ~in_math buf prev separated rest'
+        in
         loop prev separated' rest'
     | cv :: rest ->
         custom_min_item_separator buf prev separated cv;
-        cv_to_buffer_custom_min ~fold_ident buf cv;
+        cv_to_buffer_custom_min ~fold_ident ~in_math buf cv;
         loop (Some cv) false rest
   in
   loop None false cvs
@@ -786,7 +851,7 @@ let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min_custom ~fold_ident buf cvs;
+    cvs_to_buffer_min_custom ~fold_ident ~in_math:false buf cvs;
     Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)

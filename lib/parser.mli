@@ -42,7 +42,24 @@ val to_string_minified : Component.t list -> string
 (** Like {!string_of_components} but drops whitespace that sits between two
     components where at least one side is not word-like (ident / number / etc.).
     Two word-like components still get a separating space so they don't merge
-    into a single token. *)
+    into a single token, and so does either side of a [+] or [-] operator inside
+    a math function, where CSS Values 4 (ED) section 10.8 requires one. *)
+
+val is_math_function : string -> bool
+(** [is_math_function name] is true for a CSS Values 4 (ED) section 10 math
+    function: [calc()], the comparison functions ([min()], [max()], [clamp()]),
+    the stepped-value ([round()], [mod()], [rem()]), trigonometric ([sin()]
+    through [atan2()]), exponential ([pow()], [sqrt()], [hypot()], [log()],
+    [exp()]) and sign-related ([abs()], [sign()]) families. [name] is matched
+    case insensitively, as CSS function names are. One table serves every
+    caller: a second copy drifts, and the passes over a custom-property stream
+    then disagree about the same token. *)
+
+val is_plus_or_minus_delim : Component.t -> bool
+(** [is_plus_or_minus_delim cv] is true for a [+] or [-] delim token. Inside a
+    math function that token is the operator whose whitespace CSS Values 4 (ED)
+    section 10.8 requires; a sign written as part of a number ([+2]) lexes as
+    one numeric token and is not one of these. *)
 
 val to_string_custom : Component.t list -> string
 (** Variant of {!string_of_components} for CSS Custom Properties Level 1 token

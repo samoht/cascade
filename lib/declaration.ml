@@ -138,12 +138,12 @@ let rec custom_declaration_layer = function
   | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
 (* Equivalence-only normalisation for structural diffing: rewrite a quoted
-   multi-word [<string>] in a custom-property stream as the equivalent unquoted
-   [<ident>] sequence. The forms substitute identically into [font-family] so
-   cascade treats them as equal, but keeps both verbatim on output (unquoting an
-   opaque custom property could corrupt a [content] use). Gated on a generic
-   family being present, since an unregistered property is otherwise
-   type-unknown. *)
+   family name in a custom-property stream as the equivalent unquoted [<ident>]
+   sequence, one word or several. The forms substitute identically into
+   [font-family] so cascade treats them as equal, but keeps both verbatim on
+   output (unquoting an opaque custom property could corrupt a [content] use).
+   Gated on a generic family being present, since an unregistered property is
+   otherwise type-unknown. *)
 let unquote_custom_font_strings = function
   | Declaration
       {
@@ -158,6 +158,29 @@ let unquote_custom_font_strings = function
            {
              cv with
              value = Tokens (Properties.unquote_font_family_strings components);
+           })
+  | decl -> decl
+
+(* Equivalence-only normalisation for structural diffing: drop the whitespace of
+   a custom-property stream that CSS reads as nothing. Cascade keeps that
+   whitespace verbatim on output, since the stream is opaque and the author's
+   bytes are what a [var()] substitutes; two streams that differ only there are
+   still the same value. *)
+let canonicalize_custom_whitespace = function
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value ({ value = Tokens components; _ } as cv);
+        important;
+        _;
+      } ->
+      v ~important property
+        (Custom_value
+           {
+             cv with
+             value =
+               Tokens
+                 (Properties.canonicalize_math_whitespace_components components);
            })
   | decl -> decl
 
@@ -1315,20 +1338,8 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
   | Grid_template -> Some (v Grid_template (read_grid_template t))
   | Grid -> Some (v Grid (read_grid t))
   | Grid_area -> Some (v Grid_area (read_grid_area t))
-  | Grid_auto_columns ->
-      let value = read_grid_template t in
-      (match value with
-      | Subgrid | Masonry ->
-          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
-      | _ -> ());
-      Some (v Grid_auto_columns value)
-  | Grid_auto_rows ->
-      let value = read_grid_template t in
-      (match value with
-      | Subgrid | Masonry ->
-          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
-      | _ -> ());
-      Some (v Grid_auto_rows value)
+  | Grid_auto_columns -> Some (v Grid_auto_columns (read_grid_auto_tracks t))
+  | Grid_auto_rows -> Some (v Grid_auto_rows (read_grid_auto_tracks t))
   | Grid_column -> Some (v Grid_column (read_grid_line_pair t))
   | Grid_row -> Some (v Grid_row (read_grid_line_pair t))
   | _ -> None
@@ -2043,14 +2054,13 @@ let read_custom_property_declaration t : declaration =
 
 (* Properties whose grammar allows multi-token values where a CSS-wide keyword
    can legitimately appear as a non-special ident. [animation-name] /
-   [grid-area] / [will-change] / etc. accept arbitrary ident lists.
-   [font-family] also takes a [<custom-ident>#] list, so a CSS-wide keyword
-   inside the list is invalid CSS (CSS Cascade 5 sec. 7.3) but upstream tools
-   (lightningcss, csso) preserve the source verbatim. *)
+   [will-change] / etc. accept arbitrary ident lists. [font-family] also takes a
+   [<custom-ident>#] list, so a CSS-wide keyword inside the list is invalid CSS
+   (CSS Cascade 5 sec. 7.3) but upstream tools (lightningcss, csso) preserve the
+   source verbatim. *)
 let property_allows_keyword_as_ident = function
-  | "animation-name" | "grid-area" | "grid-row" | "grid-column"
-  | "grid-row-start" | "grid-row-end" | "grid-column-start" | "grid-column-end"
-  | "will-change" | "view-transition-name" | "font-family" | "font" ->
+  | "animation-name" | "will-change" | "view-transition-name" | "font-family"
+  | "font" ->
       true
   | _ -> false
 

@@ -158,7 +158,7 @@ let pure_minify_value_fallbacks () =
   in
   Alcotest.(check string)
     "constructed value fallbacks"
-    ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50% 50%)}"
+    ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50%50%)}"
     (Css.to_string ~minify:true stylesheet)
 
 (* [to_string ~minify:true] is a pure formatter, so a constructed AST reaches
@@ -235,6 +235,113 @@ let constructed_offset_shorthand () =
         "constructed offset shorthand reparses" printed
         (String.trim (Css.to_string ~minify:true stylesheet))
   | Error e -> Alcotest.failf "%s: %s" printed (Error.to_string e)
+
+(* CSS Syntax 3 (ED) sec. 4 ends a percentage-token at the [%], so
+   [oklch(63.7%.237 25.331)] and [oklch(63.7% .237 25.331)] tokenise to one
+   stream and [Css.to_string ~minify:true] may spell the boundary either way. It
+   may not spell it both ways: minified output is the printer's canonical form,
+   so reading it back and printing it again has to give the same bytes.
+   [Css.var] binds a typed value where the reader keeps an opaque token stream,
+   so both sides of the printer answer the same question here. *)
+let constructed_custom_property_reparses () =
+  let modes =
+    [
+      ("default", false, false);
+      ("lossless", true, false);
+      ("enforce-spec", false, true);
+    ]
+  in
+  let fixed_point label sheet =
+    List.iter
+      (fun (mode, lossless, enforce_spec) ->
+        let printed =
+          Css.to_string ~minify:true ~lossless ~enforce_spec sheet
+        in
+        let again =
+          Css.to_string ~minify:true ~lossless ~enforce_spec
+            (Css.of_string_exn printed)
+        in
+        Alcotest.(check string)
+          (String.concat "" [ label; " is its own fixed point ("; mode; ")" ])
+          printed again)
+      modes
+  in
+  let decl, _ = Css.var "brand" Css.Color (Css.oklch 63.7 0.237 25.331) in
+  fixed_point "constructed custom property" (v [ rule ~selector:btn [ decl ] ]);
+  fixed_point "parsed custom property"
+    (Css.of_string_exn ".btn{--brand:oklch(63.7% .237 25.331)}");
+  (* A parsed typed colour is its own fixed point: the typed printer and the
+     custom-value serialiser have to agree on the percentage boundary. *)
+  fixed_point "typed percentage pair"
+    (Css.of_string_exn ".btn{color:hsl(120 50% 50%)}");
+  (* [%] closes its token (CSS Syntax 3 (ED) sec. 4), so a constructed colour
+     has to spell the boundary after a percentage the way a reparse of its own
+     bytes does. *)
+  List.iter
+    (fun (name, color) ->
+      let decl, _ = Css.var name Css.Color color in
+      fixed_point
+        (String.concat "" [ "constructed "; name ])
+        (v [ rule ~selector:btn [ decl ] ]))
+    [
+      ("hsl", Css.hsl 120. 50. 50.);
+      ("hwb", Css.hwb 120. 30. 40.);
+      ("hsla", Css.hsla 120. 50. 50. 0.5);
+      ("hwba", Css.hwba 120. 30. 40. 0.5);
+      ( "rgb-percentage-channels",
+        Css.Values.Rgb (Channels { r = Pct 50.; g = Pct 60.; b = Pct 70. }) );
+      ("oklch-percentage-chroma", Css.oklch 50. 0.304 120.);
+      ( "oklch-none-chroma",
+        Css.Values.Oklch
+          {
+            l = Some (Pct 50.);
+            c = Option.None;
+            h = Unitless 120.;
+            alpha = None;
+          } );
+      ( "oklab-none-axis",
+        Css.Values.Oklab
+          { l = Some (Pct 50.); a = Option.None; b = Some 0.12; alpha = None }
+      );
+      ( "rgb-var-channel",
+        Css.Values.Rgb
+          (Channels
+             { r = Pct 50.; g = Var (Css.Values.var_ref "g"); b = Pct 70. }) );
+      (* The other side of the same boundary: a [var()] closes on [)], which the
+         custom-value serialiser keeps separated, so that gap stays. *)
+      ( "hsl-var-saturation",
+        Css.Values.Hsl
+          {
+            h = Unitless 120.;
+            s = Var (Css.Values.var_ref "s");
+            l = Pct 50.;
+            a = None;
+          } );
+    ];
+  (* A custom property never comes out longer than it went in. [%] closes the
+     percentage, so the reader has no boundary to restore. *)
+  List.iter
+    (fun source ->
+      let printed = Css.to_string ~minify:true (Css.of_string_exn source) in
+      Alcotest.(check string)
+        "minified custom property keeps its spelling" source printed;
+      fixed_point "tight custom property" (Css.of_string_exn source))
+    [ ":root{--x:10%5px}"; ":root{--x:50%.5}" ];
+  (* Pretty output is the upper bound on minified output for the same node. *)
+  List.iter
+    (fun source ->
+      let sheet = Css.of_string_exn source in
+      let minified = Css.to_string ~minify:true sheet in
+      let pretty = Css.to_string sheet in
+      if String.length minified > String.length pretty then
+        Alcotest.failf "minified %S is longer than pretty %S" minified pretty)
+    [
+      ":root{--x:10%5px}";
+      ":root{--x:50%.5}";
+      ".btn{--brand:oklch(63.7% .237 25.331)}";
+      ".btn{color:hsl(120 50% 50%)}";
+      ".btn{color:hwb(120 30% 40%)}";
+    ]
 
 let explicit_phase_pipeline () =
   let stylesheet =
@@ -2144,6 +2251,8 @@ let suite =
         constructed_offset_shorthand;
       Alcotest.test_case "constructed initial keyword fold" `Quick
         constructed_initial_keyword_fold;
+      Alcotest.test_case "constructed custom property reparses" `Quick
+        constructed_custom_property_reparses;
       Alcotest.test_case "explicit phase pipeline" `Quick
         explicit_phase_pipeline;
       Alcotest.test_case "important declarations" `Quick important_integration;

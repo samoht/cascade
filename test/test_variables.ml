@@ -517,6 +517,96 @@ let spec_property_syntax_edges () =
   neg_cursor read_any_syntax "\"<unknown>\"";
   neg_cursor read_any_syntax "\"<length\""
 
+(* CSS Properties and Values API 1 (ED) sec. 5.4.3 "Consume a Syntax Component"
+   consumes at most one multiplier: after the component name it consumes a
+   single [+] or [#] and returns. Sec. 5.4.2 then accepts only EOF or [|] after
+   a component, so a second multiplier fails the whole syntax definition. Sec.
+   3.1 makes an unreadable syntax string an invalid descriptor, which leaves
+   [@property] without the descriptor it requires and drops the registration -
+   the state [<custom-ident>#+], [<custom-ident>++] and [<custom-ident>##]
+   already reach. Sec. 5.3 puts a multiplier inside an alternation arm, where
+   one per arm stays valid. *)
+let spec_property_syntax_multiplier_chain () =
+  check_any_syntax "\"<custom-ident>+\"";
+  check_any_syntax "\"<custom-ident>#\"";
+  neg_cursor read_any_syntax "\"<custom-ident>+#\"";
+  neg_cursor read_any_syntax "\"<custom-ident>#+\"";
+  neg_cursor read_any_syntax "\"<custom-ident>++\"";
+  neg_cursor read_any_syntax "\"<custom-ident>##\"";
+  (* One multiplier per alternation arm, on either side of the [|]. *)
+  check_any_syntax ~expected:"\"<length>+|auto\"" "\"<length>+ | auto\"";
+  check_any_syntax ~expected:"\"auto|<color>#\"" "\"auto | <color>#\"";
+  neg_cursor read_any_syntax "\"<length>+# | auto\"";
+  neg_cursor read_any_syntax "\"auto | <color>#+\"";
+  (* The registration a rejected syntax string costs. An [initial-value] of two
+     idents parses only under the [+], so the surviving rule is one that kept
+     its multiplier and typed the value at it. *)
+  let render css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> Css.to_string ~minify:true parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let sheet syn =
+    String.concat ""
+      [
+        "@property --p{syntax:\"";
+        syn;
+        "\";inherits:false;initial-value:a b}.x{color:red}";
+      ]
+  in
+  Alcotest.(check string)
+    "one multiplier registers and types the initial value"
+    (sheet "<custom-ident>+")
+    (render (sheet "<custom-ident>+"));
+  Alcotest.(check string)
+    "chained multipliers drop the registration" ".x{color:red}"
+    (render (sheet "<custom-ident>+#"))
+
+(* CSS Properties and Values API 1 (ED) sec. 5.4.3 gives a component a [+] or
+   [#] multiplier, and [read_value] repeats the component reader to read the
+   list. A reader that reports success without consuming anything never lets
+   that repetition end, so every component reader has to reject an empty stream.
+   The universal syntax is the one reader that may match nothing, and sec. 5.4.2
+   returns it only for a syntax string that is [*] and nothing else, so it takes
+   no multiplier and joins no alternation. *)
+let spec_multiplied_component_terminates () =
+  let rejects_empty_stream name =
+    let quoted = String.concat "" [ "\""; name; "\"" ] in
+    match read_any_syntax (Cursor.of_string quoted) with
+    | Syntax syntax -> (
+        match read_value (Cursor.of_string "") syntax with
+        | exception Error.Parse_error _ -> ()
+        | _ -> Alcotest.failf "%s read a value from an empty stream" name)
+  in
+  List.iter rejects_empty_stream
+    [
+      "<length>";
+      "<color>";
+      "<number>";
+      "<integer>";
+      "<percentage>";
+      "<length-percentage>";
+      "<angle>";
+      "<time>";
+      "<resolution>";
+      "<custom-ident>";
+      "<string>";
+      "<url>";
+      "<image>";
+      "<transform-function>";
+      "<transform-list>";
+      "auto";
+    ];
+  (* The universal syntax stands alone. *)
+  check_any_syntax "\"*\"";
+  neg_cursor read_any_syntax "\"*+\"";
+  neg_cursor read_any_syntax "\"*#\"";
+  neg_cursor read_any_syntax "\"* | <length>\"";
+  neg_cursor read_any_syntax "\"<length> | *\"";
+  (* The multipliers these readers sit under stay readable. *)
+  check_any_syntax "\"<transform-function>+\"";
+  check_any_syntax "\"<resolution>+\""
+
 (* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
@@ -702,6 +792,12 @@ let tests =
     ("custom property name edges", `Quick, custom_property_name_edges);
     ("any_syntax", `Quick, test_any_syntax);
     ("spec property syntax descriptor edges", `Quick, spec_property_syntax_edges);
+    ( "spec property syntax multiplier chain",
+      `Quick,
+      spec_property_syntax_multiplier_chain );
+    ( "spec multiplied component terminates",
+      `Quick,
+      spec_multiplied_component_terminates );
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);

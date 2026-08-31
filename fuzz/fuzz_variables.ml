@@ -101,6 +101,57 @@ let test_var_compare_antisym buf =
   if ab < 0 && ba <= 0 then fail "variable compare not antisymmetric";
   if ab > 0 && ba >= 0 then fail "variable compare not antisymmetric"
 
+(* CSS Properties and Values API 1 (ED) sec. 5.4.3 gives a component a [+] or
+   [#] multiplier, and reading the list repeats the component reader. A reader
+   that reports success without consuming anything never lets that repetition
+   end, so every component reader rejects an empty stream. The universal syntax
+   is the one reader that matches nothing, and sec. 5.4.2 returns it only for
+   the syntax string [*] on its own, where no multiplier can reach it. *)
+let component_names =
+  [
+    "<length>";
+    "<color>";
+    "<number>";
+    "<integer>";
+    "<percentage>";
+    "<length-percentage>";
+    "<angle>";
+    "<time>";
+    "<resolution>";
+    "<custom-ident>";
+    "<string>";
+    "<url>";
+    "<image>";
+    "<transform-function>";
+    "<transform-list>";
+  ]
+
+let syntax_string buf =
+  if byte_at buf 0 mod 2 = 0 then pick component_names buf 1 else cssish buf
+
+(* Only a component reader is exercised: a multiplied or alternated syntax is
+   left alone so a reader that does not consume cannot spin here. *)
+let check_leaf_rejects_empty : type a. string -> a Css.Variables.syntax -> unit
+    =
+ fun name syntax ->
+  match syntax with
+  | Css.Variables.Universal | Css.Variables.Plus _ | Css.Variables.Hash _
+  | Css.Variables.Or _ ->
+      ()
+  | _ -> (
+      match Css.Variables.read_value (Cursor.of_string "") syntax with
+      | exception Cursor.Parse_error _ -> ()
+      | exception Reader.Parse_error _ -> ()
+      | _ -> failf "%S read a value from an empty stream" name)
+
+let test_reader_rejects_empty_stream buf =
+  let name = syntax_string buf in
+  let quoted = String.concat "" [ "\""; name; "\"" ] in
+  match Css.Variables.read_any_syntax (Cursor.of_string quoted) with
+  | exception Cursor.Parse_error _ -> ()
+  | exception Reader.Parse_error _ -> ()
+  | Css.Variables.Syntax syntax -> check_leaf_rejects_empty name syntax
+
 let suite =
   ( "variables",
     [
@@ -116,4 +167,6 @@ let suite =
         test_custom_declaration_name_invariant;
       test_case "compare vars by name antisymmetric" [ bytes ]
         test_var_compare_antisym;
+      test_case "component reader rejects empty stream" [ bytes ]
+        test_reader_rejects_empty_stream;
     ] )

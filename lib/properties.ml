@@ -2999,17 +2999,7 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
       | Typed _ -> [ c ])
   | _ -> fallback ()
 
-(* CSS Values 4 sec. 10 names the whole set: [calc()], the comparison functions,
-   the stepped-value, trigonometric, exponential and sign-related families. One
-   table serves every caller - a second copy drifts, and the two passes over a
-   custom-property stream then disagree about the same token. *)
-let is_math_function name =
-  match String.lowercase_ascii name with
-  | "calc" | "min" | "max" | "clamp" | "round" | "mod" | "rem" | "sin" | "cos"
-  | "tan" | "asin" | "acos" | "atan" | "atan2" | "pow" | "sqrt" | "hypot"
-  | "log" | "exp" | "abs" | "sign" ->
-      true
-  | _ -> false
+let is_math_function = Parser.is_math_function
 
 (* A math function is unconditionally a math expression whose type is fixed by
    its operands' units, so when it reduces to a single constant it has that
@@ -3802,33 +3792,30 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       value ) ->
       value
 
-(* CSS Values L4 sec. 10.10 ("Mathematical Expressions"): inside a math function
-   ([calc], [min], [max], [clamp], [round], [mod], [rem], the trig family,
-   [pow]/[sqrt]/[hypot]/[log]/[exp], [abs]/[sign]) whitespace is *required*
-   around binary [+] and [-] (sign-token disambiguation - stripping it changes
-   [100% - var(--a)] to [100%-var(--a)], where [-var] is one ident-like function
-   token) but *optional* around [*], [/], [(], [)], [,]. Strip the optional
-   whitespace from math-function arguments so two custom-property token streams
-   that differ only there have the same canonical AST. Typed math is already
-   minified by [pp_calc]; this matters for opaque [Tokens _] custom-property
-   values where cascade preserves the author's whitespace verbatim by design.
-   Nested non-math functions ([var()] etc.) get a recursive component walk but
-   no whitespace stripping; nested math functions get their own. *)
-let is_plus_or_minus_delim = function
-  | Component.Preserved { kind = Token.Delim "+"; _ }
-  | Component.Preserved { kind = Token.Delim "-"; _ } ->
-      true
-  | _ -> false
-
+(* CSS Values 4 (ED) sec. 10.8 ("Syntax"): inside a math function whitespace is
+   *required* around binary [+] and [-] (sign-token disambiguation - stripping
+   it changes [100% - var(--a)] to [100%-var(--a)], where [-var] is one
+   ident-like function token) but *optional* around [*], [/], [(], [)], [,].
+   Strip the optional whitespace from math-function arguments so two
+   custom-property token streams that differ only there have the same canonical
+   AST. Typed math is already minified by [pp_calc]; this matters for opaque
+   [Tokens _] custom-property values where cascade preserves the author's
+   whitespace verbatim by design. Nested non-math functions ([var()] etc.) get a
+   recursive component walk but no whitespace stripping; nested math functions
+   get their own. *)
 let strip_math_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
     | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
         let prev_pm =
-          match acc with [] -> false | p :: _ -> is_plus_or_minus_delim p
+          match acc with
+          | [] -> false
+          | p :: _ -> Parser.is_plus_or_minus_delim p
         in
         let next_pm =
-          match rest with [] -> false | n :: _ -> is_plus_or_minus_delim n
+          match rest with
+          | [] -> false
+          | n :: _ -> Parser.is_plus_or_minus_delim n
         in
         if prev_pm || next_pm then aux (ws :: acc) rest else aux acc rest
     | other :: rest -> aux (other :: acc) rest
@@ -3871,8 +3858,11 @@ let is_substitution_func_name name =
 (* Whitespace immediately after a function or block that closes with a hard
    token boundary is insignificant: [drop-shadow(a) drop-shadow(b)] and
    [calc(45deg*-1) in oklab] re-tokenise identically without it, wherever the
-   stream is substituted. Whitespace after a substitution function stays. *)
-let strip_after_close_paren comps =
+   stream is substituted. Whitespace after a substitution function stays, and so
+   does the whitespace before a math operator, which sec. 10.8 requires however
+   hard the boundary on its left: [calc(min(1px,2px) - 3px)] keeps both spaces
+   or the browser drops the declaration. *)
+let strip_after_close_paren ~in_math comps =
   let closes_hard = function
     | Component.Func wrapped ->
         not (is_substitution_func_name wrapped.Component.node.name)
@@ -3885,7 +3875,12 @@ let strip_after_close_paren comps =
         let prev_hard =
           match acc with [] -> false | p :: _ -> closes_hard p
         in
-        if prev_hard then aux acc rest else aux (ws :: acc) rest
+        let next_pm =
+          match rest with
+          | [] -> false
+          | n :: _ -> in_math && Parser.is_plus_or_minus_delim n
+        in
+        if prev_hard && not next_pm then aux acc rest else aux (ws :: acc) rest
     | other :: rest -> aux (other :: acc) rest
   in
   aux [] comps
@@ -3895,7 +3890,7 @@ let strip_after_close_paren comps =
    propagates through grouping parens ([Block]s) since those are math operands,
    and turns off when entering a nested non-math function like [var()] which has
    its own grammar. *)
-let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
+let rec canonicalize_math_whitespace ~in_math comps =
   let comps' =
     List.map
       (fun c ->
@@ -3904,16 +3899,14 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
             let func = wrapped.Component.node in
             let nested_in_math = is_math_function func.name in
             let args =
-              canonicalize_math_whitespace_components ~in_math:nested_in_math
+              canonicalize_math_whitespace ~in_math:nested_in_math
                 func.arguments
             in
             Component.Func
               { wrapped with node = { func with arguments = args } }
         | Component.Block wrapped ->
             let block = wrapped.Component.node in
-            let value =
-              canonicalize_math_whitespace_components ~in_math block.value
-            in
+            let value = canonicalize_math_whitespace ~in_math block.value in
             Component.Block { wrapped with node = { block with value } }
         | Component.Preserved _ -> c)
       comps
@@ -3922,7 +3915,10 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
     if in_math then strip_math_whitespace comps'
     else strip_mul_div_whitespace comps'
   in
-  strip_after_close_paren comps'
+  strip_after_close_paren ~in_math comps'
+
+let canonicalize_math_whitespace_components comps =
+  canonicalize_math_whitespace ~in_math:false comps
 
 let normalize_property_value : type a.
     ?lossless:bool ->

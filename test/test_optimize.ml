@@ -955,6 +955,48 @@ let test_promote_registered_reaches_at_rule_declarations () =
     "@supports-condition --x{--c:rgb(255 0 0)}"
     "@supports-condition --x{--c:red}"
 
+(* CSS Fonts 4 sec. 2.1.1 spells one [<family-name>] either as a [<string>] or
+   as a [<custom-ident>+], but the two only name the same family in a
+   font-family position. No registration reaches that position: [<family-name>]
+   is not among the syntax component names CSS Properties and Values API 1 (ED)
+   sec. 5.1 supports, so [<custom-ident>+] is the generic ident-sequence grammar
+   and a quoted string does not match it. The declaration is then invalid at
+   computed-value time (ED sec. 2.4) and computes to the registration's initial
+   value, which unquoting it would replace with the name itself. *)
+let test_promote_registered_keeps_unmatched_string_quoted () =
+  let check name registration body expected =
+    Alcotest.(check string)
+      name (registration ^ expected)
+      (minify (Css.of_string_exn ~strict:false (registration ^ body)))
+  in
+  let idents =
+    "@property \
+     --a{syntax:\"<custom-ident>+\";inherits:false;initial-value:fallbackname}"
+  in
+  check "a multi-word string stays quoted" idents ":root{--a:\"Segoe UI\"}"
+    ":root{--a:\"Segoe UI\"}";
+  check "a single-word string stays quoted" idents ":root{--a:\"Helvetica\"}"
+    ":root{--a:\"Helvetica\"}";
+  check "the ident sequence the registration accepts stays bare" idents
+    ":root{--a:Segoe UI}" ":root{--a:Segoe UI}";
+  (* [<string>] is a registrable component of its own (ED sec. 5.1), so under
+     this alternation both spellings match and each computes to the arm it
+     names: a [content] use reads the quoted one back as text and the bare one
+     not at all. *)
+  let alternation =
+    "@property \
+     --b{syntax:\"<string>|<custom-ident>+\";inherits:false;initial-value:fallbackname}"
+  in
+  check "an alternation keeps the string arm" alternation
+    ":root{--b:\"Segoe UI\"}" ":root{--b:\"Segoe UI\"}";
+  (* A value that does match its registration is still promoted, so no reading
+     of this test is satisfied by switching the pass off. *)
+  let color =
+    "@property --c{syntax:\"<color>\";inherits:false;initial-value:red}"
+  in
+  check "a matching value is still typed-promoted" color
+    ":root{--c:rgb(255 0 0)}" ":root{--c:red}"
+
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
    known until substitution, so minify+optimize must keep it verbatim - never
@@ -1660,6 +1702,9 @@ let optimize_tests =
     ( "promote registered reaches at-rule declarations",
       `Quick,
       test_promote_registered_reaches_at_rule_declarations );
+    ( "promote registered keeps an unmatched string quoted",
+      `Quick,
+      test_promote_registered_keeps_unmatched_string_quoted );
     ( "deduplicate declarations preserves physical identity",
       `Quick,
       test_deduplicate_declarations_physical_identity );
@@ -3055,14 +3100,14 @@ let target_minify_enforce_spec_split () =
      --enforce-spec emits the spec-canonical resolved form, which is the number,
      and never introduces a percentage even when it would be shorter. *)
   check_modes "oklch chroma uses the shorter percentage on the default target"
-    "a { color: oklch(.5 .304 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    "a { color: oklch(.5 .304 200) }" ~default:"a{color:oklch(.5 76%200)}"
     ~spec:"a{color:oklch(.5 .304 200)}";
   check_modes
     "oklch chroma keeps the number when the number is already shortest"
     "a { color: oklch(.5 .1 200) }" ~default:"a{color:oklch(.5 .1 200)}"
     ~spec:"a{color:oklch(.5 .1 200)}";
   check_modes "enforce-spec renders oklch chroma as the canonical number"
-    "a { color: oklch(.5 76% 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    "a { color: oklch(.5 76% 200) }" ~default:"a{color:oklch(.5 76%200)}"
     ~spec:"a{color:oklch(.5 .304 200)}";
   check_modes "media min-width grammar"
     "@media (min-width: 700px) { a { color: red } }"

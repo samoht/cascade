@@ -513,7 +513,7 @@ let test_remaining_printer_fold_spellings_factor () =
        ".a{transition-duration:round(1.1s,.5s)}.b{transition-duration:1s}");
   Alcotest.(check string)
     "angle hue factors with bare degrees"
-    ".a,.b{color:hsl(180 50% 50%/var(--a))}"
+    ".a,.b{color:hsl(180 50%50%/var(--a))}"
     (optimize_str
        ".a{color:hsl(.5turn 50% 50%/var(--a))}.b{color:hsl(180 50% \
         50%/var(--a))}")

@@ -752,19 +752,29 @@ let take_block_if pred t : Component.block Component.node option =
       Some b
   | _ -> None
 
+(* A block's grammar ends at its closer, so a reader that stops part-way through
+   the contents has met an invalid value, not a shorter one it may answer with:
+   CSS Syntax 3 (ED) sec. 5.4.1 matches a grammar against the whole
+   component-value list the block holds, or returns failure. [expect_eof] skips
+   leading whitespace itself. *)
+let whole_block f inner =
+  let v = f inner in
+  expect_eof inner;
+  v
+
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
@@ -772,15 +782,16 @@ let function_call name f t =
   | Some (Component.Func fn)
     when String.lowercase_ascii_preserve fn.node.name = name ->
       let _ = next t in
-      Some (f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+      Some
+        (whole_block f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
   match peek t with
   | Some (Component.Func fn) ->
       let _ = next t in
-      Some
-        (f fn.node.name (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+      let inner = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      Some (whole_block (f fn.node.name) inner)
   | _ -> None
 
 let call name t f =
@@ -792,13 +803,7 @@ let call name t f =
       let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
       let arg = { arg with depth = t.depth + 1 } in
       if arg.depth > max_nesting_depth then err arg "nesting too deep";
-      (* A function's grammar ends at its closing paren, so whatever [f] left
-         behind is an invalid value, not a shorter one it may answer with (CSS
-         Syntax 3 (ED) sec. 7.2). [expect_eof] skips leading whitespace
-         itself. *)
-      let v = f arg in
-      expect_eof arg;
-      v
+      whole_block f arg
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)

@@ -553,12 +553,14 @@ let normalize_custom_value v =
   go 0 None;
   Buffer.contents buf
 
-(* A multi-word font name spells the same family quoted or as the bare ident
-   sequence it unquotes to (CSS Fonts 4 sec. 2.1.1), and a custom property
-   holding a font stack substitutes either form identically into [font-family].
-   Emission keeps whichever the author wrote, so the projection folds the quoted
-   form onto the ident sequence - the same normalisation the structural
-   comparator applies through {!Css.declaration_value_for_equivalence}. *)
+(* A font name spells the same family quoted or as the bare ident sequence it
+   unquotes to, one word or several (CSS Fonts 4 sec. 2.1.1). A bare generic
+   family in the stream is what proves the custom property holds a font stack;
+   with that proof either form substitutes identically into [font-family], and
+   without it the stream is arbitrary tokens and neither form may move. Emission
+   keeps whichever the author wrote, so the projection folds the quoted form
+   onto the ident sequence - the same normalisation the structural comparator
+   applies through {!Css.declaration_value_for_equivalence}. *)
 let normalize_custom_declaration d =
   Declaration.unquote_custom_font_strings
     (Declaration.map_custom_value normalize_custom_value d)

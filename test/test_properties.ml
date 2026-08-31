@@ -3987,7 +3987,12 @@ let test_grid_area () =
   check_grid_area ~expected:"1/2/3/4" "1 / 2 / 3 / 4";
   check_grid_area "auto";
   check_grid_area "span 2";
-  neg_cursor read_grid_area "1/2/3/4/5"
+  neg_cursor read_grid_area "1/2/3/4/5";
+  (* CSS Grid 2 (ED) sec. 8.4 composes four [<grid-line>]s, so every slot
+     carries the sec. 8.3 [<custom-ident>] exclusions. *)
+  check_grid_area ~expected:"a/b/c/d" "a / b / c / d";
+  neg_cursor ~allow_partial:true read_grid_area "3 auto/1/2/3";
+  neg_cursor ~allow_partial:true read_grid_area "1/2/3/span default"
 
 let test_font () =
   check_font "16px serif";
@@ -4012,7 +4017,70 @@ let test_grid_line () =
   check_grid_line "main-start";
   check_grid_line "content-end";
   check_grid_line "inherit";
-  neg_cursor read_grid_line "span"
+  neg_cursor read_grid_line "span";
+  (* CSS Grid 2 (ED) sec. 8.3 gives the span branch as [span && [ <integer
+     [1,inf]> || <custom-ident> ]]. CSS Values 4 (ED) sec. 2.2 makes both [&&]
+     and [||] reorderable, so [span] sits on either side of the group and the
+     group's own two parts come in either order. Sec. 8.3 sets "Canonical order:
+     per grammar", which fixes the serialisation at [span <integer>
+     <custom-ident>]. *)
+  check_grid_line "span foo";
+  check_grid_line "span 3 foo";
+  check_grid_line ~expected:"span 3 foo" "span foo 3";
+  check_grid_line ~expected:"span 3" "3 span";
+  check_grid_line ~expected:"span foo" "foo span";
+  check_grid_line ~expected:"span 3 foo" "3 foo span";
+  check_grid_line ~expected:"span 3 foo" "foo 3 span";
+  (* [span] is a keyword, so it matches in any ASCII case (sec. 4.1). *)
+  check_grid_line ~expected:"span 3" "3 SPAN";
+  (* Sec. 2.2 reorders only components in the same grouping, so [span] cannot
+     sit between the two parts of the bracketed [||] group, and only one [span]
+     is part of the value. *)
+  neg_cursor ~allow_partial:true read_grid_line "3 span foo";
+  neg_cursor ~allow_partial:true read_grid_line "foo span 3";
+  neg_cursor ~allow_partial:true read_grid_line "span 3 span";
+  neg_cursor read_grid_line "span span";
+  (* CSS Grid 2 (ED) sec. 8.3: "In all the above productions, the
+     [<custom-ident>] additionally excludes the keywords span and auto." CSS
+     Values 4 (ED) sec. 4.2 excludes the CSS-wide keywords and the reserved
+     [default] from every [<custom-ident>], in all ASCII case permutations. *)
+  neg_cursor ~allow_partial:true read_grid_line "3 auto";
+  neg_cursor ~allow_partial:true read_grid_line "3 AUTO";
+  neg_cursor read_grid_line "span auto";
+  neg_cursor ~allow_partial:true read_grid_line "span 2 auto";
+  neg_cursor ~allow_partial:true read_grid_line "auto span";
+  neg_cursor ~allow_partial:true read_grid_line "3 span auto";
+  neg_cursor ~allow_partial:true read_grid_line "auto span 3";
+  neg_cursor ~allow_partial:true read_grid_line "3 auto span";
+  neg_cursor read_grid_line "default";
+  neg_cursor read_grid_line "span default";
+  neg_cursor read_grid_line "default span";
+  neg_cursor ~allow_partial:true read_grid_line "3 default span";
+  neg_cursor read_grid_line "initial span";
+  neg_cursor ~allow_partial:true read_grid_line "3 default";
+  neg_cursor ~allow_partial:true read_grid_line "3 initial";
+  neg_cursor ~allow_partial:true read_grid_line "3 inherit";
+  neg_cursor ~allow_partial:true read_grid_line "3 unset";
+  neg_cursor ~allow_partial:true read_grid_line "3 revert";
+  neg_cursor ~allow_partial:true read_grid_line "3 revert-layer";
+  (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
+     declaration, so a CSS-wide keyword is a [<grid-line>] on its own only. *)
+  check_grid_line "initial";
+  neg_cursor read_grid_line "initial 3";
+  (* [<grid-line>] has no [none] and no [dense] keyword, so neither is excluded
+     from its [<custom-ident>]. *)
+  check_grid_line "none";
+  check_grid_line "3 none"
+
+(* CSS Grid 2 (ED) sec. 8.4: grid-row / grid-column pair the same [<grid-line>]
+   twice, so both slots carry the sec. 8.3 [<custom-ident>] exclusions. *)
+let test_grid_line_pair () =
+  check_grid_line_pair ~expected:"span foo/4" "span foo / 4";
+  check_grid_line_pair ~expected:"span 3/4" "3 span / 4";
+  check_grid_line_pair ~expected:"span foo/span 2 bar" "foo span / span 2 bar";
+  neg_cursor ~allow_partial:true read_grid_line_pair "3 auto / 4";
+  neg_cursor ~allow_partial:true read_grid_line_pair "3 span auto / 4";
+  neg_cursor read_grid_line_pair "span auto / 2"
 
 let test_grid_template () =
   check_grid_template "none";
@@ -4050,7 +4118,62 @@ let test_grid_template () =
   check_grid_template "fit-content(10px)";
   check_grid_template "fit-content( 10px )" ~expected:"fit-content(10px)";
   neg_cursor read_grid_template "minmax(1px,2px,3px)";
-  neg_cursor read_grid_template "fit-content(10px 20px)"
+  neg_cursor read_grid_template "fit-content(10px 20px)";
+  (* CSS Grid 2 (ED) sec. 7.2.2: [<line-names> = '[' <custom-ident>* ']'], and
+     "A line name cannot be span or auto, i.e. the [<custom-ident>] in the
+     [<line-names>] production excludes the keywords span and auto." CSS Values
+     4 (ED) sec. 4.2 excludes the CSS-wide keywords and the reserved [default]
+     from every [<custom-ident>]. Each exclusion is on a keyword, so it holds in
+     all ASCII case permutations. *)
+  check_grid_template ~expected:"[a]1px" "[a] 1px";
+  check_grid_template ~expected:"[a b]1px" "[a b] 1px";
+  check_grid_template ~expected:"1px[a]" "1px [a]";
+  neg_cursor read_grid_template "[span] 1px";
+  neg_cursor read_grid_template "[SPAN] 1px";
+  neg_cursor read_grid_template "[auto] 1px";
+  neg_cursor read_grid_template "[Auto] 1px";
+  neg_cursor read_grid_template "[default] 1px";
+  neg_cursor read_grid_template "[DeFaUlT] 1px";
+  neg_cursor read_grid_template "[initial] 1px";
+  neg_cursor read_grid_template "[inherit] 1px";
+  neg_cursor read_grid_template "[unset] 1px";
+  neg_cursor read_grid_template "[revert] 1px";
+  neg_cursor read_grid_template "[revert-layer] 1px";
+  neg_cursor read_grid_template "[a span] 1px";
+  neg_cursor ~allow_partial:true read_grid_template "1px [span]";
+  (* Nothing else is excluded: the brackets make the position unambiguous, so a
+     track keyword is an ordinary line name, and [<custom-ident>*] matches the
+     empty list. *)
+  check_grid_template ~expected:"[]1px" "[] 1px";
+  check_grid_template ~expected:"[none]1px" "[none] 1px";
+  check_grid_template ~expected:"[dense]1px" "[dense] 1px";
+  check_grid_template ~expected:"[auto-fill]1px" "[auto-fill] 1px";
+  (* sec. 7.2.3: [repeat()] holds a track list, so its line-name positions carry
+     the same exclusions. *)
+  check_grid_template ~expected:"repeat(2,[a]1px)" "repeat(2, [a] 1px)";
+  neg_cursor read_grid_template "repeat(2, [span] 1px)";
+  neg_cursor read_grid_template "repeat(2, 1px [auto])";
+  (* sec. 7.4: the [<string>] form of grid-template keeps its value as raw text,
+     and its bracketed positions are [<line-names>] just the same. *)
+  check_grid_template ~expected:"[a]\"x\" 1px" "[a] \"x\" 1px";
+  neg_cursor read_grid_template "[span] \"x\" 1px";
+  neg_cursor read_grid_template "\"x\" 1px [auto]";
+  (* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |
+     <track-repeat> ] ]+ <line-names>?] places a [<line-names>] before a track
+     size or at the very end, so a track list carries at least one track size
+     and never two [<line-names>] in a row. sec. 7.2.3 gives the [repeat()] body
+     the same shape. *)
+  check_grid_template ~expected:"[a]1px[b]" "[a] 1px [b]";
+  check_grid_template ~expected:"1px[a]2px" "1px [a] 2px";
+  check_grid_template ~expected:"repeat(2,1px[a])" "repeat(2, 1px [a])";
+  neg_cursor read_grid_template "[a]";
+  neg_cursor read_grid_template "[a] [b]";
+  neg_cursor read_grid_template "[a] [b] 1px";
+  neg_cursor read_grid_template "1px [a] [b]";
+  neg_cursor read_grid_template "1px [a] [b] 2px";
+  neg_cursor read_grid_template "1px / [a]";
+  neg_cursor read_grid_template "repeat(2,[a])";
+  neg_cursor read_grid_template "repeat(2,[a] [b] 1px)"
 
 let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""
@@ -5018,6 +5141,7 @@ let tests =
     test_case "grid template" `Quick test_grid_template;
     test_case "grid template areas" `Quick test_grid_template_areas;
     test_case "grid line" `Quick test_grid_line;
+    test_case "grid line pair" `Quick test_grid_line_pair;
     test_case "symbols type" `Quick test_symbols_type;
     test_case "list style symbol" `Quick test_list_style_symbol;
     test_case "font variant east asian feature" `Quick test_east_asian_feature;
@@ -5310,6 +5434,7 @@ let additional_tests =
     test_case "aspect_ratio" `Quick test_aspect_ratio;
     test_case "flex" `Quick test_flex;
     test_case "grid_line" `Quick test_grid_line;
+    test_case "grid_line_pair" `Quick test_grid_line_pair;
     test_case "grid_template" `Quick test_grid_template;
     test_case "justify_content" `Quick test_justify_content;
     test_case "outline_style" `Quick test_outline_style;

@@ -290,8 +290,9 @@ let declaration_value ?(minify = false) ?(inline = false) decl =
   Declaration.string_of_value ~minify ~inline decl
 
 let declaration_value_for_equivalence decl =
-  Declaration.string_of_value ~minify:false
-    (Declaration.unquote_custom_font_strings decl)
+  Declaration.string_of_value ~minify:true
+    (Declaration.canonicalize_custom_whitespace
+       (Declaration.unquote_custom_font_strings decl))
 
 (* Override rule function to return statement directly *)
 let rule ~selector ?nested ?merge_key declarations =

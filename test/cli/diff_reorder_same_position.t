@@ -23,7 +23,7 @@ coordinate rather than pairing position 1 with position 1.
   --- reversed_ref.css
   +++ reversed_tw.css
   └─ .z
-        - --e 9
+        - --e: 9
   Rules reordered (2 rules):
   ├─ .b (position 2) ↔  .c (position 0)
   └─ .a (moved)
@@ -46,7 +46,7 @@ The same pair inside a container reports through the container renderer.
   +++ layer_tw.css
   └─ @layer u (1 removed, 2 reordered)
      ├─ .z
-     │     - --e 9
+     │     - --e: 9
      ├─ .b (position 2) ↔  .c (position 0)
      └─ .a (moved)
   
@@ -69,7 +69,7 @@ because `.z` left.
   --- shifted_ref.css
   +++ shifted_tw.css
   └─ .z
-        - --e 9
+        - --e: 9
   Rules reordered (1 rules):
   └─ .a (moved)
   

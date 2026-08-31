@@ -207,6 +207,37 @@ let test_call_interior_whitespace () =
   Alcotest.(check bool)
     "outer cursor advanced past the call" true (Cursor.is_done c)
 
+(* [parens], [brackets], [braces] and [function_call] build the same kind of
+   sub-cursor as [call], so the same rule holds: CSS Syntax 3 (ED) sec. 5.4.1
+   matches a grammar against the whole component-value list or returns failure,
+   so a reader that stops on a prefix of a block has met an invalid value, not a
+   shorter one. Real CSS reaches the hole through [width:calc((1px 2px))],
+   [grid-template-columns:[a 1px] 1px] and an [image-set()] option whose
+   [type(<string>)] carries a trailing token; browsers drop all three. *)
+let test_parens_requires_eof () =
+  let c = cursor_of_string "(red green)" in
+  match Cursor.parens (fun inner -> Cursor.ident inner) c with
+  | (_ : string) -> Alcotest.fail "expected Parse_error"
+  | exception Cursor.Parse_error _ -> ()
+
+let test_brackets_requires_eof () =
+  let c = cursor_of_string "[red green]" in
+  match Cursor.brackets (fun inner -> Cursor.ident inner) c with
+  | (_ : string) -> Alcotest.fail "expected Parse_error"
+  | exception Cursor.Parse_error _ -> ()
+
+let test_braces_requires_eof () =
+  let c = cursor_of_string "{red green}" in
+  match Cursor.braces (fun inner -> Cursor.ident inner) c with
+  | (_ : string) -> Alcotest.fail "expected Parse_error"
+  | exception Cursor.Parse_error _ -> ()
+
+let test_function_call_requires_eof () =
+  let c = cursor_of_string "rgb(1 2)" in
+  match Cursor.function_call "rgb" (fun inner -> Cursor.int inner) c with
+  | (_ : int option) -> Alcotest.fail "expected Parse_error"
+  | exception Cursor.Parse_error _ -> ()
+
 let suite =
   ( "cursor",
     [
@@ -242,4 +273,10 @@ let suite =
         test_call_full_consumption_succeeds;
       Alcotest.test_case "call interior whitespace" `Quick
         test_call_interior_whitespace;
+      Alcotest.test_case "parens requires eof" `Quick test_parens_requires_eof;
+      Alcotest.test_case "brackets requires eof" `Quick
+        test_brackets_requires_eof;
+      Alcotest.test_case "braces requires eof" `Quick test_braces_requires_eof;
+      Alcotest.test_case "function call requires eof" `Quick
+        test_function_call_requires_eof;
     ] )

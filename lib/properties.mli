@@ -78,13 +78,22 @@ val read_custom_property_value :
 
 val unquote_font_family_strings : custom_value -> custom_value
 (** [unquote_font_family_strings components] rewrites each [<string>] token
-    whose content is a multi-word identifier sequence as the equivalent
-    [<ident> <whitespace> <ident> ...] component sequence. Used by the
-    [@property]-registered custom-property promotion when the registered syntax
-    accepts [<custom-ident>+] (CSS Fonts 4 sec. 2.1.1 makes the two forms
-    equivalent in font-family-typed positions). A single-word string, a string
+    whose content is an identifier sequence as the equivalent
+    [<ident> <whitespace> <ident> ...] component sequence, which CSS Fonts 4
+    sec. 2.1.1 spells as the same [<font-family-name>], one word or several.
+    Only for a stream a generic family has proven to be a font stack. A string
     holding a word that sec. 2.1.1 excludes from [<custom-ident>], and any token
-    that isn't a [<string>] pass through unchanged. *)
+    that isn't a [<string>], pass through unchanged; a name of one word also
+    clears [emoji], [fangsong] and [none]. *)
+
+val canonicalize_math_whitespace_components : custom_value -> custom_value
+(** [canonicalize_math_whitespace_components components] drops the whitespace of
+    [components] that CSS reads as nothing: around the [*] and [/] of CSS Values
+    4 (ED) sec. 10.8 arithmetic, and after a function or block whose closing
+    bracket already separates it from what follows. The whitespace sec. 10.8
+    requires around a math [+] or [-], and the whitespace next to a [var()],
+    [env()] or [attr()] whose substitution would otherwise merge with its
+    neighbour, both stay. *)
 
 val components_have_generic_family : custom_value -> bool
 (** [components_have_generic_family components] is [true] when a bare ident in
@@ -914,6 +923,13 @@ val pp_grid_template_areas : grid_template_areas Pp.t
 
 val read_grid_template : Cursor.t -> grid_template
 (** [read_grid_template t] is the [grid_template] parsed from [t]. *)
+
+val read_grid_auto_tracks : Cursor.t -> grid_template
+(** [read_grid_auto_tracks t] is the [grid-auto-columns] / [grid-auto-rows]
+    value parsed from [t]. CSS Grid 2 (ED) sec. 7.6 gives those properties
+    [<track-size>+], so the value shares the [grid_template] type with
+    [grid-template-columns] but takes none of its line-name, [repeat()] or slash
+    forms. *)
 
 val read_grid : Cursor.t -> grid_template
 (** [read_grid t] is the [grid] shorthand parsed from [t]. *)
