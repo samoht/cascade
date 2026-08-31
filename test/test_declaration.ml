@@ -2190,6 +2190,44 @@ let custom_properties () =
   neg_cursor read_declaration "color:var(--x 10px)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
+(* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
+   required on both sides of the [+] and [-] operators, while [*] and [/] may be
+   written without any. A custom property and an unknown property both carry an
+   opaque token stream that is minified token by token, so deleting that
+   whitespace hands the browser a declaration it drops on the floor. *)
+let math_sign_whitespace () =
+  check_declaration ~expected:"--t:calc(100% - 10px)"
+    ~optimized:"--t:calc(100% - 10px)" "--t: calc(100% - 10px)";
+  check_declaration ~expected:"--t:calc(100% + 10px)"
+    ~optimized:"--t:calc(100% + 10px)" "--t: calc(100% + 10px)";
+  check_declaration ~expected:"--t:calc((100%) - 10px)"
+    ~optimized:"--t:calc((100%) - 10px)" "--t: calc((100%) - 10px)";
+  check_declaration ~expected:"--t:calc(min(1px,2px) - 3px)"
+    ~optimized:"--t:calc(min(1px,2px) - 3px)" "--t: calc(min(1px,2px) - 3px)";
+  check_declaration ~expected:"--t:calc(50% + var(--a))"
+    ~optimized:"--t:calc(50% + var(--a))" "--t: calc(50% + var(--a))";
+  (* An unknown property holds the same opaque stream. *)
+  check_declaration ~expected:"-x-y:calc(100% - 10px)"
+    ~optimized:"-x-y:calc(100% - 10px)" "-x-y: calc(100% - 10px)";
+  check_declaration ~expected:"-x-y:calc(min(1px,2px) - 3px)"
+    ~optimized:"-x-y:calc(min(1px,2px) - 3px)" "-x-y: calc(min(1px,2px) - 3px)";
+  (* The rule is about a [+] / [-] delim token. [calc(1 +2)] lexes as two number
+     tokens with nothing between them but whitespace, so it keeps folding. *)
+  check_declaration ~expected:"--t:calc(1+2)" ~optimized:"--t:calc(1+2)"
+    "--t: calc(1 +2)";
+  (* The reader keeps what it read: the whitespace-free spelling is a different
+     (invalid) declaration, and minifying never inserts a separator. *)
+  check_declaration ~expected:"--t:calc(100%- 10px)"
+    ~optimized:"--t:calc(100%- 10px)" "--t: calc(100%- 10px)";
+  (* Whitespace that no grammar asks for still folds. *)
+  check_declaration ~expected:"--t:16 / 9" ~optimized:"--t:16/9" "--t: 16 / 9";
+  check_declaration ~expected:"--t:calc(var(--base) * 2)"
+    ~optimized:"--t:calc(var(--base)*2)" "--t: calc(var(--base) * 2)";
+  check_declaration ~expected:"--a:cubic-bezier(.4,0,.6,1) infinite"
+    ~optimized:"--a:cubic-bezier(.4,0,.6,1)infinite"
+    "--a: cubic-bezier(.4,0,.6,1) infinite";
+  check_declaration ~expected:"--t:100%x" ~optimized:"--t:100%x" "--t: 100% x"
+
 let important () =
   (* Standard properties with !important *)
   check_declaration ~expected:"color:red!important" "color: red !important";
@@ -5002,6 +5040,7 @@ let declaration_tests =
     (* Custom properties and vendor prefixes *)
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
+    test_case "math sign whitespace" `Quick math_sign_whitespace;
     test_case "custom property values" `Quick custom_property_values;
     test_case "typed custom font family layers print alike" `Quick
       typed_custom_font_family_layer_printing;
