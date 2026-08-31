@@ -3055,14 +3055,14 @@ let target_minify_enforce_spec_split () =
      --enforce-spec emits the spec-canonical resolved form, which is the number,
      and never introduces a percentage even when it would be shorter. *)
   check_modes "oklch chroma uses the shorter percentage on the default target"
-    "a { color: oklch(.5 .304 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    "a { color: oklch(.5 .304 200) }" ~default:"a{color:oklch(.5 76%200)}"
     ~spec:"a{color:oklch(.5 .304 200)}";
   check_modes
     "oklch chroma keeps the number when the number is already shortest"
     "a { color: oklch(.5 .1 200) }" ~default:"a{color:oklch(.5 .1 200)}"
     ~spec:"a{color:oklch(.5 .1 200)}";
   check_modes "enforce-spec renders oklch chroma as the canonical number"
-    "a { color: oklch(.5 76% 200) }" ~default:"a{color:oklch(.5 76% 200)}"
+    "a { color: oklch(.5 76% 200) }" ~default:"a{color:oklch(.5 76%200)}"
     ~spec:"a{color:oklch(.5 .304 200)}";
   check_modes "media min-width grammar"
     "@media (min-width: 700px) { a { color: red } }"

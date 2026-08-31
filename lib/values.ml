@@ -4375,6 +4375,19 @@ let pp_hue_interpolation : hue_interpolation Pp.t =
   | Specified -> Pp.string ctx "specified"
   | Default -> ()
 
+(* CSS Syntax 3 (ED) sec. 4: a [<percentage-token>] ends at its [%], so the
+   separator before the next component carries no information and elides under
+   minify. Narrower than {!Pp.token_sp}, which also elides after [)]: a function
+   is word-like at its end, and the custom-value serialiser keeps that
+   separator, so eliding it here would make a constructed colour disagree with
+   its own reparse. Reads the emitted byte rather than the node so a spelling
+   that does not end on [%] ([calc(NaN*1%)]) stays spaced. *)
+let space_after_percentage : unit Pp.t =
+ fun ctx () ->
+  match Pp.last_char ctx with
+  | Some '%' when Pp.minified ctx -> ()
+  | _ -> Pp.space ctx ()
+
 let static_component_can_touch_negative (component : component) =
   match component with
   | Num _ | Pct _ -> true
@@ -4408,14 +4421,15 @@ let pp_color_components ~decimals : component list Pp.t =
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
  fun ctx (r, g, b, alpha) ->
-  Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ];
+  Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ];
   pp_opt_alpha ctx alpha
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
-  | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
+  | Channels { r; g; b } ->
+      Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
 (** Lab-like float string. CSSOM serialisation (CSSOM 1 sec. 6.7.2) drops a
@@ -4450,12 +4464,13 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
   (* The space between the L channel and the next colour component elides when
-     the L spelling closes its token cleanly and the next token starts with its
-     own boundary: [%] from [Pct], [)] from [Var] / [Calc], or a bare-number end
-     ([4] in [.654]) followed by a sign-token [+] / [-] that starts the next
-     number. [None] / unknown left-hand stays conservative. *)
+     the L spelling closes its token cleanly: a [%] ends its percentage token
+     whatever follows, a [)] from [Var] / [Calc] needs the next token to start
+     its own boundary, and a bare-number end ([4] in [.654]) needs a sign-token
+     [+] / [-] to start the next number. [None] / unknown left-hand stays
+     conservative. *)
   let starts_signed s = String.length s > 0 && (s.[0] = '+' || s.[0] = '-') in
-  let next_safe_after_pct s =
+  let next_safe_after_paren s =
     String.length s > 0
     &&
     match s.[0] with
@@ -4464,11 +4479,12 @@ let space_after_color_percentage ctx (l : percentage option) ~next =
   in
   let elidable =
     Pp.minified ctx
-    &&
-    match (l, next) with
-    | Some (Pct _ | Var _ | Calc _), Some s -> next_safe_after_pct s
-    | Some (Num _), Some s -> starts_signed s
-    | _ -> false
+    && (Pp.last_char ctx = Some '%'
+       ||
+       match (l, next) with
+       | Some (Var _ | Calc _), Some s -> next_safe_after_paren s
+       | Some (Num _), Some s -> starts_signed s
+       | _ -> false)
   in
   if not elidable then Pp.space ctx ()
 
@@ -4502,7 +4518,7 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
   | None ->
       space_after_color_percentage ctx printed_l ~next:(Some "none");
       Pp.string ctx "none");
-  Pp.space ctx ();
+  space_after_percentage ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
@@ -4513,7 +4529,7 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
   pp_hue ctx h;
   Pp.space ctx ();
   pp_percentage ctx s;
-  Pp.space ctx ();
+  space_after_percentage ctx ();
   pp_percentage ctx l;
   pp_opt_alpha ctx a
 
@@ -4559,7 +4575,7 @@ let pp_lab_like_args ~axis_pct_scale :
       (ctx.Pp.minify && starts_unsigned_number a
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
-  then Pp.space ctx ();
+  then space_after_percentage ctx ();
   Pp.string ctx b;
   match alpha with
   | None -> ()

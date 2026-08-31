@@ -158,7 +158,7 @@ let pure_minify_value_fallbacks () =
   in
   Alcotest.(check string)
     "constructed value fallbacks"
-    ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50% 50%)}"
+    ".btn{--tw-duration:.2s;transition-duration:.2s;color:hsl(120 50%50%)}"
     (Css.to_string ~minify:true stylesheet)
 
 (* [to_string ~minify:true] is a pure formatter, so a constructed AST reaches

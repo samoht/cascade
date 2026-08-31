@@ -578,6 +578,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` spells the boundary after a percentage the same way inside every
+  colour function. A constructed `hsl(120 50% 50%)` or `oklch(.659 76% 203.274)`
+  kept a separator that a parse of those same bytes dropped, so a colour built
+  through the API did not read back as itself (#703)
 - `--minify` spells a token boundary after a percentage one way. A constructed
   `--brand: oklch(63.7% 0.237 25.331)` printed `oklch(63.7%.237 25.331)` while a
   parse of those same bytes printed `oklch(63.7% .237 25.331)`, so minified

@@ -206,7 +206,7 @@ let normalize_expected ~category ~id expected =
          oracle rounds to 1 (203.3): at this chroma a 1-decimal hue shifts the
          rendered colour. *)
       fixture ~category ~id ~upstream:"a{color:oklch(.659 .304 203.3)}"
-        ~cascade:"a{color:oklch(.659 76% 203.274)}" upstream
+        ~cascade:"a{color:oklch(.659 76%203.274)}" upstream
   | "colors", "0046" ->
       (* cascade keeps 3 hue decimals (180.457 vs the oracle's 180.5); the
          oklab() leading-channel space elision is the usual safe-token-boundary
@@ -229,7 +229,7 @@ let normalize_expected ~category ~id expected =
           "a{color:lch(54.3 100.5 274.5/.746);background-color:lab(54.3 -60.5 \
            70.8)}"
         ~cascade:
-          "a{color:lch(54.3 67% 274.456/.746);background-color:lab(54.3-60.5 \
+          "a{color:lch(54.3 67%274.456/.746);background-color:lab(54.3-60.5 \
            70.8)}"
         upstream
   | "colors", "0048" ->

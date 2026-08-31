@@ -617,12 +617,12 @@ let colors () =
     "color: rgb(0, 255, 0)";
   decl_optimizes_to ~held:"color:rgb(255 0 0/.5)" ~into:"color:#ff000080"
     "color: rgba(255, 0, 0, 0.5)";
-  decl_optimizes_to ~held:"color:hsl(0 100% 50%)" ~into:"color:red"
+  decl_optimizes_to ~held:"color:hsl(0 100%50%)" ~into:"color:red"
     "color: hsl(0, 100%, 50%)";
-  decl_optimizes_to ~held:"color:hsl(120 100% 50%/.5)" ~into:"color:#00ff0080"
+  decl_optimizes_to ~held:"color:hsl(120 100%50%/.5)" ~into:"color:#00ff0080"
     "color: hsla(120, 100%, 50%, 0.5)";
-  decl_optimizes_to ~held:"color:hsl(.5turn 50% 50%/var(--a))"
-    ~into:"color:hsl(180 50% 50%/var(--a))"
+  decl_optimizes_to ~held:"color:hsl(.5turn 50%50%/var(--a))"
+    ~into:"color:hsl(180 50%50%/var(--a))"
     "color: hsl(.5turn 50% 50% / var(--a))";
 
   check_declaration ~expected:"background-color:red" "background-color: red";
