@@ -207,6 +207,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- A math function requires whitespace on both sides of its `+` and `-`
+  operators. Values such as `calc(100%- 10px)` are dropped the way a browser
+  drops them, where cascade used to accept them and print back the valid
+  spelling (#699)
 - `@font-face` and `@font-palette-values` use their descriptor-specific
   `font-family` grammars. The former accepts exactly one named family, the
   latter accepts a non-empty comma-separated list, and both reject unquoted

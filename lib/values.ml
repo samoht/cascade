@@ -5287,6 +5287,18 @@ let read_math_constant_factor : type a. Cursor.t -> a calc =
       Cursor.restore t snap;
       Cursor.err t "expected math constant"
 
+(* CSS Values 4 (ED) sec. 10.8: "whitespace is required on both sides of the +
+   and - operators. (The * and / operators can be used without white space
+   around them.)" Browsers enforce it, so a one-sided sum is not a math function
+   and the whole value is invalid. [ws_before] answers for the left side, which
+   the caller must have measured with [skip_ws]: [peek_delim] drops the
+   whitespace before it reports the delimiter. *)
+let skip_sum_operator t ~ws_before =
+  if not ws_before then Cursor.err t "expected whitespace before '+' or '-'";
+  Cursor.skip t;
+  if not (Cursor.skip_ws t) then
+    Cursor.err t "expected whitespace after '+' or '-'"
+
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
@@ -5294,19 +5306,19 @@ let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
      as [(a - b) - c]. Loop on subsequent operators rather than recursing on the
      right, which would group it as [a - (b - c)]. *)
   let rec loop left =
-    Cursor.ws t;
+    let ws_before = Cursor.skip_ws t in
     match Cursor.peek_delim t with
     | Some '+' ->
         let right =
           Cursor.atomic t (fun () ->
-              Cursor.skip t;
+              skip_sum_operator t ~ws_before;
               read_calc_term read_a t)
         in
         loop (Expr (left, Add, right))
     | Some '-' ->
         let right =
           Cursor.atomic t (fun () ->
-              Cursor.skip t;
+              skip_sum_operator t ~ws_before;
               read_calc_term read_a t)
         in
         loop (Expr (left, Sub, right))
@@ -5322,11 +5334,16 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 and read_calc_term_tail : type a.
     (Cursor.t -> a) -> Cursor.t -> a calc -> a calc =
  fun read_a t left ->
+  (* Put back the whitespace when the next operator is not [*] or [/]: it is the
+     left-hand side [read_calc_expr] measures for a [+] or [-]. *)
+  let snap = Cursor.save t in
   Cursor.ws t;
   match Cursor.peek_delim t with
   | Some '*' -> read_calc_product read_a t left
   | Some '/' -> read_calc_quotient read_a t left
-  | _ -> left
+  | _ ->
+      Cursor.restore t snap;
+      left
 
 and read_calc_product : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> a calc
     =
@@ -5389,17 +5406,17 @@ and read_math_arg t : math_arg = read_math_arg_term t
 
 and read_math_arg_term t =
   let left = read_math_arg_factor t in
-  Cursor.ws t;
+  let ws_before = Cursor.skip_ws t in
   match Cursor.peek_delim t with
   | Some ('+' as c) | Some ('-' as c) ->
-      Cursor.skip t;
-      Cursor.ws t;
+      skip_sum_operator t ~ws_before;
       let op : calc_op = match c with '+' -> Add | _ -> Sub in
       Op (left, op, read_math_arg_term t)
   | _ -> left
 
 and read_math_arg_factor t =
   let left = read_math_arg_unary t in
+  let snap = Cursor.save t in
   Cursor.ws t;
   match Cursor.peek_delim t with
   | Some ('*' as c) | Some ('/' as c) ->
@@ -5407,7 +5424,9 @@ and read_math_arg_factor t =
       Cursor.ws t;
       let op : calc_op = match c with '*' -> Mul | _ -> Div in
       Op (left, op, read_math_arg_factor t)
-  | _ -> left
+  | _ ->
+      Cursor.restore t snap;
+      left
 
 and read_math_arg_unary t =
   Cursor.ws t;
