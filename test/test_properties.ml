@@ -4293,6 +4293,17 @@ let test_place_items () =
   check_place_items "start end";
   check_place_items ~expected:"center" "center center";
   check_place_items "inherit";
+  (* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
+     baseline, in either half of the sec. 7.3 shorthand. *)
+  check_place_items "baseline";
+  check_place_items "first baseline";
+  check_place_items "last baseline";
+  check_place_items "first baseline center";
+  check_place_items "center last baseline";
+  check_place_items "first baseline last baseline";
+  (* The && is order-free, but the modifier is only read before the keyword. *)
+  neg_cursor ~allow_partial:true read_place_items "baseline first";
+  neg_cursor ~allow_partial:true read_place_items "baseline last";
   neg_cursor read_place_items "invalid-place"
 
 let test_box_decoration_break () =
