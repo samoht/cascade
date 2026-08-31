@@ -161,6 +161,29 @@ let unquote_custom_font_strings = function
            })
   | decl -> decl
 
+(* Equivalence-only normalisation for structural diffing: drop the whitespace of
+   a custom-property stream that CSS reads as nothing. Cascade keeps that
+   whitespace verbatim on output, since the stream is opaque and the author's
+   bytes are what a [var()] substitutes; two streams that differ only there are
+   still the same value. *)
+let canonicalize_custom_whitespace = function
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value ({ value = Tokens components; _ } as cv);
+        important;
+        _;
+      } ->
+      v ~important property
+        (Custom_value
+           {
+             cv with
+             value =
+               Tokens
+                 (Properties.canonicalize_math_whitespace_components components);
+           })
+  | decl -> decl
+
 (* Parser functions *)
 
 (** Parse a property name. Property names are plain idents in the component

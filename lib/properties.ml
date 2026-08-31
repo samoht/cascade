@@ -3890,7 +3890,7 @@ let strip_after_close_paren ~in_math comps =
    propagates through grouping parens ([Block]s) since those are math operands,
    and turns off when entering a nested non-math function like [var()] which has
    its own grammar. *)
-let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
+let rec canonicalize_math_whitespace ~in_math comps =
   let comps' =
     List.map
       (fun c ->
@@ -3899,16 +3899,14 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
             let func = wrapped.Component.node in
             let nested_in_math = is_math_function func.name in
             let args =
-              canonicalize_math_whitespace_components ~in_math:nested_in_math
+              canonicalize_math_whitespace ~in_math:nested_in_math
                 func.arguments
             in
             Component.Func
               { wrapped with node = { func with arguments = args } }
         | Component.Block wrapped ->
             let block = wrapped.Component.node in
-            let value =
-              canonicalize_math_whitespace_components ~in_math block.value
-            in
+            let value = canonicalize_math_whitespace ~in_math block.value in
             Component.Block { wrapped with node = { block with value } }
         | Component.Preserved _ -> c)
       comps
@@ -3918,6 +3916,9 @@ let rec canonicalize_math_whitespace_components ?(in_math = false) comps =
     else strip_mul_div_whitespace comps'
   in
   strip_after_close_paren ~in_math comps'
+
+let canonicalize_math_whitespace_components comps =
+  canonicalize_math_whitespace ~in_math:false comps
 
 let normalize_property_value : type a.
     ?lossless:bool ->

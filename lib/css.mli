@@ -1526,16 +1526,27 @@ val declaration_value : ?minify:bool -> ?inline:bool -> declaration -> string
     default values. *)
 
 val declaration_value_for_equivalence : declaration -> string
-(** [declaration_value_for_equivalence decl] is the value of [decl] with a
-    quoted multi-word [<string>] in a custom-property token stream rewritten as
-    the equivalent unquoted [<ident>] sequence. The rewrite applies when a
-    generic family in the stream proves the stream is a font-family list, where
-    CSS Fonts 4 sec. 2.1.1 spells the one name both ways: as a structural-diff
-    key, [--font: ui-sans-serif,"Noto Color Emoji"] and
+(** [declaration_value_for_equivalence decl] is the minified value of [decl], so
+    a structural diff keys a typed property on its shortest spelling and
+    [padding: 0.50px] and [padding: .5px] compare equal.
+
+    A custom-property token stream, whose bytes {!declaration_value} keeps
+    verbatim, also loses the whitespace CSS reads as nothing: the whitespace CSS
+    Values 4 (ED) sec. 10.8 leaves optional around a math [*] and [/], and the
+    whitespace a closing bracket already accounts for. So [--r: 16 / 9] and
+    [--r: 16/9] compare equal, while the space sec. 10.8 requires around a math
+    [+] or [-], and the space beside a [var()], [env()] or [attr()] that sec.
+    2.5 substitutes textually into its neighbour, keep two spellings apart.
+
+    A quoted multi-word [<string>] in that stream is rewritten as the equivalent
+    unquoted [<ident>] sequence, when a generic family in the stream proves the
+    stream is a font-family list, where CSS Fonts 4 sec. 2.1.1 spells the one
+    name both ways: [--font: ui-sans-serif,"Noto Color Emoji"] and
     [--font: ui-sans-serif,Noto Color Emoji] compare equal. Without that proof
     the stream is arbitrary tokens, in which one [<string>] is not an [<ident>]
-    sequence, and the two spellings keep distinct keys. Not for emission, where
-    both forms stay verbatim. *)
+    sequence, and the two spellings keep distinct keys.
+
+    Not for emission, where every one of these forms stays verbatim. *)
 
 (** {1 Property Categories}
 

@@ -1064,6 +1064,15 @@ recorded cases carrying six minifiers' answers.
 - `cascade diff` no longer aborts on a reordered selector holding the same rule
   index on both sides. The report is buffered, so the assertion that met such a
   move cost the whole report; the move is now named without a coordinate (#582)
+- `--diff=tree` compares a value on its minified spelling, so insignificant
+  whitespace stops reading as a change: a custom property written `16 / 9`
+  matches `16/9`, and a typed `padding: 0.50px` matches `padding: .5px`. The
+  space CSS Values 4 (ED) sec. 10.8 requires around a math `+` or `-`, and the
+  space beside a `var()`, still separate two values (#702)
+- `--diff=tree` prints a changed declaration the way its own file spells it. The
+  value shown was read off the comparison key, so a custom property holding a
+  quoted multi-word family name was reported unquoted on both sides, a spelling
+  neither file held (#702)
 
 ### Library
 

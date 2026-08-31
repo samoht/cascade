@@ -86,6 +86,15 @@ val unquote_font_family_strings : custom_value -> custom_value
     holding a word that sec. 2.1.1 excludes from [<custom-ident>], and any token
     that isn't a [<string>] pass through unchanged. *)
 
+val canonicalize_math_whitespace_components : custom_value -> custom_value
+(** [canonicalize_math_whitespace_components components] drops the whitespace of
+    [components] that CSS reads as nothing: around the [*] and [/] of CSS Values
+    4 (ED) sec. 10.8 arithmetic, and after a function or block whose closing
+    bracket already separates it from what follows. The whitespace sec. 10.8
+    requires around a math [+] or [-], and the whitespace next to a [var()],
+    [env()] or [attr()] whose substitution would otherwise merge with its
+    neighbour, both stay. *)
+
 val components_have_generic_family : custom_value -> bool
 (** [components_have_generic_family components] is [true] when a bare ident in
     [components] matches a generic font family ([sans-serif], [ui-monospace],

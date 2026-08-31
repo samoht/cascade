@@ -1196,13 +1196,24 @@ let strings_of_rule (stmt : Css.statement) =
       | Declarations decls -> ("&", decls)
       | _ -> (statement_head stmt, Css.Stylesheet.statement_declarations stmt))
 
+let decl_with_important decl value =
+  if Css.declaration_is_important decl then
+    String.concat "" [ value; " !important" ]
+  else value
+
 let decl_to_prop_value decl =
-  let name = Css.declaration_name decl in
-  let value = Css.declaration_value_for_equivalence decl in
-  let value =
-    if Css.declaration_is_important decl then value ^ " !important" else value
-  in
-  (name, value)
+  ( Css.declaration_name decl,
+    decl_with_important decl (Css.declaration_value_for_equivalence decl) )
+
+(* What a changed declaration puts in the report: the key answers whether the
+   two sides differ, and the author's own spelling is what the reader is shown.
+   Printing the key instead quotes a value neither file holds, since the key
+   folds the spellings the two sides chose onto one. *)
+let decl_to_reported_value decl =
+  let name, key = decl_to_prop_value decl in
+  ( name,
+    (key, decl_with_important decl (Css.declaration_value ~minify:false decl))
+  )
 
 let compare_prop_value (name1, value1) (name2, value2) =
   let by_name = String.compare name1 name2 in
@@ -1962,11 +1973,15 @@ let names_of props =
 let rec zip_occurrences name (modified, added, removed) values1 values2 =
   match (values1, values2) with
   | [], [] -> (modified, added, removed)
-  | v1 :: rest1, v2 :: rest2 ->
+  | (key1, shown1) :: rest1, (key2, shown2) :: rest2 ->
       let modified =
-        if v1 = v2 then modified
+        if String.equal key1 key2 then modified
         else
-          { property_name = name; expected_value = v1; actual_value = v2 }
+          {
+            property_name = name;
+            expected_value = shown1;
+            actual_value = shown2;
+          }
           :: modified
       in
       zip_occurrences name (modified, added, removed) rest1 rest2
@@ -1979,8 +1994,8 @@ let rec zip_occurrences name (modified, added, removed) values1 values2 =
    including added and removed properties *)
 let properties_diff decls1 decls2 : declaration list * string list * string list
     =
-  let props1 = List.map decl_to_prop_value decls1 in
-  let props2 = List.map decl_to_prop_value decls2 in
+  let props1 = List.map decl_to_reported_value decls1 in
+  let props2 = List.map decl_to_reported_value decls2 in
   (* Names the expected side writes first, then the ones only the actual side
      writes, so the report reads in source order. *)
   let names =
