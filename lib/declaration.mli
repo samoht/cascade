@@ -119,9 +119,10 @@ val map_custom_value : (string -> string) -> declaration -> declaration
 
 val unquote_custom_font_strings : declaration -> declaration
 (** [unquote_custom_font_strings d] rewrites a quoted multi-word [<string>] in a
-    custom-property token stream as the equivalent unquoted [<ident>] sequence.
-    Equivalence-only normalisation for structural diffing; other declarations
-    pass through unchanged. *)
+    custom-property token stream as the equivalent unquoted [<ident>] sequence,
+    when a generic family in the stream proves the stream is a font-family list.
+    Equivalence-only normalisation for structural diffing; a stream without that
+    proof, and any other declaration, passes through unchanged. *)
 
 val read_property_name : Cursor.t -> string
 (** [read_property_name t] is the property name read from [t]. *)

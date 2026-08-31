@@ -1528,9 +1528,14 @@ val declaration_value : ?minify:bool -> ?inline:bool -> declaration -> string
 val declaration_value_for_equivalence : declaration -> string
 (** [declaration_value_for_equivalence decl] is the value of [decl] with a
     quoted multi-word [<string>] in a custom-property token stream rewritten as
-    the equivalent unquoted [<ident>] sequence. Used as a structural-diff key so
-    [--font: "Noto Color Emoji"] and [--font: Noto Color Emoji] compare equal;
-    not for emission, where both forms stay verbatim. *)
+    the equivalent unquoted [<ident>] sequence. The rewrite applies when a
+    generic family in the stream proves the stream is a font-family list, where
+    CSS Fonts 4 sec. 2.1.1 spells the one name both ways: as a structural-diff
+    key, [--font: ui-sans-serif,"Noto Color Emoji"] and
+    [--font: ui-sans-serif,Noto Color Emoji] compare equal. Without that proof
+    the stream is arbitrary tokens, in which one [<string>] is not an [<ident>]
+    sequence, and the two spellings keep distinct keys. Not for emission, where
+    both forms stay verbatim. *)
 
 (** {1 Property Categories}
 

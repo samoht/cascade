@@ -1051,6 +1051,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- The `Css.declaration_value_for_equivalence` docstring names the generic
+  family that gates its unquoting: without one in the stream,
+  `--font: "Noto Color Emoji"` and `--font: Noto Color Emoji` are distinct diff
+  keys (#696)
 - Load-bearing minification, parsing, and serialization comments name the CSS
   spec sections that define their initial values, equivalences, grammars, and
   defaults (#677)
