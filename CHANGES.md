@@ -207,6 +207,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- The span form of `<grid-line>` takes its operands in any order, as the `&&`
+  and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
+  kept and printed `span 3`, where cascade used to drop the declaration (#711)
 - An `@property` syntax component carries at most one multiplier. A chained one
   such as `"<custom-ident>+#"` drops the registration the way a browser does,
   where cascade used to accept it and type a property left unregistered (#707)

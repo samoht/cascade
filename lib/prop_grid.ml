@@ -623,35 +623,28 @@ let read_grid_line_name t =
       (String.concat "" [ "reserved grid line name: "; name ])
   else name
 
-let read_grid_span t =
-  let span_word = Cursor.ident ~keep_case:false t in
-  if span_word <> "span" then
-    Cursor.err t ("Expected 'span' but got " ^ span_word);
-  Cursor.ws t;
-  let first_int : int option = Cursor.option Cursor.int t in
-  Cursor.ws t;
-  let first_name : string option =
-    if Option.is_none first_int && not (grid_line_at_end t) then
-      Cursor.option read_grid_line_name t
-    else None
-  in
-  Cursor.ws t;
-  let second : [ `Name of string | `Num of int ] option =
-    if grid_line_at_end t then None
-    else
-      match first_int with
-      | Some _ ->
-          Option.map
-            (fun name -> `Name name)
-            (Cursor.option read_grid_line_name t)
-      | None -> Option.map (fun n -> `Num n) (Cursor.option Cursor.int t)
-  in
-  match (first_int, first_name, second) with
-  | Some n, None, Some (`Name name) -> Span_num_name (n, name)
-  | Some n, None, None -> Span n
-  | None, Some name, Some (`Num n) -> Span_num_name (n, name)
-  | None, Some name, None -> Span_name name
-  | _ -> Cursor.err_invalid t "invalid span grid line"
+(* [ <integer [1,inf]> || <custom-ident> ]: one or both, in either order. *)
+let read_grid_span_parts t : grid_line =
+  match Cursor.option Cursor.int t with
+  | Some n -> (
+      match Cursor.option read_grid_line_name t with
+      | Some name -> Span_num_name (n, name)
+      | None -> Span n)
+  | None -> (
+      let name = read_grid_line_name t in
+      match Cursor.option Cursor.int t with
+      | Some n -> Span_num_name (n, name)
+      | None -> Span_name name)
+
+(* CSS Grid 2 sec. 8.3: [span && [ <integer [1,inf]> || <custom-ident> ]]. CSS
+   Values 4 sec. 2.2 makes [&&] reorderable, so [span] sits on either side of
+   the group; it reorders only components in the same grouping, so [span] never
+   splits the bracketed [||] pair ([3 span foo] is not a value). *)
+let read_grid_span t : grid_line =
+  let span_first = Cursor.try_ident "span" t in
+  let value = read_grid_span_parts t in
+  if not span_first then Cursor.expect_string "span" t;
+  value
 
 let read_grid_line_number t : grid_line =
   let n = Cursor.int t in
@@ -700,8 +693,11 @@ let rec read_grid_line t : grid_line =
         ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line));
       ]
     ~default:(fun t ->
+      (* The span form is tried first: it is the only alternative that reads a
+         trailing [span], and the other two match its group on their own and
+         would leave that [span] behind. *)
       Cursor.one_of
-        [ read_grid_line_number; read_grid_span; read_grid_line_name_value ]
+        [ read_grid_span; read_grid_line_number; read_grid_line_name_value ]
         t)
     t
 
