@@ -923,6 +923,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Custom properties
 
+- `--minify` keeps the quotes on a `<string>` written to a custom property
+  whose `@property` syntax accepts only an ident sequence. The string matches
+  no arm of that registration, so it is invalid at computed-value time (CSS
+  Properties and Values API 1 (ED) sec. 2.4) and computes to the initial
+  value; unquoted, it computed the name instead (#704)
 - `Css.Variables.read_reference_body_as_string` reads the same `var()`
   argument list as `read_reference_body` and returns the name and the fallback
   as text, for a caller with no value type to pick a typed fallback reader
