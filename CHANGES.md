@@ -207,6 +207,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- An `@property` syntax component carries at most one multiplier. A chained one
+  such as `"<custom-ident>+#"` drops the registration the way a browser does,
+  where cascade used to accept it and type a property left unregistered (#707)
 - Trailing content inside a parenthesised or bracketed sub-expression makes the
   whole value invalid, as it does in a browser. `width: calc((1px 2px))` used
   to keep the prefix a reader recognised and drop the rest (#701)
