@@ -1944,6 +1944,12 @@ let grid () =
 
   check_declaration ~expected:"grid-template-rows:repeat(2,minmax(0,1fr))"
     "grid-template-rows: repeat(2, minmax(0, 1fr))";
+  (* CSS Grid 2 (ED) sec. 7.2 gives the longhands a track-list grammar. The
+     slash and string-area forms belong only to grid-template in sec. 7.4. *)
+  neg_cursor read_declaration "grid-template-columns: 1px / 2px";
+  neg_cursor read_declaration "grid-template-rows: 1px / 2px";
+  neg_cursor read_declaration "grid-template-columns: \"a\" 1px";
+  neg_cursor read_declaration "grid-template-rows: \"a\" 1px";
 
   (* Grid areas *)
   check_declaration
