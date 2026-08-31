@@ -688,15 +688,27 @@ let assert_decl_roundtrip label input =
 let assert_decl_reject label input =
   assert_invalid_declaration_contract label input
 
+let inventory_value_has_substitution value =
+  let value = String.lowercase_ascii value in
+  List.exists
+    (fun name -> Astring.String.is_infix ~affix:(name ^ "(") value)
+    [ "var"; "env"; "attr" ]
+
 let invalid_property_mutation
     (row : Cascade_spec_inventory.Property_grammar.row) value buf =
-  match byte_at buf 4 mod 6 with
-  | 0 -> pick row.negatives buf 5
-  | 1 -> "initial " ^ value
-  | 2 -> "inherit " ^ value
-  | 3 -> "var()"
-  | 4 -> value ^ " )"
-  | _ -> value ^ " " ^ pick row.negatives buf 6
+  if inventory_value_has_substitution value then
+    (* Once an arbitrary substitution is present, otherwise-invalid property
+       grammar is deliberately deferred. Keep these mutations invalid at the CSS
+       token/substitution layer instead. *)
+    pick [ "var()"; value ^ " attr()"; value ^ " env()" ] buf 4
+  else
+    match byte_at buf 4 mod 6 with
+    | 0 -> pick row.negatives buf 5
+    | 1 -> "initial " ^ value
+    | 2 -> "inherit " ^ value
+    | 3 -> "var()"
+    | 4 -> value ^ " )"
+    | _ -> value ^ " " ^ pick row.negatives buf 6
 
 let var_token_stream_fallback buf =
   pick

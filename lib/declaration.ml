@@ -269,19 +269,25 @@ let invalid_var_arguments arguments =
       | _ -> true)
   | _ -> true
 
-let rec components_have_invalid_var components =
-  List.exists component_has_invalid_var components
+let rec components_have_invalid_substitution components =
+  List.exists component_has_invalid_substitution components
 
-and component_has_invalid_var = function
-  | Component.Func { node = { name; arguments; terminated; _ }; _ }
-    when String.lowercase_ascii_preserve name = "var" ->
-      (not terminated)
-      || invalid_var_arguments arguments
-      || components_have_invalid_var arguments
-  | Component.Func { node = { arguments; _ }; _ } ->
-      components_have_invalid_var arguments
+and component_has_invalid_substitution = function
+  | Component.Func { node = { name; arguments; terminated; _ }; _ } ->
+      let invalid_call =
+        match String.lowercase_ascii_preserve name with
+        | "var" -> (not terminated) || invalid_var_arguments arguments
+        | "env" | "attr" ->
+            (not terminated)
+            || not
+                 (List.exists
+                    (fun component -> not (is_ws_component component))
+                    arguments)
+        | _ -> false
+      in
+      invalid_call || components_have_invalid_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
-      components_have_invalid_var value
+      components_have_invalid_substitution value
   | Component.Preserved _ -> false
 
 let rec components_contain_var components =
@@ -294,21 +300,43 @@ and component_contains_var = function
   | Component.Block { node = { value; _ }; _ } -> components_contain_var value
   | Component.Preserved _ -> false
 
-let raw_value_has_invalid_var raw_value =
-  Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
+(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
+   substitution functions: each carries an unknown token stream into the value,
+   so a declaration holding one is valid at parse time and only decided once
+   substitution has run. A call with an empty argument list matches no
+   substitution grammar and so defers nothing. *)
+let is_substitution_call name arguments =
+  (match String.lowercase_ascii_preserve name with
+    | "var" | "env" | "attr" -> true
+    | _ -> false)
+  && List.exists (fun component -> not (is_ws_component component)) arguments
 
-let raw_value_contains_var raw_value =
-  (* CSS Custom Properties 1 section 3: a top-level [var()] leaves the typed
-     reader unable to validate the substituted result, so cascade keeps the
-     value verbatim. A [var()] nested inside another function does not extend
-     that leniency to the surrounding tokens; only a top-level one counts. *)
-  let is_top_level_var = function
-    | Component.Func { node = { name; _ }; _ }
-      when String.lowercase_ascii_preserve name = "var" ->
-        true
+let rec components_have_substitution components =
+  List.exists component_has_substitution components
+
+and component_has_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+      || components_have_substitution arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_have_substitution value
+  | Component.Preserved _ -> false
+
+let raw_value_has_invalid_substitution raw_value =
+  Cursor.of_string raw_value |> Cursor.remaining
+  |> components_have_invalid_substitution
+
+let raw_value_contains_substitution raw_value =
+  (* A top-level substitution leaves the typed reader unable to validate the
+     result, so cascade keeps the value verbatim. One nested inside another
+     function does not extend that leniency to the surrounding tokens; only a
+     top-level one counts. *)
+  let is_top_level = function
+    | Component.Func { node = { name; arguments; _ }; _ } ->
+        is_substitution_call name arguments
     | _ -> false
   in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level_var
+  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
@@ -2082,12 +2110,19 @@ let components_are_lone_css_wide cvs =
   | _ -> false
 
 let validate_regular_property_components t name components =
+  (* A substitution function makes the declaration's grammar a computed-value
+     question. This includes [all]: the substitution result can be empty and
+     leave its neighbouring CSS-wide keyword as the whole value. *)
+  let has_substitution = components_have_substitution components in
   if
     (not (property_allows_keyword_as_ident name))
+    && (not has_substitution)
     && Properties.components_have_css_wide_mix components
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
-  if name = "all" && not (components_are_lone_css_wide components) then
-    Cursor.err_invalid t "all accepts only CSS-wide keywords"
+  if
+    name = "all" && (not has_substitution)
+    && not (components_are_lone_css_wide components)
+  then Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
 (* Color functions cascade types directly; anything else (e.g. a vendor color
    function or a typed value cascade hasn't grown yet) is treated as a [color]
@@ -2167,11 +2202,11 @@ let is_unknown_property_name = is_decl_unknown_property_name
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
 let allows_unknown_fallback name raw_value =
-  (not (raw_value_has_invalid_var raw_value))
+  (not (raw_value_has_invalid_substitution raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
      || has_var_color_function raw_value
-     || raw_value_contains_var raw_value)
+     || raw_value_contains_substitution raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;

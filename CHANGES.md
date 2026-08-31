@@ -212,6 +212,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Declarations containing a non-empty `var()`, `env()` or `attr()` call defer
+  CSS-wide keyword mix validation until substitution, instead of being dropped
+  while the substituted token stream is still unknown (#726)
 - `revert-rule` is reserved wherever a grammar accepts a `<custom-ident>`, so
   it no longer survives inside grid line-name lists as an ordinary name (#724)
 - The span form of `<grid-line>` takes its operands in any order, as the `&&`
