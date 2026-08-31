@@ -270,10 +270,54 @@ let constructed_custom_property_reparses () =
   fixed_point "constructed custom property" (v [ rule ~selector:btn [ decl ] ]);
   fixed_point "parsed custom property"
     (Css.of_string_exn ".btn{--brand:oklch(63.7% .237 25.331)}");
-  (* [hsl()] is the control: the typed printer keeps the separator between its
-     two percentages, and a reparse holds that spelling. *)
+  (* A parsed typed colour is its own fixed point: the typed printer and the
+     custom-value serialiser have to agree on the percentage boundary. *)
   fixed_point "typed percentage pair"
     (Css.of_string_exn ".btn{color:hsl(120 50% 50%)}");
+  (* [%] closes its token (CSS Syntax 3 (ED) sec. 4), so a constructed colour
+     has to spell the boundary after a percentage the way a reparse of its own
+     bytes does. *)
+  List.iter
+    (fun (name, color) ->
+      let decl, _ = Css.var name Css.Color color in
+      fixed_point
+        (String.concat "" [ "constructed "; name ])
+        (v [ rule ~selector:btn [ decl ] ]))
+    [
+      ("hsl", Css.hsl 120. 50. 50.);
+      ("hwb", Css.hwb 120. 30. 40.);
+      ("hsla", Css.hsla 120. 50. 50. 0.5);
+      ("hwba", Css.hwba 120. 30. 40. 0.5);
+      ( "rgb-percentage-channels",
+        Css.Values.Rgb (Channels { r = Pct 50.; g = Pct 60.; b = Pct 70. }) );
+      ("oklch-percentage-chroma", Css.oklch 50. 0.304 120.);
+      ( "oklch-none-chroma",
+        Css.Values.Oklch
+          {
+            l = Some (Pct 50.);
+            c = Option.None;
+            h = Unitless 120.;
+            alpha = None;
+          } );
+      ( "oklab-none-axis",
+        Css.Values.Oklab
+          { l = Some (Pct 50.); a = Option.None; b = Some 0.12; alpha = None }
+      );
+      ( "rgb-var-channel",
+        Css.Values.Rgb
+          (Channels
+             { r = Pct 50.; g = Var (Css.Values.var_ref "g"); b = Pct 70. }) );
+      (* The other side of the same boundary: a [var()] closes on [)], which the
+         custom-value serialiser keeps separated, so that gap stays. *)
+      ( "hsl-var-saturation",
+        Css.Values.Hsl
+          {
+            h = Unitless 120.;
+            s = Var (Css.Values.var_ref "s");
+            l = Pct 50.;
+            a = None;
+          } );
+    ];
   (* A custom property never comes out longer than it went in. [%] closes the
      percentage, so the reader has no boundary to restore. *)
   List.iter
@@ -296,6 +340,7 @@ let constructed_custom_property_reparses () =
       ":root{--x:50%.5}";
       ".btn{--brand:oklch(63.7% .237 25.331)}";
       ".btn{color:hsl(120 50% 50%)}";
+      ".btn{color:hwb(120 30% 40%)}";
     ]
 
 let explicit_phase_pipeline () =
