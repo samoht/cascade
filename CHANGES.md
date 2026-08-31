@@ -210,6 +210,8 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- `revert-rule` is reserved wherever a grammar accepts a `<custom-ident>`, so
+  it no longer survives inside grid line-name lists as an ordinary name (#724)
 - The span form of `<grid-line>` takes its operands in any order, as the `&&`
   and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
   kept and printed `span 3`, where cascade used to drop the declaration (#711)
