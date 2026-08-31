@@ -1666,6 +1666,73 @@ let test_math_arg () =
   check_math_arg "sqrt(4)";
   neg_cursor read_math_arg "foo"
 
+(* ignore-test: the calc operator grammar spans every math function. *)
+let test_calc_operator_whitespace () =
+  (* CSS Values 4 (ED) sec. 10.8 Syntax: "whitespace is required on both sides
+     of the + and - operators. (The * and / operators can be used without white
+     space around them.)" A one-sided sum is not a math function at all, so the
+     value is dropped rather than re-emitted in the valid spelling. *)
+  neg_cursor read_length "calc(100%- 10px)";
+  neg_cursor read_length "calc(100%+ 10px)";
+  neg_cursor read_length "calc(100% -10px)";
+  neg_cursor read_length "calc(1px- 2px)";
+  neg_cursor read_length "calc(1px -(2px))";
+  neg_cursor read_length "-webkit-calc(100%- 10px)";
+  (* A parenthesised operand on either side of the operator. *)
+  neg_cursor read_length "calc((1px)- 2px)";
+  neg_cursor read_length "calc((1px)+ 2px)";
+  neg_cursor read_length "calc((1px) -(2px))";
+  (* The rule holds inside a parenthesised sub-expression as well as around
+     it. *)
+  neg_cursor read_length "calc((1px + 2px)- 3px)";
+  neg_cursor read_length "calc((1px+ 2px) - 3px)";
+  (* var() and a nested math function are operands like any other. *)
+  neg_cursor read_length "calc(var(--a)- 2px)";
+  neg_cursor read_length "calc(var(--a)+ 2px)";
+  neg_cursor read_length "calc(min(1px,2px)- 3px)";
+  neg_cursor read_length "calc(min(1px,2px)+ 3px)";
+  neg_cursor read_length "calc(sqrt(4)- 1px)";
+  (* A product binds tighter, so the sum operator after it still needs its own
+     whitespace. *)
+  neg_cursor read_length "calc(1px*2- 1px)";
+  (* The <calc-sum> in a math function argument obeys the same rule. *)
+  neg_cursor read_length "calc(sqrt(4- 1) * 1px)";
+  neg_cursor read_math_arg "1- 2";
+  neg_cursor read_math_arg "4+ 1";
+  (* A sign absorbed into a number token is a different failure: there is no
+     delimiter to space out, and [calc(1 +2)] is rejected for leaving [+2]
+     unconsumed. *)
+  neg_cursor read_length "calc(1 +2)";
+
+  (* The accepted spellings, checked against the pretty form: minify drops the
+     optional whitespace around [*] and [/] and the redundant parentheses,
+     which is a separate concern from which spellings parse. *)
+  (* [*] and [/] take whitespace on neither, one or both sides. *)
+  check_length ~minify:false ~expected:"calc(2px * 1.5)" "calc(2px*1.5)";
+  check_length ~minify:false ~expected:"calc(2px * 1.5)" "calc(2px *1.5)";
+  check_length ~minify:false ~expected:"calc(2px * 1.5)" "calc(2px* 1.5)";
+  check_length ~minify:false "calc(2px * 1.5)";
+  check_length ~minify:false ~expected:"calc(2px / 1.5)" "calc(2px/1.5)";
+  check_length ~minify:false ~expected:"calc(2px / 1.5)" "calc(2px /1.5)";
+  check_length ~minify:false ~expected:"calc(2px / 1.5)" "calc(2px/ 1.5)";
+  check_length ~minify:false "calc(2px / 1.5)";
+  (* A sign glued to the first operand of a term is unary, not a sum. *)
+  check_length ~minify:false "calc(-1px + 2px)";
+  check_length ~minify:false "calc((-1px))";
+  (* The spaced spelling of each rejection above stays valid. *)
+  check_length ~minify:false "calc(100% - 10px)";
+  check_length ~minify:false "calc(1px - (2px))";
+  check_length ~minify:false "calc((1px) - (2px))";
+  check_length ~minify:false "calc((1px + 2px) - 3px)";
+  check_length ~minify:false "calc(min(1px, 2px) - 3px)";
+  check_length ~minify:false "calc(sqrt(4) - 1px)";
+  check_length ~minify:false "calc(sqrt(4 - 1) * 1px)";
+  check_length ~minify:false "calc(1px * 2 - 1px)";
+  check_length ~minify:false ~expected:"calc(100% - 10px)"
+    "-webkit-calc(100% - 10px)";
+  check_math_arg "1 - 2";
+  check_math_arg "4 + 1"
+
 let value_tests =
   [
     test_case "system_color" `Quick test_system_color;
@@ -1712,6 +1779,7 @@ let value_tests =
     test_case "invalid_value" `Quick test_invalid_value;
     test_case "math_const" `Quick test_math_const;
     test_case "math_arg" `Quick test_math_arg;
+    test_case "calc operator whitespace" `Quick test_calc_operator_whitespace;
     test_case "number" `Quick test_number;
     test_case "attr_syntax" `Quick test_attr_syntax;
     test_case "attr_type" `Quick test_attr_type;
