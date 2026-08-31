@@ -571,6 +571,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` keeps the whitespace CSS Values 4 requires on both sides of a math
+  function's `+` and `-` when it prints a custom property or an unknown
+  property. `--w: calc(100% - 10px)` came out as `--w:calc(100%- 10px)`, which
+  browsers discard, taking every `var(--w)` that read it with them (#697)
 - `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
   constructed millisecond durations and degree hues without running the AST
   optimisation phase (#678)
