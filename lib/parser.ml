@@ -329,9 +329,47 @@ let signed_number_pair prev next =
       is_signed_number_repr repr
   | _ -> false
 
+(* The sign a numeric token's serialisation opens with, per the [+]/[-] of the
+   CSS Syntax 3 (ED) sec. 4.3.12 number grammar. *)
+let numeric_leading_sign = function
+  | Component.Preserved
+      {
+        kind =
+          ( Token.Number_tok { repr; _ }
+          | Token.Percentage { repr; _ }
+          | Token.Dimension { number = { repr; _ }; _ } );
+        _;
+      }
+    when is_signed_number_repr repr ->
+      Some repr.[0]
+  | _ -> None
+
+(* A [+] is no ident code point (CSS Syntax 3 (ED) sec. 4.2) and continues no
+   number in front of it (sec. 4.3.12), so a plus-signed numeric re-lexes as its
+   own token after every token the arms below would otherwise separate. A [-] is
+   an ident code point and [--] starts an ident sequence (sec. 4.3.9), so a
+   minus-signed one only stands apart after a number or a [+]. Emitting a
+   separator for either would hand the next reader a token sequence the source
+   never held. *)
+let signed_numeric_self_separates prev next =
+  match numeric_leading_sign next with
+  | None -> false
+  | Some '+' -> true
+  | Some _ -> (
+      match prev with
+      | Component.Preserved { kind = Token.Number_tok _ | Token.Delim "+"; _ }
+        ->
+          true
+      | _ -> false)
+
 let normal_pair_needs_token_boundary prev next =
   match (prev, next) with
-  | _ when signed_number_pair prev next -> false
+  | _ when signed_numeric_self_separates prev next -> false
+  (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
+     a dimension all end their name at the [(], so the block stays apart. *)
+  | ( Component.Preserved { kind = Token.Ident _; _ },
+      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      true
   | ( Component.Preserved
         {
           kind =
@@ -346,8 +384,7 @@ let normal_pair_needs_token_boundary prev next =
               | Token.Percentage _ | Token.Dimension _ );
             _;
           }
-      | Component.Func _
-      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      | Component.Func _ ) ) ->
       true
   | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved
@@ -490,8 +527,13 @@ let pair_forms_multichar_token prev next =
 
 let pair_needs_token_boundary prev next =
   match (prev, next) with
-  | _ when signed_number_pair prev next -> false
+  | _ when signed_numeric_self_separates prev next -> false
   | _ when pair_forms_multichar_token prev next -> true
+  (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
+     a dimension all end their name at the [(], so the block stays apart. *)
+  | ( Component.Preserved { kind = Token.Ident _; _ },
+      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      true
   | ( Component.Preserved
         {
           kind =
@@ -506,8 +548,7 @@ let pair_needs_token_boundary prev next =
               | Token.Percentage _ | Token.Dimension _ );
             _;
           }
-      | Component.Func _
-      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      | Component.Func _ ) ) ->
       true
   | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved

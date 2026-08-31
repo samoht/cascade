@@ -586,6 +586,10 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- `--minify` writes no separator into a pair of tokens the source held side by
+  side. `--t: x 1px+2px` came out as `--t:x 1px +2px` and `--t: 1px(a)` as
+  `--t:1px (a)`, handing every `var()` that read them a whitespace token the
+  author never wrote (#709)
 - `--minify` spells the boundary after a percentage the same way inside every
   colour function. A constructed `hsl(120 50% 50%)` or `oklch(.659 76% 203.274)`
   kept a separator that a parse of those same bytes dropped, so a colour built
