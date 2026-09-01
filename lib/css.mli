@@ -80,6 +80,7 @@ module Properties = Properties
 module Variables = Variables
 module Optimize = Optimize
 module Stylesheet = Stylesheet
+module Source = Stylesheet.Source
 module Media = Media
 module Container = Container
 module Supports = Supports
@@ -7781,17 +7782,23 @@ val to_buffer :
 (** [to_buffer buf stylesheet] appends the serialised stylesheet to [buf]. Same
     options as {!to_string}. *)
 
-type parse = { stylesheet : t; warnings : Error.t list }
+type parse = {
+  stylesheet : t;
+  warnings : Error.t list;
+  source : Source.t option;
+}
 (** A partially-recovered parse: the {!field-stylesheet} composed of every rule
     that validated successfully, plus the {!field-warnings} accumulated for
     rules that were dropped or section 5.3-recovered. Each warning is an
-    [Error.t] stamped with the source [filename] when one was supplied. *)
+    [Error.t] stamped with the source [filename] when one was supplied.
+    {!field-source} is [Some] only when parsing requested source fidelity. *)
 
 val of_string :
   ?strict:bool ->
   ?filename:string ->
   ?meta:Loc.meta_level ->
   ?enforce_spec:bool ->
+  ?preserve_source:bool ->
   string ->
   (parse, Error.t) result
 (** [of_string ?strict css] parses [css] with CSS Syntax 3 (ED) section 5.4
@@ -7808,7 +7815,13 @@ val of_string :
     default accepts any code point [>= U+0080], so a selector such as
     [.text-\u{2197}] reads rather than being dropped with a warning. Output is
     unaffected either way: a code point outside the range list is hex-escaped.
-*)
+
+    [preserve_source] (default [false]) retains the byte-exact input, located
+    recovered syntax tree, comments, trivia ownership, and source-coordinate
+    mapping in {!field-source}. The snapshot describes only the authored parse:
+    optimising, flattening, mapping, or otherwise transforming
+    {!field-stylesheet} neither mutates it nor fabricates locations for split,
+    merged, dropped, or synthetic nodes. *)
 
 val of_string_exn :
   ?strict:bool ->

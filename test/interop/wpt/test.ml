@@ -328,7 +328,7 @@ let non_ascii_codepoints =
     (* The range list is what [~enforce_spec:true] selects; reading defaults to
        any code point >= U+0080, which these counter-tests would not see. *)
     match Cascade.Css.of_string ~strict:false ~enforce_spec:true css with
-    | Ok { Cascade.Css.stylesheet; warnings = _ } ->
+    | Ok { Cascade.Css.stylesheet; warnings = _; _ } ->
         List.length (Cascade.Css.rule_statements stylesheet) = 1
     | Error _ -> false
   in

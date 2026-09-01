@@ -1063,7 +1063,7 @@ let spec_qualified_custom_prop_warns () =
   | Error _ -> ()
   | Ok _ -> Alcotest.fail "strict mode accepted a silently dropped rule");
   (match Css.of_string input with
-  | Ok { Css.stylesheet; warnings = [ _ ] } ->
+  | Ok { Css.stylesheet; warnings = [ _ ]; _ } ->
       Alcotest.(check string)
         "nothing survives the drop" ""
         (Css.to_string ~minify:true stylesheet)
@@ -1095,7 +1095,7 @@ let spec_unterminated_repairs_warn () =
      mode has to have something to reject. *)
   let repaired input ~expect ~sort =
     match Css.of_string input with
-    | Ok { Css.stylesheet; warnings = [ w ] } -> (
+    | Ok { Css.stylesheet; warnings = [ w ]; _ } -> (
         Alcotest.(check string)
           "the repair does not move the output" expect
           (Css.to_string ~minify:true stylesheet);

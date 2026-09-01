@@ -20,6 +20,9 @@ difference wherever the two are not equivalent.
 
 ### Breaking
 
+- `Css.parse` adds `source : Css.Source.t option`; exhaustive record patterns
+  must bind it or add `_`. `Css.of_string ~preserve_source:true` fills it with
+  exact authored comments, syntax, trivia ownership and coordinates (#747)
 - Implementation modules are no longer usable through accidental `Cascade.*`
   aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
   `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,

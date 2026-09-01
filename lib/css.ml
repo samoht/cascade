@@ -542,21 +542,32 @@ let vars_of_declarations = Variables.vars_of_declarations
    one of them met a construct the other knew. *)
 let vars_of_rules = vars_of_stylesheet
 
-type parse = { stylesheet : t; warnings : Error.t list }
+type parse = {
+  stylesheet : t;
+  warnings : Error.t list;
+  source : Source.t option;
+}
 
 let of_string ?(strict = false) ?(filename = "<string>")
-    ?(meta = Loc.default_meta_level) ?(enforce_spec = false) css =
+    ?(meta = Loc.default_meta_level) ?(enforce_spec = false)
+    ?(preserve_source = false) css =
   let stamp e = Error.with_filename ~filename e in
   try
+    let source : Source.t option ref = ref Option.None in
+    let on_source =
+      if preserve_source then
+        Option.Some (fun captured -> source := Option.Some captured)
+      else Option.None
+    in
     let stylesheet, warnings =
-      Stylesheet.parse_stylesheet_partial ~meta ~enforce_spec css
+      Stylesheet.parse_stylesheet_partial ~meta ~enforce_spec ?on_source css
     in
     let warnings = List.map stamp warnings in
     if strict then
       match warnings with
-      | [] -> Ok { stylesheet; warnings }
+      | [] -> Ok { stylesheet; warnings; source = !source }
       | first :: _ -> Error first
-    else Ok { stylesheet; warnings }
+    else Ok { stylesheet; warnings; source = !source }
   with Error.Parse_error error -> Error (stamp error)
 
 let of_string_exn ?strict ?filename ?meta ?enforce_spec css =

@@ -120,7 +120,7 @@ let rejects_invalid css =
         (to_string ~minify:true parsed.stylesheet)
 
 let recover css expected min_warnings =
-  let { stylesheet; warnings } =
+  let { stylesheet; warnings; _ } =
     match of_string ~strict:false css with
     | Ok parsed -> parsed
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)
@@ -137,7 +137,7 @@ let recover css expected min_warnings =
 
 (* Lenient [preserves_non_minified]: keeps [preserves], drops [drops], warns. *)
 let recover_non_minified css ~preserves ~drops min_warnings =
-  let { stylesheet; warnings } =
+  let { stylesheet; warnings; _ } =
     match of_string ~strict:false css with
     | Ok parsed -> parsed
     | Error e -> Alcotest.fail (Cascade.Error.to_string e)

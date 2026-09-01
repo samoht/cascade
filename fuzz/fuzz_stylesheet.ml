@@ -335,7 +335,7 @@ let assert_strict_rejects_lenient_warns label input =
       failf "%s parsed strictly as invalid CSS: %S -> %S" label input
         (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
-      let { Css.stylesheet; warnings } = recovered_css label input in
+      let { Css.stylesheet; warnings; _ } = recovered_css label input in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
         failf "%s recovered without a lenient warning: %S" label input
@@ -345,7 +345,7 @@ let assert_strict_accepts_cleanly label input =
   | Error _ -> failf "%s rejected valid CSS strictly: %S" label input
   | Ok parsed ->
       let strict_output = Css.to_string ~minify:true parsed.stylesheet in
-      let { Css.stylesheet; warnings } = recovered_css label input in
+      let { Css.stylesheet; warnings; _ } = recovered_css label input in
       if warnings <> [] then
         failf "%s emitted lenient warnings for valid CSS: %S" label input;
       let lenient_output = Css.to_string ~minify:true stylesheet in
@@ -1294,7 +1294,7 @@ let test_recovery_keeps_rules buf =
   in
   let css = ".a{color:red}.b{" ^ bad_decl ^ "}.c{display:block}" in
   assert_strict_rejects_lenient_warns "recovery keeps sibling rules" css;
-  let { Css.stylesheet; warnings } =
+  let { Css.stylesheet; warnings; _ } =
     recovered_css "recovery keeps sibling rules" css
   in
   let counts = recovered_declaration_counts stylesheet in
@@ -1314,7 +1314,7 @@ let test_recovery_invalid_rule_boundary buf =
   in
   let css = ".ok{color:green}" ^ invalid_rule ^ ".next{color:blue}" in
   assert_strict_rejects_lenient_warns "invalid rule boundary recovery" css;
-  let { Css.stylesheet; warnings } =
+  let { Css.stylesheet; warnings; _ } =
     recovered_css "invalid rule boundary recovery" css
   in
   let counts = recovered_declaration_counts stylesheet in
@@ -1331,7 +1331,7 @@ let test_recovery_bad_declaration buf =
   in
   let css = ".a{" ^ bad_decl ^ ";color:red}" in
   assert_strict_rejects_lenient_warns "bad declaration recovery" css;
-  let { Css.stylesheet; warnings } =
+  let { Css.stylesheet; warnings; _ } =
     recovered_css "bad declaration recovery" css
   in
   let counts = recovered_declaration_counts stylesheet in

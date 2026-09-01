@@ -334,7 +334,7 @@ let spec_fontface_var_descriptor_edges () =
     let lenient =
       match Css.of_string input with
       | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" descriptor input ]
-      | Ok { Css.stylesheet; warnings } -> (
+      | Ok { Css.stylesheet; warnings; _ } -> (
           let printed = Css.to_string ~minify:true stylesheet |> String.trim in
           (if String.equal printed kept then []
            else
@@ -375,7 +375,7 @@ let spec_fontface_var_descriptor_kept () =
     let input = source descriptor in
     match Css.of_string input with
     | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" descriptor input ]
-    | Ok { Css.stylesheet; warnings } -> (
+    | Ok { Css.stylesheet; warnings; _ } -> (
         let printed = Css.to_string ~minify:true stylesheet |> String.trim in
         (if String.equal printed input then []
          else [ Fmt.str "%s: printed %S, expected %S" descriptor printed input ])
