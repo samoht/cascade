@@ -4,20 +4,36 @@ A command-line tool for **formatting**, **minifying**, **inlining**,
 **structurally diffing**, and **pruning** CSS. Ships one binary (`cascade`)
 and, for OCaml users, the library it is built on.
 
-```text
-$ cascade --minify style.css > style.min.css
-$ cascade diff a.css b.css
+<!-- $MDX skip -->
+```bash
+cascade --minify style.css > style.min.css
+cascade diff a.css b.css
 ```
+
+Default minification is practical, not byte-for-byte preservation: it targets
+maintained evergreen browsers and may approximate colours within `0.002`
+Delta-EOK. Parsing and serialisation also normalise raw token spelling,
+including CSSOM-observable custom-property strings. For a more conservative
+contract, disable approximation and browser-baseline assumptions:
+
+<!-- $MDX skip -->
+```bash
+opam exec -- cascade --minify --lossless --enforce-spec style.css
+```
+
+That combination retains authored declaration order, but it still does not
+preserve comments, whitespace, exact source spelling, or every CSSOM-visible
+string.
 
 Cascade works from a typed CSS AST rather than the raw text, so every command
 emits valid CSS by construction and reasons about the cascade instead of
-guessing from bytes. `cascade fmt --minify` applies only cascade-safe transforms
-(deduplication, rule merging, selector grouping, colour and value
-canonicalisation), and optimises for the bytes that actually ship: compressed
-transfer size rather than raw length. `cascade diff` compares the parsed
-structure, so a refactor that reorders rules or regroups declarations without
-changing what they compute reads as no difference rather than a wall of red and
-green. The same engine backs the `cascade` OCaml library.
+guessing from bytes. `cascade fmt --minify` uses cascade analysis for structural
+transforms (deduplication, rule merging, and selector grouping), canonicalises
+colours and values under the contract above, and optimises for the bytes that
+actually ship: compressed transfer size rather than raw length. `cascade diff`
+compares the parsed structure, so a refactor that reorders rules or regroups
+declarations without changing what they compute reads as no difference rather
+than a wall of red and green. The same engine backs the `cascade` OCaml library.
 
 On the SatCSS corpus of real-world stylesheets, cascade is competitive on both
 size and speed; the head-to-head numbers are in [BENCHMARKS.md](BENCHMARKS.md).

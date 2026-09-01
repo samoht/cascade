@@ -495,6 +495,9 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- The README states the default minifier's evergreen target, colour tolerance,
+  and CSSOM-visible normalisation beside its first example, and describes
+  `--lossless --enforce-spec` as conservative rather than source-exact (#743)
 - Lossless optimization keeps otherwise-independent declarations in authored
   order, so stylesheet text and CSSOM enumeration no longer change solely for
   gzip alignment (#742)
