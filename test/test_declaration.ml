@@ -1500,6 +1500,35 @@ let component_var_keeps_typed_value () =
   check_declaration ~expected:"place-content:var(--p) var(--p)"
     ~optimized:"place-content:var(--p) var(--p)"
     "place-content: var(--p) var(--p)";
+  check_specified_value "place-items reads a leading component var"
+    "place-items: var(--pi) CENTER" "var(--pi) center";
+  check_specified_value "place-items keeps its existing trailing component var"
+    "place-items: CENTER var(--pi)" "center var(--pi)";
+  check_visible_var "place-items component var stays visible"
+    "place-items:var(--pi) center" "--pi";
+  check_declaration ~expected:"place-items:var(--pi) var(--pi)"
+    ~optimized:"place-items:var(--pi) var(--pi)"
+    "place-items: var(--pi) var(--pi)";
+  check_specified_value "grid-auto-flow keywords are case-insensitive"
+    "grid-auto-flow: ROW DENSE" "row dense";
+  check_specified_value "grid-auto-flow reads a leading component var"
+    "grid-auto-flow: var(--flow) DENSE" "var(--flow) dense";
+  check_specified_value "grid-auto-flow reads a trailing component var"
+    "grid-auto-flow: ROW var(--flow)" "row var(--flow)";
+  check_visible_var "grid-auto-flow component var stays visible"
+    "grid-auto-flow:row var(--flow)" "--flow";
+  check_specified_value "border-image-width reads a leading component var"
+    "border-image-width: var(--width) AUTO" "var(--width) auto";
+  check_specified_value "border-image-width reads a trailing component var"
+    "border-image-width: AUTO var(--width)" "auto var(--width)";
+  check_visible_var "border-image-width component var stays visible"
+    "border-image-width:var(--width) auto" "--width";
+  check_specified_value "border-image-outset reads a leading component var"
+    "border-image-outset: var(--outset) 1PX" "var(--outset) 1px";
+  check_specified_value "border-image-outset reads a trailing component var"
+    "border-image-outset: 1PX var(--outset)" "1px var(--outset)";
+  check_visible_var "border-image-outset component var stays visible"
+    "border-image-outset:var(--outset) 1px" "--outset";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
