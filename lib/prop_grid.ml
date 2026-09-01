@@ -489,7 +489,7 @@ let read_place_content_single t =
     t
 
 let rec read_place_content t : place_content =
-  Cursor.enum_or_var "place-content"
+  Cursor.enum_or_whole_value_var "place-content"
     [
       ("inherit", (Inherit : place_content));
       ("initial", Initial);
