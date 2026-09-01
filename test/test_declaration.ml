@@ -465,6 +465,8 @@ let special_cases () =
   check_declaration ~expected:"background-position:30%50%,70%50%"
     ~optimized:"background-position:30%,70%"
     "background-position: 30% 50%, 70% 50%;";
+  check_declaration ~expected:"background-position:var(--x) 20%"
+    "background-position: var(--x) 20%;";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
     "mask-position: 0 0, 10px 10px;";
 
@@ -1944,6 +1946,12 @@ let grid () =
 
   check_declaration ~expected:"grid-template-rows:repeat(2,minmax(0,1fr))"
     "grid-template-rows: repeat(2, minmax(0, 1fr))";
+  (* CSS Grid 2 (ED) sec. 7.2 gives the longhands a track-list grammar. The
+     slash and string-area forms belong only to grid-template in sec. 7.4. *)
+  neg_cursor read_declaration "grid-template-columns: 1px / 2px";
+  neg_cursor read_declaration "grid-template-rows: 1px / 2px";
+  neg_cursor read_declaration "grid-template-columns: \"a\" 1px";
+  neg_cursor read_declaration "grid-template-rows: \"a\" 1px";
 
   (* Grid areas *)
   check_declaration
@@ -2010,6 +2018,15 @@ let grid () =
     "grid-template-columns: [a] 1px";
   check_declaration ~expected:"grid-template-columns:1px[a]2px"
     "grid-template-columns: 1px [a] 2px";
+  (* CSS Grid 2 sec. 7.2 gives [subgrid] its own [<line-name-list>] grammar.
+     Unlike an ordinary track list, that list may contain adjacent line-name
+     blocks or a name-only [repeat()]. *)
+  check_declaration ~expected:"grid-template-columns:subgrid[a]"
+    "grid-template-columns: subgrid [a]";
+  check_declaration ~expected:"grid-template-rows:subgrid[a][b]"
+    "grid-template-rows: subgrid [a] [b]";
+  check_declaration ~expected:"grid-template-columns:subgrid repeat(2,[a])"
+    "grid-template-columns: subgrid repeat(2, [a])";
   neg_cursor read_declaration "grid-template-columns: [a]";
   neg_cursor read_declaration "grid-template-rows: [a] [b] 1px";
   neg_cursor read_declaration "grid-template: 1px / [a]";
@@ -2232,6 +2249,21 @@ let custom_properties () =
      answered [var(--x)]. *)
   neg_cursor read_declaration "color:var(--x 10px)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
+
+(* A numeric token's source spelling is not part of its value. Opaque custom-
+   and unknown-property streams therefore use the same shortest numeric spelling
+   as typed values, while retaining separators when dropping a sign would
+   otherwise merge two tokens. *)
+let opaque_numeric_tokens () =
+  check_declaration ~expected:"--t:1px" "--t: 1.0px";
+  check_declaration ~expected:"--t:.5px" "--t: 0.5px";
+  check_declaration ~expected:"--t:.5" "--t: .50";
+  check_declaration ~expected:"--t:1px" "--t: 01px";
+  check_declaration ~expected:"--t:1" "--t: +1";
+  check_declaration ~expected:"-x-y:.5%" "-x-y: 0.50%";
+  check_declaration ~expected:"--t:x 1" "--t: x +1";
+  check_declaration ~expected:"--t:1 2px" "--t: 1 +2px";
+  check_declaration ~expected:"--t:- 1" "--t: - +1"
 
 (* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
    required on both sides of the [+] and [-] operators, while [*] and [/] may be
@@ -2867,9 +2899,9 @@ let unterminated () =
      an explicit closer would have produced -- the parser must not silently drop
      content. *)
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
-  (* The auto-closed inner parens collapse to a single value, leaving the outer
-     mixed-unit calc preserved. *)
-  check_declaration ~expected:"width:calc(100% - 10px)"
+  (* The cursor parser preserves the auto-closed inner parens. The stylesheet
+     recovery path drops this incomplete declaration before normalization. *)
+  check_declaration ~expected:"width:calc(100% - (10px))"
     "width: calc(100% - (10px)";
   (* Declaration-level recovery can accept the unterminated color function; the
      stylesheet parser drops it, so assert the optimize oracle directly through
@@ -3837,6 +3869,24 @@ let css_wide_custom_property_vectors () =
     "--is-important: 1 !important";
   none_cursor read_declaration "--: invalid"
 
+let substitution_defers_css_wide_mix_validation () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("margin: var(--x) inherit", "margin:var(--x) inherit");
+      ("color: var(--x) initial", "color:var(--x) initial");
+      ("all: var(--x) initial", "all:var(--x) initial");
+      ( "margin: env(safe-area-inset-top) inherit",
+        "margin:env(safe-area-inset-top) inherit" );
+      ("width: attr(data-width px) initial", "width:attr(data-width px) initial");
+    ];
+  (* With no substitution, the CSS-wide keyword is still invalid beside any
+     other component. Empty calls match none of the substitution grammars and do
+     not defer validation either. *)
+  List.iter
+    (fun value -> none_cursor read_declaration ("margin:" ^ value))
+    [ "1px inherit"; "var() inherit"; "env() inherit"; "attr() inherit" ]
+
 type property_grammar_row = Cascade_spec_inventory.Property_grammar.row
 
 let property_grammar_matrix = Cascade_spec_inventory.Property_grammar.rows
@@ -3915,13 +3965,22 @@ let check_property_var (row : property_grammar_row) =
             row.property fallback)
     (row.positives @ token_stream_fallbacks)
 
+let property_value_has_substitution value =
+  let value = String.lowercase_ascii value in
+  List.exists
+    (fun name -> Astring.String.is_infix ~affix:(name ^ "(") value)
+    [ "var"; "env"; "attr" ]
+
 let check_property_trailing_token_rejected (row : property_grammar_row) value =
-  match parse_property_decl row.property (value ^ " )") with
-  | None -> ()
-  | Some (input, serialized, _, _) ->
-      Alcotest.failf
-        "%s positive vector accepted an extra trailing token: %s -> %s"
-        row.property input serialized
+  (* Arbitrary substitutions defer property-grammar validation, including an
+     otherwise-unexpected token beside the function. *)
+  if not (property_value_has_substitution value) then
+    match parse_property_decl row.property (value ^ " )") with
+    | None -> ()
+    | Some (input, serialized, _, _) ->
+        Alcotest.failf
+          "%s positive vector accepted an extra trailing token: %s -> %s"
+          row.property input serialized
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 stops a declaration's value at the top-level [;]
    and lifts a trailing [!important] out of it into the important flag, so every
@@ -5161,6 +5220,7 @@ let declaration_tests =
     (* Custom properties and vendor prefixes *)
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
+    test_case "opaque numeric tokens" `Quick opaque_numeric_tokens;
     test_case "math sign whitespace" `Quick math_sign_whitespace;
     test_case "inserted token boundary" `Quick inserted_token_boundary;
     test_case "custom property values" `Quick custom_property_values;
@@ -5237,6 +5297,8 @@ let declaration_tests =
     test_case "error unclosed block" `Quick error_unclosed_block;
     test_case "unterminated parsing" `Quick unterminated;
     test_case "invalid declarations" `Quick invalid;
+    test_case "substitution defers CSS-wide mix validation" `Quick
+      substitution_defers_css_wide_mix_validation;
     test_case "scroll-margin negative lengths" `Quick scroll_margin_negative;
     test_case "scroll-margin negative lengths (sheet)" `Quick
       scroll_margin_negative_sheet;

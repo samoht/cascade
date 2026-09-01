@@ -711,6 +711,36 @@ let test_minified_value_formatting () =
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
   check string "minified zero" "0" s
 
+(* Parenthesis removal is an AST normalization, not a printer choice. The
+   printer preserves the parsed tree; normalization drops only groups whose
+   removal does not change precedence or associativity. *)
+let calc_parenthesis_layering () =
+  let render value = Css.Pp.to_string ~minify:true pp_length value in
+  let parse source = read_length (Cursor.of_string source) in
+  let cases =
+    [
+      ( "calc((1px + var(--a)) - 3px)",
+        "calc((1px + var(--a)) - 3px)",
+        "calc(1px + var(--a) - 3px)" );
+      ( "calc((1px - var(--a)) * 3)",
+        "calc((1px - var(--a))*3)",
+        "calc((1px - var(--a))*3)" );
+      ( "calc((100% - var(--a)) / 2)",
+        "calc((100% - var(--a))/2)",
+        "calc((100% - var(--a))/2)" );
+      ( "calc(1px - (var(--a) + 3px))",
+        "calc(1px - (var(--a) + 3px))",
+        "calc(1px - (var(--a) + 3px))" );
+    ]
+  in
+  List.iter
+    (fun (source, printed, optimized) ->
+      let parsed = parse source in
+      check string "printer preserves parsed groups" printed (render parsed);
+      check string "normalizer owns redundant groups" optimized
+        (render (normalize_length parsed)))
+    cases
+
 (* Not a roundtrip test *)
 let test_regular_value_formatting () =
   let s = Css.Pp.to_string pp_length (Rem 0.5) in
@@ -734,7 +764,20 @@ let test_color_oklch_printing () =
   let open Css.Values in
   let c = oklch 50.0 0.123 30.0 in
   let s = Css.Pp.to_string pp_color c in
-  Alcotest.(check string) "oklch printing" "oklch(50% .123 30)" s
+  Alcotest.(check string) "oklch printing" "oklch(50% .123 30)" s;
+  let dynamic =
+    Oklch
+      {
+        l = Some (Var (var_ref "l"));
+        c = Some 0.237;
+        h = Unitless 25.;
+        alpha = None;
+      }
+  in
+  Alcotest.(check string)
+    "a dynamic lightness keeps its following separator"
+    "oklch(var(--l) .237 25)"
+    (Css.Pp.to_string ~minify:true pp_color dynamic)
 
 (* A [none] hue is a missing component, not the number zero: it stays [none]
    through printing, and the colour cannot fold to a hex because a hex would pin
@@ -1759,6 +1802,7 @@ let value_tests =
     (* Additional value tests *)
     test_case "var default inline" `Quick test_var_default_inline;
     test_case "minified value formatting" `Quick test_minified_value_formatting;
+    test_case "calc parenthesis layering" `Quick calc_parenthesis_layering;
     test_case "regular value formatting" `Quick test_regular_value_formatting;
     test_case "oklch printing" `Quick test_color_oklch_printing;
     test_case "oklch none hue" `Quick test_color_oklch_none_hue;

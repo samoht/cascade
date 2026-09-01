@@ -4018,6 +4018,16 @@ let test_grid_line () =
   check_grid_line "content-end";
   check_grid_line "inherit";
   neg_cursor read_grid_line "span";
+  (* The ordinary integer branch in sec. 8.3 excludes zero, with or without a
+     line name. Negative indexes remain valid. *)
+  neg_cursor read_grid_line "0";
+  neg_cursor read_grid_line "0 foo";
+  (* CSS Grid 2 (ED) sec. 8.3 restricts the integer in a span to [1,inf].
+     Negative integers and zero are invalid in either operand order. *)
+  neg_cursor read_grid_line "span 0";
+  neg_cursor read_grid_line "0 span";
+  neg_cursor read_grid_line "span -1";
+  neg_cursor read_grid_line "-1 span";
   (* CSS Grid 2 (ED) sec. 8.3 gives the span branch as [span && [ <integer
      [1,inf]> || <custom-ident> ]]. CSS Values 4 (ED) sec. 2.2 makes both [&&]
      and [||] reorderable, so [span] sits on either side of the group and the
@@ -4063,9 +4073,11 @@ let test_grid_line () =
   neg_cursor ~allow_partial:true read_grid_line "3 unset";
   neg_cursor ~allow_partial:true read_grid_line "3 revert";
   neg_cursor ~allow_partial:true read_grid_line "3 revert-layer";
+  neg_cursor ~allow_partial:true read_grid_line "3 revert-rule";
   (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
      declaration, so a CSS-wide keyword is a [<grid-line>] on its own only. *)
   check_grid_line "initial";
+  check_grid_line "revert-rule";
   neg_cursor read_grid_line "initial 3";
   (* [<grid-line>] has no [none] and no [dense] keyword, so neither is excluded
      from its [<custom-ident>]. *)
@@ -4139,6 +4151,7 @@ let test_grid_template () =
   neg_cursor read_grid_template "[unset] 1px";
   neg_cursor read_grid_template "[revert] 1px";
   neg_cursor read_grid_template "[revert-layer] 1px";
+  neg_cursor read_grid_template "[revert-rule] 1px";
   neg_cursor read_grid_template "[a span] 1px";
   neg_cursor ~allow_partial:true read_grid_template "1px [span]";
   (* Nothing else is excluded: the brackets make the position unambiguous, so a
@@ -4280,6 +4293,17 @@ let test_place_items () =
   check_place_items "start end";
   check_place_items ~expected:"center" "center center";
   check_place_items "inherit";
+  (* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
+     baseline, in either half of the sec. 7.3 shorthand. *)
+  check_place_items "baseline";
+  check_place_items "first baseline";
+  check_place_items "last baseline";
+  check_place_items "first baseline center";
+  check_place_items "center last baseline";
+  check_place_items "first baseline last baseline";
+  (* The && is order-free, but the modifier is only read before the keyword. *)
+  neg_cursor ~allow_partial:true read_place_items "baseline first";
+  neg_cursor ~allow_partial:true read_place_items "baseline last";
   neg_cursor read_place_items "invalid-place"
 
 let test_box_decoration_break () =
@@ -5291,6 +5315,17 @@ let test_ray_size () =
     sizes;
   neg_cursor read_ray_size "10px"
 
+(* A square or curly block is not a grouping operand in the CSS math grammar.
+   Canonical whitespace therefore leaves math context when it enters one, just
+   as the component-value printer does. *)
+let canonical_math_block_context () =
+  let components = Cursor.remaining (Cursor.of_string "calc([f() + 1])") in
+  let actual =
+    components |> canonicalize_math_whitespace_components
+    |> Parser.to_string_custom
+  in
+  check string "square block ends math context" "calc([f()+ 1])" actual
+
 let additional_tests =
   [
     test_case "will_change" `Quick test_will_change;
@@ -5301,6 +5336,7 @@ let additional_tests =
     test_case "outline" `Quick test_outline;
     test_case "outline_shorthand" `Quick test_outline_shorthand;
     test_case "ray_size" `Quick test_ray_size;
+    test_case "canonical math block context" `Quick canonical_math_block_context;
     test_case "background" `Quick test_background;
     test_case "font_family" `Quick test_font_family;
     test_case "text_shadow" `Quick test_text_shadow;

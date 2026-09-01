@@ -56,7 +56,7 @@ qualifies every difference below it.
   --- a.css
   +++ warn.css
   └─ .x
-        - margin
+        - margin: 0
   
   [1]
 

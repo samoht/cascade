@@ -413,8 +413,10 @@ let diff_property_initial_value_added () =
         | _ -> [])
       d.containers
   in
-  Alcotest.(check (list string))
-    "names the descriptor gained" [ "initial-value" ] added
+  Alcotest.(check (list (pair string string)))
+    "names the descriptor gained"
+    [ ("initial-value", "red") ]
+    added
 
 (* ===== Container (media) changes ===== *)
 
@@ -822,7 +824,7 @@ let lost_declaration_is_not_a_move () =
     (List.length (rearranged_of d));
   Alcotest.(check bool)
     "the loss is still reported" true
-    (Astring.String.is_infix ~affix:"- margin" (render d))
+    (Astring.String.is_infix ~affix:"- margin: 0" (render d))
 
 let gained_declaration_is_not_a_move () =
   let d =
@@ -835,6 +837,15 @@ let gained_declaration_is_not_a_move () =
   Alcotest.(check bool)
     "the difference is still reported" false
     (Cascade_diff.Tree_diff.is_empty d)
+
+let gained_declaration_shows_value () =
+  let d =
+    diff_of ~expected:".a{color:red}"
+      ~actual:".a{color:red;margin:100px!important}"
+  in
+  Alcotest.(check bool)
+    "the gained value and priority are reported" true
+    (Astring.String.is_infix ~affix:"+ margin: 100px !important" (render d))
 
 let changed_value_is_not_a_move () =
   let d =
@@ -1033,15 +1044,17 @@ let repeated_property_pairs_every_occurrence () =
 let repeated_property_surplus_is_removed () =
   let d = diff_of ~expected:"a{color:red;color:blue}" ~actual:"a{color:red}" in
   Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
-  Alcotest.(check (list string))
-    "the occurrence with no counterpart is removed" [ "color" ]
+  Alcotest.(check (list (pair string string)))
+    "the occurrence with no counterpart is removed"
+    [ ("color", "blue") ]
     (rule_removed_properties d)
 
 let repeated_property_surplus_is_added () =
   let d = diff_of ~expected:"a{color:red}" ~actual:"a{color:red;color:blue}" in
   Alcotest.(check (list string)) "no value changed" [] (rule_property_changes d);
-  Alcotest.(check (list string))
-    "the occurrence with no counterpart is added" [ "color" ]
+  Alcotest.(check (list (pair string string)))
+    "the occurrence with no counterpart is added"
+    [ ("color", "blue") ]
     (rule_added_properties d)
 
 (* ===== Containers nested past the old recursion cutoff ===== *)
@@ -1543,6 +1556,8 @@ let suite =
         lost_declaration_is_not_a_move;
       Alcotest.test_case "gained declaration is not a move" `Quick
         gained_declaration_is_not_a_move;
+      Alcotest.test_case "gained declaration shows value" `Quick
+        gained_declaration_shows_value;
       Alcotest.test_case "changed value is not a move" `Quick
         changed_value_is_not_a_move;
       Alcotest.test_case "added important is not a move" `Quick

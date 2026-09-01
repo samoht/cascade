@@ -272,7 +272,7 @@ and render_branch operator = function
 let to_string condition = render `Root condition
 
 let pp_declaration_feature ctx = function
-  | Declaration decl -> Declaration.pp ctx decl
+  | Declaration decl -> Declaration.pp_opaque ctx decl
   | Empty name ->
       Pp.string ctx (escaped_property_name name);
       Pp.char ctx ':'

@@ -203,13 +203,15 @@ let is_decl_value_stop = function
   | Component.Preserved { kind = Token.Semicolon | Token.Delim "!"; _ } -> true
   | _ -> false
 
-let value_components t =
+let components_before stop t =
   let rec take acc = function
     | [] -> List.rev acc
-    | cv :: _ when is_decl_value_stop cv -> List.rev acc
+    | cv :: _ when stop cv -> List.rev acc
     | cv :: rest -> take (cv :: acc) rest
   in
   take [] (Cursor.remaining t)
+
+let value_components t = components_before is_decl_value_stop t
 
 let rec component_is_complete = function
   | Component.Preserved _ -> true
@@ -248,6 +250,19 @@ let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
 
+let rec component_has_bad_string = function
+  | Component.Preserved { kind = Token.Bad_string; _ } -> true
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists component_has_bad_string value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      List.exists component_has_bad_string arguments
+  | Component.Preserved _ -> false
+
+let reject_custom_bad_string t =
+  if
+    List.exists component_has_bad_string (components_before is_top_level_stop t)
+  then Cursor.err_invalid t "bad string in custom property value"
+
 let is_ws_component = function
   | Component.Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
@@ -269,19 +284,25 @@ let invalid_var_arguments arguments =
       | _ -> true)
   | _ -> true
 
-let rec components_have_invalid_var components =
-  List.exists component_has_invalid_var components
+let rec components_have_invalid_substitution components =
+  List.exists component_has_invalid_substitution components
 
-and component_has_invalid_var = function
-  | Component.Func { node = { name; arguments; terminated; _ }; _ }
-    when String.lowercase_ascii_preserve name = "var" ->
-      (not terminated)
-      || invalid_var_arguments arguments
-      || components_have_invalid_var arguments
-  | Component.Func { node = { arguments; _ }; _ } ->
-      components_have_invalid_var arguments
+and component_has_invalid_substitution = function
+  | Component.Func { node = { name; arguments; terminated; _ }; _ } ->
+      let invalid_call =
+        match String.lowercase_ascii_preserve name with
+        | "var" -> (not terminated) || invalid_var_arguments arguments
+        | "env" | "attr" ->
+            (not terminated)
+            || not
+                 (List.exists
+                    (fun component -> not (is_ws_component component))
+                    arguments)
+        | _ -> false
+      in
+      invalid_call || components_have_invalid_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
-      components_have_invalid_var value
+      components_have_invalid_substitution value
   | Component.Preserved _ -> false
 
 let rec components_contain_var components =
@@ -294,21 +315,43 @@ and component_contains_var = function
   | Component.Block { node = { value; _ }; _ } -> components_contain_var value
   | Component.Preserved _ -> false
 
-let raw_value_has_invalid_var raw_value =
-  Cursor.of_string raw_value |> Cursor.remaining |> components_have_invalid_var
+(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
+   substitution functions: each carries an unknown token stream into the value,
+   so a declaration holding one is valid at parse time and only decided once
+   substitution has run. A call with an empty argument list matches no
+   substitution grammar and so defers nothing. *)
+let is_substitution_call name arguments =
+  (match String.lowercase_ascii_preserve name with
+    | "var" | "env" | "attr" -> true
+    | _ -> false)
+  && List.exists (fun component -> not (is_ws_component component)) arguments
 
-let raw_value_contains_var raw_value =
-  (* CSS Custom Properties 1 section 3: a top-level [var()] leaves the typed
-     reader unable to validate the substituted result, so cascade keeps the
-     value verbatim. A [var()] nested inside another function does not extend
-     that leniency to the surrounding tokens; only a top-level one counts. *)
-  let is_top_level_var = function
-    | Component.Func { node = { name; _ }; _ }
-      when String.lowercase_ascii_preserve name = "var" ->
-        true
+let rec components_have_substitution components =
+  List.exists component_has_substitution components
+
+and component_has_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+      || components_have_substitution arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_have_substitution value
+  | Component.Preserved _ -> false
+
+let raw_value_has_invalid_substitution raw_value =
+  Cursor.of_string raw_value |> Cursor.remaining
+  |> components_have_invalid_substitution
+
+let raw_value_contains_substitution raw_value =
+  (* A top-level substitution leaves the typed reader unable to validate the
+     result, so cascade keeps the value verbatim. One nested inside another
+     function does not extend that leniency to the surrounding tokens; only a
+     top-level one counts. *)
+  let is_top_level = function
+    | Component.Func { node = { name; arguments; _ }; _ } ->
+        is_substitution_call name arguments
     | _ -> false
   in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level_var
+  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
@@ -751,8 +794,6 @@ let read_shape_outside t =
         t);
   Cursor.expect_eof t;
   raw
-
-let read_grid_template_list t = read_grid_template t
 
 (* Some properties (shape-margin, scroll-padding, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
@@ -1325,9 +1366,9 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
   | Grid_template_columns ->
-      Some (v Grid_template_columns (read_grid_template_list t))
+      Some (v Grid_template_columns (read_grid_template_tracks t))
   | Grid_template_rows ->
-      Some (v Grid_template_rows (read_grid_template_list t))
+      Some (v Grid_template_rows (read_grid_template_tracks t))
   | Grid_row_start -> Some (v Grid_row_start (read_grid_line t))
   | Grid_row_end -> Some (v Grid_row_end (read_grid_line t))
   | Grid_column_start -> Some (v Grid_column_start (read_grid_line t))
@@ -2024,6 +2065,7 @@ let read_custom_value_declaration t name : declaration =
      sequence of one or more tokens", so the whitespace after [:] IS the value
      when nothing else follows ([--foo: ;]). Don't skip it before
      [consume_until_semicolon], or the token count becomes input-dependent. *)
+  reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_custom_important raw_value in
@@ -2084,12 +2126,19 @@ let components_are_lone_css_wide cvs =
   | _ -> false
 
 let validate_regular_property_components t name components =
+  (* A substitution function makes the declaration's grammar a computed-value
+     question. This includes [all]: the substitution result can be empty and
+     leave its neighbouring CSS-wide keyword as the whole value. *)
+  let has_substitution = components_have_substitution components in
   if
     (not (property_allows_keyword_as_ident name))
+    && (not has_substitution)
     && Properties.components_have_css_wide_mix components
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
-  if name = "all" && not (components_are_lone_css_wide components) then
-    Cursor.err_invalid t "all accepts only CSS-wide keywords"
+  if
+    name = "all" && (not has_substitution)
+    && not (components_are_lone_css_wide components)
+  then Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
 (* Color functions cascade types directly; anything else (e.g. a vendor color
    function or a typed value cascade hasn't grown yet) is treated as a [color]
@@ -2169,11 +2218,11 @@ let is_unknown_property_name = is_decl_unknown_property_name
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
 let allows_unknown_fallback name raw_value =
-  (not (raw_value_has_invalid_var raw_value))
+  (not (raw_value_has_invalid_substitution raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
      || has_var_color_function raw_value
-     || raw_value_contains_var raw_value)
+     || raw_value_contains_substitution raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
@@ -2533,6 +2582,36 @@ let rec pp : declaration Pp.t =
       (* Theme guards are resolved by the transform layer; if one survives to
          print time, emit the wrapped declaration. *)
       pp ctx decl
+
+(* A declaration feature query hands the authored declaration to another parser.
+   Minify its separators, but keep opaque numeric token spellings: the spelling
+   itself is the compatibility question. *)
+let rec pp_opaque : declaration Pp.t =
+ fun ctx decl ->
+  let pp_components property components important =
+    pp_property ctx property;
+    Pp.char ctx ':';
+    Pp.space_if_pretty ctx ();
+    Pp.string ctx
+      (if Pp.minified ctx then Parser.to_string_minified components
+       else Parser.string_of_components components);
+    if important then
+      Pp.string ctx (if ctx.minify then "!important" else " !important")
+  in
+  match decl with
+  | Declaration
+      { property = Unknown_property _ as property; value; important; _ } ->
+      pp_components property value important
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value { value = Tokens components; _ };
+        important;
+        _;
+      } ->
+      pp_components property components important
+  | Declaration _ -> pp ctx decl
+  | Theme_guarded { decl; _ } -> pp_opaque ctx decl
 
 (* Convert a declaration to its string representation *)
 let to_string ?(minify = false) (decl : t) =

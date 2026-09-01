@@ -416,6 +416,8 @@ let rec pp_place_items : place_items Pp.t =
   | Center -> Pp.string ctx "center"
   | Stretch -> Pp.string ctx "stretch"
   | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
   | Start_safe -> Pp.string ctx "safe start"
   | End_safe -> Pp.string ctx "safe end"
   | Center_safe -> Pp.string ctx "safe center"
@@ -530,8 +532,23 @@ let place_items_align : place_items -> align_items option = function
   | End -> Some End
   | Center -> Some Center
   | Baseline -> Some Baseline
+  | First_baseline -> Some First_baseline
+  | Last_baseline -> Some Last_baseline
   | Stretch -> Some Stretch
   | _ -> None
+
+(* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
+   baseline. The [&&] is order-free, but only the modifier-first spelling is
+   read: no browser takes the modifier after the keyword. *)
+let read_place_items_baseline t =
+  let value =
+    Cursor.enum "place-items"
+      [ ("first", (First_baseline : place_items)); ("last", Last_baseline) ]
+      t
+  in
+  Cursor.ws t;
+  Cursor.expect_string "baseline" t;
+  value
 
 let read_place_items_first t =
   Cursor.enum "place-items"
@@ -543,7 +560,7 @@ let read_place_items_first t =
       ("baseline", Baseline);
       ("inherit", Inherit);
     ]
-    t
+    ~default:read_place_items_baseline t
 
 let read_place_items_default t =
   if Cursor.looking_at t "safe" then read_place_items_safe t
@@ -623,16 +640,21 @@ let read_grid_line_name t =
       (String.concat "" [ "reserved grid line name: "; name ])
   else name
 
+let read_grid_span_count t =
+  let n = Cursor.int t in
+  if n < 1 then Cursor.err_invalid t "grid span count must be positive";
+  n
+
 (* [ <integer [1,inf]> || <custom-ident> ]: one or both, in either order. *)
 let read_grid_span_parts t : grid_line =
-  match Cursor.option Cursor.int t with
+  match Cursor.option read_grid_span_count t with
   | Some n -> (
       match Cursor.option read_grid_line_name t with
       | Some name -> Span_num_name (n, name)
       | None -> Span n)
   | None -> (
       let name = read_grid_line_name t in
-      match Cursor.option Cursor.int t with
+      match Cursor.option read_grid_span_count t with
       | Some n -> Span_num_name (n, name)
       | None -> Span_name name)
 
@@ -648,9 +670,10 @@ let read_grid_span t : grid_line =
 
 let read_grid_line_number t : grid_line =
   let n = Cursor.int t in
+  if n = 0 then Cursor.err_invalid t "grid line index cannot be zero";
   Cursor.ws t;
   let name : string option =
-    if grid_line_at_end t then None else Cursor.option read_grid_line_name t
+    if grid_line_at_end t then None else Some (read_grid_line_name t)
   in
   match name with Some name -> Num_name (n, name) | None -> Num n
 
@@ -749,9 +772,8 @@ let read_grid_area t : grid_area =
    track size, or last in the list. So a track list carries at least one track
    size, and never two [<line-names>] in a row. The sec. 7.2.3 [repeat()]
    bodies, [<explicit-track-list>] and [<auto-track-list>] have the same shape.
-   ([subgrid <line-name-list>?] is the exception, and
-   [read_grid_template_tracks] rejects [subgrid] in a track list before either
-   check runs.) *)
+   ([subgrid <line-name-list>?] is the exception and is read separately by
+   [Grid_template.read_subgrid].) *)
 let track_list_has_track_size (tracks : grid_template list) =
   List.exists (function Line_names _ -> false | _ -> true) tracks
 
@@ -848,6 +870,30 @@ module Grid_template = struct
         in
         Line_names names)
       t
+
+  let read_name_repeat t : grid_template =
+    Cursor.call "repeat" t @@ fun inner ->
+    Cursor.ws inner;
+    let count = read_repeat_count inner in
+    (match count with
+    | Auto_fit -> Cursor.err_invalid inner "auto-fit subgrid name repeat"
+    | Count _ | Auto_fill | Var _ -> ());
+    Cursor.ws inner;
+    Cursor.comma inner;
+    Cursor.ws inner;
+    let names = Cursor.list ~sep:(fun i -> Cursor.ws i) read_line_names inner in
+    (Repeat (count, names) : grid_template)
+
+  let read_subgrid_item t =
+    if Cursor.peek_block t = Some Token.Square then read_line_names t
+    else read_name_repeat t
+
+  let read_subgrid t : grid_template =
+    if not (Cursor.try_ident "subgrid" t) then Cursor.err_expected t "subgrid";
+    let line_names =
+      Cursor.list ~at_least:0 ~sep:(fun i -> Cursor.ws i) read_subgrid_item t
+    in
+    match line_names with [] -> Subgrid | _ -> Tracks (Subgrid :: line_names)
 
   let rec read_single_track t =
     if Cursor.peek_block t = Some Token.Square then read_line_names t
@@ -948,23 +994,26 @@ let rec grid_template_line_names_valid = function
   | _ :: rest -> grid_template_line_names_valid rest
 
 let read_grid_template_tracks t =
-  let tracks =
-    Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
-  in
-  match tracks with
-  | [] -> Cursor.err t "Expected at least one grid track"
-  | [ single ] ->
-      validate_track_list t tracks;
-      single
-  | multiple ->
-      if
-        List.exists
-          (fun (track : grid_template) ->
-            match track with None | Subgrid | Masonry -> true | _ -> false)
-          multiple
-      then Cursor.err_invalid t "grid-template standalone keyword in track list";
-      validate_track_list t multiple;
-      Tracks multiple
+  if Cursor.looking_at_ident "subgrid" t then Grid_template.read_subgrid t
+  else
+    let tracks =
+      Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
+    in
+    match tracks with
+    | [] -> Cursor.err t "Expected at least one grid track"
+    | [ single ] ->
+        validate_track_list t tracks;
+        single
+    | multiple ->
+        if
+          List.exists
+            (fun (track : grid_template) ->
+              match track with None | Subgrid | Masonry -> true | _ -> false)
+            multiple
+        then
+          Cursor.err_invalid t "grid-template standalone keyword in track list";
+        validate_track_list t multiple;
+        Tracks multiple
 
 let rec read_grid_template t : grid_template =
   if Cursor.looking_at_func "var" t then

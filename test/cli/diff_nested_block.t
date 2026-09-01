@@ -40,7 +40,7 @@ declaration in the selector column.
   --- run-a.css
   +++ run-b.css
   ├─ .a
-  │     - color
+  │     - color: red
   └─ .a { & } (1 added)
      └─ &
            + color: red

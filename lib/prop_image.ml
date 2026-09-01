@@ -178,6 +178,15 @@ let canonicalise_gradient_stops stops =
 let pp_position_offset ctx (lp : Values.length_percentage) =
   pp_length_percentage ~always:true ctx lp
 
+(* A percentage token closes at [%], so its following position component can
+   touch it under minify. A function ending in [)] remains a distinct grammar
+   component and keeps the same separator the custom-value serialiser keeps. *)
+let position_component_space : unit Pp.t =
+ fun ctx () ->
+  match Pp.last_char ctx with
+  | Some '%' when Pp.minified ctx -> ()
+  | _ -> Pp.space ctx ()
+
 let rec pp_position_value : position_value Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
@@ -204,14 +213,14 @@ let rec pp_position_value : position_value Pp.t =
   | Bottom_right -> Pp.string ctx "bottom right"
   | XY (a, b) ->
       pp_length ctx a;
-      Pp.token_sp ctx ();
+      position_component_space ctx ();
       pp_length ctx b
   | Single l -> pp_length ctx l
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
       pp_position_offset ctx offset;
-      Pp.token_sp ctx ();
+      position_component_space ctx ();
       Pp.string ctx axis
   | Axis_edge_offset (axis, edge, offset) ->
       Pp.string ctx axis;
@@ -223,7 +232,7 @@ let rec pp_position_value : position_value Pp.t =
       Pp.string ctx edge1;
       Pp.space ctx ();
       pp_position_offset ctx offset1;
-      Pp.token_sp ctx ();
+      position_component_space ctx ();
       Pp.string ctx edge2;
       Pp.space ctx ();
       pp_position_offset ctx offset2

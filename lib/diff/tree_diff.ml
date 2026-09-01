@@ -18,8 +18,8 @@ type rule_diff =
       old_declarations : Css.declaration list;
       new_declarations : Css.declaration list;
       property_changes : declaration list;
-      added_properties : string list;
-      removed_properties : string list;
+      added_properties : (string * string) list;
+      removed_properties : (string * string) list;
     }
   | Selector_changed of {
       old_selector : string;
@@ -392,16 +392,17 @@ let pp_content_changed_body ~style ~child_prefix buf ~old_declarations
     ~new_declarations ~property_changes ~added_properties ~removed_properties
     ~has_any_changes =
   let indent = child_indent ~style ~parent_prefix:child_prefix in
-  List.iter
-    (fun prop_name ->
-      add_strings buf
-        [ indent; ansi_red ~color:style.color ("- " ^ prop_name); "\n" ])
-    removed_properties;
-  List.iter
-    (fun prop_name ->
-      add_strings buf
-        [ indent; ansi_green ~color:style.color ("+ " ^ prop_name); "\n" ])
-    added_properties;
+  let pp_presence marker paint (prop_name, value) =
+    let value = String_diff.truncate_middle default_truncation_length value in
+    add_strings buf
+      [
+        indent;
+        paint ~color:style.color (marker ^ " " ^ prop_name ^ ": " ^ value);
+        "\n";
+      ]
+  in
+  List.iter (pp_presence "-" ansi_red) removed_properties;
+  List.iter (pp_presence "+" ansi_green) added_properties;
   pp_property_diffs ~style ~parent_prefix:child_prefix buf property_changes;
   pp_reorder ~style ~parent_prefix:child_prefix old_declarations
     new_declarations buf;
@@ -1989,15 +1990,15 @@ let rec zip_occurrences name (modified, added, removed) values1 values2 =
           :: modified
       in
       zip_occurrences name (modified, added, removed) rest1 rest2
-  | _ :: rest1, [] ->
-      zip_occurrences name (modified, added, name :: removed) rest1 []
-  | [], _ :: rest2 ->
-      zip_occurrences name (modified, name :: added, removed) [] rest2
+  | (_, shown) :: rest1, [] ->
+      zip_occurrences name (modified, added, (name, shown) :: removed) rest1 []
+  | [], (_, shown) :: rest2 ->
+      zip_occurrences name (modified, (name, shown) :: added, removed) [] rest2
 
 (* Helper function to compute property diffs between two declaration lists,
    including added and removed properties *)
-let properties_diff decls1 decls2 : declaration list * string list * string list
-    =
+let properties_diff decls1 decls2 :
+    declaration list * (string * string) list * (string * string) list =
   let props1 = List.map decl_to_reported_value decls1 in
   let props2 = List.map decl_to_reported_value decls2 in
   (* Names the expected side writes first, then the ones only the actual side
@@ -2580,8 +2581,8 @@ let property_descriptor_changes prop1 prop2 =
         | _ -> None)
       descs1
   in
-  let only_in others (name, _) =
-    if List.mem_assoc name others then None else Some name
+  let only_in others ((name, _) as descriptor) =
+    if List.mem_assoc name others then None else Some descriptor
   in
   ( changed,
     List.filter_map (only_in descs1) descs2,

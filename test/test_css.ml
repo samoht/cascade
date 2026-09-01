@@ -1771,6 +1771,55 @@ let public_bad_string_prelude_edges () =
         "no unconditional @media is emitted" false
         (Astring.String.is_infix ~affix:"@media{" (minify parsed.stylesheet))
 
+(* CSS Syntax 3 (ED) sec. 4.3.5 ends a <bad-string-token> at the newline, so the
+   token carries an opening quote and nothing to close it. Sec. 7.2 keeps one
+   out of a <declaration-value>, and CSS Custom Properties 1 sec. 2.1 repeats
+   the exclusion for a custom property, so a declaration carrying one is
+   invalid. Emitting it anyway hands the next reader a bare quote: the [}] the
+   rule closes with becomes string content and everything after it is swallowed.
+   Assert the round trip rather than the spelling, which is the property the
+   output owes its own reader. *)
+let public_bad_string_declaration_edges () =
+  let parse label css =
+    match of_string ~strict:false css with
+    | Ok parsed -> parsed
+    | Error err ->
+        Alcotest.failf "%s: lenient parse rejected recoverable CSS: %s" label
+          (Cascade.Error.to_string err)
+  in
+  let label_of parts = String.concat "" parts in
+  let reparses ~survivor label css =
+    let out = Css.to_string ~minify:true (parse label css).stylesheet in
+    let reread = parse (label_of [ label; " (re-read)" ]) out in
+    Alcotest.(check (list string))
+      (label_of [ label; ": minified output re-reads clean" ])
+      []
+      (List.map Cascade.Error.to_string reread.warnings);
+    Alcotest.(check string)
+      (label_of [ label; ": minification is a fixed point" ])
+      out
+      (Css.to_string ~minify:true reread.stylesheet);
+    Alcotest.(check bool)
+      (label_of [ label; ": keeps "; survivor ])
+      true
+      (Astring.String.is_infix ~affix:survivor out)
+  in
+  reparses ~survivor:"b{color:red}" "bad string last in a rule"
+    "a{--t:\"abc\n}b{color:red}";
+  reparses ~survivor:"a{color:red}" "bad string before a later declaration"
+    "a{--t:\"abc\n;color:red}";
+  reparses ~survivor:"b{color:red}" "bad string last in a nested rule"
+    "a{&{--t:\"abc\n}}b{color:red}";
+  reparses ~survivor:"b{color:red}" "bad string last in a conditional group"
+    "@media screen{a{--t:\"abc\n}b{color:red}}";
+  reparses ~survivor:"color:red" "bad string last in a keyframe"
+    "@keyframes k{from{--t:\"abc\n}to{color:red}}";
+  reparses ~survivor:"color:red" "bad string last in @page"
+    "@page{--t:\"abc\n;color:red}";
+  (* Control: a closed string is a <declaration-value> and survives whole. *)
+  reparses ~survivor:"--t:\"abc\"" "a closed string round-trips"
+    "a{--t:\"abc\";color:red}b{color:red}"
+
 (* The value parsers the [list-style] shorthand is built from, exposed so a
    caller can read a single [list-style-type] / [list-style-image]. *)
 let list_style_value_parsers () =
@@ -2308,6 +2357,8 @@ let suite =
       Alcotest.test_case "public parse recovery edges" `Quick public_parse_edges;
       Alcotest.test_case "public bad-string prelude edges" `Quick
         public_bad_string_prelude_edges;
+      Alcotest.test_case "public bad-string declaration edges" `Quick
+        public_bad_string_declaration_edges;
       Alcotest.test_case "spec unknown at-rule reaches the output" `Quick
         unknown_at_rule_reaches_output;
       Alcotest.test_case "spec section 4.1 keyword case is insensitive" `Quick

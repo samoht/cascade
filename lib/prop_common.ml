@@ -34,7 +34,7 @@ let rec pp_css_wide : css_wide Pp.t =
   | Var v -> Values.pp_var pp_css_wide ctx v
 
 let css_wide_keywords =
-  [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+  [ "initial"; "inherit"; "unset"; "revert"; "revert-layer"; "revert-rule" ]
 
 let is_css_wide_keyword value =
   List.mem (String.lowercase_ascii value) css_wide_keywords

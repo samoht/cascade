@@ -18,6 +18,11 @@ recorded cases carrying six minifiers' answers.
 
 ### Breaking
 
+- `place_items` gains `First_baseline` and `Last_baseline`, preserving the two
+  modifier-first baseline positions accepted by `place-items` (#725)
+- `Tree_diff.Content_changed` carries property/value pairs in
+  `added_properties` and `removed_properties`, so callers can report the value
+  and priority of a declaration that exists on only one side (#723)
 - Public declaration helpers whose CSS values require a non-empty list now
   raise `Invalid_argument` for `[]` instead of emitting a declaration with no
   value.
@@ -207,13 +212,30 @@ recorded cases carrying six minifiers' answers.
 
 ### Parsing
 
+- Custom-property declarations containing a `<bad-string-token>` are dropped
+  during stylesheet recovery, preventing minified output from swallowing the
+  containing rule's closing brace when it is parsed again (#727)
+- Declarations containing a non-empty `var()`, `env()` or `attr()` call defer
+  CSS-wide keyword mix validation until substitution, instead of being dropped
+  while the substituted token stream is still unknown (#726)
+- `revert-rule` is reserved wherever a grammar accepts a `<custom-ident>`, so
+  it no longer survives inside grid line-name lists as an ordinary name (#724)
 - The span form of `<grid-line>` takes its operands in any order, as the `&&`
   and `||` combinators in its grammar allow. `grid-column-start: 3 span` is
   kept and printed `span 3`, where cascade used to drop the declaration (#711)
+- A grid line index cannot be zero and a grid span count must be positive.
+  Values such as `grid-column-start: 0`, `span 0` and `span -1` now drop the
+  declaration the way a browser does instead of being applied (#714)
 - `grid-auto-columns` and `grid-auto-rows` take a list of track sizes. They
   used to read the wider `grid-template-*` grammar, so a line-name block, a
   `repeat()`, `none` or a slash form parsed and applied where a browser drops
   the declaration (#712)
+- `grid-template-columns` and `grid-template-rows` reject the slash and string
+  area forms reserved for the `grid-template` shorthand instead of applying
+  them as longhand values (#717)
+- A `subgrid` track list accepts its optional line-name list, including
+  adjacent blocks and name-only `repeat()` forms. Values such as
+  `subgrid [a] [b]` now apply instead of being dropped (#718)
 - A grid track list carries at least one track size, and never two line-name
   blocks in a row. `grid-template-columns: [a]` and `1px [a] [b] 2px` are
   dropped the way a browser drops them, inside a `repeat()` body and in the
@@ -224,6 +246,9 @@ recorded cases carrying six minifiers' answers.
 - An `@property` syntax component carries at most one multiplier. A chained one
   such as `"<custom-ident>+#"` drops the registration the way a browser does,
   where cascade used to accept it and type a property left unregistered (#707)
+- The pre-multiplied `@property` syntax `<transform-list>` cannot take `+` or
+  `#`. Those spellings now drop the registration the way a browser does instead
+  of registering a different list type (#713)
 - Grid line names reject the idents that are not `<custom-ident>`s in that
   position: `span`, `auto`, `default` and the CSS-wide keywords, in every ASCII
   case. `grid-template-columns: [span] 1px` and `grid-row-start: 3 auto` are
@@ -605,19 +630,18 @@ recorded cases carrying six minifiers' answers.
 
 ### Minification
 
+- Numeric tokens in custom-property and unknown-property declaration streams
+  use their shortest exact spelling under `--minify`, so `--x: 1.0px` becomes
+  `--x:1px` without changing adjacent token boundaries. Declaration feature
+  queries keep the author's spelling because that is the compatibility question
+  they ask another parser (#719)
 - `--minify` writes no separator into a pair of tokens the source held side by
   side. `--t: x 1px+2px` came out as `--t:x 1px +2px` and `--t: 1px(a)` as
   `--t:1px (a)`, handing every `var()` that read them a whitespace token the
   author never wrote (#709)
-- `--minify` spells the boundary after a percentage the same way inside every
-  colour function. A constructed `hsl(120 50% 50%)` or `oklch(.659 76% 203.274)`
-  kept a separator that a parse of those same bytes dropped, so a colour built
-  through the API did not read back as itself (#703)
-- `--minify` spells a token boundary after a percentage one way. A constructed
-  `--brand: oklch(63.7% 0.237 25.331)` printed `oklch(63.7%.237 25.331)` while a
-  parse of those same bytes printed `oklch(63.7% .237 25.331)`, so minified
-  output did not read back as itself, and the separator the reader inserted made
-  `--x:10%5px` come out longer than it went in (#700)
+- `--minify` spells a percentage boundary one way in colour functions and
+  custom-property token streams. Constructed and parsed values now read back as
+  themselves without adding or dropping a separator (#700, #703)
 - `--minify` keeps the whitespace CSS Values 4 requires on both sides of a math
   function's `+` and `-` when it prints a custom property or an unknown
   property. `--w: calc(100% - 10px)` came out as `--w:calc(100%- 10px)`, which
@@ -1064,6 +1088,14 @@ recorded cases carrying six minifiers' answers.
 
 ### Canonical diff
 
+- Typed position and colour printers retain a component separator after a
+  function-closing parenthesis, matching custom-value serialisation (#722)
+- Calc printers preserve authored grouping nodes. Redundant parentheses are
+  removed by value normalization instead, while precedence-sensitive groups
+  are reconstructed from the expression tree (#721)
+- Math-whitespace canonicalisation leaves math context in square and curly
+  blocks, matching the component-value printer and the `()`-only grouping
+  grammar (#720)
 - `:is(a, b)` and the selector list `a, b` compare equal when the arguments
   share one specificity, which is the split-against-grouped selector list the
   mode promises to equate (#655)
@@ -1124,6 +1156,9 @@ recorded cases carrying six minifiers' answers.
 
 ### Library
 
+- `Css.Properties.read_grid_template_tracks` parses the track-list grammar of
+  `grid-template-columns` and `grid-template-rows` without accepting the wider
+  shorthand forms handled by `read_grid_template` (#717)
 - The `Css.declaration_value_for_equivalence` docstring names the generic
   family that gates its unquoting: without one in the stream,
   `--font: "Noto Color Emoji"` and `--font: Noto Color Emoji` are distinct diff
