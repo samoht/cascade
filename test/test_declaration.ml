@@ -1457,6 +1457,62 @@ let box_shorthand_repeats () =
   check_declaration ~expected:"padding:1px 2px 1px 3px"
     ~optimized:"padding:1px 2px 1px 3px" "padding: 1px 2px 1px 3px"
 
+let substitution_shorthand_cardinality () =
+  let concat = String.concat "" in
+  let check_preserved property ~held value =
+    let input = concat [ property; ": "; value ] in
+    let expected = concat [ property; ":"; held ] in
+    check_declaration ~expected ~optimized:expected input
+  in
+  (* CSS Values 5 arbitrary substitution happens before the property's grammar
+     is checked. A top-level var() can therefore contribute several box
+     components: dropping one authored slot can turn an invalid computed value
+     into a valid one or change the side assignment. *)
+  List.iter
+    (fun (property, repeated, separator) ->
+      check_preserved property
+        ~held:
+          (concat
+             [ "var(--v)"; separator; repeated; " "; repeated; " "; repeated ])
+        (concat [ "var(--v) "; repeated; " "; repeated; " "; repeated ]))
+    [
+      ("margin", "1px", "");
+      ("padding", "1px", "");
+      ("inset", "1px", "");
+      ("scroll-margin", "1px", " ");
+      ("scroll-padding", "1px", " ");
+      ("border-color", "red", "");
+    ];
+  List.iter
+    (fun (property, separator) ->
+      check_preserved property
+        ~held:(concat [ "var(--v)"; separator; "var(--v)" ])
+        "var(--v) var(--v)")
+    [
+      ("margin-inline", "");
+      ("margin-block", "");
+      ("padding-inline", "");
+      ("padding-block", "");
+      ("inset-inline", "");
+      ("inset-block", "");
+      ("scroll-margin-inline", " ");
+      ("scroll-margin-block", " ");
+      ("scroll-padding-inline", " ");
+      ("scroll-padding-block", " ");
+    ];
+  (* env() and attr() are substitution functions too; keep the guard attached to
+     the AST shape rather than special-casing var() spellings. *)
+  check_preserved "margin" ~held:"env(safe-area-inset-top)1px 1px 1px"
+    "env(safe-area-inset-top) 1px 1px 1px";
+  check_preserved "margin" ~held:"attr(data-m px)1px 1px 1px"
+    "attr(data-m px) 1px 1px 1px";
+  check_preserved "border-color"
+    ~held:"attr(data-color type(<color>))red red red"
+    "attr(data-color type(<color>)) red red red";
+  check_preserved "border-radius" ~held:"var(--r)1px 1px 1px"
+    "var(--r) 1px 1px 1px";
+  check_preserved "border-radius" ~held:"var(--r)/var(--r)" "var(--r)/var(--r)"
+
 (* A [var()] standing beside other components is one operand of the property's
    own grammar rather than a substitution of the whole value: CSS Cascade 5 sec.
    6 keeps the whole-value reading for the CSS-wide keywords, which are valid
@@ -1468,11 +1524,10 @@ let box_shorthand_repeats () =
 let component_var_keeps_typed_value () =
   check_declaration ~expected:"border-radius:var(--x)0px"
     ~optimized:"border-radius:var(--x)0" "border-radius: var(--x) 0px";
-  (* The four-value form is top-left, top-right, bottom-right, bottom-left, so a
-     fourth value equal to the second is the longer spelling of three, as it is
-     for the other box shorthands. *)
+  (* A top-level var() can expand to several radii, so changing the authored
+     component count is not safe before substitution. *)
   check_declaration ~expected:"border-radius:var(--x)1px 1px 1px"
-    ~optimized:"border-radius:var(--x)1px 1px"
+    ~optimized:"border-radius:var(--x)1px 1px 1px"
     "border-radius: var(--x) 1px 1px 1px";
   check_declaration ~expected:"gap:var(--g) 0px" ~optimized:"gap:var(--g) 0"
     "gap: var(--g) 0px";
@@ -5343,6 +5398,8 @@ let declaration_tests =
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
     test_case "mask-border mode only" `Quick mask_border_mode_only;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
+    test_case "substitution shorthand cardinality" `Quick
+      substitution_shorthand_cardinality;
     test_case "component var keeps typed value" `Quick
       component_var_keeps_typed_value;
     test_case "border-spacing pair" `Quick border_spacing_pair;
