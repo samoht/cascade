@@ -5679,48 +5679,45 @@ and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
   else Cursor.err t "expected nested calc"
 
 type inferred_calc_type =
-  | Calc_dimension of int
+  | Dimension of int
     (* Exponent 0 is a number, 1 is the contextual numeric value, and
        multiplication/division add/subtract exponents. This retains valid
        cancellation such as [1 / (1 / 50px)]. *)
-  | Calc_deferred
-  | Calc_invalid
+  | Deferred
+  | Invalid
 
 let rec infer_calc_type : type a. a calc -> inferred_calc_type = function
-  | Num _ | Math_const _ | Sibling_index | Sibling_count -> Calc_dimension 0
-  | Val _ -> Calc_dimension 1
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> Dimension 0
+  | Val _ -> Dimension 1
   (* A var() is substituted before a math function is type-checked. The generic
      math-function AST does not retain enough result-type information to prove
      its type here either, so both stay deferred rather than being guessed. *)
-  | Var _ | Math_fn _ -> Calc_deferred
+  | Var _ | Math_fn _ -> Deferred
   | Nested inner | Parens inner -> infer_calc_type inner
   | Expr (left, (Add | Sub), right) -> (
       match (infer_calc_type left, infer_calc_type right) with
-      | Calc_invalid, _ | _, Calc_invalid -> Calc_invalid
-      | Calc_deferred, _ | _, Calc_deferred -> Calc_deferred
-      | Calc_dimension l, Calc_dimension r ->
-          if l = r then Calc_dimension l else Calc_invalid)
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> if l = r then Dimension l else Invalid)
   | Expr (left, Mul, right) -> (
       match (infer_calc_type left, infer_calc_type right) with
-      | Calc_invalid, _ | _, Calc_invalid -> Calc_invalid
-      | Calc_deferred, _ | _, Calc_deferred -> Calc_deferred
-      | Calc_dimension l, Calc_dimension r -> Calc_dimension (l + r))
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> Dimension (l + r))
   | Expr (left, Div, right) -> (
       match (infer_calc_type left, infer_calc_type right) with
-      | Calc_invalid, _ | _, Calc_invalid -> Calc_invalid
-      | Calc_deferred, _ | _, Calc_deferred -> Calc_deferred
-      | Calc_dimension l, Calc_dimension r -> Calc_dimension (l - r))
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> Dimension (l - r))
 
 let validate_calc_type t result_type calc =
   let inferred = infer_calc_type calc in
   let accepted =
     match (result_type, inferred) with
-    | _, Calc_deferred -> true
-    | `Number, Calc_dimension 0 | `Value, Calc_dimension 1 -> true
-    | `Number_or_value, (Calc_dimension 0 | Calc_dimension 1) -> true
-    | (`Number | `Value | `Number_or_value), (Calc_invalid | Calc_dimension _)
-      ->
-        false
+    | _, Deferred -> true
+    | `Number, Dimension 0 | `Value, Dimension 1 -> true
+    | `Number_or_value, (Dimension 0 | Dimension 1) -> true
+    | (`Number | `Value | `Number_or_value), (Invalid | Dimension _) -> false
   in
   if not accepted then Cursor.err_invalid t "incompatible calc types"
 
