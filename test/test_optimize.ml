@@ -795,6 +795,40 @@ let test_optimize_preserves_physical_identity () =
         true (again == canon))
     cases
 
+(* Each level presents one already-optimized nested [@media] block beside a
+   second block with the same condition. Merging the pair must optimize the new
+   seam without recursively walking the first block a second time: doing so at
+   every level makes a linear-size stylesheet take quadratic work. *)
+let test_nested_media_merge_is_linear () =
+  let sheet depth =
+    let b = Buffer.create ((depth * 48) + 16) in
+    let out = Fmt.with_buffer b in
+    for _ = 1 to depth do
+      Buffer.add_string b "@media all{"
+    done;
+    Buffer.add_string b "a{color:red}";
+    for i = depth downto 1 do
+      Fmt.pf out "}@media all{.x%d{color:red}}" i
+    done;
+    match Css.of_string ~strict:false (Buffer.contents b) with
+    | Ok p -> p.stylesheet
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let measure stylesheet =
+    Gc.full_major ();
+    let before = Gc.minor_words () in
+    let result = Css.optimize stylesheet in
+    ignore (Sys.opaque_identity result);
+    Gc.minor_words () -. before
+  in
+  let small_words = measure (sheet 256) in
+  let large_words = measure (sheet 512) in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x depth)" small_words large_words
+       ratio)
+    true (ratio < 3.)
+
 let test_prune_unused_custom_props () =
   let parse css =
     match Css.of_string ~strict:false css with
@@ -1687,6 +1721,9 @@ let optimize_tests =
     ( "optimize preserves physical identity on a fixed point",
       `Quick,
       test_optimize_preserves_physical_identity );
+    ( "nested media merges take linear work",
+      `Quick,
+      test_nested_media_merge_is_linear );
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
     ( "opt-in prune unused custom properties",
       `Quick,
