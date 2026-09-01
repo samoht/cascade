@@ -21,22 +21,20 @@
 #     OK <tool_len> <css_len>\n<tool bytes><css bytes>\n
 #     FAIL <tool_len> <command_len> <reason_len>\n<tool bytes><command bytes><reason bytes>\n
 #
-# This script does NOT require a personal $LIGHTNINGCSS_REPO. It clones
-# the upstream into ./.gen/lightningcss/ and pins a single revision.
+# This script does NOT require a personal $LIGHTNINGCSS_REPO. It clones the
+# upstream at a single revision and installs the other oracle CLIs from the
+# committed npm lockfile in build-local temporary directories.
 
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; then
-  SCRIPT_DIR="$repo_root/${script_dir#"$repo_root/_build/default/"}"
-else
-  SCRIPT_DIR="$script_dir"
-fi
+SCRIPT_DIR="$script_dir"
 TRACE_DIR_ARG="${1:-$SCRIPT_DIR/../traces}"
 mkdir -p "$TRACE_DIR_ARG"
 TRACE_DIR="$(cd "$TRACE_DIR_ARG" && pwd)"
 TRACE_OUT="${CASCADE_TRACE_OUT:-$TRACE_DIR/minify.pairs}"
+GEN_DIR="$TRACE_DIR/.gen"
+NPM_DIR="$TRACE_DIR/.npm"
 
 REPO_URL="https://github.com/parcel-bundler/lightningcss"
 PIN_REV="df63db2c51c49a6a82f795f3a8988a3cd08ea03a"
@@ -44,23 +42,28 @@ PIN_REV="df63db2c51c49a6a82f795f3a8988a3cd08ea03a"
 command -v cargo >/dev/null 2>&1 || { echo "cargo not on PATH" >&2; exit 1; }
 command -v git   >/dev/null 2>&1 || { echo "git not on PATH" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 not on PATH" >&2; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm not on PATH" >&2; exit 1; }
 
-cd "$SCRIPT_DIR"
-mkdir -p .gen
+rm -rf "$GEN_DIR" "$NPM_DIR"
+mkdir -p "$GEN_DIR/lightningcss" "$NPM_DIR"
+trap 'rm -rf "$GEN_DIR" "$NPM_DIR"' EXIT
 
-if [ ! -d .gen/lightningcss/.git ]; then
-  git clone "$REPO_URL" .gen/lightningcss
-fi
-git -C .gen/lightningcss fetch --quiet origin "$PIN_REV" || true
-git -C .gen/lightningcss checkout --quiet "$PIN_REV"
+git -C "$GEN_DIR/lightningcss" init -q
+git -C "$GEN_DIR/lightningcss" remote add origin "$REPO_URL"
+git -C "$GEN_DIR/lightningcss" fetch --depth=1 origin "$PIN_REV" -q
+git -C "$GEN_DIR/lightningcss" checkout --quiet FETCH_HEAD
 
-SRC=.gen/lightningcss/src/lib.rs
+cp "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/package-lock.json" "$NPM_DIR/"
+npm ci --prefix "$NPM_DIR" >&2
+ORACLE_BIN="$NPM_DIR/node_modules/.bin"
+
+SRC="$GEN_DIR/lightningcss/src/lib.rs"
 BACKUP="$SRC.cascade-orig"
-DUMP="$SCRIPT_DIR/.gen/pairs.bin"
+DUMP="$GEN_DIR/pairs.bin"
 rm -f "$DUMP"
 
 cleanup() {
-  if [ -f "$BACKUP" ]; then mv "$BACKUP" "$SRC"; fi
+  rm -rf "$GEN_DIR" "$NPM_DIR"
 }
 trap cleanup EXIT
 
@@ -120,14 +123,11 @@ awk '
 ' "$BACKUP" > "$SRC"
 
 (
-  cd .gen/lightningcss
+  cd "$GEN_DIR/lightningcss"
   CASCADE_DUMP="$DUMP" cargo test --lib --release -- --test-threads=1
 ) >&2
 
-mv "$BACKUP" "$SRC"
-trap - EXIT
-
-TRACE_IN="$DUMP" TRACE_OUT="$TRACE_OUT" python3 - <<'PY'
+TRACE_IN="$DUMP" TRACE_OUT="$TRACE_OUT" ORACLE_BIN="$ORACLE_BIN" python3 - <<'PY'
 import os
 import re
 import subprocess
@@ -136,21 +136,36 @@ import sys
 trace_in = os.environ["TRACE_IN"]
 trace_out = os.environ["TRACE_OUT"]
 
-default_commands = [
-    ("esbuild", "esbuild --loader=css --minify"),
-    ("cleancss", "cleancss -O2 -"),
-    ("csso", "csso"),
-    ("cssnano", "cssnano"),
-    ("lightningcss-cli", "lightningcss --minify"),
+oracle_bin = os.environ["ORACLE_BIN"]
+oracle_root = os.path.dirname(os.path.dirname(oracle_bin))
+
+
+def oracle(name, args):
+    return [os.path.join(oracle_bin, name), *args]
+
+
+commands = [
+    (
+        "esbuild",
+        oracle("esbuild", ["--loader=css", "--minify"]),
+        "esbuild --loader=css --minify",
+    ),
+    ("cleancss", oracle("cleancss", ["-O2", "-"]), "cleancss -O2 -"),
+    ("csso", oracle("csso", []), "csso"),
+    ("cssnano", oracle("cssnano", []), "cssnano"),
+    (
+        "lightningcss-cli",
+        oracle("lightningcss", ["--minify"]),
+        "lightningcss --minify",
+    ),
 ]
 
-def split_commands(value):
-    return [part.strip() for part in value.split(";;") if part.strip()]
 
-custom_commands = [
-    (f"custom{i + 1}", command)
-    for i, command in enumerate(split_commands(os.environ.get("CASCADE_INTEROP_MINIFIERS", "")))
-]
+def stable_stderr(stderr):
+    text = stderr.decode("utf-8", "replace").strip()
+    text = text.replace(oracle_root, "<npm>")
+    return re.sub(r"Node[.]js v[0-9.]+", "Node.js", text)
+
 
 def run_command(command, input_bytes):
     try:
@@ -159,7 +174,6 @@ def run_command(command, input_bytes):
             input=input_bytes,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            shell=True,
         )
     except OSError as exc:
         return False, f"os error: {exc}".encode("utf-8", "replace")
@@ -169,11 +183,12 @@ def run_command(command, input_bytes):
     if proc.returncode < 0:
         reason = f"signal {-proc.returncode}"
     else:
-        stderr = proc.stderr.decode("utf-8", "replace").strip()
+        stderr = stable_stderr(proc.stderr)
         reason = f"exit {proc.returncode}"
         if stderr:
             reason += f": {stderr}"
     return False, reason.encode("utf-8", "replace")
+
 
 def read_lightning_pairs(path):
     pairs = []
@@ -195,6 +210,7 @@ def read_lightning_pairs(path):
             pairs.append((source, expected))
     return pairs
 
+
 def write_blob_record(f, header, blobs):
     f.write(header)
     for blob in blobs:
@@ -206,21 +222,21 @@ if not pairs:
     print("no pairs captured", file=sys.stderr)
     sys.exit(2)
 
-commands = custom_commands + default_commands
 available = []
-for name, command in commands:
+for name, command, display_command in commands:
     ok, result = run_command(command, b".x{color:red}")
     if ok:
-        available.append((name, command))
+        available.append((name, command, display_command))
     else:
-        print(f"skipping unavailable oracle {name}: {result.decode('utf-8', 'replace')}", file=sys.stderr)
+        print(f"pinned oracle {name} failed: {result.decode('utf-8', 'replace')}", file=sys.stderr)
+        sys.exit(2)
 
 failure_count = 0
 with open(trace_out, "wb") as f:
     for source, expected in pairs:
         candidates = [(b"lightningcss-trace", expected)]
         failures = []
-        for name, command in available:
+        for name, command, display_command in available:
             ok, result = run_command(command, source)
             if ok:
                 candidates.append((name.encode("utf-8"), result))
@@ -228,7 +244,7 @@ with open(trace_out, "wb") as f:
                 failures.append(
                     (
                         name.encode("utf-8"),
-                        command.encode("utf-8"),
+                        display_command.encode("utf-8"),
                         b"command failed: " + result,
                     )
                 )
@@ -247,7 +263,9 @@ print(
     "wrote {} ({} pairs, {} cached oracle tools, {} cached oracle failures)".format(
         trace_out,
         len(pairs),
-        ", ".join(["lightningcss-trace"] + [name for name, _ in available]),
+        ", ".join(
+            ["lightningcss-trace"] + [name for name, _, _ in available]
+        ),
         failure_count,
     ),
     file=sys.stderr,

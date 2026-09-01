@@ -3,6 +3,8 @@
  (mode promote)
  (enabled_if
   (= %{env:REGEN=0} 1))
+ (targets
+  (dir tests))
  (deps
   (source_tree ../scripts))
  (action

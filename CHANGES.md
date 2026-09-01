@@ -967,6 +967,14 @@ difference wherever the two are not equivalent.
   walk counted the line before the error and stopped one column short at end of
   input (#477)
 
+### Testing
+
+- Every normal interop corpus records its pinned upstream, exact regeneration
+  command, and authoritative license notice; regenerate rules are `REGEN=1`
+  gated and promote declared committed traces. The unlicensed SatCSS website
+  corpus moves to opt-in benchmark tooling instead of reading ignored files in
+  normal tests (#745)
+
 ### CLI tools
 
 - `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to

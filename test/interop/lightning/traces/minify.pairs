@@ -1520,24 +1520,24 @@ OK 7 31
 cssnano.foo{@scope (.bar){color:#ff0}}
 OK 16 30
 lightningcss-cli.foo{@scope(.bar){color:#ff0}}
-FAIL 4 4 2047
-cssocssocommand failed: exit 1: /Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/utils/names.cjs:69
+FAIL 4 4 1082
+cssocssocommand failed: exit 1: <npm>/node_modules/css-tree/cjs/utils/names.cjs:69
     let hack = property[0];
                        ^
 
 TypeError: Cannot read properties of undefined (reading '0')
-    at Object.getPropertyDescriptor [as property] (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/utils/names.cjs:69:24)
-    at getPropertyFingerprint (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/csso/cjs/restructure/6-restructBlock.cjs:72:30)
-    at List.<anonymous> (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/csso/cjs/restructure/6-restructBlock.cjs:222:29)
-    at List.forEachRight (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/utils/List.cjs:160:16)
-    at Object.processRule (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/csso/cjs/restructure/6-restructBlock.cjs:220:18)
-    at Object.enter (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/csso/cjs/restructure/6-restructBlock.cjs:302:25)
-    at Object.<anonymous> (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/walker/create.cjs:13:16)
-    at walkNode (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/walker/create.cjs:171:36)
-    at List.walkReducer (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/walker/create.cjs:197:61)
-    at List.reduceRight (/Users/samoht/.local/share/fnm/node-versions/v24.14.0/installation/lib/node_modules/csso-cli/node_modules/css-tree/cjs/utils/List.cjs:194:22)
+    at Object.getPropertyDescriptor [as property] (<npm>/node_modules/css-tree/cjs/utils/names.cjs:69:24)
+    at getPropertyFingerprint (<npm>/node_modules/csso/cjs/restructure/6-restructBlock.cjs:72:30)
+    at List.<anonymous> (<npm>/node_modules/csso/cjs/restructure/6-restructBlock.cjs:222:29)
+    at List.forEachRight (<npm>/node_modules/css-tree/cjs/utils/List.cjs:160:16)
+    at Object.processRule (<npm>/node_modules/csso/cjs/restructure/6-restructBlock.cjs:220:18)
+    at Object.enter (<npm>/node_modules/csso/cjs/restructure/6-restructBlock.cjs:302:25)
+    at Object.<anonymous> (<npm>/node_modules/css-tree/cjs/walker/create.cjs:13:16)
+    at walkNode (<npm>/node_modules/css-tree/cjs/walker/create.cjs:171:36)
+    at List.walkReducer (<npm>/node_modules/css-tree/cjs/walker/create.cjs:197:61)
+    at List.reduceRight (<npm>/node_modules/css-tree/cjs/utils/List.cjs:194:22)
 
-Node.js v25.8.1
+Node.js
 >>> 70 6 0
 
       .foo {

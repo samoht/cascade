@@ -10,19 +10,28 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$repo_root" ] && [[ "$script_dir" == "$repo_root"/_build/default/* ]]; then
-  SCRIPT_DIR="$repo_root/${script_dir#"$repo_root/_build/default/"}"
-else
-  SCRIPT_DIR="$script_dir"
-fi
+SCRIPT_DIR="$script_dir"
 TRACE_DIR_ARG="${1:-$SCRIPT_DIR/../traces}"
 mkdir -p "$TRACE_DIR_ARG"
 TRACE_DIR="$(cd "$TRACE_DIR_ARG" && pwd)"
 
 KUHN_URL="https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt"
+KUHN_SHA256="b51cfe9a8d2689c90b10a13a3624092d546e0837c6ff835b6e5d713c5749c8c6"
 
 command -v curl >/dev/null || { echo "curl not on PATH" >&2; exit 1; }
 
 echo "Fetching $KUHN_URL ..."
-curl -sSLf -o "$TRACE_DIR/UTF-8-test.txt" "$KUHN_URL"
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+curl -sSLf -o "$tmp" "$KUHN_URL"
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "$tmp" | cut -d ' ' -f 1)"
+else
+  actual="$(shasum -a 256 "$tmp" | cut -d ' ' -f 1)"
+fi
+if [ "$actual" != "$KUHN_SHA256" ]; then
+  echo "UTF-8-test.txt SHA-256 mismatch: expected $KUHN_SHA256, got $actual" >&2
+  exit 1
+fi
+mv "$tmp" "$TRACE_DIR/UTF-8-test.txt"
+trap - EXIT

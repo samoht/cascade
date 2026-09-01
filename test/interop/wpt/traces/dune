@@ -3,6 +3,8 @@
  (mode promote)
  (enabled_if
   (= %{env:REGEN=0} 1))
+ (targets
+  (dir css-syntax))
  (deps
   (source_tree ../scripts))
  (action

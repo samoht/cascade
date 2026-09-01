@@ -2,17 +2,16 @@
  (name test)
  (libraries cascade alcotest unix re re.str fmt)
  (deps
+  LICENSE
+  UPSTREAM.md
   (source_tree traces)))
 
 ; Regenerate the Lightning-derived input corpus and cached oracle answers
 ; from the configured minifiers. Normal test runs read this trace and do not
-; call external minifier CLIs. Only run on demand: [dune build @regen-traces].
+; call external minifier CLIs. Only run on demand with REGEN=1.
 
 (rule
  (alias regen-traces)
  (deps
-  (source_tree scripts))
- (action
-  (chdir
-   scripts
-   (run ./generate.sh))))
+  (alias traces/regen))
+ (action (progn)))

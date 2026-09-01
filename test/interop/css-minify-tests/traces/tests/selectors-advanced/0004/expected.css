@@ -1,1 +1,1 @@
-:where(.bar,.foo){color:red}
+:where(.foo,.bar){color:red}

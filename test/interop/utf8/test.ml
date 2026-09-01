@@ -7,7 +7,7 @@
 
     Traces: [traces/UTF-8-test.txt] from
     [https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt] (CC BY 4.0).
-    Regenerate: [dune build @regen-traces]. *)
+    Regenerate: [REGEN=1 dune build @@test/interop/utf8/regen-traces]. *)
 
 let trace_path = "traces/UTF-8-test.txt"
 

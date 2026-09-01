@@ -7,8 +7,9 @@
     explicit Cascade oracles for deliberate CSS/evergreen-browser policy
     differences.
 
-    Refresh inputs with [dune build @regen-traces]. Upstream pinned in
-    [scripts/generate.sh].
+    Refresh inputs with
+    [REGEN=1 dune build @@test/interop/css-minify-tests/regen-traces]. Upstream
+    provenance and license are recorded beside this test.
 
     Pass criterion: Cascade's minified output must equal the Cascade oracle for
     that fixture (trailing whitespace ignored). Most fixtures use [expected.css]
@@ -196,6 +197,13 @@ let normalize_expected ~category ~id expected =
          (326.6): a 1-decimal hue at this chroma shifts the rendered colour. *)
       fixture ~category ~id ~upstream:"a{color:oklch(.54 .285 326.6)}"
         ~cascade:"a{color:oklch(.54 .285 326.643)}" upstream
+  | "colors", "0033" ->
+      (* CSS Color 5 makes the interpolation method required syntax. The
+         imported oracle drops [in oklab] and produces a color-mix() every
+         browser rejects; keep the upstream bytes pristine and record the
+         spec-valid Cascade oracle here. *)
+      fixture ~category ~id ~upstream:"a{color:color-mix(var(--a),var(--b))}"
+        ~cascade:"a{color:color-mix(in oklab,var(--a),var(--b))}" upstream
   | "colors", "0044" ->
       (* color-mix(in oklch, lime, blue) folds to a static oklch(). On the
          evergreen default target oklch chroma takes a <percentage> (CSS Color
@@ -319,6 +327,11 @@ let normalize_expected ~category ~id expected =
          pseudo-class changes selector specificity from (0,1,1) to (0,0,1). *)
       fixture ~category ~id ~upstream:"a{color:red}"
         ~cascade:"a:nth-child(n){color:red}" upstream
+  | "selectors-advanced", "0004" ->
+      (* Selector branches within :where() have no source-order effect, so the
+         stable minified oracle sorts them canonically. *)
+      fixture ~category ~id ~upstream:":where(.foo,.bar){color:red}"
+        ~cascade:":where(.bar,.foo){color:red}" upstream
   | "selectors-advanced", "0005" ->
       (* [input:not(:invalid)] is not [input:valid]: HTML sec. 4.16.3 gives
          [:valid] and [:invalid] to a form control only while it is a candidate
@@ -341,7 +354,7 @@ let normalize_expected ~category ~id expected =
   | "selectors-advanced", "0012" ->
       (* [:is()] proves the optionality pair only when every branch does, and
          the [input] branch does not, for the reason recorded on 0009. *)
-      fixture ~category ~id ~upstream:":is(input,textarea):optional{color:red}"
+      fixture ~category ~id ~upstream:":is(textarea,input):optional{color:red}"
         ~cascade:":is(input,textarea):not(:required){color:red}" upstream
   | "selectors-advanced", "0013" ->
       (* [:heading] is an experimental Selectors 5 pseudo-class with limited
