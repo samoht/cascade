@@ -125,3 +125,62 @@ A path with backslash-escaped characters resolves to the unescaped path
   > EOF
   $ cascade --minify --inline-imports entry-esc.css
   .w{color:red}.e{padding:0}
+
+An import root rejects a lexical parent traversal that leaves the root. The
+unresolved import stays in the output, as it does for any unreadable import.
+
+  $ mkdir -p import-boundary/root
+  $ cat > import-boundary/outside.css <<EOF
+  > .outside { color: red }
+  > EOF
+  $ cat > import-boundary/root/entry-parent.css <<EOF
+  > @import url("../outside.css");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root=import-boundary/root import-boundary/root/entry-parent.css 2>&1 | grep -Fq 'outside --import-root'
+  $ cascade --minify --inline-imports --import-root=import-boundary/root import-boundary/root/entry-parent.css 2>/dev/null
+  @import"../outside.css";.entry{color:#00f}
+
+An absolute path under the canonical root is accepted.
+
+  $ import_root="$PWD/import-boundary/root"
+  $ cat > import-boundary/root/absolute.css <<EOF
+  > .absolute { color: green }
+  > EOF
+  $ cat > import-boundary/root/entry-absolute.css <<EOF
+  > @import url("$import_root/absolute.css");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-absolute.css
+  .absolute{color:green}.entry{color:#00f}
+
+An absolute path outside the canonical root is rejected too.
+
+  $ outside="$PWD/import-boundary/outside.css"
+  $ cat > import-boundary/root/entry-absolute-out.css <<EOF
+  > @import url("$outside");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-absolute-out.css 2>&1 | grep -Fq 'outside --import-root'
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-absolute-out.css 2>/dev/null | grep -Fq '@import'
+
+A symlink is accepted when its canonical target remains under the root.
+
+  $ ln -s absolute.css import-boundary/root/inside-link.css
+  $ cat > import-boundary/root/entry-inside-link.css <<EOF
+  > @import url("inside-link.css");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-inside-link.css
+  .absolute{color:green}.entry{color:#00f}
+
+A symlink whose canonical target leaves the root is rejected.
+
+  $ ln -s ../outside.css import-boundary/root/outside-link.css
+  $ cat > import-boundary/root/entry-outside-link.css <<EOF
+  > @import url("outside-link.css");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-outside-link.css 2>&1 | grep -Fq 'outside --import-root'
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-outside-link.css 2>/dev/null
+  @import"outside-link.css";.entry{color:#00f}
