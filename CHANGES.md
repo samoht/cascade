@@ -495,6 +495,9 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- Lossless optimization keeps otherwise-independent declarations in authored
+  order, so stylesheet text and CSSOM enumeration no longer change solely for
+  gzip alignment (#742)
 - Numeric tokens in custom-property and unknown-property declaration streams
   use their shortest exact spelling, so `--x: 1.0px` becomes `--x:1px` without
   changing adjacent token boundaries. Declaration feature queries keep the

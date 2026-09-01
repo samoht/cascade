@@ -92,7 +92,7 @@ cat style.css | cascade -                                          # read stdin
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
-| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Also sorts each rule's declarations into a canonical cross-rule order (keeping cascade-significant pairs in place) so gzip back-references line up. Has no effect without `--minify`. |
+| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. This is about the HTML, where `--scope` is about how much of the CSS you control; see [Scope](#scope). Has no effect without `--minify`. |
@@ -400,11 +400,10 @@ its canonical spelling and is not gated by that tolerance.
 
 Pass `--lossless` to keep colour values exact: hex/named canonicalisation and
 modern-syntax rewrites still run, but channel rounding, within-budget
-modern-space folds, and static `color-mix()` resolution are disabled. It also
-sorts each rule's declarations into one canonical order across the stylesheet,
-keeping any two whose footprints overlap (same property, or a shorthand and a
-longhand) in place, so gzip back-references line up; the reorder never changes
-a computed value.
+modern-space folds, and static `color-mix()` resolution are disabled.
+Otherwise-independent declarations retain their authored order rather than
+being sorted for compression, preserving their order in stylesheet text and
+CSSOM enumeration.
 
 ### Scope
 
