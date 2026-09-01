@@ -24,6 +24,13 @@ let check_specified_value name css expected =
     name expected
     (Css.Declaration.string_of_value ~minify:false decl)
 
+let check_visible_var name css expected =
+  let declaration = Css.Declaration.of_string css in
+  let names =
+    Css.vars_of_declarations [ declaration ] |> List.map Css.any_var_name
+  in
+  Alcotest.(check (list string)) name [ expected ] names
+
 let check_declarations input expected_count =
   let r = Cursor.of_string input in
   let decls = read_declarations r in
@@ -1479,6 +1486,20 @@ let component_var_keeps_typed_value () =
   check_declaration ~expected:"border-radius:var(--x)" "border-radius: var(--x)";
   check_declaration ~expected:"border-radius:var(--x) inherit"
     "border-radius: var(--x) inherit";
+  (* CSS Values 4 sec. 4.1 makes a keyword ASCII case-insensitive, so a typed
+     read answers with the keyword where an opaque stream keeps the case the
+     author wrote. *)
+  check_specified_value "place-content reads its components"
+    "place-content: var(--p) CENTER" "var(--p) center";
+  check_visible_var "place-content component var stays visible"
+    "place-content:var(--p) center" "--p";
+  (* A var() can substitute more than one component. Keeping two equal
+     references is therefore cardinality-sensitive: if [--p] is [center end],
+     the two-reference spelling is invalid after substitution while a folded
+     single reference is valid. *)
+  check_declaration ~expected:"place-content:var(--p) var(--p)"
+    ~optimized:"place-content:var(--p) var(--p)"
+    "place-content: var(--p) var(--p)";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
