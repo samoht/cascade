@@ -969,6 +969,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
+  the canonical root and its descendants, rejecting both lexical and symlink
+  escapes. Omitting it retains unrestricted resolution for trusted CSS (#744)
 - CLI help lists each option and exit status once, and `cascade prune --help`
   classifies representative selectors through the resolver instead of naming
   `:nth-child()` as unsupported (#740)
