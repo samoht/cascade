@@ -1461,11 +1461,10 @@ let box_shorthand_repeats () =
 let component_var_keeps_typed_value () =
   check_declaration ~expected:"border-radius:var(--x)0px"
     ~optimized:"border-radius:var(--x)0" "border-radius: var(--x) 0px";
-  (* The four-value form is top-left, top-right, bottom-right, bottom-left, so a
-     fourth value equal to the second is the longer spelling of three, as it is
-     for the other box shorthands. *)
+  (* The repeat fold that would drop the fourth value here is held back by the
+     reference in the first: see [box_shorthand_repeats_keep_substitution]. *)
   check_declaration ~expected:"border-radius:var(--x)1px 1px 1px"
-    ~optimized:"border-radius:var(--x)1px 1px"
+    ~optimized:"border-radius:var(--x)1px 1px 1px"
     "border-radius: var(--x) 1px 1px 1px";
   check_declaration ~expected:"gap:var(--g) 0px" ~optimized:"gap:var(--g) 0"
     "gap: var(--g) 0px";

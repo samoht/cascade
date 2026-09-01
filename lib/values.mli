@@ -192,6 +192,20 @@ val length_has_runtime_subst : length -> bool
 (** [length_has_runtime_subst l] is [true] when [l] is [var()] / [env()] /
     [attr()] / an anchor query, or a [calc()] containing one. *)
 
+val length_is_substitution : length -> bool
+(** [length_is_substitution l] is [true] when [l] is a top-level [var()],
+    [env()] or [attr()], which substitutes a token sequence of any length and so
+    need not stand for one component of the grammar around it. A reference
+    nested in a [calc()] is one component whatever it holds. *)
+
+val length_percentage_is_substitution : length_percentage -> bool
+(** [length_percentage_is_substitution] is {!val-length_is_substitution} over a
+    [<length-percentage>]. *)
+
+val color_is_substitution : color -> bool
+(** [color_is_substitution] is {!val-length_is_substitution} over a [<color>].
+*)
+
 val calc_length_unit : length -> (string * float) option
 (** [calc_length_unit l] is [Some (unit, value)] when [l] is a dimension, with
     the unit lower-cased. A keyword, a [var()] or a math function is [None]. *)

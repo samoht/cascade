@@ -146,15 +146,23 @@ let is_zero_length : length -> bool = function
    4.2 says the same for padding, css-logical-1 sec. 4.3 and sec. 4.4 for the
    inset and logical padding/margin shorthands, and CSS Backgrounds 3 (ED) sec.
    3.1 and sec. 4.1 for border-color and border-radius. *)
-let collapse_box_shorthand vs =
-  match vs with
-  | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
-  | [ a; b; c; d ] when a = c && b = d -> [ a; b ]
-  | [ a; b; c; d ] when b = d -> [ a; b; c ]
-  | [ a; b; c ] when a = b && b = c -> [ a ]
-  | [ a; b; c ] when a = c -> [ a; b ]
-  | [ a; b ] when a = b -> [ a ]
-  | _ -> vs
+(* The 1-4 value forms assign sides by how many values there are, so a fold is
+   only the shorter spelling of the same declaration while every value stands
+   for one component. A substitution stands for a token sequence of any length,
+   which makes the count unknowable here: folding beside one can move the
+   substituted tokens to other sides, and can turn a declaration that is
+   invalid after substitution into one that applies. *)
+let collapse_box_shorthand ~is_subst vs =
+  if List.exists is_subst vs then vs
+  else
+    match vs with
+    | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
+    | [ a; b; c; d ] when a = c && b = d -> [ a; b ]
+    | [ a; b; c; d ] when b = d -> [ a; b; c ]
+    | [ a; b; c ] when a = b && b = c -> [ a ]
+    | [ a; b; c ] when a = c -> [ a; b ]
+    | [ a; b ] when a = b -> [ a ]
+    | _ -> vs
 
 let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 
@@ -165,7 +173,8 @@ let map_preserve = List.map_preserve
 
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the
    shortest of the spellings that name those sides. *)
-let normalize_box_shorthand f vs = collapse_box_shorthand (map_preserve f vs)
+let normalize_box_shorthand ~is_subst f vs =
+  collapse_box_shorthand ~is_subst (map_preserve f vs)
 
 let option_map_preserve f opt =
   match opt with

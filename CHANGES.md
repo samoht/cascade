@@ -545,6 +545,13 @@ difference wherever the two are not equivalent.
   prints as `2px` and merges with a rule that wrote `2px` (#639)
 - `--minify` collapses `margin-inline` and `margin-block` to one value when the
   two edges match, which the four-sided box shorthands already did (#641)
+- `--minify` keeps a repeated side in `margin`, `padding`, `inset`,
+  `border-color`, `border-radius` and their logical forms when any value is a
+  `var()`, `env()` or `attr()`. The 1-4 value forms assign sides by how many
+  values there are, so with `--m: 1px 2px` the fold turned
+  `margin: var(--m) 1px 1px 1px`, five components and invalid after
+  substitution, into four that apply. A reference inside `calc()` is one
+  component and still folds (#737)
 - `--minify` folds `steps(1)` to `step-end`, CSS Easing 1 sec. 2.3 assuming
   `end` when the step position is left out (#641)
 - `--minify` keeps `display: block ruby`. It printed `ruby`, which CSS Display

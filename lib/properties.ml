@@ -3995,7 +3995,9 @@ let normalize_property_value : type a.
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
   | Color -> normalize_color value
-  | Border_color -> normalize_box_shorthand normalize_color value
+  | Border_color ->
+      normalize_box_shorthand ~is_subst:Values.color_is_substitution
+        normalize_color value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -4130,20 +4132,44 @@ let normalize_property_value : type a.
   | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
   | Scroll_padding_block_start -> Values.normalize_length ~ctx value
   | Scroll_padding_block_end -> Values.normalize_length ~ctx value
-  | Padding -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Padding ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Padding_inline ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Padding_block ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
-  | Margin -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
+  | Margin ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Margin_inline ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
-  | Margin_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
-  | Inset -> normalize_box_shorthand (Values.normalize_length ~ctx) value
-  | Inset_inline -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
+  | Margin_block ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
+  | Inset ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
+  | Inset_inline ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Inset_inline_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_inline_end -> map_preserve (Values.normalize_length ~ctx) value
-  | Inset_block -> normalize_box_shorthand (Values.normalize_length ~ctx) value
+  | Inset_block ->
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Inset_block_start -> map_preserve (Values.normalize_length ~ctx) value
   | Inset_block_end -> map_preserve (Values.normalize_length ~ctx) value
   | Top -> map_preserve (Values.normalize_length ~ctx) value
@@ -4151,17 +4177,29 @@ let normalize_property_value : type a.
   | Bottom -> map_preserve (Values.normalize_length ~ctx) value
   | Left -> map_preserve (Values.normalize_length ~ctx) value
   | Scroll_margin ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Scroll_margin_inline ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Scroll_margin_block ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Scroll_padding ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Scroll_padding_inline ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Scroll_padding_block ->
-      normalize_box_shorthand (Values.normalize_length ~ctx) value
+      normalize_box_shorthand ~is_subst:Values.length_is_substitution
+        (Values.normalize_length ~ctx)
+        value
   | Custom_property _ -> (
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->

@@ -1607,6 +1607,24 @@ and length_calc_has_runtime_subst : length calc -> bool = function
   | Expr (l, _, r) ->
       length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
 
+(* CSS Custom Properties 1 sec. 3 replaces a [var()] with the custom property's
+   token sequence, of any length, and [env()] and [attr()] substitute the same
+   way, so such a value need not stand for one component of the grammar around
+   it. A reference nested in a [calc()] or another function is one component
+   whatever it holds, so only a top-level one answers true. *)
+let length_is_substitution : length -> bool = function
+  | Var _ | Env _ | Attr _ -> true
+  | _ -> false
+
+let length_percentage_is_substitution : length_percentage -> bool = function
+  | Var _ | Env _ -> true
+  | Length l -> length_is_substitution l
+  | _ -> false
+
+let color_is_substitution : color -> bool = function
+  | Var _ -> true
+  | _ -> false
+
 (* Reduce a computed coefficient to the serialised precision, returning the leaf
    unchanged when every digit already prints. A [<percentage>] is left alone:
    [Pp.pct] prints its coefficient in full in both modes, so there is no budget
