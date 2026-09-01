@@ -291,14 +291,6 @@ let man =
       "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
        $(b,--inline-imports) assumes you control file resolution and \
        $(b,--inline-vars) assumes no runtime mutation of custom properties.";
-    `S Manpage.s_exit_status;
-    `P "$(tname) exits with:";
-    `I ("0", "on success, including a parse that recovered some of the input");
-    `I
-      ( "1",
-        "if the input cannot be read, or if parse recovery left no statement \
-         at all. An output that is empty because the stylesheet held nothing a \
-         browser acts on is a success" );
     `S Manpage.s_examples;
     `P "Pretty-print a CSS file:";
     `Pre "  cascade fmt style.css";
@@ -314,4 +306,18 @@ let man =
 
 let cmd =
   let doc = "Format, minify, and inline CSS files" in
-  Cmd.v (Cmd.info "fmt" ~doc ~man) term
+  let exits =
+    Cli_exit.with_defaults
+      [
+        Cmd.Exit.info
+          ~doc:"on success, including a parse that recovered some of the input"
+          0;
+        Cmd.Exit.info
+          ~doc:
+            "if the input cannot be read, or if parse recovery left no \
+             statement at all. An output that is empty because the stylesheet \
+             held nothing a browser acts on is a success"
+          1;
+      ]
+  in
+  Cmd.v (Cmd.info "fmt" ~doc ~man ~exits) term

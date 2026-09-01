@@ -6,6 +6,7 @@
 open Cmdliner
 module Css = Cascade.Css
 module Selector = Cascade.Selector
+module Resolve = Cascade.Resolve
 module Prune = Cascade.Prune
 module P = Prune.Make (Html_node)
 
@@ -131,8 +132,40 @@ let files_arg =
 
 let term = Term.(const run $ dry_run_arg $ files_arg $ const ())
 
+let selector_examples_doc =
+  let samples =
+    [ ".item"; ":nth-child(2n+1)"; ":has(.child)"; ":hover"; "::before" ]
+  in
+  let modelled, unmodelled =
+    List.partition
+      (fun sample -> Resolve.supported (Selector.of_string sample))
+      samples
+  in
+  String.concat ""
+    [
+      "Representative selectors are classified by the resolver itself; \
+       modelled examples: ";
+      String.concat ", " modelled;
+      "; unmodelled examples: ";
+      String.concat ", " unmodelled;
+      ".";
+    ]
+
 let cmd =
   let doc = "Remove the CSS rules a set of documents cannot use" in
+  let exits =
+    Cli_exit.with_defaults
+      [
+        Cmd.Exit.info ~doc:"on success" 0;
+        Cmd.Exit.info
+          ~doc:
+            "if the documents hold no element, or the stylesheet parsed to \
+             nothing"
+          1;
+        Cmd.Exit.info ~doc:"on command-line errors or unreadable input files"
+          124;
+      ]
+  in
   let man =
     [
       `S Manpage.s_description;
@@ -143,13 +176,15 @@ let cmd =
       `P
         "A rule is removed only when the matcher has a model for its selector \
          and every element answers that it does not match. A selector outside \
-         what the matcher models ($(b,:hover), a pseudo-element, \
-         $(b,:nth-child())) is kept and never counted as unused, and so is a \
-         selector list with one such branch. A $(b,@media), $(b,@supports) or \
-         $(b,@container) condition is never evaluated: it asks about a device, \
-         not about a document, so the rules inside are judged by their own \
-         selectors. A statement that names no element ($(b,@keyframes), \
-         $(b,@font-face), $(b,@property), $(b,@import), $(b,@layer)) is kept.";
+         what the matcher models is kept and never counted as unused, and so \
+         is a selector list with one such branch.";
+      `P selector_examples_doc;
+      `P
+        "A $(b,@media), $(b,@supports) or $(b,@container) condition is never \
+         evaluated: it asks about a device, not about a document, so the rules \
+         inside are judged by their own selectors. A statement that names no \
+         element ($(b,@keyframes), $(b,@font-face), $(b,@property), \
+         $(b,@import), $(b,@layer)) is kept.";
       `P
         "The documents are the whole of what the analysis sees. A class a \
          script adds at runtime is not in them, so a rule waiting for one is \
@@ -158,13 +193,6 @@ let cmd =
         "Nesting is flattened before anything is judged, since a nested \
          selector is written against its parent. Pipe the result through \
          $(b,cascade --minify) to nest it again.";
-      `S Manpage.s_exit_status;
-      `P "$(tname) exits with:";
-      `I ("0", "on success");
-      `I
-        ( "1",
-          "if the documents hold no element, or the stylesheet parsed to \
-           nothing" );
     ]
   in
-  Cmd.v (Cmd.info "prune" ~doc ~man) Term.(term_result term)
+  Cmd.v (Cmd.info "prune" ~doc ~man ~exits) Term.(term_result term)

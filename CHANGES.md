@@ -963,6 +963,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- CLI help lists each option and exit status once, and `cascade prune --help`
+  classifies representative selectors through the resolver instead of naming
+  `:nth-child()` as unsupported (#740)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, and `--dry-run` reports instead, ranking what survives
   by how few elements matched it. A rule goes only when the matcher has a model
