@@ -1881,7 +1881,7 @@ let read_border_radius_inline t : border_radius =
   Radius { horizontal; vertical }
 
 let rec read_border_radius (t : Cursor.t) : border_radius =
-  Cursor.enum_or_var "border-radius"
+  Cursor.enum_or_whole_value_var "border-radius"
     [
       ("inherit", (Inherit : border_radius));
       ("initial", Initial);
@@ -2006,7 +2006,7 @@ let rec read_border_spacing t : border_spacing =
         Cursor.err_invalid t "border-spacing requires a <length>"
     | _ -> l
   in
-  Cursor.enum_or_var "border-spacing" []
+  Cursor.enum_or_whole_value_var "border-spacing" []
     ~var:(fun t -> Var (Values.read_var read_border_spacing t))
     ~default:(fun t ->
       (Lengths

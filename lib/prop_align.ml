@@ -744,7 +744,7 @@ let rec read_gap t : gap =
         Cursor.err t "gap values must be explicit lengths, not keywords"
     | _ -> len
   in
-  Cursor.enum_or_var "gap"
+  Cursor.enum_or_whole_value_var "gap"
     [
       ("inherit", (Inherit : gap));
       ("initial", Initial);

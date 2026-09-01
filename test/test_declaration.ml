@@ -1456,26 +1456,29 @@ let box_shorthand_repeats () =
    only as the entire value, and a lone [var()] takes it the same way.
    Committing to the whole-value reading on sight of a leading [var()] left the
    components after it unread, so the typed parse failed and the declaration was
-   carried as an opaque token stream, costing every fold its other components
-   had. *)
+   carried as an opaque token stream, costing the components beside the
+   reference every fold they have on their own. *)
 let component_var_keeps_typed_value () =
   check_declaration ~expected:"border-radius:var(--x)0px"
     ~optimized:"border-radius:var(--x)0" "border-radius: var(--x) 0px";
+  (* The four-value form is top-left, top-right, bottom-right, bottom-left, so a
+     fourth value equal to the second is the longer spelling of three, as it is
+     for the other box shorthands. *)
   check_declaration ~expected:"border-radius:var(--x)1px 1px 1px"
-    ~optimized:"border-radius:var(--x)1px 1px 1px"
+    ~optimized:"border-radius:var(--x)1px 1px"
     "border-radius: var(--x) 1px 1px 1px";
-  (* CSS Values 4 sec. 4.1 makes a keyword ASCII case-insensitive, so a typed
-     read answers with the keyword where an opaque stream keeps the case the
-     author wrote. *)
-  check_specified_value "place-items reads its components"
-    "place-items: var(--p) CENTER" "var(--p) center";
-  check_specified_value "place-content reads its components"
-    "place-content: var(--p) CENTER" "var(--p) center";
-  check_specified_value "grid-auto-flow reads its components"
-    "grid-auto-flow: var(--f) DENSE" "var(--f) dense";
-  (* Controls: a lone [var()] is the whole value, and a reader whose grammar
-     takes one component per slot keeps reading it that way. *)
+  check_declaration ~expected:"gap:var(--g) 0px" ~optimized:"gap:var(--g) 0"
+    "gap: var(--g) 0px";
+  check_declaration ~expected:"transform-origin:var(--t) 0px"
+    ~optimized:"transform-origin:var(--t) 0" "transform-origin: var(--t) 0px";
+  check_declaration ~expected:"border-spacing:var(--s) 0px"
+    ~optimized:"border-spacing:var(--s) 0" "border-spacing: var(--s) 0px";
+  (* Controls: a lone [var()] is the whole value, a CSS-wide keyword after one
+     is still the invalid mix that keeps the declaration opaque, and a reader
+     whose grammar takes one component per slot keeps reading it that way. *)
   check_declaration ~expected:"border-radius:var(--x)" "border-radius: var(--x)";
+  check_declaration ~expected:"border-radius:var(--x) inherit"
+    "border-radius: var(--x) inherit";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 

@@ -511,7 +511,15 @@ val enum_or_var :
 (** [enum_or_var label idents ~var t] is {!val-enum_or_calls} specialised to the
     common case of "match a CSS keyword from [idents], or read [var(...)] via
     [var]". Removes the boilerplate of writing the [var] entry in a [calls] list
-    at every typed-property reader. *)
+    at every typed-property reader. [var] reads whatever the caller is reading,
+    which for a reader called once per shorthand slot is that slot. *)
+
+val enum_or_whole_value_var :
+  ?default:(t -> 'a) -> string -> (string * 'a) list -> var:(t -> 'a) -> t -> 'a
+(** [enum_or_whole_value_var] is {!val-enum_or_var} for a reader that owns the
+    whole declaration value, where [var] stands for all of it. A [var()] with
+    components after it is an operand of [default]'s grammar rather than the
+    value, so such a value goes to [default]. *)
 
 (** {1 Higher-order combinators} *)
 

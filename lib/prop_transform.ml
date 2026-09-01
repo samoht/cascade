@@ -1220,7 +1220,7 @@ module Transform_origin = struct
 end
 
 let rec read_transform_origin (t : Cursor.t) : transform_origin =
-  Cursor.enum_or_var "transform-origin"
+  Cursor.enum_or_whole_value_var "transform-origin"
     [
       ("initial", (Initial : transform_origin));
       ("inherit", Inherit);
