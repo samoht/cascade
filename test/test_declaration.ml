@@ -1450,6 +1450,35 @@ let box_shorthand_repeats () =
   check_declaration ~expected:"padding:1px 2px 1px 3px"
     ~optimized:"padding:1px 2px 1px 3px" "padding: 1px 2px 1px 3px"
 
+(* A [var()] standing beside other components is one operand of the property's
+   own grammar rather than a substitution of the whole value: CSS Cascade 5 sec.
+   6 keeps the whole-value reading for the CSS-wide keywords, which are valid
+   only as the entire value, and a lone [var()] takes it the same way.
+   Committing to the whole-value reading on sight of a leading [var()] left the
+   components after it unread, so the typed parse failed and the declaration was
+   carried as an opaque token stream, costing every fold its other components
+   had. *)
+let component_var_keeps_typed_value () =
+  check_declaration ~expected:"border-radius:var(--x)0px"
+    ~optimized:"border-radius:var(--x)0" "border-radius: var(--x) 0px";
+  check_declaration ~expected:"border-radius:var(--x)1px 1px 1px"
+    ~optimized:"border-radius:var(--x)1px 1px 1px"
+    "border-radius: var(--x) 1px 1px 1px";
+  (* CSS Values 4 sec. 4.1 makes a keyword ASCII case-insensitive, so a typed
+     read answers with the keyword where an opaque stream keeps the case the
+     author wrote. *)
+  check_specified_value "place-items reads its components"
+    "place-items: var(--p) CENTER" "var(--p) center";
+  check_specified_value "place-content reads its components"
+    "place-content: var(--p) CENTER" "var(--p) center";
+  check_specified_value "grid-auto-flow reads its components"
+    "grid-auto-flow: var(--f) DENSE" "var(--f) dense";
+  (* Controls: a lone [var()] is the whole value, and a reader whose grammar
+     takes one component per slot keeps reading it that way. *)
+  check_declaration ~expected:"border-radius:var(--x)" "border-radius: var(--x)";
+  check_specified_value "overflow slots are unchanged"
+    "overflow: var(--o) HIDDEN" "var(--o) hidden"
+
 (* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
    and reads a single one as "both the horizontal and vertical spacing", so a
    pair of equal lengths is the longer spelling of that one value. The per-side
@@ -5261,6 +5290,8 @@ let declaration_tests =
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
     test_case "mask-border mode only" `Quick mask_border_mode_only;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
+    test_case "component var keeps typed value" `Quick
+      component_var_keeps_typed_value;
     test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "background drained layer" `Quick background_drained_layer;
