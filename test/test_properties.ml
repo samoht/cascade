@@ -4298,6 +4298,15 @@ let test_place_content () =
   check_place_content "start end";
   check_place_content "flex-start center";
   check_place_content "inherit";
+  (* CSS Align 3 sec. 4.2 and 7.2: a baseline position is valid only in the
+     align-content slot. When it is the sole value, justify-content defaults to
+     start instead of copying it. *)
+  check_place_content ~expected:"baseline start" "baseline";
+  check_place_content ~expected:"first baseline start" "first baseline";
+  check_place_content ~expected:"last baseline start" "last baseline";
+  check_place_content "first baseline center";
+  neg_cursor ~allow_partial:true read_place_content "center baseline";
+  neg_cursor ~allow_partial:true read_place_content "baseline first";
   neg_cursor read_place_content "invalid-place"
 
 let test_place_items () =
