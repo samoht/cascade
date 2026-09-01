@@ -92,7 +92,9 @@ let rec read_font_style t : font_style =
 
 let rec read_font_size t : font_size =
   let read_var t : font_size = Var (read_var read_font_size t) in
-  let read_calc t : font_size = Calc (read_calc read_font_size t) in
+  let read_calc t : font_size =
+    Calc (read_calc ~result_type:`Value read_font_size t)
+  in
   let read_length t : font_size =
     let len = read_non_negative_length ~with_keywords:false t in
     Length len
@@ -1269,7 +1271,9 @@ let rec pp_font : font Pp.t =
 let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
   let read_calc t : line_height =
-    Calc (read_calc read_line_height t |> numeric_line_height_calc_leaves)
+    Calc
+      (read_calc ~result_type:`Number_or_value read_line_height t
+      |> numeric_line_height_calc_leaves)
   in
   Cursor.enum_or_calls "line-height"
     [

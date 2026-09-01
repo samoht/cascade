@@ -700,7 +700,9 @@ let read_grid_line_name_value t : grid_line =
 let read_grid_line_calc t : grid_line =
   (* read_calc handles the calc(...) wrapper itself *)
   let expr =
-    read_calc (fun _ -> Cursor.err t "unexpected value in grid-line calc") t
+    read_calc ~result_type:`Number
+      (fun _ -> Cursor.err t "unexpected value in grid-line calc")
+      t
   in
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> Num (int_of_float f)

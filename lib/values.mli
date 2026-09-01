@@ -585,8 +585,16 @@ val read_length_percentage :
 val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
-val read_calc : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
-(** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
+val read_calc :
+  ?result_type:[ `Number | `Number_or_value | `Value ] ->
+  (Cursor.t -> 'a) ->
+  Cursor.t ->
+  'a calc
+(** [read_calc ~result_type read t] parses a [calc(...)] expression or a
+    promotable value and checks that its statically knowable result type matches
+    the property's numeric grammar. Expressions containing [var()] remain
+    deferred until substitution. Omitting [result_type] retains the generic AST
+    reader behaviour. *)
 
 val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
