@@ -2,4 +2,5 @@
  (applies_to :whole_subtree)
  (deps
   ../../README.md
+  (source_tree ../../test/interop)
   (package cascade)))

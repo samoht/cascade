@@ -23,7 +23,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CORPUS="${CORPUS:-$ROOT/test/interop/satcss/scripts/.tool/benchmarks}"
+CORPUS="${CORPUS:-$ROOT/bench/satcss/scripts/.tool/benchmarks}"
 CASCADE="${CASCADE:-$ROOT/_build/default/bin/main.exe}"
 RUNS="${RUNS:-5}"
 SITES=(github guardian youtube netflix amazon cnn)

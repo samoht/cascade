@@ -2,6 +2,8 @@
  (name test)
  (libraries cascade alcotest astring fmt)
  (deps
+  LICENSE.md
+  UPSTREAM.md
   (source_tree traces)))
 
 ; Refresh traces against keithamus/css-minify-tests at the pinned commit.
@@ -9,8 +11,5 @@
 (rule
  (alias regen-traces)
  (deps
-  (source_tree scripts))
- (action
-  (chdir
-   scripts
-   (run ./generate.sh))))
+  (alias traces/regen))
+ (action (progn)))

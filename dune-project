@@ -1,4 +1,5 @@
 (lang dune 3.21)
+(using directory-targets 0.1)
 (implicit_transitive_deps false)
 (using mdx 0.4)
 (name cascade)

@@ -13,7 +13,7 @@
 #
 # Corpus: stripped real-world stylesheets from the SatCSS benchmark
 # (Hague, Lin, Hong; TOPLAS 2019), regenerated under
-# test/interop/satcss/scripts/.tool/benchmarks/. The CSS is third-party
+# bench/satcss/scripts/.tool/benchmarks/. The CSS is third-party
 # website content and is not redistributed by Cascade.
 #
 # Usage:
@@ -25,7 +25,7 @@
 set -euo pipefail
 
 RUNS=${RUNS:-3}
-CORPUS="${CORPUS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test/interop/satcss/scripts/.tool/benchmarks}"
+CORPUS="${CORPUS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bench/satcss/scripts/.tool/benchmarks}"
 CASCADE="${CASCADE:-cascade}"
 DEFAULT_SITES=(github guardian youtube netflix)
 
@@ -48,7 +48,7 @@ SITES=("$@")
 
 if [ ! -d "$CORPUS" ]; then
   echo "error: corpus not found: $CORPUS" >&2
-  echo "  hint: run 'dune build @regen-traces' under test/interop/satcss first" >&2
+  echo "  hint: run 'REGEN=1 dune build @bench/satcss/regen-traces' first" >&2
   exit 2
 fi
 

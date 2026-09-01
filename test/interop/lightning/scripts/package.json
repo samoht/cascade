@@ -1,0 +1,12 @@
+{
+  "name": "cascade-lightning-interop-oracles",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "clean-css-cli": "5.6.3",
+    "cssnano-cli": "1.0.5",
+    "csso-cli": "4.0.2",
+    "esbuild": "0.28.1",
+    "lightningcss-cli": "1.32.0"
+  }
+}

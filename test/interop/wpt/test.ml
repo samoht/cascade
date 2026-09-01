@@ -19,7 +19,7 @@
     Traces: [traces/css-syntax/] vendored from
     [https://github.com/web-platform-tests/wpt] commit
     [f900489fca393464f3379d7952d227997318b851]. Regenerate via
-    [dune build @regen-traces]. *)
+    [REGEN=1 dune build @@test/interop/wpt/regen-traces]. *)
 
 let vectors_dir = "traces/css-syntax"
 

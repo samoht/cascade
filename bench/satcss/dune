@@ -1,0 +1,17 @@
+; Manual SatCSS comparison. The website corpus has no redistribution licence,
+; so this is benchmark tooling rather than a normal test.
+
+(executable
+ (name compare)
+ (libraries cascade alcotest fmt))
+
+(rule
+ (alias regen-traces)
+ (enabled_if
+  (= %{env:REGEN=0} 1))
+ (deps
+  (source_tree scripts))
+ (action
+  (chdir
+   scripts
+   (run ./generate.sh))))

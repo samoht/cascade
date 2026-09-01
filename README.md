@@ -634,7 +634,9 @@ Prose files carry their non-ASCII content.
 Every user-visible change gets an entry in the top version block of
 [CHANGES.md](CHANGES.md), naming the impact rather than the diff.
 
-Three oracle corpora cover parser conformance and minified-output behaviour:
+Four committed oracle corpora cover parser conformance, decoding robustness,
+and minified-output behaviour. Each directory records its pinned upstream,
+license notice, and exact regeneration command.
 
 - **WPT parser conformance.** The `css/css-syntax/` subset of the [Web
   Platform Tests](https://github.com/web-platform-tests/wpt) is vendored
@@ -643,23 +645,30 @@ Three oracle corpora cover parser conformance and minified-output behaviour:
   CSS fragment in every `<style>`, `style="..."`, `support/*.css`, and
   `parseRule(\`...\`)` site goes through `Css.of_string`. A test fails when
   cascade rejects what browsers accept or accepts what browsers reject; there
-  is no skip list. Refresh with `dune build @test/interop/wpt/regen-traces`.
+  is no skip list. Refresh with
+  `REGEN=1 dune build @test/interop/wpt/regen-traces`.
 - **Lightning CSS minify oracle.** Cascade's `--minify` output is compared
   with cached answers from `esbuild`, `cleancss`, `csso`, `cssnano`, and
   `lightningcss-cli` over the Lightning CSS test inputs
   ([trace](test/interop/lightning/traces/minify.pairs), regenerated via
-  `dune build @regen-traces`). Each record is treated as the complete
-  stylesheet (`scope: Stylesheet`). A case passes when cascade's output is no
-  longer than the shortest *valid* cached answer; oracle answers that
-  crashed, fail to round-trip, or change the parsed shape are excluded and
-  logged.
+  `REGEN=1 dune build @test/interop/lightning/regen-traces`). The upstream
+  revision and every oracle CLI are package-lock pinned. Each record is treated
+  as the complete stylesheet (`scope: Stylesheet`). A case passes when
+  cascade's output is no longer than the shortest *valid* cached answer;
+  oracle answers that crashed, fail to round-trip, or change the parsed shape
+  are excluded and logged.
 - **keithamus/css-minify-tests.** A vendor-neutral hand-curated set of
   `source.css`/`expected.css` pairs covering 29 CSS feature categories. Each
   pair must equal the upstream `expected.css` after cascade's documented
-  normalisations.
+  normalisations. Refresh with
+  `REGEN=1 dune build @test/interop/css-minify-tests/regen-traces`.
+- **Markus Kuhn's UTF-8 stress test.** The parser consumes the committed
+  malformed-byte corpus whole and line by line. The floating source URL is
+  pinned by SHA-256 and a refresh fails on drift:
+  `REGEN=1 dune build @test/interop/utf8/regen-traces`.
 
-A fourth corpus, [SatCSS](test/interop/satcss/) (Hague-Lin-Hong's CSS
-minification benchmark), is regenerated locally and not vendored: the upstream
+The [SatCSS benchmark](bench/satcss/) (Hague-Lin-Hong's CSS minification
+corpus) is regenerated locally and not part of normal tests: the upstream
 repository carries no licence for redistributing the website CSS snapshots.
 
 ## References

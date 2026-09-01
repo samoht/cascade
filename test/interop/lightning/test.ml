@@ -14,8 +14,8 @@
     state such as DOM shape, writing mode, direction, user styles, and runtime
     custom-property mutation.
 
-    Regenerate Lightning inputs and oracle answers with
-    [dune build @@regen-traces].
+    Regenerate Lightning inputs and the package-lock-pinned oracle answers with
+    [REGEN=1 dune build @@test/interop/lightning/regen-traces].
 
     Format of [traces/minify.pairs]: a sequence of length-prefixed records, each
     one:
@@ -32,14 +32,6 @@
     without forcing one feature bucket to run for minutes. The summary surfaces
     enough longer-than-industry outputs to drive arbitrage; for full drilldown
     re-run with [VERBOSE=1] in the env.
-
-    Extra minifier commands can be supplied to [@@regen-traces] with
-    [CASCADE_INTEROP_MINIFIERS], separated by [;;]. Commands must read CSS from
-    stdin and write minified CSS to stdout. Example:
-
-    {v
-    CASCADE_INTEROP_MINIFIERS='esbuild --loader=css --minify;;cleancss -O2 -'
-    v}
 
     Upstream tool bugs are diagnostics only. When a cached upstream minifier
     failure or non-equivalent output is seen, the normal run appends a report to

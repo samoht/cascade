@@ -1,4 +1,8 @@
-let trace_root = "traces"
+(** Manual comparison against locally generated, non-redistributable SatCSS
+    website fixtures. This is deliberately not a normal dune test. *)
+
+let trace_root =
+  if Sys.file_exists "traces" then "traces" else "bench/satcss/traces"
 
 let read_file path =
   let ic = open_in_bin path in

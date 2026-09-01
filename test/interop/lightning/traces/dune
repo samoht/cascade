@@ -3,6 +3,7 @@
  (mode promote)
  (enabled_if
   (= %{env:REGEN=0} 1))
+ (targets minify.pairs)
  (deps
   (source_tree ../scripts))
  (action

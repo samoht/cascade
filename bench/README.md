@@ -91,4 +91,4 @@ candidate indexing visible without including parse or startup allocation.
 
 The SatCSS corpus (Hague, Lin, Hong; TOPLAS 2019) is regenerated locally rather
 than vendored: the upstream repository carries no licence to redistribute the
-website CSS snapshots. See [../test/interop/satcss/](../test/interop/satcss/).
+website CSS snapshots. See [satcss/](satcss/).
