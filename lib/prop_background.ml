@@ -1294,7 +1294,9 @@ let length_to_border_width t (length : length) : border_width =
 
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
-  let read_calc t : border_width = Calc (read_calc read_border_width t) in
+  let read_calc t : border_width =
+    Calc (read_calc ~result_type:`Value read_border_width t)
+  in
   let read_math_arg t = read_calc_expr read_border_width t in
   let read_min t : border_width =
     Min

@@ -962,8 +962,10 @@ let rec read_text_decoration_thickness t =
         ("var", fun t -> Var (read_var read_text_decoration_thickness t));
         ( "calc",
           fun t ->
-            Calc (read_calc (read_non_negative_length ~with_keywords:false) t)
-        );
+            Calc
+              (read_calc ~result_type:`Value
+                 (read_non_negative_length ~with_keywords:false)
+                 t) );
       ]
     ~default:(read_non_negative_length ~with_keywords:false)
     t

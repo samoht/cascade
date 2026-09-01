@@ -523,8 +523,9 @@ difference wherever the two are not equivalent.
 - `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
   constructed millisecond durations and degree hues without running the AST
   optimisation phase (#678)
-- `--minify` keeps zero terms in `calc()` sums unless their units match another
-  term: removing a mixed-unit zero can change the calculation's type (#676)
+- `calc()` keeps type-bearing zero terms with compatible dimensions and rejects
+  incompatible result types at property boundaries, where
+  `width:calc(1px + 0)` used to survive (#676, #731)
 - `--minify` folds a value's spelling before two rules are compared, so rules
   that wrote one declaration two ways factor into one: a component left at its
   longhand's initial in the `border`, `column-rule`, `outline`, `list-style`,

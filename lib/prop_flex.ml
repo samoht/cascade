@@ -289,7 +289,9 @@ let rec read_order t : order =
   let read_calc_order t =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
-      read_calc (fun _ -> Cursor.err t "unexpected value in order calc") t
+      read_calc ~result_type:`Number
+        (fun _ -> Cursor.err t "unexpected value in order calc")
+        t
     in
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> (Int (int_of_float f) : order)
@@ -427,7 +429,8 @@ let rec read_flex_factor t : flex_factor =
     ~calls:
       [
         ("var", fun t -> Var (Values.read_var read_flex_factor t));
-        ("calc", fun t -> Calc (read_calc read_flex_factor t));
+        ( "calc",
+          fun t -> Calc (read_calc ~result_type:`Number read_flex_factor t) );
       ]
     ~default:read_number t
 
@@ -544,7 +547,7 @@ let rec read_flex_basis t : flex_basis =
     ~calls:
       [
         ("var", fun t -> Var (read_var read_flex_basis t));
-        ("calc", fun t -> Calc (read_calc read_flex_basis t));
+        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_flex_basis t));
       ]
     ~default:(fun t ->
       let pos = Cursor.save t in
@@ -566,7 +569,7 @@ module Flex = struct
        number. *)
     if Cursor.looking_at_func "var" t then Var (read_var read_flex_factor t)
     else if Cursor.looking_at_func "calc" t then
-      Calc (read_calc read_flex_factor t)
+      Calc (read_calc ~result_type:`Number read_flex_factor t)
     else Number (read_non_negative_flex_number t)
 
   let read_grow_shrink_basis t =

@@ -1044,7 +1044,8 @@ let rec read_rotate_value t : rotate_value =
     ~calls:
       [
         ("var", fun t -> (Var (read_var read_rotate_value t) : rotate_value));
-        ("calc", fun t -> Angle (Calc (read_calc read_angle t)));
+        ( "calc",
+          fun t -> Angle (Calc (read_calc ~result_type:`Value read_angle t)) );
       ]
     ~default:(fun t ->
       Cursor.one_of

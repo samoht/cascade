@@ -510,7 +510,9 @@ let rec read_stroke_miterlimit t : stroke_miterlimit =
     ~calls:
       [
         ("var", fun t -> Var (Values.read_var read_stroke_miterlimit t));
-        ("calc", fun t -> Calc (read_calc read_stroke_miterlimit t));
+        ( "calc",
+          fun t ->
+            Calc (read_calc ~result_type:`Number read_stroke_miterlimit t) );
       ]
     ~default:(fun t -> (Number (read_miterlimit_number t) : stroke_miterlimit))
     t

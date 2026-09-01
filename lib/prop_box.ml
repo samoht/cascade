@@ -476,7 +476,11 @@ let rec read_opacity t : opacity =
     ~calls:
       [
         ("var", read_var);
-        ("calc", fun t -> Calc (Values.read_calc read_opacity_dim_only t));
+        ( "calc",
+          fun t ->
+            Calc
+              (Values.read_calc ~result_type:`Number_or_value
+                 read_opacity_dim_only t) );
         ("min", read_numeric_math);
         ("max", read_numeric_math);
         ("clamp", read_numeric_math);
@@ -849,7 +853,9 @@ let rec read_z_index t : z_index =
   let read_calc_z t : z_index =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
-      read_calc (fun _ -> Cursor.err t "unexpected value in z-index calc") t
+      read_calc ~result_type:`Number
+        (fun _ -> Cursor.err t "unexpected value in z-index calc")
+        t
     in
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)

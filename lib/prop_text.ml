@@ -1916,7 +1916,9 @@ let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
 
 let rec read_vertical_align t : vertical_align =
   let read_var t : vertical_align = Var (read_var read_vertical_align t) in
-  let read_calc t : vertical_align = Calc (read_calc read_vertical_align t) in
+  let read_calc t : vertical_align =
+    Calc (read_calc ~result_type:`Value read_vertical_align t)
+  in
   Cursor.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
