@@ -171,6 +171,8 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- A sole baseline position in `place-content` is accepted and defaults its
+  omitted `justify-content` slot to `start`, as required by CSS Align (#739)
 - Custom-property declarations containing a `<bad-string-token>` are dropped
   during stylesheet recovery, so minified output no longer swallows the
   containing rule's closing brace when it is parsed again (#727)

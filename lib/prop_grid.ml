@@ -496,6 +496,14 @@ let read_place_content_unsafe t =
     ]
     t
 
+(* CSS Align 3 sec. 7.2: the second value usually copies the first, except a
+   baseline position makes justify-content default to start. *)
+let read_place_content_baseline t =
+  match read_place_align_content t with
+  | (Baseline | First_baseline | Last_baseline) as align ->
+      (Align_justify (align, Start) : place_content)
+  | _ -> Cursor.err_invalid t "place-content baseline"
+
 let read_place_content_single t =
   Cursor.enum "place-content"
     [
@@ -527,6 +535,7 @@ let rec read_place_content t : place_content =
            read_place_content_pair;
            read_place_content_safe;
            read_place_content_unsafe;
+           read_place_content_baseline;
            read_place_content_single;
          ])
     t
