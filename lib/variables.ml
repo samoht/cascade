@@ -1058,7 +1058,11 @@ let vars_of_justify_self (value : Properties.justify_self) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_place_content (value : Properties.place_content) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Align_justify (align, justify) ->
+      vars_of_align_content align @ vars_of_justify_content justify
+  | _ -> []
 
 let vars_of_place_items (value : Properties.place_items) =
   match value with Var v -> [ V v ] | _ -> []

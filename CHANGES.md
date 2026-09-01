@@ -177,11 +177,9 @@ difference wherever the two are not equivalent.
 - Declarations containing a non-empty `var()`, `env()` or `attr()` call defer
   CSS-wide keyword mix validation until substitution, instead of being dropped
   while the substituted token stream is still unknown (#726)
-- A `var()` beside other components keeps the declaration typed, where
-  `border-radius`, `gap`, `transform-origin` and `border-spacing` read the
-  reference as the whole value and fell back to an opaque token stream, so the
-  components next to it lost their folds and `cascade diff --diff=canonical`
-  called two equivalent sheets different (#729)
+- Component `var()` values in `border-radius`, `gap`, `transform-origin`,
+  `border-spacing` and `place-content` stay typed, preserving adjacent folds
+  and variable discovery (#729, #734)
 - `revert-rule` is reserved wherever a grammar accepts a `<custom-ident>`, so
   it no longer survives inside grid line-name lists as an ordinary name (#724)
 - The grid track-list grammars are the ones a browser applies: `grid-auto-rows`

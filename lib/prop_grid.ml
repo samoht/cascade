@@ -396,7 +396,10 @@ let rec pp_place_content : place_content Pp.t =
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_content a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_content j in
-      if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
+      let can_omit_justify =
+        match (a, j) with Var _, _ | _, Var _ -> false | _ -> true
+      in
+      if Pp.minified ctx && can_omit_justify && a_s = j_s then Pp.string ctx a_s
       else (
         Pp.string ctx a_s;
         Pp.space ctx ();
@@ -489,7 +492,7 @@ let read_place_content_single t =
     t
 
 let rec read_place_content t : place_content =
-  Cursor.enum_or_var "place-content"
+  Cursor.enum_or_whole_value_var "place-content"
     [
       ("inherit", (Inherit : place_content));
       ("initial", Initial);
