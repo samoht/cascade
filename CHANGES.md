@@ -743,6 +743,10 @@ difference wherever the two are not equivalent.
   sheet's distant-`@media` merge falls from 24.4M words to 0.4M, and the
   504-file corpus allocates a twentieth less
   (#480, #486, #487, #502, #505, #517, #519, #523, #543, #566)
+- Nested group-rule merges optimize only the newly joined statement list
+  instead of walking already-optimized child blocks again at every ancestor.
+  Doubling the depth of a repeated `@media` merge now doubles optimizer work
+  rather than quadrupling it (#746)
 
 ### Custom properties
 
