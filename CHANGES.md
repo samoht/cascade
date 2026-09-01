@@ -180,6 +180,9 @@ difference wherever the two are not equivalent.
 - Component `var()` values in `border-radius`, `gap`, `transform-origin`,
   `border-spacing` and `place-content` stay typed, preserving adjacent folds
   and variable discovery (#729, #734)
+- Component `var()` values in `place-items`, `grid-auto-flow` and border-image
+  dimensions stay typed, preserving adjacent folds, ASCII keyword handling and
+  variable discovery (#735)
 - `revert-rule` is reserved wherever a grammar accepts a `<custom-ident>`, so
   it no longer survives inside grid line-name lists as an ordinary name (#724)
 - The grid track-list grammars are the ones a browser applies: `grid-auto-rows`

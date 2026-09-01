@@ -909,6 +909,14 @@ val pp_place_items : place_items Pp.t
 val read_place_items : Cursor.t -> place_items
 (** [read_place_items t] is the [place_items] parsed from [t]. *)
 
+val pp_grid_auto_flow_component : grid_auto_flow_component Pp.t
+(** [pp_grid_auto_flow_component] is the pretty-printer for one [grid_auto_flow]
+    component. *)
+
+val read_grid_auto_flow_component : Cursor.t -> grid_auto_flow_component
+(** [read_grid_auto_flow_component t] is one [grid_auto_flow] component parsed
+    from [t]. *)
+
 val pp_grid_auto_flow : grid_auto_flow Pp.t
 (** [pp_grid_auto_flow] is the pretty-printer for [grid_auto_flow]. *)
 

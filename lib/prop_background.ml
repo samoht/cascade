@@ -2127,7 +2127,7 @@ let rec read_border_image_repeat t : border_image_repeat =
     t
 
 let rec read_border_image_width t : border_image_width =
-  Cursor.enum_or_var "border-image-width"
+  Cursor.enum_or_whole_value_var "border-image-width"
     [
       ("inherit", (Inherit : border_image_width));
       ("initial", Initial);
@@ -2143,7 +2143,7 @@ let rec read_border_image_width t : border_image_width =
     t
 
 let rec read_border_image_outset t : border_image_outset =
-  Cursor.enum_or_var "border-image-outset"
+  Cursor.enum_or_whole_value_var "border-image-outset"
     [
       ("inherit", (Inherit : border_image_outset));
       ("initial", Initial);

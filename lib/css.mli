@@ -3894,6 +3894,12 @@ type repeat_count = Properties.repeat_count =
   | Auto_fit
   | Var of repeat_count var
 
+(** One component in a [grid-auto-flow] value. *)
+type grid_auto_flow_component = Properties.grid_auto_flow_component =
+  | Axis of [ `Row | `Column ]
+  | Dense
+  | Var of grid_auto_flow_component var
+
 (** CSS grid-auto-flow values *)
 type grid_auto_flow = Properties.grid_auto_flow =
   | Row
@@ -3901,6 +3907,7 @@ type grid_auto_flow = Properties.grid_auto_flow =
   | Dense
   | Row_dense
   | Column_dense
+  | Components of grid_auto_flow_component list
   | Inherit
   | Initial
   | Unset
