@@ -1487,6 +1487,37 @@ let component_var_keeps_typed_value () =
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
+(* A [var()], [env()] or [attr()] substitutes a token sequence of any length, so
+   such a value need not stand for one component of the grammar around it. The
+   1-4 value box forms assign sides by how many components there are, so
+   dropping a repeat beside a reference changes which sides the substituted
+   tokens reach: with [--m: 1px 2px], [margin: var(--m) 1px 1px 1px] is five
+   components, which is invalid at computed-value time, where the folded
+   [margin: var(--m) 1px 1px] is four and applies. A reference inside a [calc()]
+   is one component whatever it holds, so that one still folds. *)
+let box_shorthand_repeats_keep_substitution () =
+  check_declaration ~expected:"margin:var(--m)1px 1px 1px"
+    ~optimized:"margin:var(--m)1px 1px 1px" "margin: var(--m) 1px 1px 1px";
+  check_declaration ~expected:"padding:var(--p)2px var(--p)2px"
+    ~optimized:"padding:var(--p)2px var(--p)2px"
+    "padding: var(--p) 2px var(--p) 2px";
+  check_declaration ~expected:"margin-inline:var(--m)var(--m)"
+    ~optimized:"margin-inline:var(--m)var(--m)"
+    "margin-inline: var(--m) var(--m)";
+  check_declaration ~expected:"border-radius:var(--r)1px 1px 1px"
+    ~optimized:"border-radius:var(--r)1px 1px 1px"
+    "border-radius: var(--r) 1px 1px 1px";
+  check_declaration ~expected:"border-color:var(--c)red var(--c)red"
+    ~optimized:"border-color:var(--c)red var(--c)red"
+    "border-color: var(--c) red var(--c) red";
+  (* Controls: a reference inside [calc()] is one component, and a list with no
+     reference folds as it did. *)
+  check_declaration ~expected:"margin:calc(var(--m) + 1px)1px 1px 1px"
+    ~optimized:"margin:calc(var(--m) + 1px)1px 1px"
+    "margin: calc(var(--m) + 1px) 1px 1px 1px";
+  check_declaration ~expected:"margin:1px 1px 1px 1px" ~optimized:"margin:1px"
+    "margin: 1px 1px 1px 1px"
+
 (* CSS Tables 3 (ED) writes [border-spacing] as one or two non-negative lengths
    and reads a single one as "both the horizontal and vertical spacing", so a
    pair of equal lengths is the longer spelling of that one value. The per-side
@@ -5298,6 +5329,8 @@ let declaration_tests =
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
     test_case "mask-border mode only" `Quick mask_border_mode_only;
     test_case "box shorthand repeats" `Quick box_shorthand_repeats;
+    test_case "box shorthand repeats keep substitution" `Quick
+      box_shorthand_repeats_keep_substitution;
     test_case "component var keeps typed value" `Quick
       component_var_keeps_typed_value;
     test_case "border-spacing pair" `Quick border_spacing_pair;
