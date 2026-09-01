@@ -1479,6 +1479,11 @@ let component_var_keeps_typed_value () =
   check_declaration ~expected:"border-radius:var(--x)" "border-radius: var(--x)";
   check_declaration ~expected:"border-radius:var(--x) inherit"
     "border-radius: var(--x) inherit";
+  (* CSS Values 4 sec. 4.1 makes a keyword ASCII case-insensitive, so a typed
+     read answers with the keyword where an opaque stream keeps the case the
+     author wrote. *)
+  check_specified_value "place-content reads its components"
+    "place-content: var(--p) CENTER" "var(--p) center";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
