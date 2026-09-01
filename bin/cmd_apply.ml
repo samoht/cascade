@@ -146,6 +146,21 @@ let term = Term.(const run $ minimal_arg $ html_arg $ css_arg $ const ())
 
 let cmd =
   let doc = "Resolve a stylesheet into an HTML page's inline styles" in
+  let exits =
+    Cli_exit.with_defaults
+      [
+        Cmd.Exit.info
+          ~doc:"on success, including a parse that recovered some of the input"
+          0;
+        Cmd.Exit.info
+          ~doc:
+            "if a $(b,<style>) block or $(i,EXTRA.css) parsed to nothing; the \
+             page is still written, without those styles"
+          1;
+        Cmd.Exit.info ~doc:"on command-line errors or unreadable input files"
+          124;
+      ]
+  in
   let man =
     [
       `S Manpage.s_description;
@@ -163,13 +178,6 @@ let cmd =
          element is a sibling like any other, and a kept rule may select \
          across it. A block the parser cannot use keeps its text as well, \
          rather than being emptied along with the blocks that were projected.";
-      `S Manpage.s_exit_status;
-      `P "$(tname) exits with:";
-      `I ("0", "on success, including a parse that recovered some of the input");
-      `I
-        ( "1",
-          "if a $(b,<style>) block or $(i,EXTRA.css) parsed to nothing; the \
-           page is still written, without those styles" );
     ]
   in
-  Cmd.v (Cmd.info "apply" ~doc ~man) Term.(term_result term)
+  Cmd.v (Cmd.info "apply" ~doc ~man ~exits) Term.(term_result term)

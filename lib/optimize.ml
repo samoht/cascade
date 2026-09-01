@@ -38,10 +38,6 @@ let preserve_list = List.preserve
 let rule_with_nested (rule : rule) nested =
   if nested == rule.nested then rule else { rule with nested }
 
-let rule_with_declarations_and_nested (rule : rule) declarations nested =
-  if declarations == rule.declarations && nested == rule.nested then rule
-  else { rule with declarations; nested }
-
 type packed_property = Edge.packed_property =
   | Packed : 'a Properties.property -> packed_property
 
@@ -684,21 +680,6 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
      list of the at-rules that came to mind. *)
   map_declarations promote_decls stmts
 
-(* Compressibility pass: put each rule's declarations in a deterministic
-   cross-rule order so gzip back-references line up, keeping cascade-significant
-   (overlapping) pairs in place. A transfer-objective win, so gated to it. *)
-let canonicalize_declaration_order stmts =
-  let rec walk_stmt (stmt : statement) : statement =
-    match stmt with
-    | Rule r ->
-        let declarations = Rule_order.canonical_declarations r.declarations in
-        let nested = list_map_preserve walk_stmt r.nested in
-        let r' = rule_with_declarations_and_nested r declarations nested in
-        if r' == r then stmt else Rule r'
-    | stmt -> map_statement_children (list_map_preserve walk_stmt) stmt
-  in
-  list_map_preserve walk_stmt stmts
-
 (* Under closed-stylesheet scope every [@position-try --name] rule is known. A
    [position-try-fallbacks] entry whose name has no matching rule cannot match
    at runtime, so prune unknown [Name] arms (keeping [Flip_*] and [Var]). When
@@ -961,9 +942,6 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let result =
     if prune_unused_custom_props then drop_unused_custom_props result
     else result
-  in
-  let result =
-    if lossless then canonicalize_declaration_order result else result
   in
   Log.debug (fun m ->
       let c = (Stats.snapshot (Ctx.stats ctx)).counters in

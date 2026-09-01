@@ -1227,14 +1227,18 @@ let test_lossless_declaration_order () =
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
-  (* Default keeps source order; --lossless sorts declarations into a canonical
-     cross-rule order for gzip alignment. *)
+  (* Both modes keep authored declaration order. [--lossless] narrows the
+     transforms allowed by minification; it does not opt into a CSSOM-visible
+     canonical order. *)
   Alcotest.(check string)
     "default keeps source order" ".a{width:1px;color:red}"
     (opt ".a{width:1px;color:red}");
   Alcotest.(check string)
-    "lossless sorts independent declarations" ".a{color:red;width:1px}"
+    "lossless keeps authored order" ".a{width:1px;color:red}"
     (opt ~lossless:true ".a{width:1px;color:red}");
+  Alcotest.(check string)
+    "lossless keeps reverse authored order" ".a{color:red;width:1px}"
+    (opt ~lossless:true ".a{color:red;width:1px}");
   (* Overlapping declarations keep their relative order (cascade-significant):
      border-top before border-color decides the top colour. *)
   Alcotest.(check string)

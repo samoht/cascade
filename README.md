@@ -4,20 +4,36 @@ A command-line tool for **formatting**, **minifying**, **inlining**,
 **structurally diffing**, and **pruning** CSS. Ships one binary (`cascade`)
 and, for OCaml users, the library it is built on.
 
-```text
-$ cascade --minify style.css > style.min.css
-$ cascade diff a.css b.css
+<!-- $MDX skip -->
+```bash
+cascade --minify style.css > style.min.css
+cascade diff a.css b.css
 ```
+
+Default minification is practical, not byte-for-byte preservation: it targets
+maintained evergreen browsers and may approximate colours within `0.002`
+Delta-EOK. Parsing and serialisation also normalise raw token spelling,
+including CSSOM-observable custom-property strings. For a more conservative
+contract, disable approximation and browser-baseline assumptions:
+
+<!-- $MDX skip -->
+```bash
+opam exec -- cascade --minify --lossless --enforce-spec style.css
+```
+
+That combination retains authored declaration order, but it still does not
+preserve comments, whitespace, exact source spelling, or every CSSOM-visible
+string.
 
 Cascade works from a typed CSS AST rather than the raw text, so every command
 emits valid CSS by construction and reasons about the cascade instead of
-guessing from bytes. `cascade fmt --minify` applies only cascade-safe transforms
-(deduplication, rule merging, selector grouping, colour and value
-canonicalisation), and optimises for the bytes that actually ship: compressed
-transfer size rather than raw length. `cascade diff` compares the parsed
-structure, so a refactor that reorders rules or regroups declarations without
-changing what they compute reads as no difference rather than a wall of red and
-green. The same engine backs the `cascade` OCaml library.
+guessing from bytes. `cascade fmt --minify` uses cascade analysis for structural
+transforms (deduplication, rule merging, and selector grouping), canonicalises
+colours and values under the contract above, and optimises for the bytes that
+actually ship: compressed transfer size rather than raw length. `cascade diff`
+compares the parsed structure, so a refactor that reorders rules or regroups
+declarations without changing what they compute reads as no difference rather
+than a wall of red and green. The same engine backs the `cascade` OCaml library.
 
 On the SatCSS corpus of real-world stylesheets, cascade is competitive on both
 size and speed; the head-to-head numbers are in [BENCHMARKS.md](BENCHMARKS.md).
@@ -92,12 +108,13 @@ cat style.css | cascade -                                          # read stdin
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
-| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Also sorts each rule's declarations into a canonical cross-rule order (keeping cascade-significant pairs in place) so gzip back-references line up. Has no effect without `--minify`. |
+| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. This is about the HTML, where `--scope` is about how much of the CSS you control; see [Scope](#scope). Has no effect without `--minify`. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. |
-| `--inline-imports` | Resolve `@import` against files relative to the input. Closed-world: assumes you control file resolution. |
+| `--inline-imports` | Resolve `@import` against files relative to the input. Without `--import-root`, this may read any local path available to the process and is unsafe for untrusted CSS. |
+| `--import-root=DIR` | Restrict `--inline-imports` to the canonical root and its descendants. Lexical `..` and symlink escapes are rejected; relative roots are resolved from the current working directory. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation of the variables it inlines. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
 | `--profile` | Print the optimiser's global factoring fixpoint to stderr after the run: one row per iteration with the rules, bytes and time on each side, then the committed savings and the preflight's own counters. Useful to triage a slow input. Has no effect without `--minify`. |
@@ -400,11 +417,10 @@ its canonical spelling and is not gated by that tolerance.
 
 Pass `--lossless` to keep colour values exact: hex/named canonicalisation and
 modern-syntax rewrites still run, but channel rounding, within-budget
-modern-space folds, and static `color-mix()` resolution are disabled. It also
-sorts each rule's declarations into one canonical order across the stylesheet,
-keeping any two whose footprints overlap (same property, or a shorthand and a
-longhand) in place, so gzip back-references line up; the reorder never changes
-a computed value.
+modern-space folds, and static `color-mix()` resolution are disabled.
+Otherwise-independent declarations retain their authored order rather than
+being sorted for compression, preserving their order in stylesheet text and
+CSSOM enumeration.
 
 ### Scope
 

@@ -171,6 +171,8 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- A sole baseline position in `place-content` is accepted and defaults its
+  omitted `justify-content` slot to `start`, as required by CSS Align (#739)
 - Custom-property declarations containing a `<bad-string-token>` are dropped
   during stylesheet recovery, so minified output no longer swallows the
   containing rule's closing brace when it is parsed again (#727)
@@ -493,6 +495,12 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- The README states the default minifier's evergreen target, colour tolerance,
+  and CSSOM-visible normalisation beside its first example, and describes
+  `--lossless --enforce-spec` as conservative rather than source-exact (#743)
+- Lossless optimization keeps otherwise-independent declarations in authored
+  order, so stylesheet text and CSSOM enumeration no longer change solely for
+  gzip alignment (#742)
 - Numeric tokens in custom-property and unknown-property declaration streams
   use their shortest exact spelling, so `--x: 1.0px` becomes `--x:1px` without
   changing adjacent token boundaries. Declaration feature queries keep the
@@ -961,6 +969,12 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
+  the canonical root and its descendants, rejecting both lexical and symlink
+  escapes. Omitting it retains unrestricted resolution for trusted CSS (#744)
+- CLI help lists each option and exit status once, and `cascade prune --help`
+  classifies representative selectors through the resolver instead of naming
+  `:nth-child()` as unsupported (#740)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, and `--dry-run` reports instead, ranking what survives
   by how few elements matched it. A rule goes only when the matcher has a model

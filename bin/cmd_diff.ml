@@ -277,42 +277,6 @@ let man =
     `I ("-", "Property value changes");
     `I ("-", "Reordered rules");
     `I ("-", "Changes in @media, @layer, and other at-rules");
-    `S Manpage.s_options;
-    `P "The --diff option controls the comparison mode:";
-    `I
-      ( "--diff=auto",
-        "Smart detection: use tree diff for structural changes, string diff \
-         otherwise (default)" );
-    `I
-      ( "--diff=tree",
-        "Force structural tree-based diff (useful for debugging CSS parser \
-         behavior)" );
-    `I
-      ( "--diff=string",
-        "Force character-by-character string diff (faster, less intelligent)" );
-    `I
-      ( "--diff=canonical",
-        "Compare canonical minified CSS before reporting a diff" );
-    `I
-      ( "--depth=auto|max|N",
-        "Levels of the difference tree to print. $(b,auto) (default) prints it \
-         whole while it stays short, then falls back to the deepest level that \
-         fits; $(b,max) always prints it whole; an integer pins a level. Cut \
-         subtrees are marked with the number of lines hidden." );
-    `I
-      ( "--lossless",
-        "Disable colour approximation under $(b,--diff=canonical): colour \
-         channels keep their authored precision and static modern colour-space \
-         values stay functional. No effect outside canonical mode." );
-    `S Manpage.s_exit_status;
-    `P "$(tname) exits with:";
-    `I ("0", "if the CSS files are identical");
-    `I
-      ( "1",
-        "if the CSS files differ. Under $(b,--diff=canonical) that is any \
-         difference between their canonical forms, whether or not the \
-         structural walk reached it" );
-    `I ("124", "on command-line errors or unreadable input files");
     `S Manpage.s_examples;
     `P "Compare two CSS files:";
     `Pre "  cascade diff reference.css output.css";
@@ -324,4 +288,18 @@ let man =
 
 let cmd =
   let doc = "Compare two CSS files with structural analysis" in
-  Cmd.v (Cmd.info "diff" ~doc ~man ~envs:[ no_color_env ]) term
+  let exits =
+    Cli_exit.with_defaults
+      [
+        Cmd.Exit.info ~doc:"if the CSS files are identical" 0;
+        Cmd.Exit.info
+          ~doc:
+            "if the CSS files differ. Under $(b,--diff=canonical) that is any \
+             difference between their canonical forms, whether or not the \
+             structural walk reached it"
+          1;
+        Cmd.Exit.info ~doc:"on command-line errors or unreadable input files"
+          124;
+      ]
+  in
+  Cmd.v (Cmd.info "diff" ~doc ~man ~envs:[ no_color_env ] ~exits) term

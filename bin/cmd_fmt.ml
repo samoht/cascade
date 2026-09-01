@@ -34,14 +34,14 @@ let report_profile (report : Stats.snapshot) =
   print_iteration_profile report;
   print_factor_profile_footer report.counters
 
-let resolve_inline_imports ~input_path stylesheet =
+let resolve_inline_imports ~input_path ~import_root stylesheet =
   if input_path = "-" then begin
     Fmt.epr
       "Error: --inline-imports requires a file path (cannot resolve relative \
        URLs from stdin)@.";
     Stdlib.exit 1
   end
-  else Cli_inline_imports.run ~base_url:input_path stylesheet
+  else Cli_inline_imports.run ~base_url:input_path ~import_root stylesheet
 
 let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   let buf = Buffer.create 4096 in
@@ -51,14 +51,15 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   Buffer.output_buffer stdout buf
 
 let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
-    ~enforce_spec ~closed_world ~objective ~inline_imports_flag
+    ~enforce_spec ~closed_world ~objective ~inline_imports_flag ~import_root
     ~inline_vars_flag ~keep_vars ~profile =
   try
     let input = Cli_io.read_input ~enforce_spec input_path in
     Cli_io.check_not_all_dropped input;
     let stylesheet = input.Cli_io.stylesheet in
     let stylesheet =
-      if inline_imports_flag then resolve_inline_imports ~input_path stylesheet
+      if inline_imports_flag then
+        resolve_inline_imports ~input_path ~import_root stylesheet
       else stylesheet
     in
     let stylesheet =
@@ -147,9 +148,9 @@ let lossless_arg =
     "Disable colour approximation under $(b,--minify). Exact colour \
      canonicalisation still runs, but static modern colour-space and \
      color-mix() values stay functional and colour channels keep their normal \
-     serialisation precision. Also sorts each rule's declarations into a \
-     canonical cross-rule order (keeping cascade-significant pairs in place) \
-     so gzip back-references line up. Has no effect without $(b,--minify)."
+     serialisation precision. Otherwise-independent declarations retain their \
+     authored order rather than being sorted for compression. Has no effect \
+     without $(b,--minify)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
@@ -180,10 +181,20 @@ let flatten_nesting_arg =
 let inline_imports_arg =
   let doc =
     "Inline [@import] rules by reading the referenced files from disk \
-     (relative to the input file). Closed-world: assumes you control file \
-     resolution."
+     (relative to the input file). Without $(b,--import-root), any local path \
+     accessible to the process may be read, which is unsafe for untrusted CSS."
   in
   Arg.(value & flag & info [ "inline-imports" ] ~doc)
+
+let import_root_arg =
+  let doc =
+    "Restrict files read by $(b,--inline-imports) to $(docv) itself and its \
+     descendants. The root and every imported path are canonicalised before \
+     containment is checked, so lexical [..] and symlink escapes are rejected. \
+     Relative roots are interpreted from the current working directory. Has no \
+     effect without $(b,--inline-imports)."
+  in
+  Arg.(value & opt (some string) None & info [ "import-root" ] ~docv:"DIR" ~doc)
 
 let inline_vars_arg =
   let doc =
@@ -244,6 +255,7 @@ let term =
         closed_world
         objective
         inline_imports_flag
+        import_root
         inline_vars_flag
         keep_vars_str
         profile
@@ -259,6 +271,9 @@ let term =
         end;
         if keep_vars <> [] && not inline_vars_flag then
           Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
+        if Option.is_some import_root && not inline_imports_flag then
+          Fmt.epr
+            "Warning: --import-root has no effect without --inline-imports@.";
         (* --enforce-spec is excluded: it also gates the parser's non-ASCII
            ident range, which acts with or without --minify. *)
         warn_minify_only ~minify
@@ -271,10 +286,11 @@ let term =
           ];
         process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
           ~enforce_spec ~closed_world ~objective ~inline_imports_flag
-          ~inline_vars_flag ~keep_vars ~profile)
+          ~import_root ~inline_vars_flag ~keep_vars ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ closed_world_arg $ objective_arg $ inline_imports_arg
-    $ inline_vars_arg $ keep_vars_arg $ profile_arg $ Cli_log.term)
+    $ import_root_arg $ inline_vars_arg $ keep_vars_arg $ profile_arg
+    $ Cli_log.term)
 
 let man =
   [
@@ -289,16 +305,9 @@ let man =
        preflight predicts useful savings.";
     `P
       "The two $(b,--inline-*) flags are explicit closed-world opt-ins: \
-       $(b,--inline-imports) assumes you control file resolution and \
-       $(b,--inline-vars) assumes no runtime mutation of custom properties.";
-    `S Manpage.s_exit_status;
-    `P "$(tname) exits with:";
-    `I ("0", "on success, including a parse that recovered some of the input");
-    `I
-      ( "1",
-        "if the input cannot be read, or if parse recovery left no statement \
-         at all. An output that is empty because the stylesheet held nothing a \
-         browser acts on is a success" );
+       $(b,--inline-imports) assumes you control file resolution unless \
+       $(b,--import-root) bounds it, and $(b,--inline-vars) assumes no runtime \
+       mutation of custom properties.";
     `S Manpage.s_examples;
     `P "Pretty-print a CSS file:";
     `Pre "  cascade fmt style.css";
@@ -306,6 +315,8 @@ let man =
     `Pre "  cascade fmt --minify style.css";
     `P "Inline [@import]s and [var()] references, then minify:";
     `Pre "  cascade fmt --inline-imports --inline-vars --minify style.css";
+    `P "Inline only imports contained by [assets/css]:";
+    `Pre "  cascade fmt --inline-imports --import-root assets/css style.css";
     `P "Keep [--theme] and [--brand] as live var() references:";
     `Pre "  cascade fmt --inline-vars --keep-vars=theme,brand style.css";
     `P "Read from stdin and minify:";
@@ -314,4 +325,18 @@ let man =
 
 let cmd =
   let doc = "Format, minify, and inline CSS files" in
-  Cmd.v (Cmd.info "fmt" ~doc ~man) term
+  let exits =
+    Cli_exit.with_defaults
+      [
+        Cmd.Exit.info
+          ~doc:"on success, including a parse that recovered some of the input"
+          0;
+        Cmd.Exit.info
+          ~doc:
+            "if the input cannot be read, or if parse recovery left no \
+             statement at all. An output that is empty because the stylesheet \
+             held nothing a browser acts on is a success"
+          1;
+      ]
+  in
+  Cmd.v (Cmd.info "fmt" ~doc ~man ~exits) term
