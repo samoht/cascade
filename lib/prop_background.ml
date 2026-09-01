@@ -225,7 +225,8 @@ let rec pp_border_radius : border_radius Pp.t =
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
   let group =
-    normalize_box_shorthand (Values.normalize_length_percentage ~strip)
+    normalize_box_shorthand ~is_substitution:is_lp_substitution
+      (Values.normalize_length_percentage ~strip)
   in
   match value with
   | Radius { horizontal; vertical } ->
@@ -233,8 +234,10 @@ let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
       let vertical = option_map_preserve group vertical in
       let vertical =
         match vertical with
-        | Some vs when List.equal Values.equal_length_percentage horizontal vs
-          ->
+        | Some vs
+          when (not (List.exists is_lp_substitution horizontal))
+               && (not (List.exists is_lp_substitution vs))
+               && List.equal Values.equal_length_percentage horizontal vs ->
             Option.None
         | _ -> vertical
       in
@@ -1294,7 +1297,9 @@ let length_to_border_width t (length : length) : border_width =
 
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
-  let read_calc t : border_width = Calc (read_calc read_border_width t) in
+  let read_calc t : border_width =
+    Calc (read_calc ~result_type:`Value read_border_width t)
+  in
   let read_math_arg t = read_calc_expr read_border_width t in
   let read_min t : border_width =
     Min
@@ -2125,7 +2130,7 @@ let rec read_border_image_repeat t : border_image_repeat =
     t
 
 let rec read_border_image_width t : border_image_width =
-  Cursor.enum_or_var "border-image-width"
+  Cursor.enum_or_whole_value_var "border-image-width"
     [
       ("inherit", (Inherit : border_image_width));
       ("initial", Initial);
@@ -2141,7 +2146,7 @@ let rec read_border_image_width t : border_image_width =
     t
 
 let rec read_border_image_outset t : border_image_outset =
-  Cursor.enum_or_var "border-image-outset"
+  Cursor.enum_or_whole_value_var "border-image-outset"
     [
       ("inherit", (Inherit : border_image_outset));
       ("initial", Initial);

@@ -744,12 +744,18 @@ type place_items =
   | Var of place_items var
 
 (* Grid Types *)
+type grid_auto_flow_component =
+  | Axis of [ `Row | `Column ]
+  | Dense
+  | Var of grid_auto_flow_component var
+
 type grid_auto_flow =
   | Row
   | Column
   | Dense
   | Row_dense
   | Column_dense
+  | Components of grid_auto_flow_component list
   | Inherit
   | Initial
   | Unset

@@ -407,6 +407,10 @@ let check_content = check_value_cursor "content" read_content pp_content
 let check_grid_auto_flow =
   check_value_cursor "grid-auto-flow" read_grid_auto_flow pp_grid_auto_flow
 
+let check_grid_auto_flow_component =
+  check_value_cursor "grid-auto-flow component" read_grid_auto_flow_component
+    pp_grid_auto_flow_component
+
 let check_grid_template =
   check_value_cursor "grid-template" read_grid_template pp_grid_template
 
@@ -1811,6 +1815,14 @@ let test_grid_auto_flow () =
   (* opposite of dense, not valid *)
   (* not a valid value *)
   neg_cursor read_grid_auto_flow "horizontal"
+
+let test_grid_auto_flow_component () =
+  check_grid_auto_flow_component "row";
+  check_grid_auto_flow_component "column";
+  check_grid_auto_flow_component "dense";
+  check_grid_auto_flow_component "var(--flow,dense)";
+  neg_cursor read_grid_auto_flow_component "auto-flow";
+  neg_cursor read_grid_auto_flow_component "sparse"
 
 let test_background_box () =
   check_background_box "border-box";
@@ -5161,6 +5173,7 @@ let tests =
       enum_readers_accept_leading_ws;
     test_case "property names" `Quick test_property_names;
     (* Additional coverage for missing readers *)
+    test_case "grid auto-flow component" `Quick test_grid_auto_flow_component;
     test_case "grid auto-flow" `Quick test_grid_auto_flow;
     test_case "grid template" `Quick test_grid_template;
     test_case "grid template areas" `Quick test_grid_template_areas;

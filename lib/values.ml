@@ -5678,8 +5678,55 @@ and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       (Cursor.call "-webkit-calc" t (fun inner -> read_calc_expr read_a inner))
   else Cursor.err t "expected nested calc"
 
-let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
- fun read_a t ->
+type inferred_calc_type =
+  | Dimension of int
+    (* Exponent 0 is a number, 1 is the contextual numeric value, and
+       multiplication/division add/subtract exponents. This retains valid
+       cancellation such as [1 / (1 / 50px)]. *)
+  | Deferred
+  | Invalid
+
+let rec infer_calc_type : type a. a calc -> inferred_calc_type = function
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> Dimension 0
+  | Val _ -> Dimension 1
+  (* A var() is substituted before a math function is type-checked. The generic
+     math-function AST does not retain enough result-type information to prove
+     its type here either, so both stay deferred rather than being guessed. *)
+  | Var _ | Math_fn _ -> Deferred
+  | Nested inner | Parens inner -> infer_calc_type inner
+  | Expr (left, (Add | Sub), right) -> (
+      match (infer_calc_type left, infer_calc_type right) with
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> if l = r then Dimension l else Invalid)
+  | Expr (left, Mul, right) -> (
+      match (infer_calc_type left, infer_calc_type right) with
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> Dimension (l + r))
+  | Expr (left, Div, right) -> (
+      match (infer_calc_type left, infer_calc_type right) with
+      | Invalid, _ | _, Invalid -> Invalid
+      | Deferred, _ | _, Deferred -> Deferred
+      | Dimension l, Dimension r -> Dimension (l - r))
+
+let validate_calc_type t result_type calc =
+  let inferred = infer_calc_type calc in
+  let accepted =
+    match (result_type, inferred) with
+    | _, Deferred -> true
+    | `Number, Dimension 0 | `Value, Dimension 1 -> true
+    | `Number_or_value, (Dimension 0 | Dimension 1) -> true
+    | (`Number | `Value | `Number_or_value), (Invalid | Dimension _) -> false
+  in
+  if not accepted then Cursor.err_invalid t "incompatible calc types"
+
+let read_calc : type a.
+    ?result_type:[ `Number | `Number_or_value | `Value ] ->
+    (Cursor.t -> a) ->
+    Cursor.t ->
+    a calc =
+ fun ?result_type read_a t ->
   Cursor.ws t;
   let read name =
     Cursor.call name t (fun inner ->
@@ -5689,6 +5736,9 @@ let read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
            be rejected. *)
         Cursor.ws inner;
         Cursor.expect_eof inner;
+        Option.iter
+          (fun result_type -> validate_calc_type inner result_type result)
+          result_type;
         result)
   in
   if Cursor.looking_at_func "calc" t then read "calc"
@@ -5775,7 +5825,7 @@ and read_calc_length ~with_keywords t : length =
   if Cursor.looking_at_calc t then
     (* Same exception as [read_length_percentage]: inside [calc()] the
        non-negative constraint applies to the resolved value. *)
-    Calc (read_calc (read_length ~with_keywords) t)
+    Calc (read_calc ~result_type:`Value (read_length ~with_keywords) t)
   else Cursor.err t "expected calc"
 
 and read_env_length ~allow_negative ~with_keywords t : length =
@@ -6007,7 +6057,9 @@ let read_percentage_float t : float =
 let rec read_alpha t : alpha =
   Cursor.ws t;
   let read_var_alpha t : alpha = Var (read_var read_alpha t) in
-  let read_calc_alpha t : alpha = Calc (read_calc read_alpha t) in
+  let read_calc_alpha t : alpha =
+    Calc (read_calc ~result_type:`Number_or_value read_alpha t)
+  in
   let read_none t : alpha =
     Cursor.expect_string "none" t;
     None
@@ -6171,7 +6223,8 @@ let rec read_color_component t : component =
     Cursor.expect_string "none" t;
     Component_none)
   else if Cursor.looking_at t "var(" then Var (read_var read_color_component t)
-  else if Cursor.looking_at_calc t then Calc (read_calc read_color_component t)
+  else if Cursor.looking_at_calc t then
+    Calc (read_calc ~result_type:`Number_or_value read_color_component t)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -6365,7 +6418,7 @@ let rec read_angle_with ~unitless_zero t : angle =
   if Cursor.looking_at t "var(" then
     Var (read_var (read_angle_with ~unitless_zero) t)
   else if Cursor.looking_at_calc t then
-    Calc (read_calc (read_angle_with ~unitless_zero) t)
+    Calc (read_calc ~result_type:`Value (read_angle_with ~unitless_zero) t)
   else if Cursor.looking_at_func "round" t then
     read_angle_round (read_angle_with ~unitless_zero) t
   else if Cursor.looking_at_func "rem" t then
@@ -6597,7 +6650,7 @@ let rec read_percentage_in_color_mix t : percentage =
     (* CSS Color 5 sec. 3: the weight may be a math function. We can't
        bound-check a [calc()] statically (it may carry a [var()]), so we keep it
        verbatim and let substitution-time clamping apply. *)
-    Calc (read_calc read_color_mix_calc_pct t)
+    Calc (read_calc ~result_type:`Value read_color_mix_calc_pct t)
   else
     let n = Cursor.pct t in
     if n < 0. || n > 100. then
@@ -6614,7 +6667,7 @@ let read_optional_percentage t : percentage option =
   if Cursor.looking_at t "var(" then
     Some (Var (read_var read_percentage_in_color_mix t))
   else if Cursor.looking_at_calc t then
-    Some (Calc (read_calc read_color_mix_calc_pct t))
+    Some (Calc (read_calc ~result_type:`Value read_color_mix_calc_pct t))
   else
     match Cursor.percentage_opt t with
     | Some n ->
@@ -7124,7 +7177,9 @@ let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
     ~calls:
       [
         ("var", fun t -> Var (read_var read_duration_self t));
-        ("calc", fun t -> Calc (read_calc read_duration_in_calc t));
+        ( "calc",
+          fun t -> Calc (read_calc ~result_type:`Value read_duration_in_calc t)
+        );
         ("round", read_duration_round read_duration_self);
         ( "rem",
           read_duration_binary_call "rem"
@@ -7155,7 +7210,8 @@ let rec read_time_with ?(css_wide = true) t : duration =
     ~calls:
       [
         ("var", fun t -> Var (read_var read_time t));
-        ("calc", fun t -> Calc (read_calc read_time_in_calc t));
+        ( "calc",
+          fun t -> Calc (read_calc ~result_type:`Value read_time_in_calc t) );
         ("round", read_duration_round read_time);
         ( "rem",
           read_duration_binary_call "rem" (fun a b -> Rem (a, b)) read_time );
@@ -7215,7 +7271,7 @@ and read_number_function t =
       | "var" -> Some (Var (read_var read_number t))
       | "calc" ->
           let read_number_dim_only t = Cursor.err t "expected numeric factor" in
-          Some (Calc (read_calc read_number_dim_only t))
+          Some (Calc (read_calc ~result_type:`Number read_number_dim_only t))
       | "min" ->
           Some
             (Num
@@ -7316,7 +7372,8 @@ let read_transition_behavior t : transition_behavior =
 let rec read_percentage t : percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_percentage t)
-  else if Cursor.looking_at_calc t then Calc (read_calc read_percentage t)
+  else if Cursor.looking_at_calc t then
+    Calc (read_calc ~result_type:`Value read_percentage t)
   else Pct (Cursor.pct t)
 
 (* CSS Values 4 sec. 10.4: math functions that produce a non-length type ([asin]
@@ -7379,7 +7436,8 @@ and read_length_percentage_calc ~with_keywords t : length_percentage =
        allowed even when the surrounding property is non-negative; the
        non-negative constraint applies to the resolved value, not to inner
        operands. *)
-    Calc (read_calc (read_length_percentage ~with_keywords) t)
+    Calc
+      (read_calc ~result_type:`Value (read_length_percentage ~with_keywords) t)
   else Cursor.err t "expected calc"
 
 (** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw
@@ -7401,7 +7459,8 @@ let rec read_number_percentage t : number_percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
   else if Cursor.looking_at_calc t then
-    Calc (read_calc read_number_percentage_dim_only t)
+    Calc
+      (read_calc ~result_type:`Number_or_value read_number_percentage_dim_only t)
   else if
     Cursor.looking_at_func "min" t
     || Cursor.looking_at_func "max" t
@@ -7845,7 +7904,8 @@ let read_calc_op t : calc_op =
 let rec read_component t : component =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_component t)
-  else if Cursor.looking_at_calc t then Calc (read_calc read_component t)
+  else if Cursor.looking_at_calc t then
+    Calc (read_calc ~result_type:`Number_or_value read_component t)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with

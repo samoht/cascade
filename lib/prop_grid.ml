@@ -21,6 +21,13 @@ open Prop_align
 let normalize_grid_auto_flow : grid_auto_flow -> grid_auto_flow =
  fun value -> match value with Row_dense -> Dense | other -> other
 
+let rec pp_grid_auto_flow_component : grid_auto_flow_component Pp.t =
+ fun ctx -> function
+  | Axis `Row -> Pp.string ctx "row"
+  | Axis `Column -> Pp.string ctx "column"
+  | Dense -> Pp.string ctx "dense"
+  | Var v -> pp_var pp_grid_auto_flow_component ctx v
+
 let rec pp_grid_auto_flow : grid_auto_flow Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_grid_auto_flow ctx v
@@ -29,6 +36,8 @@ let rec pp_grid_auto_flow : grid_auto_flow Pp.t =
   | Dense -> Pp.string ctx "dense"
   | Row_dense -> Pp.string ctx "row dense"
   | Column_dense -> Pp.string ctx "column dense"
+  | Components components ->
+      Pp.list ~sep:Pp.space pp_grid_auto_flow_component ctx components
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -145,6 +154,14 @@ let pp_grid_auto_flow_shorthand ctx = function
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_grid_auto_flow ctx v
+  | Components components ->
+      let pp_component ctx (component : grid_auto_flow_component) =
+        match component with
+        | Axis (`Row | `Column) -> Pp.string ctx "auto-flow"
+        | Dense -> Pp.string ctx "dense"
+        | Var v -> pp_var pp_grid_auto_flow_component ctx v
+      in
+      Pp.list ~sep:Pp.space pp_component ctx components
 
 let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
@@ -396,7 +413,10 @@ let rec pp_place_content : place_content Pp.t =
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_content a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_content j in
-      if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
+      let can_omit_justify =
+        match (a, j) with Var _, _ | _, Var _ -> false | _ -> true
+      in
+      if Pp.minified ctx && can_omit_justify && a_s = j_s then Pp.string ctx a_s
       else (
         Pp.string ctx a_s;
         Pp.space ctx ();
@@ -428,7 +448,10 @@ let rec pp_place_items : place_items Pp.t =
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
       (* CSS Align 3 sec. 7.3: when align and justify render to the same token,
          the single-value spelling is canonical. *)
-      if Pp.minified ctx && a_s = j_s then Pp.string ctx a_s
+      let can_omit_justify =
+        match (a, j) with Var _, _ | _, Var _ -> false | _ -> true
+      in
+      if Pp.minified ctx && can_omit_justify && a_s = j_s then Pp.string ctx a_s
       else (
         Pp.string ctx a_s;
         Pp.space ctx ();
@@ -489,7 +512,7 @@ let read_place_content_single t =
     t
 
 let rec read_place_content t : place_content =
-  Cursor.enum_or_var "place-content"
+  Cursor.enum_or_whole_value_var "place-content"
     [
       ("inherit", (Inherit : place_content));
       ("initial", Initial);
@@ -565,6 +588,11 @@ let read_place_items_first t =
 let read_place_items_default t =
   if Cursor.looking_at t "safe" then read_place_items_safe t
   else if Cursor.looking_at t "stretch" then read_place_items_stretch t
+  else if Cursor.looking_at_func "var" t then (
+    let align = read_align_items t in
+    Cursor.ws t;
+    let justify = read_justify_items t in
+    Align_justify (align, justify))
   else
     let first = read_place_items_first t in
     Cursor.ws t;
@@ -577,7 +605,7 @@ let read_place_items_default t =
 
 let rec read_place_items t : place_items =
   Cursor.ws t;
-  Cursor.enum_or_var "place-items"
+  Cursor.enum_or_whole_value_var "place-items"
     [
       ("inherit", (Inherit : place_items));
       ("initial", Initial);
@@ -588,8 +616,33 @@ let rec read_place_items t : place_items =
     ~var:(fun t -> Var (read_var read_place_items t))
     ~default:read_place_items_default t
 
+let rec read_grid_auto_flow_component t : grid_auto_flow_component =
+  Cursor.enum_or_var "grid-auto-flow component"
+    [
+      ("row", (Axis `Row : grid_auto_flow_component));
+      ("column", Axis `Column);
+      ("dense", Dense);
+    ]
+    ~var:(fun t -> Var (read_var read_grid_auto_flow_component t))
+    t
+
+let grid_auto_flow_of_components t (components : grid_auto_flow_component list)
+    =
+  match components with
+  | [ Axis `Row ] -> Row
+  | [ Axis `Column ] -> Column
+  | [ Dense ] -> Dense
+  | [ Axis `Row; Dense ] | [ Dense; Axis `Row ] -> Row_dense
+  | [ Axis `Column; Dense ] | [ Dense; Axis `Column ] -> Column_dense
+  | components
+    when List.exists
+           (function (Var _ : grid_auto_flow_component) -> true | _ -> false)
+           components ->
+      Components components
+  | _ -> Cursor.err_invalid t "grid-auto-flow component combination"
+
 let rec read_grid_auto_flow t : grid_auto_flow =
-  Cursor.enum_or_var "grid-auto-flow"
+  Cursor.enum_or_whole_value_var "grid-auto-flow"
     [
       ("inherit", (Inherit : grid_auto_flow));
       ("initial", Initial);
@@ -599,21 +652,8 @@ let rec read_grid_auto_flow t : grid_auto_flow =
     ]
     ~var:(fun t -> Var (read_var read_grid_auto_flow t))
     ~default:(fun t ->
-      let v = Cursor.ident t in
-      Cursor.ws t;
-      let second = Cursor.option Cursor.ident t in
-      match (v, second) with
-      | "row", Some "dense" -> Row_dense
-      | "row", None -> Row
-      | "column", Some "dense" -> Column_dense
-      | "column", None -> Column
-      | "dense", Some "row" -> Row_dense
-      | "dense", Some "column" -> Column_dense
-      | "dense", None -> Dense
-      | _, Some _ ->
-          err_invalid_value t "grid-auto-flow"
-            (v ^ " " ^ Option.value second ~default:"")
-      | _ -> err_invalid_value t "grid-auto-flow" v)
+      Cursor.list ~sep:Cursor.ws read_grid_auto_flow_component t
+      |> grid_auto_flow_of_components t)
     t
 
 let grid_line_at_end t =
@@ -700,7 +740,9 @@ let read_grid_line_name_value t : grid_line =
 let read_grid_line_calc t : grid_line =
   (* read_calc handles the calc(...) wrapper itself *)
   let expr =
-    read_calc (fun _ -> Cursor.err t "unexpected value in grid-line calc") t
+    read_calc ~result_type:`Number
+      (fun _ -> Cursor.err t "unexpected value in grid-line calc")
+      t
   in
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> Num (int_of_float f)

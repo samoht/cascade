@@ -849,11 +849,25 @@ let vars_of_border_image_repeat (value : Properties.border_image_repeat) :
 
 let vars_of_border_image_width (value : Properties.border_image_width) :
     any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Widths values ->
+      List.concat_map
+        (fun (item : Properties.border_image_width_item) ->
+          match item with Length length -> vars_of_length length | _ -> [])
+        values
+  | _ -> []
 
 let vars_of_border_image_outset (value : Properties.border_image_outset) :
     any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Outsets values ->
+      List.concat_map
+        (fun (item : Properties.border_image_outset_item) ->
+          match item with Length length -> vars_of_length length | _ -> [])
+        values
+  | _ -> []
 
 let vars_of_column_width (value : Properties.column_width) : any_var list =
   match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
@@ -1058,13 +1072,28 @@ let vars_of_justify_self (value : Properties.justify_self) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_place_content (value : Properties.place_content) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Align_justify (align, justify) ->
+      vars_of_align_content align @ vars_of_justify_content justify
+  | _ -> []
 
 let vars_of_place_items (value : Properties.place_items) =
+  match value with
+  | Var v -> [ V v ]
+  | Align_justify (align, justify) ->
+      vars_of_align_items align @ vars_of_justify_items justify
+  | _ -> []
+
+let vars_of_grid_flow_component (value : Properties.grid_auto_flow_component) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_grid_auto_flow (value : Properties.grid_auto_flow) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Components components ->
+      List.concat_map vars_of_grid_flow_component components
+  | _ -> []
 
 let vars_of_container_name (value : Properties.container_name) =
   match value with Var v -> [ V v ] | _ -> []
