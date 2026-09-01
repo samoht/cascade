@@ -925,7 +925,7 @@ module Grid_template = struct
       expect_flex_math inner arg;
       arg
     in
-    (Flex_math (Calc_flex arg) : grid_template)
+    (Calc_flex arg : grid_flex_math)
 
   let read_flex_extreme name make t =
     let args =
@@ -945,7 +945,7 @@ module Grid_template = struct
       Cursor.expect_eof inner;
       args
     in
-    (Flex_math (make args) : grid_template)
+    make args
 
   let read_flex_clamp t =
     let min, value, max =
@@ -970,17 +970,15 @@ module Grid_template = struct
             "grid clamp() must carry a <flex> track value");
       (min, value, max)
     in
-    (Flex_math (Clamp_flex (min, value, max)) : grid_template)
+    (Clamp_flex (min, value, max) : grid_flex_math)
 
   let read_flex_math t =
     match Cursor.peek t with
     | Some (Component.Func { node = { name; _ }; _ }) -> (
         match String.lowercase_ascii name with
         | "calc" -> read_flex_calc t
-        | "min" ->
-            read_flex_extreme "min" (fun xs -> (Min_flex xs : grid_flex_math)) t
-        | "max" ->
-            read_flex_extreme "max" (fun xs -> (Max_flex xs : grid_flex_math)) t
+        | "min" -> read_flex_extreme "min" (fun xs -> Min_flex xs) t
+        | "max" -> read_flex_extreme "max" (fun xs -> Max_flex xs) t
         | "clamp" -> read_flex_clamp t
         | _ -> Cursor.err_expected t "<flex> math function")
     | _ -> Cursor.err_expected t "<flex> math function"
@@ -989,7 +987,7 @@ module Grid_template = struct
     (* Accept a single breadth: length, fr, or keywords *)
     Cursor.one_of
       [
-        read_flex_math;
+        (fun t -> (Flex_math (read_flex_math t) : grid_template));
         read_fr;
         read_length_as_grid;
         (fun t ->
@@ -1106,9 +1104,17 @@ module Grid_template = struct
                 (Repeat (count, tracks) : grid_template) );
           ]
         ~default:(fun t ->
-          Cursor.one_of [ read_flex_math; read_length_as_grid; read_fr ] t)
+          Cursor.one_of
+            [
+              (fun t -> (Flex_math (read_flex_math t) : grid_template));
+              read_length_as_grid;
+              read_fr;
+            ]
+            t)
         t
 end
+
+let read_grid_flex_math = Grid_template.read_flex_math
 
 let grid_template_needs_raw_template cvs =
   let rec has_string = function

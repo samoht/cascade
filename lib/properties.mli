@@ -923,6 +923,12 @@ val pp_grid_auto_flow : grid_auto_flow Pp.t
 val read_grid_auto_flow : Cursor.t -> grid_auto_flow
 (** [read_grid_auto_flow t] is the [grid_auto_flow] parsed from [t]. *)
 
+val pp_grid_flex_math : grid_flex_math Pp.t
+(** [pp_grid_flex_math] is the pretty-printer for [grid_flex_math]. *)
+
+val read_grid_flex_math : Cursor.t -> grid_flex_math
+(** [read_grid_flex_math t] is the [grid_flex_math] parsed from [t]. *)
+
 val pp_grid_template : grid_template Pp.t
 (** [pp_grid_template] is the pretty-printer for [grid_template]. *)
 
