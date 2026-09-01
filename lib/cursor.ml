@@ -856,6 +856,28 @@ let enum_or_var ?default label idents ~var t =
       var t
   | _ -> enum ?default label idents t
 
+(* CSS Cascade 5 sec. 6 gives the CSS-wide keywords the whole declaration value,
+   and a [var()] standing for all of it reads the same way. A reader that owns
+   the whole value therefore takes the [var] branch only when the reference
+   spans that value: one with components after it is an operand of the grammar
+   [default] reads, so the value goes there instead. *)
+let enum_or_whole_value_var ?default label idents ~var t =
+  ws t;
+  match peek t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii_preserve name = "var" -> (
+      let snap = save t in
+      let read_default () =
+        restore t snap;
+        enum ?default label idents t
+      in
+      match var t with
+      | v ->
+          ws t;
+          if is_done t then v else read_default ()
+      | exception Parse_error _ -> read_default ())
+  | _ -> enum ?default label idents t
+
 let enum_or_calls ?default label idents ?(calls = []) t =
   ws t;
   match peek t with
