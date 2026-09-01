@@ -424,15 +424,105 @@ val read_stylesheet_of_rules :
     at its default [`Full]) so dropped-rule warnings carry source- context
     snippets. *)
 
+module Source : sig
+  (** Immutable source fidelity captured by
+      [parse_stylesheet_partial ~on_source].
+
+      This is a separate syntax snapshot rather than metadata attached to the
+      typed stylesheet. The separation keeps ordinary parsing and constructed
+      ASTs allocation-neutral and avoids claiming false provenance after a
+      transform splits, merges, drops, or synthesises typed nodes. *)
+
+  type t
+
+  type comment = { loc : Loc.t; terminated : bool }
+  (** A lexer-recognised comment. [loc] indexes {!preprocessed}; [terminated] is
+      [false] when the closing [*/] was recovered at end of input. *)
+
+  type rule = {
+    syntax : Component.rule;
+        (** The complete located CSS Syntax component tree for this rule. *)
+    loc : Loc.t;
+        (** The rule's semantic range in {!preprocessed}. A directly adjacent
+            leading comment can be included because comments disappear before
+            token emission. *)
+    owned_loc : Loc.t;
+        (** The non-overlapping range from the previous rule's end (or byte 0)
+            through this rule's end. It gives all leading whitespace, comments,
+            and recovered material one deterministic owner. *)
+  }
+
+  type position = {
+    byte : int;
+        (** Byte offset in the exact caller input returned by {!contents}. *)
+    line : int;  (** One-based line in the CSS-preprocessed character stream. *)
+    column : int;
+        (** One-based Unicode-scalar column in the preprocessed stream. *)
+  }
+
+  type span = { start : position; end_ : position }
+
+  val contents : t -> string
+  (** [contents t] is the caller's byte-exact input, including a UTF-8 BOM,
+      CRLF, form feed, NUL, whitespace, and comments. *)
+
+  val preprocessed : t -> string
+  (** [preprocessed t] is the CSS Syntax section 3.3 input indexed by every
+      {!Loc.t}: BOM removed, NUL replaced by U+FFFD, and CR/FF/CRLF normalised
+      to LF. When preprocessing changes nothing this is the same immutable
+      string as {!contents}, so no duplicate source buffer is retained. *)
+
+  val comments : t -> comment list
+  (** [comments t] lists every actual lexer comment in source order;
+      comment-like bytes inside strings and URL tokens are not reported. *)
+
+  val rules : t -> rule list
+  (** [rules t] is every syntax-recovered top-level rule, including rules later
+      rejected by typed validation. *)
+
+  val trailing_loc : t -> Loc.t
+  (** [trailing_loc t] owns everything after the final rule. Together with the
+      {!rule.owned_loc} ranges it partitions {!preprocessed} exactly. *)
+
+  val slice : t -> Loc.t -> string
+  (** [slice t loc] extracts [loc] from {!preprocessed}. Raises
+      [Invalid_argument] when [loc] is outside the snapshot. *)
+
+  val original_loc : t -> Loc.t -> Loc.t
+  (** [original_loc t loc] maps preprocessed boundaries back to byte offsets in
+      {!contents}. Boundaries emitted by the lexer/components map exactly; the
+      two interior UTF-8 byte boundaries of a replacement U+FFFD map to the
+      original NUL's start. *)
+
+  val original_slice : t -> Loc.t -> string
+  (** [original_slice t loc] extracts the caller bytes covered by
+      [original_loc t loc]. *)
+
+  val position : t -> int -> position
+  (** [position t offset] maps a preprocessed byte boundary to source-map-ready
+      original byte offset plus CSS line and Unicode-scalar column. *)
+
+  val span : t -> Loc.t -> span
+  (** [span t loc] maps both boundaries of [loc] with {!position}. *)
+end
+
 val parse_stylesheet_partial :
   ?meta:Loc.meta_level ->
   ?enforce_spec:bool ->
+  ?on_source:(Source.t -> unit) ->
   string ->
   stylesheet * Error.t list
 (** [parse_stylesheet_partial ?meta source] runs section 5.3 recovery via
     {!Parser.stylesheet} and then typed-validates each recovered rule via
     {!read_stylesheet_of_rules}. Warnings from both stages are combined in
-    source order. *)
+    source order.
+
+    Pass [~on_source] to opt into one immutable authored-syntax snapshot from
+    the same parse. It retains the exact input, preprocessed input when
+    different, located syntax tree, comment records, line index, and original-
+    byte boundary map. Transforming the returned typed stylesheet never mutates
+    the snapshot and deliberately creates no inferred source map for split,
+    merged, dropped, or synthetic nodes. *)
 
 (** {1 Pretty Printing} *)
 

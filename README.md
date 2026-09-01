@@ -514,8 +514,13 @@ frameworks.
   tree, renderer, or computed-style engine. CSS syntax for those features
   parses and prints; analyses that need runtime data take an explicit closed
   context.
-- **Comments and source positions** are not preserved across the
-  parser/printer round trip.
+- **Comments and source positions** are not attached to the typed AST or
+  reproduced by the parser/printer round trip. Library callers that need
+  authored syntax can pass `~preserve_source:true` to `Css.of_string`: the
+  resulting separate, immutable `Css.Source` snapshot retains exact input
+  bytes, comments, located syntax rules, deterministic trivia ownership, and
+  original-byte/line-column mappings. A later AST transform does not invent
+  provenance for nodes it splits, merges, drops, or creates.
 - **`cascade prune` sees only the documents it is given.** A rule whose class
   a script adds at runtime matches nothing in the parsed HTML, so it is
   removed.
@@ -599,6 +604,23 @@ happens to reference it would confine and shadow it.
 `warnings` listing recovered syntax and declaration issues. `~strict:true`
 errors when the lenient parse would have warned. When both succeed, their
 minified outputs are identical.
+
+`Css.of_string ~preserve_source:true` has the same strictness and diagnostics
+but returns `source = Some snapshot`. `Css.Source.contents` is the caller's
+exact string; `preprocessed`, `comments`, and `rules` expose the CSS Syntax
+view, and `original_loc` / `span` map its locations back to original byte
+offsets and one-based line/column positions. Each top-level syntax rule owns the
+bytes from the previous rule's end through its own end, and `trailing_loc` owns
+the rest, so whitespace and recovered material have an unambiguous home. The
+opt-in snapshot retains the original buffer, a second buffer only when CSS
+preprocessing changes it, the component tree, comments, a line index, and an
+offset map when needed; an ordinary parse returns `source = None` and pays none
+of that retention cost.
+
+The snapshot describes the authored parse, not a mutable source map. Optimising
+or flattening the typed stylesheet leaves it unchanged. A transform that needs
+mappings for split, merged, or synthetic nodes must record those mappings while
+performing the transform instead of receiving guessed locations from Cascade.
 
 ### Small runtime footprint
 

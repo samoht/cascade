@@ -176,7 +176,7 @@ let read_trace path =
 let cascade_minify input =
   match Cascade.Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
-  | Ok { Cascade.Css.stylesheet; warnings = _ } ->
+  | Ok { Cascade.Css.stylesheet; warnings = _; _ } ->
       Ok
         (stylesheet
         |> Cascade.Css.optimize ~scope:`Stylesheet

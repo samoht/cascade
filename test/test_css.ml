@@ -20,6 +20,142 @@ open Css
    ~minify:true] used to behave implicitly. *)
 let minify s = s |> Css.optimize |> Css.to_string ~minify:true
 
+let parse_with_source ?(strict = false) source =
+  match Css.of_string ~strict ~preserve_source:true source with
+  | Ok ({ source = Some source; _ } as parsed) -> (parsed, source)
+  | Ok { source = None; _ } ->
+      Alcotest.fail "source-preserving parse returned no source snapshot"
+  | Error error ->
+      Alcotest.failf "source-preserving parse rejected %S: %s" source
+        (Error.to_string error)
+
+let source_fidelity_roundtrip_and_locations () =
+  let original = "\xEF\xBB\xBF/* lead */\r\n.a{color:rgb(300)}\r\n/* tail */" in
+  let preprocessed = "/* lead */\n.a{color:rgb(300)}\n/* tail */" in
+  (match Css.of_string original with
+  | Ok { source = None; _ } -> ()
+  | Ok { source = Some _; _ } ->
+      Alcotest.fail "ordinary parse unexpectedly retained source"
+  | Error error -> Alcotest.fail (Error.to_string error));
+  let parsed, source = parse_with_source original in
+  Alcotest.(check string)
+    "exact caller bytes round-trip" original
+    (Css.Source.contents source);
+  Alcotest.(check string)
+    "CSS preprocessing is inspectable" preprocessed
+    (Css.Source.preprocessed source);
+  (match Css.Source.comments source with
+  | [ leading; trailing ] ->
+      Alcotest.(check string)
+        "leading comment bytes" "/* lead */"
+        (Css.Source.slice source leading.loc);
+      Alcotest.(check bool) "leading comment terminated" true leading.terminated;
+      Alcotest.(check string)
+        "leading comment original bytes" "/* lead */"
+        (Css.Source.original_slice source leading.loc);
+      Alcotest.(check string)
+        "leading comment original location" "[3-13]"
+        (Loc.to_string (Css.Source.original_loc source leading.loc));
+      Alcotest.(check string)
+        "trailing comment bytes" "/* tail */"
+        (Css.Source.slice source trailing.loc)
+  | comments ->
+      Alcotest.failf "expected two comments, got %d" (List.length comments));
+  (match Css.Source.rules source with
+  | [ rule ] ->
+      Alcotest.(check string)
+        "semantic rule location" "[11-29]" (Loc.to_string rule.loc);
+      Alcotest.(check string)
+        "rule owns its leading trivia" "[0-29]"
+        (Loc.to_string rule.owned_loc);
+      let start = Css.Source.position source rule.loc.start_pos in
+      Alcotest.(check int) "original byte offset" 15 start.byte;
+      Alcotest.(check int) "line" 2 start.line;
+      Alcotest.(check int) "column" 1 start.column
+  | rules ->
+      Alcotest.failf "expected one syntax rule, got %d" (List.length rules));
+  Alcotest.(check bool) "typed diagnostic retained" true (parsed.warnings <> []);
+  let warning = List.hd parsed.warnings in
+  let span = Css.Source.span source (Error.context warning).Loc.Context.loc in
+  Alcotest.(check int) "diagnostic source line" 2 span.start.line;
+  let _, replaced = parse_with_source "\x00a{}" in
+  Alcotest.(check string)
+    "NUL is visible in caller bytes" "\x00a{}"
+    (Css.Source.contents replaced);
+  Alcotest.(check string)
+    "NUL is preprocessed to replacement character" "\xEF\xBF\xBDa{}"
+    (Css.Source.preprocessed replaced);
+  Alcotest.(check string)
+    "replacement range maps back to one caller byte" "[0-1]"
+    (Loc.to_string
+       (Css.Source.original_loc replaced (Loc.v ~start_pos:0 ~end_pos:3)))
+
+let source_fidelity_owns_all_trivia () =
+  let input = " /* before a */ .a{}\n/* before b */ .b{} /* after */ " in
+  let _, source = parse_with_source input in
+  let owned =
+    List.map
+      (fun (rule : Css.Source.rule) -> Css.Source.slice source rule.owned_loc)
+      (Css.Source.rules source)
+  in
+  let trailing = Css.Source.slice source (Css.Source.trailing_loc source) in
+  Alcotest.(check string)
+    "rule-owned text plus trailing trivia partitions the source" input
+    (String.concat "" (owned @ [ trailing ]));
+  let _, unterminated = parse_with_source "a{}/* tail" in
+  (match Css.Source.comments unterminated with
+  | [ comment ] ->
+      Alcotest.(check bool)
+        "unterminated comment recorded" false comment.terminated;
+      Alcotest.(check string)
+        "unterminated comment bytes" "/* tail"
+        (Css.Source.slice unterminated comment.loc)
+  | comments ->
+      Alcotest.failf "expected one unterminated comment, got %d"
+        (List.length comments));
+  let _, strings =
+    parse_with_source "a{content:\"/* not a comment */\"}/* actual */"
+  in
+  (match Css.Source.comments strings with
+  | [ comment ] ->
+      Alcotest.(check string)
+        "comment-looking string bytes stay inside the string" "/* actual */"
+        (Css.Source.slice strings comment.loc)
+  | comments ->
+      Alcotest.failf "expected only the actual comment, got %d"
+        (List.length comments));
+  let _, unchanged = parse_with_source "a{}" in
+  Alcotest.(check bool)
+    "unchanged input buffer is shared" true
+    (Css.Source.contents unchanged == Css.Source.preprocessed unchanged)
+
+let source_fidelity_is_an_immutable_snapshot () =
+  let nested, nested_source =
+    parse_with_source ".a{color:red;& .b{color:blue}}"
+  in
+  let flattened = Css.flatten_nesting nested.stylesheet in
+  Alcotest.(check int)
+    "one authored syntax rule" 1
+    (List.length (Css.Source.rules nested_source));
+  Alcotest.(check int)
+    "flattening splits the typed rule" 2 (List.length flattened);
+  Alcotest.(check string)
+    "split transform leaves source snapshot unchanged"
+    ".a{color:red;& .b{color:blue}}"
+    (Css.Source.contents nested_source);
+  let adjacent, adjacent_source =
+    parse_with_source ".a{color:red}.b{color:red}"
+  in
+  let merged = Css.optimize adjacent.stylesheet in
+  Alcotest.(check int)
+    "two authored syntax rules" 2
+    (List.length (Css.Source.rules adjacent_source));
+  Alcotest.(check int) "optimization merges typed rules" 1 (List.length merged);
+  Alcotest.(check string)
+    "merge transform leaves source snapshot unchanged"
+    ".a{color:red}.b{color:red}"
+    (Css.Source.contents adjacent_source)
+
 (* Helper selectors for tests *)
 let btn = Selector.class_ "btn"
 let card = Selector.class_ "card"
@@ -2286,6 +2422,12 @@ let suite =
     [
       (* Integration tests using public Css interface only *)
       Alcotest.test_case "CSS generation end-to-end" `Quick generation;
+      Alcotest.test_case "source fidelity round-trip and locations" `Quick
+        source_fidelity_roundtrip_and_locations;
+      Alcotest.test_case "source fidelity owns all trivia" `Quick
+        source_fidelity_owns_all_trivia;
+      Alcotest.test_case "source fidelity snapshot survives transforms" `Quick
+        source_fidelity_is_an_immutable_snapshot;
       Alcotest.test_case "optimization flag works" `Quick optimization_flag;
       Alcotest.test_case "non-empty declaration lists" `Quick
         nonempty_declaration_lists;

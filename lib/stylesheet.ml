@@ -4476,6 +4476,179 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
   in
   (statements, List.rev !warnings)
 
+module Source = struct
+  type comment = { loc : Loc.t; terminated : bool }
+  type rule = { syntax : Component.rule; loc : Loc.t; owned_loc : Loc.t }
+  type position = { byte : int; line : int; column : int }
+  type span = { start : position; end_ : position }
+
+  type t = {
+    original_source : string;
+    preprocessed_source : string;
+    comments : comment list;
+    rules : rule list;
+    trailing_loc : Loc.t;
+    original_offsets : int array option;
+    line_starts : int array;
+  }
+
+  let contents t = t.original_source
+  let preprocessed t = t.preprocessed_source
+  let comments t = t.comments
+  let rules t = t.rules
+  let trailing_loc t = t.trailing_loc
+
+  let check_loc t ({ Loc.start_pos; end_pos } as loc) =
+    let length = String.length t.preprocessed_source in
+    if start_pos < 0 || end_pos < start_pos || end_pos > length then
+      invalid_arg
+        (String.concat ""
+           [
+             "Css.Source: location ";
+             Loc.to_string loc;
+             " is outside [0-";
+             string_of_int length;
+             "]";
+           ])
+
+  let slice t ({ Loc.start_pos; end_pos } as loc) =
+    check_loc t loc;
+    String.sub t.preprocessed_source start_pos (end_pos - start_pos)
+
+  let original_offset t offset =
+    if offset < 0 || offset > String.length t.preprocessed_source then
+      invalid_arg
+        (String.concat ""
+           [
+             "Css.Source: offset ";
+             string_of_int offset;
+             " is outside [0-";
+             string_of_int (String.length t.preprocessed_source);
+             "]";
+           ]);
+    match t.original_offsets with
+    | Option.None -> offset
+    | Option.Some map -> map.(offset)
+
+  let original_loc t ({ Loc.start_pos; end_pos } as loc) =
+    check_loc t loc;
+    Loc.v
+      ~start_pos:(original_offset t start_pos)
+      ~end_pos:(original_offset t end_pos)
+
+  let original_slice t loc =
+    let { Loc.start_pos; end_pos } = original_loc t loc in
+    String.sub t.original_source start_pos (end_pos - start_pos)
+
+  let position t offset =
+    let byte = original_offset t offset in
+    let starts = t.line_starts in
+    let low = ref 0 in
+    let high = ref (Array.length starts) in
+    while !low + 1 < !high do
+      let middle = (!low + !high) / 2 in
+      if starts.(middle) <= offset then low := middle else high := middle
+    done;
+    let line_start = starts.(!low) in
+    let column =
+      Common.String.utf8_length ~pos:line_start ~len:(offset - line_start)
+        t.preprocessed_source
+      + 1
+    in
+    { byte; line = !low + 1; column }
+
+  let span t ({ Loc.start_pos; end_pos } as loc) =
+    check_loc t loc;
+    { start = position t start_pos; end_ = position t end_pos }
+
+  let has_bom input =
+    String.length input >= 3
+    && input.[0] = '\xEF'
+    && input.[1] = '\xBB'
+    && input.[2] = '\xBF'
+
+  (* Boundary map from the CSS-preprocessed buffer back to caller bytes. The two
+     interior byte boundaries of a U+FFFD replacement map to the original NUL's
+     start; lexer/component locations only occur at code-point boundaries, where
+     the map is exact. *)
+  let build_original_offsets original preprocessed =
+    if String.equal original preprocessed then Option.None
+    else
+      let original_length = String.length original in
+      let preprocessed_length = String.length preprocessed in
+      let map = Array.make (preprocessed_length + 1) 0 in
+      let original_pos = ref (if has_bom original then 3 else 0) in
+      let preprocessed_pos = ref 0 in
+      map.(0) <- !original_pos;
+      let emit_byte original_end =
+        incr preprocessed_pos;
+        if !preprocessed_pos > preprocessed_length then
+          invalid_arg "Css.Source: preprocessing map exceeds parsed source";
+        map.(!preprocessed_pos) <- original_end
+      in
+      while !original_pos < original_length do
+        match original.[!original_pos] with
+        | '\x00' ->
+            let start = !original_pos in
+            incr original_pos;
+            emit_byte start;
+            emit_byte start;
+            emit_byte !original_pos
+        | '\r' ->
+            incr original_pos;
+            if
+              !original_pos < original_length && original.[!original_pos] = '\n'
+            then incr original_pos;
+            emit_byte !original_pos
+        | '\x0C' ->
+            incr original_pos;
+            emit_byte !original_pos
+        | _ ->
+            incr original_pos;
+            emit_byte !original_pos
+      done;
+      if !preprocessed_pos <> preprocessed_length then
+        invalid_arg "Css.Source: preprocessing map disagrees with parsed source";
+      Option.Some map
+
+  let line_starts source =
+    let starts = ref [ 0 ] in
+    String.iteri
+      (fun index byte -> if byte = '\n' then starts := (index + 1) :: !starts)
+      source;
+    Array.of_list (List.rev !starts)
+
+  let v ~original ~preprocessed ~comments syntax_rules =
+    let previous_end = ref 0 in
+    let rules =
+      List.map
+        (fun syntax ->
+          let loc = rule_loc syntax in
+          let owned_loc =
+            Loc.v ~start_pos:!previous_end ~end_pos:loc.Loc.end_pos
+          in
+          previous_end := loc.Loc.end_pos;
+          { syntax; loc; owned_loc })
+        syntax_rules
+    in
+    let trailing_loc =
+      Loc.v ~start_pos:!previous_end ~end_pos:(String.length preprocessed)
+    in
+    {
+      original_source = original;
+      preprocessed_source = preprocessed;
+      comments =
+        List.map
+          (fun ({ Lexer.loc; terminated } : Lexer.comment) ->
+            { loc; terminated })
+          comments;
+      rules;
+      trailing_loc;
+      original_offsets = build_original_offsets original preprocessed;
+      line_starts = line_starts preprocessed;
+    }
+end
+
 (* Scan [source] for top-level [/*! ... */] bang comments. The lexer drops
    ordinary comments per CSS Syntax 3 (ED) sec. 4.3.2; bang comments are the
    minifier convention for license headers and need to round-trip. Returns pairs
@@ -4512,28 +4685,9 @@ let extract_bang_comments (source : string) : (int * string) list =
   done;
   List.rev !acc
 
-(* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
-   from [Parser.stylesheet] with per-rule typed-validation warnings. *)
-let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
-    ?(enforce_spec = false) (source : string) : stylesheet * Error.t list =
-  let reader = Reader.of_string ~enforce_spec source in
-  let out = Parser.stylesheet ~meta reader in
-  let sheet, typed_warnings =
-    read_stylesheet_of_rules ~source:(Reader.source reader) ~meta out.value
-  in
-  (* Interleave preserved [/*! ... */] bang comments at their source position by
-     walking the original rules and the bang-comment list in parallel; any bang
-     comments after the last rule are appended at the end. The typed [sheet] may
-     be shorter than [out.value] when validation drops a rule, but each typed
-     statement still corresponds to the next unconsumed rule, so the position
-     mapping survives. *)
+let interleave_bang_comments source rules sheet =
   let bangs = extract_bang_comments source in
-  (* Compare a comment's offset against each rule's END, not its start: a rule's
-     start absorbs an immediately-preceding comment ([/*!x*/a{}] starts at 0),
-     pushing a leading comment after its rule, but the closing-brace end is
-     unaffected by leading trivia, so leading and between-rule comments order
-     before their rule. *)
-  let rule_ends = List.map (fun r -> (rule_loc r).Loc.end_pos) out.value in
+  let rule_ends = List.map (fun r -> (rule_loc r).Loc.end_pos) rules in
   let rec interleave bangs rule_ends sheet =
     match (bangs, rule_ends, sheet) with
     | [], _, _ -> sheet
@@ -4545,7 +4699,41 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
     | _, _ :: rest_s, stmt :: rest_sheet ->
         stmt :: interleave bangs rest_s rest_sheet
   in
-  let sheet = interleave bangs rule_ends sheet in
+  interleave bangs rule_ends sheet
+
+(* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
+   from [Parser.stylesheet] with per-rule typed-validation warnings. *)
+let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
+    ?(enforce_spec = false) ?on_source (original : string) :
+    stylesheet * Error.t list =
+  let comments, on_comment =
+    match on_source with
+    | Option.None -> (Option.None, Option.None)
+    | Option.Some _ ->
+        let comments = ref [] in
+        ( Option.Some comments,
+          Option.Some (fun comment -> comments := comment :: !comments) )
+  in
+  let reader = Reader.of_string ~enforce_spec original in
+  let out = Parser.stylesheet ~meta ?on_comment reader in
+  let preprocessed = Reader.source reader in
+  let sheet, typed_warnings =
+    read_stylesheet_of_rules ~source:preprocessed ~meta out.value
+  in
+  (* Interleave preserved [/*! ... */] bang comments at their source position by
+     walking the original rules and the bang-comment list in parallel; any bang
+     comments after the last rule are appended at the end. The typed [sheet] may
+     be shorter than [out.value] when validation drops a rule, but each typed
+     statement still corresponds to the next unconsumed rule, so the position
+     mapping survives. *)
+  let sheet = interleave_bang_comments preprocessed out.value sheet in
+  (match (on_source, comments) with
+  | Option.Some emit, Option.Some comments ->
+      emit
+        (Source.v ~original ~preprocessed ~comments:(List.rev !comments)
+           out.value)
+  | Option.None, Option.None -> ()
+  | _ -> assert false);
   (sheet, out.warnings @ typed_warnings)
 
 (** {1 Unknown At-Rule Construction} *)

@@ -27,7 +27,7 @@ let die_parse_error e =
 
 let parse ?(enforce_spec = false) ~filename css =
   match Css.of_string ~filename ~enforce_spec css with
-  | Ok { Css.stylesheet; warnings } ->
+  | Ok { Css.stylesheet; warnings; _ } ->
       List.iter report_warning warnings;
       (stylesheet, warnings)
   | Error e -> die_parse_error e

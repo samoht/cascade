@@ -38,7 +38,7 @@ let parse_source ~filename ~note css =
   | Error e ->
       Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
       None
-  | Ok { Css.stylesheet; warnings } -> (
+  | Ok { Css.stylesheet; warnings; _ } -> (
       List.iter report_warning warnings;
       (* Whether the parse produced anything is a question about the statement
          list. Serialising the sheet to answer it asks a different one, and gets

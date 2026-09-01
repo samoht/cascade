@@ -1256,12 +1256,12 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let stylesheet ?(meta = Loc.default_meta_level) r =
+let stylesheet ?(meta = Loc.default_meta_level) ?on_comment r =
   with_warnings (fun ~warnings ->
-      let lexer = Lexer.of_reader r in
+      let lexer = Lexer.of_reader ?on_comment r in
       consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
 
-let stylesheet_contents = stylesheet
+let stylesheet_contents ?meta r = stylesheet ?meta r
 
 (* CSS Syntax 3 (ED) sec. 5.4.5: a block's contents is a mix of declarations and
    nested rules. Consecutive declarations are grouped into a single [`Decls]

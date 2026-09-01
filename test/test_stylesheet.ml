@@ -1220,7 +1220,7 @@ let strict_accept name css =
   match Css.of_string ~strict:true css with
   | Ok parsed ->
       let strict_output = minify parsed.stylesheet in
-      let { Css.stylesheet; warnings } =
+      let { Css.stylesheet; warnings; _ } =
         match Css.of_string ~strict:false css with
         | Ok parsed -> parsed
         | Error err ->
@@ -1247,7 +1247,7 @@ let strict_reject name css =
         ("strict error carries detail for " ^ name)
         true
         (String.length (string_of_strict_error err) > 0);
-      let { Css.stylesheet; warnings } =
+      let { Css.stylesheet; warnings; _ } =
         match Css.of_string ~strict:false css with
         | Ok parsed -> parsed
         | Error err ->
@@ -1291,7 +1291,7 @@ let font_family_descriptor_grammar () =
     "@font-palette-values --brand { font-family: inherit }"
 
 let lenient_recover name css expected min_warnings =
-  let { Css.stylesheet; warnings } =
+  let { Css.stylesheet; warnings; _ } =
     match Css.of_string ~strict:false css with
     | Ok parsed -> parsed
     | Error err ->
@@ -2635,7 +2635,7 @@ let test_invalid_at_rules () =
 let css_syntax_recovery () =
   let check_strict name css expected =
     match Css.of_string ~strict:true css with
-    | Ok { Css.stylesheet; warnings = _ } ->
+    | Ok { Css.stylesheet; warnings = _; _ } ->
         Alcotest.(check string)
           (name ^ " stylesheet") expected
           (minify stylesheet |> String.trim)
@@ -2644,7 +2644,7 @@ let css_syntax_recovery () =
           (Cascade.Error.to_string err)
   in
   let check_recovery name css expected min_warnings =
-    let { Css.stylesheet; warnings } =
+    let { Css.stylesheet; warnings; _ } =
       match Css.of_string ~strict:false css with
       | Ok parsed -> parsed
       | Error err ->
@@ -2683,7 +2683,7 @@ let css_syntax_recovery_structural () =
         | None -> Alcotest.fail "expected recovered qualified rule")
   in
   let check_counts name css expected_counts min_warnings =
-    let { Css.stylesheet; warnings } =
+    let { Css.stylesheet; warnings; _ } =
       match Css.of_string ~strict:false css with
       | Ok parsed -> parsed
       | Error err ->
@@ -2965,7 +2965,7 @@ let s552_unknown_at_rule_eof_closers () =
      unterminated. *)
   let self_delimiting name printed =
     let input = String.concat "" [ printed; ".z{color:red}" ] in
-    let { Css.stylesheet; warnings } =
+    let { Css.stylesheet; warnings; _ } =
       match Css.of_string ~strict:false input with
       | Ok parsed -> parsed
       | Error err ->
@@ -9099,7 +9099,7 @@ let container_condition_error_spans () =
     | Error err ->
         Alcotest.failf "%s: lenient parse failed: %s" name
           (Cascade.Error.to_string err)
-    | Ok { Css.stylesheet; warnings } -> (
+    | Ok { Css.stylesheet; warnings; _ } -> (
         Alcotest.(check int)
           (name ^ ": sibling rule survives")
           1
@@ -9140,7 +9140,7 @@ let one_condition_warning name input ~at_rule (reason, start_pos, end_pos) =
   | Error err ->
       Alcotest.failf "%s: lenient parse failed: %s" name
         (Cascade.Error.to_string err)
-  | Ok { Css.stylesheet; warnings } -> (
+  | Ok { Css.stylesheet; warnings; _ } -> (
       Alcotest.(check int)
         (name ^ ": sibling rule survives")
         1
@@ -9202,7 +9202,7 @@ let descriptor_value_error_spans () =
     | Error err ->
         Alcotest.failf "%s: lenient parse failed: %s" name
           (Cascade.Error.to_string err)
-    | Ok { Css.stylesheet; warnings } -> (
+    | Ok { Css.stylesheet; warnings; _ } -> (
         Alcotest.(check int)
           (name ^ ": sibling rule survives")
           1
@@ -9980,7 +9980,7 @@ let additional_tests =
     ( "partial recovery: Css.of_string ~strict:false entry point",
       `Quick,
       fun () ->
-        let { Css.stylesheet; warnings } =
+        let { Css.stylesheet; warnings; _ } =
           match
             Css.of_string ~strict:false
               ".a { color: red; } .b { color: rgb(300); }"
@@ -10049,7 +10049,7 @@ let additional_tests =
     ( "partial recovery: unclosed brace recovered per 5.3.7",
       `Quick,
       fun () ->
-        let { Css.stylesheet; warnings = _ } =
+        let { Css.stylesheet; warnings = _; _ } =
           match Css.of_string ~strict:false ".btn { color: red;" with
           | Ok parsed -> parsed
           | Error err ->
@@ -10064,7 +10064,7 @@ let additional_tests =
       fun () ->
         (* CSS Syntax 5.4.4: an invalid declaration is discarded while the
            enclosing rule and its other declarations survive. *)
-        let { Css.stylesheet; warnings } =
+        let { Css.stylesheet; warnings; _ } =
           match
             Css.of_string ~strict:false
               ".a { color: invalidcolor; color: red; }"
@@ -10132,7 +10132,7 @@ let additional_tests =
         (* [@layer base;] parses through section 5.5.2 to an at-rule with [block
            = None]. The replay cursor must still present a terminating [;] to
            [read_layer], otherwise the at-rule is silently dropped. *)
-        let { Css.stylesheet; warnings } =
+        let { Css.stylesheet; warnings; _ } =
           match Css.of_string ~strict:false "@layer base;" with
           | Ok parsed -> parsed
           | Error err ->
@@ -10147,7 +10147,7 @@ let additional_tests =
       fun () ->
         (* Section 5.4.1: an at-rule with no handler is discarded with a typed
            warning; the surrounding stylesheet continues to parse. *)
-        let { Css.stylesheet; warnings } =
+        let { Css.stylesheet; warnings; _ } =
           match
             Css.of_string ~strict:false
               "@unknown-rule { color: red; } .a { color: blue; }"
@@ -10176,7 +10176,7 @@ let additional_tests =
            [Reader.Parse_error] shape, bypassing the partial-parse contract. It
            now becomes a typed [Bad_condition] warning while surrounding rules
            keep parsing. *)
-        let { Css.stylesheet; warnings } =
+        let { Css.stylesheet; warnings; _ } =
           match
             Css.of_string ~strict:false
               "@supports not-a-function foo { .a { color: red } } .b { color: \

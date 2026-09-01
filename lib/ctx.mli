@@ -72,6 +72,10 @@ val extend_lists : t -> bool
     through the guarded DAG candidate selector, which also keeps the strict
     non-list alternative when that is locally better. *)
 
+val recurse_blocks : t -> bool
+(** Whether statement optimization descends into child blocks. False only for
+    the seam pass over blocks whose children were already optimized. *)
+
 val closed_world : t -> bool
 (** Whether the caller knows the exact HTML the CSS will style.
 
@@ -103,6 +107,10 @@ val stats : t -> Stats.t
 val with_extend_lists : bool -> t -> t
 (** [with_extend_lists enabled ctx] returns [ctx] with only the list-extension
     strategy flag changed. *)
+
+val with_recurse_blocks : bool -> t -> t
+(** [with_recurse_blocks enabled ctx] returns [ctx] with only child-block
+    recursion changed. *)
 
 val pp : t Pp.t
 (** Pretty-printer for debugging. *)

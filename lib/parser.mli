@@ -129,10 +129,15 @@ val csv_by_grammar : Reader.t -> grammar -> Component.t list option list output
     groups, then match each group independently. Whitespace-only input returns
     an empty list. *)
 
-val stylesheet : ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
-(** [stylesheet ?meta r] runs section 5.4.3: consume a list of rules with the
-    top-level flag set. CDO and CDC are skipped. [?meta] controls snippet
-    attachment on recovery warnings; see {!Loc.meta_level}. *)
+val stylesheet :
+  ?meta:Loc.meta_level ->
+  ?on_comment:(Lexer.comment -> unit) ->
+  Reader.t ->
+  Component.rule list output
+(** [stylesheet ?meta ?on_comment r] runs section 5.4.3: consume a list of rules
+    with the top-level flag set. CDO and CDC are skipped. [?meta] controls
+    snippet attachment on recovery warnings; see {!Loc.meta_level}. [on_comment]
+    is the opt-in observer documented by {!Lexer.of_reader}. *)
 
 val stylesheet_contents :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output

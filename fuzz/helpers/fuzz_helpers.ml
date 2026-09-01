@@ -10,7 +10,7 @@ let assert_invalid_declaration_contract label input =
       failf "%s parsed strictly as invalid declaration: %S -> %S" label input
         (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
-      let { Css.warnings; stylesheet } =
+      let { Css.warnings; stylesheet; _ } =
         match Css.of_string ~strict:false css with
         | Ok parsed -> parsed
         | Error err ->

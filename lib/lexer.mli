@@ -10,12 +10,21 @@
 type t
 (** A lexer stream: a character cursor plus one-token pushback. *)
 
-val of_reader : Reader.t -> t
-(** [of_reader r] wraps an existing character reader. *)
+type comment = { loc : Loc.t; terminated : bool }
+(** A comment consumed before tokenization. [loc] covers its opening [/*]
+    through its closing [*/], or through end of input when [terminated] is
+    [false]. Comments remain absent from the token stream as CSS Syntax
+    requires; this record is an opt-in tooling hook. *)
 
-val of_string : ?enforce_spec:bool -> string -> t
+val of_reader : ?on_comment:(comment -> unit) -> Reader.t -> t
+(** [of_reader ?on_comment r] wraps an existing character reader. [on_comment]
+    observes each consumed comment exactly once. *)
+
+val of_string :
+  ?enforce_spec:bool -> ?on_comment:(comment -> unit) -> string -> t
 (** [of_string s] builds a fresh reader from an already-decoded UTF-8 string and
-    wraps it. [enforce_spec] is passed to {!Reader.of_string}. *)
+    wraps it. [enforce_spec] is passed to {!Reader.of_string}; [on_comment] has
+    the meaning documented on {!of_reader}. *)
 
 val source : t -> string
 (** [source t] is the full input string the underlying reader was built from. *)

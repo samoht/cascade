@@ -7,8 +7,11 @@
 
 open Token
 
+type comment = { loc : Loc.t; terminated : bool }
+
 type t = {
   reader : Reader.t;
+  on_comment : (comment -> unit) option;
   (* Token buffer: most-recently-pushed-back at the head. [next] takes from here
      before falling through to the reader. *)
   mutable buffer : Token.t list;
@@ -20,8 +23,12 @@ type t = {
 
 and save = { trace : Token.t list ref; saved_history : Token.t list }
 
-let of_reader reader = { reader; buffer = []; history = []; saves = [] }
-let of_string ?enforce_spec s = of_reader (Reader.of_string ?enforce_spec s)
+let of_reader ?on_comment reader =
+  { reader; on_comment; buffer = []; history = []; saves = [] }
+
+let of_string ?enforce_spec ?on_comment s =
+  of_reader ?on_comment (Reader.of_string ?enforce_spec s)
+
 let source t = Reader.source t.reader
 
 (** {1 Tokenization} *)
@@ -563,38 +570,45 @@ let consume_ident_like_token ?(force_url_function = false) r =
    unterminated comment is a parse error per the spec but we just stop at EOF
    silently. *)
 let rec skip_comment_body r =
-  if Reader.is_done r then ()
+  if Reader.is_done r then false
   else if Reader.looking_at r "*/" then (
     Reader.skip r;
-    Reader.skip r)
+    Reader.skip r;
+    true)
   else (
     Reader.skip r;
     skip_comment_body r)
+
+let consume_comment on_comment r =
+  let start_pos = Reader.position r in
+  Reader.skip r;
+  Reader.skip r;
+  let terminated = skip_comment_body r in
+  let end_pos = Reader.position r in
+  Option.iter
+    (fun f -> f { loc = Loc.v ~start_pos ~end_pos; terminated })
+    on_comment
 
 (* Skip a run of comments without consuming surrounding whitespace: CSS Syntax 3
    (ED) sec. 4.3.2 treats comments as "nothing", so a comment between two
    non-whitespace points disappears rather than becoming a
    <whitespace-token>. *)
-let rec skip_comment_run r =
+let rec skip_comment_run on_comment r =
   if Reader.looking_at r "/*" then (
-    Reader.skip r;
-    Reader.skip r;
-    skip_comment_body r;
-    skip_comment_run r)
+    consume_comment on_comment r;
+    skip_comment_run on_comment r)
 
 (* Consume a run of whitespace code points and any interleaved comments,
    returning [true] when at least one whitespace code point was seen. *)
-let rec consume_whitespace_run r =
+let rec consume_whitespace_run on_comment r =
   match Reader.peek r with
   | Some c when is_ws c ->
       Reader.skip r;
-      consume_whitespace_run r
+      consume_whitespace_run on_comment r
   | _ ->
       if Reader.looking_at r "/*" then (
-        Reader.skip r;
-        Reader.skip r;
-        skip_comment_body r;
-        consume_whitespace_run r)
+        consume_comment on_comment r;
+        consume_whitespace_run on_comment r)
 
 let hash_flag_now r = if would_start_ident_sequence r then Id else Unrestricted
 
@@ -662,14 +676,14 @@ let consume_name_start_or_delim ~force_url_function r c =
     Reader.skip r;
     Delim (String.make 1 c))
 
-let next_token ?(force_url_function = false) r =
-  skip_comment_run r;
+let next_token ?(force_url_function = false) ?on_comment r =
+  skip_comment_run on_comment r;
   let b = Reader.peek_byte r in
   if b = -1 then Eof
   else
     let c = Char.unsafe_chr b in
     if is_ws c then (
-      consume_whitespace_run r;
+      consume_whitespace_run on_comment r;
       Whitespace)
     else
       match c with
@@ -738,9 +752,9 @@ let next_token ?(force_url_function = false) r =
 (** {1 Stream API (uniform with other stages)} *)
 
 (* Wrap a tokenizer step with source-location capture. *)
-let tokenize_with_loc ?(force_url_function = false) reader =
+let tokenize_with_loc ?(force_url_function = false) ?on_comment reader =
   let start_pos = Reader.position reader in
-  let kind = next_token ~force_url_function reader in
+  let kind = next_token ~force_url_function ?on_comment reader in
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
@@ -777,7 +791,8 @@ let next t =
       tok
   | [] ->
       let tok =
-        tokenize_with_loc ~force_url_function:(force_url_function t) t.reader
+        tokenize_with_loc ~force_url_function:(force_url_function t)
+          ?on_comment:t.on_comment t.reader
       in
       record_consume t tok;
       tok
@@ -787,7 +802,8 @@ let peek t =
   | tok :: _ -> tok
   | [] ->
       let tok =
-        tokenize_with_loc ~force_url_function:(force_url_function t) t.reader
+        tokenize_with_loc ~force_url_function:(force_url_function t)
+          ?on_comment:t.on_comment t.reader
       in
       t.buffer <- [ tok ];
       tok

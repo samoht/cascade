@@ -24,7 +24,7 @@ let assert_invalid_container_contract label input =
         input
         (Css.to_string ~minify:true parsed.stylesheet)
   | Error _ ->
-      let { Css.warnings; stylesheet } = recovered_css label css in
+      let { Css.warnings; stylesheet; _ } = recovered_css label css in
       ignore (Css.to_string ~minify:true stylesheet : string);
       if warnings = [] then
         failf "%s recovered without a lenient warning: %S" label input

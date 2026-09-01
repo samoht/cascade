@@ -12,6 +12,10 @@ type t = {
           how the input happened to order its rules, so a canonical projection
           turns them off to stay confluent. *)
   extend_lists : bool;
+  recurse_blocks : bool;
+      (** Whether statement optimization descends into child blocks. A seam pass
+          over two newly merged blocks turns this off because their children
+          were optimized before the merge. *)
   closed_world : bool;
   objective : objective;
   enforce_spec : bool;
@@ -33,6 +37,7 @@ let fragment =
     aggressive = false;
     regroup = true;
     extend_lists = false;
+    recurse_blocks = true;
     closed_world = false;
     objective = `Transfer;
     enforce_spec = false;
@@ -51,6 +56,7 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     aggressive;
     regroup;
     extend_lists;
+    recurse_blocks = true;
     closed_world;
     objective;
     enforce_spec;
@@ -68,6 +74,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     aggressive;
     regroup;
     extend_lists;
+    recurse_blocks = true;
     closed_world;
     objective;
     enforce_spec;
@@ -80,11 +87,13 @@ let lossless t = t.lossless
 let aggressive t = t.aggressive
 let regroup t = t.regroup
 let extend_lists t = t.extend_lists
+let recurse_blocks t = t.recurse_blocks
 let closed_world t = t.closed_world
 let objective t = t.objective
 let enforce_spec t = t.enforce_spec
 let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
+let with_recurse_blocks recurse_blocks t = { t with recurse_blocks }
 
 let pp_scope ctx = function
   | `Fragment -> Pp.string ctx "fragment"
