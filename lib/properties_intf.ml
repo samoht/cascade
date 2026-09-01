@@ -772,6 +772,14 @@ type repeat_count =
   | Auto_fit
   | Var of repeat_count var
 
+(** A CSS Values 4 math function whose result is a Grid [<flex>] track breadth.
+    Kept separate from [length] because [fr] is not a length unit. *)
+type grid_flex_math =
+  | Calc_flex of math_arg
+  | Min_flex of math_arg list
+  | Max_flex of math_arg list
+  | Clamp_flex of math_arg * math_arg * math_arg
+
 type grid_template =
   | None
   (* Single track values *)
@@ -789,6 +797,7 @@ type grid_template =
           specific cases above do not carry: a [calc()], a [var()] inside a
           [calc()], or a less common unit (e.g. [cm], [ch]). *)
   | Fr of float
+  | Flex_math of grid_flex_math
   | Auto
   | Min_content
   | Max_content
