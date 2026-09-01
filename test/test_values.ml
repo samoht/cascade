@@ -211,11 +211,13 @@ let test_length () =
   check_length "0vi";
   check_length "0svh";
 
-  (* calc() is held verbatim by pp. A unitless zero cannot be removed from a
-     typed sum: it is not a [<length>] operand. *)
-  check_length "calc(100% - 0)";
-  check_length "calc(10px + 0)";
-  check_length "calc(0 + 10px)";
+  (* CSS Values 4 sec. 10.9: a unitless zero inside a math function has the
+     [<number>] type. It cannot be added to a [<length-percentage>], and a lone
+     numeric result cannot satisfy [<length-percentage>] either. *)
+  neg_cursor read_length "calc(100% - 0)";
+  neg_cursor read_length "calc(10px + 0)";
+  neg_cursor read_length "calc(0 + 10px)";
+  neg_cursor read_length "calc(0)";
 
   (* optimize+minify strips the unit from a zero length and folds calc; 0% stays
      a percentage. *)
@@ -224,12 +226,10 @@ let test_length () =
   decl_optimizes ~prop:"width" ~held:"0vi" ~into:"0" "0vi";
   decl_optimizes ~prop:"width" ~held:"0svh" ~into:"0" "0svh";
   decl_optimizes ~prop:"width" ~held:"0%" ~into:"0%" "0%";
-  decl_optimizes ~prop:"width" ~held:"calc(100% - 0)" ~into:"calc(100% - 0)"
-    "calc(100% - 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(10px + 0)" ~into:"calc(10px + 0)"
-    "calc(10px + 0)";
-  decl_optimizes ~prop:"width" ~held:"calc(0 + 10px)" ~into:"calc(0 + 10px)"
-    "calc(0 + 10px)";
+  (* Typed zero terms remain valid and keep contributing their types. *)
+  check_length "calc(1em + 0px)";
+  check_length "calc(1px + 0%)";
+  check_length "calc(var(--size) + 0)";
 
   (* CSS Values 4 sec. 10.8 makes a parenthesised operand a whole [<calc-sum>],
      so a trailing token inside one invalidates the value rather than shortening

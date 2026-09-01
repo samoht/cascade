@@ -5281,21 +5281,43 @@ let bg35_radius_collapse () =
     "border-radius: 1px 1px 1px 1px collapses to 1px" ".x{border-radius:1px}"
     (normalize ".x { border-radius: 1px 1px 1px 1px }")
 
-(* CSS Values 4 sec. 10.10.1 only combines sum children with identical units and
-   explicitly warns that a zero term cannot otherwise be removed: its type can
-   affect the calculation. A unitless zero is not a [<length>] calc term. *)
+(* CSS Values 4 sec. 10.9 determines a math function's type before simplifying
+   it. A unitless zero is a [<number>], so adding it to a dimension or using the
+   numeric result where a dimension is required makes the declaration invalid.
+   Variables remain deferred until substitution, and zero terms with compatible
+   dimension types remain valid. *)
 let v410_calc_add_zero () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
-  Alcotest.(check string)
-    "unitless zero stays in a length sum" ".x{width:calc(1px + 0)}"
-    (normalize ".x { width: calc(1px + 0) }");
-  Alcotest.(check string)
-    "leading unitless zero stays in a length sum" ".x{width:calc(0 + 1px)}"
-    (normalize ".x { width: calc(0 + 1px) }");
+  let rejects label css =
+    Alcotest.(check bool)
+      label true
+      (match Css.of_string ~strict:true css with
+      | Error _ -> true
+      | Ok _ -> false)
+  in
+  let accepts label css =
+    Alcotest.(check bool)
+      label true
+      (match Css.of_string ~strict:true css with
+      | Ok _ -> true
+      | Error _ -> false)
+  in
+  rejects "number plus length is rejected" ".x { width: calc(0 + 1px) }";
+  rejects "length plus number is rejected" ".x { width: calc(1px + 0) }";
+  rejects "a numeric calc cannot be a width" ".x { width: calc(0) }";
+  rejects "number plus angle is rejected" ".x { rotate: calc(45deg + 0) }";
+  rejects "number plus time is rejected"
+    ".x { transition-duration: calc(1s + 0) }";
+  rejects "number plus percentage is rejected" ".x { opacity: calc(.5 + 0%) }";
+  rejects "line-height number plus percentage is rejected"
+    ".x { line-height: calc(1 + 0%) }";
+  accepts "number plus number remains valid" ".x { opacity: calc(.5 + 0) }";
+  accepts "a variable keeps type checking deferred"
+    ".x { width: calc(var(--size) + 0) }";
   Alcotest.(check string)
     "a cross-unit zero stays in a length sum" ".x{width:calc(1em + 0px)}"
     (normalize ".x { width: calc(1em + 0px) }");
@@ -6283,7 +6305,7 @@ let v4_10_2_calc_arithmetic () =
     "calc(1px * 0) -> 0" ".x{width:0}"
     (normalize ".x { width: calc(1px * 0) }");
   Alcotest.(check string)
-    "unitless calc zero stays untyped" ".x{width:calc(0)}"
+    "a numeric calc cannot be a width" ""
     (normalize ".x { width: calc(0 + 0) }")
 
 let v4102_calc_addition () =
