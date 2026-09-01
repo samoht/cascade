@@ -163,9 +163,34 @@ let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
 let preserve_if_equal before after = if after == before then before else after
 let map_preserve = List.map_preserve
 
+(* CSS Values 5 leaves a value's top-level component sequence unresolved across
+   an arbitrary substitution function until computed-value time. A substitution
+   nested inside calc() or another typed function stays one top-level component,
+   so only these outer AST constructors are cardinality sensitive. *)
+let is_length_substitution : length -> bool = function
+  | Attr _ | Env _ | Var _ -> true
+  | _ -> false
+
+let is_lp_substitution : length_percentage -> bool = function
+  | Length length -> is_length_substitution length
+  | Env _ | Var _ -> true
+  | _ -> false
+
+let is_color_substitution : color -> bool = function
+  | Attribute _ | Var _ -> true
+  | _ -> false
+
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the
-   shortest of the spellings that name those sides. *)
-let normalize_box_shorthand f vs = collapse_box_shorthand (map_preserve f vs)
+   shortest of the spellings that name those sides. Keep the authored number of
+   components when arbitrary substitution defers their computed arity. *)
+let normalize_box_shorthand ~is_substitution f vs =
+  let normalized = map_preserve f vs in
+  if List.exists is_substitution normalized then normalized
+  else collapse_box_shorthand normalized
+
+let normalize_length_box ~ctx =
+  normalize_box_shorthand ~is_substitution:is_length_substitution
+    (Values.normalize_length ~ctx)
 
 let option_map_preserve f opt =
   match opt with

@@ -533,6 +533,8 @@ difference wherever the two are not equivalent.
   `text-decoration`, `transition` and `font` shorthands, a repeated
   `font-family` entry, a two-value `display` beside its legacy keyword, and a
   box shorthand whose sides repeat (#635, #636, #637, #639, #640, #641)
+- Box shorthands keep authored component counts across top-level substitution
+  functions, preserving computed-value validity and side assignment (#736)
 - `--minify` canonicalises logical minimum sizes, duration units, stepped
   functions, hue-angle units, constructed `transform-origin` positions and
   repeated sides in the `scroll-margin` and `scroll-padding` shorthands before
