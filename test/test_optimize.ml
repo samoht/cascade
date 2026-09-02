@@ -1944,6 +1944,23 @@ let test_factoring_reaches_fixpoint () =
   Alcotest.(check string)
     "interacting factorings converge in one pass" once (minify_str once)
 
+let test_large_stylesheet_reaches_local_fixpoint () =
+  (* Large sheets deliberately limit the expensive global factoring walk, but
+     rule-local normalization must still converge. Composing these longhands
+     creates a shorthand whose explicit initial delay only disappears when the
+     synthesized declaration itself is normalized. *)
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".padding-%d{z-index:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    padding
+    ^ ".target{transition-property:opacity;transition-duration:70ms;transition-delay:0ms;transition-timing-function:linear}"
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet local rewrites converge in one pass" once (minify_str once)
+
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
      wins). The later .y carries the first .x's value, but grouping it with that
@@ -5060,6 +5077,9 @@ let selector_merging_tests =
     ( "factoring reaches fixpoint in one pass",
       `Quick,
       test_factoring_reaches_fixpoint );
+    ( "large stylesheet reaches local fixpoint",
+      `Quick,
+      test_large_stylesheet_reaches_local_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
