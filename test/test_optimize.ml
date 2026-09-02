@@ -1612,6 +1612,22 @@ let nesting_synthesis_can_be_disabled () =
     (Astring.String.is_infix ~affix:"&:where(.dark,.dark *)"
        (out ~regroup:false ()))
 
+let flatten_nesting_is_an_output_invariant () =
+  let out css =
+    Css.of_string_exn css
+    |> Css.optimize ~flatten_nesting:true
+    |> Css.to_string ~minify:true
+  in
+  let expected =
+    ".long-component-name{color:red}.long-component-name:hover{color:#00f}"
+  in
+  Alcotest.(check string)
+    "flat input stays flat after nesting synthesis" expected
+    (out ".long-component-name{color:red}.long-component-name:hover{color:blue}");
+  Alcotest.(check string)
+    "authored nesting is flat in the final output" expected
+    (out ".long-component-name{color:red;&:hover{color:blue}}")
+
 (* CSS Fragmentation 3 sec. 3.4 makes [page-break-*] the same property as its
    [break-*] alias, so two [page-break-*] declarations in one rule are two
    declarations of one property and the later one shadows the earlier, exactly
@@ -1694,6 +1710,9 @@ let optimize_tests =
     ( "nesting synthesis can be disabled",
       `Quick,
       nesting_synthesis_can_be_disabled );
+    ( "flatten nesting is an output invariant",
+      `Quick,
+      flatten_nesting_is_an_output_invariant );
     ( "a page-break var shadows like its alias",
       `Quick,
       page_break_var_shadows_like_its_alias );
