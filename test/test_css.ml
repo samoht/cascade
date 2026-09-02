@@ -1767,8 +1767,9 @@ let public_value_combinator_edges () =
     ".card{border-radius:.375rem;gap:.5rem \
      .75rem;font-family:ui-sans-serif,system-ui,sans-serif;text-shadow:1px 2px \
      4px #000;aspect-ratio:16/9;columns:12rem 3;counter-reset:section \
-     1;mask:url(mask.svg);outline:2px solid #00f}.helpers{object-position:10px \
-     20px;text-overflow:clip \"...\";content:\"Section \" \
+     1;-webkit-mask:url(mask.svg);mask:url(mask.svg);outline:2px solid \
+     #00f}.helpers{object-position:10px 20px;text-overflow:clip \
+     \"...\";content:\"Section \" \
      counter(section);background-image:conic-gradient(from 45deg at \
      50%,red,#00f);background-size:20px 30px;object-view-box:inset(0 \
      1px);grid-template-columns:1fr repeat(2,minmax(0,1fr));grid-row:span \
