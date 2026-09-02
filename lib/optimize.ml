@@ -13,6 +13,22 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 type scope = Ctx.scope
 type objective = [ `Raw | `Transfer ]
+type browser_version = int * int
+
+type targets = {
+  chrome : browser_version;
+  firefox : browser_version;
+  safari : browser_version;
+  ios_safari : browser_version;
+}
+
+let evergreen_targets =
+  {
+    chrome = (111, 0);
+    firefox = (128, 0);
+    safari = (16, 4);
+    ios_safari = (16, 4);
+  }
 
 (* Optimisation context threaded from the entry points to the shorthand
    composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
@@ -98,8 +114,43 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
       collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
-let factor_rules_incremental ?cache ~ctx rules =
-  Factor.run ?cache ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
+let factor_rules_incremental ?cache ~settle ~ctx rules =
+  Factor.run ?cache ~settle ~ctx
+    ~finalize:(finalize_rule_without_nested ~ctx)
+    rules
+
+(* Keep the cheap rule-local pipeline independent of the stylesheet-wide
+   factoring budget. [Rule.finalize] normalizes any shorthand it synthesizes, so
+   one linear preparation pass reaches the local fixed point even when a large
+   stylesheet limits the global walks. *)
+let normalize_rules_locally ~ctx rules =
+  list_map_preserve (single_rule_without_nested ~ctx) rules
+  |> Rule.drop_shadowed
+  |> list_map_preserve
+       (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
+
+let merge_adjacent_and_mark ~ctx invalidated rules =
+  let settled = Rule.merge_adjacent_identical ~ctx rules in
+  (* Each produced rule is fully normalized by the scheduler's finalizer. A node
+     merge is therefore the only settling step that changes the candidate graph
+     and requires another global walk. *)
+  if settled != rules then invalidated := settled :: !invalidated;
+  settled
+
+let factor_rules_until_settled ?factor_cache ~ctx rules =
+  let rec loop remaining rules =
+    let invalidated = ref [] in
+    let next =
+      factor_rules_incremental ?cache:factor_cache
+        ~settle:(merge_adjacent_and_mark ~ctx invalidated)
+        ~ctx rules
+    in
+    let needs_refactor =
+      List.exists (fun rules -> rules == next) !invalidated
+    in
+    if needs_refactor && remaining > 1 then loop (remaining - 1) next else next
+  in
+  loop 2 rules
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
@@ -482,30 +533,27 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~supports (rules : rule list) :
   in
   (* Apply local rule normalization before the DAG factor scheduler decides
      global selector/declaration grouping. *)
-  let prepared =
-    list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
-  in
-  let prepared = Rule.drop_shadowed prepared in
-  let prepared =
-    list_map_preserve
-      (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
-      prepared
-  in
+  let prepared = normalize_rules_locally ~ctx with_optimized_nested in
   (* Factoring is greedy and global: extracting one shared declaration subset
      can leave behind leftovers that are themselves factorable. The local linear
      optimizations above always run; this incremental gate only decides whether
      the expensive global factoring fixpoint is likely to buy enough bytes to
      justify the full indexed scheduler walk. *)
   let factored =
-    if Ctx.regroup ctx then
-      factor_rules_incremental ?cache:factor_cache ~ctx prepared
-    else prepared
+    if Ctx.regroup ctx then begin
+      (* The global scheduler reaches a fixed point for the graph it receives,
+         but settling its result can merge nodes and expose a new graph. Repeat
+         only when that cheap postprocessing changed one of the transfer gate's
+         alternatives; most sheets still pay for one global walk. *)
+      factor_rules_until_settled ?factor_cache ~ctx prepared
+    end
+    else merge_adjacent_and_mark ~ctx (ref []) prepared
   in
   (* After factoring so the greedy scheduler sees the unconstrained input (a
      local pre-merge can lock a pair together and hide a larger group): this
      only picks up the merges factoring did not make because its preflight
      skipped the run or the transfer gate discarded its result. *)
-  Rule.merge_adjacent_identical ~ctx factored
+  factored
 
 (* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
@@ -580,6 +628,176 @@ let rules ?scope (rules : rule list) : rule list =
 let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
+
+type webkit_fallback = User_select_fallback | Backdrop_filter_fallback
+
+let version_compare (major_a, minor_a) (major_b, minor_b) =
+  match Int.compare major_a major_b with
+  | 0 -> Int.compare minor_a minor_b
+  | order -> order
+
+let version_at_most version maximum = version_compare version maximum <= 0
+
+(* The target contract is deliberately owned here rather than by the printer:
+   adding a fallback changes the AST and must therefore be explicit to API
+   callers. Safari/iOS still require [-webkit-user-select] at the declared
+   baseline, while unprefixed [backdrop-filter] arrived after 17.6. *)
+let required_fallback kind targets =
+  match kind with
+  | User_select_fallback -> true
+  | Backdrop_filter_fallback ->
+      version_at_most targets.safari (17, 6)
+      || version_at_most targets.ios_safari (17, 6)
+
+let webkit_fallback_of_declaration targets decl =
+  let fallback kind property value important =
+    if required_fallback kind targets then
+      Some (Declaration.v ~important property value)
+    else None
+  in
+  match decl with
+  | Declaration { property = User_select; value; important; _ } ->
+      fallback User_select_fallback Webkit_user_select value important
+  | Declaration { property = Backdrop_filter; value; important; _ } ->
+      fallback Backdrop_filter_fallback Webkit_backdrop_filter value important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "user-select" ->
+      fallback User_select_fallback (Unknown_property "-webkit-user-select")
+        value important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "backdrop-filter" ->
+      fallback Backdrop_filter_fallback
+        (Unknown_property "-webkit-backdrop-filter") value important
+  | Theme_guarded _ | Declaration _ -> None
+
+let is_webkit_fallback kind decl =
+  match (kind, decl) with
+  | User_select_fallback, Declaration { property = Webkit_user_select; _ }
+  | ( Backdrop_filter_fallback,
+      Declaration { property = Webkit_backdrop_filter; _ } ) ->
+      true
+  | User_select_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-user-select"
+  | ( Backdrop_filter_fallback,
+      Declaration { property = Unknown_property name; _ } ) ->
+      String.equal name "-webkit-backdrop-filter"
+  | _, (Theme_guarded _ | Declaration _) -> false
+
+let fallback_kind = function
+  | Declaration { property = User_select; _ } -> Some User_select_fallback
+  | Declaration { property = Backdrop_filter; _ } ->
+      Some Backdrop_filter_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "user-select" ->
+      Some User_select_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "backdrop-filter" ->
+      Some Backdrop_filter_fallback
+  | Theme_guarded _ | Declaration _ -> None
+
+(* Once an author supplied a prefix for a property, that spelling is theirs:
+   synthesising another value could change what WebKit sees. Otherwise mirror
+   every standard declaration so source-order fallback semantics stay intact. *)
+let add_declaration_prefixes ~targets decls =
+  let author_owns kind = List.exists (is_webkit_fallback kind) decls in
+  let rec loop changed acc = function
+    | [] -> if changed then List.rev acc else decls
+    | decl :: rest -> (
+        match fallback_kind decl with
+        | Some kind when not (author_owns kind) -> (
+            match webkit_fallback_of_declaration targets decl with
+            | Some prefixed -> loop true (decl :: prefixed :: acc) rest
+            | None -> loop changed (decl :: acc) rest)
+        | Some _ | None -> loop changed (decl :: acc) rest)
+  in
+  loop false [] decls
+
+let rec condition_has_webkit kind = function
+  | Supports.Property (Supports.Declaration decl) ->
+      is_webkit_fallback kind decl
+  | Supports.Property _ | Supports.Function _ -> false
+  | Supports.Not condition -> condition_has_webkit kind condition
+  | Supports.And (a, b) | Supports.Or (a, b) ->
+      condition_has_webkit kind a || condition_has_webkit kind b
+
+let add_condition_prefixes ~targets condition =
+  let author_owns kind = condition_has_webkit kind condition in
+  let rec map = function
+    | Supports.Property (Supports.Declaration decl) as original -> (
+        match fallback_kind decl with
+        | Some kind when not (author_owns kind) -> (
+            match webkit_fallback_of_declaration targets decl with
+            | Some prefixed ->
+                Supports.Or
+                  (Supports.Property (Supports.Declaration prefixed), original)
+            | None -> original)
+        | Some _ | None -> original)
+    | (Supports.Property _ | Supports.Function _) as leaf -> leaf
+    | Supports.Not condition as original ->
+        let condition' = map condition in
+        if condition' == condition then original else Supports.Not condition'
+    | Supports.And (a, b) as original ->
+        let a' = map a and b' = map b in
+        if a' == a && b' == b then original else Supports.And (a', b')
+    | Supports.Or (a, b) as original ->
+        let a' = map a and b' = map b in
+        if a' == a && b' == b then original else Supports.Or (a', b')
+  in
+  map condition
+
+let rec add_conditional_prefixes ~targets = function
+  | Media_condition _ as condition -> condition
+  | Supports_condition_test condition as original ->
+      let condition' = add_condition_prefixes ~targets condition in
+      if condition' == condition then original
+      else Supports_condition_test condition'
+  | And (a, b) as original ->
+      let a' = add_conditional_prefixes ~targets a
+      and b' = add_conditional_prefixes ~targets b in
+      if a' == a && b' == b then original else And (a', b')
+  | Or (a, b) as original ->
+      let a' = add_conditional_prefixes ~targets a
+      and b' = add_conditional_prefixes ~targets b in
+      if a' == a && b' == b then original else Or (a', b')
+
+let compatibility_declaration_sites =
+  {
+    element_rule = true;
+    animation_frame = true;
+    page_box = true;
+    position_fallback = true;
+    condition_test = false;
+  }
+
+let add_compatibility_prefixes ~targets stylesheet =
+  let rewrite original =
+    let stmt =
+      match original with
+      | Supports (condition, body) ->
+          let condition' = add_condition_prefixes ~targets condition in
+          if condition' == condition then original
+          else Supports (condition', body)
+      | Import ({ supports = Some condition; _ } as rule) ->
+          let condition' = add_condition_prefixes ~targets condition in
+          if condition' == condition then original
+          else Import { rule with supports = Some condition' }
+      | When (condition, body) ->
+          let condition' = add_conditional_prefixes ~targets condition in
+          if condition' == condition then original else When (condition', body)
+      | Else (Some condition, body) ->
+          let condition' = add_conditional_prefixes ~targets condition in
+          if condition' == condition then original
+          else Else (Some condition', body)
+      | _ -> original
+    in
+    let stmt =
+      if at_declaration_site compatibility_declaration_sites stmt then
+        map_statement_declarations (add_declaration_prefixes ~targets) stmt
+      else stmt
+    in
+    if stmt == original then Keep else Replace stmt
+  in
+  edit_statements rewrite stylesheet
 
 (* A WebKit workaround is a property of the declaration, so it applies wherever
    the declaration sits. *)
@@ -926,9 +1144,9 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   in
   list_map_preserve prune stmts
 
-let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
-    ?(enforce_spec = false) ?(aggressive = false) ?(regroup = true)
-    ?(closed_world = false) ?(objective = `Transfer)
+let stylesheet ?scope ?(targets = evergreen_targets) ?(flatten_nesting = false)
+    ?(lossless = false) ?(enforce_spec = false) ?(aggressive = false)
+    ?(regroup = true) ?(closed_world = false) ?(objective = `Transfer)
     ?(prune_unused_custom_props = false) ?stats (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
@@ -956,6 +1174,9 @@ let stylesheet ?scope ?(flatten_nesting = false) ?(lossless = false)
   let result =
     if prune_unused_custom_props then drop_unused_custom_props result
     else result
+  in
+  let result =
+    if enforce_spec then result else add_compatibility_prefixes ~targets result
   in
   Log.debug (fun m ->
       let c = (Stats.snapshot (Ctx.stats ctx)).counters in

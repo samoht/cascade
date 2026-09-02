@@ -232,7 +232,8 @@ let lossless_arg =
      and color-mix() values stay functional and channels keep their full \
      precision. Two stylesheets that only differ by colours folded within the \
      approximation budget then report as different rather than collapsing to \
-     equal. Has no effect outside $(b,--diff=canonical)."
+     equal. Numeric arithmetic is exact with or without this flag. Has no \
+     effect outside $(b,--diff=canonical)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 

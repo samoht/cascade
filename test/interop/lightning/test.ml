@@ -5,8 +5,9 @@
     expected value is one candidate oracle answer. During [@@regen-traces], the
     configured minifier CLIs are run over the same input and their outputs or
     crashes are cached in the trace. Normal test runs never shell out to oracle
-    tools: Cascade passes if its output is no longer than the shortest valid
-    cached candidate.
+    tools: each valid cached candidate receives Cascade's declared target
+    prefixes, then Cascade passes if its output is no longer than the shortest
+    adjusted candidate.
 
     Each trace record is treated as a complete stylesheet, matching the way the
     upstream minifier CLIs see the input: closed over the fixture CSS text for
@@ -106,6 +107,18 @@ let shortest_length (candidates : candidate list) =
   List.fold_left
     (fun acc ({ css; _ } : candidate) -> min acc (String.length css))
     max_int candidates
+
+let add_declared_target_prefixes ({ tool; css } : candidate) =
+  match Css.of_string ~strict:false css with
+  | Error _ -> { tool; css }
+  | Ok parsed ->
+      let css =
+        parsed.stylesheet
+        |> Css.Optimize.add_compatibility_prefixes
+             ~targets:Css.Optimize.evergreen_targets
+        |> Css.to_string ~minify:true
+      in
+      { tool; css }
 
 let canonical_minified css =
   if css = "" then Ok ""
@@ -416,7 +429,15 @@ let classify (pair : Trace_pairs.t) =
         List.map (fun issue -> Rejected_candidate issue) rejected
         @ List.map (fun issue -> Failed_candidate issue) pair.failures
       in
-      let best = shortest_length candidates in
+      (* The cached CLIs ran without browser targets, while Cascade's default
+         optimizer owns a concrete browser baseline. Compare byte counts only
+         after applying that one public target transform to each accepted
+         candidate; running Cascade's whole optimizer here would turn this
+         arbitrage check into a comparison against itself. *)
+      let scored_candidates =
+        List.map add_declared_target_prefixes candidates
+      in
+      let best = shortest_length scored_candidates in
       (* Neither measure below can see a construct Cascade deletes. Length
          scoring cannot: a deletion always reads as a shorter output.
          [validate_candidate] cannot either, because it routes the source and
@@ -447,7 +468,7 @@ let classify (pair : Trace_pairs.t) =
         else if String.length actual <= best then Pass
         else
           let shortest =
-            candidates
+            scored_candidates
             |> List.filter (fun (c : candidate) -> String.length c.css = best)
             |> List.map (fun (c : candidate) ->
                 c.tool ^ ":" ^ display_css c.css)

@@ -10,8 +10,11 @@ val cache : unit -> cache
 
 val run :
   ?cache:cache ->
+  ?settle:(Stylesheet.rule list -> Stylesheet.rule list) ->
   ctx:Ctx.t ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   Stylesheet.rule list ->
   Stylesheet.rule list
-(** Run the DAG-backed factor fixpoint. *)
+(** Run the DAG-backed factor fixpoint. [settle] (default identity) applies
+    cheap postprocessing to both sides of the transfer-size gate, so the gate
+    compares the actual alternatives returned to its caller. *)

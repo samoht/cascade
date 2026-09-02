@@ -1790,9 +1790,9 @@ let optimize_tests =
 
 (** {1 Selector merging tests (cascade semantics)} *)
 
-let optimized_string ?scope ?(enforce_spec = false) css =
+let optimized_string ?scope ?targets ?(enforce_spec = false) css =
   css |> Cursor.of_string |> Css.Stylesheet.read
-  |> Css.Optimize.stylesheet ?scope ~enforce_spec
+  |> Css.Optimize.stylesheet ?scope ?targets ~enforce_spec
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
@@ -1930,6 +1930,22 @@ let test_factor_interval_keeps_overrides () =
     (minify_str
        ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
 
+let test_factor_selector_branch_keeps_later_override () =
+  (* Extracting the shared overflow/position declarations must not let the
+     earlier selector-list branch overwrite the later .scroll-item a z-index.
+     Only that branch is overridden; .scroll-pic-frame keeps z-index:100. *)
+  Alcotest.(check string)
+    "selector-list branch keeps its later override"
+    ".scroll-item \
+     a,.scroll-pic-frame,.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item \
+     a,.scroll-pic-frame{z-index:100}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+     a{border:1px solid#fff;display:block;height:162px;width:198px;z-index:50}"
+    (minify_str
+       ".scroll-item \
+        a,.scroll-pic-frame{overflow:hidden;position:relative;z-index:100}.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+        a{border:1px solid \
+        #fff;display:block;height:162px;width:198px;z-index:50}")
+
 let test_factoring_reaches_fixpoint () =
   (* Factoring one shared subset can expose another: grouping .a/.b on color:red
      leaves .b with padding:0, now groupable with .c. A correct optimizer
@@ -1943,6 +1959,67 @@ let test_factoring_reaches_fixpoint () =
   in
   Alcotest.(check string)
     "interacting factorings converge in one pass" once (minify_str once)
+
+let test_large_stylesheet_reaches_local_fixpoint () =
+  (* Large sheets deliberately limit the expensive global factoring walk, but
+     rule-local normalization must still converge. Composing these longhands
+     creates a shorthand whose explicit initial delay only disappears when the
+     synthesized declaration itself is normalized. *)
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".padding-%d{z-index:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    padding
+    ^ ".target{transition-property:opacity;transition-duration:70ms;transition-delay:0ms;transition-timing-function:linear}"
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet local rewrites converge in one pass" once (minify_str once)
+
+let test_large_stylesheet_normalizes_vendor_aliases () =
+  (* Alias comparison must see the normalized typed values. Otherwise the
+     prefixed 250ms/500ms values differ structurally from the normalized .25s/
+     .5s unprefixed twins until the serialized output is parsed again. *)
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".vendor-padding-%d{z-index:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    padding
+    ^ ".target{-webkit-transition:opacity 250ms;transition:opacity \
+       250ms;-webkit-animation:spin 500ms linear;animation:spin 500ms linear}"
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet aliases compare normalized values" once (minify_str once)
+
+let test_large_stylesheet_factoring_reaches_fixpoint () =
+  (* Large graphs refresh candidates in batches. The refreshed batch can itself
+     expose another profitable grouping, which must be enumerated before the
+     scheduler returns. Inert custom-property rules select the large-graph path
+     without participating in these factoring groups. *)
+  let padding =
+    List.init 129 (fun i ->
+        Fmt.str ".factor-padding-%d{--factor-padding-%d:0}" i i)
+    |> String.concat ""
+  in
+  let input =
+    padding
+    ^ ".scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+       a{border:1px solid \
+       #fff;display:block;height:162px;overflow:hidden;position:relative;width:198px;z-index:50}.part-h-m{margin-right:20px;width:360px}.part-j-l,.part-j-m,.part-j-r{display:inline;float:left}.part-n-l,.part-n-m,.part-n-r{display:inline;float:left}.part-n-l{margin-right:20px;width:240px}.mod44-list{display:inline;float:right;margin-right:5px}.mod44-list \
+       li{display:inline;float:left;line-height:34px;height:34px;margin-right:5px}.mod-a \
+       .tab-nav-a \
+       a{border-left:0;float:left;line-height:23px;height:23px;padding:0}.mod-a \
+       .tab-nav-a \
+       span{border-left:0;float:left;line-height:23px;height:23px;padding:0 \
+       2px}"
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet factoring converges in one scheduler run" once
+    (minify_str once)
 
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
@@ -3166,6 +3243,49 @@ let target_minify_enforce_spec_split () =
     "@container sidebar (min-width: 700px) { a { color: red } }"
     ~default:"@container sidebar (width>=700px){a{color:red}}"
     ~spec:"@container sidebar (min-width:700px){a{color:red}}"
+
+let target_evergreen_compatibility_prefixes () =
+  Alcotest.(check string)
+    "the declared target adds WebKit declaration fallbacks"
+    ".a{-webkit-user-select:none;user-select:none;-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
+    (optimized_string ".a{user-select:none;backdrop-filter:blur(1px)}");
+  Alcotest.(check string)
+    "the declaration fallback preserves importance"
+    ".a{-webkit-user-select:none!important;user-select:none!important}"
+    (optimized_string ".a{user-select:none!important}");
+  Alcotest.(check string)
+    "the declared target prefixes feature tests and their declarations"
+    "@supports(-webkit-backdrop-filter:var(--tw))or \
+     (backdrop-filter:var(--tw)){.a{-webkit-backdrop-filter:var(--tw);backdrop-filter:var(--tw)}}"
+    (optimized_string
+       "@supports(backdrop-filter:var(--tw)){.a{backdrop-filter:var(--tw)}}");
+  Alcotest.(check string)
+    "an authored fallback is not duplicated"
+    ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
+    (optimized_string
+       ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}");
+  Alcotest.(check string)
+    "decoration color needs no prefix for the declared target"
+    ".prose a{text-decoration:underline;text-decoration-color:var(--c)}"
+    (optimized_string
+       ".prose{a{text-decoration:underline;text-decoration-color:var(--c)}}");
+  Alcotest.(check string)
+    "spec-only mode does not synthesize target fallbacks"
+    ".a{user-select:none;backdrop-filter:blur(1px)}"
+    (optimized_string ~enforce_spec:true
+       ".a{user-select:none;backdrop-filter:blur(1px)}");
+  let newer_webkit =
+    {
+      Css.Optimize.evergreen_targets with
+      safari = (18, 0);
+      ios_safari = (18, 0);
+    }
+  in
+  Alcotest.(check string)
+    "a newer WebKit target drops only the obsolete fallback"
+    ".a{-webkit-user-select:none;user-select:none;backdrop-filter:blur(1px)}"
+    (optimized_string ~targets:newer_webkit
+       ".a{user-select:none;backdrop-filter:blur(1px)}")
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
@@ -5057,9 +5177,21 @@ let selector_merging_tests =
     ("factor shared declarations", `Quick, test_factor_shared_declarations);
     ("factor weighted intervals", `Quick, test_factor_interval_schedule);
     ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
+    ( "factor selector branch keeps later override",
+      `Quick,
+      test_factor_selector_branch_keeps_later_override );
     ( "factoring reaches fixpoint in one pass",
       `Quick,
       test_factoring_reaches_fixpoint );
+    ( "large stylesheet reaches local fixpoint",
+      `Quick,
+      test_large_stylesheet_reaches_local_fixpoint );
+    ( "large stylesheet normalizes vendor aliases",
+      `Quick,
+      test_large_stylesheet_normalizes_vendor_aliases );
+    ( "large stylesheet factoring reaches fixpoint",
+      `Quick,
+      test_large_stylesheet_factoring_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
@@ -5174,6 +5306,9 @@ let selector_merging_tests =
     ( "target minify and enforce-spec split",
       `Quick,
       target_minify_enforce_spec_split );
+    ( "target evergreen compatibility prefixes",
+      `Quick,
+      target_evergreen_compatibility_prefixes );
     ( "a nested block keeps its declaration separator",
       `Quick,
       nested_block_separator );

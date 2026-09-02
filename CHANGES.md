@@ -501,6 +501,16 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--minify` reaches a stable result in one invocation on large stylesheets:
+  synthesized shorthands and vendor transition/animation aliases normalize
+  before comparison, factoring settles both transfer-size alternatives and
+  retries once when settling changes its graph, and selector-branch factoring
+  preserves source order after earlier rewrites (#750)
+- Default minification adds the `-webkit-user-select` and
+  `-webkit-backdrop-filter` declarations Safari 16.4 needs, and expands matching
+  `@supports` tests to accept either spelling. `Css.optimize ~targets` exposes
+  the Chrome, Firefox, Safari and iOS Safari versions that own these fallbacks;
+  an authored prefixed declaration remains authoritative (#751)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)
@@ -830,6 +840,10 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Numeric arithmetic has zero approximation tolerance in canonical mode:
+  `calc(28/14)` compares equal to `2`, while `calc(28/18)` stays distinct from
+  a rounded decimal in both default and `--lossless` modes. The default
+  approximation budget remains colour-only (#753)
 - `:is(a, b)` and the selector list `a, b` compare equal when the arguments
   share one specificity, which is the split-against-grouped selector list the
   mode promises to equate (#655)
@@ -879,6 +893,10 @@ difference wherever the two are not equivalent.
 - `--diff=tree` prints the body of an added or removed rule as declarations,
   with the separator and the `!important` flag, where a rule gaining
   `color: red !important` read like one gaining `color: red` (#706)
+- `--diff=tree` pairs repeated occurrences of one selector by their declaration
+  properties, with source order breaking ties, so a compatibility block no
+  longer makes declarations present on both sides read as added or removed
+  (#752)
 
 ### Library
 

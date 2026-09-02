@@ -1057,6 +1057,44 @@ let repeated_property_surplus_is_added () =
     [ ("color", "blue") ]
     (rule_added_properties d)
 
+(* One side may split a selector's declarations around a compatibility
+   container. Pairing repeated selectors by bucket order binds the combined rule
+   to the trailing padding-only occurrence and invents two declaration losses.
+   The closest declaration footprint is the rule before [@supports]. *)
+let repeated_selector_pairs_by_declaration_similarity () =
+  let d =
+    diff_of
+      ~expected:
+        ":root{--c:#364153}.a{position:fixed;color:color-mix(in oklab,var(--c) \
+         25%,transparent);padding:1px}"
+      ~actual:
+        ":root{--c:#364153}.a{position:fixed;color:#36415340}@supports(color:color-mix(in \
+         lab,red,red)){.a{color:color-mix(in oklab,var(--c) \
+         25%,transparent)}}.a{padding:1px}"
+  in
+  let out = render d in
+  Alcotest.(check bool)
+    "position survives" false
+    (Astring.String.is_infix ~affix:"- position: fixed" out);
+  Alcotest.(check bool)
+    "padding survives" false
+    (Astring.String.is_infix ~affix:"+ padding: 1px" out);
+  Alcotest.(check bool)
+    "the compatibility color is still reported" true
+    (Astring.String.is_infix ~affix:"color" out)
+
+(* Values do not make two occurrence footprints more similar. Otherwise these
+   exact values pair across source positions and hide the changed last
+   winner. *)
+let repeated_selector_value_swap_remains_visible () =
+  let d =
+    diff_of ~expected:".a{color:red}.a{color:blue}"
+      ~actual:".a{color:blue}.a{color:red}"
+  in
+  Alcotest.(check bool)
+    "the last-wins change is reported" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 (* ===== Containers nested past the old recursion cutoff ===== *)
 
 (* The walker recurses on strictly smaller statement lists, so nothing needs a
@@ -1591,6 +1629,10 @@ let suite =
         repeated_property_surplus_is_removed;
       Alcotest.test_case "repeated property surplus is added" `Quick
         repeated_property_surplus_is_added;
+      Alcotest.test_case "repeated selector pairs by declaration similarity"
+        `Quick repeated_selector_pairs_by_declaration_similarity;
+      Alcotest.test_case "repeated selector value swap remains visible" `Quick
+        repeated_selector_value_swap_remains_visible;
       Alcotest.test_case "deeply nested leaf change reported" `Quick
         deeply_nested_leaf_change_reported;
       Alcotest.test_case "deeply nested leaf change named" `Quick

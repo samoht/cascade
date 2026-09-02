@@ -226,6 +226,28 @@ let equal_canonical_lossless_exact_srgb () =
     "an off-grid channel keeps its function" false
     (equal ".a{color:color(srgb .501 0 0)}" ".a{color:maroon}")
 
+(* Numeric CSS has no property-independent error metric: an approximation can be
+   multiplied by layout, iteration, or a runtime substitution. Canonical
+   comparison therefore shares the optimizer's exact-division contract rather
+   than extending the deliberately colour-only [--lossless] switch. *)
+let canonical_numeric_division_is_exact () =
+  let equal ?(lossless = false) a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless a b
+  in
+  Alcotest.(check bool)
+    "an exact quotient folds" true
+    (equal ".a{line-height:calc(28/14)}" ".a{line-height:2}");
+  Alcotest.(check bool)
+    "six significant digits are still an approximation" false
+    (equal ".a{line-height:calc(28/18)}" ".a{line-height:1.55556}");
+  Alcotest.(check bool)
+    "even the nearest emitted decimal is outside zero tolerance" false
+    (equal ".a{line-height:calc(28/18)}" ".a{line-height:1.55555556}");
+  Alcotest.(check bool)
+    "lossless keeps the same exact numeric boundary" false
+    (equal ~lossless:true ".a{line-height:calc(28/18)}"
+       ".a{line-height:1.55556}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -1578,4 +1600,6 @@ let suite =
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"
         `Quick equal_canonical_lossless_exact_srgb;
+      Alcotest.test_case "canonical numeric division is exact" `Quick
+        canonical_numeric_division_is_exact;
     ] )

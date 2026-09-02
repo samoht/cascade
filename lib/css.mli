@@ -7874,6 +7874,7 @@ val canonicalize_rule_order : t -> t
 
 val optimize :
   ?scope:Optimize.scope ->
+  ?targets:Optimize.targets ->
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
@@ -7885,16 +7886,19 @@ val optimize :
   ?stats:Stats.t ->
   t ->
   t
-(** [optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
-     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats
-     stylesheet] applies CSS optimizations to the stylesheet, including merging
-    consecutive identical selectors and combining rules with identical
+(** [optimize ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
+     ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
+     ?stats stylesheet] applies CSS optimizations to the stylesheet, including
+    merging consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics for any DOM, unless
     [closed_world] is set.
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis.
     Pass [`Stylesheet] when the caller controls the whole author stylesheet
     graph. See {!Optimize.scope} for the details.
+
+    [targets] defaults to {!Optimize.evergreen_targets} and owns compatibility
+    prefix generation. It is ignored when [enforce_spec] is [true].
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.

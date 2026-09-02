@@ -100,14 +100,12 @@ let affected_nodes graph (candidate : Rule_rewrite.candidate) =
   candidate.consume
   @ produced_ids ~first:first_produced ~count:(List.length candidate.produce)
 
-let run ~ctx ~finalize graph =
-  let max_iterations = max_iterations graph in
-  let refresh_after_commit = Rule_graph.node_count graph <= 128 in
-  let candidates_by_key = Hashtbl.create 256 in
-  let next_key, queue =
-    Rule_candidate.enumerate ~ctx ~finalize graph
-    |> enqueue candidates_by_key 0 Queue.empty
-  in
+let initial_queue ~ctx ~finalize graph candidates_by_key =
+  Rule_candidate.enumerate ~ctx ~finalize graph
+  |> enqueue candidates_by_key 0 Queue.empty
+
+let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
+    candidates_by_key =
   let rec loop iteration refreshed graph next_key queue =
     if iteration >= max_iterations then graph
     else
@@ -149,4 +147,18 @@ let run ~ctx ~finalize graph =
                     loop (iteration + 1) false graph' next_key queue
                   else loop (iteration + 1) false graph' next_key queue))
   in
-  loop 0 false graph next_key queue
+  loop
+
+let run ~ctx ~finalize graph =
+  let candidates_by_key = Hashtbl.create 256 in
+  let next_key, queue = initial_queue ~ctx ~finalize graph candidates_by_key in
+  let loop =
+    scheduler_loop ~max_iterations:(max_iterations graph)
+      ~refresh_after_commit:(Rule_graph.node_count graph <= 128)
+      ~ctx ~finalize candidates_by_key
+  in
+  (* The initial queue was enumerated from this exact graph. If it is empty, or
+     every candidate is rejected without a rewrite, enumerating it again cannot
+     discover anything new. A committed rewrite marks the queue stale below and
+     still gets the usual drain-time refresh. *)
+  loop 0 true graph next_key queue
