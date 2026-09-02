@@ -503,6 +503,9 @@ difference wherever the two are not equivalent.
 
 - `--flatten-nesting` leaves the optimized stylesheet flat even when later
   regrouping can shorten adjacent selectors by synthesizing nesting (#759)
+- Canonical diff compares authored nesting through its flattened selector
+  expansion, so equivalent nested and flat stylesheets do not leave residuals
+  (#760)
 - Default `--minify` evaluates all-static unitless `line-height:calc()`
   arithmetic to its six-significant-figure output budget, so `calc(28/18)`
   becomes `1.55556`. `--lossless` keeps repeating quotients symbolic, and

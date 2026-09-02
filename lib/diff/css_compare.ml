@@ -259,8 +259,7 @@ let css_for_semantic_comparison ?property css =
 
 let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
   try
-    Some
-      (stylesheet
+    let optimize stylesheet =
       (* Regrouping - factoring a shared declaration into a selector list,
          synthesising nesting from adjacent rules - depends on how the input
          happened to order its rules, so it is not confluent: the same sheet
@@ -279,9 +278,16 @@ let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
          the Level 3 [not all and (X)] - delete nothing, and
          {!Css.canonicalize_rule_order} applies those on the comparison side
          instead. *)
-      |> Css.optimize ~lossless ~regroup:false ~enforce_spec:true
-           ~prune_unused_custom_props
-      |> Css.canonicalize_rule_order
+      Css.optimize ~lossless ~regroup:false ~enforce_spec:true
+        ~prune_unused_custom_props stylesheet
+    in
+    (* A declaration run written after a nested statement first needs the
+       nesting-aware commute check: flattening turns the statement boundary into
+       a top-level rule boundary. Both passes disable regrouping, so this
+       normalization cannot synthesize the nesting the projection removes. *)
+    Some
+      (stylesheet |> optimize |> Css.flatten_nesting |> optimize
+     |> Css.canonicalize_rule_order
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None
 
