@@ -287,9 +287,9 @@ val stylesheet :
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.
 
-    When [lossless] is [true] (default [false]), colour-channel rounding and
-    other lossy approximations are suppressed while exact colour
-    canonicalisation still runs.
+    When [lossless] is [true] (default [false]), colour-channel rounding,
+    non-terminating static numeric folds, and other lossy approximations are
+    suppressed while exact canonicalisation still runs.
 
     When [enforce_spec] is [true] (default [false]) the optimizer drops the
     evergreen-browser target facts and applies only CSS-text-and-spec-provable

@@ -1600,6 +1600,6 @@ let suite =
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"
         `Quick equal_canonical_lossless_exact_srgb;
-      Alcotest.test_case "canonical numeric division is exact" `Quick
+      Alcotest.test_case "canonical numeric precision modes" `Quick
         canonical_numeric_division_follows_precision_mode;
     ] )

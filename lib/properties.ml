@@ -4177,7 +4177,7 @@ let normalize_property_value : type a.
   | Stroke_opacity -> normalize_opacity value
   | Stop_opacity -> normalize_opacity value
   | Flood_opacity -> normalize_opacity value
-  | Line_height -> normalize_line_height value
+  | Line_height -> normalize_line_height ~lossless value
   | Vertical_align -> normalize_vertical_align value
   | Border_width -> map_preserve normalize_border_width value
   | Border_top_width -> normalize_border_width value

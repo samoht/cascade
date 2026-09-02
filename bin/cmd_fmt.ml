@@ -145,12 +145,12 @@ let enforce_spec_arg =
 
 let lossless_arg =
   let doc =
-    "Disable colour approximation under $(b,--minify). Exact colour \
-     canonicalisation still runs, but static modern colour-space and \
-     color-mix() values stay functional and colour channels keep their normal \
-     serialisation precision. Otherwise-independent declarations retain their \
-     authored order rather than being sorted for compression. Has no effect \
-     without $(b,--minify)."
+    "Disable bounded approximation under $(b,--minify). Exact rewrites still \
+     run, but repeating static numeric arithmetic stays as calc(), static \
+     modern colour-space and color-mix() values stay functional, and colour \
+     channels keep their normal serialisation precision. Otherwise-independent \
+     declarations retain their authored order rather than being sorted for \
+     compression. Has no effect without $(b,--minify)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 

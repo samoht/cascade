@@ -41,8 +41,8 @@ val normalize_property_value :
 (** [normalize_property_value ?lossless prop value] applies semantic
     (equivalence) canonicalisation to [value] so the optimizer holds a canonical
     AST and the pretty-printer stays a pure serialiser. Identity for properties
-    whose folds have not yet migrated out of [pp]. [lossless] disables colour
-    approximation while keeping exact colour canonicalisation.
+    whose folds have not yet migrated out of [pp]. [lossless] disables bounded
+    colour and numeric approximation while keeping exact canonicalisation.
 
     [exact_srgb] is {!Values.normalize_color}'s flag of the same name, applied
     to the properties whose whole value is a colour. It is for the canonical

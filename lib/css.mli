@@ -7903,10 +7903,10 @@ val optimize :
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
 
-    When [lossless] is [true] (default [false]), colour approximation is
-    disabled while exact colour canonicalisation still runs. Independent
-    declarations retain their authored order rather than being sorted for
-    compression, preserving stylesheet-text and CSSOM observability.
+    When [lossless] is [true] (default [false]), bounded colour and numeric
+    approximation is disabled while exact canonicalisation still runs.
+    Independent declarations retain their authored order rather than being
+    sorted for compression, preserving stylesheet-text and CSSOM observability.
 
     When [enforce_spec] is [true] (default [false]) the optimizer drops the
     evergreen-browser target facts: a vendor-prefixed declaration is kept beside
