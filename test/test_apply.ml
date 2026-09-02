@@ -283,6 +283,29 @@ let minimal_keeps_a_relative_value () =
   dropped "color:hsl(210 40% 96%)";
   dropped "color:#f1f5f9"
 
+(* CSS Writing Modes 4 sec. 7.1 makes [writing-mode] inherited. A declaration on
+   a child that restates its ancestor's element-independent value therefore
+   contributes nothing in minimal mode, just like the other inherited
+   properties. *)
+let minimal_drops_a_writing_mode_restatement () =
+  let child = node "p" in
+  let root = node ~children:[ child ] "div" in
+  let result =
+    A.compute ~minimal:true
+      ~sheet:(parse "div{writing-mode:vertical-rl}p{writing-mode:vertical-rl}")
+      [ root ]
+  in
+  let style n =
+    match List.find_opt (fun (m, _) -> Node.equal m n) result.styles with
+    | Some (_, decls) -> inline_style decls
+    | None -> Alcotest.fail "no assignment for the node"
+  in
+  Alcotest.(check string)
+    "the ancestor establishes writing-mode" "writing-mode:vertical-rl"
+    (style root);
+  Alcotest.(check string)
+    "the inherited restatement is redundant" "" (style child)
+
 (* [minimal] drops a restated inherited declaration because the same text is
    already in force from an ancestor, but a shorthand also resets every longhand
    it does not mention, and an element in between can set one of those: the
@@ -605,6 +628,8 @@ let suite =
         minimal_keeps_what_a_ua_rule_would_win;
       Alcotest.test_case "minimal keeps a relative value" `Quick
         minimal_keeps_a_relative_value;
+      Alcotest.test_case "minimal drops a writing-mode restatement" `Quick
+        minimal_drops_a_writing_mode_restatement;
       Alcotest.test_case "minimal keeps a restatement that resets a longhand"
         `Quick minimal_keeps_a_restatement_that_resets_a_longhand;
       Alcotest.test_case "keeps the property a scoped rule sets" `Quick
