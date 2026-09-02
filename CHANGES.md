@@ -510,7 +510,7 @@ difference wherever the two are not equivalent.
   `-webkit-backdrop-filter` declarations Safari 16.4 needs, and expands matching
   `@supports` tests to accept either spelling. `Css.optimize ~targets` exposes
   the Chrome, Firefox, Safari and iOS Safari versions that own these fallbacks;
-  an authored prefixed declaration remains authoritative.
+  an authored prefixed declaration remains authoritative (#751)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)
