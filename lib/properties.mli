@@ -2684,8 +2684,9 @@ val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
 
 val property_value_kind : 'a property -> 'a property_value_kind option
-(** [property_value_kind property] classifies property value shapes that have a
-    shared typed evaluator. *)
+(** [property_value_kind property] returns the optional property-specific
+    evaluator for a value shape. Generic context evaluation, including direct
+    CSS-wide keywords, does not depend on this specialization. *)
 
 (** {2 Function names} *)
 

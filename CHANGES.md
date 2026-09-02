@@ -506,6 +506,9 @@ difference wherever the two are not equivalent.
 - Canonical diff compares authored nesting through its flattened selector
   expansion, so equivalent nested and flat stylesheets do not leave residuals
   (#760)
+- Computed-value evaluation resolves direct `inherit`, `initial`, `unset`,
+  `revert` and `revert-layer` values for every typed property, including value
+  shapes without a property-specific optimizer (#764)
 - Property inheritance is one exhaustive classification keyed by the typed
   property identity. `cascade apply --minimal` now drops inherited
   `writing-mode` restatements, and computed-value `unset` resolution cannot

@@ -2387,6 +2387,21 @@ let simplify_filter ?layer_order ?layer cascade length_ctx value =
 
 type css_wide_keyword = Inherit | Initial | Unset | Revert | Revert_layer
 
+(* [pp_property_value] is exhaustive over the sealed property GADT, so this
+   generic path cannot silently miss a newly added property. CSS-wide keywords
+   are reserved from every property's ordinary grammar, making an exact minified
+   rendering unambiguous here. *)
+let css_wide_of_property_value property value =
+  match
+    Pp.to_string ~minify:true Properties.pp_property_value (property, value)
+  with
+  | "inherit" -> Some Inherit
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  | _ -> None
+
 let css_wide_of_length (value : Values.length) =
   match value with
   | Values.Inherit -> Some Inherit
@@ -3531,10 +3546,17 @@ let rec eval_typed ?layer_order ?layer ctx decl =
       Declaration.theme_guarded ~var_name
         (eval_typed ~layer_order ?layer ctx decl)
   | Declaration.Declaration { property; value; important; _ } -> (
-      match Properties.property_value_kind property with
-      | Some kind ->
-          eval_kind ~layer_order ?layer ctx kind property important value
-      | None -> decl)
+      match css_wide_of_property_value property value with
+      | Some keyword ->
+          Option.value
+            (resolve_css_wide_keyword ~layer_order ctx ~important ~property
+               keyword)
+            ~default:decl
+      | None -> (
+          match Properties.property_value_kind property with
+          | Some kind ->
+              eval_kind ~layer_order ?layer ctx kind property important value
+          | None -> decl))
 
 and resolve_typed : type b.
     layer_order:string list ->
