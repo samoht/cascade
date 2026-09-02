@@ -248,6 +248,17 @@ let canonical_numeric_division_follows_precision_mode () =
     (equal ~lossless:true ".a{line-height:calc(28/18)}"
        ".a{line-height:1.55556}")
 
+let canonical_nested_and_flattened_selectors_are_equal () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a nested selector equals its flattened expansion" true
+    (equal ".long-component-name{color:red;&:hover{color:blue}}"
+       ".long-component-name{color:red}.long-component-name:hover{color:blue}");
+  Alcotest.(check bool)
+    "different flattened selectors remain distinct" false
+    (equal ".long-component-name{color:red;&:hover{color:blue}}"
+       ".long-component-name{color:red}.long-component-name:focus{color:blue}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -267,15 +278,14 @@ let canonical_declaration_after_nested_rule () =
   Alcotest.(check bool)
     "a var() reader crosses a nested definition of what it reads" true
     (equal ".a{width:var(--x);& b{--x:1px}}" ".a{& b{--x:1px}width:var(--x)}");
-  (* The clashing pair is a real difference: hoisting [color] over the nested
-     rule is the miscompile the position exists to prevent. *)
+  (* The clashing pair uses the same effective selector, so its equal
+     specificity makes source order decide the winner. *)
   Alcotest.(check bool)
     "a clashing declaration still differs" false
-    (equal ".a{color:red;& b{color:blue}}" ".a{& b{color:blue}color:red}");
+    (equal ".a{color:red;&{color:blue}}" ".a{&{color:blue}color:red}");
   Alcotest.(check bool)
     "a longhand still clashes with a crossed shorthand" false
-    (equal ".a{margin-top:2px;& b{margin:1px}}"
-       ".a{& b{margin:1px}margin-top:2px}")
+    (equal ".a{margin-top:2px;&{margin:1px}}" ".a{&{margin:1px}margin-top:2px}")
 
 (* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
@@ -1602,4 +1612,6 @@ let suite =
         `Quick equal_canonical_lossless_exact_srgb;
       Alcotest.test_case "canonical numeric precision modes" `Quick
         canonical_numeric_division_follows_precision_mode;
+      Alcotest.test_case "canonical nested and flattened selectors" `Quick
+        canonical_nested_and_flattened_selectors_are_equal;
     ] )
