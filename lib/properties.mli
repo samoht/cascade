@@ -6,6 +6,12 @@ include module type of Properties_intf
 val pp_property : 'a property Pp.t
 (** [pp_property] is the pretty-printer for property names. *)
 
+val property_is_inherited : 'a property -> bool
+(** [property_is_inherited property] is whether [property] inherits by default.
+    Shorthands return [true] when every longhand they reset inherits. The
+    classification is exhaustive over the property GADT, so adding a property
+    requires an explicit decision here. *)
+
 val minified_name_carries : 'a property -> 'a -> bool
 (** [minified_name_carries property value] is whether the name {!pp_property}
     gives [property] under minify can carry [value]. A [page-break-*] property

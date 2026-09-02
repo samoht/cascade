@@ -19,47 +19,10 @@ let inlinable = Resolve.supported
    properties land on it). *)
 let no_style = [ "head"; "meta"; "title"; "base"; "link"; "style"; "script" ]
 
-(* CSS inherited properties (a conservative set: missing one only keeps a
-   redundant declaration; a differential test guards against dropping a needed
-   one). *)
-let inherited =
-  [
-    "color";
-    "font";
-    "font-family";
-    "font-size";
-    "font-weight";
-    "font-style";
-    "font-variant";
-    "font-stretch";
-    "font-feature-settings";
-    "line-height";
-    "letter-spacing";
-    "word-spacing";
-    "text-align";
-    "text-indent";
-    "text-transform";
-    "text-shadow";
-    "white-space";
-    "word-break";
-    "overflow-wrap";
-    "hyphens";
-    "tab-size";
-    "visibility";
-    "cursor";
-    "direction";
-    "list-style";
-    "list-style-type";
-    "list-style-position";
-    "list-style-image";
-    "quotes";
-    "caption-side";
-    "border-collapse";
-    "border-spacing";
-    "empty-cells";
-  ]
-
-let is_inherited p = List.mem (String.lowercase_ascii p) inherited
+let rec declaration_is_inherited = function
+  | Declaration.Declaration { property; _ } ->
+      Properties.property_is_inherited property
+  | Declaration.Theme_guarded { decl; _ } -> declaration_is_inherited decl
 
 module SMap = Map.Make (String)
 
@@ -463,7 +426,7 @@ module Make (Node : Resolve.NODE) = struct
               let p = String.lowercase_ascii (Declaration.property_name d) in
               match footprint d with
               | Every_slot -> (d :: kept, [])
-              | Slots keys when not (is_inherited p) ->
+              | Slots keys when not (declaration_is_inherited d) ->
                   (d :: kept, forget keys ctx)
               | Slots keys ->
                   let v = decl_value d in

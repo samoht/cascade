@@ -776,6 +776,255 @@ let pp_property : type a. a property Pp.t =
   | Ms_filter -> Pp.string ctx "-ms-filter"
   | O_transition -> Pp.string ctx "-o-transition"
 
+(* Whether the property inherits by default, as defined by each property's
+   specification. Keep this exhaustive over the sealed property GADT: adding a
+   constructor must force a decision here. Names without a typed constructor
+   stay in [Unknown_property], where the payload is the only identity available.
+   Shorthands count as inherited when every longhand they reset inherits. *)
+let property_is_inherited : type a. a property -> bool = function
+  | Unknown_property name -> (
+      match String.lowercase_ascii name with
+      | "empty-cells" | "font-variant" | "font-variant-alternates" | "orphans"
+      | "text-align-last" | "text-justify" | "text-rendering" | "widows"
+      | "word-wrap" ->
+          true
+      | _ -> false)
+  | Color -> true
+  | Font_size -> true
+  | Line_height -> true
+  | Font_weight -> true
+  | Font_style -> true
+  | Text_align -> true
+  | Text_underline_offset -> true
+  | Text_decoration_skip -> true
+  | Text_decoration_skip_box -> true
+  | Text_decoration_skip_inset -> true
+  | Text_decoration_skip_spaces -> true
+  | Text_emphasis -> true
+  | Text_emphasis_style -> true
+  | Text_emphasis_color -> true
+  | Text_emphasis_position -> true
+  | Text_emphasis_skip -> true
+  | Text_orientation -> true
+  | Text_transform -> true
+  | Letter_spacing -> true
+  | List_style_type -> true
+  | List_style_position -> true
+  | List_style_image -> true
+  | Visibility -> true
+  | Fill_opacity -> true
+  | Stroke_opacity -> true
+  | Cursor -> true
+  | Interactivity -> true
+  | Caret_animation -> true
+  | Caret_shape -> true
+  | Caret -> true
+  | Interest_delay -> true
+  | Interest_delay_start -> true
+  | Interest_delay_end -> true
+  | Border_collapse -> true
+  | Border_spacing -> true
+  | Pointer_events -> true
+  | Forced_color_adjust -> true
+  | White_space -> true
+  | Tab_size -> true
+  | Webkit_text_size_adjust -> true
+  | Font_feature_settings -> true
+  | Font_variation_settings -> true
+  | Webkit_tap_highlight_color -> true
+  | Webkit_text_fill_color -> true
+  | Webkit_text_stroke_color -> true
+  | Text_indent -> true
+  | List_style -> true
+  | Font -> true
+  | Scrollbar_color -> true
+  | Line_height_step -> true
+  | Font_palette -> true
+  | Font_synthesis -> true
+  | Text_wrap_mode -> true
+  | Text_wrap_style -> true
+  | Text_underline_position -> true
+  | Text_box_edge -> true
+  | Inline_sizing -> true
+  | Line_fit_edge -> true
+  | Interpolate_size -> true
+  | Ruby_align -> true
+  | Ruby_merge -> true
+  | Ruby_overhang -> true
+  | Ruby_position -> true
+  | Glyph_orientation_vertical -> true
+  | Text_combine_upright -> true
+  | Image_orientation -> true
+  | Image_rendering -> true
+  | Image_resolution -> true
+  | Font_size_adjust -> true
+  | Font_variant_emoji -> true
+  | Text_spacing_trim -> true
+  | Hyphenate_limit_chars -> true
+  | Initial_letter_align -> true
+  | Initial_letter_wrap -> true
+  | Dominant_baseline -> true
+  | Word_spacing -> true
+  | Text_shadow -> true
+  | Font_family -> true
+  | Webkit_font_smoothing -> true
+  | Moz_osx_font_smoothing -> true
+  | Text_wrap -> true
+  | Word_break -> true
+  | Overflow_wrap -> true
+  | Line_break -> true
+  | Hyphens -> true
+  | Webkit_hyphens -> true
+  | Font_stretch -> true
+  | Font_optical_sizing -> true
+  | Font_kerning -> true
+  | Font_language_override -> true
+  | Font_synthesis_style -> true
+  | Font_synthesis_weight -> true
+  | Font_synthesis_small_caps -> true
+  | Font_synthesis_position -> true
+  | Font_variant_ligatures -> true
+  | Caps -> true
+  | Numeric -> true
+  | Font_variant_position -> true
+  | East_asian -> true
+  | Caption_side -> true
+  | Color_scheme -> true
+  | Print_color_adjust -> true
+  | Webkit_print_color_adjust -> true
+  | Quotes -> true
+  | Text_size_adjust -> true
+  | Fill -> true
+  | Stroke -> true
+  | Stroke_width -> true
+  | Fill_rule -> true
+  | Clip_rule -> true
+  | Stroke_linecap -> true
+  | Stroke_linejoin -> true
+  | Stroke_miterlimit -> true
+  | Stroke_dashoffset -> true
+  | Stroke_dasharray -> true
+  | Paint_order -> true
+  | Direction -> true
+  | Writing_mode -> true
+  | Text_decoration_skip_ink -> true
+  | Accent_color -> true
+  | Caret_color -> true
+  | Custom_property _ | All | Background_color | Border_color | Border_style
+  | Border_top_style | Border_right_style | Border_bottom_style
+  | Border_left_style | Border_inline_start_style | Border_inline_end_style
+  | Border_block_start_style | Border_block_end_style | Padding | Padding_left
+  | Padding_right | Padding_bottom | Padding_top | Padding_inline
+  | Padding_inline_start | Padding_inline_end | Padding_block
+  | Padding_block_start | Padding_block_end | Margin | Margin_inline_end
+  | Margin_inline_start | Margin_left | Margin_right | Margin_top
+  | Margin_bottom | Margin_inline | Margin_block | Margin_block_start
+  | Margin_block_end | Gap | Column_gap | Row_gap | Width | Height | Min_width
+  | Min_height | Max_width | Max_height | Inline_size | Min_inline_size
+  | Max_inline_size | Block_size | Min_block_size | Max_block_size
+  | Text_decoration | Text_decoration_line | Text_decoration_style
+  | Text_decoration_color | Text_decoration_skip_self | Display | Position
+  | Baseline_source | Alignment_baseline | Baseline_shift | Flex_direction
+  | Flex_wrap | Flex_flow | Flex | Flex_grow | Flex_shrink | Flex_basis | Order
+  | Align_items | Justify_content | Justify_items | Justify_self | Align_content
+  | Align_self | Place_content | Place_items | Place_self
+  | Grid_template_columns | Grid_template_rows | Grid_template_areas
+  | Grid_template | Grid | Grid_area | Grid_auto_flow | Grid_auto_columns
+  | Grid_auto_rows | Grid_column | Grid_row | Grid_column_start
+  | Grid_column_end | Grid_row_start | Grid_row_end | Border_width
+  | Border_top_width | Border_right_width | Border_bottom_width
+  | Border_left_width | Border_inline_start_width | Border_inline_end_width
+  | Border_block_start_width | Border_block_end_width | Border_inline_width
+  | Border_block_width | Border_image | Border_image_source | Border_image_slice
+  | Border_image_repeat | Border_image_width | Border_image_outset
+  | Border_radius | Border_top_left_radius | Border_top_right_radius
+  | Border_bottom_left_radius | Border_bottom_right_radius | Border_top_color
+  | Border_right_color | Border_bottom_color | Border_left_color
+  | Border_inline_start_color | Border_inline_end_color
+  | Border_block_start_color | Border_block_end_color | Border_inline_color
+  | Border_block_color | Border_inline_style | Border_block_style
+  | Border_start_start_radius | Border_start_end_radius
+  | Border_end_start_radius | Border_end_end_radius | Opacity | Stop_opacity
+  | Flood_opacity | Mix_blend_mode | Transform | Translate | Nav_up | Nav_right
+  | Nav_down | Nav_left | Table_layout | User_select | Overflow | Inset
+  | Inset_inline | Inset_inline_start | Inset_inline_end | Inset_block
+  | Inset_block_start | Inset_block_end | Top | Right | Bottom | Left | Z_index
+  | Outline | Outline_style | Outline_width | Outline_color | Outline_offset
+  | Scroll_snap_type | Border | Border_block | Border_block_start
+  | Border_block_end | Border_inline | Border_inline_start | Border_inline_end
+  | Background | Zoom | Webkit_user_select | Moz_user_select | Ms_user_select
+  | Webkit_text_decoration | Webkit_text_decoration_color | Source
+  | Webkit_appearance | Webkit_transform | Moz_transform | Ms_transform
+  | O_transform | Webkit_transition | Webkit_transition_delay
+  | Webkit_transition_duration | Webkit_transition_property
+  | Webkit_transition_timing_function | Webkit_animation
+  | Webkit_animation_delay | Webkit_animation_duration
+  | Webkit_animation_direction | Webkit_animation_iteration_count
+  | Webkit_animation_name | Webkit_animation_timing_function
+  | Webkit_animation_fill_mode | Webkit_animation_play_state
+  | Webkit_flex_direction | Webkit_flex_wrap | Webkit_flex_flow
+  | Webkit_justify_content | Webkit_align_items | Webkit_align_content
+  | Webkit_align_self | Webkit_border_radius | Webkit_box_sizing
+  | Moz_box_sizing | Webkit_box_shadow | Webkit_background_size | Webkit_filter
+  | Moz_appearance | Moz_animation | Moz_animation_delay
+  | Moz_animation_duration | Moz_animation_direction
+  | Moz_animation_iteration_count | Moz_animation_name
+  | Moz_animation_timing_function | Moz_animation_fill_mode
+  | Moz_animation_play_state | Moz_transition | Moz_transition_delay
+  | Moz_transition_duration | Moz_transition_property
+  | Moz_transition_timing_function | Moz_border_radius | Moz_box_shadow
+  | Ms_filter | O_transition | Container_type | Container_name | Container
+  | Anchor_name | Position_anchor | Position_try_fallbacks | Position_try_order
+  | Position_try | Position_visibility | Position_area | Shape_outside
+  | Shape_margin | Shape_image_threshold | Overflow_clip_margin
+  | Overflow_anchor | Scrollbar_width | Scrollbar_gutter | Text_box_trim
+  | Text_box | Min_intrinsic_sizing | Animation_timeline | Animation_range
+  | Animation_range_start | Animation_range_end | Scroll_timeline
+  | Scroll_timeline_name | Scroll_timeline_axis | View_transition_name
+  | View_transition_class | Contain_intrinsic_size | Contain_intrinsic_width
+  | Contain_intrinsic_height | Contain_intrinsic_block_size
+  | Contain_intrinsic_inline_size | Margin_trim | Offset_path | Offset_distance
+  | Offset_rotate | Initial_letter | View_timeline_name | View_timeline_axis
+  | View_timeline_inset | View_timeline | Timeline_scope | Perspective
+  | Perspective_origin | Transform_style | Backface_visibility | Object_position
+  | Rotate | Transition_duration | Transition_timing_function | Transition_delay
+  | Transition_property | Transition_behavior | Overlay | Will_change | Contain
+  | Isolation | Break_before | Break_after | Break_inside | Page_break_before
+  | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
+  | Column_count | Column_rule | Column_rule_color | Column_span
+  | Background_attachment | Border_top | Border_right | Border_bottom
+  | Border_left | Transform_origin | Transform_box | Clip_path | Mask
+  | Mask_border | Content_visibility | Filter | Background_image
+  | Background_origin | Background_clip | Webkit_background_clip | Animation
+  | Aspect_ratio | Overflow_x | Overflow_y | Overflow_block | Overflow_inline
+  | Vertical_align | Background_position | Background_repeat | Background_size
+  | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
+  | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
+  | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
+  | Webkit_mask_position | Webkit_mask_repeat | Webkit_mask_clip
+  | Webkit_mask_origin | Mask_image | Mask_composite | Mask_mode | Mask_size
+  | Mask_position | Mask_repeat | Mask_clip | Mask_origin | Mask_type
+  | Scroll_snap_align | Scroll_snap_stop | Scroll_behavior | Box_sizing
+  | Field_sizing | Resize | Object_fit | Object_view_box | Appearance
+  | Box_decoration_break | Webkit_box_decoration_break | Content | Counter_reset
+  | Counter_increment | Text_decoration_thickness | Touch_action | Clip | Clear
+  | Float | Scale | Transition | Box_shadow | Vector_effect | Stop_color
+  | Flood_color | Lighting_color | Unicode_bidi | Animation_name
+  | Animation_duration | Animation_timing_function | Animation_delay
+  | Animation_iteration_count | Animation_direction | Animation_fill_mode
+  | Animation_play_state | Animation_composition | Background_blend_mode
+  | Scroll_margin | Scroll_margin_top | Scroll_margin_right
+  | Scroll_margin_bottom | Scroll_margin_left | Scroll_margin_inline
+  | Scroll_margin_inline_start | Scroll_margin_inline_end | Scroll_margin_block
+  | Scroll_margin_block_start | Scroll_margin_block_end | Scroll_padding
+  | Scroll_padding_top | Scroll_padding_right | Scroll_padding_bottom
+  | Scroll_padding_left | Scroll_padding_inline | Scroll_padding_inline_start
+  | Scroll_padding_inline_end | Scroll_padding_block
+  | Scroll_padding_block_start | Scroll_padding_block_end | Overscroll_behavior
+  | Overscroll_behavior_x | Overscroll_behavior_y | Overscroll_behavior_block
+  | Overscroll_behavior_inline | Offset_anchor | Offset_position | Offset ->
+      false
+
 (* Whether the name [pp_property] gives [property] under minify can carry
    [value]. CSS Fragmentation 3 sec. 3.4 defines the [page-break-*] alias of
    [break-*] by a value mapping table, so the [break-*] name a [page-break-*]
