@@ -1582,6 +1582,15 @@ let test_line_height () =
   check_line_height "inherit";
   check_line_height "1.5";
   check_line_height "120%";
+  decl_optimizes ~prop:"line-height" ~held:"calc(28/18)" ~into:"1.55556"
+    "calc(28 / 18)";
+  decl_optimizes ~prop:"line-height" ~held:"calc(10 + 8)" ~into:"18"
+    "calc(10 + 8)";
+  decl_optimizes ~prop:"line-height" ~held:"calc(7*4)" ~into:"28" "calc(7 * 4)";
+  decl_optimizes ~prop:"line-height" ~held:"calc((28/18))" ~into:"1.55556"
+    "calc((28 / 18))";
+  decl_optimizes ~prop:"line-height" ~held:"calc(28/var(--x))"
+    ~into:"calc(28/var(--x))" "calc(28 / var(--x))";
   neg_cursor read_line_height "invalid";
   neg_cursor read_line_height "-1.5";
   (* negative line-height *)
