@@ -287,6 +287,31 @@ let canonical_declaration_after_nested_rule () =
     "a longhand still clashes with a crossed shorthand" false
     (equal ".a{margin-top:2px;&{margin:1px}}" ".a{&{margin:1px}margin-top:2px}")
 
+let canonical_supports_hoisting () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "equivalent supports blocks merge after disjoint rules" true
+    (equal
+       ".a{color:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:color-mix(in oklab,red \
+        50%,transparent)}}.x{display:block}.b{color:blue}@supports \
+        (color:color-mix(in lab,red,red)){.b{color:color-mix(in oklab,blue \
+        50%,transparent)}}.y{display:grid}"
+       ".a{color:red}.x{display:block}.b{color:blue}.y{display:grid}@supports \
+        (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
+        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}");
+  Alcotest.(check bool)
+    "an overlapping rule prevents supports hoisting" false
+    (equal
+       ".a{color:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:color-mix(in oklab,red \
+        50%,transparent)}}.a{color:green}.b{color:blue}@supports \
+        (color:color-mix(in lab,red,red)){.b{color:color-mix(in oklab,blue \
+        50%,transparent)}}.y{display:grid}"
+       ".a{color:red}.a{color:green}.b{color:blue}.y{display:grid}@supports \
+        (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
+        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}")
+
 (* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
    are one value wherever the stream is substituted. *)
@@ -1596,6 +1621,8 @@ let suite =
         `Quick canonical_custom_hue_rotate_zero;
       Alcotest.test_case "canonical folds a disjoint trailing declaration"
         `Quick canonical_declaration_after_nested_rule;
+      Alcotest.test_case "canonical supports hoisting" `Quick
+        canonical_supports_hoisting;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
         canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
