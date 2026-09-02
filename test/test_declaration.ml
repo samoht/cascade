@@ -3668,7 +3668,9 @@ let spec_values_l45_edges () =
     "left 10px top 20%";
   decl_optimizes ~prop:"background-position" ~into:"50%" "center";
   decl_optimizes ~prop:"background-position" ~into:"top" "center top";
-  decl_optimizes ~prop:"mask-position" ~into:"10px 20px" "left 10px top 20px";
+  decl_optimizes_to
+    ~into:"-webkit-mask-position:10px 20px;mask-position:10px 20px"
+    "mask-position:left 10px top 20px";
   List.iter
     (fun input -> neg_cursor read_declaration input)
     [

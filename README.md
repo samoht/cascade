@@ -470,13 +470,15 @@ is either `ltr` or `rtl`, shortens `:not(:dir(ltr))` to
 `:enabled` or `:disabled`, shortens `input:not(:enabled)` to `input:disabled`.
 A vendor-prefixed declaration (`-moz-box-sizing`) whose unprefixed twin is
 present is dropped, since evergreen browsers understand the unprefixed form.
-Conversely, the target adds `-webkit-user-select` and
-`-webkit-backdrop-filter` beside their standard declarations where Safari
-still needs them. A `min-`/`max-` media or container feature becomes the Media
-Queries 4 range grammar, `(min-width: 700px)` to `(width >= 700px)`. A nested
-selector loses its `&` prefix, `& div` to `div`, which the relaxed nesting
-syntax reads the same way. An `oklab` or `oklch` axis takes the percentage
-spelling wherever it is shorter, `oklch(.7 .304 20)` to
+Conversely, the target adds WebKit fallbacks beside `user-select`,
+`backdrop-filter`, `hyphens`, `mask` and its compatible layer longhands where
+Safari 16.4 or Chrome 111 still needs them. The prefixed `mask-mode` and
+`mask-composite` properties are not generated because their legacy grammars
+differ from the standard properties. A `min-`/`max-` media or container feature
+becomes the Media Queries 4 range grammar, `(min-width: 700px)` to
+`(width >= 700px)`. A nested selector loses its `&` prefix, `& div` to `div`,
+which the relaxed nesting syntax reads the same way. An `oklab` or `oklch` axis
+takes the percentage spelling wherever it is shorter, `oklch(.7 .304 20)` to
 `oklch(.7 76% 20)`.
 
 Each of those state pseudo-class pairs partitions a different set of elements,

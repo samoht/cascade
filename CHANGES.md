@@ -513,11 +513,10 @@ difference wherever the two are not equivalent.
   before comparison, factoring settles both transfer-size alternatives and
   retries once when settling changes its graph, and selector-branch factoring
   preserves source order after earlier rewrites (#750)
-- Default minification adds the `-webkit-user-select` and
-  `-webkit-backdrop-filter` declarations Safari 16.4 needs, and expands matching
-  `@supports` tests to accept either spelling. `Css.optimize ~targets` exposes
-  the Chrome, Firefox, Safari and iOS Safari versions that own these fallbacks;
-  an authored prefixed declaration remains authoritative (#751)
+- Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
+  need for `user-select`, `backdrop-filter`, `hyphens`, `mask` and its
+  compatible layer longhands, including matching `@supports` tests. An
+  authored prefixed declaration remains authoritative (#751, #758)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)

@@ -81,14 +81,15 @@ is what Baseline "widely available" decides. Safari reads only
   $ cascade --minify prefix.css
   .x{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
 
-The same pair is dead once the unprefixed property is widely available:
-no maintained browser reaches for the WebKit copy.
+Baseline deduplication may remove a pair once the unprefixed property is
+widely available, but the final target pass restores a still-load-bearing
+copy. Chrome 111 through 119 require [-webkit-mask-image].
 
   $ cat > prefix-dead.css <<EOF
   > .x { -webkit-mask-image: url(a.png); mask-image: url(a.png) }
   > EOF
   $ cascade --minify prefix-dead.css
-  .x{mask-image:url(a.png)}
+  .x{-webkit-mask-image:url(a.png);mask-image:url(a.png)}
 
 
 # Rule-level dead code

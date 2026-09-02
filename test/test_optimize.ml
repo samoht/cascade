@@ -1160,13 +1160,15 @@ let test_vendor_prefix_strip () =
    properties that are not, which is exactly the set whose prefix a maintained
    browser may still need. *)
 let test_vendor_prefix_baseline_gate () =
-  let opt ?(enforce_spec = false) css =
+  let opt ?targets ?(enforce_spec = false) css =
     match Css.of_string css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize ~enforce_spec p.stylesheet)
+        Css.to_string ~minify:true
+          (Css.optimize ?targets ~enforce_spec p.stylesheet)
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
+  let chrome_120 = { Css.Optimize.evergreen_targets with chrome = (120, 0) } in
   (* Widely available: every maintained browser reads the unprefixed form, so
      the WebKit copy is dead weight. *)
   Alcotest.(check string)
@@ -1174,7 +1176,7 @@ let test_vendor_prefix_baseline_gate () =
     (opt ".a{-webkit-text-decoration-color:red;text-decoration-color:red}");
   Alcotest.(check string)
     "mask-image prefix drops" ".a{mask-image:none}"
-    (opt ".a{-webkit-mask-image:none;mask-image:none}");
+    (opt ~targets:chrome_120 ".a{-webkit-mask-image:none;mask-image:none}");
   (* box-sizing is the same rule and already collapses; keep it pinned. *)
   Alcotest.(check string)
     "webkit box-sizing prefix drops" ".a{box-sizing:border-box}"
@@ -2854,12 +2856,12 @@ let vendor_alias_pins_intervening_rule () =
        ".a{-webkit-transform:none}.b{transform:rotate(45deg)}.c{-webkit-transform:none}");
   Alcotest.(check string)
     "a prefixed hyphens is not grouped across its unprefixed twin"
-    ".a{-webkit-hyphens:none}.b{hyphens:auto}.c{-webkit-hyphens:none}"
+    ".a{-webkit-hyphens:none}.b{-webkit-hyphens:auto;hyphens:auto}.c{-webkit-hyphens:none}"
     (optimized_string
        ".a{-webkit-hyphens:none}.b{hyphens:auto}.c{-webkit-hyphens:none}");
   Alcotest.(check string)
     "a prefixed mask longhand is not grouped across its unprefixed twin"
-    ".a{-webkit-mask-size:auto}.b{mask-size:cover}.c{-webkit-mask-size:auto}"
+    ".a{-webkit-mask-size:auto}.b{-webkit-mask-size:cover;mask-size:cover}.c{-webkit-mask-size:auto}"
     (optimized_string
        ".a{-webkit-mask-size:auto}.b{mask-size:cover}.c{-webkit-mask-size:auto}");
   (* A prefix names one slot, not its whole family, so an unrelated intervening
@@ -3250,6 +3252,23 @@ let target_evergreen_compatibility_prefixes () =
     ".a{-webkit-user-select:none;user-select:none;-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
     (optimized_string ".a{user-select:none;backdrop-filter:blur(1px)}");
   Alcotest.(check string)
+    "the declared target adds WebKit hyphens and mask longhand fallbacks"
+    ".a{-webkit-hyphens:auto;hyphens:auto;-webkit-mask-image:none;mask-image:none;-webkit-mask-position:50%;mask-position:50%;-webkit-mask-size:cover;mask-size:cover;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-clip:border-box;mask-clip:border-box;-webkit-mask-origin:content-box;mask-origin:content-box}"
+    (optimized_string
+       ".a{hyphens:auto;mask-image:none;mask-position:center;mask-size:cover;mask-repeat:no-repeat;mask-clip:border-box;mask-origin:content-box}");
+  Alcotest.(check string)
+    "the declared target adds the WebKit mask shorthand"
+    ".a{-webkit-mask:none;mask:none}"
+    (optimized_string ".a{mask:none}");
+  Alcotest.(check string)
+    "the WebKit mask shorthand omits fields with different legacy grammars"
+    ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance add}"
+    (optimized_string ".a{mask:url(a.svg) luminance add}");
+  Alcotest.(check string)
+    "mask fields without equivalent WebKit grammars are not prefixed"
+    ".a{mask-mode:luminance;mask-composite:add}"
+    (optimized_string ".a{mask-mode:luminance;mask-composite:add}");
+  Alcotest.(check string)
     "the declaration fallback preserves importance"
     ".a{-webkit-user-select:none!important;user-select:none!important}"
     (optimized_string ".a{user-select:none!important}");
@@ -3260,10 +3279,23 @@ let target_evergreen_compatibility_prefixes () =
     (optimized_string
        "@supports(backdrop-filter:var(--tw)){.a{backdrop-filter:var(--tw)}}");
   Alcotest.(check string)
+    "the declared target prefixes mask feature tests and declarations"
+    "@supports(-webkit-mask:none)or \
+     (mask:none){.a{-webkit-mask:none;mask:none}}"
+    (optimized_string "@supports(mask:none){.a{mask:none}}");
+  Alcotest.(check string)
     "an authored fallback is not duplicated"
     ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
     (optimized_string
        ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}");
+  Alcotest.(check string)
+    "an authored mask fallback is not duplicated"
+    ".a{-webkit-mask-size:contain;mask-size:cover}"
+    (optimized_string ".a{-webkit-mask-size:contain;mask-size:cover}");
+  Alcotest.(check string)
+    "a synthesized mask shorthand preserves importance"
+    ".a{-webkit-mask:none!important;mask:none!important}"
+    (optimized_string ".a{mask:none!important}");
   Alcotest.(check string)
     "decoration color needs no prefix for the declared target"
     ".prose a{text-decoration:underline;text-decoration-color:var(--c)}"
@@ -3271,9 +3303,9 @@ let target_evergreen_compatibility_prefixes () =
        ".prose{a{text-decoration:underline;text-decoration-color:var(--c)}}");
   Alcotest.(check string)
     "spec-only mode does not synthesize target fallbacks"
-    ".a{user-select:none;backdrop-filter:blur(1px)}"
+    ".a{user-select:none;backdrop-filter:blur(1px);hyphens:auto;mask:none}"
     (optimized_string ~enforce_spec:true
-       ".a{user-select:none;backdrop-filter:blur(1px)}");
+       ".a{user-select:none;backdrop-filter:blur(1px);hyphens:auto;mask:none}");
   let newer_webkit =
     {
       Css.Optimize.evergreen_targets with
@@ -3285,7 +3317,44 @@ let target_evergreen_compatibility_prefixes () =
     "a newer WebKit target drops only the obsolete fallback"
     ".a{-webkit-user-select:none;user-select:none;backdrop-filter:blur(1px)}"
     (optimized_string ~targets:newer_webkit
-       ".a{user-select:none;backdrop-filter:blur(1px)}")
+       ".a{user-select:none;backdrop-filter:blur(1px)}");
+  let safari_16_6 =
+    {
+      Css.Optimize.evergreen_targets with
+      chrome = (120, 0);
+      safari = (16, 6);
+      ios_safari = (17, 0);
+    }
+  in
+  Alcotest.(check string)
+    "Safari 16.6 still receives the hyphens fallback"
+    ".a{-webkit-hyphens:auto;hyphens:auto}"
+    (optimized_string ~targets:safari_16_6 ".a{hyphens:auto}");
+  let ios_safari_16_7 =
+    {
+      Css.Optimize.evergreen_targets with
+      chrome = (120, 0);
+      safari = (17, 0);
+      ios_safari = (16, 7);
+    }
+  in
+  Alcotest.(check string)
+    "iOS Safari 16.7 still receives the hyphens fallback"
+    ".a{-webkit-hyphens:auto;hyphens:auto}"
+    (optimized_string ~targets:ios_safari_16_7 ".a{hyphens:auto}");
+  let targets_past_hyphens_and_mask_prefixes =
+    {
+      Css.Optimize.evergreen_targets with
+      chrome = (120, 0);
+      safari = (17, 0);
+      ios_safari = (17, 0);
+    }
+  in
+  Alcotest.(check string)
+    "targets past the compatibility boundaries omit hyphens and mask prefixes"
+    ".a{hyphens:auto;mask-image:none}"
+    (optimized_string ~targets:targets_past_hyphens_and_mask_prefixes
+       ".a{hyphens:auto;mask-image:none}")
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media

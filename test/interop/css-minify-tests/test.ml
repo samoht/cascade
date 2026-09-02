@@ -405,35 +405,40 @@ let normalize_expected ~category ~id expected =
          <position> and slash. [no-repeat/cover] is not a valid way to express
          repeat plus size; the shortest valid spelling keeps the initial
          position as [0 0/cover]. Transparent black is #0000, and [url(...)] is
-         self-delimiting before the following slice. *)
+         self-delimiting before the following slice. Chrome 111 also needs the
+         WebKit spelling. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \
            no-repeat/cover;mask-border:url(mask.png) 25/10px round}"
         ~cascade:
-          "a{mask:linear-gradient(#000,#0000)0 0/cover \
+          "a{-webkit-mask:linear-gradient(#000,#0000)0 0/cover \
+           no-repeat;mask:linear-gradient(#000,#0000)0 0/cover \
            no-repeat;mask-border:url(mask.png)25/10px round}"
         upstream
   | "shorthands", "0050" ->
       (* Same transparent-color and url-token boundary policy as
          shorthands/0049: transparent is transparent black, and #0000 is the
          shorter spelling. The [)] before [no-repeat] and before the mask-border
-         slice is token-safe, so both spaces are removable. *)
+         slice is token-safe, so both spaces are removable. Chrome 111 also
+         needs the WebKit spelling. *)
       fixture ~category ~id
         ~upstream:
           "a{mask:linear-gradient(#000,transparent) \
            no-repeat;mask-border:url(mask.png) 25 round}"
         ~cascade:
-          "a{mask:linear-gradient(#000,#0000)no-repeat;mask-border:url(mask.png)25 \
+          "a{-webkit-mask:linear-gradient(#000,#0000)no-repeat;mask:linear-gradient(#000,#0000)no-repeat;mask-border:url(mask.png)25 \
            round}"
         upstream
   | "shorthands", "0051" ->
       (* The later mask shorthand resets the earlier mask-border state; keep the
          fixture's dead-declaration drop, with the shorter #0000 spelling for
-         transparent black. *)
+         transparent black and the WebKit spelling Chrome 111 needs. *)
       fixture ~category ~id
         ~upstream:"a{mask:linear-gradient(#000,transparent)}"
-        ~cascade:"a{mask:linear-gradient(#000,#0000)}" upstream
+        ~cascade:
+          "a{-webkit-mask:linear-gradient(#000,#0000);mask:linear-gradient(#000,#0000)}"
+        upstream
   | "shorthands", "0061" ->
       (* Four longhands with a matching [@property] each merge into one
          [padding] shorthand. A [var()] reference ends at [)], the same

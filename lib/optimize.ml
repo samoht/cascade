@@ -629,7 +629,17 @@ let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
 
-type webkit_fallback = User_select_fallback | Backdrop_filter_fallback
+type webkit_fallback =
+  | User_select_fallback
+  | Backdrop_filter_fallback
+  | Hyphens_fallback
+  | Mask_fallback
+  | Mask_image_fallback
+  | Mask_position_fallback
+  | Mask_size_fallback
+  | Mask_repeat_fallback
+  | Mask_clip_fallback
+  | Mask_origin_fallback
 
 let version_compare (major_a, minor_a) (major_b, minor_b) =
   match Int.compare major_a major_b with
@@ -637,17 +647,37 @@ let version_compare (major_a, minor_a) (major_b, minor_b) =
   | order -> order
 
 let version_at_most version maximum = version_compare version maximum <= 0
+let version_before version minimum = version_compare version minimum < 0
 
 (* The target contract is deliberately owned here rather than by the printer:
    adding a fallback changes the AST and must therefore be explicit to API
    callers. Safari/iOS still require [-webkit-user-select] at the declared
-   baseline, while unprefixed [backdrop-filter] arrived after 17.6. *)
+   baseline, while unprefixed [backdrop-filter] arrived after 17.6, unprefixed
+   [hyphens] arrived in 17, and Chrome needs the compatible [-webkit-mask]
+   shorthand and longhands through 119. [mask-mode] and [mask-composite] are
+   excluded because their prefixed forms have different grammars. *)
 let required_fallback kind targets =
   match kind with
   | User_select_fallback -> true
   | Backdrop_filter_fallback ->
       version_at_most targets.safari (17, 6)
       || version_at_most targets.ios_safari (17, 6)
+  | Hyphens_fallback ->
+      version_before targets.safari (17, 0)
+      || version_before targets.ios_safari (17, 0)
+  | Mask_fallback | Mask_image_fallback | Mask_position_fallback
+  | Mask_size_fallback | Mask_repeat_fallback | Mask_clip_fallback
+  | Mask_origin_fallback ->
+      version_at_most targets.chrome (119, 0)
+
+let webkit_compatible_mask : Properties.mask -> Properties.mask =
+  let strip_layer (layer : Properties.mask_layer) =
+    { layer with mode = Option.none; composite = Option.none }
+  in
+  function
+  | Layer layer -> Layer (strip_layer layer)
+  | Layers layers -> Layers (List.map strip_layer layers)
+  | value -> value
 
 let webkit_fallback_of_declaration targets decl =
   let fallback kind property value important =
@@ -655,11 +685,39 @@ let webkit_fallback_of_declaration targets decl =
       Some (Declaration.v ~important property value)
     else None
   in
+  let opaque_fallback kind property source important =
+    if required_fallback kind targets then
+      match
+        Declaration.parse_opaque_declaration property
+          (Declaration.string_of_value ~minify:true source)
+      with
+      | Some prefixed ->
+          Some (if important then Declaration.important prefixed else prefixed)
+      | None -> None
+    else None
+  in
   match decl with
   | Declaration { property = User_select; value; important; _ } ->
       fallback User_select_fallback Webkit_user_select value important
   | Declaration { property = Backdrop_filter; value; important; _ } ->
       fallback Backdrop_filter_fallback Webkit_backdrop_filter value important
+  | Declaration { property = Hyphens; value; important; _ } ->
+      fallback Hyphens_fallback Webkit_hyphens value important
+  | Declaration { property = Mask; value; important; _ } ->
+      let source = Declaration.v Mask (webkit_compatible_mask value) in
+      opaque_fallback Mask_fallback "-webkit-mask" source important
+  | Declaration { property = Mask_image; value; important; _ } ->
+      fallback Mask_image_fallback Webkit_mask_image value important
+  | Declaration { property = Mask_position; value; important; _ } ->
+      fallback Mask_position_fallback Webkit_mask_position value important
+  | Declaration { property = Mask_size; value; important; _ } ->
+      fallback Mask_size_fallback Webkit_mask_size value important
+  | Declaration { property = Mask_repeat; value; important; _ } ->
+      fallback Mask_repeat_fallback Webkit_mask_repeat value important
+  | Declaration { property = Mask_clip; value; important; _ } ->
+      fallback Mask_clip_fallback Webkit_mask_clip value important
+  | Declaration { property = Mask_origin; value; important; _ } ->
+      fallback Mask_origin_fallback Webkit_mask_origin value important
   | Declaration { property = Unknown_property name; value; important; _ }
     when String.equal name "user-select" ->
       fallback User_select_fallback (Unknown_property "-webkit-user-select")
@@ -668,31 +726,127 @@ let webkit_fallback_of_declaration targets decl =
     when String.equal name "backdrop-filter" ->
       fallback Backdrop_filter_fallback
         (Unknown_property "-webkit-backdrop-filter") value important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "hyphens" ->
+      fallback Hyphens_fallback (Unknown_property "-webkit-hyphens") value
+        important
+  | Declaration
+      { property = Unknown_property name; value = components; important; _ }
+    when String.equal name "mask" -> (
+      let source = Declaration.v (Unknown_property name) components in
+      let rendered = Declaration.string_of_value ~minify:false source in
+      match Declaration.parse_declaration "mask" rendered with
+      | Some (Declaration { property = Mask; value; _ }) ->
+          let source = Declaration.v Mask (webkit_compatible_mask value) in
+          opaque_fallback Mask_fallback "-webkit-mask" source important
+      | Some _ | None ->
+          fallback Mask_fallback (Unknown_property "-webkit-mask") components
+            important)
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-image" ->
+      fallback Mask_image_fallback (Unknown_property "-webkit-mask-image") value
+        important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-position" ->
+      fallback Mask_position_fallback (Unknown_property "-webkit-mask-position")
+        value important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-size" ->
+      fallback Mask_size_fallback (Unknown_property "-webkit-mask-size") value
+        important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-repeat" ->
+      fallback Mask_repeat_fallback (Unknown_property "-webkit-mask-repeat")
+        value important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-clip" ->
+      fallback Mask_clip_fallback (Unknown_property "-webkit-mask-clip") value
+        important
+  | Declaration { property = Unknown_property name; value; important; _ }
+    when String.equal name "mask-origin" ->
+      fallback Mask_origin_fallback (Unknown_property "-webkit-mask-origin")
+        value important
   | Theme_guarded _ | Declaration _ -> None
 
 let is_webkit_fallback kind decl =
   match (kind, decl) with
   | User_select_fallback, Declaration { property = Webkit_user_select; _ }
   | ( Backdrop_filter_fallback,
-      Declaration { property = Webkit_backdrop_filter; _ } ) ->
+      Declaration { property = Webkit_backdrop_filter; _ } )
+  | Hyphens_fallback, Declaration { property = Webkit_hyphens; _ }
+  | Mask_image_fallback, Declaration { property = Webkit_mask_image; _ }
+  | Mask_position_fallback, Declaration { property = Webkit_mask_position; _ }
+  | Mask_size_fallback, Declaration { property = Webkit_mask_size; _ }
+  | Mask_repeat_fallback, Declaration { property = Webkit_mask_repeat; _ }
+  | Mask_clip_fallback, Declaration { property = Webkit_mask_clip; _ }
+  | Mask_origin_fallback, Declaration { property = Webkit_mask_origin; _ } ->
       true
   | User_select_fallback, Declaration { property = Unknown_property name; _ } ->
       String.equal name "-webkit-user-select"
   | ( Backdrop_filter_fallback,
       Declaration { property = Unknown_property name; _ } ) ->
       String.equal name "-webkit-backdrop-filter"
+  | Hyphens_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-hyphens"
+  | Mask_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask"
+  | Mask_image_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask-image"
+  | Mask_position_fallback, Declaration { property = Unknown_property name; _ }
+    ->
+      String.equal name "-webkit-mask-position"
+  | Mask_size_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask-size"
+  | Mask_repeat_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask-repeat"
+  | Mask_clip_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask-clip"
+  | Mask_origin_fallback, Declaration { property = Unknown_property name; _ } ->
+      String.equal name "-webkit-mask-origin"
   | _, (Theme_guarded _ | Declaration _) -> false
 
 let fallback_kind = function
   | Declaration { property = User_select; _ } -> Some User_select_fallback
   | Declaration { property = Backdrop_filter; _ } ->
       Some Backdrop_filter_fallback
+  | Declaration { property = Hyphens; _ } -> Some Hyphens_fallback
+  | Declaration { property = Mask; _ } -> Some Mask_fallback
+  | Declaration { property = Mask_image; _ } -> Some Mask_image_fallback
+  | Declaration { property = Mask_position; _ } -> Some Mask_position_fallback
+  | Declaration { property = Mask_size; _ } -> Some Mask_size_fallback
+  | Declaration { property = Mask_repeat; _ } -> Some Mask_repeat_fallback
+  | Declaration { property = Mask_clip; _ } -> Some Mask_clip_fallback
+  | Declaration { property = Mask_origin; _ } -> Some Mask_origin_fallback
   | Declaration { property = Unknown_property name; _ }
     when String.equal name "user-select" ->
       Some User_select_fallback
   | Declaration { property = Unknown_property name; _ }
     when String.equal name "backdrop-filter" ->
       Some Backdrop_filter_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "hyphens" ->
+      Some Hyphens_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask" ->
+      Some Mask_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-image" ->
+      Some Mask_image_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-position" ->
+      Some Mask_position_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-size" ->
+      Some Mask_size_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-repeat" ->
+      Some Mask_repeat_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-clip" ->
+      Some Mask_clip_fallback
+  | Declaration { property = Unknown_property name; _ }
+    when String.equal name "mask-origin" ->
+      Some Mask_origin_fallback
   | Theme_guarded _ | Declaration _ -> None
 
 (* Once an author supplied a prefix for a property, that spelling is theirs:

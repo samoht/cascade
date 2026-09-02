@@ -4524,8 +4524,10 @@ let test_mask_box () =
   check_mask_box "padding-box";
   check_mask_box "fill-box";
   check_mask_box "inherit";
-  decl_optimizes ~prop:"mask-clip" ~into:"border-box,fill-box,no-clip"
-    "border-box,fill-box,no-clip";
+  decl_optimizes_to
+    ~into:
+      "-webkit-mask-clip:border-box,fill-box,no-clip;mask-clip:border-box,fill-box,no-clip"
+    "mask-clip:border-box,fill-box,no-clip";
   neg_cursor read_mask_box "invalid-mask-box"
 
 let test_mask_composite () =
