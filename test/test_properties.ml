@@ -1584,6 +1584,7 @@ let test_line_height () =
   check_line_height "120%";
   decl_optimizes ~prop:"line-height" ~held:"calc(28/18)" ~into:"1.55556"
     "calc(28 / 18)";
+  decl_lossless ~prop:"line-height" ~into:"calc(28/18)" "calc(28 / 18)";
   decl_optimizes ~prop:"line-height" ~held:"calc(10 + 8)" ~into:"18"
     "calc(10 + 8)";
   decl_optimizes ~prop:"line-height" ~held:"calc(7*4)" ~into:"28" "calc(7 * 4)";
