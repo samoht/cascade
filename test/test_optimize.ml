@@ -1936,9 +1936,15 @@ let test_factor_selector_branch_keeps_later_override () =
      Only that branch is overridden; .scroll-pic-frame keeps z-index:100. *)
   Alcotest.(check string)
     "selector-list branch keeps its later override"
-    ".scroll-item a,.scroll-pic-frame,.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item a,.scroll-pic-frame{z-index:100}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item a{border:1px solid#fff;display:block;height:162px;width:198px;z-index:50}"
+    ".scroll-item \
+     a,.scroll-pic-frame,.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item \
+     a,.scroll-pic-frame{z-index:100}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+     a{border:1px solid#fff;display:block;height:162px;width:198px;z-index:50}"
     (minify_str
-       ".scroll-item a,.scroll-pic-frame{overflow:hidden;position:relative;z-index:100}.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item a{border:1px solid #fff;display:block;height:162px;width:198px;z-index:50}")
+       ".scroll-item \
+        a,.scroll-pic-frame{overflow:hidden;position:relative;z-index:100}.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+        a{border:1px solid \
+        #fff;display:block;height:162px;width:198px;z-index:50}")
 
 let test_factoring_reaches_fixpoint () =
   (* Factoring one shared subset can expose another: grouping .a/.b on color:red
@@ -1981,7 +1987,8 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
   in
   let input =
     padding
-    ^ ".target{-webkit-transition:opacity 250ms;transition:opacity 250ms;-webkit-animation:spin 500ms linear;animation:spin 500ms linear}"
+    ^ ".target{-webkit-transition:opacity 250ms;transition:opacity \
+       250ms;-webkit-animation:spin 500ms linear;animation:spin 500ms linear}"
   in
   let once = minify_str input in
   Alcotest.(check string)
@@ -1999,7 +2006,15 @@ let test_large_stylesheet_factoring_reaches_fixpoint () =
   in
   let input =
     padding
-    ^ ".scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item a{border:1px solid #fff;display:block;height:162px;overflow:hidden;position:relative;width:198px;z-index:50}.part-h-m{margin-right:20px;width:360px}.part-j-l,.part-j-m,.part-j-r{display:inline;float:left}.part-n-l,.part-n-m,.part-n-r{display:inline;float:left}.part-n-l{margin-right:20px;width:240px}.mod44-list{display:inline;float:right;margin-right:5px}.mod44-list li{display:inline;float:left;line-height:34px;height:34px;margin-right:5px}.mod-a .tab-nav-a a{border-left:0;float:left;line-height:23px;height:23px;padding:0}.mod-a .tab-nav-a span{border-left:0;float:left;line-height:23px;height:23px;padding:0 2px}"
+    ^ ".scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item \
+       a{border:1px solid \
+       #fff;display:block;height:162px;overflow:hidden;position:relative;width:198px;z-index:50}.part-h-m{margin-right:20px;width:360px}.part-j-l,.part-j-m,.part-j-r{display:inline;float:left}.part-n-l,.part-n-m,.part-n-r{display:inline;float:left}.part-n-l{margin-right:20px;width:240px}.mod44-list{display:inline;float:right;margin-right:5px}.mod44-list \
+       li{display:inline;float:left;line-height:34px;height:34px;margin-right:5px}.mod-a \
+       .tab-nav-a \
+       a{border-left:0;float:left;line-height:23px;height:23px;padding:0}.mod-a \
+       .tab-nav-a \
+       span{border-left:0;float:left;line-height:23px;height:23px;padding:0 \
+       2px}"
   in
   let once = minify_str input in
   Alcotest.(check string)

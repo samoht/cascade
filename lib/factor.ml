@@ -180,7 +180,7 @@ let log_transfer_revert ~fixpoint summary =
         fixpoint
         (Preflight.declaration_count summary))
 
-let run_segment ?cache ~ctx ~finalize (rules : rule list) =
+let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
   let key = Option.map (fun _ -> cache_key ~ctx rules) cache in
   match
     match (cache, key) with
@@ -203,17 +203,18 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
         if known_revert || not (should_run_preflight ~ctx summary) then begin
           Stats.skip_fixpoint stats;
           log_skip ~known_revert summary;
-          ordered_rules rules graph
+          settle (ordered_rules rules graph)
         end
         else begin
           let fixpoint = Stats.start_fixpoint stats in
-          let unfactored = ordered_rules rules graph in
-          let factored =
+          let unfactored = settle (ordered_rules rules graph) in
+          let optimized =
             optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
               graph
           in
+          let factored = settle optimized in
           if
-            factored != rules
+            optimized != rules
             && factored_grows_transfer ~ctx ~unfactored ~factored
           then begin
             Stats.revert_fixpoint stats;
@@ -242,5 +243,5 @@ let run_segment ?cache ~ctx ~finalize (rules : rule list) =
    property by name (a [var()] consumer writes its own property, not the one it
    reads), so disjoint writes reorder freely and the whole list is one
    segment. *)
-let run ?cache ~ctx ~finalize (rules : rule list) =
-  run_segment ?cache ~ctx ~finalize rules
+let run ?cache ?settle ~ctx ~finalize (rules : rule list) =
+  run_segment ?cache ?settle ~ctx ~finalize rules

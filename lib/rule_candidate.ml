@@ -1584,7 +1584,6 @@ let single_selector_branch_key (rule : rule) : string option =
   | _ -> Option.None
 
 let selector_branch_size selector = Pp.size ~minify:true Selector.pp selector
-let selector_rank = Rule_graph.Node_id.to_int
 
 let add_single_selector_receivers receivers id rule =
   match single_selector_branch_key rule with
@@ -1644,11 +1643,11 @@ let seen_key receiver_id group_id branch_key =
        (Rule_graph.Node_id.to_int group_id))
     (hash_string branch_key)
 
-let add_selector_inline_candidate ?size_cache ?touching ~finalize g ~rank ~seen
+let add_selector_inline_candidate ?size_cache ?touching ~finalize g ~seen
     ~candidates ~receiver_id ~group_id ~branch_key ~remaining_selectors =
   if
     Rule_graph.Node_id.compare receiver_id group_id <> 0
-    && rank receiver_id < rank group_id
+    && Rule_graph.precedes g receiver_id group_id
     && (touches_node touching receiver_id || touches_node touching group_id)
   then
     match
@@ -1664,7 +1663,7 @@ let add_selector_inline_candidate ?size_cache ?touching ~finalize g ~rank ~seen
         end
 
 let selector_branch_inline_for_group ?size_cache ?touching ~finalize g
-    ~receivers ~rank ~seen ~candidates group_id group =
+    ~receivers ~seen ~candidates group_id group =
   if rule_eligible group && group.declarations <> [] then
     match selector_branches group with
     | [] | [ _ ] -> ()
@@ -1681,19 +1680,18 @@ let selector_branch_inline_for_group ?size_cache ?touching ~finalize g
               |> Option.value ~default:[]
               |> List.iter (fun receiver_id ->
                   add_selector_inline_candidate ?size_cache ?touching ~finalize
-                    g ~rank ~seen ~candidates ~receiver_id ~group_id ~branch_key
+                    g ~seen ~candidates ~receiver_id ~group_id ~branch_key
                     ~remaining_selectors))
           selectors
 
 let selector_branch_inline_candidates ?size_cache ?touching ~finalize g =
   let touching = touching_set touching in
   let receivers = single_selector_receivers g in
-  let rank = selector_rank in
   let seen_groups = Int_table.create 128 in
   let candidates = ref [] in
   List.iter
     (fun (group_id, group) ->
-      selector_branch_inline_for_group ?size_cache ~finalize g ~receivers ~rank
+      selector_branch_inline_for_group ?size_cache ~finalize g ~receivers
         ~seen:seen_groups ~candidates ?touching group_id group)
     (live_rules g);
   !candidates

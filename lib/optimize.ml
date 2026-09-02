@@ -98,8 +98,43 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
       collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
-let factor_rules_incremental ?cache ~ctx rules =
-  Factor.run ?cache ~ctx ~finalize:(finalize_rule_without_nested ~ctx) rules
+let factor_rules_incremental ?cache ~settle ~ctx rules =
+  Factor.run ?cache ~settle ~ctx
+    ~finalize:(finalize_rule_without_nested ~ctx)
+    rules
+
+(* Keep the cheap rule-local pipeline independent of the stylesheet-wide
+   factoring budget. [Rule.finalize] normalizes any shorthand it synthesizes, so
+   one linear preparation pass reaches the local fixed point even when a large
+   stylesheet limits the global walks. *)
+let normalize_rules_locally ~ctx rules =
+  list_map_preserve (single_rule_without_nested ~ctx) rules
+  |> Rule.drop_shadowed
+  |> list_map_preserve
+       (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
+
+let merge_adjacent_and_mark ~ctx invalidated rules =
+  let settled = Rule.merge_adjacent_identical ~ctx rules in
+  (* Each produced rule is fully normalized by the scheduler's finalizer. A node
+     merge is therefore the only settling step that changes the candidate graph
+     and requires another global walk. *)
+  if settled != rules then invalidated := settled :: !invalidated;
+  settled
+
+let factor_rules_until_settled ?factor_cache ~ctx rules =
+  let rec loop remaining rules =
+    let invalidated = ref [] in
+    let next =
+      factor_rules_incremental ?cache:factor_cache
+        ~settle:(merge_adjacent_and_mark ~ctx invalidated)
+        ~ctx rules
+    in
+    let needs_refactor =
+      List.exists (fun rules -> rules == next) !invalidated
+    in
+    if needs_refactor && remaining > 1 then loop (remaining - 1) next else next
+  in
+  loop 2 rules
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
@@ -482,30 +517,27 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~supports (rules : rule list) :
   in
   (* Apply local rule normalization before the DAG factor scheduler decides
      global selector/declaration grouping. *)
-  let prepared =
-    list_map_preserve (single_rule_without_nested ~ctx) with_optimized_nested
-  in
-  let prepared = Rule.drop_shadowed prepared in
-  let prepared =
-    list_map_preserve
-      (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
-      prepared
-  in
+  let prepared = normalize_rules_locally ~ctx with_optimized_nested in
   (* Factoring is greedy and global: extracting one shared declaration subset
      can leave behind leftovers that are themselves factorable. The local linear
      optimizations above always run; this incremental gate only decides whether
      the expensive global factoring fixpoint is likely to buy enough bytes to
      justify the full indexed scheduler walk. *)
   let factored =
-    if Ctx.regroup ctx then
-      factor_rules_incremental ?cache:factor_cache ~ctx prepared
-    else prepared
+    if Ctx.regroup ctx then begin
+      (* The global scheduler reaches a fixed point for the graph it receives,
+         but settling its result can merge nodes and expose a new graph. Repeat
+         only when that cheap postprocessing changed one of the transfer gate's
+         alternatives; most sheets still pay for one global walk. *)
+      factor_rules_until_settled ?factor_cache ~ctx prepared
+    end
+    else merge_adjacent_and_mark ~ctx (ref []) prepared
   in
   (* After factoring so the greedy scheduler sees the unconstrained input (a
      local pre-merge can lock a pair together and hide a larger group): this
      only picks up the merges factoring did not make because its preflight
      skipped the run or the transfer gate discarded its result. *)
-  Rule.merge_adjacent_identical ~ctx factored
+  factored
 
 (* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
