@@ -3452,8 +3452,10 @@ let spec_platform_property_vectors () =
       ("text-box-trim: trim-both", "text-box-trim:trim-both");
       ("writing-mode: sideways-rl", "writing-mode:sideways-rl");
       ("animation-timeline: scroll()", "animation-timeline:scroll()");
+      ("animation-timeline: scroll(Block)", "animation-timeline:scroll()");
       ( "animation-range: entry 0% exit 100%",
         "animation-range:entry 0%exit 100%" );
+      ("animation-range: Cover 10%", "animation-range:cover 10%");
       ( "transition-behavior: allow-discrete",
         "transition-behavior:allow-discrete" );
       ("view-transition-name: card", "view-transition-name:card");
