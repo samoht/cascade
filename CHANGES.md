@@ -501,6 +501,8 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- Invalid math results in `shape-margin` and `offset-distance` are dropped like
+  those in every other `<length-percentage>` property (#766)
 - `--flatten-nesting` leaves the optimised stylesheet flat even when later
   regrouping can shorten adjacent selectors by synthesizing nesting (#759)
 - Canonical diff compares authored nesting through its flattened selector

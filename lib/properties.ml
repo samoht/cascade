@@ -776,140 +776,166 @@ let pp_property : type a. a property Pp.t =
   | Ms_filter -> Pp.string ctx "-ms-filter"
   | O_transition -> Pp.string ctx "-o-transition"
 
-(* Whether the property inherits by default, as defined by each property's
-   specification. Keep this exhaustive over the sealed property GADT: adding a
-   constructor must force a decision here. Names without a typed constructor
-   stay in [Unknown_property], where the payload is the only identity available.
-   Shorthands count as inherited when every longhand they reset inherits. *)
-let property_is_inherited : type a. a property -> bool = function
+(* Per-property semantic metadata. Keep this exhaustive over the sealed property
+   GADT: adding a constructor must decide both its default inheritance and
+   whether its typed value can contain a parse-time [Invalid] arm. Names without
+   a typed constructor stay in [Unknown_property], where the payload is the only
+   identity available. Shorthands count as inherited when every longhand they
+   reset inherits. *)
+type _ property_class =
+  | Inherited : 'a property_class
+  | Non_inherited : 'a property_class
+  | Checks_length_percentage : length_percentage property_class
+  | Checks_rotate : rotate_value property_class
+  | Checks_clip_path : clip_path property_class
+  | Checks_text_indent : text_indent_value property_class
+  | Checks_font_family : font_family property_class
+
+let property_class : type a. a property -> a property_class = function
   | Unknown_property name -> (
       match String.lowercase_ascii name with
       | "empty-cells" | "font-variant" | "font-variant-alternates" | "orphans"
       | "text-align-last" | "text-justify" | "text-rendering" | "widows"
       | "word-wrap" ->
-          true
-      | _ -> false)
-  | Color -> true
-  | Font_size -> true
-  | Line_height -> true
-  | Font_weight -> true
-  | Font_style -> true
-  | Text_align -> true
-  | Text_underline_offset -> true
-  | Text_decoration_skip -> true
-  | Text_decoration_skip_box -> true
-  | Text_decoration_skip_inset -> true
-  | Text_decoration_skip_spaces -> true
-  | Text_emphasis -> true
-  | Text_emphasis_style -> true
-  | Text_emphasis_color -> true
-  | Text_emphasis_position -> true
-  | Text_emphasis_skip -> true
-  | Text_orientation -> true
-  | Text_transform -> true
-  | Letter_spacing -> true
-  | List_style_type -> true
-  | List_style_position -> true
-  | List_style_image -> true
-  | Visibility -> true
-  | Fill_opacity -> true
-  | Stroke_opacity -> true
-  | Cursor -> true
-  | Interactivity -> true
-  | Caret_animation -> true
-  | Caret_shape -> true
-  | Caret -> true
-  | Interest_delay -> true
-  | Interest_delay_start -> true
-  | Interest_delay_end -> true
-  | Border_collapse -> true
-  | Border_spacing -> true
-  | Pointer_events -> true
-  | Forced_color_adjust -> true
-  | White_space -> true
-  | Tab_size -> true
-  | Webkit_text_size_adjust -> true
-  | Font_feature_settings -> true
-  | Font_variation_settings -> true
-  | Webkit_tap_highlight_color -> true
-  | Webkit_text_fill_color -> true
-  | Webkit_text_stroke_color -> true
-  | Text_indent -> true
-  | List_style -> true
-  | Font -> true
-  | Scrollbar_color -> true
-  | Line_height_step -> true
-  | Font_palette -> true
-  | Font_synthesis -> true
-  | Text_wrap_mode -> true
-  | Text_wrap_style -> true
-  | Text_underline_position -> true
-  | Text_box_edge -> true
-  | Inline_sizing -> true
-  | Line_fit_edge -> true
-  | Interpolate_size -> true
-  | Ruby_align -> true
-  | Ruby_merge -> true
-  | Ruby_overhang -> true
-  | Ruby_position -> true
-  | Glyph_orientation_vertical -> true
-  | Text_combine_upright -> true
-  | Image_orientation -> true
-  | Image_rendering -> true
-  | Image_resolution -> true
-  | Font_size_adjust -> true
-  | Font_variant_emoji -> true
-  | Text_spacing_trim -> true
-  | Hyphenate_limit_chars -> true
-  | Initial_letter_align -> true
-  | Initial_letter_wrap -> true
-  | Dominant_baseline -> true
-  | Word_spacing -> true
-  | Text_shadow -> true
-  | Font_family -> true
-  | Webkit_font_smoothing -> true
-  | Moz_osx_font_smoothing -> true
-  | Text_wrap -> true
-  | Word_break -> true
-  | Overflow_wrap -> true
-  | Line_break -> true
-  | Hyphens -> true
-  | Webkit_hyphens -> true
-  | Font_stretch -> true
-  | Font_optical_sizing -> true
-  | Font_kerning -> true
-  | Font_language_override -> true
-  | Font_synthesis_style -> true
-  | Font_synthesis_weight -> true
-  | Font_synthesis_small_caps -> true
-  | Font_synthesis_position -> true
-  | Font_variant_ligatures -> true
-  | Caps -> true
-  | Numeric -> true
-  | Font_variant_position -> true
-  | East_asian -> true
-  | Caption_side -> true
-  | Color_scheme -> true
-  | Print_color_adjust -> true
-  | Webkit_print_color_adjust -> true
-  | Quotes -> true
-  | Text_size_adjust -> true
-  | Fill -> true
-  | Stroke -> true
-  | Stroke_width -> true
-  | Fill_rule -> true
-  | Clip_rule -> true
-  | Stroke_linecap -> true
-  | Stroke_linejoin -> true
-  | Stroke_miterlimit -> true
-  | Stroke_dashoffset -> true
-  | Stroke_dasharray -> true
-  | Paint_order -> true
-  | Direction -> true
-  | Writing_mode -> true
-  | Text_decoration_skip_ink -> true
-  | Accent_color -> true
-  | Caret_color -> true
+          Inherited
+      | _ -> Non_inherited)
+  | Width -> Checks_length_percentage
+  | Height -> Checks_length_percentage
+  | Min_width -> Checks_length_percentage
+  | Min_height -> Checks_length_percentage
+  | Max_width -> Checks_length_percentage
+  | Max_height -> Checks_length_percentage
+  | Block_size -> Checks_length_percentage
+  | Inline_size -> Checks_length_percentage
+  | Min_block_size -> Checks_length_percentage
+  | Min_inline_size -> Checks_length_percentage
+  | Max_block_size -> Checks_length_percentage
+  | Max_inline_size -> Checks_length_percentage
+  | Shape_margin -> Checks_length_percentage
+  | Offset_distance -> Checks_length_percentage
+  | Rotate -> Checks_rotate
+  | Clip_path -> Checks_clip_path
+  | Text_indent -> Checks_text_indent
+  | Font_family -> Checks_font_family
+  | Color -> Inherited
+  | Font_size -> Inherited
+  | Line_height -> Inherited
+  | Font_weight -> Inherited
+  | Font_style -> Inherited
+  | Text_align -> Inherited
+  | Text_underline_offset -> Inherited
+  | Text_decoration_skip -> Inherited
+  | Text_decoration_skip_box -> Inherited
+  | Text_decoration_skip_inset -> Inherited
+  | Text_decoration_skip_spaces -> Inherited
+  | Text_emphasis -> Inherited
+  | Text_emphasis_style -> Inherited
+  | Text_emphasis_color -> Inherited
+  | Text_emphasis_position -> Inherited
+  | Text_emphasis_skip -> Inherited
+  | Text_orientation -> Inherited
+  | Text_transform -> Inherited
+  | Letter_spacing -> Inherited
+  | List_style_type -> Inherited
+  | List_style_position -> Inherited
+  | List_style_image -> Inherited
+  | Visibility -> Inherited
+  | Fill_opacity -> Inherited
+  | Stroke_opacity -> Inherited
+  | Cursor -> Inherited
+  | Interactivity -> Inherited
+  | Caret_animation -> Inherited
+  | Caret_shape -> Inherited
+  | Caret -> Inherited
+  | Interest_delay -> Inherited
+  | Interest_delay_start -> Inherited
+  | Interest_delay_end -> Inherited
+  | Border_collapse -> Inherited
+  | Border_spacing -> Inherited
+  | Pointer_events -> Inherited
+  | Forced_color_adjust -> Inherited
+  | White_space -> Inherited
+  | Tab_size -> Inherited
+  | Webkit_text_size_adjust -> Inherited
+  | Font_feature_settings -> Inherited
+  | Font_variation_settings -> Inherited
+  | Webkit_tap_highlight_color -> Inherited
+  | Webkit_text_fill_color -> Inherited
+  | Webkit_text_stroke_color -> Inherited
+  | List_style -> Inherited
+  | Font -> Inherited
+  | Scrollbar_color -> Inherited
+  | Line_height_step -> Inherited
+  | Font_palette -> Inherited
+  | Font_synthesis -> Inherited
+  | Text_wrap_mode -> Inherited
+  | Text_wrap_style -> Inherited
+  | Text_underline_position -> Inherited
+  | Text_box_edge -> Inherited
+  | Inline_sizing -> Inherited
+  | Line_fit_edge -> Inherited
+  | Interpolate_size -> Inherited
+  | Ruby_align -> Inherited
+  | Ruby_merge -> Inherited
+  | Ruby_overhang -> Inherited
+  | Ruby_position -> Inherited
+  | Glyph_orientation_vertical -> Inherited
+  | Text_combine_upright -> Inherited
+  | Image_orientation -> Inherited
+  | Image_rendering -> Inherited
+  | Image_resolution -> Inherited
+  | Font_size_adjust -> Inherited
+  | Font_variant_emoji -> Inherited
+  | Text_spacing_trim -> Inherited
+  | Hyphenate_limit_chars -> Inherited
+  | Initial_letter_align -> Inherited
+  | Initial_letter_wrap -> Inherited
+  | Dominant_baseline -> Inherited
+  | Word_spacing -> Inherited
+  | Text_shadow -> Inherited
+  | Webkit_font_smoothing -> Inherited
+  | Moz_osx_font_smoothing -> Inherited
+  | Text_wrap -> Inherited
+  | Word_break -> Inherited
+  | Overflow_wrap -> Inherited
+  | Line_break -> Inherited
+  | Hyphens -> Inherited
+  | Webkit_hyphens -> Inherited
+  | Font_stretch -> Inherited
+  | Font_optical_sizing -> Inherited
+  | Font_kerning -> Inherited
+  | Font_language_override -> Inherited
+  | Font_synthesis_style -> Inherited
+  | Font_synthesis_weight -> Inherited
+  | Font_synthesis_small_caps -> Inherited
+  | Font_synthesis_position -> Inherited
+  | Font_variant_ligatures -> Inherited
+  | Caps -> Inherited
+  | Numeric -> Inherited
+  | Font_variant_position -> Inherited
+  | East_asian -> Inherited
+  | Caption_side -> Inherited
+  | Color_scheme -> Inherited
+  | Print_color_adjust -> Inherited
+  | Webkit_print_color_adjust -> Inherited
+  | Quotes -> Inherited
+  | Text_size_adjust -> Inherited
+  | Fill -> Inherited
+  | Stroke -> Inherited
+  | Stroke_width -> Inherited
+  | Fill_rule -> Inherited
+  | Clip_rule -> Inherited
+  | Stroke_linecap -> Inherited
+  | Stroke_linejoin -> Inherited
+  | Stroke_miterlimit -> Inherited
+  | Stroke_dashoffset -> Inherited
+  | Stroke_dasharray -> Inherited
+  | Paint_order -> Inherited
+  | Direction -> Inherited
+  | Writing_mode -> Inherited
+  | Text_decoration_skip_ink -> Inherited
+  | Accent_color -> Inherited
+  | Caret_color -> Inherited
   | Custom_property _ | All | Background_color | Border_color | Border_style
   | Border_top_style | Border_right_style | Border_bottom_style
   | Border_left_style | Border_inline_start_style | Border_inline_end_style
@@ -919,20 +945,17 @@ let property_is_inherited : type a. a property -> bool = function
   | Padding_block_start | Padding_block_end | Margin | Margin_inline_end
   | Margin_inline_start | Margin_left | Margin_right | Margin_top
   | Margin_bottom | Margin_inline | Margin_block | Margin_block_start
-  | Margin_block_end | Gap | Column_gap | Row_gap | Width | Height | Min_width
-  | Min_height | Max_width | Max_height | Inline_size | Min_inline_size
-  | Max_inline_size | Block_size | Min_block_size | Max_block_size
-  | Text_decoration | Text_decoration_line | Text_decoration_style
-  | Text_decoration_color | Text_decoration_skip_self | Display | Position
-  | Baseline_source | Alignment_baseline | Baseline_shift | Flex_direction
-  | Flex_wrap | Flex_flow | Flex | Flex_grow | Flex_shrink | Flex_basis | Order
-  | Align_items | Justify_content | Justify_items | Justify_self | Align_content
-  | Align_self | Place_content | Place_items | Place_self
-  | Grid_template_columns | Grid_template_rows | Grid_template_areas
-  | Grid_template | Grid | Grid_area | Grid_auto_flow | Grid_auto_columns
-  | Grid_auto_rows | Grid_column | Grid_row | Grid_column_start
-  | Grid_column_end | Grid_row_start | Grid_row_end | Border_width
-  | Border_top_width | Border_right_width | Border_bottom_width
+  | Margin_block_end | Gap | Column_gap | Row_gap | Text_decoration
+  | Text_decoration_line | Text_decoration_style | Text_decoration_color
+  | Text_decoration_skip_self | Display | Position | Baseline_source
+  | Alignment_baseline | Baseline_shift | Flex_direction | Flex_wrap | Flex_flow
+  | Flex | Flex_grow | Flex_shrink | Flex_basis | Order | Align_items
+  | Justify_content | Justify_items | Justify_self | Align_content | Align_self
+  | Place_content | Place_items | Place_self | Grid_template_columns
+  | Grid_template_rows | Grid_template_areas | Grid_template | Grid | Grid_area
+  | Grid_auto_flow | Grid_auto_columns | Grid_auto_rows | Grid_column | Grid_row
+  | Grid_column_start | Grid_column_end | Grid_row_start | Grid_row_end
+  | Border_width | Border_top_width | Border_right_width | Border_bottom_width
   | Border_left_width | Border_inline_start_width | Border_inline_end_width
   | Border_block_start_width | Border_block_end_width | Border_inline_width
   | Border_block_width | Border_image | Border_image_source | Border_image_slice
@@ -976,28 +999,28 @@ let property_is_inherited : type a. a property -> bool = function
   | Ms_filter | O_transition | Container_type | Container_name | Container
   | Anchor_name | Position_anchor | Position_try_fallbacks | Position_try_order
   | Position_try | Position_visibility | Position_area | Shape_outside
-  | Shape_margin | Shape_image_threshold | Overflow_clip_margin
-  | Overflow_anchor | Scrollbar_width | Scrollbar_gutter | Text_box_trim
-  | Text_box | Min_intrinsic_sizing | Animation_timeline | Animation_range
+  | Shape_image_threshold | Overflow_clip_margin | Overflow_anchor
+  | Scrollbar_width | Scrollbar_gutter | Text_box_trim | Text_box
+  | Min_intrinsic_sizing | Animation_timeline | Animation_range
   | Animation_range_start | Animation_range_end | Scroll_timeline
   | Scroll_timeline_name | Scroll_timeline_axis | View_transition_name
   | View_transition_class | Contain_intrinsic_size | Contain_intrinsic_width
   | Contain_intrinsic_height | Contain_intrinsic_block_size
-  | Contain_intrinsic_inline_size | Margin_trim | Offset_path | Offset_distance
-  | Offset_rotate | Initial_letter | View_timeline_name | View_timeline_axis
+  | Contain_intrinsic_inline_size | Margin_trim | Offset_path | Offset_rotate
+  | Initial_letter | View_timeline_name | View_timeline_axis
   | View_timeline_inset | View_timeline | Timeline_scope | Perspective
   | Perspective_origin | Transform_style | Backface_visibility | Object_position
-  | Rotate | Transition_duration | Transition_timing_function | Transition_delay
+  | Transition_duration | Transition_timing_function | Transition_delay
   | Transition_property | Transition_behavior | Overlay | Will_change | Contain
   | Isolation | Break_before | Break_after | Break_inside | Page_break_before
   | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
   | Column_count | Column_rule | Column_rule_color | Column_span
   | Background_attachment | Border_top | Border_right | Border_bottom
-  | Border_left | Transform_origin | Transform_box | Clip_path | Mask
-  | Mask_border | Content_visibility | Filter | Background_image
-  | Background_origin | Background_clip | Webkit_background_clip | Animation
-  | Aspect_ratio | Overflow_x | Overflow_y | Overflow_block | Overflow_inline
-  | Vertical_align | Background_position | Background_repeat | Background_size
+  | Border_left | Transform_origin | Transform_box | Mask | Mask_border
+  | Content_visibility | Filter | Background_image | Background_origin
+  | Background_clip | Webkit_background_clip | Animation | Aspect_ratio
+  | Overflow_x | Overflow_y | Overflow_block | Overflow_inline | Vertical_align
+  | Background_position | Background_repeat | Background_size
   | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
   | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
   | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
@@ -1023,7 +1046,18 @@ let property_is_inherited : type a. a property -> bool = function
   | Scroll_padding_block_start | Scroll_padding_block_end | Overscroll_behavior
   | Overscroll_behavior_x | Overscroll_behavior_y | Overscroll_behavior_block
   | Overscroll_behavior_inline | Offset_anchor | Offset_position | Offset ->
-      false
+      Non_inherited
+
+let property_is_inherited : type a. a property -> bool =
+ fun property ->
+  match property_class property with
+  | Inherited -> true
+  | Non_inherited -> false
+  | Checks_length_percentage -> false
+  | Checks_rotate -> false
+  | Checks_clip_path -> false
+  | Checks_text_indent -> true
+  | Checks_font_family -> true
 
 (* Whether the name [pp_property] gives [property] under minify can carry
    [value]. CSS Fragmentation 3 sec. 3.4 defines the [page-break-*] alias of
@@ -5105,25 +5139,15 @@ let invalid_text_indent_value : text_indent_value -> bool = function
   | _ -> false
 
 let is_invalid_value : type a. a property -> a -> bool =
- fun prop value ->
-  match prop with
-  | Rotate -> invalid_rotate_value value
-  | Width -> invalid_length_percentage value
-  | Height -> invalid_length_percentage value
-  | Min_width -> invalid_length_percentage value
-  | Min_height -> invalid_length_percentage value
-  | Max_width -> invalid_length_percentage value
-  | Max_height -> invalid_length_percentage value
-  | Block_size -> invalid_length_percentage value
-  | Inline_size -> invalid_length_percentage value
-  | Min_block_size -> invalid_length_percentage value
-  | Min_inline_size -> invalid_length_percentage value
-  | Max_block_size -> invalid_length_percentage value
-  | Max_inline_size -> invalid_length_percentage value
-  | Clip_path -> invalid_clip_path value
-  | Text_indent -> invalid_text_indent_value value
-  | Font_family -> ( match value with Invalid _ -> true | _ -> false)
-  | _ -> false
+ fun property value ->
+  match property_class property with
+  | Inherited -> false
+  | Non_inherited -> false
+  | Checks_length_percentage -> invalid_length_percentage value
+  | Checks_rotate -> invalid_rotate_value value
+  | Checks_clip_path -> invalid_clip_path value
+  | Checks_text_indent -> invalid_text_indent_value value
+  | Checks_font_family -> ( match value with Invalid _ -> true | _ -> false)
 
 let property_value_kind : type a. a property -> a property_value_kind option =
   function

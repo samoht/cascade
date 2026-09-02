@@ -67,7 +67,9 @@ val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
     arm cascade detected at parse time (CSS spec violations preserved verbatim
     for round-trip). [Optimize.drop_invalid], which every serialisation runs,
-    removes declarations that satisfy this predicate. *)
+    removes declarations that satisfy this predicate. The classification is
+    exhaustive over the property GADT, so adding a property requires an explicit
+    validity decision here. *)
 
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] pretty-prints a typed custom property value. *)
