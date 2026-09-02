@@ -159,12 +159,16 @@ usable as a CI check.
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a vendor-prefixed alias, `@layer`
   blocks). Equivalent shorthand decompositions are still not modelled.
+  Numeric arithmetic has zero approximation tolerance in both default and
+  `--lossless` modes: an exact quotient such as `calc(28/14)` compares equal to
+  `2`, while `calc(28/18)` remains distinct from every finite decimal spelling.
+  The default mode's bounded approximation applies only to colours.
 
 | Flag | Purpose |
 |---|---|
 | `--diff=MODE` | What counts as "no difference": `auto` (default), `tree`, `string` or `canonical`, as above. |
 | `--depth=auto\|max\|N` | How many levels of the difference tree to print. `auto` (default) prints it whole while it stays short, then falls back to the deepest level that fits; `max` always prints it whole; an integer pins a level. A cut subtree carries the number of lines hidden. |
-| `--lossless` | Disable colour approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within the approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
+| `--lossless` | Disable colour approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within the approximation budget report as different rather than equal. Numeric arithmetic is exact with or without this flag. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
