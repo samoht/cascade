@@ -501,7 +501,7 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
-- `--flatten-nesting` leaves the optimized stylesheet flat even when later
+- `--flatten-nesting` leaves the optimised stylesheet flat even when later
   regrouping can shorten adjacent selectors by synthesizing nesting (#759)
 - Canonical diff compares authored nesting through its flattened selector
   expansion, so equivalent nested and flat stylesheets do not leave residuals
@@ -525,7 +525,7 @@ difference wherever the two are not equivalent.
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)
-- Lossless optimization keeps otherwise-independent declarations in authored
+- Lossless optimisation keeps otherwise-independent declarations in authored
   order, so stylesheet text and CSSOM enumeration no longer change solely for
   gzip alignment (#742)
 - Numeric tokens in custom-property and unknown-property declaration streams
@@ -770,8 +770,8 @@ difference wherever the two are not equivalent.
   sheet's distant-`@media` merge falls from 24.4M words to 0.4M, and the
   504-file corpus allocates a twentieth less
   (#480, #486, #487, #502, #505, #517, #519, #523, #543, #566)
-- Nested group-rule merges optimize only the newly joined statement list
-  instead of walking already-optimized child blocks again at every ancestor.
+- Nested group-rule merges optimise only the newly joined statement list
+  instead of walking already-optimised child blocks again at every ancestor.
   Doubling the depth of a repeated `@media` merge now doubles optimizer work
   rather than quadrupling it (#746)
 
@@ -1339,7 +1339,7 @@ difference wherever the two are not equivalent.
 ### Testing
 
 - CI rejects merlint findings and incomplete library record patterns (#310)
-- `dune test` renders a stylesheet and its optimized forms in a headless
+- `dune test` renders a stylesheet and its optimised forms in a headless
   browser and compares the computed style of every element, on a document
   derived from the stylesheet's own selectors; it skips where no browser is
   installed (#275)
@@ -1376,18 +1376,18 @@ library, then stabilised over several internal milestones.
   output is not applied. Pass `~objective:\`Raw` (CLI `--objective=raw`) to
   optimise raw bytes instead, for output that ships uncompressed.
 - Spec coverage:
-  - Selectors Level 4 -- including `:has()`, `:is()`, `:where()`, `:not()`,
+  - Selectors Level 4: including `:has()`, `:is()`, `:where()`, `:not()`,
     nesting `&`, and full attribute syntax.
-  - Values & Units Level 4 -- `calc()`, `clamp()`, `min()`, `max()`,
+  - Values & Units Level 4: `calc()`, `clamp()`, `min()`, `max()`,
     `minmax()`, the modern length units, durations, angles.
-  - Color Level 4 -- 15 colour spaces including `oklch()`, `oklab()`,
+  - Color Level 4: 15 colour spaces including `oklch()`, `oklab()`,
     `lch()`, `hwb()`, `color-mix()`, plus the 148 named colours.
-  - Conditional Rules Level 3-5 -- `@media`, `@supports`, `@container`
+  - Conditional Rules Level 3-5: `@media`, `@supports`, `@container`
     (including typed `style()`/`scroll-state()` queries with range
     operators), `@when` / `@else`.
-  - Cascade Level 5 -- `@layer` declarations and blocks, CSS-wide
+  - Cascade Level 5: `@layer` declarations and blocks, CSS-wide
     keywords, and `all` reset semantics in the optimizer.
-  - Custom Properties Level 1 -- `var()` parsing/printing, typed
+  - Custom Properties Level 1: `var()` parsing/printing, typed
     fallbacks, theme/default substitution, `@property` registration.
   - Fonts Level 4 (`@font-face` descriptors), Animations Level 1
     (`@keyframes`, `@starting-style`).
@@ -1408,7 +1408,7 @@ library, then stabilised over several internal milestones.
 
 - CLI commands share one binary file reader that closes its descriptor when a
   read fails (#309)
-- `cascade` -- pretty-print and minify CSS files. It accepts stdin via `-`
+- `cascade`: pretty-print and minify CSS files. It accepts stdin via `-`
   or a missing file argument, and writes output to stdout.
 - `cascade --minify` applies the standard safe transforms, including
   deduplication, rule merging, selector grouping, empty-rule elimination, and
@@ -1422,8 +1422,8 @@ library, then stabilised over several internal milestones.
   `CASCADE_COLOR`, and `--color`, and colours only when stdout is a tty.
   Identical files exit 0 and differing files exit 1, so the command slots
   into CI checks and git hooks. The `canonical` mode projects both sheets to a normal form
-  first, so equivalent factorings -- different rule grouping, cascade-safe rule
-  and declaration order -- compare identical rather than as spurious changes.
+  first, so equivalent factorings (different rule grouping, cascade-safe rule
+  and declaration order) compare identical rather than as spurious changes.
 - The CLI is installable as a binary through the Homebrew tap
   `samoht/tap/cascade`, with opam installation still available for OCaml users.
 
