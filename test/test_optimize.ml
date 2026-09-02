@@ -1790,9 +1790,9 @@ let optimize_tests =
 
 (** {1 Selector merging tests (cascade semantics)} *)
 
-let optimized_string ?scope ?(enforce_spec = false) css =
+let optimized_string ?scope ?targets ?(enforce_spec = false) css =
   css |> Cursor.of_string |> Css.Stylesheet.read
-  |> Css.Optimize.stylesheet ?scope ~enforce_spec
+  |> Css.Optimize.stylesheet ?scope ?targets ~enforce_spec
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
@@ -3255,8 +3255,8 @@ let target_evergreen_compatibility_prefixes () =
     (optimized_string ".a{user-select:none!important}");
   Alcotest.(check string)
     "the declared target prefixes feature tests and their declarations"
-    "@supports ((-webkit-backdrop-filter:var(--tw)) or \
-     (backdrop-filter:var(--tw))){.a{-webkit-backdrop-filter:var(--tw);backdrop-filter:var(--tw)}}"
+    "@supports(-webkit-backdrop-filter:var(--tw))or \
+     (backdrop-filter:var(--tw)){.a{-webkit-backdrop-filter:var(--tw);backdrop-filter:var(--tw)}}"
     (optimized_string
        "@supports(backdrop-filter:var(--tw)){.a{backdrop-filter:var(--tw)}}");
   Alcotest.(check string)
@@ -3273,6 +3273,18 @@ let target_evergreen_compatibility_prefixes () =
     "spec-only mode does not synthesize target fallbacks"
     ".a{user-select:none;backdrop-filter:blur(1px)}"
     (optimized_string ~enforce_spec:true
+       ".a{user-select:none;backdrop-filter:blur(1px)}");
+  let newer_webkit =
+    {
+      Css.Optimize.evergreen_targets with
+      safari = (18, 0);
+      ios_safari = (18, 0);
+    }
+  in
+  Alcotest.(check string)
+    "a newer WebKit target drops only the obsolete fallback"
+    ".a{-webkit-user-select:none;user-select:none;backdrop-filter:blur(1px)}"
+    (optimized_string ~targets:newer_webkit
        ".a{user-select:none;backdrop-filter:blur(1px)}")
 
 let c61_no_layer_media_merge () =

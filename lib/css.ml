@@ -668,10 +668,10 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode declarations
   in
   render_inline_style ?minify ?mode declarations
 
-let optimize ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
-    ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats
-    stylesheet =
-  Optimize.stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec
+let optimize ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
+    ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
+    ?stats stylesheet =
+  Optimize.stylesheet ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
     ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
     ?stats stylesheet
 

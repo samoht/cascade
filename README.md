@@ -445,18 +445,23 @@ an element can appear on, including one a script builds at runtime.
 
 ### Target browsers
 
-The default minify targets maintained evergreen browsers rendering an HTML
-document, and takes six facts from that target. The HTML direction model,
-where every element is either `ltr` or `rtl`, shortens `:not(:dir(ltr))` to
+The default minify targets Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
+16.4 rendering an HTML document. The same record is public as
+`Css.Optimize.evergreen_targets`; library callers can pass a different
+`Css.Optimize.targets` record. The HTML direction model, where every element
+is either `ltr` or `rtl`, shortens `:not(:dir(ltr))` to
 `:dir(rtl)`. The HTML form-control model, which says an `input` is either
 `:enabled` or `:disabled`, shortens `input:not(:enabled)` to `input:disabled`.
 A vendor-prefixed declaration (`-moz-box-sizing`) whose unprefixed twin is
-present is dropped, since evergreen browsers understand the unprefixed form. A
-`min-`/`max-` media or container feature becomes the Media Queries 4 range
-grammar, `(min-width: 700px)` to `(width >= 700px)`. A nested selector loses
-its `&` prefix, `& div` to `div`, which the relaxed nesting syntax reads the
-same way. An `oklab` or `oklch` axis takes the percentage spelling wherever it
-is shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
+present is dropped, since evergreen browsers understand the unprefixed form.
+Conversely, the target adds `-webkit-user-select` and
+`-webkit-backdrop-filter` beside their standard declarations where Safari
+still needs them. A `min-`/`max-` media or container feature becomes the Media
+Queries 4 range grammar, `(min-width: 700px)` to `(width >= 700px)`. A nested
+selector loses its `&` prefix, `& div` to `div`, which the relaxed nesting
+syntax reads the same way. An `oklab` or `oklch` axis takes the percentage
+spelling wherever it is shorter, `oklch(.7 .304 20)` to
+`oklch(.7 76% 20)`.
 
 Each of those state pseudo-class pairs partitions a different set of elements,
 and outside its own set an element matches neither half, so the rewrite runs
@@ -473,10 +478,12 @@ serialisation, and holds the parser to the ident code points CSS Syntax 3 lists
 rather than reading anything above U+007F. That last one is the only part of the
 flag that acts without `--minify`.
 
-An `@supports` condition is not a target fact. CSS Conditional Rules 3 section
-6.1 defines support as the rendering browser accepting the declaration, down to
-a per-installation experimental-feature preference, so the author's guard is a
-question for that browser and both modes keep it.
+An `@supports` condition is never assumed true or false. CSS Conditional Rules
+3 section 6.1 defines support as the rendering browser accepting the
+declaration, down to a per-installation experimental-feature preference, so
+the author's guard remains a question for that browser. When a target requires
+a prefixed spelling, Cascade asks the equivalent disjunction, for example
+`(-webkit-backdrop-filter: ...) or (backdrop-filter: ...)`.
 
 ## CSS specification coverage
 
@@ -564,10 +571,11 @@ Output:
 Properties, values, and selectors are sealed OCaml ADTs, so invalid
 constructions are caught at compile time. Structural transforms (`fold`,
 `map`, `sort`, `flatten_nesting`), `Css.inline_imports`, and
-`Css.optimize ?flatten_nesting ?aggressive ?lossless ?enforce_spec ?scope` are
-the main entry points for AST-level work. Transforms that need information
-beyond CSS text take an explicit closed `Css.Context.t` rather than reading
-ambient runtime state.
+`Css.optimize ?targets ?flatten_nesting ?aggressive ?lossless ?enforce_spec
+?scope` is the main entry point for AST-level work. Transforms that need
+information beyond CSS text take an explicit context rather than reading
+ambient runtime state; `Css.Optimize.evergreen_targets` names the default
+browser contract.
 
 Structural diff lives in the separate `cascade.diff` sub-library
 (`Cascade_diff.Css_compare`, `Cascade_diff.Tree_diff`,

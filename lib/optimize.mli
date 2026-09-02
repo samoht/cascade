@@ -27,6 +27,21 @@ type objective = [ `Raw | `Transfer ]
 (** The size objective for global factoring. [`Raw] keeps raw-byte wins;
     [`Transfer] rejects a result that grows the estimated DEFLATE size. *)
 
+type browser_version = int * int
+
+type targets = {
+  chrome : browser_version;
+  firefox : browser_version;
+  safari : browser_version;
+  ios_safari : browser_version;
+}
+(** Browser versions whose compatibility fallbacks an optimization run owns.
+    Versions are [(major, minor)]. *)
+
+val evergreen_targets : targets
+(** The default compatibility contract: Chrome 111, Firefox 128, Safari 16.4,
+    and iOS Safari 16.4. *)
+
 (** {1 Declaration Optimization} *)
 
 val duplicate_buggy_properties : declaration list -> declaration list
@@ -232,8 +247,15 @@ val apply_property_duplication : t -> t
 (** [apply_property_duplication ss] applies only property duplication for
     browser compatibility without other optimizations. *)
 
+val add_compatibility_prefixes : targets:targets -> t -> t
+(** [add_compatibility_prefixes ~targets ss] adds the vendor-prefixed
+    declarations and feature-query alternatives required by [targets]. An
+    authored prefixed property owns its fallback and is never supplemented. The
+    transform is idempotent. *)
+
 val stylesheet :
   ?scope:scope ->
+  ?targets:targets ->
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
@@ -245,19 +267,22 @@ val stylesheet :
   ?stats:Stats.t ->
   t ->
   t
-(** [stylesheet ?scope ?flatten_nesting ?lossless ?enforce_spec ?aggressive
-     ?regroup ?closed_world ?objective ?prune_unused_custom_props ?stats ss]
-    optimizes an entire stylesheet while preserving cascade semantics for any
-    DOM (with [closed_world] off, the default). When [@supports] blocks are
-    present alongside top-level rules, optimization is limited because the
-    stylesheet structure separates rules from [@supports] blocks, losing their
-    relative ordering.
+(** [stylesheet ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
+     ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
+     ?stats ss] optimizes an entire stylesheet while preserving cascade
+    semantics for any DOM (with [closed_world] off, the default). When
+    [@supports] blocks are present alongside top-level rules, optimization is
+    limited because the stylesheet structure separates rules from [@supports]
+    blocks, losing their relative ordering.
 
     When [flatten_nesting] is [true] (default [false]) nested rules are
     desugared into flat rules: child selectors with [&] have the parent selector
     substituted in, child selectors without [&] are joined to the parent with
     the descendant combinator, and at-rules nested inside a rule are emitted at
     the top level with the parent selector applied to their inner rules.
+
+    [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
+    generation. It is ignored when [enforce_spec] is [true].
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.
