@@ -1332,6 +1332,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?(flatten_nesting = false)
   let result =
     if enforce_spec then result else add_compatibility_prefixes ~targets result
   in
+  let result = if flatten_nesting then Flatten.block result else result in
   Log.debug (fun m ->
       let c = (Stats.snapshot (Ctx.stats ctx)).counters in
       m
