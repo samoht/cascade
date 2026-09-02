@@ -501,6 +501,8 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--flatten-nesting` leaves the optimized stylesheet flat even when later
+  regrouping can shorten adjacent selectors by synthesizing nesting (#759)
 - Default `--minify` evaluates all-static unitless `line-height:calc()`
   arithmetic to its six-significant-figure output budget, so `calc(28/18)`
   becomes `1.55556`. `--lossless` keeps repeating quotients symbolic, and
