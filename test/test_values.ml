@@ -1528,6 +1528,23 @@ let spec_color5_function_edges () =
   neg_cursor read_color "color-mix(in, red, blue)";
   neg_cursor read_color "color-mix(in srgb red blue)"
 
+let spec_color5_srgb_float_mix () =
+  (* CSS Color 5 sec. 3: convert modern operands to floating-point sRGB,
+     interpolate there, and quantise only the result. *)
+  check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 20%)"
+    ~optimized:"#353942"
+    "color-mix(in srgb, oklch(13% .028 261.692), white 20%)";
+  (* A nearby result that does not cross a byte-rounding boundary. *)
+  check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 90%)"
+    ~optimized:"#e6e6e7"
+    "color-mix(in srgb, oklch(13% .028 261.692), white 90%)";
+  (* Premultiplication restores the transparent operand's partner channels; the
+     40% percentage sum scales the resulting alpha to 10%. *)
+  check_color
+    ~expected:"color-mix(in srgb,oklch(13%7%261.692/.5) 20%,transparent 20%)"
+    ~optimized:"#0307121a"
+    "color-mix(in srgb, oklch(13% .028 261.692 / .5) 20%, transparent 20%)"
+
 (* CSS Color 5 sec. 3: the result of [color-mix()] is a colour in the named
    interpolation space, and CSS Color 4 sec. 10.1 keeps [color()] coordinates
    unclamped, so a mix that lands outside the sRGB gamut is still a value the
@@ -1841,6 +1858,8 @@ let value_tests =
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
     test_case "spec color 5 function edges" `Quick spec_color5_function_edges;
+    test_case "spec color 5 floating-point sRGB mix" `Quick
+      spec_color5_srgb_float_mix;
     test_case "spec color 5 mix out of sRGB gamut" `Quick
       spec_color5_mix_out_of_srgb_gamut;
     test_case "spec color 5 mix in rectangular spaces" `Quick
