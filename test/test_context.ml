@@ -1023,11 +1023,15 @@ let test_computed_value_resolution_contract () =
         [
           Css.Declaration.of_string "color: blue";
           Css.Declaration.of_string "font-size: 10px";
+          Css.Declaration.of_string "line-height: 1.5";
+          Css.Declaration.of_string "border-collapse: collapse";
         ]
       ~initial_values:
         [
           Css.Declaration.of_string "display: inline";
           Css.Declaration.of_string "width: auto";
+          Css.Declaration.of_string "line-height: normal";
+          Css.Declaration.of_string "border-collapse: separate";
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
@@ -1045,6 +1049,14 @@ let test_computed_value_resolution_contract () =
     ~expected:"blue" "color: unset";
   check_eval_value "unset on non-inherited property uses initial value" ~ctx
     ~expected:"auto" "width: unset";
+  check_eval_value "line-height inherit uses inherited value" ~ctx
+    ~expected:"1.5" "line-height: inherit";
+  check_eval_value "line-height unset uses inherited value" ~ctx ~expected:"1.5"
+    "line-height: unset";
+  check_eval_value "line-height initial uses initial value" ~ctx
+    ~expected:"normal" "line-height: initial";
+  check_eval_value "border-collapse unset uses inherited value" ~ctx
+    ~expected:"collapse" "border-collapse: unset";
   check_eval_value "currentColor uses explicit current color" ~ctx
     ~expected:"red" "border-color: currentColor";
   check_eval_value "custom property var resolves from context" ~ctx
