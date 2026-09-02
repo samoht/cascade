@@ -1930,6 +1930,16 @@ let test_factor_interval_keeps_overrides () =
     (minify_str
        ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
 
+let test_factor_selector_branch_keeps_later_override () =
+  (* Extracting the shared overflow/position declarations must not let the
+     earlier selector-list branch overwrite the later .scroll-item a z-index.
+     Only that branch is overridden; .scroll-pic-frame keeps z-index:100. *)
+  Alcotest.(check string)
+    "selector-list branch keeps its later override"
+    ".scroll-item a,.scroll-pic-frame,.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item a{border:1px solid#fff;display:block;height:162px;width:198px;z-index:50}.scroll-pic-frame{z-index:100}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}"
+    (minify_str
+       ".scroll-item a,.scroll-pic-frame{overflow:hidden;position:relative;z-index:100}.scroll-pic-wrap{overflow:hidden;position:relative}.scroll-item{display:inline;float:left;height:164px;overflow:hidden;width:200px}.scroll-item a{border:1px solid #fff;display:block;height:162px;width:198px;z-index:50}")
+
 let test_factoring_reaches_fixpoint () =
   (* Factoring one shared subset can expose another: grouping .a/.b on color:red
      leaves .b with padding:0, now groupable with .c. A correct optimizer
@@ -5090,6 +5100,9 @@ let selector_merging_tests =
     ("factor shared declarations", `Quick, test_factor_shared_declarations);
     ("factor weighted intervals", `Quick, test_factor_interval_schedule);
     ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
+    ( "factor selector branch keeps later override",
+      `Quick,
+      test_factor_selector_branch_keeps_later_override );
     ( "factoring reaches fixpoint in one pass",
       `Quick,
       test_factoring_reaches_fixpoint );
