@@ -115,8 +115,10 @@ let rec string_of_scroll_state_query ~minify = function
       String.concat "" [ "not ("; string_of_scroll_state_query ~minify q; ")" ]
 
 let rec minified_condition = function
-  | And (a, b) -> minified_operand a ^ " and " ^ minified_operand b
-  | Or (a, b) -> minified_operand a ^ " or " ^ minified_operand b
+  | And (a, b) ->
+      String.concat "" [ minified_operand a; " and "; minified_operand b ]
+  | Or (a, b) ->
+      String.concat "" [ minified_operand a; " or "; minified_operand b ]
   | Not c -> "not " ^ minified_operand c
   | t -> to_string_with ~pretty:false ~minify:true t
 
@@ -124,7 +126,7 @@ and minified_operand = function
   | ( Min_width_rem _ | Min_width_px _ | Style _ | Scroll_state _
     | Feature_query _ ) as t ->
       to_string_with ~pretty:false ~minify:true t
-  | t -> "(" ^ minified_condition t ^ ")"
+  | t -> String.concat "" [ "("; minified_condition t; ")" ]
 
 and to_string_with ~pretty ~minify t =
   match t with
@@ -132,37 +134,44 @@ and to_string_with ~pretty ~minify t =
       (* The [width>=] range upgrade is a target-fact rewrite applied by
          [lower_for_minify] in the optimize phase, not here. *)
       let sep = if pretty && not minify then ": " else ":" in
-      "(min-width" ^ sep ^ format_rem rem ^ "rem)"
+      String.concat "" [ "(min-width"; sep; format_rem rem; "rem)" ]
   | Min_width_px px ->
       let sep = if pretty && not minify then ": " else ":" in
-      "(min-width" ^ sep ^ Int.to_string px ^ "px)"
+      String.concat "" [ "(min-width"; sep; Int.to_string px; "px)" ]
   | Named (name, cond) ->
-      Parser.escape_ident name ^ " " ^ to_string_with ~pretty ~minify cond
+      String.concat ""
+        [ Parser.escape_ident name; " "; to_string_with ~pretty ~minify cond ]
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
-      head ^ string_of_style_query ~minify query ^ ")"
+      String.concat "" [ head; string_of_style_query ~minify query; ")" ]
   | Scroll_state { query; uppercase } ->
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
       String.concat "" [ head; string_of_scroll_state_query ~minify query; ")" ]
   | And (a, b) ->
       if minify then minified_condition t
       else
-        "("
-        ^ to_string_with ~pretty ~minify a
-        ^ " and "
-        ^ to_string_with ~pretty ~minify b
-        ^ ")"
+        String.concat ""
+          [
+            "(";
+            to_string_with ~pretty ~minify a;
+            " and ";
+            to_string_with ~pretty ~minify b;
+            ")";
+          ]
   | Or (a, b) ->
       if minify then minified_condition t
       else
-        "("
-        ^ to_string_with ~pretty ~minify a
-        ^ " or "
-        ^ to_string_with ~pretty ~minify b
-        ^ ")"
+        String.concat ""
+          [
+            "(";
+            to_string_with ~pretty ~minify a;
+            " or ";
+            to_string_with ~pretty ~minify b;
+            ")";
+          ]
   | Not c ->
       if minify then minified_condition t
-      else "(not " ^ to_string_with ~pretty ~minify c ^ ")"
+      else String.concat "" [ "(not "; to_string_with ~pretty ~minify c; ")" ]
   | Feature_query f -> Media.to_string ~minify f
 
 let to_string ?(minify = false) t = to_string_with ~pretty:false ~minify t
