@@ -1428,6 +1428,14 @@ let build_rule_lookup_tables rules2 =
       in
       Hashtbl.replace rules2_by_props props (r :: existing_props))
     rules2;
+  (* Buckets were built by prepending. Put them back in source order so every
+     equal-quality choice below has a stable positional tie-break. *)
+  Hashtbl.iter
+    (fun key rules -> Hashtbl.replace rules2_by_key key (List.rev rules))
+    rules2_by_key;
+  Hashtbl.iter
+    (fun props rules -> Hashtbl.replace rules2_by_props props (List.rev rules))
+    rules2_by_props;
   (rules2_by_key, rules2_by_props)
 
 (* A rule paired with its partner on the other side: the two selectors and the
@@ -1470,10 +1478,47 @@ let try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 =
       else Some Same
   | None -> None
 
-(* Try to find any rule with the same selector key *)
+(* The multiset of properties a rule writes. Values are deliberately absent: two
+   repeated occurrences that both write [color] stay tied and source order
+   exposes a changed last winner instead of pairing equal values across the
+   sheet. Repeated properties remain repeated in the footprint. *)
+let declaration_footprint declarations =
+  List.map Css.declaration_name declarations |> List.sort String.compare
+
+(* The size of the symmetric multiset difference between two sorted declaration
+   footprints. *)
+let rec footprint_distance one other =
+  match (one, other) with
+  | [], rest | rest, [] -> List.length rest
+  | name1 :: rest1, name2 :: rest2 ->
+      let order = String.compare name1 name2 in
+      if order = 0 then footprint_distance rest1 rest2
+      else if order < 0 then 1 + footprint_distance rest1 other
+      else 1 + footprint_distance one rest2
+
+(* Find the unused same-key rule with the closest declaration footprint. Buckets
+   and this fold are in source order, so the earlier occurrence wins a tie. *)
 let try_same_key_match rules2_by_key used_rules r1 key1 d1 =
   let candidates = try Hashtbl.find rules2_by_key key1 with Not_found -> [] in
-  match List.find_opt (fun r -> not (Hashtbl.mem used_rules r)) candidates with
+  let footprint1 = declaration_footprint d1 in
+  let closest =
+    List.fold_left
+      (fun best r ->
+        if Hashtbl.mem used_rules r then best
+        else
+          let distance =
+            footprint_distance footprint1
+              (declaration_footprint (rule_declarations r))
+          in
+          match best with
+          | None -> Some (distance, r)
+          | Some (best_distance, _) when distance < best_distance ->
+              Some (distance, r)
+          | Some _ -> best)
+      None candidates
+    |> Option.map snd
+  in
+  match closest with
   | Some r2 ->
       Hashtbl.replace used_rules r2 ();
       let d2 = rule_declarations r2 in
