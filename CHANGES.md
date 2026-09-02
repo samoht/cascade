@@ -840,6 +840,10 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Numeric arithmetic has zero approximation tolerance in canonical mode:
+  `calc(28/14)` compares equal to `2`, while `calc(28/18)` stays distinct from
+  a rounded decimal in both default and `--lossless` modes. The default
+  approximation budget remains colour-only (#753)
 - `:is(a, b)` and the selector list `a, b` compare equal when the arguments
   share one specificity, which is the split-against-grouped selector list the
   mode promises to equate (#655)
