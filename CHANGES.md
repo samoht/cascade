@@ -889,6 +889,10 @@ difference wherever the two are not equivalent.
 - `--diff=tree` prints the body of an added or removed rule as declarations,
   with the separator and the `!important` flag, where a rule gaining
   `color: red !important` read like one gaining `color: red` (#706)
+- `--diff=tree` pairs repeated occurrences of one selector by their declaration
+  properties, with source order breaking ties, so a compatibility block no
+  longer makes declarations present on both sides read as added or removed
+  (#752)
 
 ### Library
 
