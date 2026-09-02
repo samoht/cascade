@@ -59,7 +59,7 @@ let truncate_middle max_len s =
     let half_len = (max_len - ellipsis_length) / 2 in
     let start_part = String.sub s 0 half_len in
     let end_part = String.sub s (len - half_len) half_len in
-    start_part ^ "..." ^ end_part
+    String.concat "" [ start_part; "..."; end_part ]
 
 (* ===== Main Diff Type ===== *)
 
@@ -143,6 +143,8 @@ let diff ?(context_size = 3) ~expected actual =
 
 (* ===== Pretty-printing ===== *)
 
+let add_strings buf strings = List.iter (Buffer.add_string buf) strings
+
 let pp_caret ?(indent = 0) buf pos =
   Buffer.add_string buf (String.make (pos + indent) ' ');
   Buffer.add_string buf "^\n"
@@ -173,7 +175,7 @@ let extract_diff_window s len ~window_start ~window_end =
     let has_suffix = window_end < len in
     let prefix = if has_prefix then "..." else "" in
     let suffix = if has_suffix then "..." else "" in
-    let full_string = prefix ^ snippet ^ suffix in
+    let full_string = String.concat "" [ prefix; snippet; suffix ] in
     let prefix_len = if has_prefix then 3 else 0 in
     (full_string, prefix_len)
 
@@ -208,17 +210,21 @@ let format_diff_line ?(config = default_config) expected actual =
 
 let pp ?(config = default_config) ?(expected_label = "Expected")
     ?(actual_label = "Actual") buf t =
-  Buffer.add_string buf
-    ("Strings differ at position " ^ string_of_int t.position ^ " (line "
-    ^ string_of_int t.line_expected
-    ^ ", col "
-    ^ string_of_int t.column_expected
-    ^ ")\n\n");
+  add_strings buf
+    [
+      "Strings differ at position ";
+      string_of_int t.position;
+      " (line ";
+      string_of_int t.line_expected;
+      ", col ";
+      string_of_int t.column_expected;
+      ")\n\n";
+    ];
 
   (* Git-style diff header *)
-  Buffer.add_string buf ("--- " ^ expected_label ^ "\n");
-  Buffer.add_string buf ("+++ " ^ actual_label ^ "\n");
-  Buffer.add_string buf ("@@ position " ^ string_of_int t.position ^ " @@\n");
+  add_strings buf [ "--- "; expected_label; "\n" ];
+  add_strings buf [ "+++ "; actual_label; "\n" ];
+  add_strings buf [ "@@ position "; string_of_int t.position; " @@\n" ];
 
   (* Print context before *)
   List.iter (pp_line_pair buf) t.context_before;
@@ -227,16 +233,16 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
   let diff_exp, diff_act = t.diff_lines in
   match format_diff_line ~config diff_exp diff_act with
   | `Equal ->
-      Buffer.add_string buf ("-" ^ diff_exp ^ "\n");
-      Buffer.add_string buf ("+" ^ diff_act ^ "\n")
+      add_strings buf [ "-"; diff_exp; "\n" ];
+      add_strings buf [ "+"; diff_act; "\n" ]
   | `Short (exp, act) ->
-      Buffer.add_string buf ("-" ^ exp ^ "\n");
-      Buffer.add_string buf ("+" ^ act ^ "\n");
+      add_strings buf [ "-"; exp; "\n" ];
+      add_strings buf [ "+"; act; "\n" ];
       if t.line_expected = t.line_actual then
         pp_caret ~indent:1 buf t.column_expected
   | `Medium (exp, act, pos) | `Long (exp, act, pos) ->
-      Buffer.add_string buf ("-" ^ exp ^ "\n");
-      Buffer.add_string buf ("+" ^ act ^ "\n");
+      add_strings buf [ "-"; exp; "\n" ];
+      add_strings buf [ "+"; act; "\n" ];
       if t.line_expected = t.line_actual then pp_caret ~indent:1 buf pos;
 
       (* Print context after *)
