@@ -1961,6 +1961,22 @@ let test_large_stylesheet_reaches_local_fixpoint () =
   Alcotest.(check string)
     "large-sheet local rewrites converge in one pass" once (minify_str once)
 
+let test_large_stylesheet_normalizes_vendor_aliases () =
+  (* Alias comparison must see the normalized typed values. Otherwise the
+     prefixed 250ms/500ms values differ structurally from the normalized .25s/
+     .5s unprefixed twins until the serialized output is parsed again. *)
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".vendor-padding-%d{z-index:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    padding
+    ^ ".target{-webkit-transition:opacity 250ms;transition:opacity 250ms;-webkit-animation:spin 500ms linear;animation:spin 500ms linear}"
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet aliases compare normalized values" once (minify_str once)
+
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
      wins). The later .y carries the first .x's value, but grouping it with that
@@ -5080,6 +5096,9 @@ let selector_merging_tests =
     ( "large stylesheet reaches local fixpoint",
       `Quick,
       test_large_stylesheet_reaches_local_fixpoint );
+    ( "large stylesheet normalizes vendor aliases",
+      `Quick,
+      test_large_stylesheet_normalizes_vendor_aliases );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
