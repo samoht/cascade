@@ -414,6 +414,15 @@ let check_grid_auto_flow_component =
 let check_grid_template =
   check_value_cursor "grid-template" read_grid_template pp_grid_template
 
+let check_grid_flex_math =
+  check_value_cursor "grid-flex-math" read_grid_flex_math pp_grid_flex_math
+
+let roundtrip_grid_auto_rows =
+  check_value_cursor "grid-auto-rows" read_grid_auto_tracks pp_grid_template
+
+let roundtrip_grid_auto_columns =
+  check_value_cursor "grid-auto-columns" read_grid_auto_tracks pp_grid_template
+
 let check_grid_line = check_value_cursor "grid-line" read_grid_line pp_grid_line
 
 let check_align_items =
@@ -4122,6 +4131,22 @@ let test_grid_template () =
   check_grid_template ~roundtrip:true ~expected:"calc(var(--x)*2)1fr"
     "calc(var(--x) * 2) 1fr";
   check_grid_template "calc(100px + 1rem)";
+  (* CSS Values 4 sec. 10.8 lets a math function resolve to <flex>, and CSS Grid
+     2 sec. 7.2.1 accepts that type as a track breadth. Keep the function typed
+     as a flex track instead of routing it through the length reader. *)
+  check_grid_template ~roundtrip:true ~expected:"calc(1fr*2)" "calc(1fr * 2)";
+  check_grid_template ~roundtrip:true ~expected:"min(1fr,2fr)" "min(1fr, 2fr)";
+  check_grid_template ~roundtrip:true "clamp(100px,1fr,300px)";
+  check_grid_template ~roundtrip:true ~expected:"min(100px,200px)"
+    "min(100px, 200px)";
+  check_grid_template ~roundtrip:true ~expected:"repeat(2,calc(1fr*2))"
+    "repeat(2, calc(1fr * 2))";
+  check_grid_template ~roundtrip:true ~expected:"calc(1fr*2)/min(1fr,2fr)"
+    "calc(1fr * 2) / min(1fr, 2fr)";
+  roundtrip_grid_auto_rows ~roundtrip:true ~expected:"calc(1fr*2)"
+    "calc(1fr * 2)";
+  roundtrip_grid_auto_columns ~roundtrip:true ~expected:"min(1fr,2fr)"
+    "min(1fr, 2fr)";
   check_grid_template "10cm";
   check_grid_template ~expected:"minmax(calc(var(--x)*2),1fr)"
     "minmax(calc(var(--x) * 2), 1fr)";
@@ -4199,6 +4224,12 @@ let test_grid_template () =
   neg_cursor read_grid_template "1px / [a]";
   neg_cursor read_grid_template "repeat(2,[a])";
   neg_cursor read_grid_template "repeat(2,[a] [b] 1px)"
+
+let test_grid_flex_math () =
+  check_grid_flex_math ~roundtrip:true ~expected:"calc(1fr*2)" "calc(1fr * 2)";
+  check_grid_flex_math ~roundtrip:true ~expected:"min(1fr,2fr)" "min(1fr, 2fr)";
+  check_grid_flex_math ~roundtrip:true "clamp(100px,1fr,300px)";
+  neg_cursor read_grid_flex_math "calc(100px)"
 
 let test_grid_template_areas () =
   check_grid_template_areas ~expected:"\"nav main\"\". foot\""
@@ -5493,6 +5524,7 @@ let additional_tests =
     test_case "flex" `Quick test_flex;
     test_case "grid_line" `Quick test_grid_line;
     test_case "grid_line_pair" `Quick test_grid_line_pair;
+    test_case "grid_flex_math" `Quick test_grid_flex_math;
     test_case "grid_template" `Quick test_grid_template;
     test_case "justify_content" `Quick test_justify_content;
     test_case "outline_style" `Quick test_outline_style;

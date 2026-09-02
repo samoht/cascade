@@ -174,6 +174,9 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- Grid track sizes accept math functions that resolve to `<flex>`, including
+  `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
+  repeated and automatic tracks (#749)
 - A sole baseline position in `place-content` is accepted and defaults its
   omitted `justify-content` slot to `start`, as required by CSS Align (#739)
 - Custom-property declarations containing a `<bad-string-token>` are dropped

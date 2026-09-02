@@ -163,6 +163,21 @@ let pp_grid_auto_flow_shorthand ctx = function
       in
       Pp.list ~sep:Pp.space pp_component ctx components
 
+let pp_grid_flex_math : grid_flex_math Pp.t =
+ fun ctx -> function
+  | Calc_flex arg -> Pp.call "calc" pp_math_arg ctx arg
+  | Min_flex args -> Pp.call "min" (Pp.list ~sep:Pp.comma pp_math_arg) ctx args
+  | Max_flex args -> Pp.call "max" (Pp.list ~sep:Pp.comma pp_math_arg) ctx args
+  | Clamp_flex (min, value, max) ->
+      Pp.call "clamp"
+        (fun ctx (min, value, max) ->
+          pp_math_arg ctx min;
+          Pp.comma ctx ();
+          pp_math_arg ctx value;
+          Pp.comma ctx ();
+          pp_math_arg ctx max)
+        ctx (min, value, max)
+
 let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -180,6 +195,7 @@ let rec pp_grid_template : grid_template Pp.t =
      [<length>] only. [0fr] is a zero flex factor, distinct from a [0]
      [<length>] in [grid-template]'s union grammar. *)
   | Fr f -> Pp.unit ctx f "fr"
+  | Flex_math math -> pp_grid_flex_math ctx math
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
@@ -864,10 +880,114 @@ module Grid_template = struct
     | Some (n, "fr") -> Fr n
     | _ -> Cursor.err_expected t "<fr>"
 
+  type math_kind = Number | Dimension | Flex | Unknown | Invalid
+
+  let same_math_kind left right =
+    match (left, right) with
+    | Number, Number -> Number
+    | Dimension, Dimension -> Dimension
+    | Flex, Flex -> Flex
+    | Unknown, _ | _, Unknown -> Unknown
+    | Invalid, _ | _, Invalid | _ -> Invalid
+
+  let rec math_arg_kind : math_arg -> math_kind = function
+    | Lit _ | Const _ -> Number
+    | Dim (_, unit_) ->
+        if String.equal (String.lowercase_ascii unit_) "fr" then Flex
+        else Dimension
+    | Var_arg _ | Math_call _ -> Unknown
+    | Parens_arg arg -> math_arg_kind arg
+    | Op (left, (Add | Sub), right) ->
+        same_math_kind (math_arg_kind left) (math_arg_kind right)
+    | Op (left, Mul, right) -> (
+        match (math_arg_kind left, math_arg_kind right) with
+        | Number, kind | kind, Number -> kind
+        | Unknown, _ | _, Unknown -> Unknown
+        | _ -> Invalid)
+    | Op (left, Div, right) -> (
+        match (math_arg_kind left, math_arg_kind right) with
+        | kind, Number -> kind
+        | Flex, Flex | Dimension, Dimension -> Number
+        | Unknown, _ | _, Unknown -> Unknown
+        | _ -> Invalid)
+
+  let expect_flex_math inner arg =
+    Cursor.ws inner;
+    Cursor.expect_eof inner;
+    if math_arg_kind arg <> Flex then
+      Cursor.err_invalid inner "grid math function must resolve to <flex>"
+
+  let read_flex_calc t =
+    let arg =
+      Cursor.call "calc" t @@ fun inner ->
+      Cursor.ws inner;
+      let arg = read_math_arg inner in
+      expect_flex_math inner arg;
+      arg
+    in
+    (Calc_flex arg : grid_flex_math)
+
+  let read_flex_extreme name make t =
+    let args =
+      Cursor.call name t @@ fun inner ->
+      let args =
+        Cursor.list ~at_least:1 ~sep:Cursor.comma
+          (fun inner ->
+            Cursor.ws inner;
+            let arg = read_math_arg inner in
+            if math_arg_kind arg <> Flex then
+              Cursor.err_invalid inner
+                "grid math function must resolve to <flex>";
+            arg)
+          inner
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      args
+    in
+    make args
+
+  let read_flex_clamp t =
+    let min, value, max =
+      Cursor.call "clamp" t @@ fun inner ->
+      Cursor.ws inner;
+      let min = read_math_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Cursor.ws inner;
+      let value = read_math_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      Cursor.ws inner;
+      let max = read_math_arg inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      let kinds = (math_arg_kind min, math_arg_kind value, math_arg_kind max) in
+      (match kinds with
+      | Flex, Flex, Flex | Dimension, Flex, Dimension -> ()
+      | _ ->
+          Cursor.err_invalid inner
+            "grid clamp() must carry a <flex> track value");
+      (min, value, max)
+    in
+    (Clamp_flex (min, value, max) : grid_flex_math)
+
+  let read_flex_math t =
+    match Cursor.peek t with
+    | Some (Component.Func { node = { name; _ }; _ }) -> (
+        match String.lowercase_ascii name with
+        | "calc" -> read_flex_calc t
+        | "min" -> read_flex_extreme "min" (fun xs -> Min_flex xs) t
+        | "max" -> read_flex_extreme "max" (fun xs -> Max_flex xs) t
+        | "clamp" -> read_flex_clamp t
+        | _ -> Cursor.err_expected t "<flex> math function")
+    | _ -> Cursor.err_expected t "<flex> math function"
+
   let read_track_breadth t : grid_template =
     (* Accept a single breadth: length, fr, or keywords *)
     Cursor.one_of
       [
+        (fun t -> (Flex_math (read_flex_math t) : grid_template));
         read_fr;
         read_length_as_grid;
         (fun t ->
@@ -983,9 +1103,18 @@ module Grid_template = struct
                 validate_track_list inner tracks;
                 (Repeat (count, tracks) : grid_template) );
           ]
-        ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
+        ~default:(fun t ->
+          Cursor.one_of
+            [
+              (fun t -> (Flex_math (read_flex_math t) : grid_template));
+              read_length_as_grid;
+              read_fr;
+            ]
+            t)
         t
 end
+
+let read_grid_flex_math = Grid_template.read_flex_math
 
 let grid_template_needs_raw_template cvs =
   let rec has_string = function
@@ -1098,7 +1227,8 @@ let rec read_grid_template t : grid_template =
    keywords ([none], [subgrid], [masonry]) nor its slash form. *)
 let rec is_track_size : grid_template -> bool = function
   | Px _ | Rem _ | Em _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Zero
-  | Length _ | Fr _ | Auto | Min_content | Max_content | Fit_content _ ->
+  | Length _ | Fr _ | Flex_math _ | Auto | Min_content | Max_content
+  | Fit_content _ ->
       true
   | Min_max (min, max) -> is_track_size min && is_track_size max
   | Var _ -> true

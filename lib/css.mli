@@ -3917,6 +3917,12 @@ type grid_auto_flow = Properties.grid_auto_flow =
   | Var of grid_auto_flow var
 
 (** CSS grid template values *)
+type grid_flex_math = Properties.grid_flex_math =
+  | Calc_flex of math_arg
+  | Min_flex of math_arg list
+  | Max_flex of math_arg list
+  | Clamp_flex of math_arg * math_arg * math_arg
+
 type grid_template = Properties.grid_template =
   | None
   | Px of float
@@ -3930,6 +3936,7 @@ type grid_template = Properties.grid_template =
   | Zero
   | Length of length
   | Fr of float
+  | Flex_math of grid_flex_math
   | Auto
   | Min_content
   | Max_content
