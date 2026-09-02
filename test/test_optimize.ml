@@ -3244,6 +3244,37 @@ let target_minify_enforce_spec_split () =
     ~default:"@container sidebar (width>=700px){a{color:red}}"
     ~spec:"@container sidebar (min-width:700px){a{color:red}}"
 
+let target_evergreen_compatibility_prefixes () =
+  Alcotest.(check string)
+    "the declared target adds WebKit declaration fallbacks"
+    ".a{-webkit-user-select:none;user-select:none;-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
+    (optimized_string ".a{user-select:none;backdrop-filter:blur(1px)}");
+  Alcotest.(check string)
+    "the declaration fallback preserves importance"
+    ".a{-webkit-user-select:none!important;user-select:none!important}"
+    (optimized_string ".a{user-select:none!important}");
+  Alcotest.(check string)
+    "the declared target prefixes feature tests and their declarations"
+    "@supports ((-webkit-backdrop-filter:var(--tw)) or \
+     (backdrop-filter:var(--tw))){.a{-webkit-backdrop-filter:var(--tw);backdrop-filter:var(--tw)}}"
+    (optimized_string
+       "@supports(backdrop-filter:var(--tw)){.a{backdrop-filter:var(--tw)}}");
+  Alcotest.(check string)
+    "an authored fallback is not duplicated"
+    ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}"
+    (optimized_string
+       ".a{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}");
+  Alcotest.(check string)
+    "decoration color needs no prefix for the declared target"
+    ".prose a{text-decoration:underline;text-decoration-color:var(--c)}"
+    (optimized_string
+       ".prose{a{text-decoration:underline;text-decoration-color:var(--c)}}");
+  Alcotest.(check string)
+    "spec-only mode does not synthesize target fallbacks"
+    ".a{user-select:none;backdrop-filter:blur(1px)}"
+    (optimized_string ~enforce_spec:true
+       ".a{user-select:none;backdrop-filter:blur(1px)}")
+
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media
      queries still establishes layer order at that point. Media-query merging
@@ -5263,6 +5294,9 @@ let selector_merging_tests =
     ( "target minify and enforce-spec split",
       `Quick,
       target_minify_enforce_spec_split );
+    ( "target evergreen compatibility prefixes",
+      `Quick,
+      target_evergreen_compatibility_prefixes );
     ( "a nested block keeps its declaration separator",
       `Quick,
       nested_block_separator );
