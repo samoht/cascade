@@ -184,8 +184,9 @@ let file2_arg =
 let mode_arg =
   let doc =
     "Diff mode: 'auto' (smart detection), 'tree' (force structural diff), \
-     'string' (force string diff), or 'canonical' (compare optimized canonical \
-     minified serialization)"
+     'string' (force string diff), or 'canonical' (independently optimize and \
+     minify both inputs with the same canonical settings, then compare the \
+     resulting bytes)"
   in
   let mode_conv =
     Arg.enum

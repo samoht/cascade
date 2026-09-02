@@ -79,11 +79,13 @@ transforms (deduplication, rule merging, selector grouping, empty-rule
 elimination, nested-rule flattening, shorthand composition, colour
 canonicalisation) and emits minified output.
 
-`calc()` arithmetic folds only when the fold is exactly value-preserving:
-`calc(100/4)` becomes `25`, while `calc(1.75/1.125)` stays as written because
-14/9 has no finite decimal form. Multiplication folds unconditionally, being
-closed over finite decimals; division folds only when the quotient is exact. The
-same rule governs a `calc()` inside a custom-property value, whose token stream
+Exact `calc()` arithmetic folds in every precision mode: `calc(100/4)` becomes
+`25`, while `calc(1.75/1.125)` stays as written because 14/9 has no finite
+decimal form. Multiplication folds unconditionally, being closed over finite
+decimals; division folds only when the quotient is exact. Default minification
+additionally folds all-static unitless `line-height:calc()` arithmetic to six
+significant figures; `--lossless` disables that approximate fold. The exact-only
+rule also governs a `calc()` inside a custom-property value, whose token stream
 is otherwise left opaque.
 
 This is a parser/printer round trip, not a byte-preserving formatter: comments
@@ -147,8 +149,11 @@ usable as a CI check.
 - `tree`: structural diff only; formatting-only differences collapse to
   "identical".
 - `string`: character-level comparison.
-- `canonical`: passes when the two inputs share cascade's canonical minified
-  form, modulo cascade-neutral reordering and regrouping. Declarations or
+- `canonical`: independently parses and optimises each input with the same
+  canonical settings, serialises each result as minified CSS, then compares the
+  two canonical representations byte for byte. `--lossless`, when present, is
+  applied to both projections; the comparison step itself performs no further
+  value interpretation or tolerance. Declarations or
   rules whose footprints are disjoint (they write different properties) may
   swap freely, a `@media`/`@supports`/`@container` block containing only
   plain rules moves as a unit past statements its rules cannot conflict with,
