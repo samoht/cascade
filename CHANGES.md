@@ -501,6 +501,9 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--minify` converts modern colour operands to floating-point sRGB before
+  resolving an `in srgb` `color-mix()`, so channel bytes are rounded once after
+  interpolation instead of once per operand and again afterward (#755)
 - `--minify` reaches a stable result in one invocation on large stylesheets:
   synthesized shorthands and vendor transition/animation aliases normalize
   before comparison, factoring settles both transfer-size alternatives and
