@@ -7858,11 +7858,13 @@ val canonicalize_rule_order : t -> t
     the cascade-conflict graph. A [@media] / [@supports] / [@container] block
     whose transitive content is plain rules moves as one unit, keyed by the
     union of its rules' conflict footprints; conflicting statements keep their
-    relative order, and named [@layer] blocks pin the layer order where they
-    stand. A run of [@property] rules sorts by name, keeping the last
-    registration of each, since CSS Properties and Values API 1 sec. 2 makes
-    registrations for different names order-independent. A [@media] prelude is
-    keyed as the Level 4 query Media Queries 4 makes it equal to -
+    relative order. Two equal [@supports] blocks may merge across an intervening
+    non-important write that the later block shadows with the same selector and
+    property whenever the condition holds. Named [@layer] blocks pin the layer
+    order where they stand. A run of [@property] rules sorts by name, keeping
+    the last registration of each, since CSS Properties and Values API 1 sec. 2
+    makes registrations for different names order-independent. A [@media]
+    prelude is keyed as the Level 4 query Media Queries 4 makes it equal to -
     [not all and (X)] as [not (X)], [min-X]/[max-X] as the range form, and a
     lower bound met by an upper bound as the two-sided interval - and an
     [@container] prelude the same way, which emission cannot do because a Level

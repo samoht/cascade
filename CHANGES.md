@@ -862,6 +862,9 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Canonical diff no longer reports a reorder when equal `@supports` blocks are
+  hoisted together across a declaration the later block shadows whenever their
+  condition holds. A crossing that changes the winner stays distinct (#775)
 - Canonical numeric arithmetic has an explicit precision contract:
   `calc(28/14)` compares equal to `2`; default mode equates `calc(28/18)` with
   the minifier's `1.55556`, while `--lossless` keeps them distinct (#753, #756)
