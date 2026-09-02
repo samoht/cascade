@@ -5,13 +5,16 @@
     how a non-equal pair is reported.
 
     Cascade does not implement a general CSS semantic-equivalence rewriter. The
-    closest the library comes is mode [`Canonical], which compares the inputs by
-    their optimized canonical minified serialization through
-    {!Cascade.Css.to_string}. That collapses whitespace, color spellings,
-    leading-/trailing-zero normalisations, optimizer-preserved shorthand
-    choices, and other choices the optimizer and pretty-printer make; it does
-    {b not} reason about browser computed values or cascade-affecting rule
-    reorderings.
+    closest the library comes is mode [`Canonical]. It independently parses and
+    optimizes each input with the same canonical settings, canonicalizes
+    cascade-neutral order, serializes both results as minified CSS through
+    {!Cascade.Css.to_string}, then compares those two canonical representations
+    byte for byte. [lossless], when requested, is applied to both projections;
+    the comparison step performs no further value interpretation or tolerance.
+    The projection collapses whitespace, color spellings, leading-/trailing-zero
+    normalisations, optimizer-preserved shorthand choices, and other choices the
+    optimizer and pretty-printer make; it does {b not} reason about browser
+    computed values or cascade-affecting rule reorderings.
 
     The projection optimizes spec-literally: it takes none of the rewrites
     {!Cascade.Css.optimize} justifies with what maintained browsers support,
@@ -75,14 +78,16 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
     - [`Tree] -- structural diff only; formatting-only differences collapse to
       {!No_diff}.
     - [`String] -- character-level diff; the inputs are not parsed.
-    - [`Canonical] -- parse both stylesheets, serialize optimized minified
-      outputs, and compare those outputs. This includes value spellings that
-      Cascade canonicalizes as equivalent, such as [transparent] and [#0000] in
-      color positions. Numeric arithmetic only folds exactly: [calc(28/14)] and
-      [2] agree, while [calc(28/18)] does not agree with a rounded decimal in
-      either setting of [lossless]. Equal outputs are {!No_diff}; differing
-      outputs are a difference, reported as a tree diff of the two when the walk
-      reaches it and as a string diff of them when it does not.
+    - [`Canonical] -- pass both stylesheets independently through the same
+      canonical optimization and minified serialization pipeline, then compare
+      the resulting bytes. This includes value spellings that Cascade
+      canonicalizes as equivalent, such as [transparent] and [#0000] in color
+      positions. Numeric arithmetic follows the pipeline's precision mode:
+      [calc(28/14)] and [2] always agree; [calc(28/18)] agrees with [1.55556] by
+      default and remains distinct under [lossless]. Equal outputs are
+      {!No_diff}; differing outputs are a difference, reported as a tree diff of
+      the two when the walk reaches it and as a string diff of them when it does
+      not.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a
@@ -105,8 +110,8 @@ val diff :
 (** [diff ?mode expected actual] returns the diff between two CSS strings. A
     leading [/*! ... */] tool banner on either side is stripped before
     comparison. Parsing failures surface as [_error] variants. [lossless]
-    preserves exact color channels during canonical comparison; numeric
-    arithmetic is exact whether it is set or not.
+    preserves exact colour channels and non-terminating numeric arithmetic
+    during canonical comparison.
 
     [prune_unused_custom_props] (default [false], [`Canonical] mode only) drops
     custom-property bindings referenced by nothing on both sides before

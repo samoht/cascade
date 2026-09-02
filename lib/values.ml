@@ -3241,33 +3241,11 @@ let static_color_to_linear_srgb (c : color) :
           Some (lin, f255 a)
       | None -> None)
 
-(* Resolve a static colour to its in-gamut sRGB [Hex] form so a [color-mix(in
-   srgb, ...)] over a modern-space argument ([oklch] / [lab] / ...) folds in a
-   single pass: [mix_srgb_bytes] only understands sRGB-family inputs, while the
-   modern spaces resolve through [static_color_to_linear_srgb]. Leaves the
-   colour unchanged when it is already sRGB-foldable, resolves out of gamut, or
-   isn't static. *)
-let resolve_static_srgb (c : color) : color =
-  match static_color_to_srgb_channels c with
-  | Some _ -> c
-  | None -> (
-      match static_color_to_linear_srgb c with
-      | Some (linear, alpha_f) -> (
-          match Color_space.srgb_bytes_of_linear linear with
-          | Some (r, g, b) ->
-              let clamp01 v = Float.max 0. (Float.min 1. v) in
-              let a_byte =
-                Float.to_int (Float.round (clamp01 alpha_f *. 255.))
-              in
-              Hex { r; g; b; a = a_byte }
-          | None -> c)
-      | None -> c)
-
 (* CSS Color 4 sec. 14.2: the sRGB colour a display renders for a static colour,
-   gamut mapping the ones sRGB cannot hold. Unlike [resolve_static_srgb] this
-   always answers, so it serves a caller that has to write an sRGB colour; the
-   optimizer must not use it, as the mapped colour is not the authored one. A
-   colour that is not static is returned unchanged. *)
+   gamut mapping the ones sRGB cannot hold. This always answers, so it serves a
+   caller that has to write an sRGB colour; the optimizer must not use it, as
+   the mapped colour is not the authored one. A colour that is not static is
+   returned unchanged. *)
 let gamut_map_color (c : color) : color =
   match static_color_to_linear_srgb c with
   | None -> c
@@ -7692,17 +7670,46 @@ let normalize_named_color c orig_name =
   | _ -> if name == orig_name then c else Named name
 
 let normalize_srgb_mix color1 color2 ~p1 ~p2 =
-  match
-    mix_srgb_bytes
-      (resolve_static_srgb color1)
-      (resolve_static_srgb color2)
-      ~p1 ~p2
-  with
-  | Some (r, g, b, a) -> Some (canonical_color_of_hex r g b a)
-  (* The byte mixer only speaks sRGB bytes, so it declines a mix whose operands
-     or result leave the sRGB gamut. The result is a colour all the same, and
-     [color(srgb ...)] can hold it. *)
-  | Option.None -> mix_in_rectangular_space Srgb color1 color2 ~p1 ~p2
+  let srgb_operand color =
+    match static_color_to_srgb_channels color with
+    | Some (Some r, Some g, Some b, Some a) ->
+        let unit byte = Float.of_int byte /. 255. in
+        Some ((unit r, unit g, unit b), unit a)
+    | Some _ -> None
+    | None ->
+        Option.map
+          (fun (linear, alpha) -> (Color_space.rgb_of_linear_rgb linear, alpha))
+          (static_color_to_linear_srgb color)
+  in
+  match (srgb_operand color1, srgb_operand color2, mix_weights p1 p2) with
+  | Some (rgb1, alpha1), Some (rgb2, alpha2), Some (w1, w2, alpha_mult) -> (
+      let (r, g, b), interp_alpha =
+        premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 rgb1 rgb2
+      in
+      let alpha = interp_alpha *. alpha_mult in
+      let linear = Color_space.linear_rgb_of_rgb (r, g, b) in
+      match Color_space.srgb_bytes_of_linear linear with
+      | Some (r, g, b) ->
+          let clamp01 v = Float.max 0. (Float.min 1. v) in
+          let a = Float.to_int (Float.round (clamp01 alpha *. 255.)) in
+          Some (canonical_color_of_hex r g b a)
+      | None ->
+          (* CSS Color 4 sec. 10.1 leaves out-of-gamut sRGB coordinates
+             unclamped, so retain them in [color()] notation. *)
+          let round6 v = Float.round (v *. 1e6) /. 1e6 in
+          Some
+            (Color
+               {
+                 space = Srgb;
+                 components = [ Num (round6 r); Num (round6 g); Num (round6 b) ];
+                 alpha = alpha_of_unit_float alpha;
+               }))
+  | _ -> (
+      (* The floating-point converter declines sRGB [none] channels. Keep the
+         channel carry-over behaviour in the byte mixer for that case. *)
+      match mix_srgb_bytes color1 color2 ~p1 ~p2 with
+      | Some (r, g, b, a) -> Some (canonical_color_of_hex r g b a)
+      | Option.None -> None)
 
 let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
   match mix_lab_family effective color1 color2 ~p1 ~p2 with

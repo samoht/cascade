@@ -2010,13 +2010,32 @@ let normalize_font_size (fs : font_size) : font_size =
           | length -> font_size_of_length length))
   | _ -> fs
 
-let normalize_line_height (lh : line_height) : line_height =
+let rec calc_has_computed_input : line_height calc -> bool = function
+  | Math_const _ | Math_fn _ -> true
+  | Nested inner | Parens inner -> calc_has_computed_input inner
+  | Expr (left, _, right) ->
+      calc_has_computed_input left || calc_has_computed_input right
+  | Num _ | Val _ | Var _ | Sibling_index | Sibling_count -> false
+
+(* CSS Values 4 sec. 10.10 simplifies arithmetic over numeric literals to one
+   number. Normal minification emits a non-terminating result at Cascade's
+   six-significant-figure computed-value budget. Lossless mode keeps it for the
+   browser to evaluate, while [eval_calc] still performs exact folds. Math
+   constants and functions retain the existing computed-value path, which owns
+   their precision provenance separately. *)
+let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
   match lh with
   | Calc c -> (
-      match Values.eval_calc c with
-      | Values.Num f -> Num f
-      | Values.Val v -> v
-      | folded -> Calc folded)
+      match
+        if lossless || calc_has_computed_input c then Option.None
+        else Option.map (Pp.round_sig 6) (Values.eval_numeric_calc c)
+      with
+      | Option.Some f -> Num f
+      | Option.None -> (
+          match Values.eval_calc c with
+          | Values.Num f -> Num f
+          | Values.Val v -> v
+          | folded -> Calc folded))
   | _ -> lh
 
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as

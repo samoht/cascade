@@ -184,8 +184,9 @@ let file2_arg =
 let mode_arg =
   let doc =
     "Diff mode: 'auto' (smart detection), 'tree' (force structural diff), \
-     'string' (force string diff), or 'canonical' (compare optimized canonical \
-     minified serialization)"
+     'string' (force string diff), or 'canonical' (independently optimize and \
+     minify both inputs with the same canonical settings, then compare the \
+     resulting bytes)"
   in
   let mode_conv =
     Arg.enum
@@ -227,13 +228,13 @@ let depth_arg =
 
 let lossless_arg =
   let doc =
-    "Disable colour approximation in $(b,--diff=canonical) canonicalisation. \
-     Exact colour canonicalisation still runs, but static modern colour-space \
-     and color-mix() values stay functional and channels keep their full \
-     precision. Two stylesheets that only differ by colours folded within the \
-     approximation budget then report as different rather than collapsing to \
-     equal. Numeric arithmetic is exact with or without this flag. Has no \
-     effect outside $(b,--diff=canonical)."
+    "Disable bounded colour and numeric approximation in $(b,--diff=canonical) \
+     canonicalisation. Exact rewrites still run, but repeating static numeric \
+     arithmetic stays as calc(), static modern colour-space and color-mix() \
+     values stay functional, and colour channels keep their full precision. \
+     Two stylesheets that differ only within an approximation budget then \
+     report as different rather than collapsing to equal. Has no effect \
+     outside $(b,--diff=canonical)."
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 

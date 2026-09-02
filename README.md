@@ -79,11 +79,13 @@ transforms (deduplication, rule merging, selector grouping, empty-rule
 elimination, nested-rule flattening, shorthand composition, colour
 canonicalisation) and emits minified output.
 
-`calc()` arithmetic folds only when the fold is exactly value-preserving:
-`calc(100/4)` becomes `25`, while `calc(1.75/1.125)` stays as written because
-14/9 has no finite decimal form. Multiplication folds unconditionally, being
-closed over finite decimals; division folds only when the quotient is exact. The
-same rule governs a `calc()` inside a custom-property value, whose token stream
+Exact `calc()` arithmetic folds in every precision mode: `calc(100/4)` becomes
+`25`, while `calc(1.75/1.125)` stays as written because 14/9 has no finite
+decimal form. Multiplication folds unconditionally, being closed over finite
+decimals; division folds only when the quotient is exact. Default minification
+additionally folds all-static unitless `line-height:calc()` arithmetic to six
+significant figures; `--lossless` disables that approximate fold. The exact-only
+rule also governs a `calc()` inside a custom-property value, whose token stream
 is otherwise left opaque.
 
 This is a parser/printer round trip, not a byte-preserving formatter: comments
@@ -108,7 +110,7 @@ cat style.css | cascade -                                          # read stdin
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
-| `--lossless` | Disable colour approximation under `--minify`. Exact colour canonicalisation still runs; static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
+| `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph and unlocks partial-coverage shorthand synthesis. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. This is about the HTML, where `--scope` is about how much of the CSS you control; see [Scope](#scope). Has no effect without `--minify`. |
@@ -147,8 +149,11 @@ usable as a CI check.
 - `tree`: structural diff only; formatting-only differences collapse to
   "identical".
 - `string`: character-level comparison.
-- `canonical`: passes when the two inputs share cascade's canonical minified
-  form, modulo cascade-neutral reordering and regrouping. Declarations or
+- `canonical`: independently parses and optimises each input with the same
+  canonical settings, serialises each result as minified CSS, then compares the
+  two canonical representations byte for byte. `--lossless`, when present, is
+  applied to both projections; the comparison step itself performs no further
+  value interpretation or tolerance. Declarations or
   rules whose footprints are disjoint (they write different properties) may
   swap freely, a `@media`/`@supports`/`@container` block containing only
   plain rules moves as a unit past statements its rules cannot conflict with,
@@ -159,16 +164,17 @@ usable as a CI check.
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a vendor-prefixed alias, `@layer`
   blocks). Equivalent shorthand decompositions are still not modelled.
-  Numeric arithmetic has zero approximation tolerance in both default and
-  `--lossless` modes: an exact quotient such as `calc(28/14)` compares equal to
-  `2`, while `calc(28/18)` remains distinct from every finite decimal spelling.
-  The default mode's bounded approximation applies only to colours.
+  Numeric arithmetic follows the same precision mode as minification: an exact
+  quotient such as `calc(28/14)` compares equal to `2` in either mode. By
+  default, `calc(28/18)` compares equal to Cascade's six-significant-figure
+  output `1.55556`; under `--lossless` it remains distinct from every finite
+  decimal spelling.
 
 | Flag | Purpose |
 |---|---|
 | `--diff=MODE` | What counts as "no difference": `auto` (default), `tree`, `string` or `canonical`, as above. |
 | `--depth=auto\|max\|N` | How many levels of the difference tree to print. `auto` (default) prints it whole while it stays short, then falls back to the deepest level that fits; `max` always prints it whole; an integer pins a level. A cut subtree carries the number of lines hidden. |
-| `--lossless` | Disable colour approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within the approximation budget report as different rather than equal. Numeric arithmetic is exact with or without this flag. Has no effect outside `--diff=canonical`. |
+| `--lossless` | Disable bounded colour and numeric approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within an approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
@@ -412,7 +418,7 @@ stable tie-break key. Produced group/residual nodes inherit the earliest source
 slot they represent, so the optimiser is source-stable whenever the cascade
 does not force another order.
 
-### Colour approximation
+### Approximation and lossless mode
 
 Cascade folds colours only within `0.002` ΔE<sub>OK</sub> (the CSS Color 4
 Delta-E metric for Oklab/OkLCh). Alpha is separate: functional alpha rounds
@@ -425,6 +431,12 @@ modern-space folds, and static `color-mix()` resolution are disabled.
 Otherwise-independent declarations retain their authored order rather than
 being sorted for compression, preserving their order in stylesheet text and
 CSSOM enumeration.
+
+The default optimiser also evaluates all-static unitless `line-height:calc()`
+arithmetic and writes a non-terminating result to six significant figures.
+Under `--lossless`, exact results still fold but a repeating quotient remains a
+`calc()`. `--enforce-spec` does not change either precision policy; it controls
+browser-target assumptions instead.
 
 ### Scope
 

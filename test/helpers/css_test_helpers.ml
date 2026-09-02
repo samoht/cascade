@@ -130,8 +130,7 @@ let decl_optimizes_to ?held ~into input =
 
 (** [decl_lossless ~prop ~into input] asserts the lossless minify+optimize
     oracle for one declaration. The expected value is still a minified canonical
-    spelling, but color approximation and channel rounding are disabled on both
-    optimize and pp. *)
+    spelling, but bounded approximation is disabled on both optimize and pp. *)
 let decl_lossless ~prop ~into input =
   let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
   match Css.of_string ~strict:false (wrap input) with

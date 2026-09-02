@@ -81,7 +81,7 @@ val decl_optimizes_to : ?held:string -> into:string -> string -> unit
 
 val decl_lossless : prop:string -> into:string -> string -> unit
 (** [decl_lossless ~prop ~into input] checks the minify+optimize path with
-    [~lossless:true] on both optimization and printing. *)
+    bounded approximation disabled on both optimization and printing. *)
 
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
