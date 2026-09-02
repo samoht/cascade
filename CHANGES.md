@@ -505,7 +505,7 @@ difference wherever the two are not equivalent.
   synthesized shorthands and vendor transition/animation aliases normalize
   before comparison, factoring settles both transfer-size alternatives and
   retries once when settling changes its graph, and selector-branch factoring
-  preserves source order after earlier rewrites (#0)
+  preserves source order after earlier rewrites (#750)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)
