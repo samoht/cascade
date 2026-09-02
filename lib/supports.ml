@@ -235,42 +235,6 @@ let func name args =
 let escaped_property_name name =
   Parser.escape_ident (string_of_property_name name)
 
-let render_declaration_feature = function
-  | Declaration decl -> Declaration.to_string ~minify:false decl
-  | Empty name -> escaped_property_name name ^ ":"
-  | Unsupported (name, value) -> escaped_property_name name ^ ": " ^ value
-  | Vendor_flag_enabled -> "-vendor-flag: enabled"
-
-let render_function_feature = function
-  | Selector selector -> "selector(" ^ Selector.to_string selector ^ ")"
-  | Font_format format -> "font-format(" ^ string_of_font_format format ^ ")"
-  | Font_tech tech -> "font-tech(" ^ string_of_font_tech tech ^ ")"
-  | At_rule rule -> "at-rule(@" ^ rule ^ ")"
-  | Named_feature feature -> "named-feature(" ^ feature ^ ")"
-  | Env name -> "env(" ^ name ^ ")"
-  | General (name, args) -> name ^ "(" ^ args ^ ")"
-
-let rec render context = function
-  | Property feature -> "(" ^ render_declaration_feature feature ^ ")"
-  | Function feature -> render_function_feature feature
-  | Not cond ->
-      let rendered = "not " ^ render_not_operand cond in
-      if context = `Operand then "(" ^ rendered ^ ")" else rendered
-  | And (a, b) -> render_branch `And a ^ " and " ^ render_branch `And b
-  | Or (a, b) -> render_branch `Or a ^ " or " ^ render_branch `Or b
-
-and render_not_operand = function
-  | (And _ | Or _) as cond -> "(" ^ render `Root cond ^ ")"
-  | cond -> render `Root cond
-
-and render_branch operator = function
-  | Or _ as cond when operator = `And -> "(" ^ render `Root cond ^ ")"
-  | And _ as cond when operator = `Or -> "(" ^ render `Root cond ^ ")"
-  | Not _ as cond -> render `Operand cond
-  | cond -> render `Root cond
-
-let to_string condition = render `Root condition
-
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_opaque ctx decl
   | Empty name ->
@@ -292,7 +256,12 @@ let pp_function_feature ctx = function
       Pp.call "font-format" Pp.string ctx (string_of_font_format format)
   | Font_tech tech ->
       Pp.call "font-tech" Pp.string ctx (string_of_font_tech tech)
-  | At_rule rule -> Pp.call "at-rule" Pp.string ctx ("@" ^ rule)
+  | At_rule rule ->
+      let pp_at_rule ctx name =
+        Pp.char ctx '@';
+        Pp.string ctx name
+      in
+      Pp.call "at-rule" pp_at_rule ctx rule
   | Named_feature feature -> Pp.call "named-feature" Pp.string ctx feature
   | Env name -> Pp.call "env" Pp.string ctx name
   | General (name, args) -> Pp.call name Pp.string ctx args
@@ -358,6 +327,7 @@ and pp_or ctx a b =
   pp_or_branch ~is_left:false ctx b
 
 let pp ctx t = pp_aux ~in_and:false ctx t
+let to_string t = Pp.to_string ~minify:false pp t
 
 (* ===== Component parser ===== *)
 
@@ -557,7 +527,9 @@ let compare_declaration_feature d1 d2 =
   | _ -> Stdlib.compare (order d1) (order d2)
 
 let compare_function_feature a b =
-  String.compare (render_function_feature a) (render_function_feature b)
+  String.compare
+    (Pp.to_string ~minify:false pp_function_feature a)
+    (Pp.to_string ~minify:false pp_function_feature b)
 
 let rec compare t1 t2 =
   match (t1, t2) with
