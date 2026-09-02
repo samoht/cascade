@@ -174,6 +174,8 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- Mixed-case keywords in `animation-range` and `scroll()` parse and serialize
+  in their canonical lowercase form (#767)
 - Grid track sizes accept math functions that resolve to `<flex>`, including
   `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
   repeated and automatic tracks (#749)
