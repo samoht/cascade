@@ -302,6 +302,32 @@ let canonical_movable_at_rule_ignores_nesting () =
     (equal ".L a{color:#888}.L a:where(.dark){color:#666}"
        ".L a:where(.dark){color:#666}.L a{color:#888}")
 
+(* Two adjacent rules of one selector are always safe to fold together, so a
+   sheet that writes them apart and one that writes them merged are the same
+   sheet. Sorting first could pull the pair apart and strand a merge that was
+   there to begin with. *)
+let canonical_folds_an_adjacent_same_selector_pair () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let apart =
+    "@media(prefers-color-scheme:dark){.g:where(.system,.system \
+     *){--t:var(--c);scrollbar-color:var(--h) var(--t)}}.w:where(.dark,.dark \
+     *){--t:#ffffff1a}.w:where(.dark,.dark *){scrollbar-color:var(--h) \
+     var(--t)}.b:where(.dark,.dark \
+     *){background-image:linear-gradient(var(--s))}"
+  in
+  let merged =
+    "@media(prefers-color-scheme:dark){.g:where(.system,.system \
+     *){--t:var(--c);scrollbar-color:var(--h) var(--t)}}.w:where(.dark,.dark \
+     *){--t:#ffffff1a;scrollbar-color:var(--h) var(--t)}.b:where(.dark,.dark \
+     *){background-image:linear-gradient(var(--s))}"
+  in
+  Alcotest.(check bool)
+    "an adjacent pair folds either way" true (equal apart merged);
+  (* The pair that must stay apart: folding these would drop the first write. *)
+  Alcotest.(check bool)
+    "two writes of one property stay distinct" false
+    (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -1729,4 +1755,6 @@ let suite =
         canonical_nested_and_flattened_selectors_are_equal;
       Alcotest.test_case "canonical movable at-rule ignores nesting" `Quick
         canonical_movable_at_rule_ignores_nesting;
+      Alcotest.test_case "canonical folds an adjacent same-selector pair" `Quick
+        canonical_folds_an_adjacent_same_selector_pair;
     ] )
