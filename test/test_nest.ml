@@ -71,7 +71,7 @@ let test_merge_lone_pseudo_element_parent () =
     "a child combinator goes the same way" ".a:before{}"
     (merged ".a::before{>.b{color:red}}");
   Alcotest.(check string)
-    "a branch extending the compound stays" ".a:before:hover{color:red}"
+    "a pseudo-class ::before does not take goes too" ".a:before{}"
     (merged ".a::before{.b,&:hover{color:red}}");
   (* Control: no pseudo-element, so the merge is valid and still happens. *)
   Alcotest.(check string)

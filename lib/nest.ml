@@ -74,12 +74,18 @@ let rec combine parent child =
   | _ when contains child -> substitute ~parent child
   | _ -> Selector.Combined (grouped parent, Selector.Descendant, child)
 
-(* CSS Selectors 4 sec. 3.6.5: a combinator after a pseudo-element is invalid,
-   and nesting composes exactly that selector out of a valid parent and a valid
-   child. Such a rule matches nothing in any engine, so drop the branches that
-   follow the pseudo-element and keep the ones that extend its compound. *)
+(* CSS Selectors 4 sec. 3.6.3 to sec. 3.6.5 bound what may follow a
+   pseudo-element: no combinator, and in its own compound only the
+   pseudo-classes and sub-pseudo-elements that pseudo-element takes. Nesting
+   composes exactly those selectors out of a valid parent and a valid child, so
+   neither half meets the reader's check. Such a rule matches nothing in any
+   engine, so drop the branches that overstep and keep the ones a reader
+   accepts. *)
 let keep_readable_branches (selector : Selector.t) =
-  let keeps sel = not (Selector.has_combinator_after_pseudo_element sel) in
+  let keeps sel =
+    (not (Selector.has_combinator_after_pseudo_element sel))
+    && not (Selector.has_refused_simple_in_compound sel)
+  in
   match selector with
   | Selector.List branches -> (
       match List.filter keeps branches with

@@ -57,9 +57,10 @@ let test_pseudo_element_parent_drops_invalid_nesting () =
   dropped "the parent keeps its own declarations"
     ".a::before{color:red;.b{color:blue}}" ".a:before{color:red}";
   dropped "a child combinator goes the same way" ".a::before{>.b{color:red}}" "";
-  (* Only the branches that follow the pseudo-element go. *)
-  dropped "an amperand branch extending the compound stays"
-    ".a::before{.b,&:hover{color:red}}" ".a:before:hover{color:red}";
+  (* Chrome 146 drops [a::before:hover] from cssRules, and the reader refuses
+     it, so composing it through [&] is dead too. *)
+  dropped "a pseudo-class ::before does not take goes with the rest"
+    ".a::before{.b,&:hover{color:red}}" "";
   (* Control: no pseudo-element, so nesting is valid and lifts as before. *)
   dropped "a plain parent still flattens" ".a{.b{color:red}}" ".a .b{color:red}"
 

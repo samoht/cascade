@@ -266,6 +266,14 @@ val has_combinator_after_pseudo_element : t -> bool
     without either one being refused. [>>>] and [/deep/] do not count: no engine
     parses them, so the rule never reaches them. *)
 
+val has_refused_simple_in_compound : t -> bool
+(** [has_refused_simple_in_compound sel] is [true] when a compound in [sel]
+    carries, after a pseudo-element, a simple selector that pseudo-element does
+    not take: CSS Selectors 4 sec. 3.6.3 and sec. 3.6.4, the same rows
+    {!of_string} applies while reading. Nesting extends a pseudo-element's
+    compound out of a valid parent and a valid child, so the composed selector
+    escapes the reader's check. *)
+
 val is_pseudo_element : t -> bool
 (** [is_pseudo_element sel] is [true] when [sel] is one simple selector naming a
     pseudo-element: a box other than the originating element, where an
