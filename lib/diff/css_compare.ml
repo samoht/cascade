@@ -147,6 +147,83 @@ let hide_canonical_reorder_positions (diff : D.t) =
     layer_order = diff.layer_order;
   }
 
+(* The canonical tree supplies normalized content changes; the source tree
+   supplies authored ordering changes. Partition the two structured diffs, then
+   merge their matching container paths back into one report. *)
+let rule_is_reordered : D.rule_diff -> bool = function
+  | D.Reordered _ -> true
+  | D.Added _ | D.Removed _ | D.Content_changed _ | D.Selector_changed _
+  | D.Rearranged _ | D.Regrouped _ ->
+      false
+
+let select_rule_reorders keep =
+  List.filter (fun change -> Bool.equal keep (rule_is_reordered change))
+
+let rec select_container_reorders keep :
+    D.container_diff -> D.container_diff option = function
+  | D.Reordered _ as change -> if keep then Some change else None
+  | D.Modified change ->
+      let rule_changes = select_rule_reorders keep change.rule_changes in
+      let container_changes =
+        List.filter_map
+          (select_container_reorders keep)
+          change.container_changes
+      in
+      if rule_changes = [] && container_changes = [] then None
+      else Some (D.Modified { change with rule_changes; container_changes })
+  | (D.Added _ | D.Removed _ | D.Block_structure_changed _) as change ->
+      if keep then None else Some change
+
+let select_reorders keep (diff : D.t) =
+  {
+    D.rules = select_rule_reorders keep diff.rules;
+    containers =
+      List.filter_map (select_container_reorders keep) diff.containers;
+    layer_order = (if keep then None else diff.layer_order);
+  }
+
+let without_reorders = select_reorders false
+let only_reorders = select_reorders true
+
+let same_container (a : D.container_info) (b : D.container_info) =
+  a.container_type = b.container_type && String.equal a.condition b.condition
+
+(* A conditional block can contain both a normalized content change and a source
+   reorder. Join those entries instead of printing the block twice. The tag
+   claims a target after one merge, so repeated equal conditions pair by
+   occurrence rather than all folding into the first block. *)
+let rec merge_container_change source = function
+  | [] -> [ (true, source) ]
+  | (false, D.Modified target) :: rest -> (
+      match source with
+      | D.Modified additions when same_container target.info additions.info ->
+          ( true,
+            D.Modified
+              {
+                target with
+                rule_changes = target.rule_changes @ additions.rule_changes;
+                container_changes =
+                  merge_container_changes target.container_changes
+                    additions.container_changes;
+              } )
+          :: rest
+      | _ -> (false, D.Modified target) :: merge_container_change source rest)
+  | target :: rest -> target :: merge_container_change source rest
+
+and merge_container_changes canonical source =
+  let tagged = List.map (fun change -> (false, change)) canonical in
+  List.fold_left
+    (fun changes addition -> merge_container_change addition changes)
+    tagged source
+  |> List.map snd
+
+let merge_source_reorders (canonical : D.t) (source : D.t) =
+  {
+    D.rules = canonical.rules @ source.rules;
+    containers = merge_container_changes canonical.containers source.containers;
+    layer_order = canonical.layer_order;
+  }
+
 (* Collect all rules with their path-qualified selector keys *)
 let rec collect_keyed_rules acc path stmts =
   List.fold_left
@@ -441,8 +518,20 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
     ~expected_canon ~actual_canon =
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+      let canonical_diff =
+        tree_diff ~expected:expected_ast ~actual:actual_ast |> without_reorders
+      in
+      let source_reorders =
+        match (expected_parse, actual_parse) with
+        | ( Ok { Css.stylesheet = expected_source; _ },
+            Ok { Css.stylesheet = actual_source; _ } ) ->
+            tree_diff ~expected:expected_source ~actual:actual_source
+            |> only_reorders
+        | Error _, _ | _, Error _ ->
+            { D.rules = []; containers = []; layer_order = None }
+      in
       let structural_diff =
-        tree_diff ~expected:expected_ast ~actual:actual_ast
+        merge_source_reorders canonical_diff source_reorders
         |> hide_canonical_reorder_positions
       in
       if is_empty structural_diff then

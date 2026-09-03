@@ -91,7 +91,9 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       the two when the walk reaches it and as a string diff of them when it does
       not. A reorder in that tree is named without a position: its index belongs
       to the generated canonical form and cannot be located in either input. Use
-      [`Tree] when source-AST indexes are useful.
+      [`Tree] when source-AST indexes are useful. Only order changes present in
+      the parsed inputs are reported; a content change that perturbs the
+      canonical projection's rule order is not an authored reorder.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a

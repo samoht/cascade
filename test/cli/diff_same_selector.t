@@ -30,9 +30,7 @@ rather than as a loss and a gain.
   --- ref.css
   +++ tw.css
   └─ @layer utilities (1 reordered)
-     ├─ .drop-shadow-blue-500\/50 (moved)
-     └─ @supports (color: color-mix(in lab,red,red)) (1 reordered)
-        └─ .drop-shadow-blue-500\/50 (moved)
+     └─ .drop-shadow-blue-500\/50 (moved)
   
   [1]
 

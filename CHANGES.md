@@ -936,6 +936,9 @@ difference wherever the two are not equivalent.
 - Canonical diff omits generated-tree positions from reordered rules and
   containers, where those numbers identified neither input and the rule paired
   with one could be an unrelated container (#780)
+- Canonical diff derives reorder findings from the parsed inputs instead of the
+  independently ordered projection, where one declaration change could make
+  unchanged rules read as reordered (#781)
 
 ### Library
 
