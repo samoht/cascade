@@ -1315,15 +1315,6 @@ let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
 
 let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
 
-let pp_calc_presolved : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) pp_value ctx calc ->
-  match calc with
-  | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
-  | _ ->
-      let ctx = { ctx with in_calc = true } in
-      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
-
 (* Small helpers *)
 
 let pp_unit ?always:_ ctx f suffix =
@@ -2385,7 +2376,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_presolved ~unwrap_num:false (pp_length ~always) ctx cv
+      pp_calc_with ~unwrap_num:false (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3664,7 +3655,7 @@ let rec pp_angle : angle Pp.t =
   (* A math function is itself an [<angle>] production, so the [calc()] around
      one is redundant (CSS Values 4 sec. 10.8). *)
   | Calc (Math_fn fn) -> pp_math_fn ctx fn
-  | Calc c -> pp_calc_presolved ~unwrap_num:false pp_angle ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
       Pp.string ctx
@@ -4170,7 +4161,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_presolved ~unwrap_num:false (pp_length_percentage ~always) ctx c
+      pp_calc_with ~unwrap_num:false (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -4897,7 +4888,7 @@ let rec pp_number : number Pp.t =
   | Num f ->
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
   | Var v -> pp_var pp_number ctx v
-  | Calc c -> pp_calc_presolved pp_number ctx c
+  | Calc c -> pp_calc_with pp_number ctx c
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
