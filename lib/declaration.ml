@@ -2304,15 +2304,27 @@ let read_regular_property_declaration t : declaration =
       (String.trim (Parser.string_of_components components))
   else
     try read_typed_property_declaration t start
-    with Cursor.Parse_error _ as exn ->
+    with Cursor.Parse_error error as exn ->
       let raw_value = String.trim (Parser.string_of_components components) in
-      if not (allows_unknown_fallback name raw_value) then raise exn;
+      let already_allowed = allows_unknown_fallback name raw_value in
+      let preserve_opaque =
+        already_allowed || (Cursor.recover t && is_declaration_value raw_value)
+      in
+      if not preserve_opaque then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
-      read_unknown_property_declaration t name
+      let declaration = read_unknown_property_declaration t name in
+      if not already_allowed then
+        (* The exception was caught inside [read_declaration]'s context, so add
+           the label it would have gained on the old recovery path. Recording it
+           after the opaque replay succeeds keeps structurally unsafe input on
+           the ordinary one-warning recovery path. *)
+        Cursor.push_warning t
+          { error with path = "read_declaration" :: error.path };
+      declaration
 
 (* [read_regular_property_declaration] with the name step replaced by the
    property itself. [name] serves the validation and the opaque fallback; the

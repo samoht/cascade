@@ -174,6 +174,9 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- Lenient parsing preserves a declaration-safe value opaquely when a known
+  property's typed reader rejects it, while retaining the warning that makes
+  strict parsing reject the declaration (#787)
 - Mixed-case keywords in `animation-range` and `scroll()` parse and serialize
   in their canonical lowercase form (#767)
 - Grid track sizes accept math functions that resolve to `<flex>`, including

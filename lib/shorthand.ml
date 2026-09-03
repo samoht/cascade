@@ -226,9 +226,12 @@ let all_preserved_reorder_declaration decl =
   | Declaration { property; _ } -> is_all_preserved_reorder property
   | _ -> false
 
-(* Coverage relation between two declarations. Custom and unknown properties
-   cover themselves by exact name and have no typed shorthand coverage; custom
-   properties are exempt from the [all] reset. *)
+(* Coverage relation between two declarations. Custom properties cover
+   themselves by exact name and have no typed shorthand coverage; they are
+   exempt from the [all] reset. Two opaque unknown-property values do not cover
+   one another: either value may belong to a browser grammar the other does not,
+   so both are compatibility fallbacks. Structurally identical streams are the
+   one case where either declaration can safely cover the other. *)
 let declaration_covers covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
@@ -239,9 +242,9 @@ let declaration_covers covering covered =
       String.equal a b
   | Declaration { property = Custom_property _; _ }, _ -> false
   | _, Declaration { property = Custom_property _; _ } -> false
-  | ( Declaration { property = Unknown_property a; _ },
-      Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b
+  | ( Declaration { property = Unknown_property a; value = av; _ },
+      Declaration { property = Unknown_property b; value = bv; _ } ) ->
+      String.equal a b && Stdlib.compare av bv = 0
   | Declaration { property = Unknown_property _; _ }, _ -> false
   | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },

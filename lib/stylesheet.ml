@@ -2275,12 +2275,21 @@ let read_descriptor_item (r : Cursor.t) =
    importance by order of appearance. A descriptor read later therefore takes
    the slot one already read holds, unless the one held is important and it is
    not: then the later declaration is the one that is dropped, and the survivor
-   keeps the place it was written in. *)
+   keeps the place it was written in. An opaque descriptor is the conservative
+   exception: Cascade cannot know whether a browser accepts it, so neither it
+   nor a same-name typed descriptor can erase the other. *)
+let rec descriptor_has_opaque_value = function
+  | Declaration.Declaration { property = Properties.Unknown_property _; _ } ->
+      true
+  | Declaration.Declaration _ -> false
+  | Declaration.Theme_guarded { decl; _ } -> descriptor_has_opaque_value decl
+
 let replace_descriptor desc acc =
   let same_slot held =
-    String.equal
-      (Declaration.property_name held)
-      (Declaration.property_name desc)
+    (not (descriptor_has_opaque_value held || descriptor_has_opaque_value desc))
+    && String.equal
+         (Declaration.property_name held)
+         (Declaration.property_name desc)
   in
   match List.find_opt same_slot acc with
   | Some held
