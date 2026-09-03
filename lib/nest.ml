@@ -74,10 +74,30 @@ let rec combine parent child =
   | _ when contains child -> substitute ~parent child
   | _ -> Selector.Combined (grouped parent, Selector.Descendant, child)
 
+(* CSS Selectors 4 sec. 3.6.5: a combinator after a pseudo-element is invalid,
+   and nesting composes exactly that selector out of a valid parent and a valid
+   child. Such a rule matches nothing in any engine, so drop the branches that
+   follow the pseudo-element and keep the ones that extend its compound. *)
+let keep_readable_branches (selector : Selector.t) =
+  let keeps sel = not (Selector.has_combinator_after_pseudo_element sel) in
+  match selector with
+  | Selector.List branches -> (
+      match List.filter keeps branches with
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | branches -> Option.Some (Selector.List branches))
+  | sel when keeps sel -> Option.Some sel
+  | _ -> Option.None
+
+(* Merging composes the same selector flattening does, so it drops the same
+   branches. A wrapper left with no branch to merge into keeps nothing of its
+   own, and the empty-rule pass takes it. *)
 let rec merge_lone (rule : rule) =
   match (rule.declarations, rule.nested) with
-  | [], [ Rule child ] when not (is_list rule.selector) ->
-      merge_lone { child with selector = combine rule.selector child.selector }
+  | [], [ Rule child ] when not (is_list rule.selector) -> (
+      match keep_readable_branches (combine rule.selector child.selector) with
+      | Option.Some selector -> merge_lone { child with selector }
+      | Option.None -> { rule with nested = [] })
   | _ -> rule
 
 (* What a run of nested statements would have to cross to move ahead of them:

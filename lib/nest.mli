@@ -9,8 +9,17 @@ val substitute : ?leftmost:bool -> parent:Selector.t -> Selector.t -> Selector.t
 val combine : Selector.t -> Selector.t -> Selector.t
 (** Combine a parent selector with a nested child selector. *)
 
+val keep_readable_branches : Selector.t -> Selector.t option
+(** [keep_readable_branches sel] keeps the branches of [sel] that a reader
+    accepts, and is [None] when none does. Nesting composes a parent and a child
+    that are each valid into a selector putting a combinator after a
+    pseudo-element, which CSS Selectors 4 sec. 3.6.5 makes invalid and no engine
+    matches. *)
+
 val merge_lone : Stylesheet.rule -> Stylesheet.rule
-(** Merge a pure wrapper rule with its sole nested rule when safe. *)
+(** Merge a pure wrapper rule with its sole nested rule when safe. A merge
+    {!keep_readable_branches} rejects outright leaves the wrapper empty, for the
+    empty-rule pass to drop. *)
 
 val hoist_declaration_runs : Stylesheet.rule -> Stylesheet.rule
 (** [hoist_declaration_runs rule] moves each declaration written after a nested

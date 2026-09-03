@@ -366,6 +366,9 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` drops a rule nested under a pseudo-element parent, such as `.b` in
+  `.a::before{.b{color:red}}`, where merging the wrapper into it composed
+  `.a::before .b`, a selector the reader refuses and no engine matches (#818)
 - `--minify` merges a `@container` block into an earlier one carrying the same
   name and query across the rules written between them, where only adjacent
   blocks merged and a hoist over a conflicting rule stays refused (#809)
