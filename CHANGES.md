@@ -1051,6 +1051,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` reports the two sizes without a percentage when the first
+  file is empty, in place of the `(0.0% diff)` it printed for a pair sharing
+  nothing (#783)
 - `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
   the canonical root and its descendants, rejecting both lexical and symlink
   escapes. Omitting it retains unrestricted resolution for trusted CSS (#744)

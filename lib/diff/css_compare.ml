@@ -808,11 +808,6 @@ let emit_changes buf stats =
 
 let pp_stats buf stats =
   let char_diff = abs (stats.actual_chars - stats.expected_chars) in
-  let char_diff_pct =
-    if stats.expected_chars > 0 then
-      float_of_int char_diff *. 100.0 /. float_of_int stats.expected_chars
-    else 0.0
-  in
   (* Same order as the [---] / [+++] headers below: expected, then actual. *)
   add_strings buf
     [
@@ -820,8 +815,13 @@ let pp_stats buf stats =
       string_of_int stats.expected_chars;
       " chars vs ";
       string_of_int stats.actual_chars;
-      " chars (";
     ];
-  add_pct buf char_diff_pct;
-  Buffer.add_string buf "% diff)\n";
+  if stats.expected_chars > 0 then (
+    let char_diff_pct =
+      float_of_int char_diff *. 100.0 /. float_of_int stats.expected_chars
+    in
+    Buffer.add_string buf " chars (";
+    add_pct buf char_diff_pct;
+    Buffer.add_string buf "% diff)\n")
+  else Buffer.add_string buf " chars\n";
   emit_changes buf stats
