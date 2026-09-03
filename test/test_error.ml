@@ -133,6 +133,33 @@ let ascii_caret_unmoved () =
      a { color: bogus; }\n\
     \           ^^^^^"
 
+let caret_marks_the_line_it_points_at () =
+  (* The marked value sits on the third line of the window, so the caret line
+     comes straight after that line, at that line's own column. *)
+  let source =
+    ".header {\n  color: red;\n  float: center;\n  margin: 0;\n}\n"
+  in
+  let start_pos = String.length ".header {\n  color: red;\n  float: " in
+  let e =
+    Error.v ~source
+      ~loc:(Loc.v ~start_pos ~end_pos:(start_pos + String.length "center"))
+      ~sort:Sort.Property_value
+      (Error.Bad_value { property = "float"; reason = "unknown float-side" })
+  in
+  check "caret marks the line it points at" e
+    (String.concat "\n"
+       [
+         "bad value for float: unknown float-side at [33-39] (in \
+          property-value)";
+         ".header {";
+         "  color: red;";
+         "  float: center;";
+         "         ^^^^^^";
+         "  margin: 0;";
+         "}";
+         "";
+       ])
+
 let source_context () =
   let t = Cursor.of_string "color red;" in
   match Cursor.colon t with
@@ -164,4 +191,6 @@ let suite =
       Alcotest.test_case "window never splits a code point" `Quick
         window_never_splits_a_code_point;
       Alcotest.test_case "ascii caret unmoved" `Quick ascii_caret_unmoved;
+      Alcotest.test_case "caret marks the line it points at" `Quick
+        caret_marks_the_line_it_points_at;
     ] )
