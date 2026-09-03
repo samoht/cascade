@@ -15,13 +15,8 @@ let rule css =
 
 let decl css = Declaration.of_string css
 
-let same_decl a b =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
 let safe =
-  Factor_safe.v ~same_minified_declaration:same_decl
+  Factor_safe.v ~same_minified_declaration:Declaration.same_minified
     ~declaration_covers:Declaration.same_property
     ~contains_vendor_pseudo_element:(fun _ -> false)
     ~rule_factor_boundary:(fun r -> r.merge_key <> None || r.nested <> [])

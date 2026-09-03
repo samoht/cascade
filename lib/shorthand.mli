@@ -77,10 +77,6 @@ val same_property : Declaration.declaration -> Declaration.declaration -> bool
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)
 
-val same_minified_declaration :
-  Declaration.declaration -> Declaration.declaration -> bool
-(** Same canonical minified declaration. *)
-
 val declarations_commute :
   Declaration.declaration list -> Declaration.declaration list -> bool
 (** [declarations_commute a b] is [true] when running [a] before [b] and [b]

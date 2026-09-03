@@ -24,11 +24,6 @@ let selector_size selector =
 let summary rule =
   Summary.v ~rule_size:(fun _ -> 123) ~decl_size ~selector_size rule
 
-let same a b =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
 let custom_rule ?(selector = ".a") decls =
   rule (selector ^ "{" ^ String.concat ";" decls ^ "}")
 
@@ -43,7 +38,9 @@ let test_rule_identity_and_first_decl () =
   Alcotest.(check bool)
     "declares props" true
     (Summary.declares_all t [ Summary.prop color; Summary.prop width ]);
-  Alcotest.(check bool) "contains color" true (Summary.contains ~same t color);
+  Alcotest.(check bool)
+    "contains color" true
+    (Summary.contains ~same:Declaration.same_minified t color);
   match Summary.decl_for_prop t (Summary.prop color) with
   | Some first ->
       Alcotest.(check string)
@@ -75,7 +72,7 @@ let test_contains_does_not_trust_bloom_hit () =
   Alcotest.(check int) "equality predicate was consulted" 1 !calls;
   Alcotest.(check bool)
     "structural equality confirms containment" true
-    (Summary.contains ~same t color)
+    (Summary.contains ~same:Declaration.same_minified t color)
 
 let test_cached_fields_and_bloom_for_reordered_decls () =
   let t = summary (rule ".a{color:red;width:1px}") in

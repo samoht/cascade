@@ -5,7 +5,7 @@ open Stdlib
 open Rule_rewrite
 module Node_set = Set.Make (Rule_graph.Node_id)
 
-let same_decl = Shorthand.same_minified_declaration
+let same_decl = Declaration.same_minified
 
 (* How much of a declaration's overlap relation its precomputed footprint
    settles. [Slots] is decided by the keys alone; [Custom] by the property name,

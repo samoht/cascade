@@ -189,7 +189,7 @@ let rec holds_unattributed_run stmt =
    differs in importance is decided by importance, not by order. *)
 let declarations_conflict a b =
   Declaration.is_important a = Declaration.is_important b
-  && (not (Shorthand.same_minified_declaration a b))
+  && (not (Declaration.same_minified a b))
   && Shorthand.declarations_overlap a b
 
 (* Two rules whose declarations would reorder unsafely: overlapping selectors

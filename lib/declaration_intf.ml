@@ -5,9 +5,9 @@ open Properties_intf
 type 'a kind = 'a Properties_intf.kind
 
 (* [hash] is a structural fingerprint of the declaration, fixed at construction.
-   The optimizer's inner-loop equality ([Optimize.same_minified_declaration])
-   consults it so an inequality verdict is one field load + int compare instead
-   of walking the value AST. Computed eagerly by the [Declaration.v] /
+   The optimizer's inner-loop equality ([Declaration.same_minified]) consults it
+   so an inequality verdict is one field load + int compare instead of walking
+   the value AST. Computed eagerly by the [Declaration.v] /
    [Declaration.theme_guarded] smart constructors -- every code path that builds
    a declaration must go through them so the field stays consistent with the
    [(property, value, important)] / [(var_name, decl)] payload. *)

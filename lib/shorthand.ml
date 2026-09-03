@@ -3546,23 +3546,6 @@ let rec without_importance = function
 let same_value a b =
   Declaration.equal_declaration (without_importance a) (without_importance b)
 
-(* Two declarations minify to the same text exactly when their canonical ASTs
-   are equal (property, value, and importance). After the optimizer's
-   canonicalisation passes the AST is canonical, so structural equality is the
-   minified-equality test - and far cheaper than rendering both to strings. A
-   pp-equal-but-structurally-different pair would be a canonicalisation bug, not
-   something to paper over by comparing rendered text.
-
-   [(==)] short-circuits the same-heap-object case. The cached
-   [Declaration.hash] (computed once at construction by [Declaration.v]) short-
-   circuits the (much more common) different-value case in one field-load + int
-   compare without walking the AST; we only fall through to structural equality
-   on a hash collision. *)
-let same_minified_declaration (a : declaration) (b : declaration) =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
 (* Only a pair that writes a common cascade slot at the same importance with
    different values constrains its own order: [!important] beats the plain
    declaration wherever the two sit, and an identical pair is its own winner
@@ -3583,7 +3566,7 @@ let commute_fact decl =
 
 let commute_facts_conflict a b =
   a.important = b.important
-  && (not (same_minified_declaration a.decl b.decl))
+  && (not (Declaration.same_minified a.decl b.decl))
   && declarations_overlap_with_keys a.decl a.keys b.decl b.keys
 
 let declarations_commute left right =

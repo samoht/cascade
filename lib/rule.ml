@@ -347,7 +347,7 @@ let merged_selector group =
 
 let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
   let bodies_equal a b =
-    Merge.declarations_equal ~same:Shorthand.same_minified_declaration a b
+    Merge.declarations_equal ~same:Declaration.same_minified a b
   in
   let changed = ref false in
   let rec go = function

@@ -10,7 +10,7 @@ open Stdlib
 module Decl_tbl = Hashtbl.Make (struct
   type t = Declaration.declaration
 
-  let equal = Shorthand.same_minified_declaration
+  let equal = Declaration.same_minified
   let hash = Declaration.hash
 end)
 
@@ -129,7 +129,7 @@ type t = {
    cascade-neutral inside a fixed origin/layer/scope context. *)
 let declarations_conflict left right =
   left.important = right.important
-  && (not (Shorthand.same_minified_declaration left.decl right.decl))
+  && (not (Declaration.same_minified left.decl right.decl))
   && Shorthand.declarations_overlap_with_keys left.decl left.footprint
        right.decl right.footprint
 
@@ -523,7 +523,7 @@ let add_decl_bucket ~compact bucket key spec summary decl value =
 let collect_decl_table decl groups stamp seen acc =
   Decl_tbl.fold
     (fun decl' ids acc ->
-      if Shorthand.same_minified_declaration decl decl' then acc
+      if Declaration.same_minified decl decl' then acc
       else add_candidates stamp seen acc ids)
     groups acc
 
@@ -1229,7 +1229,7 @@ let produced_declaration_sources graph consume produced produced_decl =
   let nodes = produced_branch_sources graph consume produced in
   match
     declaration_source_refs graph nodes produced_decl
-      ~matches:Shorthand.same_minified_declaration
+      ~matches:Declaration.same_minified
   with
   | _ :: _ as exact when refs_cover_nodes nodes exact -> exact
   | _ :: _ -> fallback_source_refs nodes
@@ -1373,8 +1373,8 @@ let external_candidates graph ~total ~consumed ~seen p =
             | Some inner ->
                 Decl_tbl.iter
                   (fun decl' ids ->
-                    if not (Shorthand.same_minified_declaration ov.decl decl')
-                    then push_ids ids)
+                    if not (Declaration.same_minified ov.decl decl') then
+                      push_ids ids)
                   inner
             | None -> ())
           ov.footprint)
