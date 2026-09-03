@@ -191,9 +191,10 @@ entry points both moved.
   value the author wrote rather than the token after it, below the line it
   marks and at that line's own column in characters. A value matching no form
   of a property says so (#472, #477, #789, #793, #801)
-- Lenient parsing preserves a declaration-safe value opaquely when a known
-  property's typed reader rejects it, while retaining the warning that makes
-  strict parsing reject the declaration (#787)
+- Lenient parsing preserves a value opaquely when the property is unknown, the
+  value carries a runtime substitution, or it is a colour fallback. A value the
+  typed reader rejects is an invalid declaration and is dropped, as it always
+  was (#787, #813)
 - Mixed-case keywords in `animation-range` and `scroll()` parse and serialize
   in their canonical lowercase form (#767)
 - Grid track sizes accept math functions that resolve to `<flex>`, including
