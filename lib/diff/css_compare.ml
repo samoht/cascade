@@ -253,7 +253,20 @@ let reported_declaration d =
   in
   (Css.declaration_name d, value)
 
-let group_into_table rules = Group.by ~size:128 Fun.id rules
+let group_into_table rules = Group.by Fun.id rules
+
+(* The keys the expected side names, in the order it names them. Walking [tbl1]
+   with [Hashtbl.iter] instead would order the report by the stdlib hash and the
+   table's capacity, neither of which is a fact about the sheet. *)
+let keys_in_source_order rules =
+  let seen = Hashtbl.create 128 in
+  List.filter_map
+    (fun (key, _) ->
+      if Hashtbl.mem seen key then None
+      else (
+        Hashtbl.add seen key ();
+        Some key))
+    rules
 
 (* Compare two declaration lists with the same key and emit diffs *)
 let diff_same_key_pair key d1 d2 =
@@ -338,7 +351,12 @@ let build_reorder_diff expected_css actual_css =
   let tbl1 = group_into_table rules1 in
   let tbl2 = group_into_table rules2 in
   let diffs = ref [] in
-  Hashtbl.iter (collect_key_diffs ~tbl2 ~diffs) tbl1;
+  List.iter
+    (fun key ->
+      Option.iter
+        (collect_key_diffs ~tbl2 ~diffs key)
+        (Hashtbl.find_opt tbl1 key))
+    (keys_in_source_order rules1);
   if !diffs = [] then None
   else Some D.{ rules = List.rev !diffs; containers = []; layer_order = None }
 

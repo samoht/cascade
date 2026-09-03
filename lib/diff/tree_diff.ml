@@ -2625,7 +2625,7 @@ let extract_items_with_positions extract_fn stmts =
   |> List.filter_map (fun x -> x)
 
 let group_by_condition items =
-  Group.by ~size:16 (fun (pos, cond, rules) -> (cond, (pos, rules))) items
+  Group.by (fun (pos, cond, rules) -> (cond, (pos, rules))) items
 
 (* Two sides holding a different number of blocks under one condition split or
    merged them. Where those blocks sit is a separate question, and one
@@ -3061,7 +3061,7 @@ let rec media_condition_differs rules_list1 rules_list2 =
   else None
 
 and media_diff items1 items2 =
-  let group items = Group.by ~size:16 Fun.id items in
+  let group items = Group.by Fun.id items in
   let groups1 = group items1 in
   let groups2 = group items2 in
   let added = ref [] in

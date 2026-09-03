@@ -119,6 +119,13 @@ val diff :
     preserves exact colour channels and non-terminating numeric arithmetic
     during canonical comparison.
 
+    Two sheets that hold the same rules and the same declarations, and differ
+    only in the order a rule writes them, leave the structural walk with nothing
+    to say. Mode [`Auto] recovers those differences under the selector each
+    belongs to, in the order the expected side first names those selectors, and
+    a rule only the actual side holds names no expected selector so it is not
+    among them.
+
     [prune_unused_custom_props] (default [false], [`Canonical] mode only) drops
     custom-property bindings referenced by nothing on both sides before
     comparing, so two stylesheets that differ only by a dead binding compare
