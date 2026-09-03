@@ -9,8 +9,8 @@ open Common
 open Values
 open Properties_intf
 
-let err_invalid_value ?got t prop_name value =
-  Cursor.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+let err_invalid_value ?loc ?got t prop_name value =
+  Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
 let rec read_css_wide t : css_wide =
   Cursor.enum_or_var "css-wide keyword"
@@ -315,6 +315,7 @@ let url path : background_image = Url path
 (* <dashed-ident>: shared by anchor-name, position-anchor, position-try
    fallbacks, font-palette and the animation timeline names. *)
 let read_dashed_ident t =
+  let loc = Cursor.position t in
   let ident = Cursor.ident ~keep_case:true t in
   if Custom_property_name.is_valid ident then ident
-  else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)
+  else Cursor.err_invalid ~loc t ("expected dashed ident, got: " ^ ident)

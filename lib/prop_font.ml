@@ -1701,6 +1701,9 @@ let read_font_shorthand r : font_shorthand =
   }
 
 let rec read_font t : font =
+  (* The shorthand is read whole, so a failure is the whole value's; [t] has
+     passed the end of it by the time one is raised. *)
+  let loc = Cursor.decl_value_loc t in
   let raw = Cursor.consume_to_decl_end ~trim:true t in
   let lower = String.lowercase_ascii (String.trim raw) in
   match lower with
@@ -1728,12 +1731,12 @@ let rec read_font t : font =
         let r = Cursor.of_string raw in
         Var (Values.read_var (fun r -> read_font r) r)
       else if value_has_css_wide_mix raw then
-        Cursor.err_invalid t "CSS-wide keyword mixed with other values"
+        Cursor.err_invalid ~loc t "CSS-wide keyword mixed with other values"
       else
         let body =
           try read_font_shorthand (Cursor.of_string raw)
           with Cursor.Parse_error _ ->
-            Cursor.err_invalid t "invalid font shorthand"
+            Cursor.err_invalid ~loc t "invalid font shorthand"
         in
         Shorthand body
 

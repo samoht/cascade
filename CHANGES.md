@@ -180,6 +180,9 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- A parse warning marks the value the author wrote rather than the token after
+  it, so the caret no longer lands on the semicolon that closes the
+  declaration (#800)
 - Lenient parsing preserves a declaration-safe value opaquely when a known
   property's typed reader rejects it, while retaining the warning that makes
   strict parsing reject the declaration (#787)

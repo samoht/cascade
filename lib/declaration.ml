@@ -681,9 +681,12 @@ let validate_no_extra_tokens t =
   match Cursor.peek_head_shape t with
   | `Eof | `Semicolon | `Bang -> ()
   | _ ->
+      (* The trailing tokens are consumed before they are judged, so the span is
+         theirs rather than that of the terminator they stop at. *)
+      let loc = Cursor.decl_value_loc t in
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
-        Cursor.err_invalid t
+        Cursor.err_invalid ~loc t
           ("unexpected tokens after property value: " ^ trimmed)
 
 let read_length_box ?(allow_negative = true) t =

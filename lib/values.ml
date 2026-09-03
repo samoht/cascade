@@ -6981,6 +6981,9 @@ and color_parsers =
 
 and read_color t : color =
   Cursor.ws t;
+  (* The two branches below consume the token before judging it, so they mark
+     [loc] rather than whatever the cursor has moved on to. *)
+  let loc = Cursor.position t in
   let color =
     match Cursor.peek t with
     | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) -> (
@@ -6992,13 +6995,13 @@ and read_color t : color =
           || ('A' <= c && c <= 'F')
         in
         if not (len = 3 || len = 4 || len = 6 || len = 8) then
-          Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+          Cursor.err_invalid ~loc t ("hex color length: " ^ string_of_int len)
         else if not (String.for_all is_hex value) then
-          Cursor.err_invalid t ("hex color digits: " ^ value)
+          Cursor.err_invalid ~loc t ("hex color digits: " ^ value)
         else
           match rgba_of_hex value with
           | Some (r, g, b, a) -> Authored_hex { value; r; g; b; a }
-          | None -> Cursor.err_invalid t ("hex color digits: " ^ value))
+          | None -> Cursor.err_invalid ~loc t ("hex color digits: " ^ value))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
         (* CSS Values 4 sec. 4.1: a function name is a keyword, so it names the
            same function in whatever case it was written. *)
@@ -7014,7 +7017,7 @@ and read_color t : color =
         (* CSS color keywords are case-insensitive. *)
         match read_color_keyword_of_string (String.lowercase_ascii ident) with
         | Some color -> color
-        | None -> Cursor.err t ("unknown color: " ^ ident))
+        | None -> Cursor.err ~loc t ("unknown color: " ^ ident))
     | _ -> Cursor.err t "color"
   in
   Cursor.ws t;

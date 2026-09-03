@@ -215,8 +215,12 @@ let raise_sort t sort kind loc =
 
 let raise_ t kind loc = raise_sort t sort kind loc
 
-let err ?got t msg =
-  let loc = position t in
+(* [loc] is for a reader that consumed the offending token before deciding it
+   was bad: [position t] has moved on to whatever follows by then, and at the
+   end of a value that is the terminator. Such a reader passes the span it
+   read. *)
+let err ?loc ?got t msg =
+  let loc = match loc with Some loc -> loc | None -> position t in
   match got with
   | Some g ->
       raise_ t
@@ -224,9 +228,9 @@ let err ?got t msg =
         loc
   | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc
 
-let err_invalid t msg = err t ("invalid: " ^ msg)
+let err_invalid ?loc t msg = err ?loc t ("invalid: " ^ msg)
 let err_eof t = raise_ t (Error.Unterminated sort) (position t)
-let err_expected t what = err t ("expected " ^ what)
+let err_expected ?loc t what = err ?loc t ("expected " ^ what)
 
 let err_expected_but_eof t what =
   raise_ t (Error.Missing_token what) (position t)
@@ -480,6 +484,17 @@ let consume_to_decl_end ?(trim = false) t =
   string_of_components ~trim (drain_until_raw ends_declaration_value t)
 
 let drain_to_decl_end t = drain_until_raw ends_declaration_value t
+
+let decl_value_loc t =
+  match
+    List.filter (fun cv -> not (is_ws_cv cv)) (lookahead drain_to_decl_end t)
+  with
+  | [] -> position t
+  | first :: rest ->
+      List.fold_left
+        (fun acc cv -> Loc.union acc (Component.source_loc cv))
+        (Component.source_loc first)
+        rest
 
 let declaration_value t =
   let cvs = drain_to_decl_end t in
@@ -737,9 +752,10 @@ let expect c t =
     err_expected t (String.concat "" [ "'"; String.make 1 c; "'" ])
 
 let expect_string name t =
+  let loc = position t in
   match ident_opt t with
   | Some s when String.lowercase_ascii_preserve s = name -> ()
-  | _ -> err_expected t name
+  | _ -> err_expected ~loc t name
 
 let expect_eof t = if not (is_done t) then err t "unexpected token"
 

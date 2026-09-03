@@ -181,16 +181,19 @@ val try_typed_call : (t -> 'a) -> t -> ('a, Component.t) result
 exception Parse_error of Error.t
 (** Alias for {!Error.Parse_error}. *)
 
-val err : ?got:string -> t -> string -> 'a
-(** [err ?got t msg] raises {!Parse_error} at the current position. *)
+val err : ?loc:Loc.t -> ?got:string -> t -> string -> 'a
+(** [err ?loc ?got t msg] raises {!Parse_error} at the current position, or at
+    [loc] when given. A reader that consumes the offending token before
+    rejecting it passes the span it read: {!val-position} has moved on to
+    whatever follows by then, which at the end of a value is the terminator. *)
 
-val err_invalid : t -> string -> 'a
+val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)
 
 val err_eof : t -> 'a
 (** [err_eof t] raises an "unexpected end of input" error. *)
 
-val err_expected : t -> string -> 'a
+val err_expected : ?loc:Loc.t -> t -> string -> 'a
 (** [err_expected t what] raises with "expected [what]". *)
 
 val err_expected_but_eof : t -> string -> 'a
@@ -361,6 +364,12 @@ val drain_to_decl_end : t -> Component.t list
 (** [drain_to_decl_end t] consumes components up to (but not including) the next
     semicolon or top-level [!] delimiter, returning the drained list without
     serialising it. *)
+
+val decl_value_loc : t -> Loc.t
+(** [decl_value_loc t] is the span the declaration value ahead covers, without
+    consuming it, or {!val-position} when no value is left. A shorthand reader
+    that takes the whole value before deciding it is bad reports against this,
+    since the failure is the value's rather than that of the token after it. *)
 
 val declaration_value : t -> t
 (** [declaration_value t] consumes a declaration's value off [t] and is a cursor
