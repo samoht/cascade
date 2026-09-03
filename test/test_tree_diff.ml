@@ -1504,6 +1504,39 @@ let whole_rule_body_separates_name_from_value () =
   report_reads ~name:"a custom property" ~expected:base ~actual:gained
     [ "+ --k: var(--u, 1px)" ]
 
+(* --- allocation / complexity guard --- *)
+
+let changed_rules colour n =
+  let buf = Buffer.create (n * 24) in
+  let out = Fmt.with_buffer buf in
+  for i = 0 to n - 1 do
+    Fmt.pf out ".c%d{color:%s}" i colour
+  done;
+  parse (Buffer.contents buf)
+
+let diff_words expected actual =
+  Gc.full_major ();
+  let words0 = Gc.minor_words () in
+  let diff = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  ignore (Sys.opaque_identity diff);
+  Gc.minor_words () -. words0
+
+(* Grouping the reported changes by scanning the whole change list once per
+   entry makes allocation quadratic in the number of changed rules. Doubling the
+   sheet must stay well below that 4x slope. *)
+let changed_rule_diff_is_subquadratic () =
+  let small_expected = changed_rules "red" 1_000 in
+  let small_actual = changed_rules "blue" 1_000 in
+  let large_expected = changed_rules "red" 2_000 in
+  let large_actual = changed_rules "blue" 2_000 in
+  let small_words = diff_words small_expected small_actual in
+  let large_words = diff_words large_expected large_actual in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x changes)" small_words large_words
+       ratio)
+    true (ratio < 3.)
+
 let suite =
   ( "tree_diff",
     [
@@ -1704,6 +1737,8 @@ let suite =
         whole_rule_body_carries_the_flag;
       Alcotest.test_case "whole rule body separates name from value" `Quick
         whole_rule_body_separates_name_from_value;
+      Alcotest.test_case "changed-rule diff is subquadratic" `Quick
+        changed_rule_diff_is_subquadratic;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
