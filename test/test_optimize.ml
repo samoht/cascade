@@ -2189,6 +2189,61 @@ let test_distant_media_merge () =
        ".a{@media (width>=1px){color:red}@media \
         (width>=1px){color:green}color:blue}")
 
+(* CSS Conditional Rules 5 sec. 5: a [@container] rule applies to an element
+   when the container its name selects matches its query, so two blocks under
+   one name and one query hold the same content as one block over their
+   concatenation. What a distant merge has to earn is the move: hoisting the
+   later block over the statements written between changes the order of
+   appearance of its declarations against theirs, and an element computes that
+   differently only where a pair of declarations does not commute. *)
+let test_distant_container_merge () =
+  (* Conditional Rules 5 sec. 5.4: the query container is the nearest ancestor
+     the name selects, so [main] and [side] ask about different elements. The
+     conditions are the same characters and the blocks still hold apart. *)
+  Alcotest.(check string)
+    "keeps distinct container names apart"
+    "@container main (width>=10px){.a{color:red}}.c{background:#00f}@container \
+     side (width>=10px){.b{color:green}}"
+    (minify_str
+       "@container main \
+        (width>=10px){.a{color:red}}.c{background:blue}@container side \
+        (width>=10px){.b{color:green}}");
+  (* An unnamed query takes the nearest ancestor container whatever its name,
+     which is not the nearest one called [main]. *)
+  Alcotest.(check string)
+    "keeps a named and an unnamed query apart"
+    "@container main \
+     (width>=10px){.a{color:red}}.c{background:#00f}@container(width>=10px){.b{color:green}}"
+    (minify_str
+       "@container main \
+        (width>=10px){.a{color:red}}.c{background:blue}@container \
+        (width>=10px){.b{color:green}}");
+  (* The crossed rule writes the colour slot the hoisted block writes on a
+     selector it overlaps, so hoisting computes blue where the source computes
+     green. *)
+  Alcotest.(check string)
+    "keeps blocks apart on a conflicting reorder"
+    "@container(width>=10px){.a{color:red}}.a{color:green}@container(width>=10px){.a{color:#00f}}"
+    (minify_str
+       "@container (width>=10px){.a{color:red}}.a{color:green}@container \
+        (width>=10px){.a{color:blue}}");
+  (* A layer statement establishes cascade order; never merge across it. *)
+  Alcotest.(check string)
+    "no merge across a layer statement"
+    "@container(width>=10px){.a{color:red}}@layer \
+     theme;@container(width>=10px){.b{color:#00f}}"
+    (minify_str
+       "@container (width>=10px){.a{color:red}}@layer theme;@container \
+        (width>=10px){.b{color:blue}}");
+  (* The crossed rule sets another property on another selector, so no element
+     computes anything differently once the block moves before it. *)
+  Alcotest.(check string)
+    "merges across a non-conflicting intervening rule"
+    "@container(width>=10px){.a{color:red}.b{color:green}}.c{background:#00f}"
+    (minify_str
+       "@container (width>=10px){.a{color:red}}.c{background:blue}@container \
+        (width>=10px){.b{color:green}}")
+
 let test_keep_bang_comment_leading () =
   (* A bang comment (/*! ... */) is preserved by minify; it stays where it was
      authored rather than being moved past the following rule. *)
@@ -5355,6 +5410,7 @@ let selector_merging_tests =
       `Quick,
       test_custom_value_close_paren_whitespace );
     ("distant @media merge when safe", `Quick, test_distant_media_merge);
+    ("distant @container merge when safe", `Quick, test_distant_container_merge);
     ( "leading bang comment stays leading",
       `Quick,
       test_keep_bang_comment_leading );
