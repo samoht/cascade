@@ -27,48 +27,51 @@ type parse_error = {
 
 exception Parse_error of parse_error
 
+(* Locate a snippet-relative character offset as a line and a column. *)
+let marker_in_lines lines marker_pos =
+  let rec find line remaining = function
+    | [] -> (0, 0)
+    | [ last ] ->
+        let len = Common.String.utf8_length last in
+        (line, min remaining len)
+    | current :: rest ->
+        let len = Common.String.utf8_length current in
+        if remaining <= len then (line, remaining)
+        else find (line + 1) (remaining - len - 1) rest
+  in
+  find 0 (max 0 marker_pos) lines
+
 (** Pretty print parse error with debugging information *)
 let pp_parse_error (err : parse_error) =
-  let callstack_str =
-    if err.callstack = [] then ""
-    else "\n    [stack: " ^ String.concat " -> " err.callstack ^ "]"
-  in
-  let context_str =
-    if err.context_window = "" then ""
-    else
-      (* Don't trim the context - show it as-is to preserve position accuracy *)
-      let context_lines = String.split_on_char '\n' err.context_window in
-      let context_display =
-        match context_lines with
-        | [] -> err.context_window
-        | [ line ] -> line (* Single line - show it all *)
-        | _ ->
-            (* If multi-line, show each line *)
-            String.concat "\n" context_lines
-      in
-      let marker =
-        if
-          err.marker_pos > 0
-          && err.marker_pos <= Common.String.utf8_length err.context_window
-        then String.make err.marker_pos ' ' ^ "^"
-        else
-          (* Fallback if marker position is out of bounds *)
-          String.make 20 ' ' ^ "^"
-      in
-      "\n" ^ context_display ^ "\n" ^ marker
-  in
-  String.concat ""
-    [
-      err.message;
-      " at ";
-      err.filename;
-      ":";
-      string_of_int err.line;
-      ":";
-      string_of_int err.col;
-      callstack_str;
-      context_str;
-    ]
+  let buf = Buffer.create 256 in
+  Buffer.add_string buf err.message;
+  Buffer.add_string buf " at ";
+  Buffer.add_string buf err.filename;
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.line);
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.col);
+  (match err.callstack with
+  | [] -> ()
+  | callstack ->
+      Buffer.add_string buf "\n    [stack: ";
+      Buffer.add_string buf (String.concat " -> " callstack);
+      Buffer.add_char buf ']');
+  if err.context_window <> "" then begin
+    let lines = String.split_on_char '\n' err.context_window in
+    let marker_line, marker_pos = marker_in_lines lines err.marker_pos in
+    List.iteri
+      (fun i line ->
+        Buffer.add_char buf '\n';
+        Buffer.add_string buf line;
+        if i = marker_line then begin
+          Buffer.add_char buf '\n';
+          Buffer.add_string buf (String.make marker_pos ' ');
+          Buffer.add_char buf '^'
+        end)
+      lines
+  end;
+  Buffer.contents buf
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =

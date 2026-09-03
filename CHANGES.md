@@ -952,6 +952,9 @@ difference wherever the two are not equivalent.
 
 ### Library
 
+- `Reader.pp_parse_error` puts its caret immediately below the line it marks,
+  where a multi-line context window printed the caret below the whole window
+  at a column measured from its start (#793)
 - `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder. A parse
   error's column now counts one replacement character per maximal subpart of
   an ill-formed sequence, as a browser does, where the previous decoder
