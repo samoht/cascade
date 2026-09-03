@@ -1058,6 +1058,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` renders a character with no glyph as an escape, so a
+  difference in line endings shows as one and a control byte in a stylesheet
+  can no longer drive the reader's terminal (#791)
 - A `cascade diff` character-level hunk no longer ends with a context line
   holding one space when the inputs end in a newline: the empty string a
   final newline leaves behind is the terminator, not a line (#790)

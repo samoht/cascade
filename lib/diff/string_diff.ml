@@ -158,20 +158,92 @@ let pp_caret ?(indent = 0) buf pos =
   Buffer.add_string buf (String.make (pos + indent) ' ');
   Buffer.add_string buf "^\n"
 
+(* ===== Visualising raw lines ===== *)
+
+let hex_digit n =
+  Char.unsafe_chr (if n < 10 then Char.code '0' + n else Char.code 'a' + n - 10)
+
+let add_hex_escape buf code =
+  Buffer.add_string buf "\\x";
+  Buffer.add_char buf (hex_digit (code lsr 4));
+  Buffer.add_char buf (hex_digit (code land 0xF))
+
+let hex_escape code =
+  let buf = Buffer.create 4 in
+  add_hex_escape buf code;
+  Buffer.contents buf
+
+let escape_codepoint u =
+  let cp = Uchar.to_int u in
+  if cp = 0x09 then "\\t"
+  else if cp = 0x0D then "\\r"
+  else if cp <= 0x1F || cp = 0x7F || (cp >= 0x80 && cp <= 0x9F) then
+    hex_escape cp
+  else ""
+
+let visualize s =
+  let len = String.length s in
+  let col = ref 0 in
+  let map = Array.make (len + 1) (-1) in
+  let buf = Buffer.create len in
+  let set_positions pos n =
+    for k = 0 to n - 1 do
+      if map.(pos + k) = -1 then map.(pos + k) <- !col
+    done
+  in
+  let emit_escape pos n esc =
+    let width = String.length esc in
+    set_positions pos n;
+    Buffer.add_string buf esc;
+    col := !col + width
+  in
+  (* [width] is in columns, as everywhere else a caret is placed in this
+     repository: a multi-byte scalar occupies one. *)
+  let emit_raw pos n ~width raw =
+    set_positions pos n;
+    Buffer.add_string buf raw;
+    col := !col + width
+  in
+  (* A scalar the source already holds is copied back byte for byte rather than
+     re-encoded, and a byte the decoder rejects is shown as its own escape: the
+     report has to render what the file contains, not a repaired reading of
+     it. *)
+  let rec walk pos =
+    if pos < len then begin
+      let d = String.get_utf_8_uchar s pos in
+      let n = Uchar.utf_decode_length d in
+      if Uchar.utf_decode_is_valid d then begin
+        let esc = escape_codepoint (Uchar.utf_decode_uchar d) in
+        if esc <> "" then emit_escape pos n esc
+        else emit_raw pos n ~width:1 (String.sub s pos n)
+      end
+      else
+        for k = 0 to n - 1 do
+          emit_escape (pos + k) 1 (hex_escape (Char.code s.[pos + k]))
+        done;
+      walk (pos + n)
+    end
+  in
+  walk 0;
+  map.(len) <- !col;
+  (Buffer.contents buf, map)
+
 (* Pretty-print a line pair in unified diff format *)
 let pp_line_pair buf (exp, act) =
+  let exp_vis, _ = visualize exp in
+  let act_vis, _ = visualize act in
   if exp = act then (
     Buffer.add_string buf " ";
-    Buffer.add_string buf exp;
+    Buffer.add_string buf exp_vis;
     Buffer.add_char buf '\n')
   else (
     if exp <> "" then (
       Buffer.add_char buf '-';
-      Buffer.add_string buf exp;
+      Buffer.add_string buf exp_vis;
       Buffer.add_char buf '\n');
     if act <> "" then (
       Buffer.add_char buf '+';
-      Buffer.add_string buf act;
+      Buffer.add_string buf act_vis;
       Buffer.add_char buf '\n'))
 
 (* Helper to format diff lines based on their length *)
@@ -198,12 +270,21 @@ let format_long_diff_line ~config ~diff_pos ~len1 ~len2 expected actual =
   let s2_display, _prefix_len2 =
     extract_diff_window actual len2 ~window_start ~window_end
   in
-  let adjusted_pos =
+  let s1_escaped, s1_map = visualize s1_display in
+  let s2_escaped, _ = visualize s2_display in
+  (* [s1_map] is indexed over the DISPLAYED string, whose leading ellipsis
+     shifts every snippet byte right by [prefix_len1], and it already answers in
+     columns. Indexing it with a bare snippet offset reads the wrong byte, and
+     adding the prefix afterwards counts it twice. *)
+  let last_col = s1_map.(Array.length s1_map - 1) in
+  let visual_pos =
     if diff_pos < window_start then 0
-    else if diff_pos >= window_end then String.length s1_display - 1
-    else prefix_len1 + (diff_pos - window_start)
+    else if diff_pos >= window_end then last_col
+    else
+      let i = prefix_len1 + (diff_pos - window_start) in
+      if i >= Array.length s1_map then last_col else s1_map.(i)
   in
-  `Long (s1_display, s2_display, adjusted_pos)
+  `Long (s1_escaped, s2_escaped, visual_pos)
 
 let format_diff_line ?(config = default_config) expected actual =
   match first_diff_pos expected actual with
@@ -212,9 +293,13 @@ let format_diff_line ?(config = default_config) expected actual =
       let len1 = String.length expected in
       let len2 = String.length actual in
       if len1 <= config.short_threshold && len2 <= config.short_threshold then
-        `Short (expected, actual)
+        let exp_escaped, exp_map = visualize expected in
+        let act_escaped, _ = visualize actual in
+        `Short (exp_escaped, act_escaped, exp_map.(diff_pos))
       else if len1 <= config.max_width && len2 <= config.max_width then
-        `Medium (expected, actual, diff_pos)
+        let exp_escaped, exp_map = visualize expected in
+        let act_escaped, _ = visualize actual in
+        `Medium (exp_escaped, act_escaped, exp_map.(diff_pos))
       else format_long_diff_line ~config ~diff_pos ~len1 ~len2 expected actual
 
 let pp ?(config = default_config) ?(expected_label = "Expected")
@@ -242,13 +327,14 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
   let diff_exp, diff_act = t.diff_lines in
   (match format_diff_line ~config diff_exp diff_act with
   | `Equal ->
-      add_strings buf [ "-"; diff_exp; "\n" ];
-      add_strings buf [ "+"; diff_act; "\n" ]
-  | `Short (exp, act) ->
+      let exp_vis, _ = visualize diff_exp in
+      let act_vis, _ = visualize diff_act in
+      add_strings buf [ "-"; exp_vis; "\n" ];
+      add_strings buf [ "+"; act_vis; "\n" ]
+  | `Short (exp, act, pos) ->
       add_strings buf [ "-"; exp; "\n" ];
       add_strings buf [ "+"; act; "\n" ];
-      if t.line_expected = t.line_actual then
-        pp_caret ~indent:1 buf t.column_expected
+      if t.line_expected = t.line_actual then pp_caret ~indent:1 buf pos
   | `Medium (exp, act, pos) | `Long (exp, act, pos) ->
       add_strings buf [ "-"; exp; "\n" ];
       add_strings buf [ "+"; act; "\n" ];

@@ -315,7 +315,8 @@ let pp_escape_byte () =
         caret;
       ]
   in
-  Alcotest.(check string) "ESC byte is rendered as escape" expected_output output
+  Alcotest.(check string)
+    "ESC byte is rendered as escape" expected_output output
 
 (* ===== Suite ===== *)
 
