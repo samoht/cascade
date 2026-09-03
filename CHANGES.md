@@ -8,24 +8,25 @@ walk now, and a statement kind added after this release stops every site that
 decides about it from compiling. Correctness was judged against a browser
 rather than against cascade. The suite renders a sheet and its optimised form
 in headless Chrome, then compares every property `getComputedStyle` reports on
-every element. Behind that sit 504 CSS files drawn from 72 production sites and
-2960 recorded cases carrying six minifiers' answers, and several of the fixes
-below are miscompiles Chrome contradicted rather than readings of the spec.
+every element. Beside it the suite replays 2960 recorded minification cases
+carrying six minifiers' answers, and several of the fixes below are miscompiles
+Chrome contradicted rather than readings of the spec.
 
 **Upgrading from 1.1.0.** Many of the fixes below change the CSS cascade emits
-for input 1.1.0 already accepted, and a dozen of them change how the page
-renders. If you shipped minified output built with 1.1.0, re-run it and
-compare: `cascade diff --diff=canonical old.css new.css` exits 1 and prints the
-difference wherever the two are not equivalent.
+for input 1.1.0 already accepted, and enough of them are miscompiles that a
+page can render differently. If you shipped minified output built with 1.1.0,
+re-run it and compare: `cascade diff --diff=canonical old.css new.css` exits 1
+and prints the difference wherever the two are not equivalent. Library callers
+should start at `### Breaking`, where the public module set and the parser
+entry points both moved.
 
 ### Breaking
 
-- `Cascade.Parser.to_string_custom` is gone. It was a second binding of the
-  same body as `Cascade.Parser.string_of_components`, which renders a
-  custom-property token stream identically; call that instead (#806)
-- `cascade` requires `cmdliner >= 2.0.0`, the release that stops `Arg.file`
-  checking a `-` argument for existence, which is what lets either side of
-  `cascade diff` name standard input (#796)
+- `Cascade.Parser.to_string_custom` is gone. Call
+  `Cascade.Parser.string_of_components`, which renders a custom-property token
+  stream identically (#806)
+- `cascade` requires `cmdliner >= 2.0.0`, the release that lets either side of
+  `cascade diff` name standard input as `-` (#796)
 - `Css.parse` adds `source : Css.Source.t option`; exhaustive record patterns
   must bind it or add `_`. `Css.of_string ~preserve_source:true` fills it with
   exact authored comments, syntax, trivia ownership and coordinates (#747)
@@ -186,12 +187,10 @@ difference wherever the two are not equivalent.
 - A `style()` container query takes the single-comparison range CSS Conditional
   Rules 5 defines, `style(--gap = 10px)` included, and rejects an interval whose
   two bounds point different ways; `Css.inline_vars` reads its operands (#805)
-- A parse warning whose value matched none of a property's forms says so,
-  in place of a reason that opened a list of accepted forms and named
-  none of them (#801)
-- A parse warning marks the value the author wrote rather than the token after
-  it, so the caret no longer lands on the semicolon that closes the
-  declaration (#801)
+- A parse error or warning marks the text that failed: the caret sits under the
+  value the author wrote rather than the token after it, below the line it
+  marks and at that line's own column in characters. A value matching no form
+  of a property says so (#472, #477, #789, #793, #801)
 - Lenient parsing preserves a declaration-safe value opaquely when a known
   property's typed reader rejects it, while retaining the warning that makes
   strict parsing reject the declaration (#787)
@@ -532,8 +531,8 @@ difference wherever the two are not equivalent.
   printed alike and stopped factoring (#803)
 - `--minify` keeps a vendor-prefixed gradient written with the `background`,
   `mask`, `border-image` or `mask-border` shorthand, as it already did for the
-  longhand. Canonical diff had reported two sheets differing only there as
-  identical (#782)
+  longhand, so deduplication no longer deletes the fallback a browser without
+  the standard function needs (#782)
 - Invalid math results in `shape-margin` and `offset-distance` are dropped like
   those in every other `<length-percentage>` property (#766)
 - Flattening a rule nested under a selector list wraps the parent in `:is()`,
@@ -564,13 +563,12 @@ difference wherever the two are not equivalent.
   retries once when settling changes its graph, and selector-branch factoring
   preserves source order after earlier rewrites (#750)
 - Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
-  need for `user-select`, `backdrop-filter`, `hyphens`, `mask` and its
-  compatible layer longhands, including matching `@supports` tests. An
-  authored prefixed declaration remains authoritative (#751, #758)
-- Default minification also adds `-webkit-text-decoration-color` beside a
-  `text-decoration-color` whose value is not settled at parse time, which
-  Safari and iOS Safari read under both names through 26.1. A value that reads
-  as a colour keeps the standard property alone (#797)
+  need, with the matching `@supports` tests: `user-select`, `backdrop-filter`,
+  `hyphens`, `mask` with its compatible layer longhands, and
+  `-webkit-text-decoration-color` beside a `text-decoration-color` whose value
+  is not settled at parse time. An authored prefixed declaration remains
+  authoritative, and a `text-decoration-color` that reads as a colour keeps the
+  standard property alone (#751, #758, #797)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)
@@ -900,17 +898,11 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
-- Canonical diff treats identical `-webkit-text-decoration-color` and
-  `text-decoration-color` declarations as Cascade's configured redundant
-  alias. A differing fallback or prefixed-only declaration remains distinct
-  (#777)
-- Canonical diff lets a declaration reading `var()` cross a conditional write
-  to that custom property when the rules write disjoint cascade slots. A
-  competing write to the declaration's own property remains order-sensitive
-  (#776)
-- Canonical diff no longer reports a reorder when equal `@supports` blocks are
-  hoisted together across a declaration the later block shadows whenever their
-  condition holds. A crossing that changes the winner stays distinct (#775)
+- Canonical diff equates more rewrites that cannot change what a browser
+  computes: a `-webkit-text-decoration-color` beside an identical
+  `text-decoration-color`, a `var()` reader crossing a conditional write to a
+  disjoint cascade slot, equal `@supports` blocks hoisted together. A crossing
+  that changes which declaration wins stays distinct (#775, #776, #777)
 - Canonical numeric arithmetic has an explicit precision contract:
   `calc(28/14)` compares equal to `2`; default mode equates `calc(28/18)` with
   the minifier's `1.55556`, while `--lossless` keeps them distinct (#753, #756)
@@ -968,25 +960,17 @@ difference wherever the two are not equivalent.
   properties, with source order breaking ties, so a compatibility block no
   longer makes declarations present on both sides read as added or removed
   (#752)
-- `--diff=tree` tracks each repeated conditional block in source order, so
-  moving a later block past a rule is reported even when an earlier block has
-  the same condition (#779)
-- Canonical diff omits generated-tree positions from reordered rules and
-  containers, where those numbers identified neither input and the rule paired
-  with one could be an unrelated container (#780)
-- Canonical diff derives reorder findings from the parsed inputs instead of the
-  independently ordered projection, where one declaration change could make
-  unchanged rules read as reordered (#781)
+- A reordering canonical diff reports is one the two inputs hold: a declaration
+  change no longer makes unchanged rules read as moved, a block that moves past
+  a rule is reported however its condition repeats, and no reorder entry names
+  a tree position that identifies neither input (#779, #780, #781)
 
 ### Library
 
-- `Reader.pp_parse_error` puts its caret immediately below the line it marks,
-  where a multi-line context window printed the caret below the whole window
-  at a column measured from its start (#793)
-- `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder. A parse
-  error's column now counts one replacement character per maximal subpart of
-  an ill-formed sequence, as a browser does, where the previous decoder
-  counted the whole run as one (#788)
+- `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, which
+  counts one replacement character per maximal subpart of an ill-formed
+  sequence, as a browser does, where the previous decoder counted the whole
+  run as one (#788)
 - The library no longer links `unix`. Timing a factoring iteration for
   `--profile` was its only use of it, and `mtime` reads the monotonic clock the
   measurement wants and ships a js_of_ocaml implementation, so embedding
@@ -1074,61 +1058,36 @@ difference wherever the two are not equivalent.
   every block they leave out, not just conditional groups: `@starting-style`,
   `@scope` and an origin wrapper each carry something the resolver does not
   model (#394)
-- `Cascade.Error.to_string` puts the caret under the character that failed and
-  prints back a snippet that is valid UTF-8, where the column was a byte count
-  and a multibyte class name could open the snippet inside a code point (#472)
-- `Cascade.Reader.parse_error` reports the line and column of the failing byte
-  from a forward scan and counts its caret in characters, where the backward
-  walk counted the line before the error and stopped one column short at end of
-  input (#477)
-
-### Testing
-
-- Every normal interop corpus records its pinned upstream, exact regeneration
-  command, and authoritative license notice; regenerate rules are `REGEN=1`
-  gated and promote declared committed traces. The unlicensed SatCSS website
-  corpus moves to opt-in benchmark tooling instead of reading ignored files in
-  normal tests (#745)
+- `Cascade.Error.to_string` prints back a snippet that is valid UTF-8, where a
+  byte-counted column could open the snippet inside a multibyte code point
+  (#472)
 
 ### CLI tools
 
 - `cascade diff --json` writes the comparison as one JSON document on standard
   output in place of the report, so a harness reads what changed rather than
   parsing prose. The exit status is unchanged (#799)
-- `cascade diff` compares a rule's nested body whatever order the two sides
-  write its selector list in, and stops calling that reordering a change: a
-  comma group is a set, so the body held the only difference (#798)
 - `cascade diff` reads either side from standard input when the argument is
   `-`, so the output of a build can be compared without a temporary file. The
   report names that side `<stdin>` (#796)
+- `cascade diff --limit` bounds a report by whole differences: `auto` keeps as
+  many as stay readable, `none` prints every one with every parse warning, and
+  an integer prints exactly that many. A wide report named every selector and
+  explained none (#792)
+- `cascade diff` reports the differences the two sheets hold: different
+  `@namespace` URLs are one, a selector list the two sides order differently is
+  not, a changed `@keyframes` block is named as the at-rule it is rather than
+  as `@layer @keyframes spin`, and an empty file draws no `(0.0% diff)`
+  (#783, #784, #794, #798)
 - `cascade diff` prints a parse warning both inputs raise once, under a label
   naming both files, so the report's warning budget reaches the warnings only
   one side raised (#795)
-- `cascade diff --diff=tree` reports two stylesheets that declare different
-  `@namespace` URLs as different. It called them identical, though a type
-  selector matches in the namespace its sheet declares (#794)
-- `cascade diff --limit` bounds how many differences a report prints, and the
-  automatic shaping now spends its budget on whole entries rather than cutting
-  every entry's body: a wide report named every selector and explained none
-  (#792)
-- `cascade diff` renders a character with no glyph as an escape, so a
-  difference in line endings shows as one and a control byte in a stylesheet
-  can no longer drive the reader's terminal (#791)
-- A `cascade diff` character-level hunk no longer ends with a context line
-  holding one space when the inputs end in a newline: the empty string a
-  final newline leaves behind is the terminator, not a line (#790)
-- `cascade diff` indexes structural, nesting, and reported-selector matches,
-  making a sheet where every rule changes scale near-linearly (#786)
-- `cascade diff` keeps trailing context around a difference between short
-  lines, where it previously stopped immediately after the caret (#785)
-- A parse warning puts its caret under the line it marks, at that line's own
-  column. A snippet spanning several lines drew it below the whole window,
-  indented from the first line, so it underlined nothing (#789)
-- `cascade diff` names a changed `@keyframes` block as the at-rule it is,
-  in place of the `@layer @keyframes spin` line it printed (#784)
-- `cascade diff` reports the two sizes without a percentage when the first
-  file is empty, in place of the `(0.0% diff)` it printed for a pair sharing
-  nothing (#783)
+- A `cascade diff` character-level hunk escapes a byte with no glyph, so a
+  line-ending difference is visible and a control byte cannot drive the
+  reader's terminal, and it keeps trailing context between short lines without
+  ending on a context line holding one space (#785, #790, #791)
+- `cascade diff` scales near-linearly on a sheet where every rule changed
+  (#786)
 - `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
   the canonical root and its descendants, rejecting both lexical and symlink
   escapes. Omitting it retains unrestricted resolution for trusted CSS (#744)
