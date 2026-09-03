@@ -1051,6 +1051,8 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` keeps trailing context around a difference between short
+  lines, where it previously stopped immediately after the caret (#785)
 - `cascade diff` names a changed `@keyframes` block as the at-rule it is,
   in place of the `@layer @keyframes spin` line it printed (#784)
 - `cascade diff` reports the two sizes without a percentage when the first

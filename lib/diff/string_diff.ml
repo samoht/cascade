@@ -231,7 +231,7 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
 
   (* Print the diff lines with appropriate formatting *)
   let diff_exp, diff_act = t.diff_lines in
-  match format_diff_line ~config diff_exp diff_act with
+  (match format_diff_line ~config diff_exp diff_act with
   | `Equal ->
       add_strings buf [ "-"; diff_exp; "\n" ];
       add_strings buf [ "+"; diff_act; "\n" ]
@@ -243,7 +243,7 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
   | `Medium (exp, act, pos) | `Long (exp, act, pos) ->
       add_strings buf [ "-"; exp; "\n" ];
       add_strings buf [ "+"; act; "\n" ];
-      if t.line_expected = t.line_actual then pp_caret ~indent:1 buf pos;
+      if t.line_expected = t.line_actual then pp_caret ~indent:1 buf pos);
 
-      (* Print context after *)
-      List.iter (pp_line_pair buf) t.context_after
+  (* Print context after *)
+  List.iter (pp_line_pair buf) t.context_after
