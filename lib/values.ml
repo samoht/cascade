@@ -1392,6 +1392,24 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Parens inner -> Parens (map_calc f inner)
   | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
 
+(** Partial sibling of {!map_calc}: [Val] leaves go through [f] and the whole
+    tree fails when one of them does. A [Var] / [Sibling_index] /
+    [Sibling_count] node carries no leaf to retype, so it fails too. *)
+let rec map_calc_opt : type a b. (a -> b option) -> a calc -> b calc option =
+ fun f calc ->
+  match calc with
+  | Val v -> Option.map (fun v -> Val v) (f v)
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count -> None
+  | Nested inner -> Option.map (fun i -> Nested i) (map_calc_opt f inner)
+  | Parens inner -> Option.map (fun i -> Parens i) (map_calc_opt f inner)
+  | Expr (left, op, right) -> (
+      match (map_calc_opt f left, map_calc_opt f right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
+
 (* Top-level commas in math-function args round-trip differently in pretty vs
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
