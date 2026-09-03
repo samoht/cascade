@@ -126,11 +126,6 @@ let specificity_strictly_greater a b =
      && (a.classes > b.classes
         || (a.classes = b.classes && a.elements > b.elements))
 
-let specificity_equal a b =
-  let a = Selector.specificity a in
-  let b = Selector.specificity b in
-  a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
-
 let rule_specificity_beats_on_overlap (target : Stylesheet.rule)
     (skipped : Stylesheet.rule) =
   let target_selectors =
@@ -167,7 +162,9 @@ let specificity_ties (target : Stylesheet.rule) (skipped : Stylesheet.rule) =
           Selector_summary.may_overlap
             (Selector_summary.of_selector target_selector)
             skipped_summary
-          && specificity_equal target_selector skipped_selector)
+          && Selector.equal_specificity
+               (Selector.specificity target_selector)
+               (Selector.specificity skipped_selector))
         target_selectors)
     skipped_selectors
 

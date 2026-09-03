@@ -352,18 +352,15 @@ let candidate ?size_cache ~kind ~finalize g ~consume ~produce =
 let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
 let decls_inline_cost decls = decls_size decls + List.length decls
 
-let specificity_equal a b =
-  let a = Selector.specificity a in
-  let b = Selector.specificity b in
-  a.ids = b.ids && a.classes = b.classes && a.elements = b.elements
-
 let selectors_tie_and_overlap a b =
   List.exists
     (fun selector_a ->
       let summary_a = Selector_summary.of_selector selector_a in
       List.exists
         (fun selector_b ->
-          specificity_equal selector_a selector_b
+          Selector.equal_specificity
+            (Selector.specificity selector_a)
+            (Selector.specificity selector_b)
           && Selector_summary.may_overlap summary_a
                (Selector_summary.of_selector selector_b))
         (Edge.selectors b))

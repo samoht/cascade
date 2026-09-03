@@ -282,5 +282,13 @@ let equal (a : t) b = a = b
    the chain they share. 256 is the largest budget the runtime honours, and it
    reaches the tail of any selector CSS is written with. *)
 let hash (selector : t) = Hashtbl.hash_param 256 256 selector
-let equal_specificity (a : specificity) b = a = b
+
+(* Three ints, compared field by field: the optimizer asks this inside a
+   quadratic selector walk, where the polymorphic compare's C call and its
+   traversal of the record cost more than the answer. *)
+let equal_specificity (a : specificity) (b : specificity) =
+  Int.equal a.ids b.ids
+  && Int.equal a.classes b.classes
+  && Int.equal a.elements b.elements
+
 let equal_combinator (a : combinator) b = a = b

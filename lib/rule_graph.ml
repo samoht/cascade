@@ -169,11 +169,6 @@ let overlap_key_lists_intersect a b =
   let broad = Shorthand.broad_overlap_key in
   overlap_key_in broad a || overlap_key_in broad b || overlap_keys_meet a b
 
-let specificity_equal (a : Selector.specificity) (b : Selector.specificity) =
-  Int.equal a.ids b.ids
-  && Int.equal a.classes b.classes
-  && Int.equal a.elements b.elements
-
 (* [List.exists2] over a zipped pair needs the zip built first, and the inner
    one was built inside the outer closure: B's whole tuple list was rebuilt once
    per element of A. Walking the three parallel lists in step decides the same
@@ -192,7 +187,7 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
     (fun selector_a summary_a specificity_a ->
       exists3
         (fun selector_b summary_b specificity_b ->
-          specificity_equal specificity_a specificity_b
+          Selector.equal_specificity specificity_a specificity_b
           &&
           if closed_world then
             (* the caller asserts no element matches two distinct selectors, so
