@@ -673,6 +673,15 @@ let test_inline_style_query_keeps_queried_property () =
   check_inline_case "a range style() query keeps the property it bounds"
     ":root{--n:5}@container style(3 < --n < 10){.z{color:green}}"
     ":root{--n:5}@container style(3<--n<10){.z{color:green}}";
+  (* Conditional Rules 5 sec. 6.2: a <style-range-value> that is a
+     <custom-property-name> is substituted as if it were wrapped in a var(), so
+     an operand spelled as a custom property is read like the bounded one. *)
+  check_inline_case "a range style() query keeps the property bounding it"
+    ":root{--lo:3;--n:5}@container style(--lo < --n < 10){.z{color:green}}"
+    ":root{--lo:3;--n:5}@container style(--lo<--n<10){.z{color:green}}";
+  check_inline_case "a comparison style() query keeps both properties it reads"
+    ":root{--hi:9;--n:5}@container style(--n = --hi){.z{color:green}}"
+    ":root{--hi:9;--n:5}@container style(--n=--hi){.z{color:green}}";
   check_inline_case "both sides of a combined style() query stay live"
     ":root{--a:red;--b:blue}@container style(--a: red) and style(--b: \
      blue){.z{color:green}}"
