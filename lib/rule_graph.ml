@@ -69,6 +69,10 @@ type t = {
       (** when set, two distinct selectors are assumed not to match a common
           element (a caller-asserted closed DOM), so they never cascade-conflict
           on selector grounds *)
+  pin_shared_branches : bool;
+      (** whether equal selector branches add conservative structural edges;
+          optimizer rewrites need them, while a canonical projection over
+          already-expanded rules does not *)
   parent : Selector.t option;
       (** the enclosing nesting context; every node's overlap is computed on its
           selector expanded against this, and rewrites reuse it so produced
@@ -255,7 +259,7 @@ let effective_selector (parent : Selector.t option) (r : rule) =
 
 (* Conflict between two nodes of a graph by their stored summaries/branches. *)
 let nodes_conflict_reason t i j =
-  if share_branch t.branches.(i) t.branches.(j) then
+  if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
     Option.Some Shared_branch_pin
   else if
     overlap_key_lists_intersect t.overlap_keys.(i) t.overlap_keys.(j)
@@ -740,7 +744,8 @@ let index_node t (node : node_id) =
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
-let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
+let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
+    (rules : rule list) : t =
   let rules = Array.of_list rules in
   let n = Array.length rules in
   let summaries = Array.map rule_summary rules in
@@ -758,6 +763,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
     {
       generation = 0;
       closed_world;
+      pin_shared_branches;
       parent;
       count = n;
       rules;
@@ -1152,6 +1158,7 @@ let produced_graph t ~consume ~total ~new_n produced =
   {
     generation = t.generation + 1;
     closed_world = t.closed_world;
+    pin_shared_branches = t.pin_shared_branches;
     parent = t.parent;
     count = new_n;
     rules = append_slack t.rules ~count:total produced;
@@ -1571,6 +1578,7 @@ let to_rules t : rule list =
   Array.to_list (Array.map (fun i -> t.rules.(i)) order)
 
 let canonicalize t =
-  of_rules ?parent:t.parent ~closed_world:t.closed_world (to_rules t)
+  of_rules ?parent:t.parent ~closed_world:t.closed_world
+    ~pin_shared_branches:t.pin_shared_branches (to_rules t)
 
 let to_canonical_rules = to_rules

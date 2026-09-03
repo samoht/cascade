@@ -862,6 +862,10 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Canonical diff lets a declaration reading `var()` cross a conditional write
+  to that custom property when the rules write disjoint cascade slots. A
+  competing write to the declaration's own property remains order-sensitive
+  (#776)
 - Canonical diff no longer reports a reorder when equal `@supports` blocks are
   hoisted together across a declaration the later block shadows whenever their
   condition holds. A crossing that changes the winner stays distinct (#775)

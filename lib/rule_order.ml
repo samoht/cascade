@@ -150,7 +150,7 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
   if n < 2 then List.map fst run
   else
     let g =
-      Rule_graph.of_rules ?parent
+      Rule_graph.of_rules ?parent ~pin_shared_branches:false
         (List.map (fun (stmt, rules) -> element_node stmt rules) run)
     in
     let keys =
@@ -259,7 +259,7 @@ let drop_shadowed_by_rules later_rules (rule : rule) : rule =
   else { rule with declarations }
 
 let rules_conflict ?parent a b =
-  let graph = Rule_graph.of_rules ?parent [ a; b ] in
+  let graph = Rule_graph.of_rules ?parent ~pin_shared_branches:false [ a; b ] in
   Rule_graph.conflict graph
     (Rule_graph.Node_id.of_int_exn 0)
     (Rule_graph.Node_id.of_int_exn 1)
@@ -424,7 +424,7 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
       let arr = Array.of_list run in
       let n = Array.length arr in
       let graph =
-        Rule_graph.of_rules ?parent
+        Rule_graph.of_rules ?parent ~pin_shared_branches:false
           (List.map (fun (stmt, rules) -> element_node stmt rules) run)
       in
       let scan =

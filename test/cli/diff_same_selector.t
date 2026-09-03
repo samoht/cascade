@@ -29,15 +29,8 @@ rather than as a loss and a gain.
   
   --- ref.css
   +++ tw.css
-  └─ @layer utilities (2 reordered, 2 rearranged)
-     ├─ .drop-shadow-blue-500\/50 (position 3) ↔  .drop-shadow-indigo-500 (position 0)
-     ├─ .drop-shadow-blue-500\/50 (moved between rules)
-     │       --tw-drop-shadow-color: #3080ff80
-     │       --tw-drop-shadow: var(--tw-drop-shadow-size)
-     ├─ .drop-shadow-indigo-500 (moved between rules)
-     │       --tw-drop-shadow-color: oklch(.585 .233 277.117)
-     │       --tw-drop-shadow: var(--tw-drop-shadow-size)
-     ├─ .drop-shadow-indigo-500 (position 0) ↔  .drop-shadow-indigo-500 (position 4)
+  └─ @layer utilities (1 reordered)
+     ├─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
      └─ @supports (color: color-mix(in lab,red,red)) (1 reordered)
         └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
   
@@ -144,14 +137,8 @@ gains or loses a declaration, so neither may be reported as modified.
   
   --- guarded_ref.css
   +++ guarded_tw.css
-  └─ @layer utilities (1 reordered, 2 rearranged)
-     ├─ .x (position 2) ↔  .y (position 0)
-     ├─ .x (moved between rules)
-     │       --c: 1
-     │       --d: 3
-     ├─ .y (moved between rules)
-     │       --c: 4
-     │       --d: 6
+  └─ @layer utilities (1 reordered)
+     ├─ .x ↔  .y
      └─ @supports (zoo: bar) (1 reordered)
         └─ .x ↔  .y
   
