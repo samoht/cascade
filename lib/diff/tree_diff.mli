@@ -138,19 +138,26 @@ val pp :
   ?actual:string ->
   ?color:bool ->
   ?depth:int ->
+  ?entries:int ->
   Buffer.t ->
   t ->
   unit
-(** [pp ?expected ?actual ?color ?depth buf t] pretty-prints a tree diff with
-    optional labels. Default labels are "Expected" and "Actual". [color]
-    (default [false]) wraps diff markers in ANSI escapes; the printer writes
-    into a buffer, so the caller decides whether the destination supports
+(** [pp ?expected ?actual ?color ?depth ?entries buf t] pretty-prints a tree
+    diff with optional labels. Default labels are "Expected" and "Actual".
+    [color] (default [false]) wraps diff markers in ANSI escapes; the printer
+    writes into a buffer, so the caller decides whether the destination supports
     colour.
 
     [depth] bounds how many tree levels are rendered, the top-level entries
     being level 1 (default: unbounded). A node whose children are cut off is
     followed by a ["... N more lines"] marker, so the report never reads as if
-    the elided subtree were empty. *)
+    the elided subtree were empty.
+
+    [entries] bounds how many top-level entries the whole report renders
+    (default: unbounded), the budget being spent in printing order: the cascade
+    layer order, then the rules, then the reordered rules, then the containers.
+    Each entry that is printed is printed whole, and the report ends with a
+    ["... N more differences"] line counting the rest. *)
 
 val pp_rule_diff_simple : Buffer.t -> rule_diff -> unit
 (** [pp_rule_diff_simple buf rule] pretty-prints a rule diff in a simple format

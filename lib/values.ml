@@ -414,7 +414,7 @@ let pp_syntax_fallback ctx value =
     (if Pp.minified ctx then
        Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
          value
-     else Parser.to_string_custom value)
+     else Parser.string_of_components value)
 
 let pp_var_ref ctx name =
   pp_var_open ctx name;
@@ -532,7 +532,7 @@ let pp_component_values ctx values =
     if Pp.minified ctx then
       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
         values
-    else Parser.to_string_custom values
+    else Parser.string_of_components values
   in
   Pp.string ctx value
 
@@ -4377,19 +4377,6 @@ let pp_hue_interpolation : hue_interpolation Pp.t =
   | Specified -> Pp.string ctx "specified"
   | Default -> ()
 
-(* CSS Syntax 3 (ED) sec. 4: a [<percentage-token>] ends at its [%], so the
-   separator before the next component carries no information and elides under
-   minify. Narrower than {!Pp.token_sp}, which also elides after [)]: a function
-   is word-like at its end, and the custom-value serialiser keeps that
-   separator, so eliding it here would make a constructed colour disagree with
-   its own reparse. Reads the emitted byte rather than the node so a spelling
-   that does not end on [%] ([calc(NaN*1%)]) stays spaced. *)
-let space_after_percentage : unit Pp.t =
- fun ctx () ->
-  match Pp.last_char ctx with
-  | Some '%' when Pp.minified ctx -> ()
-  | _ -> Pp.space ctx ()
-
 let static_component_can_touch_negative (component : component) =
   match component with
   | Num _ | Pct _ -> true
@@ -4423,15 +4410,14 @@ let pp_color_components ~decimals : component list Pp.t =
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
  fun ctx (r, g, b, alpha) ->
-  Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ];
+  Pp.list ~sep:Pp.pct_sp pp_channel ctx [ r; g; b ];
   pp_opt_alpha ctx alpha
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
-  | Channels { r; g; b } ->
-      Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ]
+  | Channels { r; g; b } -> Pp.list ~sep:Pp.pct_sp pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
 (** Lab-like float string. CSSOM serialisation (CSSOM 1 sec. 6.7.2) drops a
@@ -4511,7 +4497,7 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
   | None ->
       space_after_color_percentage ctx printed_l ~next:(Some "none");
       Pp.string ctx "none");
-  space_after_percentage ctx ();
+  Pp.pct_sp ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
@@ -4522,7 +4508,7 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
   pp_hue ctx h;
   Pp.space ctx ();
   pp_percentage ctx s;
-  space_after_percentage ctx ();
+  Pp.pct_sp ctx ();
   pp_percentage ctx l;
   pp_opt_alpha ctx a
 
@@ -4568,7 +4554,7 @@ let pp_lab_like_args ~axis_pct_scale :
       (ctx.Pp.minify && starts_unsigned_number a
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
-  then space_after_percentage ctx ();
+  then Pp.pct_sp ctx ();
   Pp.string ctx b;
   match alpha with
   | None -> ()
@@ -4785,7 +4771,7 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
         if Pp.minified ctx then
           Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
             value
-        else Parser.to_string_custom value
+        else Parser.string_of_components value
       in
       Pp.string ctx (first_top_level_comma_segment rendered)
   | _ when Pp.minified ctx -> (
@@ -4840,7 +4826,8 @@ let pp_specified_color = pp_color_default
 (* CSS Values 4 sec. 7.2: [ms] and [s] are interchangeable. Pure minified
    serialization picks the shorter exact leaf spelling as a fallback for callers
    that deliberately skip AST normalization. [shorten_ms:false] keeps the unit
-   where its surrounding grammar asks for source-unit fidelity. *)
+   wherever the normalization would not have converted it either: a [calc()]
+   operand, and the [interest-delay] grammar. *)
 let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
   if f = 0. then
     if Pp.minified ctx then Pp.string ctx "0s" else pp_unit ctx f suffix
@@ -4857,98 +4844,52 @@ let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
       Pp.string ctx ms;
       Pp.string ctx "ms")
 
-let rec pp_duration : duration Pp.t =
+let rec pp_duration_with ~shorten_ms : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_duration_unit ctx f "ms"
+  | Ms f -> pp_duration_unit ~shorten_ms ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
-  | Durations durations -> Pp.list ~sep:Pp.comma pp_duration ctx durations
+  | Durations durations ->
+      Pp.list ~sep:Pp.comma (pp_duration_with ~shorten_ms) ctx durations
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
           if strategy <> "nearest" then (
             Pp.string ctx strategy;
             Pp.comma ctx ());
-          pp_duration ctx value;
+          pp_duration_with ~shorten_ms ctx value;
           Pp.comma ctx ();
-          pp_duration ctx step)
+          pp_duration_with ~shorten_ms ctx step)
         ctx (strategy, value, step)
   | Rem (a, b) ->
       Pp.call "rem"
         (fun ctx (a, b) ->
-          pp_duration ctx a;
+          pp_duration_with ~shorten_ms ctx a;
           Pp.comma ctx ();
-          pp_duration ctx b)
+          pp_duration_with ~shorten_ms ctx b)
         ctx (a, b)
   | Mod (a, b) ->
       Pp.call "mod"
         (fun ctx (a, b) ->
-          pp_duration ctx a;
+          pp_duration_with ~shorten_ms ctx a;
           Pp.comma ctx ();
-          pp_duration ctx b)
+          pp_duration_with ~shorten_ms ctx b)
         ctx (a, b)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
+  | Var v -> pp_var (pp_duration_with ~shorten_ms) ctx v
+  (* [normalize_duration] canonicalises a typed [<time>] but folds a [calc()]
+     only when it computes one, so the operands of a [calc()] that reaches the
+     output stay as authored - a [var()] fallback among them. Shortening one
+     here would print two unequal declarations alike and lose them a
+     factoring. *)
+  | Calc c ->
+      pp_calc_with ~unwrap_num:false (pp_duration_with ~shorten_ms:false) ctx c
 
-and pp_duration_in_calc : duration Pp.t =
- fun ctx -> function
-  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
-  | S f -> pp_duration_unit ctx f "s"
-  | Durations durations ->
-      Pp.list ~sep:Pp.comma pp_duration_in_calc ctx durations
-  | Round (strategy, value, step) ->
-      pp_duration_preserve_ms ctx (Round (strategy, value, step))
-  | Rem (a, b) -> pp_duration_preserve_ms ctx (Rem (a, b))
-  | Mod (a, b) -> pp_duration_preserve_ms ctx (Mod (a, b))
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_duration ctx v
-  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
-
-and pp_duration_preserve_ms : duration Pp.t =
- fun ctx -> function
-  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
-  | S f -> pp_duration_unit ctx f "s"
-  | Durations durations ->
-      Pp.list ~sep:Pp.comma pp_duration_preserve_ms ctx durations
-  | Round (strategy, value, step) ->
-      Pp.call "round"
-        (fun ctx (strategy, value, step) ->
-          if strategy <> "nearest" then (
-            Pp.string ctx strategy;
-            Pp.comma ctx ());
-          pp_duration_preserve_ms ctx value;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx step)
-        ctx (strategy, value, step)
-  | Rem (a, b) ->
-      Pp.call "rem"
-        (fun ctx (a, b) ->
-          pp_duration_preserve_ms ctx a;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx b)
-        ctx (a, b)
-  | Mod (a, b) ->
-      Pp.call "mod"
-        (fun ctx (a, b) ->
-          pp_duration_preserve_ms ctx a;
-          Pp.comma ctx ();
-          pp_duration_preserve_ms ctx b)
-        ctx (a, b)
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_duration_preserve_ms ctx v
-  | Calc c -> pp_calc_with ~unwrap_num:false pp_duration_in_calc ctx c
+let pp_duration : duration Pp.t = pp_duration_with ~shorten_ms:true
+let pp_duration_preserve_ms : duration Pp.t = pp_duration_with ~shorten_ms:false
 
 let rec pp_number : number Pp.t =
  fun ctx -> function
@@ -6981,6 +6922,9 @@ and color_parsers =
 
 and read_color t : color =
   Cursor.ws t;
+  (* The two branches below consume the token before judging it, so they mark
+     [loc] rather than whatever the cursor has moved on to. *)
+  let loc = Cursor.position t in
   let color =
     match Cursor.peek t with
     | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) -> (
@@ -6992,13 +6936,13 @@ and read_color t : color =
           || ('A' <= c && c <= 'F')
         in
         if not (len = 3 || len = 4 || len = 6 || len = 8) then
-          Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+          Cursor.err_invalid ~loc t ("hex color length: " ^ string_of_int len)
         else if not (String.for_all is_hex value) then
-          Cursor.err_invalid t ("hex color digits: " ^ value)
+          Cursor.err_invalid ~loc t ("hex color digits: " ^ value)
         else
           match rgba_of_hex value with
           | Some (r, g, b, a) -> Authored_hex { value; r; g; b; a }
-          | None -> Cursor.err_invalid t ("hex color digits: " ^ value))
+          | None -> Cursor.err_invalid ~loc t ("hex color digits: " ^ value))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
         (* CSS Values 4 sec. 4.1: a function name is a keyword, so it names the
            same function in whatever case it was written. *)
@@ -7014,7 +6958,7 @@ and read_color t : color =
         (* CSS color keywords are case-insensitive. *)
         match read_color_keyword_of_string (String.lowercase_ascii ident) with
         | Some color -> color
-        | None -> Cursor.err t ("unknown color: " ^ ident))
+        | None -> Cursor.err ~loc t ("unknown color: " ^ ident))
     | _ -> Cursor.err t "color"
   in
   Cursor.ws t;

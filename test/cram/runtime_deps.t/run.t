@@ -3,7 +3,7 @@ the library promises: an embedder targeting js_of_ocaml pays for every entry.
 Alphabetical, and mtime comes along because mtime.clock exports it.
 
   $ ocamlfind query -format '%(requires)' cascade
-  logs mtime mtime.clock psq uri uutf
+  logs mtime mtime.clock psq uri
 
 Measuring how long a factoring iteration takes needs a monotonic clock, so the
 library reads one from mtime rather than the wall clock in unix.  Nothing else

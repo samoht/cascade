@@ -117,14 +117,16 @@ let escape_ident_emit_ascii buf cp =
     Buffer.add_char buf '\\';
     Buffer.add_char buf (Char.chr cp))
 
-(* Emit one code point of an ident-like name, honouring the leading-digit
-   restriction recorded in [needs_leading_escape]. *)
-let escape_ident_emit_cp buf ~needs_leading_escape u =
+(* Emit the code point [s] holds at byte [i], honouring the leading-digit
+   restriction recorded in [needs_leading_escape]. One that needs no escape is
+   copied straight out of [s] rather than encoded again. *)
+let escape_ident_emit_cp buf ~needs_leading_escape s i u =
   let cp = Uchar.to_int u in
   if needs_leading_escape then add_hex_escape_cp buf cp
   else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
   else if cp < 0x80 then escape_ident_emit_ascii buf cp
-  else if Lexer.spec_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
+  else if Lexer.spec_non_ascii_ident_cp cp then
+    Buffer.add_substring buf s i (Uchar.utf_8_byte_length u)
   else add_hex_escape_cp buf cp
 
 (* Sec. 4.3.9 opens no ident on [-] then a digit, so the digit is escaped even
@@ -139,15 +141,17 @@ let escape_ident_starts s n =
 let escape_ident_needs_leading (starts_with_digit, starts_dash_digit) i =
   (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit)
 
-let escape_ident_emit_item buf starts () i = function
-  | `Uchar u ->
+let escape_ident_emit_item buf starts s () i = function
+  | Common.String.Scalar u ->
       let needs_leading_escape = escape_ident_needs_leading starts i in
-      escape_ident_emit_cp buf ~needs_leading_escape u
-  | `Malformed bs ->
+      escape_ident_emit_cp buf ~needs_leading_escape s i u
+  | Common.String.Malformed len ->
       (* Malformed UTF-8 bytes (e.g., a lone continuation byte the lexer's
          [consume_escape] dropped into an ident) can't be re-tokenized as the
          same ident. Hex-escape each byte so the serialized form round-trips. *)
-      String.iter (fun c -> add_hex_escape buf c) bs
+      for j = i to i + len - 1 do
+        add_hex_escape buf s.[j]
+      done
 
 (* [s] and [n] are parameters rather than free variables of an inner loop, which
    would cost a closure on every ident escaped. *)
@@ -156,9 +160,9 @@ let rec ascii_ident_continue_from s n i =
   || Syntax.is_ascii_ident_continue s.[i]
      && ascii_ident_continue_from s n (i + 1)
 
-(* An ident serialises to itself byte-for-byte, so the buffer + Uutf walk below
-   would allocate nothing useful. The empty name is not an ident and has nothing
-   to escape either. *)
+(* An ident serialises to itself byte-for-byte, so the buffer + walk below would
+   allocate nothing useful. The empty name is not an ident and has nothing to
+   escape either. *)
 let escape_ident_needs_no_escape s n = n = 0 || Syntax.is_ident s
 
 let escape_ident s =
@@ -168,11 +172,11 @@ let escape_ident s =
   else
     let buf = Buffer.create n in
     let starts = escape_ident_starts s n in
-    Uutf.String.fold_utf_8 (escape_ident_emit_item buf starts) () s;
+    Common.String.utf8_fold (escape_ident_emit_item buf starts s) () s;
     Buffer.contents buf
 
 (* Every code point of an all-ASCII name serialises to itself, so the buffer +
-   Uutf walk below would allocate nothing useful. *)
+   walk below would allocate nothing useful. *)
 let escape_name_needs_no_escape s n = ascii_ident_continue_from s n 0
 
 let escape_name s =
@@ -180,11 +184,12 @@ let escape_name s =
   if escape_name_needs_no_escape s n then s
   else
     let buf = Buffer.create n in
-    let folder () _ = function
-      | `Uchar u -> escape_ident_emit_cp buf ~needs_leading_escape:false u
-      | `Malformed bs -> Buffer.add_string buf bs
+    let folder () i = function
+      | Common.String.Scalar u ->
+          escape_ident_emit_cp buf ~needs_leading_escape:false s i u
+      | Common.String.Malformed len -> Buffer.add_substring buf s i len
     in
-    Uutf.String.fold_utf_8 folder () s;
+    Common.String.utf8_fold folder () s;
     Buffer.contents buf
 
 let add_escaped_string buf ~quote ~terminated s =
@@ -754,15 +759,6 @@ let to_string_minified cvs = to_string_minified_with ~minify_numbers:false cvs
 let to_string_minified_numbers cvs =
   to_string_minified_with ~minify_numbers:true cvs
 
-let to_string_custom cvs =
-  let buf = Buffer.create 64 in
-  cvs_to_buffer buf cvs;
-  Buffer.contents buf
-
-(* Custom-property values are opaque token streams (CSS Custom Properties 1), so
-   [to_string_custom] keeps authored whitespace. This minified rendering is for
-   canonical output only: collapse optional whitespace in blocks and function
-   args while preserving token boundaries. *)
 let url_string_can_unquote s =
   not
     (String.exists
@@ -941,6 +937,10 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
   in
   loop None false false cvs
 
+(* Custom-property values are opaque token streams (CSS Custom Properties 1), so
+   [string_of_components] keeps every optional whitespace token. This minified
+   rendering is for canonical output only: collapse optional whitespace in
+   blocks and function args while preserving token boundaries. *)
 let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else

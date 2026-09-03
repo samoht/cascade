@@ -40,9 +40,28 @@ module String : sig
       [Stdlib.String.lowercase_ascii s]. CSS identifiers are overwhelmingly in
       that set, so this avoids the [Bytes.map] allocation for them. *)
 
+  (** One element of UTF-8 text: a Unicode scalar value, or the [n] bytes of a
+      maximal subpart of an ill-formed sequence, the longest prefix that could
+      still open a well-formed one. An ill-formed run holds as many maximal
+      subparts as CSS Syntax 3 (ED) sec. 3.3 puts U+FFFD replacement characters
+      in its place. *)
+  type utf8 = Scalar of Uchar.t | Malformed of int
+
+  val utf8_decode : ?pos:int -> ?len:int -> string -> utf8 option
+  (** [utf8_decode s] is the element at the start of [s], or of its [len] bytes
+      from [pos], and [None] when that window holds no byte. A sequence reaching
+      past the end of the window is truncated, so the bytes of it that are
+      inside are {!constructor-Malformed}. *)
+
+  val utf8_fold :
+    ?pos:int -> ?len:int -> ('a -> int -> utf8 -> 'a) -> 'a -> string -> 'a
+  (** [utf8_fold f acc s] applies {!utf8_decode} along [s], or along its [len]
+      bytes from [pos], passing [f] the byte offset of each element. *)
+
   val utf8_length : ?pos:int -> ?len:int -> string -> int
-  (** [utf8_length s] counts the Unicode scalar values of [s], or of its [len]
-      bytes from [pos], each malformed byte sequence counting as one. *)
+  (** [utf8_length s] counts the elements of [s], or of its [len] bytes from
+      [pos]: one per Unicode scalar value and one per maximal subpart of an
+      ill-formed sequence. *)
 
   val utf8_lead_before : string -> int -> int
   (** [utf8_lead_before s i] moves [i] back to the lead byte of the UTF-8
@@ -53,6 +72,13 @@ module String : sig
   val utf8_lead_after : string -> int -> int
   (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
       inside, on the same terms as {!utf8_lead_before}. *)
+
+  val marker_line : string list -> int -> int * int * int
+  (** [marker_line lines marker_pos] resolves a character offset into [lines],
+      some text split on newlines, as the index of the line holding it, its
+      column inside that line, and that line's length. Characters are counted as
+      {!utf8_length} counts them, and an offset past the last line clamps to
+      that line's end. *)
 end
 
 val mix_int : int -> int -> int

@@ -26,7 +26,7 @@ each side.
   > .s3{order:3}
   > @media print{.t3{color:#0f0}}
   > EOF
-  $ NO_COLOR=1 cascade diff --diff=tree --depth=max blocks-split.css blocks-merged.css
+  $ NO_COLOR=1 cascade diff --diff=tree --limit=none blocks-split.css blocks-merged.css
   CSS: 204 chars vs 189 chars (7.4% diff)
   Changes: 1 changed container
   

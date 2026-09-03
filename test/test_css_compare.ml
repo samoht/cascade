@@ -156,6 +156,25 @@ let canonical_keeps_target_gated_content () =
     (equal ".a{color:red;@supports (display:grid){color:blue}}"
        ".a { color: #f00; @supports (display: grid) { color: #00f } }")
 
+(* Cascade's configured normalization treats the WebKit spelling as a typed
+   alias once an identical, widely available unprefixed declaration follows.
+   Canonical comparison should project that redundant twin away without erasing
+   a differing fallback or a prefixed-only declaration. *)
+let canonical_drops_redundant_decoration_color_alias () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "an identical WebKit decoration-color twin is redundant" true
+    (equal ".a{text-decoration-color:red}"
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:red}");
+  Alcotest.(check bool)
+    "a differing WebKit decoration-color fallback remains" false
+    (equal ".a{text-decoration-color:blue}"
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:blue}");
+  Alcotest.(check bool)
+    "a prefixed-only decoration color remains" false
+    (equal ".a{text-decoration-color:red}"
+       ".a{-webkit-text-decoration-color:red}")
+
 (* Media Queries 4 sec. 4.2 gives [min-X]/[max-X] and the range form one
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
@@ -311,6 +330,45 @@ let canonical_supports_hoisting () =
        ".a{color:red}.a{color:green}.b{color:blue}.y{display:grid}@supports \
         (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
         50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}")
+
+(* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
+   and substitute its computed value into the property containing [var()]. A
+   [color] declaration therefore reads [--x] without writing it: crossing a
+   guarded [--x] write is safe, while crossing a guarded [color] write is
+   not. *)
+let canonical_var_reader_crosses_guarded_writer () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let condition = "(color:color-mix(in lab,red,red))" in
+  Alcotest.(check bool)
+    "a var() reader crosses an independent guarded writer" true
+    (equal
+       (String.concat ""
+          [
+            ".a{--x:red}.a{color:var(--x)}@supports ";
+            condition;
+            "{.a{--x:blue}}";
+          ])
+       (String.concat ""
+          [
+            ".a{--x:red}@supports ";
+            condition;
+            "{.a{--x:blue}}.a{color:var(--x)}";
+          ]));
+  Alcotest.(check bool)
+    "a competing guarded write pins the var() reader" false
+    (equal
+       (String.concat ""
+          [
+            ".a{--x:red;color:var(--x)}@supports ";
+            condition;
+            "{.a{color:blue}}";
+          ])
+       (String.concat ""
+          [
+            ".a{--x:red}@supports ";
+            condition;
+            "{.a{color:blue}}.a{color:var(--x)}";
+          ]))
 
 (* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
@@ -1623,6 +1681,8 @@ let suite =
         `Quick canonical_declaration_after_nested_rule;
       Alcotest.test_case "canonical supports hoisting" `Quick
         canonical_supports_hoisting;
+      Alcotest.test_case "canonical var reader crosses guarded writer" `Quick
+        canonical_var_reader_crosses_guarded_writer;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
         canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
@@ -1633,6 +1693,8 @@ let suite =
         equal_canonical_media_not_all;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
+      Alcotest.test_case "canonical drops redundant decoration-color alias"
+        `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds media range spellings" `Quick
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"

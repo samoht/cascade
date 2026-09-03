@@ -307,16 +307,18 @@ let vector_effect_space_of = function
   | _ -> Option.None
 
 let read_vector_effect_keyword t : vector_effect_keyword =
+  let loc = Cursor.position t in
   let name = Cursor.ident t in
   match vector_effect_keyword_of name with
   | Some k -> k
-  | Option.None -> err_invalid_value t "vector-effect" name
+  | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
 let read_vector_effect_space t : vector_effect_space =
+  let loc = Cursor.position t in
   let name = Cursor.ident t in
   match vector_effect_space_of name with
   | Some s -> s
-  | Option.None -> err_invalid_value t "vector-effect" name
+  | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
 (* [ <effect> ]+ then an optional space keyword, so an ident that names a space
    ends the effect run. *)
@@ -357,10 +359,11 @@ let paint_order_keyword_of = function
   | _ -> None
 
 let read_paint_order_keyword t : paint_order_keyword =
+  let loc = Cursor.position t in
   let name = Cursor.ident t in
   match paint_order_keyword_of name with
   | Some k -> k
-  | None -> err_invalid_value t "paint-order" name
+  | None -> err_invalid_value ~loc t "paint-order" name
 
 (* [||] takes each operand at most once, so a repeat ends the list rather than
    extending it. *)

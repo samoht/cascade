@@ -3190,9 +3190,25 @@ let offset_sheet css : Css.parse =
 let offset_minified css =
   String.trim (Css.to_string ~minify:true (offset_sheet css).stylesheet)
 
-(* A value the grammar rejects is dropped from the sheet and reported, not
-   carried through as opaque text. *)
-let offset_rejects value =
+(* A value the typed grammar rejects stays in a lenient sheet when its component
+   stream is declaration-safe. It remains opaque and reported, so strict mode
+   still rejects it. *)
+let offset_preserves_untyped value =
+  let css = String.concat "" [ ".x{offset:"; value; "}" ] in
+  let preserved = offset_minified css in
+  Alcotest.(check bool)
+    (css ^ " is preserved") true
+    (not (String.equal preserved ""));
+  Alcotest.(check string)
+    (css ^ " remains stable") preserved
+    (offset_minified preserved);
+  Alcotest.(check bool)
+    (css ^ " warns") true
+    (match (offset_sheet css).warnings with [] -> false | _ :: _ -> true)
+
+(* Declaration-level validation rejects CSS-wide keyword mixtures before the
+   typed offset reader is tried, so they remain ordinary recovery drops. *)
+let offset_drops value =
   let css = String.concat "" [ ".x{offset:"; value; "}" ] in
   Alcotest.(check string) (css ^ " is dropped") "" (offset_minified css);
   Alcotest.(check bool)
@@ -3282,28 +3298,28 @@ let offset_canonical_slots () =
     "normal none / auto"
 
 let offset_invalid_values () =
-  offset_rejects "total nonsense here";
+  offset_preserves_untyped "total nonsense here";
   (* The [!] multiplier: the leading group must produce a value. *)
-  offset_rejects "/ center";
+  offset_preserves_untyped "/ center";
   (* The anchor is required once the slash is written. *)
-  offset_rejects "none /";
+  offset_preserves_untyped "none /";
   (* The distance and the rotation need a path in front of them. *)
-  offset_rejects "30deg";
-  offset_rejects "auto 30deg 90px";
+  offset_preserves_untyped "30deg";
+  offset_preserves_untyped "auto 30deg 90px";
   (* The path may not follow the distance or the rotation. *)
-  offset_rejects "100px 0deg path(\"m 0 0 h 100\")";
+  offset_preserves_untyped "100px 0deg path(\"m 0 0 h 100\")";
   (* Neither half of the [||] pair may be filled twice. *)
-  offset_rejects "path(\"m 0 0 h 100\") 100px 200px";
-  offset_rejects "path(\"m 0 0 h 100\") auto reverse";
-  offset_rejects "path(\"m 0 0 h 100\") reverse 100px 30deg";
-  offset_rejects "path(\"m 0 0 h 100\") 200% auto 100px";
+  offset_preserves_untyped "path(\"m 0 0 h 100\") 100px 200px";
+  offset_preserves_untyped "path(\"m 0 0 h 100\") auto reverse";
+  offset_preserves_untyped "path(\"m 0 0 h 100\") reverse 100px 30deg";
+  offset_preserves_untyped "path(\"m 0 0 h 100\") 200% auto 100px";
   (* Nothing follows the group but the anchor. *)
-  offset_rejects "path(\"m 0 0 h 100\") bottom";
+  offset_preserves_untyped "path(\"m 0 0 h 100\") bottom";
   (* The anchor is one [<position>]: at most four components. *)
-  offset_rejects "none/10px 20px 30deg";
+  offset_preserves_untyped "none/10px 20px 30deg";
   (* A CSS-wide keyword stands alone (CSS Cascade 5 sec. 7.3). *)
-  offset_rejects "initial none";
-  offset_rejects "none/inherit"
+  offset_drops "initial none";
+  offset_drops "none/inherit"
 
 let offset_slots_roundtrip () =
   offset_roundtrips ".x{offset:auto}";
@@ -5387,7 +5403,7 @@ let canonical_math_block_context () =
   let components = Cursor.remaining (Cursor.of_string "calc([f() + 1])") in
   let actual =
     components |> canonicalize_math_whitespace_components
-    |> Parser.to_string_custom
+    |> Parser.string_of_components
   in
   check string "square block ends math context" "calc([f()+ 1])" actual
 

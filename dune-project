@@ -31,8 +31,7 @@
   (fmt (>= 0.10.0))
   base-unix
   (mtime (>= 2.1.0))
-  uutf
   uri
   psq
   logs
-  (cmdliner (>= 1.1.0))))
+  (cmdliner (>= 2.0.0))))

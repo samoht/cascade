@@ -28,13 +28,9 @@ let remember seen decl =
   let bucket = Hashtbl.find_opt seen hash |> Option.value ~default:[] in
   Hashtbl.replace seen hash (decl :: bucket)
 
-let default_same a b =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
-let v ?(same = default_same) ?(keep = fun (_ : Stylesheet.rule) -> true)
-    (rules : Stylesheet.rule array) =
+let v ?(same = Declaration.same_minified)
+    ?(keep = fun (_ : Stylesheet.rule) -> true) (rules : Stylesheet.rule array)
+    =
   let table = Hashtbl.create 1024 in
   Array.iteri
     (fun row rule ->

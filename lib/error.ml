@@ -88,13 +88,23 @@ let pp : t Pp.t =
   match snippet t with
   | None -> ()
   | Some { text; marker_pos; marker_len } ->
-      Pp.cut ctx ();
-      Pp.string ctx text;
-      Pp.cut ctx ();
-      (* Both counts are columns rather than bytes, so a space and a caret
-         apiece line the marker up under a multibyte snippet. *)
-      Pp.string ctx (String.make marker_pos ' ');
-      Pp.string ctx (String.make (max 1 marker_len) '^')
+      (* The caret line goes under the line it marks rather than under the whole
+         window. Both counts are columns rather than bytes, so a space and a
+         caret apiece line the marker up under a multibyte snippet. *)
+      let lines = String.split_on_char '\n' text in
+      let marker_line, marker_pos, line_len =
+        Common.String.marker_line lines marker_pos
+      in
+      let marker_len = max 1 (min marker_len (line_len - marker_pos)) in
+      List.iteri
+        (fun i line ->
+          Pp.cut ctx ();
+          Pp.string ctx line;
+          if i = marker_line then (
+            Pp.cut ctx ();
+            Pp.string ctx (String.make marker_pos ' ');
+            Pp.string ctx (String.make marker_len '^')))
+        lines
 
 let to_string t = Pp.to_string pp t
 

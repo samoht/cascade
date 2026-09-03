@@ -148,16 +148,18 @@ let test_duplicate_buggy_properties () =
     [ "-webkit-text-decoration:inherit" ]
     (List.map (Css.Declaration.to_string ~minify:true) duplicated);
 
-  (* -webkit-text-decoration-color is a compatibility property, not a generated
-     fallback for the standard property. External minifiers preserve authored
-     prefixed/unprefixed pairs and do not synthesize either spelling. *)
+  (* Synthesizing -webkit-text-decoration-color is the target-driven layer's
+     decision, taken against the declared browser versions;
+     target_evergreen_compatibility_prefixes covers it. This pass carries no
+     targets, so it duplicates only the properties WebKit reads wrongly and
+     leaves authored prefixed and unprefixed spellings distinct. *)
   let pp_decls decls =
     List.map (Css.Declaration.to_string ~minify:true) decls
   in
   let standard_color =
     duplicate_buggy_properties [ v Text_decoration_color (hex_color "0000ff") ]
   in
-  check (list string) "standard decoration color is not prefixed"
+  check (list string) "the target-less pass does not prefix a decoration color"
     [ "text-decoration-color:#00f" ]
     (pp_decls standard_color);
   let prefixed_color =
@@ -815,11 +817,7 @@ let test_nested_media_merge_is_linear () =
     | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
   in
   let measure stylesheet =
-    Gc.full_major ();
-    let before = Gc.minor_words () in
-    let result = Css.optimize stylesheet in
-    ignore (Sys.opaque_identity result);
-    Gc.minor_words () -. before
+    Css_test_helpers.measure (fun () -> Css.optimize stylesheet)
   in
   let small_words = measure (sheet 256) in
   let large_words = measure (sheet 512) in
@@ -1051,7 +1049,13 @@ let test_var_color_functions_preserved () =
   same ".x{background-color:rgba(var(--rgb),var(--op))}";
   same ".x{border-color:rgba(var(--rgb),var(--op))}";
   same ".x{outline-color:rgba(var(--rgb),var(--op))}";
-  same ".x{text-decoration-color:rgba(var(--rgb),var(--op))}";
+  (* text-decoration-color also takes the WebKit alias at the declared targets,
+     which target_evergreen_compatibility_prefixes owns. The pending value is
+     what has to survive, and it survives on both spellings. *)
+  Alcotest.(check string)
+    "a decoration colour keeps its pending value"
+    ".x{-webkit-text-decoration-color:rgba(var(--rgb),var(--op));text-decoration-color:rgba(var(--rgb),var(--op))}"
+    (opt ".x{text-decoration-color:rgba(var(--rgb),var(--op))}");
   same ".x{caret-color:rgba(var(--rgb),var(--op))}";
   same ".x{fill:rgba(var(--rgb),var(--op))}";
   same ".x{stroke:rgba(var(--rgb),var(--op))}";
@@ -3320,10 +3324,30 @@ let target_evergreen_compatibility_prefixes () =
     ".a{-webkit-mask:none!important;mask:none!important}"
     (optimized_string ".a{mask:none!important}");
   Alcotest.(check string)
-    "decoration color needs no prefix for the declared target"
-    ".prose a{text-decoration:underline;text-decoration-color:var(--c)}"
+    "an unresolved decoration color takes the WebKit spelling too"
+    ".prose \
+     a{text-decoration:underline;-webkit-text-decoration-color:var(--c);text-decoration-color:var(--c)}"
     (optimized_string
        ".prose{a{text-decoration:underline;text-decoration-color:var(--c)}}");
+  Alcotest.(check string)
+    "a decoration color read as a colour keeps the standard property alone"
+    ".a{text-decoration-color:#00f}"
+    (optimized_string ".a{text-decoration-color:blue}");
+  Alcotest.(check string)
+    "the decoration color fallback preserves importance"
+    ".a{-webkit-text-decoration-color:var(--c)!important;text-decoration-color:var(--c)!important}"
+    (optimized_string ".a{text-decoration-color:var(--c)!important}");
+  Alcotest.(check string)
+    "an authored decoration color fallback is not supplemented"
+    ".a{-webkit-text-decoration-color:red;text-decoration-color:var(--c)}"
+    (optimized_string
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:var(--c)}");
+  Alcotest.(check string)
+    "the declared target prefixes a decoration color feature test"
+    "@supports(-webkit-text-decoration-color:var(--c))or \
+     (text-decoration-color:var(--c)){.a{-webkit-text-decoration-color:var(--c);text-decoration-color:var(--c)}}"
+    (optimized_string
+       "@supports(text-decoration-color:var(--c)){.a{text-decoration-color:var(--c)}}");
   Alcotest.(check string)
     "spec-only mode does not synthesize target fallbacks"
     ".a{user-select:none;backdrop-filter:blur(1px);hyphens:auto;mask:none}"
@@ -3377,7 +3401,42 @@ let target_evergreen_compatibility_prefixes () =
     "targets past the compatibility boundaries omit hyphens and mask prefixes"
     ".a{hyphens:auto;mask-image:none}"
     (optimized_string ~targets:targets_past_hyphens_and_mask_prefixes
-       ".a{hyphens:auto;mask-image:none}")
+       ".a{hyphens:auto;mask-image:none}");
+  let safari_26_1 =
+    {
+      Css.Optimize.evergreen_targets with
+      safari = (26, 1);
+      ios_safari = (26, 1);
+    }
+  in
+  Alcotest.(check string)
+    "Safari 26.1 still receives the decoration color fallback"
+    ".a{-webkit-text-decoration-color:var(--c);text-decoration-color:var(--c)}"
+    (optimized_string ~targets:safari_26_1 ".a{text-decoration-color:var(--c)}");
+  let ios_safari_26_1 =
+    {
+      Css.Optimize.evergreen_targets with
+      safari = (26, 2);
+      ios_safari = (26, 1);
+    }
+  in
+  Alcotest.(check string)
+    "iOS Safari 26.1 still receives the decoration color fallback"
+    ".a{-webkit-text-decoration-color:var(--c);text-decoration-color:var(--c)}"
+    (optimized_string ~targets:ios_safari_26_1
+       ".a{text-decoration-color:var(--c)}");
+  let targets_past_decoration_color_prefix =
+    {
+      Css.Optimize.evergreen_targets with
+      safari = (26, 2);
+      ios_safari = (26, 2);
+    }
+  in
+  Alcotest.(check string)
+    "targets past the decoration color boundary omit its fallback"
+    ".a{text-decoration-color:var(--c)}"
+    (optimized_string ~targets:targets_past_decoration_color_prefix
+       ".a{text-decoration-color:var(--c)}")
 
 let c61_no_layer_media_merge () =
   (* CSS Cascade section 6.4.4.2: a layer statement between matching media

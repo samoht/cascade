@@ -139,7 +139,7 @@ stays ordered: swapping it with the rule is a real difference.
   --- before.css
   +++ after.css
   Rules reordered (1 rules):
-  └─ .a ↔  @media print
+  └─ .a (moved)
   
   [1]
 

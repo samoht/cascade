@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let rules css =
   match Css.of_string ~strict:false css with
@@ -231,13 +232,6 @@ let nested_merge_safety_reads_each_block_once () =
     (b = 0. || a < b *. 3.)
 
 (* --- allocation / complexity guards --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* [members] rules that write the same [props] custom properties, each differing
    on one of them, is the densest shape the default-value search sees: every

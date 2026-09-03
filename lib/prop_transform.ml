@@ -1512,6 +1512,9 @@ let read_offset_body t : offset =
   Shorthand { target; anchor }
 
 let rec read_offset t : offset =
+  (* The shorthand is read whole, so a failure is the whole value's; [t] has
+     passed the end of it by the time one is raised. *)
+  let loc = Cursor.decl_value_loc t in
   let raw = Cursor.consume_to_decl_end ~trim:true t in
   match String.lowercase_ascii (String.trim raw) with
   | "inherit" -> Inherit
@@ -1531,11 +1534,11 @@ let rec read_offset t : offset =
       if is_whole_var () then
         Var (Values.read_var read_offset (Cursor.of_string raw))
       else if value_has_css_wide_mix raw then
-        Cursor.err_invalid t "CSS-wide keyword mixed with other values"
+        Cursor.err_invalid ~loc t "CSS-wide keyword mixed with other values"
       else
         try read_offset_body (Cursor.of_string raw)
         with Cursor.Parse_error _ ->
-          Cursor.err_invalid t "invalid offset shorthand")
+          Cursor.err_invalid ~loc t "invalid offset shorthand")
 
 (* Sec. 2.2 gives [offset-distance] the initial value [0]. A zero percentage is
    a different computed value from a zero length, so only a zero length says

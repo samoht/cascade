@@ -54,14 +54,21 @@ type rewrite_error =
   | Cycle
 
 val of_rules :
-  ?parent:Selector.t -> ?closed_world:bool -> Stylesheet.rule list -> t
+  ?parent:Selector.t ->
+  ?closed_world:bool ->
+  ?pin_shared_branches:bool ->
+  Stylesheet.rule list ->
+  t
 (** [of_rules ?parent rules] builds the graph over [rules] (node [i] is the
     [i]th rule). [parent], when set, is the enclosing nesting selector: each
     rule's relative selector is expanded against it so overlap is computed on
     the effective (parent-qualified) selector rather than the raw nested form.
     [closed_world] (default [false]) makes distinct selectors assumed not to
     match a common element, so they never cascade-conflict on selector grounds.
-*)
+    [pin_shared_branches] (default [true]) adds conservative structural edges
+    between rules sharing a selector branch. Optimizer rewrites need those edges
+    to keep produced residuals contiguous; a consumer projecting rules that have
+    already been expanded may disable them. *)
 
 val node_count : t -> int
 (** Number of nodes. *)
@@ -105,8 +112,8 @@ val declaration_body_key : t -> node_id -> int list
 val conflict : t -> node_id -> node_id -> bool
 (** [conflict t i j] is [true] when nodes [i] and [j] are order-constrained:
     equal-specificity selector branches may match a common element and the rules
-    write a shared equal-importance property (or share a selector branch).
-    Symmetric. *)
+    write a shared equal-importance property, or the graph enables structural
+    pins and they share a selector branch. Symmetric. *)
 
 val order_constrained : t -> node_id -> node_id -> bool
 (** [order_constrained] is a clearer alias for {!val-conflict}. *)

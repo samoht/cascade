@@ -29,46 +29,37 @@ exception Parse_error of parse_error
 
 (** Pretty print parse error with debugging information *)
 let pp_parse_error (err : parse_error) =
-  let callstack_str =
-    if err.callstack = [] then ""
-    else "\n    [stack: " ^ String.concat " -> " err.callstack ^ "]"
-  in
-  let context_str =
-    if err.context_window = "" then ""
-    else
-      (* Don't trim the context - show it as-is to preserve position accuracy *)
-      let context_lines = String.split_on_char '\n' err.context_window in
-      let context_display =
-        match context_lines with
-        | [] -> err.context_window
-        | [ line ] -> line (* Single line - show it all *)
-        | _ ->
-            (* If multi-line, show each line *)
-            String.concat "\n" context_lines
-      in
-      let marker =
-        if
-          err.marker_pos > 0
-          && err.marker_pos <= Common.String.utf8_length err.context_window
-        then String.make err.marker_pos ' ' ^ "^"
-        else
-          (* Fallback if marker position is out of bounds *)
-          String.make 20 ' ' ^ "^"
-      in
-      "\n" ^ context_display ^ "\n" ^ marker
-  in
-  String.concat ""
-    [
-      err.message;
-      " at ";
-      err.filename;
-      ":";
-      string_of_int err.line;
-      ":";
-      string_of_int err.col;
-      callstack_str;
-      context_str;
-    ]
+  let buf = Buffer.create 256 in
+  Buffer.add_string buf err.message;
+  Buffer.add_string buf " at ";
+  Buffer.add_string buf err.filename;
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.line);
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.col);
+  (match err.callstack with
+  | [] -> ()
+  | callstack ->
+      Buffer.add_string buf "\n    [stack: ";
+      Buffer.add_string buf (String.concat " -> " callstack);
+      Buffer.add_char buf ']');
+  if err.context_window <> "" then begin
+    let lines = String.split_on_char '\n' err.context_window in
+    let marker_line, marker_pos, _ =
+      Common.String.marker_line lines err.marker_pos
+    in
+    List.iteri
+      (fun i line ->
+        Buffer.add_char buf '\n';
+        Buffer.add_string buf line;
+        if i = marker_line then begin
+          Buffer.add_char buf '\n';
+          Buffer.add_string buf (String.make marker_pos ' ');
+          Buffer.add_char buf '^'
+        end)
+      lines
+  end;
+  Buffer.contents buf
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
@@ -127,37 +118,12 @@ let source t = t.input
 let enforce_spec t = t.enforce_spec
 let is_done t = t.pos >= t.len
 
-let utf8_byte_length cp =
-  if cp < 0x80 then 1
-  else if cp < 0x800 then 2
-  else if cp < 0x10000 then 3
-  else 4
-
 (* Decode the UTF-8 code point at [t.pos + offset] to [Some (cp, byte_length)],
-   [None] at EOF or on a malformed sequence. Uutf rejects overlong/surrogate/
-   out-of-range sequences per the Unicode spec. Returns [Some] only when the
-   *first* decoded element is a valid [Uchar]: [fold_utf_8] resyncs past a
-   [Malformed] start, which would fold bad bytes into the following code point
-   (and into an ident-like unit token). *)
-(* ASCII fast path before falling back to Uutf: skips the ref/closure
-   allocation that a [Uutf.String.fold_utf_8] requires per peek. *)
-let first_utf8_chunk_at input p len =
-  if len <= 0 then None
-  else
-    let b = Char.code (String.unsafe_get input p) in
-    if b < 0x80 then Some (Uchar.unsafe_of_int b)
-    else
-      let result = ref None in
-      let seen = ref false in
-      let folder () _ chunk =
-        if !seen then ()
-        else (
-          seen := true;
-          match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
-      in
-      Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
-      !result
-
+   [None] at EOF or on a malformed sequence. The decoder rejects
+   overlong/surrogate/out-of-range sequences per the Unicode spec, and reading
+   only the element the position opens keeps bad bytes out of the code point
+   that follows them (and out of an ident-like unit token). An ASCII fast path
+   comes first: the byte is its own code point and needs no decoding. *)
 let peek_utf8_at t offset =
   if offset < 0 || offset >= t.len - t.pos then None
   else
@@ -166,11 +132,10 @@ let peek_utf8_at t offset =
     if b < 0x80 then Some (b, 1)
     else
       let len = min 4 (t.len - p) in
-      match first_utf8_chunk_at t.input p len with
-      | None -> None
-      | Some u ->
-          let cp = Uchar.to_int u in
-          Some (cp, utf8_byte_length cp)
+      match Common.String.utf8_decode ~pos:p ~len t.input with
+      | Some (Common.String.Scalar u) ->
+          Some (Uchar.to_int u, Uchar.utf_8_byte_length u)
+      | Some (Common.String.Malformed _) | None -> None
 
 let peek_utf8 t = peek_utf8_at t 0
 
@@ -223,13 +188,13 @@ let err ?got t expected =
   let context, marker_pos = context_window t in
   (* Scan forward from the start of the input, so a newline ends the line it
      sits on and the byte after it opens the next one at column 1. A column
-     counts Unicode scalar values, like the caret. *)
+     counts decoded elements, like the caret. *)
   let line, col =
-    Uutf.String.fold_utf_8 ~len:t.pos
+    Common.String.utf8_fold ~len:t.pos
       (fun (line, col) _ decoded ->
         match decoded with
-        | `Uchar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
-        | `Uchar _ | `Malformed _ -> (line, col + 1))
+        | Common.String.Scalar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
+        | Common.String.Scalar _ | Common.String.Malformed _ -> (line, col + 1))
       (1, 1) t.input
   in
   raise

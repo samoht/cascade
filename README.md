@@ -162,8 +162,11 @@ usable as a CI check.
   selector-list group vs written inline, split vs grouped selector lists)
   compare equal, since none of those moves can change a computed value.
   Cascade-significant order is kept distinct (two writes of the same
-  property, a shorthand and its longhand, a vendor-prefixed alias, `@layer`
-  blocks). Equivalent shorthand decompositions are still not modelled.
+  property, a shorthand and its longhand, a load-bearing vendor-prefixed
+  fallback, `@layer` blocks). An identical
+  `-webkit-text-decoration-color`/`text-decoration-color` twin is normalized
+  away; a differing or prefixed-only declaration remains distinct. Equivalent
+  shorthand decompositions are still not modelled.
   Numeric arithmetic follows the same precision mode as minification: an exact
   quotient such as `calc(28/14)` compares equal to `2` in either mode. By
   default, `calc(28/18)` compares equal to Cascade's six-significant-figure
@@ -173,7 +176,7 @@ usable as a CI check.
 | Flag | Purpose |
 |---|---|
 | `--diff=MODE` | What counts as "no difference": `auto` (default), `tree`, `string` or `canonical`, as above. |
-| `--depth=auto\|max\|N` | How many levels of the difference tree to print. `auto` (default) prints it whole while it stays short, then falls back to the deepest level that fits; `max` always prints it whole; an integer pins a level. A cut subtree carries the number of lines hidden. |
+| `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit, each one whole and never fewer than one; `none` prints every one; an integer prints exactly that many. A shortened report ends with the number left out. |
 | `--lossless` | Disable bounded colour and numeric approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within an approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |
@@ -650,8 +653,7 @@ performing the transform instead of receiving guessed locations from Cascade.
 
 ### Small runtime footprint
 
-The core `cascade` library links
-[uutf](https://erratique.ch/software/uutf), `uri`, `psq`, `logs` and
+The core `cascade` library links `uri`, `psq`, `logs` and
 [mtime](https://erratique.ch/software/mtime), which supplies the monotonic
 clock `--profile` measures factoring iterations against; it does not pull
 `fmt` or `unix`, so js_of_ocaml embedders stay lean. A local jsoo build that

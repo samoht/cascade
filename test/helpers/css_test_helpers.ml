@@ -202,3 +202,11 @@ let check_construct name to_string expected value =
 
 (** Common CSS-wide keywords *)
 let css_wide_keywords = [ "inherit"; "unset"; "revert"; "revert-layer" ]
+
+(** Minor words allocated by a thunk, for the allocation guards *)
+let measure f =
+  Gc.full_major ();
+  let w0 = Gc.minor_words () in
+  let r = f () in
+  ignore (Sys.opaque_identity r);
+  Gc.minor_words () -. w0

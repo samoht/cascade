@@ -18,9 +18,9 @@ let rec meta_of_declaration : declaration -> meta option = function
 
 (* Smart constructor. The [hash] field is the stdlib bounded structural hash of
    the (property, value, important) triple, so structurally-equal declarations
-   share a hash (the invariant [Optimize.same_minified_declaration] uses for its
-   O(1) inequality short-circuit). Bounded depth keeps construction O(1) on
-   large value subtrees. *)
+   share a hash (the invariant [same_minified] uses for its O(1) inequality
+   short-circuit). Bounded depth keeps construction O(1) on large value
+   subtrees. *)
 let v (type a) ?(important = false) (property : a Properties.property)
     (value : a) =
   let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
@@ -263,13 +263,11 @@ let reject_custom_bad_string t =
     List.exists component_has_bad_string (components_before is_top_level_stop t)
   then Cursor.err_invalid t "bad string in custom property value"
 
-let is_ws_component = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> true
-  | _ -> false
-
 let invalid_var_arguments arguments =
   match
-    List.filter (fun component -> not (is_ws_component component)) arguments
+    List.filter
+      (fun component -> not (Component.is_whitespace component))
+      arguments
   with
   | Component.Preserved { kind = Token.Ident name; _ } :: rest
     when Custom_property_name.is_valid name -> (
@@ -296,7 +294,7 @@ and component_has_invalid_substitution = function
             (not terminated)
             || not
                  (List.exists
-                    (fun component -> not (is_ws_component component))
+                    (fun component -> not (Component.is_whitespace component))
                     arguments)
         | _ -> false
       in
@@ -324,7 +322,9 @@ let is_substitution_call name arguments =
   (match String.lowercase_ascii_preserve name with
     | "var" | "env" | "attr" -> true
     | _ -> false)
-  && List.exists (fun component -> not (is_ws_component component)) arguments
+  && List.exists
+       (fun component -> not (Component.is_whitespace component))
+       arguments
 
 let rec components_have_substitution components =
   List.exists component_has_substitution components
@@ -603,6 +603,19 @@ type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
    same. CSS has one NaN, a parse-time keyword of the <number> grammar (Values 4
    sec. 10.7.2) serialised as calc(NaN) (sec. 10.13). *)
 let equal_declaration (a : declaration) b = Stdlib.compare a b = 0
+
+(* Two declarations minify to the same text exactly when their canonical ASTs
+   are equal (property, value, and importance). After the optimizer's
+   canonicalisation passes the AST is canonical, so structural equality is the
+   minified-equality test - and far cheaper than rendering both to strings. A
+   pp-equal-but-structurally-different pair would be a canonicalisation bug, not
+   something to paper over by comparing rendered text.
+
+   [(==)] short-circuits the same-heap-object case. The cached [hash] (computed
+   once at construction by [v]) short-circuits the (much more common)
+   different-value case in one field-load + int compare without walking the AST;
+   we only fall through to structural equality on a hash collision. *)
+let same_minified a b = a == b || (hash a = hash b && equal_declaration a b)
 let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
@@ -681,9 +694,12 @@ let validate_no_extra_tokens t =
   match Cursor.peek_head_shape t with
   | `Eof | `Semicolon | `Bang -> ()
   | _ ->
+      (* The trailing tokens are consumed before they are judged, so the span is
+         theirs rather than that of the terminator they stop at. *)
+      let loc = Cursor.decl_value_loc t in
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
-        Cursor.err_invalid t
+        Cursor.err_invalid ~loc t
           ("unexpected tokens after property value: " ^ trimmed)
 
 let read_length_box ?(allow_negative = true) t =
@@ -2148,7 +2164,7 @@ let validate_regular_property_components t name components =
 let color_fallback_function raw_value =
   let components =
     Cursor.of_string raw_value |> Cursor.remaining
-    |> List.filter (fun component -> not (is_ws_component component))
+    |> List.filter (fun component -> not (Component.is_whitespace component))
   in
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
@@ -2304,15 +2320,27 @@ let read_regular_property_declaration t : declaration =
       (String.trim (Parser.string_of_components components))
   else
     try read_typed_property_declaration t start
-    with Cursor.Parse_error _ as exn ->
+    with Cursor.Parse_error error as exn ->
       let raw_value = String.trim (Parser.string_of_components components) in
-      if not (allows_unknown_fallback name raw_value) then raise exn;
+      let already_allowed = allows_unknown_fallback name raw_value in
+      let preserve_opaque =
+        already_allowed || (Cursor.recover t && is_declaration_value raw_value)
+      in
+      if not preserve_opaque then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
       if not (Cursor.colon t) then Cursor.err_expected t "':'";
       Cursor.ws t;
-      read_unknown_property_declaration t name
+      let declaration = read_unknown_property_declaration t name in
+      if not already_allowed then
+        (* The exception was caught inside [read_declaration]'s context, so add
+           the label it would have gained on the old recovery path. Recording it
+           after the opaque replay succeeds keeps structurally unsafe input on
+           the ordinary one-warning recovery path. *)
+        Cursor.push_warning t
+          { error with path = "read_declaration" :: error.path };
+      declaration
 
 (* [read_regular_property_declaration] with the name step replaced by the
    property itself. [name] serves the validation and the opaque fallback; the

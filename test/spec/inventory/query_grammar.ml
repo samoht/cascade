@@ -213,6 +213,11 @@ let container_positive =
       "style(--theme: dark)";
     row "style range" "style(10px <= --gap < 20px)"
       "style(10px <= --gap < 20px)";
+    row "style range equality" "style(--gap = 10px)" "style(--gap = 10px)";
+    row "style range name-first comparison" "style(--gap > 10px)"
+      "style(--gap > 10px)";
+    row "style range value-first comparison" "style(10px < --gap)"
+      "style(10px < --gap)";
     row "style uppercase function" "STYLE(--theme: dark)" "STYLE(--theme: dark)";
     row "scroll-state stuck" "scroll-state(stuck: top)"
       "scroll-state(stuck: top)";
@@ -270,6 +275,8 @@ let container_negative =
     invalid "not not query" "not not (width)";
     invalid "missing range value" "(width >)";
     invalid "opposing interval operators" "(30em < inline-size > 60em)";
+    invalid "equality bound in a style interval" "style(10px = --gap = 20px)";
+    invalid "opposing style interval operators" "style(10px < --gap > 20px)";
   ]
 
 let mutate_invalid (row : row) salt =

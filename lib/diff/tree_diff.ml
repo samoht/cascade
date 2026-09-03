@@ -123,6 +123,7 @@ type tree_style = {
 }
 
 let unlimited_depth = max_int
+let unlimited_entries = max_int
 let default_style = { use_tree = false; color = false; depth = unlimited_depth }
 let tree_style = { use_tree = true; color = false; depth = unlimited_depth }
 
@@ -1048,16 +1049,20 @@ let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
 let pp_container_reorder ~style ~is_last ~parent_prefix buf container_type
     condition expected_pos actual_pos =
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
-  add_strings buf
-    [
-      prefix;
-      container_label container_type condition;
-      " (position ";
-      string_of_int expected_pos;
-      " \xe2\x86\x92 ";
-      string_of_int actual_pos;
-      ")\n";
-    ]
+  let label = container_label container_type condition in
+  if expected_pos = actual_pos then
+    add_strings buf [ prefix; label; " (moved)\n" ]
+  else
+    add_strings buf
+      [
+        prefix;
+        label;
+        " (position ";
+        string_of_int expected_pos;
+        " \xe2\x86\x92 ";
+        string_of_int actual_pos;
+        ")\n";
+      ]
 
 let rec pp_container_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf = function
@@ -1119,26 +1124,29 @@ let pp_diff_headers ~color buf expected actual =
   add_strings buf
     [ ansi_yellow ~color "+++"; " "; ansi_yellow ~color actual; "\n" ]
 
-let pp_rule_list ~style ~container_count buf rule_list =
+(* [trailing] is how many top-level entries the report still prints after this
+   section: the closing connector belongs to the last of them, not to the last
+   of a section a breadth limit cut short. *)
+let pp_rule_list ~style ~trailing buf rule_list =
   let rule_count = List.length rule_list in
   List.iteri
     (fun i rule_diff ->
-      let is_last = i = rule_count - 1 && container_count = 0 in
+      let is_last = i = rule_count - 1 && trailing = 0 in
       pp_rule_diff ~style ~is_last ~parent_prefix:"" buf rule_diff)
     rule_list
 
-let pp_reordered_section ~style ~container_count buf = function
+let pp_reordered_section ~style ~trailing buf = function
   | [] -> ()
   | lst ->
       add_strings buf
         [ "Rules reordered ("; string_of_int (List.length lst); " rules):\n" ];
-      pp_rule_list ~style ~container_count buf lst
+      pp_rule_list ~style ~trailing buf lst
 
-let pp_containers_section ~style buf containers =
+let pp_containers_section ~style ~trailing buf containers =
   let container_count = List.length containers in
   List.iteri
     (fun i cont_diff ->
-      let is_last = i = container_count - 1 in
+      let is_last = i = container_count - 1 && trailing = 0 in
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
@@ -1201,24 +1209,40 @@ let pp_layer_swaps ~style buf swapped =
         ]
   | _ -> ()
 
-let pp_layer_order_section ~style buf = function
-  | None -> ()
-  | Some { expected_order; actual_order; swapped } ->
-      Buffer.add_string buf "Cascade layer order changed:\n";
-      pp_children ~style ~parent_prefix:"" buf (fun style buf ->
-          pp_layer_swaps ~style buf swapped;
-          add_strings buf
-            [
-              tree_prefix ~style ~is_last:true ~parent_prefix:"";
-              "order: ";
-              ansi_red ~color:style.color (layer_path_list expected_order);
-              " -> ";
-              ansi_green ~color:style.color (layer_path_list actual_order);
-              "\n";
-            ])
+let pp_layer_order_section ~style buf { expected_order; actual_order; swapped }
+    =
+  Buffer.add_string buf "Cascade layer order changed:\n";
+  pp_children ~style ~parent_prefix:"" buf (fun style buf ->
+      pp_layer_swaps ~style buf swapped;
+      add_strings buf
+        [
+          tree_prefix ~style ~is_last:true ~parent_prefix:"";
+          "order: ";
+          ansi_red ~color:style.color (layer_path_list expected_order);
+          " -> ";
+          ansi_green ~color:style.color (layer_path_list actual_order);
+          "\n";
+        ])
+
+(* Closes a breadth-limited report the way [pp_layer_swaps] closes a capped swap
+   listing: the count the reader needs to know they are seeing a prefix. *)
+let pp_hidden_entries ~style buf hidden =
+  let noun =
+    if hidden = 1 then " more difference\n" else " more differences\n"
+  in
+  add_strings buf
+    [
+      tree_prefix ~style ~is_last:true ~parent_prefix:"";
+      "...";
+      string_of_int hidden;
+      noun;
+    ]
+
+let first n l = List.filteri (fun i _ -> i < n) l
 
 let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?(depth = unlimited_depth) buf { rules; containers; layer_order } =
+    ?(depth = unlimited_depth) ?(entries = unlimited_entries) buf
+    { rules; containers; layer_order } =
   if rules = [] && containers = [] && Option.is_none layer_order then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
@@ -1234,14 +1258,35 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
           match diff with Reordered _ -> true | _ -> false)
         rules
     in
+    (* The budget is spent in printing order, so the entries a reader is left
+       with are the ones the report would have led with anyway. *)
+    let layer_entries o = if Option.is_none o then 0 else 1 in
+    let budget = max 0 entries in
+    let shown_layers = if budget > 0 then layer_order else None in
+    let budget = budget - layer_entries shown_layers in
+    let shown_rules = first budget meaningful in
+    let budget = budget - List.length shown_rules in
+    let shown_reordered = first budget reordered_rules in
+    let budget = budget - List.length shown_reordered in
+    let shown_containers = first budget containers in
+    let hidden =
+      layer_entries layer_order - layer_entries shown_layers
+      + (List.length meaningful - List.length shown_rules)
+      + (List.length reordered_rules - List.length shown_reordered)
+      + (List.length containers - List.length shown_containers)
+    in
     (* [depth] counts renderable levels; the roots printed here are level 1. *)
     let style = { tree_style with color; depth = max 0 (depth - 1) } in
-    let container_count = List.length containers in
+    (* The count line closes the tree, so a section the budget cut short is no
+       longer the last thing the report prints. *)
+    let hidden_line = if hidden > 0 then 1 else 0 in
+    let after_rules = List.length shown_containers + hidden_line in
     (* The layer order leads: it decides which of the rules below it wins. *)
-    pp_layer_order_section ~style buf layer_order;
-    pp_rule_list ~style ~container_count buf meaningful;
-    pp_reordered_section ~style ~container_count buf reordered_rules;
-    pp_containers_section ~style buf containers)
+    Option.iter (pp_layer_order_section ~style buf) shown_layers;
+    pp_rule_list ~style ~trailing:after_rules buf shown_rules;
+    pp_reordered_section ~style ~trailing:after_rules buf shown_reordered;
+    pp_containers_section ~style ~trailing:hidden_line buf shown_containers;
+    if hidden > 0 then pp_hidden_entries ~style buf hidden)
 
 (* ===== Tree Diff Computation Functions ===== *)
 
@@ -1340,16 +1385,26 @@ let order_key_of_stmt stmt =
   | Some (sel, _, _) -> Some (Rule_order (selector_key_of_selector sel))
   | None -> Option.map (fun desc -> Block_order desc) (describe_statement stmt)
 
-(* Order keys in first-occurrence order. *)
+(* Rules take part once per selector: a selector split over several rules moves
+   as one cascade participant. Containers do not have that identity. Separate
+   blocks under the same condition can sit on opposite sides of another rule, so
+   number their occurrences instead of collapsing them onto the first. *)
 let order_keys_in_order stmts =
-  let seen = Hashtbl.create (List.length stmts) in
+  let seen_rules = Hashtbl.create (List.length stmts) in
+  let block_occurrences = Hashtbl.create 8 in
   List.filter_map
     (fun stmt ->
       match order_key_of_stmt stmt with
-      | Some key when not (Hashtbl.mem seen key) ->
-          Hashtbl.add seen key ();
-          Some key
-      | _ -> None)
+      | Some (Rule_order _ as key) when not (Hashtbl.mem seen_rules key) ->
+          Hashtbl.add seen_rules key ();
+          Some (key, 0)
+      | Some (Block_order _ as key) ->
+          let occurrence =
+            Option.value ~default:0 (Hashtbl.find_opt block_occurrences key)
+          in
+          Hashtbl.replace block_occurrences key (occurrence + 1);
+          Some (key, occurrence)
+      | Some (Rule_order _) | None -> None)
     stmts
 
 (* Positions of one longest increasing subsequence of [ranks], by patience
@@ -1397,37 +1452,43 @@ let moved_order_keys stmts1 stmts2 =
   let anchored = increasing_subsequence ranks in
   let moved = Hashtbl.create (Array.length ranks) in
   List.iteri
-    (fun i key -> if not anchored.(i) then Hashtbl.replace moved key ())
+    (fun i (key, _) -> if not anchored.(i) then Hashtbl.replace moved key ())
     common;
   moved
 
 let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
 
 (* Generic helper for finding added/removed/modified items between two lists.
-   Works with any item type that has a key for comparison.
-
-   Each item's key is computed once and threaded through the N*M cross checks
-   below; without this every [List.exists] pass would re-call [key_of] for every
-   item it visits. *)
-let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
-    ~(is_empty_diff : 'item -> 'item -> bool) items1 items2 =
+   [key_of] returns a canonical structural key. *)
+let diffs ~(key_of : 'item -> 'key) ~(is_empty_diff : 'item -> 'item -> bool)
+    items1 items2 =
   let items1_keyed = List.map (fun i -> (i, key_of i)) items1 in
   let items2_keyed = Array.of_list (List.map (fun i -> (i, key_of i)) items2) in
-  (* Each right-hand item is claimed by at most one left-hand item. Testing
-     existence instead would hide a duplicate key entirely: with two blocks
-     carrying one condition and one on the other side, neither counts as added
-     or removed, and the survivor is paired twice, so both pairings report
-     differences that are not there. *)
+  (* A FIFO per key gives duplicate keys the same source-order pairing as the
+     old left-to-right scan, without restarting that scan for every item. *)
+  let available = Hashtbl.create (Array.length items2_keyed) in
+  Array.iteri
+    (fun i (item, key) ->
+      let bucket =
+        match Hashtbl.find_opt available key with
+        | Some bucket -> bucket
+        | None ->
+            let bucket = Queue.create () in
+            Hashtbl.add available key bucket;
+            bucket
+      in
+      Queue.add (i, item) bucket)
+    items2_keyed;
   let claimed = Array.make (Array.length items2_keyed) false in
   let claim key =
-    let rec scan i =
-      if i >= Array.length items2_keyed then None
-      else if (not claimed.(i)) && key_equal (snd items2_keyed.(i)) key then (
-        claimed.(i) <- true;
-        Some (fst items2_keyed.(i)))
-      else scan (i + 1)
-    in
-    scan 0
+    match Hashtbl.find_opt available key with
+    | None -> None
+    | Some bucket -> (
+        match Queue.take_opt bucket with
+        | None -> None
+        | Some (i, item) ->
+            claimed.(i) <- true;
+            Some item)
   in
   let pairs, removed =
     List.fold_left
@@ -1450,20 +1511,14 @@ let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
 
 let rules_added_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
-  let added, _removed, _modified =
-    diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2
-  in
+  let added, _removed, _modified = diffs ~key_of ~is_empty_diff rules1 rules2 in
   added
 
 let rules_removed_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
-  let _added, removed, _modified =
-    diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2
-  in
+  let _added, removed, _modified = diffs ~key_of ~is_empty_diff rules1 rules2 in
   removed
 
 let selectors_share_parent sel1_str sel2_str =
@@ -1515,15 +1570,11 @@ type rule_modification =
   Css.Selector.t * Css.Selector.t * Css.declaration list * Css.declaration list
 
 (* What an exact match reports. It usually says nothing: the same selector
-   carrying the same declarations is the same rule. Two exceptions. The selector
-   list was written in another order, which is a rewrite of the selector. And
-   the rule sits somewhere else against the rest of the sheet, which is a
-   cascade change however identical the block is, so the pair has to reach
+   carrying the same declarations is the same rule. One exception: the rule sits
+   somewhere else against the rest of the sheet, which is a cascade change
+   however identical the block is, so the pair has to reach
    [convert_modified_rule] for the reorder entry to be made. *)
-type exact_match =
-  | Same
-  | Selector_rewritten of rule_modification
-  | Moved of rule_modification
+type exact_match = Same | Moved of rule_modification
 
 (* Try to find an exact match by selector key and declarations. [None] when
    nothing on the other side matches exactly. *)
@@ -1541,11 +1592,7 @@ let try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 =
       Hashtbl.replace used_rules exact ();
       let sel1 = rule_selector r1 in
       let sel2 = rule_selector exact in
-      let sel1_str = Css.Selector.to_string sel1 in
-      let sel2_str = Css.Selector.to_string sel2 in
-      if not (String.equal sel1_str sel2_str) then
-        Some (Selector_rewritten (sel1, sel2, d1, d1))
-      else if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
+      if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
       else Some Same
   | None -> None
 
@@ -1649,11 +1696,6 @@ let rules_modified_diff ~moved rules1 rules2 =
   let moved_exact =
     List.filter_map (function Moved pair -> Some pair | _ -> None) exact
   in
-  let rewritten =
-    List.filter_map
-      (function Selector_rewritten pair -> Some pair | _ -> None)
-      exact
-  in
   let rec aux acc = function
     | [] -> List.rev acc
     | r1 :: t1 ->
@@ -1667,7 +1709,7 @@ let rules_modified_diff ~moved rules1 rules2 =
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
   in
-  (moved_exact, rewritten @ aux [] pending)
+  (moved_exact, aux [] pending)
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
@@ -2247,7 +2289,14 @@ let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
   match (decls1, decls2) with
   | [], [] -> reorder_or_content sel1_str decls1 decls2
   | [], _ | _, [] -> Some (content_changed sel1_str decls1 decls2)
-  | _, _ when sel1_str <> sel2_str ->
+  (* The selector key ignores the order of a comma group, so the same
+     alternatives written the other way round select the same elements with the
+     same specificities and the rule is left alone. *)
+  | _, _
+    when not
+           (Selector.equal
+              (selector_key_of_selector sel1)
+              (selector_key_of_selector sel2)) ->
       Some
         (Selector_changed
            {
@@ -2348,6 +2397,26 @@ let merge_selector_group ~rules1 ~rules2 sel peers =
    settles it. *)
 let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
     rule_diff list =
+  (* Index the peers once. Looking for them with [List.filter] in the walk below
+     scanned every reported change once per reported change, even though the
+     common case is one entry per selector. The flags also replace two scans of
+     a group; the reversed peer list is restored only for a group that actually
+     collapses. *)
+  let groups = Hashtbl.create (List.length changes) in
+  List.iter
+    (fun diff ->
+      match changed_selector diff with
+      | None -> ()
+      | Some sel ->
+          let peers, gains, loses =
+            Option.value ~default:([], false, false)
+              (Hashtbl.find_opt groups sel)
+          in
+          Hashtbl.replace groups sel
+            ( diff :: peers,
+              gains || change_gains diff,
+              loses || change_loses diff ))
+    changes;
   let done_ = Hashtbl.create 8 in
   List.filter_map
     (fun diff ->
@@ -2355,16 +2424,13 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
       | None -> Some diff
       | Some sel when Hashtbl.mem done_ sel -> None
       | Some sel -> (
-          let peers =
-            List.filter (fun d -> changed_selector d = Some sel) changes
-          in
-          match peers with
-          | _ :: _
-            when List.exists change_gains peers
-                 && List.exists change_loses peers ->
+          match Hashtbl.find_opt groups sel with
+          | Some (reversed_peers, true, true) ->
               Hashtbl.replace done_ sel ();
-              Some (merge_selector_group ~rules1 ~rules2 sel peers)
-          | _ -> Some diff))
+              Some
+                (merge_selector_group ~rules1 ~rules2 sel
+                   (List.rev reversed_peers))
+          | Some _ | None -> Some diff))
     changes
 
 (* Everything a [Reordered] entry puts in the report, as one string; [None] for
@@ -2447,14 +2513,14 @@ let at_rule_body (stmt : Css.statement) : at_rule_body option =
       Some (Declarations (Css.Stylesheet.statement_declarations stmt))
   | Font_face _ | Counter_style _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Viewport _ | Webkit_keyframes _
-  | Moz_keyframes _ | Unknown_at_rule _ ->
+  | Moz_keyframes _ | Unknown_at_rule _ | Namespace _ ->
       Some Opaque
   (* Owned by another processor: a rule and a bare nesting block by the rule
      matcher, a container by [moved_order_keys], [@keyframes] and [@property] by
      their own, and the rest carry no body to compare. *)
   | Rule _ | Declarations _ | Layer _ | Media _ | Container _ | Supports _
   | Origin _ | Keyframes _ | Property _ | Layer_decl _ | Import _ | Charset _
-  | Namespace _ | Bang_comment _ ->
+  | Bang_comment _ ->
       None
 
 (* [process_at_rules] owns these statements, so leaving them in the rule diff as
@@ -2558,20 +2624,8 @@ let extract_items_with_positions extract_fn stmts =
     stmts
   |> List.filter_map (fun x -> x)
 
-let restore_group_order table =
-  Hashtbl.to_seq_keys table |> List.of_seq
-  |> List.iter (fun key ->
-      Hashtbl.replace table key (List.rev (Hashtbl.find table key)));
-  table
-
 let group_by_condition items =
-  let tbl = Hashtbl.create 16 in
-  List.iter
-    (fun (pos, cond, rules) ->
-      let existing = try Hashtbl.find tbl cond with Not_found -> [] in
-      Hashtbl.replace tbl cond ((pos, rules) :: existing))
-    items;
-  restore_group_order tbl
+  Group.by ~size:16 (fun (pos, cond, rules) -> (cond, (pos, rules))) items
 
 (* Two sides holding a different number of blocks under one condition split or
    merged them. Where those blocks sit is a separate question, and one
@@ -2706,14 +2760,13 @@ let property_descriptor_changes prop1 prop2 =
 
 let property_diff items1 items2 =
   let key_of (Css.Property_info { name; _ }) = name in
-  let key_equal = String.equal in
   let is_empty_diff prop1 prop2 =
     let (Css.Property_info { name = n1; _ }) = prop1 in
     let (Css.Property_info { name = n2; _ }) = prop2 in
     n1 = n2 && property_descriptors prop1 = property_descriptors prop2
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+    diffs ~key_of ~is_empty_diff items1 items2
   in
   let added =
     List.map (fun (Css.Property_info { name; _ }) -> (name, [])) added
@@ -2809,17 +2862,20 @@ let extract_layer_name stmt =
   | None -> None
 
 let keyframes_container_info name =
-  { container_type = `Layer; condition = "@keyframes " ^ name; rules = [] }
+  {
+    container_type = `At_rule;
+    condition = String.concat "" [ "@keyframes "; name ];
+    rules = [];
+  }
 
 let keyframe_frames_diff frames1 frames2 =
-  let key_of (frame : Css.keyframe) = frame.selector in
-  let key_equal = Css.Keyframe.selector_equal in
+  let key_of (frame : Css.keyframe) = Css.Keyframe.to_string frame.selector in
   let is_empty_diff (f1 : Css.keyframe) (f2 : Css.keyframe) =
     Css.Keyframe.selector_equal f1.selector f2.selector
     && List.equal Declaration.equal_declaration f1.declarations f2.declarations
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
+    diffs ~key_of ~is_empty_diff frames1 frames2
   in
   let selector_str (frame : Css.keyframe) =
     Css.Keyframe.to_string frame.selector
@@ -2862,11 +2918,10 @@ let keyframe_frames_diff frames1 frames2 =
 
 let keyframes_diff items1 items2 =
   let key_of (name, _) = name in
-  let key_equal = String.equal in
   let is_empty_diff (name1, frames1) (name2, frames2) =
     name1 = name2 && frames1 = frames2
   in
-  diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+  diffs ~key_of ~is_empty_diff items1 items2
 
 let process_nested_keyframes stmts1 stmts2 =
   let items1 = List.filter_map Css.as_keyframes stmts1 in
@@ -2971,6 +3026,21 @@ let process_nested_properties stmts1 stmts2 =
     modified;
   !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
 
+(* Every rule as [(selector_key, label, nested_statements)], including the ones
+   with an empty nested body so an added or removed body is seen. The two sides
+   pair on [selector_key_of_selector], so a rule whose comma group they write in
+   a different order is still the same rule and its body is still compared;
+   pairing on the printed selector dropped the difference inside it. The label
+   is what the report shows. *)
+let rule_nesting_items stmts =
+  List.filter_map
+    (fun stmt ->
+      match Css.as_rule stmt with
+      | Some (sel, _decls, nested) ->
+          Some (selector_key_of_selector sel, Css.Selector.to_string sel, nested)
+      | None -> None)
+    stmts
+
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
 let rec media_condition_differs rules_list1 rules_list2 =
@@ -2991,15 +3061,7 @@ let rec media_condition_differs rules_list1 rules_list2 =
   else None
 
 and media_diff items1 items2 =
-  let group items =
-    let tbl = Hashtbl.create 16 in
-    List.iter
-      (fun (cond, rules) ->
-        let existing = try Hashtbl.find tbl cond with Not_found -> [] in
-        Hashtbl.replace tbl cond (rules :: existing))
-      items;
-    restore_group_order tbl
-  in
+  let group items = Group.by ~size:16 Fun.id items in
   let groups1 = group items1 in
   let groups2 = group items2 in
   let added = ref [] in
@@ -3100,7 +3162,6 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
 (* Layer diff function *)
 and layer_diff items1 items2 =
   let key_of (name_opt, _) = layer_key name_opt in
-  let key_equal = String.equal in
   let is_empty_diff (_, rules1) (_, rules2) =
     let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
     let has_immediate_diffs =
@@ -3113,7 +3174,7 @@ and layer_diff items1 items2 =
       nested_diffs = []
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+    diffs ~key_of ~is_empty_diff items1 items2
   in
   (* Transform to consistent format with media_diff *)
   let added =
@@ -3193,10 +3254,9 @@ and container_has_no_diff (_, _, rules1) (_, _, rules2) =
 
 (* Container diff function for @container rules *)
 and container_diff items1 items2 =
-  let key_equal = String.equal in
   let added, removed, modified_pairs =
-    diffs ~key_of:container_key ~key_equal ~is_empty_diff:container_has_no_diff
-      items1 items2
+    diffs ~key_of:container_key ~is_empty_diff:container_has_no_diff items1
+      items2
   in
   (* Transform to consistent format with media_diff. *)
   let added = List.map condition_rules_of_container added in
@@ -3215,24 +3275,24 @@ and process_nested_containers_with_name stmts1 stmts2 =
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
 and process_nested_rules stmts1 stmts2 =
-  (* Extract (selector_key, nested_statements) for all rules, including those
-     with empty nesting. This allows detecting when nesting is added/removed. *)
-  let extract_nesting stmts =
-    List.filter_map
-      (fun stmt ->
-        match Css.as_rule stmt with
-        | Some (sel, _decls, nested) -> Some (Css.Selector.to_string sel, nested)
-        | None -> None)
-      stmts
-  in
-  let items1 = extract_nesting stmts1 in
-  let items2 = extract_nesting stmts2 in
+  let items1 = rule_nesting_items stmts1 in
+  let items2 = rule_nesting_items stmts2 in
+  (* [List.find_opt] previously searched all of [items2] for every rule in
+     [items1], including the overwhelmingly common rules with no nested body.
+     Keep its first-occurrence semantics for repeated selectors, but index that
+     first occurrence once. *)
+  let items2_by_selector = Hashtbl.create (List.length items2) in
+  List.iter
+    (fun (key, _label, nested) ->
+      if not (Hashtbl.mem items2_by_selector key) then
+        Hashtbl.add items2_by_selector key nested)
+    items2;
   (* Match by selector key and diff nested statements *)
   let diffs = ref [] in
   List.iter
-    (fun (sel1, nested1) ->
-      match List.find_opt (fun (s, _) -> s = sel1) items2 with
-      | Some (_, nested2) when not (Stylesheet.equal nested1 nested2) ->
+    (fun (key1, label1, nested1) ->
+      match Hashtbl.find_opt items2_by_selector key1 with
+      | Some nested2 when not (Stylesheet.equal nested1 nested2) ->
           let rule_changes = to_rule_changes nested1 nested2 in
           let nested_containers = nested_differences nested1 nested2 in
           if rule_changes <> [] || nested_containers <> [] then
@@ -3242,7 +3302,7 @@ and process_nested_rules stmts1 stmts2 =
                   info =
                     {
                       container_type = `Nesting;
-                      condition = sel1;
+                      condition = label1;
                       rules = nested1;
                     };
                   actual_rules = nested2;
@@ -3284,9 +3344,7 @@ and at_rule_pair_diff (head, body1, text1) (_, body2, text2) =
 and process_at_rules stmts1 stmts2 =
   let items1 = at_rule_items stmts1 and items2 = at_rule_items stmts2 in
   let added, removed, pairs =
-    diffs ~key_of:fst ~key_equal:( = )
-      ~is_empty_diff:(fun _ _ -> false)
-      items1 items2
+    diffs ~key_of:fst ~is_empty_diff:(fun _ _ -> false) items1 items2
   in
   let block_rules = function Block block -> block | _ -> [] in
   let info (head, body, _) =

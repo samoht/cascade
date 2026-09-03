@@ -10,7 +10,7 @@ open Stdlib
 module Decl_tbl = Hashtbl.Make (struct
   type t = Declaration.declaration
 
-  let equal = Shorthand.same_minified_declaration
+  let equal = Declaration.same_minified
   let hash = Declaration.hash
 end)
 
@@ -69,6 +69,10 @@ type t = {
       (** when set, two distinct selectors are assumed not to match a common
           element (a caller-asserted closed DOM), so they never cascade-conflict
           on selector grounds *)
+  pin_shared_branches : bool;
+      (** whether equal selector branches add conservative structural edges;
+          optimizer rewrites need them, while a canonical projection over
+          already-expanded rules does not *)
   parent : Selector.t option;
       (** the enclosing nesting context; every node's overlap is computed on its
           selector expanded against this, and rewrites reuse it so produced
@@ -125,7 +129,7 @@ type t = {
    cascade-neutral inside a fixed origin/layer/scope context. *)
 let declarations_conflict left right =
   left.important = right.important
-  && (not (Shorthand.same_minified_declaration left.decl right.decl))
+  && (not (Declaration.same_minified left.decl right.decl))
   && Shorthand.declarations_overlap_with_keys left.decl left.footprint
        right.decl right.footprint
 
@@ -165,11 +169,6 @@ let overlap_key_lists_intersect a b =
   let broad = Shorthand.broad_overlap_key in
   overlap_key_in broad a || overlap_key_in broad b || overlap_keys_meet a b
 
-let specificity_equal (a : Selector.specificity) (b : Selector.specificity) =
-  Int.equal a.ids b.ids
-  && Int.equal a.classes b.classes
-  && Int.equal a.elements b.elements
-
 (* [List.exists2] over a zipped pair needs the zip built first, and the inner
    one was built inside the outer closure: B's whole tuple list was rebuilt once
    per element of A. Walking the three parallel lists in step decides the same
@@ -188,7 +187,7 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
     (fun selector_a summary_a specificity_a ->
       exists3
         (fun selector_b summary_b specificity_b ->
-          specificity_equal specificity_a specificity_b
+          Selector.equal_specificity specificity_a specificity_b
           &&
           if closed_world then
             (* the caller asserts no element matches two distinct selectors, so
@@ -255,7 +254,7 @@ let effective_selector (parent : Selector.t option) (r : rule) =
 
 (* Conflict between two nodes of a graph by their stored summaries/branches. *)
 let nodes_conflict_reason t i j =
-  if share_branch t.branches.(i) t.branches.(j) then
+  if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
     Option.Some Shared_branch_pin
   else if
     overlap_key_lists_intersect t.overlap_keys.(i) t.overlap_keys.(j)
@@ -462,14 +461,6 @@ let empty_id_decl_groups () =
 let empty_selector_decl_groups () =
   { no_element = empty_id_decl_groups (); by_element = String_table.create 4 }
 
-let decl_spec_bucket bucket key =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.Some inner -> inner
-  | Option.None ->
-      let inner = Spec_table.create 4 in
-      Overlap_key_table.replace bucket key inner;
-      inner
-
 let selector_decl_groups inner spec : selector_decl_groups =
   match Spec_table.find_opt inner spec with
   | Option.Some index -> index
@@ -526,13 +517,13 @@ let add_selector_decl ~compact index summary decl value =
 
 let add_decl_bucket ~compact bucket key spec summary decl value =
   add_selector_decl ~compact
-    (selector_decl_groups (decl_spec_bucket bucket key) spec)
+    (selector_decl_groups (spec_bucket bucket key) spec)
     summary decl value
 
 let collect_decl_table decl groups stamp seen acc =
   Decl_tbl.fold
     (fun decl' ids acc ->
-      if Shorthand.same_minified_declaration decl decl' then acc
+      if Declaration.same_minified decl decl' then acc
       else add_candidates stamp seen acc ids)
     groups acc
 
@@ -740,7 +731,8 @@ let index_node t (node : node_id) =
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
-let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
+let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
+    (rules : rule list) : t =
   let rules = Array.of_list rules in
   let n = Array.length rules in
   let summaries = Array.map rule_summary rules in
@@ -758,6 +750,7 @@ let of_rules ?parent ?(closed_world = false) (rules : rule list) : t =
     {
       generation = 0;
       closed_world;
+      pin_shared_branches;
       parent;
       count = n;
       rules;
@@ -1152,6 +1145,7 @@ let produced_graph t ~consume ~total ~new_n produced =
   {
     generation = t.generation + 1;
     closed_world = t.closed_world;
+    pin_shared_branches = t.pin_shared_branches;
     parent = t.parent;
     count = new_n;
     rules = append_slack t.rules ~count:total produced;
@@ -1235,7 +1229,7 @@ let produced_declaration_sources graph consume produced produced_decl =
   let nodes = produced_branch_sources graph consume produced in
   match
     declaration_source_refs graph nodes produced_decl
-      ~matches:Shorthand.same_minified_declaration
+      ~matches:Declaration.same_minified
   with
   | _ :: _ as exact when refs_cover_nodes nodes exact -> exact
   | _ :: _ -> fallback_source_refs nodes
@@ -1379,8 +1373,8 @@ let external_candidates graph ~total ~consumed ~seen p =
             | Some inner ->
                 Decl_tbl.iter
                   (fun decl' ids ->
-                    if not (Shorthand.same_minified_declaration ov.decl decl')
-                    then push_ids ids)
+                    if not (Declaration.same_minified ov.decl decl') then
+                      push_ids ids)
                   inner
             | None -> ())
           ov.footprint)
@@ -1571,6 +1565,7 @@ let to_rules t : rule list =
   Array.to_list (Array.map (fun i -> t.rules.(i)) order)
 
 let canonicalize t =
-  of_rules ?parent:t.parent ~closed_world:t.closed_world (to_rules t)
+  of_rules ?parent:t.parent ~closed_world:t.closed_world
+    ~pin_shared_branches:t.pin_shared_branches (to_rules t)
 
 let to_canonical_rules = to_rules

@@ -9,6 +9,10 @@ type position =
       (** CSS Animations 2 sec. 3.2 [<timeline-range-name> <percentage>]
           selector such as [entry 0%]. *)
 
+val timeline_range_names : string list
+(** The [<timeline-range-name>] keywords, accepted both in a keyframe selector
+    position and by the [animation-range] properties. *)
+
 val string_of_position : position -> string
 (** [string_of_position pos] renders a position as CSS string. *)
 

@@ -159,6 +159,12 @@ val token_sp : unit t
     otherwise re-tokenise with the next one. Drops the space after [)] or [%]
     since both cleanly close their token (CSS Syntax 3 (ED) sec. 4). *)
 
+val pct_sp : unit t
+(** [pct_sp] writes a separator that only a [%] closes: a regular space in
+    pretty mode, and under minify a space unless the previous output character
+    is [%]. Narrower than {!token_sp}, which also drops the space after [)],
+    where a serialised value has to keep it to reparse as it was written. *)
+
 val cut : unit t
 (** [cut] writes a newline when not minifying. *)
 

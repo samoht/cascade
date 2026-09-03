@@ -72,6 +72,23 @@ let source_loc : t -> Loc.t = function
 
 let rule_loc : rule -> Loc.t = function Qualified r -> r.loc | At r -> r.loc
 
+let is_whitespace = function
+  | Preserved { kind = Token.Whitespace; _ } -> true
+  | Preserved _ | Block _ | Func _ -> false
+
+(* A real [var()] function anywhere in the components, recursing into function
+   arguments and bracketed blocks. A [var(] inside a string or a url() is an
+   atomic [Preserved] token, never a [Func], so it is data, not a reference. *)
+let rec has_var components =
+  List.exists
+    (fun (c : t) ->
+      match c with
+      | Func { node = { name; arguments; _ }; _ } ->
+          String.lowercase_ascii name = "var" || has_var arguments
+      | Block { node = { value; _ }; _ } -> has_var value
+      | Preserved _ -> false)
+    components
+
 let opening_char : Token.bracket -> char = function
   | Curly -> '{'
   | Paren -> '('

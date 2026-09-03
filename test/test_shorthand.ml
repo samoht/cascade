@@ -78,6 +78,19 @@ let test_unknown_property_overlap () =
     (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
        (decl "--brand:red"))
 
+let test_unknown_property_fallbacks () =
+  let dedup css =
+    css |> decls |> Shorthand.deduplicate_declarations |> decl_strings
+  in
+  Alcotest.(check (list string))
+    "different values may target different browser grammars"
+    [ "future-property:first"; "future-property:second" ]
+    (dedup "a{future-property:first;future-property:second}");
+  Alcotest.(check (list string))
+    "an exact duplicate is redundant"
+    [ "future-property:first" ]
+    (dedup "a{future-property:first;future-property:first}")
+
 let test_vendor_alias_overlap () =
   (* A vendor-prefixed spelling is an alias of the unprefixed property, so the
      prefixed shorthand resets the unprefixed longhands. *)
@@ -589,6 +602,25 @@ let test_deduplicate_keeps_legacy_fallbacks () =
     ]
     (decl_strings result)
 
+let test_deduplicate_keeps_shorthand_vendor_image_fallbacks () =
+  (* A vendor-prefixed gradient inside a shorthand is a real fallback for the
+     unprefixed gradient, just like the equivalent longhand. *)
+  let result =
+    ".a{background:-webkit-linear-gradient(top,#111,#222);background:linear-gradient(#333,#444);border-image:-webkit-linear-gradient(top,#111,#222);border-image:linear-gradient(#333,#444);mask:-webkit-linear-gradient(top,#111,#222);mask:linear-gradient(#333,#444)}"
+    |> decls |> Shorthand.deduplicate_declarations
+  in
+  Alcotest.(check (list string))
+    "vendor-prefixed gradient fallbacks inside shorthands are kept"
+    [
+      "background:-webkit-linear-gradient(top,#111,#222)";
+      "background:linear-gradient(#333,#444)";
+      "border-image:-webkit-linear-gradient(top,#111,#222)";
+      "border-image:linear-gradient(#333,#444)";
+      "mask:-webkit-linear-gradient(top,#111,#222)";
+      "mask:linear-gradient(#333,#444)";
+    ]
+    (decl_strings result)
+
 let test_same_value_ignores_importance () =
   Alcotest.(check bool)
     "importance alone does not change the value" true
@@ -658,6 +690,8 @@ let suite =
         test_declaration_covers_reset_boundaries;
       Alcotest.test_case "unknown property overlap" `Quick
         test_unknown_property_overlap;
+      Alcotest.test_case "unknown property fallbacks" `Quick
+        test_unknown_property_fallbacks;
       Alcotest.test_case "vendor alias overlap" `Quick test_vendor_alias_overlap;
       Alcotest.test_case "shorthand reset boundaries" `Quick
         test_shorthand_reset_boundaries;
@@ -686,6 +720,8 @@ let suite =
         test_stylesheet_scope_prior_longhand_guard;
       Alcotest.test_case "deduplicate keeps legacy fallbacks" `Quick
         test_deduplicate_keeps_legacy_fallbacks;
+      Alcotest.test_case "deduplicate keeps shorthand vendor image fallbacks"
+        `Quick test_deduplicate_keeps_shorthand_vendor_image_fallbacks;
       Alcotest.test_case "same value ignores importance" `Quick
         test_same_value_ignores_importance;
       Alcotest.test_case "page-break alias shadowing" `Quick

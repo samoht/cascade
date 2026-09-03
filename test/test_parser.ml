@@ -1,6 +1,7 @@
 (** Tests for the CSS Syntax Level 3 section 5 parser algorithms. *)
 
 open Cascade
+open Css_test_helpers
 
 (* Shorthand constructors mirroring Parser.component_value so test data is
    readable. *)
@@ -522,6 +523,17 @@ let spec_list_components_entry () =
   Alcotest.(check string)
     "comments preserve token boundary" "a b"
     (Parser.string_of_components (parse_list "a/*x*/b"));
+  (* Section 4.3.1 consumes a whole run of whitespace into one
+     <whitespace-token> that carries no text, and section 9.1 serializes that
+     token as a single space, so a run comes back as one space rather than byte
+     for byte. This is the only whitespace guarantee the reserializer can make
+     and the one its documentation states. *)
+  Alcotest.(check int)
+    "a whitespace run is one component" 3
+    (List.length (parse_list "a \t\n  b"));
+  Alcotest.(check string)
+    "a whitespace run serializes to one space" "a b"
+    (Parser.string_of_components (parse_list "a \t\n  b"));
   Alcotest.(check string)
     "EOF closes nested blocks and functions" "[a f(b)]"
     (Parser.string_of_components (parse_list "[a f(b"));
@@ -1481,13 +1493,6 @@ let spec_comment_recovery_edges () =
   Alcotest.(check int) "one rule after hidden brace" 1 (List.length rs)
 
 (* --- allocation guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 let alloc_tokens = 500
 

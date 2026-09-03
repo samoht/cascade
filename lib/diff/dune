@@ -1,4 +1,7 @@
 (library
  (name cascade_diff)
  (public_name cascade.diff)
+ ; [Group] is an implementation detail shared by the comparators rather than a
+ ; [Cascade_diff.*] module of its own.
+ (private_modules group)
  (libraries cascade))

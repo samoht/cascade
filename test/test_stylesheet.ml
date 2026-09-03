@@ -1595,9 +1595,11 @@ let spec_strict_rejects_invalid_stylesheets () =
 
 let spec_lenient_recovery_stylesheets () =
   lenient_recover "bad declaration then good declaration"
-    ".a { color: invalid-color; color: red }" ".a{color:red}" 1;
+    ".a { color: invalid-color; color: red }"
+    ".a{color:invalid-color;color:red}" 1;
   lenient_recover "bad declaration keeps sibling rule"
-    ".a { color: rgb(300); } .b { color: red }" ".b{color:red}" 1;
+    ".a { color: rgb(300); } .b { color: red }"
+    ".a{color:rgb(300)}.b{color:red}" 1;
   (* CSS Syntax 3 sec. 5.4.2 consumes the at-rule and its block whatever the
      name, so what recovers here is the rule after it, not the at-rule. *)
   lenient_recover "unknown at-rule keeps its neighbour"
@@ -1616,74 +1618,74 @@ let spec_lenient_recovery_stylesheets () =
     ".a { color: red; @else { color: green } background: blue }"
     ".a{color:red;background:#00f}" 1
 
-(* CSS Syntax 3 sec. 5.4.4 "consume a style block's contents" ends an invalid
-   declaration at the next top-level [;], and a [{}] met on the way is one
-   component value of the value being skipped, not a stopping point. A nested
-   at-rule's body is <block-contents> just like a style rule's (CSS Nesting 1
-   sec. 3.3), so the same recovery applies inside it: Blink 146 drops the one
-   declaration and keeps every neighbour, the enclosing group rule and the rest
-   of the sheet. *)
+(* A typed value failure with a declaration-safe stream is retained opaquely in
+   lenient mode and reported. CSS Syntax 3 sec. 5.4.4 recovery still drops a
+   structurally unsafe declaration at the next top-level [;]. A nested at-rule's
+   body is <block-contents> just like a style rule's (CSS Nesting 1 sec. 3.3),
+   so the same boundary applies inside it. *)
 let spec_lenient_recovery_nested_at_rule_declarations () =
-  let recovered = ".a{@media screen{color:red;background:#00f}}" in
   lenient_recover "bad declaration first in a nested at-rule"
-    ".a { @media screen { width: 10; color: red; background: blue } }" recovered
-    1;
+    ".a { @media screen { width: 10; color: red; background: blue } }"
+    ".a{@media screen{width:10;color:red;background:#00f}}" 1;
   lenient_recover "bad declaration mid-run in a nested at-rule"
-    ".a { @media screen { color: red; width: 10; background: blue } }" recovered
-    1;
+    ".a { @media screen { color: red; width: 10; background: blue } }"
+    ".a{@media screen{color:red;width:10;background:#00f}}" 1;
   lenient_recover "bad declaration last in a nested at-rule"
-    ".a { @media screen { color: red; background: blue; width: 10 } }" recovered
-    1;
-  lenient_recover "sole declaration of a nested at-rule dropped"
-    ".a { @media screen { width: 10 } }" "" 1;
+    ".a { @media screen { color: red; background: blue; width: 10 } }"
+    ".a{@media screen{color:red;background:#00f;width:10}}" 1;
+  lenient_recover "sole untyped declaration of a nested at-rule preserved"
+    ".a { @media screen { width: 10 } }" ".a{@media screen{width:10}}" 1;
   lenient_recover "bad declaration in a nested style rule"
-    ".a { & b { color: red; width: 10; margin: 0 } }" ".a b{color:red;margin:0}"
-    1;
+    ".a { & b { color: red; width: 10; margin: 0 } }"
+    ".a b{color:red;width:10;margin:0}" 1;
   lenient_recover "bad declaration in a style rule under a nested at-rule"
     ".a { @media screen { & b { color: red; width: 10; margin: 0 } } }"
-    ".a{@media screen{& b{color:red;margin:0}}}" 1;
+    ".a{@media screen{& b{color:red;width:10;margin:0}}}" 1;
   lenient_recover "bad declaration in a doubly nested at-rule"
     ".a { @media screen { @container (width > 0px) { color: red; width: 10; \
      background: blue } } }"
-    ".a{@media screen{@container(width>0px){color:red;background:#00f}}}" 1;
+    ".a{@media \
+     screen{@container(width>0px){color:red;width:10;background:#00f}}}"
+    1;
   lenient_recover "nested at-rule keeps recovery in @layer"
     ".a { @layer x { color: red; width: 10; background: blue } }"
-    ".a{@layer x{color:red;background:#00f}}" 1;
+    ".a{@layer x{color:red;width:10;background:#00f}}" 1;
   lenient_recover "nested at-rule keeps recovery in @scope"
     ".a { @scope (.b) { color: red; width: 10; background: blue } }"
-    ".a{@scope(.b){color:red;background:#00f}}" 1;
+    ".a{@scope(.b){color:red;width:10;background:#00f}}" 1;
   lenient_recover "nested at-rule keeps recovery in @starting-style"
     ".a { @starting-style { color: red; width: 10; background: blue } }"
-    ".a{@starting-style{color:red;background:#00f}}" 1;
+    ".a{@starting-style{color:red;width:10;background:#00f}}" 1;
   (* A [{}] in the dropped value is consumed with it; the run resumes at the [;]
      after it. An unclosed function has no such [;] - the tokenizer closes it at
      the end of the block, so it swallows the rest, as Blink does. *)
   lenient_recover "curly block inside a dropped value is skipped with it"
     ".a { @media screen { color: red; width: {1}; background: blue } }"
-    recovered 1;
+    ".a{@media screen{color:red;background:#00f}}" 1;
   lenient_recover "unclosed function swallows the rest of the block"
     ".a { @media screen { color: red; width: calc(1px; background: blue } }"
     ".a{@media screen{color:red}}" 1;
   lenient_recover "a run of stray tokens is dropped like a bad declaration"
-    ".a { @media screen { color: red; !!!; background: blue } }" recovered 1
+    ".a { @media screen { color: red; !!!; background: blue } }"
+    ".a{@media screen{color:red;background:#00f}}" 1
 
-(* A dropped declaration leaves no gap: the run written around it is one run, as
-   it is in Blink 146, the same way a dropped at-rule leaves one. *)
+(* An opaque declaration keeps its place in the declaration run around nested
+   rules. *)
 let spec_lenient_recovery_nested_declaration_run () =
   lenient_recover "bad declaration immediately before a nested rule"
     ".a { @media screen { width: 10; & b { color: red } } }"
-    ".a{@media screen{& b{color:red}}}" 1;
+    ".a{@media screen{width:10;& b{color:red}}}" 1;
   lenient_recover "bad declaration immediately after a nested rule"
     ".a { @media screen { & b { color: red } width: 10; background: blue } }"
-    ".a{@media screen{& b{color:red}background:#00f}}" 1;
-  lenient_recover "dropped declaration does not seal the run before a rule"
+    ".a{@media screen{& b{color:red}width:10;background:#00f}}" 1;
+  lenient_recover "opaque declaration stays in the run before a rule"
     ".a { @media screen { color: red; width: 10; background: blue; & b { \
      margin: 0 } } }"
-    ".a{@media screen{color:red;background:#00f;& b{margin:0}}}" 1;
-  lenient_recover "dropped declaration does not seal the run it opened"
+    ".a{@media screen{color:red;width:10;background:#00f;& b{margin:0}}}" 1;
+  lenient_recover "opaque declaration stays in the run it opened"
     ".a { @media screen { width: 10; color: red; & b { margin: 0 } background: \
      blue } }"
-    ".a{@media screen{color:red;& b{margin:0}background:#00f}}" 1
+    ".a{@media screen{width:10;color:red;& b{margin:0}background:#00f}}" 1
 
 (* [css] reports exactly [expected] warnings leniently, and [~strict:true]
    rejects it exactly when the lenient parse warned. *)
@@ -1714,24 +1716,23 @@ let spec_recovery_warns_once_per_declaration () =
     1;
   check ".a { @media screen { color: red; background: blue } }" 0
 
-(* CSS Paged Media 3 sec. 4.1: "If an error is encountered during the processing
-   of a declaration block within a page or a margin context, the Rules for
-   handling parsing errors apply; that is, valid declarations within the block
-   are applied." One bad descriptor therefore costs that descriptor, not the
-   [@page] holding it and not the sheet holding that. The discard follows CSS
-   Syntax 3 sec. 5.4.4 for a declaration - up to the next top-level [;], a [{}]
-   met on the way counting as one component value of the value being skipped -
-   and sec. 5.4.2 for an at-rule, which ends at its block or its [;]. Blink 146
-   keeps both neighbours in every case below. *)
+(* The declaration-safe/unsafe recovery boundary also applies to descriptors in
+   page and margin contexts. A complete but untyped value stays opaque; a value
+   with a curly block or an unclosed function is still discarded without taking
+   its neighbours. *)
 let spec_lenient_recovery_page_descriptors () =
   let recovered = "@page{margin:1cm;margin-top:2cm}" in
   lenient_recover "bad descriptor first in @page"
-    "@page { width: 10; margin: 1cm; margin-top: 2cm }" recovered 1;
+    "@page { width: 10; margin: 1cm; margin-top: 2cm }"
+    "@page{width:10;margin:1cm;margin-top:2cm}" 1;
   lenient_recover "bad descriptor mid-body in @page"
-    "@page { margin: 1cm; width: 10; margin-top: 2cm }" recovered 1;
+    "@page { margin: 1cm; width: 10; margin-top: 2cm }"
+    "@page{margin:1cm;width:10;margin-top:2cm}" 1;
   lenient_recover "bad descriptor last in @page"
-    "@page { margin: 1cm; margin-top: 2cm; width: 10 }" recovered 1;
-  lenient_recover "sole descriptor of @page dropped" "@page { width: 10 }" "" 1;
+    "@page { margin: 1cm; margin-top: 2cm; width: 10 }"
+    "@page{margin:1cm;margin-top:2cm;width:10}" 1;
+  lenient_recover "sole untyped descriptor of @page preserved"
+    "@page { width: 10 }" "@page{width:10}" 1;
   lenient_recover "curly block inside a dropped page value is skipped with it"
     "@page { margin: 1cm; width: {1}; margin-top: 2cm }" recovered 1;
   lenient_recover "two curly blocks in a dropped page value are one skip"
@@ -1768,7 +1769,8 @@ let spec_lenient_recovery_page_descriptors () =
 let spec_lenient_recovery_page_margin_box () =
   let recovered = "@page{@top-center{content:\"x\";margin:0}}" in
   lenient_recover "bad descriptor in a page margin box"
-    "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }" recovered 1;
+    "@page { @top-center { content: \"x\"; width: 10; margin: 0 } }"
+    "@page{@top-center{content:\"x\";width:10;margin:0}}" 1;
   lenient_recover "at-rule in a page margin box ends at its block"
     "@page { @top-center { @media screen { a: b } content: \"x\"; margin: 0 } }"
     recovered 1;
@@ -1781,21 +1783,21 @@ let spec_lenient_recovery_page_margin_box () =
   lenient_recover "selector-shaped item alone in a page margin box"
     "@page { @top-center { .a { b: c } } }" "" 1
 
-(* A dropped descriptor leaves no gap: the page keeps the descriptors written
-   around it in source order, and its margin boxes keep theirs. *)
+(* An opaque descriptor keeps its source-order place among the page's
+   declarations. Margin boxes are emitted after that declaration run. *)
 let spec_lenient_recovery_page_body_order () =
   lenient_recover "bad descriptor before a page margin box"
     "@page { margin: 1cm; width: 10; @top-center { content: \"x\" } \
      margin-top: 2cm }"
-    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+    "@page{margin:1cm;width:10;margin-top:2cm;@top-center{content:\"x\"}}" 1;
   lenient_recover "bad descriptor after a page margin box"
     "@page { margin: 1cm; @top-center { content: \"x\" } width: 10; \
      margin-top: 2cm }"
-    "@page{margin:1cm;margin-top:2cm;@top-center{content:\"x\"}}" 1;
+    "@page{margin:1cm;width:10;margin-top:2cm;@top-center{content:\"x\"}}" 1;
   lenient_recover "bad descriptor between two page margin boxes"
     "@page { @top-center { content: \"x\" } width: 10; @bottom-center { \
      content: \"y\" } margin: 1cm }"
-    "@page{margin:1cm;@top-center{content:\"x\"}@bottom-center{content:\"y\"}}"
+    "@page{width:10;margin:1cm;@top-center{content:\"x\"}@bottom-center{content:\"y\"}}"
     1
 
 (* Each dropped page descriptor reports once, and [~strict:true] rejects exactly
@@ -2658,16 +2660,15 @@ let css_syntax_recovery () =
       (name ^ " warning count") true
       (List.length warnings >= min_warnings)
   in
-  (* Syntactically valid unknown declarations are preserved (browsers do, and
-     dropping changes the stylesheet for vendor properties / future spec
-     additions / properties Cascade just doesn't model). Only malformed or
-     known-but-invalid declarations are dropped (see [invalid declaration] case
-     below). *)
+  (* Syntactically valid unknown declarations are preserved. A declaration-safe
+     value rejected by a known property's typed reader is preserved opaquely in
+     lenient mode and reported; malformed streams are still dropped. *)
   check_strict "unknown declaration"
     ".btn { unknown-property: value; color: red; }"
     ".btn{unknown-property:value;color:red}";
   check_recovery "invalid declaration"
-    ".btn { color: invalid-color; color: red; }" ".btn{color:red}" 1;
+    ".btn { color: invalid-color; color: red; }"
+    ".btn{color:invalid-color;color:red}" 1;
   check_recovery "invalid selector list"
     ".ok { color: green } .bad:not() { color: red }" ".ok{color:green}" 1;
   check_recovery "unknown at-rule"
@@ -2698,13 +2699,13 @@ let css_syntax_recovery_structural () =
       (name ^ " warning count") true
       (List.length warnings >= min_warnings)
   in
-  (* CSS Syntax 5.4.4: invalid declarations are discarded; qualified rules
-     survive even if every declaration in the rule was invalid. *)
-  check_counts "bad declarations leave empty rules"
+  (* Declaration-safe typed failures survive opaquely; qualified rules retain
+     them while the warnings preserve the strict/spec signal. *)
+  check_counts "bad declarations stay in their rules"
     ".a { color: rgb(300); } .b { color: red; } .c { width: calc(1px + ); }"
-    [ 0; 1; 0 ] 2;
+    [ 1; 1; 1 ] 2;
   check_counts "bad declaration does not discard later declaration"
-    ".a { color: rgb(300); background-color: red; }" [ 1 ] 1;
+    ".a { color: rgb(300); background-color: red; }" [ 2 ] 1;
   check_counts "bad selector list drops rule only"
     ".ok { color: green } .bad:not() { color: red } .next { color: blue }"
     [ 1; 1 ] 1;
@@ -6305,7 +6306,7 @@ let v4_10_2_calc_arithmetic () =
     "calc(1px * 0) -> 0" ".x{width:0}"
     (normalize ".x { width: calc(1px * 0) }");
   Alcotest.(check string)
-    "a numeric calc cannot be a width" ""
+    "a numeric calc remains opaque in lenient mode" ".x{width:calc(0 + 0)}"
     (normalize ".x { width: calc(0 + 0) }")
 
 let v4102_calc_addition () =
@@ -10505,13 +10506,6 @@ let render_sheet n =
   done;
   Fmt.flush out ();
   Css.of_string_exn (Buffer.contents b)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* A serialiser walks the tree once. Presizing the buffer from a [Pp.size]
    prepass walks it a second time, and the counter sink skips only the output

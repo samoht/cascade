@@ -32,17 +32,17 @@ let is_ident_cp cp =
 (* [i] is a byte offset, so [i = 0] is the first code point. Malformed UTF-8
    names no code point and so names no ident. *)
 let ident_code_point ok i = function
-  | `Uchar u ->
+  | Common.String.Scalar u ->
       let cp = Uchar.to_int u in
       ok && if i = 0 then is_ident_start_cp cp else is_ident_cp cp
-  | `Malformed _ -> false
+  | Common.String.Malformed _ -> false
 
 let is_ident s =
   let n = String.length s in
   if n = 0 || starts_dash_digit s || (n = 1 && s.[0] = '-') then false
   else if is_ascii_ident_start s.[0] && ascii_ident_continue_from s n 1 then
     true
-  else Uutf.String.fold_utf_8 ident_code_point true s
+  else Common.String.utf8_fold ident_code_point true s
 
 let url_needs_quotes =
   String.exists (function

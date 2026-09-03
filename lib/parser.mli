@@ -35,8 +35,13 @@ val reconsume : t -> Component.t -> unit
 
 val string_of_components : Component.t list -> string
 (** [string_of_components cvs] renders a component-value list back to source
-    text. Whitespace tokens serialize to a single space; the output is
-    parse-equivalent but not byte-identical. *)
+    text that re-tokenizes to the same stream, as CSS Syntax 3 (ED) section 9.1
+    requires. A [<whitespace-token>] is a whole run of whitespace carrying no
+    text, so authored whitespace comes back as one space rather than byte for
+    byte, and a space is added wherever two adjacent components would otherwise
+    merge into a single token. This is the whitespace-keeping renderer for every
+    stream, the opaque custom-property values of CSS Custom Properties 1
+    included. *)
 
 val to_string_minified : Component.t list -> string
 (** Like {!string_of_components} but drops whitespace that sits between two
@@ -66,11 +71,6 @@ val is_plus_or_minus_delim : Component.t -> bool
     math function that token is the operator whose whitespace CSS Values 4 (ED)
     section 10.8 requires; a sign written as part of a number ([+2]) lexes as
     one numeric token and is not one of these. *)
-
-val to_string_custom : Component.t list -> string
-(** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
-    streams. Whitespace is preserved at the top level and inside nested blocks
-    and functions. *)
 
 val fold_value_ident : string -> string
 (** [fold_value_ident s] is the canonical lower-case spelling of [s] when [s]

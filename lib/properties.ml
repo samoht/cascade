@@ -3267,7 +3267,7 @@ let is_color_function name =
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
    actually parse as a complete colour. *)
 let fold_custom_color ~lossless (c : Component.t) ~fallback =
-  let text = Parser.to_string_custom [ c ] in
+  let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
     try Some (Values.read_color cur) with Cursor.Parse_error _ -> None
@@ -3292,7 +3292,7 @@ let is_math_function = Parser.is_math_function
    ambiguous (length vs number percentage) so it stays verbatim, as does a
    function that still references a [var()] (it does not reduce to a leaf). *)
 let fold_custom_calc (c : Component.t) ~fallback =
-  let text = Parser.to_string_custom [ c ] in
+  let text = Parser.string_of_components [ c ] in
   (* Parse the whole token as one typed value and fold only when it reduces to a
      single concrete leaf (not a [calc()] that still carries a [var()]). *)
   let try_typed : type a.
@@ -3348,7 +3348,7 @@ let hue_rotate_zero_argument (func : Component.func) =
   String.lowercase_ascii func.name = "hue-rotate"
   && func.arguments <> []
   &&
-  let cur = Cursor.of_string (Parser.to_string_custom func.arguments) in
+  let cur = Cursor.of_string (Parser.string_of_components func.arguments) in
   match read_angle_unit_required cur with
   | exception Cursor.Parse_error _ -> false
   | angle ->
@@ -3385,7 +3385,7 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
    the full shadow optimiser here would also drop explicit default lengths from
    an otherwise opaque custom-property token stream. *)
 let canonicalize_custom_shadow_components ~lossless components =
-  let t = Cursor.of_string (Parser.to_string_custom components) in
+  let t = Cursor.of_string (Parser.string_of_components components) in
   match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
   | Some shadow when Cursor.is_done t -> (
       let shadow = normalize_shadow_colors ~lossless shadow in
@@ -3516,7 +3516,7 @@ let pp_value : type a. (a kind * a) Pp.t =
         if Pp.minified ctx then
           Parser.to_string_custom_minified
             ~fold_ident:Values.fold_custom_value_ident value
-        else Parser.to_string_custom value
+        else Parser.string_of_components value
       in
       Pp.string ctx rendered
   | Shadow -> pp pp_shadow
@@ -3575,7 +3575,7 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Number_percentage -> Values.string_of_number_percentage value
   | Number -> Pp.to_string pp_number value
   | Int -> string_of_int value
-  | Value -> Parser.to_string_custom value
+  | Value -> Parser.string_of_components value
   | Content -> (
       match value with
       | String "" -> "\"\""

@@ -77,8 +77,39 @@ module String = struct
   let lowercase_ascii_preserve s =
     if is_ascii_lower_or_digit s then s else Stdlib.String.lowercase_ascii s
 
-  let utf8_length ?pos ?len s =
-    Uutf.String.fold_utf_8 ?pos ?len (fun n _ _ -> n + 1) 0 s
+  type utf8 = Scalar of Uchar.t | Malformed of int
+
+  (* The window is [[pos, stop)]: a sequence reaching past [stop] is truncated,
+     and the bytes of it that are inside are a maximal subpart of their own. *)
+  let utf8_window pos len s =
+    match len with None -> length s | Some n -> min (pos + n) (length s)
+
+  let utf8_element s stop i =
+    let d = get_utf_8_uchar s i in
+    let n = Uchar.utf_decode_length d in
+    if i + n > stop then Malformed (stop - i)
+    else if Uchar.utf_decode_is_valid d then Scalar (Uchar.utf_decode_uchar d)
+    else Malformed n
+
+  let utf8_decode ?(pos = 0) ?len s =
+    let stop = utf8_window pos len s in
+    if pos >= stop then None else Some (utf8_element s stop pos)
+
+  (* [s], [stop] and [f] ride in parameters rather than in an enclosing scope,
+     which would cost a closure per walk. *)
+  let rec utf8_fold_from f acc s stop i =
+    if i >= stop then acc
+    else
+      let e = utf8_element s stop i in
+      let n =
+        match e with Scalar u -> Uchar.utf_8_byte_length u | Malformed n -> n
+      in
+      utf8_fold_from f (f acc i e) s stop (i + n)
+
+  let utf8_fold ?(pos = 0) ?len f acc s =
+    utf8_fold_from f acc s (utf8_window pos len s) pos
+
+  let utf8_length ?pos ?len s = utf8_fold ?pos ?len (fun n _ _ -> n + 1) 0 s
 
   (* A UTF-8 continuation byte, [10xxxxxx]: an index sitting on one is inside a
      sequence rather than at its start. *)
@@ -102,6 +133,25 @@ module String = struct
       else go (i + 1) (room - 1)
     in
     go i 3
+
+  (* A diagnostic caret goes under the one line it marks, so a marker offset
+     into a whole snippet has to be resolved against the line holding it. The
+     line's own length comes back with it: a caret run is clamped to the line's
+     end, and a caller drawing a single caret ignores it. The newline separating
+     two lines belongs to neither, hence the extra character dropped per line
+     walked past. *)
+  let marker_line lines marker_pos =
+    let rec find line remaining = function
+      | [] -> (0, 0, 0)
+      | [ last ] ->
+          let len = utf8_length last in
+          (line, min remaining len, len)
+      | current :: rest ->
+          let len = utf8_length current in
+          if remaining <= len then (line, remaining, len)
+          else find (line + 1) (remaining - len - 1) rest
+    in
+    find 0 (max 0 marker_pos) lines
 end
 
 let mix_int acc x = ((acc lsl 5) - acc) lxor x

@@ -20,13 +20,15 @@
     {!Cascade.Css.optimize} justifies with what maintained browsers support,
     because those delete content rather than respell it. Taking them leaves the
     declaration written before a baseline-true [@supports] dead, drops a
-    vendor-prefixed declaration whose unprefixed twin is widely available, and
-    clears an [@import supports()] guard, and an engine without the feature
-    reads exactly what each of those deletes - so two sheets that disagree there
-    render differently and the projection keeps them apart. The respellings
-    gated with them, [min-X] into the range form and the Level 3
-    [not all and (X)], delete nothing and are applied by
-    {!Cascade.Css.canonicalize_rule_order} instead.
+    load-bearing vendor-prefixed declaration, and clears an [@import supports()]
+    guard, and an engine without the feature reads exactly what each of those
+    deletes - so two sheets that disagree there render differently and the
+    projection keeps them apart. The respellings gated with them, [min-X] into
+    the range form and the Level 3 [not all and (X)], delete nothing and are
+    applied by {!Cascade.Css.canonicalize_rule_order} instead. That
+    comparison-side pass also drops an identical [-webkit-text-decoration-color]
+    twin, matching Cascade's configured alias normalization; a differing or
+    prefixed-only declaration is retained.
 
     Those bytes are the verdict in mode [`Canonical]. Canonical means equivalent
     inputs project to one form, so two canonical forms that differ are either
@@ -87,7 +89,11 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       default and remains distinct under [lossless]. Equal outputs are
       {!No_diff}; differing outputs are a difference, reported as a tree diff of
       the two when the walk reaches it and as a string diff of them when it does
-      not.
+      not. A reorder in that tree is named without a position: its index belongs
+      to the generated canonical form and cannot be located in either input. Use
+      [`Tree] when source-AST indexes are useful. Only order changes present in
+      the parsed inputs are reported; a content change that perturbs the
+      canonical projection's rule order is not an authored reorder.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a
@@ -139,39 +145,57 @@ val pp :
   ?actual:string ->
   ?color:bool ->
   ?depth:int ->
+  ?entries:int ->
   Buffer.t ->
   t ->
   unit
-(** [pp ?expected ?actual ?color ?depth buf result] renders each side's parse
-    warnings into [buf], then formats [result] below them. Warnings lead because
-    a declaration the parser dropped qualifies every difference that follows.
-    The [expected]/[actual] labels are used in the rendered header and warning
-    lines (defaults: ["Expected"], ["Actual"]). [color] (default [false]) wraps
-    diff markers in ANSI escapes; the caller decides whether the destination
-    supports colour. [depth] bounds the rendered tree levels as in
-    {!Tree_diff.pp} (default: unbounded).
+(** [pp ?expected ?actual ?color ?depth ?entries buf result] renders each side's
+    parse warnings into [buf], then formats [result] below them. Warnings lead
+    because a declaration the parser dropped qualifies every difference that
+    follows. The [expected]/[actual] labels are used in the rendered header and
+    warning lines (defaults: ["Expected"], ["Actual"]). [color] (default
+    [false]) wraps diff markers in ANSI escapes; the caller decides whether the
+    destination supports colour. [depth] bounds the rendered tree levels and
+    [entries] the number of top-level entries, both as in {!Tree_diff.pp}
+    (default: unbounded).
 
     {!pp_warnings} and {!pp_diff} are the two halves, for callers that need to
     size or bound the sections independently. *)
 
+(** Which side of the comparison raised a warning. *)
+type warning_side = Expected | Actual | Both
+
+val warnings : t -> (warning_side * Error.t) list
+(** [warnings t] is every parse warning the comparison collected, grouped as the
+    report prints them: the warnings only the expected side raised, then those
+    only the actual side raised, then those both raised. A warning both sides
+    raise appears once, as {!constructor-Both}, carrying the expected side's
+    copy, because the same complaint at two byte offsets is one fact about the
+    input. Two warnings are the same complaint when they fail the same way at
+    the same place in the grammar, whatever offset each side reached it at. *)
+
 val pp_warnings :
   ?expected:string -> ?actual:string -> ?max:int -> Buffer.t -> t -> unit
 (** [pp_warnings ?expected ?actual ?max buf result] renders only the parse
-    warnings each side accumulated. [max] caps how many are printed per side
-    (default: all); the remainder is reported as a count, so a stylesheet that
-    trips the same unsupported syntax hundreds of times cannot bury the diff
-    those warnings qualify. *)
+    warnings each side accumulated. A warning both sides raise is rendered once
+    under a label naming both files, with the expected side's snippet, and it
+    counts once against [max]. One-sided warnings lead: expected-only, then
+    actual-only, then shared. [max] caps the total printed across all groups
+    (default: all); the remainder of each group is reported as a count, so a
+    stylesheet that trips the same unsupported syntax hundreds of times cannot
+    bury the diff those warnings qualify. *)
 
 val pp_diff :
   ?expected:string ->
   ?actual:string ->
   ?color:bool ->
   ?depth:int ->
+  ?entries:int ->
   Buffer.t ->
   t ->
   unit
-(** [pp_diff ?expected ?actual ?color ?depth buf result] renders only the
-    difference report, without the parse warnings. *)
+(** [pp_diff ?expected ?actual ?color ?depth ?entries buf result] renders only
+    the difference report, without the parse warnings. *)
 
 val has_warnings : t -> bool
 (** [has_warnings result] is [true] when either side accumulated a parse

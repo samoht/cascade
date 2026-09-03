@@ -10,9 +10,9 @@ preserved.
   $ cascade --minify --inline-imports missing.css 2>&1 | grep -v "warning"
   @import"does-not-exist.css";.a{color:red}
 
-An imported file with a parse error: the error is reported via warning
-and the broken rule is dropped; surviving rules pass through and the
-entry's own rules are preserved.
+An imported file with a typed value error: the error is reported via warning
+and the declaration-safe value is preserved opaquely; the imported and entry
+rules all pass through.
 
   $ cat > broken.css <<EOF
   > .b { color: notacolor }
@@ -23,7 +23,7 @@ entry's own rules are preserved.
   > .e { color: green }
   > EOF
   $ cascade --minify --inline-imports entry-broken.css 2>&1 | grep -v "warning"
-  .ok{color:#00f}.e{color:green}
+  .b{color:notacolor}.ok{color:#00f}.e{color:green}
 
 A non-CSS binary file referenced by @import: parse errors yield warnings
 and no content is inlined.

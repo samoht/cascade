@@ -61,6 +61,15 @@ val source_loc : t -> Loc.t
 val rule_loc : rule -> Loc.t
 (** [rule_loc r] is the source range spanned by rule [r]. *)
 
+val is_whitespace : t -> bool
+(** [is_whitespace cv] is [true] for a preserved whitespace token. *)
+
+val has_var : t list -> bool
+(** [has_var cvs] is [true] when a [var()] function appears anywhere in [cvs],
+    including inside function arguments and bracketed blocks. A [var(] written
+    inside a string or a [url()] is one atomic preserved token rather than a
+    function, so it is data and does not count. *)
+
 val pp : t Pp.t
 (** [pp] renders a component value as a located debug dump, the {!Token.pp} of a
     whole tree, e.g. [rgb(<number 1>@[4-5])@[0-6]]. Every node shows its own

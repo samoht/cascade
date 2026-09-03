@@ -226,9 +226,12 @@ let all_preserved_reorder_declaration decl =
   | Declaration { property; _ } -> is_all_preserved_reorder property
   | _ -> false
 
-(* Coverage relation between two declarations. Custom and unknown properties
-   cover themselves by exact name and have no typed shorthand coverage; custom
-   properties are exempt from the [all] reset. *)
+(* Coverage relation between two declarations. Custom properties cover
+   themselves by exact name and have no typed shorthand coverage; they are
+   exempt from the [all] reset. Two opaque unknown-property values do not cover
+   one another: either value may belong to a browser grammar the other does not,
+   so both are compatibility fallbacks. Structurally identical streams are the
+   one case where either declaration can safely cover the other. *)
 let declaration_covers covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
@@ -239,9 +242,9 @@ let declaration_covers covering covered =
       String.equal a b
   | Declaration { property = Custom_property _; _ }, _ -> false
   | _, Declaration { property = Custom_property _; _ } -> false
-  | ( Declaration { property = Unknown_property a; _ },
-      Declaration { property = Unknown_property b; _ } ) ->
-      String.equal a b
+  | ( Declaration { property = Unknown_property a; value = av; _ },
+      Declaration { property = Unknown_property b; value = bv; _ } ) ->
+      String.equal a b && Stdlib.compare av bv = 0
   | Declaration { property = Unknown_property _; _ }, _ -> false
   | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },
@@ -1241,11 +1244,35 @@ let background_image_is_vendor : Properties.background_image -> bool = function
       true
   | _ -> false
 
+(* A shorthand carries the same image the longhand does, so the prefixed
+   spelling is the same fallback whichever property writes it. [background] and
+   [mask] carry one image per layer; [border-image] and [mask-border] carry a
+   single source. *)
+let background_layer_is_vendor (layer : Properties.background) =
+  match layer with
+  | Shorthand { image = Some image; _ } -> background_image_is_vendor image
+  | _ -> false
+
+let mask_layer_is_vendor (layer : Properties.mask_layer) =
+  match layer.image with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+let mask_value_is_vendor (value : Properties.mask) =
+  match value with
+  | Layer layer -> mask_layer_is_vendor layer
+  | Layers layers -> List.exists mask_layer_is_vendor layers
+  | _ -> false
+
+let border_image_source_is_vendor (value : Properties.border_image) =
+  match value.source with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
 (* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
-   -o-). Only [display] keywords and [background-image] gradients render that
-   way, so a structural match is exhaustive. Preserves legacy fallbacks like
-   [display:-webkit-box;display:flex]: old browsers understand only the prefixed
-   spelling, so dropping the earlier declaration removes a real compat fallback. *)
+   -o-). Preserves legacy fallbacks like [display:-webkit-box;display:flex]: old
+   browsers understand only the prefixed spelling, so dropping the earlier
+   declaration removes a real compat fallback. *)
 (* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
    or-pattern does not refine the value type, so each constructor is matched on
    its own; everything else is not a sizing fallback. *)
@@ -1281,6 +1308,13 @@ let rec value_is_vendor_prefixed decl =
       background_image_is_vendor value
   | Declaration { property = Border_image_source; value; _ } ->
       background_image_is_vendor value
+  | Declaration { property = Background; value; _ } ->
+      List.exists background_layer_is_vendor value
+  | Declaration { property = Mask; value; _ } -> mask_value_is_vendor value
+  | Declaration { property = Border_image; value; _ } ->
+      border_image_source_is_vendor value
+  | Declaration { property = Mask_border; value; _ } ->
+      border_image_source_is_vendor value
   (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
      are the same browser-compat pattern: old Safari only understands the
      prefixed keyword, so the earlier declaration is a real fallback. *)
@@ -1946,6 +1980,51 @@ let compose_pair_via_index idx =
     | None -> incr i
   done
 
+(* Walk the rule for a family whose shorthand always absorbs exactly three
+   longhands, absorbing every run [try_compose] accepts. *)
+let compose_fixed3_via_index idx ~try_compose =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
+
+(* Same walk for a family whose run length varies: [try_compose] reports the
+   shorthand together with the number of positions it consumes. An earlier
+   composer may already own a position, so absorbed slots are skipped. *)
+let compose_run_via_index idx ~try_compose =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
+
+(* Collect the contiguous run of one family's longhands starting at [i], as
+   (decl, part) pairs, with its length. *)
+let take_run_at idx ~part_of i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
+  in
+  aux i []
+
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
 type outline_part = Width | Style | Color
@@ -2007,15 +2086,7 @@ let try_compose_outline_at idx i =
     | _ -> None
 
 let compose_outline_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_outline_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_outline_at
 
 (* CSS Fonts 4 sec. 2.7: [font] reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
@@ -2257,15 +2328,7 @@ let try_compose_list_style_at idx i =
     else None
 
 let compose_list_style_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_list_style_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_list_style_at
 
 (* CSS Flexbox 1 sec. 7.2: [flex] shorthand is grow / shrink / basis. Cascade
    types [Flex] as [Full of grow * shrink * basis]; the composition extracts the
@@ -2322,15 +2385,7 @@ let try_compose_flex_at idx i =
     | _ -> None
 
 let compose_flex_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_flex_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_flex_at
 
 (* CSS Text Decoration 4 sec. 2: [text-decoration] shorthand carries line list,
    style, color, and optional thickness. The composition extracts the three
@@ -2388,15 +2443,7 @@ let try_compose_text_decoration_at idx i =
     | _ -> None
 
 let compose_text_decoration_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_text_decoration_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_text_decoration_at
 
 (* CSS Backgrounds 3 sec. 3.4: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -2967,21 +3014,8 @@ let has_prior_family_longhand part_of idx i =
   in
   aux 0
 
-let take_background_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match background_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_background_at ~ctx idx i =
-  let parts, len = take_background_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:background_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3010,18 +3044,7 @@ let try_compose_background_at ~ctx idx i =
         Some (shorthand, len)
 
 let compose_background_via_index ~ctx idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_background_at ~ctx idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:(try_compose_background_at ~ctx)
 
 let compose_background_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in
@@ -3119,21 +3142,8 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
-let take_mask_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match mask_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_mask_at ~ctx idx i =
-  let parts, len = take_mask_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:mask_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3313,23 +3323,8 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
-(* Collect the contiguous run of transition longhands starting at [i]. Returns
-   the list of (decl, part) pairs and its length. *)
-let take_transition_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match transition_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_transition_at idx i =
-  let parts, len = take_transition_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3348,18 +3343,7 @@ let try_compose_transition_at idx i =
       Some (shorthand, len)
 
 let compose_transition_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_transition_at idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:try_compose_transition_at
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -3483,21 +3467,8 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let take_animation_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match animation_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_animation_at idx i =
-  let parts, len = take_animation_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3515,18 +3486,7 @@ let try_compose_animation_at idx i =
       Some (shorthand, len)
 
 let compose_animation_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_animation_at idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:try_compose_animation_at
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -3586,23 +3546,6 @@ let rec without_importance = function
 let same_value a b =
   Declaration.equal_declaration (without_importance a) (without_importance b)
 
-(* Two declarations minify to the same text exactly when their canonical ASTs
-   are equal (property, value, and importance). After the optimizer's
-   canonicalisation passes the AST is canonical, so structural equality is the
-   minified-equality test - and far cheaper than rendering both to strings. A
-   pp-equal-but-structurally-different pair would be a canonicalisation bug, not
-   something to paper over by comparing rendered text.
-
-   [(==)] short-circuits the same-heap-object case. The cached
-   [Declaration.hash] (computed once at construction by [Declaration.v]) short-
-   circuits the (much more common) different-value case in one field-load + int
-   compare without walking the AST; we only fall through to structural equality
-   on a hash collision. *)
-let same_minified_declaration (a : declaration) (b : declaration) =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
 (* Only a pair that writes a common cascade slot at the same importance with
    different values constrains its own order: [!important] beats the plain
    declaration wherever the two sit, and an identical pair is its own winner
@@ -3623,7 +3566,7 @@ let commute_fact decl =
 
 let commute_facts_conflict a b =
   a.important = b.important
-  && (not (same_minified_declaration a.decl b.decl))
+  && (not (Declaration.same_minified a.decl b.decl))
   && declarations_overlap_with_keys a.decl a.keys b.decl b.keys
 
 let declarations_commute left right =
@@ -3987,6 +3930,20 @@ let vendor_alias_twin_visual vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
+let decoration_color_alias_twin vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        {
+          property = Webkit_text_decoration_color;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Text_decoration_color; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
 let vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transform; value = v1; important = i1; _ },
@@ -3998,16 +3955,9 @@ let vendor_alias_twin vendor twin =
   | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
       Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        {
-          property = Webkit_text_decoration_color;
-          value = v1;
-          important = i1;
-          _;
-        },
-      Declaration
-        { property = Text_decoration_color; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_text_decoration_color; _ },
+      Declaration { property = Text_decoration_color; _ } ) ->
+      decoration_color_alias_twin vendor twin
   | ( Declaration { property = Webkit_mask_image; value = v1; important = i1; _ },
       Declaration { property = Mask_image; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
@@ -4036,6 +3986,16 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_transition vendor twin
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
+
+(* Canonical comparison follows Cascade's configured normalization for this
+   typed compatibility alias without enabling every target-dependent optimizer
+   rewrite. A differing fallback, mismatched importance, or prefix without a
+   standard twin remains observable and is kept. *)
+let drop_redundant_decoration_color_aliases declarations =
+  filter_preserve
+    (fun declaration ->
+      not (List.exists (decoration_color_alias_twin declaration) declarations))
+    declarations
 
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
    [-o-]) return the unprefixed remainder; otherwise [None]. *)

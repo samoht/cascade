@@ -22,12 +22,6 @@ let style_node node = function
       Html.set_attribute node "style"
         (Css.inline_style_of_declarations ~minify:true ~mode:Variables decls)
 
-(* Prefix every line of a multi-line diagnostic so a downstream [grep -v
-   "warning"] filters the whole entry, not just the first line. *)
-let report_warning w =
-  Cascade.Error.to_string w |> String.split_on_char '\n'
-  |> List.iter (fun line -> Fmt.epr "warning: %s@." line)
-
 (* [Some sheet] is CSS the projection can use. [None] is a source the parser
    could not turn into any: a fatal syntax error, or a recovery that left no
    statement at all from an input that had something to drop. Neither is a
@@ -39,7 +33,7 @@ let parse_source ~filename ~note css =
       Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
       None
   | Ok { Css.stylesheet; warnings; _ } -> (
-      List.iter report_warning warnings;
+      List.iter Cli_io.report_warning warnings;
       (* Whether the parse produced anything is a question about the statement
          list. Serialising the sheet to answer it asks a different one, and gets
          it wrong: [@charset "UTF-8"] and an [src]-less [@font-face] parse, are

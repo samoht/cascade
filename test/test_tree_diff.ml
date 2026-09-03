@@ -4,6 +4,16 @@ open Cascade
 
 let parse css = Css.of_string_exn ~strict:false css
 
+let string_contains ~needle hay =
+  let nl = String.length needle and hl = String.length hay in
+  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
+  go 0
+
+let render d =
+  let buf = Buffer.create 256 in
+  Cascade_diff.Tree_diff.pp buf d;
+  Buffer.contents buf
+
 (* ===== Identical stylesheets ===== *)
 
 let diff_identical () =
@@ -531,6 +541,27 @@ let diff_nesting_parent_props_only () =
   in
   Alcotest.(check int) "no nesting container diff" 0 nesting_count
 
+(* A comma group is a set, so the two sides write the same rule and the only
+   difference between them is the one inside its nested body. *)
+let diff_nesting_under_reordered_selector_list () =
+  let expected = parse ".a, .b { color: red; &:hover { color: blue } }" in
+  let actual = parse ".b, .a { color: red; &:hover { color: green } }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  let s = render d in
+  Alcotest.(check bool)
+    "the nested colour change is reported" true
+    (string_contains ~needle:"blue" s && string_contains ~needle:"green" s)
+
+(* The same selectors with the same specificities in another order select the
+   same elements, so nothing about the rule changed. *)
+let diff_selector_list_reorder_is_not_a_change () =
+  let expected = parse ".a, .b { color: red }" in
+  let actual = parse ".b, .a { color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "a reordered selector list is not a difference" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
 (* ===== Query functions ===== *)
 
 let single_rule_diff_one_change () =
@@ -654,16 +685,6 @@ let pp_rule_diff_simple_ok () =
 
 (* ===== Selector grouping reconciliation ===== *)
 
-let string_contains ~needle hay =
-  let nl = String.length needle and hl = String.length hay in
-  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
-  go 0
-
-let render d =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Tree_diff.pp buf d;
-  Buffer.contents buf
-
 let diff_selector_group_split_reported () =
   (* Splitting a group with identical declarations is reported as a structural
      regroup (not add/remove noise, not silently identical). *)
@@ -748,11 +769,6 @@ let rearranged_of (d : Cascade_diff.Tree_diff.t) =
       | Rearranged { selector; declarations } -> Some (selector, declarations)
       | _ -> None)
     d.rules
-
-let render d =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Tree_diff.pp buf d;
-  Buffer.contents buf
 
 let diff_of ~expected ~actual =
   Cascade_diff.Tree_diff.diff ~expected:(parse expected) ~actual:(parse actual)
@@ -1195,6 +1211,22 @@ let distant_insertion_is_not_a_move () =
     "twelve insertions are still not a container move" []
     (reordered_containers d)
 
+(* Each repeated condition is a distinct source-order participant. Keeping the
+   first block fixed must not make a later block under the same condition
+   invisible when it crosses a rule. *)
+let later_repeated_media_move_is_reported () =
+  let d =
+    diff_of
+      ~expected:
+        "@media print{.a{color:red}}.x{color:blue}@media \
+         print{.b{color:green}}.y{color:black}"
+      ~actual:
+        "@media print{.a{color:red}}.x{color:blue}.y{color:black}@media \
+         print{.b{color:green}}"
+  in
+  Alcotest.(check (list string))
+    "the later block is a move" [ "print" ] (reordered_containers d)
+
 (* ===== Entries the report cannot name ===== *)
 
 (* The names every rule-level entry claiming an addition or a removal carries.
@@ -1230,6 +1262,47 @@ let removed_keyframes_is_named () =
   Alcotest.(check (list string))
     "no rule-level entry without a name" [] (added_or_removed_names d)
 
+(* A type selector matches in the namespace its sheet declares, so two sheets
+   that name different namespace URLs style different elements. The description
+   a prelude statement is keyed on has to carry the URL, or the two are one
+   entry and the walk reports nothing. *)
+let changed_namespace_is_a_difference () =
+  let d =
+    diff_of ~expected:"@namespace url(http://a.example);.x{color:red}"
+      ~actual:"@namespace url(http://b.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "changing the namespace URL is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "and the entry names the at-rule" true
+    (string_contains ~needle:"@namespace" (render d))
+
+(* The selectorless-at-rule machinery is what owns the namespace statement, so a
+   change has to surface as a container entry, not fall through to the rule walk
+   where it currently shares the universal selector and gets paired with other
+   selectorless statements. *)
+let changed_namespace_is_an_at_rule_container () =
+  let d =
+    diff_of ~expected:"@namespace url(http://a.example);.x{color:red}"
+      ~actual:"@namespace url(http://b.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "namespace URL change is reported as a container diff" true
+    (Cascade_diff.Tree_diff.count_containers_by_type `At_rule d > 0)
+
+let added_namespace_is_an_at_rule_container () =
+  let d =
+    diff_of ~expected:".x{color:red}"
+      ~actual:"@namespace url(http://a.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "adding a namespace is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the added namespace is an at-rule container" true
+    (Cascade_diff.Tree_diff.has_container_added_of_type `At_rule d)
+
 (* Nothing else reports a [@charset], so the rule level has to keep it - and
    name it. *)
 let removed_charset_is_named () =
@@ -1242,6 +1315,21 @@ let removed_charset_is_named () =
   Alcotest.(check bool)
     "the entry names what was dropped" true
     (string_contains ~needle:"@charset" (render d))
+
+(* A [@keyframes] block is an at-rule of its own. Naming it as a [@layer] prints
+   "@layer @keyframes spin", which describes no CSS construct. *)
+let modified_keyframes_names_the_at_rule () =
+  let d =
+    diff_of ~expected:"@keyframes spin{from{opacity:0}to{opacity:1}}"
+      ~actual:"@keyframes spin{from{opacity:0}to{opacity:.5}}"
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "the entry names the keyframes block" true
+    (string_contains ~needle:"@keyframes spin" s);
+  Alcotest.(check bool)
+    "and does not call it a layer" false
+    (string_contains ~needle:"@layer" s)
 
 let removed_layer_statement_is_named () =
   let d =
@@ -1473,6 +1561,36 @@ let whole_rule_body_separates_name_from_value () =
   report_reads ~name:"a custom property" ~expected:base ~actual:gained
     [ "+ --k: var(--u, 1px)" ]
 
+(* --- allocation / complexity guard --- *)
+
+let changed_rules colour n =
+  let buf = Buffer.create (n * 24) in
+  let out = Fmt.with_buffer buf in
+  for i = 0 to n - 1 do
+    Fmt.pf out ".c%d{color:%s}" i colour
+  done;
+  parse (Buffer.contents buf)
+
+let diff_words expected actual =
+  Css_test_helpers.measure (fun () ->
+      Cascade_diff.Tree_diff.diff ~expected ~actual)
+
+(* Grouping the reported changes by scanning the whole change list once per
+   entry makes allocation quadratic in the number of changed rules. Doubling the
+   sheet must stay well below that 4x slope. *)
+let changed_rule_diff_is_subquadratic () =
+  let small_expected = changed_rules "red" 1_000 in
+  let small_actual = changed_rules "blue" 1_000 in
+  let large_expected = changed_rules "red" 2_000 in
+  let large_actual = changed_rules "blue" 2_000 in
+  let small_words = diff_words small_expected small_actual in
+  let large_words = diff_words large_expected large_actual in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x changes)" small_words large_words
+       ratio)
+    true (ratio < 3.)
+
 let suite =
   ( "tree_diff",
     [
@@ -1490,14 +1608,24 @@ let suite =
         insertion_ahead_of_media_is_not_a_move;
       Alcotest.test_case "distant insertion is not a move" `Quick
         distant_insertion_is_not_a_move;
+      Alcotest.test_case "later repeated media move is reported" `Quick
+        later_repeated_media_move_is_reported;
       Alcotest.test_case "removed property rule is named" `Quick
         removed_property_rule_is_named;
       Alcotest.test_case "removed keyframes is named" `Quick
         removed_keyframes_is_named;
       Alcotest.test_case "removed charset is named" `Quick
         removed_charset_is_named;
+      Alcotest.test_case "changed namespace is a difference" `Quick
+        changed_namespace_is_a_difference;
+      Alcotest.test_case "changed namespace is an at-rule container" `Quick
+        changed_namespace_is_an_at_rule_container;
+      Alcotest.test_case "added namespace is an at-rule container" `Quick
+        added_namespace_is_an_at_rule_container;
       Alcotest.test_case "removed layer statement is named" `Quick
         removed_layer_statement_is_named;
+      Alcotest.test_case "modified keyframes names the at-rule" `Quick
+        modified_keyframes_names_the_at_rule;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
@@ -1579,6 +1707,10 @@ let suite =
       Alcotest.test_case "nesting deep" `Quick diff_nesting_deep;
       Alcotest.test_case "nesting only parent props changed" `Quick
         diff_nesting_parent_props_only;
+      Alcotest.test_case "nesting under a reordered selector list" `Quick
+        diff_nesting_under_reordered_selector_list;
+      Alcotest.test_case "selector list reorder is not a change" `Quick
+        diff_selector_list_reorder_is_not_a_change;
       Alcotest.test_case "duplicate condition blocks reconcile" `Quick
         duplicate_condition_blocks_reconcile;
       Alcotest.test_case "rearranged reported" `Quick rearranged_reported;
@@ -1669,6 +1801,8 @@ let suite =
         whole_rule_body_carries_the_flag;
       Alcotest.test_case "whole rule body separates name from value" `Quick
         whole_rule_body_separates_name_from_value;
+      Alcotest.test_case "changed-rule diff is subquadratic" `Quick
+        changed_rule_diff_is_subquadratic;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

@@ -7855,24 +7855,29 @@ val canonicalize_rule_order : t -> t
     order among those with disjoint footprints (a shorthand and its longhand, or
     two writes of the same property, keep their cascade-significant order), and
     cascade-independent statements sort into a content-keyed linear extension of
-    the cascade-conflict graph. A [@media] / [@supports] / [@container] block
-    whose transitive content is plain rules moves as one unit, keyed by the
-    union of its rules' conflict footprints; conflicting statements keep their
-    relative order. Two equal [@supports] blocks may merge across an intervening
-    non-important write that the later block shadows with the same selector and
-    property whenever the condition holds. Named [@layer] blocks pin the layer
-    order where they stand. A run of [@property] rules sorts by name, keeping
-    the last registration of each, since CSS Properties and Values API 1 sec. 2
-    makes registrations for different names order-independent. A [@media]
-    prelude is keyed as the Level 4 query Media Queries 4 makes it equal to -
-    [not all and (X)] as [not (X)], [min-X]/[max-X] as the range form, and a
-    lower bound met by an upper bound as the two-sided interval - and an
-    [@container] prelude the same way, which emission cannot do because a Level
-    3 parser rejects the shorter forms. A [color(srgb ...)] whose channels all
-    land on a whole byte is keyed as the [rgb()] spelling of the same colour,
-    which emission cannot do either because [color()] needs a browser that
-    parses it. This is a comparison-side normalisation; {!val-optimize} stays
-    source-stable. *)
+    the cascade-conflict graph. Sharing a selector branch alone is not a
+    conflict in this projection: after branch expansion, only overlapping
+    cascade-property writes constrain their order. A [@media] / [@supports] /
+    [@container] block whose transitive content is plain rules moves as one
+    unit, keyed by the union of its rules' conflict footprints; conflicting
+    statements keep their relative order. Two equal [@supports] blocks may merge
+    across an intervening non-important write that the later block shadows with
+    the same selector and property whenever the condition holds. Named [@layer]
+    blocks pin the layer order where they stand. A run of [@property] rules
+    sorts by name, keeping the last registration of each, since CSS Properties
+    and Values API 1 sec. 2 makes registrations for different names
+    order-independent. A [@media] prelude is keyed as the Level 4 query Media
+    Queries 4 makes it equal to - [not all and (X)] as [not (X)],
+    [min-X]/[max-X] as the range form, and a lower bound met by an upper bound
+    as the two-sided interval - and an [@container] prelude the same way, which
+    emission cannot do because a Level 3 parser rejects the shorter forms. A
+    [color(srgb ...)] whose channels all land on a whole byte is keyed as the
+    [rgb()] spelling of the same colour, which emission cannot do either because
+    [color()] needs a browser that parses it. An identical
+    [-webkit-text-decoration-color] compatibility declaration is dropped when
+    its unprefixed twin is present; a differing or prefixed-only declaration is
+    retained. These are comparison-side normalisations; this function does not
+    change {!val-optimize}'s configured emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

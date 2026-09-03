@@ -1,4 +1,5 @@
-(** Error module tests: rendering of the sealed kind and named constructors. *)
+(** Error module tests: rendering of the sealed kind and named constructors, and
+    where a reader anchors the value it rejects. *)
 
 open Cascade
 
@@ -133,6 +134,33 @@ let ascii_caret_unmoved () =
      a { color: bogus; }\n\
     \           ^^^^^"
 
+let caret_marks_the_line_it_points_at () =
+  (* The marked value sits on the third line of the window, so the caret line
+     comes straight after that line, at that line's own column. *)
+  let source =
+    ".header {\n  color: red;\n  float: center;\n  margin: 0;\n}\n"
+  in
+  let start_pos = String.length ".header {\n  color: red;\n  float: " in
+  let e =
+    Error.v ~source
+      ~loc:(Loc.v ~start_pos ~end_pos:(start_pos + String.length "center"))
+      ~sort:Sort.Property_value
+      (Error.Bad_value { property = "float"; reason = "unknown float-side" })
+  in
+  check "caret marks the line it points at" e
+    (String.concat "\n"
+       [
+         "bad value for float: unknown float-side at [33-39] (in \
+          property-value)";
+         ".header {";
+         "  color: red;";
+         "  float: center;";
+         "         ^^^^^^";
+         "  margin: 0;";
+         "}";
+         "";
+       ])
+
 let source_context () =
   let t = Cursor.of_string "color red;" in
   match Cursor.colon t with
@@ -144,6 +172,67 @@ let source_context () =
           "bad value for : expected ':' at [0-5] (in component)\n\
            color red;\n\
            ^^^^^")
+
+(* A reader that consumes the offending token before rejecting it still owns
+   that token: the span marks the value the author wrote, not whatever follows
+   it. When the bad value ends the declaration, "whatever follows" is the
+   terminator, so the caret lands on punctuation. *)
+let parse_warnings css =
+  match Css.of_string ~strict:false css with
+  | Error e -> Alcotest.failf "fatal parse error: %s" (Error.to_string e)
+  | Ok { Css.warnings; _ } -> warnings
+
+let marked css =
+  List.map
+    (fun (w : Error.t) ->
+      String.sub css w.loc.start_pos (w.loc.end_pos - w.loc.start_pos))
+    (parse_warnings css)
+
+let value_span_marks_the_rejected_value () =
+  List.iter
+    (fun (css, expected) ->
+      Alcotest.(check (list string)) css [ expected ] (marked css))
+    [
+      (* Readers reached through a keyword table already mark their own
+         value. *)
+      (".x { float: center }", "center");
+      (* Readers that consume first, one per rejecting site. *)
+      (".x { color: nope }", "nope");
+      (".x { font-palette: nope }", "nope");
+      (".x { font: nope }", "nope");
+      (".x { offset: nope }", "nope");
+      (".x { font-style: nope }", "nope");
+      (".x { scrollbar-gutter: nope }", "nope");
+      (".x { paint-order: nope }", "nope");
+      (".x { vector-effect: nope }", "nope");
+      (* A whole-value reader marks the whole value it read. *)
+      (".x { font: bold nope 12pt sans-serif }", "bold nope 12pt sans-serif");
+      (".x { animation-name: slide nope }", "nope");
+      (* The span is one token late rather than pinned to the terminator: a
+         value with something after it marks that something. *)
+      (".x { color: nope red }", "nope");
+    ]
+
+(* [Cursor.one_of] fails once every alternative has failed, and the alternatives
+   are anonymous readers, so there is nothing to list after "one of". The reason
+   says that no form matched rather than trailing off. *)
+let bad_value_reason_names_something () =
+  let reasons css =
+    List.filter_map
+      (fun (w : Error.t) ->
+        match w.kind with
+        | Error.Bad_value { reason; _ } -> Some reason
+        | _ -> None)
+      (parse_warnings css)
+  in
+  List.iter
+    (fun (css, expected) ->
+      Alcotest.(check (list string)) css [ expected ] (reasons css))
+    [
+      (".x { top: nope }", "no accepted form");
+      (".x { align-items: nope }", "no accepted form");
+      (".x { aspect-ratio: nope }", "no accepted form");
+    ]
 
 let suite =
   ( "error",
@@ -164,4 +253,10 @@ let suite =
       Alcotest.test_case "window never splits a code point" `Quick
         window_never_splits_a_code_point;
       Alcotest.test_case "ascii caret unmoved" `Quick ascii_caret_unmoved;
+      Alcotest.test_case "caret marks the line it points at" `Quick
+        caret_marks_the_line_it_points_at;
+      Alcotest.test_case "value span marks the rejected value" `Quick
+        value_span_marks_the_rejected_value;
+      Alcotest.test_case "bad value reason names something" `Quick
+        bad_value_reason_names_something;
     ] )

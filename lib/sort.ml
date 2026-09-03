@@ -10,6 +10,9 @@ type t =
   | Property_value
   | Stylesheet
 
+(* A closed enum with no payloads, so structural equality is its equality. *)
+let equal (a : t) (b : t) = a = b
+
 let pp : t Pp.t =
  fun ctx t ->
   let s =

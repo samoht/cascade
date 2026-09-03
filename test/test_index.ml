@@ -9,16 +9,11 @@ let rules css =
       |> Array.of_list
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
-let same a b =
-  a == b
-  || Declaration.hash a = Declaration.hash b
-     && Declaration.equal_declaration a b
-
 let decl css = Declaration.of_string css
 
 let test_rows_are_sorted_unique () =
   let t =
-    Index.v ~same
+    Index.v ~same:Declaration.same_minified
       (rules ".a{color:red;color:red}.b{width:1px}.c{color:red}.d{color:red}")
   in
   Alcotest.(check (array int))
@@ -28,7 +23,7 @@ let test_rows_are_sorted_unique () =
 let test_eligible_filters_rows () =
   let rs = rules ".a{color:red}.b{color:red}.c{color:red}" in
   let t =
-    Index.v ~same
+    Index.v ~same:Declaration.same_minified
       ~keep:(fun rule ->
         not (String.equal (Css.Selector.to_string rule.selector) ".b"))
       rs

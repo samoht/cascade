@@ -154,6 +154,26 @@ let nth_last_of_sheet = {css|li:nth-last-child(2 of .rd-c) { color: #090 }|css}
 let canary_sheet = {css|.k { row-gap: 9px; gap: 1px }|css}
 let canary_reordered = {css|.k { gap: 1px; row-gap: 9px }|css}
 
+(* CSS Nesting 1 sec. 4 reads [&] as [:is(<parent selector list>)], so a comma
+   group under [&:first-child] paints a first child only. The document holds two
+   adjacent [.rd-c], so a flattening that hands the pseudo-class to the last
+   branch alone paints the second one too. The engine reads the nesting itself
+   and the pair renders it against what flattening produced, so the rewrite is
+   judged rather than repeated. *)
+let nest_list_source =
+  {css|
+:is(.rd-c, .rd-d):first-child { color: #00f }
+.rd-c + .rd-c { font-style: italic }
+|css}
+
+let nest_list_nested = {css|.rd-c, .rd-d { &:first-child { color: #00f } }|css}
+
+let flattened css =
+  match Css.of_string ~strict:false css with
+  | Ok { stylesheet; _ } ->
+      Css.to_string ~minify:true (Css.optimize ~flatten_nesting:true stylesheet)
+  | Error _ -> css
+
 (* Two more pairs, one per selector form the derived document has to get right.
    The [i] flag has to build a value the unflagged selector misses, and [of S]
    has to place the element among the siblings [S] matches; a document that
@@ -305,6 +325,17 @@ let inputs () =
         sheets =
           Some [ ("original", canary_sheet); ("reordered", canary_reordered) ];
         expect = Differs "gap resets the row gap the longhand set";
+      };
+      {
+        id = "nest-list";
+        source = nest_list_source;
+        sheets =
+          Some
+            [
+              ("nested", nest_list_nested);
+              ("flattened", flattened nest_list_nested);
+            ];
+        expect = Same;
       };
       {
         id = "attr-flag";

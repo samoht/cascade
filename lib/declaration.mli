@@ -211,6 +211,12 @@ val equal_declaration : declaration -> declaration -> bool
     the [<number>] grammar (Values 4 sec. 10.7.2) serialised as [calc(NaN)]
     (sec. 10.13). *)
 
+val same_minified : declaration -> declaration -> bool
+(** [same_minified a b] is [true] when [a] and [b] render to the same minified
+    text. Two declarations do so exactly when their canonical ASTs agree on
+    property, value and importance, so this is {!equal_declaration} behind the
+    {!hash} pre-filter rather than a comparison of rendered strings. *)
+
 val equal_prop_key : prop_key -> prop_key -> bool
 (** [equal_prop_key a b] tests property identities for equality. *)
 

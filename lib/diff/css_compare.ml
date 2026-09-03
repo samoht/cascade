@@ -115,6 +115,115 @@ let strip_tool_header css =
 let tree_diff ~(expected : Css.t) ~(actual : Css.t) : Tree_diff.t =
   D.diff ~expected ~actual
 
+(* Canonical mode reparses generated CSS, so these indexes identify neither
+   source AST. Keep the move, but not coordinates or an index-derived partner
+   that a reader cannot locate in either input. *)
+let hide_rule_reorder_position : D.rule_diff -> D.rule_diff = function
+  | D.Reordered r ->
+      D.Reordered
+        { r with expected_pos = -1; actual_pos = -1; swapped_with = None }
+  | ( D.Added _ | D.Removed _ | D.Content_changed _ | D.Selector_changed _
+    | D.Rearranged _ | D.Regrouped _ ) as change ->
+      change
+
+let rec hide_container_reorder_positions : D.container_diff -> D.container_diff
+    = function
+  | D.Modified change ->
+      D.Modified
+        {
+          change with
+          rule_changes = List.map hide_rule_reorder_position change.rule_changes;
+          container_changes =
+            List.map hide_container_reorder_positions change.container_changes;
+        }
+  | D.Reordered change ->
+      D.Reordered { change with expected_pos = -1; actual_pos = -1 }
+  | (D.Added _ | D.Removed _ | D.Block_structure_changed _) as change -> change
+
+let hide_canonical_reorder_positions (diff : D.t) =
+  {
+    D.rules = List.map hide_rule_reorder_position diff.rules;
+    containers = List.map hide_container_reorder_positions diff.containers;
+    layer_order = diff.layer_order;
+  }
+
+(* The canonical tree supplies normalized content changes; the source tree
+   supplies authored ordering changes. Partition the two structured diffs, then
+   merge their matching container paths back into one report. *)
+let rule_is_reordered : D.rule_diff -> bool = function
+  | D.Reordered _ -> true
+  | D.Added _ | D.Removed _ | D.Content_changed _ | D.Selector_changed _
+  | D.Rearranged _ | D.Regrouped _ ->
+      false
+
+let select_rule_reorders keep =
+  List.filter (fun change -> Bool.equal keep (rule_is_reordered change))
+
+let rec select_container_reorders keep :
+    D.container_diff -> D.container_diff option = function
+  | D.Reordered _ as change -> if keep then Some change else None
+  | D.Modified change ->
+      let rule_changes = select_rule_reorders keep change.rule_changes in
+      let container_changes =
+        List.filter_map
+          (select_container_reorders keep)
+          change.container_changes
+      in
+      if rule_changes = [] && container_changes = [] then None
+      else Some (D.Modified { change with rule_changes; container_changes })
+  | (D.Added _ | D.Removed _ | D.Block_structure_changed _) as change ->
+      if keep then None else Some change
+
+let select_reorders keep (diff : D.t) =
+  {
+    D.rules = select_rule_reorders keep diff.rules;
+    containers =
+      List.filter_map (select_container_reorders keep) diff.containers;
+    layer_order = (if keep then None else diff.layer_order);
+  }
+
+let without_reorders = select_reorders false
+let only_reorders = select_reorders true
+
+let same_container (a : D.container_info) (b : D.container_info) =
+  a.container_type = b.container_type && String.equal a.condition b.condition
+
+(* A conditional block can contain both a normalized content change and a source
+   reorder. Join those entries instead of printing the block twice. The tag
+   claims a target after one merge, so repeated equal conditions pair by
+   occurrence rather than all folding into the first block. *)
+let rec merge_container_change source = function
+  | [] -> [ (true, source) ]
+  | (false, D.Modified target) :: rest -> (
+      match source with
+      | D.Modified additions when same_container target.info additions.info ->
+          ( true,
+            D.Modified
+              {
+                target with
+                rule_changes = target.rule_changes @ additions.rule_changes;
+                container_changes =
+                  merge_container_changes target.container_changes
+                    additions.container_changes;
+              } )
+          :: rest
+      | _ -> (false, D.Modified target) :: merge_container_change source rest)
+  | target :: rest -> target :: merge_container_change source rest
+
+and merge_container_changes canonical source =
+  let tagged = List.map (fun change -> (false, change)) canonical in
+  List.fold_left
+    (fun changes addition -> merge_container_change addition changes)
+    tagged source
+  |> List.map snd
+
+let merge_source_reorders (canonical : D.t) (source : D.t) =
+  {
+    D.rules = canonical.rules @ source.rules;
+    containers = merge_container_changes canonical.containers source.containers;
+    layer_order = canonical.layer_order;
+  }
+
 (* Collect all rules with their path-qualified selector keys *)
 let rec collect_keyed_rules acc path stmts =
   List.fold_left
@@ -144,20 +253,7 @@ let reported_declaration d =
   in
   (Css.declaration_name d, value)
 
-let restore_group_order table =
-  Hashtbl.to_seq_keys table |> List.of_seq
-  |> List.iter (fun key ->
-      Hashtbl.replace table key (List.rev (Hashtbl.find table key)));
-  table
-
-let group_into_table rules =
-  let tbl = Hashtbl.create 128 in
-  List.iter
-    (fun (k, d) ->
-      let lst = match Hashtbl.find_opt tbl k with Some l -> l | None -> [] in
-      Hashtbl.replace tbl k (d :: lst))
-    rules;
-  restore_group_order tbl
+let group_into_table rules = Group.by ~size:128 Fun.id rules
 
 (* Compare two declaration lists with the same key and emit diffs *)
 let diff_same_key_pair key d1 d2 =
@@ -409,8 +505,21 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
     ~expected_canon ~actual_canon =
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
+      let canonical_diff =
+        tree_diff ~expected:expected_ast ~actual:actual_ast |> without_reorders
+      in
+      let source_reorders =
+        match (expected_parse, actual_parse) with
+        | ( Ok { Css.stylesheet = expected_source; _ },
+            Ok { Css.stylesheet = actual_source; _ } ) ->
+            tree_diff ~expected:expected_source ~actual:actual_source
+            |> only_reorders
+        | Error _, _ | _, Error _ ->
+            { D.rules = []; containers = []; layer_order = None }
+      in
       let structural_diff =
-        tree_diff ~expected:expected_ast ~actual:actual_ast
+        merge_source_reorders canonical_diff source_reorders
+        |> hide_canonical_reorder_positions
       in
       if is_empty structural_diff then
         fallback_to_string_diff ~expected:expected_canon ~actual:actual_canon
@@ -557,38 +666,67 @@ let compute_stats ~expected_str ~actual_str diff_result =
 let stats = compute_stats
 let add_strings b ls = List.iter (Buffer.add_string b) ls
 
-(* Render each side's parse warnings so a declaration the parser dropped never
-   reads as a phantom structural difference on the side that parsed. Past [max]
-   they are counted rather than printed: a stylesheet that trips the same
-   unsupported syntax hundreds of times would otherwise bury the diff it is
-   meant to qualify. *)
-let pp_parse_warnings ?(max = Stdlib.max_int) buf label warnings =
-  let shown, hidden =
-    let n = List.length warnings in
-    if n <= max then (warnings, 0)
-    else (List.filteri (fun i _ -> i < max) warnings, n - max)
+(* Every warning line starts fresh: what precedes it in the report ends where it
+   ends, a snippet's caret row included. *)
+let start_line buf =
+  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
+  then Buffer.add_char buf '\n'
+
+(* Two warnings are the same complaint when they fail the same way at the same
+   place in the grammar. Where in the byte stream each side ran into it is no
+   part of that. *)
+(* The rendered kind is built once per warning rather than once per comparison:
+   [partition_warnings] compares every pair. *)
+type keyed = { warning : Error.t; kind : string }
+
+let keyed (w : Error.t) =
+  { warning = w; kind = Pp.to_string Error.pp_kind w.kind }
+
+let same_warning a b =
+  Sort.equal a.warning.Error.sort b.warning.Error.sort
+  && List.equal String.equal a.warning.Error.path b.warning.Error.path
+  && String.equal a.kind b.kind
+
+let rec remove_first p = function
+  | [] -> None
+  | x :: xs when p x -> Some xs
+  | x :: xs -> Option.map (fun rest -> x :: rest) (remove_first p xs)
+
+(* Shared warnings keep the expected side's copy, so the snippet under one is
+   the expected side's text. *)
+let partition_warnings expected actual =
+  let rec go exp_only act_only shared = function
+    | [] ->
+        let warnings = List.map (fun k -> k.warning) in
+        ( warnings (List.rev shared),
+          warnings (List.rev exp_only),
+          warnings act_only )
+    | w :: ws -> (
+        match remove_first (same_warning w) act_only with
+        | Some act_only -> go exp_only act_only (w :: shared) ws
+        | None -> go (w :: exp_only) act_only shared ws)
   in
-  List.iter
-    (fun w ->
-      if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
-      then Buffer.add_char buf '\n';
-      add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ])
-    shown;
-  if hidden > 0 then
-    add_strings buf
-      [
-        label;
-        ": ";
-        string_of_int hidden;
-        (if hidden = 1 then " more parse warning\n"
-         else " more parse warnings\n");
-      ]
+  go [] (List.map keyed actual) [] (List.map keyed expected)
+
+let pp_warning buf label w =
+  start_line buf;
+  add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ]
+
+let pp_overflow buf label hidden =
+  start_line buf;
+  add_strings buf
+    [
+      label;
+      ": ";
+      string_of_int hidden;
+      (if hidden = 1 then " more parse warning\n" else " more parse warnings\n");
+    ]
 
 let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?depth buf = function
+    ?depth ?entries buf = function
   | Tree_diff d ->
       (* Show structural differences *)
-      D.pp ~expected ~actual ~color ?depth buf d
+      D.pp ~expected ~actual ~color ?depth ?entries buf d
   | String_diff sdiff ->
       String_diff.pp ~expected_label:expected ~actual_label:actual buf sdiff
   | No_diff -> ()
@@ -614,23 +752,59 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
   | Actual_error e ->
       add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
 
+(* Render parse warnings so a declaration the parser dropped never reads as a
+   phantom structural difference on the side that parsed. A warning both sides
+   raise is one fact about the input rather than a finding about the diff, so it
+   prints once, under a label naming both files, for one slot of the budget.
+   One-sided warnings take that budget first: they are what qualifies the
+   difference below them. Past [max] the rest are counted rather than printed: a
+   stylesheet that trips the same unsupported syntax hundreds of times would
+   otherwise bury the diff it is meant to qualify. *)
+type warning_side = Expected | Actual | Both
+
+let warnings t =
+  let shared, expected_only, actual_only =
+    partition_warnings t.expected_warnings t.actual_warnings
+  in
+  let tag side = List.map (fun w -> (side, w)) in
+  tag Expected expected_only @ tag Actual actual_only @ tag Both shared
+
 let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
-  pp_parse_warnings ?max buf expected t.expected_warnings;
-  pp_parse_warnings ?max buf actual t.actual_warnings
+  let shared, expected_only, actual_only =
+    partition_warnings t.expected_warnings t.actual_warnings
+  in
+  let remaining = ref (Option.value max ~default:Stdlib.max_int) in
+  (* One pass: the count of what was left out is part of the report, so the
+     whole list is walked whether or not the budget runs out early. *)
+  let render label ws =
+    let hidden = ref 0 in
+    List.iter
+      (fun w ->
+        if !remaining > 0 then begin
+          decr remaining;
+          pp_warning buf label w
+        end
+        else incr hidden)
+      ws;
+    if !hidden > 0 then pp_overflow buf label !hidden
+  in
+  render expected expected_only;
+  render actual actual_only;
+  render (String.concat "" [ expected; " and "; actual ]) shared
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 
 let pp_diff ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?depth buf t =
-  pp_result ~expected ~actual ~color ?depth buf t.result
+    ?depth ?entries buf t =
+  pp_result ~expected ~actual ~color ?depth ?entries buf t.result
 
-let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) ?depth buf
-    t =
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) ?depth
+    ?entries buf t =
   (* Warnings come first: a dropped declaration qualifies every line below it,
      and trailing them puts that caveat past the end of a long report. *)
   pp_warnings ~expected ~actual buf t;
   if has_warnings t then Buffer.add_char buf '\n';
-  pp_diff ~expected ~actual ~color ?depth buf t
+  pp_diff ~expected ~actual ~color ?depth ?entries buf t
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in
@@ -686,11 +860,6 @@ let emit_changes buf stats =
 
 let pp_stats buf stats =
   let char_diff = abs (stats.actual_chars - stats.expected_chars) in
-  let char_diff_pct =
-    if stats.expected_chars > 0 then
-      float_of_int char_diff *. 100.0 /. float_of_int stats.expected_chars
-    else 0.0
-  in
   (* Same order as the [---] / [+++] headers below: expected, then actual. *)
   add_strings buf
     [
@@ -698,8 +867,13 @@ let pp_stats buf stats =
       string_of_int stats.expected_chars;
       " chars vs ";
       string_of_int stats.actual_chars;
-      " chars (";
     ];
-  add_pct buf char_diff_pct;
-  Buffer.add_string buf "% diff)\n";
+  if stats.expected_chars > 0 then (
+    let char_diff_pct =
+      float_of_int char_diff *. 100.0 /. float_of_int stats.expected_chars
+    in
+    Buffer.add_string buf " chars (";
+    add_pct buf char_diff_pct;
+    Buffer.add_string buf "% diff)\n")
+  else Buffer.add_string buf " chars\n";
   emit_changes buf stats

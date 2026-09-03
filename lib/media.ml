@@ -536,19 +536,15 @@ let err ?scope t cvs reason =
   let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
   fail_parse ?scope (Cursor.condition_error at ~at_rule:"@media" reason)
 
-let is_whitespace_component = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> true
-  | _ -> false
-
 let rec drop_whitespace = function
-  | component :: rest when is_whitespace_component component ->
+  | component :: rest when Component.is_whitespace component ->
       drop_whitespace rest
   | components -> components
 
 let trim_components components =
   components |> drop_whitespace |> List.rev |> drop_whitespace |> List.rev
 
-let non_whitespace_components = List.filter (Fun.negate is_whitespace_component)
+let non_whitespace_components = List.filter (Fun.negate Component.is_whitespace)
 
 let components_empty components =
   match trim_components components with [] -> true | _ :: _ -> false

@@ -358,6 +358,38 @@ let equal_on_opaque_conditions () =
     "an opaque condition does not equal a different one" false
     (equal opaque (of_string "theme(dynamic)"))
 
+(* Conditional Rules 5 sec. 5.4 gives <style-range> a single-comparison branch,
+   [<style-range-value> <mf-comparison> <style-range-value>], alongside the two
+   interval branches. Media Queries 4 sec. 3 spells [<mf-comparison> = <mf-lt> |
+   <mf-gt> | <mf-eq>] with [<mf-eq> = '='], so [=] is a style range operator
+   just as it is a size one. *)
+let spec_style_range_comparison () =
+  let open Css.Container in
+  let round_trips name input =
+    Alcotest.(check string) name input (to_string (of_string input))
+  in
+  round_trips "equality" "style(--gap = 10px)";
+  round_trips "value-first equality" "style(10px = --gap)";
+  round_trips "name-first strict" "style(--gap > 10px)";
+  round_trips "name-first inclusive" "style(--gap <= 10px)";
+  round_trips "value-first strict" "style(10px < --gap)";
+  Alcotest.(check string)
+    "the minified spelling drops the spaces" "style(--gap=10px)"
+    (to_string ~minify:true (of_string "style(--gap = 10px)"));
+  Alcotest.(check bool)
+    "the minified spelling reparses to the same query" true
+    (equal
+       (of_string "style(--gap = 10px)")
+       (of_string (to_string ~minify:true (of_string "style(--gap = 10px)"))));
+  Alcotest.(check bool)
+    "the operator is part of the query" false
+    (equal (of_string "style(--gap = 10px)") (of_string "style(--gap > 10px)"));
+  (* [<mf-eq>] reaches <style-range> only through <mf-comparison>, and the two
+     interval branches take [<mf-lt>] twice or [<mf-gt>] twice. So neither an
+     [=] bound nor a pair of opposing bounds is a <style-range>. *)
+  rejects_invalid "style(10px = --gap = 20px)";
+  rejects_invalid "style(10px < --gap > 20px)"
+
 (* A normal form is already normal, and it is still the query it came from:
    reparsing what [normalize] printed lands back on the same normal form. *)
 let normalize_is_idempotent () =
@@ -421,6 +453,7 @@ let tests =
       test_case "equal ignores function spelling" `Quick
         equal_ignores_function_spelling;
       test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
+      test_case "spec style range comparison" `Quick spec_style_range_comparison;
       test_case "normalize is idempotent" `Quick normalize_is_idempotent;
     ]
 
