@@ -4499,6 +4499,28 @@ let test_columns_value () =
   check_columns_value "inherit";
   neg_cursor read_columns_value "invalid-columns"
 
+(* CSS Values 4 (ED) sec. 10.9: a math function that resolves to <number> is
+   valid wherever an <integer> is, so every integer position reads a calc(). The
+   positions here are tab-size's <number> (CSS Text 4 (ED) sec. 4.4),
+   column-count's <integer> and the columns shorthand that carries it (CSS
+   Multicol 1 (ED) sec. 3.2 and 3.3), repeat()'s count (CSS Grid 2 (ED) sec.
+   7.2.3.1) and the span count of <grid-line> (sec. 8.3). A <track-breadth> is
+   not one of them: sec. 7.2.1 admits a <length-percentage> or a <flex> there,
+   never a bare <number>. *)
+let math_function_at_integer_positions () =
+  check_tab_size ~expected:"3" "calc(1 + 2)";
+  check_tab_size "4";
+  check_tab_size "2px";
+  check_column_count ~expected:"3" "calc(1 + 2)";
+  check_column_count "3";
+  check_columns_value ~expected:"3" "calc(1 + 2)";
+  check_columns_value "2";
+  check_grid_template ~expected:"repeat(3,1fr)" "repeat(calc(1 + 2),1fr)";
+  check_grid_template "repeat(2,calc(1px + 2px))";
+  check_grid_line ~expected:"span 3" "span calc(1 + 2)";
+  check_grid_line "span 3";
+  neg_cursor read_grid_template "calc(1 + 2)"
+
 let test_field_sizing () =
   check_field_sizing "content";
   check_field_sizing "fixed";
@@ -5558,6 +5580,8 @@ let additional_tests =
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;
     test_case "columns_value" `Quick test_columns_value;
+    test_case "math_function_at_integer_positions" `Quick
+      math_function_at_integer_positions;
     test_case "field_sizing" `Quick test_field_sizing;
     test_case "font_size" `Quick test_font_size;
     test_case "mask_box" `Quick test_mask_box;
