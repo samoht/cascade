@@ -213,6 +213,27 @@ let value_span_marks_the_rejected_value () =
       (".x { color: nope red }", "nope");
     ]
 
+(* [Cursor.one_of] fails once every alternative has failed, and the alternatives
+   are anonymous readers, so there is nothing to list after "one of". The reason
+   says that no form matched rather than trailing off. *)
+let bad_value_reason_names_something () =
+  let reasons css =
+    List.filter_map
+      (fun (w : Error.t) ->
+        match w.kind with
+        | Error.Bad_value { reason; _ } -> Some reason
+        | _ -> None)
+      (parse_warnings css)
+  in
+  List.iter
+    (fun (css, expected) ->
+      Alcotest.(check (list string)) css [ expected ] (reasons css))
+    [
+      (".x { top: nope }", "no accepted form");
+      (".x { align-items: nope }", "no accepted form");
+      (".x { aspect-ratio: nope }", "no accepted form");
+    ]
+
 let suite =
   ( "error",
     [
@@ -236,4 +257,6 @@ let suite =
         caret_marks_the_line_it_points_at;
       Alcotest.test_case "value span marks the rejected value" `Quick
         value_span_marks_the_rejected_value;
+      Alcotest.test_case "bad value reason names something" `Quick
+        bad_value_reason_names_something;
     ] )
