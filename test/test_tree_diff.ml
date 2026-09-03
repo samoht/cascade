@@ -4,6 +4,16 @@ open Cascade
 
 let parse css = Css.of_string_exn ~strict:false css
 
+let string_contains ~needle hay =
+  let nl = String.length needle and hl = String.length hay in
+  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
+  go 0
+
+let render d =
+  let buf = Buffer.create 256 in
+  Cascade_diff.Tree_diff.pp buf d;
+  Buffer.contents buf
+
 (* ===== Identical stylesheets ===== *)
 
 let diff_identical () =
@@ -531,6 +541,27 @@ let diff_nesting_parent_props_only () =
   in
   Alcotest.(check int) "no nesting container diff" 0 nesting_count
 
+(* A comma group is a set, so the two sides write the same rule and the only
+   difference between them is the one inside its nested body. *)
+let diff_nesting_under_reordered_selector_list () =
+  let expected = parse ".a, .b { color: red; &:hover { color: blue } }" in
+  let actual = parse ".b, .a { color: red; &:hover { color: green } }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  let s = render d in
+  Alcotest.(check bool)
+    "the nested colour change is reported" true
+    (string_contains ~needle:"blue" s && string_contains ~needle:"green" s)
+
+(* The same selectors with the same specificities in another order select the
+   same elements, so nothing about the rule changed. *)
+let diff_selector_list_reorder_is_not_a_change () =
+  let expected = parse ".a, .b { color: red }" in
+  let actual = parse ".b, .a { color: red }" in
+  let d = Cascade_diff.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool)
+    "a reordered selector list is not a difference" true
+    (Cascade_diff.Tree_diff.is_empty d)
+
 (* ===== Query functions ===== *)
 
 let single_rule_diff_one_change () =
@@ -653,16 +684,6 @@ let pp_rule_diff_simple_ok () =
         (String.length output > 0)
 
 (* ===== Selector grouping reconciliation ===== *)
-
-let string_contains ~needle hay =
-  let nl = String.length needle and hl = String.length hay in
-  let rec go i = i + nl <= hl && (String.sub hay i nl = needle || go (i + 1)) in
-  go 0
-
-let render d =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Tree_diff.pp buf d;
-  Buffer.contents buf
 
 let diff_selector_group_split_reported () =
   (* Splitting a group with identical declarations is reported as a structural
@@ -1694,6 +1715,10 @@ let suite =
       Alcotest.test_case "nesting deep" `Quick diff_nesting_deep;
       Alcotest.test_case "nesting only parent props changed" `Quick
         diff_nesting_parent_props_only;
+      Alcotest.test_case "nesting under a reordered selector list" `Quick
+        diff_nesting_under_reordered_selector_list;
+      Alcotest.test_case "selector list reorder is not a change" `Quick
+        diff_selector_list_reorder_is_not_a_change;
       Alcotest.test_case "duplicate condition blocks reconcile" `Quick
         duplicate_condition_blocks_reconcile;
       Alcotest.test_case "rearranged reported" `Quick rearranged_reported;
