@@ -5,6 +5,24 @@
     variant is closed: every CSS-syntax-level failure that the parser can emit
     is enumerated here. *)
 
+(** What a recovery point did with the construct an error is about. *)
+module Recovery : sig
+  type construct =
+    | Declaration  (** A [property: value] pair. *)
+    | Rule  (** A rule or an at-rule, and everything it holds. *)
+
+  type t =
+    | Dropped of construct
+        (** The construct's text reaches neither the AST nor anything printed
+            back out from it, so a caller reading the parse never sees it. *)
+    | Recovered
+        (** The construct survives into the output. The error reports on it
+            without costing it. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is whether [a] and [b] are the same recovery. *)
+end
+
 type kind =
   | Sort_mismatch of { expected : Sort.t; found : Sort.t }
       (** Got a node of the wrong category, e.g. a component where a declaration
@@ -31,11 +49,14 @@ type t = {
   kind : kind;
   source : string option;
   filename : string option;
+  recovery : Recovery.t;
 }
 (** {!field-path} is a breadcrumb trail from the outermost context down to the
     exact sub-production that failed, rendered with ["/"] separators. {!source}
     carries the raw input string for materialising a snippet on demand via
-    {!snippet}. *)
+    {!snippet}. {!field-recovery} is what became of the construct the error is
+    about, which the site that caught the error fills in through
+    {!with_recovery}. *)
 
 val pp_kind : kind Pp.t
 (** [pp_kind] renders just the reason, e.g.
@@ -85,6 +106,12 @@ val with_filename : ?filename:string -> t -> t
 (** [with_filename ~filename t] stamps [filename] onto [t] when [t] does not
     already carry one. Used by entry points that know the source filename to
     annotate warnings collected by inner readers. *)
+
+val with_recovery : Recovery.t -> t -> t
+(** [with_recovery recovery t] records what the reader did with the construct
+    [t] is about. The raise site knows what failed; only the site that catches
+    the error knows whether the construct survives, so an error carries
+    {!Recovery.Recovered} until such a site stamps it. *)
 
 val with_property : string -> t -> t
 (** [with_property property t] fills in the property name of a {!Bad_value}

@@ -49,10 +49,12 @@ val meta : t -> Loc.meta_level
 val source : t -> string option
 (** [source t] is the preprocessed source text that produced [t], when known. *)
 
-val push_warning : t -> Error.t -> unit
-(** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
-    recovery mode catches a {!exception-Parse_error}, pushes it here, skips to a
-    recovery point, and keeps going. Drained via {!drain_warnings}. *)
+val push_warning : t -> recovery:Error.Recovery.t -> Error.t -> unit
+(** [push_warning t ~recovery e] records [e] as a non-fatal warning on [t],
+    stamped with what the recovery did to the construct [e] is about. A
+    validator in recovery mode catches a {!exception-Parse_error}, pushes it
+    here, skips to a recovery point, and keeps going. Drained via
+    {!drain_warnings}. *)
 
 val drain_warnings : t -> Error.t list
 (** [drain_warnings t] returns and clears the warnings accumulated on [t] in

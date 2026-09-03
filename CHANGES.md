@@ -27,7 +27,10 @@ entry points both moved.
 - `cascade diff` exits 2, not 0, when it finds no difference and had to drop a
   declaration or a rule it could not read: what it dropped reached neither side
   of the comparison, so identity is not a verdict it can give. A gate that
-  reads any non-zero status as "differs" needs updating (#832, #833)
+  reads any non-zero status as "differs" needs updating (#832, #833, #834)
+- `Cascade.Error.t` gains `recovery`, which says whether the reader dropped the
+  construct the error is about or kept it in the output. Exhaustive record
+  patterns must bind it or add `_`; `Cascade.Error.v` fills it in (#834)
 - `Cascade.Parser.to_string_custom` is gone. Call
   `Cascade.Parser.string_of_components`, which renders a custom-property token
   stream identically (#806)

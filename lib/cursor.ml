@@ -38,7 +38,9 @@ let sub ?eof_loc t cvs =
     depth = t.depth;
   }
 
-let push_warning t e = t.warnings := e :: !(t.warnings)
+let push_warning t ~recovery e =
+  t.warnings := Error.with_recovery recovery e :: !(t.warnings)
+
 let recover t = t.recover
 let meta t = t.meta
 let source t = t.source

@@ -68,36 +68,13 @@ let warning_budget = function
   | All_entries -> None
   | Fit_entries | Count _ -> Some auto_warning_budget
 
-(* A declaration the reader refuses is dropped from that side's AST, so nothing
-   it holds reaches the verdict. The typed value readers raise [Bad_value] at
-   [Sort.Component] for exactly that refusal. The other kinds name material the
-   parse kept - an unknown at-rule and its block reach the output, an
-   unterminated block is closed with its contents - or a failure above the
-   declaration. *)
-let unreadable_declaration (w : Cascade.Error.t) =
-  match w.kind with
-  | Cascade.Error.Bad_value _ ->
-      Cascade.Sort.equal w.sort Cascade.Sort.Component
-  | Sort_mismatch _ | Unexpected_token _ | Missing_token _ | Bad_selector _
-  | Bad_condition _ | Unknown_at_rule _ | Unterminated _ ->
-      false
-
-(* A rule the reader refuses goes the same way, and takes every declaration and
-   nested rule it holds. Each kind below was checked by running [cascade fmt] on
-   an input that raises it and looking for the construct in the output. An
-   unterminated qualified rule, a prelude read as a declaration, an at-rule
-   condition the grammar refuses and a lexeme the reader needed and did not find
-   all leave nothing behind. An unterminated block is closed with its contents.
-   [Bad_value] at [Sort.Component] is the declaration counted above; elsewhere
-   it, [Bad_selector] and [Unknown_at_rule] report on material the parse
-   kept. *)
-let unreadable_rule (w : Cascade.Error.t) =
-  match w.kind with
-  | Cascade.Error.Unterminated _ ->
-      not (Cascade.Sort.equal w.sort Cascade.Sort.Block)
-  | Sort_mismatch _ | Unexpected_token _ | Missing_token _ | Bad_condition _ ->
-      true
-  | Bad_value _ | Bad_selector _ | Unknown_at_rule _ -> false
+(* What the parse dropped reaches neither side of the comparison, so nothing it
+   holds can affect the verdict. The reader stamps that on the warning at the
+   point it recovers, which is the only place that knows: the same [Bad_value]
+   at [Sort.Property_value] names an [@charset] the reader dropped and an
+   [@font-face] it kept, so the kind and the sort cannot tell them apart. *)
+let dropped construct (w : Cascade.Error.t) =
+  Cascade.Error.Recovery.equal w.recovery (Dropped construct)
 
 (* Counted per side, because the question is whether either input hid something
    from the comparison, not how many the pair hid between them. *)
@@ -116,8 +93,8 @@ let count_sides p (result : Cascade_diff.Css_compare.t) =
 
 let unread_of result =
   {
-    declarations = count_sides unreadable_declaration result;
-    rules = count_sides unreadable_rule result;
+    declarations = count_sides (dropped Declaration) result;
+    rules = count_sides (dropped Rule) result;
   }
 
 let has_sides s = s.expected > 0 || s.actual > 0

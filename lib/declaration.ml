@@ -2447,7 +2447,7 @@ let read_declaration_step t acc =
    declaration is dropped, reading resumes past the next [;], and the
    surrounding rule survives. *)
 let recover_declaration_step t acc e =
-  Cursor.push_warning t e;
+  Cursor.push_warning t ~recovery:Error.Recovery.(Dropped Declaration) e;
   Cursor.skip_past_semicolon t;
   acc
 
