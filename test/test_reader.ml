@@ -346,6 +346,34 @@ let error_renders_three_part_location () =
     (String.ends_with ~suffix:" at theme.css:2:2"
        (first_line (with_filename error "theme.css")))
 
+(* The context window can span both sides of the failing line. Its caret belongs
+   immediately below that line, at a column measured from the line start. *)
+let error_renders_caret_on_marked_line () =
+  let error = error_at "first\nsecond\nthird" 8 in
+  Alcotest.(check string)
+    "caret interrupts the context below the marked line"
+    (String.concat ""
+       [
+         "a character the input never holds at <CSS input>:2:3\n";
+         "first\n";
+         "second\n";
+         "  ^\n";
+         "third";
+       ])
+    (pp_parse_error error)
+
+(* Position zero is a valid marker, not an out-of-bounds request for the old
+   arbitrary twenty-column fallback. *)
+let error_renders_caret_at_context_start () =
+  let error = error_at "abc" 0 in
+  Alcotest.(check string)
+    "caret at zero"
+    (String.concat ""
+       [
+         "a character the input never holds at <CSS input>:1:1\n"; "abc\n"; "^";
+       ])
+    (pp_parse_error error)
+
 let tests_call_stack () =
   callstack_case ();
   with_context_case ();
@@ -364,7 +392,9 @@ let tests_error_position () =
   error_ascii_caret_holds ();
   error_context_window_keeps_code_points ();
   error_filename_names_the_source ();
-  error_renders_three_part_location ()
+  error_renders_three_part_location ();
+  error_renders_caret_on_marked_line ();
+  error_renders_caret_at_context_start ()
 
 let suite =
   ( "reader",
