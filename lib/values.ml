@@ -4377,19 +4377,6 @@ let pp_hue_interpolation : hue_interpolation Pp.t =
   | Specified -> Pp.string ctx "specified"
   | Default -> ()
 
-(* CSS Syntax 3 (ED) sec. 4: a [<percentage-token>] ends at its [%], so the
-   separator before the next component carries no information and elides under
-   minify. Narrower than {!Pp.token_sp}, which also elides after [)]: a function
-   is word-like at its end, and the custom-value serialiser keeps that
-   separator, so eliding it here would make a constructed colour disagree with
-   its own reparse. Reads the emitted byte rather than the node so a spelling
-   that does not end on [%] ([calc(NaN*1%)]) stays spaced. *)
-let space_after_percentage : unit Pp.t =
- fun ctx () ->
-  match Pp.last_char ctx with
-  | Some '%' when Pp.minified ctx -> ()
-  | _ -> Pp.space ctx ()
-
 let static_component_can_touch_negative (component : component) =
   match component with
   | Num _ | Pct _ -> true
@@ -4423,15 +4410,14 @@ let pp_color_components ~decimals : component list Pp.t =
 (* Helpers to pretty print CSS color functions using Pp.call *)
 let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
  fun ctx (r, g, b, alpha) ->
-  Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ];
+  Pp.list ~sep:Pp.pct_sp pp_channel ctx [ r; g; b ];
   pp_opt_alpha ctx alpha
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
-  | Channels { r; g; b } ->
-      Pp.list ~sep:space_after_percentage pp_channel ctx [ r; g; b ]
+  | Channels { r; g; b } -> Pp.list ~sep:Pp.pct_sp pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
 (** Lab-like float string. CSSOM serialisation (CSSOM 1 sec. 6.7.2) drops a
@@ -4511,7 +4497,7 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
   | None ->
       space_after_color_percentage ctx printed_l ~next:(Some "none");
       Pp.string ctx "none");
-  space_after_percentage ctx ();
+  Pp.pct_sp ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
@@ -4522,7 +4508,7 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
   pp_hue ctx h;
   Pp.space ctx ();
   pp_percentage ctx s;
-  space_after_percentage ctx ();
+  Pp.pct_sp ctx ();
   pp_percentage ctx l;
   pp_opt_alpha ctx a
 
@@ -4568,7 +4554,7 @@ let pp_lab_like_args ~axis_pct_scale :
       (ctx.Pp.minify && starts_unsigned_number a
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
-  then space_after_percentage ctx ();
+  then Pp.pct_sp ctx ();
   Pp.string ctx b;
   match alpha with
   | None -> ()

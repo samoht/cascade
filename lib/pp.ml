@@ -213,6 +213,20 @@ let token_sp ctx () =
     else
       match out_nth ctx.out (len - 1) with ')' | '%' -> () | _ -> char ctx ' '
 
+(* CSS Syntax 3 (ED) sec. 4: a <percentage-token> ends at its [%], so the
+   separator after one carries no information and elides under minify. Narrower
+   than [token_sp], which also elides after [)]: a function is word-like at its
+   end, and the custom-value serialiser keeps that separator, so eliding it here
+   would make a constructed value disagree with its own reparse. Reads the
+   emitted byte rather than the node, so a spelling that does not end on [%]
+   ([calc(NaN*1%)]) stays spaced. *)
+let pct_sp ctx () =
+  if not ctx.minify then char ctx ' '
+  else
+    let len = out_length ctx.out in
+    if len = 0 then char ctx ' '
+    else match out_nth ctx.out (len - 1) with '%' -> () | _ -> char ctx ' '
+
 let column ctx =
   let len = out_length ctx.out in
   let rec find_newline i =
