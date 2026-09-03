@@ -260,7 +260,7 @@ let rec read_page_break_inside_value t : page_break_inside_value =
     t
 
 let read_columns_count t =
-  let n = Cursor.int t in
+  let n = read_integer "column-count" t in
   if n <= 0 then Cursor.err_invalid t "column count must be positive";
   n
 
@@ -341,10 +341,7 @@ let rec read_column_count t : column_count =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_column_count t))
-    ~default:(fun t ->
-      let n = Cursor.int t in
-      if n <= 0 then Cursor.err_invalid t "column count must be positive";
-      Count n)
+    ~default:(fun t -> (Count (read_columns_count t) : column_count))
     t
 
 let rec read_column_span t : column_span =

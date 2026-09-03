@@ -190,6 +190,9 @@ entry points both moved.
 - Grid track sizes accept math functions that resolve to `<flex>`, including
   `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
   repeated and automatic tracks (#749)
+- `tab-size`, `column-count`, the `columns` shorthand, a `repeat()` track count
+  and a `span` grid line accept a `calc()` resolving to a number, which CSS
+  Values 4 allows wherever an integer is (#827)
 - A sole baseline position in `place-content` is accepted and defaults its
   omitted `justify-content` slot to `start`, as required by CSS Align (#739)
 - Custom-property declarations containing a `<bad-string-token>` are dropped

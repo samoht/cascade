@@ -1880,13 +1880,24 @@ let rec read_text_size_adjust t : text_size_adjust =
         t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
+  let number_value t i =
+    if i < 0 then Cursor.err_invalid t "negative tab-size integer";
+    (Int i : tab_size)
+  in
   let read_value t =
     match Cursor.integer_opt t with
-    | Some i ->
-        if i < 0 then Cursor.err_invalid t "negative tab-size integer";
-        (Int i : tab_size)
+    | Some i -> number_value t i
     | None ->
-        Length (Values.read_length ~allow_negative:false ~with_keywords:false t)
+        (* CSS Text 4 (ED) sec. 4.4: [<number> | <length>], so a math function
+           lands in whichever slot its result type names. *)
+        Cursor.one_of
+          [
+            (fun t -> number_value t (Values.read_integer "tab-size" t));
+            (fun t ->
+              Length
+                (Values.read_length ~allow_negative:false ~with_keywords:false t));
+          ]
+          t
   in
   Cursor.enum_or_var "tab-size"
     [

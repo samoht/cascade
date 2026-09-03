@@ -598,6 +598,17 @@ val read_calc :
     deferred until substitution. Omitting [result_type] retains the generic AST
     reader behaviour. *)
 
+val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
+(** [read_integer_calc name t] parses the math function at an [<integer>]
+    position, which CSS Values 4 sec. 10.9 accepts wherever a literal integer
+    is. A constant expression comes back folded, as [`Int]; one holding a
+    [var()] comes back as [`Calc], for a value type carrying a calc node. [name]
+    names the property in the error a non-integer constant raises. *)
+
+val read_integer : string -> Cursor.t -> int
+(** [read_integer name t] parses an [<integer>] position whose value type
+    carries no calc node: a literal integer, or a [calc()] folding to one. *)
+
 val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
