@@ -930,6 +930,9 @@ difference wherever the two are not equivalent.
   properties, with source order breaking ties, so a compatibility block no
   longer makes declarations present on both sides read as added or removed
   (#752)
+- `--diff=tree` tracks each repeated conditional block in source order, so
+  moving a later block past a rule is reported even when an earlier block has
+  the same condition (#779)
 
 ### Library
 

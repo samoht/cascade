@@ -1340,16 +1340,26 @@ let order_key_of_stmt stmt =
   | Some (sel, _, _) -> Some (Rule_order (selector_key_of_selector sel))
   | None -> Option.map (fun desc -> Block_order desc) (describe_statement stmt)
 
-(* Order keys in first-occurrence order. *)
+(* Rules take part once per selector: a selector split over several rules moves
+   as one cascade participant. Containers do not have that identity. Separate
+   blocks under the same condition can sit on opposite sides of another rule, so
+   number their occurrences instead of collapsing them onto the first. *)
 let order_keys_in_order stmts =
-  let seen = Hashtbl.create (List.length stmts) in
+  let seen_rules = Hashtbl.create (List.length stmts) in
+  let block_occurrences = Hashtbl.create 8 in
   List.filter_map
     (fun stmt ->
       match order_key_of_stmt stmt with
-      | Some key when not (Hashtbl.mem seen key) ->
-          Hashtbl.add seen key ();
-          Some key
-      | _ -> None)
+      | Some (Rule_order _ as key) when not (Hashtbl.mem seen_rules key) ->
+          Hashtbl.add seen_rules key ();
+          Some (key, 0)
+      | Some (Block_order _ as key) ->
+          let occurrence =
+            Option.value ~default:0 (Hashtbl.find_opt block_occurrences key)
+          in
+          Hashtbl.replace block_occurrences key (occurrence + 1);
+          Some (key, occurrence)
+      | Some (Rule_order _) | None -> None)
     stmts
 
 (* Positions of one longest increasing subsequence of [ranks], by patience
@@ -1397,7 +1407,7 @@ let moved_order_keys stmts1 stmts2 =
   let anchored = increasing_subsequence ranks in
   let moved = Hashtbl.create (Array.length ranks) in
   List.iteri
-    (fun i key -> if not anchored.(i) then Hashtbl.replace moved key ())
+    (fun i (key, _) -> if not anchored.(i) then Hashtbl.replace moved key ())
     common;
   moved
 
