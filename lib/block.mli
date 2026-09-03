@@ -37,6 +37,15 @@ val merge_consecutive_containers :
   Stylesheet.statement list
 (** Merge adjacent [@container] blocks with identical names and conditions. *)
 
+val merge_distant_containers :
+  ?owner:Stylesheet.rule ->
+  ?optimize_merged_block:
+    (Stylesheet.statement list -> Stylesheet.statement list) ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
+(** Merge a later [@container] block with the same name and condition into the
+    first occurrence when the hoist reorders no conflicting rule. *)
+
 val merge_consecutive_starting_style :
   ?optimize_merged_block:
     (Stylesheet.statement list -> Stylesheet.statement list) ->

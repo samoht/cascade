@@ -41,6 +41,9 @@ let _ : merge_block = Optimize.merge_consecutive_containers
 let _ : merge_block = Optimize.merge_consecutive_starting_style
 let _ : ?owner:Stylesheet.rule -> merge_block = Optimize.merge_distant_media
 
+let _ : ?owner:Stylesheet.rule -> merge_block =
+  Optimize.merge_distant_containers
+
 let _ : Stylesheet.statement list -> Stylesheet.statement list =
   Optimize.merge_named_layers_by_name
 

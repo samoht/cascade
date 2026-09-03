@@ -220,6 +220,21 @@ val merge_consecutive_containers :
 (** [merge_consecutive_containers stmts] merges adjacent [@container] blocks
     with identical names and conditions. *)
 
+val merge_distant_containers :
+  ?owner:rule ->
+  ?optimize_merged_block:(statement list -> statement list) ->
+  statement list ->
+  statement list
+(** [merge_distant_containers ?owner stmts] merges a later [@container] block
+    with the same name and condition into the first occurrence, on the argument
+    {!merge_distant_media} makes for [@media] and the same [owner].
+
+    The name is half the identity: CSS Conditional Rules 5 sec. 5.4 resolves the
+    query against the nearest ancestor the [<container-name>] selects, so a
+    named and an unnamed block ask about different elements however equal their
+    conditions read, and two named ones merge only when the names are the one
+    ident. *)
+
 val merge_consecutive_starting_style :
   ?optimize_merged_block:(statement list -> statement list) ->
   statement list ->

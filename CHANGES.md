@@ -524,6 +524,9 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--minify` merges a `@container` block into an earlier one carrying the same
+  name and query across the rules written between them, where only adjacent
+  blocks merged and a hoist over a conflicting rule stays refused (#809)
 - `--minify` keeps the authored time unit of a `var()` fallback nested inside a
   `calc()`, as it already did for the operand beside it. The two spellings
   printed alike and stopped factoring (#803)
