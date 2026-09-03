@@ -55,8 +55,6 @@ second file's, then the ones both files raise.
   --- c.css
   +++ d.css
   └─ .x
-        - clear: nope
-        + position: nope
         * margin: 0 -> 1px
   
   [1]
@@ -89,8 +87,6 @@ the two the budget leaves out are counted once rather than once per side.
   --- e.css
   +++ f.css
   └─ .x
-        - z-index: nope
-        + position: nope
         * margin: 0 -> 1px
   
   [1]

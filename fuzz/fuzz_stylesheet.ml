@@ -1298,7 +1298,7 @@ let test_recovery_keeps_rules buf =
     recovered_css "recovery keeps sibling rules" css
   in
   let counts = recovered_declaration_counts stylesheet in
-  if not (List.equal Int.equal counts [ 1; 1; 1 ]) then
+  if not (List.equal Int.equal counts [ 1; 0; 1 ]) then
     failf "CSS Syntax recovery changed rule/declaration shape: %S" css;
   if warnings = [] then failf "recovery emitted no warning: %S" css
 
@@ -1335,7 +1335,7 @@ let test_recovery_bad_declaration buf =
     recovered_css "bad declaration recovery" css
   in
   let counts = recovered_declaration_counts stylesheet in
-  if not (List.equal Int.equal counts [ 2 ]) then
+  if not (List.equal Int.equal counts [ 1 ]) then
     failf "CSS Syntax recovery dropped valid declaration after invalid one: %S"
       css;
   if warnings = [] then failf "bad declaration emitted no warning: %S" css

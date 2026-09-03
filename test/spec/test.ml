@@ -283,7 +283,7 @@ let syntax_escapes () =
 
 (* SS 5.3.7 / 5.4 - Parse errors recover locally *)
 let syntax_recovery () =
-  recover ".a { color: invalid; color: red }" ".a{color:invalid;color:red}" 1;
+  recover ".a { color: invalid; color: red }" ".a{color:red}" 1;
   (* CSS Selectors 4 section 3.9: an unknown pseudo-class at an unforgiving site
      is a spec deviation. Lenient mode preserves it for forward compatibility
      and warns; strict mode escalates (pinned by [cross_mode_pinning]). *)
@@ -403,11 +403,10 @@ let values_absolute_lengths () =
   roundtrip ".x { width: 1pc }" ".x{width:1pc}";
   (* Values 4 SS 10.2 / Values 5 SS 6.5: unknown / future unit identifiers make
      the typed value invalid. Strict rejects (pinned by [cross_mode_pinning]);
-     lenient keeps the declaration-safe stream for forward compatibility and
-     surfaces the unknown unit as a warning. *)
-  recover ".x { width: 1unknown; height: 10px }"
-    ".x{width:1unknown;height:10px}" 1;
-  recover ".x { font-size: 16xyz }" ".x{font-size:16xyz}" 1
+     lenient recovers by dropping the declaration and surfacing the unknown unit
+     as a warning. *)
+  recover ".x { width: 1unknown; height: 10px }" ".x{height:10px}" 1;
+  recover ".x { font-size: 16xyz }" "" 1
 
 (* SS 6.2 - Relative lengths *)
 let values_relative_lengths () =

@@ -23,8 +23,8 @@ the report stops fitting.
 
 
 
-Parse warnings lead the report: an opaquely retained declaration whose typed
-reader failed still qualifies every difference below it.
+Parse warnings lead the report: a declaration the parser dropped
+qualifies every difference below it.
 
   $ cat > warn.css <<EOF
   > .x { color: red; width: <value> }
@@ -41,7 +41,6 @@ reader failed still qualifies every difference below it.
   +++ warn.css
   └─ .x
         - margin: 0
-        + width: <value>
   
   [1]
 
