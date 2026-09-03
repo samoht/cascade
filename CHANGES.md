@@ -862,6 +862,10 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Canonical diff treats identical `-webkit-text-decoration-color` and
+  `text-decoration-color` declarations as Cascade's configured redundant
+  alias. A differing fallback or prefixed-only declaration remains distinct
+  (#777)
 - Canonical diff lets a declaration reading `var()` cross a conditional write
   to that custom property when the rules write disjoint cascade slots. A
   competing write to the declaration's own property remains order-sensitive
@@ -883,8 +887,9 @@ difference wherever the two are not equivalent.
 - The canonical projection no longer deletes content that only a
   browser-support assumption makes dead, which had it report no difference
   between sheets that render differently: a fallback under a baseline-true
-  `@supports`, a vendor-prefixed declaration, an `@import supports()` guard.
-  The respellings gated with those still compare equal (#576)
+  `@supports`, a load-bearing vendor-prefixed declaration, an `@import
+  supports()` guard. The respellings gated with those still compare equal
+  (#576)
 - A redundant `@layer` order pin no longer reads as a difference, so
   `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin that fixes
   the order, or one over a position the projection cannot read, is kept (#475)

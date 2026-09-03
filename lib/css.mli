@@ -7873,8 +7873,11 @@ val canonicalize_rule_order : t -> t
     emission cannot do because a Level 3 parser rejects the shorter forms. A
     [color(srgb ...)] whose channels all land on a whole byte is keyed as the
     [rgb()] spelling of the same colour, which emission cannot do either because
-    [color()] needs a browser that parses it. This is a comparison-side
-    normalisation; {!val-optimize} stays source-stable. *)
+    [color()] needs a browser that parses it. An identical
+    [-webkit-text-decoration-color] compatibility declaration is dropped when
+    its unprefixed twin is present; a differing or prefixed-only declaration is
+    retained. These are comparison-side normalisations; this function does not
+    change {!val-optimize}'s configured emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

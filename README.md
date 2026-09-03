@@ -162,8 +162,11 @@ usable as a CI check.
   selector-list group vs written inline, split vs grouped selector lists)
   compare equal, since none of those moves can change a computed value.
   Cascade-significant order is kept distinct (two writes of the same
-  property, a shorthand and its longhand, a vendor-prefixed alias, `@layer`
-  blocks). Equivalent shorthand decompositions are still not modelled.
+  property, a shorthand and its longhand, a load-bearing vendor-prefixed
+  fallback, `@layer` blocks). An identical
+  `-webkit-text-decoration-color`/`text-decoration-color` twin is normalized
+  away; a differing or prefixed-only declaration remains distinct. Equivalent
+  shorthand decompositions are still not modelled.
   Numeric arithmetic follows the same precision mode as minification: an exact
   quotient such as `calc(28/14)` compares equal to `2` in either mode. By
   default, `calc(28/18)` compares equal to Cascade's six-significant-figure

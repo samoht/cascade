@@ -3987,6 +3987,20 @@ let vendor_alias_twin_visual vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
+let decoration_color_alias_twin vendor twin =
+  match (vendor, twin) with
+  | ( Declaration
+        {
+          property = Webkit_text_decoration_color;
+          value = v1;
+          important = i1;
+          _;
+        },
+      Declaration
+        { property = Text_decoration_color; value = v2; important = i2; _ } ) ->
+      v1 = v2 && Bool.equal i1 i2
+  | _ -> false
+
 let vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transform; value = v1; important = i1; _ },
@@ -3998,16 +4012,9 @@ let vendor_alias_twin vendor twin =
   | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
       Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        {
-          property = Webkit_text_decoration_color;
-          value = v1;
-          important = i1;
-          _;
-        },
-      Declaration
-        { property = Text_decoration_color; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_text_decoration_color; _ },
+      Declaration { property = Text_decoration_color; _ } ) ->
+      decoration_color_alias_twin vendor twin
   | ( Declaration { property = Webkit_mask_image; value = v1; important = i1; _ },
       Declaration { property = Mask_image; value = v2; important = i2; _ } ) ->
       v1 = v2 && Bool.equal i1 i2
@@ -4036,6 +4043,16 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_transition vendor twin
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
+
+(* Canonical comparison follows Cascade's configured normalization for this
+   typed compatibility alias without enabling every target-dependent optimizer
+   rewrite. A differing fallback, mismatched importance, or prefix without a
+   standard twin remains observable and is kept. *)
+let drop_redundant_decoration_color_aliases declarations =
+  filter_preserve
+    (fun declaration ->
+      not (List.exists (decoration_color_alias_twin declaration) declarations))
+    declarations
 
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
    [-o-]) return the unprefixed remainder; otherwise [None]. *)

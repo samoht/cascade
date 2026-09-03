@@ -20,13 +20,15 @@
     {!Cascade.Css.optimize} justifies with what maintained browsers support,
     because those delete content rather than respell it. Taking them leaves the
     declaration written before a baseline-true [@supports] dead, drops a
-    vendor-prefixed declaration whose unprefixed twin is widely available, and
-    clears an [@import supports()] guard, and an engine without the feature
-    reads exactly what each of those deletes - so two sheets that disagree there
-    render differently and the projection keeps them apart. The respellings
-    gated with them, [min-X] into the range form and the Level 3
-    [not all and (X)], delete nothing and are applied by
-    {!Cascade.Css.canonicalize_rule_order} instead.
+    load-bearing vendor-prefixed declaration, and clears an [@import supports()]
+    guard, and an engine without the feature reads exactly what each of those
+    deletes - so two sheets that disagree there render differently and the
+    projection keeps them apart. The respellings gated with them, [min-X] into
+    the range form and the Level 3 [not all and (X)], delete nothing and are
+    applied by {!Cascade.Css.canonicalize_rule_order} instead. That
+    comparison-side pass also drops an identical [-webkit-text-decoration-color]
+    twin, matching Cascade's configured alias normalization; a differing or
+    prefixed-only declaration is retained.
 
     Those bytes are the verdict in mode [`Canonical]. Canonical means equivalent
     inputs project to one form, so two canonical forms that differ are either

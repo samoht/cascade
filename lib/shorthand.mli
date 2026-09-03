@@ -89,6 +89,12 @@ val declarations_commute :
     a different value. Selectors are not read, so two runs that could never meet
     on one element still count as constrained when their properties clash. *)
 
+val drop_redundant_decoration_color_aliases :
+  Declaration.declaration list -> Declaration.declaration list
+(** Drop an identical WebKit [text-decoration-color] compatibility alias when
+    its unprefixed twin is present. Differing values or importance, and a
+    prefixed-only declaration, are kept. *)
+
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 

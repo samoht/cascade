@@ -669,6 +669,14 @@ let canonical_color_spellings (stmts : statement list) : statement list =
     (Common.List.map_preserve canonical_color_spelling)
     stmts
 
+(* The normal optimizer drops this typed alias under its maintained-browser
+   policy, but the canonical optimizer runs spec-literally so it does not erase
+   other compatibility content. Apply only the alias equivalence promised by
+   canonical comparison, at every declaration site. *)
+let canonical_vendor_aliases (stmts : statement list) : statement list =
+  Stylesheet.map_declarations Shorthand.drop_redundant_decoration_color_aliases
+    stmts
+
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
    property names are order-independent, and for the same name the last one
    wins. So a run of [@property] rules canonicalises to that run sorted by name,
@@ -906,7 +914,8 @@ let canonicalize (stmts : statement list) : statement list =
     fold_layer_pins
       (canonical_query_preludes
          (sort_property_runs
-            (canonical_color_spellings (normalize_custom_values stmts))))
+            (canonical_color_spellings
+               (normalize_custom_values (canonical_vendor_aliases stmts)))))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized
