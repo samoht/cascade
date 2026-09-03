@@ -1886,11 +1886,40 @@ let public_parse_edges () =
           rules
       in
       Alcotest.(check (list int))
-        "partial parser discards invalid declarations, not containing rules"
-        [ 0; 1; 0 ] declaration_counts;
+        "partial parser retains declaration-safe typed failures" [ 1; 1; 1 ]
+        declaration_counts;
       Alcotest.(check int)
         "partial parser reports invalid rules" 2
-        (List.length parsed.warnings)
+        (List.length parsed.warnings);
+      let opaque =
+        match of_string ~strict:false ".a{animation:#fff}" with
+        | Ok parsed -> parsed
+        | Error err ->
+            Alcotest.failf "lenient parse rejected declaration-safe CSS: %s"
+              (Cascade.Error.to_string err)
+      in
+      Alcotest.(check string)
+        "known property typed failure survives as authored CSS"
+        ".a{animation:#fff}"
+        (Css.to_string ~minify:true opaque.stylesheet);
+      Alcotest.(check int)
+        "known property typed failure remains a warning" 1
+        (List.length opaque.warnings);
+      let opaque_fallbacks =
+        match
+          of_string ~strict:false
+            ".a{color:futurecolor(1);color:nonsense}@page{width:1px;width:future(1);height:future(1);height:nonsense}"
+        with
+        | Ok parsed -> parsed
+        | Error err ->
+            Alcotest.failf "lenient parse rejected opaque fallbacks: %s"
+              (Cascade.Error.to_string err)
+      in
+      Alcotest.(check string)
+        "same-property opaque fallbacks survive optimization and page parsing"
+        ".a{color:futurecolor(1);color:nonsense}@page{width:1px;width:future(1);height:future(1);height:nonsense}"
+        (opaque_fallbacks.stylesheet |> Css.optimize
+       |> Css.to_string ~minify:true)
 
 (* A newline inside a string produces a <bad-string-token>. In an at-rule
    prelude that token used to serialize to nothing, so [@media <bad-string>]

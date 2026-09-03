@@ -78,6 +78,19 @@ let test_unknown_property_overlap () =
     (Shorthand.declarations_overlap (decl "grid-row-gap:9px")
        (decl "--brand:red"))
 
+let test_unknown_property_fallbacks () =
+  let dedup css =
+    css |> decls |> Shorthand.deduplicate_declarations |> decl_strings
+  in
+  Alcotest.(check (list string))
+    "different values may target different browser grammars"
+    [ "future-property:first"; "future-property:second" ]
+    (dedup "a{future-property:first;future-property:second}");
+  Alcotest.(check (list string))
+    "an exact duplicate is redundant"
+    [ "future-property:first" ]
+    (dedup "a{future-property:first;future-property:first}")
+
 let test_vendor_alias_overlap () =
   (* A vendor-prefixed spelling is an alias of the unprefixed property, so the
      prefixed shorthand resets the unprefixed longhands. *)
@@ -677,6 +690,8 @@ let suite =
         test_declaration_covers_reset_boundaries;
       Alcotest.test_case "unknown property overlap" `Quick
         test_unknown_property_overlap;
+      Alcotest.test_case "unknown property fallbacks" `Quick
+        test_unknown_property_fallbacks;
       Alcotest.test_case "vendor alias overlap" `Quick test_vendor_alias_overlap;
       Alcotest.test_case "shorthand reset boundaries" `Quick
         test_shorthand_reset_boundaries;
