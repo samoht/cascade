@@ -1570,15 +1570,11 @@ type rule_modification =
   Css.Selector.t * Css.Selector.t * Css.declaration list * Css.declaration list
 
 (* What an exact match reports. It usually says nothing: the same selector
-   carrying the same declarations is the same rule. Two exceptions. The selector
-   list was written in another order, which is a rewrite of the selector. And
-   the rule sits somewhere else against the rest of the sheet, which is a
-   cascade change however identical the block is, so the pair has to reach
+   carrying the same declarations is the same rule. One exception: the rule sits
+   somewhere else against the rest of the sheet, which is a cascade change
+   however identical the block is, so the pair has to reach
    [convert_modified_rule] for the reorder entry to be made. *)
-type exact_match =
-  | Same
-  | Selector_rewritten of rule_modification
-  | Moved of rule_modification
+type exact_match = Same | Moved of rule_modification
 
 (* Try to find an exact match by selector key and declarations. [None] when
    nothing on the other side matches exactly. *)
@@ -1596,11 +1592,7 @@ let try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 =
       Hashtbl.replace used_rules exact ();
       let sel1 = rule_selector r1 in
       let sel2 = rule_selector exact in
-      let sel1_str = Css.Selector.to_string sel1 in
-      let sel2_str = Css.Selector.to_string sel2 in
-      if not (String.equal sel1_str sel2_str) then
-        Some (Selector_rewritten (sel1, sel2, d1, d1))
-      else if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
+      if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
       else Some Same
   | None -> None
 
@@ -1704,11 +1696,6 @@ let rules_modified_diff ~moved rules1 rules2 =
   let moved_exact =
     List.filter_map (function Moved pair -> Some pair | _ -> None) exact
   in
-  let rewritten =
-    List.filter_map
-      (function Selector_rewritten pair -> Some pair | _ -> None)
-      exact
-  in
   let rec aux acc = function
     | [] -> List.rev acc
     | r1 :: t1 ->
@@ -1722,7 +1709,7 @@ let rules_modified_diff ~moved rules1 rules2 =
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
   in
-  (moved_exact, rewritten @ aux [] pending)
+  (moved_exact, aux [] pending)
 
 let has_same_selectors rules1 rules2 =
   if List.length rules1 <> List.length rules2 then false
@@ -2302,7 +2289,14 @@ let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
   match (decls1, decls2) with
   | [], [] -> reorder_or_content sel1_str decls1 decls2
   | [], _ | _, [] -> Some (content_changed sel1_str decls1 decls2)
-  | _, _ when sel1_str <> sel2_str ->
+  (* The selector key ignores the order of a comma group, so the same
+     alternatives written the other way round select the same elements with the
+     same specificities and the rule is left alone. *)
+  | _, _
+    when not
+           (Selector.equal
+              (selector_key_of_selector sel1)
+              (selector_key_of_selector sel2)) ->
       Some
         (Selector_changed
            {
@@ -3044,6 +3038,21 @@ let process_nested_properties stmts1 stmts2 =
     modified;
   !diffs @ property_reorder_diffs stmts1 stmts2 items1 items2
 
+(* Every rule as [(selector_key, label, nested_statements)], including the ones
+   with an empty nested body so an added or removed body is seen. The two sides
+   pair on [selector_key_of_selector], so a rule whose comma group they write in
+   a different order is still the same rule and its body is still compared;
+   pairing on the printed selector dropped the difference inside it. The label
+   is what the report shows. *)
+let rule_nesting_items stmts =
+  List.filter_map
+    (fun stmt ->
+      match Css.as_rule stmt with
+      | Some (sel, _decls, nested) ->
+          Some (selector_key_of_selector sel, Css.Selector.to_string sel, nested)
+      | None -> None)
+    stmts
+
 (* Mutual recursion declarations *)
 (* Check if two rule-lists under the same media condition differ *)
 let rec media_condition_differs rules_list1 rules_list2 =
@@ -3286,33 +3295,23 @@ and process_nested_containers_with_name stmts1 stmts2 =
 
 (* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
 and process_nested_rules stmts1 stmts2 =
-  (* Extract (selector_key, nested_statements) for all rules, including those
-     with empty nesting. This allows detecting when nesting is added/removed. *)
-  let extract_nesting stmts =
-    List.filter_map
-      (fun stmt ->
-        match Css.as_rule stmt with
-        | Some (sel, _decls, nested) -> Some (Css.Selector.to_string sel, nested)
-        | None -> None)
-      stmts
-  in
-  let items1 = extract_nesting stmts1 in
-  let items2 = extract_nesting stmts2 in
+  let items1 = rule_nesting_items stmts1 in
+  let items2 = rule_nesting_items stmts2 in
   (* [List.find_opt] previously searched all of [items2] for every rule in
      [items1], including the overwhelmingly common rules with no nested body.
      Keep its first-occurrence semantics for repeated selectors, but index that
      first occurrence once. *)
   let items2_by_selector = Hashtbl.create (List.length items2) in
   List.iter
-    (fun (selector, nested) ->
-      if not (Hashtbl.mem items2_by_selector selector) then
-        Hashtbl.add items2_by_selector selector nested)
+    (fun (key, _label, nested) ->
+      if not (Hashtbl.mem items2_by_selector key) then
+        Hashtbl.add items2_by_selector key nested)
     items2;
   (* Match by selector key and diff nested statements *)
   let diffs = ref [] in
   List.iter
-    (fun (sel1, nested1) ->
-      match Hashtbl.find_opt items2_by_selector sel1 with
+    (fun (key1, label1, nested1) ->
+      match Hashtbl.find_opt items2_by_selector key1 with
       | Some nested2 when not (Stylesheet.equal nested1 nested2) ->
           let rule_changes = to_rule_changes nested1 nested2 in
           let nested_containers = nested_differences nested1 nested2 in
@@ -3323,7 +3322,7 @@ and process_nested_rules stmts1 stmts2 =
                   info =
                     {
                       container_type = `Nesting;
-                      condition = sel1;
+                      condition = label1;
                       rules = nested1;
                     };
                   actual_rules = nested2;

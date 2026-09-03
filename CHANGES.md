@@ -1067,6 +1067,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` compares a rule's nested body whatever order the two sides
+  write its selector list in, and stops calling that reordering a change: a
+  comma group is a set, so the body held the only difference (#798)
 - `cascade diff` reads either side from standard input when the argument is
   `-`, so the output of a build can be compared without a temporary file. The
   report names that side `<stdin>` (#796)
