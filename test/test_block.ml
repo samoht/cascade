@@ -264,6 +264,125 @@ let test_merge_media_joins_two_spellings_of_one_bound () =
   Alcotest.(check int)
     "two spellings of one bound merge into one block" 1 (List.length merged)
 
+(* --- rules_conflict --- *)
+
+(* The one question [merge_distant_media], [merge_distant_containers] and tw's
+   caller of the latter all rest on: can an element tell the two rules' source
+   order apart. Every answer below is read off the cascade, not off what a pass
+   does with it. *)
+let two_rules css =
+  let has_declarations r =
+    match Stylesheet.declarations r with [] -> false | _ :: _ -> true
+  in
+  match block css with
+  (* A declaration lost on the way in would answer [false] for a reason the case
+     is not about. *)
+  | [ Stylesheet.Rule a; Stylesheet.Rule b ]
+    when has_declarations a && has_declarations b ->
+      (a, b)
+  | _ -> Alcotest.failf "expected two rules that both declare something: %s" css
+
+(* Which rule is named first is not part of the question, so each case is asked
+   both ways round. *)
+let check_conflict (name, css, expected) =
+  let a, b = two_rules css in
+  Alcotest.(check bool) name expected (Block.rules_conflict a b);
+  Alcotest.(check bool)
+    (name ^ ", named the other way round")
+    expected (Block.rules_conflict b a)
+
+(* One selector on both sides, so the answer is the declaration pair's alone. *)
+let test_rules_conflict_declarations () =
+  List.iter check_conflict
+    [
+      (* [margin] writes margin-top, so the two set one slot to two values and
+         whichever is read last wins it. *)
+      ( "a shorthand against its own longhand",
+        ".a{margin:1px}.a{margin-top:2px}",
+        true );
+      (* The cascade ranks by importance before it reaches order of appearance,
+         so the important declaration wins from either position. *)
+      ( "a normal declaration against an important one",
+        ".a{color:red}.a{color:blue!important}",
+        false );
+      (* Equal importance leaves order of appearance to decide. *)
+      ( "two important declarations on one property",
+        ".a{color:red!important}.a{color:blue!important}",
+        true );
+      (* One slot, one value: no element computes anything different once the
+         two swap. *)
+      ("one declaration written twice", ".a{color:red}.a{color:red}", false);
+      (* [var()] substitutes the value the cascade computed for [--c] on the
+         element, which the declarations of [--c] fix wherever the declaration
+         reading them sits. The two write different slots. *)
+      ( "a custom property against the property reading it",
+        ".a{--c:red}.a{color:var(--c)}",
+        false );
+      ( "two declarations of one custom property",
+        ".a{--c:red}.a{--c:blue}",
+        true );
+      ( "two properties sharing no slot",
+        ".a{color:red}.a{background-color:blue}",
+        false );
+      (* The [font] shorthand sets line-height, so it and a [line-height] of its
+         own contend for that slot however unrelated the two names read. *)
+      ( "a shorthand against a longhand its name does not carry",
+        ".a{font:12px/1.5 serif}.a{line-height:2}",
+        true );
+      ( "two shorthands sharing one longhand",
+        ".a{border-top:1px solid red}.a{border-color:blue}",
+        true );
+      (* The writing mode of the elements the sheet matches decides which
+         physical side a flow-relative property resolves to, and for
+         horizontal-tb ltr that side is the left one. *)
+      ( "a flow-relative property against a physical one",
+        ".a{margin-inline-start:1px}.a{margin-left:2px}",
+        true );
+      (* [all] resets every property but the custom ones, [color] included. *)
+      ("an all reset against a longhand", ".a{all:unset}.a{color:red}", true);
+      ( "two shorthands sharing no longhand",
+        ".a{margin:1px}.a{padding:2px}",
+        false );
+    ]
+
+(* One property with two values on both sides, so the declarations always
+   contend and the answer is the selector pair's alone. *)
+let test_rules_conflict_selectors () =
+  let case (name, left, right, expected) =
+    check_conflict
+      ( name,
+        String.concat "" [ left; "{color:red}"; right; "{color:blue}" ],
+        expected )
+  in
+  List.iter case
+    [
+      ("two classes one element can carry at once", ".a", ".b", true);
+      ("two element names", "div", "p", false);
+      ("two ids", "#x", "#y", false);
+      (* Two pseudo-elements are two boxes, and neither is the element that
+         originates them. *)
+      ("two pseudo-elements", ".a::before", ".a::after", false);
+      ( "a pseudo-element against its originating element",
+        ".a::before",
+        ".a",
+        false );
+      ("a negation against what it forbids", ".a:not(.b)", ".a.b", false);
+      ( "two exact values for one attribute",
+        {|[type="text"]|},
+        {|[type="radio"]|},
+        false );
+      ( "an odd position against the even ones",
+        "li:first-child",
+        "li:nth-child(even)",
+        false );
+      (* An element has one parent, and it is a div or a p, not both. *)
+      ("two parents one element cannot both have", "div>.a", "p>.a", false);
+      (* An ancestor chain has room for both. *)
+      ("two ancestors one element can have at once", ".x .a", ".y .a", true);
+      ("the universal selector against a class", "*", ".a", true);
+      ("two states one element can be in at once", "a:hover", "a:focus", true);
+    ]
+
 (* --- allocation / complexity guard --- *)
 
 (* [n] plain rules with one [@media print] block at each end, so the pass has
@@ -331,6 +450,10 @@ let suite =
       Alcotest.test_case "is_layer_empty" `Quick test_is_layer_empty;
       Alcotest.test_case "is_layer_empty sees nested rules" `Quick
         test_is_layer_not_empty_with_nested;
+      Alcotest.test_case "rules_conflict reads the declaration pair" `Quick
+        test_rules_conflict_declarations;
+      Alcotest.test_case "rules_conflict reads the selector pair" `Quick
+        test_rules_conflict_selectors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick
         test_merge_distant_media_is_subquadratic;
     ] )
