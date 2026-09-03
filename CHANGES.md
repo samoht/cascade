@@ -180,9 +180,12 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- A parse warning whose value matched none of a property's forms says so,
+  in place of a reason that opened a list of accepted forms and named
+  none of them (#801)
 - A parse warning marks the value the author wrote rather than the token after
   it, so the caret no longer lands on the semicolon that closes the
-  declaration (#800)
+  declaration (#801)
 - Lenient parsing preserves a declaration-safe value opaquely when a known
   property's typed reader rejects it, while retaining the warning that makes
   strict parsing reject the declaration (#787)

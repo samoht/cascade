@@ -33,7 +33,7 @@ reader failed still qualifies every difference below it.
   CSS: 29 chars vs 34 chars (17.2% diff)
   Changes: 1 modified rule
   
-  warn.css parse warning: <string>: read_declaration/width: bad value for width: expected one of at [24-25] (in component)
+  warn.css parse warning: <string>: read_declaration/width: bad value for width: no accepted form at [24-25] (in component)
   .x { color: red; width: <value> }
                           ^
   

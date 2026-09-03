@@ -926,9 +926,11 @@ let option p t =
       restore t snap;
       None
 
+(* The alternatives are anonymous readers, so an exhausted list has no forms to
+   name: report that none matched rather than open a list and leave it empty. *)
 let rec one_of ps t =
   match ps with
-  | [] -> err_expected t "one of"
+  | [] -> err t "no accepted form"
   | p :: rest -> (
       let snap = save t in
       match p t with
