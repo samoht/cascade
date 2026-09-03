@@ -27,20 +27,6 @@ type parse_error = {
 
 exception Parse_error of parse_error
 
-(* Locate a snippet-relative character offset as a line and a column. *)
-let marker_in_lines lines marker_pos =
-  let rec find line remaining = function
-    | [] -> (0, 0)
-    | [ last ] ->
-        let len = Common.String.utf8_length last in
-        (line, min remaining len)
-    | current :: rest ->
-        let len = Common.String.utf8_length current in
-        if remaining <= len then (line, remaining)
-        else find (line + 1) (remaining - len - 1) rest
-  in
-  find 0 (max 0 marker_pos) lines
-
 (** Pretty print parse error with debugging information *)
 let pp_parse_error (err : parse_error) =
   let buf = Buffer.create 256 in
@@ -59,7 +45,9 @@ let pp_parse_error (err : parse_error) =
       Buffer.add_char buf ']');
   if err.context_window <> "" then begin
     let lines = String.split_on_char '\n' err.context_window in
-    let marker_line, marker_pos = marker_in_lines lines err.marker_pos in
+    let marker_line, marker_pos, _ =
+      Common.String.marker_line lines err.marker_pos
+    in
     List.iteri
       (fun i line ->
         Buffer.add_char buf '\n';

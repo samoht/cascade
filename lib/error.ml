@@ -34,22 +34,6 @@ let context t =
     snippet = snippet t;
   }
 
-(* [Loc.Context.marker_pos] is deliberately relative to the whole public
-   snippet. Rendering is the one place that needs its line and line-relative
-   column, so derive those without changing the snippet record's contract. *)
-let marker_in_lines lines marker_pos =
-  let rec find line remaining = function
-    | [] -> (0, 0, 0)
-    | [ last ] ->
-        let len = Common.String.utf8_length last in
-        (line, min remaining len, len)
-    | current :: rest ->
-        let len = Common.String.utf8_length current in
-        if remaining <= len then (line, remaining, len)
-        else find (line + 1) (remaining - len - 1) rest
-  in
-  find 0 (max 0 marker_pos) lines
-
 let pp_kind : kind Pp.t =
  fun ctx -> function
   | Sort_mismatch { expected; found } ->
@@ -109,7 +93,7 @@ let pp : t Pp.t =
          caret apiece line the marker up under a multibyte snippet. *)
       let lines = String.split_on_char '\n' text in
       let marker_line, marker_pos, line_len =
-        marker_in_lines lines marker_pos
+        Common.String.marker_line lines marker_pos
       in
       let marker_len = max 1 (min marker_len (line_len - marker_pos)) in
       List.iteri

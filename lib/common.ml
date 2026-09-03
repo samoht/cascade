@@ -133,6 +133,25 @@ module String = struct
       else go (i + 1) (room - 1)
     in
     go i 3
+
+  (* A diagnostic caret goes under the one line it marks, so a marker offset
+     into a whole snippet has to be resolved against the line holding it. The
+     line's own length comes back with it: a caret run is clamped to the line's
+     end, and a caller drawing a single caret ignores it. The newline separating
+     two lines belongs to neither, hence the extra character dropped per line
+     walked past. *)
+  let marker_line lines marker_pos =
+    let rec find line remaining = function
+      | [] -> (0, 0, 0)
+      | [ last ] ->
+          let len = utf8_length last in
+          (line, min remaining len, len)
+      | current :: rest ->
+          let len = utf8_length current in
+          if remaining <= len then (line, remaining, len)
+          else find (line + 1) (remaining - len - 1) rest
+    in
+    find 0 (max 0 marker_pos) lines
 end
 
 let mix_int acc x = ((acc lsl 5) - acc) lxor x

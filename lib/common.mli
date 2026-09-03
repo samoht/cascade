@@ -72,6 +72,13 @@ module String : sig
   val utf8_lead_after : string -> int -> int
   (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
       inside, on the same terms as {!utf8_lead_before}. *)
+
+  val marker_line : string list -> int -> int * int * int
+  (** [marker_line lines marker_pos] resolves a character offset into [lines],
+      some text split on newlines, as the index of the line holding it, its
+      column inside that line, and that line's length. Characters are counted as
+      {!utf8_length} counts them, and an offset past the last line clamps to
+      that line's end. *)
 end
 
 val mix_int : int -> int -> int
