@@ -328,6 +328,39 @@ let canonical_folds_an_adjacent_same_selector_pair () =
     "two writes of one property stay distinct" false
     (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
 
+(* Factoring writes one declaration list into every branch of a selector list,
+   so the expanded copies are identical wherever they meet. A prefixed property
+   beside its unprefixed twin writes one cascade slot twice, and the pairwise
+   conflict test reads the two copies as tied writers of that slot; the
+   projection has to see that both rules write the same thing and fold the group
+   back. *)
+let canonical_folds_a_factored_vendor_twin_group () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let inline =
+    ".o95{--t:opacity(95%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}.o100{--t:opacity(100%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}"
+  in
+  let factored =
+    ".o100,.o95{--t:opacity(95%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}.o100{--t:opacity(100%)}"
+  in
+  Alcotest.(check bool)
+    "a hoisted vendor-twin group folds back inline" true (equal inline factored);
+  (* Same shape, but the group in between writes the slot with a different
+     value, so the two spellings disagree on an element carrying both classes:
+     [backdrop-filter] ends at [blur(1px)] on the left and at [opacity(100%)] on
+     the right. *)
+  Alcotest.(check bool)
+    "a different write in between stays distinct" false
+    (equal
+       ".o100{-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}.o95{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}.o100{--t:opacity(100%)}"
+       ".o95{-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}.o100{--t:opacity(100%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}");
+  (* Hoisting the group above the specialisation flips [--t] on [.o100]: the
+     group wins it at [opacity(95%)] where the inline spelling has
+     [opacity(100%)]. Folding backwards is what would equate these. *)
+  Alcotest.(check bool)
+    "a group written after the specialisation stays distinct" false
+    (equal inline
+       ".o100{--t:opacity(100%)}.o100,.o95{--t:opacity(95%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -1757,4 +1790,6 @@ let suite =
         canonical_movable_at_rule_ignores_nesting;
       Alcotest.test_case "canonical folds an adjacent same-selector pair" `Quick
         canonical_folds_an_adjacent_same_selector_pair;
+      Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
+        canonical_folds_a_factored_vendor_twin_group;
     ] )
