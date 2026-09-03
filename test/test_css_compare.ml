@@ -156,6 +156,25 @@ let canonical_keeps_target_gated_content () =
     (equal ".a{color:red;@supports (display:grid){color:blue}}"
        ".a { color: #f00; @supports (display: grid) { color: #00f } }")
 
+(* Cascade's configured normalization treats the WebKit spelling as a typed
+   alias once an identical, widely available unprefixed declaration follows.
+   Canonical comparison should project that redundant twin away without erasing
+   a differing fallback or a prefixed-only declaration. *)
+let canonical_drops_redundant_decoration_color_alias () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "an identical WebKit decoration-color twin is redundant" true
+    (equal ".a{text-decoration-color:red}"
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:red}");
+  Alcotest.(check bool)
+    "a differing WebKit decoration-color fallback remains" false
+    (equal ".a{text-decoration-color:blue}"
+       ".a{-webkit-text-decoration-color:red;text-decoration-color:blue}");
+  Alcotest.(check bool)
+    "a prefixed-only decoration color remains" false
+    (equal ".a{text-decoration-color:red}"
+       ".a{-webkit-text-decoration-color:red}")
+
 (* Media Queries 4 sec. 4.2 gives [min-X]/[max-X] and the range form one
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
@@ -1674,6 +1693,8 @@ let suite =
         equal_canonical_media_not_all;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
+      Alcotest.test_case "canonical drops redundant decoration-color alias"
+        `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds media range spellings" `Quick
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"
