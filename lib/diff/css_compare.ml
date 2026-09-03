@@ -253,20 +253,7 @@ let reported_declaration d =
   in
   (Css.declaration_name d, value)
 
-let restore_group_order table =
-  Hashtbl.to_seq_keys table |> List.of_seq
-  |> List.iter (fun key ->
-      Hashtbl.replace table key (List.rev (Hashtbl.find table key)));
-  table
-
-let group_into_table rules =
-  let tbl = Hashtbl.create 128 in
-  List.iter
-    (fun (k, d) ->
-      let lst = match Hashtbl.find_opt tbl k with Some l -> l | None -> [] in
-      Hashtbl.replace tbl k (d :: lst))
-    rules;
-  restore_group_order tbl
+let group_into_table rules = Group.by ~size:128 Fun.id rules
 
 (* Compare two declaration lists with the same key and emit diffs *)
 let diff_same_key_pair key d1 d2 =
