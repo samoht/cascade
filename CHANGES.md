@@ -1062,6 +1062,9 @@ difference wherever the two are not equivalent.
   making a sheet where every rule changes scale near-linearly (#786)
 - `cascade diff` keeps trailing context around a difference between short
   lines, where it previously stopped immediately after the caret (#785)
+- A parse warning puts its caret under the line it marks, at that line's own
+  column. A snippet spanning several lines drew it below the whole window,
+  indented from the first line, so it underlined nothing (#789)
 - `cascade diff` names a changed `@keyframes` block as the at-rule it is,
   in place of the `@layer @keyframes spin` line it printed (#784)
 - `cascade diff` reports the two sizes without a percentage when the first
