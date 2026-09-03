@@ -817,11 +817,7 @@ let test_nested_media_merge_is_linear () =
     | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
   in
   let measure stylesheet =
-    Gc.full_major ();
-    let before = Gc.minor_words () in
-    let result = Css.optimize stylesheet in
-    ignore (Sys.opaque_identity result);
-    Gc.minor_words () -. before
+    Css_test_helpers.measure (fun () -> Css.optimize stylesheet)
   in
   let small_words = measure (sheet 256) in
   let large_words = measure (sheet 512) in

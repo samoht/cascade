@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let parse s = Css.of_string_exn ~strict:false s
 let minified css = Css.to_string ~minify:true css
@@ -793,13 +794,6 @@ let test_inline_vars_liveness_propagates_through_scopes () =
     (holds_substring "--dead" out)
 
 (* --- allocation / complexity guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* [depth] nested [@media print] blocks around one rule that declares and reads
    a single custom property. The variable count, the scope count and the

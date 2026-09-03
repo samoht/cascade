@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let block css =
   match Css.of_string css with
@@ -264,13 +265,6 @@ let test_merge_media_joins_two_spellings_of_one_bound () =
     "two spellings of one bound merge into one block" 1 (List.length merged)
 
 (* --- allocation / complexity guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* [n] plain rules with one [@media print] block at each end, so the pass has
    exactly one merge to make and [n] statements to carry while it looks for the

@@ -1,6 +1,7 @@
 (** Common helper tests. *)
 
 open Cascade
+open Css_test_helpers
 module L = Common.List
 
 let ref_int = Alcotest.testable (fun p r -> Fmt.int p !r) ( == )
@@ -74,13 +75,6 @@ let test_filter_map_preserve_keeps_noop_identity () =
   Alcotest.(check int) "replacement length" 3 (L.length replaced)
 
 (* --- allocation guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* The string shapes a stylesheet hashes: an empty name, a short ident, a
    hyphenated property, a long custom property, a value with punctuation, and a

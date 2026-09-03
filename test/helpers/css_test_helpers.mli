@@ -101,3 +101,13 @@ val check_construct : string -> ('a -> string) -> string -> 'a -> unit
 val css_wide_keywords : string list
 (** [css_wide_keywords] is the list of common CSS-wide keywords used across CSS
     specifications. *)
+
+val measure : (unit -> 'a) -> float
+(** [measure f] is the minor words [f] allocates, read as the difference of a
+    counter that only grows, so a collection inside [f] does not disturb it.
+    [Gc.full_major] starts every reading from the same heap state, so collection
+    and finalisation owed by an earlier case is not charged to whichever thunk
+    runs next; the allocation guards compare two readings as a ratio, which
+    holds only if both were taken alike. [Sys.opaque_identity] keeps the result
+    live to the end of the call, so the compiler cannot satisfy a guard by
+    deleting the allocation it counts. *)

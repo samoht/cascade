@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let rules css =
   match Css.of_string css with
@@ -63,13 +64,6 @@ let disjoint_property_run n =
     Fmt.pf formatter ".a{p%d:0}" i
   done;
   rules (Buffer.contents buffer)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 (* A rule's property should be looked up in the later writes for its selector,
    not compared with every declaration written by every later rule. Counting

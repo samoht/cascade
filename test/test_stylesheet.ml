@@ -10507,13 +10507,6 @@ let render_sheet n =
   Fmt.flush out ();
   Css.of_string_exn (Buffer.contents b)
 
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
-
 (* A serialiser walks the tree once. Presizing the buffer from a [Pp.size]
    prepass walks it a second time, and the counter sink skips only the output
    bytes: [normalise], [printable_statements] and every printer below them run

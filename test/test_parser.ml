@@ -1,6 +1,7 @@
 (** Tests for the CSS Syntax Level 3 section 5 parser algorithms. *)
 
 open Cascade
+open Css_test_helpers
 
 (* Shorthand constructors mirroring Parser.component_value so test data is
    readable. *)
@@ -1481,13 +1482,6 @@ let spec_comment_recovery_edges () =
   Alcotest.(check int) "one rule after hidden brace" 1 (List.length rs)
 
 (* --- allocation guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 let alloc_tokens = 500
 

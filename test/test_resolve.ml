@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 (* A minimal in-memory element tree to exercise {!Resolve.Make} without a
    DOM. *)
@@ -690,13 +691,6 @@ let test_apply_compute () =
   Alcotest.(check bool) "kept css is non-empty" true (result.keep_css <> "")
 
 (* --- allocation / complexity guard --- *)
-
-let measure f =
-  Gc.full_major ();
-  let w0 = Gc.minor_words () in
-  let r = f () in
-  ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
 
 let sheet_of_size n =
   let b = Buffer.create ((n * 20) + 32) in
