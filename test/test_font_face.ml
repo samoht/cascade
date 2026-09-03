@@ -315,57 +315,64 @@ let spec_fontface_metric_numeric_edges () =
         (String.concat "\n" accepted)
 
 (* CSS Custom Properties 1 sec. 3 substitutes var() in properties only, and
-   @font-face descriptors are not properties: no descriptor grammar accepts it,
-   so a browser drops the declaration. cascade substitutes at build time
-   instead, and can only do so for a descriptor whose typed value has somewhere
-   to park an unresolved reference. The ones below have no [Var] arm, so there
-   is nothing to keep and the declaration is dropped with a warning while the
-   rest of the block survives (CSS Fonts 4 sec. 4.1, CSS Syntax 3 sec. 5.5.5);
-   ~strict:true turns that warning into an error. The descriptors that do carry
-   one are covered by [spec_fontface_var_descriptor_kept]. *)
+   @font-face descriptors are not properties: no descriptor grammar accepts one
+   (CSS Fonts 4 sec. 4.1), so a browser drops the declaration holding it.
+   cascade parks the reference in the typed value and substitutes it at build
+   time instead, and every descriptor has somewhere to park one.
+   [spec_fontface_var_descriptor_kept] covers a reference standing for a whole
+   descriptor value; below are the shapes it does not reach, a reference
+   standing for one endpoint of a two-valued range or for one entry of a
+   comma-separated list. Each is kept through the parse with no warning, and
+   ~strict:true accepts it. *)
 let spec_fontface_var_descriptor_edges () =
-  let kept = "@font-face{font-family:Brand;src:url(font.woff2)}" in
-  let source descriptor =
-    Fmt.str "@font-face{font-family:Brand;src:url(font.woff2);%s:var(--b)}"
-      descriptor
+  let source declaration =
+    String.concat ""
+      [ "@font-face{font-family:Brand;src:url(font.woff2);"; declaration; "}" ]
   in
-  let mismatches descriptor =
-    let input = source descriptor in
-    let lenient =
-      match Css.of_string input with
-      | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" descriptor input ]
-      | Ok { Css.stylesheet; warnings; _ } -> (
-          let printed = Css.to_string ~minify:true stylesheet |> String.trim in
-          (if String.equal printed kept then []
+  let mismatches declaration =
+    let input = source declaration in
+    match Css.of_string input with
+    | Error _ -> [ Fmt.str "%s: lenient parse rejected %S" declaration input ]
+    | Ok { Css.stylesheet; warnings; _ } -> (
+        let printed = Css.to_string ~minify:true stylesheet |> String.trim in
+        (if String.equal printed input then []
+         else
+           [ Fmt.str "%s: printed %S, expected %S" declaration printed input ])
+        @ (if warnings = [] then []
            else
-             [ Fmt.str "%s: printed %S, expected %S" descriptor printed kept ])
-          @
-          match warnings with
-          | [ _ ] -> []
-          | _ ->
-              [
-                Fmt.str "%s: %d parse warnings, expected 1" descriptor
-                  (List.length warnings);
-              ])
-    in
-    let strict =
-      match Css.of_string ~strict:true input with
-      | Error _ -> []
-      | Ok _ -> [ Fmt.str "%s: strict parse accepted %S" descriptor input ]
-    in
-    lenient @ strict
+             [
+               Fmt.str "%s: %d parse warnings, expected none" declaration
+                 (List.length warnings);
+             ])
+        @
+        match Css.of_string ~strict:true input with
+        | Ok _ -> []
+        | Error _ ->
+            [ Fmt.str "%s: strict parse rejected %S" declaration input ])
   in
-  match List.concat_map mismatches [] with
+  match
+    List.concat_map mismatches
+      [
+        "font-weight:var(--b) 900";
+        "font-weight:100 var(--b)";
+        "font-style:oblique var(--b) 20deg";
+        "font-style:oblique 10deg var(--b)";
+        "font-stretch:var(--b) 200%";
+        "font-stretch:50% var(--b)";
+        "src:local(Other),var(--b)";
+        "unicode-range:U+0-7F,var(--b)";
+      ]
+  with
   | [] -> ()
   | mismatches ->
-      Alcotest.failf "@font-face descriptors keeping var():\n%s"
+      Alcotest.failf "@font-face descriptors dropping var():\n%s"
         (String.concat "\n" mismatches)
 
-(* The other side of the same decision: a descriptor whose typed value carries a
-   [Var] arm keeps the reference through the parse, with no warning and no
-   strict error, so [Css.inline_vars] can substitute it at build time. Keeping
-   it is only useful because the value is typed; an unresolved one still prints
-   as the [var()] it was. *)
+(* The whole descriptor set, one reference standing for one whole value: each
+   keeps it through the parse, with no warning and no strict error, so
+   [Css.inline_vars] can substitute it at build time. Keeping it is only useful
+   because the value is typed; an unresolved one still prints as the [var()] it
+   was. *)
 let spec_fontface_var_descriptor_kept () =
   let source descriptor =
     Fmt.str "@font-face{font-family:Brand;src:url(font.woff2);%s:var(--b)}"

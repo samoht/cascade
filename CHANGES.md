@@ -287,10 +287,6 @@ entry points both moved.
   had a value reader and a file holding nothing else exited 1 (#456)
 - A descending `@font-face` range such as `font-weight: 700 400` parses without
   a warning, only `unicode-range` keeping an ordering rule (#335)
-- An `@font-face` descriptor whose value holds a `var()` is dropped with a
-  warning, and `~strict:true` rejects it: `var()` substitutes in property
-  values only. `src` and `unicode-range` keep theirs, since `Css.inline_vars`
-  resolves those at build time (#322)
 - A valid `@font-palette-values` rule no longer warns, so `cascade apply`
   accepts it: a missing `base-palette` defaults to 0, and `font-family` is the
   mandatory descriptor whose absence warns in its place (#551)
@@ -580,11 +576,11 @@ entry points both moved.
   from a value already typed by a `@property` registration's syntax, where
   `Declaration.custom_property` takes a plain string (#626)
 - A `var()` in an `@font-face` descriptor is resolved by `Css.inline_vars`
-  rather than dropped at parse time, covering the metric overrides,
-  `font-family`, `font-variant`, `size-adjust`, `font-tech`, a `font-stretch`
-  endpoint and the style, weight, display and settings descriptors. One whose
-  typed value has no `Var` arm is still dropped with a warning, as a browser
-  does (#571, #573, #575, #577)
+  rather than dropped at parse time, for every descriptor and for a single
+  endpoint of a `font-weight`, `font-style` or `font-stretch` range. The parse
+  keeps the reference without a warning and `~strict:true` accepts it, where
+  `var()` substitutes in property values only and a browser drops the whole
+  declaration (#322, #571, #573, #575, #577)
 - `Css.inline_vars` resolves every `@page` descriptor under one unit policy,
   where `margin-top` alone kept the authored unit and one block answered `1cm`
   for it and `37.79527559px` for the `margin-left` beside it (#555)
