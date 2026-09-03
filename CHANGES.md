@@ -1067,7 +1067,9 @@ entry points both moved.
 
 - `cascade diff` prints rule differences in the order the expected side names
   the rules, where a hash table's bucket layout decided it, so a report reads
-  down the sheet and `--limit` keeps the differences nearest the top (#814)
+  down the sheet and `--limit` keeps the differences nearest the top. A
+  container only one side holds prints after every entry that names a place in
+  the expected sheet (#814, #815)
 - `cascade diff --json` writes the comparison as one JSON document on standard
   output in place of the report, so a harness reads what changed rather than
   parsing prose. The exit status is unchanged (#799)

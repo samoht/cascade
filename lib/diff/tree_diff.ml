@@ -2679,6 +2679,16 @@ let container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond rules =
    blocks share is named once for the group. Every condition both sides hold is
    asked, not only the ones whose bodies differ: a block that kept its body and
    swapped with the rule below it changes which declaration wins. *)
+(* Take one value from a condition's bucket, leaving the rest. A stylesheet may
+   write one condition several times, so a bucket holds an occurrence apiece and
+   each is answered where the sheet writes it. *)
+let take_bucket tbl key =
+  match Hashtbl.find_opt tbl key with
+  | Some (v :: rest) ->
+      Hashtbl.replace tbl key rest;
+      Some v
+  | Some [] | None -> None
+
 let container_reorders ~container_type ~condition_of ~moved_conds ~reported
     ~stmts1 ~stmts2 items =
   List.filter_map
@@ -3104,6 +3114,47 @@ and process_modified_container ~container_type ~condition_of ~moved_conds
       container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond rules1
     else None
 
+(* What one occurrence of a condition on the expected side contributes. A
+   removal comes first and can repeat, since two blocks of one condition may
+   both be gone; everything else is answered once per condition, [settled]
+   recording which, so a later occurrence does not restate it. *)
+and expected_container_entry ~container_type ~condition_of ~moved_conds ~stmts1
+    ~stmts2 ~block_structure_changed ~pending_removed ~pending_modified ~settled
+    ~reported (_pos, cond, block_rules) =
+  match take_bucket pending_removed cond with
+  (* The bucket says a block of this condition is gone; which one is this
+     occurrence, whose own rules are the ones to report. Taking the bucket's
+     copy would pair the first occurrence with whichever block the diff happened
+     to name first. *)
+  | Some _ ->
+      Hashtbl.replace reported cond ();
+      Some (Removed { container_type; condition = cond; rules = block_rules })
+  | None when Hashtbl.mem settled cond -> None
+  | None -> (
+      Hashtbl.replace settled cond ();
+      match Hashtbl.find_opt block_structure_changed cond with
+      | Some (expected_blocks, actual_blocks) ->
+          Hashtbl.replace reported cond ();
+          Some
+            (Block_structure_changed
+               {
+                 container_type;
+                 condition = cond;
+                 expected_blocks;
+                 actual_blocks;
+               })
+      | None -> (
+          match take_bucket pending_modified cond with
+          | Some (rules1, rules2) ->
+              process_modified_container ~container_type ~condition_of
+                ~moved_conds ~stmts1 ~stmts2 ~block_structure_changed ~reported
+                cond rules1 rules2
+          | None when Hashtbl.mem moved_conds cond ->
+              Hashtbl.replace reported cond ();
+              container_moved ~container_type ~condition_of ~stmts1 ~stmts2 cond
+                block_rules
+          | None -> None))
+
 and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
     =
   let condition_of stmt = Option.map fst (extract_fn stmt) in
@@ -3119,38 +3170,34 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
   let items1 = List.filter_map extract_fn stmts1 in
   let items2 = List.filter_map extract_fn stmts2 in
   let added, removed, modified = diff_fn items1 items2 in
-  let diffs = ref [] in
-  Hashtbl.iter
-    (fun cond (expected_blocks, actual_blocks) ->
-      Hashtbl.replace reported cond ();
-      diffs :=
-        Block_structure_changed
-          { container_type; condition = cond; expected_blocks; actual_blocks }
-        :: !diffs)
-    block_structure_changed;
-  List.iter
-    (fun (cond, rules) ->
-      Hashtbl.replace reported cond ();
-      diffs := Added { container_type; condition = cond; rules } :: !diffs)
-    added;
-  List.iter
-    (fun (cond, rules) ->
-      Hashtbl.replace reported cond ();
-      diffs := Removed { container_type; condition = cond; rules } :: !diffs)
-    removed;
-  List.iter
-    (fun (cond, rules1, rules2) ->
-      match
-        process_modified_container ~container_type ~condition_of ~moved_conds
-          ~stmts1 ~stmts2 ~block_structure_changed ~reported cond rules1 rules2
-      with
-      | Some diff -> diffs := diff :: !diffs
-      | None -> ())
-    modified;
+  let pending_removed = Group.by Fun.id removed in
+  let pending_added = Group.by Fun.id added in
+  let pending_modified =
+    Group.by (fun (cond, rules1, rules2) -> (cond, (rules1, rules2))) modified
+  in
+  let settled = Hashtbl.create 8 in
+  let expected_diffs =
+    List.filter_map
+      (expected_container_entry ~container_type ~condition_of ~moved_conds
+         ~stmts1 ~stmts2 ~block_structure_changed ~pending_removed
+         ~pending_modified ~settled ~reported)
+      items_with_pos1
+  in
+  let added_diffs =
+    List.filter_map
+      (fun (_pos, cond, _rules) ->
+        Option.map
+          (fun rules ->
+            Hashtbl.replace reported cond ();
+            Added { container_type; condition = cond; rules })
+          (take_bucket pending_added cond))
+      items_with_pos2
+  in
+  let diffs = ref (expected_diffs @ added_diffs) in
   diffs :=
-    container_reorders ~container_type ~condition_of ~moved_conds ~reported
-      ~stmts1 ~stmts2 items1
-    @ !diffs;
+    !diffs
+    @ container_reorders ~container_type ~condition_of ~moved_conds ~reported
+        ~stmts1 ~stmts2 items1;
   (if !diffs = [] then
      match
        detect_order_only_change ~container_type added removed items1 items2

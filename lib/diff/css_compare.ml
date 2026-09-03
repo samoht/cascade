@@ -258,15 +258,7 @@ let group_into_table rules = Group.by Fun.id rules
 (* The keys the expected side names, in the order it names them. Walking [tbl1]
    with [Hashtbl.iter] instead would order the report by the stdlib hash and the
    table's capacity, neither of which is a fact about the sheet. *)
-let keys_in_source_order rules =
-  let seen = Hashtbl.create 128 in
-  List.filter_map
-    (fun (key, _) ->
-      if Hashtbl.mem seen key then None
-      else (
-        Hashtbl.add seen key ();
-        Some key))
-    rules
+let keys_in_source_order rules = Group.keys Fun.id rules
 
 (* Compare two declaration lists with the same key and emit diffs *)
 let diff_same_key_pair key d1 d2 =

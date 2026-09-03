@@ -16,3 +16,14 @@ let by ?(size = 16) key items =
   Hashtbl.to_seq_keys tbl |> List.of_seq
   |> List.iter (fun k -> Hashtbl.replace tbl k (List.rev (Hashtbl.find tbl k)));
   tbl
+
+let keys key items =
+  let seen = Hashtbl.create 16 in
+  List.filter_map
+    (fun item ->
+      let k, _ = key item in
+      if Hashtbl.mem seen k then None
+      else (
+        Hashtbl.add seen k ();
+        Some k))
+    items

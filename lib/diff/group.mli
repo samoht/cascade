@@ -6,3 +6,8 @@ val by : ?size:int -> ('a -> 'k * 'v) -> 'a list -> ('k, 'v list) Hashtbl.t
     capacity, a sizing hint: it decides which bucket a key lands in and so the
     order [Hashtbl.iter] walks them, which is why a caller that needs a defined
     order over the keys takes it from [items]. *)
+
+val keys : ('a -> 'k * 'v) -> 'a list -> 'k list
+(** [keys key items] is the distinct keys [key] returns, in the order [items]
+    first names them. It is what a caller walking [by key items] takes its order
+    from, [Hashtbl.iter] answering in bucket order instead. *)
