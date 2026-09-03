@@ -1195,6 +1195,22 @@ let distant_insertion_is_not_a_move () =
     "twelve insertions are still not a container move" []
     (reordered_containers d)
 
+(* Each repeated condition is a distinct source-order participant. Keeping the
+   first block fixed must not make a later block under the same condition
+   invisible when it crosses a rule. *)
+let later_repeated_media_move_is_reported () =
+  let d =
+    diff_of
+      ~expected:
+        "@media print{.a{color:red}}.x{color:blue}@media \
+         print{.b{color:green}}.y{color:black}"
+      ~actual:
+        "@media print{.a{color:red}}.x{color:blue}.y{color:black}@media \
+         print{.b{color:green}}"
+  in
+  Alcotest.(check (list string))
+    "the later block is a move" [ "print" ] (reordered_containers d)
+
 (* ===== Entries the report cannot name ===== *)
 
 (* The names every rule-level entry claiming an addition or a removal carries.
@@ -1490,6 +1506,8 @@ let suite =
         insertion_ahead_of_media_is_not_a_move;
       Alcotest.test_case "distant insertion is not a move" `Quick
         distant_insertion_is_not_a_move;
+      Alcotest.test_case "later repeated media move is reported" `Quick
+        later_repeated_media_move_is_reported;
       Alcotest.test_case "removed property rule is named" `Quick
         removed_property_rule_is_named;
       Alcotest.test_case "removed keyframes is named" `Quick
