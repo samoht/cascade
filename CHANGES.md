@@ -1067,6 +1067,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff --json` writes the comparison as one JSON document on standard
+  output in place of the report, so a harness reads what changed rather than
+  parsing prose. The exit status is unchanged (#799)
 - `cascade diff` compares a rule's nested body whatever order the two sides
   write its selector list in, and stops calling that reordering a change: a
   comma group is a set, so the body held the only difference (#798)

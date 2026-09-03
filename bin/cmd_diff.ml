@@ -143,12 +143,340 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result =
         ]);
   print_string (Buffer.contents buf)
 
+(* The JSON document. It reports the whole comparison, so the shaping the human
+   report needs (a line budget, colour) has nothing to bound here: a consumer
+   reads the field it wants and ignores the rest. *)
+
+module J = Cli_json
+module D = Cascade_diff.Tree_diff
+
+let json_string s = J.String s
+let json_strings ss = J.List (List.map json_string ss)
+
+(* A member the constructor carries only sometimes is written only when it is
+   there, rather than as a null a reader would have to skip. *)
+let json_opt name f = function None -> [] | Some v -> [ (name, f v) ]
+
+let json_mode = function
+  | Auto -> "auto"
+  | Tree -> "tree"
+  | String -> "string"
+  | Canonical -> "canonical"
+
+let json_container_type = function
+  | `Media -> "media"
+  | `Layer -> "layer"
+  | `Supports -> "supports"
+  | `Container -> "container"
+  | `Property -> "property"
+  | `Nesting -> "nesting"
+  | `At_rule -> "at_rule"
+
+(* The author's own spelling, with the flag the human report also shows: a
+   declaration and the one it outranks read alike without it. *)
+let json_declaration decl =
+  let value = Cascade.Css.declaration_value ~minify:false decl in
+  let value =
+    if Cascade.Css.declaration_is_important decl then
+      String.concat "" [ value; " !important" ]
+    else value
+  in
+  J.Obj
+    [
+      ("property", json_string (Cascade.Css.declaration_name decl));
+      ("value", json_string value);
+    ]
+
+let json_declarations decls = J.List (List.map json_declaration decls)
+
+let json_property (property, value) =
+  J.Obj [ ("property", json_string property); ("value", json_string value) ]
+
+let json_property_change { D.property_name; expected_value; actual_value } =
+  J.Obj
+    [
+      ("property_name", json_string property_name);
+      ("expected_value", json_string expected_value);
+      ("actual_value", json_string actual_value);
+    ]
+
+(* A container's contents are CSS, not a difference, so they are written as the
+   minified text of each statement. *)
+let json_statements stmts =
+  J.List
+    (List.map
+       (fun stmt ->
+         json_string
+           (Cascade.Css.to_string ~minify:true (Cascade.Css.v [ stmt ])))
+       stmts)
+
+(* The three kinds that carry a selector and the declarations under it. *)
+let json_selector_rule selector declarations =
+  [
+    ("selector", json_string selector);
+    ("declarations", json_declarations declarations);
+  ]
+
+let json_content_changed ~selector ~old_declarations ~new_declarations
+    ~property_changes ~added_properties ~removed_properties =
+  [
+    ("selector", json_string selector);
+    ("old_declarations", json_declarations old_declarations);
+    ("new_declarations", json_declarations new_declarations);
+    ("property_changes", J.List (List.map json_property_change property_changes));
+    ("added_properties", J.List (List.map json_property added_properties));
+    ("removed_properties", J.List (List.map json_property removed_properties));
+  ]
+
+let json_reordered ~selector ~expected_pos ~actual_pos ~swapped_with
+    ~old_declarations ~new_declarations =
+  [
+    ("selector", json_string selector);
+    ("expected_pos", J.Int expected_pos);
+    ("actual_pos", J.Int actual_pos);
+  ]
+  @ json_opt "swapped_with" json_string swapped_with
+  @ json_opt "old_declarations" json_declarations old_declarations
+  @ json_opt "new_declarations" json_declarations new_declarations
+
+let json_rule_diff (rule : D.rule_diff) =
+  let entry kind fields = J.Obj (("kind", json_string kind) :: fields) in
+  match rule with
+  | Added { selector; declarations } ->
+      entry "added" (json_selector_rule selector declarations)
+  | Removed { selector; declarations } ->
+      entry "removed" (json_selector_rule selector declarations)
+  | Content_changed
+      {
+        selector;
+        old_declarations;
+        new_declarations;
+        property_changes;
+        added_properties;
+        removed_properties;
+      } ->
+      entry "modified"
+        (json_content_changed ~selector ~old_declarations ~new_declarations
+           ~property_changes ~added_properties ~removed_properties)
+  | Selector_changed { old_selector; new_selector; declarations } ->
+      entry "selector_changed"
+        [
+          ("old_selector", json_string old_selector);
+          ("new_selector", json_string new_selector);
+          ("declarations", json_declarations declarations);
+        ]
+  | Reordered
+      {
+        selector;
+        expected_pos;
+        actual_pos;
+        swapped_with;
+        old_declarations;
+        new_declarations;
+      } ->
+      entry "reordered"
+        (json_reordered ~selector ~expected_pos ~actual_pos ~swapped_with
+           ~old_declarations ~new_declarations)
+  | Rearranged { selector; declarations } ->
+      entry "rearranged" (json_selector_rule selector declarations)
+  | Regrouped { from_selectors; to_selectors } ->
+      entry "regrouped"
+        [
+          ("from_selectors", json_strings from_selectors);
+          ("to_selectors", json_strings to_selectors);
+        ]
+
+let json_container_info { D.container_type; condition; rules } =
+  [
+    ("container_type", json_string (json_container_type container_type));
+    ("condition", json_string condition);
+    ("rules", json_statements rules);
+  ]
+
+let json_blocks blocks =
+  J.List
+    (List.map
+       (fun (position, rules) ->
+         J.Obj
+           [ ("position", J.Int position); ("rules", json_statements rules) ])
+       blocks)
+
+let rec json_container_diff (container : D.container_diff) =
+  let entry change fields =
+    J.Obj
+      (("kind", json_string "container")
+      :: ("change", json_string change)
+      :: fields)
+  in
+  match container with
+  | Added info -> entry "added" (json_container_info info)
+  | Removed info -> entry "removed" (json_container_info info)
+  | Modified { info; actual_rules; rule_changes; container_changes } ->
+      entry "modified"
+        (json_container_info info
+        @ [
+            ("actual_rules", json_statements actual_rules);
+            ( "changes",
+              J.List
+                (List.map json_rule_diff rule_changes
+                @ List.map json_container_diff container_changes) );
+          ])
+  | Reordered { info; expected_pos; actual_pos } ->
+      entry "reordered"
+        (json_container_info info
+        @ [
+            ("expected_pos", J.Int expected_pos);
+            ("actual_pos", J.Int actual_pos);
+          ])
+  | Block_structure_changed
+      { container_type; condition; expected_blocks; actual_blocks } ->
+      entry "block_structure_changed"
+        [
+          ("container_type", json_string (json_container_type container_type));
+          ("condition", json_string condition);
+          ("expected_blocks", json_blocks expected_blocks);
+          ("actual_blocks", json_blocks actual_blocks);
+        ]
+
+let json_layer_order { D.expected_order; actual_order; swapped } =
+  J.Obj
+    [
+      ("kind", json_string "layer_order");
+      ("expected_order", json_strings expected_order);
+      ("actual_order", json_strings actual_order);
+      ( "swapped",
+        J.List
+          (List.map
+             (fun (weaker, stronger) ->
+               J.Obj
+                 [
+                   ("weaker", json_string weaker);
+                   ("stronger", json_string stronger);
+                 ])
+             swapped) );
+    ]
+
+let json_changes (d : D.t) =
+  Option.to_list (Option.map json_layer_order d.layer_order)
+  @ List.map json_rule_diff d.rules
+  @ List.map json_container_diff d.containers
+
+(* Every field of the record but the two texts, under the names the record
+   already uses, so the type and the document stay in step. *)
+let json_stats (s : Cascade_diff.Css_compare.stats) =
+  J.Obj
+    [
+      ("expected_chars", J.Int s.expected_chars);
+      ("actual_chars", J.Int s.actual_chars);
+      ("added_rules", J.Int s.added_rules);
+      ("removed_rules", J.Int s.removed_rules);
+      ("modified_rules", J.Int s.modified_rules);
+      ("reordered_rules", J.Int s.reordered_rules);
+      ("rearranged_rules", J.Int s.rearranged_rules);
+      ("regrouped_rules", J.Int s.regrouped_rules);
+      ("container_changes", J.Int s.container_changes);
+      ("layer_order_swaps", J.Int s.layer_order_swaps);
+    ]
+
+let json_string_diff (sdiff : Cascade_diff.String_diff.t) =
+  let expected_line, actual_line = sdiff.diff_lines in
+  J.Obj
+    [
+      ("position", J.Int sdiff.position);
+      ("line_expected", J.Int sdiff.line_expected);
+      ("column_expected", J.Int sdiff.column_expected);
+      ("line_actual", J.Int sdiff.line_actual);
+      ("column_actual", J.Int sdiff.column_actual);
+      ( "diff_lines",
+        J.Obj
+          [
+            ("expected", json_string expected_line);
+            ("actual", json_string actual_line);
+          ] );
+    ]
+
+let json_side side message =
+  J.Obj [ ("side", json_string side); ("message", json_string message) ]
+
+(* A parse error is the reason there is nothing to compare on that side, so it
+   belongs in the document rather than beside it: a consumer that only reads
+   stdout would otherwise see an empty comparison and no cause. Both sides
+   failing the same way is one fact about the input, as it is for a warning. *)
+let json_errors = function
+  | Cascade_diff.Css_compare.Both_errors (e1, e2) ->
+      let m1 = Cascade.Error.to_string e1 in
+      let m2 = Cascade.Error.to_string e2 in
+      if String.equal m1 m2 then [ json_side "both" m1 ]
+      else [ json_side "expected" m1; json_side "actual" m2 ]
+  | Expected_error e -> [ json_side "expected" (Cascade.Error.to_string e) ]
+  | Actual_error e -> [ json_side "actual" (Cascade.Error.to_string e) ]
+  | No_diff | Tree_diff _ | String_diff _ -> []
+
+(* The library groups the warnings; this only names the sides. *)
+let json_warnings (result : Cascade_diff.Css_compare.t) =
+  let side = function
+    | Cascade_diff.Css_compare.Expected -> "expected"
+    | Actual -> "actual"
+    | Both -> "both"
+  in
+  J.List
+    (List.map
+       (fun (s, w) -> json_side (side s) (Cascade.Error.to_string w))
+       (Cascade_diff.Css_compare.warnings result))
+
+let json_document ~file1 ~file2 ~mode ~css1 ~css2 result =
+  let stats =
+    Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
+  in
+  let outcome = result.Cascade_diff.Css_compare.result in
+  let identical =
+    match outcome with
+    | No_diff -> true
+    | Tree_diff _ | String_diff _ | Both_errors _ | Expected_error _
+    | Actual_error _ ->
+        false
+  in
+  let changes = match outcome with Tree_diff d -> json_changes d | _ -> [] in
+  let string_diff =
+    match outcome with
+    | String_diff sdiff -> [ ("string_diff", json_string_diff sdiff) ]
+    | _ -> []
+  in
+  J.Obj
+    ([
+       ("expected", json_string file1);
+       ("actual", json_string file2);
+       ("mode", json_string (json_mode mode));
+       ("identical", J.Bool identical);
+       ("stats", json_stats stats);
+       ("warnings", json_warnings result);
+       ("errors", J.List (json_errors outcome));
+       ("changes", J.List changes);
+     ]
+    @ string_diff)
+
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
+
+let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
+  let result =
+    run_diff mode ~lossless:opts.lossless
+      ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
+  in
+  let document = json_document ~file1 ~file2 ~mode ~css1 ~css2 result in
+  print_string (Cli_json.to_string document);
+  print_newline ();
+  match result.Cascade_diff.Css_compare.result with
+  | No_diff -> Ok ()
+  | Tree_diff _ | String_diff _ | Both_errors _ | Expected_error _
+  | Actual_error _ ->
+      Stdlib.exit 1
 
 (* Each side is its text and the name the report gives it, which is the path for
    a file and [<stdin>] for the stream. *)
-let compare_sources ~color ~mode ~limit ~opts (css1, file1) (css2, file2) =
-  if css1 = css2 then (
+let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
+    =
+  if json then print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts
+  else if css1 = css2 then (
     Fmt.pr "CSS files are identical@.";
     Ok ())
   else
@@ -171,7 +499,7 @@ let compare_sources ~color ~mode ~limit ~opts (css1, file1) (css2, file2) =
            documented, distinct from cmdliner's reserved error codes. *)
         Stdlib.exit 1
 
-let compare_files file1 file2 style_renderer mode limit opts () =
+let compare_files file1 file2 style_renderer mode limit json opts () =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
@@ -190,7 +518,7 @@ let compare_files file1 file2 style_renderer mode limit opts () =
   else
     match (read_source file1, read_source file2) with
     | Ok source1, Ok source2 ->
-        compare_sources ~color ~mode ~limit ~opts source1 source2
+        compare_sources ~color ~mode ~limit ~json ~opts source1 source2
     | Error e, _ | _, Error e -> Error e
 
 let file1_arg =
@@ -227,7 +555,9 @@ let limit_arg =
      one and every parse warning with it, and an integer prints exactly that \
      many. Wherever differences are left over, a $(b,... N more differences) \
      line records how many. Applies to the whole report, so a bound of $(b,1) \
-     is one top-level entry however many sections the report has."
+     is one top-level entry however many sections the report has. Ignored \
+     under $(b,--json), which replaces the report with a document naming every \
+     difference."
   in
   let parse = function
     | "auto" -> Ok Fit_entries
@@ -246,6 +576,18 @@ let limit_arg =
     value
     & opt (conv ~docv:"LIMIT" (parse, print)) Fit_entries
     & info [ "limit" ] ~docv:"LIMIT" ~doc)
+
+let json_arg =
+  let doc =
+    "Write the comparison as one JSON document on standard output, in place of \
+     the human report, so a harness can branch on the exit status and read the \
+     detail from the document. The exit status is unchanged. Nothing else \
+     reaches standard output: parse warnings and parse errors are members of \
+     the document rather than lines beside it. Colour and $(b,--limit) shape \
+     the human report only and are ignored here, since the document reports \
+     every difference."
+  in
+  Arg.(value & flag & info [ "json" ] ~doc)
 
 let lossless_arg =
   let doc =
@@ -287,7 +629,7 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ limit_arg $ canonical_opts $ Cli_log.term)
+   $ mode_arg $ limit_arg $ json_arg $ canonical_opts $ Cli_log.term)
 
 let man =
   [
@@ -305,6 +647,8 @@ let man =
     `Pre "  cascade diff reference.css output.css";
     `P "Compare a stylesheet on standard input against a reference:";
     `Pre "  cascade fmt --minify src.css | cascade diff reference.css -";
+    `P "Read the comparison as JSON instead of the report:";
+    `Pre "  cascade diff --json reference.css output.css";
     `P "Disable colors using flag:";
     `Pre "  cascade diff --color=never reference.css output.css";
     `P "Disable colors using NO_COLOR environment variable:";
