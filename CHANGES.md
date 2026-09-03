@@ -546,6 +546,10 @@ difference wherever the two are not equivalent.
   need for `user-select`, `backdrop-filter`, `hyphens`, `mask` and its
   compatible layer longhands, including matching `@supports` tests. An
   authored prefixed declaration remains authoritative (#751, #758)
+- Default minification also adds `-webkit-text-decoration-color` beside a
+  `text-decoration-color` whose value is not settled at parse time, which
+  Safari and iOS Safari read under both names through 26.1. A value that reads
+  as a colour keeps the standard property alone (#797)
 - The README states the default minifier's evergreen target, colour tolerance,
   and CSSOM-visible normalisation beside its first example, and describes
   `--lossless --enforce-spec` as conservative rather than source-exact (#743)

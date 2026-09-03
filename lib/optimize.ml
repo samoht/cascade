@@ -633,6 +633,7 @@ type webkit_fallback =
   | User_select_fallback
   | Backdrop_filter_fallback
   | Hyphens_fallback
+  | Text_decoration_color_fallback
   | Mask_fallback
   | Mask_image_fallback
   | Mask_position_fallback
@@ -641,6 +642,11 @@ type webkit_fallback =
   | Mask_clip_fallback
   | Mask_origin_fallback
 
+(* A target that cannot read the standard property at all needs the fallback for
+   every value of it. A target that reads both spellings needs it only where the
+   value is not settled at parse time. *)
+type fallback_condition = Any_value | Unresolved_value
+
 type webkit_fallback_spec =
   | Typed_fallback : {
       kind : webkit_fallback;
@@ -648,12 +654,15 @@ type webkit_fallback_spec =
       webkit_property : 'a Properties.property;
       name : string;
       webkit_name : string;
+      condition : fallback_condition;
     }
       -> webkit_fallback_spec
   | Mask_fallback_spec of { name : string; webkit_name : string }
 
-let typed_fallback kind property webkit_property name webkit_name =
-  Typed_fallback { kind; property; webkit_property; name; webkit_name }
+let typed_fallback ?(condition = Any_value) kind property webkit_property name
+    webkit_name =
+  Typed_fallback
+    { kind; property; webkit_property; name; webkit_name; condition }
 
 let webkit_fallback_specs =
   [
@@ -663,6 +672,9 @@ let webkit_fallback_specs =
       Webkit_backdrop_filter "backdrop-filter" "-webkit-backdrop-filter";
     typed_fallback Hyphens_fallback Hyphens Webkit_hyphens "hyphens"
       "-webkit-hyphens";
+    typed_fallback ~condition:Unresolved_value Text_decoration_color_fallback
+      Text_decoration_color Webkit_text_decoration_color "text-decoration-color"
+      "-webkit-text-decoration-color";
     Mask_fallback_spec { name = "mask"; webkit_name = "-webkit-mask" };
     typed_fallback Mask_image_fallback Mask_image Webkit_mask_image "mask-image"
       "-webkit-mask-image";
@@ -681,6 +693,10 @@ let webkit_fallback_specs =
 let fallback_spec_kind = function
   | Typed_fallback { kind; _ } -> kind
   | Mask_fallback_spec _ -> Mask_fallback
+
+let fallback_spec_condition = function
+  | Typed_fallback { condition; _ } -> condition
+  | Mask_fallback_spec _ -> Any_value
 
 let fallback_spec_names = function
   | Typed_fallback { name; webkit_name; _ } -> (name, webkit_name)
@@ -712,7 +728,10 @@ let version_before version minimum = version_compare version minimum < 0
    baseline, while unprefixed [backdrop-filter] arrived after 17.6, unprefixed
    [hyphens] arrived in 17, and Chrome needs the compatible [-webkit-mask]
    shorthand and longhands through 119. [mask-mode] and [mask-composite] are
-   excluded because their prefixed forms have different grammars. *)
+   excluded because their prefixed forms have different grammars. Safari/iOS
+   answer [text-decoration-color] under both spellings through 26.1, so it pairs
+   this boundary with [Unresolved_value]: a settled colour is served by the
+   standard longhand on every declared target. *)
 let required_fallback kind targets =
   match kind with
   | User_select_fallback -> true
@@ -722,6 +741,9 @@ let required_fallback kind targets =
   | Hyphens_fallback ->
       version_before targets.safari (17, 0)
       || version_before targets.ios_safari (17, 0)
+  | Text_decoration_color_fallback ->
+      version_at_most targets.safari (26, 1)
+      || version_at_most targets.ios_safari (26, 1)
   | Mask_fallback | Mask_image_fallback | Mask_position_fallback
   | Mask_size_fallback | Mask_repeat_fallback | Mask_clip_fallback
   | Mask_origin_fallback ->
@@ -760,6 +782,11 @@ let webkit_fallback_of_declaration targets decl : Declaration.declaration option
       | None -> None
     else None
   in
+  let condition_holds spec =
+    match fallback_spec_condition spec with
+    | Any_value -> true
+    | Unresolved_value -> Variables.declaration_uses_var decl
+  in
   let fallback_from_spec spec =
     match (spec, decl) with
     | ( Typed_fallback { kind; property; webkit_property; _ },
@@ -789,15 +816,15 @@ let webkit_fallback_of_declaration targets decl : Declaration.declaration option
           | Some _ | None ->
               fallback Mask_fallback (Unknown_property webkit_name) components
                 important)
-      | Some spec ->
+      | Some spec when condition_holds spec ->
           let kind = fallback_spec_kind spec in
           let _, webkit_name = fallback_spec_names spec in
           fallback kind (Unknown_property webkit_name) components important
-      | None -> None)
+      | Some _ | None -> None)
   | Declaration _ -> (
       match fallback_spec_by_standard_name (Declaration.property_name decl) with
-      | Some spec -> fallback_from_spec spec
-      | None -> None)
+      | Some spec when condition_holds spec -> fallback_from_spec spec
+      | Some _ | None -> None)
 
 let is_webkit_fallback kind decl =
   match (fallback_spec_by_kind kind, decl) with
