@@ -125,6 +125,34 @@ let pp_with_labels () =
         "pp with labels produces output" true
         (String.length output > 0)
 
+let pp_short_lines_keeps_after_context () =
+  let expected = "a\nb\nc\nd\ne" in
+  let actual = "a\nx\nc\nd\ne" in
+  match Cascade_diff.String_diff.diff ~expected actual with
+  | None -> Alcotest.fail "expected Some"
+  | Some d ->
+      let buf = Buffer.create 256 in
+      Cascade_diff.String_diff.pp buf d;
+      Alcotest.(check string)
+        "short lines keep trailing context"
+        (String.concat "\n"
+           [
+             "Strings differ at position 2 (line 1, col 0)";
+             "";
+             "--- Expected";
+             "+++ Actual";
+             "@@ position 2 @@";
+             " a";
+             "-b";
+             "+x";
+             " ^";
+             " c";
+             " d";
+             " e";
+             "";
+           ])
+        (Buffer.contents buf)
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -155,4 +183,6 @@ let suite =
         truncate_preserves_start_and_end;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp with labels" `Quick pp_with_labels;
+      Alcotest.test_case "pp short lines keeps after context" `Quick
+        pp_short_lines_keeps_after_context;
     ] )
