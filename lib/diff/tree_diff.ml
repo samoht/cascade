@@ -2823,7 +2823,11 @@ let extract_layer_name stmt =
   | None -> None
 
 let keyframes_container_info name =
-  { container_type = `Layer; condition = "@keyframes " ^ name; rules = [] }
+  {
+    container_type = `At_rule;
+    condition = String.concat "" [ "@keyframes "; name ];
+    rules = [];
+  }
 
 let keyframe_frames_diff frames1 frames2 =
   let key_of (frame : Css.keyframe) = frame.selector in

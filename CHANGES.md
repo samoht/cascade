@@ -1051,6 +1051,8 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` names a changed `@keyframes` block as the at-rule it is,
+  in place of the `@layer @keyframes spin` line it printed (#784)
 - `cascade diff` reports the two sizes without a percentage when the first
   file is empty, in place of the `(0.0% diff)` it printed for a pair sharing
   nothing (#783)
