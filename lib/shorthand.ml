@@ -1980,6 +1980,51 @@ let compose_pair_via_index idx =
     | None -> incr i
   done
 
+(* Walk the rule for a family whose shorthand always absorbs exactly three
+   longhands, absorbing every run [try_compose] accepts. *)
+let compose_fixed3_via_index idx ~try_compose =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i + 2 < n do
+    match try_compose idx !i with
+    | None -> incr i
+    | Some shorthand ->
+        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
+        i := !i + 3
+  done
+
+(* Same walk for a family whose run length varies: [try_compose] reports the
+   shorthand together with the number of positions it consumes. An earlier
+   composer may already own a position, so absorbed slots are skipped. *)
+let compose_run_via_index idx ~try_compose =
+  let n = Rule_index.length idx in
+  let i = ref 0 in
+  while !i < n do
+    if Rule_index.is_absorbed idx !i then incr i
+    else
+      match try_compose idx !i with
+      | None -> incr i
+      | Some (shorthand, k) ->
+          let absorbed = List.init k (fun j -> !i + j) in
+          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
+          i := !i + k
+  done
+
+(* Collect the contiguous run of one family's longhands starting at [i], as
+   (decl, part) pairs, with its length. *)
+let take_run_at idx ~part_of i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n then (List.rev acc, j - i)
+    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      match part_of d with
+      | Some f -> aux (j + 1) ((d, f) :: acc)
+      | None -> (List.rev acc, j - i)
+  in
+  aux i []
+
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
 type outline_part = Width | Style | Color
@@ -2041,15 +2086,7 @@ let try_compose_outline_at idx i =
     | _ -> None
 
 let compose_outline_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_outline_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_outline_at
 
 (* CSS Fonts 4 sec. 2.7: [font] reads [<style>? <weight>?
    <size>[/<line-height>]? <family>+]. Cascade stores [font] as a string, so
@@ -2291,15 +2328,7 @@ let try_compose_list_style_at idx i =
     else None
 
 let compose_list_style_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_list_style_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_list_style_at
 
 (* CSS Flexbox 1 sec. 7.2: [flex] shorthand is grow / shrink / basis. Cascade
    types [Flex] as [Full of grow * shrink * basis]; the composition extracts the
@@ -2356,15 +2385,7 @@ let try_compose_flex_at idx i =
     | _ -> None
 
 let compose_flex_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_flex_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_flex_at
 
 (* CSS Text Decoration 4 sec. 2: [text-decoration] shorthand carries line list,
    style, color, and optional thickness. The composition extracts the three
@@ -2422,15 +2443,7 @@ let try_compose_text_decoration_at idx i =
     | _ -> None
 
 let compose_text_decoration_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 2 < n do
-    match try_compose_text_decoration_at idx !i with
-    | None -> incr i
-    | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
-  done
+  compose_fixed3_via_index idx ~try_compose:try_compose_text_decoration_at
 
 (* CSS Backgrounds 3 sec. 3.4: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -3001,21 +3014,8 @@ let has_prior_family_longhand part_of idx i =
   in
   aux 0
 
-let take_background_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match background_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_background_at ~ctx idx i =
-  let parts, len = take_background_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:background_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3044,18 +3044,7 @@ let try_compose_background_at ~ctx idx i =
         Some (shorthand, len)
 
 let compose_background_via_index ~ctx idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_background_at ~ctx idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:(try_compose_background_at ~ctx)
 
 let compose_background_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in
@@ -3153,21 +3142,8 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
-let take_mask_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match mask_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_mask_at ~ctx idx i =
-  let parts, len = take_mask_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:mask_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3347,23 +3323,8 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
-(* Collect the contiguous run of transition longhands starting at [i]. Returns
-   the list of (decl, part) pairs and its length. *)
-let take_transition_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match transition_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_transition_at idx i =
-  let parts, len = take_transition_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3382,18 +3343,7 @@ let try_compose_transition_at idx i =
       Some (shorthand, len)
 
 let compose_transition_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_transition_at idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:try_compose_transition_at
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -3517,21 +3467,8 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let take_animation_run_at idx i =
-  let n = Rule_index.length idx in
-  let rec aux j acc =
-    if j >= n then (List.rev acc, j - i)
-    else if Rule_index.is_absorbed idx j then (List.rev acc, j - i)
-    else
-      let d = Rule_index.decl_at idx j in
-      match animation_part_of d with
-      | Some f -> aux (j + 1) ((d, f) :: acc)
-      | None -> (List.rev acc, j - i)
-  in
-  aux i []
-
 let try_compose_animation_at idx i =
-  let parts, len = take_animation_run_at idx i in
+  let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
@@ -3549,18 +3486,7 @@ let try_compose_animation_at idx i =
       Some (shorthand, len)
 
 let compose_animation_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_animation_at idx !i with
-      | None -> incr i
-      | Some (shorthand, k) ->
-          let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-  done
+  compose_run_via_index idx ~try_compose:try_compose_animation_at
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
