@@ -453,9 +453,16 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
    two same-selector occurrences that a conflicting element previously kept
    apart, enabling a merge the source order hid, so equivalent sheets converge
    regardless of which arrangement they started from. Each merging round removes
-   at least one element, so this terminates. *)
+   at least one element, so this terminates.
+
+   Fold what the run already offers before sorting it. Sorting is free to move
+   two same-selector occurrences apart, and a pair the input wrote adjacent has
+   an empty interval and so always merges; taking it first is what makes the
+   merged and unmerged spellings of that pair converge, where sorting first
+   strands the one that arrived already foldable. *)
 let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
     : statement list =
+  let run = coalesce ~canon_body ?parent changed run in
   let stmts = sort_run ?parent changed run in
   let sorted =
     List.filter_map
