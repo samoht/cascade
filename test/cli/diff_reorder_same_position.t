@@ -74,3 +74,35 @@ because `.z` left.
   └─ .a (moved)
   
   [1]
+
+Canonical comparison runs on newly serialized and reparsed stylesheets, so
+its rule indexes are positions in that transformed tree, not locations in
+either input. It names a genuine cascade-sensitive move without inventing
+coordinates. Tree comparison still reports the indexes from the source ASTs.
+
+  $ cat > canonical_ref.css <<'CSS'
+  > .a{color:red}.b{color:blue}.c{color:green}
+  > CSS
+  $ cat > canonical_tw.css <<'CSS'
+  > .c{color:green}.a{color:red}.b{color:blue}
+  > CSS
+  $ cascade diff --diff=canonical --depth=max canonical_ref.css canonical_tw.css
+  CSS: 43 chars vs 43 chars (0.0% diff)
+  Changes: 1 reordered rule
+  
+  --- canonical_ref.css
+  +++ canonical_tw.css
+  Rules reordered (1 rules):
+  └─ .c (moved)
+  
+  [1]
+  $ cascade diff --diff=tree --depth=max canonical_ref.css canonical_tw.css
+  CSS: 43 chars vs 43 chars (0.0% diff)
+  Changes: 1 reordered rule
+  
+  --- canonical_ref.css
+  +++ canonical_tw.css
+  Rules reordered (1 rules):
+  └─ .c (position 0) ↔  .b (position 2)
+  
+  [1]
