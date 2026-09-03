@@ -1058,6 +1058,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- A `cascade diff` character-level hunk no longer ends with a context line
+  holding one space when the inputs end in a newline: the empty string a
+  final newline leaves behind is the terminator, not a line (#790)
 - `cascade diff` indexes structural, nesting, and reported-selector matches,
   making a sheet where every rule changes scale near-linearly (#786)
 - `cascade diff` keeps trailing context around a difference between short

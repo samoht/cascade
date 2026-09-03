@@ -120,12 +120,21 @@ let diff ?(context_size = 3) ~expected actual =
       let diff_line_exp = match remaining_exp with [] -> "" | h :: _ -> h in
       let diff_line_act = match remaining_act with [] -> "" | h :: _ -> h in
 
+      (* A file ending in a newline has no line after it: the empty string that
+         [split_on_char] leaves behind is the terminator, not content. *)
+      let drop_final_terminator lines =
+        match List.rev lines with "" :: rest -> List.rev rest | _ -> lines
+      in
       (* Get context lines after the diff *)
       let context_after_exp =
-        match remaining_exp with [] -> [] | _ :: t -> list_take context_size t
+        match remaining_exp with
+        | [] -> []
+        | _ :: t -> list_take context_size (drop_final_terminator t)
       in
       let context_after_act =
-        match remaining_act with [] -> [] | _ :: t -> list_take context_size t
+        match remaining_act with
+        | [] -> []
+        | _ :: t -> list_take context_size (drop_final_terminator t)
       in
       let context_after = zip_with_empty context_after_exp context_after_act in
 
