@@ -93,6 +93,7 @@ let drop_redundant_layer_decls = Block.drop_redundant_layer_decls
 let drop_empty_rules = Block.drop_empty_rules
 let drop_misplaced_imports = Block.drop_misplaced_imports
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
+let drop_dead_nested_rules = Nest.drop_dead_nested
 let merge_lone_nested_rule = Nest.merge_lone
 let hoist_declaration_runs = Nest.hoist_declaration_runs
 let synthesize_nesting_statements = Nest.statements
@@ -505,7 +506,8 @@ and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
 (* Optimize one rule's nested statements recursively, then drop the redundant
    nesting prefix (see [drop_nesting_prefix]) and let a run written after them
    rejoin the rule's own declarations wherever the cascade allows. The body is
-   the rule's, so it optimizes with the rule as owner. *)
+   the rule's, so it optimizes with the rule as owner. Dead nested rules go
+   before the hoist, so a declaration behind one is no longer held back. *)
 and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports rule =
   let nested =
     match (Ctx.recurse_blocks ctx, rule.nested) with
@@ -519,7 +521,8 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports rule =
         if enforce_spec then nested
         else list_map_preserve drop_nesting_prefix nested
   in
-  let rule = hoist_declaration_runs (rule_with_nested rule nested) in
+  let rule = drop_dead_nested_rules (rule_with_nested rule nested) in
+  let rule = hoist_declaration_runs rule in
   let rule =
     let selector = Selector.canonicalize rule.selector in
     if selector == rule.selector then rule else { rule with selector }

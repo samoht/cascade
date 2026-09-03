@@ -100,6 +100,55 @@ let rec merge_lone (rule : rule) =
       | Option.None -> { rule with nested = [] })
   | _ -> rule
 
+(* The same question, asked of a rule that stays nested: what has to be readable
+   is the branch composed with the parent, but what the rule keeps is the branch
+   in its own spelling. *)
+let live_under parent branch =
+  Option.is_some (keep_readable_branches (combine parent branch))
+
+let live_branches parent (selector : Selector.t) =
+  match selector with
+  | Selector.List branches -> (
+      match Common.List.filter_preserve (live_under parent) branches with
+      | kept when kept == branches -> Option.Some selector
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | kept -> Option.Some (Selector.List kept))
+  | sel -> if live_under parent sel then Option.Some sel else Option.None
+
+(* Only a pseudo-element the parent carries can bar what nests under it, and
+   every rule is walked with its own selector as parent, so a parent without one
+   has nothing dead below to look for. *)
+let under_pseudo_element sel = Selector.any Selector.is_pseudo_element sel
+
+(* Merging is one shape of the composition, and the branches it drops are dead
+   wherever they sit. Walk the body under the parent selector and take them
+   there too, subtree and all, as flattening does: a conditional block keeps its
+   parent's selector for what it wraps, and a kept child becomes the parent of
+   its own. *)
+let rec live_statements parent (stmts : statement list) =
+  Common.List.filter_map_preserve (live_statement parent) stmts
+
+and live_statement parent (stmt : statement) =
+  match stmt with
+  | Rule child -> (
+      match live_branches parent child.selector with
+      | Option.None -> Option.None
+      | Option.Some selector ->
+          let nested = live_statements (combine parent selector) child.nested in
+          if selector == child.selector && nested == child.nested then
+            Option.Some stmt
+          else Option.Some (Rule { child with selector; nested }))
+  | stmt -> Option.Some (map_statement_children (live_statements parent) stmt)
+
+let drop_dead_nested (rule : rule) =
+  match rule.nested with
+  | [] -> rule
+  | _ when not (under_pseudo_element rule.selector) -> rule
+  | body ->
+      let nested = live_statements rule.selector body in
+      if nested == body then rule else { rule with nested }
+
 (* What a run of nested statements would have to cross to move ahead of them:
    every declaration they can write at any depth, read through
    [statement_declarations] and [statement_children] so no block at-rule hides

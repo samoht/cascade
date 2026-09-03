@@ -16,6 +16,14 @@ val keep_readable_branches : Selector.t -> Selector.t option
     pseudo-element, which CSS Selectors 4 sec. 3.6.5 makes invalid and no engine
     matches. *)
 
+val drop_dead_nested : Stylesheet.rule -> Stylesheet.rule
+(** [drop_dead_nested rule] drops from [rule]'s body every nested rule whose
+    selector, composed with the parent's, {!keep_readable_branches} rejects, and
+    every branch of one that keeps others. A dropped rule takes its own body
+    with it, and a conditional block is walked under the same parent, so the
+    body keeps exactly what flattening it would keep. Physically unchanged when
+    nothing is dead. *)
+
 val merge_lone : Stylesheet.rule -> Stylesheet.rule
 (** Merge a pure wrapper rule with its sole nested rule when safe. A merge
     {!keep_readable_branches} rejects outright leaves the wrapper empty, for the

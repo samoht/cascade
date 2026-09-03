@@ -366,6 +366,9 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` drops a rule nested under a pseudo-element parent wherever it sits,
+  matching `--flatten-nesting`: a parent carrying declarations of its own, a
+  `@media` block between the two or a level of `&` in between kept it (#822)
 - `--minify` drops a rule nested under a pseudo-element parent, such as `.b` in
   `.a::before{.b{color:red}}`, where merging the wrapper into it composed
   `.a::before .b`, a selector the reader refuses and no engine matches (#818)
