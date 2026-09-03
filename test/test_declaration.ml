@@ -1953,6 +1953,31 @@ let animations_timing () =
     "transition-duration:var(--d,500ms)";
   check_declaration ~expected:"interest-delay:round(1100ms,500ms)"
     ~optimized:"interest-delay:1000ms" "interest-delay:round(1100ms,500ms)";
+  (* CSS Values 4 sec. 7.2: [ms] and [s] are interchangeable, and the shorter
+     spelling is picked by the AST normalisation, which canonicalises a typed
+     [<time>] - a [round()] operand, a [var()] fallback - but leaves the
+     operands of a [calc()] that survives to the output as authored. The printer
+     mirrors that split at every depth, so a fallback nested inside a [calc()]
+     keeps its unit exactly like the operand beside it: two declarations that
+     print alike must be structurally alike. *)
+  check_declaration ~expected:"transition-duration:calc(var(--d,1000ms))"
+    ~optimized:"transition-duration:calc(var(--d,1000ms))"
+    "transition-duration:calc(var(--d,1000ms))";
+  check_declaration
+    ~expected:"transition-duration:calc(var(--a,var(--b,1000ms)))"
+    ~optimized:"transition-duration:calc(var(--a,var(--b,1000ms)))"
+    "transition-duration:calc(var(--a,var(--b,1000ms)))";
+  check_declaration ~expected:"transition-duration:calc(var(--x) + 1500ms)"
+    ~optimized:"transition-duration:calc(var(--x) + 1500ms)"
+    "transition-duration:calc(var(--x) + 1500ms)";
+  check_declaration ~expected:"transition-duration:round(var(--d,1s),1s)"
+    ~optimized:"transition-duration:round(var(--d,1s),1s)"
+    "transition-duration:round(var(--d,1000ms),1s)";
+  (* [interest-delay] keeps authored milliseconds for its own operands, so a
+     fallback nested in one of its [calc()] operands keeps them too. *)
+  check_declaration ~expected:"interest-delay:calc(var(--a,var(--b,1000ms)))"
+    ~optimized:"interest-delay:calc(var(--a,var(--b,1000ms)))"
+    "interest-delay:calc(var(--a,var(--b,1000ms)))";
   let c = Cursor.of_string "transition-delay:bogus" in
   match read_declaration c with
   | exception
