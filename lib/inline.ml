@@ -929,6 +929,26 @@ let rec refs_of_supports : Supports.t -> string list = function
 let refs_of_queried_name name =
   if Custom_property_name.is_valid name then [ name ] else []
 
+(* CSS Conditional 5 sec. 6.2: a <style-range-value> that is a
+   <custom-property-name> is substituted as if it were wrapped in a var(), so a
+   bare [--gap] operand reads that property just as [var(--gap)] would. *)
+let refs_of_style_range_value value =
+  let named =
+    match trim_components value with
+    | [ Component.Preserved { kind = Token.Ident name; _ } ] ->
+        refs_of_queried_name name
+    | _ -> []
+  in
+  named @ refs_of_components value
+
+let refs_of_style_range : Container.style_range -> string list = function
+  | Compare { left; right; _ } ->
+      refs_of_style_range_value left @ refs_of_style_range_value right
+  | Interval { lower; name; upper; _ } ->
+      refs_of_queried_name name
+      @ refs_of_style_range_value lower
+      @ refs_of_style_range_value upper
+
 (* CSS Conditional 5 sec. 6.2: a [style()] query is evaluated against the
    computed value the queried property has on the query container, its boolean
    form against that property's initial value. The queried name is therefore a
@@ -938,9 +958,7 @@ let rec refs_of_style_query : Container.style_query -> string list = function
   | Boolean name -> refs_of_queried_name name
   | Declaration { name; value } ->
       refs_of_queried_name name @ refs_of_components value
-  | Range { lower; name; upper; _ } ->
-      refs_of_queried_name name @ refs_of_components lower
-      @ refs_of_components upper
+  | Range range -> refs_of_style_range range
   | All (a, b) | Any (a, b) -> refs_of_style_query a @ refs_of_style_query b
   | Neg query -> refs_of_style_query query
 

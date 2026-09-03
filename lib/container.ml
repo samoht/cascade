@@ -23,15 +23,21 @@ and style_query =
   | Any of style_query * style_query
   | Neg of style_query
 
-and style_range = {
-  lower : component_values;
-  lower_op : range_operator;
-  name : string;
-  upper_op : range_operator;
-  upper : component_values;
-}
+and style_range =
+  | Compare of {
+      left : component_values;
+      op : range_operator;
+      right : component_values;
+    }
+  | Interval of {
+      lower : component_values;
+      lower_op : range_operator;
+      name : string;
+      upper_op : range_operator;
+      upper : component_values;
+    }
 
-and range_operator = Lt | Lte | Gt | Gte
+and range_operator = Lt | Lte | Eq | Gt | Gte
 
 and scroll_state_query =
   | State of { name : string; value : string }
@@ -50,6 +56,7 @@ let string_of_components cvs = Cursor.string_of_components ~trim:true cvs
 let string_of_range_operator = function
   | Lt -> "<"
   | Lte -> "<="
+  | Eq -> "="
   | Gt -> ">"
   | Gte -> ">="
 
@@ -62,20 +69,32 @@ let rec string_of_style_query ~minify = function
       let sep = if minify then ":" else ": " in
       String.concat ""
         [ Parser.escape_ident name; sep; string_of_components value ]
-  | Range { lower; lower_op; name; upper_op; upper } ->
+  | Range range ->
       let sep = if minify then "" else " " in
-      String.concat ""
-        [
-          string_of_components lower;
-          sep;
-          string_of_range_operator lower_op;
-          sep;
-          Parser.escape_ident name;
-          sep;
-          string_of_range_operator upper_op;
-          sep;
-          string_of_components upper;
-        ]
+      let parts =
+        match range with
+        | Compare { left; op; right } ->
+            [
+              string_of_components left;
+              sep;
+              string_of_range_operator op;
+              sep;
+              string_of_components right;
+            ]
+        | Interval { lower; lower_op; name; upper_op; upper } ->
+            [
+              string_of_components lower;
+              sep;
+              string_of_range_operator lower_op;
+              sep;
+              Parser.escape_ident name;
+              sep;
+              string_of_range_operator upper_op;
+              sep;
+              string_of_components upper;
+            ]
+      in
+      String.concat "" parts
   | All (a, b) ->
       String.concat ""
         [
@@ -194,19 +213,34 @@ let style_query_rank = function
 
 let compare_values (a : component_values) b = List.compare Component.compare a b
 let compare_range_operator (a : range_operator) b = Stdlib.compare a b
+let style_range_rank = function Compare _ -> 0 | Interval _ -> 1
+
+let rec first_difference = function
+  | [] -> 0
+  | field :: rest ->
+      let c = field () in
+      if c <> 0 then c else first_difference rest
 
 let compare_style_range (r1 : style_range) (r2 : style_range) =
-  let c = String.compare r1.name r2.name in
-  if c <> 0 then c
-  else
-    let c = compare_range_operator r1.lower_op r2.lower_op in
-    if c <> 0 then c
-    else
-      let c = compare_range_operator r1.upper_op r2.upper_op in
-      if c <> 0 then c
-      else
-        let c = compare_values r1.lower r2.lower in
-        if c <> 0 then c else compare_values r1.upper r2.upper
+  match (r1, r2) with
+  | Compare c1, Compare c2 ->
+      first_difference
+        [
+          (fun () -> compare_range_operator c1.op c2.op);
+          (fun () -> compare_values c1.left c2.left);
+          (fun () -> compare_values c1.right c2.right);
+        ]
+  | Interval i1, Interval i2 ->
+      first_difference
+        [
+          (fun () -> String.compare i1.name i2.name);
+          (fun () -> compare_range_operator i1.lower_op i2.lower_op);
+          (fun () -> compare_range_operator i1.upper_op i2.upper_op);
+          (fun () -> compare_values i1.lower i2.lower);
+          (fun () -> compare_values i1.upper i2.upper);
+        ]
+  | (Compare _ | Interval _), _ ->
+      Int.compare (style_range_rank r1) (style_range_rank r2)
 
 let rec compare_style_query q1 q2 =
   match (q1, q2) with
@@ -389,6 +423,12 @@ let style_strip_ws =
     | Component.Preserved { kind = Token.Whitespace; _ } -> false
     | _ -> true)
 
+(* CSS Conditional Rules 5 sec. 5.4 builds <style-range> out of <mf-comparison>
+   and <mf-lt> / <mf-gt>, and Media Queries 4 sec. 3 spells those [<mf-lt> = '<'
+   '='?], [<mf-gt> = '>' '='?], [<mf-eq> = '='] and [<mf-comparison> = <mf-lt> |
+   <mf-gt> | <mf-eq>]. So a bare [=] is a style range operator exactly as it is
+   a media feature one, and [same_direction] is what keeps it out of the two
+   interval branches, which take <mf-lt> twice or <mf-gt> twice. *)
 let take_range_operator = function
   | Component.Preserved { kind = Token.Delim "<"; _ }
     :: Component.Preserved { kind = Token.Delim "="; _ }
@@ -400,7 +440,13 @@ let take_range_operator = function
       Some (Gte, rest)
   | Component.Preserved { kind = Token.Delim "<"; _ } :: rest -> Some (Lt, rest)
   | Component.Preserved { kind = Token.Delim ">"; _ } :: rest -> Some (Gt, rest)
+  | Component.Preserved { kind = Token.Delim "="; _ } :: rest -> Some (Eq, rest)
   | _ -> None
+
+let same_direction lower_op upper_op =
+  match (lower_op, upper_op) with
+  | (Lt | Lte), (Lt | Lte) | (Gt | Gte), (Gt | Gte) -> true
+  | (Lt | Lte | Eq | Gt | Gte), _ -> false
 
 let split_before_range_operator cvs =
   let rec loop before rest =
@@ -411,15 +457,27 @@ let split_before_range_operator cvs =
   in
   loop [] cvs
 
+let style_interval lower lower_op middle upper_op upper =
+  match middle with
+  | [ prop ] -> (
+      match ident_component prop with
+      | Some name
+        when is_custom_property name && upper <> []
+             && same_direction lower_op upper_op ->
+          Some (Range (Interval { lower; lower_op; name; upper_op; upper }))
+      | Some _ | None -> None)
+  | _ -> None
+
 let style_range_query cvs =
   match split_before_range_operator (style_strip_ws cvs) with
-  | Some (lower, lower_op, prop :: rest) when lower <> [] -> (
-      match (ident_component prop, split_before_range_operator rest) with
-      | Some name, Some ([], upper_op, upper)
-        when is_custom_property name && upper <> [] ->
-          Some (Range { lower; lower_op; name; upper_op; upper })
-      | _ -> None)
-  | _ -> None
+  | Some (left, op, rest) when left <> [] -> (
+      match split_before_range_operator rest with
+      | None ->
+          if rest = [] then None
+          else Some (Range (Compare { left; op; right = rest }))
+      | Some (middle, upper_op, upper) ->
+          style_interval left op middle upper_op upper)
+  | Some _ | None -> None
 
 (* Every failure below is an [@container] prelude failure, and the slice of the
    query that failed carries the span the caret must point at. [t] anchors the
@@ -885,15 +943,22 @@ let equal_components (a : component_values) b = List.equal Component.equal a b
 
 let equal_range_operator (a : range_operator) b =
   match (a, b) with
-  | Lt, Lt | Lte, Lte | Gt, Gt | Gte, Gte -> true
-  | (Lt | Lte | Gt | Gte), _ -> false
+  | Lt, Lt | Lte, Lte | Eq, Eq | Gt, Gt | Gte, Gte -> true
+  | (Lt | Lte | Eq | Gt | Gte), _ -> false
 
 let equal_style_range (a : style_range) b =
-  String.equal a.name b.name
-  && equal_range_operator a.lower_op b.lower_op
-  && equal_range_operator a.upper_op b.upper_op
-  && equal_components a.lower b.lower
-  && equal_components a.upper b.upper
+  match (a, b) with
+  | Compare a, Compare b ->
+      equal_range_operator a.op b.op
+      && equal_components a.left b.left
+      && equal_components a.right b.right
+  | Interval a, Interval b ->
+      String.equal a.name b.name
+      && equal_range_operator a.lower_op b.lower_op
+      && equal_range_operator a.upper_op b.upper_op
+      && equal_components a.lower b.lower
+      && equal_components a.upper b.upper
+  | (Compare _ | Interval _), _ -> false
 
 let rec equal_style_query (a : style_query) b =
   match (a, b) with

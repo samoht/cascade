@@ -180,6 +180,9 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- A `style()` container query takes the single-comparison range CSS Conditional
+  Rules 5 defines, `style(--gap = 10px)` included, and rejects an interval whose
+  two bounds point different ways; `Css.inline_vars` reads its operands (#805)
 - A parse warning whose value matched none of a property's forms says so,
   in place of a reason that opened a list of accepted forms and named
   none of them (#801)

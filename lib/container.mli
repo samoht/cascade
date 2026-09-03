@@ -42,15 +42,25 @@ and style_query =
   | Any of style_query * style_query
   | Neg of style_query
 
-and style_range = {
-  lower : component_values;
-  lower_op : range_operator;
-  name : string;
-  upper_op : range_operator;
-  upper : component_values;
-}
+and style_range =
+  | Compare of {
+      left : component_values;
+      op : range_operator;
+      right : component_values;
+    }
+      (** A single comparison, [style(--gap = 10px)] or [style(10px < --gap)].
+          Either operand may name the custom property. *)
+  | Interval of {
+      lower : component_values;
+      lower_op : range_operator;
+      name : string;
+      upper_op : range_operator;
+      upper : component_values;
+    }
+      (** A two-sided interval, [style(10px <= --gap < 20px)]. Both bounds point
+          the same way. *)
 
-and range_operator = Lt | Lte | Gt | Gte
+and range_operator = Lt | Lte | Eq | Gt | Gte
 
 and scroll_state_query =
   | State of { name : string; value : string }
