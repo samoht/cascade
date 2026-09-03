@@ -518,6 +518,9 @@ difference wherever the two are not equivalent.
   identical (#782)
 - Invalid math results in `shape-margin` and `offset-distance` are dropped like
   those in every other `<length-percentage>` property (#766)
+- Flattening a rule nested under a selector list wraps the parent in `:is()`,
+  where `.a,.b{&:hover{color:red}}` printed `.a,.b:hover` and bound `:hover` to
+  the last branch, CSS Nesting 1 sec. 4 (ED) reading `&` as the group (#800)
 - `--flatten-nesting` leaves the optimised stylesheet flat even when later
   regrouping can shorten adjacent selectors by synthesizing nesting (#759)
 - Canonical diff compares authored nesting through its flattened selector

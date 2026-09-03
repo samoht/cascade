@@ -6,9 +6,9 @@ let contains sel =
 (* CSS Nesting 1 sec. 4: [&] stands for [:is(<parent selector list>)]. A parent
    that carries a combinator or lists alternatives needs that wrapper, or its
    own structure escapes: dropping it turns [.dark &] over parent [.a .b] into
-   [.dark .a .b], which demands that [.a] itself sit inside [.dark]. Where [&]
-   heads the selector nothing can escape to its left, so the wrapper is
-   redundant there and the parent goes in verbatim. *)
+   [.dark .a .b], which demands that [.a] itself sit inside [.dark]. Where the
+   parent goes in with nothing to its left, [splices_bare] below reads whether
+   the wrapper is redundant. *)
 let complex = function
   | Selector.List _ | Selector.Combined _ | Selector.Relative _ -> true
   | _ -> false
@@ -29,12 +29,37 @@ let rec heads = function
   | Selector.Combined (l, _, _) -> heads l
   | _ -> false
 
+let is_list = function Selector.List _ -> true | _ -> false
+
+(* Selectors 4 sec. 4.2 weighs [:is()] as its most specific argument, so
+   spelling a parent selector list out in place of the wrapper holds each branch
+   at its own weight only when the branches already agree on one. *)
+let one_weight = function
+  | Selector.List (branch :: rest) ->
+      let weight = Selector.specificity branch in
+      List.for_all
+        (fun b -> Selector.equal_specificity (Selector.specificity b) weight)
+        rest
+  | _ -> true
+
+(* The leading-[&] shortcut needs the parent to have no comma of its own: a
+   [List] spliced into a larger selector hands its branches to that selector, so
+   [.a, .b] under [&:hover] reads back as [.a] and [.b:hover] and the
+   pseudo-class binds to the last branch alone. Where the whole selector is the
+   parent there is nothing to splice into, and the list stands for itself. *)
+let splices_bare ~leftmost ~parent sel =
+  if is_list parent then
+    match sel with Selector.Nesting -> one_weight parent | _ -> false
+  else leftmost && heads sel && count_nesting sel = 1
+
 let substitute ?(leftmost = true) ~parent sel =
-  let verbatim =
-    (not (complex parent)) || (leftmost && heads sel && count_nesting sel = 1)
-  in
+  let verbatim = (not (complex parent)) || splices_bare ~leftmost ~parent sel in
   let parent = if verbatim then parent else Selector.Is [ parent ] in
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
+
+(* A parent the nested selector never names still lands inside it, to the left
+   of a combinator, so it needs the same wrapper. *)
+let grouped parent = if is_list parent then Selector.Is [ parent ] else parent
 
 (* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent
@@ -44,11 +69,10 @@ let rec combine parent child =
   match child with
   | Selector.List branches -> Selector.List (List.map (combine parent) branches)
   | Selector.Relative (comb, right) ->
-      Selector.Combined (parent, comb, substitute ~leftmost:false ~parent right)
+      Selector.Combined
+        (grouped parent, comb, substitute ~leftmost:false ~parent right)
   | _ when contains child -> substitute ~parent child
-  | _ -> Selector.Combined (parent, Selector.Descendant, child)
-
-let is_list = function Selector.List _ -> true | _ -> false
+  | _ -> Selector.Combined (grouped parent, Selector.Descendant, child)
 
 let rec merge_lone (rule : rule) =
   match (rule.declarations, rule.nested) with
