@@ -461,14 +461,6 @@ let empty_id_decl_groups () =
 let empty_selector_decl_groups () =
   { no_element = empty_id_decl_groups (); by_element = String_table.create 4 }
 
-let decl_spec_bucket bucket key =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.Some inner -> inner
-  | Option.None ->
-      let inner = Spec_table.create 4 in
-      Overlap_key_table.replace bucket key inner;
-      inner
-
 let selector_decl_groups inner spec : selector_decl_groups =
   match Spec_table.find_opt inner spec with
   | Option.Some index -> index
@@ -525,7 +517,7 @@ let add_selector_decl ~compact index summary decl value =
 
 let add_decl_bucket ~compact bucket key spec summary decl value =
   add_selector_decl ~compact
-    (selector_decl_groups (decl_spec_bucket bucket key) spec)
+    (selector_decl_groups (spec_bucket bucket key) spec)
     summary decl value
 
 let collect_decl_table decl groups stamp seen acc =
