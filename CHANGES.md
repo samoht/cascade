@@ -518,6 +518,9 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--minify` keeps the authored time unit of a `var()` fallback nested inside a
+  `calc()`, as it already did for the operand beside it. The two spellings
+  printed alike and stopped factoring (#803)
 - `--minify` keeps a vendor-prefixed gradient written with the `background`,
   `mask`, `border-image` or `mask-border` shorthand, as it already did for the
   longhand. Canonical diff had reported two sheets differing only there as

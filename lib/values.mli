@@ -224,7 +224,9 @@ val angle_degrees_opt : angle -> float option
     angles such as [calc()] and [var()] return [None]. *)
 
 val pp_duration : duration Pp.t
-(** [pp_duration] pretty-prints {!duration} values. *)
+(** [pp_duration] pretty-prints {!duration} values. Minified output shortens a
+    millisecond leaf to seconds where that is exact and no longer, except inside
+    a [calc()], whose operands {!normalize_duration} leaves as authored. *)
 
 val pp_duration_preserve_ms : duration Pp.t
 (** [pp_duration_preserve_ms] pretty-prints {!duration} values without
