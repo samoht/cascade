@@ -209,6 +209,114 @@ let pp_short_lines_keeps_after_context () =
            ])
         (Buffer.contents buf)
 
+(* A caret is placed in columns everywhere else in this repository, so a
+   multi-byte scalar ahead of the difference moves it by one, not by its byte
+   length. Three euro signs are three columns, nine bytes. *)
+let pp_caret_counts_scalars_not_bytes () =
+  let expected = "\xe2\x82\xac\xe2\x82\xac\xe2\x82\xaca" in
+  let actual = "\xe2\x82\xac\xe2\x82\xac\xe2\x82\xacb" in
+  match Cascade_diff.String_diff.diff ~expected actual with
+  | None -> Alcotest.fail "expected Some"
+  | Some d ->
+      let buf = Buffer.create 256 in
+      Cascade_diff.String_diff.pp buf d;
+      let lines = String.split_on_char '\n' (Buffer.contents buf) in
+      let caret =
+        List.find_opt (fun l -> String.contains l '^') (List.tl lines)
+      in
+      let column = function
+        | None -> Alcotest.fail "no caret line"
+        | Some l -> String.index l '^'
+      in
+      (* One space for the hunk's own column, then three scalars. *)
+      Alcotest.(check int) "caret sits after three columns" 4 (column caret)
+
+(* The caret marks where the two rendered lines part company. A long line is
+   shown through a truncated window whose leading ellipsis shifts every byte
+   right, and an escape inside it widens what comes after, so the column has to
+   be read off the rendered text rather than counted in source bytes. *)
+let pp_caret_marks_the_rendered_difference () =
+  let filler = String.make 80 'a' in
+  let expected = String.concat "" [ filler; "\tx"; filler ] in
+  let actual = String.concat "" [ filler; "\ty"; filler ] in
+  match Cascade_diff.String_diff.diff ~expected actual with
+  | None -> Alcotest.fail "expected Some"
+  | Some d ->
+      let buf = Buffer.create 512 in
+      Cascade_diff.String_diff.pp buf d;
+      let lines = String.split_on_char '\n' (Buffer.contents buf) in
+      (* The hunk starts after the [@@] marker; the [---] and [+++] headers
+         above it also open with the prefix characters. *)
+      let rec after_marker = function
+        | [] -> Alcotest.fail "no hunk marker"
+        | l :: rest when String.length l >= 2 && String.sub l 0 2 = "@@" -> rest
+        | _ :: rest -> after_marker rest
+      in
+      let hunk = after_marker lines in
+      let starting c =
+        List.find_opt (fun l -> String.length l > 0 && l.[0] = c) hunk
+      in
+      let get name = function
+        | Some l -> l
+        | None -> Alcotest.fail (String.concat "" [ "no "; name; " line" ])
+      in
+      let minus = get "-" (starting '-') and plus = get "+" (starting '+') in
+      let caret =
+        get "caret" (List.find_opt (fun l -> String.contains l '^') hunk)
+      in
+      let rec first_diff i =
+        if i >= String.length minus || i >= String.length plus then i
+        else if minus.[i] <> plus.[i] then i
+        else first_diff (i + 1)
+      in
+      Alcotest.(check int)
+        "the caret column is where the rendered lines differ" (first_diff 1)
+        (String.index caret '^')
+
+let pp_crlf_vs_lf () =
+  let expected = ".a{color:red}\r\n" in
+  let actual = ".a{color:red}\n" in
+  let d = Option.get (Cascade_diff.String_diff.diff ~expected actual) in
+  let buf = Buffer.create 256 in
+  Cascade_diff.String_diff.pp buf d;
+  let output = Buffer.contents buf in
+  let caret = String.concat "" [ String.make (13 + 1) ' '; "^\n" ] in
+  let expected_output =
+    String.concat ""
+      [
+        "Strings differ at position 13 (line 0, col 13)\n\n";
+        "--- Expected\n";
+        "+++ Actual\n";
+        "@@ position 13 @@\n";
+        "-.a{color:red}\\r\n";
+        "+.a{color:red}\n";
+        caret;
+      ]
+  in
+  Alcotest.(check string) "CRLF vs LF renders escaped CR" expected_output output
+
+let pp_escape_byte () =
+  let expected = ".a\x1B" in
+  let actual = ".a" in
+  let d = Option.get (Cascade_diff.String_diff.diff ~expected actual) in
+  let buf = Buffer.create 256 in
+  Cascade_diff.String_diff.pp buf d;
+  let output = Buffer.contents buf in
+  let caret = String.concat "" [ String.make (2 + 1) ' '; "^\n" ] in
+  let expected_output =
+    String.concat ""
+      [
+        "Strings differ at position 2 (line 0, col 2)\n\n";
+        "--- Expected\n";
+        "+++ Actual\n";
+        "@@ position 2 @@\n";
+        "-.a\\x1b\n";
+        "+.a\n";
+        caret;
+      ]
+  in
+  Alcotest.(check string) "ESC byte is rendered as escape" expected_output output
+
 (* ===== Suite ===== *)
 
 let suite =
@@ -245,4 +353,10 @@ let suite =
         pp_trailing_newline_adds_no_context_line;
       Alcotest.test_case "pp trailing blank line keeps one context line" `Quick
         pp_trailing_blank_line_keeps_one_context_line;
+      Alcotest.test_case "pp caret marks the rendered difference" `Quick
+        pp_caret_marks_the_rendered_difference;
+      Alcotest.test_case "pp caret counts scalars not bytes" `Quick
+        pp_caret_counts_scalars_not_bytes;
+      Alcotest.test_case "pp crlf vs lf" `Quick pp_crlf_vs_lf;
+      Alcotest.test_case "pp escape byte" `Quick pp_escape_byte;
     ] )
