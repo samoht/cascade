@@ -589,6 +589,25 @@ let test_deduplicate_keeps_legacy_fallbacks () =
     ]
     (decl_strings result)
 
+let test_deduplicate_keeps_shorthand_vendor_image_fallbacks () =
+  (* A vendor-prefixed gradient inside a shorthand is a real fallback for the
+     unprefixed gradient, just like the equivalent longhand. *)
+  let result =
+    ".a{background:-webkit-linear-gradient(top,#111,#222);background:linear-gradient(#333,#444);border-image:-webkit-linear-gradient(top,#111,#222);border-image:linear-gradient(#333,#444);mask:-webkit-linear-gradient(top,#111,#222);mask:linear-gradient(#333,#444)}"
+    |> decls |> Shorthand.deduplicate_declarations
+  in
+  Alcotest.(check (list string))
+    "vendor-prefixed gradient fallbacks inside shorthands are kept"
+    [
+      "background:-webkit-linear-gradient(top,#111,#222)";
+      "background:linear-gradient(#333,#444)";
+      "border-image:-webkit-linear-gradient(top,#111,#222)";
+      "border-image:linear-gradient(#333,#444)";
+      "mask:-webkit-linear-gradient(top,#111,#222)";
+      "mask:linear-gradient(#333,#444)";
+    ]
+    (decl_strings result)
+
 let test_same_value_ignores_importance () =
   Alcotest.(check bool)
     "importance alone does not change the value" true
@@ -686,6 +705,8 @@ let suite =
         test_stylesheet_scope_prior_longhand_guard;
       Alcotest.test_case "deduplicate keeps legacy fallbacks" `Quick
         test_deduplicate_keeps_legacy_fallbacks;
+      Alcotest.test_case "deduplicate keeps shorthand vendor image fallbacks"
+        `Quick test_deduplicate_keeps_shorthand_vendor_image_fallbacks;
       Alcotest.test_case "same value ignores importance" `Quick
         test_same_value_ignores_importance;
       Alcotest.test_case "page-break alias shadowing" `Quick
