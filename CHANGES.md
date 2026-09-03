@@ -366,6 +366,9 @@ entry points both moved.
 
 ### Minification
 
+- `cascade diff --diff=canonical` no longer reports a rule as moved when the
+  two sheets spell one selector as a nested branch and as its flat expansion,
+  where `&` substitution built a compound the reader never produces (#825)
 - Nesting no longer emits a selector no engine matches: a rule under a
   pseudo-element parent is dropped wherever it sits, as is a branch extending
   that compound with a pseudo-class it does not take (#818, #822, #823)

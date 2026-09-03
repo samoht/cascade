@@ -2754,6 +2754,24 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
+(* Substituting [&] splices a complex parent into a compound's leading slot,
+   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
+   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
+   serialise alike and only the second is a compound in the grammar's sense, a
+   sequence of simple selectors, so the trailing components move onto the
+   subject. Without this the two spellings stay structurally distinct while
+   printing identically, and every structural comparison reads them apart. *)
+let rec lift_leading_combinator = function
+  | Combined (left, comb, right) :: rest ->
+      let subject =
+        match lift_leading_combinator (right :: rest) with
+        | Some lifted -> lifted
+        | None -> (
+            match right :: rest with [ one ] -> one | cs -> Compound cs)
+      in
+      Some (Combined (left, comb, subject))
+  | _ -> None
+
 (* [map] rewrites a compound's components before the compound itself, so the
    [Is] branch below has already spliced a single-argument [:is()] into this
    list. A component the reader refuses after the pseudo-element can only have
@@ -2812,13 +2830,16 @@ let canonicalize_nodes sel =
       in
       match node with
       | Compound components -> (
-          match
-            rewrap_pseudo_compound (drop_redundant_universal components)
-          with
-          | [ single ] -> single
-          | components' ->
-              if list_same components' components then node
-              else Compound components')
+          match lift_leading_combinator components with
+          | Some lifted -> lifted
+          | None -> (
+              match
+                rewrap_pseudo_compound (drop_redundant_universal components)
+              with
+              | [ single ] -> single
+              | components' ->
+                  if list_same components' components then node
+                  else Compound components'))
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> canonicalize_is node selectors
