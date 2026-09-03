@@ -14,8 +14,8 @@ let err_limit s =
             "\": expected auto, none, or a positive integer";
           ]))
 
-let read_file path =
-  try Ok (Cli_io.read_file path) with Sys_error msg -> err_read path msg
+let read_source path =
+  try Ok (Cli_io.read_source path) with Sys_error msg -> err_read path msg
 
 let no_color_var = "NO_COLOR"
 
@@ -145,6 +145,32 @@ let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result =
 
 type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
 
+(* Each side is its text and the name the report gives it, which is the path for
+   a file and [<stdin>] for the stream. *)
+let compare_sources ~color ~mode ~limit ~opts (css1, file1) (css2, file2) =
+  if css1 = css2 then (
+    Fmt.pr "CSS files are identical@.";
+    Ok ())
+  else
+    let result =
+      run_diff mode ~lossless:opts.lossless
+        ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
+    in
+    match result.Cascade_diff.Css_compare.result with
+    | No_diff ->
+        (* Equal ASTs can still hide parse-dropped declarations; show the
+           warnings so the equality verdict is honest about them. *)
+        let max = warning_budget limit in
+        print_string (render_warnings ~file1 ~file2 ~max result);
+        Fmt.pr "CSS files are identical@.";
+        Ok ()
+    | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
+    | Actual_error _ ->
+        print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result;
+        (* Differing inputs are a result, not a usage error: exit 1 as
+           documented, distinct from cmdliner's reserved error codes. *)
+        Stdlib.exit 1
+
 let compare_files file1 file2 style_renderer mode limit opts () =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
@@ -157,40 +183,22 @@ let compare_files file1 file2 style_renderer mode limit opts () =
     | `Ansi_tty -> true
     | `None -> false
   in
-  match (read_file file1, read_file file2) with
-  | Ok css1, Ok css2 -> (
-      if css1 = css2 then (
-        Fmt.pr "CSS files are identical@.";
-        Ok ())
-      else
-        let result =
-          run_diff mode ~lossless:opts.lossless
-            ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1
-            ~css2
-        in
-        match result.Cascade_diff.Css_compare.result with
-        | No_diff ->
-            (* Equal ASTs can still hide parse-dropped declarations; show the
-               warnings so the equality verdict is honest about them. *)
-            let max = warning_budget limit in
-            print_string (render_warnings ~file1 ~file2 ~max result);
-            Fmt.pr "CSS files are identical@.";
-            Ok ()
-        | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
-        | Actual_error _ ->
-            print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode
-              result;
-            (* Differing inputs are a result, not a usage error: exit 1 as
-               documented, distinct from cmdliner's reserved error codes. *)
-            Stdlib.exit 1)
-  | Error e, _ | _, Error e -> Error e
+  (* The stream is read once and cannot be rewound, so [-] on both sides has no
+     second side to compare the first against. *)
+  if file1 = "-" && file2 = "-" then
+    Error (`Msg "cannot compare standard input with itself")
+  else
+    match (read_source file1, read_source file2) with
+    | Ok source1, Ok source2 ->
+        compare_sources ~color ~mode ~limit ~opts source1 source2
+    | Error e, _ | _, Error e -> Error e
 
 let file1_arg =
-  let doc = "First CSS file to compare (expected/reference)" in
+  let doc = "First CSS file to compare (expected/reference; use - for stdin)" in
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE1" ~doc)
 
 let file2_arg =
-  let doc = "Second CSS file to compare (actual/test)" in
+  let doc = "Second CSS file to compare (actual/test; use - for stdin)" in
   Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE2" ~doc)
 
 let mode_arg =
@@ -295,6 +303,8 @@ let man =
     `S Manpage.s_examples;
     `P "Compare two CSS files:";
     `Pre "  cascade diff reference.css output.css";
+    `P "Compare a stylesheet on standard input against a reference:";
+    `Pre "  cascade fmt --minify src.css | cascade diff reference.css -";
     `P "Disable colors using flag:";
     `Pre "  cascade diff --color=never reference.css output.css";
     `P "Disable colors using NO_COLOR environment variable:";

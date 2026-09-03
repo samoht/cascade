@@ -14,6 +14,11 @@ let read_stdin () =
     Buffer.contents buf
   with End_of_file -> Buffer.contents buf
 
+(* A stylesheet and the name to report it under. [-] is standard input, which
+   has no path, so it borrows the name every command already gives it. *)
+let read_source path =
+  if path = "-" then (read_stdin (), "<stdin>") else (read_file path, path)
+
 let report_warning w =
   (* Prefix every line of a multi-line diagnostic so a downstream [grep -v
      "warning"] filters the whole entry, not just the first line. *)
@@ -38,8 +43,7 @@ let parse_css ?enforce_spec ~filename css =
 type input = { stylesheet : Css.t; filename : string; recovered : bool }
 
 let read_input ?enforce_spec path =
-  let css = if path = "-" then read_stdin () else read_file path in
-  let filename = if path = "-" then "<stdin>" else path in
+  let css, filename = read_source path in
   let stylesheet, warnings = parse ?enforce_spec ~filename css in
   { stylesheet; filename; recovered = warnings <> [] }
 

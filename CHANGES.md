@@ -20,6 +20,9 @@ difference wherever the two are not equivalent.
 
 ### Breaking
 
+- `cascade` requires `cmdliner >= 2.0.0`, the release that stops `Arg.file`
+  checking a `-` argument for existence, which is what lets either side of
+  `cascade diff` name standard input (#796)
 - `Css.parse` adds `source : Css.Source.t option`; exhaustive record patterns
   must bind it or add `_`. `Css.of_string ~preserve_source:true` fills it with
   exact authored comments, syntax, trivia ownership and coordinates (#747)
@@ -1064,6 +1067,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` reads either side from standard input when the argument is
+  `-`, so the output of a build can be compared without a temporary file. The
+  report names that side `<stdin>` (#796)
 - `cascade diff` prints a parse warning both inputs raise once, under a label
   naming both files, so the report's warning budget reaches the warnings only
   one side raised (#795)

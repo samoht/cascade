@@ -34,4 +34,4 @@
   uri
   psq
   logs
-  (cmdliner (>= 1.1.0))))
+  (cmdliner (>= 2.0.0))))
