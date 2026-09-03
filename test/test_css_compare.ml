@@ -278,6 +278,30 @@ let canonical_nested_and_flattened_selectors_are_equal () =
     (equal ".long-component-name{color:red;&:hover{color:blue}}"
        ".long-component-name{color:red}.long-component-name:focus{color:blue}")
 
+(* A zero-specificity nested branch ties with its parent, so the two orders are
+   both cascade-significant and the projection has to place a movable at-rule
+   the same way whichever spelling it meets. Minify synthesizes the nesting, so
+   a sheet that disagreed with its own minified form could not certify it. *)
+let canonical_movable_at_rule_ignores_nesting () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let flat =
+    "@media(hover){.M mark{color:#fff}}.L a{color:#888}.L \
+     a:where(.dark){color:#666}"
+  in
+  let nested =
+    "@media(hover){.M mark{color:#fff}}.L \
+     a{color:#888;&:where(.dark){color:#666}}"
+  in
+  Alcotest.(check bool)
+    "a movable at-rule lands alike either side of a :where() nesting" true
+    (equal flat nested);
+  (* The pair the projection must still keep apart: swapping two tied writers of
+     one property on overlapping selectors changes which one wins. *)
+  Alcotest.(check bool)
+    "tied writers keep their order" false
+    (equal ".L a{color:#888}.L a:where(.dark){color:#666}"
+       ".L a:where(.dark){color:#666}.L a{color:#888}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -1703,4 +1727,6 @@ let suite =
         canonical_numeric_division_follows_precision_mode;
       Alcotest.test_case "canonical nested and flattened selectors" `Quick
         canonical_nested_and_flattened_selectors_are_equal;
+      Alcotest.test_case "canonical movable at-rule ignores nesting" `Quick
+        canonical_movable_at_rule_ignores_nesting;
     ] )
