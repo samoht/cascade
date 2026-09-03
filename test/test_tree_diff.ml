@@ -770,11 +770,6 @@ let rearranged_of (d : Cascade_diff.Tree_diff.t) =
       | _ -> None)
     d.rules
 
-let render d =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Tree_diff.pp buf d;
-  Buffer.contents buf
-
 let diff_of ~expected ~actual =
   Cascade_diff.Tree_diff.diff ~expected:(parse expected) ~actual:(parse actual)
 
@@ -1577,11 +1572,8 @@ let changed_rules colour n =
   parse (Buffer.contents buf)
 
 let diff_words expected actual =
-  Gc.full_major ();
-  let words0 = Gc.minor_words () in
-  let diff = Cascade_diff.Tree_diff.diff ~expected ~actual in
-  ignore (Sys.opaque_identity diff);
-  Gc.minor_words () -. words0
+  Css_test_helpers.measure (fun () ->
+      Cascade_diff.Tree_diff.diff ~expected ~actual)
 
 (* Grouping the reported changes by scanning the whole change list once per
    entry makes allocation quadratic in the number of changed rules. Doubling the
