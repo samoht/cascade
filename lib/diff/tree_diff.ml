@@ -123,6 +123,7 @@ type tree_style = {
 }
 
 let unlimited_depth = max_int
+let unlimited_entries = max_int
 let default_style = { use_tree = false; color = false; depth = unlimited_depth }
 let tree_style = { use_tree = true; color = false; depth = unlimited_depth }
 
@@ -1123,26 +1124,29 @@ let pp_diff_headers ~color buf expected actual =
   add_strings buf
     [ ansi_yellow ~color "+++"; " "; ansi_yellow ~color actual; "\n" ]
 
-let pp_rule_list ~style ~container_count buf rule_list =
+(* [trailing] is how many top-level entries the report still prints after this
+   section: the closing connector belongs to the last of them, not to the last
+   of a section a breadth limit cut short. *)
+let pp_rule_list ~style ~trailing buf rule_list =
   let rule_count = List.length rule_list in
   List.iteri
     (fun i rule_diff ->
-      let is_last = i = rule_count - 1 && container_count = 0 in
+      let is_last = i = rule_count - 1 && trailing = 0 in
       pp_rule_diff ~style ~is_last ~parent_prefix:"" buf rule_diff)
     rule_list
 
-let pp_reordered_section ~style ~container_count buf = function
+let pp_reordered_section ~style ~trailing buf = function
   | [] -> ()
   | lst ->
       add_strings buf
         [ "Rules reordered ("; string_of_int (List.length lst); " rules):\n" ];
-      pp_rule_list ~style ~container_count buf lst
+      pp_rule_list ~style ~trailing buf lst
 
-let pp_containers_section ~style buf containers =
+let pp_containers_section ~style ~trailing buf containers =
   let container_count = List.length containers in
   List.iteri
     (fun i cont_diff ->
-      let is_last = i = container_count - 1 in
+      let is_last = i = container_count - 1 && trailing = 0 in
       pp_container_diff ~style ~is_last ~parent_prefix:"" buf cont_diff)
     containers
 
@@ -1205,24 +1209,40 @@ let pp_layer_swaps ~style buf swapped =
         ]
   | _ -> ()
 
-let pp_layer_order_section ~style buf = function
-  | None -> ()
-  | Some { expected_order; actual_order; swapped } ->
-      Buffer.add_string buf "Cascade layer order changed:\n";
-      pp_children ~style ~parent_prefix:"" buf (fun style buf ->
-          pp_layer_swaps ~style buf swapped;
-          add_strings buf
-            [
-              tree_prefix ~style ~is_last:true ~parent_prefix:"";
-              "order: ";
-              ansi_red ~color:style.color (layer_path_list expected_order);
-              " -> ";
-              ansi_green ~color:style.color (layer_path_list actual_order);
-              "\n";
-            ])
+let pp_layer_order_section ~style buf { expected_order; actual_order; swapped }
+    =
+  Buffer.add_string buf "Cascade layer order changed:\n";
+  pp_children ~style ~parent_prefix:"" buf (fun style buf ->
+      pp_layer_swaps ~style buf swapped;
+      add_strings buf
+        [
+          tree_prefix ~style ~is_last:true ~parent_prefix:"";
+          "order: ";
+          ansi_red ~color:style.color (layer_path_list expected_order);
+          " -> ";
+          ansi_green ~color:style.color (layer_path_list actual_order);
+          "\n";
+        ])
+
+(* Closes a breadth-limited report the way [pp_layer_swaps] closes a capped swap
+   listing: the count the reader needs to know they are seeing a prefix. *)
+let pp_hidden_entries ~style buf hidden =
+  let noun =
+    if hidden = 1 then " more difference\n" else " more differences\n"
+  in
+  add_strings buf
+    [
+      tree_prefix ~style ~is_last:true ~parent_prefix:"";
+      "...";
+      string_of_int hidden;
+      noun;
+    ]
+
+let first n l = List.filteri (fun i _ -> i < n) l
 
 let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?(depth = unlimited_depth) buf { rules; containers; layer_order } =
+    ?(depth = unlimited_depth) ?(entries = unlimited_entries) buf
+    { rules; containers; layer_order } =
   if rules = [] && containers = [] && Option.is_none layer_order then
     Buffer.add_string buf
       "Structural differences detected in nested contexts (e.g., @media inside \
@@ -1238,14 +1258,35 @@ let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
           match diff with Reordered _ -> true | _ -> false)
         rules
     in
+    (* The budget is spent in printing order, so the entries a reader is left
+       with are the ones the report would have led with anyway. *)
+    let layer_entries o = if Option.is_none o then 0 else 1 in
+    let budget = max 0 entries in
+    let shown_layers = if budget > 0 then layer_order else None in
+    let budget = budget - layer_entries shown_layers in
+    let shown_rules = first budget meaningful in
+    let budget = budget - List.length shown_rules in
+    let shown_reordered = first budget reordered_rules in
+    let budget = budget - List.length shown_reordered in
+    let shown_containers = first budget containers in
+    let hidden =
+      layer_entries layer_order - layer_entries shown_layers
+      + (List.length meaningful - List.length shown_rules)
+      + (List.length reordered_rules - List.length shown_reordered)
+      + (List.length containers - List.length shown_containers)
+    in
     (* [depth] counts renderable levels; the roots printed here are level 1. *)
     let style = { tree_style with color; depth = max 0 (depth - 1) } in
-    let container_count = List.length containers in
+    (* The count line closes the tree, so a section the budget cut short is no
+       longer the last thing the report prints. *)
+    let hidden_line = if hidden > 0 then 1 else 0 in
+    let after_rules = List.length shown_containers + hidden_line in
     (* The layer order leads: it decides which of the rules below it wins. *)
-    pp_layer_order_section ~style buf layer_order;
-    pp_rule_list ~style ~container_count buf meaningful;
-    pp_reordered_section ~style ~container_count buf reordered_rules;
-    pp_containers_section ~style buf containers)
+    Option.iter (pp_layer_order_section ~style buf) shown_layers;
+    pp_rule_list ~style ~trailing:after_rules buf shown_rules;
+    pp_reordered_section ~style ~trailing:after_rules buf shown_reordered;
+    pp_containers_section ~style ~trailing:hidden_line buf shown_containers;
+    if hidden > 0 then pp_hidden_entries ~style buf hidden)
 
 (* ===== Tree Diff Computation Functions ===== *)
 

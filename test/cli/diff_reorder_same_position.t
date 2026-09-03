@@ -16,7 +16,7 @@ coordinate rather than pairing position 1 with position 1.
   $ cat > reversed_tw.css <<'CSS'
   > .c{--c:3}.a{--c:2}.b{--c:1}
   > CSS
-  $ cascade diff --diff=tree --depth=max reversed_ref.css reversed_tw.css
+  $ cascade diff --diff=tree --limit=none reversed_ref.css reversed_tw.css
   CSS: 37 chars vs 28 chars (24.3% diff)
   Changes: 1 removed rule, 2 reordered rules
   
@@ -38,7 +38,7 @@ The same pair inside a container reports through the container renderer.
   $ cat > layer_tw.css <<'CSS'
   > @layer u{.c{--c:3}.a{--c:2}.b{--c:1}}
   > CSS
-  $ cascade diff --diff=tree --depth=max layer_ref.css layer_tw.css
+  $ cascade diff --diff=tree --limit=none layer_ref.css layer_tw.css
   CSS: 47 chars vs 38 chars (19.1% diff)
   Changes: 1 changed container
   
@@ -62,7 +62,7 @@ because `.z` left.
   $ cat > shifted_tw.css <<'CSS'
   > .b{--c:1}.a{--c:2}
   > CSS
-  $ cascade diff --diff=tree --depth=max shifted_ref.css shifted_tw.css
+  $ cascade diff --diff=tree --limit=none shifted_ref.css shifted_tw.css
   CSS: 28 chars vs 19 chars (32.1% diff)
   Changes: 1 removed rule, 1 reordered rule
   
@@ -86,7 +86,7 @@ coordinates. Tree comparison still reports the indexes from the source ASTs.
   $ cat > canonical_tw.css <<'CSS'
   > .c{color:green}.a{color:red}.b{color:blue}
   > CSS
-  $ cascade diff --diff=canonical --depth=max canonical_ref.css canonical_tw.css
+  $ cascade diff --diff=canonical --limit=none canonical_ref.css canonical_tw.css
   CSS: 43 chars vs 43 chars (0.0% diff)
   Changes: 1 reordered rule
   
@@ -96,7 +96,7 @@ coordinates. Tree comparison still reports the indexes from the source ASTs.
   └─ .c (moved)
   
   [1]
-  $ cascade diff --diff=tree --depth=max canonical_ref.css canonical_tw.css
+  $ cascade diff --diff=tree --limit=none canonical_ref.css canonical_tw.css
   CSS: 43 chars vs 43 chars (0.0% diff)
   Changes: 1 reordered rule
   

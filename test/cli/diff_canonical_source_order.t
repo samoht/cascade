@@ -15,7 +15,7 @@ the report contains only the declaration change the author made.
   $ cat > after.css <<'CSS'
   > .c{background-color:blue}.a{color:red}.b{margin-top:1px}
   > CSS
-  $ cascade diff --diff=canonical --depth=max before.css after.css
+  $ cascade diff --diff=canonical --limit=none before.css after.css
   CSS: 46 chars vs 57 chars (23.9% diff)
   Changes: 1 modified rule
   
@@ -36,7 +36,7 @@ element and both write `color`, so swapping the rules changes the winner.
   $ cat > move-after.css <<'CSS'
   > .b{color:blue}.a{color:red}
   > CSS
-  $ cascade diff --diff=canonical --depth=max move-before.css move-after.css
+  $ cascade diff --diff=canonical --limit=none move-before.css move-after.css
   CSS: 28 chars vs 28 chars (0.0% diff)
   Changes: 1 reordered rule
   

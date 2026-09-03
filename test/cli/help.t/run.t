@@ -2,10 +2,10 @@ The diff command gets option rows from Cmdliner rather than repeating them in
 the prose manpage.
 
   $ cascade diff --help=plain \
-  > | grep -E '^       --(depth|diff|lossless)(=|$)' \
+  > | grep -E '^       --(diff|limit|lossless)(=|$)' \
   > | sed -E 's/^ +//'
-  --depth=DEPTH (absent=auto)
   --diff=MODE (absent=auto)
+  --limit=LIMIT (absent=auto)
   --lossless
 
 Command exit statuses have one authoritative entry apiece.

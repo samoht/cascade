@@ -145,17 +145,19 @@ val pp :
   ?actual:string ->
   ?color:bool ->
   ?depth:int ->
+  ?entries:int ->
   Buffer.t ->
   t ->
   unit
-(** [pp ?expected ?actual ?color ?depth buf result] renders each side's parse
-    warnings into [buf], then formats [result] below them. Warnings lead because
-    a declaration the parser dropped qualifies every difference that follows.
-    The [expected]/[actual] labels are used in the rendered header and warning
-    lines (defaults: ["Expected"], ["Actual"]). [color] (default [false]) wraps
-    diff markers in ANSI escapes; the caller decides whether the destination
-    supports colour. [depth] bounds the rendered tree levels as in
-    {!Tree_diff.pp} (default: unbounded).
+(** [pp ?expected ?actual ?color ?depth ?entries buf result] renders each side's
+    parse warnings into [buf], then formats [result] below them. Warnings lead
+    because a declaration the parser dropped qualifies every difference that
+    follows. The [expected]/[actual] labels are used in the rendered header and
+    warning lines (defaults: ["Expected"], ["Actual"]). [color] (default
+    [false]) wraps diff markers in ANSI escapes; the caller decides whether the
+    destination supports colour. [depth] bounds the rendered tree levels and
+    [entries] the number of top-level entries, both as in {!Tree_diff.pp}
+    (default: unbounded).
 
     {!pp_warnings} and {!pp_diff} are the two halves, for callers that need to
     size or bound the sections independently. *)
@@ -173,11 +175,12 @@ val pp_diff :
   ?actual:string ->
   ?color:bool ->
   ?depth:int ->
+  ?entries:int ->
   Buffer.t ->
   t ->
   unit
-(** [pp_diff ?expected ?actual ?color ?depth buf result] renders only the
-    difference report, without the parse warnings. *)
+(** [pp_diff ?expected ?actual ?color ?depth ?entries buf result] renders only
+    the difference report, without the parse warnings. *)
 
 val has_warnings : t -> bool
 (** [has_warnings result] is [true] when either side accumulated a parse

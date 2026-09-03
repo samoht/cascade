@@ -176,7 +176,7 @@ usable as a CI check.
 | Flag | Purpose |
 |---|---|
 | `--diff=MODE` | What counts as "no difference": `auto` (default), `tree`, `string` or `canonical`, as above. |
-| `--depth=auto\|max\|N` | How many levels of the difference tree to print. `auto` (default) prints it whole while it stays short, then falls back to the deepest level that fits; `max` always prints it whole; an integer pins a level. A cut subtree carries the number of lines hidden. |
+| `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit, each one whole and never fewer than one; `none` prints every one; an integer prints exactly that many. A shortened report ends with the number left out. |
 | `--lossless` | Disable bounded colour and numeric approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within an approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |

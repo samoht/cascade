@@ -10,7 +10,7 @@ node it stopped at.
   $ cat > deep-b.css <<EOF
   > @media (min-width:1px){@supports (display:grid){@media (min-width:2px){@supports (display:flex){@media (min-width:3px){a{color:blue}}}}}}
   > EOF
-  $ NO_COLOR=1 cascade diff --diff=tree --depth=max deep-a.css deep-b.css
+  $ NO_COLOR=1 cascade diff --diff=tree --limit=none deep-a.css deep-b.css
   CSS: 137 chars vs 138 chars (0.7% diff)
   Changes: 1 changed container
   

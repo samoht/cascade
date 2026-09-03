@@ -171,6 +171,9 @@ difference wherever the two are not equivalent.
   question. `Css.Values.normalize_color` loses its unused `in_feature_query`
   argument, and `Css.Declaration.parse_opaque_declaration` reads a declaration
   without its typed grammar (#587)
+- `cascade diff --depth` is gone: a report is bounded by whole differences
+  now, not by tree levels. Pass `--limit=none` where `--depth=max` was, and
+  `--limit=N` where a level was pinned (#792)
 
 ### Parsing
 
@@ -1058,6 +1061,10 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff --limit` bounds how many differences a report prints, and the
+  automatic shaping now spends its budget on whole entries rather than cutting
+  every entry's body: a wide report named every selector and explained none
+  (#792)
 - `cascade diff` renders a character with no glyph as an escape, so a
   difference in line endings shows as one and a control byte in a stylesheet
   can no longer drive the reader's terminal (#791)

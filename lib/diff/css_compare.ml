@@ -707,10 +707,10 @@ let pp_parse_warnings ?(max = Stdlib.max_int) buf label warnings =
       ]
 
 let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?depth buf = function
+    ?depth ?entries buf = function
   | Tree_diff d ->
       (* Show structural differences *)
-      D.pp ~expected ~actual ~color ?depth buf d
+      D.pp ~expected ~actual ~color ?depth ?entries buf d
   | String_diff sdiff ->
       String_diff.pp ~expected_label:expected ~actual_label:actual buf sdiff
   | No_diff -> ()
@@ -743,16 +743,16 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 
 let pp_diff ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
-    ?depth buf t =
-  pp_result ~expected ~actual ~color ?depth buf t.result
+    ?depth ?entries buf t =
+  pp_result ~expected ~actual ~color ?depth ?entries buf t.result
 
-let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) ?depth buf
-    t =
+let pp ?(expected = "Expected") ?(actual = "Actual") ?(color = false) ?depth
+    ?entries buf t =
   (* Warnings come first: a dropped declaration qualifies every line below it,
      and trailing them puts that caveat past the end of a long report. *)
   pp_warnings ~expected ~actual buf t;
   if has_warnings t then Buffer.add_char buf '\n';
-  pp_diff ~expected ~actual ~color ?depth buf t
+  pp_diff ~expected ~actual ~color ?depth ?entries buf t
 
 let add_pct buf char_diff_pct =
   let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in

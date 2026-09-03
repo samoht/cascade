@@ -1,7 +1,7 @@
-CLI: cascade diff - report shaping (depth, warnings, block runs).
+CLI: cascade diff - report shaping (whole reports, warnings).
 
-A small diff prints in full: --depth=auto only steps back once the
-report stops fitting.
+A small diff prints in full: the automatic shaping only steps back once
+the report stops fitting.
 
   $ cat > a.css <<EOF
   > .x { color: red; margin: 0 }
@@ -18,22 +18,6 @@ report stops fitting.
   └─ .x
         * color: red -> blue
         * margin: 0 -> 1px
-  
-  [1]
-
-
-
-Pinning a depth cuts the tree there and records what it hid, so an
-elided subtree never reads as an empty one.
-
-  $ NO_COLOR=1 cascade diff --depth=1 a.css b.css
-  CSS: 29 chars vs 32 chars (10.3% diff)
-  Changes: 1 modified rule
-  
-  --- a.css
-  +++ b.css
-  └─ .x
-        ...2 more lines
   
   [1]
 
