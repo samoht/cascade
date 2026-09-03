@@ -1262,10 +1262,10 @@ let changed_namespace_is_a_difference () =
     "and the entry names the at-rule" true
     (string_contains ~needle:"@namespace" (render d))
 
-(* The selectorless-at-rule machinery is what owns the namespace statement, so
-   a change has to surface as a container entry, not fall through to the rule
-   walk where it currently shares the universal selector and gets paired with
-   other selectorless statements. *)
+(* The selectorless-at-rule machinery is what owns the namespace statement, so a
+   change has to surface as a container entry, not fall through to the rule walk
+   where it currently shares the universal selector and gets paired with other
+   selectorless statements. *)
 let changed_namespace_is_an_at_rule_container () =
   let d =
     diff_of ~expected:"@namespace url(http://a.example);.x{color:red}"

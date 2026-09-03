@@ -2519,14 +2519,14 @@ let at_rule_body (stmt : Css.statement) : at_rule_body option =
       Some (Declarations (Css.Stylesheet.statement_declarations stmt))
   | Font_face _ | Counter_style _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Viewport _ | Webkit_keyframes _
-  | Moz_keyframes _ | Unknown_at_rule _ ->
+  | Moz_keyframes _ | Unknown_at_rule _ | Namespace _ ->
       Some Opaque
   (* Owned by another processor: a rule and a bare nesting block by the rule
      matcher, a container by [moved_order_keys], [@keyframes] and [@property] by
      their own, and the rest carry no body to compare. *)
   | Rule _ | Declarations _ | Layer _ | Media _ | Container _ | Supports _
   | Origin _ | Keyframes _ | Property _ | Layer_decl _ | Import _ | Charset _
-  | Namespace _ | Bang_comment _ ->
+  | Bang_comment _ ->
       None
 
 (* [process_at_rules] owns these statements, so leaving them in the rule diff as

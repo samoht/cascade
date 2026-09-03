@@ -1064,6 +1064,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff --diff=tree` reports two stylesheets that declare different
+  `@namespace` URLs as different. It called them identical, though a type
+  selector matches in the namespace its sheet declares (#794)
 - `cascade diff --limit` bounds how many differences a report prints, and the
   automatic shaping now spends its budget on whole entries rather than cutting
   every entry's body: a wide report named every selector and explained none
