@@ -1,5 +1,21 @@
 (** Statement-block cleanup passes. *)
 
+val rules_conflict : Stylesheet.rule -> Stylesheet.rule -> bool
+(** [rules_conflict a b] is [true] when one element could match both selectors
+    and the two rules write a common property slot at equal importance, so that
+    element computes something different once the two swap source order. The
+    relation is symmetric.
+
+    [false] is the side a caller acts on: it says no element can tell the two
+    rules apart, so a pass may reorder them. Both halves of the question lean
+    towards [true] when they cannot decide. {!Selector_summary.may_overlap}
+    answers [true] unless it can prove the two subjects disjoint, and a
+    shorthand counts as writing every longhand it expands to, so a pair that
+    happens to agree on the shared slot is still a conflict. Importance does not
+    lean: a normal declaration and an [!important] one on one property are
+    ordered by importance rather than by appearance, and one declaration written
+    twice reads the same either way, so neither is a conflict. *)
+
 val merge_consecutive_layers :
   ?optimize_merged_block:
     (Stylesheet.statement list -> Stylesheet.statement list) ->

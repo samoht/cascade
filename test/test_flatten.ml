@@ -57,11 +57,42 @@ let test_pseudo_element_parent_drops_invalid_nesting () =
   dropped "the parent keeps its own declarations"
     ".a::before{color:red;.b{color:blue}}" ".a:before{color:red}";
   dropped "a child combinator goes the same way" ".a::before{>.b{color:red}}" "";
-  (* Only the branches that follow the pseudo-element go. *)
-  dropped "an amperand branch extending the compound stays"
-    ".a::before{.b,&:hover{color:red}}" ".a:before:hover{color:red}";
+  (* Chrome 146 drops [a::before:hover] from cssRules, and the reader refuses
+     it, so composing it through [&] is dead too. *)
+  dropped "a pseudo-class ::before does not take goes with the rest"
+    ".a::before{.b,&:hover{color:red}}" "";
   (* Control: no pseudo-element, so nesting is valid and lifts as before. *)
   dropped "a plain parent still flattens" ".a{.b{color:red}}" ".a .b{color:red}"
+
+(* CSS Selectors 4 sec. 3.6.3 and sec. 3.6.4 bound what a compound may carry
+   after a pseudo-element, and nesting composes that compound out of a valid
+   parent and a valid child just as it composes a combinator. Chrome 146 drops
+   [a::before:hover], [a::selection:hover] and [a::before:focus] from cssRules
+   and keeps [a::file-selector-button:hover], [a::part(p):hover] and
+   [a::cue:hover]; cascade's reader draws the same line, so the flattener has to
+   draw it too. *)
+let test_pseudo_element_parent_drops_invalid_compound () =
+  let check name css expected =
+    Alcotest.(check string) name expected (render (Flatten.block (block css)))
+  in
+  check "a pseudo-class the pseudo-element refuses goes"
+    ".a::before{&:hover{color:red}}" "";
+  check "so does one after ::selection" ".a::selection{&:hover{color:red}}" "";
+  check "and a second refused user action" ".a::before{&:focus{color:red}}" "";
+  check "a class after the pseudo-element goes" ".a::before{&.b{color:red}}" "";
+  check "so does a sub-pseudo-element it does not define"
+    ".a::before{&::after{color:red}}" "";
+  (* The pseudo-elements that do take a user action keep it. *)
+  check "::file-selector-button takes :hover"
+    ".a::file-selector-button{&:hover{color:red}}"
+    ".a::file-selector-button:hover{color:red}";
+  check "::part() takes :hover" ".a::part(p){&:hover{color:red}}"
+    ".a::part(p):hover{color:red}";
+  check "::cue takes :hover" ".a::cue{&:hover{color:red}}"
+    ".a::cue:hover{color:red}";
+  (* CSS Pseudo-Elements 4 sec. 4.2 defines the ::marker of a ::before. *)
+  check "::before takes ::marker" ".a::before{&::marker{color:red}}"
+    ".a:before::marker{color:red}"
 
 (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so its
    prelude is ambiguous with a declaration until the block appears:
@@ -191,6 +222,8 @@ let suite =
         test_empty_block_is_empty;
       Alcotest.test_case "pseudo-element parent drops invalid nesting" `Quick
         test_pseudo_element_parent_drops_invalid_nesting;
+      Alcotest.test_case "pseudo-element parent drops an invalid compound"
+        `Quick test_pseudo_element_parent_drops_invalid_compound;
       Alcotest.test_case "nested rule starting with an ident" `Quick
         test_nested_rule_starting_with_ident;
       Alcotest.test_case "bad declaration stays a declaration" `Quick

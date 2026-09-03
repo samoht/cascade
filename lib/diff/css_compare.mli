@@ -91,9 +91,12 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       the two when the walk reaches it and as a string diff of them when it does
       not. A reorder in that tree is named without a position: its index belongs
       to the generated canonical form and cannot be located in either input. Use
-      [`Tree] when source-AST indexes are useful. Only order changes present in
-      the parsed inputs are reported; a content change that perturbs the
-      canonical projection's rule order is not an authored reorder.
+      [`Tree] when source-AST indexes are useful. An order change is reported
+      when the parsed inputs hold it and the projection still leaves that level
+      in two orders. A content change that perturbs the projection's rule order
+      is not an authored reorder, and a run the projection is free to sort reads
+      the same whichever order a sheet writes it in, whether or not the two
+      sheets differ elsewhere.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a

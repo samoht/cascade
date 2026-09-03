@@ -53,6 +53,31 @@ let test_merge_lone_wrapper () =
     "wrapper with declarations preserved" ".card{color:red;.title{width:1px}}"
     (Pp.to_string ~minify:true Stylesheet.pp_rule with_decl)
 
+(* CSS Selectors 4 sec. 3.6.5 makes a combinator after a pseudo-element invalid,
+   and the selector reader refuses [.a::before .b] when it is authored directly.
+   Merging a lone wrapper into its sole nested rule reaches that selector from a
+   valid parent and a valid child, so it applies the rule too, as
+   [Flatten.block] does for the same input: the branches that follow the
+   pseudo-element go, and a wrapper left with nothing goes with the empty
+   rules. *)
+let test_merge_lone_pseudo_element_parent () =
+  let merged css =
+    Pp.to_string ~minify:true Stylesheet.pp_rule (Nest.merge_lone (rule css))
+  in
+  Alcotest.(check string)
+    "a descendant under a pseudo-element parent goes" ".a:before{}"
+    (merged ".a::before{.b{color:red}}");
+  Alcotest.(check string)
+    "a child combinator goes the same way" ".a:before{}"
+    (merged ".a::before{>.b{color:red}}");
+  Alcotest.(check string)
+    "a pseudo-class ::before does not take goes too" ".a:before{}"
+    (merged ".a::before{.b,&:hover{color:red}}");
+  (* Control: no pseudo-element, so the merge is valid and still happens. *)
+  Alcotest.(check string)
+    "a plain parent still merges" ".a .b{color:red}"
+    (merged ".a{.b{color:red}}")
+
 (* CSS Nesting 1 sec. 3.4 holds a declaration written after a nested statement
    behind it. Moving it back is cascade-neutral exactly when it commutes with
    what it crosses, so the hoist is decided per declaration and per property. *)
@@ -109,6 +134,8 @@ let suite =
       Alcotest.test_case "combine relative nested and descendant" `Quick
         test_combine_relative_nested_and_descendant;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
+      Alcotest.test_case "merge_lone pseudo-element parent" `Quick
+        test_merge_lone_pseudo_element_parent;
       Alcotest.test_case "hoist declaration runs" `Quick
         test_hoist_declaration_runs;
       Alcotest.test_case "rules synthesizes isolated chain" `Quick

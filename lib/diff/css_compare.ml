@@ -224,6 +224,118 @@ let merge_source_reorders (canonical : D.t) (source : D.t) =
     layer_order = canonical.layer_order;
   }
 
+(* A container entry is named by its printed prelude, and the projection keys an
+   [@media] or [@container] prelude to the Level 4 form a source sheet need not
+   write, so the two trees can name one block two ways. Key the source side the
+   same before comparing them: this respells a prelude and moves nothing. *)
+let key_prelude stmt =
+  match Css.as_media stmt with
+  | Some (query, inner) ->
+      Css.media ~condition:(Css.Media.lower_for_minify query) inner
+  | None -> (
+      match Css.as_container stmt with
+      | Some (name, Some condition, inner) ->
+          Css.container ?name
+            ~condition:(Css.Container.lower_for_minify condition)
+            inner
+      | Some (_, None, _) | None -> stmt)
+
+let rec key_query_preludes stmts =
+  List.map
+    (fun stmt ->
+      Css.Stylesheet.map_statement_children key_query_preludes
+        (key_prelude stmt))
+    stmts
+
+type order_gate = {
+  reordered_here : bool;
+  blocks : (D.container_info * order_gate) list;
+}
+(* Whether the projection still disagrees about the order at one level, and the
+   same answer for every block below it. The projection sorts each run whose
+   order no element can observe, so a level it leaves in two orders holds a move
+   an engine can see, and a level it agrees on holds none. Which statement is
+   named as the one that moved stays the inputs' account: a swap has two
+   participants and the two trees need not pick the same one. *)
+
+let container_is_reordered : D.container_diff -> bool = function
+  | D.Reordered _ -> true
+  | D.Modified _ | D.Added _ | D.Removed _ | D.Block_structure_changed _ ->
+      false
+
+let rec gate_of_level rule_changes container_changes =
+  {
+    reordered_here =
+      List.exists rule_is_reordered rule_changes
+      || List.exists container_is_reordered container_changes;
+    blocks = List.filter_map gate_of_container container_changes;
+  }
+
+and gate_of_container :
+    D.container_diff -> (D.container_info * order_gate) option = function
+  | D.Modified change ->
+      Some
+        (change.info, gate_of_level change.rule_changes change.container_changes)
+  (* Blocks merged or split: the walk below cannot pair them up, so this level
+     answers that it cannot tell rather than that nothing moved. *)
+  | D.Block_structure_changed change ->
+      Some
+        ( {
+            D.container_type = change.container_type;
+            condition = change.condition;
+            rules = [];
+          },
+          { reordered_here = true; blocks = [] } )
+  | D.Reordered _ | D.Added _ | D.Removed _ -> None
+
+let gate_of_canonical (diff : D.t) = gate_of_level diff.rules diff.containers
+
+(* A block the canonical tree does not name is one the projection made the same
+   on both sides, so nothing inside it moved. The exception is a nested rule,
+   which the projection flattens away: its statements answer to the level that
+   receives them. *)
+let gate_for gate (info : D.container_info) =
+  match info.container_type with
+  | `Nesting -> Some gate
+  | `Media | `Layer | `Supports | `Container | `Property | `At_rule -> (
+      match List.filter (fun (i, _) -> same_container i info) gate.blocks with
+      | [] -> None
+      | matches ->
+          Some
+            {
+              reordered_here =
+                List.exists (fun (_, g) -> g.reordered_here) matches;
+              blocks = List.concat_map (fun (_, g) -> g.blocks) matches;
+            })
+
+let gated_rule_changes gate changes =
+  if gate.reordered_here then changes
+  else List.filter (fun change -> not (rule_is_reordered change)) changes
+
+let rec gated_container gate : D.container_diff -> D.container_diff option =
+  function
+  | D.Reordered _ as change -> if gate.reordered_here then Some change else None
+  | D.Modified change -> (
+      match gate_for gate change.info with
+      | None -> None
+      | Some gate ->
+          let rule_changes = gated_rule_changes gate change.rule_changes in
+          let container_changes =
+            List.filter_map (gated_container gate) change.container_changes
+          in
+          if rule_changes = [] && container_changes = [] then None
+          else Some (D.Modified { change with rule_changes; container_changes })
+      )
+  | (D.Added _ | D.Removed _ | D.Block_structure_changed _) as change ->
+      Some change
+
+let gate_source_reorders gate (diff : D.t) =
+  {
+    D.rules = gated_rule_changes gate diff.rules;
+    containers = List.filter_map (gated_container gate) diff.containers;
+    layer_order = diff.layer_order;
+  }
+
 (* Collect all rules with their path-qualified selector keys *)
 let rec collect_keyed_rules acc path stmts =
   List.fold_left
@@ -515,15 +627,25 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
     ~expected_canon ~actual_canon =
   match (Css.of_string expected_canon, Css.of_string actual_canon) with
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
-      let canonical_diff =
-        tree_diff ~expected:expected_ast ~actual:actual_ast |> without_reorders
+      let canonical_tree =
+        tree_diff ~expected:expected_ast ~actual:actual_ast
       in
+      let canonical_diff = without_reorders canonical_tree in
+      (* A move has to be one the inputs hold and one the cascade can see. The
+         source tree answers the first, the projection the second, and a move
+         missing from either is not reported: neither the churn the projection's
+         own ordering creates around a content change, nor a run the projection
+         is free to sort, which reads the same however either sheet writes
+         it. *)
+      let gate = gate_of_canonical canonical_tree in
       let source_reorders =
         match (expected_parse, actual_parse) with
         | ( Ok { Css.stylesheet = expected_source; _ },
             Ok { Css.stylesheet = actual_source; _ } ) ->
-            tree_diff ~expected:expected_source ~actual:actual_source
-            |> only_reorders
+            tree_diff
+              ~expected:(key_query_preludes expected_source)
+              ~actual:(key_query_preludes actual_source)
+            |> only_reorders |> gate_source_reorders gate
         | Error _, _ | _, Error _ ->
             { D.rules = []; containers = []; layer_order = None }
       in

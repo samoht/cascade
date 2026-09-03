@@ -1397,6 +1397,53 @@ let rec has_combinator_after_pseudo_element = function
       || has_combinator_after_pseudo_element right
   | _ -> false
 
+(* Why a compound may not carry [s] after the pseudo-element it follows.
+   [read_compound] turns each into its own message and [has_refused_simple_-
+   after_pseudo_element] reads the same answer off a built selector, so the two
+   cannot drift. [seen] is the compound's earlier components, most recent
+   first. *)
+type compound_refusal =
+  | Sub_pseudo_element  (** sec. 3.6.4, via [pseudo_element_allows_sub]. *)
+  | Simple_after_pseudo_element  (** sec. 3.6.3, via [is_pe_action]. *)
+  | Pseudo_class_after_pseudo_element
+      (** sec. 3.6.3, via [pseudo_element_allows]. *)
+
+let compound_refusal ~seen s =
+  match List.find_opt is_pseudo_element seen with
+  | Some pe when is_pseudo_element s ->
+      if pseudo_element_allows_sub pe s then Option.None
+      else Option.Some Sub_pseudo_element
+  | Some _ when not (is_pe_action s) -> Option.Some Simple_after_pseudo_element
+  | Some pe when not (pseudo_element_allows pe s) ->
+      Option.Some Pseudo_class_after_pseudo_element
+  | _ -> Option.None
+
+(* The sec. 3.6.3 / 3.6.4 companion of [has_combinator_after_pseudo_element]:
+   nesting extends a pseudo-element's own compound the same way it puts a
+   combinator after one, out of a valid parent and a valid child that neither
+   one meets the reader's check. A pseudo-element inside a functional
+   pseudo-class argument is that argument's own business, as it is for
+   [bars_following_combinator]. *)
+(* Substituting [&] splices the parent compound in as one component, so the walk
+   flattens a nested [Compound] rather than treating it as a simple selector the
+   pseudo-element would refuse outright. *)
+let rec refuses_compound seen = function
+  | [] -> false
+  | Compound inner :: rest -> refuses_compound seen (inner @ rest)
+  | c :: rest -> (
+      match compound_refusal ~seen c with
+      | Some _ -> true
+      | None -> refuses_compound (c :: seen) rest)
+
+let rec has_refused_simple_in_compound = function
+  | List branches -> List.exists has_refused_simple_in_compound branches
+  | Combined (left, _, right) ->
+      has_refused_simple_in_compound left
+      || has_refused_simple_in_compound right
+  | Relative (_, right) -> has_refused_simple_in_compound right
+  | Compound components -> refuses_compound [] components
+  | _ -> false
+
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
    only happens once instead of per [:foo] / [::foo] pseudo read. *)
@@ -1857,15 +1904,14 @@ and read_compound t =
        [:not()]/[:has()] ([read_not_content]/[read_has_content]) and in the rule
        reader when a whole selector list is unknown. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
-    match List.find_opt is_pseudo_element acc with
-    | Some pe when is_pseudo_element s ->
-        if pseudo_element_allows_sub pe s then s :: acc
-        else Cursor.err t "pseudo-element not allowed after this pseudo-element"
-    | Some _ when not (is_pe_action s) ->
+    match compound_refusal ~seen:acc s with
+    | Some Sub_pseudo_element ->
+        Cursor.err t "pseudo-element not allowed after this pseudo-element"
+    | Some Simple_after_pseudo_element ->
         Cursor.err t "pseudo-element must be last in compound selector"
-    | Some pe when not (pseudo_element_allows pe s) ->
+    | Some Pseudo_class_after_pseudo_element ->
         Cursor.err t "pseudo-class not allowed after this pseudo-element"
-    | _ -> s :: acc
+    | None -> s :: acc
   in
   let rec loop acc = if can_start () then loop (prepend_simple acc) else acc in
   match loop [] with
@@ -2708,6 +2754,24 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
+(* Substituting [&] splices a complex parent into a compound's leading slot,
+   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
+   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
+   serialise alike and only the second is a compound in the grammar's sense, a
+   sequence of simple selectors, so the trailing components move onto the
+   subject. Without this the two spellings stay structurally distinct while
+   printing identically, and every structural comparison reads them apart. *)
+let rec lift_leading_combinator = function
+  | Combined (left, comb, right) :: rest ->
+      let subject =
+        match lift_leading_combinator (right :: rest) with
+        | Some lifted -> lifted
+        | None -> (
+            match right :: rest with [ one ] -> one | cs -> Compound cs)
+      in
+      Some (Combined (left, comb, subject))
+  | _ -> None
+
 (* [map] rewrites a compound's components before the compound itself, so the
    [Is] branch below has already spliced a single-argument [:is()] into this
    list. A component the reader refuses after the pseudo-element can only have
@@ -2766,13 +2830,16 @@ let canonicalize_nodes sel =
       in
       match node with
       | Compound components -> (
-          match
-            rewrap_pseudo_compound (drop_redundant_universal components)
-          with
-          | [ single ] -> single
-          | components' ->
-              if list_same components' components then node
-              else Compound components')
+          match lift_leading_combinator components with
+          | Some lifted -> lifted
+          | None -> (
+              match
+                rewrap_pseudo_compound (drop_redundant_universal components)
+              with
+              | [ single ] -> single
+              | components' ->
+                  if list_same components' components then node
+                  else Compound components'))
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> canonicalize_is node selectors

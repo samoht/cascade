@@ -19,25 +19,11 @@ let concat_map_preserve f xs =
 let contains_nesting = Nest.contains
 let substitute_nesting = Nest.substitute
 let combine_with_parent = Nest.combine
+let keep_readable_branches = Nest.keep_readable_branches
 
 let scope_selector_in_context (parent : Selector.t) selector =
   if contains_nesting selector then substitute_nesting ~parent selector
   else selector
-
-(* CSS Selectors 4 sec. 3.6.5: a combinator after a pseudo-element is invalid,
-   and nesting composes exactly that selector out of a valid parent and a valid
-   child. Such a rule matches nothing in any engine, so drop the branches that
-   follow the pseudo-element and keep the ones that extend its compound. *)
-let keep_readable_branches (selector : Selector.t) =
-  let keeps sel = not (Selector.has_combinator_after_pseudo_element sel) in
-  match selector with
-  | Selector.List branches -> (
-      match List.filter keeps branches with
-      | [] -> Option.None
-      | [ branch ] -> Option.Some branch
-      | branches -> Option.Some (Selector.List branches))
-  | sel when keeps sel -> Option.Some sel
-  | _ -> Option.None
 
 let rec flat_rule ?(parent : Selector.t option) (rule : rule) : statement list =
   let selector =

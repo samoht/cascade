@@ -333,6 +333,15 @@ Cascade picks the shortest behaviour-preserving spelling at every choice point.
 Where the CSS spec and browser-compatible recovery rules permit several valid
 serialisations, cascade chooses the shortest valid one.
 
+Behaviour is what a browser renders. The CSSOM is not part of it: a rewrite may
+change both the declaration text a script reads back through `getPropertyValue`
+and the computed value it reads through `getComputedStyle`, provided every
+rendered result is identical. `background:none` becomes `background:0 0`, one
+byte shorter and painting the same in every case, while `getComputedStyle`
+reports `background-position` as `0% 0%` for the input and `0px 0px` for the
+output. A page that reads its own computed styles back sees the minified
+spelling.
+
 ### What runs
 
 Value-level rewrites:
@@ -386,8 +395,8 @@ or a `calc()` that still references a `var()` stays verbatim. The colour fold
 never produces a bare colour keyword: a name like `red` is also a valid
 `<custom-ident>`, so it stays distinct from `#f00` even though it is shorter,
 and hex stays hex. The fold changes the exact token string a script reads back
-via `getPropertyValue`; cascade does not treat that byte-exact CSSOM
-serialisation as an observable to preserve.
+via `getPropertyValue`, which the policy above puts outside what cascade
+preserves.
 
 Whitespace inside an opaque value is likewise folded only where it is
 insignificant: a `)` closing a non-substitution function or a block is a hard

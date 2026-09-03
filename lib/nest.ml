@@ -74,11 +74,86 @@ let rec combine parent child =
   | _ when contains child -> substitute ~parent child
   | _ -> Selector.Combined (grouped parent, Selector.Descendant, child)
 
+(* CSS Selectors 4 sec. 3.6.3 to sec. 3.6.5 bound what may follow a
+   pseudo-element: no combinator, and in its own compound only the
+   pseudo-classes and sub-pseudo-elements that pseudo-element takes. Nesting
+   composes exactly those selectors out of a valid parent and a valid child, so
+   neither half meets the reader's check. Such a rule matches nothing in any
+   engine, so drop the branches that overstep and keep the ones a reader
+   accepts. *)
+let keep_readable_branches (selector : Selector.t) =
+  let keeps sel =
+    (not (Selector.has_combinator_after_pseudo_element sel))
+    && not (Selector.has_refused_simple_in_compound sel)
+  in
+  match selector with
+  | Selector.List branches -> (
+      match List.filter keeps branches with
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | branches -> Option.Some (Selector.List branches))
+  | sel when keeps sel -> Option.Some sel
+  | _ -> Option.None
+
+(* Merging composes the same selector flattening does, so it drops the same
+   branches. A wrapper left with no branch to merge into keeps nothing of its
+   own, and the empty-rule pass takes it. *)
 let rec merge_lone (rule : rule) =
   match (rule.declarations, rule.nested) with
-  | [], [ Rule child ] when not (is_list rule.selector) ->
-      merge_lone { child with selector = combine rule.selector child.selector }
+  | [], [ Rule child ] when not (is_list rule.selector) -> (
+      match keep_readable_branches (combine rule.selector child.selector) with
+      | Option.Some selector -> merge_lone { child with selector }
+      | Option.None -> { rule with nested = [] })
   | _ -> rule
+
+(* The same question, asked of a rule that stays nested: what has to be readable
+   is the branch composed with the parent, but what the rule keeps is the branch
+   in its own spelling. *)
+let live_under parent branch =
+  Option.is_some (keep_readable_branches (combine parent branch))
+
+let live_branches parent (selector : Selector.t) =
+  match selector with
+  | Selector.List branches -> (
+      match Common.List.filter_preserve (live_under parent) branches with
+      | kept when kept == branches -> Option.Some selector
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | kept -> Option.Some (Selector.List kept))
+  | sel -> if live_under parent sel then Option.Some sel else Option.None
+
+(* Only a pseudo-element the parent carries can bar what nests under it, and
+   every rule is walked with its own selector as parent, so a parent without one
+   has nothing dead below to look for. *)
+let under_pseudo_element sel = Selector.any Selector.is_pseudo_element sel
+
+(* Merging is one shape of the composition, and the branches it drops are dead
+   wherever they sit. Walk the body under the parent selector and take them
+   there too, subtree and all, as flattening does: a conditional block keeps its
+   parent's selector for what it wraps, and a kept child becomes the parent of
+   its own. *)
+let rec live_statements parent (stmts : statement list) =
+  Common.List.filter_map_preserve (live_statement parent) stmts
+
+and live_statement parent (stmt : statement) =
+  match stmt with
+  | Rule child -> (
+      match live_branches parent child.selector with
+      | Option.None -> Option.None
+      | Option.Some selector ->
+          let nested = live_statements (combine parent selector) child.nested in
+          if selector == child.selector && nested == child.nested then
+            Option.Some stmt
+          else Option.Some (Rule { child with selector; nested }))
+  | stmt -> Option.Some (map_statement_children (live_statements parent) stmt)
+
+let drop_dead_nested (rule : rule) =
+  match rule.nested with
+  | [] -> rule
+  | _ when not (under_pseudo_element rule.selector) -> rule
+  | body ->
+      let nested = live_statements rule.selector body in
+      if nested == body then rule else { rule with nested }
 
 (* What a run of nested statements would have to cross to move ahead of them:
    every declaration they can write at any depth, read through
