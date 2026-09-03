@@ -1905,11 +1905,8 @@ let read_animation_range_name t : animation_range_name =
     ]
     t
 
-let animation_range_names =
-  [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
-
 let is_animation_range_name name =
-  List.mem (String.lowercase_ascii_preserve name) animation_range_names
+  List.mem (String.lowercase_ascii_preserve name) Keyframe.timeline_range_names
 
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
@@ -1917,7 +1914,7 @@ let read_animation_range_offset t : length_percentage option =
   else
     match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
     | Some "normal" -> (None : length_percentage option)
-    | Some next when List.mem next animation_range_names ->
+    | Some next when List.mem next Keyframe.timeline_range_names ->
         (None : length_percentage option)
     | _ -> (Some (Values.read_length_percentage t) : length_percentage option)
 
@@ -1967,7 +1964,7 @@ let rec read_animation_range t : animation_range =
       | Some "normal" ->
           let _ = Cursor.ident t in
           (Normal : animation_range_item)
-      | Some name when List.mem name animation_range_names ->
+      | Some name when List.mem name Keyframe.timeline_range_names ->
           let name : animation_range_name = read_animation_range_name t in
           let lp = read_animation_range_offset t in
           (Named (name, lp) : animation_range_item)
