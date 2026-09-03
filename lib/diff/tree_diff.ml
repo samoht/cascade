@@ -1048,16 +1048,20 @@ let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
 let pp_container_reorder ~style ~is_last ~parent_prefix buf container_type
     condition expected_pos actual_pos =
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
-  add_strings buf
-    [
-      prefix;
-      container_label container_type condition;
-      " (position ";
-      string_of_int expected_pos;
-      " \xe2\x86\x92 ";
-      string_of_int actual_pos;
-      ")\n";
-    ]
+  let label = container_label container_type condition in
+  if expected_pos = actual_pos then
+    add_strings buf [ prefix; label; " (moved)\n" ]
+  else
+    add_strings buf
+      [
+        prefix;
+        label;
+        " (position ";
+        string_of_int expected_pos;
+        " \xe2\x86\x92 ";
+        string_of_int actual_pos;
+        ")\n";
+      ]
 
 let rec pp_container_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf = function

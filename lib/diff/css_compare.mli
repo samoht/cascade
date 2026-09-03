@@ -89,7 +89,9 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
       default and remains distinct under [lossless]. Equal outputs are
       {!No_diff}; differing outputs are a difference, reported as a tree diff of
       the two when the walk reaches it and as a string diff of them when it does
-      not.
+      not. A reorder in that tree is named without a position: its index belongs
+      to the generated canonical form and cannot be located in either input. Use
+      [`Tree] when source-AST indexes are useful.
 
     The projection runs no rewrite whose applicability depends on the order the
     input happens to put its rules in. Factoring shared declarations into a

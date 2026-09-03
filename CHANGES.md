@@ -933,6 +933,9 @@ difference wherever the two are not equivalent.
 - `--diff=tree` tracks each repeated conditional block in source order, so
   moving a later block past a rule is reported even when an earlier block has
   the same condition (#779)
+- Canonical diff omits generated-tree positions from reordered rules and
+  containers, where those numbers identified neither input and the rule paired
+  with one could be an unrelated container (#780)
 
 ### Library
 

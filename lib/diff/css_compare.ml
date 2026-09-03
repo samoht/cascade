@@ -115,6 +115,38 @@ let strip_tool_header css =
 let tree_diff ~(expected : Css.t) ~(actual : Css.t) : Tree_diff.t =
   D.diff ~expected ~actual
 
+(* Canonical mode reparses generated CSS, so these indexes identify neither
+   source AST. Keep the move, but not coordinates or an index-derived partner
+   that a reader cannot locate in either input. *)
+let hide_rule_reorder_position : D.rule_diff -> D.rule_diff = function
+  | D.Reordered r ->
+      D.Reordered
+        { r with expected_pos = -1; actual_pos = -1; swapped_with = None }
+  | ( D.Added _ | D.Removed _ | D.Content_changed _ | D.Selector_changed _
+    | D.Rearranged _ | D.Regrouped _ ) as change ->
+      change
+
+let rec hide_container_reorder_positions : D.container_diff -> D.container_diff
+    = function
+  | D.Modified change ->
+      D.Modified
+        {
+          change with
+          rule_changes = List.map hide_rule_reorder_position change.rule_changes;
+          container_changes =
+            List.map hide_container_reorder_positions change.container_changes;
+        }
+  | D.Reordered change ->
+      D.Reordered { change with expected_pos = -1; actual_pos = -1 }
+  | (D.Added _ | D.Removed _ | D.Block_structure_changed _) as change -> change
+
+let hide_canonical_reorder_positions (diff : D.t) =
+  {
+    D.rules = List.map hide_rule_reorder_position diff.rules;
+    containers = List.map hide_container_reorder_positions diff.containers;
+    layer_order = diff.layer_order;
+  }
+
 (* Collect all rules with their path-qualified selector keys *)
 let rec collect_keyed_rules acc path stmts =
   List.fold_left
@@ -411,6 +443,7 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
       let structural_diff =
         tree_diff ~expected:expected_ast ~actual:actual_ast
+        |> hide_canonical_reorder_positions
       in
       if is_empty structural_diff then
         fallback_to_string_diff ~expected:expected_canon ~actual:actual_canon

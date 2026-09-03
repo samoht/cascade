@@ -30,9 +30,9 @@ rather than as a loss and a gain.
   --- ref.css
   +++ tw.css
   └─ @layer utilities (1 reordered)
-     ├─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
+     ├─ .drop-shadow-blue-500\/50 (moved)
      └─ @supports (color: color-mix(in lab,red,red)) (1 reordered)
-        └─ .drop-shadow-blue-500\/50 ↔  .drop-shadow-indigo-500
+        └─ .drop-shadow-blue-500\/50 (moved)
   
   [1]
 
@@ -138,9 +138,9 @@ gains or loses a declaration, so neither may be reported as modified.
   --- guarded_ref.css
   +++ guarded_tw.css
   └─ @layer utilities (1 reordered)
-     ├─ .x ↔  .y
+     ├─ .x (moved)
      └─ @supports (zoo: bar) (1 reordered)
-        └─ .x ↔  .y
+        └─ .x (moved)
   
   [1]
 
