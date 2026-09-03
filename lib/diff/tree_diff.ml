@@ -1418,30 +1418,36 @@ let moved_order_keys stmts1 stmts2 =
 let selector_moved moved sel = Hashtbl.mem moved (Rule_order sel)
 
 (* Generic helper for finding added/removed/modified items between two lists.
-   Works with any item type that has a key for comparison.
-
-   Each item's key is computed once and threaded through the N*M cross checks
-   below; without this every [List.exists] pass would re-call [key_of] for every
-   item it visits. *)
-let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
-    ~(is_empty_diff : 'item -> 'item -> bool) items1 items2 =
+   [key_of] returns a canonical structural key. *)
+let diffs ~(key_of : 'item -> 'key) ~(is_empty_diff : 'item -> 'item -> bool)
+    items1 items2 =
   let items1_keyed = List.map (fun i -> (i, key_of i)) items1 in
   let items2_keyed = Array.of_list (List.map (fun i -> (i, key_of i)) items2) in
-  (* Each right-hand item is claimed by at most one left-hand item. Testing
-     existence instead would hide a duplicate key entirely: with two blocks
-     carrying one condition and one on the other side, neither counts as added
-     or removed, and the survivor is paired twice, so both pairings report
-     differences that are not there. *)
+  (* A FIFO per key gives duplicate keys the same source-order pairing as the
+     old left-to-right scan, without restarting that scan for every item. *)
+  let available = Hashtbl.create (Array.length items2_keyed) in
+  Array.iteri
+    (fun i (item, key) ->
+      let bucket =
+        match Hashtbl.find_opt available key with
+        | Some bucket -> bucket
+        | None ->
+            let bucket = Queue.create () in
+            Hashtbl.add available key bucket;
+            bucket
+      in
+      Queue.add (i, item) bucket)
+    items2_keyed;
   let claimed = Array.make (Array.length items2_keyed) false in
   let claim key =
-    let rec scan i =
-      if i >= Array.length items2_keyed then None
-      else if (not claimed.(i)) && key_equal (snd items2_keyed.(i)) key then (
-        claimed.(i) <- true;
-        Some (fst items2_keyed.(i)))
-      else scan (i + 1)
-    in
-    scan 0
+    match Hashtbl.find_opt available key with
+    | None -> None
+    | Some bucket -> (
+        match Queue.take_opt bucket with
+        | None -> None
+        | Some (i, item) ->
+            claimed.(i) <- true;
+            Some item)
   in
   let pairs, removed =
     List.fold_left
@@ -1464,20 +1470,14 @@ let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
 
 let rules_added_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
-  let added, _removed, _modified =
-    diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2
-  in
+  let added, _removed, _modified = diffs ~key_of ~is_empty_diff rules1 rules2 in
   added
 
 let rules_removed_diff rules1 rules2 =
   let key_of = selector_key_of_stmt in
-  let key_equal = ( = ) in
   let is_empty_diff _ _ = true in
-  let _added, removed, _modified =
-    diffs ~key_of ~key_equal ~is_empty_diff rules1 rules2
-  in
+  let _added, removed, _modified = diffs ~key_of ~is_empty_diff rules1 rules2 in
   removed
 
 let selectors_share_parent sel1_str sel2_str =
@@ -2362,6 +2362,26 @@ let merge_selector_group ~rules1 ~rules2 sel peers =
    settles it. *)
 let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
     rule_diff list =
+  (* Index the peers once. Looking for them with [List.filter] in the walk below
+     scanned every reported change once per reported change, even though the
+     common case is one entry per selector. The flags also replace two scans of
+     a group; the reversed peer list is restored only for a group that actually
+     collapses. *)
+  let groups = Hashtbl.create (List.length changes) in
+  List.iter
+    (fun diff ->
+      match changed_selector diff with
+      | None -> ()
+      | Some sel ->
+          let peers, gains, loses =
+            Option.value ~default:([], false, false)
+              (Hashtbl.find_opt groups sel)
+          in
+          Hashtbl.replace groups sel
+            ( diff :: peers,
+              gains || change_gains diff,
+              loses || change_loses diff ))
+    changes;
   let done_ = Hashtbl.create 8 in
   List.filter_map
     (fun diff ->
@@ -2369,16 +2389,13 @@ let merge_same_selector_changes ~rules1 ~rules2 (changes : rule_diff list) :
       | None -> Some diff
       | Some sel when Hashtbl.mem done_ sel -> None
       | Some sel -> (
-          let peers =
-            List.filter (fun d -> changed_selector d = Some sel) changes
-          in
-          match peers with
-          | _ :: _
-            when List.exists change_gains peers
-                 && List.exists change_loses peers ->
+          match Hashtbl.find_opt groups sel with
+          | Some (reversed_peers, true, true) ->
               Hashtbl.replace done_ sel ();
-              Some (merge_selector_group ~rules1 ~rules2 sel peers)
-          | _ -> Some diff))
+              Some
+                (merge_selector_group ~rules1 ~rules2 sel
+                   (List.rev reversed_peers))
+          | Some _ | None -> Some diff))
     changes
 
 (* Everything a [Reordered] entry puts in the report, as one string; [None] for
@@ -2720,14 +2737,13 @@ let property_descriptor_changes prop1 prop2 =
 
 let property_diff items1 items2 =
   let key_of (Css.Property_info { name; _ }) = name in
-  let key_equal = String.equal in
   let is_empty_diff prop1 prop2 =
     let (Css.Property_info { name = n1; _ }) = prop1 in
     let (Css.Property_info { name = n2; _ }) = prop2 in
     n1 = n2 && property_descriptors prop1 = property_descriptors prop2
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+    diffs ~key_of ~is_empty_diff items1 items2
   in
   let added =
     List.map (fun (Css.Property_info { name; _ }) -> (name, [])) added
@@ -2830,14 +2846,13 @@ let keyframes_container_info name =
   }
 
 let keyframe_frames_diff frames1 frames2 =
-  let key_of (frame : Css.keyframe) = frame.selector in
-  let key_equal = Css.Keyframe.selector_equal in
+  let key_of (frame : Css.keyframe) = Css.Keyframe.to_string frame.selector in
   let is_empty_diff (f1 : Css.keyframe) (f2 : Css.keyframe) =
     Css.Keyframe.selector_equal f1.selector f2.selector
     && List.equal Declaration.equal_declaration f1.declarations f2.declarations
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff frames1 frames2
+    diffs ~key_of ~is_empty_diff frames1 frames2
   in
   let selector_str (frame : Css.keyframe) =
     Css.Keyframe.to_string frame.selector
@@ -2880,11 +2895,10 @@ let keyframe_frames_diff frames1 frames2 =
 
 let keyframes_diff items1 items2 =
   let key_of (name, _) = name in
-  let key_equal = String.equal in
   let is_empty_diff (name1, frames1) (name2, frames2) =
     name1 = name2 && frames1 = frames2
   in
-  diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+  diffs ~key_of ~is_empty_diff items1 items2
 
 let process_nested_keyframes stmts1 stmts2 =
   let items1 = List.filter_map Css.as_keyframes stmts1 in
@@ -3118,7 +3132,6 @@ and process_nested_containers ~container_type ~extract_fn ~diff_fn stmts1 stmts2
 (* Layer diff function *)
 and layer_diff items1 items2 =
   let key_of (name_opt, _) = layer_key name_opt in
-  let key_equal = String.equal in
   let is_empty_diff (_, rules1) (_, rules2) =
     let a_r, r_r, m_r, rg_r = rule_diffs rules1 rules2 in
     let has_immediate_diffs =
@@ -3131,7 +3144,7 @@ and layer_diff items1 items2 =
       nested_diffs = []
   in
   let added, removed, modified_pairs =
-    diffs ~key_of ~key_equal ~is_empty_diff items1 items2
+    diffs ~key_of ~is_empty_diff items1 items2
   in
   (* Transform to consistent format with media_diff *)
   let added =
@@ -3211,10 +3224,9 @@ and container_has_no_diff (_, _, rules1) (_, _, rules2) =
 
 (* Container diff function for @container rules *)
 and container_diff items1 items2 =
-  let key_equal = String.equal in
   let added, removed, modified_pairs =
-    diffs ~key_of:container_key ~key_equal ~is_empty_diff:container_has_no_diff
-      items1 items2
+    diffs ~key_of:container_key ~is_empty_diff:container_has_no_diff items1
+      items2
   in
   (* Transform to consistent format with media_diff. *)
   let added = List.map condition_rules_of_container added in
@@ -3245,12 +3257,22 @@ and process_nested_rules stmts1 stmts2 =
   in
   let items1 = extract_nesting stmts1 in
   let items2 = extract_nesting stmts2 in
+  (* [List.find_opt] previously searched all of [items2] for every rule in
+     [items1], including the overwhelmingly common rules with no nested body.
+     Keep its first-occurrence semantics for repeated selectors, but index that
+     first occurrence once. *)
+  let items2_by_selector = Hashtbl.create (List.length items2) in
+  List.iter
+    (fun (selector, nested) ->
+      if not (Hashtbl.mem items2_by_selector selector) then
+        Hashtbl.add items2_by_selector selector nested)
+    items2;
   (* Match by selector key and diff nested statements *)
   let diffs = ref [] in
   List.iter
     (fun (sel1, nested1) ->
-      match List.find_opt (fun (s, _) -> s = sel1) items2 with
-      | Some (_, nested2) when not (Stylesheet.equal nested1 nested2) ->
+      match Hashtbl.find_opt items2_by_selector sel1 with
+      | Some nested2 when not (Stylesheet.equal nested1 nested2) ->
           let rule_changes = to_rule_changes nested1 nested2 in
           let nested_containers = nested_differences nested1 nested2 in
           if rule_changes <> [] || nested_containers <> [] then
@@ -3302,9 +3324,7 @@ and at_rule_pair_diff (head, body1, text1) (_, body2, text2) =
 and process_at_rules stmts1 stmts2 =
   let items1 = at_rule_items stmts1 and items2 = at_rule_items stmts2 in
   let added, removed, pairs =
-    diffs ~key_of:fst ~key_equal:( = )
-      ~is_empty_diff:(fun _ _ -> false)
-      items1 items2
+    diffs ~key_of:fst ~is_empty_diff:(fun _ _ -> false) items1 items2
   in
   let block_rules = function Block block -> block | _ -> [] in
   let info (head, body, _) =

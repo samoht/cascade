@@ -1051,6 +1051,8 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` indexes structural, nesting, and reported-selector matches,
+  making a sheet where every rule changes scale near-linearly (#786)
 - `cascade diff` keeps trailing context around a difference between short
   lines, where it previously stopped immediately after the caret (#785)
 - `cascade diff` names a changed `@keyframes` block as the at-rule it is,
