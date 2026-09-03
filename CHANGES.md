@@ -24,6 +24,10 @@ entry points both moved.
 
 ### Breaking
 
+- `cascade diff` exits 2, not 0, when it finds no difference and had to drop a
+  declaration it could not read: that declaration reached neither side of the
+  comparison, so identity is not a verdict it can give. A gate that reads any
+  non-zero status as "differs" needs updating (#832)
 - `Cascade.Parser.to_string_custom` is gone. Call
   `Cascade.Parser.string_of_components`, which renders a custom-property token
   stream identically (#806)

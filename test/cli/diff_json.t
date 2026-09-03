@@ -13,7 +13,9 @@ so a script branches on the status and reads the detail from the document.
   > EOF
 
 An identical pair. Every count is zero, `identical` is true, and the status
-is still 0.
+is still 0. `unreadable_declarations` is what makes `identical` provable: it
+counts, per side, the declarations the reader refused and dropped, which the
+comparison therefore never saw.
 
   $ cascade diff --json a.css b.css
   {
@@ -21,6 +23,10 @@ is still 0.
     "actual": "b.css",
     "mode": "auto",
     "identical": true,
+    "unreadable_declarations": {
+      "expected": 0,
+      "actual": 0
+    },
     "stats": {
       "expected_chars": 18,
       "actual_chars": 18,
@@ -50,6 +56,10 @@ the value each side gives it, and the status is still 1.
     "actual": "d.css",
     "mode": "auto",
     "identical": false,
+    "unreadable_declarations": {
+      "expected": 0,
+      "actual": 0
+    },
     "stats": {
       "expected_chars": 18,
       "actual_chars": 19,

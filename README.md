@@ -139,7 +139,10 @@ Compares two CSS files through the parsed CSS structure rather than
 character-by-character: added, removed, modified, and reordered rules are
 detected structurally, and property value changes are reported in terms of CSS
 values. Identical files exit 0; differences exit 1, making `cascade diff`
-usable as a CI check.
+usable as a CI check. A comparison that finds no difference but had to drop a
+declaration it could not read exits 2 instead: that declaration reached neither
+side, so identity is not a verdict the comparison can give. The report and the
+`--json` document count those declarations per side.
 
 `--diff=MODE` controls what counts as "no difference":
 
@@ -319,13 +322,14 @@ cascade diff --diff=tree src/style.css /tmp/fmt.css
 cascade diff --diff=canonical origin/main:src/style.css src/style.css
 ```
 
-The exit code is 0 when the inputs are identical under the chosen mode and 1
-otherwise, so cascade slots into any tool that branches on exit codes (`git`
-hooks, `make`, GitHub Actions, ...). The `--minify` pipeline is fast enough
-that a 200 KB stylesheet costs well under 100 ms on the SatCSS corpus;
-`--objective=raw` trades roughly an order of magnitude of wall clock for the
-last few percent of uncompressed bytes and fits a release build rather than a
-watcher loop.
+The exit code is 0 when the inputs are identical under the chosen mode, 1 when
+they differ, and 2 when the comparison finds no difference but had to drop a
+declaration it could not read, so cascade slots into any tool that branches on
+exit codes (`git` hooks, `make`, GitHub Actions, ...). The `--minify` pipeline
+is fast enough that a 200 KB stylesheet costs well under 100 ms on the SatCSS
+corpus; `--objective=raw` trades roughly an order of magnitude of wall clock
+for the last few percent of uncompressed bytes and fits a release build rather
+than a watcher loop.
 
 ## `--minify` policy
 
