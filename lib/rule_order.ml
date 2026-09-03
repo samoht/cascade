@@ -202,27 +202,60 @@ let expand_lists (stmt : statement) : statement list =
 let coalesced_declarations decls = Shorthand.deduplicate_declarations decls
 
 (* Mutable state of one coalescing scan: the run's elements, the graph nodes
-   accumulated into each surviving element, and which elements remain. *)
+   accumulated into each surviving element, which elements remain, and which
+   were plain style rules in the run as it was read. *)
 type scan = {
   graph : Rule_graph.t;
   arr : (statement * rule list) array;
+  plain : bool array;
   members : int list array;
   alive : bool array;
   mutable merged_any : bool;
 }
 
-(* Nothing strictly between [lo] and [hi] conflicts with any accumulated
-   occurrence in [mems]: moving those writes across the interval is
-   unobservable. *)
+(* Two rules that agree wherever they meet. Restrict each to the declarations
+   that overlap the other rule at all; when those two sequences are equal, the
+   writes reaching any one property are the same declarations in the same order
+   whichever rule comes first, so swapping the two changes no computed value.
+   The graph's test is pairwise, and a prefixed property beside its unprefixed
+   twin writes one slot twice, so it reads the two copies of a hoisted group as
+   tied writers of that slot. Factoring produces exactly that shape: it writes
+   one declaration list into every branch of the group. *)
+let overlapping_writes_equal (a : rule) (b : rule) =
+  let with_keys (r : rule) =
+    List.map (fun d -> (d, Shorthand.declaration_overlap_keys d)) r.declarations
+  in
+  let touching x y =
+    List.filter_map
+      (fun (decl, keys) ->
+        let meets (other, other_keys) =
+          Shorthand.declarations_overlap_with_keys decl keys other other_keys
+        in
+        if List.exists meets y then Some decl else None)
+      x
+  in
+  let a = with_keys a and b = with_keys b in
+  List.equal Declaration.same_minified (touching a b) (touching b a)
+
+(* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
+   [mems] moving across it. A graph conflict between two rules that write the
+   overlapping slots identically is not observable, so it does not count; only
+   plain style rules qualify, since a conditional block stands in the graph for
+   the concatenation of its interior rules and that sequence is not the one any
+   single element sees. *)
 let interval_clear scan ~lo ~hi mems =
   let node i = Rule_graph.Node_id.of_int_exn i in
+  let observed m a =
+    Rule_graph.conflict scan.graph (node m) (node a)
+    && not
+         (scan.plain.(m) && scan.plain.(a)
+         && overlapping_writes_equal
+              (Rule_graph.node_rule scan.graph (node m))
+              (Rule_graph.node_rule scan.graph (node a)))
+  in
   let ok = ref true in
   for m = lo + 1 to hi - 1 do
-    if
-      List.exists
-        (fun a -> Rule_graph.conflict scan.graph (node m) (node a))
-        mems
-    then ok := false
+    if List.exists (observed m) mems then ok := false
   done;
   !ok
 
@@ -431,6 +464,10 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
         {
           graph;
           arr;
+          plain =
+            Array.map
+              (fun (stmt, _) -> match stmt with Rule _ -> true | _ -> false)
+              arr;
           members = Array.init n (fun i -> [ i ]);
           alive = Array.make n true;
           merged_any = false;

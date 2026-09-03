@@ -359,7 +359,20 @@ let canonical_folds_a_factored_vendor_twin_group () =
   Alcotest.(check bool)
     "a group written after the specialisation stays distinct" false
     (equal inline
-       ".o100{--t:opacity(100%)}.o100,.o95{--t:opacity(95%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}")
+       ".o100{--t:opacity(100%)}.o100,.o95{--t:opacity(95%);-webkit-backdrop-filter:var(--t);backdrop-filter:var(--t)}");
+  (* A conditional block writes its declarations under several selectors, so
+     reading its body as one declaration list says nothing about what any single
+     element sees. These two blocks hold the same list under swapped selectors,
+     and folding the [@media (hover)] pair across the one in between hands [.p]
+     [blue] on the left and [red] on the right. *)
+  Alcotest.(check bool)
+    "a block keeps its distance from a block writing the same list" false
+    (equal
+       "@media (hover){.p{color:red}.q{color:blue}}@media \
+        (min-width:1px){.q{color:red}.p{color:blue}}@media \
+        (hover){.r{color:lime}}"
+       "@media (min-width:1px){.q{color:red}.p{color:blue}}@media \
+        (hover){.p{color:red}.q{color:blue}.r{color:lime}}")
 
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also

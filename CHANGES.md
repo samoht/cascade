@@ -378,7 +378,9 @@ entry points both moved.
 - `cascade diff --diff=canonical` reports a rule as moved only when it really
   moved. Writing one selector as a nested branch or as its flat expansion, and
   writing two rules of one selector next to each other or as a single rule, now
-  compare equal, so a sheet and its minified form agree (#825, #826)
+  compare equal, so a sheet and its minified form agree. A declaration hoisted
+  into a selector-list group also compares equal to the same declaration
+  written inline in every branch of that group (#825, #826, #831)
 - Nesting emits only selectors a browser can match. A rule nested under a
   pseudo-element parent is dropped wherever it sits, and so is a branch that
   adds a pseudo-class the pseudo-element does not accept (#818, #822, #823)
