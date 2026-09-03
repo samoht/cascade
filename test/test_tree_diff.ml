@@ -1246,6 +1246,47 @@ let removed_keyframes_is_named () =
   Alcotest.(check (list string))
     "no rule-level entry without a name" [] (added_or_removed_names d)
 
+(* A type selector matches in the namespace its sheet declares, so two sheets
+   that name different namespace URLs style different elements. The description
+   a prelude statement is keyed on has to carry the URL, or the two are one
+   entry and the walk reports nothing. *)
+let changed_namespace_is_a_difference () =
+  let d =
+    diff_of ~expected:"@namespace url(http://a.example);.x{color:red}"
+      ~actual:"@namespace url(http://b.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "changing the namespace URL is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "and the entry names the at-rule" true
+    (string_contains ~needle:"@namespace" (render d))
+
+(* The selectorless-at-rule machinery is what owns the namespace statement, so
+   a change has to surface as a container entry, not fall through to the rule
+   walk where it currently shares the universal selector and gets paired with
+   other selectorless statements. *)
+let changed_namespace_is_an_at_rule_container () =
+  let d =
+    diff_of ~expected:"@namespace url(http://a.example);.x{color:red}"
+      ~actual:"@namespace url(http://b.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "namespace URL change is reported as a container diff" true
+    (Cascade_diff.Tree_diff.count_containers_by_type `At_rule d > 0)
+
+let added_namespace_is_an_at_rule_container () =
+  let d =
+    diff_of ~expected:".x{color:red}"
+      ~actual:"@namespace url(http://a.example);.x{color:red}"
+  in
+  Alcotest.(check bool)
+    "adding a namespace is a difference" false
+    (Cascade_diff.Tree_diff.is_empty d);
+  Alcotest.(check bool)
+    "the added namespace is an at-rule container" true
+    (Cascade_diff.Tree_diff.has_container_added_of_type `At_rule d)
+
 (* Nothing else reports a [@charset], so the rule level has to keep it - and
    name it. *)
 let removed_charset_is_named () =
@@ -1562,6 +1603,12 @@ let suite =
         removed_keyframes_is_named;
       Alcotest.test_case "removed charset is named" `Quick
         removed_charset_is_named;
+      Alcotest.test_case "changed namespace is a difference" `Quick
+        changed_namespace_is_a_difference;
+      Alcotest.test_case "changed namespace is an at-rule container" `Quick
+        changed_namespace_is_an_at_rule_container;
+      Alcotest.test_case "added namespace is an at-rule container" `Quick
+        added_namespace_is_an_at_rule_container;
       Alcotest.test_case "removed layer statement is named" `Quick
         removed_layer_statement_is_named;
       Alcotest.test_case "modified keyframes names the at-rule" `Quick
