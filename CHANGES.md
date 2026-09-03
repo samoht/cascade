@@ -1064,6 +1064,9 @@ difference wherever the two are not equivalent.
 
 ### CLI tools
 
+- `cascade diff` prints a parse warning both inputs raise once, under a label
+  naming both files, so the report's warning budget reaches the warnings only
+  one side raised (#795)
 - `cascade diff --diff=tree` reports two stylesheets that declare different
   `@namespace` URLs as different. It called them identical, though a type
   selector matches in the namespace its sheet declares (#794)

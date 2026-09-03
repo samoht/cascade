@@ -59,7 +59,7 @@ let count_lines s =
   String.iter (fun c -> if c = '\n' then incr n) s;
   !n
 
-(* Parse warnings shown per side before the rest is counted. *)
+(* Parse warnings shown before the rest is counted, across both sides. *)
 let auto_warning_budget = 3
 
 (* [none] bounds nothing, warnings included. Every other setting keeps the

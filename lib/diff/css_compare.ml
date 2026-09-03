@@ -679,32 +679,57 @@ let compute_stats ~expected_str ~actual_str diff_result =
 let stats = compute_stats
 let add_strings b ls = List.iter (Buffer.add_string b) ls
 
-(* Render each side's parse warnings so a declaration the parser dropped never
-   reads as a phantom structural difference on the side that parsed. Past [max]
-   they are counted rather than printed: a stylesheet that trips the same
-   unsupported syntax hundreds of times would otherwise bury the diff it is
-   meant to qualify. *)
-let pp_parse_warnings ?(max = Stdlib.max_int) buf label warnings =
-  let shown, hidden =
-    let n = List.length warnings in
-    if n <= max then (warnings, 0)
-    else (List.filteri (fun i _ -> i < max) warnings, n - max)
+(* Two warnings are the same complaint when they fail the same way at the same
+   place in the grammar. Where in the byte stream each side ran into it is no
+   part of that. *)
+(* The rendered kind is built once per warning rather than once per comparison:
+   [partition_warnings] compares every pair. *)
+type keyed = { warning : Error.t; kind : string }
+
+let keyed (w : Error.t) =
+  { warning = w; kind = Pp.to_string Error.pp_kind w.kind }
+
+let same_warning a b =
+  Sort.equal a.warning.Error.sort b.warning.Error.sort
+  && List.equal String.equal a.warning.Error.path b.warning.Error.path
+  && String.equal a.kind b.kind
+
+let rec remove_first p = function
+  | [] -> None
+  | x :: xs when p x -> Some xs
+  | x :: xs -> Option.map (fun rest -> x :: rest) (remove_first p xs)
+
+(* Shared warnings keep the expected side's copy, so the snippet under one is
+   the expected side's text. *)
+let partition_warnings expected actual =
+  let rec go exp_only act_only shared = function
+    | [] ->
+        let warnings = List.map (fun k -> k.warning) in
+        ( warnings (List.rev shared),
+          warnings (List.rev exp_only),
+          warnings act_only )
+    | w :: ws -> (
+        match remove_first (same_warning w) act_only with
+        | Some act_only -> go exp_only act_only (w :: shared) ws
+        | None -> go (w :: exp_only) act_only shared ws)
   in
-  List.iter
-    (fun w ->
-      if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
-      then Buffer.add_char buf '\n';
-      add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ])
-    shown;
-  if hidden > 0 then
-    add_strings buf
-      [
-        label;
-        ": ";
-        string_of_int hidden;
-        (if hidden = 1 then " more parse warning\n"
-         else " more parse warnings\n");
-      ]
+  go [] (List.map keyed actual) [] (List.map keyed expected)
+
+let pp_warning buf label w =
+  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
+  then Buffer.add_char buf '\n';
+  add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ]
+
+let pp_overflow buf label hidden =
+  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
+  then Buffer.add_char buf '\n';
+  add_strings buf
+    [
+      label;
+      ": ";
+      string_of_int hidden;
+      (if hidden = 1 then " more parse warning\n" else " more parse warnings\n");
+    ]
 
 let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
     ?depth ?entries buf = function
@@ -736,9 +761,45 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
   | Actual_error e ->
       add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
 
+(* Render parse warnings so a declaration the parser dropped never reads as a
+   phantom structural difference on the side that parsed. A warning both sides
+   raise is one fact about the input rather than a finding about the diff, so it
+   prints once, under a label naming both files, for one slot of the budget.
+   One-sided warnings take that budget first: they are what qualifies the
+   difference below them. Past [max] the rest are counted rather than printed: a
+   stylesheet that trips the same unsupported syntax hundreds of times would
+   otherwise bury the diff it is meant to qualify. *)
+type warning_side = Expected | Actual | Both
+
+let warnings t =
+  let shared, expected_only, actual_only =
+    partition_warnings t.expected_warnings t.actual_warnings
+  in
+  let tag side = List.map (fun w -> (side, w)) in
+  tag Expected expected_only @ tag Actual actual_only @ tag Both shared
+
 let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
-  pp_parse_warnings ?max buf expected t.expected_warnings;
-  pp_parse_warnings ?max buf actual t.actual_warnings
+  let shared, expected_only, actual_only =
+    partition_warnings t.expected_warnings t.actual_warnings
+  in
+  let remaining = ref (Option.value max ~default:Stdlib.max_int) in
+  (* One pass: the count of what was left out is part of the report, so the
+     whole list is walked whether or not the budget runs out early. *)
+  let render label ws =
+    let hidden = ref 0 in
+    List.iter
+      (fun w ->
+        if !remaining > 0 then begin
+          decr remaining;
+          pp_warning buf label w
+        end
+        else incr hidden)
+      ws;
+    if !hidden > 0 then pp_overflow buf label !hidden
+  in
+  render expected expected_only;
+  render actual actual_only;
+  render (String.concat "" [ expected; " and "; actual ]) shared
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 

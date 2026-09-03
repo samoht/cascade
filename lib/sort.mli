@@ -18,6 +18,9 @@ type t =
   | Property_value  (** The right-hand side of a declaration. *)
   | Stylesheet  (** A whole section 5.4 stylesheet. *)
 
+val equal : t -> t -> bool
+(** [equal a b] is whether [a] and [b] are the same sort. *)
+
 val pp : t Pp.t
 (** [pp] renders the sort as a lowercase identifier, e.g. [at-rule]. *)
 

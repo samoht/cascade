@@ -162,13 +162,28 @@ val pp :
     {!pp_warnings} and {!pp_diff} are the two halves, for callers that need to
     size or bound the sections independently. *)
 
+(** Which side of the comparison raised a warning. *)
+type warning_side = Expected | Actual | Both
+
+val warnings : t -> (warning_side * Error.t) list
+(** [warnings t] is every parse warning the comparison collected, grouped as the
+    report prints them: the warnings only the expected side raised, then those
+    only the actual side raised, then those both raised. A warning both sides
+    raise appears once, as {!constructor-Both}, carrying the expected side's
+    copy, because the same complaint at two byte offsets is one fact about the
+    input. Two warnings are the same complaint when they fail the same way at
+    the same place in the grammar, whatever offset each side reached it at. *)
+
 val pp_warnings :
   ?expected:string -> ?actual:string -> ?max:int -> Buffer.t -> t -> unit
 (** [pp_warnings ?expected ?actual ?max buf result] renders only the parse
-    warnings each side accumulated. [max] caps how many are printed per side
-    (default: all); the remainder is reported as a count, so a stylesheet that
-    trips the same unsupported syntax hundreds of times cannot bury the diff
-    those warnings qualify. *)
+    warnings each side accumulated. A warning both sides raise is rendered once
+    under a label naming both files, with the expected side's snippet, and it
+    counts once against [max]. One-sided warnings lead: expected-only, then
+    actual-only, then shared. [max] caps the total printed across all groups
+    (default: all); the remainder of each group is reported as a count, so a
+    stylesheet that trips the same unsupported syntax hundreds of times cannot
+    bury the diff those warnings qualify. *)
 
 val pp_diff :
   ?expected:string ->
