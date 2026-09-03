@@ -82,32 +82,70 @@ let unreadable_declaration (w : Cascade.Error.t) =
   | Bad_condition _ | Unknown_at_rule _ | Unterminated _ ->
       false
 
+(* A rule the reader refuses goes the same way, and takes every declaration and
+   nested rule it holds. Each kind below was checked by running [cascade fmt] on
+   an input that raises it and looking for the construct in the output. An
+   unterminated qualified rule, a prelude read as a declaration, an at-rule
+   condition the grammar refuses and a lexeme the reader needed and did not find
+   all leave nothing behind. An unterminated block is closed with its contents.
+   [Bad_value] at [Sort.Component] is the declaration counted above; elsewhere
+   it, [Bad_selector] and [Unknown_at_rule] report on material the parse
+   kept. *)
+let unreadable_rule (w : Cascade.Error.t) =
+  match w.kind with
+  | Cascade.Error.Unterminated _ ->
+      not (Cascade.Sort.equal w.sort Cascade.Sort.Block)
+  | Sort_mismatch _ | Unexpected_token _ | Missing_token _ | Bad_condition _ ->
+      true
+  | Bad_value _ | Bad_selector _ | Unknown_at_rule _ -> false
+
 (* Counted per side, because the question is whether either input hid something
    from the comparison, not how many the pair hid between them. *)
-type unread = { expected : int; actual : int }
+type sides = { expected : int; actual : int }
 
-let count_unread ws = List.length (List.filter unreadable_declaration ws)
+(* Declarations and rules are counted apart, because a consumer reads the two to
+   tell which of them its sheet lost. *)
+type unread = { declarations : sides; rules : sides }
 
-let unread_of (result : Cascade_diff.Css_compare.t) =
+let count_sides p (result : Cascade_diff.Css_compare.t) =
+  let count ws = List.length (List.filter p ws) in
   {
-    expected = count_unread result.expected_warnings;
-    actual = count_unread result.actual_warnings;
+    expected = count result.expected_warnings;
+    actual = count result.actual_warnings;
   }
 
-let has_unread u = u.expected > 0 || u.actual > 0
+let unread_of result =
+  {
+    declarations = count_sides unreadable_declaration result;
+    rules = count_sides unreadable_rule result;
+  }
+
+let has_sides s = s.expected > 0 || s.actual > 0
+let has_unread u = has_sides u.declarations || has_sides u.rules
+
+let render_sides ~what ~file1 ~file2 s =
+  if not (has_sides s) then ""
+  else
+    String.concat ""
+      [
+        "Unreadable ";
+        what;
+        ": ";
+        file1;
+        " ";
+        string_of_int s.expected;
+        ", ";
+        file2;
+        " ";
+        string_of_int s.actual;
+        "\n";
+      ]
 
 let render_unread ~file1 ~file2 u =
   String.concat ""
     [
-      "Unreadable declarations: ";
-      file1;
-      " ";
-      string_of_int u.expected;
-      ", ";
-      file2;
-      " ";
-      string_of_int u.actual;
-      "\n";
+      render_sides ~what:"declarations" ~file1 ~file2 u.declarations;
+      render_sides ~what:"rules" ~file1 ~file2 u.rules;
     ]
 
 let render_diff ~color ~file1 ~file2 ~entries result =
@@ -466,18 +504,19 @@ let json_warnings (result : Cascade_diff.Css_compare.t) =
        (fun (s, w) -> json_side (side s) (Cascade.Error.to_string w))
        (Cascade_diff.Css_compare.warnings result))
 
-(* The count a consumer reads to assert that nothing was hidden from the
-   comparison, beside the verdict that count qualifies. *)
-let json_unread u =
-  J.Obj [ ("expected", J.Int u.expected); ("actual", J.Int u.actual) ]
+(* The counts a consumer reads to assert that nothing was hidden from the
+   comparison, beside the verdict they qualify. *)
+let json_sides s =
+  J.Obj [ ("expected", J.Int s.expected); ("actual", J.Int s.actual) ]
 
 let json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
   let outcome = result.Cascade_diff.Css_compare.result in
-  (* An unreadable declaration is dropped from both sides, so a comparison that
-     found no difference has not shown the two files to be identical. *)
+  (* A declaration or a rule the reader refuses is dropped from both sides, so a
+     comparison that found no difference has not shown the two files to be
+     identical. *)
   let identical =
     match outcome with
     | No_diff -> not (has_unread unread)
@@ -497,7 +536,8 @@ let json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result =
        ("actual", json_string file2);
        ("mode", json_string (json_mode mode));
        ("identical", J.Bool identical);
-       ("unreadable_declarations", json_unread unread);
+       ("unreadable_declarations", json_sides unread.declarations);
+       ("unreadable_rules", json_sides unread.rules);
        ("stats", json_stats stats);
        ("warnings", json_warnings result);
        ("errors", J.List (json_errors outcome));
@@ -538,8 +578,8 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
     in
     match result.Cascade_diff.Css_compare.result with
     | No_diff -> (
-        (* Equal ASTs can still hide parse-dropped declarations; show the
-           warnings so the equality verdict is honest about them. *)
+        (* Equal ASTs can still hide what the parse dropped; show the warnings
+           so the equality verdict is honest about them. *)
         let max = warning_budget limit in
         print_string (render_warnings ~file1 ~file2 ~max result);
         let unread = unread_of result in
@@ -548,8 +588,8 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
             Fmt.pr "CSS files are identical@.";
             Ok ()
         | true ->
-            (* The comparison saw no difference and never saw the dropped
-               declarations either, so identity is not a verdict it can give. *)
+            (* The comparison saw no difference and never saw what the parse
+               dropped either, so identity is not a verdict it can give. *)
             print_string (render_unread ~file1 ~file2 unread);
             Fmt.pr "Cannot determine whether the CSS files are identical@.";
             Stdlib.exit Cli_exit.cannot_determine)
@@ -724,22 +764,22 @@ let cmd =
         Cmd.Exit.info
           ~doc:
             "if the CSS files are identical and cascade read every declaration \
-             in them"
+             and every rule in them"
           0;
         Cmd.Exit.info
           ~doc:
             "if the CSS files differ. Under $(b,--diff=canonical) that is any \
              difference between their canonical forms, whether or not the \
-             structural walk reached it. A known difference outranks an \
-             unreadable declaration, so this status wins over 2"
+             structural walk reached it. A known difference outranks anything \
+             cascade could not read, so this status wins over 2"
           1;
         Cmd.Exit.info
           ~doc:
             "if the comparison found no difference and cascade could not read \
-             a declaration one of the files holds. The reader drops such a \
-             declaration from both sides, so the comparison never sees it and \
-             cannot call the two files identical. The report and the \
-             $(b,--json) document both count them per side"
+             a declaration or a rule one of the files holds. The reader drops \
+             it from both sides, so the comparison never sees it and cannot \
+             call the two files identical. The report and the $(b,--json) \
+             document count declarations and rules per side"
           Cli_exit.cannot_determine;
         Cmd.Exit.info ~doc:"on command-line errors or unreadable input files"
           124;
