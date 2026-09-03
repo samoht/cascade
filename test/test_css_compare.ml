@@ -312,6 +312,45 @@ let canonical_supports_hoisting () =
         (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
         50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}")
 
+(* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
+   and substitute its computed value into the property containing [var()]. A
+   [color] declaration therefore reads [--x] without writing it: crossing a
+   guarded [--x] write is safe, while crossing a guarded [color] write is
+   not. *)
+let canonical_var_reader_crosses_guarded_writer () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let condition = "(color:color-mix(in lab,red,red))" in
+  Alcotest.(check bool)
+    "a var() reader crosses an independent guarded writer" true
+    (equal
+       (String.concat ""
+          [
+            ".a{--x:red}.a{color:var(--x)}@supports ";
+            condition;
+            "{.a{--x:blue}}";
+          ])
+       (String.concat ""
+          [
+            ".a{--x:red}@supports ";
+            condition;
+            "{.a{--x:blue}}.a{color:var(--x)}";
+          ]));
+  Alcotest.(check bool)
+    "a competing guarded write pins the var() reader" false
+    (equal
+       (String.concat ""
+          [
+            ".a{--x:red;color:var(--x)}@supports ";
+            condition;
+            "{.a{color:blue}}";
+          ])
+       (String.concat ""
+          [
+            ".a{--x:red}@supports ";
+            condition;
+            "{.a{color:blue}}.a{color:var(--x)}";
+          ]))
+
 (* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
    [hue-rotate] names a filter function and nothing else, so the two spellings
    are one value wherever the stream is substituted. *)
@@ -1623,6 +1662,8 @@ let suite =
         `Quick canonical_declaration_after_nested_rule;
       Alcotest.test_case "canonical supports hoisting" `Quick
         canonical_supports_hoisting;
+      Alcotest.test_case "canonical var reader crosses guarded writer" `Quick
+        canonical_var_reader_crosses_guarded_writer;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
         canonical_important_custom_property_distinct;
       Alcotest.test_case "canonical ignores @property order" `Quick
