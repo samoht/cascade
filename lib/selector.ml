@@ -2177,12 +2177,12 @@ let add_selector_uchar buf ~add_ascii i u =
   if cp < 0x80 then add_ascii i (Char.chr cp)
   else add_selector_hex_escape buf cp
 
-let add_selector_malformed buf ~add_ascii i bytes =
-  String.iteri
-    (fun offset c ->
-      if Char.code c < 0x80 then add_ascii (i + offset) c
-      else add_selector_hex_escape buf (Char.code c))
-    bytes
+let add_selector_malformed buf ~add_ascii name i len =
+  for j = i to i + len - 1 do
+    let c = name.[j] in
+    if Char.code c < 0x80 then add_ascii j c
+    else add_selector_hex_escape buf (Char.code c)
+  done
 
 (* Fast path: most identifiers in real CSS are pure ASCII without any of the
    characters the full escaper would need to handle. [is_safe_nmchar] is the
@@ -2233,16 +2233,17 @@ let escape_selector_name name =
     let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
     (* A name with escapable punctuation but no byte >= 0x80 (the common
        Tailwind case: [hover:p-4], [w-1/2], [bg-[#fff]]) has no multi-byte
-       sequence to decode, so escape it byte by byte and skip [Uutf], which
+       sequence to decode, so escape it byte by byte and skip the decoder, which
        would box a [Uchar] per character. [String.iteri]'s index is the byte
-       offset, which equals the [Uutf] fold's index for single-byte input. *)
+       offset, which equals the fold's index for single-byte input. *)
     if name_is_ascii name then String.iteri add_ascii name
     else begin
       let folder () i = function
-        | `Uchar u -> add_selector_uchar buf ~add_ascii i u
-        | `Malformed bytes -> add_selector_malformed buf ~add_ascii i bytes
+        | Common.String.Scalar u -> add_selector_uchar buf ~add_ascii i u
+        | Common.String.Malformed len ->
+            add_selector_malformed buf ~add_ascii name i len
       in
-      Uutf.String.fold_utf_8 folder () name
+      Common.String.utf8_fold folder () name
     end;
     Buffer.contents buf
 

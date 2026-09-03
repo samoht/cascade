@@ -653,8 +653,7 @@ performing the transform instead of receiving guessed locations from Cascade.
 
 ### Small runtime footprint
 
-The core `cascade` library links
-[uutf](https://erratique.ch/software/uutf), `uri`, `psq`, `logs` and
+The core `cascade` library links `uri`, `psq`, `logs` and
 [mtime](https://erratique.ch/software/mtime), which supplies the monotonic
 clock `--profile` measures factoring iterations against; it does not pull
 `fmt` or `unix`, so js_of_ocaml embedders stay lean. A local jsoo build that

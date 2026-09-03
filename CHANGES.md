@@ -949,6 +949,10 @@ difference wherever the two are not equivalent.
 
 ### Library
 
+- `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder. A parse
+  error's column now counts one replacement character per maximal subpart of
+  an ill-formed sequence, as a browser does, where the previous decoder
+  counted the whole run as one (#788)
 - The library no longer links `unix`. Timing a factoring iteration for
   `--profile` was its only use of it, and `mtime` reads the monotonic clock the
   measurement wants and ships a js_of_ocaml implementation, so embedding

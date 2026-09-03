@@ -127,37 +127,12 @@ let source t = t.input
 let enforce_spec t = t.enforce_spec
 let is_done t = t.pos >= t.len
 
-let utf8_byte_length cp =
-  if cp < 0x80 then 1
-  else if cp < 0x800 then 2
-  else if cp < 0x10000 then 3
-  else 4
-
 (* Decode the UTF-8 code point at [t.pos + offset] to [Some (cp, byte_length)],
-   [None] at EOF or on a malformed sequence. Uutf rejects overlong/surrogate/
-   out-of-range sequences per the Unicode spec. Returns [Some] only when the
-   *first* decoded element is a valid [Uchar]: [fold_utf_8] resyncs past a
-   [Malformed] start, which would fold bad bytes into the following code point
-   (and into an ident-like unit token). *)
-(* ASCII fast path before falling back to Uutf: skips the ref/closure
-   allocation that a [Uutf.String.fold_utf_8] requires per peek. *)
-let first_utf8_chunk_at input p len =
-  if len <= 0 then None
-  else
-    let b = Char.code (String.unsafe_get input p) in
-    if b < 0x80 then Some (Uchar.unsafe_of_int b)
-    else
-      let result = ref None in
-      let seen = ref false in
-      let folder () _ chunk =
-        if !seen then ()
-        else (
-          seen := true;
-          match chunk with `Uchar u -> result := Some u | `Malformed _ -> ())
-      in
-      Uutf.String.fold_utf_8 ~pos:p ~len folder () input;
-      !result
-
+   [None] at EOF or on a malformed sequence. The decoder rejects
+   overlong/surrogate/out-of-range sequences per the Unicode spec, and reading
+   only the element the position opens keeps bad bytes out of the code point
+   that follows them (and out of an ident-like unit token). An ASCII fast path
+   comes first: the byte is its own code point and needs no decoding. *)
 let peek_utf8_at t offset =
   if offset < 0 || offset >= t.len - t.pos then None
   else
@@ -166,11 +141,10 @@ let peek_utf8_at t offset =
     if b < 0x80 then Some (b, 1)
     else
       let len = min 4 (t.len - p) in
-      match first_utf8_chunk_at t.input p len with
-      | None -> None
-      | Some u ->
-          let cp = Uchar.to_int u in
-          Some (cp, utf8_byte_length cp)
+      match Common.String.utf8_decode ~pos:p ~len t.input with
+      | Some (Common.String.Scalar u) ->
+          Some (Uchar.to_int u, Uchar.utf_8_byte_length u)
+      | Some (Common.String.Malformed _) | None -> None
 
 let peek_utf8 t = peek_utf8_at t 0
 
@@ -223,13 +197,13 @@ let err ?got t expected =
   let context, marker_pos = context_window t in
   (* Scan forward from the start of the input, so a newline ends the line it
      sits on and the byte after it opens the next one at column 1. A column
-     counts Unicode scalar values, like the caret. *)
+     counts decoded elements, like the caret. *)
   let line, col =
-    Uutf.String.fold_utf_8 ~len:t.pos
+    Common.String.utf8_fold ~len:t.pos
       (fun (line, col) _ decoded ->
         match decoded with
-        | `Uchar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
-        | `Uchar _ | `Malformed _ -> (line, col + 1))
+        | Common.String.Scalar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
+        | Common.String.Scalar _ | Common.String.Malformed _ -> (line, col + 1))
       (1, 1) t.input
   in
   raise
