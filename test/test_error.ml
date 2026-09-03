@@ -1,4 +1,5 @@
-(** Error module tests: rendering of the sealed kind and named constructors. *)
+(** Error module tests: rendering of the sealed kind and named constructors, and
+    where a reader anchors the value it rejects. *)
 
 open Cascade
 
@@ -172,6 +173,46 @@ let source_context () =
            color red;\n\
            ^^^^^")
 
+(* A reader that consumes the offending token before rejecting it still owns
+   that token: the span marks the value the author wrote, not whatever follows
+   it. When the bad value ends the declaration, "whatever follows" is the
+   terminator, so the caret lands on punctuation. *)
+let parse_warnings css =
+  match Css.of_string ~strict:false css with
+  | Error e -> Alcotest.failf "fatal parse error: %s" (Error.to_string e)
+  | Ok { Css.warnings; _ } -> warnings
+
+let marked css =
+  List.map
+    (fun (w : Error.t) ->
+      String.sub css w.loc.start_pos (w.loc.end_pos - w.loc.start_pos))
+    (parse_warnings css)
+
+let value_span_marks_the_rejected_value () =
+  List.iter
+    (fun (css, expected) ->
+      Alcotest.(check (list string)) css [ expected ] (marked css))
+    [
+      (* Readers reached through a keyword table already mark their own
+         value. *)
+      (".x { float: center }", "center");
+      (* Readers that consume first, one per rejecting site. *)
+      (".x { color: nope }", "nope");
+      (".x { font-palette: nope }", "nope");
+      (".x { font: nope }", "nope");
+      (".x { offset: nope }", "nope");
+      (".x { font-style: nope }", "nope");
+      (".x { scrollbar-gutter: nope }", "nope");
+      (".x { paint-order: nope }", "nope");
+      (".x { vector-effect: nope }", "nope");
+      (* A whole-value reader marks the whole value it read. *)
+      (".x { font: bold nope 12pt sans-serif }", "bold nope 12pt sans-serif");
+      (".x { animation-name: slide nope }", "nope");
+      (* The span is one token late rather than pinned to the terminator: a
+         value with something after it marks that something. *)
+      (".x { color: nope red }", "nope");
+    ]
+
 let suite =
   ( "error",
     [
@@ -193,4 +234,6 @@ let suite =
       Alcotest.test_case "ascii caret unmoved" `Quick ascii_caret_unmoved;
       Alcotest.test_case "caret marks the line it points at" `Quick
         caret_marks_the_line_it_points_at;
+      Alcotest.test_case "value span marks the rejected value" `Quick
+        value_span_marks_the_rejected_value;
     ] )
