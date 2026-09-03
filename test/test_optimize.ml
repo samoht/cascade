@@ -894,6 +894,10 @@ let test_drop_invalid_reaches_keyframe_frames () =
     "a style rule drops the invalid declaration" "a{opacity:0}"
     (recovered "a{width:asin(sin(45deg));opacity:0}");
   Alcotest.(check string)
+    "every length-percentage property drops an invalid value" "a{opacity:0}"
+    (recovered
+       "a{width:asin(sin(45deg));shape-margin:asin(sin(45deg));offset-distance:asin(sin(45deg));opacity:0}");
+  Alcotest.(check string)
     "a keyframe frame drops it too" "@keyframes k{0%{opacity:0}}"
     (recovered "@keyframes k{from{width:asin(sin(45deg));opacity:0}}");
   Alcotest.(check string)

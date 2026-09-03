@@ -226,6 +226,70 @@ let interval_clear scan ~lo ~hi mems =
   done;
   !ok
 
+(* Moving an earlier [@supports] block down to a later block with the same
+   condition happens only when that condition is true. In that case a
+   declaration in the later block can make an intervening declaration
+   irrelevant: an identical selector writing the same non-important property
+   wins after both the original and merged order. Remove only those exact
+   shadowed writes before asking whether the earlier block still conflicts with
+   the interval. Other statements and importance combinations stay pinned. *)
+let drop_shadowed_by_rules later_rules (rule : rule) : rule =
+  let selector = Pp.to_string ~minify:true Selector.pp rule.selector in
+  let shadowed : (Declaration.prop_key, unit) Hashtbl.t = Hashtbl.create 8 in
+  List.iter
+    (fun (later : rule) ->
+      if
+        String.equal selector
+          (Pp.to_string ~minify:true Selector.pp later.selector)
+      then
+        List.iter
+          (fun decl ->
+            if not (Declaration.is_important decl) then
+              Hashtbl.replace shadowed (Declaration.property_key decl) ())
+          later.declarations)
+    later_rules;
+  let declarations =
+    List.filter
+      (fun decl ->
+        Declaration.is_important decl
+        || not (Hashtbl.mem shadowed (Declaration.property_key decl)))
+      rule.declarations
+  in
+  if List.compare_lengths declarations rule.declarations = 0 then rule
+  else { rule with declarations }
+
+let rules_conflict ?parent a b =
+  let graph = Rule_graph.of_rules ?parent [ a; b ] in
+  Rule_graph.conflict graph
+    (Rule_graph.Node_id.of_int_exn 0)
+    (Rule_graph.Node_id.of_int_exn 1)
+
+let supports_merge_down_clear ?parent scan ~from ~into =
+  match (fst scan.arr.(from), fst scan.arr.(into)) with
+  | Supports _, Supports _ ->
+      let moving = element_node (fst scan.arr.(from)) (snd scan.arr.(from)) in
+      let later_rules = snd scan.arr.(into) in
+      let node i = Rule_graph.Node_id.of_int_exn i in
+      let rec clear i =
+        if i >= into then true
+        else
+          let conflicts =
+            match fst scan.arr.(i) with
+            | Rule rule ->
+                let residual = drop_shadowed_by_rules later_rules rule in
+                residual.declarations <> []
+                && rules_conflict ?parent moving residual
+            | _ ->
+                List.exists
+                  (fun member ->
+                    Rule_graph.conflict scan.graph (node i) (node member))
+                  scan.members.(from)
+          in
+          (not conflicts) && clear (i + 1)
+      in
+      clear (from + 1)
+  | _ -> false
+
 (* The shape a run element folds in: a style rule merges declaration lists under
    one selector, a conditional block concatenates bodies under an unchanged
    prelude. [element_shape] is the one place the statements that can pair are
@@ -323,8 +387,11 @@ module Shape_table = Hashtbl.Make (Shape_key)
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
-let try_merge ~canon_body scan changed ~last ~key i j =
-  if interval_clear scan ~lo:i ~hi:j scan.members.(i) then begin
+let try_merge ~canon_body ?parent scan changed ~last ~key i j =
+  if
+    interval_clear scan ~lo:i ~hi:j scan.members.(i)
+    || supports_merge_down_clear ?parent scan ~from:i ~into:j
+  then begin
     merge ~canon_body scan changed ~from:i ~into:j;
     Shape_table.replace last key j
   end
@@ -376,7 +443,7 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
         | Some key -> (
             match Shape_table.find_opt last key with
             | Some i when scan.alive.(i) ->
-                try_merge ~canon_body scan changed ~last ~key i j
+                try_merge ~canon_body ?parent scan changed ~last ~key i j
             | _ -> Shape_table.replace last key j)
       done;
       if not scan.merged_any then run

@@ -670,27 +670,6 @@ let kind_equal : type a b.
   | Properties.Font_src, Properties.Font_src -> Some Refl
   | _ -> None
 
-(* CSS Cascade 5 sec. 7.2 lists inherited properties; the rest default to the
-   property's initial value when no value is supplied. *)
-let property_is_inherited = function
-  | "color" | "cursor" | "direction" | "font-family" | "font-feature-settings"
-  | "font-kerning" | "font-language-override" | "font-optical-sizing"
-  | "font-size" | "font-size-adjust" | "font-stretch" | "font-style"
-  | "font-synthesis" | "font-variant" | "font-variant-alternates"
-  | "font-variant-caps" | "font-variant-east-asian" | "font-variant-emoji"
-  | "font-variant-ligatures" | "font-variant-numeric" | "font-variant-position"
-  | "font-weight" | "font" | "hyphens" | "letter-spacing" | "line-height"
-  | "list-style" | "list-style-image" | "list-style-position"
-  | "list-style-type" | "orphans" | "quotes" | "tab-size" | "text-align"
-  | "text-align-last" | "text-decoration-skip-ink" | "text-emphasis"
-  | "text-emphasis-color" | "text-emphasis-position" | "text-emphasis-style"
-  | "text-indent" | "text-justify" | "text-orientation" | "text-rendering"
-  | "text-shadow" | "text-transform" | "text-underline-position" | "visibility"
-  | "white-space" | "widows" | "word-break" | "word-spacing" | "word-wrap"
-  | "writing-mode" ->
-      true
-  | _ -> false
-
 let read_full_components read components =
   match
     let cursor = Cursor.of_components components in
@@ -2408,6 +2387,21 @@ let simplify_filter ?layer_order ?layer cascade length_ctx value =
 
 type css_wide_keyword = Inherit | Initial | Unset | Revert | Revert_layer
 
+(* [pp_property_value] is exhaustive over the sealed property GADT, so this
+   generic path cannot silently miss a newly added property. CSS-wide keywords
+   are reserved from every property's ordinary grammar, making an exact minified
+   rendering unambiguous here. *)
+let css_wide_of_property_value property value =
+  match
+    Pp.to_string ~minify:true Properties.pp_property_value (property, value)
+  with
+  | "inherit" -> Some Inherit
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  | _ -> None
+
 let css_wide_of_length (value : Values.length) =
   match value with
   | Values.Inherit -> Some Inherit
@@ -3552,10 +3546,17 @@ let rec eval_typed ?layer_order ?layer ctx decl =
       Declaration.theme_guarded ~var_name
         (eval_typed ~layer_order ?layer ctx decl)
   | Declaration.Declaration { property; value; important; _ } -> (
-      match Properties.property_value_kind property with
-      | Some kind ->
-          eval_kind ~layer_order ?layer ctx kind property important value
-      | None -> decl)
+      match css_wide_of_property_value property value with
+      | Some keyword ->
+          Option.value
+            (resolve_css_wide_keyword ~layer_order ctx ~important ~property
+               keyword)
+            ~default:decl
+      | None -> (
+          match Properties.property_value_kind property with
+          | Some kind ->
+              eval_kind ~layer_order ?layer ctx kind property important value
+          | None -> decl))
 
 and resolve_typed : type b.
     layer_order:string list ->
@@ -3570,8 +3571,7 @@ and resolve_typed : type b.
   let value = simplify value in
   Option.value
     (Option.bind (css_wide_of value) (fun keyword ->
-         resolve_css_wide_keyword ~layer_order ctx ~important
-           ~property_name:(property_name property) keyword))
+         resolve_css_wide_keyword ~layer_order ctx ~important ~property keyword))
     ~default:(Declaration.v ~important property value)
 
 and eval_kind : type a.
@@ -3587,8 +3587,15 @@ and eval_kind : type a.
   let simplify, css_wide_of = kind_simplifier ~layer_order ?layer ctx kind in
   resolve_typed ~layer_order ctx simplify css_wide_of property important value
 
-and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name keyword
-    =
+and resolve_css_wide_keyword : type b.
+    layer_order:string list ->
+    t ->
+    important:bool ->
+    property:b Properties.property ->
+    css_wide_keyword ->
+    Declaration.declaration option =
+ fun ~layer_order ctx ~important ~property keyword ->
+  let property_name = property_name property in
   let eval_source ctx decl = eval_typed ~layer_order ctx decl in
   let inherit_source () =
     match inherited_value property_name ctx with
@@ -3597,7 +3604,7 @@ and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name keyword
   in
   let initial_source () = initial_value property_name ctx in
   let unset_source () =
-    if property_is_inherited property_name then inherit_source ()
+    if Properties.property_is_inherited property then inherit_source ()
     else initial_source ()
   in
   let cascade_source () =

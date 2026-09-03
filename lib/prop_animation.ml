@@ -155,7 +155,7 @@ let split_ws_words s =
   |> List.filter (fun word -> String.length word > 0)
 
 let canonical_scroll_timeline_args args =
-  let words = split_ws_words args in
+  let words = List.map String.lowercase_ascii_preserve (split_ws_words args) in
   let axes = [ "block"; "inline" ] in
   let scrollers = [ "nearest"; "root"; "self" ] in
   if
@@ -1908,11 +1908,14 @@ let read_animation_range_name t : animation_range_name =
 let animation_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
 
+let is_animation_range_name name =
+  List.mem (String.lowercase_ascii_preserve name) animation_range_names
+
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
   if Cursor.is_done t then (None : length_percentage option)
   else
-    match Cursor.peek_ident t with
+    match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
     | Some "normal" -> (None : length_percentage option)
     | Some next when List.mem next animation_range_names ->
         (None : length_percentage option)
@@ -1932,7 +1935,7 @@ let rec read_animation_range_item t : animation_range_item =
   let read_item t =
     Cursor.ws t;
     match Cursor.peek_ident t with
-    | Some name when List.mem name animation_range_names ->
+    | Some name when is_animation_range_name name ->
         let name : animation_range_name = read_animation_range_name t in
         let lp = read_animation_range_offset t in
         (Named (name, lp) : animation_range_item)
@@ -1958,7 +1961,9 @@ let rec read_animation_range t : animation_range =
   let read_range t =
     let read_single t =
       Cursor.ws t;
-      match Cursor.peek_ident t with
+      match
+        Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t)
+      with
       | Some "normal" ->
           let _ = Cursor.ident t in
           (Normal : animation_range_item)

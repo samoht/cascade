@@ -174,6 +174,8 @@ difference wherever the two are not equivalent.
 
 ### Parsing
 
+- Mixed-case keywords in `animation-range` and `scroll()` parse and serialize
+  in their canonical lowercase form (#767)
 - Grid track sizes accept math functions that resolve to `<flex>`, including
   `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
   repeated and automatic tracks (#749)
@@ -501,11 +503,20 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- Invalid math results in `shape-margin` and `offset-distance` are dropped like
+  those in every other `<length-percentage>` property (#766)
 - `--flatten-nesting` leaves the optimised stylesheet flat even when later
   regrouping can shorten adjacent selectors by synthesizing nesting (#759)
 - Canonical diff compares authored nesting through its flattened selector
   expansion, so equivalent nested and flat stylesheets do not leave residuals
   (#760)
+- Computed-value evaluation resolves direct `inherit`, `initial`, `unset`,
+  `revert` and `revert-layer` values for every typed property, including value
+  shapes without a property-specific optimizer (#764)
+- Property inheritance is one exhaustive classification keyed by the typed
+  property identity. `cascade apply --minimal` now drops inherited
+  `writing-mode` restatements, and computed-value `unset` resolution cannot
+  drift onto a different table (#763)
 - Default `--minify` evaluates all-static unitless `line-height:calc()`
   arithmetic to its six-significant-figure output budget, so `calc(28/18)`
   becomes `1.55556`. `--lossless` keeps repeating quotients symbolic, and
@@ -851,6 +862,9 @@ difference wherever the two are not equivalent.
 
 ### Canonical diff
 
+- Canonical diff no longer reports a reorder when equal `@supports` blocks are
+  hoisted together across a declaration the later block shadows whenever their
+  condition holds. A crossing that changes the winner stays distinct (#775)
 - Canonical numeric arithmetic has an explicit precision contract:
   `calc(28/14)` compares equal to `2`; default mode equates `calc(28/18)` with
   the minifier's `1.55556`, while `--lossless` keeps them distinct (#753, #756)

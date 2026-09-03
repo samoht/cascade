@@ -129,7 +129,7 @@ let tree_style = { use_tree = true; color = false; depth = unlimited_depth }
 (* ANSI color helpers. Plain text unless [color] is set: the printers write into
    a [Buffer.t], so tty detection cannot happen here; the caller decides. *)
 let ansi code ~color s =
-  if color then "\027[" ^ code ^ "m" ^ s ^ "\027[0m" else s
+  if color then String.concat "" [ "\027["; code; "m"; s; "\027[0m" ] else s
 
 let ansi_green ~color s = ansi "32" ~color s
 let ansi_red ~color s = ansi "31" ~color s
@@ -231,19 +231,23 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
   match String_diff.first_diff_pos expected_value actual_value with
   | None ->
       (* Shouldn't happen but handle gracefully *)
-      Buffer.add_string buf
-        (indent ^ "* " ^ property_name ^ ": (no diff detected)\n")
+      add_strings buf [ indent; "* "; property_name; ": (no diff detected)\n" ]
   | Some _ ->
       let len1 = String.length expected_value in
       let len2 = String.length actual_value in
       if len1 <= 30 && len2 <= 30 then
         (* Short values: show inline with red for old, green for new *)
-        Buffer.add_string buf
-          (indent ^ "* " ^ property_name ^ ": "
-          ^ ansi_red ~color:style.color expected_value
-          ^ " -> "
-          ^ ansi_green ~color:style.color actual_value
-          ^ "\n")
+        add_strings buf
+          [
+            indent;
+            "* ";
+            property_name;
+            ": ";
+            ansi_red ~color:style.color expected_value;
+            " -> ";
+            ansi_green ~color:style.color actual_value;
+            "\n";
+          ]
       else
         (* Long values: truncate and show as separate lines *)
         let exp_truncated =
@@ -252,15 +256,21 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
         let act_truncated =
           String_diff.truncate_middle default_truncation_length actual_value
         in
-        Buffer.add_string buf (indent ^ "* " ^ property_name ^ ":\n");
-        Buffer.add_string buf
-          (indent ^ "  "
-          ^ ansi_red ~color:style.color ("- " ^ exp_truncated)
-          ^ "\n");
-        Buffer.add_string buf
-          (indent ^ "  "
-          ^ ansi_green ~color:style.color ("+ " ^ act_truncated)
-          ^ "\n")
+        add_strings buf [ indent; "* "; property_name; ":\n" ];
+        add_strings buf
+          [
+            indent;
+            "  ";
+            ansi_red ~color:style.color ("- " ^ exp_truncated);
+            "\n";
+          ];
+        add_strings buf
+          [
+            indent;
+            "  ";
+            ansi_green ~color:style.color ("+ " ^ act_truncated);
+            "\n";
+          ]
 
 let pp_property_diffs ?(style = default_style) ?(parent_prefix = "") buf
     prop_diffs =
@@ -300,17 +310,17 @@ let property_moves ~max_count prop_names1 prop_names2 =
 
 (* Helper to print property moves *)
 let pp_property_moves buf indent moves total_diffs =
-  Buffer.add_string buf (indent ^ "* reorder: ");
+  add_strings buf [ indent; "* reorder: " ];
   List.iteri
     (fun i (prop, new_pos) ->
       if i > 0 then Buffer.add_string buf ", ";
       if new_pos >= 0 then
-        Buffer.add_string buf (prop ^ "\xe2\x86\x92" ^ string_of_int new_pos)
+        add_strings buf [ prop; "\xe2\x86\x92"; string_of_int new_pos ]
       else Buffer.add_string buf prop)
     moves;
   if total_diffs > List.length moves then
-    Buffer.add_string buf
-      (" (and " ^ string_of_int (total_diffs - List.length moves) ^ " more)");
+    add_strings buf
+      [ " (and "; string_of_int (total_diffs - List.length moves); " more)" ];
   Buffer.add_char buf '\n'
 
 let pp_property_move_summary buf indent prop_names1 prop_names2 =
@@ -327,9 +337,8 @@ let pp_same_property_reorder buf indent prop_names1 prop_names2 =
   match adjacent_swap prop_names1 prop_names2 with
   | Some (prop1, prop2) ->
       let truncate s = String_diff.truncate_middle 20 s in
-      Buffer.add_string buf
-        (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
-       ^ "\n")
+      add_strings buf
+        [ indent; "* "; truncate prop1; " \xe2\x86\x94 "; truncate prop2; "\n" ]
   | None -> pp_property_move_summary buf indent prop_names1 prop_names2
 
 (* A declaration reorder changes the cascade only when two overlapping
@@ -397,7 +406,8 @@ let pp_content_changed_body ~style ~child_prefix buf ~old_declarations
     add_strings buf
       [
         indent;
-        paint ~color:style.color (marker ^ " " ^ prop_name ^ ": " ^ value);
+        paint ~color:style.color
+          (String.concat "" [ marker; " "; prop_name; ": "; value ]);
         "\n";
       ]
   in
@@ -460,23 +470,36 @@ let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
     ~swapped_with =
   let truncate s = String_diff.truncate_middle 40 s in
   if expected_pos = actual_pos then
-    Buffer.add_string buf (prefix ^ truncate selector ^ " (moved)\n")
+    add_strings buf [ prefix; truncate selector; " (moved)\n" ]
   else
     match swapped_with with
     | Some other when abs (expected_pos - actual_pos) = 1 ->
-        Buffer.add_string buf
-          (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other
-         ^ "\n")
+        add_strings buf
+          [ prefix; truncate selector; " \xe2\x86\x94  "; truncate other; "\n" ]
     | Some other ->
-        Buffer.add_string buf
-          (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
-         ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
-         ^ string_of_int expected_pos ^ ")\n")
+        add_strings buf
+          [
+            prefix;
+            truncate selector;
+            " (position ";
+            string_of_int actual_pos;
+            ") \xe2\x86\x94  ";
+            truncate other;
+            " (position ";
+            string_of_int expected_pos;
+            ")\n";
+          ]
     | None ->
-        Buffer.add_string buf
-          (prefix ^ truncate selector ^ " (position "
-         ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
-         ^ string_of_int actual_pos ^ ")\n")
+        add_strings buf
+          [
+            prefix;
+            truncate selector;
+            " (position ";
+            string_of_int expected_pos;
+            " \xe2\x86\x92 ";
+            string_of_int actual_pos;
+            ")\n";
+          ]
 
 let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
     =
@@ -490,12 +513,20 @@ let pp_regrouped ~style ~prefix ~child_prefix buf ~from_selectors ~to_selectors
       List.iter
         (fun s ->
           add_strings buf
-            [ indent; ansi_red ~color:style.color ("- " ^ s); "\n" ])
+            [
+              indent;
+              ansi_red ~color:style.color (String.concat "" [ "- "; s ]);
+              "\n";
+            ])
         from_selectors;
       List.iter
         (fun s ->
           add_strings buf
-            [ indent; ansi_green ~color:style.color ("+ " ^ s); "\n" ])
+            [
+              indent;
+              ansi_green ~color:style.color (String.concat "" [ "+ "; s ]);
+              "\n";
+            ])
         to_selectors)
 
 let pp_rule_diff ?(style = default_style) ?(is_last = false)
@@ -563,27 +594,35 @@ let pp_rule_diff ?(style = default_style) ?(is_last = false)
 
 let pp_rule_diff_simple buf (diff : rule_diff) =
   match diff with
-  | Added { selector; _ } -> Buffer.add_string buf ("Added(" ^ selector ^ ")")
-  | Removed { selector; _ } ->
-      Buffer.add_string buf ("Removed(" ^ selector ^ ")")
+  | Added { selector; _ } -> add_strings buf [ "Added("; selector; ")" ]
+  | Removed { selector; _ } -> add_strings buf [ "Removed("; selector; ")" ]
   | Content_changed { selector; _ } ->
-      Buffer.add_string buf ("Changed(" ^ selector ^ ")")
+      add_strings buf [ "Changed("; selector; ")" ]
   | Selector_changed { old_selector; new_selector; _ } ->
-      Buffer.add_string buf
-        ("SelectorChanged(" ^ old_selector ^ "->" ^ new_selector ^ ")")
+      add_strings buf
+        [ "SelectorChanged("; old_selector; "->"; new_selector; ")" ]
   | Reordered { selector; expected_pos; actual_pos; _ } ->
-      Buffer.add_string buf
-        ("Reordered(" ^ selector ^ ":" ^ string_of_int expected_pos ^ "->"
-       ^ string_of_int actual_pos ^ ")")
+      add_strings buf
+        [
+          "Reordered(";
+          selector;
+          ":";
+          string_of_int expected_pos;
+          "->";
+          string_of_int actual_pos;
+          ")";
+        ]
   | Rearranged { selector; _ } ->
-      Buffer.add_string buf ("Rearranged(" ^ selector ^ ")")
+      add_strings buf [ "Rearranged("; selector; ")" ]
   | Regrouped { from_selectors; to_selectors } ->
-      Buffer.add_string buf
-        ("Regrouped("
-        ^ String.concat " | " from_selectors
-        ^ "->"
-        ^ String.concat " | " to_selectors
-        ^ ")")
+      add_strings buf
+        [
+          "Regrouped(";
+          String.concat " | " from_selectors;
+          "->";
+          String.concat " | " to_selectors;
+          ")";
+        ]
 
 let meaningful_rules (rules : rule_diff list) =
   List.filter
@@ -681,8 +720,9 @@ let container_label container_type condition =
   (* A nesting container is a rule's own block, and the condition names the rule
      it belongs to. Prefixing it as the others are prints [& .a], which is a
      selector matching a [.a] inside the parent, the one thing it is not. *)
-  | `Nesting -> condition ^ " { & }"
-  | container_type -> container_prefix container_type ^ " " ^ condition
+  | `Nesting -> String.concat "" [ condition; " { & }" ]
+  | container_type ->
+      String.concat "" [ container_prefix container_type; " "; condition ]
 
 (* The whole of the [@layer] statement form. The semicolon is what tells a
    layer-order pin from the block of the same name: [@layer a;] ahead of [@layer
@@ -700,12 +740,18 @@ let layer_decl_text names =
    made a [@charset] and a [@namespace] the same statement. *)
 let describe_prelude_statement (s : Css.statement) =
   match s with
-  | Charset encoding -> Some ("@charset \"" ^ encoding ^ "\";")
+  | Charset encoding ->
+      Some (String.concat "" [ "@charset \""; encoding; "\";" ])
   | Namespace (prefix, _) ->
       Some
-        ("@namespace"
-        ^ (match prefix with Some p -> " " ^ p | None -> "")
-        ^ ";")
+        (String.concat ""
+           [
+             "@namespace";
+             (match prefix with
+             | Some p -> String.concat "" [ " "; p ]
+             | None -> "");
+             ";";
+           ])
   | Layer_decl names -> Some (layer_decl_text names)
   | _ -> None
 
@@ -728,7 +774,8 @@ let statement_text_split stmt =
 (* The head of an [@layer]. *)
 let layer_block_head name =
   match name with
-  | Some name -> "@layer " ^ Css.Stylesheet.string_of_layer_name name
+  | Some name ->
+      String.concat "" [ "@layer "; Css.Stylesheet.string_of_layer_name name ]
   | None -> "@layer"
 
 let describe_statement stmt =
@@ -739,25 +786,30 @@ let describe_statement stmt =
         Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule s));
       (fun s ->
         Option.map
-          (fun (c, _) -> "@media " ^ Css.Media.to_string c)
+          (fun (c, _) -> String.concat "" [ "@media "; Css.Media.to_string c ])
           (Css.as_media s));
       (fun s -> Option.map (fun (n, _) -> layer_block_head n) (Css.as_layer s));
       (fun s ->
         Option.map
           (fun (n, c, _) ->
-            let prefix = match n with Some n -> n ^ " " | None -> "" in
+            let prefix =
+              match n with Some n -> String.concat "" [ n; " " ] | None -> ""
+            in
             let cond_str =
               match c with Some c -> Css.Container.to_string c | None -> ""
             in
-            "@container " ^ prefix ^ cond_str)
+            String.concat "" [ "@container "; prefix; cond_str ])
           (Css.as_container s));
       (fun s ->
         Option.map
-          (fun (c, _) -> "@supports " ^ Css.Supports.to_string c)
+          (fun (c, _) ->
+            String.concat "" [ "@supports "; Css.Supports.to_string c ])
           (Css.as_supports s));
       (fun s -> Option.map (fun _ -> "@property") (Css.as_property s));
       (fun s ->
-        Option.map (fun (name, _) -> "@keyframes " ^ name) (Css.as_keyframes s));
+        Option.map
+          (fun (name, _) -> String.concat "" [ "@keyframes "; name ])
+          (Css.as_keyframes s));
       (fun s -> Option.map (fun _ -> "@font-face") (Css.as_font_face s));
       describe_prelude_statement;
     ]
@@ -790,7 +842,7 @@ let rec pp_container_rules ~style ~parent_prefix ~label buf rules =
       let desc =
         Option.value (describe_statement stmt) ~default:"(other statement)"
       in
-      Buffer.add_string buf (prefix ^ desc ^ " (" ^ label ^ ")\n");
+      add_strings buf [ prefix; desc; " ("; label; ")\n" ];
       match statement_children stmt with
       | [] -> ()
       | children ->
@@ -931,7 +983,8 @@ let pp_block_pairing ~style ~child_prefix buf pairing =
       [
         indent;
         style_fn
-          (sign ^ " Block at position " ^ string_of_int pos ^ ": " ^ selectors);
+          (String.concat ""
+             [ sign; " Block at position "; string_of_int pos; ": "; selectors ]);
         "\n";
       ]
   in
@@ -992,6 +1045,20 @@ let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
   pp_children ~style ~parent_prefix:child_prefix buf (fun style buf ->
       pp_container_rules ~style ~parent_prefix:child_prefix ~label buf rules)
 
+let pp_container_reorder ~style ~is_last ~parent_prefix buf container_type
+    condition expected_pos actual_pos =
+  let prefix = tree_prefix ~style ~is_last ~parent_prefix in
+  add_strings buf
+    [
+      prefix;
+      container_label container_type condition;
+      " (position ";
+      string_of_int expected_pos;
+      " \xe2\x86\x92 ";
+      string_of_int actual_pos;
+      ")\n";
+    ]
+
 let rec pp_container_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf = function
   | Added { container_type; condition; rules } ->
@@ -1039,22 +1106,18 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
             container_changes)
   | Reordered
       { info = { container_type; condition; _ }; expected_pos; actual_pos } ->
-      let prefix = tree_prefix ~style ~is_last ~parent_prefix in
-      Buffer.add_string buf
-        (prefix
-        ^ container_label container_type condition
-        ^ " (position " ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
-        ^ string_of_int actual_pos ^ ")\n")
+      pp_container_reorder ~style ~is_last ~parent_prefix buf container_type
+        condition expected_pos actual_pos
   | Block_structure_changed
       { container_type; condition; expected_blocks; actual_blocks } ->
       pp_block_structure_changed ~style ~is_last ~parent_prefix buf
         ~container_type ~condition ~expected_blocks ~actual_blocks
 
 let pp_diff_headers ~color buf expected actual =
-  Buffer.add_string buf
-    (ansi_yellow ~color "---" ^ " " ^ ansi_yellow ~color expected ^ "\n");
-  Buffer.add_string buf
-    (ansi_yellow ~color "+++" ^ " " ^ ansi_yellow ~color actual ^ "\n")
+  add_strings buf
+    [ ansi_yellow ~color "---"; " "; ansi_yellow ~color expected; "\n" ];
+  add_strings buf
+    [ ansi_yellow ~color "+++"; " "; ansi_yellow ~color actual; "\n" ]
 
 let pp_rule_list ~style ~container_count buf rule_list =
   let rule_count = List.length rule_list in
@@ -1067,8 +1130,8 @@ let pp_rule_list ~style ~container_count buf rule_list =
 let pp_reordered_section ~style ~container_count buf = function
   | [] -> ()
   | lst ->
-      Buffer.add_string buf
-        ("Rules reordered (" ^ string_of_int (List.length lst) ^ " rules):\n");
+      add_strings buf
+        [ "Rules reordered ("; string_of_int (List.length lst); " rules):\n" ];
       pp_rule_list ~style ~container_count buf lst
 
 let pp_containers_section ~style buf containers =
@@ -1101,7 +1164,10 @@ let layer_path_name path =
   split_layer_path path
   |> List.map (fun segment ->
       if String.length segment > 0 && segment.[0] = '\000' then
-        "(anonymous " ^ String.sub segment 1 (String.length segment - 1) ^ ")"
+        String.concat ""
+          [
+            "(anonymous "; String.sub segment 1 (String.length segment - 1); ")";
+          ]
       else segment)
   |> String.concat "."
 
@@ -1116,7 +1182,12 @@ let pp_layer_swaps ~style buf swapped =
     (fun i (weaker, stronger) ->
       if i < max_layer_swaps then
         line ~is_last:false
-          (layer_path_name stronger ^ " now precedes " ^ layer_path_name weaker))
+          (String.concat ""
+             [
+               layer_path_name stronger;
+               " now precedes ";
+               layer_path_name weaker;
+             ]))
     swapped;
   match List.length swapped - max_layer_swaps with
   | hidden when hidden > 0 ->

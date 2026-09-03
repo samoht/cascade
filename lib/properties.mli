@@ -6,6 +6,12 @@ include module type of Properties_intf
 val pp_property : 'a property Pp.t
 (** [pp_property] is the pretty-printer for property names. *)
 
+val property_is_inherited : 'a property -> bool
+(** [property_is_inherited property] is whether [property] inherits by default.
+    Shorthands return [true] when every longhand they reset inherits. The
+    classification is exhaustive over the property GADT, so adding a property
+    requires an explicit decision here. *)
+
 val minified_name_carries : 'a property -> 'a -> bool
 (** [minified_name_carries property value] is whether the name {!pp_property}
     gives [property] under minify can carry [value]. A [page-break-*] property
@@ -61,7 +67,9 @@ val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
     arm cascade detected at parse time (CSS spec violations preserved verbatim
     for round-trip). [Optimize.drop_invalid], which every serialisation runs,
-    removes declarations that satisfy this predicate. *)
+    removes declarations that satisfy this predicate. The classification is
+    exhaustive over the property GADT, so adding a property requires an explicit
+    validity decision here. *)
 
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] pretty-prints a typed custom property value. *)
@@ -2678,8 +2686,9 @@ val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
 
 val property_value_kind : 'a property -> 'a property_value_kind option
-(** [property_value_kind property] classifies property value shapes that have a
-    shared typed evaluator. *)
+(** [property_value_kind property] returns the optional property-specific
+    evaluator for a value shape. Generic context evaluation, including direct
+    CSS-wide keywords, does not depend on this specialization. *)
 
 (** {2 Function names} *)
 

@@ -1229,26 +1229,26 @@ let fold_typed_expr : type a.
     (Expr (settle_computed round lf, op, settle_computed round rf), false)
   in
   let value v = (Val v, computed) in
-  match (lc, op, rc) with
-  | Num a, Add, Num b -> (calc_num (a +. b), false)
-  | Num a, Sub, Num b -> (calc_num (a -. b), false)
-  | Num a, Mul, Num b -> (calc_num (a *. b), false)
-  | Num a, Div, Num b -> (
+  let zero_fold = fold_zero_numeric_expr lc op rc in
+  match (lc, op, rc, zero_fold) with
+  | Num a, Add, Num b, _ -> (calc_num (a +. b), false)
+  | Num a, Sub, Num b, _ -> (calc_num (a -. b), false)
+  | Num a, Mul, Num b, _ -> (calc_num (a *. b), false)
+  | Num a, Div, Num b, _ -> (
       match exact_div a b with Some q -> (calc_num q, false) | None -> keep ())
-  | _ when Option.is_some (fold_zero_numeric_expr lc op rc) ->
-      (Option.get (fold_zero_numeric_expr lc op rc), false)
-  | Val a, op, Val b -> (
+  | _, _, _, Some folded -> (folded, false)
+  | Val a, op, Val b, None -> (
       match combine op a b with Some v -> value v | None -> keep ())
-  | Val _, Div, Num 0. -> keep ()
-  | Val a, ((Mul | Div) as op), Num n -> (
+  | Val _, Div, Num 0., None -> keep ()
+  | Val a, ((Mul | Div) as op), Num n, None -> (
       let exact = match r with Math_const _ -> false | _ -> true in
       match scale ~exact op a n with Some v -> value v | None -> keep ())
-  | Num n, Mul, Val a -> (
+  | Num n, Mul, Val a, None -> (
       match scale ~exact:true Mul a n with Some v -> value v | None -> keep ())
   (* CSS Values 4 sec. 10.10.1: [1 / (1 / x)] cancels the double inversion. *)
-  | Num 1., Div, Parens (Expr (Num 1., Div, x)) -> (x, false)
-  | Num 1., Div, Expr (Num 1., Div, x) -> (x, false)
-  | _ -> (
+  | Num 1., Div, Parens (Expr (Num 1., Div, x)), None -> (x, false)
+  | Num 1., Div, Expr (Num 1., Div, x), None -> (x, false)
+  | _, _, _, None -> (
       (* An identity returns one operand verbatim, so the surviving value keeps
          that operand's provenance rather than the expression's. *)
       match calc_identity ~zero ~is_zero l op r with
