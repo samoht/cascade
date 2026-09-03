@@ -128,6 +128,30 @@ let test_nested_selector_list_keeps_parent () =
   check ".p{a::before,a::after{color:red}}" ".p a:before,.p a:after{color:red}";
   check ".p{& a,& b{color:red}}" ".p a,.p b{color:red}"
 
+(* CSS Nesting 1 sec. 4 desugars [&] to the parent rule's selector wrapped in
+   [:is()], and reads a nested selector with no [&] as if it had a leading one.
+   A parent selector list spliced in bare loses that grouping: [.a, .b] under
+   [&:hover] reads back as the two branches [.a] and [.b:hover], so the
+   pseudo-class binds to the last branch alone and the first matches unguarded.
+   Selectors 4 sec. 4.2 weighs [:is()] as its most specific argument, so the
+   wrapper may go only where the whole selector is the parent list and its
+   branches already agree on one specificity. *)
+let test_list_parent_keeps_its_branches () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check ".a,.b{&:hover{color:red}}" ":is(.a,.b):hover{color:red}";
+  check ".a,.b{.c{color:red}}" ":is(.a,.b) .c{color:red}";
+  check ".a,.b{>.c{color:red}}" ":is(.a,.b)>.c{color:red}";
+  (* every branch of a nested list carries the whole parent *)
+  check ".a,.b{.c,&:hover{color:red}}"
+    ":is(.a,.b) .c,:is(.a,.b):hover{color:red}";
+  (* a second level nests inside the wrapper the first one built *)
+  check ".a,.b{&:hover{&:focus{color:red}}}" ":is(.a,.b):hover:focus{color:red}";
+  (* [&] alone spells the parent list itself, at the weight of each branch *)
+  check ".a,.b{&{color:red}}" ".a,.b{color:red}";
+  check ".a,#b{&{color:red}}" ":is(.a,#b){color:red}"
+
 (* [@-moz-document] groups rules like any other conditional at-rule, so nesting
    inside one flattens and a rule wrapping one keeps its selector: emitting the
    at-rule verbatim from inside a rule drops the parent it was written under. *)
@@ -175,6 +199,8 @@ let suite =
         test_nesting_wraps_complex_parent;
       Alcotest.test_case "nested selector list keeps the parent" `Quick
         test_nested_selector_list_keeps_parent;
+      Alcotest.test_case "list parent keeps its branches" `Quick
+        test_list_parent_keeps_its_branches;
       Alcotest.test_case "flattens inside @-moz-document" `Quick
         test_flattens_inside_moz_document;
       Alcotest.test_case "nested group rules keep the parent" `Quick
