@@ -1259,6 +1259,21 @@ let removed_charset_is_named () =
     "the entry names what was dropped" true
     (string_contains ~needle:"@charset" (render d))
 
+(* A [@keyframes] block is an at-rule of its own. Naming it as a [@layer] prints
+   "@layer @keyframes spin", which describes no CSS construct. *)
+let modified_keyframes_names_the_at_rule () =
+  let d =
+    diff_of ~expected:"@keyframes spin{from{opacity:0}to{opacity:1}}"
+      ~actual:"@keyframes spin{from{opacity:0}to{opacity:.5}}"
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "the entry names the keyframes block" true
+    (string_contains ~needle:"@keyframes spin" s);
+  Alcotest.(check bool)
+    "and does not call it a layer" false
+    (string_contains ~needle:"@layer" s)
+
 let removed_layer_statement_is_named () =
   let d =
     diff_of ~expected:"@layer a,b;.x{color:red}" ~actual:".x{color:red}"
@@ -1516,6 +1531,8 @@ let suite =
         removed_charset_is_named;
       Alcotest.test_case "removed layer statement is named" `Quick
         removed_layer_statement_is_named;
+      Alcotest.test_case "modified keyframes names the at-rule" `Quick
+        modified_keyframes_names_the_at_rule;
       Alcotest.test_case "selector group split reported" `Quick
         diff_selector_group_split_reported;
       Alcotest.test_case "selector group merge reported" `Quick
