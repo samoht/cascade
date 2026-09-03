@@ -414,7 +414,7 @@ let pp_syntax_fallback ctx value =
     (if Pp.minified ctx then
        Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
          value
-     else Parser.to_string_custom value)
+     else Parser.string_of_components value)
 
 let pp_var_ref ctx name =
   pp_var_open ctx name;
@@ -532,7 +532,7 @@ let pp_component_values ctx values =
     if Pp.minified ctx then
       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
         values
-    else Parser.to_string_custom values
+    else Parser.string_of_components values
   in
   Pp.string ctx value
 
@@ -4785,7 +4785,7 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
         if Pp.minified ctx then
           Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
             value
-        else Parser.to_string_custom value
+        else Parser.string_of_components value
       in
       Pp.string ctx (first_top_level_comma_segment rendered)
   | _ when Pp.minified ctx -> (

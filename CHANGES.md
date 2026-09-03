@@ -20,6 +20,9 @@ difference wherever the two are not equivalent.
 
 ### Breaking
 
+- `Cascade.Parser.to_string_custom` is gone. It was a second binding of the
+  same body as `Cascade.Parser.string_of_components`, which renders a
+  custom-property token stream identically; call that instead (#806)
 - `cascade` requires `cmdliner >= 2.0.0`, the release that stops `Arg.file`
   checking a `-` argument for existence, which is what lets either side of
   `cascade diff` name standard input (#796)

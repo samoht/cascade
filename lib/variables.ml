@@ -25,7 +25,7 @@ let custom_value_var_empty_fallback name =
       };
   ]
 
-let string_of_custom_value = Parser.to_string_custom
+let string_of_custom_value = Parser.string_of_components
 
 (* The first dashed-ident argument of a [var()] is the referenced custom
    property; leading whitespace is skipped. *)

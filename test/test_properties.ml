@@ -5403,7 +5403,7 @@ let canonical_math_block_context () =
   let components = Cursor.remaining (Cursor.of_string "calc([f() + 1])") in
   let actual =
     components |> canonicalize_math_whitespace_components
-    |> Parser.to_string_custom
+    |> Parser.string_of_components
   in
   check string "square block ends math context" "calc([f()+ 1])" actual
 

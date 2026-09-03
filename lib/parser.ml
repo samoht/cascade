@@ -759,15 +759,6 @@ let to_string_minified cvs = to_string_minified_with ~minify_numbers:false cvs
 let to_string_minified_numbers cvs =
   to_string_minified_with ~minify_numbers:true cvs
 
-let to_string_custom cvs =
-  let buf = Buffer.create 64 in
-  cvs_to_buffer buf cvs;
-  Buffer.contents buf
-
-(* Custom-property values are opaque token streams (CSS Custom Properties 1), so
-   [to_string_custom] keeps authored whitespace. This minified rendering is for
-   canonical output only: collapse optional whitespace in blocks and function
-   args while preserving token boundaries. *)
 let url_string_can_unquote s =
   not
     (String.exists
@@ -946,6 +937,10 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
   in
   loop None false false cvs
 
+(* Custom-property values are opaque token streams (CSS Custom Properties 1), so
+   [string_of_components] keeps every optional whitespace token. This minified
+   rendering is for canonical output only: collapse optional whitespace in
+   blocks and function args while preserving token boundaries. *)
 let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
