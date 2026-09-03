@@ -2558,27 +2558,17 @@ let read_font_face_desc name r =
         r
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
+let rec components_upto_semicolon = function
+  | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
+  | component :: rest -> component :: components_upto_semicolon rest
+
 (* CSS Variables 1 sec. 3 substitutes [var()] in a property value; an @font-face
    descriptor is not a property, so no descriptor grammar accepts a var() and
    browsers drop the whole declaration. The descriptor readers delegate to the
    shared property readers, which accept var() legitimately in property
    position, so the rejection belongs at the descriptor boundary. *)
-let rec components_have_var (components : Component.t list) =
-  List.exists
-    (fun (component : Component.t) ->
-      match component with
-      | Component.Func { node = { name; arguments; _ }; _ } ->
-          String.lowercase_ascii name = "var" || components_have_var arguments
-      | Component.Block { node = { value; _ }; _ } -> components_have_var value
-      | Component.Preserved _ -> false)
-    components
-
-let rec components_upto_semicolon = function
-  | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
-  | component :: rest -> component :: components_upto_semicolon rest
-
 let descriptor_value_has_var r =
-  components_have_var (components_upto_semicolon (Cursor.remaining r))
+  Component.has_var (components_upto_semicolon (Cursor.remaining r))
 
 (* Whether the descriptor called [name] keeps a var() for the inline pass, asked
    of the typed AST rather than of a second list of names: read a value only

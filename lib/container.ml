@@ -316,25 +316,8 @@ let rec lower_for_minify c =
       if c'' == c' then c else Not c''
   | Style _ | Scroll_state _ -> c
 
-(* A real [var()] function anywhere in the components, recursing into function
-   arguments and bracketed blocks. A [var(] inside a string or url() is an
-   atomic [Preserved] token, never a [Func], so it is data, not a reference. *)
-let rec components_have_var (components : Component.t list) =
-  List.exists
-    (fun (c : Component.t) ->
-      match c with
-      | Component.Func { node = { name; arguments; _ }; _ } ->
-          String.lowercase_ascii name = "var" || components_have_var arguments
-      | Component.Block { node = { value; _ }; _ } -> components_have_var value
-      | Component.Preserved _ -> false)
-    components
-
-let is_whitespace_component = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> true
-  | _ -> false
-
 let rec drop_leading_whitespace = function
-  | component :: rest when is_whitespace_component component ->
+  | component :: rest when Component.is_whitespace component ->
       drop_leading_whitespace rest
   | components -> components
 
@@ -759,7 +742,7 @@ let unresolved_media_feature components =
               | Some name
                 when (not
                         (trim_components value_components |> components_empty))
-                     && components_have_var value_components ->
+                     && Component.has_var value_components ->
                   let value = string_of_components value_components in
                   Some
                     (Feature_query
@@ -782,7 +765,7 @@ let atom_of_components t components =
   let components = trim_components components in
   let stripped = strip_outer_components components in
   match classify_query_surface t stripped with
-  | _ when components_have_var components -> (
+  | _ when Component.has_var components -> (
       match unresolved_media_feature components with
       | Some query -> query
       | None -> specific_of_components t stripped)

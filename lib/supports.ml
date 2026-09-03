@@ -331,11 +331,7 @@ let to_string t = Pp.to_string ~minify:false pp t
 
 (* ===== Component parser ===== *)
 
-let is_ws = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> true
-  | _ -> false
-
-let strip_components = List.filter (fun cv -> not (is_ws cv))
+let strip_components = List.filter (fun cv -> not (Component.is_whitespace cv))
 
 let closed_block = function
   | Component.Block { node = { closed; _ }; _ }
