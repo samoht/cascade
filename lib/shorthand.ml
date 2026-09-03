@@ -1241,11 +1241,35 @@ let background_image_is_vendor : Properties.background_image -> bool = function
       true
   | _ -> false
 
+(* A shorthand carries the same image the longhand does, so the prefixed
+   spelling is the same fallback whichever property writes it. [background] and
+   [mask] carry one image per layer; [border-image] and [mask-border] carry a
+   single source. *)
+let background_layer_is_vendor (layer : Properties.background) =
+  match layer with
+  | Shorthand { image = Some image; _ } -> background_image_is_vendor image
+  | _ -> false
+
+let mask_layer_is_vendor (layer : Properties.mask_layer) =
+  match layer.image with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+let mask_value_is_vendor (value : Properties.mask) =
+  match value with
+  | Layer layer -> mask_layer_is_vendor layer
+  | Layers layers -> List.exists mask_layer_is_vendor layers
+  | _ -> false
+
+let border_image_source_is_vendor (value : Properties.border_image) =
+  match value.source with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
 (* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
-   -o-). Only [display] keywords and [background-image] gradients render that
-   way, so a structural match is exhaustive. Preserves legacy fallbacks like
-   [display:-webkit-box;display:flex]: old browsers understand only the prefixed
-   spelling, so dropping the earlier declaration removes a real compat fallback. *)
+   -o-). Preserves legacy fallbacks like [display:-webkit-box;display:flex]: old
+   browsers understand only the prefixed spelling, so dropping the earlier
+   declaration removes a real compat fallback. *)
 (* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
    or-pattern does not refine the value type, so each constructor is matched on
    its own; everything else is not a sizing fallback. *)
@@ -1281,6 +1305,13 @@ let rec value_is_vendor_prefixed decl =
       background_image_is_vendor value
   | Declaration { property = Border_image_source; value; _ } ->
       background_image_is_vendor value
+  | Declaration { property = Background; value; _ } ->
+      List.exists background_layer_is_vendor value
+  | Declaration { property = Mask; value; _ } -> mask_value_is_vendor value
+  | Declaration { property = Border_image; value; _ } ->
+      border_image_source_is_vendor value
+  | Declaration { property = Mask_border; value; _ } ->
+      border_image_source_is_vendor value
   (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
      are the same browser-compat pattern: old Safari only understands the
      prefixed keyword, so the earlier declaration is a real fallback. *)

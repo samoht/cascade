@@ -503,6 +503,10 @@ difference wherever the two are not equivalent.
 
 ### Minification
 
+- `--minify` keeps a vendor-prefixed gradient written with the `background`,
+  `mask`, `border-image` or `mask-border` shorthand, as it already did for the
+  longhand. Canonical diff had reported two sheets differing only there as
+  identical (#782)
 - Invalid math results in `shape-margin` and `offset-distance` are dropped like
   those in every other `<length-percentage>` property (#766)
 - `--flatten-nesting` leaves the optimised stylesheet flat even when later
