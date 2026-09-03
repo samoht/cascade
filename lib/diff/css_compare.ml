@@ -666,6 +666,12 @@ let compute_stats ~expected_str ~actual_str diff_result =
 let stats = compute_stats
 let add_strings b ls = List.iter (Buffer.add_string b) ls
 
+(* Every warning line starts fresh: what precedes it in the report ends where it
+   ends, a snippet's caret row included. *)
+let start_line buf =
+  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
+  then Buffer.add_char buf '\n'
+
 (* Two warnings are the same complaint when they fail the same way at the same
    place in the grammar. Where in the byte stream each side ran into it is no
    part of that. *)
@@ -703,13 +709,11 @@ let partition_warnings expected actual =
   go [] (List.map keyed actual) [] (List.map keyed expected)
 
 let pp_warning buf label w =
-  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
-  then Buffer.add_char buf '\n';
+  start_line buf;
   add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ]
 
 let pp_overflow buf label hidden =
-  if Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> '\n'
-  then Buffer.add_char buf '\n';
+  start_line buf;
   add_strings buf
     [
       label;
