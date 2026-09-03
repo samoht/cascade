@@ -125,6 +125,62 @@ let pp_with_labels () =
         "pp with labels produces output" true
         (String.length output > 0)
 
+(* A file ending in a newline has N lines, not N+1: the empty string
+   [split_on_char] leaves behind is the terminator. Printing it as context adds
+   a line holding one space, below the difference the report is about. *)
+let pp_trailing_newline_adds_no_context_line () =
+  let expected = "a\nb\n" in
+  let actual = "a\nx\n" in
+  match Cascade_diff.String_diff.diff ~expected actual with
+  | None -> Alcotest.fail "expected Some"
+  | Some d ->
+      let buf = Buffer.create 256 in
+      Cascade_diff.String_diff.pp buf d;
+      Alcotest.(check string)
+        "a terminating newline contributes no context line"
+        (String.concat "\n"
+           [
+             "Strings differ at position 2 (line 1, col 0)";
+             "";
+             "--- Expected";
+             "+++ Actual";
+             "@@ position 2 @@";
+             " a";
+             "-b";
+             "+x";
+             " ^";
+             "";
+           ])
+        (Buffer.contents buf)
+
+(* A real empty line before the terminator is context and stays visible. Only
+   the final empty element created by the terminating newline is synthetic. *)
+let pp_trailing_blank_line_keeps_one_context_line () =
+  let expected = "a\nb\n\n" in
+  let actual = "a\nx\n\n" in
+  match Cascade_diff.String_diff.diff ~expected actual with
+  | None -> Alcotest.fail "expected Some"
+  | Some d ->
+      let buf = Buffer.create 256 in
+      Cascade_diff.String_diff.pp buf d;
+      Alcotest.(check string)
+        "one authored blank context line remains"
+        (String.concat "\n"
+           [
+             "Strings differ at position 2 (line 1, col 0)";
+             "";
+             "--- Expected";
+             "+++ Actual";
+             "@@ position 2 @@";
+             " a";
+             "-b";
+             "+x";
+             " ^";
+             " ";
+             "";
+           ])
+        (Buffer.contents buf)
+
 let pp_short_lines_keeps_after_context () =
   let expected = "a\nb\nc\nd\ne" in
   let actual = "a\nx\nc\nd\ne" in
@@ -185,4 +241,8 @@ let suite =
       Alcotest.test_case "pp with labels" `Quick pp_with_labels;
       Alcotest.test_case "pp short lines keeps after context" `Quick
         pp_short_lines_keeps_after_context;
+      Alcotest.test_case "pp trailing newline adds no context line" `Quick
+        pp_trailing_newline_adds_no_context_line;
+      Alcotest.test_case "pp trailing blank line keeps one context line" `Quick
+        pp_trailing_blank_line_keeps_one_context_line;
     ] )
