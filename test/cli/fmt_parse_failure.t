@@ -32,20 +32,21 @@ Reading from stdin reports the same way.
   $ grep '^Error' err3.txt
   Error: <stdin>: parse dropped every rule; refusing to write an empty stylesheet
 
-A rule whose only declaration has a declaration-safe value that the typed
-reader rejects is preserved opaquely. The parse leaves a printable
-statement and reports the typed failure as a warning.
+A rule whose only declaration does not validate is a partial loss, not a
+total one. CSS Syntax 3 sec. 5.4.4 discards the declaration and returns
+the rule that held it, so the parse leaves a statement; that statement
+has nothing to print, so the output is empty all the same.
 
   $ cat > one-bad-rule.css <<EOF
   > .b { color: notacolor }
   > EOF
   $ cascade fmt one-bad-rule.css > out2.css 2> err2.txt
   $ wc -c < out2.css | tr -d ' '
-  27
+  0
   $ grep '^Error' err2.txt
   [1]
 
-The declaration's typed failure is still reported.
+The declaration that went is still reported.
 
   $ grep -c 'notacolor' err2.txt
   2
@@ -58,7 +59,7 @@ the exit status stays 0.
   > .ok { color: blue }
   > EOF
   $ cascade fmt --minify partial.css 2> /dev/null
-  .b{color:notacolor}.ok{color:#00f}
+  .ok{color:#00f}
 
 Whatever the parser lost. A selector it cannot read takes the whole rule
 that carried it, and the rules either side are written.

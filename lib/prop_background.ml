@@ -461,22 +461,7 @@ let length_of_border_width : border_width -> length option = function
   | Zero -> Some Zero
   | _ -> None
 
-let length_of_border_width_calc calc =
-  let rec aux : border_width calc -> length calc option = function
-    | Val width ->
-        Option.map (fun length -> Val length) (length_of_border_width width)
-    | Num n -> Some (Num n)
-    | Math_const c -> Some (Math_const c)
-    | Math_fn fn -> Some (Math_fn fn)
-    | Var _ | Sibling_index | Sibling_count -> None
-    | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
-    | Parens inner -> Option.map (fun inner -> Parens inner) (aux inner)
-    | Expr (left, op, right) -> (
-        match (aux left, aux right) with
-        | Some left, Some right -> Some (Expr (left, op, right))
-        | _ -> None)
-  in
-  aux calc
+let length_of_border_width_calc calc = map_calc_opt length_of_border_width calc
 
 (* The reverse of [length_of_border_width]: every dimension the two types share
    round-trips, so a fold done in [length] space (the [min()]/[max()]/ [clamp()]
@@ -508,22 +493,7 @@ let border_width_of_length : length -> border_width option = function
   | Zero -> Some Zero
   | _ -> None
 
-let border_width_of_length_calc calc =
-  let rec aux : length calc -> border_width calc option = function
-    | Val length ->
-        Option.map (fun width -> Val width) (border_width_of_length length)
-    | Num n -> Some (Num n)
-    | Math_const c -> Some (Math_const c)
-    | Math_fn fn -> Some (Math_fn fn)
-    | Var _ | Sibling_index | Sibling_count -> None
-    | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
-    | Parens inner -> Option.map (fun inner -> Parens inner) (aux inner)
-    | Expr (left, op, right) -> (
-        match (aux left, aux right) with
-        | Some left, Some right -> Some (Expr (left, op, right))
-        | _ -> None)
-  in
-  aux calc
+let border_width_of_length_calc calc = map_calc_opt border_width_of_length calc
 
 let length_linear_term : length -> (string * float * (float -> length)) option =
   function

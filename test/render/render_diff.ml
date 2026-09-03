@@ -183,6 +183,38 @@ let attr_flag_unflagged = {css|[data-rd="b"] { color: #00f }|css}
 let nth_of_sheet = {css|:nth-child(2 of .rd-a) { color: #00f }|css}
 let nth_of_other = {css|:nth-child(2 of .rd-b) { color: #00f }|css}
 
+(* Two same-condition [@container] blocks with a rule between them, over an
+   element the sheet makes a query container: the optimizer hoists the second
+   block over that rule, and the browser has to compute the same style either
+   way. Nothing generated carries a container query, so without this the sweep
+   never renders one. *)
+let distant_container_sheet =
+  {css|
+.rd-cq { container-type: inline-size; width: 300px }
+@container (width >= 100px) { .rd-cq .rd-cr { color: #00f } }
+.rd-cs { background-color: #0f0 }
+@container (width >= 100px) { .rd-cq .rd-ct { padding-left: 6px } }
+|css}
+
+(* The same shape with the crossed rule writing the colour the blocks write, and
+   beside it the merge a pass that skipped the conflict check would make. The
+   source paints red and the merge paints green, so a harness that reports no
+   difference here cannot see a wrong container merge at all. *)
+let container_conflict_sheet =
+  {css|
+.rd-cw { container-type: inline-size; width: 300px }
+@container (width >= 100px) { .rd-cw .rd-cx { color: #00f } }
+.rd-cw .rd-cx { color: #090 }
+@container (width >= 100px) { .rd-cw .rd-cx { color: #f00 } }
+|css}
+
+let container_conflict_hoisted =
+  {css|
+.rd-cw { container-type: inline-size; width: 300px }
+@container (width >= 100px) { .rd-cw .rd-cx { color: #00f } .rd-cw .rd-cx { color: #f00 } }
+.rd-cw .rd-cx { color: #090 }
+|css}
+
 (* [Differs] is the expected-failure marker: the harness fails when the pair it
    names renders the same, so a fix cannot leave the pin behind. *)
 type expectation = Same | Differs of string
@@ -319,6 +351,19 @@ let inputs () =
     [
       sheet "smoke" smoke_sheet;
       sheet "nth-last-child-of" nth_last_of_sheet;
+      sheet "distant-container" distant_container_sheet;
+      {
+        id = "container-conflict";
+        source = container_conflict_sheet;
+        sheets =
+          Some
+            [
+              ("original", container_conflict_sheet);
+              ("hoisted", container_conflict_hoisted);
+            ];
+        expect =
+          Differs "the hoisted block loses the colour the crossed rule set";
+      };
       {
         id = "canary";
         source = canary_sheet;

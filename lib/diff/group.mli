@@ -1,6 +1,13 @@
 (** Grouping a list into a hash table of buckets. *)
 
-val by : size:int -> ('a -> 'k * 'v) -> 'a list -> ('k, 'v list) Hashtbl.t
-(** [by ~size key items] splits [items] into a table of [size] initial capacity,
-    binding each key [key] returns to the values it returned for, in the order
-    [items] gave them. *)
+val by : ?size:int -> ('a -> 'k * 'v) -> 'a list -> ('k, 'v list) Hashtbl.t
+(** [by key items] binds each key [key] returns to the values it returned for,
+    in the order [items] gave them. [size] (default [16]) is the table's initial
+    capacity, a sizing hint: it decides which bucket a key lands in and so the
+    order [Hashtbl.iter] walks them, which is why a caller that needs a defined
+    order over the keys takes it from [items]. *)
+
+val keys : ('a -> 'k * 'v) -> 'a list -> 'k list
+(** [keys key items] is the distinct keys [key] returns, in the order [items]
+    first names them. It is what a caller walking [by key items] takes its order
+    from, [Hashtbl.iter] answering in bucket order instead. *)

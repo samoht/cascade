@@ -202,62 +202,74 @@ let rules_conflict (r1 : rule) (r2 : rule) =
        (fun a -> List.exists (declarations_conflict a) r2.declarations)
        r1.declarations
 
-let needs_distant_media_merge stmts =
-  let conds =
-    List.filter_map (function Media (c, _) -> Some c | _ -> None) stmts
-  in
-  let rec dup = function
-    | [] -> false
-    | c :: rest -> List.exists (Media.equal c) rest || dup rest
-  in
-  dup conds
+(* Only cross statements whose cascade is pure source order: plain rules and
+   conditional groups. Layers, origins, scopes, imports, etc. establish
+   ordering/context that hoisting past would change. *)
+let crossable_by_distant_merge = function
+  | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
+  | _ -> false
 
-(* CSS Conditional 3: same-condition [@media] blocks are spec-equivalent to one
-   block. Merge a later block into the first occurrence when hoisting it past
-   the intervening statements cannot reorder a conflicting rule.
+(* CSS Conditional Rules 5 sec. 2: a conditional group rule applies its contents
+   when its condition holds, so two blocks under one prelude carry the same
+   content as one block over their concatenation. A distant merge adds a move to
+   that equivalence: the later block's declarations come to sit before the
+   statements written between the two, and order of appearance decides the
+   cascade only between a pair of declarations that does not commute. So the
+   merge stands when nothing the hoisted block writes conflicts with anything
+   the statements it crosses write, and those statements are all ones the
+   cascade reads in source order.
+
+   [prelude] reads the identity two blocks of one family have to share, with the
+   body under it, and answers [None] for every other statement; [equal_prelude]
+   decides when two identities are one; [build] puts a merged body back under
+   one; [hoistable] is a family's own refusal to move a body at all.
 
    [owner] is the style rule whose body [stmts] is, when it is one. A
    declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
    3.4), so the analysis below only sees it once it can name the rule the run
    belongs to. *)
-(* Only cross statements whose cascade is pure source order: plain rules and
-   conditional groups. Layers, origins, scopes, imports, etc. establish
-   ordering/context that hoisting past would change. *)
-let crossable_by_distant_media = function
-  | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
-  | _ -> false
+let has_distant_partner ~prelude ~equal_prelude stmts =
+  let keys = List.filter_map (fun s -> Option.map fst (prelude s)) stmts in
+  let rec dup = function
+    | [] -> false
+    | k :: rest -> List.exists (equal_prelude k) rest || dup rest
+  in
+  dup keys
 
-(* Split [out] at the first [@media] whose condition is [cond], into what comes
-   before it, its own block, and what sits between it and the caller. *)
-let split_at_media cond out :
+(* Split [out] at the first block whose prelude is [key], into what comes before
+   it, its own body, and what sits between it and the caller. *)
+let split_at_prelude ~prelude ~equal_prelude key out :
     (statement list * statement list * statement list) option =
   let rec go before :
       statement list ->
       (statement list * statement list * statement list) option = function
     | [] -> None
-    | Media (c, b) :: after when Media.equal c cond ->
-        Some (List.rev before, b, after)
-    | x :: rest -> go (x :: before) rest
+    | stmt :: after -> (
+        match prelude stmt with
+        | Some (k, body) when equal_prelude k key ->
+            Some (List.rev before, body, after)
+        | Some _ | None -> go (stmt :: before) after)
   in
   go [] out
 
-let try_distant_media_merge ~leaves ~unattributed out cond block :
-    statement list option =
+let try_distant_merge ~prelude ~equal_prelude ~build ~leaves ~unattributed out
+    key block : statement list option =
   let hoisted = leaves block in
-  match split_at_media cond out with
+  match split_at_prelude ~prelude ~equal_prelude key out with
   | None -> None
   | Some (before, target, after)
-    when List.for_all crossable_by_distant_media after ->
+    when List.for_all crossable_by_distant_merge after ->
       let crossed = leaves after in
       if
         unattributed block || unattributed after
         || List.exists (fun h -> List.exists (rules_conflict h) crossed) hoisted
       then None
-      else Some (before @ [ Media (cond, target @ block) ] @ after)
+      else Some (before @ [ build key (target @ block) ] @ after)
   | Some _ -> None
 
-let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
-  if not (needs_distant_media_merge stmts) then stmts
+let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
+    ~optimize_merged_block stmts =
+  if not (has_distant_partner ~prelude ~equal_prelude stmts) then stmts
   else
     let leaves stmts = List.concat_map (leaf_rules ?parent:owner) stmts in
     let unattributed stmts =
@@ -265,24 +277,33 @@ let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
     in
     (* The accumulator is carried reversed, as the consecutive-block passes
        nearby carry theirs: appending to the end copies it once per statement,
-       which costs a square in the statement count. Only a [@media] statement
+       which costs a square in the statement count. Only a block of the family
        needs it in order, to find the partner it merges into, and [rev_map] puts
        the result back in source order. *)
     let step rout stmt =
-      match stmt with
-      | Media (cond, block) when not (has_nested_preference_media block) -> (
+      match prelude stmt with
+      | Some (key, block) when hoistable block -> (
           match
-            try_distant_media_merge ~leaves ~unattributed (List.rev rout) cond
-              block
+            try_distant_merge ~prelude ~equal_prelude ~build ~leaves
+              ~unattributed (List.rev rout) key block
           with
           | Some out' -> List.rev out'
           | None -> stmt :: rout)
-      | _ -> stmt :: rout
+      | Some _ | None -> stmt :: rout
     in
     List.fold_left step [] stmts
-    |> List.rev_map (function
-      | Media (c, b) -> Media (c, optimize_merged_block b)
-      | s -> s)
+    |> List.rev_map (fun stmt ->
+        match prelude stmt with
+        | Some (key, body) -> build key (optimize_merged_block body)
+        | None -> stmt)
+
+let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
+  merge_distant
+    ~prelude:(function Media (cond, block) -> Some (cond, block) | _ -> None)
+    ~equal_prelude:Media.equal
+    ~build:(fun cond block -> Media (cond, block))
+    ~hoistable:(fun block -> not (has_nested_preference_media block))
+    ?owner ~optimize_merged_block stmts
 
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
@@ -378,6 +399,22 @@ let merge_consecutive_containers ?(optimize_merged_block = Fun.id)
           | None -> merge (stmt :: acc) None rest)
     in
     merge [] None stmts
+
+(* Reaching the partner a statement is written between is the move
+   [merge_distant] argues for, and a [@container] keys it on the whole prelude.
+   Conditional Rules 5 sec. 5.4 resolves the query against the nearest ancestor
+   the [<container-name>] selects, so an unnamed [@container (width>10px)] and
+   [@container main (width>10px)] ask about different elements however equal
+   their conditions read, and two names select one ancestor only when they are
+   the one ident. *)
+let merge_distant_containers ?owner ?(optimize_merged_block = Fun.id) stmts =
+  merge_distant
+    ~prelude:(function
+      | Container (name, cond, block) -> Some ((name, cond), block) | _ -> None)
+    ~equal_prelude:same_container
+    ~build:(fun (name, cond) block -> Container (name, cond, block))
+    ~hoistable:(fun _ -> true)
+    ?owner ~optimize_merged_block stmts
 
 (* CSS Transitions 2 sec. 3.3: [@starting-style] takes no prelude, so two
    adjacent blocks hold the same starting styles, in the same order, as one

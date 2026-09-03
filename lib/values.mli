@@ -621,6 +621,12 @@ val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
 (** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc
     structure (operators, [Nested], [Parens], [Var] fallbacks). *)
 
+val map_calc_opt : ('a -> 'b option) -> 'a calc -> 'b calc option
+(** [map_calc_opt f calc] is {!map_calc} for a partial [f]: the result is [None]
+    as soon as one [Val] leaf has no image, and a [Var] / [Sibling_index] /
+    [Sibling_count] node fails the same way since it carries no leaf to retype.
+*)
+
 val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
 (** [eval_calc calc] applies CSS Values 4 sec. 10.10.1 structural
     simplification: folds [Expr (Num _, op, Num _)] subtrees into a single [Num]

@@ -1315,15 +1315,6 @@ let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
 
 let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
 
-let pp_calc_presolved : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) pp_value ctx calc ->
-  match calc with
-  | Val v when Pp.minified ctx -> pp_value ctx v
-  | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
-  | _ ->
-      let ctx = { ctx with in_calc = true } in
-      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
-
 (* Small helpers *)
 
 let pp_unit ?always:_ ctx f suffix =
@@ -1400,6 +1391,24 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Nested inner -> Nested (map_calc f inner)
   | Parens inner -> Parens (map_calc f inner)
   | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
+
+(** Partial sibling of {!map_calc}: [Val] leaves go through [f] and the whole
+    tree fails when one of them does. A [Var] / [Sibling_index] /
+    [Sibling_count] node carries no leaf to retype, so it fails too. *)
+let rec map_calc_opt : type a b. (a -> b option) -> a calc -> b calc option =
+ fun f calc ->
+  match calc with
+  | Val v -> Option.map (fun v -> Val v) (f v)
+  | Num n -> Some (Num n)
+  | Math_const c -> Some (Math_const c)
+  | Math_fn fn -> Some (Math_fn fn)
+  | Var _ | Sibling_index | Sibling_count -> None
+  | Nested inner -> Option.map (fun i -> Nested i) (map_calc_opt f inner)
+  | Parens inner -> Option.map (fun i -> Parens i) (map_calc_opt f inner)
+  | Expr (left, op, right) -> (
+      match (map_calc_opt f left, map_calc_opt f right) with
+      | Some left, Some right -> Some (Expr (left, op, right))
+      | _ -> None)
 
 (* Top-level commas in math-function args round-trip differently in pretty vs
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
@@ -2385,7 +2394,7 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_presolved ~unwrap_num:false (pp_length ~always) ctx cv
+      pp_calc_with ~unwrap_num:false (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3664,7 +3673,7 @@ let rec pp_angle : angle Pp.t =
   (* A math function is itself an [<angle>] production, so the [calc()] around
      one is redundant (CSS Values 4 sec. 10.8). *)
   | Calc (Math_fn fn) -> pp_math_fn ctx fn
-  | Calc c -> pp_calc_presolved ~unwrap_num:false pp_angle ctx c
+  | Calc c -> pp_calc_with ~unwrap_num:false pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
   | Invalid tokens ->
       Pp.string ctx
@@ -4170,7 +4179,7 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_presolved ~unwrap_num:false (pp_length_percentage ~always) ctx c
+      pp_calc_with ~unwrap_num:false (pp_length_percentage ~always) ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -4897,7 +4906,7 @@ let rec pp_number : number Pp.t =
   | Num f ->
       Pp.string ctx (Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f)
   | Var v -> pp_var pp_number ctx v
-  | Calc c -> pp_calc_presolved pp_number ctx c
+  | Calc c -> pp_calc_with pp_number ctx c
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -5157,41 +5166,51 @@ let read_math_constant_or_number t =
   | Some name -> read_math_constant_name t name
   | None -> read_math_number_with_unit t
 
+(* CSS Values 4 (ED) sec. 10.7: [round()] takes an optional strategy ([nearest],
+   [up], [down], [to-zero]); when omitted the default is [nearest]. *)
+let read_round_strategy inner =
+  let snap = Cursor.save inner in
+  match Cursor.peek_ident inner with
+  | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+      Cursor.skip inner;
+      Cursor.ws inner;
+      Cursor.comma inner;
+      kw
+  | _ ->
+      Cursor.restore inner snap;
+      "nearest"
+
+(* [round(<strategy>?, value, step)] over any argument reader. *)
+let read_round_call make read_x t =
+  Cursor.call "round" t (fun inner ->
+      let strategy = read_round_strategy inner in
+      let value = read_x inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let step = read_x inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make strategy value step)
+
+(* [rem(a, b)] / [mod(a, b)] and the other two-argument math calls, over any
+   argument reader. *)
+let read_binary_call name make read_x t =
+  Cursor.call name t (fun inner ->
+      let a = read_x inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let b = read_x inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make a b)
+
+let read_numeric_arg inner = Cursor.number inner
+
 let read_numeric_round : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "round" t (fun inner ->
-         let snap = Cursor.save inner in
-         let strategy =
-           match Cursor.peek_ident inner with
-           | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-               Cursor.skip inner;
-               Cursor.ws inner;
-               Cursor.comma inner;
-               kw
-           | _ ->
-               Cursor.restore inner snap;
-               "nearest"
-         in
-         let value = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let step = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         round_to_step strategy value step))
+ fun t -> Num (read_round_call round_to_step read_numeric_arg t)
 
 let read_numeric_rem : type a. Cursor.t -> a calc =
- fun t ->
-  Num
-    (Cursor.call "rem" t (fun inner ->
-         let a = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let b = Cursor.number inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         Float.rem a b))
+ fun t -> Num (read_binary_call "rem" Float.rem read_numeric_arg t)
 
 let read_var_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -5671,18 +5690,6 @@ let read_numeric_expression t = read_num_expr t
    [read_length] mutual-recursion group (see below); the function-call
    dispatcher in [length_function_readers] references them. *)
 
-let read_round_strategy inner =
-  let snap = Cursor.save inner in
-  match Cursor.peek_ident inner with
-  | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-      Cursor.skip inner;
-      Cursor.ws inner;
-      Cursor.comma inner;
-      kw
-  | _ ->
-      Cursor.restore inner snap;
-      "nearest"
-
 let read_anchor_size_length inner =
   let size = Cursor.consume_remaining_as_string ~trim:true inner in
   if size = "" then Cursor.err_expected inner "anchor-size argument";
@@ -5856,8 +5863,6 @@ and read_fit_content_length ~allow_negative ~with_keywords inner =
   Fit_content_arg arg
 
 and read_round_length ~allow_negative ~with_keywords inner =
-  (* CSS Values 4 10.7: [round()] takes an optional strategy ([nearest], [up],
-     [down], [to-zero]); when omitted the default is [nearest]. *)
   let strategy = read_round_strategy inner in
   let value = read_length ~allow_negative ~with_keywords inner in
   Cursor.ws inner;
@@ -6222,36 +6227,7 @@ let read_atan2_scalar t : atan2_category * float =
 
 (** Read an angle value *)
 let read_angle_round read_angle t =
-  Cursor.call "round" t (fun inner ->
-      let snap = Cursor.save inner in
-      let strategy =
-        match Cursor.peek_ident inner with
-        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-            Cursor.skip inner;
-            Cursor.ws inner;
-            Cursor.comma inner;
-            kw
-        | _ ->
-            Cursor.restore inner snap;
-            "nearest"
-      in
-      let value = read_angle inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let step = read_angle inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      (Round (strategy, value, step) : angle))
-
-let read_angle_binary name make read_angle t =
-  Cursor.call name t (fun inner ->
-      let a = read_angle inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let b = read_angle inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      make a b)
+  read_round_call (fun s v step -> (Round (s, v, step) : angle)) read_angle t
 
 let angle_trig_function t =
   if Cursor.looking_at_func "asin" t then Some (`Asin, "asin")
@@ -6341,12 +6317,12 @@ let rec read_angle_with ~unitless_zero t : angle =
   else if Cursor.looking_at_func "round" t then
     read_angle_round (read_angle_with ~unitless_zero) t
   else if Cursor.looking_at_func "rem" t then
-    read_angle_binary "rem"
+    read_binary_call "rem"
       (fun a b -> (Rem (a, b) : angle))
       (read_angle_with ~unitless_zero)
       t
   else if Cursor.looking_at_func "mod" t then
-    read_angle_binary "mod"
+    read_binary_call "mod"
       (fun a b -> (Mod (a, b) : angle))
       (read_angle_with ~unitless_zero)
       t
@@ -7059,36 +7035,9 @@ let read_time_number t : duration =
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 let read_duration_round read_duration_self t =
-  Cursor.call "round" t (fun inner ->
-      let snap = Cursor.save inner in
-      let strategy =
-        match Cursor.peek_ident inner with
-        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-            Cursor.skip inner;
-            Cursor.ws inner;
-            Cursor.comma inner;
-            kw
-        | _ ->
-            Cursor.restore inner snap;
-            "nearest"
-      in
-      let value = read_duration_self inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let step = read_duration_self inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      (Round (strategy, value, step) : duration))
-
-let read_duration_binary_call name make read_duration_self t =
-  Cursor.call name t (fun inner ->
-      let a = read_duration_self inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let b = read_duration_self inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      (make a b : duration))
+  read_round_call
+    (fun s v step -> (Round (s, v, step) : duration))
+    read_duration_self t
 
 let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
   let read_duration_self t = read_duration_with ~css_wide ~canonicalize_ms t in
@@ -7104,12 +7053,12 @@ let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
         );
         ("round", read_duration_round read_duration_self);
         ( "rem",
-          read_duration_binary_call "rem"
-            (fun a b -> Rem (a, b))
+          read_binary_call "rem"
+            (fun a b -> (Rem (a, b) : duration))
             read_duration_self );
         ( "mod",
-          read_duration_binary_call "mod"
-            (fun a b -> Mod (a, b))
+          read_binary_call "mod"
+            (fun a b -> (Mod (a, b) : duration))
             read_duration_self );
       ]
     t
@@ -7136,9 +7085,11 @@ let rec read_time_with ?(css_wide = true) t : duration =
           fun t -> Calc (read_calc ~result_type:`Value read_time_in_calc t) );
         ("round", read_duration_round read_time);
         ( "rem",
-          read_duration_binary_call "rem" (fun a b -> Rem (a, b)) read_time );
+          read_binary_call "rem" (fun a b -> (Rem (a, b) : duration)) read_time
+        );
         ( "mod",
-          read_duration_binary_call "mod" (fun a b -> Mod (a, b)) read_time );
+          read_binary_call "mod" (fun a b -> (Mod (a, b) : duration)) read_time
+        );
       ]
     t
 
@@ -7246,36 +7197,10 @@ and read_math_number_function t name =
           | None -> None))
 
 and read_round_number t =
-  Cursor.call "round" t (fun inner ->
-      let snap = Cursor.save inner in
-      let strategy =
-        match Cursor.peek_ident inner with
-        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
-            Cursor.skip inner;
-            Cursor.ws inner;
-            Cursor.comma inner;
-            kw
-        | _ ->
-            Cursor.restore inner snap;
-            "nearest"
-      in
-      let value = read_number inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let step = read_number inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      Round (strategy, value, step))
+  read_round_call (fun s v step -> (Round (s, v, step) : number)) read_number t
 
 and read_binary_number_function name make t =
-  Cursor.call name t (fun inner ->
-      let a = read_number inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
-      let b = read_number inner in
-      Cursor.ws inner;
-      Cursor.expect_eof inner;
-      make a b)
+  read_binary_call name make read_number t
 
 and read_unary_number_function name make t =
   Cursor.call name t (fun inner ->
