@@ -630,6 +630,9 @@ entry points both moved.
 
 ### Canonical diff
 
+- A cascade-neutral reordering stays unreported when the two sheets also
+  differ elsewhere, where one changed rule turned every such move in the
+  sheet into a reported difference (#819)
 - Canonical diff equates more rewrites that cannot change what a browser
   computes, such as equal `@supports` blocks hoisted together; a crossing that
   changes which declaration wins stays distinct (#775, #776, #777)
