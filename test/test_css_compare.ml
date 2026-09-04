@@ -664,6 +664,81 @@ let canonical_fully_transparent_missing_oklab () =
        ".a { background-color: oklab(0% none none / .5) }"
        ".a { background-color: #0000 }")
 
+(* CSS Color 4 sec. 4.4: outside the situations that combine two colours, "a
+   missing component behaves as a zero value, in the appropriate unit for that
+   component", and that explicitly covers rendering the colour and converting it
+   to another space. So an achromatic OKLab written with [none] chroma axes -
+   what lightningcss emits for a colour it produced by conversion - is the same
+   colour as the hex Cascade folds it to, and the projection has to say so.
+
+   Sec. 13.3 is the carve-out: where two colours are interpolated, a missing
+   component takes the other colour's analogous component instead of a zero, so
+   the two spellings are two different ramps. The fold therefore fires only on a
+   colour standing as a whole colour-longhand value, never on one the value
+   itself feeds to an interpolation. *)
+let canonical_missing_color_components_as_zero () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "missing OKLab axes read as zero against the hex" true
+    (equal ".x{outline-color:oklab(0% none none / .5)}"
+       ".x{outline-color:#00000080}");
+  Alcotest.(check bool)
+    "the zero-spelled axes still read as that hex" true
+    (equal ".x{outline-color:oklab(0% 0 0 / .5)}" ".x{outline-color:#00000080}");
+  Alcotest.(check bool)
+    "the two spellings agree with each other" true
+    (equal ".x{outline-color:oklab(0% none none / .5)}"
+       ".x{outline-color:oklab(0% 0 0 / .5)}");
+  (* Nothing about the fold is specific to black: a missing axis is a zero at
+     any lightness. *)
+  Alcotest.(check bool)
+    "a missing axis reads as zero away from black" true
+    (equal ".x{outline-color:oklab(50% none none)}"
+       ".x{outline-color:oklab(50% 0 0)}");
+  (* Sec. 4.4.1: the hue of a zero-chroma OKLCh is powerless, so the two
+     spellings are one colour there as well. *)
+  Alcotest.(check bool)
+    "a missing powerless hue reads as zero" true
+    (equal ".x{outline-color:oklch(50% 0 none)}"
+       ".x{outline-color:oklch(50% 0 0)}");
+  (* A different colour stays a different colour: the resolved axes do not move
+     the lightness or the alpha. *)
+  Alcotest.(check bool)
+    "the resolved colour keeps its alpha" false
+    (equal ".x{outline-color:oklab(0% none none / .5)}"
+       ".x{outline-color:#00000040}")
+
+(* The sec. 13.3 side of the line. At each of these positions the stylesheet
+   itself pairs the colour with another one, so [none] and [0] name two
+   different results and the projection must keep them apart. *)
+let canonical_missing_components_survive_interpolation () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a gradient stop keeps its missing axes" false
+    (equal
+       ".x{background-image:linear-gradient(in oklab,oklab(0% none \
+        none),oklab(100% .2 .1))}"
+       ".x{background-image:linear-gradient(in oklab,#000,oklab(100% .2 .1))}");
+  Alcotest.(check bool)
+    "a color-mix operand keeps its missing axes" false
+    (equal ".x{color:color-mix(in oklab,oklab(0% none none) 50%,var(--y))}"
+       ".x{color:color-mix(in oklab,#000 50%,var(--y))}");
+  Alcotest.(check bool)
+    "a keyframe keeps its missing axes" false
+    (equal "@keyframes k{from{color:oklab(0% none none)}to{color:#fff}}"
+       "@keyframes k{from{color:#000}to{color:#fff}}");
+  Alcotest.(check bool)
+    "a @starting-style value keeps its missing axes" false
+    (equal "@starting-style{.x{color:oklab(0% none none)}}"
+       "@starting-style{.x{color:#000}}");
+  (* A mix Cascade can fold reports the same fact through the folded colour: the
+     missing axes take the other operand's, so the two mixes are two colours. *)
+  Alcotest.(check bool)
+    "a folded mix carries the missing axes forward" false
+    (equal
+       ".x{color:color-mix(in oklab,oklab(0% none none) 50%,oklab(100% .2 .1))}"
+       ".x{color:color-mix(in oklab,#000 50%,oklab(100% .2 .1))}")
+
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
      identically into font-family, so canonical comparison equates them inside a
@@ -1638,6 +1713,10 @@ let suite =
         canonical_relative_color_origin;
       Alcotest.test_case "canonical fully transparent missing oklab" `Quick
         canonical_fully_transparent_missing_oklab;
+      Alcotest.test_case "canonical missing colour components as zero" `Quick
+        canonical_missing_color_components_as_zero;
+      Alcotest.test_case "canonical missing components under interpolation"
+        `Quick canonical_missing_components_survive_interpolation;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
