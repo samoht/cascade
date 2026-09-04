@@ -2566,6 +2566,42 @@ let auto_is_not_a_color () =
   check_declaration ~roundtrip:true "caret:auto";
   check_declaration ~roundtrip:true "scrollbar-color:auto"
 
+let outline_offset_length_only () =
+  (* CSS UI 4 section 3.5 takes <length>, with no percentage basis, and
+     explicitly permits negative offsets. Section 2.1 admits CSS-wide values. *)
+  List.iter
+    (fun value -> check_declaration ~roundtrip:true ("outline-offset:" ^ value))
+    [
+      "0";
+      "2px";
+      "-2px";
+      "-1em";
+      "calc(1em - 2px)";
+      "min(-1em,2px)";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+      "var(--offset,10%)";
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("outline-offset:" ^ value))
+    [
+      "10%";
+      "0%";
+      "-10%";
+      "calc(1% + 2px)";
+      "min(1%,2px)";
+      "max(1px,2%)";
+      "clamp(0px,10%,2px)";
+      "auto";
+      "min-content";
+      "fit-content(2px)";
+      "1s";
+      "45deg";
+    ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5895,6 +5931,7 @@ let declaration_tests =
     test_case "animation keyword names" `Quick animation_keyword_names;
     test_case "list-style custom names" `Quick list_style_custom_names;
     test_case "auto is not a color" `Quick auto_is_not_a_color;
+    test_case "outline-offset length only" `Quick outline_offset_length_only;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
