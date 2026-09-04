@@ -665,6 +665,10 @@ val pp_border_style : border_style Pp.t
 val read_border_style : Cursor.t -> border_style
 (** [read_border_style t] is the [border_style] parsed from [t]. *)
 
+val read_border_style_box : Cursor.t -> border_style list
+(** [read_border_style_box t] is the [<line-style>{1,4}] box the [border-style]
+    shorthand takes (CSS Backgrounds 3 (ED) sec. 3.2). *)
+
 val pp_border_width : border_width Pp.t
 (** [pp_border_width] is the pretty-printer for [border_width]. *)
 
@@ -2146,6 +2150,14 @@ val pp_logical_border_width : logical_border_width Pp.t
 
 val read_logical_border_width : Cursor.t -> logical_border_width
 (** [read_logical_border_width t] is the [logical_border_width] parsed from [t].
+*)
+
+val pp_logical_border_style : logical_border_style Pp.t
+(** [pp_logical_border_style] is the pretty-printer for [logical_border_style].
+*)
+
+val read_logical_border_style : Cursor.t -> logical_border_style
+(** [read_logical_border_style t] is the [logical_border_style] parsed from [t].
 *)
 
 val pp_column_span : column_span Pp.t

@@ -566,10 +566,10 @@ let property_value_uses_runtime_subst (type a)
   | Padding_right -> Values.length_has_runtime_subst value
   | Padding_bottom -> Values.length_has_runtime_subst value
   | Padding_left -> Values.length_has_runtime_subst value
-  | Border_top_left_radius -> Values.length_has_runtime_subst value
-  | Border_top_right_radius -> Values.length_has_runtime_subst value
-  | Border_bottom_left_radius -> Values.length_has_runtime_subst value
-  | Border_bottom_right_radius -> Values.length_has_runtime_subst value
+  | Border_top_left_radius -> length_list_has_runtime_subst value
+  | Border_top_right_radius -> length_list_has_runtime_subst value
+  | Border_bottom_left_radius -> length_list_has_runtime_subst value
+  | Border_bottom_right_radius -> length_list_has_runtime_subst value
   | Outline_width -> Properties.border_width_has_runtime_subst value
   | Margin -> length_list_has_runtime_subst value
   | Padding -> length_list_has_runtime_subst value
@@ -839,6 +839,12 @@ let read_nn_length_or_global t =
     ]
     ~default:(read_non_negative_length ~with_keywords:false)
     t
+
+(* CSS Backgrounds 3 (ED) sec. 4.1: each [border-*-radius] corner longhand is
+   [<length-percentage [0,inf]>{1,2}], the horizontal radius then the vertical
+   one; a single value sets both. *)
+let read_corner_radius t =
+  Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_nn_length_or_global t
 
 (* CSS Text 3 section 7: [letter-spacing] is [normal | <length>], [word-spacing]
    is [normal | <length-percentage>]; both accept negative values. *)
@@ -1135,21 +1141,21 @@ let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
   match prop with
   | Border_radius -> Some (v Border_radius (read_border_radius t))
   | Border_top_left_radius ->
-      Some (v Border_top_left_radius (read_nn_length_or_global t))
+      Some (v Border_top_left_radius (read_corner_radius t))
   | Border_top_right_radius ->
-      Some (v Border_top_right_radius (read_nn_length_or_global t))
+      Some (v Border_top_right_radius (read_corner_radius t))
   | Border_bottom_left_radius ->
-      Some (v Border_bottom_left_radius (read_nn_length_or_global t))
+      Some (v Border_bottom_left_radius (read_corner_radius t))
   | Border_bottom_right_radius ->
-      Some (v Border_bottom_right_radius (read_nn_length_or_global t))
+      Some (v Border_bottom_right_radius (read_corner_radius t))
   | Border_start_start_radius ->
-      Some (v Border_start_start_radius (read_nn_length_or_global t))
+      Some (v Border_start_start_radius (read_corner_radius t))
   | Border_start_end_radius ->
-      Some (v Border_start_end_radius (read_nn_length_or_global t))
+      Some (v Border_start_end_radius (read_corner_radius t))
   | Border_end_start_radius ->
-      Some (v Border_end_start_radius (read_nn_length_or_global t))
+      Some (v Border_end_start_radius (read_corner_radius t))
   | Border_end_end_radius ->
-      Some (v Border_end_end_radius (read_nn_length_or_global t))
+      Some (v Border_end_end_radius (read_corner_radius t))
   | Gap -> Some (v Gap (Properties.read_gap t))
   | Column_gap -> Some (v Column_gap (read_nn_length_or_global t))
   | Row_gap -> Some (v Row_gap (read_nn_length_or_global t))
@@ -1181,7 +1187,7 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
   match prop with
   | Padding -> Some (v Padding (read_padding_shorthand t))
   | Margin -> Some (v Margin (read_margin_shorthand t))
-  | Border_style -> Some (v Border_style (read_border_style t))
+  | Border_style -> Some (v Border_style (read_border_style_box t))
   | Border_width -> Some (v Border_width (read_border_width_box t))
   | Border_top_width -> Some (v Border_top_width (read_border_width t))
   | Border_right_width -> Some (v Border_right_width (read_border_width t))
@@ -1212,8 +1218,10 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Border_inline_width (read_logical_border_width t))
   | Border_block_width ->
       Some (v Border_block_width (read_logical_border_width t))
-  | Border_inline_style -> Some (v Border_inline_style (read_border_style t))
-  | Border_block_style -> Some (v Border_block_style (read_border_style t))
+  | Border_inline_style ->
+      Some (v Border_inline_style (read_logical_border_style t))
+  | Border_block_style ->
+      Some (v Border_block_style (read_logical_border_style t))
   | Border_inline_start_style ->
       Some (v Border_inline_start_style (read_border_style t))
   | Border_inline_end_style ->
@@ -2692,7 +2700,7 @@ let background bg = v Background [ bg ]
 let background_color c = v Background_color c
 let color c = v Color c
 let border_color c = v Border_color [ c ]
-let border_style bs = v Border_style bs
+let border_style bs = v Border_style [ bs ]
 let border_top_style bs = v Border_top_style bs
 let border_right_style bs = v Border_right_style bs
 let border_bottom_style bs = v Border_bottom_style bs
@@ -2808,10 +2816,10 @@ let place_items value = v Place_items value
 let place_self value = v Place_self value
 let border_width len = v Border_width [ len ]
 let border_radius len = v Border_radius len
-let border_top_left_radius len = v Border_top_left_radius len
-let border_top_right_radius len = v Border_top_right_radius len
-let border_bottom_left_radius len = v Border_bottom_left_radius len
-let border_bottom_right_radius len = v Border_bottom_right_radius len
+let border_top_left_radius len = v Border_top_left_radius [ len ]
+let border_top_right_radius len = v Border_top_right_radius [ len ]
+let border_bottom_left_radius len = v Border_bottom_left_radius [ len ]
+let border_bottom_right_radius len = v Border_bottom_right_radius [ len ]
 let fill value = v Fill value
 let stroke value = v Stroke value
 let stroke_width value = v Stroke_width value
@@ -3105,10 +3113,10 @@ let border_inline_start_style value = v Border_inline_start_style value
 let border_inline_end_style value = v Border_inline_end_style value
 let border_block_start_style value = v Border_block_start_style value
 let border_block_end_style value = v Border_block_end_style value
-let border_start_start_radius value = v Border_start_start_radius value
-let border_start_end_radius value = v Border_start_end_radius value
-let border_end_start_radius value = v Border_end_start_radius value
-let border_end_end_radius value = v Border_end_end_radius value
+let border_start_start_radius value = v Border_start_start_radius [ value ]
+let border_start_end_radius value = v Border_start_end_radius [ value ]
+let border_end_start_radius value = v Border_end_start_radius [ value ]
+let border_end_end_radius value = v Border_end_end_radius [ value ]
 let webkit_font_smoothing value = v Webkit_font_smoothing value
 let cursor value = v Cursor value
 let user_select value = v User_select value

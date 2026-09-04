@@ -190,6 +190,10 @@ entry points both moved.
 
 ### Parsing
 
+- `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
+  side styles, `border-block-style` and `border-inline-style` take the start and
+  end edges, and every `border-*-radius` corner takes a horizontal and a
+  vertical radius
 - A `style()` container query takes the single-comparison range CSS Conditional
   Rules 5 defines, `style(--gap = 10px)` included, and rejects an interval whose
   two bounds point different ways; `Css.inline_vars` reads its operands (#805)

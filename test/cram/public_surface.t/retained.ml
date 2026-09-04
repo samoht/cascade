@@ -77,7 +77,7 @@ let _ :
 let _ : Declaration.t -> bool =
  fun d ->
   match Declaration.value_of d Properties.Border_style with
-  | Some (Var _) -> true
+  | Some [ Var _ ] -> true
   | Some _ | None -> false
 
 (* The witness the value is read at is the one {!Declaration.property_key}

@@ -4281,6 +4281,9 @@ let normalize_property_value : type a.
   | Border_color ->
       normalize_box_shorthand ~is_substitution:is_color_substitution
         normalize_color value
+  | Border_style ->
+      normalize_box_shorthand ~is_substitution:is_border_style_substitution
+        Fun.id value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -4389,14 +4392,14 @@ let normalize_property_value : type a.
   | Row_gap -> Values.normalize_length ~ctx value
   | Text_underline_offset -> Values.normalize_length ~ctx value
   | Letter_spacing -> Values.normalize_length ~ctx value
-  | Border_top_left_radius -> Values.normalize_length ~ctx value
-  | Border_top_right_radius -> Values.normalize_length ~ctx value
-  | Border_bottom_left_radius -> Values.normalize_length ~ctx value
-  | Border_bottom_right_radius -> Values.normalize_length ~ctx value
-  | Border_start_start_radius -> Values.normalize_length ~ctx value
-  | Border_start_end_radius -> Values.normalize_length ~ctx value
-  | Border_end_start_radius -> Values.normalize_length ~ctx value
-  | Border_end_end_radius -> Values.normalize_length ~ctx value
+  | Border_top_left_radius -> normalize_length_box ~ctx value
+  | Border_top_right_radius -> normalize_length_box ~ctx value
+  | Border_bottom_left_radius -> normalize_length_box ~ctx value
+  | Border_bottom_right_radius -> normalize_length_box ~ctx value
+  | Border_start_start_radius -> normalize_length_box ~ctx value
+  | Border_start_end_radius -> normalize_length_box ~ctx value
+  | Border_end_start_radius -> normalize_length_box ~ctx value
+  | Border_end_end_radius -> normalize_length_box ~ctx value
   | Outline_width -> normalize_border_width value
   | Outline_offset -> Values.normalize_length ~ctx value
   | Line_height_step -> Values.normalize_length ~ctx value
@@ -4537,7 +4540,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Background_color -> pp pp_color
   | Color -> pp pp_color
   | Border_color -> pp (Pp.list ~sep:Pp.token_sp pp_color)
-  | Border_style -> pp pp_border_style
+  | Border_style -> pp (pp_box_shorthand pp_border_style)
   | Border_top_style -> pp pp_border_style
   | Border_right_style -> pp pp_border_style
   | Border_bottom_style -> pp pp_border_style
@@ -4632,10 +4635,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_block_end_width -> pp pp_border_width
   | Border_image -> pp pp_border_image
   | Border_radius -> pp pp_border_radius
-  | Border_top_left_radius -> pp pp_length
-  | Border_top_right_radius -> pp pp_length
-  | Border_bottom_left_radius -> pp pp_length
-  | Border_bottom_right_radius -> pp pp_length
+  | Border_top_left_radius -> pp (pp_box_shorthand pp_length)
+  | Border_top_right_radius -> pp (pp_box_shorthand pp_length)
+  | Border_bottom_left_radius -> pp (pp_box_shorthand pp_length)
+  | Border_bottom_right_radius -> pp (pp_box_shorthand pp_length)
   | Border_top_color -> pp pp_color
   | Border_right_color -> pp pp_color
   | Border_bottom_color -> pp pp_color
@@ -4648,12 +4651,12 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_block_color -> pp pp_logical_border_color
   | Border_inline_width -> pp pp_logical_border_width
   | Border_block_width -> pp pp_logical_border_width
-  | Border_inline_style -> pp pp_border_style
-  | Border_block_style -> pp pp_border_style
-  | Border_start_start_radius -> pp pp_length
-  | Border_start_end_radius -> pp pp_length
-  | Border_end_start_radius -> pp pp_length
-  | Border_end_end_radius -> pp pp_length
+  | Border_inline_style -> pp pp_logical_border_style
+  | Border_block_style -> pp pp_logical_border_style
+  | Border_start_start_radius -> pp (pp_box_shorthand pp_length)
+  | Border_start_end_radius -> pp (pp_box_shorthand pp_length)
+  | Border_end_start_radius -> pp (pp_box_shorthand pp_length)
+  | Border_end_end_radius -> pp (pp_box_shorthand pp_length)
   | Text_decoration_color -> pp pp_color
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
@@ -5173,14 +5176,14 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Row_gap -> Some Length
   | Text_underline_offset -> Some Length
   | Letter_spacing -> Some Length
-  | Border_top_left_radius -> Some Length
-  | Border_top_right_radius -> Some Length
-  | Border_bottom_left_radius -> Some Length
-  | Border_bottom_right_radius -> Some Length
-  | Border_start_start_radius -> Some Length
-  | Border_start_end_radius -> Some Length
-  | Border_end_start_radius -> Some Length
-  | Border_end_end_radius -> Some Length
+  | Border_top_left_radius -> Some Lengths
+  | Border_top_right_radius -> Some Lengths
+  | Border_bottom_left_radius -> Some Lengths
+  | Border_bottom_right_radius -> Some Lengths
+  | Border_start_start_radius -> Some Lengths
+  | Border_start_end_radius -> Some Lengths
+  | Border_end_start_radius -> Some Lengths
+  | Border_end_end_radius -> Some Lengths
   | Outline_width -> Some Border_width
   | Border_top_width -> Some Border_width
   | Border_right_width -> Some Border_width

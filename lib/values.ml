@@ -7850,9 +7850,11 @@ let read_padding_shorthand t : length list =
         t)
     t
 
-(** Read margin shorthand property (1-4 values) Source:
-    https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
-    1-4 space-separated values *)
+(** Read margin shorthand property (1-4 values). CSS Box 4 (ED) sec. 3.2 gives
+    [margin] the value [<'margin-top'>{1,4}] and sec. 3.1 gives [margin-top] the
+    value [<length-percentage> | auto], so [auto] is a component of the box and
+    stands in any slot beside any length. Only the CSS-wide keywords of CSS
+    Cascade 5 sec. 6 own the whole value. *)
 let read_margin_shorthand t : length list =
   let rec read_margin_component t : length =
     if Cursor.looking_at_func "var" t then
@@ -7863,12 +7865,9 @@ let read_margin_shorthand t : length list =
         ~default:(read_length ~with_keywords:false)
         t
   in
-  (* CSS margin accepts 1-4 space-separated values *)
-  (* CSS-wide keywords must be the only value when present *)
   Cursor.enum "margin"
     [
-      ("auto", [ Auto ]);
-      ("inherit", [ Inherit ]);
+      ("inherit", [ (Inherit : length) ]);
       ("initial", [ Initial ]);
       ("unset", [ Unset ]);
       ("revert", [ Revert ]);

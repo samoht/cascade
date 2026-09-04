@@ -381,12 +381,12 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
-val border_inline_style : border_style -> declaration
+val border_inline_style : logical_border_style -> declaration
 (** [border_inline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
      border-inline-style} property. *)
 
-val border_block_style : border_style -> declaration
+val border_block_style : logical_border_style -> declaration
 (** [border_block_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
      border-block-style} property. *)

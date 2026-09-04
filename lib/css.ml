@@ -263,6 +263,11 @@ let logical_border_width value = (Single value : logical_border_width)
 let logical_border_widths start end_ =
   (Pair (start, end_) : logical_border_width)
 
+let logical_border_style value = (Single value : logical_border_style)
+
+let logical_border_styles start end_ =
+  (Pair (start, end_) : logical_border_style)
+
 let transform_list items = (List items : transform)
 let filter_list items = (List items : filter)
 let cursor_url ?hotspot ~fallback url = (Url (url, hotspot, fallback) : cursor)

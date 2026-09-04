@@ -1587,17 +1587,23 @@ let extract_inset_side : declaration -> (box_side * Values.length * bool) option
       Some (Left, v, important)
   | _ -> None
 
+(* [border-radius] gives the horizontal radii before the [/] and the vertical
+   ones after it, so a corner naming both axes has no slot in the box the four
+   corners compose. Only a single-valued corner takes part. *)
 let extract_border_radius_corner :
     declaration -> (box_side * Values.length * bool) option = function
-  | Declaration { property = Border_top_left_radius; value; important; _ } ->
-      Some (Top, value, important)
-  | Declaration { property = Border_top_right_radius; value; important; _ } ->
-      Some (Right, value, important)
-  | Declaration { property = Border_bottom_right_radius; value; important; _ }
-    ->
-      Some (Bottom, value, important)
-  | Declaration { property = Border_bottom_left_radius; value; important; _ } ->
-      Some (Left, value, important)
+  | Declaration
+      { property = Border_top_left_radius; value = [ v ]; important; _ } ->
+      Some (Top, v, important)
+  | Declaration
+      { property = Border_top_right_radius; value = [ v ]; important; _ } ->
+      Some (Right, v, important)
+  | Declaration
+      { property = Border_bottom_right_radius; value = [ v ]; important; _ } ->
+      Some (Bottom, v, important)
+  | Declaration
+      { property = Border_bottom_left_radius; value = [ v ]; important; _ } ->
+      Some (Left, v, important)
   | _ -> None
 
 (* CSS Scroll Snap 1 sec. 4.2 and 5.1: [scroll-padding] sets the four snapport
@@ -1709,12 +1715,10 @@ let build_border_width_box ~important ~top ~right ~bottom ~left =
     (Declaration.v ~important Border_width
        (collapse_box_by same_border_width [ top; right; bottom; left ]))
 
-(* [border-style] carries a single keyword, so only a box with one distinct
-   style has a shorthand spelling. *)
 let build_border_style_box ~important ~top ~right ~bottom ~left =
-  match collapse_box_by same_border_style [ top; right; bottom; left ] with
-  | [ style ] -> Some (Declaration.v ~important Border_style style)
-  | _ -> None
+  Some
+    (Declaration.v ~important Border_style
+       (collapse_box_by same_border_style [ top; right; bottom; left ]))
 
 let build_border_color_box ~important ~top ~right ~bottom ~left =
   Some
@@ -2708,7 +2712,7 @@ let try_compose_border_whole_at ~ctx idx i =
           (function
             | Declaration { property = Border_width; value = [ w ]; _ } ->
                 width := Some w
-            | Declaration { property = Border_style; value = s; _ } ->
+            | Declaration { property = Border_style; value = [ s ]; _ } ->
                 style := Some s
             | Declaration { property = Border_color; value = [ c ]; _ } ->
                 color := Some c

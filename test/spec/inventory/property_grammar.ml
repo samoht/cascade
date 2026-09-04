@@ -420,13 +420,10 @@ let matrix =
     ]
   @ rows_for
       [
-        "border-style";
         "border-top-style";
         "border-right-style";
         "border-bottom-style";
         "border-left-style";
-        "border-inline-style";
-        "border-block-style";
         "border-inline-start-style";
         "border-inline-end-style";
         "border-block-start-style";
@@ -434,6 +431,29 @@ let matrix =
       ]
       [ "none"; "solid"; "dashed"; "hidden" ]
       [ "solid dashed"; "foo" ]
+  (* CSS Backgrounds 3 (ED) sec. 3.2 gives [border-style] the value
+     [<line-style>{1,4}], the box over the four side styles that sec. 3.1 gives
+     [border-color]. *)
+  @ [
+      {
+        property = "border-style";
+        positives =
+          [
+            "none";
+            "solid";
+            "solid dashed";
+            "solid dashed dotted";
+            "solid dashed dotted double";
+          ];
+        negatives = [ "foo"; "solid dashed dotted double hidden" ];
+      };
+    ]
+  (* CSS Logical 1 (ED) sec. 4.5.2 gives both flow-relative shorthands the value
+     [<'border-top-style'>{1,2}], the start edge then the end edge. *)
+  @ rows_for
+      [ "border-inline-style"; "border-block-style" ]
+      [ "none"; "solid"; "solid dashed" ]
+      [ "foo"; "solid dashed dotted" ]
   @ rows_for
       [
         "padding-left";
@@ -444,14 +464,6 @@ let matrix =
         "padding-inline-end";
         "padding-block-start";
         "padding-block-end";
-        "border-top-left-radius";
-        "border-top-right-radius";
-        "border-bottom-left-radius";
-        "border-bottom-right-radius";
-        "border-start-start-radius";
-        "border-start-end-radius";
-        "border-end-start-radius";
-        "border-end-end-radius";
         "stroke-width";
         "outline-width";
         "outline-offset";
@@ -465,6 +477,22 @@ let matrix =
       ]
       [ "0"; "1px"; "calc(1rem + 2px)" ]
       [ "auto"; "red"; "1px 2px" ]
+  (* CSS Backgrounds 3 (ED) sec. 4.1 gives every corner longhand the value
+     [<length-percentage [0,inf]>{1,2}]: the horizontal radius then the vertical
+     one, a single value setting both. *)
+  @ rows_for
+      [
+        "border-top-left-radius";
+        "border-top-right-radius";
+        "border-bottom-left-radius";
+        "border-bottom-right-radius";
+        "border-start-start-radius";
+        "border-start-end-radius";
+        "border-end-start-radius";
+        "border-end-end-radius";
+      ]
+      [ "0"; "1px"; "1px 2px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px 3px" ]
   (* CSS Transforms 2 sec. 3: [perspective] takes [none], its initial value. CSS
      Text Decoration 4 sec. 5: [text-underline-offset] takes [auto] and may be
      negative. *)

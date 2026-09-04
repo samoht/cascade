@@ -5418,6 +5418,14 @@ let multi_value_grammars () =
   reads_back "border-style: none dashed none solid";
   check_declaration ~expected:"border-style:solid" "border-style: solid";
   check_declaration ~expected:"border-style:none" "border-style: none";
+  (* The box fills the sides by position, so a list repeating what those rules
+     already supply is the longer spelling of the same declaration and
+     canonicalises to the shortest, as [border-color]'s does. pp holds the
+     authored node; the fold is a normalize step. *)
+  check_declaration ~expected:"border-style:dashed dashed dashed dashed"
+    ~optimized:"border-style:dashed" "border-style: dashed dashed dashed dashed";
+  check_declaration ~expected:"border-style:dashed none dashed"
+    ~optimized:"border-style:dashed none" "border-style: dashed none dashed";
   neg_cursor read_declaration "border-style: solid solid solid solid solid";
   neg_cursor read_declaration "border-style: solid 1px";
 
@@ -5460,6 +5468,10 @@ let multi_value_grammars () =
     "border-top-left-radius: 1px";
   check_declaration ~expected:"border-top-left-radius:50%"
     "border-top-left-radius: 50%";
+  (* One value already sets both radii, so a vertical radius equal to the
+     horizontal one says what omitting it says. *)
+  check_declaration ~expected:"border-top-left-radius:1px 1px"
+    ~optimized:"border-top-left-radius:1px" "border-top-left-radius: 1px 1px";
   (* The shorthand already spelled both axes across the slash, and keeps to
      it. *)
   check_declaration ~expected:"border-radius:10%/20%" "border-radius: 10% / 20%";

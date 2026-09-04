@@ -5313,6 +5313,22 @@ val logical_border_width : border_width -> logical_border_width
 val logical_border_widths : border_width -> border_width -> logical_border_width
 (** [logical_border_widths start end_] is a two-value logical border width. *)
 
+type logical_border_style = Properties.logical_border_style =
+  | Single of border_style
+  | Pair of border_style * border_style
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_style var
+
+val logical_border_style : border_style -> logical_border_style
+(** [logical_border_style s] is a one-value logical border style. *)
+
+val logical_border_styles : border_style -> border_style -> logical_border_style
+(** [logical_border_styles start end_] is a two-value logical border style. *)
+
 (** CSS outline style values. *)
 type outline_style = Properties.outline_style =
   | None
@@ -5507,12 +5523,12 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
-val border_inline_style : border_style -> declaration
+val border_inline_style : logical_border_style -> declaration
 (** [border_inline_style s] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
      border-inline-style} property. *)
 
-val border_block_style : border_style -> declaration
+val border_block_style : logical_border_style -> declaration
 (** [border_block_style s] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
      border-block-style} property. *)

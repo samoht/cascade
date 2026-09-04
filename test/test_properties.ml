@@ -941,6 +941,10 @@ let check_logical_border_color =
   check_value_cursor "logical_border_color" read_logical_border_color
     pp_logical_border_color
 
+let check_logical_border_style =
+  check_value_cursor "logical_border_style" read_logical_border_style
+    pp_logical_border_style
+
 let check_logical_border_width =
   check_value_cursor "logical_border_width" read_logical_border_width
     pp_logical_border_width
@@ -4835,6 +4839,7 @@ let spec_generated_box_layout_edges () =
   check_line_fit_edge "text alphabetic";
   check_line_fit_edge_keyword "ideographic-ink";
   check_logical_border_color "red blue";
+  check_logical_border_style "solid dashed";
   check_logical_border_width "1px 2px";
   decl_optimizes ~prop:"border-inline-color" ~held:"red blue" ~into:"red #00f"
     "red blue";
@@ -4878,6 +4883,7 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_line_fit_edge "text text";
   neg_cursor read_line_fit_edge_keyword "baseline";
   neg_cursor ~allow_partial:true read_logical_border_color "red blue green";
+  neg_cursor ~allow_partial:true read_logical_border_style "solid dashed dotted";
   neg_cursor ~allow_partial:true read_logical_border_width "1px 2px 3px";
   neg_cursor read_min_intrinsic_sizing "legacy legacy";
   neg_cursor read_min_intrinsic_sizing_keyword "zero";

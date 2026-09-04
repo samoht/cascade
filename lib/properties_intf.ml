@@ -1787,6 +1787,18 @@ type logical_border_width =
   | Revert_layer
   | Var of logical_border_width var
 
+(* border-inline-style / border-block-style take one or two <line-style> values,
+   mirroring logical_border_width. *)
+type logical_border_style =
+  | Single of border_style
+  | Pair of border_style * border_style
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_style var
+
 type outline_style =
   | None
   | Solid
@@ -4622,7 +4634,7 @@ type 'a property =
   | Background_color : color property
   | Color : color property
   | Border_color : color list property
-  | Border_style : border_style property
+  | Border_style : border_style list property
   | Border_top_style : border_style property
   | Border_right_style : border_style property
   | Border_bottom_style : border_style property
@@ -4755,10 +4767,10 @@ type 'a property =
   | Border_image_width : border_image_width property
   | Border_image_outset : border_image_outset property
   | Border_radius : border_radius property
-  | Border_top_left_radius : length property
-  | Border_top_right_radius : length property
-  | Border_bottom_left_radius : length property
-  | Border_bottom_right_radius : length property
+  | Border_top_left_radius : length list property
+  | Border_top_right_radius : length list property
+  | Border_bottom_left_radius : length list property
+  | Border_bottom_right_radius : length list property
   | Border_top_color : color property
   | Border_right_color : color property
   | Border_bottom_color : color property
@@ -4769,12 +4781,12 @@ type 'a property =
   | Border_block_end_color : color property
   | Border_inline_color : logical_border_color property
   | Border_block_color : logical_border_color property
-  | Border_inline_style : border_style property
-  | Border_block_style : border_style property
-  | Border_start_start_radius : length property
-  | Border_start_end_radius : length property
-  | Border_end_start_radius : length property
-  | Border_end_end_radius : length property
+  | Border_inline_style : logical_border_style property
+  | Border_block_style : logical_border_style property
+  | Border_start_start_radius : length list property
+  | Border_start_end_radius : length list property
+  | Border_end_start_radius : length list property
+  | Border_end_end_radius : length list property
   | Opacity : opacity property
   | Fill_opacity : opacity property
   | Stroke_opacity : opacity property

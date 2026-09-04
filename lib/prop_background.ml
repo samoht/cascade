@@ -904,6 +904,20 @@ let rec pp_logical_border_width : logical_border_width Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_logical_border_width ctx v
 
+let rec pp_logical_border_style : logical_border_style Pp.t =
+ fun ctx -> function
+  | Single s -> pp_border_style ctx s
+  | Pair (start_, end_) ->
+      pp_border_style ctx start_;
+      Pp.space ctx ();
+      pp_border_style ctx end_
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_logical_border_style ctx v
+
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
   | (Lengths lengths : border_spacing) ->
@@ -1215,6 +1229,13 @@ let rec read_border_style t : border_style =
     ~var:(fun t -> Var (read_var read_border_style t))
     t
 
+(* CSS Backgrounds 3 (ED) sec. 3.2: [border-style] is [<line-style>{1,4}], the
+   box over the four side styles, as sec. 3.1 gives [border-color] and sec. 3.3
+   gives [border-width] theirs. A CSS-wide keyword reaches a slot only as the
+   lone value; [validate_regular_property_components] rejects the mixes. *)
+let read_border_style_box t : border_style list =
+  Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_border_style t
+
 (* Helper: ensure border-width values are non-negative per CSS spec *)
 let ensure_non_negative_border_width t value =
   if value < 0.0 then
@@ -1472,6 +1493,29 @@ let rec read_logical_border_width t : logical_border_width =
     ]
     ~var:(fun t -> Var (Values.read_var read_logical_border_width t))
     ~default:read_widths t
+
+(* CSS Logical 1 (ED) sec. 4.5.2: [border-inline-style] and [border-block-style]
+   are [<'border-top-style'>{1,2}], the first value the start edge and the
+   second the end edge. *)
+let rec read_logical_border_style t : logical_border_style =
+  let read_styles t =
+    match
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_border_style t
+    with
+    | [ s ] -> (Single s : logical_border_style)
+    | [ start_; end_ ] -> Pair (start_, end_)
+    | _ -> Cursor.err_expected t "one or two line styles"
+  in
+  Cursor.enum_or_var "logical border style"
+    [
+      ("inherit", (Inherit : logical_border_style));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_logical_border_style t))
+    ~default:read_styles t
 
 let rec read_border_collapse t : border_collapse =
   Cursor.enum_or_var "border-collapse"

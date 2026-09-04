@@ -1430,6 +1430,14 @@ let vars_of_logical_border_width (value : Properties.logical_border_width) =
       vars_of_border_width start_ @ vars_of_border_width end_
   | _ -> []
 
+let vars_of_logical_border_style (value : Properties.logical_border_style) =
+  match value with
+  | Var v -> [ V v ]
+  | Single s -> vars_of_border_style s
+  | Pair (start_, end_) ->
+      vars_of_border_style start_ @ vars_of_border_style end_
+  | _ -> []
+
 let vars_of_outline (value : Properties.outline) =
   match value with
   | Var v -> [ V v ]
@@ -2093,22 +2101,22 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_block_color, value -> vars_of_logical_border_color value
   | Border_inline_width, value -> vars_of_logical_border_width value
   | Border_block_width, value -> vars_of_logical_border_width value
-  | Border_inline_style, value -> vars_of_border_style value
-  | Border_block_style, value -> vars_of_border_style value
-  | Border_start_start_radius, value -> vars_of_length value
-  | Border_start_end_radius, value -> vars_of_length value
-  | Border_end_start_radius, value -> vars_of_length value
-  | Border_end_end_radius, value -> vars_of_length value
+  | Border_inline_style, value -> vars_of_logical_border_style value
+  | Border_block_style, value -> vars_of_logical_border_style value
+  | Border_start_start_radius, value -> vars_of_length_list value
+  | Border_start_end_radius, value -> vars_of_length_list value
+  | Border_end_start_radius, value -> vars_of_length_list value
+  | Border_end_end_radius, value -> vars_of_length_list value
   | Text_decoration_color, value -> vars_of_color value
   | Webkit_text_decoration_color, value -> vars_of_color value
   | Webkit_tap_highlight_color, value -> vars_of_color value
   | Outline_color, value -> vars_of_color value
   (* Border radius *)
   | Border_radius, value -> vars_of_border_radius value
-  | Border_top_left_radius, value -> vars_of_length value
-  | Border_top_right_radius, value -> vars_of_length value
-  | Border_bottom_left_radius, value -> vars_of_length value
-  | Border_bottom_right_radius, value -> vars_of_length value
+  | Border_top_left_radius, value -> vars_of_length_list value
+  | Border_top_right_radius, value -> vars_of_length_list value
+  | Border_bottom_left_radius, value -> vars_of_length_list value
+  | Border_bottom_right_radius, value -> vars_of_length_list value
   | Border_image, value -> vars_of_border_image value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
@@ -2153,7 +2161,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | O_transform, value -> vars_of_transform_list value
   | Translate, value -> vars_of_translate_value value
   (* Border style properties *)
-  | Border_style, value -> vars_of_border_style value
+  | Border_style, value -> List.concat_map vars_of_border_style value
   | Border_top_style, value -> vars_of_border_style value
   | Border_right_style, value -> vars_of_border_style value
   | Border_bottom_style, value -> vars_of_border_style value
