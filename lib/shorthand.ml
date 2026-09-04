@@ -1474,7 +1474,11 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
               preserve_list vs
                 (collapse_box_lengths [ top; right; bottom; left ])
             in
-            (Declaration.v ~important property value, rest'))
+            let merged = Declaration.v ~important property value in
+            (* Absorbing a side into [margin: inherit] leaves the other three
+               holding the keyword beside a concrete one. *)
+            if Declaration.value_has_css_wide_mix merged then (original, rest)
+            else (merged, rest'))
 
 (* CSS Overflow 3 sec. 3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
@@ -1527,7 +1531,9 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            go ((idx, merged) :: acc) rest')
+            if Declaration.value_has_css_wide_mix merged then
+              go (item :: acc) rest
+            else go ((idx, merged) :: acc) rest')
     | ((idx, Declaration { property = Overflow_y; value = v_y; important; _ })
        as item)
       :: rest -> (
@@ -1537,7 +1543,9 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            go ((idx, merged) :: acc) rest')
+            if Declaration.value_has_css_wide_mix merged then
+              go (item :: acc) rest
+            else go ((idx, merged) :: acc) rest')
     | d :: rest -> go (d :: acc) rest
   in
   preserve_list decls (go [] decls)
@@ -1900,15 +1908,19 @@ let compose_box_via_index ~ctx idx =
     else
       match try_one !i with
       | Some (Single shorthand) ->
-          Rule_index.absorb idx ~at:!i
-            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
-            ~shorthand;
-          i := !i + 4
+          if
+            Rule_index.absorb idx ~at:!i
+              ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+              ~shorthand
+          then i := !i + 4
+          else incr i
       | Some (Split decls) ->
-          Rule_index.splice idx ~at:!i
-            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
-            ~new_decls:decls;
-          i := !i + 4
+          if
+            Rule_index.splice idx ~at:!i
+              ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+              ~new_decls:decls
+          then i := !i + 4
+          else incr i
       | None -> incr i
   done
 
@@ -2113,8 +2125,9 @@ let compose_pair_via_index idx =
   while !i < n do
     match try_any !i with
     | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand;
-        i := !i + 2
+        if Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand then
+          i := !i + 2
+        else incr i
     | None -> incr i
   done
 
@@ -2127,8 +2140,12 @@ let compose_fixed3_via_index idx ~try_compose =
     match try_compose idx !i with
     | None -> incr i
     | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
+        if
+          Rule_index.absorb idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2 ]
+            ~shorthand
+        then i := !i + 3
+        else incr i
   done
 
 (* Same walk for a family whose run length varies: [try_compose] reports the
@@ -2144,8 +2161,8 @@ let compose_run_via_index idx ~try_compose =
       | None -> incr i
       | Some (shorthand, k) ->
           let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + k
+          else incr i
   done
 
 (* Collect the contiguous run of one family's longhands starting at [i], as
@@ -2316,8 +2333,8 @@ let compose_font_via_index idx =
       | None -> incr i
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 5
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 5
+          else incr i
   done
 
 (* The property a name spells, when the reader types one.
@@ -2685,8 +2702,8 @@ let compose_border_via_index idx =
               !i + 11;
             ]
           in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 12
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 12
+          else incr i
   done
 
 (* Compose the [border] shorthand from the three whole-border longhands
@@ -2806,15 +2823,17 @@ let compose_border_whole_via_index ~ctx idx =
       if is_border_image_decl d then ();
       incr i)
     else
+      let step_over () =
+        let d = Rule_index.decl_at idx !i in
+        if is_border_image_decl d then seen_border_image := true;
+        incr i
+      in
       match try_compose_border_whole_at ~ctx idx !i with
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2 ] in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 3
-      | None ->
-          let d = Rule_index.decl_at idx !i in
-          if is_border_image_decl d then seen_border_image := true;
-          incr i
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 3
+          else step_over ()
+      | None -> step_over ()
   done
 
 (* CSS Backgrounds 3: the [border] shorthand resets [border-image] to its
@@ -2953,19 +2972,7 @@ let try_compose_border_image_at idx i =
 
 let compose_border_image_via_index ~ctx idx =
   if scope ctx <> `Stylesheet then ()
-  else
-    let n = Rule_index.length idx in
-    let i = ref 0 in
-    while !i < n do
-      if Rule_index.is_absorbed idx !i then incr i
-      else
-        match try_compose_border_image_at idx !i with
-        | None -> incr i
-        | Some (shorthand, k) ->
-            let absorbed = List.init k (fun j -> !i + j) in
-            Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-            i := !i + k
-    done
+  else compose_run_via_index idx ~try_compose:try_compose_border_image_at
 
 let compose_border_image_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in
@@ -3321,15 +3328,17 @@ let compose_mask_via_index ~ctx idx =
       if is_mask_border_decl_raw d then ();
       incr i)
     else
+      let step_over () =
+        let d = Rule_index.decl_at idx !i in
+        if is_mask_border_decl_raw d then seen_mask_border := true;
+        incr i
+      in
       match try_compose_mask_at ~ctx idx !i with
       | Some (shorthand, k) ->
           let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-      | None ->
-          let d = Rule_index.decl_at idx !i in
-          if is_mask_border_decl_raw d then seen_mask_border := true;
-          incr i
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + k
+          else step_over ()
+      | None -> step_over ()
   done
 
 (* The property a [transition-property] entry names, against the property a

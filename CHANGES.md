@@ -390,6 +390,11 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` no longer contracts a run of longhands one of which is `inherit`,
+  `unset`, `revert` or `revert-layer`. A CSS-wide keyword is a whole
+  declaration value, so pasting one into a shorthand made a declaration every
+  browser drops: `padding-left: inherit` beside its three siblings became
+  `padding: 0 2em 10% inherit` and the element lost all four paddings
 - `--minify` keeps a transition longhand written before a run of other
   transition longhands. The run contracted into the `transition` shorthand,
   which resets the rest of the family, so a `transition-behavior:

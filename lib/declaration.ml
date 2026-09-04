@@ -688,6 +688,12 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
       Pp.size ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> value_size ~minify ~inline decl
 
+(* The writer side of the rule [validate_regular_property_components] enforces
+   on input. The reader's exemptions are for keeping an authored value verbatim,
+   so they do not apply here: nothing licenses building such a value. *)
+let value_has_css_wide_mix decl =
+  Properties.value_has_css_wide_mix (string_of_value ~minify:true decl)
+
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
   Cursor.ws t;

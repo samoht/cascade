@@ -267,6 +267,13 @@ val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
 (** [value_size ?minify decl] is the byte length of
     [string_of_value ?minify decl], computed without allocating the string. *)
 
+val value_has_css_wide_mix : declaration -> bool
+(** [value_has_css_wide_mix decl] is [true] when [decl]'s value holds a CSS-wide
+    keyword beside other components. CSS Cascade 5 sec. 7.3 makes such a keyword
+    the whole value of a declaration or nothing, so the reader rejects one and a
+    browser drops the declaration. This is that rule read off an emission, for
+    the composer deciding whether a contraction it built can be written out. *)
+
 (* Single-to-list property helpers. These construct typed declarations for
    properties that accept comma-separated lists, while keeping a simple
    single-value API. *)
