@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `auto` is rejected in colour values and SVG paint, including nested colour
+  functions and paint-server fallbacks. Explicit UI-property alternatives and
+  variable fallback token streams remain valid (#878).
+
 - Custom counter-style names are accepted in `list-style-type` and `list-style`,
   with case and position-keyword disambiguation preserved. `list_style_type`
   gains `Name of string` (#877).

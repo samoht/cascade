@@ -12,6 +12,11 @@ open Properties_intf
 let err_invalid_value ?loc ?got t prop_name value =
   Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
+let read_auto_color t =
+  Cursor.enum "auto or colour"
+    [ ("auto", (Auto : color)) ]
+    ~default:read_color t
+
 let rec read_css_wide t : css_wide =
   Cursor.enum_or_var "css-wide keyword"
     [

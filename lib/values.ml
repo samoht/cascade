@@ -6991,6 +6991,7 @@ and read_color t : color =
         Cursor.skip t;
         (* CSS color keywords are case-insensitive. *)
         match read_color_keyword_of_string (String.lowercase_ascii ident) with
+        | Some Auto -> Cursor.err_invalid ~loc t "auto is not a colour"
         | Some color -> color
         | None -> Cursor.err ~loc t ("unknown color: " ^ ident))
     | _ -> Cursor.err t "color"
