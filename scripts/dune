@@ -1,5 +1,6 @@
 (executables
  (names check_properties check_api_consistency check_unknown_properties)
+ (modules check_properties check_api_consistency check_unknown_properties)
  (libraries re unix cascade fmt))
 
 (rule
@@ -29,3 +30,17 @@
 ;; Scans the inputs and reports each Unknown_property occurrence as
 ;; DROP_CANDIDATE (vendor prefix + modern is typed; add to vendor pair list)
 ;; or TYPE_ME (no typed handler yet).
+
+;; Mutation testing. Rewrites one token of one library source in a separate
+;; checkout, rebuilds it and asks whether the suite noticed. Opt-in: a campaign
+;; costs a full build and a full test run per mutant, so it has no alias.
+;;
+;;   git worktree add --detach /tmp/cascade-mut HEAD
+;;   dune exec scripts/mutate.exe -- --work /tmp/cascade-mut --list
+;;   dune exec scripts/mutate.exe -- --work /tmp/cascade-mut --sample 40 --seed 1
+;;   dune exec scripts/mutate.exe -- --work /tmp/cascade-mut --only 1234,1235
+
+(executable
+ (name mutate)
+ (modules mutate)
+ (libraries unix fmt))
