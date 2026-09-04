@@ -520,16 +520,67 @@ let resolved_color css =
 
 (* Layer names form a tree (css-cascade-5 sec. 6.4.2): [@layer a.b] creates [a]
    first and nests [b] inside it, and a later [@layer a.d] is ordered inside [a]
-   too, so it stays before a top-level layer declared in between. *)
+   too, so it stays before a top-level layer declared in between. Sec. 6.4.3
+   puts the parent's own rules at the end of that subtree: "Unlayered rules are
+   sorted later than any layered rules within the same parent layer (if any)."
+   So [a] outranks [a.b], however the two were written. *)
 let test_resolve_nested_layers () =
   Alcotest.(check (option string))
-    "a sublayer comes after its parent" (Some "color:red")
+    "a sublayer comes before its parent's own rules" (Some "color:blue")
     (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
   Alcotest.(check (option string))
     "a top-level layer sorts after the whole subtree" (Some "color:green")
     (resolved_color
        "@layer a.b{span{color:red}}@layer c{span{color:green}}@layer \
         a.d{span{color:blue}}")
+
+(* The same sec. 6.4.3 rule over every way of writing the pair. A parent's own
+   rules sit in an implicit sub-layer that closes its subtree, so among normal
+   declarations the parent beats each of its sublayers and among important ones
+   every sublayer beats it. Neither answer depends on which was declared first,
+   nor on whether the sublayer is named, nested as a block, anonymous, or only
+   pre-declared by an [@layer a, b;] statement. *)
+let test_parent_layer_closes_its_subtree () =
+  Alcotest.(check (option string))
+    "the parent wins when it is declared second" (Some "color:blue")
+    (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
+  Alcotest.(check (option string))
+    "and when it is declared first" (Some "color:red")
+    (resolved_color "@layer a{span{color:red}}@layer a.b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "the sublayer wins for important, sublayer declared first"
+    (Some "color:red!important")
+    (resolved_color
+       "@layer a.b{span{color:red!important}}@layer \
+        a{span{color:blue!important}}");
+  Alcotest.(check (option string))
+    "the sublayer wins for important, parent declared first"
+    (Some "color:blue!important")
+    (resolved_color
+       "@layer a{span{color:red!important}}@layer \
+        a.b{span{color:blue!important}}");
+  Alcotest.(check (option string))
+    "a sublayer block nested in its parent orders the same way"
+    (Some "color:blue")
+    (resolved_color "@layer a{@layer b{span{color:red}}span{color:blue}}");
+  Alcotest.(check (option string))
+    "an anonymous block nested in a parent is one of its sublayers"
+    (Some "color:blue")
+    (resolved_color "@layer a{@layer{span{color:red}}span{color:blue}}");
+  Alcotest.(check (option string))
+    "a statement declaring the parent first does not move its own rules"
+    (Some "color:blue")
+    (resolved_color
+       "@layer a;@layer a.b{span{color:red}}@layer a{span{color:blue}}");
+  Alcotest.(check (option string))
+    "a statement declaring the sublayer first does not either"
+    (Some "color:blue")
+    (resolved_color
+       "@layer a.b;@layer a{span{color:blue}}@layer a.b{span{color:red}}");
+  Alcotest.(check (list string))
+    "the parent closes the run its sublayers open" [ "a.b"; "a.d"; "a"; "c" ]
+    (Resolve.layer_order
+       (sheet_of "@layer a.b{span{color:red}}@layer c{}@layer a.d{}"))
 
 (* Each unnamed [@layer { }] block is a layer of its own, so two of them order
    like any other pair: the last wins for normal declarations, the first for
@@ -595,7 +646,7 @@ let test_resolve_skips_conditional_and_scoped_blocks () =
    not part of that order. *)
 let test_layer_order_counts_the_blocks_resolve_walks () =
   Alcotest.(check (list string))
-    "a nested @layer block is counted" [ "a"; "a.b" ]
+    "a nested @layer block is counted" [ "a.b"; "a" ]
     (Resolve.layer_order (sheet_of "@layer a{@layer b{span{color:red}}}"));
   List.iter
     (fun (label, before, after) ->
@@ -656,10 +707,10 @@ let test_resolve_escaped_dot_layers () =
    an ident cannot pass for the separator between two. *)
 let test_layer_order_escaped_dot () =
   Alcotest.(check (list string))
-    "a dot inside an ident is not a path separator" [ "a"; "a.b"; "a\\.b" ]
+    "a dot inside an ident is not a path separator" [ "a.b"; "a"; "a\\.b" ]
     (Resolve.layer_order (sheet_of "@layer a.b;@layer a\\2e b;"));
   Alcotest.(check (list string))
-    "a sublayer of the layer named a.b" [ "a\\.b"; "a\\.b.c" ]
+    "a sublayer of the layer named a.b" [ "a\\.b.c"; "a\\.b" ]
     (Resolve.layer_order (sheet_of "@layer a\\2e b.c;"))
 
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
@@ -795,6 +846,8 @@ let suite =
         test_resolve_cascade;
       Alcotest.test_case "nested layer names order as a tree" `Quick
         test_resolve_nested_layers;
+      Alcotest.test_case "a parent layer closes its own subtree" `Quick
+        test_parent_layer_closes_its_subtree;
       Alcotest.test_case "anonymous layers are distinct" `Quick
         test_resolve_anonymous_layers;
       Alcotest.test_case "resolve skips conditional and scoped blocks" `Quick
