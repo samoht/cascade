@@ -2669,6 +2669,50 @@ let gap_normal () =
     (fun value -> none_cursor read_declaration ("gap:" ^ value))
     [ "normal inherit"; "inherit normal"; "normal normal normal" ]
 
+let sizing_keyword_domains () =
+  (* CSS Sizing 3 sections 3.1.1-3.1.3 distinguish auto sizes from none
+     maximums. CSS Logical Properties 1 section 4.1 uses the same grammars for
+     the corresponding flow-relative dimensions. *)
+  List.iter
+    (fun dimension ->
+      List.iter
+        (fun (prefix, valid, invalid) ->
+          let property = prefix ^ dimension in
+          List.iter
+            (fun value ->
+              check_declaration ~roundtrip:true (property ^ ":" ^ value))
+            [
+              valid;
+              "min-content";
+              "max-content";
+              "fit-content(10%)";
+              "0";
+              "2px";
+              "10%";
+              "calc(1em + 2px)";
+              "inherit";
+              "initial";
+              "unset";
+              "revert";
+              "revert-layer";
+              "var(--size," ^ invalid ^ ")";
+            ];
+          List.iter
+            (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+            [
+              invalid;
+              String.uppercase_ascii invalid;
+              "normal";
+              "from-font";
+              "size";
+            ])
+        [
+          ("", "auto", "none");
+          ("min-", "auto", "none");
+          ("max-", "none", "auto");
+        ])
+    [ "width"; "height"; "inline-size"; "block-size" ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -6001,6 +6045,7 @@ let declaration_tests =
     test_case "outline-offset length only" `Quick outline_offset_length_only;
     test_case "line-height-step length only" `Quick line_height_step_length_only;
     test_case "gap normal" `Quick gap_normal;
+    test_case "sizing keyword domains" `Quick sizing_keyword_domains;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
