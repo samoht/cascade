@@ -1,10 +1,32 @@
-; Developer-run differential test helper: filters getComputedStyle differences
-; down to the ones cascade considers a real render change. Not part of the
-; default test run; driven by run.sh.
+; Filters getComputedStyle differences down to the ones cascade considers a
+; real render change; run.sh refuses to measure anything without it.
 
 (executable
  (name canon_filter)
  (libraries cascade cascade_diff))
+
+; The comparison itself: apply and --minify must leave every element's computed
+; style unchanged, over the committed fixtures. CASCADE and CANON_FILTER are
+; set here because run.sh otherwise builds them with dune, and a dune inside a
+; dune action blocks on the workspace lock. (universe) for the same reason the
+; test/render rules carry it: the answer depends on the installed browser.
+
+(rule
+ (alias runtest)
+ (deps
+  (universe)
+  (source_tree fixtures)
+  xtest.js
+  minify_page.js
+  freeze_page.js)
+ (action
+  (setenv
+   CASCADE
+   %{exe:../../bin/main.exe}
+   (setenv
+    CANON_FILTER
+    %{exe:canon_filter.exe}
+    (run sh %{dep:run.sh})))))
 
 ; The controls that license every count run.sh prints are checked on every
 ; machine rather than only where a browser is installed: test_selfcheck.sh

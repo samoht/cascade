@@ -11,12 +11,31 @@
 # computed style a function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
+# CASCADE_NO_BROWSER silences this gate, and a gate that did not run is not a
+# pass: only the value that says the run checked nothing exits 0. Same contract
+# as test/render/browser.ml, so one variable does not mean two things.
+case ${CASCADE_NO_BROWSER-} in
+  '') ;;
+  unchecked)
+    echo "SKIP: inline (CASCADE_NO_BROWSER=unchecked, so this run checks nothing)"
+    exit 0 ;;
+  *)
+    echo "FAIL: inline is suppressed by CASCADE_NO_BROWSER=$CASCADE_NO_BROWSER;" \
+         "a gate that did not run is not a pass. Set CASCADE_NO_BROWSER=unchecked" \
+         "to exit 0 and say so." >&2
+    exit 1 ;;
+esac
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
 # sort -V, not sort: the cache holds mac_arm-<version> directories, and in
 # lexical order a 99.x outranks a 146.x.
 [ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort -V | tail -1)
+# The same places test/render/browser.ml looks, so a machine does not run one
+# browser oracle and skip the other.
+[ -z "$CHROME" ] && CHROME=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" -type f -name headless_shell 2>/dev/null | sort -V | tail -1)
+[ -z "$CHROME" ] && [ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] &&
+  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
@@ -76,6 +95,12 @@ if [ -z "$CANON_FILTER" ]; then
   fi
   CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
+# Absolute, because xtest.js runs it from a directory of its own choosing.
+case $CANON_FILTER in
+  /*) ;;
+  */*) CANON_FILTER=$(CDPATH= cd "$(dirname "$CANON_FILTER")" && pwd)/$(basename "$CANON_FILTER") ;;
+  *) CANON_FILTER=$(CDPATH= pwd)/$CANON_FILTER ;;
+esac
 # Prove it filters, rather than that a file exists: a stale or broken binary
 # passes an existence check and silently restores raw comparison. The first two
 # lines each spell one value two ways and must be dropped; the third is a real

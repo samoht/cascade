@@ -19,6 +19,9 @@ copy of either JavaScript driver. `REPORT_FORMAT=tsv`, `RAW_OUT` and `FILT_OUT`
 expose the same comparison as reproducible investigation artifacts; the normal
 test output is unchanged.
 
+`dune runtest` runs the comparison over `fixtures/`. Run it by hand to include
+the pages `fetch.sh` downloads:
+
 ```sh
 sh test/inline/run.sh
 ```
@@ -30,11 +33,13 @@ installed release on purpose. There is no fallback to a `cascade` on `PATH`,
 which would report on whichever release is installed while reading as a result
 about the branch.
 
-It looks for a headless Chrome on `PATH`, in `$CHROME`, or under the puppeteer
-cache (highest version, ordered numerically), and skips cleanly if none is
-found (so it is a no-op in CI). `xtest.js` appends an extractor script, runs
-the browser with `--dump-dom`, and diffs the computed styles element by
-element.
+It looks for a headless Chrome in `$CHROME`, on `PATH`, under the puppeteer and
+playwright caches (highest version, ordered numerically), then in the macOS
+application bundle, and skips cleanly if none is found, so it is a no-op in CI.
+`CASCADE_NO_BROWSER` is not that: silencing a gate is not a pass, so it exits
+non-zero for every value but `unchecked`, which exits 0 and says the run checked
+nothing. `xtest.js` appends an extractor script, runs the browser with
+`--dump-dom`, and diffs the computed styles element by element.
 
 ## Reproducibility
 

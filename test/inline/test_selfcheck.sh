@@ -39,6 +39,26 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/fixtures" "$work/pages"
 cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$dir/freeze_page.js" "$work/"
 
+# Silencing the gate with CASCADE_NO_BROWSER must not read as a pass, and the
+# one value that exits 0 has to say the run checked nothing. Both legs return
+# before run.sh looks for a browser or builds anything, which is what makes
+# them checkable here.
+if CASCADE_NO_BROWSER=1 sh "$work/run.sh" >/dev/null 2>&1; then
+  echo "FAIL: run.sh exits 0 under CASCADE_NO_BROWSER=1"
+  exit 1
+fi
+if ! suppressed=$(CASCADE_NO_BROWSER=unchecked sh "$work/run.sh" 2>&1); then
+  echo "FAIL: run.sh does not exit 0 for the acknowledged value"
+  printf '%s\n' "$suppressed"
+  exit 1
+fi
+case $suppressed in
+  SKIP:*) ;;
+  *)
+    echo "FAIL: run.sh skipped without saying so: $suppressed"
+    exit 1 ;;
+esac
+
 # The stub keys off the page text, not the invocation count, so the original
 # page and each transform of it answer alike: only the marked page moves.
 cat > "$work/browser" <<'STUB'
@@ -79,6 +99,9 @@ page "$work/pages/unfrozen.html" stable
 sed -i.bak 's|</body>|<script>void 0</script></body>|' "$work/pages/unfrozen.html"
 rm -f "$work/pages/unfrozen.html.bak"
 
+# The stub is the browser for the run below, so an ambient suppression switch
+# has nothing to suppress; the two legs above set it themselves.
+unset CASCADE_NO_BROWSER
 STUB_STATE=$work/state
 export STUB_STATE CASCADE CANON_FILTER
 CHROME=$work/browser
@@ -121,4 +144,4 @@ fi
 
 [ "$status" -ne 0 ] || fail "run.sh exited 0 with a page it could not measure"
 
-echo "PASS: an unstable page and a stale one are reported as unusable"
+echo "PASS: a suppressed gate fails, and an unstable or stale page is unusable"
