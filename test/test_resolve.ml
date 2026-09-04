@@ -136,6 +136,33 @@ let test_supported_needs_no_node () =
   check "stateful" false ":hover";
   check "one bad branch spoils the list" false "span,div:hover"
 
+let titled = elt ~attrs:[ ("title", "x") ] "div" []
+
+(* Two forms selectors-4 defines that no engine implements as defined. Sec. 6.3
+   gives the [s] flag "identical to" semantics; every engine refuses the
+   selector instead, and the rule carrying it with it. Sec. 13.2 matches an
+   element whose only content is document white space, and its own note records
+   that Level 2 and Level 3 did not - the change engines have not taken. The
+   answer to either is a fact about the specification and not about how the page
+   renders, and {!Apply} inlines and {!Prune} deletes, so the matcher declines
+   the form rather than rewrite a page against its own browser. *)
+let test_declines_what_no_engine_implements () =
+  answers "the case-sensitive attribute flag" Resolve.Unsupported "[title=x s]"
+    titled;
+  answers "on a value the flag rules out" Resolve.Unsupported "[title=X s]"
+    titled;
+  answers ":empty" Resolve.Unsupported ":empty" s2;
+  answers ":empty in a compound" Resolve.Unsupported "span:empty" s2;
+  answers ":empty under a negation" Resolve.Unsupported ":not(:empty)" s2;
+  answers ":empty in a relational argument" Resolve.Unsupported ":has(:empty)" a;
+  answers ":empty as one branch of a list" Resolve.Unsupported "span,:empty" s2;
+  answers ":empty left of a combinator" Resolve.Unsupported ":empty span" s2;
+  let declines name s =
+    Alcotest.(check bool) name false (Resolve.supported (sel s))
+  in
+  declines "supported settles it without a node" ":empty";
+  declines "and for the case-sensitive flag" "[title=x s]"
+
 (* selectors-4 sec. 13.2: [:empty] is "an element that has no children except,
    optionally, document white space characters". White space alone leaves an
    element empty, any other text does not, and U+00A0 is not document white
@@ -813,6 +840,8 @@ let suite =
         test_unsupported_is_not_no_match;
       Alcotest.test_case "supported needs no node" `Quick
         test_supported_needs_no_node;
+      Alcotest.test_case "declines what no engine implements" `Quick
+        test_declines_what_no_engine_implements;
       Alcotest.test_case "empty counts text children" `Quick
         test_empty_counts_text_children;
       Alcotest.test_case "nth-child indexes from one" `Quick
