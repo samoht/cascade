@@ -2385,6 +2385,49 @@ let list_properties () =
   check_declaration ~expected:"animation:spin .5s"
     ~optimized:"animation:spin .5s" "animation: spin 500ms"
 
+let animation_infinite_name () =
+  (* CSS Animations 1 section 3.10 assigns a keyword to another property only
+     when that property has not already been set. Section 3 makes keyframe names
+     case-sensitive, even when their spelling is also a keyword. *)
+  let open Css.Properties in
+  let check_slots input expected_name expected_count =
+    let cursor = Cursor.of_string input in
+    let value = read_animation cursor in
+    Alcotest.(check bool) "consumes animation" true (Cursor.is_done cursor);
+    (match value with
+    | Shorthand { name = Some (Ambiguous name | Name name); iteration_count; _ }
+      ->
+        Alcotest.(check string) "animation name" expected_name name;
+        Alcotest.(check bool)
+          "iteration count" true
+          (iteration_count = Some expected_count)
+    | _ -> Alcotest.failf "missing animation name in %s" input);
+    value
+  in
+  List.iter
+    (fun (input, name, count) ->
+      let value = check_slots input name count in
+      List.iter
+        (fun minify ->
+          let printed = Css.Pp.to_string ~minify pp_animation value in
+          ignore (check_slots printed name count))
+        [ false; true ])
+    [
+      ("infinite infinite", "infinite", Infinite);
+      ("infinite INFINITE", "INFINITE", Infinite);
+      ("INFINITE infinite", "infinite", Infinite);
+      ("2 infinite", "infinite", Num 2.);
+      ("2 InFiNiTe", "InFiNiTe", Num 2.);
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("animation:" ^ value))
+    [
+      "2 3";
+      "infinite 2";
+      "infinite infinite infinite";
+      "spin infinite infinite";
+    ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5710,6 +5753,7 @@ let declaration_tests =
       text_decoration_optional_line;
     test_case "text decoration thickness range" `Quick
       text_decoration_thickness_range;
+    test_case "animation infinite name" `Quick animation_infinite_name;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
