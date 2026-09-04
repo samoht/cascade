@@ -1,0 +1,35 @@
+; The property grammar manifest, checked against a headless browser: every
+; positive must be valid CSS to it and every negative invalid, so a row cannot
+; be written until cascade agrees with it. Skips, with status 0, when node or a
+; browser is missing.
+;
+; The chrome and node probing is the one in test/render, shared rather than
+; rewritten; only the page script is new, because no existing one answers
+; whether a declaration is valid.
+
+(copy_files#
+ (files ../../render/browser.ml*))
+
+(copy_files#
+ (files ../../render/json.ml*))
+
+(executable
+ (name property_vectors)
+ (libraries cascade_spec_inventory fmt unix))
+
+; The executable reads its page script at run time, so it has to sit next to it
+; in the build directory.
+
+(rule
+ (alias default)
+ (deps
+  (glob_files *.js))
+ (action (progn)))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  property_vectors.exe)
+ (action
+  (run %{exe:property_vectors.exe})))
