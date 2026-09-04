@@ -967,7 +967,7 @@ let rec read_length_or_css_wide t =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_length_or_css_wide t)) ]
-    ~default:(read_length ~with_keywords:false)
+    ~default:(read_length ~with_keywords:false ~length_only:true)
     t
 
 let rec read_text_decoration_thickness t =

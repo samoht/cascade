@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `outline-offset` rejects percentages, including inside math functions,
+  while retaining negative lengths (#879).
+
 - `auto` is rejected in colour values and SVG paint, including nested colour
   functions and paint-server fallbacks. Explicit UI-property alternatives and
   variable fallback token streams remain valid (#878).
