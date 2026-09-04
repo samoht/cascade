@@ -1115,31 +1115,31 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_text_decoration_color (read_color t))
   | _ -> None
 
+let read_box_size ?(maximum = false) t =
+  match read_length_percentage ~allow_negative:false t with
+  | Length (Normal | From_font | Size) ->
+      Cursor.err_invalid t "expected a box size"
+  | Length Auto when maximum ->
+      Cursor.err_invalid t "maximum sizes do not accept auto"
+  | Length None when not maximum ->
+      Cursor.err_invalid t "only maximum sizes accept none"
+  | size -> size
+
 let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
-  | Width -> Some (v Width (read_length_percentage ~allow_negative:false t))
-  | Height -> Some (v Height (read_length_percentage ~allow_negative:false t))
-  | Min_width ->
-      Some (v Min_width (read_length_percentage ~allow_negative:false t))
-  | Min_height ->
-      Some (v Min_height (read_length_percentage ~allow_negative:false t))
-  | Max_width ->
-      Some (v Max_width (read_length_percentage ~allow_negative:false t))
-  | Max_height ->
-      Some (v Max_height (read_length_percentage ~allow_negative:false t))
-  | Inline_size ->
-      Some (v Inline_size (read_length_percentage ~allow_negative:false t))
-  | Min_inline_size ->
-      Some (v Min_inline_size (read_length_percentage ~allow_negative:false t))
-  | Max_inline_size ->
-      Some (v Max_inline_size (read_length_percentage ~allow_negative:false t))
-  | Block_size ->
-      Some (v Block_size (read_length_percentage ~allow_negative:false t))
-  | Min_block_size ->
-      Some (v Min_block_size (read_length_percentage ~allow_negative:false t))
-  | Max_block_size ->
-      Some (v Max_block_size (read_length_percentage ~allow_negative:false t))
+  | Width -> Some (v Width (read_box_size t))
+  | Height -> Some (v Height (read_box_size t))
+  | Min_width -> Some (v Min_width (read_box_size t))
+  | Min_height -> Some (v Min_height (read_box_size t))
+  | Max_width -> Some (v Max_width (read_box_size ~maximum:true t))
+  | Max_height -> Some (v Max_height (read_box_size ~maximum:true t))
+  | Inline_size -> Some (v Inline_size (read_box_size t))
+  | Min_inline_size -> Some (v Min_inline_size (read_box_size t))
+  | Max_inline_size -> Some (v Max_inline_size (read_box_size ~maximum:true t))
+  | Block_size -> Some (v Block_size (read_box_size t))
+  | Min_block_size -> Some (v Min_block_size (read_box_size t))
+  | Max_block_size -> Some (v Max_block_size (read_box_size ~maximum:true t))
   | Font_size -> Some (v Font_size (Properties.read_font_size t))
   | Perspective -> Some (v Perspective (read_perspective_value t))
   | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))

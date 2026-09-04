@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- Physical and logical box sizes reject unrelated keywords: `none` is only
+  valid for maximum sizes, which reject `auto`; `normal`, `from-font` and
+  bare `size` are rejected throughout (#882).
+
 - `row-gap` and `column-gap` accept `normal` and preserve its layout-dependent
   meaning during optimisation (#881).
 
