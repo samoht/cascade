@@ -40,6 +40,7 @@ val pp_property_value : ('a property * 'a) Pp.t
 val normalize_property_value :
   ?lossless:bool ->
   ?exact_srgb:bool ->
+  ?resolve_missing:bool ->
   ?ctx:Values.calc_ctx ->
   'a property ->
   'a ->
@@ -50,9 +51,11 @@ val normalize_property_value :
     whose folds have not yet migrated out of [pp]. [lossless] disables bounded
     colour and numeric approximation while keeping exact canonicalisation.
 
-    [exact_srgb] is {!Values.normalize_color}'s flag of the same name, applied
-    to the properties whose whole value is a colour. It is for the canonical
-    diff projection only. *)
+    [exact_srgb] and [resolve_missing] are {!Values.normalize_color}'s flags of
+    the same names, applied to the properties whose whole value is a colour.
+    Both are for the canonical diff projection only. A colour a value nests - a
+    gradient stop, a shadow colour - normalises without either, so
+    [resolve_missing] never reaches a colour the value interpolates. *)
 
 val normalize_custom_property_value :
   ?lossless:bool ->

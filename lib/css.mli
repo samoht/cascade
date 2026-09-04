@@ -7862,7 +7862,7 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val canonicalize_rule_order : t -> t
+val canonicalize_rule_order : ?lossless:bool -> t -> t
 (** [canonicalize_rule_order t] projects cascade-equivalent stylesheets to one
     deterministic form: selector-list rules expand onto their branches,
     same-selector rules coalesce when no intervening write can observe the move
@@ -7889,11 +7889,18 @@ val canonicalize_rule_order : t -> t
     emission cannot do because a Level 3 parser rejects the shorter forms. A
     [color(srgb ...)] whose channels all land on a whole byte is keyed as the
     [rgb()] spelling of the same colour, which emission cannot do either because
-    [color()] needs a browser that parses it. An identical
-    [-webkit-text-decoration-color] compatibility declaration is dropped when
-    its unprefixed twin is present; a differing or prefixed-only declaration is
-    retained. These are comparison-side normalisations; this function does not
-    change {!val-optimize}'s configured emission policy. *)
+    [color()] needs a browser that parses it. A [none] channel of a Lab-family
+    colour standing as a whole colour-longhand value is keyed as the zero CSS
+    Color 4 sec. 4.4 says a missing component behaves as, so a converted
+    achromatic [oklab()] meets the hex a minifier writes for it; sec. 13.3 keeps
+    that off the positions the sheet interpolates, so a gradient stop, a
+    [color-mix()] operand, a custom-property token stream, [@keyframes] and
+    [@starting-style] keep their [none], and [lossless] bounds how far the
+    resolved colour respells. An identical [-webkit-text-decoration-color]
+    compatibility declaration is dropped when its unprefixed twin is present; a
+    differing or prefixed-only declaration is retained. These are
+    comparison-side normalisations; this function does not change
+    {!val-optimize}'s configured emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

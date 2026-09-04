@@ -706,7 +706,21 @@ let canonical_missing_color_components_as_zero () =
   Alcotest.(check bool)
     "the resolved colour keeps its alpha" false
     (equal ".x{outline-color:oklab(0% none none / .5)}"
-       ".x{outline-color:#00000040}")
+       ".x{outline-color:#00000040}");
+  (* Resolving the sentinel is a respelling inside the colour, so it applies
+     under [--lossless] too, and stops where that mode stops: the OKLab does not
+     cross into sRGB. *)
+  let lossless a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true a b
+  in
+  Alcotest.(check bool)
+    "lossless resolves the axes" true
+    (lossless ".x{outline-color:oklab(0% none none / .5)}"
+       ".x{outline-color:oklab(0% 0 0 / .5)}");
+  Alcotest.(check bool)
+    "lossless keeps the OKLab out of sRGB" false
+    (lossless ".x{outline-color:oklab(0% none none / .5)}"
+       ".x{outline-color:#00000080}")
 
 (* The sec. 13.3 side of the line. At each of these positions the stylesheet
    itself pairs the colour with another one, so [none] and [0] name two

@@ -505,7 +505,7 @@ let canonical_of_stylesheet ~lossless ~prune_unused_custom_props stylesheet =
        normalization cannot synthesize the nesting the projection removes. *)
     Some
       (stylesheet |> optimize |> Css.flatten_nesting |> optimize
-     |> Css.canonicalize_rule_order
+      |> Css.canonicalize_rule_order ~lossless
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None
 

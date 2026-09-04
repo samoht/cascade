@@ -699,9 +699,13 @@ entry points both moved.
 - Canonical diff normalises the rules inside every at-rule that has a block, so
   the result no longer depends on which at-rule encloses a rule. It normalised
   inside `@layer` and `@media` but not inside `@scope` or `@when` (#393)
-- A fully transparent `oklab()` with a missing axis, such as
-  `oklab(0% none none / 0)`, compares equal to transparent black.
-  Non-transparent forms stay distinct (#312)
+- A `none` colour channel compares as the zero CSS Color 4 sec. 4.4 makes a
+  missing component behave as, so the `oklab(0% none none / .5)` a minifier
+  writes for a colour it reached by conversion compares equal to the hex
+  cascade folds the same colour to. Where the stylesheet interpolates the
+  colour instead - a gradient stop, a `color-mix()` operand, a `@keyframes`
+  frame, `@starting-style` - the two spellings stay distinct, since sec. 13.3
+  gives a missing component the other colour's rather than a zero (#312, #847)
 - A relative-colour function keeps its origin as a typed colour, so `red` and
   `#f00` compare equal in `rgb()`, `oklab()` and the rest, including inside
   custom properties (#313)

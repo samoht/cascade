@@ -7645,12 +7645,40 @@ let round_lab_family_axes ~lossless (c : color) : color =
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
   | other -> other
 
+(* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
+   appropriate unit for that component", and the spec names rendering the colour
+   and converting it to another space among the purposes that holds for. The
+   sRGB family already resolves its own [none] channels that way on the path
+   through [static_color_to_srgb_bytes]; the Lab family reaches no fold at all
+   while a channel is missing, so a converted achromatic OKLab and the hex it
+   stands for never meet. This is that half, written as its own step so the
+   folds below read one shape of colour.
+
+   Sec. 13.3 is why it is not unconditional: interpolation gives a missing
+   component the other colour's analogous component instead of a zero, so the
+   two spellings are two different ramps there. *)
+let zero_missing_components (c : color) : color =
+  let lightness (l : percentage option) : percentage option =
+    match l with Option.None -> Some (Pct 0.) | l -> l
+  in
+  let axis (a : float option) =
+    match a with Option.None -> Some 0. | a -> a
+  in
+  let hue (h : hue) : hue = match h with Hue_none -> Unitless 0. | h -> h in
+  match c with
+  | Lab r -> Lab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
+  | Oklab r -> Oklab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
+  | Lch r -> Lch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
+  | Oklch r -> Oklch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
+  | other -> other
+
 (* AST-level color canonicalisation: the value-changing colour folds live here,
    producing a canonical [color] so [pp_color] stays a pure serialiser. The sRGB
    fold runs on the authored coefficients first; [round_lab_family_axes] then
    rounds only what survives in its own colour space. *)
-let rec normalize_color ?(lossless = false) ?(exact_srgb = false) (c : color) :
-    color =
+let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
+    ?(resolve_missing = false) (c : color) : color =
+  let c = if resolve_missing then zero_missing_components c else c in
   let normalize_color ?(lossless = lossless) =
     normalize_color ~lossless ~exact_srgb
   in

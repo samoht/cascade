@@ -4213,13 +4213,16 @@ let canonicalize_math_whitespace_components comps =
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->
+    ?resolve_missing:bool ->
     ?ctx:Values.calc_ctx ->
     a property ->
     a ->
     a =
- fun ?(lossless = false) ?(exact_srgb = false) ?(ctx = Values.default_calc_ctx)
-     property value ->
-  let normalize_color = Values.normalize_color ~lossless ~exact_srgb in
+ fun ?(lossless = false) ?(exact_srgb = false) ?(resolve_missing = false)
+     ?(ctx = Values.default_calc_ctx) property value ->
+  let normalize_color =
+    Values.normalize_color ~lossless ~exact_srgb ~resolve_missing
+  in
   (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
