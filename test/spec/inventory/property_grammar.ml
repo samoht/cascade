@@ -306,6 +306,10 @@ let matrix =
           "1px";
           "10%";
           "-1px";
+          "-10%";
+          "calc(-1px)";
+          "calc(-10%)";
+          "calc(2px - 3px)";
           "hairline";
           "thin";
           "thick";

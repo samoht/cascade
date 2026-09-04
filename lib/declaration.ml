@@ -992,10 +992,10 @@ let rec read_text_decoration_thickness t =
           fun t ->
             Calc
               (read_calc ~result_type:`Value
-                 (read_non_negative_length ~with_keywords:false)
+                 (read_length ~with_keywords:false)
                  t) );
       ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    ~default:(read_length ~with_keywords:false)
     t
 
 (* Delegate to the proper reader in Properties *)

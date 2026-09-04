@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- Negative `text-decoration-thickness` lengths and percentages are retained,
+  including inside `calc()`, instead of dropping valid declarations (#874).
+
 - `blur()` rejects percentages, sizing functions and negative literal lengths,
   including percentages nested in math, instead of emitting invalid filters
   (#871).
