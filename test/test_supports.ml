@@ -83,6 +83,12 @@ let spec_supports_feature_vectors () =
     let actual = of_string input in
     Alcotest.(check string) name expected (to_string actual)
   in
+  (* Conditional Rules general-enclosed preserves functions whose arguments do
+     not match a supported feature grammar, including under negation. *)
+  check "unknown font format under not" "not font-format(cascade-nope)"
+    "not font-format(cascade-nope)";
+  check "unknown font tech under not" "not font-tech(cascade-nope)"
+    "not font-tech(cascade-nope)";
   check "selector forgiving relative branch" "selector(:has(+ img))"
     "selector(:has(+ img))";
   check "selector current pseudo" "selector(:popover-open)"

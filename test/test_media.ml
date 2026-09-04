@@ -331,6 +331,20 @@ let general_enclosed_roundtrip () =
   check "(unknown-feature: 1)";
   check "(unknown-boolean)"
 
+(* MQ4 sections 3 and 3.1: a failed feature grammar falls back to
+   general-enclosed; it must not invalidate an enclosing disjunction. *)
+let general_enclosed_feature_fallback () =
+  List.iter
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
+    [
+      "(orientation: sideways) or (min-width: 0px)";
+      "(width >=) or (color)";
+      "(future syntax) or (color)";
+      "((color) and) or (color)";
+      "() or (color)";
+    ]
+
 let general_enclosed_in_context () =
   let check src = Alcotest.(check string) src src (to_string (of_string src)) in
   (* negated, listed and combined with a real query *)
@@ -630,6 +644,8 @@ let suite =
       test_case "spec media query boolean and range vectors" `Quick
         spec_media_query_vectors;
       test_case "general-enclosed roundtrip" `Quick general_enclosed_roundtrip;
+      test_case "general-enclosed feature fallback" `Quick
+        general_enclosed_feature_fallback;
       test_case "general-enclosed in context" `Quick general_enclosed_in_context;
       test_case "general-enclosed is not a media type" `Quick
         general_enclosed_is_not_a_media_type;
