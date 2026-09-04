@@ -683,6 +683,56 @@ let test_page_break_alias_shadowing () =
     "the legacy spelling wins when it comes last" [ "break-after:page" ]
     (dedup ".a{break-after:avoid;page-break-after:always}")
 
+(* CSS Backgrounds 3 sec. 4.2 to 4.4: [border-color], [border-style] and
+   [border-width] set exactly their four side longhands and reset nothing else.
+   CSS Scroll Snap 1 sec. 6.1 and 6.2 say the same of [scroll-padding] and
+   [scroll-margin]. Each shorthand and its four longhands compute the same
+   values on every element, so a canonical diff equates them. *)
+let test_box_family_shorthand_equivalence () =
+  let same name a b =
+    Alcotest.(check bool)
+      name true
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  same "border-width equals its four side longhands" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:1px}";
+  same "border-style equals its four side longhands" ".a{border-style:solid}"
+    ".a{border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:solid}";
+  same "border-color equals its four side longhands" ".a{border-color:red}"
+    ".a{border-top-color:red;border-right-color:red;border-bottom-color:red;border-left-color:red}";
+  same "scroll-margin equals its four side longhands" ".a{scroll-margin:1px}"
+    ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px;scroll-margin-left:1px}";
+  same "scroll-padding equals its four side longhands" ".a{scroll-padding:1px}"
+    ".a{scroll-padding-top:1px;scroll-padding-right:1px;scroll-padding-bottom:1px;scroll-padding-left:1px}";
+  (* Per-side values reach the shorthand in top-right-bottom-left order. *)
+  same "a two-value border-width equals its four side longhands"
+    ".a{border-width:1px 2px}"
+    ".a{border-top-width:1px;border-right-width:2px;border-bottom-width:1px;border-left-width:2px}"
+
+(* A shorthand that writes more slots than the longhands beside it is a
+   different declaration, and the report keeps saying so. *)
+let test_box_family_non_equivalence_still_reports () =
+  let differs name a b =
+    Alcotest.(check bool)
+      name false
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  (* [background] resets every background longhand to its initial. *)
+  differs "background is not background-color" ".a{background:red}"
+    ".a{background-color:red}";
+  (* [border] resets [border-image] on top of the width it names. *)
+  differs "border is not border-width" ".a{border:1px solid red}"
+    ".a{border-width:1px}";
+  differs "an unset side is not the shorthand" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px}";
+  differs "a differing side is not the shorthand" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:2px}";
+  differs "a differing side style is not the shorthand" ".a{border-style:solid}"
+    ".a{border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:dashed}";
+  differs "an unset scroll-margin side is not the shorthand"
+    ".a{scroll-margin:1px}"
+    ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px}"
+
 let suite =
   ( "shorthand",
     [
@@ -726,4 +776,8 @@ let suite =
         test_same_value_ignores_importance;
       Alcotest.test_case "page-break alias shadowing" `Quick
         test_page_break_alias_shadowing;
+      Alcotest.test_case "box family shorthand equivalence" `Quick
+        test_box_family_shorthand_equivalence;
+      Alcotest.test_case "box family non-equivalence still reports" `Quick
+        test_box_family_non_equivalence_still_reports;
     ] )
