@@ -27,6 +27,10 @@
 ; parse_recovery: for malformed CSS, the rules and declarations cascade keeps
 ; must be the ones the browser's CSSOM keeps. Both sides are read through the
 ; same parser, so a difference is recovery and not spelling.
+;
+; custom_property: a transform that resolves var() must compute, in the
+; browser, what the sheet it rewrote computed. Custom properties are sampled by
+; name, which the other computed-style harnesses here deliberately do not do.
 
 (executables
  (names
@@ -36,7 +40,8 @@
   resolve_diff
   selector_match
   at_rule_conditions
-  parse_recovery)
+  parse_recovery
+  custom_property)
  (libraries cascade cascade_diff fmt unix))
 
 ; The executables read their driver scripts at run time, so those have to sit
@@ -155,3 +160,12 @@
    CASCADE_RENDER_ARTIFACTS
    %{workspace_root}/tmp/render-diff
    (run %{exe:selector_match.exe}))))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  custom_property.exe)
+ (action
+  (run %{exe:custom_property.exe})))
