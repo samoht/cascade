@@ -12,9 +12,12 @@
 ;
 ; canonical_agree: a pair --diff=canonical reports identical must compute the
 ; same style in the browser for every element of a document derived from it.
+;
+; resolve_diff: the declarations Resolve says win for an element must compute
+; the same style, in the browser, as the stylesheet they came from.
 
 (executables
- (names render_diff shorthand_expand canonical_agree)
+ (names render_diff shorthand_expand canonical_agree resolve_diff)
  (libraries cascade cascade_diff fmt unix))
 
 ; The executables read their driver scripts at run time, so those have to sit
@@ -87,3 +90,14 @@
   canonical_agree.exe)
  (action
   (run %{exe:canonical_agree.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  resolve_diff.exe)
+ (action
+  (setenv
+   CASCADE_RENDER_ARTIFACTS
+   %{workspace_root}/tmp/render-diff
+   (run %{exe:resolve_diff.exe}))))
