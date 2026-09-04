@@ -87,17 +87,17 @@ away differ, and the verdict follows those.
 
   $ cat > media-a.css <<EOF
   > .b{color:red}
-  > @media (bogus^^^){.x{color:red}}
+  > @media ^^^{.x{color:red}}
   > EOF
   $ cat > media-b.css <<EOF
   > .b{color:red}
-  > @media (bogus^^^){.x{color:blue}}
+  > @media ^^^{.x{color:blue}}
   > EOF
   $ cascade diff --diff=canonical media-a.css media-b.css
-  media-a.css and media-b.css parse warning: <string>: bad condition for @media: expected media-in-parens at [22-27] (in at-rule)
+  media-a.css and media-b.css parse warning: <string>: bad condition for @media: expected media type or condition at [21-22] (in at-rule)
   .b{color:red}
-  @media (bogus^^^){.x{color:red}}
-          ^^^^^
+  @media ^^^{.x{color:red}}
+         ^
   
   Unreadable rules: media-a.css 1, media-b.css 1
   Cannot determine whether the CSS files are identical

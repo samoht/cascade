@@ -381,17 +381,16 @@ let declaration_of_components t prop value =
 let function_call t (fn : Component.func Component.node) =
   let name = fn.node.name in
   let args = fn.node.arguments in
-  let inner = Cursor.func_sub fn t in
-  if not (fn.node.terminated && components_are_closed args) then
-    err t [ Component.Func fn ] ("Unterminated " ^ name ^ "() in @supports");
-  (* [func] and the readers under it work from the argument text, so both the
-     [Failure] the shared constructor raises and a reader's own [Parse_error]
-     carry a position relative to that text, not to the source. *)
+  if not (Component.is_any_value [ Component.Func fn ]) then
+    err t [ Component.Func fn ] "Invalid general-enclosed function in @supports";
+  (* The feature grammar has priority over the general-enclosed fallback. *)
   match func name (Cursor.string_of_components ~trim:true args) with
   | feature -> feature
-  | exception Failure msg -> err inner args msg
-  | exception Cursor.Parse_error e ->
-      err inner args (Pp.to_string Error.pp_kind e.Error.kind)
+  | exception (Failure _ | Cursor.Parse_error _) ->
+      Function
+        (General
+           ( String.lowercase_ascii name,
+             Cursor.string_of_components ~trim:true args ))
 
 let peek_ident t =
   match Cursor.peek t with

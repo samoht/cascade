@@ -12,6 +12,14 @@ let invalid feature branch input = { feature; branch; input }
 
 let positive =
   [
+    row "supports" "general-enclosed-font-format"
+      "@supports font-format(\"woff2\"){.x{color:red}}"
+      "@supports font-format(\"woff2\") { .x { color: red } }";
+    row "container" "general-enclosed-empty" "@container(){.x{color:red}}"
+      "@container () { .x { color: red } }";
+    row "media" "general-enclosed-interval"
+      "@media(30em < width > 60em){.x{color:red}}"
+      "@media (30em < width > 60em) { .x { color: red } }";
     row "property" "descriptor-order"
       "@property --accent{syntax:\"<color>\";inherits:true;initial-value:red}"
       "@property --accent { initial-value: red; inherits: true; syntax: \
@@ -160,9 +168,6 @@ let negative =
     invalid "supports" "mixed-operator"
       "@supports (display: grid) and (gap: 1rem) or (color: red) { .x { color: \
        red } }";
-    invalid "supports" "bad-font-format-function"
-      "@supports font-format(\"woff2\") { .x { color: red } }";
-    invalid "container" "empty-query" "@container () { .x { color: red } }";
     invalid "container" "empty-style-query"
       "@container style() { .x { color: red } }";
     invalid "container" "bad-scroll-state-query"

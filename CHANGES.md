@@ -190,6 +190,10 @@ entry points both moved.
 
 ### Parsing
 
+- Unknown enclosed media conditions and unsupported `@supports` function
+  arguments retain their guards, so an applicable `or` branch or negated
+  capability test no longer loses its rules (#867).
+
 - `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
   side styles, `border-block-style` and `border-inline-style` take the start and
   end edges, and every `border-*-radius` corner takes a horizontal and a

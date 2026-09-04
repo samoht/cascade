@@ -64,6 +64,11 @@ val rule_loc : rule -> Loc.t
 val is_whitespace : t -> bool
 (** [is_whitespace cv] is [true] for a preserved whitespace token. *)
 
+val is_any_value : t list -> bool
+(** [is_any_value cvs] checks the optional [<any-value>] of a general-enclosed
+    condition: no bad string, bad URL, unmatched closer, or unclosed group,
+    recursively. An empty sequence is allowed. *)
+
 val has_var : t list -> bool
 (** [has_var cvs] is [true] when a [var()] function appears anywhere in [cvs],
     including inside function arguments and bracketed blocks. A [var(] written

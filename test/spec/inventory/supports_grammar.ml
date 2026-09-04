@@ -82,24 +82,10 @@ let rows =
       (property "--theme-color" "color(display-p3 1 0 0)");
   ]
 
-let invalid =
+(* Conditional Rules 3 section 6: unsupported functions remain grammatical. *)
+let general_enclosed_functions =
   [
-    "";
-    "()";
-    "display: grid";
-    "(display)";
-    "(: grid)";
-    "(display: grid;)";
-    "(display: grid) and";
-    "(display: grid) or";
-    "(display: grid) and (gap: 1rem) or selector(:has(img))";
-    "font-format(woff2) and or (display: grid)";
-    "selector(:has(img)) or and (display: grid)";
-    "not not (display: grid)";
-    "not (display: grid) and (gap: 1rem)";
-    "not (display: grid) or (gap: 1rem)";
     "selector()";
-    "selector(:has(img)";
     "selector(:has())";
     "selector(:nth-child(2n of))";
     "font-format()";
@@ -116,6 +102,28 @@ let invalid =
     "env()";
     "env(\"safe-area-inset-top\")";
     "env(safe-area-inset-top, fallback)";
+  ]
+
+let invalid =
+  [
+    "font-format(])";
+    "future(url(a b))";
+    "future(\"a\nb\")";
+    "";
+    "()";
+    "display: grid";
+    "(display)";
+    "(: grid)";
+    "(display: grid;)";
+    "(display: grid) and";
+    "(display: grid) or";
+    "(display: grid) and (gap: 1rem) or selector(:has(img))";
+    "font-format(woff2) and or (display: grid)";
+    "selector(:has(img)) or and (display: grid)";
+    "not not (display: grid)";
+    "not (display: grid) and (gap: 1rem)";
+    "not (display: grid) or (gap: 1rem)";
+    "selector(:has(img)";
     "not";
     "not ()";
     "(display: grid) and or (gap: 1rem)";

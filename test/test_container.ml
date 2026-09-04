@@ -262,7 +262,7 @@ let spec_container_unitless_zero_length () =
   check "min-width" "(min-width: 0)" "(min-width:0px)";
   check "min-inline-size" "(min-inline-size: 0)" "(min-inline-size: 0px)";
   check "range" "(width >= 0)" "(width >= 0px)";
-  rejects_invalid "(min-width: 1)"
+  check "unknown unitless nonzero" "(min-width: 1)" "(min-width: 1)"
 
 (* CSS Conditional Rules 5 sec. 6.1 "Size Container Features": "The syntax of a
    <size-feature> is the same as for a media feature", so Media Queries 4 sec.

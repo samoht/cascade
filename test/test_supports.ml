@@ -115,6 +115,10 @@ let spec_supports_feature_vectors () =
     "((display: grid) and (gap: 1rem)) or selector(:has(img))"
 
 let spec_supports_negative_vectors () =
+  List.iter
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
+    Supports_inventory.general_enclosed_functions;
   let expect_error name input =
     try
       ignore (of_string input);

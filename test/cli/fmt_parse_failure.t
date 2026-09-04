@@ -77,7 +77,7 @@ neighbours stay.
 
   $ cat > bad-prelude.css <<EOF
   > .ok { color: red }
-  > @media (bogus^^^) { .x { color: blue } }
+  > @media ^^^ { .x { color: blue } }
   > .ok2 { color: green }
   > EOF
   $ cascade fmt --minify bad-prelude.css 2> /dev/null

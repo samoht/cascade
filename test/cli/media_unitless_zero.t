@@ -22,15 +22,15 @@ always worked.
   $ cascade fmt --minify unit.css
   .keep{color:#00f}@media(width>=0px){.a{color:red}}
 
-A non-zero unitless number is still not a length, so that query is the
-one that recovers, and only that one.
+A non-zero unitless number is not a length, but the enclosed condition
+remains valid general-enclosed syntax and must retain its guard.
 
   $ cat > one.css <<EOF
   > .keep { color: blue }
   > @media (min-width: 1) { .a { color: red } }
   > EOF
   $ cascade fmt --minify one.css 2> /dev/null
-  .keep{color:#00f}
+  .keep{color:#00f}@media(min-width: 1){.a{color:red}}
 
 The range and container spellings take the zero too.
 
