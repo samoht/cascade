@@ -3450,7 +3450,7 @@ let filter_blur_grammar () =
     (fun prop ->
       List.iter
         (fun value ->
-          ignore (check_declarations (prop ^ ":blur(" ^ value ^ ")") 0))
+          none_cursor read_declaration (prop ^ ":blur(" ^ value ^ ")"))
         [
           "0%";
           "10%";
@@ -3462,6 +3462,8 @@ let filter_blur_grammar () =
           "calc(1px + 0%)";
           "calc(10% - 10%)";
           "min(1px, 2%)";
+          "min(0, 1px)";
+          "clamp(0, 1px, 2px)";
           "max(0%, 1px)";
           "clamp(0px, 1%, 2px)";
           "minmax(1px, 2px)";
@@ -3469,7 +3471,15 @@ let filter_blur_grammar () =
         ];
       List.iter
         (fun value ->
-          ignore (check_declarations (prop ^ ":blur(" ^ value ^ ")") 1))
+          let input = prop ^ ":blur(" ^ value ^ ")" in
+          let declarations = check_declarations input 1 in
+          List.iter
+            (fun declaration ->
+              let printed =
+                Css.Declaration.to_string ~minify:true declaration
+              in
+              ignore (check_declarations printed 1))
+            declarations)
         [
           "";
           "0";

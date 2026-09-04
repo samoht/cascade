@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `blur()` rejects percentages, sizing functions and negative literal lengths,
+  including percentages nested in math, instead of emitting invalid filters
+  (#871).
+
 - `filter` and backdrop/vendor variants accept omitted function arguments,
   retaining the empty call and shortening explicit defaults when optimized
   (#870).

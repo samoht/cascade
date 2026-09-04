@@ -98,7 +98,11 @@ let rec read_blend_mode t : blend_mode =
 
 let read_blur t : filter =
   Cursor.call "blur" t (fun t ->
-      if Cursor.is_done t then Omitted Blur_function else Blur (read_length t))
+      if Cursor.is_done t then Omitted Blur_function
+      else
+        Blur
+          (read_length ~length_only:true ~with_keywords:false
+             ~allow_negative:false t))
 
 let filter_function_name = function
   | Blur_function -> "blur"
@@ -111,11 +115,21 @@ let filter_function_name = function
   | Saturate_function -> "saturate"
   | Sepia_function -> "sepia"
 
+let pp_blur_length ctx (length : length) =
+  match length with
+  | Calc (Val value) -> (
+      match Values.calc_length_unit value with
+      | Some (_, n) when n < 0. ->
+          (* The calculation clamps to zero; a negative literal is invalid. *)
+          Pp.call "calc" pp_length { ctx with in_calc = true } value
+      | _ -> pp_length ctx length)
+  | _ -> pp_length ctx length
+
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Omitted fn -> Pp.call (filter_function_name fn) Pp.nop ctx ()
-  | Blur l -> Pp.call "blur" pp_length ctx l
+  | Blur l -> Pp.call "blur" pp_blur_length ctx l
   | Brightness n ->
       Pp.call "brightness" (pp_number_percentage ~always:true) ctx n
   | Contrast n -> Pp.call "contrast" (pp_number_percentage ~always:true) ctx n

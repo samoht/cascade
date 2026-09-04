@@ -18,6 +18,27 @@ let omitted_filters =
     "sepia()";
   ]
 
+(* Filter Effects 1 section 6.1 and CSS Values 4 section 10: only lengths;
+   calculated negative results clamp instead of becoming invalid literals. *)
+let blur_lengths =
+  [ "blur(calc(-1px))"; "blur(min(-1px, 2px))"; "blur(max(0px, 1em))" ]
+
+let invalid_blur_lengths =
+  [
+    "blur(0%)";
+    "blur(10%)";
+    "blur(-1px)";
+    "blur(auto)";
+    "blur(calc(0%))";
+    "blur(calc(1px + 0%))";
+    "blur(calc(10% - 10%))";
+    "blur(min(1px, 2%))";
+    "blur(min(0, 1px))";
+    "blur(clamp(0px, 1%, 2px))";
+    "blur(minmax(1px, 2px))";
+    "blur(fit-content(1px))";
+  ]
+
 let matrix =
   [
     {
@@ -228,8 +249,8 @@ let matrix =
           "drop-shadow(0 0 2px black)";
           "opacity(calc(50% + 25%))";
         ]
-        @ omitted_filters;
-      negatives = [ "drop-shadow()"; "blur(red)" ];
+        @ omitted_filters @ blur_lengths;
+      negatives = [ "drop-shadow()"; "blur(red)" ] @ invalid_blur_lengths;
     };
     {
       property = "font";
@@ -774,8 +795,8 @@ let matrix =
       ]
       (* Filter Effects 1 sec. 6.1: blur( <length>? ). *)
       ([ "none"; "blur(5px)"; "contrast(120%) brightness(.8)" ]
-      @ omitted_filters)
-      [ "blur(red)"; "none blur(1px)" ]
+      @ omitted_filters @ blur_lengths)
+      ([ "blur(red)"; "none blur(1px)" ] @ invalid_blur_lengths)
     (* CSS Transitions 1 sec. 2.2: <time [0s,inf]>#. *)
   @ rows_for [ "transition-duration" ]
       [ "0s"; ".2s"; "120ms"; "0s, 1s" ]

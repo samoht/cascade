@@ -453,8 +453,14 @@ val normalize_signed_zero : float -> string -> float * string
     a [0] repr. Other values pass through unchanged. *)
 
 val read_length :
-  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length
-(** [read_length t] parses a CSS length. *)
+  ?allow_negative:bool ->
+  ?with_keywords:bool ->
+  ?length_only:bool ->
+  Cursor.t ->
+  length
+(** [read_length t] parses a CSS length. [length_only] excludes percentages,
+    including those nested in math, and sizing-only functions. It defaults to
+    [false] for readers whose grammar permits length-percentage values. *)
 
 val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
