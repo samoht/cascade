@@ -25,6 +25,8 @@ const jobsFile = process.argv[2];
 const workDir = process.argv[3];
 const CHUNK_BYTES = 512 * 1024;
 
+const frameJs = fs.readFileSync(path.join(__dirname, 'frame.js'), 'utf8');
+
 // Runs inside the page.
 const HARNESS = `
 // Descriptors an at-rule exposes as named attributes rather than through a
@@ -85,24 +87,16 @@ function prFacts(doc, css) {
   return { facts: out, error: err };
 }
 function prMain(jobs) {
-  var frame = document.createElement('iframe');
-  frame.width = 64;
-  frame.height = 64;
-  frame.style.border = '0';
-  document.body.appendChild(frame);
-  // A created iframe's document has no doctype, so it parses CSS in quirks
-  // mode, where a unitless length is a length and much else the standards
-  // parser refuses is accepted. Writing a doctype into it is what makes the
-  // oracle the parser a page gets.
-  var doc = frame.contentDocument;
-  doc.open();
-  doc.write('\u003c!DOCTYPE html>\u003chtml>\u003chead>\u003c/head>' +
-    '\u003cbody>\u003c/body>\u003c/html>');
-  doc.close();
-  doc = frame.contentDocument;
   var out = [];
-  if (doc.compatMode !== 'CSS1Compat') {
-    out.push(['x', 'page', 'a', 'the oracle is in ' + doc.compatMode].join('\t'));
+  // The reader takes an error record whatever job it names, so a frame nobody
+  // can read reports once instead of answering every job out of a bad parser.
+  var doc = null;
+  try { doc = rdStandardsFrame(window, 64, 64); }
+  catch (e) {
+    out.push(['x', 'page', 'a', String((e && e.message) || e)].join('\\t'));
+    document.body.setAttribute('data-pr',
+      btoa(unescape(encodeURIComponent(out.join('\\n')))));
+    return;
   }
   jobs.forEach(function (job) {
     ['a', 'b'].forEach(function (side) {
@@ -122,6 +116,7 @@ function page(jobs) {
   const payload = JSON.stringify(jobs).replace(/</g, '\\u003c');
   return '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
     '<script id="pr-jobs" type="application/json">' + payload + '</script>' +
+    '<script>' + frameJs + '</script>' +
     '<script>' + HARNESS +
     'prMain(JSON.parse(document.getElementById("pr-jobs").textContent));</script>' +
     '</body></html>';

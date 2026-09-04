@@ -32,9 +32,12 @@ const jobsFile = process.argv[2];
 const workDir = process.argv[3];
 const CHUNK_BYTES = 512 * 1024;
 
+const frameJs = fs.readFileSync(path.join(__dirname, 'frame.js'), 'utf8');
+
 // Runs inside the page.
 const HARNESS = `
 function shJob(doc, pristine, job, out) {
+  rdAssertStandards(doc, 'the page');
   var el = doc.createElement('div');
   try { el.style.setProperty(job.property, job.value); }
   catch (e) {
@@ -71,6 +74,7 @@ function page(jobs) {
   const payload = JSON.stringify(jobs).replace(/</g, '\\u003c');
   return '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
     '<script id="sh-jobs" type="application/json">' + payload + '</script>' +
+    '<script>' + frameJs + '</script>' +
     '<script>' + HARNESS +
     'shMain(JSON.parse(document.getElementById("sh-jobs").textContent));</script>' +
     '</body></html>';

@@ -43,6 +43,8 @@ const CHROME = process.env.CHROME;
 const jobsFile = process.argv[2];
 const workDir = process.argv[3];
 
+const frameJs = fs.readFileSync(path.join(__dirname, 'frame.js'), 'utf8');
+
 // Runs inside the page.
 const HARNESS = `
 // Media Queries 4 sec. 2.4: a discrete feature is a keyword out of a fixed
@@ -211,6 +213,15 @@ function acMain(payload) {
   var out = [];
   var style = document.getElementById('ac-sheet');
   var probe = document.getElementById('ac-probe');
+  // A page in the other mode answers about a renderer nobody browses in, and
+  // every verdict below is read out of it: say so and report nothing else.
+  try { rdAssertStandards(document, 'the page'); }
+  catch (e) {
+    out.push(['x', 'page', String((e && e.message) || e)].join('\\t'));
+    document.body.setAttribute('data-v',
+      btoa(unescape(encodeURIComponent(out.join('\\n')))));
+    return;
+  }
   try { acDiscover(payload.env, out); }
   catch (e) { out.push(['x', 'discover', String((e && e.message) || e)].join('\\t')); }
   try { acMedia(payload.env, payload.media, style, probe, out); }
@@ -235,6 +246,7 @@ function page(payload) {
   return '<!doctype html><html><head><meta charset="utf-8">' +
     '<style id="ac-sheet"></style></head><body><div id="ac-probe"></div>' +
     '<script id="ac-jobs" type="application/json">' + json + '</script>' +
+    '<script>' + frameJs + '</script>' +
     '<script>' + HARNESS +
     'acMain(JSON.parse(document.getElementById("ac-jobs").textContent));</script>' +
     '</body></html>';

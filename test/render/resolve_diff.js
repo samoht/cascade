@@ -32,6 +32,7 @@ const MAX_DIFFS = 60;
 const CHUNK_BYTES = 512 * 1024;
 
 const domJs = fs.readFileSync(path.join(__dirname, 'dom.js'), 'utf8');
+const frameJs = fs.readFileSync(path.join(__dirname, 'frame.js'), 'utf8');
 
 // Runs inside the page.
 const HARNESS = `
@@ -106,16 +107,19 @@ function cdJob(doc, job, out) {
 }
 function cdMain(jobs) {
   var out = [];
-  var frame = document.createElement('iframe');
-  frame.width = 1024;
-  frame.height = 768;
-  frame.style.border = '0';
-  document.body.appendChild(frame);
-  var doc = frame.contentDocument;
+  // A frame nobody can sample is every job's failure, and the reader keys an
+  // error by the job it belongs to.
+  var doc = null, broken = null;
+  try { doc = rdStandardsFrame(window, 1024, 768); }
+  catch (e) { broken = String((e && e.message) || e); }
   // Engines do not agree on computed styles, so a count means something only
   // beside the engine that produced it.
   out.push(['v', navigator.userAgent].join('\t'));
   jobs.forEach(function (job) {
+    if (broken !== null) {
+      out.push(['x', job.id, broken].join('\\t'));
+      return;
+    }
     try { cdJob(doc, job, out); }
     catch (e) { out.push(['x', job.id, String((e && e.message) || e)].join('\\t')); }
   });
@@ -130,6 +134,7 @@ function page(jobs) {
   return '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
     '<script id="cd-jobs" type="application/json">' + payload + '</script>' +
     '<script>' + domJs + '</script>' +
+    '<script>' + frameJs + '</script>' +
     '<script>var MAX_DIFFS = ' + MAX_DIFFS + ';' + HARNESS +
     'cdMain(JSON.parse(document.getElementById("cd-jobs").textContent));</script>' +
     '</body></html>';
