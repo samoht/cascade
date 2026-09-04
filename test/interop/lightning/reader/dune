@@ -1,0 +1,7 @@
+; The trace reader is a library so other harnesses can read the same corpus
+; without a second copy of the record format. It sits in its own directory
+; because a library and a test executable do not share one.
+
+(library
+ (name trace_pairs)
+ (libraries fmt))

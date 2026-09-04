@@ -1,14 +1,5 @@
-; The trace reader is a library so other harnesses can read the same corpus
-; without a second copy of the record format.
-
-(library
- (name trace_pairs)
- (modules trace_pairs)
- (libraries fmt))
-
 (test
  (name test)
- (modules test)
  (libraries cascade alcotest unix re re.str fmt trace_pairs)
  (deps
   LICENSE
