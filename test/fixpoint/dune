@@ -1,0 +1,10 @@
+; Cascade reading back its own output. The corpora belong to other harnesses;
+; this one only borrows their inputs, so nothing here needs regenerating.
+
+(test
+ (name test)
+ (deps
+  (source_tree ../interop/css-minify-tests/traces)
+  (source_tree ../interop/lightning/traces)
+  (source_tree ../examples))
+ (libraries cascade alcotest cascade_spec_inventory trace_pairs))
