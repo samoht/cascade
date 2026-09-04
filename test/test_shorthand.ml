@@ -867,6 +867,203 @@ let test_box_family_non_equivalence_still_reports () =
     ".a{scroll-margin:1px}"
     ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px}"
 
+(* CSS Cascade 5 sec. 7.3: a CSS-wide keyword is the entire value of a
+   declaration or nothing at all. Pasting one into a composed shorthand makes a
+   declaration the reader rejects and a browser drops, so a run holding one has
+   to stay as its longhands. *)
+let unfoldable_css_wide = [ "inherit"; "unset"; "revert"; "revert-layer" ]
+
+(* The emission is checked twice: for the expected text, and for reading back. A
+   declaration the reader rejects is one the browser drops, so an emission that
+   fails to re-read is a rendering change, not a shorter spelling. *)
+let minifies_to name ~into css =
+  let out =
+    match Css.of_string css with
+    | Error e -> Alcotest.failf "%s: parse failed: %s" name (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        String.trim (Css.to_string ~minify:true (Css.optimize stylesheet))
+  in
+  Alcotest.(check string) name into out;
+  match Css.of_string ~strict:true out with
+  | Ok _ -> ()
+  | Error e ->
+      Alcotest.failf "%s: emission is not readable CSS: %s" name
+        (Error.to_string e)
+
+(* Every family whose composer takes a longhand value as a shorthand component,
+   as the run that composes into it with the last value left open. *)
+let css_wide_component_runs =
+  [
+    ( "padding",
+      "padding-top:1px;padding-right:2px;padding-bottom:3px;padding-left:" );
+    ("margin", "margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:");
+    ("inset", "top:1px;right:2px;bottom:3px;left:");
+    ( "border-color",
+      "border-top-color:red;border-right-color:#0f0;border-bottom-color:#00f;border-left-color:"
+    );
+    ( "border-width",
+      "border-top-width:1px;border-right-width:2px;border-bottom-width:3px;border-left-width:"
+    );
+    ( "border-radius",
+      "border-top-left-radius:1px;border-top-right-radius:2px;border-bottom-right-radius:3px;border-bottom-left-radius:"
+    );
+    ( "scroll-margin",
+      "scroll-margin-top:1px;scroll-margin-right:2px;scroll-margin-bottom:3px;scroll-margin-left:"
+    );
+    ( "scroll-padding",
+      "scroll-padding-top:1px;scroll-padding-right:2px;scroll-padding-bottom:3px;scroll-padding-left:"
+    );
+    ("gap", "row-gap:1px;column-gap:");
+    ("margin-inline", "margin-inline-start:1px;margin-inline-end:");
+    ("margin-block", "margin-block-start:1px;margin-block-end:");
+    ("padding-inline", "padding-inline-start:1px;padding-inline-end:");
+    ("padding-block", "padding-block-start:1px;padding-block-end:");
+    ("inset-inline", "inset-inline-start:1px;inset-inline-end:");
+    ("inset-block", "inset-block-start:1px;inset-block-end:");
+    ("place-content", "align-content:center;justify-content:");
+    ("place-items", "align-items:center;justify-items:");
+    ("place-self", "align-self:center;justify-self:");
+    ("overflow", "overflow-x:hidden;overflow-y:");
+    ("outline", "outline-width:1px;outline-style:solid;outline-color:");
+    ( "list-style",
+      "list-style-type:square;list-style-position:inside;list-style-image:" );
+    ("flex", "flex-grow:1;flex-shrink:1;flex-basis:");
+    ( "text-decoration",
+      "text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:"
+    );
+    ("border", "border-width:1px;border-style:solid;border-color:");
+  ]
+
+let test_css_wide_keyword_is_not_a_shorthand_component () =
+  List.iter
+    (fun (family, run) ->
+      List.iter
+        (fun keyword ->
+          let css = String.concat "" [ ".a{"; run; keyword; "}" ] in
+          minifies_to (String.concat " " [ family; keyword ]) ~into:css css)
+        unfoldable_css_wide)
+    css_wide_component_runs
+
+(* The keyword reaches the composer from another rule just as well: rules with a
+   matching selector merge before the declarations are composed. *)
+let test_css_wide_keyword_from_another_rule () =
+  List.iter
+    (fun keyword ->
+      minifies_to
+        (String.concat " " [ "margin absorbs a later side"; keyword ])
+        ~into:(String.concat "" [ ".a{margin:"; keyword; ";margin-top:1px}" ])
+        (String.concat "" [ ".a{margin:"; keyword; "}.a{margin-top:1px}" ]);
+      minifies_to
+        (String.concat " " [ "padding absorbs a later side"; keyword ])
+        ~into:(String.concat "" [ ".a{padding:"; keyword; ";padding-top:1px}" ])
+        (String.concat "" [ ".a{padding:"; keyword; "}.a{padding-top:1px}" ]);
+      minifies_to
+        (String.concat " " [ "overflow across two rules"; keyword ])
+        ~into:
+          (String.concat ""
+             [ ".a{overflow-x:hidden;overflow-y:"; keyword; "}" ])
+        (String.concat ""
+           [ ".a{overflow-x:hidden}.a{overflow-y:"; keyword; "}" ]);
+      (* Four sides are four disjoint cascade slots, so the merged rule is free
+         to order them however it likes; what it may not do is contract them. *)
+      minifies_to
+        (String.concat " " [ "four box sides across four rules"; keyword ])
+        ~into:
+          (String.concat ""
+             [
+               ".a{margin-bottom:3px;margin-left:";
+               keyword;
+               ";margin-right:2px;margin-top:1px}";
+             ])
+        (String.concat ""
+           [
+             ".a{margin-top:1px}.a{margin-right:2px}.a{margin-bottom:3px}.a{margin-left:";
+             keyword;
+             "}";
+           ]))
+    unfoldable_css_wide
+
+let test_css_wide_keyword_with_importance () =
+  (* Four important sides: the same-importance box composer. *)
+  minifies_to "every side important"
+    ~into:
+      ".a{margin-top:1px!important;margin-right:2px!important;margin-bottom:3px!important;margin-left:inherit!important}"
+    ".a{margin-top:1px!important;margin-right:2px!important;margin-bottom:3px!important;margin-left:inherit!important}";
+  (* One important side: the mixed-importance split, which emits a shorthand and
+     re-states the important longhand after it. *)
+  minifies_to "an important side beside the keyword"
+    ~into:
+      ".a{margin-top:1px!important;margin-right:2px;margin-bottom:3px;margin-left:inherit}"
+    ".a{margin-top:1px!important;margin-right:2px;margin-bottom:3px;margin-left:inherit}";
+  minifies_to "the keyword is the important side"
+    ~into:
+      ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:inherit!important}"
+    ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:inherit!important}";
+  minifies_to "an important pair"
+    ~into:".a{row-gap:1px!important;column-gap:unset!important}"
+    ".a{row-gap:1px!important;column-gap:unset!important}";
+  minifies_to "an important run"
+    ~into:
+      ".a{outline-width:1px!important;outline-style:solid!important;outline-color:revert!important}"
+    ".a{outline-width:1px!important;outline-style:solid!important;outline-color:revert!important}";
+  minifies_to "an important shorthand absorbing an important side"
+    ~into:".a{margin:inherit!important;margin-top:1px!important}"
+    ".a{margin:inherit!important}.a{margin-top:1px!important}"
+
+(* A run whose sides are all the same CSS-wide keyword collapses to a lone
+   keyword, which is a whole declaration value and so stays legal. *)
+let test_uniform_css_wide_sides_still_contract () =
+  List.iter
+    (fun keyword ->
+      minifies_to
+        (String.concat " " [ "four identical box sides"; keyword ])
+        ~into:(String.concat "" [ ".a{margin:"; keyword; "}" ])
+        (String.concat ""
+           [
+             ".a{margin-top:";
+             keyword;
+             ";margin-right:";
+             keyword;
+             ";margin-bottom:";
+             keyword;
+             ";margin-left:";
+             keyword;
+             "}";
+           ]);
+      minifies_to
+        (String.concat " " [ "two identical gap axes"; keyword ])
+        ~into:(String.concat "" [ ".a{gap:"; keyword; "}" ])
+        (String.concat ""
+           [ ".a{row-gap:"; keyword; ";column-gap:"; keyword; "}" ]))
+    unfoldable_css_wide
+
+(* [initial] names a value with a concrete spelling, so the box families fold it
+   to that spelling before composition and the run still contracts. *)
+let test_initial_still_folds_in_box_families () =
+  minifies_to "a lone initial side" ~into:".a{margin-left:0}"
+    ".a{margin-left:initial}";
+  minifies_to "initial as the fourth margin side"
+    ~into:".a{margin:1px 2px 3px 0}"
+    ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:initial}";
+  minifies_to "initial as the fourth padding side"
+    ~into:".a{padding:1px 2px 3px 0}"
+    ".a{padding-top:1px;padding-right:2px;padding-bottom:3px;padding-left:initial}";
+  minifies_to "four initial sides" ~into:".a{margin:0}"
+    ".a{margin-top:initial;margin-right:initial;margin-bottom:initial;margin-left:initial}";
+  minifies_to "an initial shorthand absorbing a later side"
+    ~into:".a{margin:1px 0 0}" ".a{margin:initial}.a{margin-top:1px}";
+  (* [scroll-margin] and [scroll-padding] keep [initial] as a keyword, so there
+     it is a whole declaration value like the other four and the run stays
+     expanded. Folding it to [0] would let the run contract again. *)
+  minifies_to "initial in a scroll-margin run"
+    ~into:
+      ".a{scroll-margin-top:initial;scroll-margin-right:1px;scroll-margin-bottom:2px;scroll-margin-left:3px}"
+    ".a{scroll-margin-top:initial;scroll-margin-right:1px;scroll-margin-bottom:2px;scroll-margin-left:3px}";
+  minifies_to "initial in a scroll-padding run"
+    ~into:
+      ".a{scroll-padding-top:initial;scroll-padding-right:1px;scroll-padding-bottom:2px;scroll-padding-left:3px}"
+    ".a{scroll-padding-top:initial;scroll-padding-right:1px;scroll-padding-bottom:2px;scroll-padding-left:3px}"
+
 let suite =
   ( "shorthand",
     [
@@ -918,4 +1115,14 @@ let suite =
         test_box_family_shorthand_equivalence;
       Alcotest.test_case "box family non-equivalence still reports" `Quick
         test_box_family_non_equivalence_still_reports;
+      Alcotest.test_case "css-wide keyword is not a shorthand component" `Quick
+        test_css_wide_keyword_is_not_a_shorthand_component;
+      Alcotest.test_case "css-wide keyword from another rule" `Quick
+        test_css_wide_keyword_from_another_rule;
+      Alcotest.test_case "css-wide keyword with importance" `Quick
+        test_css_wide_keyword_with_importance;
+      Alcotest.test_case "uniform css-wide sides still contract" `Quick
+        test_uniform_css_wide_sides_still_contract;
+      Alcotest.test_case "initial still folds in box families" `Quick
+        test_initial_still_folds_in_box_families;
     ] )
