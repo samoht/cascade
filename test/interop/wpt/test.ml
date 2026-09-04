@@ -783,6 +783,81 @@ let serialize_consecutive_tokens =
         `Quick (pair_is_separable a b))
     pairs
 
+(* The value a serialised sheet gives [property], the way CSSOM's [rule.style]
+   reports it. The rule is printed rather than destructured because [@page] has
+   no accessor for its declarations, while every rule kind prints the same
+   [name: value;] shape. Printed unminified: minified output drops a
+   [@font-face] that names no source, which is a serialisation choice and not
+   what a reader test is asking about. *)
+let serialised_value ~css ~property =
+  match Cascade.Css.of_string ~strict:false css with
+  | Error e -> Error (Cascade.Error.to_string e)
+  | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> (
+      let text = Cascade.Css.to_string stylesheet in
+      let needle = String.concat "" [ property; ":" ] in
+      match index_from ~from:0 text needle with
+      | None -> Ok None
+      | Some i ->
+          let start = i + String.length needle in
+          let rec ends j =
+            if j >= String.length text then j
+            else match text.[j] with ';' | '}' | '\n' -> j | _ -> ends (j + 1)
+          in
+          Ok (Some (String.trim (String.sub text start (ends start - start)))))
+
+(* at-rule-in-declaration-list.html: CSS Syntax 3 (ED, 30 July 2026) sec. 5.5.5
+   "consume a block's contents" meets an [<at-keyword-token>] by flushing the
+   declarations read so far and consuming the at-rule on its own, so an at-rule
+   the surrounding grammar has no place for costs itself and nothing written
+   around it. The file pairs an unknown [@at] with one declaration in a style
+   rule, a [@page] rule and a [@font-face] rule, each in both the block and the
+   semicolon form, and reads the declaration back off [rule.style]; this port
+   reads it off the serialised rule. The six inputs are the vendored bytes. *)
+let at_rule_in_declaration_list =
+  let file = "at-rule-in-declaration-list.html" in
+  let expectations =
+    [
+      ("Allow @-rule with block inside style rule", "color", "green");
+      ("Allow @-rule with semi-colon inside style rule", "color", "green");
+      ("Allow @-rule with block inside page rule", "margin-top", "20px");
+      ("Allow @-rule with semi-colon inside page rule", "margin-top", "20px");
+      ("Allow @-rule with block inside font-face rule", "font-family", "myfont");
+      ( "Allow @-rule with semi-colon inside font-face rule",
+        "font-family",
+        "myfont" );
+    ]
+  in
+  let inputs =
+    read_file (Filename.concat vectors_dir file)
+    |> found_in
+    |> List.filter_map (function Script b -> Some b | _ -> None)
+    |> List.concat_map (extract_template_args ~call_name:"parseRule")
+  in
+  let count () =
+    Alcotest.(check int)
+      "parseRule calls in the vendored file" (List.length expectations)
+      (List.length inputs)
+  in
+  let case (title, property, value) css =
+    let body () =
+      match serialised_value ~css ~property with
+      | Error e -> Alcotest.failf "%s: %s" file e
+      | Ok got -> Alcotest.(check (option string)) property (Some value) got
+    in
+    Alcotest.test_case (String.concat "" [ file; " "; title ]) `Quick body
+  in
+  let cases =
+    (* A re-import that changes the file leaves the count case to say so rather
+       than taking the binary down on a length mismatch. *)
+    if List.length inputs = List.length expectations then
+      List.map2 case expectations inputs
+    else []
+  in
+  Alcotest.test_case
+    (String.concat "" [ file; " parseRule count" ])
+    `Quick count
+  :: cases
+
 (** {1 Entry point} *)
 
 let suite () =
@@ -793,6 +868,6 @@ let suite () =
     ]
     @ extracted_cases () @ declarations_trim_whitespace @ non_ascii_codepoints
     @ unclosed_constructs @ whitespace_html @ anb_parsing @ anb_serialization
-    @ serialize_consecutive_tokens )
+    @ serialize_consecutive_tokens @ at_rule_in_declaration_list )
 
 let () = Alcotest.run "wpt" [ suite () ]
