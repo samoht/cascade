@@ -753,6 +753,58 @@ let canonical_missing_components_survive_interpolation () =
        ".x{color:color-mix(in oklab,oklab(0% none none) 50%,oklab(100% .2 .1))}"
        ".x{color:color-mix(in oklab,#000 50%,oklab(100% .2 .1))}")
 
+(* A rule that transitions the property it also sets makes that declaration one
+   endpoint of an interpolation, which is the sec. 13.3 carve-out again: the
+   [none] axes take the other endpoint's, the zeros stay zero, and the browser
+   walks two different ramps. The property list is what decides, not the
+   duration: a fragment is compared without the rest of the page's cascade, so
+   another sheet can supply the duration this one leaves at its initial. *)
+let canonical_missing_components_under_transition () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "the shorthand naming the property keeps the axes apart" false
+    (equal ".x{color:oklab(0% none none/.5);transition:color 1s}"
+       ".x{color:#00000080;transition:color 1s}");
+  Alcotest.(check bool)
+    "the longhand naming the property keeps the axes apart" false
+    (equal ".x{color:oklab(0% none none/.5);transition-property:color}"
+       ".x{color:#00000080;transition-property:color}");
+  Alcotest.(check bool)
+    "all names every property, this one included" false
+    (equal ".x{color:oklab(0% none none/.5);transition-property:all}"
+       ".x{color:#00000080;transition-property:all}");
+  (* A shorthand in [transition-property] transitions the longhands it covers,
+     so [background] reaches [background-color]. *)
+  Alcotest.(check bool)
+    "a transitioned shorthand reaches its colour longhand" false
+    (equal
+       ".x{background-color:oklab(0% none none/.5);transition:background 1s}"
+       ".x{background-color:#00000080;transition:background 1s}");
+  (* Nothing interpolates the colour here, so sec. 4.4 reads the missing axes as
+     zero and the two spellings are one colour again. *)
+  Alcotest.(check bool)
+    "a transition on another property leaves the fold alone" true
+    (equal ".x{color:oklab(0% none none/.5);transition:opacity 1s}"
+       ".x{color:#00000080;transition:opacity 1s}");
+  Alcotest.(check bool)
+    "none transitions nothing" true
+    (equal ".x{color:oklab(0% none none/.5);transition-property:none}"
+       ".x{color:#00000080;transition-property:none}");
+  (* The static case the fold exists for. *)
+  Alcotest.(check bool)
+    "a rule with no transition still folds" true
+    (equal ".x{color:oklab(0% none none/.5)}" ".x{color:#00000080}");
+  (* The blocks that exist to be an interpolation endpoint are skipped whole,
+     transition or no transition. *)
+  Alcotest.(check bool)
+    "a keyframe keeps its missing axes" false
+    (equal "@keyframes k{from{color:oklab(0% none none)}to{color:#fff}}"
+       "@keyframes k{from{color:#000}to{color:#fff}}");
+  Alcotest.(check bool)
+    "a @starting-style value keeps its missing axes" false
+    (equal "@starting-style{.x{color:oklab(0% none none)}}"
+       "@starting-style{.x{color:#000}}")
+
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
      identically into font-family, so canonical comparison equates them inside a
@@ -1731,6 +1783,8 @@ let suite =
         canonical_missing_color_components_as_zero;
       Alcotest.test_case "canonical missing components under interpolation"
         `Quick canonical_missing_components_survive_interpolation;
+      Alcotest.test_case "canonical missing components under a transition"
+        `Quick canonical_missing_components_under_transition;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
