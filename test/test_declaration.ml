@@ -2784,7 +2784,7 @@ let spec_property_grammar_table_expansion () =
       ("shape-margin", "-1px");
       ("color", "light-dark(black)");
       ("mix-blend-mode", "normal multiply");
-      ("filter", "blur()");
+      ("filter", "blur(1px, 2px)");
       ("font", "bold serif");
       ("font-stretch", "-10%");
       ("font-feature-settings", "\"kern\" maybe");
@@ -3422,6 +3422,8 @@ let filter_omitted_arguments () =
             String.concat "" [ prop; ":"; fn; "("; default; ")" ]
           in
           check_declaration ~expected:omitted omitted;
+          check_declaration ~expected:omitted
+            (String.concat "" [ prop; ":"; fn; "( /**/ )" ]);
           let canonical text =
             of_string text |> normalize |> string_of_value ~minify:true
           in
@@ -3960,7 +3962,7 @@ let spec_remaining_prop_vectors () =
       "mask-border: fill fill";
       "mask-size: contain cover";
       "mask-repeat: no-repeat repeat repeat-x";
-      "backdrop-filter: blur()";
+      "backdrop-filter: blur(1px, 2px)";
       "will-change: auto, transform";
       "touch-action: pan-x pan-left";
       "resize: block inline both";

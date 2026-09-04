@@ -250,7 +250,7 @@ let invalid_feature_decl buf =
       "object-view-box:inset()";
       "image-rendering:pixelated smooth";
       "mask-size:contain cover";
-      "backdrop-filter:blur()";
+      "backdrop-filter:blur(1px, 2px)";
       "will-change:auto, transform";
       "animation-composition:add replace";
       "scroll-timeline-axis:block inline";

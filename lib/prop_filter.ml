@@ -96,11 +96,25 @@ let rec read_blend_mode t : blend_mode =
     ~calls:[ ("var", read_var) ]
     t
 
-let read_blur t : filter = Cursor.call "blur" t (fun t -> Blur (read_length t))
+let read_blur t : filter =
+  Cursor.call "blur" t (fun t ->
+      if Cursor.is_done t then Omitted Blur_function else Blur (read_length t))
+
+let filter_function_name = function
+  | Blur_function -> "blur"
+  | Brightness_function -> "brightness"
+  | Contrast_function -> "contrast"
+  | Grayscale_function -> "grayscale"
+  | Hue_rotate_function -> "hue-rotate"
+  | Invert_function -> "invert"
+  | Opacity_function -> "opacity"
+  | Saturate_function -> "saturate"
+  | Sepia_function -> "sepia"
 
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
+  | Omitted fn -> Pp.call (filter_function_name fn) Pp.nop ctx ()
   | Blur l -> Pp.call "blur" pp_length ctx l
   | Brightness n ->
       Pp.call "brightness" (pp_number_percentage ~always:true) ctx n
@@ -126,55 +140,64 @@ let rec pp_filter : filter Pp.t =
 
 let rec normalize_filter ?(lossless = false) : filter -> filter =
  fun value ->
-  let np = Values.normalize_number_percentage in
+  let amount fn make n =
+    match Values.normalize_number_percentage n with
+    | Num 1. | Pct 100. -> Omitted fn
+    | n -> preserve_if_equal value (make n)
+  in
   match value with
+  | Blur l ->
+      let omitted =
+        match l with Pct _ -> false | l -> Values.length_is_zero l
+      in
+      if omitted then Omitted Blur_function else value
   | Drop_shadow s ->
       preserve_if_equal value (Drop_shadow (normalize_shadow ~lossless s))
   | Hue_rotate a ->
-      preserve_if_equal value (Hue_rotate (Values.normalize_angle a))
-  | Brightness x -> preserve_if_equal value (Brightness (np x))
-  | Contrast x -> preserve_if_equal value (Contrast (np x))
-  | Grayscale x -> preserve_if_equal value (Grayscale (np x))
-  | Invert x -> preserve_if_equal value (Invert (np x))
-  | Opacity x -> preserve_if_equal value (Opacity (np x))
-  | Saturate x -> preserve_if_equal value (Saturate (np x))
-  | Sepia x -> preserve_if_equal value (Sepia (np x))
+      let a = Values.normalize_angle a in
+      if a = Deg 0. then Omitted Hue_rotate_function
+      else preserve_if_equal value (Hue_rotate a)
+  | Brightness x -> amount Brightness_function (fun n -> Brightness n) x
+  | Contrast x -> amount Contrast_function (fun n -> Contrast n) x
+  | Grayscale x -> amount Grayscale_function (fun n -> Grayscale n) x
+  | Invert x -> amount Invert_function (fun n -> Invert n) x
+  | Opacity x -> amount Opacity_function (fun n -> Opacity n) x
+  | Saturate x -> amount Saturate_function (fun n -> Saturate n) x
+  | Sepia x -> amount Sepia_function (fun n -> Sepia n) x
   | List filters ->
       preserve_if_equal value
         (List (map_preserve (normalize_filter ~lossless) filters))
   | other -> other
 
 module Filter = struct
+  let read_amount fn make t : filter =
+    Cursor.call (filter_function_name fn) t (fun t ->
+        if Cursor.is_done t then Omitted fn
+        else make (Values.read_number_percentage t))
+
   let read_brightness t : filter =
-    Cursor.call "brightness" t (fun t ->
-        Brightness (Values.read_number_percentage t))
+    read_amount Brightness_function (fun n -> Brightness n) t
 
   let read_contrast t : filter =
-    Cursor.call "contrast" t (fun t ->
-        Contrast (Values.read_number_percentage t))
+    read_amount Contrast_function (fun n -> Contrast n) t
 
   let read_grayscale t : filter =
-    Cursor.call "grayscale" t (fun t : filter ->
-        Grayscale (Values.read_number_percentage t))
+    read_amount Grayscale_function (fun n -> Grayscale n) t
 
   let read_hue_rotate t : filter =
     Cursor.call "hue-rotate" t (fun t ->
-        if Cursor.is_done t then Hue_rotate (Deg 0.)
+        if Cursor.is_done t then Omitted Hue_rotate_function
         else Hue_rotate (read_angle t))
 
-  let read_invert t : filter =
-    Cursor.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
+  let read_invert t : filter = read_amount Invert_function (fun n -> Invert n) t
 
   let read_opacity t : filter =
-    Cursor.call "opacity" t (fun t : filter ->
-        Opacity (Values.read_number_percentage t))
+    read_amount Opacity_function (fun n -> Opacity n) t
 
   let read_saturate t : filter =
-    Cursor.call "saturate" t (fun t ->
-        Saturate (Values.read_number_percentage t))
+    read_amount Saturate_function (fun n -> Saturate n) t
 
-  let read_sepia t : filter =
-    Cursor.call "sepia" t (fun t -> Sepia (Values.read_number_percentage t))
+  let read_sepia t : filter = read_amount Sepia_function (fun n -> Sepia n) t
 
   let read_drop_shadow t : filter =
     Cursor.call "drop-shadow" t (fun t ->

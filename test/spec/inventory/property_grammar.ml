@@ -4,6 +4,20 @@ type row = {
   negatives : string list;
 }
 
+(* Filter Effects 1 section 6.1: drop-shadow alone requires arguments. *)
+let omitted_filters =
+  [
+    "blur()";
+    "brightness()";
+    "contrast()";
+    "grayscale()";
+    "hue-rotate()";
+    "invert()";
+    "opacity()";
+    "saturate()";
+    "sepia()";
+  ]
+
 let matrix =
   [
     {
@@ -213,10 +227,8 @@ let matrix =
           "blur(5px) contrast(120%)";
           "drop-shadow(0 0 2px black)";
           "opacity(calc(50% + 25%))";
-          (* Filter Effects 1 sec. 6.1: blur() = blur( <length>? ), so the
-             argument may be omitted. drop-shadow() below has no such arm. *)
-          "blur()";
-        ];
+        ]
+        @ omitted_filters;
       negatives = [ "drop-shadow()"; "blur(red)" ];
     };
     {
@@ -761,7 +773,8 @@ let matrix =
         "-ms-filter";
       ]
       (* Filter Effects 1 sec. 6.1: blur( <length>? ). *)
-      [ "none"; "blur(5px)"; "contrast(120%) brightness(.8)"; "blur()" ]
+      ([ "none"; "blur(5px)"; "contrast(120%) brightness(.8)" ]
+      @ omitted_filters)
       [ "blur(red)"; "none blur(1px)" ]
     (* CSS Transitions 1 sec. 2.2: <time [0s,inf]>#. *)
   @ rows_for [ "transition-duration" ]

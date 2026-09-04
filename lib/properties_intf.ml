@@ -2469,8 +2469,20 @@ type text_shadow =
   | Revert_layer
   | Var of text_shadow var
 
+type filter_function =
+  | Blur_function
+  | Brightness_function
+  | Contrast_function
+  | Grayscale_function
+  | Hue_rotate_function
+  | Invert_function
+  | Opacity_function
+  | Saturate_function
+  | Sepia_function
+
 type filter =
   | None
+  | Omitted of filter_function
   | Blur of length
   | Brightness of number_percentage
   | Contrast of number_percentage

@@ -6176,9 +6176,22 @@ val translate : translate_value -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/translate} translate}
     property. *)
 
+(** Filter functions with an optional argument. *)
+type filter_function = Properties.filter_function =
+  | Blur_function
+  | Brightness_function
+  | Contrast_function
+  | Grayscale_function
+  | Hue_rotate_function
+  | Invert_function
+  | Opacity_function
+  | Saturate_function
+  | Sepia_function
+
 (** CSS filter values *)
 type filter = Properties.filter =
   | None  (** No filter *)
+  | Omitted of filter_function  (** Function with its argument omitted. *)
   | Blur of length  (** blur(px) *)
   | Brightness of number_percentage  (** brightness(%) *)
   | Contrast of number_percentage  (** contrast(%) *)

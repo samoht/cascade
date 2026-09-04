@@ -24,6 +24,10 @@ entry points both moved.
 
 ### Breaking
 
+- `Css.filter` gains `Omitted of filter_function` to retain empty calls.
+  Exhaustive visitors must handle this leaf; normalization equates it with
+  its specified default (#870).
+
 - `Css.Supports.t` gains `General_enclosed` for opaque parenthesized feature
   tests. Exhaustive visitors must preserve this new leaf (#869).
 
@@ -197,6 +201,10 @@ entry points both moved.
   `--limit=N` where a level was pinned (#792)
 
 ### Parsing
+
+- `filter` and backdrop/vendor variants accept omitted function arguments,
+  retaining the empty call and shortening explicit defaults when optimized
+  (#870).
 
 - Unknown enclosed media and `@supports` conditions retain their guards, so
   applicable `or` branches and negated capability tests no longer lose their
