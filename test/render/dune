@@ -1,17 +1,20 @@
-; Differential render test: a stylesheet and its optimized forms must compute
-; the same style for every element of a real headless browser. The document is
-; derived from the stylesheet's own selectors, so the rules actually match.
+; Browser-backed tests. Both harnesses drive a headless Chromium and skip, with
+; status 0, when node or a browser is missing or when CASCADE_NO_BROWSER is set,
+; so they never fail a machine without one.
 ;
-; The test skips, with status 0, when node or a headless Chromium is missing,
-; or when CASCADE_NO_BROWSER is set, so it never fails a machine without a
-; browser. Run the wider sweep by hand with test/render/run.sh.
+; render_diff: a stylesheet and its optimized forms must compute the same style
+; for every element of a document derived from the stylesheet's own selectors.
+; Run the wider sweep by hand with test/render/run.sh.
+;
+; shorthand_expand: a shorthand declaration must compare identical, under
+; --diff=canonical, to the longhand declarations the browser expands it into.
 
-(executable
- (name render_diff)
+(executables
+ (names render_diff shorthand_expand)
  (libraries cascade cascade_diff fmt unix))
 
-; render_diff.exe reads the driver and the DOM builder at run time, so they
-; have to sit next to it in the build directory.
+; The executables read their driver scripts at run time, so those have to sit
+; next to them in the build directory.
 
 (rule
  (alias default)
@@ -34,3 +37,11 @@
    CASCADE_RENDER_ARTIFACTS
    %{workspace_root}/tmp/render-diff
    (run %{exe:render_diff.exe}))))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  shorthand_expand.exe)
+ (action
+  (run %{exe:shorthand_expand.exe})))
