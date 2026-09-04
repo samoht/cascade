@@ -2314,8 +2314,9 @@ let test_list_style_type () =
   check_list_style_type "katakana";
   check_list_style_type "ethiopic-numeric";
   check_list_style_type "disclosure-open";
-  (* An unknown bare identifier is still rejected (no @counter-style here). *)
-  neg_cursor read_list_style_type "invalid-style";
+  (* CSS Lists 3 section 3.4 accepts custom counter-style names, but the
+     <custom-ident> grammar reserves [default]. *)
+  neg_cursor read_list_style_type "default";
   (* CSS Lists 3 sec. 6.2: [symbols() = symbols( <symbols-type>? [ <string> |
      <image> ]+ )]. [Cursor.call] did not require the reader to consume its
      whole sub-cursor, so a trailing token the [<symbols-type>? [<string> |

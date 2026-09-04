@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- Custom counter-style names are accepted in `list-style-type` and `list-style`,
+  with case and position-keyword disambiguation preserved. `list_style_type`
+  gains `Name of string` (#877).
+
 - `animation` preserves keyword-shaped keyframe names and their case through
   parsing and printing, including names supplied by callers (#875, #876).
 

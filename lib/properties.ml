@@ -117,6 +117,7 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Trad_chinese_informal -> Pp.string ctx "trad-chinese-informal"
   | Trad_chinese_formal -> Pp.string ctx "trad-chinese-formal"
   | Ethiopic_numeric -> Pp.string ctx "ethiopic-numeric"
+  | Name name -> pp_ident ctx name
   | String s -> Pp.quoted_string ctx s
   | Symbols (kind, symbols) ->
       Pp.call "symbols" pp_list_style_symbols ctx (kind, symbols)
@@ -167,8 +168,24 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
           if !first then first := false else Pp.space ctx ();
           pp ctx v
     in
-    emit pp_list_style_type type_;
-    emit pp_list_style_position position;
+    let ambiguous_type =
+      match type_ with
+      | Some (Name name) ->
+          let lower = String.lowercase_ascii name in
+          lower = "inside" || lower = "outside"
+      | _ -> false
+    in
+    (* A position-shaped counter name must follow an explicit position, even
+       when normalisation has removed the default [outside] slot. *)
+    if ambiguous_type then begin
+      emit pp_list_style_position
+        (Some (Option.value ~default:Outside position));
+      emit pp_list_style_type type_
+    end
+    else begin
+      emit pp_list_style_type type_;
+      emit pp_list_style_position position
+    end;
     emit pp_list_style_image image;
     (* Everything was an initial value and got dropped: the shorthand still
        needs one token. Emit the type initial [disc] (the shortest spelling of
@@ -2371,6 +2388,11 @@ let rec read_list_style_type t : list_style_type =
          [
            (fun t -> Cursor.call "symbols" t read_symbols_body);
            (fun t -> (String (Cursor.string t) : list_style_type));
+           (fun t ->
+             let name = Cursor.ident t in
+             if String.lowercase_ascii name = "default" then
+               Cursor.err_invalid t "reserved counter-style name";
+             (Name name : list_style_type));
          ])
     t
 

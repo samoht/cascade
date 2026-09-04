@@ -1657,6 +1657,7 @@ type list_style_type =
   | Trad_chinese_informal
   | Trad_chinese_formal
   | Ethiopic_numeric
+  | Name of string
   | String of string
   | Symbols of symbols_type option * list_style_symbol list
   | Inherit
