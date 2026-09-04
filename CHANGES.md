@@ -194,6 +194,8 @@ entry points both moved.
   side styles, `border-block-style` and `border-inline-style` take the start and
   end edges, and every `border-*-radius` corner takes a horizontal and a
   vertical radius
+- An at-rule written among `@font-face` descriptors costs itself alone, as CSS
+  Syntax 3 §5.5.5 requires, instead of taking the whole rule with it
 - A `style()` container query takes the single-comparison range CSS Conditional
   Rules 5 defines, `style(--gap = 10px)` included, and rejects an interval whose
   two bounds point different ways; `Css.inline_vars` reads its operands (#805)

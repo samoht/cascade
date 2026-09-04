@@ -2598,6 +2598,21 @@ let descriptor_resolves_var name =
            descriptor)
   | exception Error.Parse_error _ -> false
 
+(* CSS Syntax 3 (ED) sec. 5.5.5 gives an [<at-keyword-token>] to "consume an
+   at-rule" rather than to the declaration reader, and keeps the declarations
+   written on either side of it. No @font-face descriptor is an at-rule, so the
+   rule read here is dropped - and it alone, because sec. 5.5.2 ends an at-rule
+   at its block or at its [;], never at the descriptor after it. A cursor that
+   does not recover raises instead, as the other descriptor bodies do. *)
+let skip_font_face_at_rule r name loc =
+  let error = Error.unknown_at_rule loc name in
+  if not (Cursor.recover r) then Error.fail error;
+  let start = Cursor.save r in
+  skip_past_rule r;
+  Cursor.push_warning r
+    ~recovery:(Cursor.dropped_since r start Error.Recovery.Rule)
+    error
+
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -2605,28 +2620,34 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
     Cursor.skip r;
     None)
   else
-    let start = Cursor.save r in
-    let name = Cursor.ident ~keep_case:false r in
-    match
-      if descriptor_value_has_var r && not (descriptor_resolves_var name) then
-        Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
-      else read_font_face_desc name r
-    with
-    | descriptor ->
-        Cursor.ws r;
-        if Cursor.peek_semicolon r then Cursor.skip r;
-        Some descriptor
-    | exception Error.Parse_error e ->
-        (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
-           that does not parse - an unknown name (Fontsource's
-           [font-named-instance]) or an invalid value of a known one
-           ([font-display:maybe]) - is dropped and the rest of the @font-face is
-           kept, matching browsers. *)
-        Cursor.skip_past_semicolon r;
-        Cursor.push_warning r
-          ~recovery:(Cursor.dropped_since r start Error.Recovery.Declaration)
-          e;
+    match Cursor.peek r with
+    | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) ->
+        skip_font_face_at_rule r name loc;
         None
+    | _ -> (
+        let start = Cursor.save r in
+        let name = Cursor.ident ~keep_case:false r in
+        match
+          if descriptor_value_has_var r && not (descriptor_resolves_var name)
+          then Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
+          else read_font_face_desc name r
+        with
+        | descriptor ->
+            Cursor.ws r;
+            if Cursor.peek_semicolon r then Cursor.skip r;
+            Some descriptor
+        | exception Error.Parse_error e ->
+            (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
+               that does not parse - an unknown name (Fontsource's
+               [font-named-instance]) or an invalid value of a known one
+               ([font-display:maybe]) - is dropped and the rest of the
+               @font-face is kept, matching browsers. *)
+            Cursor.skip_past_semicolon r;
+            Cursor.push_warning r
+              ~recovery:
+                (Cursor.dropped_since r start Error.Recovery.Declaration)
+              e;
+            None)
 
 let read_font_face_block inner =
   let rec read_descriptors acc =
