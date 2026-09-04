@@ -2496,6 +2496,34 @@ let animation_keyword_names () =
     (fun name -> check_print expected name (animation_shorthand ~name ()))
     [ "EASE"; "LINEAR"; "NORMAL"; "BOTH"; "PAUSED"; "INFINITE" ]
 
+let list_style_custom_names () =
+  (* CSS Lists 3 sections 3.4 and 3.6 allow custom counter-style names,
+     including names that collide with an already-filled position slot. The
+     referenced counter style need not be defined in this stylesheet. *)
+  List.iter
+    (fun name -> check_declaration ~roundtrip:true ("list-style-type:" ^ name))
+    [ "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers" ];
+  List.iter
+    (fun (value, expected) ->
+      check_declaration ~roundtrip:true ~expected:("list-style:" ^ expected)
+        ~optimized:("list-style:" ^ expected) ("list-style:" ^ value))
+    [
+      ("FootSteps inside", "FootSteps inside");
+      ("inside outside", "inside outside");
+      ("inside OUTSIDE", "inside OUTSIDE");
+      ("outside inside", "outside inside");
+      ("outside OUTSIDE", "outside OUTSIDE");
+      ("inside inside", "inside inside");
+    ];
+  List.iter
+    (none_cursor read_declaration)
+    [
+      "list-style-type:default";
+      "list-style-type:FootSteps Other";
+      "list-style:inside outside outside";
+      "list-style:inside FootSteps Other";
+    ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5823,6 +5851,7 @@ let declaration_tests =
       text_decoration_thickness_range;
     test_case "animation infinite name" `Quick animation_infinite_name;
     test_case "animation keyword names" `Quick animation_keyword_names;
+    test_case "list-style custom names" `Quick list_style_custom_names;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
