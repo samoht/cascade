@@ -83,6 +83,19 @@ let spec_supports_feature_vectors () =
     let actual = of_string input in
     Alcotest.(check string) name expected (to_string actual)
   in
+  (* CSS Conditional Rules 3 section 6 includes parenthesized general-enclosed
+     alongside declaration and nested-condition features. *)
+  List.iter
+    (fun input -> check "parenthesized general-enclosed" input input)
+    [
+      "not (future syntax)";
+      "()";
+      "(display)";
+      "(: grid)";
+      "(display: grid;)";
+      "((display: grid) and)";
+      "(future syntax) or (display: grid)";
+    ];
   (* Conditional Rules general-enclosed preserves functions whose arguments do
      not match a supported feature grammar, including under negation. *)
   check "unknown font format under not" "not font-format(cascade-nope)"
