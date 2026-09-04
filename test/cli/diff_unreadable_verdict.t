@@ -54,6 +54,46 @@ had above.
   Cannot determine whether the CSS files are identical
   [2]
 
+Both sides losing the same run of source text is the exception. There the
+comparison did see the same thing twice, so the equality it found holds and
+the status is 0. These two spell the unreadable declaration alike and differ
+only where the comparison could read both sides.
+
+  $ cat > text-a.css <<EOF
+  > .g{grid-template-columns:calc(1 + 2);color:red}
+  > EOF
+  $ cat > text-b.css <<EOF
+  > .g{grid-template-columns:calc(1 + 2);color:#f00}
+  > EOF
+  $ cascade diff --diff=canonical text-a.css text-b.css
+  text-a.css and text-b.css parse warning: <string>: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at [25-36] (in component)
+  .g{grid-template-columns:calc(1 + 2);color:red}
+                           ^^^^^^^^^^^
+  
+  CSS files are identical
+
+`--json` still counts the declaration each side lost, and reports the pair
+identical.
+
+  $ cascade diff --json --diff=canonical text-a.css text-b.css | python3 -c 'import json,sys
+  > d = json.load(sys.stdin)
+  > print(d["identical"], d["unreadable_declarations"])'
+  True {'expected': 1, 'actual': 1}
+
+A declaration the two sides spell differently is not the same loss, however
+alike the two failures look. These two name a different property of the same
+length, so the reader gives up at the same offset on both sides and the
+message it prints is no evidence they lost the same declaration.
+
+  $ cat > prop-a.css <<EOF
+  > .g{grid-auto-flow:calc(1 + 2);color:red}
+  > EOF
+  $ cat > prop-b.css <<EOF
+  > .g{grid-auto-rows:calc(1 + 2);color:#f00}
+  > EOF
+  $ cascade diff --diff=canonical prop-a.css prop-b.css > /dev/null
+  [2]
+
 A difference the comparison did reach outranks one it could not: the report
 names the difference and the status stays 1.
 
@@ -125,6 +165,7 @@ The document and the status agree: `--json` reports the same three verdicts.
   $ cascade diff --json --diff=canonical same-a.css same-b.css > /dev/null
   [2]
   $ cascade diff --json --diff=canonical plain-a.css plain-b.css > /dev/null
+  $ cascade diff --json --diff=canonical text-a.css text-b.css > /dev/null
   $ cascade diff --json --diff=canonical same-a.css differ-b.css > /dev/null
   [1]
 
