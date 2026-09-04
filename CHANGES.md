@@ -657,6 +657,10 @@ entry points both moved.
 
 ### Canonical diff
 
+- A shorthand and its four side longhands compare equal for `border-width`,
+  `border-style`, `border-color`, `scroll-margin` and `scroll-padding`, as they
+  already did for `margin` and `padding`. A side that is missing or carries a
+  different value still reports (#842)
 - A cascade-neutral reordering stays unreported when the two sheets also
   differ elsewhere, where one changed rule turned every such move in the
   sheet into a reported difference (#819)

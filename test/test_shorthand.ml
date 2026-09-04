@@ -526,9 +526,21 @@ let test_compose_shorthands_and_runtime_guard () =
     |> Shorthand.compose_shorthands ~ctx
     |> unindexed
   in
-  Alcotest.(check int)
-    "runtime substitution prevents typed border shorthand" 12
-    (List.length guarded)
+  (* The guard is on the width family: the substituted tokens could re-assign
+     across width, style and color in [border]. The four styles and the four
+     colors carry no substitution and each set exactly their own four longhands,
+     so those two boxes still compose. *)
+  Alcotest.(check (list string))
+    "runtime substitution prevents typed border shorthand"
+    [
+      "border-top-width:var(--w)";
+      "border-right-width:1px";
+      "border-bottom-width:1px";
+      "border-left-width:1px";
+      "border-style:solid";
+      "border-color:red";
+    ]
+    (decl_strings guarded)
 
 let test_stylesheet_scope_prior_longhand_guard () =
   (* A layer shorthand resets every layer field, so synthesizing one from a run
@@ -683,9 +695,9 @@ let test_page_break_alias_shadowing () =
     "the legacy spelling wins when it comes last" [ "break-after:page" ]
     (dedup ".a{break-after:avoid;page-break-after:always}")
 
-(* CSS Backgrounds 3 sec. 4.2 to 4.4: [border-color], [border-style] and
+(* CSS Backgrounds 3 sec. 3.1 to 3.3: [border-color], [border-style] and
    [border-width] set exactly their four side longhands and reset nothing else.
-   CSS Scroll Snap 1 sec. 6.1 and 6.2 say the same of [scroll-padding] and
+   CSS Scroll Snap 1 sec. 4.2 and 5.1 say the same of [scroll-padding] and
    [scroll-margin]. Each shorthand and its four longhands compute the same
    values on every element, so a canonical diff equates them. *)
 let test_box_family_shorthand_equivalence () =

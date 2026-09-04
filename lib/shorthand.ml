@@ -1600,28 +1600,151 @@ let extract_border_radius_corner :
       Some (Left, value, important)
   | _ -> None
 
+(* CSS Scroll Snap 1 sec. 4.2 and 5.1: [scroll-padding] sets the four snapport
+   insets and [scroll-margin] the four snap area outsets, each assigning its
+   sides exactly as [padding] and [margin] do. *)
+let extract_scroll_margin_side :
+    declaration -> (box_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_margin_top; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Scroll_margin_right; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Scroll_margin_bottom; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Scroll_margin_left; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let extract_scroll_padding_side :
+    declaration -> (box_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_padding_top; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Scroll_padding_right; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Scroll_padding_bottom; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Scroll_padding_left; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+(* CSS Backgrounds 3 sec. 3.1 to 3.3: [border-color], [border-style] and
+   [border-width] each set exactly the four matching side longhands. *)
+let border_width_of :
+    declaration -> (box_side * Properties.border_width * bool) option = function
+  | Declaration { property = Border_top_width; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_width; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_width; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_width; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let border_style_of :
+    declaration -> (box_side * Properties.border_style * bool) option = function
+  | Declaration { property = Border_top_style; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_style; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_style; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_style; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let border_color_of : declaration -> (box_side * Values.color * bool) option =
+  function
+  | Declaration { property = Border_top_color; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Border_right_color; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Border_bottom_color; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Border_left_color; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
 let build_margin_box ~important ~top ~right ~bottom ~left =
-  Declaration.v ~important Margin
-    (collapse_box_lengths [ top; right; bottom; left ])
+  Some
+    (Declaration.v ~important Margin
+       (collapse_box_lengths [ top; right; bottom; left ]))
 
 let build_padding_box ~important ~top ~right ~bottom ~left =
-  Declaration.v ~important Padding
-    (collapse_box_lengths [ top; right; bottom; left ])
+  Some
+    (Declaration.v ~important Padding
+       (collapse_box_lengths [ top; right; bottom; left ]))
 
 let build_inset_box ~important ~top ~right ~bottom ~left =
-  Declaration.v ~important Inset
-    (collapse_box_lengths [ top; right; bottom; left ])
+  Some
+    (Declaration.v ~important Inset
+       (collapse_box_lengths [ top; right; bottom; left ]))
 
 let build_border_radius_box ~important ~top ~right ~bottom ~left =
   let lp v : Values.length_percentage = Length v in
   let horizontal =
     List.map lp (collapse_box_lengths [ top; right; bottom; left ])
   in
-  Declaration.v ~important Border_radius
-    (Radius { horizontal; vertical = None })
+  Some
+    (Declaration.v ~important Border_radius
+       (Radius { horizontal; vertical = None }))
 
-(* Index-based: positions i..i+3 form a same-importance 4-side box. *)
-let try_compose_box_at idx ~ctx ~extract ~build i =
+let build_scroll_margin_box ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Scroll_margin
+       (collapse_box_lengths [ top; right; bottom; left ]))
+
+let build_scroll_padding_box ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Scroll_padding
+       (collapse_box_lengths [ top; right; bottom; left ]))
+
+(* Canonical values of one type, so the typed structural equality is the
+   minified test, as it is for [same_minified_length]. *)
+let same_border_width = Properties.equal_border_width
+let same_border_style = Properties.equal_border_style
+
+let build_border_width_box ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Border_width
+       (collapse_box_by same_border_width [ top; right; bottom; left ]))
+
+(* [border-style] carries a single keyword, so only a box with one distinct
+   style has a shorthand spelling. *)
+let build_border_style_box ~important ~top ~right ~bottom ~left =
+  match collapse_box_by same_border_style [ top; right; bottom; left ] with
+  | [ style ] -> Some (Declaration.v ~important Border_style style)
+  | _ -> None
+
+let build_border_color_box ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Border_color
+       (collapse_box_by Values.equal_color [ top; right; bottom; left ]))
+
+(* Whether a side value may move into the positional shorthand. A [var()] leaf
+   substitutes an arbitrary token sequence, which in the shorthand would shift
+   the sides that follow it; a registration pins the leaf to one value. *)
+let foldable_length ~ctx (v : Values.length) =
+  match v with
+  | Var vr -> registered ctx vr.name
+  | _ -> not (Values.length_has_runtime_subst v)
+
+let foldable_length_strict (v : Values.length) =
+  not (Values.length_has_runtime_subst v)
+
+let foldable_border_width ~ctx (w : Properties.border_width) =
+  match w with Var v -> registered ctx v.name | _ -> true
+
+let foldable_border_style ~ctx (s : Properties.border_style) =
+  match s with Var v -> registered ctx v.name | _ -> true
+
+let foldable_border_color ~ctx (c : Values.color) =
+  match c with Var v -> registered ctx v.name | _ -> true
+
+(* Index-based: positions i..i+3 form a same-importance 4-side box. One call
+   covers one family, and most positions start none of them, so the first
+   declaration is tested before the other three are read. *)
+let try_compose_box_at idx ~foldable ~extract ~build i =
   let n = Rule_index.length idx in
   if i + 3 >= n then None
   else if
@@ -1630,6 +1753,7 @@ let try_compose_box_at idx ~ctx ~extract ~build i =
     || Rule_index.is_absorbed idx (i + 2)
     || Rule_index.is_absorbed idx (i + 3)
   then None
+  else if Option.is_none (extract (Rule_index.decl_at idx i)) then None
   else
     let d1 = Rule_index.decl_at idx i in
     let d2 = Rule_index.decl_at idx (i + 1) in
@@ -1645,17 +1769,11 @@ let try_compose_box_at idx ~ctx ~extract ~build i =
         let distinct =
           List.length (List.sort_uniq compare (List.map fst sides)) = 4
         in
-        let subst_safe (_, v) =
-          match (v : Values.length) with
-          | Var vr -> registered ctx vr.name
-          | _ -> not (Values.length_has_runtime_subst v)
-        in
-        let no_runtime = List.for_all subst_safe sides in
+        let no_runtime = List.for_all (fun (_, v) -> foldable v) sides in
         if distinct && no_runtime then
           let find s = List.assoc s sides in
-          Some
-            (build ~important:imp1 ~top:(find Top) ~right:(find Right)
-               ~bottom:(find Bottom) ~left:(find Left))
+          build ~important:imp1 ~top:(find Top) ~right:(find Right)
+            ~bottom:(find Bottom) ~left:(find Left)
         else None
     | _ -> None
 
@@ -1667,16 +1785,15 @@ let box_split_emit ~build entries =
     let _, v, _, _ = List.find (fun (x, _, _, _) -> x = s) entries in
     v
   in
-  let shorthand =
-    build ~important:false ~top:(find Top) ~right:(find Right)
-      ~bottom:(find Bottom) ~left:(find Left)
-  in
   let important_decls =
     List.filter_map (fun (_, _, imp, d) -> if imp then Some d else None) entries
   in
-  shorthand :: important_decls
+  Option.map
+    (fun shorthand -> shorthand :: important_decls)
+    (build ~important:false ~top:(find Top) ~right:(find Right)
+       ~bottom:(find Bottom) ~left:(find Left))
 
-let try_compose_box_split_at idx ~extract ~build i =
+let try_compose_box_split_at idx ~foldable ~extract ~build i =
   let n = Rule_index.length idx in
   if i + 3 >= n then None
   else if
@@ -1685,6 +1802,7 @@ let try_compose_box_split_at idx ~extract ~build i =
     || Rule_index.is_absorbed idx (i + 2)
     || Rule_index.is_absorbed idx (i + 3)
   then None
+  else if Option.is_none (extract (Rule_index.decl_at idx i)) then None
   else
     let d1 = Rule_index.decl_at idx i in
     let d2 = Rule_index.decl_at idx (i + 1) in
@@ -1707,15 +1825,13 @@ let try_compose_box_split_at idx ~extract ~build i =
           List.length (List.sort_uniq compare [ s1; s2; s3; s4 ]) = 4
         in
         let no_runtime =
-          List.for_all
-            (fun (_, v, _, _) -> not (Values.length_has_runtime_subst v))
-            entries
+          List.for_all (fun (_, v, _, _) -> foldable v) entries
         in
         let n_imp =
           List.length (List.filter (fun (_, _, imp, _) -> imp) entries)
         in
         if distinct && no_runtime && n_imp >= 1 && n_imp <= 2 then
-          Some (box_split_emit ~build entries)
+          box_split_emit ~build entries
         else None
     | _ -> None
 
@@ -1724,37 +1840,55 @@ type box_outcome =
   | Split of declaration list
 (* Mixed: shorthand + re-stated important sides. *)
 
-let compose_box_via_index ~ctx idx =
-  let n = Rule_index.length idx in
-  let try_same extract build i =
+(* Every 4-side family, each paired with the guard its value type needs. The
+   same-importance forms come first: a mixed-importance split re-states the
+   important sides, so it is the fallback. *)
+let box_composers ~ctx idx =
+  let try_same foldable extract build i =
     Option.map
       (fun sh -> Single sh)
-      (try_compose_box_at idx ~ctx ~extract ~build i)
+      (try_compose_box_at idx ~foldable ~extract ~build i)
   in
-  let try_split extract build i =
+  let try_split foldable extract build i =
     Option.map
       (fun ds -> Split ds)
-      (try_compose_box_split_at idx ~extract ~build i)
+      (try_compose_box_split_at idx ~foldable ~extract ~build i)
   in
+  let len = foldable_length ~ctx in
+  let strict = foldable_length_strict in
+  let width = foldable_border_width ~ctx in
+  let style = foldable_border_style ~ctx in
+  let color = foldable_border_color ~ctx in
+  [
+    try_same len extract_margin_side build_margin_box;
+    try_same len extract_padding_side build_padding_box;
+    try_same len extract_inset_side build_inset_box;
+    try_same len extract_border_radius_corner build_border_radius_box;
+    try_same len extract_scroll_margin_side build_scroll_margin_box;
+    try_same len extract_scroll_padding_side build_scroll_padding_box;
+    try_same width border_width_of build_border_width_box;
+    try_same style border_style_of build_border_style_box;
+    try_same color border_color_of build_border_color_box;
+    try_split strict extract_margin_side build_margin_box;
+    try_split strict extract_padding_side build_padding_box;
+    try_split strict extract_inset_side build_inset_box;
+    try_split strict extract_border_radius_corner build_border_radius_box;
+    try_split strict extract_scroll_margin_side build_scroll_margin_box;
+    try_split strict extract_scroll_padding_side build_scroll_padding_box;
+    try_split width border_width_of build_border_width_box;
+    try_split style border_style_of build_border_style_box;
+    try_split color border_color_of build_border_color_box;
+  ]
+
+let compose_box_via_index ~ctx idx =
+  let n = Rule_index.length idx in
+  let composers = box_composers ~ctx idx in
   let try_one i =
-    let chain fs =
-      let rec loop = function
-        | [] -> None
-        | f :: rest -> ( match f i with Some _ as r -> r | None -> loop rest)
-      in
-      loop fs
+    let rec loop = function
+      | [] -> None
+      | f :: rest -> ( match f i with Some _ as r -> r | None -> loop rest)
     in
-    chain
-      [
-        try_same extract_margin_side build_margin_box;
-        try_same extract_padding_side build_padding_box;
-        try_same extract_inset_side build_inset_box;
-        try_same extract_border_radius_corner build_border_radius_box;
-        try_split extract_margin_side build_margin_box;
-        try_split extract_padding_side build_padding_box;
-        try_split extract_inset_side build_inset_box;
-        try_split extract_border_radius_corner build_border_radius_box;
-      ]
+    loop composers
   in
   let i = ref 0 in
   while !i < n do
@@ -2450,42 +2584,6 @@ let compose_text_decoration_via_index idx =
    longhands appear in a contiguous run with matching importance, every width /
    style / color is uniform across the four sides, and no runtime-substitution
    value would change the resolved shape. *)
-let border_width_of :
-    declaration -> (box_side * Properties.border_width * bool) option = function
-  | Declaration { property = Border_top_width; value; important; _ } ->
-      Some (Top, value, important)
-  | Declaration { property = Border_right_width; value; important; _ } ->
-      Some (Right, value, important)
-  | Declaration { property = Border_bottom_width; value; important; _ } ->
-      Some (Bottom, value, important)
-  | Declaration { property = Border_left_width; value; important; _ } ->
-      Some (Left, value, important)
-  | _ -> None
-
-let border_style_of :
-    declaration -> (box_side * Properties.border_style * bool) option = function
-  | Declaration { property = Border_top_style; value; important; _ } ->
-      Some (Top, value, important)
-  | Declaration { property = Border_right_style; value; important; _ } ->
-      Some (Right, value, important)
-  | Declaration { property = Border_bottom_style; value; important; _ } ->
-      Some (Bottom, value, important)
-  | Declaration { property = Border_left_style; value; important; _ } ->
-      Some (Left, value, important)
-  | _ -> None
-
-let border_color_of : declaration -> (box_side * Values.color * bool) option =
-  function
-  | Declaration { property = Border_top_color; value; important; _ } ->
-      Some (Top, value, important)
-  | Declaration { property = Border_right_color; value; important; _ } ->
-      Some (Right, value, important)
-  | Declaration { property = Border_bottom_color; value; important; _ } ->
-      Some (Bottom, value, important)
-  | Declaration { property = Border_left_color; value; important; _ } ->
-      Some (Left, value, important)
-  | _ -> None
-
 let all_box_sides_present xs =
   List.length xs = 4
   &&
@@ -2616,19 +2714,11 @@ let try_compose_border_whole_at ~ctx idx i =
                 color := Some c
             | _ -> ())
           raw;
-        let foldable_width (w : Properties.border_width) =
-          match w with Var v -> registered ctx v.name | _ -> true
-        in
-        let foldable_style (s : Properties.border_style) =
-          match s with Var v -> registered ctx v.name | _ -> true
-        in
-        let foldable_color (c : Values.color) =
-          match c with Var v -> registered ctx v.name | _ -> true
-        in
         match (!width, !style, !color) with
         | Some width, Some style, Some color
-          when foldable_width width && foldable_style style
-               && foldable_color color ->
+          when foldable_border_width ~ctx width
+               && foldable_border_style ~ctx style
+               && foldable_border_color ~ctx color ->
             Some
               (Declaration.v
                  ~important:(is_important (List.hd raw))
