@@ -373,6 +373,9 @@ let check_text_shadow =
 let check_shadow = check_value_cursor "shadow" read_shadow pp_shadow
 let check_filter = check_value_cursor "filter" read_filter pp_filter
 
+let check_filter_function =
+  check_value_cursor "filter function" read_filter_function pp_filter_function
+
 let check_background_attachment =
   check_value_cursor "background-attachment" read_background_attachment
     pp_background_attachment
@@ -3798,6 +3801,26 @@ let test_text_shadow () =
   check_text_shadow "0 0 10px";
   neg_cursor read_text_shadow "invalid-shadow"
 
+let test_filter_function () =
+  List.iter
+    (fun name ->
+      check_filter_function ~roundtrip:true name;
+      check_filter_function ~expected:name (String.uppercase_ascii name))
+    [
+      "blur";
+      "brightness";
+      "contrast";
+      "grayscale";
+      "hue-rotate";
+      "invert";
+      "opacity";
+      "saturate";
+      "sepia";
+    ];
+  neg_cursor read_filter_function "drop-shadow";
+  neg_cursor read_filter_function "unknown";
+  neg_cursor read_filter_function "blur()"
+
 let test_filter () =
   check_filter "none";
   check_filter "blur(5px)";
@@ -5305,6 +5328,7 @@ let tests =
     test_case "background-image" `Quick test_background_image;
     test_case "url escaping" `Quick test_url_escaping;
     test_case "filter" `Quick test_filter;
+    test_case "filter function" `Quick test_filter_function;
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
       spec_property_grammar_edges;

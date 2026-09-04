@@ -772,6 +772,9 @@ entry points both moved.
 
 ### Library
 
+- `Properties.read_filter_function` and `pp_filter_function` expose the names
+  used by `Omitted` filter values (#872).
+
 - `Css.Context.matches_media` respects zero-valued boolean features and
   resolution units, preserves unknown through negation, and matches an empty
   query list (#868).

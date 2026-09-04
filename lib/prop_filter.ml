@@ -115,6 +115,25 @@ let filter_function_name = function
   | Saturate_function -> "saturate"
   | Sepia_function -> "sepia"
 
+let pp_filter_function ctx fn = Pp.string ctx (filter_function_name fn)
+
+let read_filter_function t =
+  Cursor.enum "optional filter function"
+    (List.map
+       (fun fn -> (filter_function_name fn, fn))
+       [
+         Blur_function;
+         Brightness_function;
+         Contrast_function;
+         Grayscale_function;
+         Hue_rotate_function;
+         Invert_function;
+         Opacity_function;
+         Saturate_function;
+         Sepia_function;
+       ])
+    t
+
 let pp_blur_length ctx (length : length) =
   match length with
   | Calc (Val value) -> (

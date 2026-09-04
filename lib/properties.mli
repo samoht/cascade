@@ -1587,6 +1587,15 @@ val pp_rotate_value : rotate_value Pp.t
 val read_rotate_value : Cursor.t -> rotate_value
 (** [read_rotate_value t] is the [rotate_value] parsed from [t]. *)
 
+val pp_filter_function : filter_function Pp.t
+(** [pp_filter_function] prints the name of a filter function with an optional
+    argument, without parentheses. *)
+
+val read_filter_function : Cursor.t -> filter_function
+(** [read_filter_function t] reads the name of a filter function with an
+    optional argument. [drop-shadow] is excluded because its arguments are
+    mandatory. *)
+
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 
