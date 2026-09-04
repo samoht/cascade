@@ -216,6 +216,14 @@ let spec_ahead : excuse list =
          here that wants a decision rather than a browser";
     };
     {
+      properties = [ "outline-color" ];
+      value = "auto";
+      why =
+        "CSS UI 4 sec. 3.4: auto | <'border-top-color'>, and auto is the \
+         initial value; Chrome computes that initial value without accepting \
+         the keyword";
+    };
+    {
       properties = [ "user-select"; "-webkit-user-select" ];
       value = "contain";
       why =
