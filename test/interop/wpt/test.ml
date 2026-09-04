@@ -254,8 +254,9 @@ let wpt_vector_manifest () =
    we run {!Css.of_string}; for an inline [style="..."] attribute we wrap the
    declarations in a synthetic [[data] \{ ... \}] rule so we exercise the same
    parse path (parser doesn't have a dedicated inline-declaration entry point
-   yet). Either way the assertion is that the input parses without raising --
-   the finer-grained property assertions live in the per-file ports below. *)
+   yet). Either way this is a parse floor and nothing more: it says the input
+   reads, not that it read correctly. What each file expects of the result is
+   the per-file ports below. *)
 let run_parse case () =
   let input =
     match case.kind with
@@ -283,6 +284,62 @@ let extracted_cases () =
 
     These run in addition to any static cases the same file contributes via
     [extracted_cases]. *)
+
+(* The first style rule of a vendored file, as (name, value) pairs. The value is
+   the one CSSOM reports: the text after the colon, with [!important] off it. *)
+let first_rule_declarations file =
+  let contents = read_file (Filename.concat vectors_dir file) in
+  let pair decl =
+    let s = Cascade.Declaration.to_string ~minify:true decl in
+    match String.index_opt s ':' with
+    | None -> (s, "")
+    | Some i ->
+        let name = String.sub s 0 i in
+        let value = String.sub s (i + 1) (String.length s - i - 1) in
+        let bang = "!important" in
+        let value =
+          if String.ends_with ~suffix:bang value then
+            String.sub value 0 (String.length value - String.length bang)
+          else value
+        in
+        (name, value)
+  in
+  match
+    List.find_map (function Style b -> Some b | _ -> None) (found_in contents)
+  with
+  | None -> Alcotest.failf "%s: no <style> to read" file
+  | Some css -> (
+      match Cascade.Css.of_string ~strict:false css with
+      | Error e -> Alcotest.failf "%s: %s" file (Cascade.Error.to_string e)
+      | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> (
+          match
+            Cascade.Css.rules_of_statements (Cascade.Css.statements stylesheet)
+          with
+          | [] -> Alcotest.failf "%s: no style rule" file
+          | (_, decls) :: _ -> List.map pair decls))
+
+(* declarations-trim-whitespace.html: whitespace either side of a declaration
+   value is not part of it, and neither is [!important]. The file writes nine
+   spellings of one value and expects all nine to read as [bar]; the WPT version
+   reads them back through getComputedStyle, this one off the parsed rule. Both
+   read the same vendored bytes. *)
+let declarations_trim_whitespace =
+  let file = "declarations-trim-whitespace.html" in
+  let canonical = "bar" in
+  let check name () =
+    match
+      List.find_opt
+        (fun (n, _) -> String.equal n name)
+        (first_rule_declarations file)
+    with
+    | None -> Alcotest.failf "%s: %s is not in the rule" file name
+    | Some (_, value) -> Alcotest.(check string) name canonical value
+  in
+  List.init 9 (fun i ->
+      let name = String.concat "" [ "--foo-"; string_of_int (i + 1) ] in
+      Alcotest.test_case
+        (String.concat "" [ file; " "; name; " is "; canonical ])
+        `Quick (check name))
 
 (* non-ascii-codepoints.html: each code point in the CSS Syntax section 4.2
    "non-ASCII ident code point" ranges must be accepted as an ident character.
@@ -734,8 +791,8 @@ let suite () =
       Alcotest.test_case "imported WPT vector manifest" `Quick
         wpt_vector_manifest;
     ]
-    @ extracted_cases () @ non_ascii_codepoints @ unclosed_constructs
-    @ whitespace_html @ anb_parsing @ anb_serialization
+    @ extracted_cases () @ declarations_trim_whitespace @ non_ascii_codepoints
+    @ unclosed_constructs @ whitespace_html @ anb_parsing @ anb_serialization
     @ serialize_consecutive_tokens )
 
 let () = Alcotest.run "wpt" [ suite () ]

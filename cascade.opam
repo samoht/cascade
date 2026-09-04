@@ -17,8 +17,6 @@ depends: [
   "alcotest" {>= "1.7.0" & with-test}
   "alcobar" {with-test}
   "astring" {with-test}
-  "eio" {>= "0.14" & with-test}
-  "eio_main" {>= "0.14" & with-test}
   "markup"
   "mdx" {with-test}
   "re" {with-test}
