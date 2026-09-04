@@ -76,6 +76,7 @@ if [ "$n" = 0 ]
 then body='[{"_tag":"DIV","color":"rgb(0, 0, 0)"}]'
 else body='[{"_tag":"DIV","color":"rgb(1, 1, 1)"}]'
 fi
+grep -q xtest-stub-blind "$page" 2>/dev/null && body='[]'
 printf '<html><body data-xtest="%s"></body></html>\n' \
   "$(printf '%s' "$body" | base64 | tr -d '\n')"
 STUB
@@ -92,6 +93,9 @@ EOF
 page "$work/fixtures/one.html" stable
 page "$work/pages/stable.html" stable
 page "$work/pages/moving.html" xtest-stub-unstable
+# Renders steadily, and renders nothing: two empty element lists are identical
+# for want of anything to disagree about.
+page "$work/pages/blind.html" xtest-stub-blind
 # Frozen by a freezer that did not strip <script>, so the current one changes
 # it. The stub renders it as steadily as any other page: staleness is the only
 # thing wrong with it.
@@ -142,6 +146,36 @@ if grep -q 'unfrozen\.html@.* \(minimal\|minify\)$' "$work/out"; then
   fail "a stale page still reported a transform result"
 fi
 
+# Two identical empty element lists are identical, which is what an oracle
+# looks like from outside when it has gone blind. A count from nothing is not
+# a result, so the page is reported rather than passed.
+grep -q '^BLIND real blind\.html@' "$work/out" ||
+  fail "a page that compared no element was not reported as blind"
+if grep -q '^ok   real blind\.html@' "$work/out"; then
+  fail "a page that compared no element still passed"
+fi
+
+# And the run says how much it compared, so a shrinking count is visible
+# without anyone having to count the ok lines.
+grep -q '^compared: [0-9][0-9]* case(s), [0-9][0-9]* element render(s)$' "$work/out" ||
+  fail "the run did not say how many cases it compared"
+
 [ "$status" -ne 0 ] || fail "run.sh exited 0 with a page it could not measure"
 
-echo "PASS: a suppressed gate fails, and an unstable or stale page is unusable"
+# A run with nothing to measure is blind rather than clean, whatever it did
+# not find to disagree about.
+empty=$work/empty
+mkdir -p "$empty/fixtures" "$empty/pages"
+cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$dir/freeze_page.js" "$empty/"
+if sh "$empty/run.sh" > "$empty/out" 2>&1; then
+  echo "FAIL: run.sh exits 0 with nothing to measure"
+  cat "$empty/out"
+  exit 1
+fi
+grep -q '^BLIND: 0 case' "$empty/out" || {
+  echo "FAIL: a run that measured nothing did not say so"
+  cat "$empty/out"
+  exit 1
+}
+
+echo "PASS: a suppressed, blind, unstable or stale run is not a passing one"

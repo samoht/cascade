@@ -698,5 +698,11 @@ let () =
   |> List.sort (fun (_, a) (_, b) -> compare b a)
   |> List.iter (fun (reason, n) ->
       Fmt.pr "  not synthesised: %-42s %d@." reason n);
+  (* A run that rendered no element is not a clean run, it is a blind one: the
+     sheets are read from committed corpora, so an empty population means the
+     harness stopped working, not that there was nothing to check. *)
+  if Hashtbl.length doms = 0 || !elements = 0 || !matched = 0 then (
+    incr failures;
+    Fmt.pr "FAIL: no element reached the browser at all@.");
   Fmt.pr "  failures: %d@." !failures;
   if !failures > 0 then exit 1

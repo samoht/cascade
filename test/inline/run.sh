@@ -133,10 +133,26 @@ echo "cascade: $CASCADE (${cascade_version:-unknown version})"
 echo "browser: $browser"
 echo "compare: canonical"
 fail=0
+checks=0
+compared=0
 # xtest.js renders two pages, which is the whole cost of the run: keep its
 # report rather than paying for it a second time to print the failure.
+#
+# It also says how many elements it lined up, and a case that lined up none
+# reports IDENTICAL for the same reason an empty page does: there was nothing
+# to disagree about. That is not a result, so it is a failure.
 check() { # label before after
   report=$(node "$dir/xtest.js" "$2" "$3" 2>&1)
+  checks=$((checks + 1))
+  els=$(printf '%s\n' "$report" | sed -n 's/^visual elements: \([0-9][0-9]*\),.*/\1/p')
+  if [ -z "$els" ] || [ "$els" -eq 0 ]; then
+    echo "BLIND $1"
+    echo "     no element was compared, so IDENTICAL says nothing"
+    printf '%s\n' "$report" | head -8 | sed 's/^/     /'
+    fail=1
+    return
+  fi
+  compared=$((compared + els))
   case $report in
     *IDENTICAL*) echo "ok   $1" ;;
     *) echo "FAIL $1"
@@ -206,7 +222,12 @@ transform() { # label out cmd...
   rm -f "$err"
   return "$status"
 }
+fixtures=0
 for f in "$dir"/fixtures/*.html; do
+  [ -e "$f" ] && fixtures=$((fixtures + 1))
+done
+for f in "$dir"/fixtures/*.html; do
+  [ -e "$f" ] || continue
   for mode in "" "--minimal"; do
     tmp=$(mktemp)
     label="$(basename "$f") ${mode:-full}"
@@ -222,6 +243,7 @@ done
 # compare computed styles against the original page.
 for flags in "" "--inline-vars"; do
   for f in "$dir"/fixtures/*.html; do
+    [ -e "$f" ] || continue
     tmp=$(mktemp)
     label="$(basename "$f") minify${flags:+ $flags}"
     # shellcheck disable=SC2086 # an empty $flags must vanish, not pass ""
@@ -260,4 +282,14 @@ for f in "$dir"/pages/*.html; do
   fi
   rm -f "$tmp"
 done
+# Say what was measured, and refuse to call a run clean that measured less
+# than the committed fixtures come to. The fixtures are in the tree, so a
+# short count is the harness failing to reach them, not a smaller corpus:
+# four legs each, and the pages add to that rather than stand in for it.
+echo "compared: $checks case(s), $compared element render(s)"
+expected=$((fixtures * 4))
+if [ "$checks" -eq 0 ] || [ "$checks" -lt "$expected" ]; then
+  echo "BLIND: $checks case(s) measured, $expected from $fixtures fixture(s) expected" >&2
+  fail=1
+fi
 exit $fail

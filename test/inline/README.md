@@ -110,6 +110,11 @@ prefixed colours outnumber all its other differences.
 
 ## Coverage
 
+Each run ends with the number of cases it compared and the element renders they
+came to, and a run measuring fewer cases than the committed fixtures come to
+fails. An oracle that lined up no element reports no difference for the same
+reason a working one does, so the population is part of the result.
+
 `fixtures/` is committed and always runs. `pages/` holds real sites downloaded
 by `fetch.sh`, and they gate the run in the same way: a surviving difference is
 a defect in a transform, whichever page found it. A failure that starts the day
