@@ -139,8 +139,10 @@ Compares two CSS files through the parsed CSS structure rather than
 character-by-character: added, removed, modified, and reordered rules are
 detected structurally, and property value changes are reported in terms of CSS
 values. Identical files exit 0; differences exit 1, making `cascade diff`
-usable as a CI check. A comparison that finds no difference but had to drop a
-declaration or a rule it could not read exits 2 instead: what it dropped
+usable as a CI check. Under `--diff=canonical`, exit 0 asserts that no element
+computes a value differing beyond the approximation budget below, not that the
+two files hold the same rules. A comparison that finds no difference but had to
+drop a declaration or a rule it could not read exits 2 instead: what it dropped
 reached neither side, so identity is not a verdict the comparison can give. The
 report and the `--json` document count declarations and rules per side.
 
@@ -175,6 +177,11 @@ report and the `--json` document count declarations and rules per side.
   default, `calc(28/18)` compares equal to Cascade's six-significant-figure
   output `1.55556`; under `--lossless` it remains distinct from every finite
   decimal spelling.
+
+`canonical` ignores what cannot change a computed value, so surplus output that
+renders identically, an empty rule for instance, does not appear in its report.
+A check that must catch surplus output needs `tree` or `string`; a CI gate that
+cares about both runs both.
 
 | Flag | Purpose |
 |---|---|
