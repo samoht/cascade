@@ -213,8 +213,11 @@ let matrix =
           "blur(5px) contrast(120%)";
           "drop-shadow(0 0 2px black)";
           "opacity(calc(50% + 25%))";
+          (* Filter Effects 1 sec. 6.1: blur() = blur( <length>? ), so the
+             argument may be omitted. drop-shadow() below has no such arm. *)
+          "blur()";
         ];
-      negatives = [ "blur()"; "drop-shadow()" ];
+      negatives = [ "drop-shadow()"; "blur(red)" ];
     };
     {
       property = "font";
@@ -257,10 +260,24 @@ let matrix =
       negatives = [ "underline none"; "wavy solid" ];
     };
     {
+      (* CSS Text Decoration 4 sec. 2.4: auto | from-font | <length-percentage>
+         | <line-width>. The <length-percentage> arm carries no [0,inf] range,
+         so a negative thickness is grammar; <line-width> is the CSS Borders 4
+         sec. 2.3 keyword set. *)
       property = "text-decoration-thickness";
       positives =
-        [ "auto"; "from-font"; "0"; "1px"; "10%"; "hairline"; "thin"; "thick" ];
-      negatives = [ "red"; "1px 2px"; "-1px"; "none"; "min-content"; "stretch" ];
+        [
+          "auto";
+          "from-font";
+          "0";
+          "1px";
+          "10%";
+          "-1px";
+          "hairline";
+          "thin";
+          "thick";
+        ];
+      negatives = [ "red"; "1px 2px"; "none"; "min-content"; "stretch" ];
     };
     {
       property = "white-space";
@@ -314,12 +331,18 @@ let matrix =
       negatives = [ "normal allow-discrete"; "discrete" ];
     };
     {
+      (* CSS Animations 1 sec. 3: <keyframes-name> = <custom-ident> | <string>,
+         and the exclusion covers none and the CSS-wide keywords only, so
+         [infinite] names a keyframe set after an iteration count. *)
       property = "animation";
       positives =
         [
-          "fade 1s linear 2 alternate both running"; "none"; "fade calc(1s * 2)";
+          "fade 1s linear 2 alternate both running";
+          "none";
+          "fade calc(1s * 2)";
+          "infinite infinite";
         ];
-      negatives = [ "1s 2s 3s"; "infinite infinite" ];
+      negatives = [ "1s 2s 3s"; "2 3" ];
     };
     {
       property = "grid-auto-flow";
@@ -347,9 +370,14 @@ let matrix =
       negatives = [ "start center end"; "left right" ];
     };
     {
+      (* CSS Lists 3 sec. 3.6: <'list-style-position'> || <'list-style-image'>
+         || <'list-style-type'>, and CSS Counter Styles 3 sec. 3 makes
+         <counter-style-name> a <custom-ident> excluding none, so [outside]
+         names a counter style after the position keyword. *)
       property = "list-style";
-      positives = [ "square inside"; "none"; "url(marker.png) outside" ];
-      negatives = [ "inside outside"; "square disc" ];
+      positives =
+        [ "square inside"; "none"; "inside outside"; "url(marker.png) outside" ];
+      negatives = [ "square disc"; "inside outside outside" ];
     };
     {
       property = "counter-reset";
@@ -670,8 +698,9 @@ let matrix =
         "-webkit-filter";
         "-ms-filter";
       ]
-      [ "none"; "blur(5px)"; "contrast(120%) brightness(.8)" ]
-      [ "blur()"; "none blur(1px)" ]
+      (* Filter Effects 1 sec. 6.1: blur( <length>? ). *)
+      [ "none"; "blur(5px)"; "contrast(120%) brightness(.8)"; "blur()" ]
+      [ "blur(red)"; "none blur(1px)" ]
   @ rows_for
       [
         "transition-duration";
@@ -841,9 +870,11 @@ let matrix =
         negatives = [ "clip ellipsis clip"; "auto" ];
       };
       {
+        (* CSS Text 4 sec. 5.5: <'text-wrap-mode'> || <'text-wrap-style'>, and
+           sec. 5.4 gives text-wrap-style an auto arm. *)
         property = "text-wrap";
-        positives = [ "wrap"; "nowrap"; "balance"; "pretty" ];
-        negatives = [ "wrap nowrap"; "auto" ];
+        positives = [ "wrap"; "nowrap"; "balance"; "pretty"; "auto" ];
+        negatives = [ "wrap nowrap"; "wrap wrap" ];
       };
       {
         property = "text-wrap-style";
@@ -1049,9 +1080,12 @@ let matrix =
           [ "\"a\" \"a a\""; "\"a .\" \". a\""; "\"nav/main\""; "a b" ];
       };
       {
+        (* CSS Grid 2 sec. 7.4: [ <'grid-template-rows'> / <'grid-template-
+           columns'> ], and sec. 7.2 gives grid-template-rows a none arm. *)
         property = "grid-template";
-        positives = [ "none"; "\"a a\" 1fr / 1fr 1fr"; "subgrid / subgrid" ];
-        negatives = [ "/"; "none / 1fr" ];
+        positives =
+          [ "none"; "none / 1fr"; "\"a a\" 1fr / 1fr 1fr"; "subgrid / subgrid" ];
+        negatives = [ "/"; "1fr / 1fr / 1fr" ];
       };
       {
         property = "grid-area";
@@ -1099,9 +1133,13 @@ let matrix =
         negatives = [ "span"; "1 2" ];
       };
       {
+        (* CSS Backgrounds 3 sec. 6.1: <shadow> = <color>? && [ <length>{2} ...
+           ] && inset?, so two lengths alone are a whole shadow and one is
+           not. *)
         property = "box-shadow";
-        positives = [ "none"; "0 1px 2px rgb(0 0 0 / .2)"; "inset 0 0 1px red" ];
-        negatives = [ "0 0"; "inset inset 0 0 1px" ];
+        positives =
+          [ "none"; "0 0"; "0 1px 2px rgb(0 0 0 / .2)"; "inset 0 0 1px red" ];
+        negatives = [ "0"; "inset inset 0 0 1px" ];
       };
       {
         property = "mix-blend-mode";
@@ -1291,9 +1329,17 @@ let matrix =
         negatives = [ "anchor"; "--a --b" ];
       };
       {
+        (* CSS Anchor Positioning 1 sec. 6.1: none | [ [ <dashed-ident> ||
+           <try-tactic> ] | <position-area> ]#, and || is order-free. *)
         property = "position-try-fallbacks";
-        positives = [ "none"; "--fallback"; "flip-block, --fallback" ];
-        negatives = [ "flip-block --fallback"; "," ];
+        positives =
+          [
+            "none";
+            "--fallback";
+            "flip-block --fallback";
+            "flip-block, --fallback";
+          ];
+        negatives = [ ","; "--a --b" ];
       };
       {
         property = "position-area";
@@ -1463,9 +1509,13 @@ let matrix =
         negatives = [ "none all"; "2" ];
       };
       {
+        (* CSS Syntax 3 sec. 2.2 closes an open function at EOF, so [scroll(] is
+           the valid [scroll()] and cannot be a negative. It is not a positive
+           either: the positive checks append a token after the value, and an
+           unclosed function swallows it. *)
         property = "animation-timeline";
         positives = [ "auto"; "none"; "scroll()"; "--timeline" ];
-        negatives = [ "auto none"; "scroll(" ];
+        negatives = [ "auto none"; "scroll() none" ];
       };
       {
         property = "animation-range";
@@ -1610,9 +1660,12 @@ let matrix =
         negatives = [ "visible hidden"; "none" ];
       };
       {
+        (* CSS Transitions 1 sec. 2.1: none | <single-transition-property>#,
+           where <single-transition-property> = all | <custom-ident>. The
+           exclusion clause names none, inherit and initial, not all. *)
         property = "transition-property";
-        positives = [ "none"; "all"; "opacity, transform" ];
-        negatives = [ "none, opacity"; "all, opacity" ];
+        positives = [ "none"; "all"; "opacity, transform"; "all, opacity" ];
+        negatives = [ "none, opacity"; "opacity, none" ];
       };
       {
         property = "will-change";
