@@ -29,7 +29,7 @@ entry points both moved.
   of the comparison, so identity is not a verdict it can give. Two sides that
   dropped the same source text still exit 0: the comparison did see the same
   thing twice there. A gate that reads any non-zero status as "differs" needs
-  updating (#832, #833, #834, #835)
+  updating (#832, #833, #834, #835, #836)
 - `Cascade.Error.t` gains `recovery`, which says whether the reader dropped the
   construct the error is about or kept it in the output. Exhaustive record
   patterns must bind it or add `_`; `Cascade.Error.v` fills it in (#834)

@@ -205,6 +205,29 @@ type snapshot = Component.t list
 let save t = t.cvs
 let restore t s = t.cvs <- s
 
+(* The source range covered by the components consumed since [snap]. A recovery
+   point holds the snapshot from before the item it gave up on, so this names
+   the whole construct it then skipped rather than the point the read failed at.
+   Whitespace at either end sits outside the construct and is left out. *)
+let consumed_span t snap =
+  let rec span acc cvs =
+    if cvs == t.cvs then acc
+    else
+      match cvs with
+      | [] -> None
+      | hd :: tl when is_ws_cv hd -> span acc tl
+      | hd :: tl ->
+          let loc = Component.source_loc hd in
+          let acc =
+            match acc with None -> Some loc | Some l -> Some (Loc.union l loc)
+          in
+          span acc tl
+  in
+  span None snap
+
+let dropped_since t snap construct =
+  Error.Recovery.dropped ?source:t.source ?loc:(consumed_span t snap) construct
+
 (** {1 Errors} *)
 
 exception Parse_error = Error.Parse_error

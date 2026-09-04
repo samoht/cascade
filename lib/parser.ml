@@ -1150,6 +1150,17 @@ let value_has_invalid_block ~is_custom value =
 let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_custom = Custom_property_name.has_prefix name in
+  (* [name_loc] opens the declaration and [cvs] is its body up to the [;], so
+     the union spans what the sheet loses when the pair is refused. *)
+  let dropped () =
+    let loc =
+      List.fold_left
+        (fun l cv -> Loc.union l (Component.source_loc cv))
+        name_loc (trim_ws cvs)
+    in
+    Error.Recovery.dropped ~source:(Lexer.source lexer) ~loc
+      Error.Recovery.Declaration
+  in
   match drop_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
       let value1 = trim_ws rest in
@@ -1164,8 +1175,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         | _ -> (value1, false)
       in
       if value_has_invalid_block ~is_custom value || has_bad_token value then (
-        warn ~meta lexer warnings
-          ~recovery:Error.Recovery.(dropped Declaration)
+        warn ~meta lexer warnings ~recovery:(dropped ())
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
              (Token.Open Token.Curly));
         None)
@@ -1177,8 +1187,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         in
         Some { node = { name; value; important }; loc }
   | _ ->
-      warn ~meta lexer warnings
-        ~recovery:Error.Recovery.(dropped Declaration)
+      warn ~meta lexer warnings ~recovery:(dropped ())
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
@@ -1203,17 +1212,17 @@ let consume_declaration_body lexer =
   in
   loop []
 
+(* Answers where the skip stopped, so the caller can report the whole
+   declaration it threw away and not just the token it started on. *)
 let skip_bad_declaration lexer tok =
-  let rec skip () =
+  let rec skip last =
     let t = Lexer.next lexer in
     match t.Token.kind with
-    | Token.Semicolon | Token.Eof -> ()
-    | _ ->
-        let _ = consume_component_value_from lexer t in
-        skip ()
+    | Token.Semicolon -> t.loc
+    | Token.Eof -> last
+    | _ -> skip (Component.source_loc (consume_component_value_from lexer t))
   in
-  let _ = consume_component_value_from lexer tok in
-  skip ()
+  skip (Component.source_loc (consume_component_value_from lexer tok))
 
 let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
   let body = consume_declaration_body lexer in
@@ -1235,10 +1244,12 @@ let consume_decl_list_item ~meta lexer ~warnings tok =
       | Some item -> `Item item
       | None -> `Skip)
   | _ ->
+      let end_loc = skip_bad_declaration lexer tok in
+      let loc = Loc.union tok.loc end_loc in
       warn ~meta lexer warnings
-        ~recovery:Error.Recovery.(dropped Declaration)
+        ~recovery:
+          Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Declaration)
         (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
-      skip_bad_declaration lexer tok;
       `Skip
 
 let consume_list_of_declarations ~meta lexer ~warnings :

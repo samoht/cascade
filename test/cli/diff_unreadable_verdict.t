@@ -19,9 +19,10 @@ Both files read whole and compare equal. That verdict is proven, so it stays
   $ cascade diff --diff=canonical plain-a.css plain-b.css
   CSS files are identical
 
-The same unreadable declaration on both sides. Every browser drops both
-copies, so the two files may well render alike - but that is the one
-declaration cascade did not read, and the count says so per side.
+The same unreadable declaration on both sides, spelled differently. Every
+browser drops both copies, so the two files may well render alike - but the
+run of source text each sheet lost is a different run, so neither loss
+accounts for the other and the count reports both.
 
   $ cat > same-a.css <<EOF
   > .g { grid-template-columns: calc(1 + 2); color: red }

@@ -2411,7 +2411,14 @@ let read_declaration t : declaration option =
 type parse_step =
   | Done of declaration list
   | Continue of declaration list
-  | Recover of declaration list * Error.t
+  | Recover of {
+      decls : declaration list;
+      error : Error.t;
+      from : Cursor.snapshot;
+          (* Where the item that is about to be dropped starts. A separator that
+             fails comes after a declaration already committed, so the two
+             recovery arms carry different snapshots. *)
+    }
 
 let check_declaration_separator t acc =
   Cursor.ws t;
@@ -2430,14 +2437,18 @@ let read_declaration_no_recovery t acc =
   | Some decl -> check_declaration_separator t (decl :: acc)
 
 let read_declaration_with_recovery t acc =
+  let start = Cursor.save t in
   match read_declaration t with
   | None -> Done (List.rev acc)
   | Some decl -> (
       let acc = decl :: acc in
+      let after = Cursor.save t in
       match check_declaration_separator t acc with
       | step -> step
-      | exception Error.Parse_error e -> Recover (acc, e))
-  | exception Error.Parse_error e -> Recover (acc, e)
+      | exception Error.Parse_error e ->
+          Recover { decls = acc; error = e; from = after })
+  | exception Error.Parse_error e ->
+      Recover { decls = acc; error = e; from = start }
 
 let read_declaration_step t acc =
   if Cursor.recover t then read_declaration_with_recovery t acc
@@ -2446,9 +2457,11 @@ let read_declaration_step t acc =
 (* CSS Syntax 3 (ED) sec. 5.5.5 ("consume a block's contents"): the invalid
    declaration is dropped, reading resumes past the next [;], and the
    surrounding rule survives. *)
-let recover_declaration_step t acc e =
-  Cursor.push_warning t ~recovery:Error.Recovery.(dropped Declaration) e;
+let recover_declaration_step t acc e ~from =
   Cursor.skip_past_semicolon t;
+  Cursor.push_warning t
+    ~recovery:(Cursor.dropped_since t from Error.Recovery.Declaration)
+    e;
   acc
 
 let rec read_declarations_loop t acc =
@@ -2459,8 +2472,9 @@ let rec read_declarations_loop t acc =
       match read_declaration_step t acc with
       | Done decls -> decls
       | Continue acc -> read_declarations_loop t acc
-      | Recover (acc, e) ->
-          read_declarations_loop t (recover_declaration_step t acc e))
+      | Recover { decls; error; from } ->
+          read_declarations_loop t
+            (recover_declaration_step t decls error ~from))
 
 let read_declarations t =
   Cursor.with_context t "declarations" @@ fun () -> read_declarations_loop t []

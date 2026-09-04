@@ -162,6 +162,17 @@ val save : t -> snapshot
 val restore : t -> snapshot -> unit
 (** [restore t s] rewinds [t] to the position captured by [s]. *)
 
+val dropped_since :
+  t -> snapshot -> Error.Recovery.construct -> Error.Recovery.t
+(** [dropped_since t s construct] is a dropped-[construct] recovery naming the
+    source text from the first component [t] consumed since [s] to the last,
+    whitespace at either end left out. A recovery point takes [s] before the
+    item it gives up on and calls this once it has skipped that item, so the
+    recovery names the whole construct the reader threw away rather than the
+    point the read failed at. It names no text when [t] carries no source, when
+    nothing but whitespace was consumed, or when [s] is no snapshot [t] advanced
+    from. *)
+
 val atomic : t -> (unit -> 'a) -> 'a
 (** [atomic t f] runs [f ()] with a snapshot held; if [f] raises {!Parse_error},
     the cursor is restored before the exception propagates. *)
