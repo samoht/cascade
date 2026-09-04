@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `row-gap` and `column-gap` accept `normal` and preserve its layout-dependent
+  meaning during optimisation (#881).
+
 - `outline-offset` and `line-height-step` reject percentages, including inside
   math functions. Negative lengths remain valid for `outline-offset` (#879,
   #880).

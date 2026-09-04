@@ -853,6 +853,11 @@ let read_nn_length_or_global ?(length_only = false) t =
 let read_corner_radius t =
   Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_nn_length_or_global t
 
+let read_gap_longhand t =
+  Cursor.enum "gap"
+    [ ("normal", (Normal : length)) ]
+    ~default:read_nn_length_or_global t
+
 (* CSS Text 3 section 7: [letter-spacing] is [normal | <length>], [word-spacing]
    is [normal | <length-percentage>]; both accept negative values. *)
 let read_normal_or_length name t =
@@ -1165,8 +1170,8 @@ let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
   | Border_end_end_radius ->
       Some (v Border_end_end_radius (read_corner_radius t))
   | Gap -> Some (v Gap (Properties.read_gap t))
-  | Column_gap -> Some (v Column_gap (read_nn_length_or_global t))
-  | Row_gap -> Some (v Row_gap (read_nn_length_or_global t))
+  | Column_gap -> Some (v Column_gap (read_gap_longhand t))
+  | Row_gap -> Some (v Row_gap (read_gap_longhand t))
   | _ -> None
 
 let read_layout_value : type a. a property -> Cursor.t -> declaration option =
