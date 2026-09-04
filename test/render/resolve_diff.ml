@@ -8,6 +8,18 @@
    in the first leg and what a winning declaration computes to in the second, so
    nothing here derives an expectation from the library under test.
 
+   {!Cascade.Resolve} is asked under [Spec]. What this run compares is the
+   cascade, and a cascade answer needs an opinion on every rule: the default
+   [Browser] reading declines [:empty] and the [s] attribute flag, and
+   {!Resolve.matches} folds a decline in with "does not match", so a declined
+   rule leaves the projection and the browser ends up contradicting the fold
+   rather than the cascade. Nothing here rests on the two readings parting: the
+   generator builds elements and no text at all, so an element with no children
+   is [:empty] to Level 2, to Level 4 and to Chrome alike, and the browser leg
+   is what says so. What the fold costs a caller on the default reading is
+   counted and printed rather than dropped, and whether the decline is right at
+   all belongs to the selector_match differential.
+
    Skips cleanly, with status 0, when node or a headless Chromium is missing, or
    when CASCADE_NO_BROWSER is set. *)
 
@@ -107,6 +119,19 @@ let calibration =
       "@layer b{.k{color:#00f!important}}@layer a{.k{color:#f00!important}}",
       "important reverses the layer order, so swapping them changes the winner"
     );
+    (* A pair over a sheet holding a selector the default [Browser] reading
+       declines. The first half is what the decline got wrong: [Resolve.matches]
+       folds the decline in with "does not match", so under that reading
+       [p:empty] leaves the projection and the class wins a slot the browser
+       gives the pseudo-class. The second half says the browser still
+       contradicts a wrong winner planted behind [:empty], so a job carrying one
+       is compared and not merely counted. [probe_doc]'s [p] holds no children
+       of any kind and dom.js builds the tree with createElement alone, so it is
+       [:empty] to Level 2, to Level 4 and to Chrome alike. *)
+    ( "empty",
+      ".k{color:#f00}p:empty{color:#00f}",
+      ".k{color:#f00}:where(p:empty){color:#00f}",
+      ":where() adds no specificity, so the class would win" );
     (* The winning set holds a shorthand and a longhand at once, so the control
        has to move their order rather than replace either. *)
     ( "shorthand-order",
@@ -242,10 +267,40 @@ let generated seeds =
    weakest first, so a shorthand and a longhand of one family land in the style
    attribute in the order the cascade ranked them and the browser resolves their
    overlap the way it would have in the sheet. *)
-let style_of prepared node =
-  R.resolve_prepared prepared node
+let style_of ~reading prepared node =
+  R.resolve_prepared ~reading prepared node
   |> List.map (Declaration.to_string ~minify:true)
   |> String.concat ";"
+
+(* ===== What the default reading declines =====
+
+   {!Resolve.supported} is a fact about the selector alone, so a rule the
+   [Browser] reading declines leaves the projection for every element at once.
+   The elements whose winning set moves between the two readings are what a
+   caller on that reading loses to the fold. Counted and named, never fatal. *)
+let declined_selectors sheet =
+  Css.fold
+    (fun acc st ->
+      match Css.statement_selector st with
+      | Some sel when not (Resolve.supported sel) ->
+          Selector.to_string sel :: acc
+      | Some _ | None -> acc)
+    []
+    (Css.flatten_nesting sheet)
+  |> List.rev
+
+let declined_elements job =
+  let prepared = Resolve.prepare job.projected in
+  List.fold_left
+    (fun n e ->
+      if
+        String.equal
+          (style_of ~reading:Resolve.Browser prepared e)
+          (style_of ~reading:Resolve.Spec prepared e)
+      then n
+      else n + 1)
+    0
+    (Resolve_gen.subjects job.doc)
 
 let job_json job =
   let prepared = Resolve.prepare job.projected in
@@ -263,8 +318,10 @@ let job_json job =
           Json.Arr (List.map (fun e -> Json.Str (Resolve_gen.tag e)) subjects)
         );
         ( "styles",
-          Json.Arr (List.map (fun e -> Json.Str (style_of prepared e)) subjects)
-        );
+          Json.Arr
+            (List.map
+               (fun e -> Json.Str (style_of ~reading:Resolve.Spec prepared e))
+               subjects) );
       ])
 
 (* ===== Driver protocol ===== *)
@@ -388,7 +445,9 @@ let write_artefacts ~dir ~script_dir ~job ~diffs =
   let dom = Json.to_string (Resolve_gen.json_of_doc job.doc) in
   let prepared = Resolve.prepare job.projected in
   let subjects = Resolve_gen.subjects job.doc in
-  let styles = List.map (fun e -> style_of prepared e) subjects in
+  let styles =
+    List.map (fun e -> style_of ~reading:Resolve.Spec prepared e) subjects
+  in
   let css = Css.to_string ~minify:true job.rendered in
   write (dir // "dom.json") dom;
   write (dir // "dom.js") (read_file (script_dir // "dom.js"));
@@ -519,9 +578,17 @@ let () =
   let properties = ref 0 in
   let differences = ref 0 in
   let controls = ref 0 in
+  let declined_moved = ref [] in
+  let declined_els = ref 0 in
   List.iter
     (fun job ->
       let r = try Hashtbl.find table job.id with Not_found -> empty_result in
+      (match declined_elements job with
+      | 0 -> ()
+      | moved ->
+          declined_els := !declined_els + moved;
+          declined_moved :=
+            (job.id, moved, declined_selectors job.projected) :: !declined_moved);
       elements := !elements + r.elements;
       styled := !styled + r.styled;
       properties := max !properties r.properties;
@@ -572,6 +639,22 @@ let () =
   Fmt.pr "  browser: %s@." !user_agent;
   Fmt.pr "  controls that reported a planted wrong winner: %d of %d@." !controls
     (List.length (List.filter is_control jobs));
+  let moved = List.rev !declined_moved in
+  Fmt.pr
+    "  declined by the default Browser reading: %d job(s), %d element(s) whose \
+     winning set the decline moves@."
+    (List.length moved) !declined_els;
+  (* One selector per line: a declined selector list prints its own branches
+     comma-separated, so a comma between two of them would not read. *)
+  List.iteri
+    (fun i (id, n, sels) ->
+      if i < 8 then (
+        Fmt.pr "    %s: %d element(s) moved by %d declined selector(s)@." id n
+          (List.length sels);
+        List.iter (fun sel -> Fmt.pr "      %s@." sel) sels))
+    moved;
+  if List.length moved > 8 then
+    Fmt.pr "    and %d more@." (List.length moved - 8);
   Fmt.pr "  differences: %d@." !differences;
   (* An empty population and a clean run look the same from outside, so the run
      says which it was. *)
