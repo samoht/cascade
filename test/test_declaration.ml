@@ -4528,6 +4528,26 @@ let check_sheet_roundtrip name css =
 
 (* CSS Text Decoration 4 sec. 2.6 joins the line, thickness, style and colour
    components with [||], so no single component is mandatory. *)
+let text_decoration_thickness_range () =
+  (* CSS Text Decoration 4 section 2.4: <length-percentage> has no non-negative
+     grammar range. The minimum device-pixel thickness is a rendering rule. *)
+  List.iter
+    (fun (value, printed) ->
+      check_declaration ~roundtrip:true
+        ~expected:("text-decoration-thickness:" ^ printed)
+        ("text-decoration-thickness:" ^ value))
+    [
+      ("-1px", "-1px");
+      ("-10%", "-10%");
+      ("-.25em", "-.25em");
+      ("calc(-1px)", "-1px");
+      ("calc(-10%)", "-10%");
+      ("calc(2px - 3px)", "calc(2px - 3px)");
+      ("min(-1px,2px)", "min(-1px,2px)");
+    ];
+  check_declaration ~roundtrip:true "text-decoration:underline -1px";
+  none_cursor read_declaration "text-decoration-thickness:-1s"
+
 let text_decoration_optional_line () =
   check_declaration ~roundtrip:true "text-decoration:red";
   check_sheet_roundtrip "text-decoration" "a{text-decoration:red}"
@@ -5688,6 +5708,8 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "text-decoration optional line" `Quick
       text_decoration_optional_line;
+    test_case "text decoration thickness range" `Quick
+      text_decoration_thickness_range;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
