@@ -150,18 +150,20 @@ let titled = elt ~attrs:[ ("title", "x") ] "div" []
    that Level 2 and Level 3 did not - the change engines have not taken. The
    answer to either is a fact about the specification and not about how the page
    renders, and {!Apply} inlines and {!Prune} deletes, so the matcher declines
-   the form rather than rewrite a page against its own browser. *)
+   the form rather than rewrite a page against its own browser.
+
+   The [s] flag is refused whatever the node: sec. 6.3 is about the selector,
+   and an engine that refuses it refuses the rule. Sec. 13.2 is about the
+   element, so the node decides that one - {!test_empty_is_node_dependent}. *)
 let test_declines_what_no_engine_implements () =
   answers "the case-sensitive attribute flag" Resolve.Unsupported "[title=x s]"
     titled;
   answers "on a value the flag rules out" Resolve.Unsupported "[title=X s]"
     titled;
-  answers ":empty" Resolve.Unsupported ":empty" s2;
-  answers ":empty in a compound" Resolve.Unsupported "span:empty" s2;
-  answers ":empty under a negation" Resolve.Unsupported ":not(:empty)" s2;
-  answers ":empty in a relational argument" Resolve.Unsupported ":has(:empty)" a;
-  answers ":empty as one branch of a list" Resolve.Unsupported "span,:empty" s2;
-  answers ":empty left of a combinator" Resolve.Unsupported ":empty span" s2;
+  answers "the flag under a negation" Resolve.Unsupported ":not([title=x s])"
+    titled;
+  answers "the flag in a relational argument" Resolve.Unsupported
+    ":has([title=x s])" titled;
   let declines name s =
     Alcotest.(check bool) name false (Resolve.supported (sel s))
   in
@@ -175,6 +177,64 @@ let test_declines_what_no_engine_implements () =
   Alcotest.(check bool)
     "the spec reading models :empty" true
     (Resolve.supported ~reading:Resolve.Spec (sel ":empty"))
+
+(* Sec. 13.2 represents "an element that has no children except, optionally,
+   document white space characters", and its note records that Level 2 and Level
+   3 did not match the white-space one. So the two readings part over that
+   element and no other: an element with no children at all is [:empty] to both,
+   and one holding an element or text of its own is [:empty] to neither. The
+   decline belongs to the element, not to the selector, and an element the two
+   levels agree on gets the answer they agree on.
+
+   {!Resolve.supported} stays conservative through all of it. It is asked before
+   any node is walked, so it cannot know which element it will be given, and
+   {!Apply} and {!Prune} decide per rule off that answer. *)
+let test_empty_is_node_dependent () =
+  answers "no children at all" Resolve.Matches ":empty" (elt "p" []);
+  answers "an element child" Resolve.No_match ":empty" (elt "p" [ elt "b" [] ]);
+  answers "a text child" Resolve.No_match ":empty" (elt ~text:[ "text" ] "p" []);
+  answers "a no-break space is not document white space" Resolve.No_match
+    ":empty"
+    (elt ~text:[ "\u{00a0}" ] "p" []);
+  (* The one element Level 3 and Level 4 answer differently. *)
+  answers "white space alone" Resolve.Unsupported ":empty"
+    (elt ~text:[ " \t\n" ] "p" []);
+  answers "white space beside text is text to both" Resolve.No_match ":empty"
+    (elt ~text:[ " "; "text" ] "p" []);
+  (* The combining forms carry the node's answer, decline and all. *)
+  answers "in a compound" Resolve.Matches "p:empty" (elt "p" []);
+  answers "under a negation" Resolve.No_match ":not(:empty)" (elt "p" []);
+  answers "as one branch of a list" Resolve.Matches "span,:empty" (elt "p" []);
+  answers "a compound over the declining element" Resolve.Unsupported "p:empty"
+    (elt ~text:[ " " ] "p" []);
+  (* No ancestor of an element holds it and nothing else, so an ancestor is
+     never the element the two levels part over. *)
+  answers "left of a descendant combinator" Resolve.No_match ":empty span" s2;
+  answers "a relational argument the subtree decides" Resolve.Matches
+    ":has(:empty)" a;
+  let declines name s =
+    Alcotest.(check bool) name false (Resolve.supported (sel s))
+  in
+  declines "the rule-level answer stays conservative" ":empty";
+  declines "wherever :empty sits in the selector" "p:empty";
+  declines "including inside a relational argument" ":has(:empty)";
+  declines "and inside an of S" ":nth-child(1 of :empty)"
+
+(* A sibling or a descendant can be the element the two levels part over, and
+   the answer about it has to reach the subject rather than be read as a miss.
+   Folding the decline into "does not match" here would hand a caller a definite
+   answer off an element whose own answer cascade does not have. *)
+let test_empty_declines_through_the_tree () =
+  let ws () = elt ~text:[ " " ] "i" [] in
+  let target = elt "p" [] in
+  let _ = elt "div" [ ws (); target ] in
+  answers "a declining preceding sibling" Resolve.Unsupported ":empty+p" target;
+  let host = elt "div" [ ws () ] in
+  answers "a declining descendant" Resolve.Unsupported ":has(:empty)" host;
+  let indexed = elt "p" [] in
+  let _ = elt "div" [ ws (); indexed ] in
+  answers "a declining sibling in an of S" Resolve.Unsupported
+    ":nth-child(2 of :empty)" indexed
 
 (* selectors-4 sec. 13.2: [:empty] is "an element that has no children except,
    optionally, document white space characters". White space alone leaves an
@@ -858,6 +918,10 @@ let suite =
         test_supported_needs_no_node;
       Alcotest.test_case "declines what no engine implements" `Quick
         test_declines_what_no_engine_implements;
+      Alcotest.test_case "empty is the node's question" `Quick
+        test_empty_is_node_dependent;
+      Alcotest.test_case "empty declines through the tree" `Quick
+        test_empty_declines_through_the_tree;
       Alcotest.test_case "empty counts text children" `Quick
         test_empty_counts_text_children;
       Alcotest.test_case "nth-child indexes from one" `Quick
