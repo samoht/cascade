@@ -1225,6 +1225,11 @@ let test_display () =
   check_display "inline-flex";
   check_display "grid";
   check_display "inline-grid";
+  (* CSS Grid 3 (ED, 2 September 2026) sec. 2.2 adds two values to [display]:
+     "New values: grid-lanes | inline-grid-lanes". They establish grid lanes
+     layout at block and inline level. *)
+  check_display "grid-lanes";
+  check_display "inline-grid-lanes";
   check_display "flow-root";
   check_display "table";
   check_display "table-row";
@@ -1262,6 +1267,10 @@ let test_display () =
   (* CSS-wide keyword supported by this reader *)
   check_display "unset";
   neg_cursor read_display "invalid-display";
+  (* sec. 2.2 states the two as whole [display] values and adds neither to
+     [<display-inside>], so neither pairs with a [<display-outside>]. *)
+  neg_cursor ~allow_partial:true read_display "block grid-lanes";
+  neg_cursor ~allow_partial:true read_display "inline inline-grid-lanes";
   (* multiple values *)
   neg_cursor ~allow_partial:true read_display "block inline";
   neg_cursor read_display "flex-";

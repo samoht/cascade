@@ -700,6 +700,10 @@ let display () =
   c ~expected:"display:inline-flex" "display: inline-flex";
   c ~expected:"display:grid" "display: grid";
   c ~expected:"display:inline-grid" "display: inline-grid";
+  (* CSS Grid 3 (ED, 2 September 2026) sec. 2.2: "New values: grid-lanes |
+     inline-grid-lanes". *)
+  c ~expected:"display:grid-lanes" "display: grid-lanes";
+  c ~expected:"display:inline-grid-lanes" "display: inline-grid-lanes";
   c ~expected:"display:table" "display: table";
   c ~expected:"display:table-row" "display: table-row";
   c ~expected:"display:table-cell" "display: table-cell";
