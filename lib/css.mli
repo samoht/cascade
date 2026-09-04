@@ -7894,13 +7894,14 @@ val canonicalize_rule_order : ?lossless:bool -> t -> t
     Color 4 sec. 4.4 says a missing component behaves as, so a converted
     achromatic [oklab()] meets the hex a minifier writes for it; sec. 13.3 keeps
     that off the positions the sheet interpolates, so a gradient stop, a
-    [color-mix()] operand, a custom-property token stream, [@keyframes] and
-    [@starting-style] keep their [none], and [lossless] bounds how far the
-    resolved colour respells. An identical [-webkit-text-decoration-color]
-    compatibility declaration is dropped when its unprefixed twin is present; a
-    differing or prefixed-only declaration is retained. These are
-    comparison-side normalisations; this function does not change
-    {!val-optimize}'s configured emission policy. *)
+    [color-mix()] operand, a custom-property token stream, [@keyframes],
+    [@starting-style] and a colour whose own rule transitions the property it
+    writes keep their [none], and [lossless] bounds how far the resolved colour
+    respells. An identical [-webkit-text-decoration-color] compatibility
+    declaration is dropped when its unprefixed twin is present; a differing or
+    prefixed-only declaration is retained. These are comparison-side
+    normalisations; this function does not change {!val-optimize}'s configured
+    emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

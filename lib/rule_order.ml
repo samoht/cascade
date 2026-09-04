@@ -725,11 +725,13 @@ let canonical_color_spellings (stmts : statement list) : statement list =
    {!Declaration.normalize} resolves the sentinel only for a colour standing as
    a whole colour-longhand value, which leaves a gradient stop, a [color-mix()]
    operand, a shadow colour and a custom-property token stream reading their
-   [none] as written. What stays outside this pass's reach is a declaration the
-   sheet interpolates from elsewhere: [@keyframes] and [@starting-style] are the
-   two blocks that exist to be one endpoint of that, so the pass does not
-   descend into them. A [transition] between two ordinary declarations still
-   sees the difference, and this is where the projection stops being able to.
+   [none] as written. A declaration the sheet interpolates from elsewhere is
+   held back too: [@keyframes] and [@starting-style] are the two blocks that
+   exist to be one endpoint of that, so the pass does not descend into them, and
+   a colour whose own rule transitions the property it writes keeps its [none].
+   That guard reads one rule. A transition one rule declares for a colour
+   another rule sets still folds, since seeing it would mean deciding that two
+   selectors match one element, which the projection does not do.
 
    Guarded like [canonical_color_spelling]: the flagged normalisation is kept
    only where it moves the colour, so no other value fold rides along. *)
@@ -741,6 +743,15 @@ let canonical_missing_components ~lossless decl =
   then decl
   else folded
 
+let canonical_missing_components_in_rule ~lossless decls =
+  Common.List.map_preserve
+    (fun decl ->
+      let folded = canonical_missing_components ~lossless decl in
+      if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
+        folded
+      else decl)
+    decls
+
 let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
     statement list =
   Common.List.map_preserve
@@ -751,8 +762,7 @@ let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
       | stmt ->
           stmt
           |> Stylesheet.map_statement_declarations
-               (Common.List.map_preserve
-                  (canonical_missing_components ~lossless))
+               (canonical_missing_components_in_rule ~lossless)
           |> Stylesheet.map_statement_children
                (canonical_missing_component_colors ~lossless))
     stmts

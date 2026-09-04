@@ -3332,6 +3332,65 @@ let compose_mask_via_index ~ctx idx =
           incr i
   done
 
+(* The property a [transition-property] entry names, against the property a
+   declaration writes. A shorthand there transitions every longhand it covers,
+   so [transition-property: background] reaches [background-color]. A name
+   outside the typed table names no property this can be asked about. *)
+let named_property_covers : type a. string -> a Properties.property -> bool =
+ fun name target ->
+  match property_of_name name with
+  | Some (Prop named) -> (
+      match Properties.eq_property named target with
+      | Some Equal -> true
+      | None -> covers_longhand named target)
+  | None -> false
+
+(* CSS Transitions 1 sec. 2.1: [none] transitions nothing, [all] transitions
+   everything, and [all] is the initial. A CSS-wide keyword resolves to that
+   initial or to a list from outside the sheet, and a [var()] is unread, so both
+   read as [all]. *)
+let transition_entry_covers : type a.
+    Properties.transition_property_value -> a Properties.property -> bool =
+ fun entry target ->
+  match entry with
+  | None -> false
+  | Property name -> named_property_covers name target
+  | All | Initial | Inherit | Unset | Revert | Revert_layer | Var _ -> true
+
+let transition_layer_covers : type a.
+    Properties.transition -> a Properties.property -> bool =
+ fun layer target ->
+  match layer with
+  | None -> false
+  | Shorthand s -> transition_entry_covers s.property target
+  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> true
+
+(* [all] is in because its only values are CSS-wide keywords, and [inherit]
+   there brings the parent's transition down onto this element. *)
+let declaration_transitions : type a.
+    declaration -> a Properties.property -> bool =
+ fun decl target ->
+  let layers = List.exists (fun l -> transition_layer_covers l target) in
+  let entries = List.exists (fun e -> transition_entry_covers e target) in
+  match unwrap_theme_guard decl with
+  | Declaration { property = Transition; value; _ } -> layers value
+  | Declaration { property = Webkit_transition; value; _ } -> layers value
+  | Declaration { property = Moz_transition; value; _ } -> layers value
+  | Declaration { property = O_transition; value; _ } -> layers value
+  | Declaration { property = Transition_property; value; _ } -> entries value
+  | Declaration { property = Webkit_transition_property; value; _ } ->
+      entries value
+  | Declaration { property = Moz_transition_property; value; _ } ->
+      entries value
+  | Declaration { property = All; _ } -> true
+  | _ -> false
+
+let transitioned_in_rule decls decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property; _ } ->
+      List.exists (fun d -> declaration_transitions d property) decls
+  | _ -> false
+
 (* CSS Transitions 2 sec. 2.6: [transition] composes from
    [transition-{property,duration,timing-function,delay,behavior}]. Compose when
    a contiguous run covers a single layer (each longhand carries a one-entry

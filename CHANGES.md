@@ -704,8 +704,9 @@ entry points both moved.
   writes for a colour it reached by conversion compares equal to the hex
   cascade folds the same colour to. Where the stylesheet interpolates the
   colour instead - a gradient stop, a `color-mix()` operand, a `@keyframes`
-  frame, `@starting-style` - the two spellings stay distinct, since sec. 13.3
-  gives a missing component the other colour's rather than a zero (#312, #847)
+  frame, `@starting-style`, a rule that transitions the property it sets - the
+  two spellings stay distinct, since sec. 13.3 gives a missing component the
+  other colour's rather than a zero (#312, #847)
 - A relative-colour function keeps its origin as a typed colour, so `red` and
   `#f00` compare equal in `rgb()`, `oklab()` and the rest, including inside
   custom properties (#313)

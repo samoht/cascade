@@ -94,6 +94,16 @@ val drop_redundant_decoration_color_aliases :
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 
+val transitioned_in_rule :
+  Declaration.declaration list -> Declaration.declaration -> bool
+(** [transitioned_in_rule decls d] is [true] when one of [decls] declares a
+    transition reaching the property [d] writes. [transition],
+    [transition-property] and their vendor spellings are read: an entry naming
+    that property or a shorthand covering it reaches it, and so do [all], the
+    [all] shorthand and any value that does not resolve to a property list. Only
+    [decls] are read, so a transition another rule declares for the same element
+    reads as [false]. *)
+
 val merge_box_shorthand_longhands :
   (int * Declaration.declaration) list ->
   (int * Declaration.declaration) list ->
