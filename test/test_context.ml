@@ -999,11 +999,50 @@ let media_resolution_units () =
   check_media_match "larger resolution does not match" ~ctx ~expected:false
     "(resolution: 192dpi)"
 
+let media_inapplicable_feature () =
+  let ctx = Css.Context.query ~media_inapplicable:[ Css.Media.Scan ] () in
+  check_media_match "recognized inapplicable feature is false, not unknown" ~ctx
+    ~expected:true "not (scan: progressive)";
+  check_media_match "inapplicable boolean is false" ~ctx ~expected:false
+    "(scan)";
+  check_media_match "an absent feature remains unknown" ~ctx ~expected:false
+    "not (cascade-unknown: 1)"
+
 let check_container_match name ~ctx ?name:container_name ~expected input =
   let condition = Css.Container.of_string input in
   Alcotest.(check bool)
     name expected
     (Css.Context.matches_container ctx ?name:container_name condition)
+
+(* Conditional Rules 5 section 5.4 selects a container supporting every queried
+   feature before evaluating the boolean expression. *)
+let container_feature_eligibility () =
+  let ctx =
+    Css.Context.query
+      ~container_features:[ Css.Container.of_string "(width: 500px)" ]
+      ()
+  in
+  List.iter
+    (check_container_match "no eligible container" ~ctx ~expected:false)
+    [
+      "(width >= 400px) or (height >= 900px)";
+      "(width >= 400px) or (cascade-unknown: 1)";
+      "not (cascade-unknown: 1)";
+      "not scroll-state(stuck: top)";
+    ];
+  check_container_match "eligible negation" ~ctx ~expected:true
+    "not (width >= 900px)";
+  let ctx =
+    Css.Context.query
+      ~container_features:
+        [
+          Css.Container.of_string "(width: 500px)";
+          Css.Container.of_string "(height: 300px)";
+        ]
+      ()
+  in
+  check_container_match "both axes are eligible" ~ctx ~expected:true
+    "(width >= 400px) or (height >= 900px)"
 
 let check_resolved_url name ~loader ~expected input =
   match Css.Context.resolve_url loader input with
@@ -2657,6 +2696,10 @@ let suite =
       Alcotest.test_case "media boolean values" `Quick media_boolean_values;
       Alcotest.test_case "media unknown logic" `Quick media_unknown_logic;
       Alcotest.test_case "media resolution units" `Quick media_resolution_units;
+      Alcotest.test_case "media inapplicable feature" `Quick
+        media_inapplicable_feature;
+      Alcotest.test_case "container feature eligibility" `Quick
+        container_feature_eligibility;
       Alcotest.test_case "loader context contract" `Quick
         test_loader_context_contract;
       Alcotest.test_case "animation context contract" `Quick

@@ -61,6 +61,9 @@ type query = {
   media_features : Media.t list;
       (** Media features the rendering environment claims to expose. Build
           entries with {!Media.val-feature} or {!Media.boolean}. *)
+  media_inapplicable : Media.name list;
+      (** Recognized features that cannot match any value in this environment.
+          Their tests are false, unlike unknown features. *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built
@@ -151,6 +154,7 @@ val empty_query : query
 val query :
   ?media_type:string ->
   ?media_features:Media.t list ->
+  ?media_inapplicable:Media.name list ->
   ?supports:Supports.t list ->
   ?container_name:string ->
   ?container_features:Container.t list ->
@@ -278,14 +282,18 @@ val matches_selector : document -> Selector.t -> bool
     checked but the document is not a tree. *)
 
 val matches_media : query -> Media.t -> bool
-(** [matches_media q m] evaluates [m] against [q.media_features]. *)
+(** [matches_media q m] evaluates [m] against [q.media_features]. Missing values
+    remain unknown through boolean operators, unless the feature is explicitly
+    {!field-media_inapplicable}. Only a true final result matches. An empty
+    media list matches. *)
 
 val matches_supports : query -> Supports.t -> bool
 (** [matches_supports q cond] evaluates [cond] against [q.supports_table]. *)
 
 val matches_container : query -> ?name:string -> Container.t -> bool
 (** [matches_container q ?name cond] evaluates [cond] against the container
-    query state in [q]. *)
+    query state in [q]. The supplied container must expose every size or
+    scroll-state feature used by the condition before boolean evaluation. *)
 
 val resolve_url : loader -> string -> (string, string) result
 (** [resolve_url loader href] resolves [href] against

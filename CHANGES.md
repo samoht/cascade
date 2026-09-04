@@ -24,6 +24,11 @@ entry points both moved.
 
 ### Breaking
 
+- `Css.Context.query` gains `media_inapplicable`, distinguishing a recognized
+  feature that matches no value from an unknown feature. Direct record
+  constructors need the new field; `Context.query ()` defaults it to `[]`
+  (#868).
+
 - `cascade diff` exits 2, not 0, when it finds no difference and had to drop a
   declaration or a rule it could not read: what it dropped reached neither side
   of the comparison, so identity is not a verdict it can give. Two sides that
@@ -751,6 +756,13 @@ entry points both moved.
   (#779, #780, #781)
 
 ### Library
+
+- `Css.Context.matches_media` respects zero-valued boolean features and
+  resolution units, preserves unknown through negation, and matches an empty
+  query list (#868).
+- `Css.Context.matches_container` requires the supplied container to support
+  all queried features, so negation and disjunction cannot make an ineligible
+  container match (#868).
 
 - `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, which
   counts one replacement character per maximal subpart of an ill-formed

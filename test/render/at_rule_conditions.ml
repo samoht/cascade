@@ -723,11 +723,10 @@ let parse_driver_output lines =
 
 (* ===== The query context, built out of what the browser reported ===== *)
 
-(* "?" is a feature the browser does not recognise and "-" one it recognises and
-   exposes no value of. Neither is something the environment claims, so neither
-   enters the table. A feature reporting more than one keyword is a threshold
-   feature, which one value cannot stand for; the first is taken and the reading
-   is reported. *)
+(* "?" is unknown; "-" is recognized but matches no value. Keep these states
+   distinct in the explicit context, since negation distinguishes them. A
+   feature reporting multiple keywords is a threshold feature; the first value
+   is taken and the reading is reported. *)
 let env_reading env =
   let entries =
     Hashtbl.fold
@@ -1259,9 +1258,17 @@ let () =
     List.map
       (fun e ->
         let features = table_of_env e.env_id in
+        let media_inapplicable =
+          List.filter_map
+            (fun (name, value) ->
+              if String.equal value "-" then Some (Media.name_of_string name)
+              else None)
+            (env_reading e.env_id)
+        in
         ( e,
           features,
-          Context.query ~media_type:"screen" ~media_features:features () ))
+          Context.query ~media_type:"screen" ~media_features:features
+            ~media_inapplicable () ))
       environments
   in
   List.iter
