@@ -755,6 +755,9 @@ entry points both moved.
 - `Css.Resolve` answers `:nth-child(... of S)`, the typed `:nth-of-type()`
   family, `:has()`, the `i` and `s` attribute case flags and `:scope`, which
   read `Unsupported` and left `Css.Apply` keeping the rule (#607)
+- `Css.Resolve` ranks a cascade layer's own rules after every one of its
+  sublayers, as css-cascade-5 sec. 6.4.3 requires, so `@layer a` outranks
+  `@layer a.b` however the two were declared
 - `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
   work out of `resolve`, so a caller walking a document buckets the rules once
   rather than per node, allocating 4.6x less over ten queries (#567)

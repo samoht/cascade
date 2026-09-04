@@ -83,9 +83,10 @@ let nth_hits nth i =
 
 (* Cascade layers. Layer names form a tree: [@layer a.b] names the sublayer [b]
    of [a], and so does [@layer a { @layer b { ... } }]. The cascade only needs
-   the flattened pre-order of that tree, so a layer is keyed by its path - the
-   idents from the root down - and the order is a list of paths, oldest first
-   (css-cascade-5 sec. 6.4.2). *)
+   that tree flattened, so a layer is keyed by its path - the idents from the
+   root down - and the order is a list of paths, weakest first: siblings by
+   first declaration (css-cascade-5 sec. 6.4.2), each parent after the whole of
+   its subtree (sec. 6.4.3). *)
 
 let parent_layer path =
   match List.rev path with [] | [ _ ] -> None | _ :: up -> Some (List.rev up)
@@ -108,30 +109,25 @@ let layer_key path =
 
 let qualify parent name = match parent with None -> name | Some p -> p @ name
 
-let rec is_ancestor p n =
-  match (p, n) with
-  | [], _ -> true
-  | _ :: _, [] -> false
-  | x :: xs, y :: ys -> String.equal x y && is_ancestor xs ys
-
 (* A sublayer is ordered inside its parent, not at the end of the sheet: in
    [@layer a.b {} @layer c {} @layer a.d {}] the layer [a.d] joins [a]'s subtree
-   and so still precedes [c]. *)
+   and so still precedes [c]. A parent's own rules close that subtree
+   (css-cascade-5 sec. 6.4.3: "Unlayered rules are sorted later than any layered
+   rules within the same parent layer"), so [p]'s entry stands for them and sits
+   last in its run: a new sublayer goes immediately before it, which is past
+   every sublayer declared earlier. *)
 let insert_layer order name =
   if List.exists (Stylesheet.equal_layer_name name) order then order
   else
     match parent_layer name with
     | None -> order @ [ name ]
     | Some p ->
-        (* [p]'s subtree is contiguous, so the insertion point is just past its
-           last member; [entered] says the scan has reached it. *)
-        let rec insert entered = function
-          | x :: rest when is_ancestor p x -> x :: insert true rest
-          | rest when entered -> name :: rest
+        let rec insert = function
           | [] -> [ name ]
-          | x :: rest -> x :: insert entered rest
+          | x :: rest when Stylesheet.equal_layer_name p x -> name :: x :: rest
+          | x :: rest -> x :: insert rest
         in
-        insert false order
+        insert order
 
 (* Naming a sublayer creates its ancestors first, so [@layer a.b] declares [a]
    then [a.b]. *)
