@@ -81,12 +81,12 @@ canonicalisation) and emits minified output.
 
 Exact `calc()` arithmetic folds in every precision mode: `calc(100/4)` becomes
 `25`, while `calc(1.75/1.125)` stays as written because 14/9 has no finite
-decimal form. Multiplication folds unconditionally, being closed over finite
-decimals; division folds only when the quotient is exact. Default minification
-additionally folds all-static unitless `line-height:calc()` arithmetic to six
-significant figures; `--lossless` disables that approximate fold. The exact-only
-rule also governs a `calc()` inside a custom-property value, whose token stream
-is otherwise left opaque.
+decimal form. Multiplication folds unconditionally, since it is closed over
+finite decimals; division folds only when the quotient is exact. Default
+minification additionally folds all-static unitless `line-height:calc()`
+arithmetic to six significant figures; `--lossless` disables that approximate
+fold. The exact-only rule also governs a `calc()` inside a custom-property
+value; the rest of that token stream stays opaque.
 
 Cascade parses the stylesheet into an AST and prints it again. Comments are
 discarded during parsing, and empty rules and invalid declarations are dropped
@@ -144,10 +144,11 @@ written. Exit 0 means every element computes the same values. Two files with
 different rules can do that. Canonicalisation allows the same bounded
 approximation as `--minify`, and `--lossless` turns it off.
 
-Exit 2 means cascade could not read part of one file. It compares the text each
-file dropped, and answers normally when that text matches byte for byte.
-Otherwise it reports 2. Adding or removing a declaration that cascade cannot
-read therefore exits 2. Cascade reports 2 rather than 0 because it has not
+Exit 2 means the comparison found no difference but cascade could not read part
+of one file. Cascade compares the text each file dropped, and exit 0 stands when
+that text matches byte for byte. Adding or removing a declaration that cascade
+cannot read therefore exits 2. A difference cascade can see exits 1 whether or
+not it read everything. Cascade reports 2 rather than 0 because it has not
 established that the files are equivalent, and a gate that treated 2 as 0 would
 pass while the files differ. The report and the `--json` document count the
 unreadable declarations and rules on each side.
@@ -163,8 +164,8 @@ unreadable declarations and rules on each side.
 - `canonical`: independently parses and optimises each input with the same
   canonical settings, serialises each result as minified CSS, then compares the
   two canonical representations byte for byte. `--lossless`, when present, is
-  applied to both projections; the comparison step itself performs no further
-  value interpretation or tolerance. Declarations or
+  applied to both projections; the comparison step itself does not interpret
+  values any further and applies no tolerance. Declarations or
   rules whose footprints are disjoint (they write different properties) may
   swap freely, a `@media`/`@supports`/`@container` block containing only
   plain rules moves as a unit past statements its rules cannot conflict with,
@@ -221,10 +222,10 @@ decide which declaration wins, the way a browser decides it. The page's own
 A declaration moves onto an element only when nothing left in CSS can overwrite
 it. A rule with no inline form (`:hover`, a `@media` block, a pseudo-element,
 `@keyframes`) cannot be projected onto an element at all, so it is kept in a
-single `<style>` block, and every declaration a kept rule competes for is kept
-beside it. A style attribute outranks every selector, so inlining a `.btn`
-colour past a `.btn:hover` colour would win a fight the browser gives to the
-hover rule:
+single `<style>` block, and every declaration that a kept rule competes for is
+kept beside it. A style attribute outranks every selector, so inlining a `.btn`
+colour past a `.btn:hover` colour would win a fight that the browser gives to
+the hover rule:
 
 ```html
 <html><body><p class="btn">Send</p></body></html>
@@ -245,18 +246,18 @@ leaves both colours in CSS, since `:hover` still has to be able to win:
 A projected `<style>` block is emptied rather than removed. A `<style>` element
 is a sibling like any other, so unlinking it would stop a kept rule such as
 `.navbox + style + .portal-bar` from matching what it matches in the browser. A
-block the parser could not use keeps its text instead of being emptied with the
-rest: emptying it would ship a page with neither the inline styles it should
-have had nor the CSS a browser might still make something of.
+block that the parser could not use keeps its text instead of being emptied
+with the rest: emptying it would ship a page with neither the inline styles it
+should have had nor the CSS a browser might still make something of.
 
 | Flag | Purpose |
 |---|---|
 | `--minimal` | Drop an inherited declaration that only restates the value the element already inherits from its ancestors, for the smallest styled page. |
 
 The exit code is 0 on success, including a parse that recovered part of its
-input, and 1 when a `<style>` block or `EXTRA.css` parsed to nothing. The page
-is still written in that case, without those styles, so a build can gate on the
-status rather than on the output.
+input. It is 1 when a `<style>` block or `EXTRA.css` parsed to nothing. The
+page is still written in that case, without those styles, so a build can gate
+on the status rather than on the output.
 
 <!-- $MDX skip -->
 ```bash
@@ -281,9 +282,9 @@ is the whole of the analysis: reading "no model" as "does not match" is how a
 dead-rule check deletes a live rule.
 
 - A selector outside what the matcher models (`:hover`, a pseudo-element,
-  `:lang()`) is kept and never counted as unused, and so is a selector list
-  holding one such branch. Every branch of a fully modelled list is judged on
-  its own, so `.card, .gone` keeps `.card` and drops `.gone`.
+  `:lang()`) is kept and never counted as unused, and the same holds for a
+  selector list holding one such branch. Every branch of a fully modelled list
+  is judged on its own, so `.card, .gone` keeps `.card` and drops `.gone`.
 - A `@media`, `@supports` or `@container` condition is never evaluated. It asks
   about a device, a user agent or a layout container, none of which a document
   carries, so the rules inside are judged by their own selectors alone.
@@ -294,12 +295,12 @@ dead-rule check deletes a live rule.
   written against its parent. Pipe the result through `cascade --minify` to
   nest it again.
 
-**The documents are the whole of what the analysis sees.** A class a script
-adds at runtime is in none of them, so a rule waiting for one is removed. That
-is the limit of an AST-level dead-rule check: [CILLA](#references) runs the page
-and reads matching off the live DOM instead, which is what answering for a class
-that appears only after a click takes. Check what your scripts add before
-shipping a pruned stylesheet.
+**The documents are the whole of what the analysis sees.** A class that a
+script adds at runtime is in none of them, so a rule waiting for one is
+removed. That is the limit of an AST-level dead-rule check: [CILLA](#references)
+runs the page and reads matching off the live DOM instead, which is what it
+takes to answer for a class that appears only after a click. Check what your
+scripts add before shipping a pruned stylesheet.
 
 `--dry-run` writes the ranking instead. Rules that matched nothing come first,
 then the survivors by ascending matched-element count. The rules kept for want
@@ -335,9 +336,9 @@ cascade diff --diff=tree src/style.css /tmp/fmt.css
 cascade diff --diff=canonical origin/main:src/style.css src/style.css
 ```
 
-The exit code is 0 when the inputs are identical under the chosen mode, 1 when
-they differ, and 2 when the comparison finds no difference but had to drop a
-declaration or a rule it could not read, so cascade slots into any tool that
+The exit code is 0 when the inputs are identical under the chosen mode and 1
+when they differ. It is 2 when the comparison found no difference but cascade
+could not read part of one file. Cascade therefore slots into any tool that
 branches on exit codes (`git` hooks, `make`, GitHub Actions, ...). The
 `--minify` pipeline is fast enough that a 200 KB stylesheet costs well under
 100 ms on the SatCSS corpus; `--objective=raw` trades roughly an order of
@@ -395,8 +396,9 @@ Rule-level rewrites:
 - Dead-rule elimination, `@layer` consolidation, and the merging of `@media`,
   `@supports` and `@container` blocks that carry the same condition.
 - A nested `@supports` condition is decided against the conditions enclosing it:
-  a guard they already answer yes loses its wrapper, a guard they contradict
-  takes its block with it, and anything else narrows to what they leave to ask.
+  a guard that they already answer yes loses its wrapper, a guard that they
+  contradict takes its block with it, and anything else narrows to what they
+  leave to ask.
 - MQ4 range syntax when shorter (`(min-width:48px)` -> `(width>=48px)`).
 
 These rules compose wherever cascade has a typed CSS value. An unregistered
@@ -412,7 +414,7 @@ or a `calc()` that still references a `var()` stays verbatim. The colour fold
 never produces a bare colour keyword: a name like `red` is also a valid
 `<custom-ident>`, so it stays distinct from `#f00` even though it is shorter,
 and hex stays hex. The fold changes the exact token string a script reads back
-via `getPropertyValue`, which the policy above puts outside what cascade
+via `getPropertyValue`; the policy above puts that string outside what cascade
 preserves.
 
 Whitespace inside an opaque value is likewise folded only where it is
@@ -423,8 +425,8 @@ stays, since the substituted value could otherwise merge with its neighbour.
 
 The value inside an `@supports` condition is opaque too, for a different
 reason. CSS Conditional Rules 3 section 6.1 answers a declaration feature by
-running that exact declaration through the rendering browser's parser, so what
-stands there is the question and not a value to shorten:
+running that exact declaration through the rendering browser's parser, so that
+text is the question, not a value to shorten:
 `@supports (color: rgba(0,0,0,.5))` and `@supports (width: 10.0px)` reach the
 output as written, where the same text in a rule body folds. The whitespace
 around the condition's own tokens is still elided, so
@@ -484,9 +486,9 @@ write the optimiser can't see.
 CSS: it asserts you know the exact document and that no element ever matches
 two clashing selectors, so the optimiser may group rules the open world keeps
 apart. `.a{color:red}.c{color:blue}.b{color:red}` stays three rules by default,
-since a `.b.c` element would take the wrong colour, and becomes
-`.a,.b{color:red}.c{color:#00f}` under the flag. It is unsafe for any page such
-an element can appear on, including one a script builds at runtime.
+since a `.b.c` element would take the wrong colour; under the flag it becomes
+`.a,.b{color:red}.c{color:#00f}`. It is unsafe for any page where such an
+element can appear, including one that a script builds at runtime.
 
 ### Target browsers
 
@@ -497,33 +499,33 @@ The default minify targets Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
 is either `ltr` or `rtl`, shortens `:not(:dir(ltr))` to
 `:dir(rtl)`. The HTML form-control model, which says an `input` is either
 `:enabled` or `:disabled`, shortens `input:not(:enabled)` to `input:disabled`.
-A vendor-prefixed declaration (`-moz-box-sizing`) whose unprefixed twin is
-present is dropped, since evergreen browsers understand the unprefixed form.
-Conversely, the target adds WebKit fallbacks beside `user-select`,
+A vendor-prefixed declaration (`-moz-box-sizing`) is dropped when its
+unprefixed twin is present, since evergreen browsers understand the unprefixed
+form. Conversely, the target adds WebKit fallbacks beside `user-select`,
 `backdrop-filter`, `hyphens`, `mask` and its compatible layer longhands where
 Safari 16.4 or Chrome 111 still needs them. The prefixed `mask-mode` and
 `mask-composite` properties are not generated because their legacy grammars
 differ from the standard properties. A `min-`/`max-` media or container feature
 becomes the Media Queries 4 range grammar, `(min-width: 700px)` to
-`(width >= 700px)`. A nested selector loses its `&` prefix, `& div` to `div`,
-which the relaxed nesting syntax reads the same way. An `oklab` or `oklch` axis
+`(width >= 700px)`. A nested selector loses its `&` prefix, `& div` to `div`;
+the relaxed nesting syntax reads both the same way. An `oklab` or `oklch` axis
 takes the percentage spelling wherever it is shorter, `oklch(.7 .304 20)` to
 `oklch(.7 76% 20)`.
 
-Each of those state pseudo-class pairs partitions a different set of elements,
-and outside its own set an element matches neither half, so the rewrite runs
-only where the compound proves its subject is in the set. `.c:not(:enabled)`
-and `input:not(:required)` both stay as the author wrote them.
+Each of those state pseudo-class pairs partitions a different set of elements.
+An element outside that set matches neither half, so the rewrite runs only
+where the compound proves its subject is in the set. `.c:not(:enabled)` and
+`input:not(:required)` both stay as the author wrote them.
 
 `--enforce-spec` drops those facts. Cascade still serialises to the shortest
-CSS form it knows, but neither the direction nor the form-control model is
-assumed, every vendor prefix is kept, a media or container feature keeps the
+CSS form it knows, but it assumes neither the direction nor the form-control
+model, every vendor prefix is kept, a media or container feature keeps the
 `min-`/`max-` spelling the author wrote, a nested selector keeps its `&`, and a
 colour axis keeps its number form. It also keeps the quotes around a multi-word
 font-family name, whose unquoted form is shorter but is not the CSSOM-canonical
-serialisation, and holds the parser to the ident code points CSS Syntax 3 lists
-rather than reading anything above U+007F. That last one is the only part of the
-flag that acts without `--minify`.
+serialisation. It holds the parser to the ident code points that CSS Syntax 3
+lists, rather than reading anything above U+007F. That last one is the only
+part of the flag that acts without `--minify`.
 
 An `@supports` condition is never assumed true or false. CSS Conditional Rules
 3 section 6.1 defines support as the rendering browser accepting the
@@ -579,7 +581,7 @@ frameworks.
   a script adds at runtime matches nothing in the parsed HTML, so it is
   removed.
 - **Unregistered custom properties** stay opaque token streams to the
-  optimiser, apart from substreams whose type their own syntax fixes
+  optimiser, apart from substreams whose own syntax fixes their type
   unambiguously (complete colour functions, and constant math functions
   reducing to an `<angle>` or `<time>`), which fold to their shortest spelling.
 
@@ -626,7 +628,7 @@ browser contract.
 
 Structural diff lives in the separate `cascade.diff` sub-library
 (`Cascade_diff.Css_compare`, `Cascade_diff.Tree_diff`,
-`Cascade_diff.String_diff`); it is what `cascade diff` is built on.
+`Cascade_diff.String_diff`); `cascade diff` is built on it.
 
 ### Theme resolution
 
@@ -642,8 +644,8 @@ against caller-supplied data.
   stylesheet and resolvable through `theme_defaults` is emitted as a definition
   in the root-scope theme block: an existing `:root` / `:host` rule, or a fresh
   `:root`. Resolution is transitive, and a chain that cycles or hits a dead end
-  is dropped. A name `theme_defaults` returns `None` on (for example a runtime
-  `--tw-*` variable) is left free.
+  is dropped. A name that `theme_defaults` returns `None` on (for example a
+  runtime `--tw-*` variable) is left free.
 
 The definition lands at root scope by design. Custom properties are inherited
 and resolved per element
@@ -681,7 +683,7 @@ performing the transform instead of receiving guessed locations from Cascade.
 
 The core `cascade` library links `uri`, `psq`, `logs` and
 [mtime](https://erratique.ch/software/mtime), which supplies the monotonic
-clock `--profile` measures factoring iterations against; it does not pull
+clock that `--profile` measures factoring iterations against; it does not pull
 `fmt` or `unix`, so js_of_ocaml embedders stay lean. A local jsoo build that
 parses and minifies one stylesheet compresses to under 200 KiB
 (`--opt 3 --no-source-map`, size-oriented runtime flags).
@@ -700,12 +702,12 @@ merlint             # lint the OCaml sources
 [samoht opam overlay](https://tangled.org/gazagnaire.org/opam-overlay.git);
 add the repository before `opam install merlint`.
 
-CI runs four jobs, and a change passing `dune build` and `dune test` can still
-fail two of them: `Build and test` on Linux and macOS, `Lower bounds` against
+CI runs four jobs: `Build and test` on Linux and macOS, `Lower bounds` against
 the oldest dependency versions that solve, `ASCII source`
 ([scripts/check_ascii.sh](scripts/check_ascii.sh) over the `.ml`, `.mli`,
-`.mll`, `.mly` and `dune` files), and `Lint` (ocamlformat plus merlint).
-Prose files carry their non-ASCII content.
+`.mll`, `.mly` and `dune` files), and `Lint` (ocamlformat plus merlint). A
+change passing `dune build` and `dune test` can still fail two of them. Prose
+files carry their non-ASCII content.
 
 Every user-visible change gets an entry in the top version block of
 [CHANGES.md](CHANGES.md), naming the impact rather than the diff.
