@@ -138,13 +138,19 @@ cascade diff [OPTIONS] FILE1 FILE2
 Compares two CSS files through the parsed CSS structure rather than
 character-by-character: added, removed, modified, and reordered rules are
 detected structurally, and property value changes are reported in terms of CSS
-values. Identical files exit 0; differences exit 1, making `cascade diff`
-usable as a CI check. Under `--diff=canonical`, exit 0 asserts that no element
-computes a value differing beyond the approximation budget below, not that the
-two files hold the same rules. A comparison that finds no difference but had to
-drop a declaration or a rule it could not read exits 2 instead: what it dropped
-reached neither side, so identity is not a verdict the comparison can give. The
-report and the `--json` document count declarations and rules per side.
+values. Identical files exit 0 and differences exit 1, so `cascade diff` works
+as a CI check. `--diff=canonical` compares what the CSS does, not how it is
+written. Exit 0 means every element computes the same values. Two files with
+different rules can do that. Canonicalisation allows the same bounded
+approximation as `--minify`, and `--lossless` turns it off.
+
+Exit 2 means cascade could not read part of one file. It compares the text each
+file dropped, and answers normally when that text matches byte for byte.
+Otherwise it reports 2. Adding or removing a declaration that cascade cannot
+read therefore exits 2. Cascade reports 2 rather than 0 because it has not
+established that the files are equivalent, and a gate that treated 2 as 0 would
+pass while the files differ. The report and the `--json` document count the
+unreadable declarations and rules on each side.
 
 `--diff=MODE` controls what counts as "no difference":
 
@@ -178,10 +184,10 @@ report and the `--json` document count declarations and rules per side.
   output `1.55556`; under `--lossless` it remains distinct from every finite
   decimal spelling.
 
-`canonical` ignores what cannot change a computed value, so surplus output that
-renders identically, an empty rule for instance, does not appear in its report.
-A check that must catch surplus output needs `tree` or `string`; a CI gate that
-cares about both runs both.
+`canonical` reports a difference only when some element would compute a
+different value. Two files that render the same compare equal even when one
+carries output the other does not, an empty rule for instance. Use `tree` or
+`string` to catch that; a CI gate that cares about both runs both.
 
 | Flag | Purpose |
 |---|---|
