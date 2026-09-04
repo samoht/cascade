@@ -2640,6 +2640,35 @@ let line_height_step_length_only () =
       "45deg";
     ]
 
+let gap_normal () =
+  (* CSS Box Alignment 3 sections 8.1 and 8.2 admit normal in both gap longhands
+     and either shorthand slot. Its used value depends on layout, so normal
+     cannot be replaced with zero without a layout context. *)
+  List.iter
+    (fun property ->
+      List.iter
+        (fun value ->
+          let css = property ^ ":" ^ value in
+          check_declaration ~roundtrip:true ~optimized:css css)
+        [ "normal"; "10%"; "2px" ];
+      check_declaration ~roundtrip:true (property ^ ":var(--gap,normal)");
+      check_declaration ~roundtrip:true ~expected:(property ^ ":normal")
+        (property ^ ":NORMAL");
+      List.iter
+        (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+        [ "normal normal"; "normal 2px"; "auto"; "-2px" ])
+    [ "row-gap"; "column-gap" ];
+  List.iter
+    (fun value ->
+      let css = "gap:" ^ value in
+      check_declaration ~roundtrip:true ~optimized:css css)
+    [ "normal"; "normal 2px"; "2px normal"; "normal 10%" ];
+  check_declaration ~roundtrip:true ~expected:"gap:normal"
+    ~optimized:"gap:normal" "gap:normal normal";
+  List.iter
+    (fun value -> none_cursor read_declaration ("gap:" ^ value))
+    [ "normal inherit"; "inherit normal"; "normal normal normal" ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5971,6 +6000,7 @@ let declaration_tests =
     test_case "auto is not a color" `Quick auto_is_not_a_color;
     test_case "outline-offset length only" `Quick outline_offset_length_only;
     test_case "line-height-step length only" `Quick line_height_step_length_only;
+    test_case "gap normal" `Quick gap_normal;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
