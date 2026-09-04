@@ -230,7 +230,7 @@ let invalid_value property buf =
   | "transition-timing-function" ->
       pick [ "steps()"; "cubic-bezier(1,2)" ] buf 2
   | "transition" -> pick [ "1s 2s 3s"; "ease opacity ease" ] buf 2
-  | "animation" -> pick [ "1s 2s 3s"; "infinite infinite" ] buf 2
+  | "animation" -> pick [ "1s 2s 3s"; "infinite infinite infinite" ] buf 2
   | "background-image" -> pick [ "linear-gradient()"; "image-set()" ] buf 2
   | "background" -> pick [ "red blue"; "red red" ] buf 2
   | "content" -> pick [ "attr()"; "open-quote close-quote none" ] buf 2
@@ -340,8 +340,10 @@ let property_grammar_shorthand_vectors =
       [ "opacity 1s ease"; "all .2s linear .1s" ]
       [ "1s 2s 3s"; "ease opacity ease" ];
     vector "animation" Css.Properties.read_animation Css.Properties.pp_animation
-      [ "spin 1s linear infinite"; "none"; "fade .2s ease" ]
-      [ "1s 2s 3s"; "infinite infinite" ];
+      [
+        "spin 1s linear infinite"; "none"; "fade .2s ease"; "infinite infinite";
+      ]
+      [ "1s 2s 3s"; "infinite infinite infinite" ];
     vector "background" Css.Properties.read_background
       Css.Properties.pp_background
       [ "red"; "url(a.png) no-repeat center/cover"; "none" ]

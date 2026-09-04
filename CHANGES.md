@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `animation` accepts `infinite` as a case-sensitive keyframe name after an
+  iteration count and preserves that meaning when printed (#875).
+
 - Negative `text-decoration-thickness` lengths and percentages are retained,
   including inside `calc()`, instead of dropping valid declarations (#874).
 
