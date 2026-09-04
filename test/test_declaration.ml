@@ -3410,6 +3410,36 @@ let color_functions () =
   check_declaration ~expected:"color:color(display-p3 1 0 0/.5)"
     "color: color(display-p3 1 0 0 / 0.5)"
 
+let filter_omitted_arguments () =
+  (* Filter Effects 1 section 6.1: omitted blur/hue-rotate arguments default to
+     zero; all optional number-percentage arguments default to one. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (fn, default) ->
+          let omitted = String.concat "" [ prop; ":"; fn; "()" ] in
+          let explicit =
+            String.concat "" [ prop; ":"; fn; "("; default; ")" ]
+          in
+          check_declaration ~expected:omitted omitted;
+          let canonical text =
+            of_string text |> normalize |> string_of_value ~minify:true
+          in
+          Alcotest.(check string)
+            omitted (canonical explicit) (canonical omitted))
+        [
+          ("blur", "0px");
+          ("brightness", "1");
+          ("contrast", "1");
+          ("grayscale", "1");
+          ("hue-rotate", "0deg");
+          ("invert", "1");
+          ("opacity", "1");
+          ("saturate", "1");
+          ("sepia", "1");
+        ])
+    [ "filter"; "backdrop-filter"; "-webkit-backdrop-filter" ]
+
 let angle_units () =
   check_declaration ~expected:"transform:rotate(.5turn)"
     "transform: rotate(0.5turn)";
@@ -5572,6 +5602,7 @@ let declaration_tests =
     test_case "animations (state)" `Quick animations_state;
     test_case "animation drained shorthand" `Quick animation_drained_shorthand;
     test_case "transforms" `Quick transforms;
+    test_case "filter omitted arguments" `Quick filter_omitted_arguments;
     test_case "angle units" `Quick angle_units;
     test_case "grid" `Quick grid;
     test_case "list properties" `Quick list_properties;
