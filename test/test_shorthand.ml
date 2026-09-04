@@ -17,6 +17,17 @@ let decl_strings decls =
 let indexed decls = List.mapi (fun i d -> (i, d)) decls
 let unindexed decls = List.map snd decls
 
+(* [decl_optimizes_to] wraps its input in one rule; these cases turn on what a
+   neighbouring rule holds, so they optimize a whole sheet. *)
+let sheet_optimizes_to ~into input =
+  match Css.of_string input with
+  | Ok { stylesheet; _ } ->
+      Alcotest.(check string)
+        (String.concat "" [ input; " minify+optimize" ])
+        into
+        (String.trim (Css.to_string ~minify:true (Css.optimize stylesheet)))
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
 let test_declaration_covers_reset_boundaries () =
   Alcotest.(check bool)
     "all covers ordinary property" true
@@ -529,6 +540,70 @@ let test_transition_contraction_covers_reset_longhands () =
   decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
     "transition-delay:5s!important;transition-property:color;transition-duration:1s"
 
+(* The slot a contraction resets belongs to the element, not to the rule: any
+   declaration that can reach the same element and holds that slot is at risk,
+   whichever rule it sits in. Composition reads one rule, so it cannot see the
+   holders next door. *)
+let test_transition_contraction_covers_other_rules () =
+  (* Same rule, both sides of the guard. A non-important holder is reset by the
+     contraction, so the run stays expanded; an important one outranks the
+     non-important shorthand whatever the order, so the run contracts. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete!important;color:red;transition:color \
+       1s}"
+    ".a{transition-behavior:allow-discrete!important;color:red;transition-property:color;transition-duration:1s}";
+  (* Split across two rules with the same selector, the element sees exactly the
+     cascade above. The behaviour has to survive, and the shortest spelling that
+     keeps it groups the two rules and carries it into the shorthand. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}"
+    ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:".a{transition:color 1s;transition-behavior:allow-discrete!important}"
+    ".a{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
+  (* Both important: the shorthand no longer loses to the holder, so dropping
+     the behaviour would change what the element animates. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete!important}"
+    ".a{transition-behavior:allow-discrete!important}.a{transition-property:color!important;transition-duration:1s!important}";
+  (* An unrelated rule between them changes nothing: the holder is still in the
+     cascade the second rule lands on. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
+    ".a{transition-behavior:allow-discrete}.b{color:red}.a{transition-property:color;transition-duration:1s}";
+  (* A rule between them that writes the same family keeps the two apart, so
+     there is no grouping to carry the behaviour into and the run stays
+     expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete}.b{transition:opacity \
+       2s}.a{transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete}.b{transition:opacity \
+     2s}.a{transition-property:color;transition-duration:1s}";
+  (* The holder needs no relation to the run's selector: an element carrying
+     both classes reads one cascade. *)
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}"
+    ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  (* The other side of the guard, so it stays a hazard test and not a blanket
+     refusal: a neighbour holding the slot at its initial resets to the same
+     thing, and an important neighbour outranks the shorthand. *)
+  sheet_optimizes_to
+    ~into:".b{transition-behavior:normal}.a{transition:color 1s}"
+    ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:allow-discrete!important}.a{transition:color 1s}"
+    ".b{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
+  (* A slot the rule itself rewrites after the run is not at risk from a
+     neighbour holding it: the rewrite lands after the reset. *)
+  sheet_optimizes_to
+    ~into:".a{transition:color 1s;color:red;transition-delay:5s}"
+    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}"
+
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
      is dropped. A differing value or a per-side list is kept. *)
@@ -821,6 +896,8 @@ let suite =
         test_drop_redundant_transition_longhand;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
+      Alcotest.test_case "transition contraction covers other rules" `Quick
+        test_transition_contraction_covers_other_rules;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
