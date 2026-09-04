@@ -72,6 +72,8 @@ type display =
   | Inline_flex
   | Grid
   | Inline_grid
+  | Grid_lanes
+  | Inline_grid_lanes
   | None
   | Flow_root
   | Table

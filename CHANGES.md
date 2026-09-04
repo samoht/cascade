@@ -205,6 +205,8 @@ entry points both moved.
 - Lenient parsing preserves a value opaquely when the property is unknown, the
   value carries a runtime substitution, or it is a colour fallback; a value the
   typed reader rejects is an invalid declaration and is dropped (#787, #813)
+- `display` accepts `grid-lanes` and `inline-grid-lanes`, the two values CSS
+  Grid 3 sec. 2.2 establishes grid lanes layout with
 - Grid track sizes accept math functions that resolve to `<flex>`, including
   `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
   repeated and automatic tracks (#749)
