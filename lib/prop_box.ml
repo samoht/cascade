@@ -851,16 +851,9 @@ let rec read_visibility t : visibility =
 
 let rec read_z_index t : z_index =
   let read_calc_z t : z_index =
-    (* read_calc handles the calc(...) wrapper itself *)
-    let expr =
-      read_calc ~result_type:`Number
-        (fun _ -> Cursor.err t "unexpected value in z-index calc")
-        t
-    in
-    match eval_numeric_calc expr with
-    | Some f when Float.is_integer f -> Index (int_of_float f)
-    | Some _ -> Cursor.err_invalid t "z-index calc must evaluate to integer"
-    | None -> Calc expr
+    match read_integer_calc "z-index" t with
+    | `Int n -> Index n
+    | `Calc expr -> Calc expr
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
   Cursor.enum_or_calls "z-index"

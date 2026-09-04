@@ -706,7 +706,7 @@ let read_grid_line_name t =
   else name
 
 let read_grid_span_count t =
-  let n = Cursor.int t in
+  let n = read_integer "grid span" t in
   if n < 1 then Cursor.err_invalid t "grid span count must be positive";
   n
 
@@ -763,16 +763,9 @@ let read_grid_line_name_value t : grid_line =
       match n with Some n -> Num_name (n, name) | None -> Name name)
 
 let read_grid_line_calc t : grid_line =
-  (* read_calc handles the calc(...) wrapper itself *)
-  let expr =
-    read_calc ~result_type:`Number
-      (fun _ -> Cursor.err t "unexpected value in grid-line calc")
-      t
-  in
-  match eval_numeric_calc expr with
-  | Some f when Float.is_integer f -> Num (int_of_float f)
-  | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
-  | None -> Calc expr
+  match read_integer_calc "grid-line" t with
+  | `Int n -> Num n
+  | `Calc expr -> Calc expr
 
 let rec read_grid_line t : grid_line =
   Cursor.enum_or_calls "grid-line"
@@ -1020,7 +1013,7 @@ module Grid_template = struct
   let rec read_repeat_count t : repeat_count =
     if Cursor.looking_at t "var(" then Var (Values.read_var read_repeat_count t)
     else
-      match Cursor.option Cursor.int t with
+      match Cursor.option (read_integer "repeat count") t with
       | Some n ->
           if n <= 0 then Cursor.err_invalid t "repeat count must be positive";
           Count n

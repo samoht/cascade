@@ -5218,3 +5218,5 @@ let equal_animation_range_name (a : animation_range_name) b = a = b
 let equal_container_shorthand (a : container_shorthand) b = a = b
 let equal_paint_order_keyword (a : paint_order_keyword) b = a = b
 let equal_paint_order (a : paint_order) b = a = b
+let equal_border_width (a : border_width) b = a = b
+let equal_border_style (a : border_style) b = a = b

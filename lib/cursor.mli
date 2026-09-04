@@ -49,10 +49,12 @@ val meta : t -> Loc.meta_level
 val source : t -> string option
 (** [source t] is the preprocessed source text that produced [t], when known. *)
 
-val push_warning : t -> Error.t -> unit
-(** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
-    recovery mode catches a {!exception-Parse_error}, pushes it here, skips to a
-    recovery point, and keeps going. Drained via {!drain_warnings}. *)
+val push_warning : t -> recovery:Error.Recovery.t -> Error.t -> unit
+(** [push_warning t ~recovery e] records [e] as a non-fatal warning on [t],
+    stamped with what the recovery did to the construct [e] is about. A
+    validator in recovery mode catches a {!exception-Parse_error}, pushes it
+    here, skips to a recovery point, and keeps going. Drained via
+    {!drain_warnings}. *)
 
 val drain_warnings : t -> Error.t list
 (** [drain_warnings t] returns and clears the warnings accumulated on [t] in
@@ -159,6 +161,17 @@ val save : t -> snapshot
 
 val restore : t -> snapshot -> unit
 (** [restore t s] rewinds [t] to the position captured by [s]. *)
+
+val dropped_since :
+  t -> snapshot -> Error.Recovery.construct -> Error.Recovery.t
+(** [dropped_since t s construct] is a dropped-[construct] recovery naming the
+    source text from the first component [t] consumed since [s] to the last,
+    whitespace at either end left out. A recovery point takes [s] before the
+    item it gives up on and calls this once it has skipped that item, so the
+    recovery names the whole construct the reader threw away rather than the
+    point the read failed at. It names no text when [t] carries no source, when
+    nothing but whitespace was consumed, or when [s] is no snapshot [t] advanced
+    from. *)
 
 val atomic : t -> (unit -> 'a) -> 'a
 (** [atomic t f] runs [f ()] with a snapshot held; if [f] raises {!Parse_error},

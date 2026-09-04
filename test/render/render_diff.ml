@@ -141,6 +141,16 @@ a[href^="https"], .card p { text-decoration: underline; color: #00f }
 .card p::before { content: "> "; background: red; background-position-x: 10px }
 |css}
 
+(* The [transition] shorthand resets [transition-behavior], and a run of the
+   other transition longhands does not write that slot. Contracting the run into
+   the shorthand therefore has to carry the behaviour over, or the element stops
+   transitioning discrete values. getComputedStyle reports the slot, so the
+   browser settles it. *)
+let transition_behavior_sheet =
+  {css|
+.rd-tb { transition-behavior: allow-discrete; transition-property: color; transition-duration: 1s; transition-timing-function: ease; transition-delay: 0s }
+|css}
+
 (* [of S] counted from the end. No corpus sheet carries the form and no pair
    below pins it, since a sheet without it renders the same page; what it buys
    is the probe - the driver reports a selector the derived document fails to
@@ -350,6 +360,7 @@ let inputs () =
   let all =
     [
       sheet "smoke" smoke_sheet;
+      sheet "transition-behavior" transition_behavior_sheet;
       sheet "nth-last-child-of" nth_last_of_sheet;
       sheet "distant-container" distant_container_sheet;
       {

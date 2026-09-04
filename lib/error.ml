@@ -1,3 +1,39 @@
+module Recovery = struct
+  type construct = Declaration | Rule
+
+  type t =
+    | Dropped of { construct : construct; text : string option }
+    | Recovered
+
+  let equal_construct a b =
+    match (a, b) with
+    | Declaration, Declaration | Rule, Rule -> true
+    | (Declaration | Rule), _ -> false
+
+  let equal a b =
+    match (a, b) with
+    | Dropped a, Dropped b ->
+        equal_construct a.construct b.construct
+        && Option.equal String.equal a.text b.text
+    | Recovered, Recovered -> true
+    | (Dropped _ | Recovered), _ -> false
+
+  (* A span outside the source names nothing, and a zero-width one names no
+     bytes, so neither yields text. *)
+  let text_of source { Loc.start_pos; end_pos } =
+    if start_pos >= 0 && end_pos > start_pos && end_pos <= String.length source
+    then Some (String.sub source start_pos (end_pos - start_pos))
+    else None
+
+  let dropped ?source ?loc construct =
+    let text =
+      match (source, loc) with
+      | Some source, Some loc -> text_of source loc
+      | Some _, None | None, Some _ | None, None -> None
+    in
+    Dropped { construct; text }
+end
+
 type kind =
   | Sort_mismatch of { expected : Sort.t; found : Sort.t }
   | Unexpected_token of Token.kind
@@ -19,6 +55,7 @@ type t = {
   kind : kind;
   source : string option;
   filename : string option;
+  recovery : Recovery.t;
 }
 
 let snippet t =
@@ -68,7 +105,7 @@ let pp_kind : kind Pp.t =
       Sort.pp ctx s
 
 let pp : t Pp.t =
- fun ctx ({ loc; sort; path; kind; source = _; filename } as t) ->
+ fun ctx ({ loc; sort; path; kind; source = _; filename; recovery = _ } as t) ->
   (match filename with
   | Some f when f <> "" ->
       Pp.string ctx f;
@@ -110,8 +147,20 @@ let to_string t = Pp.to_string pp t
 
 exception Parse_error of t
 
+(* A raised error is about a construct nothing has decided about yet, so it
+   starts at [Recovered] and the site that catches it stamps what it did. *)
 let v ?(path = Loc.Path.empty) ?source ?filename ~loc ~sort kind =
-  { loc; sort; path = Loc.Path.to_labels path; kind; source; filename }
+  {
+    loc;
+    sort;
+    path = Loc.Path.to_labels path;
+    kind;
+    source;
+    filename;
+    recovery = Recovery.Recovered;
+  }
+
+let with_recovery recovery t = { t with recovery }
 
 let with_filename ?filename t =
   match (filename, t.filename) with

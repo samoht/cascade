@@ -5684,6 +5684,38 @@ let read_calc : type a.
   else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
   else Cursor.err t "calc() or var()"
 
+(* CSS Values 4 (ED) sec. 10.9: a math function resolving to [<number>] stands
+   wherever an [<integer>] is accepted. A constant expression folds to its
+   integer; one holding a [var()] does not resolve here and stays a calc
+   node. *)
+let read_integer_calc : type a.
+    string -> Cursor.t -> [ `Int of int | `Calc of a calc ] =
+ fun name t ->
+  let expr =
+    read_calc ~result_type:`Number
+      (fun _ ->
+        Cursor.err t
+          (String.concat "" [ "unexpected value in "; name; " calc" ]))
+      t
+  in
+  match eval_numeric_calc expr with
+  | Some f when Float.is_integer f -> `Int (int_of_float f)
+  | Some _ ->
+      Cursor.err_invalid t
+        (String.concat "" [ name; " calc must evaluate to integer" ])
+  | None -> `Calc expr
+
+let read_integer name t =
+  if Cursor.looking_at_calc t then
+    match
+      (read_integer_calc name t : [ `Int of int | `Calc of number calc ])
+    with
+    | `Int n -> n
+    | `Calc _ ->
+        Cursor.err_invalid t
+          (String.concat "" [ name; " calc must evaluate to integer" ])
+  else Cursor.int t
+
 let read_numeric_expression t = read_num_expr t
 
 (* The typed [clamp / minmax / min / max] length readers are part of the

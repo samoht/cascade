@@ -962,8 +962,9 @@ let rec skip_whitespace_tokens lexer =
 
 (* Push a warning, attaching a source snippet from the lexer's reader when [meta
    = `Full] so section 5.3 recovery warnings carry the same context as raised
-   Cursor errors. Lower meta levels skip the snippet allocation. *)
-let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
+   Cursor errors. Lower meta levels skip the snippet allocation. [recovery] is
+   what this site did with the construct the error is about. *)
+let warn ~meta lexer (warnings : Error.t list ref) ~recovery (e : Error.t) =
   let e =
     match meta with
     | `Full ->
@@ -971,7 +972,7 @@ let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
         Error.v ~source ~loc:e.loc ~sort:e.sort e.kind
     | `None | `Locs -> e
   in
-  warnings := e :: !warnings
+  warnings := Error.with_recovery recovery e :: !warnings
 
 (* Sections 5.5.9 and 5.5.10 auto-close a simple block and a function at EOF,
    which every rule-level caller relies on, and the CR snapshot marks both of
@@ -982,7 +983,8 @@ let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
 let warn_unclosed ~meta lexer warnings (block : Component.block Component.node)
     =
   if not block.node.closed then
-    warn ~meta lexer warnings (Error.unterminated block.loc Sort.Block)
+    warn ~meta lexer warnings ~recovery:Error.Recovery.Recovered
+      (Error.unterminated block.loc Sort.Block)
 
 (* CSS Syntax 3 (ED) sec. 5.5.2. [nested = true] also terminates on a stray
    ['}'] (the spec's "outermost block ended") so block-contents callers can
@@ -1012,32 +1014,36 @@ let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
   in
   loop []
 
+(* A prelude whose first two non-whitespace items are an ident starting with
+   [--] followed by ':' reads as a declaration rather than a selector. The
+   prelude is held reversed, as [consume_qualified_rule] accumulates it. *)
+let is_custom_property_shape prelude =
+  let rec drop_ws = function
+    | Component.Preserved { kind = Token.Whitespace; _ } :: rest -> drop_ws rest
+    | other -> other
+  in
+  match drop_ws (List.rev prelude) with
+  | Component.Preserved { kind = Token.Ident name; _ } :: rest
+    when Custom_property_name.has_prefix name -> (
+      match drop_ws rest with
+      | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
+      | _ -> false)
+  | _ -> false
+
 (* CSS Syntax 3 (ED) sec. 5.5.3. [nested = true] makes a stray ['}'] or a
    top-level ';' before any block end the rule attempt with [None]; the spec
    groups those two with the EOF branch as parse errors, so they are reported
-   the same way. The custom-property-shaped guard discards a rule whose first
-   two non-whitespace prelude items are an ident starting with [--] followed by
-   ':', warning that the prelude read as a declaration rather than a
-   selector. *)
+   the same way. A custom-property-shaped prelude discards the rule, warning
+   that it read as a declaration. *)
 let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
-  let is_custom_property_shape prelude =
-    let rec drop_ws = function
-      | Component.Preserved { kind = Token.Whitespace; _ } :: rest ->
-          drop_ws rest
-      | other -> other
-    in
-    match drop_ws (List.rev prelude) with
-    | Component.Preserved { kind = Token.Ident name; _ } :: rest
-      when Custom_property_name.has_prefix name -> (
-        match drop_ws rest with
-        | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
-        | _ -> false)
-    | _ -> false
-  in
   let drop end_loc =
+    (* [start_loc] is the rule's first token and [end_loc] the one that ended
+       the attempt, so the union spans the rule the sheet loses. *)
     let loc = Loc.union start_loc end_loc in
-    warn ~meta lexer warnings (Error.unterminated loc Sort.Qualified_rule);
+    warn ~meta lexer warnings
+      ~recovery:Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Rule)
+      (Error.unterminated loc Sort.Qualified_rule);
     None
   in
   let rec loop prelude =
@@ -1059,6 +1065,7 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
           (* Dropping the rule is what the spec asks for, but it still has to be
              reported: [Css.of_string] warns for every rule it drops. *)
           warn ~meta lexer warnings
+            ~recovery:Error.Recovery.(dropped Rule)
             (Error.sort_mismatch loc ~sort:Sort.Qualified_rule
                ~expected:Sort.Selector ~found:Sort.Declaration);
           None)
@@ -1143,6 +1150,17 @@ let value_has_invalid_block ~is_custom value =
 let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_custom = Custom_property_name.has_prefix name in
+  (* [name_loc] opens the declaration and [cvs] is its body up to the [;], so
+     the union spans what the sheet loses when the pair is refused. *)
+  let dropped () =
+    let loc =
+      List.fold_left
+        (fun l cv -> Loc.union l (Component.source_loc cv))
+        name_loc (trim_ws cvs)
+    in
+    Error.Recovery.dropped ~source:(Lexer.source lexer) ~loc
+      Error.Recovery.Declaration
+  in
   match drop_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
       let value1 = trim_ws rest in
@@ -1157,7 +1175,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         | _ -> (value1, false)
       in
       if value_has_invalid_block ~is_custom value || has_bad_token value then (
-        warn ~meta lexer warnings
+        warn ~meta lexer warnings ~recovery:(dropped ())
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
              (Token.Open Token.Curly));
         None)
@@ -1169,7 +1187,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         in
         Some { node = { name; value; important }; loc }
   | _ ->
-      warn ~meta lexer warnings
+      warn ~meta lexer warnings ~recovery:(dropped ())
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
@@ -1194,17 +1212,17 @@ let consume_declaration_body lexer =
   in
   loop []
 
+(* Answers where the skip stopped, so the caller can report the whole
+   declaration it threw away and not just the token it started on. *)
 let skip_bad_declaration lexer tok =
-  let rec skip () =
+  let rec skip last =
     let t = Lexer.next lexer in
     match t.Token.kind with
-    | Token.Semicolon | Token.Eof -> ()
-    | _ ->
-        let _ = consume_component_value_from lexer t in
-        skip ()
+    | Token.Semicolon -> t.loc
+    | Token.Eof -> last
+    | _ -> skip (Component.source_loc (consume_component_value_from lexer t))
   in
-  let _ = consume_component_value_from lexer tok in
-  skip ()
+  skip (Component.source_loc (consume_component_value_from lexer tok))
 
 let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
   let body = consume_declaration_body lexer in
@@ -1226,9 +1244,12 @@ let consume_decl_list_item ~meta lexer ~warnings tok =
       | Some item -> `Item item
       | None -> `Skip)
   | _ ->
+      let end_loc = skip_bad_declaration lexer tok in
+      let loc = Loc.union tok.loc end_loc in
       warn ~meta lexer warnings
+        ~recovery:
+          Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Declaration)
         (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
-      skip_bad_declaration lexer tok;
       `Skip
 
 let consume_list_of_declarations ~meta lexer ~warnings :

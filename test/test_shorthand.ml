@@ -482,6 +482,53 @@ let test_drop_redundant_transition_longhand () =
   decl_optimizes_to ~into:"transition:all 1s;transition-delay:1s"
     "transition:all 1s;transition-delay:1s"
 
+(* CSS Transitions 2 sec. 2.6: [transition] resets [transition-behavior] along
+   with the four Transitions 1 longhands. A run that leaves a slot unwritten
+   contracts only when nothing earlier in the rule set that slot to something
+   other than its initial, otherwise the shorthand silently resets it. *)
+let test_transition_contraction_covers_reset_longhands () =
+  (* The behaviour is a component of [<single-transition>], so a run carrying it
+     contracts and keeps it, whichever side of the run it sits on. Both [ease]
+     and [0s] are initials and drop out. *)
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-behavior:allow-discrete;transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
+  (* A run covering only the Transitions 1 longhands still contracts: nothing in
+     the rule writes the behaviour, so resetting it to [normal] is a no-op. *)
+  decl_optimizes_to ~into:"transition:color 1s"
+    "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  (* [inherit] is not a shorthand component, so the run cannot carry it and the
+     contraction would drop it. *)
+  decl_optimizes_to
+    ~into:
+      "transition-behavior:inherit;transition-property:color;transition-duration:1s"
+    "transition-behavior:inherit;transition-property:color;transition-duration:1s";
+  (* Same rule for the delay: an unrelated declaration splits it off the run, so
+     the run no longer covers the slot the shorthand resets. *)
+  decl_optimizes_to
+    ~into:
+      "transition-delay:5s;color:red;transition-property:color;transition-duration:1s"
+    "transition-delay:5s;color:red;transition-property:color;transition-duration:1s";
+  (* An earlier shorthand holds the slots its own run left out. Contracting the
+     later run resets the delay it set. *)
+  decl_optimizes_to
+    ~into:
+      "transition:color 1s \
+       5s;transition-property:opacity;transition-duration:2s"
+    "transition:color 1s ease \
+     5s;transition-property:opacity;transition-duration:2s";
+  (* An earlier shorthand whose unwritten slots are already initials shadows
+     nothing, so the later run contracts. *)
+  decl_optimizes_to ~into:"transition:opacity 2s"
+    "transition:color 1s;transition-property:opacity;transition-duration:2s";
+  (* An important longhand outranks the composed shorthand whatever the order,
+     so it is not a hazard. *)
+  decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
+    "transition-delay:5s!important;transition-property:color;transition-duration:1s"
+
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
      is dropped. A differing value or a per-side list is kept. *)
@@ -526,9 +573,21 @@ let test_compose_shorthands_and_runtime_guard () =
     |> Shorthand.compose_shorthands ~ctx
     |> unindexed
   in
-  Alcotest.(check int)
-    "runtime substitution prevents typed border shorthand" 12
-    (List.length guarded)
+  (* The guard is on the width family: the substituted tokens could re-assign
+     across width, style and color in [border]. The four styles and the four
+     colors carry no substitution and each set exactly their own four longhands,
+     so those two boxes still compose. *)
+  Alcotest.(check (list string))
+    "runtime substitution prevents typed border shorthand"
+    [
+      "border-top-width:var(--w)";
+      "border-right-width:1px";
+      "border-bottom-width:1px";
+      "border-left-width:1px";
+      "border-style:solid";
+      "border-color:red";
+    ]
+    (decl_strings guarded)
 
 let test_stylesheet_scope_prior_longhand_guard () =
   (* A layer shorthand resets every layer field, so synthesizing one from a run
@@ -683,6 +742,56 @@ let test_page_break_alias_shadowing () =
     "the legacy spelling wins when it comes last" [ "break-after:page" ]
     (dedup ".a{break-after:avoid;page-break-after:always}")
 
+(* CSS Backgrounds 3 sec. 3.1 to 3.3: [border-color], [border-style] and
+   [border-width] set exactly their four side longhands and reset nothing else.
+   CSS Scroll Snap 1 sec. 4.2 and 5.1 say the same of [scroll-padding] and
+   [scroll-margin]. Each shorthand and its four longhands compute the same
+   values on every element, so a canonical diff equates them. *)
+let test_box_family_shorthand_equivalence () =
+  let same name a b =
+    Alcotest.(check bool)
+      name true
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  same "border-width equals its four side longhands" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:1px}";
+  same "border-style equals its four side longhands" ".a{border-style:solid}"
+    ".a{border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:solid}";
+  same "border-color equals its four side longhands" ".a{border-color:red}"
+    ".a{border-top-color:red;border-right-color:red;border-bottom-color:red;border-left-color:red}";
+  same "scroll-margin equals its four side longhands" ".a{scroll-margin:1px}"
+    ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px;scroll-margin-left:1px}";
+  same "scroll-padding equals its four side longhands" ".a{scroll-padding:1px}"
+    ".a{scroll-padding-top:1px;scroll-padding-right:1px;scroll-padding-bottom:1px;scroll-padding-left:1px}";
+  (* Per-side values reach the shorthand in top-right-bottom-left order. *)
+  same "a two-value border-width equals its four side longhands"
+    ".a{border-width:1px 2px}"
+    ".a{border-top-width:1px;border-right-width:2px;border-bottom-width:1px;border-left-width:2px}"
+
+(* A shorthand that writes more slots than the longhands beside it is a
+   different declaration, and the report keeps saying so. *)
+let test_box_family_non_equivalence_still_reports () =
+  let differs name a b =
+    Alcotest.(check bool)
+      name false
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  (* [background] resets every background longhand to its initial. *)
+  differs "background is not background-color" ".a{background:red}"
+    ".a{background-color:red}";
+  (* [border] resets [border-image] on top of the width it names. *)
+  differs "border is not border-width" ".a{border:1px solid red}"
+    ".a{border-width:1px}";
+  differs "an unset side is not the shorthand" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px}";
+  differs "a differing side is not the shorthand" ".a{border-width:1px}"
+    ".a{border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:2px}";
+  differs "a differing side style is not the shorthand" ".a{border-style:solid}"
+    ".a{border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:dashed}";
+  differs "an unset scroll-margin side is not the shorthand"
+    ".a{scroll-margin:1px}"
+    ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px}"
+
 let suite =
   ( "shorthand",
     [
@@ -710,6 +819,8 @@ let suite =
         test_drop_redundant_flex_longhand;
       Alcotest.test_case "drop redundant transition longhand" `Quick
         test_drop_redundant_transition_longhand;
+      Alcotest.test_case "transition contraction covers reset longhands" `Quick
+        test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
@@ -726,4 +837,8 @@ let suite =
         test_same_value_ignores_importance;
       Alcotest.test_case "page-break alias shadowing" `Quick
         test_page_break_alias_shadowing;
+      Alcotest.test_case "box family shorthand equivalence" `Quick
+        test_box_family_shorthand_equivalence;
+      Alcotest.test_case "box family non-equivalence still reports" `Quick
+        test_box_family_non_equivalence_still_reports;
     ] )

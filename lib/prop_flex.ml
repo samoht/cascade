@@ -287,16 +287,9 @@ let rec pp_flex : flex Pp.t =
 
 let rec read_order t : order =
   let read_calc_order t =
-    (* read_calc handles the calc(...) wrapper itself *)
-    let expr =
-      read_calc ~result_type:`Number
-        (fun _ -> Cursor.err t "unexpected value in order calc")
-        t
-    in
-    match eval_numeric_calc expr with
-    | Some f when Float.is_integer f -> (Int (int_of_float f) : order)
-    | Some _ -> Cursor.err_invalid t "order calc must evaluate to integer"
-    | None -> (Calc expr : order)
+    match read_integer_calc "order" t with
+    | `Int n -> (Int n : order)
+    | `Calc expr -> (Calc expr : order)
   in
   let read_var t : order = Var (read_var read_order t) in
   Cursor.enum_or_calls "order"
