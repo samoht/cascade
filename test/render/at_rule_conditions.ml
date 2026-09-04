@@ -503,7 +503,25 @@ let supports_seeds ~seed =
         | 5 -> String.concat "" [ "not ("; a (); " and "; a (); ")" ]
         | _ -> String.concat "" [ "(("; a (); ") or ("; a (); "))" ])
   in
-  List.concat [ supports_leaves; generated ]
+  let enclosed =
+    List.concat_map
+      (fun leaf ->
+        [
+          leaf;
+          String.concat "" [ "not "; leaf ];
+          String.concat "" [ leaf; " or (display: grid)" ];
+          String.concat "" [ leaf; " and (display: grid)" ];
+        ])
+      [
+        "(future syntax)";
+        "()";
+        "(display)";
+        "(: grid)";
+        "(display: grid;)";
+        "((display: grid) and)";
+      ]
+  in
+  List.concat [ supports_leaves; generated; enclosed ]
 
 (* ===== The [@container] population ===== *)
 
@@ -768,7 +786,9 @@ let parse_container text =
   match Container.of_string text with exception _ -> None | c -> Some c
 
 let supports_leaf (c : Supports.t) =
-  match c with Property _ | Function _ -> true | Not _ | And _ | Or _ -> false
+  match c with
+  | Property _ | Function _ | General_enclosed _ -> true
+  | Not _ | And _ | Or _ -> false
 
 (* A rewrite is checked by asking the browser about the rewritten text, so the
    rewrite joins the population. Reading the query back out of the parser is a

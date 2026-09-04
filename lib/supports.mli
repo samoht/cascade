@@ -60,6 +60,8 @@ type t =
       (** Function feature test: [selector()], [font-format()], [font-tech()],
           [at-rule()], [named-feature()], [env()], or a general-enclosed
           function. *)
+  | General_enclosed of string
+      (** Opaque parenthesized condition, including its delimiters. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)

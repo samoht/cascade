@@ -109,12 +109,11 @@ let invalid =
     "font-format(])";
     "future(url(a b))";
     "future(\"a\nb\")";
+    "(future ])";
+    "(future url(a b))";
+    "(future \"a\nb\")";
     "";
-    "()";
     "display: grid";
-    "(display)";
-    "(: grid)";
-    "(display: grid;)";
     "(display: grid) and";
     "(display: grid) or";
     "(display: grid) and (gap: 1rem) or selector(:has(img))";
@@ -125,7 +124,6 @@ let invalid =
     "not (display: grid) or (gap: 1rem)";
     "selector(:has(img)";
     "not";
-    "not ()";
     "(display: grid) and or (gap: 1rem)";
     "((display: grid)";
     "(display: grid";

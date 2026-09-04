@@ -876,7 +876,8 @@ let add_declaration_prefixes ~targets decls =
 let rec condition_has_webkit kind = function
   | Supports.Property (Supports.Declaration decl) ->
       is_webkit_fallback kind decl
-  | Supports.Property _ | Supports.Function _ -> false
+  | Supports.Property _ | Supports.Function _ | Supports.General_enclosed _ ->
+      false
   | Supports.Not condition -> condition_has_webkit kind condition
   | Supports.And (a, b) | Supports.Or (a, b) ->
       condition_has_webkit kind a || condition_has_webkit kind b
@@ -893,7 +894,9 @@ let add_condition_prefixes ~targets condition =
                   (Supports.Property (Supports.Declaration prefixed), original)
             | None -> original)
         | Some _ | None -> original)
-    | (Supports.Property _ | Supports.Function _) as leaf -> leaf
+    | (Supports.Property _ | Supports.Function _ | Supports.General_enclosed _)
+      as leaf ->
+        leaf
     | Supports.Not condition as original ->
         let condition' = map condition in
         if condition' == condition then original else Supports.Not condition'

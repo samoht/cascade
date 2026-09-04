@@ -20,7 +20,7 @@
     <supports-font-tech-fn> = font-tech( <font-tech> )
     <supports-font-format-fn> = font-format( <font-format> )
     <general-enclosed> = <function-token> <any-value>? )
-                       | ( <any-value> )
+                       | ( <any-value>? )
     v} *)
 
 open Syntax
@@ -70,6 +70,8 @@ type t =
   | Function of function_feature
       (** Function feature test (selector, font-format, font-tech, at-rule,
           named-feature, or env). *)
+  | General_enclosed of string
+      (** Opaque parenthesized condition, including its delimiters. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
@@ -272,6 +274,7 @@ let rec pp_aux ~in_and ctx = function
       pp_declaration_feature ctx feature;
       Pp.char ctx ')'
   | Function feature -> pp_function_feature ctx feature
+  | General_enclosed text -> Pp.string ctx text
   | Not cond -> pp_not ~in_and ctx cond
   | And (a, b) -> pp_and ctx a b
   | Or (a, b) -> pp_or ctx a b
@@ -338,16 +341,6 @@ let closed_block = function
   | Component.Func { node = { terminated = closed; _ }; _ } ->
       closed
   | _ -> true
-
-let rec components_are_closed cvs =
-  List.for_all
-    (function
-      | Component.Block { node = { value; closed; _ }; _ } ->
-          closed && components_are_closed value
-      | Component.Func { node = { arguments; terminated; _ }; _ } ->
-          terminated && components_are_closed arguments
-      | Component.Preserved _ -> true)
-    cvs
 
 let contains_top_level_semicolon =
   List.exists (function
@@ -456,19 +449,21 @@ and in_parens ~allow_unwrapped_decl t =
   | _ -> err t [] "Expected supports feature"
 
 and paren_components t value =
-  if strip_components value = [] then
-    err t value "Empty parentheses in @supports";
-  if not (components_are_closed value) then
-    err t value "Unmatched parenthesis in @supports condition";
-  match split_top_level_colon value with
-  | Some (prop, value) -> declaration_of_components t prop value
-  | None ->
-      let inner = Cursor.sub t value in
-      let condition = condition inner in
-      Cursor.ws inner;
-      if not (Cursor.is_done inner) then
-        err inner [] "trailing content in @supports group";
-      condition
+  if not (Component.is_any_value value) then
+    err t value "Invalid general-enclosed condition in @supports";
+  try
+    match split_top_level_colon value with
+    | Some (prop, value) -> declaration_of_components t prop value
+    | None ->
+        let inner = Cursor.sub t value in
+        let condition = condition inner in
+        Cursor.ws inner;
+        if not (Cursor.is_done inner) then
+          err inner [] "trailing content in @supports group";
+        condition
+  with Cursor.Parse_error _ ->
+    General_enclosed
+      (String.concat "" [ "("; Cursor.string_of_components value; ")" ])
 
 let read ?(allow_unwrapped_decl = false) t =
   let cond =
@@ -530,6 +525,7 @@ let rec compare t1 t2 =
   match (t1, t2) with
   | Property d1, Property d2 -> compare_declaration_feature d1 d2
   | Function f1, Function f2 -> compare_function_feature f1 f2
+  | General_enclosed a, General_enclosed b -> String.compare a b
   | Not a, Not b -> compare a b
   | And (a1, b1), And (a2, b2) ->
       let c = compare a1 a2 in
@@ -537,11 +533,13 @@ let rec compare t1 t2 =
   | Or (a1, b1), Or (a2, b2) ->
       let c = compare a1 a2 in
       if c <> 0 then c else compare b1 b2
-  (* Order: Property < Function < Not < And < Or *)
+  (* Order: Property < Function < General_enclosed < Not < And < Or *)
   | Property _, _ -> -1
   | _, Property _ -> 1
   | Function _, _ -> -1
   | _, Function _ -> 1
+  | General_enclosed _, _ -> -1
+  | _, General_enclosed _ -> 1
   | Not _, _ -> -1
   | _, Not _ -> 1
   | And _, _ -> -1
@@ -571,7 +569,7 @@ let equal a b = compare a b = 0
 let max_atoms = 16
 
 let rec collect_atoms acc = function
-  | (Property _ | Function _) as atom ->
+  | (Property _ | Function _ | General_enclosed _) as atom ->
       if List.exists (fun a -> equal a atom) acc then acc
       else if List.length acc >= max_atoms then raise Exit
       else atom :: acc
@@ -624,7 +622,7 @@ let disjoint a b = for_all_bytes (fun x y -> x land y = 0) a b
 let never v = Bytes.for_all (fun c -> c = '\000') v
 
 let rec eval ~atom ~all = function
-  | (Property _ | Function _) as leaf -> atom leaf
+  | (Property _ | Function _ | General_enclosed _) as leaf -> atom leaf
   | Not a -> v_not ~all (eval ~atom ~all a)
   | And (a, b) -> v_and (eval ~atom ~all a) (eval ~atom ~all b)
   | Or (a, b) -> v_or (eval ~atom ~all a) (eval ~atom ~all b)
@@ -640,7 +638,8 @@ let rec reduce ~atom ~world ~all cond =
     else (v, residual)
   in
   match cond with
-  | Property _ | Function _ -> decide (atom cond) (`Cond cond)
+  | Property _ | Function _ | General_enclosed _ ->
+      decide (atom cond) (`Cond cond)
   | Not a ->
       let va, ra = reduce ~atom ~world ~all a in
       let residual =

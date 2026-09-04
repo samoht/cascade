@@ -1433,7 +1433,7 @@ end
 module Match_supports = struct
   (* Leaves match against [q.supports] via the typed [Supports.equal]. *)
   let rec eval q : Supports.t -> bool = function
-    | (Property _ | Function _) as leaf ->
+    | (Property _ | Function _ | General_enclosed _) as leaf ->
         List.exists (Supports.equal leaf) q.supports
     | Not c -> not (eval q c)
     | And (a, b) -> eval q a && eval q b

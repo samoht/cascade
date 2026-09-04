@@ -4050,7 +4050,8 @@ let test_spec_snapshot_tracking_vectors () =
   neg_cursor read "@layer reset,,base;";
   check_stylesheet ~expected:"@container card (){.card{color:red}}"
     "@container card () { .card { color: red } }";
-  neg_cursor read "@supports () { .accent { color: red } }"
+  check_stylesheet ~expected:"@supports(){.accent{color:red}}"
+    "@supports () { .accent { color: red } }"
 
 (* ignore-test *)
 let test_snapshot_membership_matrix () =
@@ -9242,8 +9243,8 @@ let supports_condition_error_spans () =
   (* The [or] that follows an [and] spans offsets 45-46. *)
   check "mixed operators" "(a:b) and (c:d) or (e:f)"
     ("Cannot mix and/or without parentheses in @supports", 45, 47);
-  (* The empty parentheses span offsets 29-30. *)
-  check "empty parentheses" "()" ("Empty parentheses in @supports", 29, 31);
+  check_stylesheet ~expected:"@supports(){.a{color:blue}}"
+    "@supports () { .a { color: blue } }";
   check_stylesheet ~expected:"@supports font-format(bogus){.a{color:blue}}"
     "@supports font-format(bogus) { .a { color: blue } }"
 

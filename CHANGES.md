@@ -24,6 +24,9 @@ entry points both moved.
 
 ### Breaking
 
+- `Css.Supports.t` gains `General_enclosed` for opaque parenthesized feature
+  tests. Exhaustive visitors must preserve this new leaf (#869).
+
 - `Css.Context.query` gains `media_inapplicable`, distinguishing a recognized
   feature that matches no value from an unknown feature. Direct record
   constructors need the new field; `Context.query ()` defaults it to `[]`
@@ -195,9 +198,9 @@ entry points both moved.
 
 ### Parsing
 
-- Unknown enclosed media conditions and unsupported `@supports` function
-  arguments retain their guards, so an applicable `or` branch or negated
-  capability test no longer loses its rules (#867).
+- Unknown enclosed media and `@supports` conditions retain their guards, so
+  applicable `or` branches and negated capability tests no longer lose their
+  rules (#867, #869).
 
 - `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
   side styles, `border-block-style` and `border-inline-style` take the start and

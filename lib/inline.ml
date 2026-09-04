@@ -920,6 +920,7 @@ let refs_of_supports_feature : Supports.declaration_feature -> string list =
 let rec refs_of_supports : Supports.t -> string list = function
   | Property feature -> refs_of_supports_feature feature
   | Function _ -> []
+  | General_enclosed text -> refs_of_component_string text
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 

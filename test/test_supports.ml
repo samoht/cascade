@@ -144,6 +144,23 @@ let spec_supports_negative_vectors () =
     Cascade_spec_inventory.Supports_grammar.invalid
 
 let spec_supports_structural_vectors () =
+  let unknown = of_string "(future syntax)" in
+  Alcotest.(check bool)
+    "unknown enclosed atom differs from a function" false
+    (equal unknown (of_string "future(syntax)"));
+  Alcotest.(check bool)
+    "unknown feature is false in an empty explicit context" true
+    (Css.Context.matches_supports (Css.Context.query ()) (Not unknown));
+  Alcotest.(check bool)
+    "explicit future capability is respected" true
+    (Css.Context.matches_supports
+       (Css.Context.query ~supports:[ unknown ] ())
+       unknown);
+  (match simplify_under ~context:[] unknown with
+  | `Cond retained ->
+      Alcotest.(check bool)
+        "open world retains unknown guard" true (equal unknown retained)
+  | `True | `False -> Alcotest.fail "unknown guard folded without context");
   List.iter
     (fun (row : Supports_inventory.row) ->
       let actual = of_string row.input in
