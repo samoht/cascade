@@ -9,8 +9,14 @@ val declaration_run :
     declarations run or a bare [Declarations] block. *)
 
 val finalize :
-  ?canonicalize_selector:bool -> ctx:Ctx.t -> Stylesheet.rule -> Stylesheet.rule
-(** Final declaration cleanup before a rule leaves the fixpoint. *)
+  ?held:Shorthand.held ->
+  ?canonicalize_selector:bool ->
+  ctx:Ctx.t ->
+  Stylesheet.rule ->
+  Stylesheet.rule
+(** Final declaration cleanup before a rule leaves the fixpoint. [held] is what
+    the rest of the rule run holds, which shorthand composition needs and the
+    rule alone cannot show. *)
 
 val drop_shadowed : Stylesheet.rule list -> Stylesheet.rule list
 (** Drop same-selector shadowed rules and declarations. *)

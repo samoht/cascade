@@ -389,6 +389,9 @@ entry points both moved.
   which resets the rest of the family, so a `transition-behavior:
   allow-discrete` ahead of it was deleted and the element stopped transitioning
   discrete values (#843)
+- `--minify` keeps that longhand when it sits in a different rule from the run.
+  The contraction reads one rule, so a holder next door was invisible to it and
+  the reset landed on the element anyway (#845)
 - `cascade diff --diff=canonical` reports a rule as moved only when it really
   moved. Writing one selector as a nested branch or as its flat expansion, and
   writing two rules of one selector next to each other or as a single rule, now

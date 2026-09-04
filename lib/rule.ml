@@ -200,13 +200,13 @@ let declaration_run ~ctx decls =
   |> deduplicate_declarations_with ~ctx
   |> synthesize_columns |> synthesize_position_try |> preserve_list decls
 
-let finalize ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
+let finalize ?held ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
   let normalize_synthesized decl =
     if List.memq decl rule.declarations then decl
     else Declaration.normalize ~lossless:(Ctx.lossless ctx) decl
   in
   let declarations =
-    deduplicate_declarations_with ~ctx rule.declarations
+    deduplicate_declarations_with ?held ~ctx rule.declarations
     |> synthesize_columns |> synthesize_position_try
     |> list_map_preserve normalize_synthesized
     |> sort_commuting ~selector:rule.selector

@@ -3494,13 +3494,49 @@ let tr_overwritten_slots d =
   | Declaration { property = All; _ } -> all_tr_bits
   | _ -> 0
 
-(* Whether an earlier declaration in the rule holds a slot the run leaves out.
-   The composed shorthand resets every such slot, so composing would drop that
-   value. An important declaration outranks a non-important shorthand whatever
-   the order, so it is only at risk when the run is important too. *)
-let tr_reset_hazard idx i ~missing ~important =
+(* Slots a set of declarations leaves holding something other than the slot
+   initial, split by importance. Composition reads one rule, so a holder in
+   another rule of the same run reaches the scan below only through this. *)
+type held = { normal_slots : int; important_slots : int }
+
+let held_none = { normal_slots = 0; important_slots = 0 }
+let held_nothing h = Int.equal (h.normal_slots lor h.important_slots) 0
+
+let held_add held decls =
+  List.fold_left
+    (fun held d ->
+      let slots = tr_overwritten_slots d in
+      if Int.equal slots 0 then held
+      else if is_important d then
+        { held with important_slots = held.important_slots lor slots }
+      else { held with normal_slots = held.normal_slots lor slots })
+    held decls
+
+(* What the neighbours hold. The rule being composed is judged by the scan
+   below, which reads position as well as value, so a slot it holds itself is
+   dropped here rather than answered twice and less precisely. *)
+let held_outside held decls =
+  if held_nothing held then held
+  else
+    let own = held_add held_none decls in
+    {
+      normal_slots = held.normal_slots land lnot own.normal_slots;
+      important_slots = held.important_slots land lnot own.important_slots;
+    }
+
+(* Whether something that reaches the same element holds a slot the run leaves
+   out. The composed shorthand resets every such slot, so composing would drop
+   that value. An important declaration outranks a non-important shorthand
+   whatever the order, so it is only at risk when the run is important too. *)
+let tr_reset_hazard idx i ~held ~missing ~important =
   (not (Int.equal missing 0))
   &&
+  let outside =
+    if important then held.normal_slots lor held.important_slots
+    else held.normal_slots
+  in
+  (not (Int.equal (missing land outside) 0))
+  ||
   let rec scan j =
     j >= 0
     &&
@@ -3511,7 +3547,7 @@ let tr_reset_hazard idx i ~missing ~important =
   in
   scan (i - 1)
 
-let try_compose_transition_at idx i =
+let try_compose_transition_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
@@ -3526,7 +3562,7 @@ let try_compose_transition_at idx i =
           0 parts
       in
       let missing = all_tr_bits land lnot written in
-      if tr_reset_hazard idx i ~missing ~important then None
+      if tr_reset_hazard idx i ~held ~missing ~important then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_tr_shorthand parts
@@ -3537,8 +3573,8 @@ let try_compose_transition_at idx i =
         in
         Some (shorthand, len)
 
-let compose_transition_via_index idx =
-  compose_run_via_index idx ~try_compose:try_compose_transition_at
+let compose_transition_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_transition_at ~held)
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -4302,10 +4338,10 @@ let compose_index_group_b kept =
 
 (* Third index group runs at the very end: mask + transition + animation share
    one index. *)
-let compose_index_group_c ~ctx kept =
+let compose_index_group_c ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
-  compose_transition_via_index idx;
+  compose_transition_via_index ~held idx;
   compose_animation_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
@@ -4314,14 +4350,15 @@ let compose_border_whole_step ~ctx kept =
   compose_border_whole_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-let compose_shorthands ~ctx kept =
+let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_index_group_b |> reorder_border_image_before_border
   |> compose_border_whole_step ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
-  |> reorder_mask_border_before_mask |> compose_index_group_c ~ctx
+  |> reorder_mask_border_before_mask
+  |> compose_index_group_c ~ctx ~held
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
@@ -4462,12 +4499,14 @@ let drop_longhands_after_covering_shorthand props =
   let kept = List.filteri (fun i _ -> not dropped.(i)) props in
   preserve_list props kept
 
-let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
+let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
+    props =
+  let held = held_outside held props in
   let props = drop_longhands_after_covering_shorthand props in
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =
-    let kept = if merge_box then compose_shorthands ~ctx kept else kept in
+    let kept = if merge_box then compose_shorthands ~held ~ctx kept else kept in
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
