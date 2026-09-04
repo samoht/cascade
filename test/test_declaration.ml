@@ -5356,6 +5356,117 @@ let hex_spellings_have_one_node () =
   distinct_value "#fff vs #fff8" short_lower
     (sole_declaration ".e{color:#FFF8}")
 
+(* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
+   its typed values alone: reading the print back has to land on the node that
+   printed it, not merely on the same text. *)
+let reads_back input =
+  let d = Css.Declaration.of_string input in
+  let printed = Css.Declaration.to_string ~minify:true d in
+  Alcotest.(check bool)
+    (input ^ ": the print reads back as the same node")
+    true
+    (Css.Declaration.equal_declaration d (Css.Declaration.of_string printed))
+
+(* Four families whose grammar takes more component values than the reader took.
+   Each block pins the multi-value forms the grammar allows, the single-value
+   forms that already worked, and the neighbouring grammar that must not widen
+   with them. *)
+let multi_value_grammars () =
+  (* CSS Box 4 (ED) sec. 3.2 gives [margin] the value [<'margin-top'>{1,4}] and
+     sec. 3.1 gives [margin-top] the value [<length-percentage> | auto], so
+     [auto] is a component of the box: it may stand in any of the four slots and
+     beside any length, at any count. It is not a whole-value keyword. *)
+  check_declaration ~roundtrip:true ~expected:"margin:auto 2px"
+    "margin: auto 2px";
+  check_declaration ~roundtrip:true ~expected:"margin:auto auto auto 2px"
+    "margin: auto auto auto 2px";
+  check_declaration ~roundtrip:true ~expected:"margin:2px auto auto"
+    "margin: 2px auto auto";
+  reads_back "margin: auto 2px";
+  reads_back "margin: auto auto auto 2px";
+  (* Working before the widening, so a fix must not move them. *)
+  check_declaration ~expected:"margin:auto" "margin: auto";
+  check_declaration ~expected:"margin:0 auto" "margin: 0 auto";
+  check_declaration ~expected:"margin:10px auto" "margin: 10px auto";
+  check_declaration ~expected:"margin:0 auto 20px" "margin: 0 auto 20px";
+  check_declaration ~expected:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"margin-inline:0 auto" "margin-inline: 0 auto";
+  (* A fifth component is outside {1,4}, and the CSS-wide keywords stay
+     whole-value (CSS Cascade 5 sec. 6). *)
+  neg_cursor read_declaration "margin: 1px 2px 3px 4px 5px";
+  neg_cursor read_declaration "margin: inherit 1px";
+  (* Sec. 4.1 gives [padding] the same {1,4} box over [<length-percentage
+     [0,inf]>], which has no [auto], so widening the margin box must leave this
+     one alone. *)
+  neg_cursor read_declaration "padding: 0 auto";
+  neg_cursor read_declaration "padding: auto";
+
+  (* CSS Backgrounds 3 (ED) sec. 3.2, "Line Patterns: the border-style
+     properties": [border-style] is [<line-style>{1,4}], the box shorthand over
+     the four side styles, exactly as sec. 3.1 gives [border-color] and sec. 3.3
+     gives [border-width] theirs. *)
+  check_declaration ~roundtrip:true ~expected:"border-style:double dashed"
+    "border-style: double dashed";
+  check_declaration ~roundtrip:true ~expected:"border-style:solid none"
+    "border-style: solid none";
+  check_declaration ~roundtrip:true ~expected:"border-style:none none solid"
+    "border-style: none none solid";
+  check_declaration ~roundtrip:true
+    ~expected:"border-style:none dashed none solid"
+    "border-style: none dashed none solid";
+  reads_back "border-style: double dashed";
+  reads_back "border-style: none dashed none solid";
+  check_declaration ~expected:"border-style:solid" "border-style: solid";
+  check_declaration ~expected:"border-style:none" "border-style: none";
+  neg_cursor read_declaration "border-style: solid solid solid solid solid";
+  neg_cursor read_declaration "border-style: solid 1px";
+
+  (* CSS Logical 1 (ED) sec. 4.5.2, "Flow-Relative Border Styles": the
+     [border-block-style] and [border-inline-style] shorthands are
+     [<'border-top-style'>{1,2}], the first value the start edge and the second
+     the end edge, as sec. 4.5.1 gives the widths and sec. 4.5.3 the colours. *)
+  check_declaration ~roundtrip:true ~expected:"border-block-style:dashed double"
+    "border-block-style: dashed double";
+  check_declaration ~roundtrip:true
+    ~expected:"border-inline-style:dashed double"
+    "border-inline-style: dashed double";
+  check_declaration ~roundtrip:true ~expected:"border-inline-style:solid none"
+    "border-inline-style: solid none";
+  reads_back "border-block-style: dashed double";
+  reads_back "border-inline-style: dashed double";
+  check_declaration ~expected:"border-block-style:solid"
+    "border-block-style: solid";
+  check_declaration ~expected:"border-inline-style:dashed"
+    "border-inline-style: dashed";
+  (* A third value is outside {1,2}; the sibling widths already stop there. *)
+  neg_cursor read_declaration "border-inline-style: solid dashed dotted";
+  neg_cursor read_declaration "border-block-style: solid dashed dotted";
+
+  (* CSS Backgrounds 3 (ED) sec. 4.1, "Curve Radii: the border-radius
+     properties": each corner longhand is [<length-percentage [0,inf]>{1,2}],
+     "The first value is the horizontal radius, the second the vertical radius."
+     The 11 March 2024 CR draft numbers both sections the same way. *)
+  check_declaration ~roundtrip:true ~expected:"border-top-left-radius:1px 5px"
+    "border-top-left-radius: 1px 5px";
+  check_declaration ~roundtrip:true
+    ~expected:"border-bottom-right-radius:10%20%"
+    "border-bottom-right-radius: 10% 20%";
+  check_declaration ~roundtrip:true
+    ~expected:"border-start-start-radius:1px 5px"
+    "border-start-start-radius: 1px 5px";
+  reads_back "border-top-left-radius: 1px 5px";
+  reads_back "border-bottom-right-radius: 10% 20%";
+  check_declaration ~expected:"border-top-left-radius:1px"
+    "border-top-left-radius: 1px";
+  check_declaration ~expected:"border-top-left-radius:50%"
+    "border-top-left-radius: 50%";
+  (* The shorthand already spelled both axes across the slash, and keeps to
+     it. *)
+  check_declaration ~expected:"border-radius:10%/20%" "border-radius: 10% / 20%";
+  (* [0,inf] bars a negative radius, and a third value is outside {1,2}. *)
+  neg_cursor read_declaration "border-top-left-radius: -1px";
+  neg_cursor read_declaration "border-top-left-radius: 1px 2px 3px"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -5418,6 +5529,7 @@ let declaration_tests =
     test_case "flexbox flex+basis" `Quick flexbox_flex_and_basis;
     test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
+    test_case "multi-value grammars" `Quick multi_value_grammars;
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
