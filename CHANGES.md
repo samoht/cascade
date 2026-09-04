@@ -202,8 +202,9 @@ entry points both moved.
 
 ### Parsing
 
-- `outline-offset` rejects percentages, including inside math functions,
-  while retaining negative lengths (#879).
+- `outline-offset` and `line-height-step` reject percentages, including inside
+  math functions. Negative lengths remain valid for `outline-offset` (#879,
+  #880).
 
 - `auto` is rejected in colour values and SVG paint, including nested colour
   functions and paint-server fallbacks. Explicit UI-property alternatives and

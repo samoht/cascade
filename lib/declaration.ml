@@ -834,7 +834,7 @@ let read_nn_lp_or_global t =
     ]
     ~default:read_non_negative_length_percentage t
 
-let read_nn_length_or_global t =
+let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
       ("inherit", (Inherit : length));
@@ -843,7 +843,8 @@ let read_nn_length_or_global t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    ~default:
+      (read_length ~allow_negative:false ~with_keywords:false ~length_only)
     t
 
 (* CSS Backgrounds 3 (ED) sec. 4.1: each [border-*-radius] corner longhand is
@@ -1138,7 +1139,8 @@ let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
   | Perspective -> Some (v Perspective (read_perspective_value t))
   | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
-  | Line_height_step -> Some (v Line_height_step (read_nn_length_or_global t))
+  | Line_height_step ->
+      Some (v Line_height_step (read_nn_length_or_global ~length_only:true t))
   | _ -> None
 
 let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
