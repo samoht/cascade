@@ -2,8 +2,8 @@
    that every element computes the same style under each. A disagreement is an
    optimizer bug: the two sheets do not render the same page.
 
-   Skips cleanly, with status 0, when node or a headless Chromium is missing, or
-   when CASCADE_NO_BROWSER is set. *)
+   Skips cleanly, with status 0, when node or a headless Chromium is missing.
+   CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
 
 open Cascade
 
@@ -572,7 +572,7 @@ let job_of_input input sheets doms unparsed =
              ]))
 
 let () =
-  if getenv "CASCADE_NO_BROWSER" <> None then skip "CASCADE_NO_BROWSER is set";
+  Browser.suppressed "render_diff";
   let node =
     match Browser.node_binary () with Some n -> n | None -> skip "no node"
   in

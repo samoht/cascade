@@ -91,3 +91,37 @@ let node_binary () =
 let skip harness reason =
   print_endline (String.concat "" [ "SKIP: "; harness; " ("; reason; ")" ]);
   exit 0
+
+(* Setting CASCADE_NO_BROWSER silences a gate, and a gate that did not run is
+   not a pass: only the value below, which names the run for what it is, exits
+   0. A machine with no browser still skips, because there is nothing there to
+   silence. *)
+let acknowledged = "unchecked"
+
+let suppressed harness =
+  match getenv "CASCADE_NO_BROWSER" with
+  | None -> ()
+  | Some v when String.equal v acknowledged ->
+      print_endline
+        (String.concat ""
+           [
+             "SKIP: ";
+             harness;
+             " (CASCADE_NO_BROWSER=";
+             acknowledged;
+             ", so this run checks nothing)";
+           ]);
+      exit 0
+  | Some v ->
+      prerr_endline
+        (String.concat ""
+           [
+             "FAIL: ";
+             harness;
+             " is suppressed by CASCADE_NO_BROWSER=";
+             v;
+             "; a gate that did not run is not a pass. Set CASCADE_NO_BROWSER=";
+             acknowledged;
+             " to exit 0 and say so.";
+           ]);
+      exit 1

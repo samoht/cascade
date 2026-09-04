@@ -32,8 +32,8 @@
    filter: a pair it calls different costs no browser time, because an
    over-report is safe and the README documents several.
 
-   Skips cleanly, with status 0, when node or a headless Chromium is missing, or
-   when CASCADE_NO_BROWSER is set. *)
+   Skips cleanly, with status 0, when node or a headless Chromium is missing.
+   CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
 
 open Cascade
 
@@ -656,8 +656,7 @@ let one_line css =
 
 let () =
   parse_args ();
-  if Option.is_some (Browser.getenv "CASCADE_NO_BROWSER") then
-    skip "CASCADE_NO_BROWSER is set";
+  Browser.suppressed "canonical_agree";
   let node =
     match Browser.node_binary () with Some n -> n | None -> skip "no node"
   in

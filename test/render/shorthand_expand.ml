@@ -16,8 +16,8 @@
    missing one of its longhands is a false negative, and that is the direction
    that lets a wrong rewrite through.
 
-   Skips cleanly, with status 0, when node or a headless Chromium is missing, or
-   when CASCADE_NO_BROWSER is set. *)
+   Skips cleanly, with status 0, when node or a headless Chromium is missing.
+   CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
 
 open Cascade
 
@@ -444,8 +444,7 @@ let () =
   if !list_only then (
     List.iter (fun j -> Fmt.pr "%s: %s@." j.property j.value) jobs;
     exit 0);
-  if Browser.getenv "CASCADE_NO_BROWSER" <> None then
-    Browser.skip "shorthand_expand" "CASCADE_NO_BROWSER is set";
+  Browser.suppressed "shorthand_expand";
   let node =
     match Browser.node_binary () with
     | Some n -> n

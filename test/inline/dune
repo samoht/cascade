@@ -9,11 +9,13 @@
 ; The controls that license every count run.sh prints are checked on every
 ; machine rather than only where a browser is installed: test_selfcheck.sh
 ; drives run.sh through a stub browser that is unstable on demand. It skips,
-; with status 0, when node is missing.
+; with status 0, when node is missing, which is why it depends on (universe):
+; whether node is there is not something dune can digest, and a cached skip
+; would answer for a machine that has one.
 
 (rule
  (alias runtest)
- (deps run.sh xtest.js minify_page.js freeze_page.js)
+ (deps (universe) run.sh xtest.js minify_page.js freeze_page.js)
  (action
   (run
    sh

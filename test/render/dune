@@ -1,6 +1,7 @@
-; Browser-backed tests. Both harnesses drive a headless Chromium and skip, with
-; status 0, when node or a browser is missing or when CASCADE_NO_BROWSER is set,
-; so they never fail a machine without one.
+; Browser-backed tests. Each harness drives a headless Chromium and skips, with
+; status 0, when node or a browser is missing, so a machine without one does
+; not fail the suite. CASCADE_NO_BROWSER is a different thing and fails: see
+; Browser.suppressed.
 ;
 ; render_diff: a stylesheet and its optimized forms must compute the same style
 ; for every element of a document derived from the stylesheet's own selectors.
@@ -25,12 +26,35 @@
   (glob_files *.js))
  (action (progn)))
 
+; The control that makes CASCADE_NO_BROWSER fail is itself checked, and it is
+; the one rule here dune can cache honestly: both its legs return before the
+; harness looks for a browser, so its answer depends only on the binaries.
+
+(rule
+ (alias runtest)
+ (deps render_diff.exe shorthand_expand.exe canonical_agree.exe)
+ (action
+  (run
+   sh
+   %{dep:test_suppression.sh}
+   %{exe:render_diff.exe}
+   %{exe:shorthand_expand.exe}
+   %{exe:canonical_agree.exe})))
+
+; Every other rule below depends on (universe), because what it answers
+; depends on the installed browser and on whether it may be launched at all,
+; and dune can digest neither. Without it a run that never reached a browser
+; is stored as a success, and with the shared cache enabled for user rules
+; that success is then replayed for every later run on the machine, in every
+; worktree.
+
 ; The sweep reads the committed CSS corpora, so the rule has to bring them
 ; into the build directory it runs in.
 
 (rule
  (alias runtest)
  (deps
+  (universe)
   (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
@@ -44,6 +68,7 @@
 (rule
  (alias runtest)
  (deps
+  (universe)
   (glob_files *.js)
   shorthand_expand.exe)
  (action
@@ -55,6 +80,7 @@
 (rule
  (alias runtest)
  (deps
+  (universe)
   (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)

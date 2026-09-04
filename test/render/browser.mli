@@ -22,3 +22,8 @@ val node_binary : unit -> string option
 val skip : string -> string -> 'a
 (** [skip harness reason] prints a skip line naming [harness] and exits with
     status 0, so a machine without a browser does not fail the suite. *)
+
+val suppressed : string -> unit
+(** [suppressed harness] exits when [CASCADE_NO_BROWSER] is set: status 0 for
+    the one value that acknowledges the run checks nothing, and status 1 for any
+    other, so silencing [harness] cannot read as a pass. *)
