@@ -58,9 +58,13 @@
   (glob_files *.js))
  (action (progn)))
 
+; Both harnesses read CASCADE_NO_BROWSER, so both rules declare it: a run the
+; variable silenced digests apart from a run that reached a browser.
+
 (rule
  (alias runtest)
  (deps
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   property_vectors.exe)
  (action
@@ -69,6 +73,7 @@
 (rule
  (alias runtest)
  (deps
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   accept_set.exe)
  (action

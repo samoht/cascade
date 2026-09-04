@@ -8,13 +8,13 @@
 ; The comparison itself: apply and --minify must leave every element's computed
 ; style unchanged, over the committed fixtures. CASCADE and CANON_FILTER are
 ; set here because run.sh otherwise builds them with dune, and a dune inside a
-; dune action blocks on the workspace lock. (universe) for the same reason the
-; test/render rules carry it: the answer depends on the installed browser.
+; dune action blocks on the workspace lock. run.sh reads CASCADE_NO_BROWSER, so
+; the rule declares it for the same reason the test/render rules do.
 
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (source_tree fixtures)
   xtest.js
   minify_page.js
@@ -30,14 +30,13 @@
 
 ; The controls that license every count run.sh prints are checked on every
 ; machine rather than only where a browser is installed: test_selfcheck.sh
-; drives run.sh through a stub browser that is unstable on demand. It skips,
-; with status 0, when node is missing, which is why it depends on (universe):
-; whether node is there is not something dune can digest, and a cached skip
-; would answer for a machine that has one.
+; drives run.sh through a stub browser that is unstable on demand. It sets
+; CASCADE_NO_BROWSER itself on the two legs that check it and unsets it for the
+; rest, so the rule does not depend on the ambient value.
 
 (rule
  (alias runtest)
- (deps (universe) run.sh xtest.js minify_page.js freeze_page.js)
+ (deps run.sh xtest.js minify_page.js freeze_page.js)
  (action
   (run
    sh

@@ -63,12 +63,10 @@
    %{exe:shorthand_expand.exe}
    %{exe:canonical_agree.exe})))
 
-; Every other rule below depends on (universe), because what it answers
-; depends on the installed browser and on whether it may be launched at all,
-; and dune can digest neither. Without it a run that never reached a browser
-; is stored as a success, and with the shared cache enabled for user rules
-; that success is then replayed for every later run on the machine, in every
-; worktree.
+; Every rule below reads CASCADE_NO_BROWSER, so each one declares it: a run
+; the variable silenced digests apart from a run that reached a browser, and
+; is never replayed for it. The installed browser is not digested, so a skip
+; taken for want of one stands until something else in the rule changes.
 
 ; The sweep reads the committed CSS corpora, so the rule has to bring them
 ; into the build directory it runs in.
@@ -76,7 +74,7 @@
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
@@ -90,7 +88,7 @@
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   shorthand_expand.exe)
  (action
@@ -102,7 +100,7 @@
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
@@ -113,6 +111,7 @@
 (rule
  (alias runtest)
  (deps
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   resolve_diff.exe)
  (action
@@ -127,6 +126,7 @@
 (rule
  (alias runtest)
  (deps
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   at_rule_conditions.exe)
  (action
@@ -138,7 +138,7 @@
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   parse_recovery.exe)
  (action
@@ -147,7 +147,7 @@
 (rule
  (alias runtest)
  (deps
-  (universe)
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   selector_match.exe)
  (action
