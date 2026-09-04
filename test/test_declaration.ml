@@ -3442,6 +3442,48 @@ let filter_omitted_arguments () =
         ])
     [ "filter"; "backdrop-filter"; "-webkit-backdrop-filter" ]
 
+let filter_blur_grammar () =
+  (* Filter Effects 1 section 6.1: blur takes a non-negative length, never a
+     percentage. CSS Values 4 section 10: math ranges clamp at computed-value
+     time, but a percentage cannot acquire a length type by cancelling out. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun value ->
+          ignore (check_declarations (prop ^ ":blur(" ^ value ^ ")") 0))
+        [
+          "0%";
+          "10%";
+          "-1px";
+          "auto";
+          "none";
+          "min-content";
+          "calc(0%)";
+          "calc(1px + 0%)";
+          "calc(10% - 10%)";
+          "min(1px, 2%)";
+          "max(0%, 1px)";
+          "clamp(0px, 1%, 2px)";
+          "minmax(1px, 2px)";
+          "fit-content(1px)";
+        ];
+      List.iter
+        (fun value ->
+          ignore (check_declarations (prop ^ ":blur(" ^ value ^ ")") 1))
+        [
+          "";
+          "0";
+          "1px";
+          "1em";
+          "calc(1px + 2px)";
+          "calc(-1px)";
+          "min(-1px, 2px)";
+          "max(0px, 1em)";
+          "clamp(0px, 1em, 2px)";
+          "var(--radius)";
+        ])
+    [ "filter"; "backdrop-filter"; "-webkit-backdrop-filter" ]
+
 let angle_units () =
   check_declaration ~expected:"transform:rotate(.5turn)"
     "transform: rotate(0.5turn)";
@@ -5605,6 +5647,7 @@ let declaration_tests =
     test_case "animation drained shorthand" `Quick animation_drained_shorthand;
     test_case "transforms" `Quick transforms;
     test_case "filter omitted arguments" `Quick filter_omitted_arguments;
+    test_case "filter blur grammar" `Quick filter_blur_grammar;
     test_case "angle units" `Quick angle_units;
     test_case "grid" `Quick grid;
     test_case "list properties" `Quick list_properties;
