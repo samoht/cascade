@@ -1294,7 +1294,7 @@ module Animation = struct
     | Name of animation_name option
     | Duration of duration
     | Timing_function of timing_function
-    | Iteration_count of animation_iteration_count * string option
+    | Iteration_count of animation_iteration_count
     | Direction of animation_direction
     | Fill_mode of animation_fill_mode
     | Play_state of animation_play_state
@@ -1452,26 +1452,30 @@ module Animation = struct
       state.timeline_seen := true;
       { acc with timeline = Some tl })
 
-  let apply_component t state (acc : animation_shorthand) component =
+  let apply_component t state (acc : animation_shorthand) (component, keyword) =
     state.component_seen := true;
-    match component with
-    | Name name -> apply_name t state acc name
-    | Duration d -> apply_duration t state acc d
-    | Timing_function tf -> apply_timing t state acc tf
-    | Iteration_count (ic, keyword) -> apply_iteration t state acc ic keyword
-    | Direction dir -> apply_direction t state acc dir
-    | Fill_mode fm -> apply_fill t state acc fm
-    | Play_state ps -> apply_play t state acc ps
-    | Timeline tl -> apply_timeline t state acc tl
+    let had_name = !(state.name_seen) in
+    let acc =
+      match component with
+      | Name name -> apply_name t state acc name
+      | Duration d -> apply_duration t state acc d
+      | Timing_function tf -> apply_timing t state acc tf
+      | Iteration_count ic -> apply_iteration t state acc ic keyword
+      | Direction dir -> apply_direction t state acc dir
+      | Fill_mode fm -> apply_fill t state acc fm
+      | Play_state ps -> apply_play t state acc ps
+      | Timeline tl -> apply_timeline t state acc tl
+    in
+    match (had_name, keyword, acc.name) with
+    | false, Some name, Some (Ambiguous _) ->
+        (* Property keywords are case-insensitive; keyframe names are not. *)
+        { acc with name = Some (Ambiguous name) }
+    | _ -> acc
 
   let read_component t =
     let read_duration t = Duration (read_duration t) in
     let read_timing t = Timing_function (read_timing_function t) in
-    let read_iteration t =
-      (* Preserve the spelling if this keyword becomes a keyframe name. *)
-      let keyword = Cursor.peek_ident t in
-      Iteration_count (read_animation_count_item t, keyword)
-    in
+    let read_iteration t = Iteration_count (read_animation_count_item t) in
     let read_direction t =
       match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
       | Some "normal" -> Direction (Normal : animation_direction)
@@ -1515,22 +1519,26 @@ module Animation = struct
           ("'" ^ v ^ "' is a reserved keyword for animation properties")
       else Name (Some (Name v))
     in
-    Cursor.one_of
-      [
-        read_duration;
-        read_timing;
-        read_iteration;
-        read_direction;
-        read_fill;
-        read_play;
-        read_timeline;
-        read_var_name;
-        read_string_name;
-        (* Animation name - parse this LAST since it accepts any non-reserved
-           identifier *)
-        read_name;
-      ]
-      t
+    let keyword = Cursor.peek_ident t in
+    let component =
+      Cursor.one_of
+        [
+          read_duration;
+          read_timing;
+          read_iteration;
+          read_direction;
+          read_fill;
+          read_play;
+          read_timeline;
+          read_var_name;
+          read_string_name;
+          (* Animation name - parse this LAST since it accepts any non-reserved
+             identifier *)
+          read_name;
+        ]
+        t
+    in
+    (component, keyword)
 
   let read_shorthand t =
     let state = read_state () in
@@ -1600,7 +1608,7 @@ module Animation = struct
 
   let ambiguous_name_kind (anim : animation_shorthand) =
     match anim.name with
-    | Some (Ambiguous name) ->
+    | Some (Ambiguous name | Name name) ->
         animation_shorthand_kind (String.lowercase_ascii name)
     | _ -> None
 
@@ -1749,7 +1757,7 @@ let pp_animation_name_slot ctx state ~quote_ambiguous_name
     Option.iter
       (fun (name : animation_name) ->
         match name with
-        | Ambiguous s when quote_ambiguous_name ->
+        | (Ambiguous s | Name s) when quote_ambiguous_name ->
             pp_animation_space_before state ~starts_with_quote:true
               ~ends_with_quote:true Pp.quoted_string ctx s
         | Quoted s ->
@@ -1772,18 +1780,16 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   let has_any_non_default = Animation.has_non_defaults anim in
   let name_is_default_none = animation_name_is_default_none ctx anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
-  let iteration_name_last =
-    Animation.ambiguous_name_kind anim = Some Iteration
-    && not quote_ambiguous_name
+  let ambiguous_name_last =
+    Animation.ambiguous_name_kind anim <> None && not quote_ambiguous_name
   in
   pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
   (* Cascade canonical order puts the animation [name] first: it is the only
      ident-shaped component that survives the rest defaulting away, so leading
      with it makes "single-token" outputs ([animation:slide]) read naturally and
      matches the common minifier convention. *)
-  (* An unquoted [infinite] name must follow the iteration count, or it would
-     fill that slot instead. This also preserves the name's case. *)
-  if not iteration_name_last then
+  (* An unquoted keyword name must follow the slot it could otherwise fill. *)
+  if not ambiguous_name_last then
     pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_duration)
@@ -1812,7 +1818,7 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
     (pp_animation_space_before state pp_animation_timeline)
     ctx
     (Animation.timeline ~quote_name:quote_ambiguous_name anim);
-  if iteration_name_last then
+  if ambiguous_name_last then
     pp_animation_name_slot ctx state ~quote_ambiguous_name anim
 
 (* The animation reader fills every slot with its longhand initial, so only the
