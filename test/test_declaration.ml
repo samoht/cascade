@@ -2428,6 +2428,74 @@ let animation_infinite_name () =
       "spin infinite infinite";
     ]
 
+let animation_keyword_names () =
+  (* CSS Animations 1 sections 3 and 3.10: names are case-sensitive and
+     colliding keywords fill the other shorthand slots before the name. *)
+  let open Css.Properties in
+  let read input =
+    let cursor = Cursor.of_string input in
+    match read_animation cursor with
+    | Shorthand value when Cursor.is_done cursor -> value
+    | _ -> Alcotest.failf "expected one animation: %s" input
+  in
+  let check_slots expected name input =
+    let actual = read input in
+    (match actual.name with
+    | Some (Name value | Ambiguous value) ->
+        Alcotest.(check string) input name value
+    | _ -> Alcotest.failf "missing name in %s" input);
+    Alcotest.(check bool)
+      (input ^ " keeps non-name slots")
+      true
+      ({ actual with name = None } = { expected with name = None })
+  in
+  let check_print expected name value =
+    List.iter
+      (fun minify ->
+        check_slots expected name (Css.Pp.to_string ~minify pp_animation value))
+      [ false; true ]
+  in
+  List.iter
+    (fun (prefix, names) ->
+      let expected = read (prefix ^ " keyframe") in
+      List.iter
+        (fun name ->
+          List.iter
+            (fun name ->
+              let input = prefix ^ " " ^ name in
+              check_slots expected name input;
+              check_print expected name (Shorthand (read input));
+              check_print expected name
+                (animation_shorthand ~name ?duration:expected.duration
+                   ?timing_function:expected.timing_function
+                   ?delay:expected.delay
+                   ?iteration_count:expected.iteration_count
+                   ?direction:expected.direction ?fill_mode:expected.fill_mode
+                   ?play_state:expected.play_state ?timeline:expected.timeline
+                   ()))
+            [ name; String.uppercase_ascii name ])
+        names)
+    [
+      ( "linear",
+        [
+          "ease";
+          "linear";
+          "ease-in";
+          "ease-out";
+          "ease-in-out";
+          "step-start";
+          "step-end";
+        ] );
+      ("reverse", [ "normal"; "reverse"; "alternate"; "alternate-reverse" ]);
+      ("forwards", [ "forwards"; "backwards"; "both" ]);
+      ("paused", [ "running"; "paused" ]);
+      ("2", [ "infinite" ]);
+    ];
+  let expected = read "keyframe" in
+  List.iter
+    (fun name -> check_print expected name (animation_shorthand ~name ()))
+    [ "EASE"; "LINEAR"; "NORMAL"; "BOTH"; "PAUSED"; "INFINITE" ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5754,6 +5822,7 @@ let declaration_tests =
     test_case "text decoration thickness range" `Quick
       text_decoration_thickness_range;
     test_case "animation infinite name" `Quick animation_infinite_name;
+    test_case "animation keyword names" `Quick animation_keyword_names;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
