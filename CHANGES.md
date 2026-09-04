@@ -669,6 +669,9 @@ entry points both moved.
 
 ### Canonical diff
 
+- A browser-backed sweep checks the guarantee itself: every pair
+  `--diff=canonical` reports identical is rendered in headless Chrome and every
+  computed-style difference is a conflation
 - A shorthand and its four side longhands compare equal for `border-width`,
   `border-style`, `border-color`, `scroll-margin` and `scroll-padding`, as they
   already did for `margin` and `padding`. A side that is missing or carries a

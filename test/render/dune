@@ -8,9 +8,12 @@
 ;
 ; shorthand_expand: a shorthand declaration must compare identical, under
 ; --diff=canonical, to the longhand declarations the browser expands it into.
+;
+; canonical_agree: a pair --diff=canonical reports identical must compute the
+; same style in the browser for every element of a document derived from it.
 
 (executables
- (names render_diff shorthand_expand)
+ (names render_diff shorthand_expand canonical_agree)
  (libraries cascade cascade_diff fmt unix))
 
 ; The executables read their driver scripts at run time, so those have to sit
@@ -45,3 +48,16 @@
   shorthand_expand.exe)
  (action
   (run %{exe:shorthand_expand.exe})))
+
+; The sweep reads the committed corpus, so the rule has to bring it into the
+; build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  (source_tree ../interop/css-minify-tests/traces/tests)
+  (source_tree ../examples)
+  canonical_agree.exe)
+ (action
+  (run %{exe:canonical_agree.exe})))
