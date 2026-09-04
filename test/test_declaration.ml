@@ -2524,6 +2524,48 @@ let list_style_custom_names () =
       "list-style:inside FootSteps Other";
     ]
 
+let auto_is_not_a_color () =
+  (* CSS Color 4 section 4.1 excludes auto from <color>. SVG 2 section 13.2 uses
+     <color> both as paint and as a paint-server fallback. *)
+  List.iter
+    (fun property ->
+      List.iter
+        (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+        [
+          "auto";
+          "AUTO";
+          "color-mix(in srgb,auto,red)";
+          "light-dark(auto,red)";
+          "rgb(from auto r g b)";
+        ])
+    [
+      "color";
+      "background-color";
+      "border-color";
+      "text-decoration-color";
+      "fill";
+      "stroke";
+      "stop-color";
+    ];
+  List.iter
+    (fun property ->
+      none_cursor read_declaration (property ^ ":url(#paint) auto");
+      check_declaration ~roundtrip:true (property ^ ":none");
+      check_declaration ~roundtrip:true (property ^ ":context-fill");
+      check_declaration ~roundtrip:true (property ^ ":url(#paint)red"))
+    [ "fill"; "stroke" ];
+  (* CSS UI 4 gives these properties an explicit auto alternative. *)
+  List.iter
+    (fun property ->
+      check_declaration ~roundtrip:true (property ^ ":auto");
+      check_declaration ~roundtrip:true (property ^ ":red");
+      check_declaration ~roundtrip:true (property ^ ":var(--color,auto)"))
+    [ "accent-color"; "caret-color"; "outline-color" ];
+  (* A var() fallback is a token stream; validity waits for substitution. *)
+  check_declaration ~roundtrip:true "color:var(--color,auto)";
+  check_declaration ~roundtrip:true "caret:auto";
+  check_declaration ~roundtrip:true "scrollbar-color:auto"
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5852,6 +5894,7 @@ let declaration_tests =
     test_case "animation infinite name" `Quick animation_infinite_name;
     test_case "animation keyword names" `Quick animation_keyword_names;
     test_case "list-style custom names" `Quick list_style_custom_names;
+    test_case "auto is not a color" `Quick auto_is_not_a_color;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
