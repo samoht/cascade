@@ -384,6 +384,11 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` keeps a transition longhand written before a run of other
+  transition longhands. The run contracted into the `transition` shorthand,
+  which resets the rest of the family, so a `transition-behavior:
+  allow-discrete` ahead of it was deleted and the element stopped transitioning
+  discrete values (#843)
 - `cascade diff --diff=canonical` reports a rule as moved only when it really
   moved. Writing one selector as a nested branch or as its flat expansion, and
   writing two rules of one selector next to each other or as a single rule, now

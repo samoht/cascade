@@ -3328,12 +3328,27 @@ let compose_mask_via_index ~ctx idx =
           incr i
   done
 
-(* CSS Transitions 1 sec. 2.1: [transition] composes from
-   [transition-{property,duration,timing-function,delay}]. Compose when a
-   contiguous run covers a single layer (each longhand carries a one-entry
+(* CSS Transitions 2 sec. 2.6: [transition] composes from
+   [transition-{property,duration,timing-function,delay,behavior}]. Compose when
+   a contiguous run covers a single layer (each longhand carries a one-entry
    list), the importance matches, no CSS-wide keyword leaks in, and
    [transition-property] is present (it has no default, so the shorthand needs
-   it). *)
+   it).
+
+   The shorthand writes all five slots, so a run leaving one out resets that
+   slot to its initial. That is a no-op unless something earlier in the rule
+   already put another value there, which [tr_reset_hazard] rules out. *)
+type tr_slot = Property | Duration | Timing | Delay | Behavior
+
+let tr_slots = [ Property; Duration; Timing; Delay; Behavior ]
+
+let tr_slot_bit : tr_slot -> int = function
+  | Property -> 1
+  | Duration -> 2
+  | Timing -> 4
+  | Delay -> 8
+  | Behavior -> 16
+
 let transition_property_singleton :
     Properties.transition_property ->
     Properties.transition_property_value option = function
@@ -3372,25 +3387,46 @@ let tr_delay_part : declaration -> Values.duration option = function
       duration_singleton value
   | _ -> None
 
+(* [transition-behavior] is a [<single-transition>] component, so a run can
+   carry it into the shorthand. A CSS-wide keyword has no component spelling,
+   and a [var()] there reads back into the property slot, which the reader tries
+   first. *)
+let behavior_singleton :
+    Properties.transition_behavior -> Properties.transition_behavior option =
+  function
+  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+  | b -> Some b
+
+let tr_behavior_part : declaration -> Properties.transition_behavior option =
+  function
+  | Declaration { property = Transition_behavior; value; _ } ->
+      behavior_singleton value
+  | _ -> None
+
 type tr_part =
   Properties.transition_shorthand -> Properties.transition_shorthand
 
-type tr_updater = declaration -> tr_part option
+type tr_updater = declaration -> (tr_slot * tr_part) option
 
 let lift_tr_part :
     'a.
+    tr_slot ->
     (declaration -> 'a option) ->
     (Properties.transition_shorthand -> 'a -> Properties.transition_shorthand) ->
     tr_updater =
- fun extract set d ->
-  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+ fun slot extract set d ->
+  match extract d with Some v -> Some (slot, fun s -> set s v) | None -> None
 
 let tr_updaters : tr_updater list =
   [
-    lift_tr_part tr_property_part (fun s v -> { s with property = v });
-    lift_tr_part tr_duration_part (fun s v -> { s with duration = Some v });
-    lift_tr_part tr_timing_part (fun s v -> { s with timing_function = Some v });
-    lift_tr_part tr_delay_part (fun s v -> { s with delay = Some v });
+    lift_tr_part Property tr_property_part (fun s v -> { s with property = v });
+    lift_tr_part Duration tr_duration_part (fun s v ->
+        { s with duration = Some v });
+    lift_tr_part Timing tr_timing_part (fun s v ->
+        { s with timing_function = Some v });
+    lift_tr_part Delay tr_delay_part (fun s v -> { s with delay = Some v });
+    lift_tr_part Behavior tr_behavior_part (fun s v ->
+        { s with behavior = Some v });
   ]
 
 let transition_part_of (d : declaration) =
@@ -3413,6 +3449,68 @@ let has_transition_property_decl raw_decls =
       | _ -> false)
     raw_decls
 
+let tr_bits slots = List.fold_left (fun acc s -> acc lor tr_slot_bit s) 0 slots
+let all_tr_bits = tr_bits tr_slots
+
+let tr_zero_duration : Values.duration -> bool = function
+  | S 0. | Ms 0. -> true
+  | _ -> false
+
+let tr_layer_holds_slot (s : Properties.transition_shorthand) : tr_slot -> bool
+    = function
+  | Property -> ( match s.property with All -> false | _ -> true)
+  | Duration -> (
+      match s.duration with None -> false | Some d -> not (tr_zero_duration d))
+  | Timing -> (
+      match s.timing_function with None | Some Ease -> false | Some _ -> true)
+  | Delay -> (
+      match s.delay with None -> false | Some d -> not (tr_zero_duration d))
+  | Behavior -> (
+      match s.behavior with None | Some Normal -> false | Some _ -> true)
+
+(* Slots [d] leaves holding something other than the slot initial: [all] for the
+   property, [0s] for the two times, [ease] for the easing, [normal] for the
+   behaviour. A slot written back to its initial is not at risk from a shorthand
+   that resets it to the same thing. *)
+let tr_overwritten_slots d =
+  let bit slot cond = if cond then tr_slot_bit slot else 0 in
+  match unwrap_theme_guard d with
+  | Declaration { property = Transition_property; value; _ } ->
+      bit Property (match value with [ All ] -> false | _ -> true)
+  | Declaration { property = Transition_duration; value; _ } ->
+      bit Duration (not (tr_zero_duration value))
+  | Declaration { property = Transition_timing_function; value; _ } ->
+      bit Timing (match value with Ease -> false | _ -> true)
+  | Declaration { property = Transition_delay; value; _ } ->
+      bit Delay (not (tr_zero_duration value))
+  | Declaration { property = Transition_behavior; value; _ } ->
+      bit Behavior (match value with Normal -> false | _ -> true)
+  | Declaration { property = Transition; value = [ Shorthand s ]; _ } ->
+      tr_bits (List.filter (tr_layer_holds_slot s) tr_slots)
+  | Declaration { property = Transition; _ } -> all_tr_bits
+  (* CSS Cascade 5 sec. 3.2: [all] writes every longhand. No transition longhand
+     inherits, so [initial] and [unset] both leave the initials. *)
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> all_tr_bits
+  | _ -> 0
+
+(* Whether an earlier declaration in the rule holds a slot the run leaves out.
+   The composed shorthand resets every such slot, so composing would drop that
+   value. An important declaration outranks a non-important shorthand whatever
+   the order, so it is only at risk when the run is important too. *)
+let tr_reset_hazard idx i ~missing ~important =
+  (not (Int.equal missing 0))
+  &&
+  let rec scan j =
+    j >= 0
+    &&
+    let d = Rule_index.decl_at idx j in
+    (important || not (is_important d))
+    && not (Int.equal (tr_overwritten_slots d land missing) 0)
+    || scan (j - 1)
+  in
+  scan (i - 1)
+
 let try_compose_transition_at idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -3421,16 +3519,23 @@ let try_compose_transition_at idx i =
     if not (same_importance raw_decls) then None
     else if not (has_transition_property_decl raw_decls) then None
     else
-      let layer =
-        List.fold_left (fun acc (_, f) -> f acc) empty_tr_shorthand parts
+      let important = is_important (List.hd raw_decls) in
+      let written =
+        List.fold_left
+          (fun acc (_, (slot, _)) -> acc lor tr_slot_bit slot)
+          0 parts
       in
-      let shorthand =
-        Declaration.v
-          ~important:(is_important (List.hd raw_decls))
-          Transition
-          [ (Shorthand layer : Properties.transition) ]
-      in
-      Some (shorthand, len)
+      let missing = all_tr_bits land lnot written in
+      if tr_reset_hazard idx i ~missing ~important then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, (_, f)) -> f acc) empty_tr_shorthand parts
+        in
+        let shorthand =
+          Declaration.v ~important Transition
+            [ (Shorthand layer : Properties.transition) ]
+        in
+        Some (shorthand, len)
 
 let compose_transition_via_index idx =
   compose_run_via_index idx ~try_compose:try_compose_transition_at
