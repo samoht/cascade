@@ -15,9 +15,19 @@
 ;
 ; resolve_diff: the declarations Resolve says win for an element must compute
 ; the same style, in the browser, as the stylesheet they came from.
+;
+; at_rule_conditions: an at-rule condition must include the block in exactly
+; the environments the browser includes it in, a rewrite of the condition must
+; not move which environments those are, and two conditions cascade merges must
+; be one condition to the browser in every environment.
 
 (executables
- (names render_diff shorthand_expand canonical_agree resolve_diff)
+ (names
+  render_diff
+  shorthand_expand
+  canonical_agree
+  resolve_diff
+  at_rule_conditions)
  (libraries cascade cascade_diff fmt unix))
 
 ; The executables read their driver scripts at run time, so those have to sit
@@ -101,3 +111,14 @@
    CASCADE_RENDER_ARTIFACTS
    %{workspace_root}/tmp/render-diff
    (run %{exe:resolve_diff.exe}))))
+
+; The browser drives one launch per environment, so this rule brings the
+; page script into the build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  at_rule_conditions.exe)
+ (action
+  (run %{exe:at_rule_conditions.exe})))
