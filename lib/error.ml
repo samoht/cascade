@@ -1,14 +1,37 @@
 module Recovery = struct
   type construct = Declaration | Rule
-  type t = Dropped of construct | Recovered
+
+  type t =
+    | Dropped of { construct : construct; text : string option }
+    | Recovered
+
+  let equal_construct a b =
+    match (a, b) with
+    | Declaration, Declaration | Rule, Rule -> true
+    | (Declaration | Rule), _ -> false
 
   let equal a b =
     match (a, b) with
-    | Dropped Declaration, Dropped Declaration
-    | Dropped Rule, Dropped Rule
-    | Recovered, Recovered ->
-        true
+    | Dropped a, Dropped b ->
+        equal_construct a.construct b.construct
+        && Option.equal String.equal a.text b.text
+    | Recovered, Recovered -> true
     | (Dropped _ | Recovered), _ -> false
+
+  (* A span outside the source names nothing, and a zero-width one names no
+     bytes, so neither yields text. *)
+  let text_of source { Loc.start_pos; end_pos } =
+    if start_pos >= 0 && end_pos > start_pos && end_pos <= String.length source
+    then Some (String.sub source start_pos (end_pos - start_pos))
+    else None
+
+  let dropped ?source ?loc construct =
+    let text =
+      match (source, loc) with
+      | Some source, Some loc -> text_of source loc
+      | Some _, None | None, Some _ | None, None -> None
+    in
+    Dropped { construct; text }
 end
 
 type kind =

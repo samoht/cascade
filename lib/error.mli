@@ -12,15 +12,29 @@ module Recovery : sig
     | Rule  (** A rule or an at-rule, and everything it holds. *)
 
   type t =
-    | Dropped of construct
+    | Dropped of { construct : construct; text : string option }
         (** The construct's text reaches neither the AST nor anything printed
-            back out from it, so a caller reading the parse never sees it. *)
+            back out from it, so a caller reading the parse never sees it.
+            [text] is that source text, for a caller comparing one parse's
+            losses against another's. [None] leaves the loss unnamed: the
+            recovery point held no span for the whole construct. *)
     | Recovered
         (** The construct survives into the output. The error reports on it
             without costing it. *)
 
+  val equal_construct : construct -> construct -> bool
+  (** [equal_construct a b] is whether [a] and [b] are the same construct. *)
+
   val equal : t -> t -> bool
-  (** [equal a b] is whether [a] and [b] are the same recovery. *)
+  (** [equal a b] is whether [a] and [b] are the same recovery. Two unnamed
+      losses compare equal here; a caller weighing one parse's losses against
+      another's wants a [text] on both sides instead. *)
+
+  val dropped : ?source:string -> ?loc:Loc.t -> construct -> t
+  (** [dropped ~source ~loc construct] is a {!Dropped} recovery naming the text
+      [loc] spans in [source]. [loc] must cover the whole construct, not the
+      point the failure was reported at. Called without both arguments, or with
+      a span [source] does not cover, it names no text. *)
 end
 
 type kind =

@@ -1038,9 +1038,11 @@ let is_custom_property_shape prelude =
 let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
   let drop end_loc =
+    (* [start_loc] is the rule's first token and [end_loc] the one that ended
+       the attempt, so the union spans the rule the sheet loses. *)
     let loc = Loc.union start_loc end_loc in
     warn ~meta lexer warnings
-      ~recovery:Error.Recovery.(Dropped Rule)
+      ~recovery:Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Rule)
       (Error.unterminated loc Sort.Qualified_rule);
     None
   in
@@ -1063,7 +1065,7 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
           (* Dropping the rule is what the spec asks for, but it still has to be
              reported: [Css.of_string] warns for every rule it drops. *)
           warn ~meta lexer warnings
-            ~recovery:Error.Recovery.(Dropped Rule)
+            ~recovery:Error.Recovery.(dropped Rule)
             (Error.sort_mismatch loc ~sort:Sort.Qualified_rule
                ~expected:Sort.Selector ~found:Sort.Declaration);
           None)
@@ -1163,7 +1165,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
       in
       if value_has_invalid_block ~is_custom value || has_bad_token value then (
         warn ~meta lexer warnings
-          ~recovery:Error.Recovery.(Dropped Declaration)
+          ~recovery:Error.Recovery.(dropped Declaration)
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
              (Token.Open Token.Curly));
         None)
@@ -1176,7 +1178,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
         Some { node = { name; value; important }; loc }
   | _ ->
       warn ~meta lexer warnings
-        ~recovery:Error.Recovery.(Dropped Declaration)
+        ~recovery:Error.Recovery.(dropped Declaration)
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
@@ -1234,7 +1236,7 @@ let consume_decl_list_item ~meta lexer ~warnings tok =
       | None -> `Skip)
   | _ ->
       warn ~meta lexer warnings
-        ~recovery:Error.Recovery.(Dropped Declaration)
+        ~recovery:Error.Recovery.(dropped Declaration)
         (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
       skip_bad_declaration lexer tok;
       `Skip

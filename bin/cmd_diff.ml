@@ -74,7 +74,37 @@ let warning_budget = function
    at [Sort.Property_value] names an [@charset] the reader dropped and an
    [@font-face] it kept, so the kind and the sort cannot tell them apart. *)
 let dropped construct (w : Cascade.Error.t) =
-  Cascade.Error.Recovery.equal w.recovery (Dropped construct)
+  match w.recovery with
+  | Dropped d -> Cascade.Error.Recovery.equal_construct d.construct construct
+  | Recovered -> false
+
+(* What one side lost, in the order its reader reported it. *)
+let losses ws =
+  List.filter_map
+    (fun (w : Cascade.Error.t) ->
+      match w.recovery with
+      | Cascade.Error.Recovery.Dropped { construct; text } ->
+          Some (construct, text)
+      | Recovered -> None)
+    ws
+
+(* One loss accounts for another when the two readers threw away the same
+   construct spelled the same way. A loss the reader could not name accounts for
+   nothing: nothing shows the other side lost those same bytes. *)
+let accounts_for (c1, t1) (c2, t2) =
+  Cascade.Error.Recovery.equal_construct c1 c2
+  &&
+  match (t1, t2) with
+  | Some a, Some b -> String.equal a b
+  | None, _ | _, None -> false
+
+(* Two sides that lost the same run of text saw the same thing twice, so what
+   they hid cannot separate them and the comparison's verdict stands. *)
+let losses_cancel (result : Cascade_diff.Css_compare.t) =
+  let expected = losses result.expected_warnings in
+  let actual = losses result.actual_warnings in
+  List.compare_lengths expected actual = 0
+  && List.for_all2 accounts_for expected actual
 
 (* Counted per side, because the question is whether either input hid something
    from the comparison, not how many the pair hid between them. *)
@@ -98,7 +128,6 @@ let unread_of result =
   }
 
 let has_sides s = s.expected > 0 || s.actual > 0
-let has_unread u = has_sides u.declarations || has_sides u.rules
 
 let render_sides ~what ~file1 ~file2 s =
   if not (has_sides s) then ""
@@ -493,10 +522,10 @@ let json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result =
   let outcome = result.Cascade_diff.Css_compare.result in
   (* A declaration or a rule the reader refuses is dropped from both sides, so a
      comparison that found no difference has not shown the two files to be
-     identical. *)
+     identical - unless the two sides lost the same text. *)
   let identical =
     match outcome with
-    | No_diff -> not (has_unread unread)
+    | No_diff -> losses_cancel result
     | Tree_diff _ | String_diff _ | Both_errors _ | Expected_error _
     | Actual_error _ ->
         false
@@ -535,7 +564,8 @@ let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
   print_newline ();
   match result.Cascade_diff.Css_compare.result with
   | No_diff ->
-      if has_unread unread then Stdlib.exit Cli_exit.cannot_determine else Ok ()
+      if losses_cancel result then Ok ()
+      else Stdlib.exit Cli_exit.cannot_determine
   | Tree_diff _ | String_diff _ | Both_errors _ | Expected_error _
   | Actual_error _ ->
       Stdlib.exit 1
@@ -559,15 +589,14 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
            so the equality verdict is honest about them. *)
         let max = warning_budget limit in
         print_string (render_warnings ~file1 ~file2 ~max result);
-        let unread = unread_of result in
-        match has_unread unread with
-        | false ->
+        match losses_cancel result with
+        | true ->
             Fmt.pr "CSS files are identical@.";
             Ok ()
-        | true ->
+        | false ->
             (* The comparison saw no difference and never saw what the parse
                dropped either, so identity is not a verdict it can give. *)
-            print_string (render_unread ~file1 ~file2 unread);
+            print_string (render_unread ~file1 ~file2 (unread_of result));
             Fmt.pr "Cannot determine whether the CSS files are identical@.";
             Stdlib.exit Cli_exit.cannot_determine)
     | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _

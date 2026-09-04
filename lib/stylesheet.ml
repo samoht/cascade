@@ -2149,7 +2149,7 @@ let read_keyframe_or_skip inner acc =
   | frame -> frame :: acc
   | exception Cursor.Parse_error e ->
       Cursor.restore inner snap;
-      Cursor.push_warning inner ~recovery:Error.Recovery.(Dropped Rule) e;
+      Cursor.push_warning inner ~recovery:Error.Recovery.(dropped Rule) e;
       skip_past_rule inner;
       acc
 
@@ -2169,7 +2169,7 @@ let read_keyframes_step inner acc =
 
 let read_keyframes_block inner =
   read_items_with_recovery ~skip:skip_past_rule
-    ~recovery:Error.Recovery.(Dropped Rule)
+    ~recovery:Error.Recovery.(dropped Rule)
     read_keyframes_step inner []
 
 (* CSS Animations 1 sec. 3: [@keyframes <keyframes-name>], [<keyframes-name> =
@@ -2310,7 +2310,7 @@ let read_descriptor_step normalize inner acc =
 
 let read_descriptor_block normalize inner =
   read_items_with_recovery ~skip:skip_invalid_item
-    ~recovery:Error.Recovery.(Dropped Declaration)
+    ~recovery:Error.Recovery.(dropped Declaration)
     (read_descriptor_step normalize)
     inner []
 
@@ -2618,7 +2618,7 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
            [font-named-instance]) or an invalid value of a known one
            ([font-display:maybe]) - is dropped and the rest of the @font-face is
            kept, matching browsers. *)
-        Cursor.push_warning r ~recovery:Error.Recovery.(Dropped Declaration) e;
+        Cursor.push_warning r ~recovery:Error.Recovery.(dropped Declaration) e;
         Cursor.skip_past_semicolon r;
         None
 
@@ -2767,7 +2767,7 @@ let read_counter_style_descriptors r =
   Cursor.braces
     (fun inner ->
       read_items_with_recovery ~skip:skip_invalid_item
-        ~recovery:Error.Recovery.(Dropped Declaration)
+        ~recovery:Error.Recovery.(dropped Declaration)
         (read_descriptor_body_step read_counter_style_descriptor
            replace_counter_style_descriptor)
         inner [])
@@ -2951,7 +2951,7 @@ let read_page_step inner (descriptors, margins) =
 
 let read_page_body inner =
   read_items_with_recovery ~skip:skip_invalid_item
-    ~recovery:Error.Recovery.(Dropped Declaration)
+    ~recovery:Error.Recovery.(dropped Declaration)
     read_page_step inner ([], [])
 
 let read_page (r : Cursor.t) : statement =
@@ -3041,7 +3041,7 @@ let read_font_palette_descriptors outer =
   Cursor.braces
     (fun inner ->
       read_items_with_recovery ~skip:skip_invalid_item
-        ~recovery:Error.Recovery.(Dropped Declaration)
+        ~recovery:Error.Recovery.(dropped Declaration)
         (read_descriptor_body_step
            (read_font_palette_descriptor outer)
            replace_font_palette_descriptor)
@@ -3111,7 +3111,7 @@ let read_font_feature_values_entries outer =
         if Cursor.is_done inner then List.rev acc else loop inner acc
     | exception Error.Parse_error e ->
         Cursor.push_warning inner
-          ~recovery:Error.Recovery.(Dropped Declaration)
+          ~recovery:Error.Recovery.(dropped Declaration)
           e;
         Cursor.skip_past_semicolon inner;
         loop inner acc
@@ -3144,7 +3144,7 @@ let read_font_feature_values_blocks outer =
   Cursor.braces
     (fun inner ->
       read_items_with_recovery ~skip:skip_past_rule
-        ~recovery:Error.Recovery.(Dropped Rule)
+        ~recovery:Error.Recovery.(dropped Rule)
         (read_font_feature_values_step outer)
         inner [])
     outer
@@ -3223,7 +3223,7 @@ let read_view_transition_descriptors outer =
   Cursor.braces
     (fun inner ->
       read_items_with_recovery ~skip:skip_invalid_item
-        ~recovery:Error.Recovery.(Dropped Declaration)
+        ~recovery:Error.Recovery.(dropped Declaration)
         (read_descriptor_body_step
            (read_view_transition_descriptor outer)
            replace_view_transition_descriptor)
@@ -3671,7 +3671,7 @@ let read_property_step r state =
 
 let read_property_descriptors (r : Cursor.t) : property_reader_state =
   read_items_with_recovery ~skip:skip_invalid_item
-    ~recovery:Error.Recovery.(Dropped Declaration)
+    ~recovery:Error.Recovery.(dropped Declaration)
     read_property_step r
     { syntax = None; inherits = None; initial_value = None }
 
@@ -3727,7 +3727,7 @@ let item_opens_block inner =
 let drop_nested_at_rule r ~loc reason : statement option =
   skip_past_rule r;
   Cursor.push_warning r
-    ~recovery:Error.Recovery.(Dropped Rule)
+    ~recovery:Error.Recovery.(dropped Rule)
     (Error.bad_value loc ~property:"rule" ~reason);
   None
 
@@ -3866,14 +3866,14 @@ and read_block (r : Cursor.t) : block =
          with it. Strict mode ([not (Cursor.recover r)]) still raises. *)
       | exception Error.Parse_error e when Cursor.recover r ->
           Cursor.restore r snap;
-          Cursor.push_warning r ~recovery:Error.Recovery.(Dropped Rule) e;
+          Cursor.push_warning r ~recovery:Error.Recovery.(dropped Rule) e;
           skip_past_rule r;
           read_statements acc
       | Import _ ->
           (* CSS Cascade L6 sec. 2: @import is only valid at the top of the
              stylesheet. Drop a misplaced one rather than emitting it. *)
           Cursor.push_warning r
-            ~recovery:Error.Recovery.(Dropped Rule)
+            ~recovery:Error.Recovery.(dropped Rule)
             (Error.bad_value loc ~property:"stylesheet"
                ~reason:"@import is only valid at the top of a stylesheet");
           read_statements acc
@@ -4004,7 +4004,7 @@ and read_nesting_block (r : Cursor.t) : block =
     match read_nesting_item ~prev:acc r with
     | item -> add_item acc item
     | exception Error.Parse_error e ->
-        Cursor.push_warning r ~recovery:Error.Recovery.(Dropped Declaration) e;
+        Cursor.push_warning r ~recovery:Error.Recovery.(dropped Declaration) e;
         Cursor.skip_past_semicolon r;
         read_items acc
   and add_item acc = function
@@ -4188,7 +4188,7 @@ and read_recovering_rule_item selector inner loop decls nested =
   | `Done result -> result
   | `Continue (decls, nested) -> loop decls nested
   | exception Error.Parse_error e ->
-      Cursor.push_warning inner ~recovery:Error.Recovery.(Dropped Declaration) e;
+      Cursor.push_warning inner ~recovery:Error.Recovery.(dropped Declaration) e;
       Cursor.skip_past_semicolon inner;
       loop decls nested
 
@@ -4482,6 +4482,12 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     List.filter_map
       (fun rule ->
         let cursor, result = read_statement_of_rule ?source ?meta rule in
+        (* [rule_loc] spans the rule the parser handed over, prelude and block
+           alike, so it names what a drop costs the sheet. The error's own
+           location marks where the read gave up inside it. *)
+        let lost () =
+          Error.Recovery.(dropped ?source ~loc:(rule_loc rule) Rule)
+        in
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if
            any) comes after them. *)
@@ -4492,9 +4498,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
               stmt;
             match validate_else_orphan previous rule stmt with
             | Some w ->
-                add_statement_warning warnings
-                  ~recovery:Error.Recovery.(Dropped Rule)
-                  w;
+                add_statement_warning warnings ~recovery:(lost ()) w;
                 previous := Some stmt;
                 None
             | None ->
@@ -4503,9 +4507,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
         | Error e ->
             (* [read_statement] refused the rule, so the sheet loses it whole:
                its text reaches no caller reading the parse. *)
-            add_statement_warning warnings
-              ~recovery:Error.Recovery.(Dropped Rule)
-              e;
+            add_statement_warning warnings ~recovery:(lost ()) e;
             None)
       rules
   in
