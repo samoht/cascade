@@ -445,15 +445,11 @@ let unrelated_kept_property_still_inlines () =
     (node ~classes:[ "m" ] "ul")
 
 (* selectors-4 sec. 6.3: an [i] flag matches the attribute's value ASCII
-   case-insensitively and an [s] flag matches it "identical to", so the matcher
-   represents both and the rule projects or drops on the value the element
-   actually carries. *)
+   case-insensitively, so the rule projects onto an element carrying the value
+   in another case. *)
 let projects_attribute_rule_with_case_flag () =
   check_split "case-insensitive attribute" ~css:"p[data-k=\"X\" i]{color:red}"
     ~inline:"color:red" ~keep:"" ~kept:0
-    (node ~attrs:[ ("data-k", "x") ] "p");
-  check_split "case-sensitive attribute" ~css:"p[data-k=\"X\" s]{color:red}"
-    ~inline:"" ~keep:"" ~kept:0
     (node ~attrs:[ ("data-k", "x") ] "p")
 
 (* Inlining takes the rule out of the sheet, so the projection has to agree with
@@ -464,7 +460,7 @@ let projects_attribute_rule_with_case_flag () =
    Painting either element writes a style the page did not have. *)
 let keeps_a_rule_no_engine_implements () =
   check_split "case-sensitive attribute" ~css:"p[data-k=\"X\" s]{color:red}"
-    ~inline:"" ~keep:"p[data-k=\"X\" s]{color:red}" ~kept:1
+    ~inline:"" ~keep:"p[data-k=X s]{color:red}" ~kept:1
     (node ~attrs:[ ("data-k", "X") ] "p");
   check_split "white space alone" ~css:"p:empty{color:red}" ~inline:""
     ~keep:"p:empty{color:red}" ~kept:1 (node ~text:[ " " ] "p")

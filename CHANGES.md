@@ -823,6 +823,10 @@ entry points both moved.
 
 ### CLI tools
 
+- `cascade apply` and `cascade prune` leave alone the two selector forms
+  Selectors 4 defines and no engine implements, `:empty` over an element
+  holding only white space and the `s` attribute flag, where `apply` used to
+  inline a declaration the browser does not apply (#863)
 - `cascade diff` prints rule differences in the order the expected side names
   the rules, where a hash table's bucket layout decided it, so a report reads
   down the sheet and `--limit` keeps the ones nearest the top (#814, #815)

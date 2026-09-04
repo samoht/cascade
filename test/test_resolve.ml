@@ -51,8 +51,12 @@ let s2 = elt ~id:"s2" "span" []
 let a = elt ~id:"a" "div" [ s1 ]
 let b = elt ~id:"b" "div" [ s2 ]
 let section = elt "section" [ a; b ]
-let yes name s n = Alcotest.(check bool) name true (R.matches (sel s) n)
-let no name s n = Alcotest.(check bool) name false (R.matches (sel s) n)
+
+let yes ?reading name s n =
+  Alcotest.(check bool) name true (R.matches ?reading (sel s) n)
+
+let no ?reading name s n =
+  Alcotest.(check bool) name false (R.matches ?reading (sel s) n)
 
 let test_simple () =
   yes "element" "span" s1;
@@ -88,8 +92,9 @@ let match_result =
       | Resolve.Unsupported -> Fmt.string ppf "Unsupported")
     ( = )
 
-let answers name expected s n =
-  Alcotest.check match_result name expected (R.match_selector (sel s) n)
+let answers ?reading name expected s n =
+  Alcotest.check match_result name expected
+    (R.match_selector ?reading (sel s) n)
 
 (* A selector the matcher has no model for is not a selector that fails to
    match: the caller has to be able to tell the two apart, or it drops a rule it
@@ -120,7 +125,7 @@ let test_supported_needs_no_node () =
   in
   check "class" true ".c";
   check "attribute" true "[data-k=\"X\"]";
-  check "structural" true "p:empty";
+  check "structural" true "p:first-child";
   check "descendant" true "div span";
   check "attribute case flag" true "[data-k=\"X\" i]";
   check "child-indexed" true ":nth-child(2n+1)";
@@ -161,14 +166,24 @@ let test_declines_what_no_engine_implements () =
     Alcotest.(check bool) name false (Resolve.supported (sel s))
   in
   declines "supported settles it without a node" ":empty";
-  declines "and for the case-sensitive flag" "[title=x s]"
+  declines "and for the case-sensitive flag" "[title=x s]";
+  (* The model is still there: the spec reading answers both. *)
+  answers ~reading:Resolve.Spec "the flag reads the value as written"
+    Resolve.Matches "[title=x s]" titled;
+  answers ~reading:Resolve.Spec "and rules the other case out" Resolve.No_match
+    "[title=X s]" titled;
+  Alcotest.(check bool)
+    "the spec reading models :empty" true
+    (Resolve.supported ~reading:Resolve.Spec (sel ":empty"))
 
 (* selectors-4 sec. 13.2: [:empty] is "an element that has no children except,
    optionally, document white space characters". White space alone leaves an
    element empty, any other text does not, and U+00A0 is not document white
    space (css-text-4 sec. 4.3) - the spec lists [<div>&nbsp;</div>] among the
-   elements [div:empty] does not represent. *)
+   elements [div:empty] does not represent. This is the reading engines have not
+   taken, so it is the one {!Resolve.constructor-Spec} answers. *)
 let test_empty_counts_text_children () =
+  let yes = yes ~reading:Resolve.Spec and no = no ~reading:Resolve.Spec in
   yes "no children at all" ":empty" (elt "p" []);
   yes "spaces, tabs and newlines" ":empty" (elt ~text:[ " \t\n" ] "p" []);
   no "a text child" ":empty" (elt ~text:[ "text" ] "p" []);
@@ -434,8 +449,9 @@ let test_attribute_case_flags () =
      value is represented as hsides, HSIDES, hSides, etc." *)
   yes "i folds the case" "[frame=hsides i]" framed;
   no "without a flag the value is read as written" "[frame=hsides]" framed;
-  no "s is identical-to" "[frame=hsides s]" framed;
-  yes "and the written value is identical to itself" "[frame=HSIDES s]" framed;
+  no ~reading:Resolve.Spec "s is identical-to" "[frame=hsides s]" framed;
+  yes ~reading:Resolve.Spec "and the written value is identical to itself"
+    "[frame=HSIDES s]" framed;
   (* "ASCII case insensitivity allows green to match GREEN. However, gruen [with
      an umlaut] would not match GRUEN [with an umlaut]." *)
   no "i folds ASCII only" "[data-k=\"gr\u{00fc}n\" i]" framed;
@@ -445,9 +461,9 @@ let test_attribute_case_flags () =
   yes "a substring" "[frame*=sid i]" framed;
   yes "a hyphen list" "[lang|=en i]" framed;
   (* sec. 6.3's second example: [type="a" s] and [type="A" s] are two rules *)
-  yes "s keeps the two apart" "[type=\"a\" s]" type_lower;
-  no "the other way round" "[type=\"a\" s]" type_upper;
-  yes "and back" "[type=\"A\" s]" type_upper;
+  yes ~reading:Resolve.Spec "s keeps the two apart" "[type=\"a\" s]" type_lower;
+  no ~reading:Resolve.Spec "the other way round" "[type=\"a\" s]" type_upper;
+  yes ~reading:Resolve.Spec "and back" "[type=\"A\" s]" type_upper;
   yes "i puts them together" "[type=\"a\" i]" type_lower;
   yes "both ways" "[type=\"a\" i]" type_upper
 

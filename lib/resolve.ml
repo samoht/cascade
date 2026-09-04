@@ -12,8 +12,24 @@ module type NODE = sig
 end
 
 type match_result = Matches | No_match | Unsupported
+type reading = Browser | Spec
 
 let of_bool b = if b then Matches else No_match
+
+(* The forms selectors-4 defines and no engine implements as defined. Sec. 6.3
+   gives the [s] flag "identical to" semantics; engines refuse the selector, and
+   the rule carrying it with it. Sec. 13.2 represents an element "that has no
+   children except, optionally, document white space characters", and its own
+   note records that Level 2 and Level 3 did not - the change engines have not
+   taken. Under [Browser] the matcher declines both: an answer would be a fact
+   about the specification, and its callers rewrite pages a browser renders. The
+   selector_match differential is what keeps this list in step, since a form
+   cascade decides and the browser refuses shows up there. *)
+let unimplemented =
+  Selector.any (function
+    | Selector.Empty | Selector.Attribute (_, _, _, Some Selector.Sensitive) ->
+        true
+    | _ -> false)
 
 (* [Unsupported] beats both answers in every combining form. That is what keeps
    it a fact about the selector alone: were a compound to settle on [No_match]
@@ -512,16 +528,24 @@ module Make (N : NODE) = struct
         Some (fun left a -> List.filter (hits left) (preceding_siblings a))
     | Selector.Column | Selector.Shadow_piercing | Selector.Shadow_deep -> None
 
-  let matches sel n = match_selector sel n = Matches
+  (* [Spec] is the matcher above, which reads selectors-4 as written. [Browser]
+     declines the forms no engine implements, so a caller that inlines or
+     deletes never acts on an answer the page's own browser does not give. *)
+  let match_selector ?(reading = Browser) sel n =
+    match reading with
+    | Browser when unimplemented sel -> Unsupported
+    | Browser | Spec -> match_selector sel n
+
+  let matches ?reading sel n = match_selector ?reading sel n = Matches
 
   (* A selector list has no single specificity: a rule [s1, s2 {...}] cascades
      as if duplicated per branch, so the specificity that applies to [node] is
      that of the highest-specificity branch matching [node], not the whole
      list. *)
-  let matched_specificity sel node =
+  let matched_specificity ~reading sel node =
     match Selector.as_list sel with
     | Some branches -> (
-        match List.filter (fun b -> matches b node) branches with
+        match List.filter (fun b -> matches ~reading b node) branches with
         | [] -> Selector.specificity sel
         | b :: rest ->
             List.fold_left
@@ -531,7 +555,7 @@ module Make (N : NODE) = struct
               (Selector.specificity b) rest)
     | None -> Selector.specificity sel
 
-  let resolve_prepared { layer_order; rules } node =
+  let resolve_prepared ?(reading = Browser) { layer_order; rules } node =
     let upsert acc d =
       let k = Declaration.property_name d in
       (k, d) :: List.remove_assoc k acc
@@ -540,10 +564,10 @@ module Make (N : NODE) = struct
       rules
       |> List.mapi (fun i (layer, r) ->
           let sel = Stylesheet.selector r in
-          if matches sel node then
+          if matches ~reading sel node then
             Some
               ( Option.map layer_key layer,
-                matched_specificity sel node,
+                matched_specificity ~reading sel node,
                 i,
                 Stylesheet.declarations r )
           else None)
@@ -580,7 +604,8 @@ module Make (N : NODE) = struct
     List.fold_left upsert [] (bucket ~important:false @ bucket ~important:true)
     |> List.rev_map snd
 
-  let resolve sheet node = resolve_prepared (prepare sheet) node
+  let resolve ?reading sheet node =
+    resolve_prepared ?reading (prepare sheet) node
 end
 
 (* The capability side of the matcher, read off the matcher rather than restated
@@ -603,4 +628,5 @@ end
 
 module Probe_matcher = Make (Probe)
 
-let supported sel = Probe_matcher.match_selector sel () <> Unsupported
+let supported ?reading sel =
+  Probe_matcher.match_selector ?reading sel () <> Unsupported

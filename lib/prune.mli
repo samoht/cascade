@@ -4,7 +4,9 @@
     every element of every document answers {!Resolve.constructor-No_match}. A
     selector the matcher has no model for is kept and never counted as unused:
     {!Resolve.constructor-Unsupported} is not "does not match", so reading it as
-    one deletes a rule nothing ruled out.
+    one deletes a rule nothing ruled out. The matcher is asked under
+    {!Resolve.constructor-Browser}, so a rule the page's own browser still
+    applies is never removed on the strength of a reading no engine has shipped.
 
     Only selectors are read. A [@media], [@supports] or [@container] condition
     asks about a device, a user agent or a layout container, none of which a
