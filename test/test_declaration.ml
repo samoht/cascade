@@ -2602,6 +2602,44 @@ let outline_offset_length_only () =
       "45deg";
     ]
 
+let line_height_step_length_only () =
+  (* CSS Rhythmic Sizing 1 section 3 takes <length [0,infinity]> with no
+     percentage basis; section 1.2 also admits CSS-wide keywords. *)
+  List.iter
+    (fun value ->
+      check_declaration ~roundtrip:true ("line-height-step:" ^ value))
+    [
+      "0";
+      "4px";
+      "1em";
+      "calc(1em - 2px)";
+      "min(1em,2px)";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+      "var(--step,10%)";
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("line-height-step:" ^ value))
+    [
+      "10%";
+      "0%";
+      "calc(1% + 2px)";
+      "min(1%,2px)";
+      "max(1px,2%)";
+      "clamp(0px,10%,2px)";
+      "-4px";
+      "auto";
+      "normal";
+      "none";
+      "min-content";
+      "fit-content(2px)";
+      "1s";
+      "45deg";
+    ]
+
 let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
@@ -5932,6 +5970,7 @@ let declaration_tests =
     test_case "list-style custom names" `Quick list_style_custom_names;
     test_case "auto is not a color" `Quick auto_is_not_a_color;
     test_case "outline-offset length only" `Quick outline_offset_length_only;
+    test_case "line-height-step length only" `Quick line_height_step_length_only;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
