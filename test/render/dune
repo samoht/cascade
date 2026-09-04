@@ -16,6 +16,9 @@
 ; resolve_diff: the declarations Resolve says win for an element must compute
 ; the same style, in the browser, as the stylesheet they came from.
 ;
+; selector_match: the element set Resolve says a selector matches must be the
+; set document.querySelectorAll returns for it, over the same document.
+;
 ; at_rule_conditions: an at-rule condition must include the block in exactly
 ; the environments the browser includes it in, a rewrite of the condition must
 ; not move which environments those are, and two conditions cascade merges must
@@ -31,6 +34,7 @@
   shorthand_expand
   canonical_agree
   resolve_diff
+  selector_match
   at_rule_conditions
   parse_recovery)
  (libraries cascade cascade_diff fmt unix))
@@ -139,3 +143,15 @@
   parse_recovery.exe)
  (action
   (run %{exe:parse_recovery.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (universe)
+  (glob_files *.js)
+  selector_match.exe)
+ (action
+  (setenv
+   CASCADE_RENDER_ARTIFACTS
+   %{workspace_root}/tmp/render-diff
+   (run %{exe:selector_match.exe}))))
