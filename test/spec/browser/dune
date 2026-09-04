@@ -1,11 +1,17 @@
-; The property grammar manifest, checked against a headless browser: every
-; positive must be valid CSS to it and every negative invalid, so a row cannot
-; be written until cascade agrees with it. Skips, with status 0, when node or a
-; browser is missing.
+; Browser-backed harnesses. Both drive a headless Chromium through vectors.js,
+; which asks two independent oracles about a declaration, and both skip with
+; status 0 when node or a browser is missing.
+;
+; property_vectors: the property grammar manifest, checked against the browser,
+; so a row cannot be written until cascade agrees with it.
+;
+; accept_set: cascade's reader accept-set, checked against the browser, over
+; generated values across the whole property inventory. The two directions - CSS
+; the reader drops and the browser takes, CSS the reader keeps and the browser
+; discards - are reported apart.
 ;
 ; The chrome and node probing is the one in test/render, shared rather than
-; rewritten; only the page script is new, because no existing one answers
-; whether a declaration is valid.
+; rewritten.
 
 (copy_files#
  (files ../../render/browser.ml*))
@@ -13,12 +19,38 @@
 (copy_files#
  (files ../../render/json.ml*))
 
-(executable
- (name property_vectors)
- (libraries cascade_spec_inventory fmt unix))
+; The population of accept_set is every property read_any_property dispatches
+; on, read out of the library's own dispatch table so a property the library
+; learns enters the run without a second edit. A name is a population member,
+; never an expectation.
 
-; The executable reads its page script at run time, so it has to sit next to it
-; in the build directory.
+(executable
+ (name gen_reader_properties)
+ (modules gen_reader_properties))
+
+(rule
+ (target reader_properties.ml)
+ (deps
+  (:properties ../../../lib/properties.ml)
+  gen_reader_properties.exe)
+ (action
+  (with-stdout-to
+   reader_properties.ml
+   (run ./gen_reader_properties.exe %{properties}))))
+
+(executables
+ (names property_vectors accept_set)
+ (modules
+  property_vectors
+  accept_set
+  chrome_gaps
+  reader_properties
+  browser
+  json)
+ (libraries cascade cascade_spec_inventory fmt unix))
+
+; The executables read their page script at run time, so it has to sit next to
+; them in the build directory.
 
 (rule
  (alias default)
@@ -33,3 +65,11 @@
   property_vectors.exe)
  (action
   (run %{exe:property_vectors.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files *.js)
+  accept_set.exe)
+ (action
+  (run %{exe:accept_set.exe})))
