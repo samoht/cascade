@@ -482,6 +482,53 @@ let test_drop_redundant_transition_longhand () =
   decl_optimizes_to ~into:"transition:all 1s;transition-delay:1s"
     "transition:all 1s;transition-delay:1s"
 
+(* CSS Transitions 2 sec. 2.6: [transition] resets [transition-behavior] along
+   with the four Transitions 1 longhands. A run that leaves a slot unwritten
+   contracts only when nothing earlier in the rule set that slot to something
+   other than its initial, otherwise the shorthand silently resets it. *)
+let test_transition_contraction_covers_reset_longhands () =
+  (* The behaviour is a component of [<single-transition>], so a run carrying it
+     contracts and keeps it, whichever side of the run it sits on. Both [ease]
+     and [0s] are initials and drop out. *)
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-behavior:allow-discrete;transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
+  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
+  (* A run covering only the Transitions 1 longhands still contracts: nothing in
+     the rule writes the behaviour, so resetting it to [normal] is a no-op. *)
+  decl_optimizes_to ~into:"transition:color 1s"
+    "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  (* [inherit] is not a shorthand component, so the run cannot carry it and the
+     contraction would drop it. *)
+  decl_optimizes_to
+    ~into:
+      "transition-behavior:inherit;transition-property:color;transition-duration:1s"
+    "transition-behavior:inherit;transition-property:color;transition-duration:1s";
+  (* Same rule for the delay: an unrelated declaration splits it off the run, so
+     the run no longer covers the slot the shorthand resets. *)
+  decl_optimizes_to
+    ~into:
+      "transition-delay:5s;color:red;transition-property:color;transition-duration:1s"
+    "transition-delay:5s;color:red;transition-property:color;transition-duration:1s";
+  (* An earlier shorthand holds the slots its own run left out. Contracting the
+     later run resets the delay it set. *)
+  decl_optimizes_to
+    ~into:
+      "transition:color 1s \
+       5s;transition-property:opacity;transition-duration:2s"
+    "transition:color 1s ease \
+     5s;transition-property:opacity;transition-duration:2s";
+  (* An earlier shorthand whose unwritten slots are already initials shadows
+     nothing, so the later run contracts. *)
+  decl_optimizes_to ~into:"transition:opacity 2s"
+    "transition:color 1s;transition-property:opacity;transition-duration:2s";
+  (* An important longhand outranks the composed shorthand whatever the order,
+     so it is not a hazard. *)
+  decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
+    "transition-delay:5s!important;transition-property:color;transition-duration:1s"
+
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
      is dropped. A differing value or a per-side list is kept. *)
@@ -772,6 +819,8 @@ let suite =
         test_drop_redundant_flex_longhand;
       Alcotest.test_case "drop redundant transition longhand" `Quick
         test_drop_redundant_transition_longhand;
+      Alcotest.test_case "transition contraction covers reset longhands" `Quick
+        test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
