@@ -8,9 +8,13 @@ never checked, so `cascade diff` gives the same third verdict and exits 2.
 The count is kept apart from the declaration count: a harness reads the two
 to tell what its sheet lost.
 
+Two sides that lost the same source text are the exception. There the
+comparison did see the same thing twice, so the equality it found holds and
+the status is 0. The counts still report what each side lost.
+
 A prelude the reader cannot close takes the whole rule. These two sheets
-differ only inside one, so both sides drop it and the comparison sees the
-same thing twice.
+differ inside one, so each side drops a different rule and neither loss is
+accounted for by the other.
 
   $ cat > rule-a.css <<EOF
   > .b{color:red}
@@ -30,8 +34,10 @@ same thing twice.
   Cannot determine whether the CSS files are identical
   [2]
 
-The same dropped rule text on both sides reaches the same verdict. The
-comparison has no more to say here than it had above.
+The same dropped rule text on both sides costs the verdict nothing. What the
+two sheets still hold compares equal, and the rule each of them lost was the
+same run of bytes, so the status is 0. The two sides carry it at different
+offsets, which the text comparison does not care about.
 
   $ cat > same-a.css <<EOF
   > .b { color: red }
@@ -47,12 +53,37 @@ comparison has no more to say here than it had above.
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
   
-  Unreadable rules: same-a.css 1, same-b.css 1
+  CSS files are identical
+
+`--json` still counts the rule each side lost. The counts say what the parse
+dropped; they no longer withhold the verdict on their own.
+
+  $ cascade diff --json --diff=canonical same-a.css same-b.css | python3 -c 'import json,sys
+  > d = json.load(sys.stdin)
+  > print(d["identical"], d["unreadable_rules"])'
+  True {'expected': 1, 'actual': 1}
+
+A rule only one side dropped leaves the other side holding text the
+comparison never saw, so that verdict stays unproven.
+
+  $ cat > kept-a.css <<EOF
+  > .b{color:red}
+  > EOF
+  $ cascade diff --diff=canonical kept-a.css same-b.css
+  same-b.css parse warning: <string>: unterminated qualified-rule at [14-30] (in qualified-rule)
+  .b{color:red}
+  .a[[ {color:red}
+  ^^^^^^^^^^^^^^^^
+  
+  Unreadable rules: kept-a.css 0, same-b.css 1
   Cannot determine whether the CSS files are identical
   [2]
 
 An at-rule condition the grammar refuses loses more: the at-rule goes and
-every rule nested inside it goes with it.
+every rule nested inside it goes with it. Both sides report the failure at
+the same offsets over the same snippet, because the offset marks where the
+condition gave up rather than what the reader threw away. The rules thrown
+away differ, and the verdict follows those.
 
   $ cat > media-a.css <<EOF
   > .b{color:red}
@@ -173,6 +204,9 @@ asserts on either without reading the report.
 The document and the status agree.
 
   $ cascade diff --json --diff=canonical rule-a.css rule-b.css > /dev/null
+  [2]
+  $ cascade diff --json --diff=canonical same-a.css same-b.css > /dev/null
+  $ cascade diff --json --diff=canonical kept-a.css same-b.css > /dev/null
   [2]
   $ cascade diff --json --diff=canonical at-a.css at-b.css > /dev/null
   $ cascade diff --json --diff=canonical rule-a.css differ-b.css > /dev/null
