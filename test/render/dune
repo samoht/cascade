@@ -20,6 +20,10 @@
 ; the environments the browser includes it in, a rewrite of the condition must
 ; not move which environments those are, and two conditions cascade merges must
 ; be one condition to the browser in every environment.
+;
+; parse_recovery: for malformed CSS, the rules and declarations cascade keeps
+; must be the ones the browser's CSSOM keeps. Both sides are read through the
+; same parser, so a difference is recovery and not spelling.
 
 (executables
  (names
@@ -27,7 +31,8 @@
   shorthand_expand
   canonical_agree
   resolve_diff
-  at_rule_conditions)
+  at_rule_conditions
+  parse_recovery)
  (libraries cascade cascade_diff fmt unix))
 
 ; The executables read their driver scripts at run time, so those have to sit
@@ -122,3 +127,15 @@
   at_rule_conditions.exe)
  (action
   (run %{exe:at_rule_conditions.exe})))
+
+; The browser reads both sides of every input in one launch, so this rule
+; brings the page script into the build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (universe)
+  (glob_files *.js)
+  parse_recovery.exe)
+ (action
+  (run %{exe:parse_recovery.exe})))
