@@ -52,28 +52,43 @@ type match_result =
   | Matches  (** The selector matches the node. *)
   | No_match  (** The selector is modelled and does not match the node. *)
   | Unsupported
-      (** The selector is outside what the matcher models, so neither answer is
-          available, for any node. *)
+      (** Neither answer is available. Most forms go unanswered for every node,
+          and [:empty] under {!constructor-Browser} for some: see
+          {!type-reading}. *)
 
 (** Which reading of Selectors the matcher answers by.
 
     Two forms selectors-4 defines are implemented by no engine: sec. 6.3's [s]
     attribute flag, which engines refuse along with the rule carrying it, and
     sec. 13.2's [:empty] over an element holding nothing but document white
-    space, the Level 4 change engines have not taken. *)
+    space, the Level 4 change engines have not taken.
+
+    The two are declined differently, because sec. 6.3 is about the selector and
+    sec. 13.2 about the element. The [s] flag is declined for every node. Sec.
+    13.2's note records that Level 2 and Level 3 matched an element with no
+    children at all, which is what every engine still does, so the readings part
+    over the white-space element alone: an element with no children of any kind
+    is [:empty] to both and one holding an element or other text to neither, and
+    {!constructor-Browser} answers those as {!constructor-Spec} does. *)
 type reading =
   | Browser
-      (** Decline those forms. An answer would be a fact about the
-          specification, and {!Apply} inlines a rule out of the stylesheet while
-          {!Prune} deletes it, so either would rewrite a page against the way
-          its own browser renders it. *)
+      (** Decline what the specification and the engines answer differently. An
+          answer there would be a fact about the specification, and {!Apply}
+          inlines a rule out of the stylesheet while {!Prune} deletes it, so
+          either would rewrite a page against the way its own browser renders
+          it. *)
   | Spec  (** Answer them as selectors-4 defines them. *)
 
 val supported : ?reading:reading -> Selector.t -> bool
-(** [supported ?reading sel] is whether the matcher has a model for [sel], that
-    is, whether {!Make.match_selector} answers it with something other than
-    {!constructor-Unsupported}. The answer is a fact about [sel] alone, which is
-    why it needs no node. [reading] defaults to {!constructor-Browser}.
+(** [supported ?reading sel] is whether the matcher answers [sel] for every
+    node, that is, whether {!Make.match_selector} is something other than
+    {!constructor-Unsupported} whatever it is given. The answer is a fact about
+    [sel] alone, which is why it needs no node, and it is the conservative half
+    of the question: [false] says some node goes unanswered, not that this one
+    does. A caller deciding per rule, before it has a node, wants exactly that;
+    one holding a node wants {!Make.match_selector}, which under
+    {!constructor-Browser} answers [:empty] for every element but the one the
+    readings part over. [reading] defaults to {!constructor-Browser}.
 
     Modelled: the universal, type, class, id and attribute selectors, each
     without a namespace, an attribute carrying the [i] case flag or none;
@@ -144,8 +159,10 @@ val prepare : Stylesheet.t -> prepared
 module Make (N : NODE) : sig
   val match_selector : ?reading:reading -> Selector.t -> N.t -> match_result
   (** [match_selector ?reading sel node] is what the matcher can say about [sel]
-      and [node]. It is [Unsupported] exactly when [sel] is not
-      [supported ?reading], for every [node]. [reading] defaults to
+      and [node]. [supported ?reading sel] holding means this never answers
+      {!constructor-Unsupported}, for any [node]; it failing means some node
+      goes unanswered, which under {!constructor-Browser} is the [:empty] one
+      the readings part over and need not be this [node]. [reading] defaults to
       {!constructor-Browser}. *)
 
   val matches : ?reading:reading -> Selector.t -> N.t -> bool

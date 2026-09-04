@@ -15,27 +15,12 @@ type match_result = Matches | No_match | Unsupported
 type reading = Browser | Spec
 
 let of_bool b = if b then Matches else No_match
+let is_browser = function Browser -> true | Spec -> false
 
-(* The forms selectors-4 defines and no engine implements as defined. Sec. 6.3
-   gives the [s] flag "identical to" semantics; engines refuse the selector, and
-   the rule carrying it with it. Sec. 13.2 represents an element "that has no
-   children except, optionally, document white space characters", and its own
-   note records that Level 2 and Level 3 did not - the change engines have not
-   taken. Under [Browser] the matcher declines both: an answer would be a fact
-   about the specification, and its callers rewrite pages a browser renders. The
-   selector_match differential is what keeps this list in step, since a form
-   cascade decides and the browser refuses shows up there. *)
-let unimplemented =
-  Selector.any (function
-    | Selector.Empty | Selector.Attribute (_, _, _, Some Selector.Sensitive) ->
-        true
-    | _ -> false)
-
-(* [Unsupported] beats both answers in every combining form. That is what keeps
-   it a fact about the selector alone: were a compound to settle on [No_match]
-   because one part failed before an unsupported part was looked at, the same
-   selector would come back unsupported against one node and merely unmatched
-   against another, and {!supported} could not exist. *)
+(* [Unsupported] beats both answers in every combining form, so a declined part
+   carries the whole selector however deep it sits. A compound that settled on
+   [No_match] because one part failed before a declined part was looked at would
+   hand back a definite answer cascade does not have. *)
 let conj a b =
   match (a, b) with
   | Unsupported, _ | _, Unsupported -> Unsupported
@@ -304,12 +289,9 @@ module Make (N : NODE) = struct
   let inclusive_siblings n =
     match N.parent n with None -> [ n ] | Some p -> N.children p
 
-  (* [nth_position ~from_end n keep] is [n]'s 1-based index among the inclusive
-     siblings [keep] admits, or [None] when [n] is not one of them and so is
-     among the An+Bth of nothing. Only elements are listed: a {!NODE} keeps text
-     out of [children], which is what sec. 13 asks for. *)
-  let nth_position ~from_end n keep =
-    let sibs = List.filter keep (inclusive_siblings n) in
+  (* [nth_index ~from_end n sibs] is [n]'s 1-based index in [sibs], or [None]
+     when it is not one of them and so is among the An+Bth of nothing. *)
+  let nth_index ~from_end n sibs =
     let sibs = if from_end then List.rev sibs else sibs in
     let rec index i = function
       | [] -> None
@@ -317,6 +299,12 @@ module Make (N : NODE) = struct
       | _ :: rest -> index (i + 1) rest
     in
     index 1 sibs
+
+  (* [nth_position ~from_end n keep] indexes [n] among the inclusive siblings
+     [keep] admits. Only elements are listed: a {!NODE} keeps text out of
+     [children], which is what sec. 13 asks for. *)
+  let nth_position ~from_end n keep =
+    nth_index ~from_end n (List.filter keep (inclusive_siblings n))
 
   let nth_matches ~from_end nth keep n =
     match nth_position ~from_end n keep with
@@ -375,13 +363,32 @@ module Make (N : NODE) = struct
     N.children n = []
     && List.for_all (String.for_all is_document_white_space) (N.text_children n)
 
+  (* The element sec. 13.2's own note parts from Level 2 and Level 3 over: no
+     child element, and text that is document white space and not nothing. An
+     element with no children at all is [:empty] to every level, and one holding
+     an element or other text is [:empty] to none, so the levels differ here and
+     nowhere else. A zero-length text node is not "data has a non-zero length"
+     and so counts for no level either way. *)
+  let white_space_only n =
+    is_empty n && List.exists (fun t -> String.length t > 0) (N.text_children n)
+
+  (* selectors-4 sec. 13.2 as the engines read it, which is Level 3: white space
+     leaves an element out of [:empty]. Cascade does not answer that reading, it
+     declines the element it would have to answer differently from the spec. *)
+  let empty_answer reading n =
+    match reading with
+    | Spec -> of_bool (is_empty n)
+    | Browser when white_space_only n -> Unsupported
+    | Browser -> of_bool (is_empty n)
+
   (* Selectors 4 is far wider than a matcher with no document behind it can
      decide, so the answer has three values. [Unsupported] is not "does not
-     match": it is "this library has no model for this selector", and a caller
-     must not read it as a negative - {!Apply} keeps such a rule in the
-     stylesheet rather than inline it and drop it. Every arm returning it does
-     so without consulting the node, which is what {!supported} rests on. *)
-  let rec match_selector (sel : Selector.t) n : match_result =
+     match": it is "cascade has no answer here", and a caller must not read it
+     as a negative - {!Apply} keeps such a rule in the stylesheet rather than
+     inline it and drop it. Most arms returning it do so without consulting the
+     node, and [:empty] under [Browser] is the one that asks: sec. 13.2 is a
+     question about the element, so only some elements go unanswered. *)
+  let rec match_selector ~reading (sel : Selector.t) n : match_result =
     match sel with
     | Selector.Universal None -> Matches
     | Selector.Element (None, name) ->
@@ -391,14 +398,22 @@ module Make (N : NODE) = struct
     (* selectors-4 sec. 16: an [<attr-modifier>] follows a matcher and a value,
        so a presence test carrying one is not an attribute selector. *)
     | Selector.Attribute (None, _, Selector.Presence, Some _) -> Unsupported
+    (* sec. 6.3 gives the [s] flag "identical to" semantics; engines refuse the
+       selector, and the rule carrying it with it. Nothing about the element
+       enters into that, so the decline is the same for every one. *)
+    | Selector.Attribute (_, _, _, Some Selector.Sensitive)
+      when is_browser reading ->
+        Unsupported
     | Selector.Attribute (None, name, m, flag) ->
         of_bool (attr_matches ~fold:(attr_fold flag) n name m)
     | Selector.Compound ps ->
-        List.fold_left (fun acc p -> conj acc (match_selector p n)) Matches ps
-    | Selector.List ss | Selector.Is ss | Selector.Where ss -> any ss n
-    | Selector.Not ss -> negate (any ss n)
+        List.fold_left
+          (fun acc p -> conj acc (match_selector ~reading p n))
+          Matches ps
+    | Selector.List ss | Selector.Is ss | Selector.Where ss -> any ~reading ss n
+    | Selector.Not ss -> negate (any ~reading ss n)
     | Selector.Combined _ -> (
-        match anchors sel n with
+        match anchors ~reading sel n with
         | None -> Unsupported
         | Some [] -> No_match
         | Some (_ :: _) -> Matches)
@@ -411,9 +426,11 @@ module Make (N : NODE) = struct
     | Selector.First_child -> of_bool (is_first n)
     | Selector.Last_child -> of_bool (is_last n)
     | Selector.Only_child -> of_bool (is_first n && is_last n)
-    | Selector.Empty -> of_bool (is_empty n)
-    | Selector.Nth_child (nth, of_) -> nth_child ~from_end:false nth of_ n
-    | Selector.Nth_last_child (nth, of_) -> nth_child ~from_end:true nth of_ n
+    | Selector.Empty -> empty_answer reading n
+    | Selector.Nth_child (nth, of_) ->
+        nth_child ~reading ~from_end:false nth of_ n
+    | Selector.Nth_last_child (nth, of_) ->
+        nth_child ~reading ~from_end:true nth of_ n
     | Selector.Nth_of_type (nth, None) ->
         of_bool (nth_matches ~from_end:false nth (same_type n) n)
     | Selector.Nth_last_of_type (nth, None) ->
@@ -422,7 +439,9 @@ module Make (N : NODE) = struct
     | Selector.Last_of_type -> of_bool (last_of_type n)
     | Selector.Only_of_type -> of_bool (first_of_type n && last_of_type n)
     | Selector.Has rs ->
-        List.fold_left (fun acc r -> disj acc (has_relative n r)) No_match rs
+        List.fold_left
+          (fun acc r -> disj acc (has_relative ~reading n r))
+          No_match rs
     (* sec. 13.4.1 and sec. 13.4.2 give the typed forms an [An+B] and nothing
        else, so an [of S] on one is not a selector any UA takes. *)
     | Selector.Nth_of_type (_, Some _) | Selector.Nth_last_of_type (_, Some _)
@@ -433,24 +452,36 @@ module Make (N : NODE) = struct
        stateful, generated or tree-external form. *)
     | _ -> Unsupported
 
-  and any ss n =
-    List.fold_left (fun acc s -> disj acc (match_selector s n)) No_match ss
+  and any ~reading ss n =
+    List.fold_left
+      (fun acc s -> disj acc (match_selector ~reading s n))
+      No_match ss
 
   (* selectors-4 sec. 13.3.1: with [of S] the element must be among the An+Bth
      of "their inclusive siblings that match the selector list S", so [S] both
      filters the list and decides whether [n] is in it at all; without it, [S]
      defaults to [*|*] and the list is every sibling. *)
-  and nth_child ~from_end nth of_ n =
+  and nth_child ~reading ~from_end nth of_ n =
     match of_ with
     | None -> of_bool (nth_matches ~from_end nth (fun _ -> true) n)
     | Some s -> (
-        (* Whether [S] is modelled is a fact about [S] alone, so any node
-           settles it, and asking [n] keeps that answer clear of which siblings
-           happen to be there. *)
-        match any s n with
-        | Unsupported -> Unsupported
-        | Matches | No_match ->
-            of_bool (nth_matches ~from_end nth (fun x -> any s x = Matches) n))
+        (* [S] decides which siblings are counted, so a sibling it goes
+           unanswered over leaves the index itself unknown, [n]'s own answer
+           included. *)
+        let rec kept acc = function
+          | [] -> Some (List.rev acc)
+          | x :: rest -> (
+              match any ~reading s x with
+              | Unsupported -> None
+              | Matches -> kept (x :: acc) rest
+              | No_match -> kept acc rest)
+        in
+        match kept [] (inclusive_siblings n) with
+        | None -> Unsupported
+        | Some sibs -> (
+            match nth_index ~from_end n sibs with
+            | None -> No_match
+            | Some i -> of_bool (nth_hits nth i)))
 
   (* selectors-4 sec. 4.5: [:has()] "represents an element if any of the
      relative selectors would match at least one element when anchored against
@@ -461,24 +492,27 @@ module Make (N : NODE) = struct
      with [n] as the anchor. [complex] is matched against [n] itself only for
      the support it reports, which no node can change; stopping at an empty
      subject list would let the tree decide whether the selector is modelled. *)
-  and has_relative n r =
+  and has_relative ~reading n r =
     let comb, complex =
       match r with
       | Selector.Relative (comb, complex) -> (comb, complex)
       | complex -> (Selector.Descendant, complex)
     in
-    match (relation comb, match_selector complex n) with
+    match (relation ~reading comb, match_selector ~reading complex n) with
     | Some _, complex_answer when complex_answer <> Unsupported ->
         let absolute =
           Selector.Combined (Selector.Universal None, comb, complex)
         in
-        of_bool
-          (List.exists
-             (fun e ->
-               match anchors absolute e with
-               | None -> false
-               | Some found -> List.exists (N.equal n) found)
-             (has_subjects comb n))
+        (* An element in reach that goes unanswered leaves the existence
+           question open, so it carries the whole [:has()] rather than counting
+           as one more element that is not the subject. *)
+        List.fold_left
+          (fun acc e ->
+            disj acc
+              (match anchors ~reading absolute e with
+              | None -> Unsupported
+              | Some found -> of_bool (List.exists (N.equal n) found)))
+          No_match (has_subjects comb n)
     | _ -> Unsupported
 
   (* [Selector] is right-leaning: [a b > c] is [Combined (a, Descendant,
@@ -491,19 +525,28 @@ module Make (N : NODE) = struct
      [comb]-related to [a]. Threading the anchor this way is what the old
      subject-only [combinator] missed for any selector with two or more
      combinators. *)
-  and anchors sel n =
+  and anchors ~reading sel n =
     match sel with
     | Selector.Combined (left, comb, right) -> (
         (* [left] is asked for its own support, separately from whether [right]
            found an anchor: stopping at an empty anchor list would let the node
            decide whether the selector is supported. *)
-        match (anchors right n, match_selector left n, relation comb) with
+        match
+          ( anchors ~reading right n,
+            match_selector ~reading left n,
+            relation ~reading comb )
+        with
         | Some found, left_answer, Some related when left_answer <> Unsupported
           ->
-            Some (List.concat_map (related left) found)
+            List.fold_left
+              (fun acc a ->
+                match (acc, related left a) with
+                | None, _ | _, None -> None
+                | Some xs, Some ys -> Some (List.rev_append ys xs))
+              (Some []) found
         | _ -> None)
     | _ -> (
-        match match_selector sel n with
+        match match_selector ~reading sel n with
         | Unsupported -> None
         | No_match -> Some []
         | Matches -> Some [ n ])
@@ -511,31 +554,35 @@ module Make (N : NODE) = struct
   (* [None] for a combinator that is not a relation between two nodes of this
      tree: [||] picks a cell out of the column it belongs to, and the legacy
      [>>>] and [/deep/] cross a shadow boundary the tree does not have. *)
-  and relation comb =
-    let hits left x = match_selector left x = Matches in
+  and relation ~reading comb =
+    (* [None] once any candidate goes unanswered: an anchor list missing an
+       element [left] might have matched is one a combinator further left reads
+       as a definite miss. *)
+    let hits left xs =
+      List.fold_left
+        (fun acc x ->
+          match (acc, match_selector ~reading left x) with
+          | None, _ | _, Unsupported -> None
+          | Some ks, Matches -> Some (x :: ks)
+          | Some ks, No_match -> Some ks)
+        (Some []) xs
+      |> Option.map List.rev
+    in
+    let of_option = function None -> [] | Some x -> [ x ] in
     match comb with
-    | Selector.Descendant ->
-        Some (fun left a -> List.filter (hits left) (ancestors a))
-    | Selector.Child ->
-        Some
-          (fun left a ->
-            match N.parent a with Some p when hits left p -> [ p ] | _ -> [])
+    | Selector.Descendant -> Some (fun left a -> hits left (ancestors a))
+    | Selector.Child -> Some (fun left a -> hits left (of_option (N.parent a)))
     | Selector.Next_sibling ->
-        Some
-          (fun left a ->
-            match imm_pred a with Some s when hits left s -> [ s ] | _ -> [])
+        Some (fun left a -> hits left (of_option (imm_pred a)))
     | Selector.Subsequent_sibling ->
-        Some (fun left a -> List.filter (hits left) (preceding_siblings a))
+        Some (fun left a -> hits left (preceding_siblings a))
     | Selector.Column | Selector.Shadow_piercing | Selector.Shadow_deep -> None
 
-  (* [Spec] is the matcher above, which reads selectors-4 as written. [Browser]
-     declines the forms no engine implements, so a caller that inlines or
-     deletes never acts on an answer the page's own browser does not give. *)
-  let match_selector ?(reading = Browser) sel n =
-    match reading with
-    | Browser when unimplemented sel -> Unsupported
-    | Browser | Spec -> match_selector sel n
-
+  (* [Spec] is the matcher above reading selectors-4 as written. [Browser]
+     declines what it would otherwise answer against every engine, so a caller
+     that inlines or deletes never acts on an answer the page's own browser does
+     not give. *)
+  let match_selector ?(reading = Browser) sel n = match_selector ~reading sel n
   let matches ?reading sel n = match_selector ?reading sel n = Matches
 
   (* A selector list has no single specificity: a rule [s1, s2 {...}] cascades
@@ -611,8 +658,13 @@ end
 (* The capability side of the matcher, read off the matcher rather than restated
    beside it: a second list of the forms it models would be free to drift from
    the first, and every selector it then wrongly called supported would be one a
-   caller inlines and drops. [Unsupported] never depends on the node, so any
-   node settles the question - this one has nothing on it at all. *)
+   caller inlines and drops.
+
+   {!supported} answers for a node it has not seen, so the probe has to be the
+   node the matcher can say least about. Every arm but [:empty] declines without
+   looking, and [:empty] declines over the element whose only children are
+   document white space, so that is what this node is. Any element the matcher
+   goes unanswered over, it goes unanswered over here. *)
 module Probe = struct
   type t = unit
 
@@ -623,7 +675,7 @@ module Probe = struct
   let attribute () _ = None
   let parent () = None
   let children () = []
-  let text_children () = []
+  let text_children () = [ " " ]
 end
 
 module Probe_matcher = Make (Probe)

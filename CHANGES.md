@@ -781,6 +781,10 @@ entry points both moved.
 - `Css.Context.matches_container` requires the supplied container to support
   all queried features, so negation and disjunction cannot make an ineligible
   container match (#868).
+- `Resolve.Make.match_selector` answers `:empty` for the elements Selectors 4
+  and the engines agree on, declining only the element whose children are
+  document white space alone. `Resolve.supported` is unchanged, so `cascade
+  apply` and `cascade prune` keep such a rule as before (#873).
 
 - `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, which
   counts one replacement character per maximal subpart of an ill-formed

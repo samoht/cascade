@@ -11,6 +11,15 @@
    that answer in with [No_match], so a direct [resolve] caller cannot tell the
    two apart, and the run counts how often that silence would be wrong.
 
+   {!Cascade.Resolve.supported} is checked against those answers in the one
+   direction a document can settle. It promises an answer for every node, so a
+   node left undecided under it is a broken promise and fails the run. The other
+   way round it promises only that some node goes undecided, and the node it
+   means need not be in this document: [:empty] is declined per rule and
+   answered per element, and a tree built with createElement alone holds no
+   element the readings part over. So a document that decided everything is
+   counted and named, never fatal.
+
    Skips cleanly, with status 0, when node or a headless Chromium is missing,
    and fails when CASCADE_NO_BROWSER asks for silence without acknowledging
    it. *)
@@ -1131,7 +1140,7 @@ let () =
 
   (* --- Classify every pair --- *)
   let wrong = ref [] and rejected = ref [] and undecided = ref [] in
-  let accepted = ref [] and guard = ref [] in
+  let accepted = ref [] and guard = ref [] and conservative = ref [] in
   let missing = ref 0 and pairs = ref 0 and agreed = ref 0 in
   let blind_unsupported = ref 0 in
   let control_status = ref [] in
@@ -1209,7 +1218,7 @@ let () =
                   if List.equal Int.equal mine hits then (
                     incr agreed;
                     if not supported then
-                      record guard
+                      record conservative
                         (finding
                            [
                              "Resolve.supported says no, match_selector \
@@ -1346,7 +1355,12 @@ let () =
     !rejected;
   section "UNSUPPORTED (cascade reads it and declines to decide)" !undecided;
   section "ACCEPTED (cascade reads a selector the browser refuses)" !accepted;
-  section "GUARD (Resolve.supported disagrees with match_selector)" !guard;
+  section "GUARD (Resolve.supported promised an answer match_selector withheld)"
+    !guard;
+  section
+    "CONSERVATIVE (Resolve.supported declines a selector this document never \
+     met a declining element for)"
+    !conservative;
   line "";
   line "calibration:";
   List.iter
