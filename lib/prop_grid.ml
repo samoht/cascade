@@ -1208,10 +1208,7 @@ let rec read_grid_template t : grid_template =
     if Cursor.slash_opt t then (
       Cursor.ws t;
       let columns = read_grid_template_tracks t in
-      match (rows, columns) with
-      | None, _ | _, None ->
-          err_invalid_value t "grid-template" "none in slash form"
-      | _ -> Split (rows, columns))
+      Split (rows, columns))
     else rows
 
 (* CSS Grid 2 (ED) sec. 7.6: [grid-auto-columns] and [grid-auto-rows] take
@@ -1275,12 +1272,6 @@ let grid_starts_auto_flow t =
   | Some ("auto-flow" | "dense") -> true
   | _ -> false
 
-let read_grid_split t (rows : grid_template) (columns : grid_template) :
-    grid_template =
-  match (rows, columns) with
-  | None, _ | _, None -> err_invalid_value t "grid" "none in slash form"
-  | _ -> Split (rows, columns)
-
 let read_grid_auto_flow_rows t =
   let flow = read_grid_auto_flow_clause `Rows t in
   let auto_rows = read_grid_auto_flow_tracks t in
@@ -1298,7 +1289,7 @@ let read_grid_auto_flow_columns t rows =
 let read_grid_slash_rhs t rows =
   Cursor.ws t;
   if grid_starts_auto_flow t then read_grid_auto_flow_columns t rows
-  else read_grid_split t rows (read_grid_template_tracks t)
+  else Split (rows, read_grid_template_tracks t)
 
 let read_grid_template_or_split t =
   let rows = read_grid_template_tracks t in

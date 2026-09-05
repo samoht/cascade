@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `grid` and `grid-template` accept `none` on either side of the slash
+  instead of dropping the declaration, and `grid: auto-flow / 200px` now
+  serialises to a form cascade reads back (#884).
+
 - Physical and logical box sizes reject unrelated keywords: `none` is only
   valid for maximum sizes, which reject `auto`; `normal`, `from-font` and
   bare `size` are rejected throughout (#882).
