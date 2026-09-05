@@ -1331,6 +1331,34 @@ let modified_keyframes_names_the_at_rule () =
     "and does not call it a layer" false
     (string_contains ~needle:"@layer" s)
 
+(* A rule whose own declarations are untouched is not a difference: the nested
+   rule that changed is reported as the nesting container it is, and a second
+   entry naming the parent counts a difference the report then has nothing to
+   show for. *)
+let unchanged_parent_of_a_changed_nested_rule () =
+  let d =
+    diff_of ~expected:".a{color:red;&:hover{color:blue}}"
+      ~actual:".a{color:red;&:hover{color:lime}}"
+  in
+  Alcotest.(check int)
+    "the parent is no top-level difference" 0
+    (List.length d.Cascade_diff.Tree_diff.rules);
+  Alcotest.(check bool)
+    "and the nested change is reported" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
+let unchanged_parent_of_an_added_nested_rule () =
+  let d =
+    diff_of ~expected:".a{color:red}"
+      ~actual:".a{color:red;&:hover{color:blue}}"
+  in
+  Alcotest.(check int)
+    "the parent is no top-level difference" 0
+    (List.length d.Cascade_diff.Tree_diff.rules);
+  Alcotest.(check bool)
+    "and the nested rule is reported" false
+    (Cascade_diff.Tree_diff.is_empty d)
+
 (* Naming a frame modified without saying what changed states a difference the
    report then withholds; a frame carries its declarations like any other
    rule. *)
@@ -1650,6 +1678,10 @@ let suite =
         added_namespace_is_an_at_rule_container;
       Alcotest.test_case "removed layer statement is named" `Quick
         removed_layer_statement_is_named;
+      Alcotest.test_case "unchanged parent of a changed nested rule" `Quick
+        unchanged_parent_of_a_changed_nested_rule;
+      Alcotest.test_case "unchanged parent of an added nested rule" `Quick
+        unchanged_parent_of_an_added_nested_rule;
       Alcotest.test_case "modified keyframe shows its change" `Quick
         modified_keyframe_shows_its_change;
       Alcotest.test_case "added keyframe shows its declarations" `Quick
