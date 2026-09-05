@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `position-try-fallbacks` reads a dashed ident and a try tactic together in
+  either order, rejecting only a repeated component. `Fallbacks` now carries
+  a component group per entry (#888).
+
 - A shadow whose offsets are both zero is kept, so `box-shadow: 0 0` and
   `text-shadow: 0 0` parse instead of being dropped (#887).
 

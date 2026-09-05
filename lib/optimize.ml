@@ -1101,10 +1101,15 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
         important;
         _;
       } -> (
-      let keep = function
-        | (Properties.Name s : Properties.position_try_fallback) ->
-            Hashtbl.mem known s
-        | _ -> true
+      (* An entry names at most one [@position-try] rule; a tactics-only entry
+         names none and always survives. *)
+      let keep group =
+        List.for_all
+          (function
+            | (Properties.Name s : Properties.position_try_fallback) ->
+                Hashtbl.mem known s
+            | _ -> true)
+          group
       in
       match list_filter_preserve keep items with
       | [] -> None

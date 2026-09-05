@@ -3335,9 +3335,12 @@ type position_try_fallback =
   | Flip_start
   | Name of string
 
+(* CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
+   [<dashed-ident> || <try-tactic>], so it holds a group of components rather
+   than a single one. *)
 type position_try_fallbacks =
   | None
-  | Fallbacks of position_try_fallback list
+  | Fallbacks of position_try_fallback list list
   | Initial
   | Inherit
   | Unset
