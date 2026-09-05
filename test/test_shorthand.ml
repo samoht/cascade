@@ -951,6 +951,40 @@ let test_text_decoration_thickness_composes () =
       ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
     ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
 
+(* CSS Fonts 4 (ED) sec. 5.3 splits the [font] sub-properties into the seven the
+   shorthand writes and the thirteen it only resets. A run carrying one of the
+   thirteen at its initial says what the shorthand says, so the whole family
+   written out contracts; a run leaving one of the twenty to the reset asks for
+   the whole graph, the way the animation and transition runs do. Chrome 146
+   expands the two shorthands below to the runs beside them. *)
+let test_font_composes_the_whole_run () =
+  sheet_optimizes_to ~into:".x{font:italic 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-size-adjust:none;font-language-override:normal;font-kerning:auto;font-optical-sizing:auto;font-feature-settings:normal;font-variation-settings:normal;font-variant-position:normal;font-variant-emoji:normal;font-weight:bold;font-stretch:normal;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~into:".x{font:12px sans-serif}"
+    ".x{font-style:normal;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-size-adjust:none;font-language-override:normal;font-kerning:auto;font-optical-sizing:auto;font-feature-settings:normal;font-variation-settings:normal;font-variant-position:normal;font-variant-emoji:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif}";
+  (* A run naming only the components leaves the other thirteen to the reset. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-style:italic;font-weight:700;font-size:12px;line-height:1.5;font-family:serif}"
+    ".x{font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* One of the thirteen away from its initial is a value the shorthand cannot
+     carry. It moves past the run, where it overrides the reset and says what it
+     said in front of it. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif;font-kerning:none}"
+    ".x{font-kerning:none;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* sec. 5.3 lets the shorthand write only the CSS 2.1 caps subset, so
+     [small-caps] is a component and [unicase] is one of the thirteen. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic small-caps 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-variant-caps:small-caps;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif;font-variant-caps:unicase}"
+    ".x{font-variant-caps:unicase;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}"
+
 (* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, and a
    longhand at [normal] is the component the shorthand leaves out. Chrome 146
    expands each shorthand below to the run beside it. *)
@@ -1867,6 +1901,8 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "font composes the whole run" `Quick
+        test_font_composes_the_whole_run;
       Alcotest.test_case "font-variant composes" `Quick
         test_font_variant_composes;
       Alcotest.test_case "grid composes" `Quick test_grid_composes;
