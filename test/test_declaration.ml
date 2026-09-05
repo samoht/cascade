@@ -4295,6 +4295,13 @@ let spec_remaining_prop_vectors () =
       ("resize: block", "resize:block");
       ( "transition-property: opacity, display",
         "transition-property:opacity,display" );
+      (* CSS Transitions 1 sec. 2.1: none | <single-transition-property>#, where
+         <single-transition-property> is [all | <custom-ident>]. The exclusion
+         clause names none, inherit and initial as the values a list of more
+         than one may not hold; all is not among them. *)
+      ("transition-property: all, opacity", "transition-property:all,opacity");
+      ("transition-property: opacity, all", "transition-property:opacity,all");
+      ("transition-property: all, all", "transition-property:all,all");
       ("animation-composition: add", "animation-composition:add");
       ("animation-range-start: entry 10%", "animation-range-start:entry 10%");
       ("animation-range-end: exit 90%", "animation-range-end:exit 90%");
@@ -4418,6 +4425,8 @@ let spec_remaining_prop_vectors () =
       "touch-action: pan-x pan-left";
       "resize: block inline both";
       "transition-property: none, opacity";
+      "transition-property: opacity, none";
+      "transition-property: inherit, opacity";
       "animation-composition: add replace";
       "animation-range-start: exit entry";
       "view-timeline-inset: auto auto auto";
