@@ -142,6 +142,12 @@ let covers_longhand : type a b.
   | Border_top, Border_top_width -> true
   | Border_top, Border_top_style -> true
   | Border_top, Border_top_color -> true
+  (* CSS Fonts 4 sec. 2.8.5: [font-synthesis] resets all four synthesis
+     longhands, the position one included. *)
+  | Font_synthesis, Font_synthesis_weight -> true
+  | Font_synthesis, Font_synthesis_style -> true
+  | Font_synthesis, Font_synthesis_small_caps -> true
+  | Font_synthesis, Font_synthesis_position -> true
   (* CSS Multicol 1 sec. 4.3: [column-rule] is the three rule longhands. *)
   | Column_rule, Column_rule_width -> true
   | Column_rule, Column_rule_style -> true
@@ -3592,6 +3598,78 @@ let try_compose_view_timeline_at idx i =
 let compose_view_timeline_via_index idx =
   compose_fixed3_via_index idx ~try_compose:try_compose_view_timeline_at
 
+(* CSS Fonts 4 sec. 2.8.5: [font-synthesis] is [none | [weight || style ||
+   small-caps || position]] over its four longhands, each [auto] or [none]. The
+   shorthand names the ones set to [auto]; naming none of them is [none]. It
+   resets the position longhand too, so a rule that writes one is left alone
+   rather than have the synthesised shorthand clobber it. *)
+type synthesis_part = Weight | Style | Small_caps
+
+let synthesis_part_of : declaration -> (synthesis_part * bool) option = function
+  | Declaration { property = Font_synthesis_weight; value = Auto; _ } ->
+      Some (Weight, true)
+  | Declaration { property = Font_synthesis_weight; value = None; _ } ->
+      Some (Weight, false)
+  | Declaration { property = Font_synthesis_style; value = Auto; _ } ->
+      Some (Style, true)
+  | Declaration { property = Font_synthesis_style; value = None; _ } ->
+      Some (Style, false)
+  | Declaration { property = Font_synthesis_small_caps; value = Auto; _ } ->
+      Some (Small_caps, true)
+  | Declaration { property = Font_synthesis_small_caps; value = None; _ } ->
+      Some (Small_caps, false)
+  | _ -> None
+
+let font_synthesis_of_run parts : Properties.font_synthesis option =
+  let slot = function Weight -> 0 | Style -> 1 | Small_caps -> 2 in
+  let keys = List.sort_uniq compare (List.map (fun (p, _) -> slot p) parts) in
+  if List.length keys <> 3 then Option.None
+  else
+    let feature : synthesis_part -> Properties.font_synthesis_feature = function
+      | Weight -> Weight
+      | Style -> Style
+      | Small_caps -> Small_caps
+    in
+    let on =
+      List.filter_map
+        (fun (p, auto) -> if auto then Some (feature p) else Option.None)
+        (List.sort (fun (a, _) (b, _) -> compare (slot a) (slot b)) parts)
+    in
+    Some (if on = [] then None else Features on)
+
+let try_compose_font_synthesis_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
+      else
+        let parts = List.filter_map synthesis_part_of raw in
+        if List.length parts <> 3 then None
+        else
+          Option.map
+            (Declaration.v
+               ~important:(is_important (List.hd raw))
+               Font_synthesis)
+            (font_synthesis_of_run parts)
+
+let writes_synthesis_position = function
+  | Declaration { property = Font_synthesis_position; _ } -> true
+  | _ -> false
+
+let compose_font_synthesis_via_index idx =
+  let n = Rule_index.length idx in
+  let rec has_position i =
+    i < n
+    && (writes_synthesis_position (Rule_index.decl_at idx i)
+       || has_position (i + 1))
+  in
+  if not (has_position 0) then
+    compose_fixed3_via_index idx ~try_compose:try_compose_font_synthesis_at
+
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
    contiguous run (any order, single-valued, same importance). The [border]
@@ -5371,6 +5449,7 @@ let compose_index_group_a ~ctx kept =
   compose_pair_via_index ~ctx idx;
   compose_outline_via_index idx;
   compose_view_timeline_via_index idx;
+  compose_font_synthesis_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Second index group runs after the font-reset reorder. Font + list-style +

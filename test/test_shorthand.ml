@@ -852,6 +852,28 @@ let test_text_wrap_composes () =
     ~into:".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
     ".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
 
+(* CSS Fonts 4 sec. 2.8.5: [font-synthesis] names the synthesis longhands set to
+   [auto]; naming none of them is [none]. It resets the position longhand too,
+   so a rule that writes one keeps its longhands. *)
+let test_font_synthesis_composes () =
+  sheet_optimizes_to ~into:".x{font-synthesis:none}"
+    ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none}";
+  sheet_optimizes_to ~into:".x{font-synthesis:weight style}"
+    ".x{font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}";
+  sheet_optimizes_to ~into:".x{font-synthesis:weight style small-caps}"
+    ".x{font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:auto}";
+  (* The shorthand resets the position longhand, so a rule writing one is left
+     alone. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-synthesis-position:none;font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}"
+    ".x{font-synthesis-position:none;font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
+    ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1454,6 +1476,8 @@ let suite =
       Alcotest.test_case "column rule composes" `Quick test_column_rule_composes;
       Alcotest.test_case "white space composes" `Quick test_white_space_composes;
       Alcotest.test_case "text wrap composes" `Quick test_text_wrap_composes;
+      Alcotest.test_case "font synthesis composes" `Quick
+        test_font_synthesis_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

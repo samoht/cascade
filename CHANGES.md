@@ -584,6 +584,10 @@ entry points both moved.
 - `--minify` contracts `text-wrap` from `text-wrap-mode` and `text-wrap-style`
   (#929)
 
+- `--minify` contracts `font-synthesis` from its three longhands, leaving a
+  rule that also writes `font-synthesis-position` alone since the shorthand
+  resets it (#930)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
