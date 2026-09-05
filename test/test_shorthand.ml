@@ -618,6 +618,18 @@ let test_line_shorthand_composes () =
       ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
     ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
 
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what the shorthand assigns to a slot left out, so a longhand written that way
+   names the same declaration as an omitted component. *)
+let test_line_shorthand_initial_slot () =
+  sheet_optimizes_to ~into:".x{border-block-start:thin dashed}"
+    ".x{border-block-start-width:thin;border-block-start-style:dashed;border-block-start-color:initial}";
+  sheet_optimizes_to ~into:".x{border-top:dashed red}"
+    ".x{border-top-width:initial;border-top-style:dashed;border-top-color:red}";
+  (* Every slot at its initial is what [none] names. *)
+  sheet_optimizes_to ~into:".x{border-left:none}"
+    ".x{border-left-width:initial;border-left-style:initial;border-left-color:initial}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1203,6 +1215,8 @@ let suite =
         test_border_axis_pair_composes;
       Alcotest.test_case "line shorthand composes" `Quick
         test_line_shorthand_composes;
+      Alcotest.test_case "line shorthand initial slot" `Quick
+        test_line_shorthand_initial_slot;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
