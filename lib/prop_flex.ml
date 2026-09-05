@@ -166,6 +166,27 @@ let rec pp_flex_flow : flex_flow Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Flexbox 1 sec. 5.1: a component left out takes its longhand's initial -
+   [row] for the direction (sec. 5.1) and [nowrap] for the wrap (sec. 5.2) - so
+   writing one out names what leaving it out names, and the shorter spelling
+   wins. Drained of both, the printer says [row], which names the same pair. *)
+let normalize_flex_flow : flex_flow -> flex_flow =
+ fun value ->
+  match value with
+  | Flow (direction, wrap) ->
+      let direction =
+        match direction with
+        | Some (Row : flex_direction) -> Option.None
+        | direction -> direction
+      in
+      let wrap =
+        match wrap with
+        | Some (Nowrap : flex_wrap) -> Option.None
+        | wrap -> wrap
+      in
+      Flow (direction, wrap)
+  | other -> other
+
 let rec pp_flex_factor : flex_factor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex_factor ctx v

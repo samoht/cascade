@@ -4350,6 +4350,7 @@ let normalize_property_value : type a.
   | Text_decoration -> normalize_text_decoration ~lossless value
   | Webkit_text_decoration -> normalize_text_decoration ~lossless value
   | Text_emphasis -> normalize_text_emphasis ~lossless value
+  | Flex_flow -> normalize_flex_flow value
   | Caret -> normalize_caret ~lossless value
   | Interest_delay -> normalize_interest_delay value
   | Interest_delay_start -> normalize_interest_delay value

@@ -478,6 +478,14 @@ let normalize_expected ~category ~id expected =
          it is shorter and equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
+  | "values", "0030" ->
+      (* The fixture reorders [flex-flow: wrap row] to direction-then-wrap. CSS
+         Flexbox 1 sec. 5.1 leaves an omitted component at its longhand's
+         initial, and the direction's is [row], so writing it out names what
+         leaving it out names and the shorter spelling wins. Chrome 151 expands
+         [flex-flow: wrap-reverse] to [flex-direction: row]. *)
+      fixture ~category ~id ~upstream:"a{flex-flow:row wrap}"
+        ~cascade:"a{flex-flow:wrap}" upstream
   | "values", "0010" ->
       (* [12pt] and [16px] are exact absolute-length equivalents, but the
          rewrite is not a byte win. Without a shorter spelling, keep the

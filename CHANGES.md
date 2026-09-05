@@ -558,6 +558,10 @@ entry points both moved.
 - `--minify` contracts `grid-row`, `grid-column` and `grid-area` from the line
   longhands they name (#922)
 
+- `--minify` contracts `flex-flow` and `text-emphasis` from their two
+  longhands, and drops a component of either that names its own initial:
+  `flex-flow: row wrap` minifies to `flex-flow: wrap` (#923)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

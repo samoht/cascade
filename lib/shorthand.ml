@@ -2359,6 +2359,67 @@ let axis_border_color ~ctx idx property extract i =
     ~foldable:(foldable_border_color ~ctx)
     ~extract ~build i
 
+(* CSS Flexbox 1 sec. 5.1 and CSS Text Decoration 4 sec. 3.4: [flex-flow] and
+   [text-emphasis] each take two longhands, one per component. A longhand
+   written [initial] fills its slot in the run and contributes no value, the
+   normalisers then dropping any component that names its own initial. A
+   substituted longhand can stand for the whole value and is left alone. *)
+let extract_flex_flow_part :
+    declaration ->
+    (axis_side
+    * (Properties.flex_direction option * Properties.flex_wrap option)
+    * bool)
+    option = function
+  | Declaration { property = Flex_direction; value = Var _; _ }
+  | Declaration { property = Flex_wrap; value = Var _; _ } ->
+      None
+  | Declaration { property = Flex_direction; value; important; _ } ->
+      let d = match value with Initial -> Option.None | v -> Some v in
+      Some (Start, (d, Option.None), important)
+  | Declaration { property = Flex_wrap; value; important; _ } ->
+      let w = match value with Initial -> Option.None | v -> Some v in
+      Some (End, (Option.None, w), important)
+  | _ -> None
+
+let extract_text_emphasis_part :
+    declaration ->
+    (axis_side
+    * (Properties.text_emphasis_style option * Values.color option)
+    * bool)
+    option = function
+  | Declaration { property = Text_emphasis_style; value = Var _; _ }
+  | Declaration { property = Text_emphasis_color; value = Var _; _ } ->
+      None
+  | Declaration { property = Text_emphasis_style; value; important; _ } ->
+      let st = match value with Initial -> Option.None | v -> Some v in
+      Some (Start, (st, Option.None), important)
+  | Declaration { property = Text_emphasis_color; value; important; _ } ->
+      let c = match value with Initial -> Option.None | v -> Some v in
+      Some (End, (Option.None, c), important)
+  | _ -> None
+
+let duo_flex_flow idx i =
+  let build ~important ~start ~end_ =
+    let direction, _ = start and _, wrap = end_ in
+    Some
+      (Declaration.v ~important Flex_flow
+         (Flow (direction, wrap) : Properties.flex_flow))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_flex_flow_part ~build i
+
+let duo_text_emphasis idx i =
+  let build ~important ~start ~end_ =
+    let style, _ = start and _, color = end_ in
+    Some
+      (Declaration.v ~important Text_emphasis
+         (Emphasis (style, color) : Properties.text_emphasis))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_text_emphasis_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2387,6 +2448,8 @@ let pair_axes ~ctx idx i =
     (fun () -> axis_contain_intrinsic idx i);
     (fun () -> axis_grid_line idx Grid_row extract_grid_row_side i);
     (fun () -> axis_grid_line idx Grid_column extract_grid_column_side i);
+    (fun () -> duo_flex_flow idx i);
+    (fun () -> duo_text_emphasis idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

@@ -802,8 +802,25 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
  fun value ->
   match value with
   | Emphasis (style, color) ->
-      preserve_if_equal value
-        (Emphasis (style, option_map_preserve (normalize_color ~lossless) color))
+      (* CSS Text Decoration 4 (ED) sec. 3.4: a component left out takes its
+         longhand's initial - [none] for the style (sec. 3.1) and [currentColor]
+         for the colour (sec. 3.3) - so writing one out names what leaving it
+         out names. Both cannot go: the value would say nothing. *)
+      let color = option_map_preserve (normalize_color ~lossless) color in
+      let dropped_style =
+        match style with
+        | Some (None : text_emphasis_style) -> Option.None
+        | style -> style
+      in
+      let dropped_color =
+        match color with
+        | Some (Current : color) -> Option.None
+        | color -> color
+      in
+      if Option.is_none dropped_style && Option.is_none dropped_color then
+        preserve_if_equal value
+          (Emphasis (Some (None : text_emphasis_style), Option.None))
+      else preserve_if_equal value (Emphasis (dropped_style, dropped_color))
   | other -> other
 
 (* CSS Text Decoration 4 (ED) sec. 4 reads a text shadow as a [<shadow>] "as for

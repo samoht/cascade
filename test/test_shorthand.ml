@@ -699,7 +699,9 @@ let test_grid_placement_composes () =
    initial names what leaving the component out names, so it drops - unless both
    do and the value would then say nothing. *)
 let test_duo_keyword_composes () =
-  sheet_optimizes_to ~into:".x{flex-flow:row wrap}"
+  (* [row] is the direction's initial, so the composed value names it by leaving
+     the component out. *)
+  sheet_optimizes_to ~into:".x{flex-flow:wrap}"
     ".x{flex-direction:row;flex-wrap:wrap}";
   sheet_optimizes_to ~into:".x{flex-flow:column}"
     ".x{flex-direction:column;flex-wrap:nowrap}";
