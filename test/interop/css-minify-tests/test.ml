@@ -478,6 +478,18 @@ let normalize_expected ~category ~id expected =
          it is shorter and equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
+  | "shorthands", "0014" ->
+      (* The fixture contracts the three longhands into [text-decoration]. CSS
+         Text Decoration 4 sec. 2.5 makes the shorthand reset
+         [text-decoration-thickness] to its initial, which the three longhands
+         leave alone, so the two are one declaration only where nothing else
+         sets the thickness. The optimizer defaults to [Fragment] scope, where
+         it cannot see that, and the browser differential reports the
+         contraction as a conflation. *)
+      fixture ~category ~id ~upstream:"a{text-decoration:underline red}"
+        ~cascade:
+          "a{text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:red}"
+        upstream
   | "values", "0030" ->
       (* The fixture reorders [flex-flow: wrap row] to direction-then-wrap. CSS
          Flexbox 1 sec. 5.1 leaves an omitted component at its longhand's

@@ -887,6 +887,27 @@ let test_webkit_text_stroke_composes () =
       ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
     ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
 
+(* CSS Text Decoration 4 sec. 2.5: [text-decoration] is [<line> || <style> ||
+   <color> || <thickness>], and sec. 2.2 makes [auto] the thickness's initial,
+   so a run that also writes the thickness contracts and an [auto] one leaves
+   the component out. *)
+let test_text_decoration_thickness_composes () =
+  sheet_optimizes_to ~into:".x{text-decoration:underline dotted red}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:auto;text-decoration-style:dotted;text-decoration-color:red}";
+  sheet_optimizes_to ~into:".x{text-decoration:overline 2px}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:currentcolor}";
+  (* The shorthand resets the thickness, so a run leaving it out is not the same
+     declaration and stays expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:red}"
+    ".x{text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:red}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1493,6 +1514,8 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "text decoration thickness composes" `Quick
+        test_text_decoration_thickness_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

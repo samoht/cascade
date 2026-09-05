@@ -3220,12 +3220,13 @@ let compose_flex_via_index idx =
    style, color, and optional thickness. The composition extracts the three
    required typed longhands; the pretty-printer drops default-valued style and
    color when emitting the shorthand. *)
-type td_kind = Line | Style | Color
+type td_kind = Line | Style | Color | Thickness
 
 let td_kind_of : declaration -> td_kind option = function
   | Declaration { property = Text_decoration_line; _ } -> Some Line
   | Declaration { property = Text_decoration_style; _ } -> Some Style
   | Declaration { property = Text_decoration_color; _ } -> Some Color
+  | Declaration { property = Text_decoration_thickness; _ } -> Some Thickness
   | _ -> None
 
 let td_line_of : declaration -> Properties.text_decoration_line list option =
@@ -3242,37 +3243,14 @@ let td_color_of : declaration -> Values.color option = function
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_text_decoration_at idx i =
-  let n = Rule_index.length idx in
-  if i + 2 >= n then None
-  else if
-    Rule_index.is_absorbed idx i
-    || Rule_index.is_absorbed idx (i + 1)
-    || Rule_index.is_absorbed idx (i + 2)
-  then None
-  else
-    let d1 = Rule_index.decl_at idx i in
-    let d2 = Rule_index.decl_at idx (i + 1) in
-    let d3 = Rule_index.decl_at idx (i + 2) in
-    match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
-    | Some k1, Some k2, Some k3
-      when is_important d1 = is_important d2
-           && is_important d2 = is_important d3
-           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-        let triple = [ d1; d2; d3 ] in
-        let lines = List.find_map td_line_of triple in
-        let style = List.find_map td_style_of triple in
-        let color = List.find_map td_color_of triple in
-        match (lines, style, color) with
-        | Some lines, Some _, Some _ ->
-            Some
-              (Declaration.v ~important:(is_important d1) Text_decoration
-                 (Shorthand { lines; style; color; thickness = None }))
-        | _ -> None)
-    | _ -> None
-
-let compose_text_decoration_via_index idx =
-  compose_fixed3_via_index idx ~try_compose:try_compose_text_decoration_at
+(* CSS Text Decoration 4 sec. 2.2 makes [auto] the thickness's initial, which is
+   what leaving the component out names, so the shorter spelling wins. *)
+let td_thickness_of : declaration -> Values.length option = function
+  | Declaration { property = Text_decoration_thickness; value = Auto; _ }
+  | Declaration { property = Text_decoration_thickness; value = Initial; _ } ->
+      Option.None
+  | Declaration { property = Text_decoration_thickness; value; _ } -> Some value
+  | _ -> None
 
 (* CSS Backgrounds 3 sec. 3.4: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -4595,6 +4573,19 @@ let an_slot_bit : an_slot -> int = function
 let an_bits slots = List.fold_left (fun acc s -> acc lor an_slot_bit s) 0 slots
 let all_an_bits = an_bits an_slots
 
+(* [text-decoration] resets the thickness slot, the one longhand of the family a
+   contraction can leave out, so it needs one bit of its own beside the
+   transition and animation sets. *)
+let td_thickness_bit = 16384
+
+let td_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Text_decoration_thickness; _ } -> td_thickness_bit
+  | Declaration { property = Text_decoration; _ } -> td_thickness_bit
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> td_thickness_bit
+  | _ -> 0
+
 (* Which slots a declaration leaves holding something. Cruder than the
    transition answer, which compares against each slot initial: this one says
    "set at all". It is only ever consulted for slots MISSING from the run being
@@ -4630,7 +4621,10 @@ let held_nothing h = Int.equal (h.normal_slots lor h.important_slots) 0
 let held_add held decls =
   List.fold_left
     (fun held d ->
-      let slots = tr_overwritten_slots d lor an_overwritten_slots d in
+      let slots =
+        tr_overwritten_slots d lor an_overwritten_slots d
+        lor td_overwritten_slots d
+      in
       if Int.equal slots 0 then held
       else if is_important d then
         { held with important_slots = held.important_slots lor slots }
@@ -4653,7 +4647,7 @@ let held_outside held decls =
    out. The composed shorthand resets every such slot, so composing would drop
    that value. An important declaration outranks a non-important shorthand
    whatever the order, so it is only at risk when the run is important too. *)
-let tr_reset_hazard idx i ~held ~missing ~important =
+let reset_hazard ~slots_of idx i ~held ~missing ~important =
   (not (Int.equal missing 0))
   &&
   let outside =
@@ -4667,10 +4661,61 @@ let tr_reset_hazard idx i ~held ~missing ~important =
     &&
     let d = Rule_index.decl_at idx j in
     (important || not (is_important d))
-    && not (Int.equal (tr_overwritten_slots d land missing) 0)
+    && not (Int.equal (slots_of d land missing) 0)
     || scan (j - 1)
   in
   scan (i - 1)
+
+let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
+let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
+
+(* [text-decoration] resets the thickness slot, so a run that leaves the
+   thickness out contracts into a declaration saying [auto] where the run said
+   nothing. Composing the three is safe only when nothing else in reach holds
+   that slot, the reading [transition] and [animation] already take. *)
+let text_decoration_of_run raw k : Properties.text_decoration option =
+  let kinds = List.map td_kind_of raw in
+  if
+    not
+      (List.for_all Option.is_some kinds
+      && List.length (List.sort_uniq compare kinds) = k)
+  then Option.None
+  else
+    let lines = List.find_map td_line_of raw in
+    let style = List.find_map td_style_of raw in
+    let color = List.find_map td_color_of raw in
+    let thickness = List.find_map td_thickness_of raw in
+    match (lines, style, color) with
+    | Some lines, Some _, Some _ ->
+        Some (Shorthand { lines; style; color; thickness })
+    | _ -> Option.None
+
+let try_compose_text_decoration_run ~held idx i k =
+  let n = Rule_index.length idx in
+  if i + k > n then None
+  else
+    let positions = List.init k (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
+      else
+        let important = is_important (List.hd raw) in
+        (* [k] is 4 today, so [missing] is empty and the scan answers no; the
+           slot is threaded so a shorter run can be judged rather than
+           assumed. *)
+        let missing = if k = 4 then 0 else td_thickness_bit in
+        if td_reset_hazard idx i ~held ~missing ~important then None
+        else
+          Option.map
+            (fun sh -> (Declaration.v ~important Text_decoration sh, k))
+            (text_decoration_of_run raw k)
+
+let try_compose_text_decoration_at ~held idx i =
+  try_compose_text_decoration_run ~held idx i 4
+
+let compose_text_decoration_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_text_decoration_at ~held)
 
 let try_compose_transition_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
@@ -4832,24 +4877,7 @@ let empty_an_shorthand : Properties.animation_shorthand =
 (* The same reset hazard [tr_reset_hazard] answers for transition: a slot the
    run does not write is reset to its initial by the shorthand, so composing is
    only safe when nothing else in the cascade holds that slot. *)
-let an_reset_hazard idx i ~held ~missing ~important =
-  (not (Int.equal missing 0))
-  &&
-  let outside =
-    if important then held.normal_slots lor held.important_slots
-    else held.normal_slots
-  in
-  (not (Int.equal (missing land outside) 0))
-  ||
-  let rec scan j =
-    j >= 0
-    &&
-    let d = Rule_index.decl_at idx j in
-    (important || not (is_important d))
-    && not (Int.equal (an_overwritten_slots d land missing) 0)
-    || scan (j - 1)
-  in
-  scan (i - 1)
+let an_reset_hazard = reset_hazard ~slots_of:an_overwritten_slots
 
 let try_compose_animation_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:animation_part_of i in
@@ -5489,12 +5517,12 @@ let compose_index_group_a ~ctx kept =
 
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
-let compose_index_group_b kept =
+let compose_index_group_b ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_font_via_index idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
-  compose_text_decoration_via_index idx;
+  compose_text_decoration_via_index ~held idx;
   compose_border_via_index idx;
   compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
@@ -5515,7 +5543,8 @@ let compose_border_whole_step ~ctx kept =
 
 let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_index_group_b |> reorder_border_image_before_border
+  |> compose_index_group_b ~held
+  |> reorder_border_image_before_border
   |> compose_border_whole_step ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
