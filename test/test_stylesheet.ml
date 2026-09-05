@@ -4217,6 +4217,22 @@ let test_nesting_check_stylesheet () =
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
+(* CSS Syntax 3 sec. 5.5.3 consumes a qualified rule whole, block and all,
+   before deciding it is invalid, so sec. 5.5.5 resumes right after that block.
+   Recovering to the next semicolon, which is what sec. 5.5.6 does for a bad
+   declaration, would take every item written after the bad rule and the parent
+   with them. *)
+let nesting_invalid_rule_recovery () =
+  (* Each expectation is what the same sheet gives with the bad rule deleted:
+     dropping it costs the parent nothing and the items around it nothing. *)
+  lenient_recover "invalid nested rule before a good one"
+    ".a { .b <::::invalid::::> {} & .c { color: red } }" ".a .c{color:red}" 1;
+  lenient_recover "invalid nested rule after a good one"
+    ".a { & .c { color: red } .b <::::invalid::::> {} }" ".a .c{color:red}" 1;
+  lenient_recover "invalid nested rule between declarations"
+    ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
+    ".a{color:red;.c{color:#00f}}" 1
+
 (* A nested @layer holds nesting content: bare declarations belong to the parent
    selector, exactly as in @media/@supports. Blink and WebKit both read
    [.a{@layer n{color:red}}] as a layer block wrapping nested declarations. *)
@@ -9297,6 +9313,7 @@ let additional_tests =
     ("nesting deeply nested", `Quick, test_nesting_deep);
     ("nesting with declarations", `Quick, test_nesting_with_declarations);
     ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
+    ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
