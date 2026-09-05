@@ -624,6 +624,10 @@ entry points both moved.
   `column-wrap`, which the shorthand resets. `columns: auto 3` minifies to
   `columns: 3` (#939)
 
+- `--minify` contracts `background` from a run whose untouched longhands are
+  written `initial`, which names the value the shorthand resets each slot to
+  (#940)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

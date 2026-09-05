@@ -994,6 +994,23 @@ let test_columns_composes () =
       ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
     ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
 
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what [background] writes to a slot left out, so a run whose untouched slots
+   are spelled that way is reset-closed and contracts. *)
+let test_background_initial_slots () =
+  sheet_optimizes_to ~into:".x{background:url(a.png)50%/cover no-repeat}"
+    ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:initial;background-origin:initial;background-clip:initial;background-color:initial}";
+  (* Every slot at its initial is what [background: none] names, which the
+     printer spells with the position it keeps. *)
+  sheet_optimizes_to ~into:".x{background:0 0}"
+    ".x{background-image:none;background-position-x:initial;background-position-y:initial;background-size:initial;background-repeat:initial;background-attachment:initial;background-origin:initial;background-clip:initial;background-color:initial}";
+  (* [inherit] names the parent's value, not the initial, so it cannot fill a
+     slot the shorthand resets. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
+    ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1609,6 +1626,8 @@ let suite =
         test_border_image_full_run_composes;
       Alcotest.test_case "offset composes" `Quick test_offset_composes;
       Alcotest.test_case "columns composes" `Quick test_columns_composes;
+      Alcotest.test_case "background initial slots" `Quick
+        test_background_initial_slots;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

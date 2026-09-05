@@ -2632,6 +2632,9 @@ let position_of_axes (x : Properties.background_position_axis)
     =
   let axis_length : Properties.background_position_axis -> Values.length option
       = function
+    (* CSS Backgrounds 3 sec. 3.6 starts the position at [0% 0%], so [initial]
+       on an axis names the zero offset. *)
+    | Initial -> Some (Pct 0.)
     | Center -> Some (Pct 50.)
     | Edge Left | Edge Top -> Some Zero
     | Edge Right | Edge Bottom -> Some (Pct 100.)
@@ -4028,8 +4031,8 @@ let background_image_singleton :
   function
   | [ img ] -> (
       match img with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | List _ ->
-          None
+      | Initial -> Some (None : Properties.background_image)
+      | Inherit | Unset | Revert | Revert_layer | Var _ | List _ -> None
       | _ -> Some img)
   | _ -> None
 
@@ -4039,9 +4042,16 @@ let background_position_singleton :
   | [ pos ] -> Some pos
   | _ -> None
 
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   exactly what the shorthand writes to a slot left out, so a longhand spelled
+   that way fills its slot. [inherit] and [unset] name the parent's value
+   instead and cannot. The initials are CSS Backgrounds 3 sec. 3.1 to 3.10. *)
 let bg_color_part : declaration -> Values.color option = function
   | Declaration { property = Background_color; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Transparent : Values.color)
+      | v -> Some v)
   | _ -> None
 
 let bg_image_part : declaration -> Properties.background_image option = function
@@ -4052,7 +4062,10 @@ let bg_image_part : declaration -> Properties.background_image option = function
 let bg_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Background_repeat; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
   | _ -> None
 
 let bg_position_part : declaration -> Properties.position_value option =
@@ -4064,24 +4077,34 @@ let bg_position_part : declaration -> Properties.position_value option =
 let bg_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Background_size; value; _ } -> (
       match value with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
 
 let bg_attachment_part : declaration -> Properties.background_attachment option
     = function
   | Declaration { property = Background_attachment; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Scroll : Properties.background_attachment)
+      | v -> Some v)
   | _ -> None
 
 let bg_origin_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_origin; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Padding_box : Properties.background_box)
+      | v -> Some v)
   | _ -> None
 
 let bg_clip_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_clip; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.background_box)
+      | v -> Some v)
   | _ -> None
 
 type bg_part =
