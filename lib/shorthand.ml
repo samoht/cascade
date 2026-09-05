@@ -3308,17 +3308,29 @@ let td_kind_of : declaration -> td_kind option = function
   | Declaration { property = Text_decoration_thickness; _ } -> Some Thickness
   | _ -> None
 
+(* CSS Cascade 5 sec. 7.3 gives a longhand written [initial] the property's
+   initial value, which is what leaving the component out of the shorthand
+   names: [none] for the line (CSS Text Decoration 4 sec. 2.1), [solid] for the
+   style (sec. 2.3) and [currentcolor] for the colour (sec. 2.4). The keyword
+   itself is no shorthand component, so it folds to the value it stands for and
+   the printer drops it with the other initials. *)
 let td_line_of : declaration -> Properties.text_decoration_line list option =
   function
+  | Declaration { property = Text_decoration_line; value = [ Initial ]; _ } ->
+      Some [ (None : Properties.text_decoration_line) ]
   | Declaration { property = Text_decoration_line; value; _ } -> Some value
   | _ -> None
 
 let td_style_of : declaration -> Properties.text_decoration_style option =
   function
+  | Declaration { property = Text_decoration_style; value = Initial; _ } ->
+      Some (Solid : Properties.text_decoration_style)
   | Declaration { property = Text_decoration_style; value; _ } -> Some value
   | _ -> None
 
 let td_color_of : declaration -> Values.color option = function
+  | Declaration { property = Text_decoration_color; value = Initial; _ } ->
+      Some Values.current_color
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
