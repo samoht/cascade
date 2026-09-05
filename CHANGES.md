@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- A custom property whose value carries an unmatched closer or a bad url is
+  invalid, and an item written as `--x: hover { }` stays a declaration rather
+  than becoming a rule when its value turns out to be bad (#897).
+
 - A unicode range is tokenised only in the `unicode-range` descriptor it
   belongs to, so `u+a` is the selector it reads as everywhere else (#896).
 

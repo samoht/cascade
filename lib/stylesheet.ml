@@ -3764,8 +3764,26 @@ let item_opens_block inner =
   Cursor.restore inner start;
   found
 
+(* CSS Syntax 3 (ED) sec. 5.5.3 drops a qualified rule whose prelude is an ident
+   starting with [--] followed by a colon, block and all: that item is a
+   declaration however much it looks like a rule, so sec. 5.5.6 recovery takes
+   it, not sec. 5.5.5's. *)
+let item_is_custom_property inner =
+  let start = Cursor.save inner in
+  let answer =
+    match Cursor.peek inner with
+    | Some (Component.Preserved { kind = Token.Ident name; _ })
+      when Custom_property_name.has_prefix name ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        Cursor.peek_colon inner
+    | _ -> false
+  in
+  Cursor.restore inner start;
+  answer
+
 let skip_invalid_nesting_item r =
-  if item_opens_block r then (
+  if item_opens_block r && not (item_is_custom_property r) then (
     skip_past_rule r;
     Error.Recovery.Rule)
   else (
@@ -4093,10 +4111,10 @@ and read_nesting_declaration_or_statement r =
   (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
-     as one. *)
+     as one, and a [--x:] prelude is a declaration whatever follows it. *)
   | exception Error.Parse_error _
     when Cursor.restore r start;
-         item_opens_block r ->
+         item_opens_block r && not (item_is_custom_property r) ->
       `Stmt (read_statement r)
 
 (* Helper: Read nested at-rule with declarations content *)
@@ -4212,10 +4230,10 @@ and read_rule_decl_or_nested selector inner decls nested =
   (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
-     as one. *)
+     as one, and a [--x:] prelude is a declaration whatever follows it. *)
   | exception Error.Parse_error _
     when Cursor.restore inner start;
-         item_opens_block inner ->
+         item_opens_block inner && not (item_is_custom_property inner) ->
       read_nested_rule_or_done selector inner decls nested
 
 and read_nested_rule_or_done selector inner decls nested =

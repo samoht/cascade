@@ -250,18 +250,25 @@ let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
 
-let rec component_has_bad_string = function
-  | Component.Preserved { kind = Token.Bad_string; _ } -> true
+(* CSS Syntax 3 (ED) sec. 7.2: a [<declaration-value>] is any token sequence
+   excluding a [<bad-string-token>], a [<bad-url-token>], and an unmatched [)],
+   []] or [}]. A custom property takes [<declaration-value>?] and nothing wider,
+   so a value carrying one of those is invalid rather than opaque. *)
+let rec component_leaves_declaration_value = function
+  | Component.Preserved
+      { kind = Token.Bad_string | Token.Bad_url | Token.Close _; _ } ->
+      true
   | Component.Block { node = { value; _ }; _ } ->
-      List.exists component_has_bad_string value
+      List.exists component_leaves_declaration_value value
   | Component.Func { node = { arguments; _ }; _ } ->
-      List.exists component_has_bad_string arguments
+      List.exists component_leaves_declaration_value arguments
   | Component.Preserved _ -> false
 
 let reject_custom_bad_string t =
   if
-    List.exists component_has_bad_string (components_before is_top_level_stop t)
-  then Cursor.err_invalid t "bad string in custom property value"
+    List.exists component_leaves_declaration_value
+      (components_before is_top_level_stop t)
+  then Cursor.err_invalid t "custom property value is no <declaration-value>"
 
 let invalid_var_arguments arguments =
   match
