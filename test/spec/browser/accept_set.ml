@@ -403,13 +403,9 @@ let spec_ahead_here : Chrome_gaps.excuse list =
       List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
     [
       ( [ "text-overflow" ],
-        [ "\"text\""; "\"hello\""; "\"TRK\"" ],
+        [ "\"text\"" ],
         "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
          <fade()> ]{1,2}, and every one of these is a <string>" );
-      ( [ "-webkit-mask-clip" ],
-        [ "no-clip, content-box" ],
-        "CSS Masking 1 sec. 7.5: [ <coord-box> | no-clip ]#, so no-clip is one \
-         item of the list as readily as the whole of it" );
     ]
 
 let hits = Hashtbl.create 64
