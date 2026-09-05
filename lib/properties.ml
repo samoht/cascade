@@ -4333,19 +4333,30 @@ let normalize_property_value : type a.
   | Offset_position -> normalize_offset_position value
   | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
-  | Width -> Values.normalize_length_percentage ~ctx value
-  | Height -> Values.normalize_length_percentage ~ctx value
-  | Min_width -> Values.normalize_length_percentage ~ctx value
-  | Min_height -> Values.normalize_length_percentage ~ctx value
-  | Min_inline_size -> Values.normalize_length_percentage ~ctx value
-  | Min_block_size -> Values.normalize_length_percentage ~ctx value
-  | Max_width -> Values.normalize_length_percentage ~ctx value
-  | Max_height -> Values.normalize_length_percentage ~ctx value
-  | Inline_size -> Values.normalize_length_percentage ~ctx value
-  | Max_inline_size -> Values.normalize_length_percentage ~ctx value
-  | Block_size -> Values.normalize_length_percentage ~ctx value
-  | Max_block_size -> Values.normalize_length_percentage ~ctx value
-  | Shape_margin -> Values.normalize_length_percentage ~ctx value
+  | Width -> Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Height -> Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_width ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_height ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_width ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_height ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Shape_margin ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
   | Offset_distance -> Values.normalize_length_percentage ~ctx value
   | Border_radius -> normalize_border_radius value
   | Background_image ->
@@ -4474,14 +4485,15 @@ let normalize_property_value : type a.
   | Webkit_animation -> map_preserve normalize_animation value
   | Moz_animation -> map_preserve normalize_animation value
   | Animation_timing_function -> normalize_timing_function value
-  | Padding_left -> Values.normalize_length ~ctx value
-  | Padding_right -> Values.normalize_length ~ctx value
-  | Padding_bottom -> Values.normalize_length ~ctx value
-  | Padding_top -> Values.normalize_length ~ctx value
-  | Padding_inline_start -> Values.normalize_length ~ctx value
-  | Padding_inline_end -> Values.normalize_length ~ctx value
-  | Padding_block_start -> Values.normalize_length ~ctx value
-  | Padding_block_end -> Values.normalize_length ~ctx value
+  | Padding_left -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_right -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_bottom -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_top -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_inline_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_inline_end -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_block_start -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_block_end -> Values.normalize_length ~non_negative:true ~ctx value
   | Margin_inline_end -> Values.normalize_length ~ctx value
   | Margin_inline_start -> Values.normalize_length ~ctx value
   | Margin_left -> Values.normalize_length ~ctx value
@@ -4490,22 +4502,28 @@ let normalize_property_value : type a.
   | Margin_bottom -> Values.normalize_length ~ctx value
   | Margin_block_start -> Values.normalize_length ~ctx value
   | Margin_block_end -> Values.normalize_length ~ctx value
-  | Column_gap -> Values.normalize_length ~ctx value
-  | Row_gap -> Values.normalize_length ~ctx value
+  | Column_gap -> Values.normalize_length ~non_negative:true ~ctx value
+  | Row_gap -> Values.normalize_length ~non_negative:true ~ctx value
   | Text_underline_offset -> Values.normalize_length ~ctx value
   | Letter_spacing -> Values.normalize_length ~ctx value
-  | Border_top_left_radius -> normalize_length_box ~ctx value
-  | Border_top_right_radius -> normalize_length_box ~ctx value
-  | Border_bottom_left_radius -> normalize_length_box ~ctx value
-  | Border_bottom_right_radius -> normalize_length_box ~ctx value
-  | Border_start_start_radius -> normalize_length_box ~ctx value
-  | Border_start_end_radius -> normalize_length_box ~ctx value
-  | Border_end_start_radius -> normalize_length_box ~ctx value
-  | Border_end_end_radius -> normalize_length_box ~ctx value
+  | Border_top_left_radius -> normalize_length_box ~non_negative:true ~ctx value
+  | Border_top_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_bottom_left_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_bottom_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_start_start_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_start_end_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_end_start_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_end_end_radius -> normalize_length_box ~non_negative:true ~ctx value
   | Outline_width -> normalize_border_width value
   | Outline_offset -> Values.normalize_length ~ctx value
-  | Line_height_step -> Values.normalize_length ~ctx value
-  | Perspective -> Values.normalize_length ~ctx value
+  | Line_height_step -> Values.normalize_length ~non_negative:true ~ctx value
+  | Perspective -> Values.normalize_length ~non_negative:true ~ctx value
   | Word_spacing -> Values.normalize_length ~ctx value
   | Text_decoration_thickness -> Values.normalize_length ~ctx value
   | Stroke_width -> normalize_stroke_width ~ctx value
@@ -4517,17 +4535,23 @@ let normalize_property_value : type a.
   | Scroll_margin_inline_end -> Values.normalize_length ~ctx value
   | Scroll_margin_block_start -> Values.normalize_length ~ctx value
   | Scroll_margin_block_end -> Values.normalize_length ~ctx value
-  | Scroll_padding_top -> Values.normalize_length ~ctx value
-  | Scroll_padding_right -> Values.normalize_length ~ctx value
-  | Scroll_padding_bottom -> Values.normalize_length ~ctx value
-  | Scroll_padding_left -> Values.normalize_length ~ctx value
-  | Scroll_padding_inline_start -> Values.normalize_length ~ctx value
-  | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
-  | Scroll_padding_block_start -> Values.normalize_length ~ctx value
-  | Scroll_padding_block_end -> Values.normalize_length ~ctx value
-  | Padding -> normalize_length_box ~ctx value
-  | Padding_inline -> normalize_length_box ~ctx value
-  | Padding_block -> normalize_length_box ~ctx value
+  | Scroll_padding_top -> Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_right ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_bottom ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_left -> Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_inline_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_inline_end ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_block_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_block_end ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Padding -> normalize_length_box ~non_negative:true ~ctx value
+  | Padding_inline -> normalize_length_box ~non_negative:true ~ctx value
+  | Padding_block -> normalize_length_box ~non_negative:true ~ctx value
   | Margin -> normalize_length_box ~ctx value
   | Margin_inline -> normalize_length_box ~ctx value
   | Margin_block -> normalize_length_box ~ctx value

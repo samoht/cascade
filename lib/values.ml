@@ -1299,15 +1299,73 @@ let eval_typed_calc : type a.
   in
   normalize_calc_parens (settle_computed round (reduce calc))
 
-let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) pp_value ctx calc ->
+(* A dimension the author could not have written as a literal. CSS Values 4 sec.
+   10.3 keeps a [calc()] valid wherever its range is exceeded and clamps at
+   used-value time, so [width: calc(-10px)] is a declaration Chrome computes as
+   [0px] while [width: -10px] is one it drops. Folding the call away on such a
+   property has to stop at the sign. *)
+let negative_length : length -> bool = function
+  | Px f
+  | Cm f
+  | Mm f
+  | Q f
+  | In f
+  | Pt f
+  | Pc f
+  | Rem f
+  | Em f
+  | Ex f
+  | Cap f
+  | Ic f
+  | Ric f
+  | Rlh f
+  | Pct f
+  | Vw f
+  | Vh f
+  | Vmin f
+  | Vmax f
+  | Vi f
+  | Vb f
+  | Dvh f
+  | Dvw f
+  | Dvmin f
+  | Dvmax f
+  | Lvh f
+  | Lvw f
+  | Lvmin f
+  | Lvmax f
+  | Svh f
+  | Svw f
+  | Svmin f
+  | Svmax f
+  | Cqw f
+  | Cqh f
+  | Cqi f
+  | Cqb f
+  | Cqmin f
+  | Cqmax f
+  | Ch f
+  | Lh f
+  | Dimension { value = f; _ } ->
+      f < 0.
+  | _ -> false
+
+let pp_calc_with : type a.
+    ?unwrap_num:bool -> ?unwrap:(a -> bool) -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
      grammar, not the surrounding property's grammar. Unwrapping
      [calc(var(--x))] to bare [var(--x)] would change which substitution shape
      is valid. *)
-  | Val v when Pp.minified ctx -> pp_value ctx v
+  (* CSS Values 4 sec. 10.3 keeps a [calc()] valid where its range is exceeded
+     and clamps at used-value time, so [width: calc(-10px)] is a declaration
+     Chrome computes as [0px] and [width: -10px] one it drops. Which properties
+     those are is not knowable here, so the wrapper stays on a value that reads
+     back differently without it; [Declaration.normalize] unwraps the rest,
+     where the property is in hand. *)
+  | Val v when Pp.minified ctx && unwrap v -> pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
@@ -2394,7 +2452,9 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_with ~unwrap_num:false (pp_length ~always) ctx cv
+      pp_calc_with ~unwrap_num:false
+        ~unwrap:(fun v -> not (negative_length v))
+        (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3742,8 +3802,8 @@ let strip_zero_length (l : length) : length =
 
 (* [strip] is true for a top-level [<length>] (a direct property/shorthand
    value) and false for a calc / math-function operand, which keeps its unit. *)
-let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
-    : length =
+let rec normalize_length ?(strip = true) ?(non_negative = false)
+    ?(ctx = default_calc_ctx) (l : length) : length =
   let nf = normalize_length ~strip:false ~ctx in
   let result =
     match l with
@@ -3752,6 +3812,7 @@ let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
           cv |> eval_length_calc ~ctx |> linear_length_calc
           |> eval_length_calc ~ctx
         with
+        | Val v when non_negative && negative_length v -> l
         | Val v -> v
         | folded -> Calc folded)
     | Clamp (mn, v, mx) -> (
@@ -3818,15 +3879,16 @@ let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. A wrapped [<length>] folds its own math functions. *)
-let normalize_length_percentage ?(strip = true) ?(ctx = default_calc_ctx)
-    (lp : length_percentage) : length_percentage =
+let normalize_length_percentage ?(strip = true) ?(non_negative = false)
+    ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+      | Val (Length v) when non_negative && negative_length v -> lp
       | Val v -> v
       | folded -> Calc folded)
   | Length l ->
-      let l' = normalize_length ~strip ~ctx l in
+      let l' = normalize_length ~strip ~non_negative ~ctx l in
       if l' == l then lp else Length l'
   | _ -> lp
 
@@ -4179,7 +4241,14 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_with ~unwrap_num:false (pp_length_percentage ~always) ctx c
+      pp_calc_with ~unwrap_num:false
+        ~unwrap:(fun v ->
+          match (v : length_percentage) with
+          | Length l -> not (negative_length l)
+          | Pct f -> f >= 0.
+          | _ -> true)
+        (pp_length_percentage ~always)
+        ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens

@@ -413,6 +413,14 @@ to lose a whole rule over one bad piece. Both are gone.
   `column-wrap`. `border-image-outset` and `border-image-width` reject a keyword
   their grammar does not carry (#926, #927, #928, #936, #938, #941)
 
+- A `calc()` whose result falls below zero keeps its call on a property whose
+  range starts there. CSS Values 4 sec. 10.3 keeps such a call valid and clamps
+  at used-value time, so `width: calc(-10px)` computes to `0px` where
+  `width: -10px` is dropped, and folding the call away turned a working
+  declaration into one browsers throw out. `width: calc(10px * sign(-1vw))` was
+  the case that read back as nothing at all. A property that takes a negative
+  folds as before (#967)
+
 - A value keeps every digit and every unit the author wrote unless the shorter
   spelling means the same number. `.4285714em` came out short, `calc(hypot(1px,
   1px))` came out as `1.41421356`, and a computed dimension past a million units

@@ -258,14 +258,21 @@ val default_calc_ctx : calc_ctx
     context-dependent calc rewrite is a no-op. *)
 
 val normalize_length_percentage :
-  ?strip:bool -> ?ctx:calc_ctx -> length_percentage -> length_percentage
+  ?strip:bool ->
+  ?non_negative:bool ->
+  ?ctx:calc_ctx ->
+  length_percentage ->
+  length_percentage
 (** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. [strip]
     (default [true]) also drops a wrapped zero length's unit; pass [strip:false]
-    for CSS function operands. *)
+    for CSS function operands. [non_negative] keeps the call when the fold lands
+    below zero, which a property whose range starts there reads back and a
+    literal of the same value does not (CSS Values 4 sec. 10.3). *)
 
-val normalize_length : ?strip:bool -> ?ctx:calc_ctx -> length -> length
+val normalize_length :
+  ?strip:bool -> ?non_negative:bool -> ?ctx:calc_ctx -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
     / mod / rem / hypot / abs fold on {!Calc.px}; calc folds through the
