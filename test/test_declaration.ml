@@ -2346,6 +2346,22 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+  (* CSS Backgrounds 3 sec. 6.1 and CSS Text Decoration 3 sec. 5 both build a
+     shadow with &&, so the length run is contiguous and neither the colour nor
+     inset may sit inside it. text-shadow takes three lengths, not four, and one
+     colour. *)
+  check_declaration ~expected:"text-shadow:1px 1px red"
+    "text-shadow: red 1px 1px";
+  check_declaration ~expected:"text-shadow:1px 1px 2px"
+    "text-shadow: 1px 1px 2px";
+  neg_cursor read_declaration "text-shadow: 1px red 1px";
+  neg_cursor read_declaration "text-shadow: 1px 1px 1px 1px";
+  neg_cursor read_declaration "text-shadow: 1px 1px red 1px";
+  neg_cursor read_declaration "text-shadow: red 1px 1px blue";
+  check_declaration ~expected:"box-shadow:inset 1px 1px"
+    "box-shadow: 1px 1px inset";
+  neg_cursor read_declaration "box-shadow: 1px inset 1px";
+  neg_cursor read_declaration "box-shadow: 1px red 1px";
   check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
     ~optimized:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
