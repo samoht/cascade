@@ -3351,7 +3351,9 @@ let target_evergreen_compatibility_prefixes () =
     (optimized_string ".a{mask:none}");
   Alcotest.(check string)
     "the WebKit mask shorthand omits fields with different legacy grammars"
-    ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance add}"
+    (* [add] is the composite's initial (CSS Masking 1 sec. 7.8), which is what
+       leaving the component out names, so the shorthand drops it. *)
+    ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance}"
     (optimized_string ".a{mask:url(a.svg) luminance add}");
   Alcotest.(check string)
     "mask fields without equivalent WebKit grammars are not prefixed"

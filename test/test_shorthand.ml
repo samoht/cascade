@@ -1025,6 +1025,21 @@ let test_webkit_mask_position_axes () =
       ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
     ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
 
+(* CSS Masking 1 sec. 7.9: [mask] resets all eight layer longhands, so a run
+   naming every one of them is the same declaration whatever else the sheet
+   holds, and a component at its initial is what leaving it out names. *)
+let test_mask_full_run_composes () =
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask:url(a.png)50%/cover no-repeat;mask:url(a.png)50%/cover \
+       no-repeat}"
+    ".x{mask-image:url(a.png);mask-position:50%;mask-size:cover;mask-repeat:no-repeat;mask-origin:border-box;mask-clip:border-box;mask-composite:add;mask-mode:match-source}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask-image:url(a.png);mask-image:url(a.png);-webkit-mask-size:cover;mask-size:cover}"
+    ".x{mask-image:url(a.png);mask-size:cover}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1644,6 +1659,8 @@ let suite =
         test_background_initial_slots;
       Alcotest.test_case "webkit mask position axes" `Quick
         test_webkit_mask_position_axes;
+      Alcotest.test_case "mask full run composes" `Quick
+        test_mask_full_run_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

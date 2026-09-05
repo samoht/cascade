@@ -4245,9 +4245,18 @@ let compose_background_shorthand ~ctx decls =
    (the reorder / dead-drop cases are handled separately). Closed-world
    ([`Stylesheet]) only, since the shorthand resets the layer fields the run
    leaves unset. *)
+(* The optimizer writes a [-webkit-] twin beside each mask longhand for old
+   Safari, so a run reaching the composer carries both spellings of a slot.
+   They name one cascade slot and carry one value, so either fills it and the
+   run stays contiguous. *)
 let mask_image_part : declaration -> Properties.background_image option =
   function
   | Declaration { property = Mask_image; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (None : Properties.background_image)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_image; value; _ } -> (
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (None : Properties.background_image)
@@ -4261,10 +4270,20 @@ let mask_repeat_part : declaration -> Properties.background_repeat option =
       | Inherit | Unset -> None
       | Initial -> Some (Repeat : Properties.background_repeat)
       | v -> Some v)
+  | Declaration { property = Webkit_mask_repeat; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
   | _ -> None
 
 let mask_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Mask_size; value; _ } -> (
+      match value with
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_size; value; _ } -> (
       match value with
       | Inherit | Unset | Revert | Revert_layer | Var _ -> None
       | Initial -> Some (Auto : Properties.background_size)
@@ -4287,10 +4306,20 @@ let mask_origin_part : declaration -> Properties.mask_box option = function
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
       | v -> Some v)
+  | Declaration { property = Webkit_mask_origin; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
   | _ -> None
 
 let mask_clip_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_clip; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_clip; value; _ } -> (
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
@@ -4351,19 +4380,36 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
+(* Same reading as [background]: the layer shorthand resets every slot, so a run
+   naming all eight is the same declaration whatever else the sheet holds. A
+   shorter run leaves the rest to the reset, which only the whole-sheet scope
+   can judge. *)
+let mask_run_is_reset_closed (layer : Properties.mask_layer) =
+  Option.is_some layer.image
+  && Option.is_some layer.position
+  && Option.is_some layer.size
+  && Option.is_some layer.repeat
+  && Option.is_some layer.origin
+  && Option.is_some layer.clip && Option.is_some layer.mode
+  && Option.is_some layer.composite
+
 let try_compose_mask_at ~ctx idx i =
   let parts, len = take_run_at idx ~part_of:mask_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
     if not (same_importance raw_decls) then None
-    else if scope ctx <> `Stylesheet then None
-    else if has_prior_family_longhand mask_part_of idx i then None
     else
       let layer =
         List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
       in
-      if layer.image = None then None
+      let permit =
+        match scope ctx with
+        | `Stylesheet -> not (has_prior_family_longhand mask_part_of idx i)
+        | `Fragment -> mask_run_is_reset_closed layer
+      in
+      if not permit then None
+      else if layer.image = None then None
       else
         let shorthand =
           Declaration.v
