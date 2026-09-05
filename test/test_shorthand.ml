@@ -592,6 +592,34 @@ let test_border_axis_pair_composes () =
       ".x{border-block-start-color:red;border-block-end-color:#00f!important}"
     ".x{border-block-start-color:red;border-block-end-color:blue!important}"
 
+(* CSS Backgrounds 3 sec. 3.5, CSS Logical 1 sec. 4.5 and CSS Multicol 1 sec.
+   4.3: each line shorthand is [<line-width> || <line-style> || <line-color>]
+   over its own three longhands and resets nothing else, so a contiguous run of
+   the three contracts the way [outline] already does. *)
+let test_line_shorthand_composes () =
+  sheet_optimizes_to ~into:".x{border-top:1px solid red}"
+    ".x{border-top-width:1px;border-top-style:solid;border-top-color:red}";
+  (* The three are independent, so any order names the same declaration. *)
+  sheet_optimizes_to ~into:".x{border-left:1px solid red}"
+    ".x{border-left-color:red;border-left-style:solid;border-left-width:1px}";
+  sheet_optimizes_to ~into:".x{border-block-start:1px solid red}"
+    ".x{border-block-start-width:1px;border-block-start-style:solid;border-block-start-color:red}";
+  sheet_optimizes_to ~into:".x{border-inline-end:2px dotted #0f0}"
+    ".x{border-inline-end-width:2px;border-inline-end-style:dotted;border-inline-end-color:#0f0}";
+  sheet_optimizes_to ~into:".x{column-rule:1px solid red}"
+    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red}";
+  (* The shorthand tells width from style from colour by type, so a substituted
+     token sequence could land in another slot. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-right-width:var(--w);border-right-style:solid;border-right-color:red}"
+    ".x{border-right-width:var(--w);border-right-style:solid;border-right-color:red}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
+    ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1175,6 +1203,8 @@ let suite =
         test_scroll_axis_pair_composes;
       Alcotest.test_case "border axis pair composes" `Quick
         test_border_axis_pair_composes;
+      Alcotest.test_case "line shorthand composes" `Quick
+        test_line_shorthand_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
