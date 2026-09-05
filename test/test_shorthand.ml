@@ -951,6 +951,44 @@ let test_text_decoration_thickness_composes () =
       ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
     ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
 
+(* CSS Grid 2 (ED) sec. 7.4: [grid-template] is [none], a [<rows> / <columns>]
+   pair, or the areas form writing each row's string beside that row's size, and
+   it resets all three longhands. Chrome 146 expands each shorthand below to the
+   run beside it. *)
+let test_grid_template_composes () =
+  sheet_optimizes_to ~into:".x{grid-template:1fr/2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none}";
+  sheet_optimizes_to ~into:".x{grid-template:none}"
+    ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none}";
+  sheet_optimizes_to ~into:".x{grid-template:\"a b\" 1fr/1fr 1fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr \
+     1fr;grid-template-areas:\"a b\"}";
+  sheet_optimizes_to ~into:".x{grid-template:\"a\" 1fr \"b\" 2fr/1fr}"
+    ".x{grid-template-rows:1fr \
+     2fr;grid-template-columns:1fr;grid-template-areas:\"a\" \"b\"}";
+  (* The areas form writes one size per row, so a row count the tracks do not
+     match has no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\"\"b\"}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\" \
+     \"b\"}";
+  (* A CSS-wide keyword is the whole declaration value and no shorthand
+     component, and a run missing one of the three is not the same
+     declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:inherit}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:inherit}";
+  sheet_optimizes_to
+    ~into:".x{grid-template-rows:1fr;grid-template-columns:2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none!important}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none!important}"
+
 (* CSS Backgrounds 3 (ED) sec. 4.1: an elliptical corner names a horizontal
    radius and a vertical one, and [border-radius] writes the four horizontals,
    then [/], then the four verticals. *)
@@ -1766,6 +1804,8 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "grid-template composes" `Quick
+        test_grid_template_composes;
       Alcotest.test_case "text decoration thickness composes" `Quick
         test_text_decoration_thickness_composes;
       Alcotest.test_case "border radius ellipse composes" `Quick
