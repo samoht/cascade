@@ -608,7 +608,10 @@ let read_overflow_clip_length_item (length : length option ref) t =
   Cursor.ws t;
   match !length with
   | None ->
-      length := Some (read_length ~allow_negative:false ~with_keywords:false t);
+      length :=
+        Some
+          (read_length ~allow_negative:false ~with_keywords:false
+             ~length_only:true t);
       true
   | Some _ -> false
 

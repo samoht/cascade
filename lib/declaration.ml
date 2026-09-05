@@ -899,7 +899,9 @@ let read_perspective_value t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    (* CSS Transforms 2 (ED) sec. 3: [perspective] is [none | <length [0,inf]>],
+       so it takes no percentage; Chrome 146 refuses one. *)
+    ~default:(read_non_negative_length ~with_keywords:false ~length_only:true)
     t
 
 (* CSS Text Decoration 4 sec. 2.8: [text-underline-offset] is [auto |

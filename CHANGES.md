@@ -691,6 +691,13 @@ entry points both moved.
   `rotate: 0` as `0deg`, turning a declaration browsers drop into one that
   works (#953)
 
+- A property whose grammar names a `<length>` takes no percentage. Chrome
+  refuses `perspective: 50%`, and cascade accepted a percentage there and on
+  `tab-size`, `column-width`, `border-spacing`, `border-image-outset`,
+  `overflow-clip-margin` and the `contain-intrinsic-*` sizes. A negative
+  `column-width` is refused with them. `Css.Values.read_non_negative_length`
+  gains `?length_only` (#954)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

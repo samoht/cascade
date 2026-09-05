@@ -514,16 +514,20 @@ let rec read_position_anchor (t : Cursor.t) : position_anchor =
      t
     : position_anchor)
 
+(* CSS Sizing 4 sec. 5: [contain-intrinsic-size] takes [<length>], and no
+   percentage, which Chrome 146 refuses. *)
 let read_contain_intrinsic_size_item t : contain_intrinsic_size_item =
+  let size t =
+    Values.read_length ~allow_negative:false ~with_keywords:false
+      ~length_only:true t
+  in
   Cursor.ws t;
   match Cursor.peek_ident t with
   | Some "auto" ->
       let _ = Cursor.ident t in
       Cursor.ws t;
-      (Auto (Values.read_length ~allow_negative:false ~with_keywords:false t)
-        : contain_intrinsic_size_item)
-  | _ ->
-      Length (Values.read_length ~allow_negative:false ~with_keywords:false t)
+      (Auto (size t) : contain_intrinsic_size_item)
+  | _ -> Length (size t)
 
 let rec read_contain_intrinsic_size (t : Cursor.t) : contain_intrinsic_size =
   let keywords : (string * contain_intrinsic_size) list =

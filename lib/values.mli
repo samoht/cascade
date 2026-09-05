@@ -467,7 +467,8 @@ val read_length :
     to a [<length>] as such; it defaults to [false], so a reader whose property
     takes them asks. *)
 
-val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
+val read_non_negative_length :
+  ?with_keywords:bool -> ?length_only:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties, whose CSS Box 4 sec. 4.1 grammar
     excludes negative values. *)

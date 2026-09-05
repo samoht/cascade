@@ -2051,7 +2051,8 @@ let rec read_tab_size (t : Cursor.t) : tab_size =
             (fun t -> number_value t (Values.read_integer "tab-size" t));
             (fun t ->
               Length
-                (Values.read_length ~allow_negative:false ~with_keywords:false t));
+                (Values.read_length ~allow_negative:false ~with_keywords:false
+                   ~length_only:true t));
           ]
           t
   in

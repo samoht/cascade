@@ -357,7 +357,11 @@ let rec read_column_width t : column_width =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_column_width t))
-    ~default:(fun t -> (Width (read_length t) : column_width))
+      (* CSS Multicol 2 sec. 4.1: [column-width] is [auto | <length [0,inf]>]
+         and takes no percentage, which Chrome 146 refuses. *)
+    ~default:(fun t ->
+      (Width (read_length ~allow_negative:false ~length_only:true t)
+        : column_width))
     t
 
 (* The height takes a length and no percentage, which Chrome 146 refuses. *)

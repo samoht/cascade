@@ -6035,8 +6035,9 @@ and read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
   else No_fallback
 
 (** Read a non-negative length value (for padding properties) *)
-let read_non_negative_length ?(with_keywords = true) t : length =
-  read_length ~allow_negative:false ~with_keywords t
+let read_non_negative_length ?(with_keywords = true) ?(length_only = false) t :
+    length =
+  read_length ~allow_negative:false ~with_keywords ~length_only t
 
 (** Read a percentage value as float (number followed by %) Used for color
     components where 0-100% clamping is required *)

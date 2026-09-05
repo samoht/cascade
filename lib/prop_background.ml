@@ -2197,7 +2197,7 @@ let read_border_image_repeat_keyword t : border_image_repeat_keyword =
 
 let rec read_border_spacing t : border_spacing =
   let read_numeric_length t =
-    let l = read_length ~allow_negative:false t in
+    let l = read_length ~allow_negative:false ~length_only:true t in
     match l with
     | Auto | Size | None | Normal | Fit_content | Content | Contain
     | Max_content | Min_content | From_font | Hairline | Thin | Medium | Thick
@@ -2289,7 +2289,11 @@ let read_border_image_outset_item t : border_image_outset_item =
   | Some n when n >= 0. -> Number n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
   | None ->
-      let len = read_length ~allow_negative:false ~with_keywords:false t in
+      (* Sec. 5.4 gives the outset a number or a length, and no percentage. *)
+      let len =
+        read_length ~allow_negative:false ~with_keywords:false ~length_only:true
+          t
+      in
       Length len
 
 let read_border_image_box_step ~what read_item t acc =
