@@ -457,6 +457,7 @@ let pp_property : type a. a property Pp.t =
   | Clear -> Pp.string ctx "clear"
   | Float -> Pp.string ctx "float"
   | White_space -> Pp.string ctx "white-space"
+  | White_space_collapse -> Pp.string ctx "white-space-collapse"
   | Border -> Pp.string ctx "border"
   | Background -> Pp.string ctx "background"
   | Tab_size -> Pp.string ctx "tab-size"
@@ -876,6 +877,7 @@ let property_class : type a. a property -> a property_class = function
   | Pointer_events -> Inherited
   | Forced_color_adjust -> Inherited
   | White_space -> Inherited
+  | White_space_collapse -> Inherited
   | Tab_size -> Inherited
   | Webkit_text_size_adjust -> Inherited
   | Font_feature_settings -> Inherited
@@ -1309,6 +1311,7 @@ let property_tag : type a. a property -> int = function
   | Forced_color_adjust -> 197
   | Scroll_snap_type -> 198
   | White_space -> 199
+  | White_space_collapse -> 541
   | Border -> 200
   | Border_block -> 201
   | Border_block_start -> 202
@@ -1876,6 +1879,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Forced_color_adjust, Forced_color_adjust -> Some Equal
   | Scroll_snap_type, Scroll_snap_type -> Some Equal
   | White_space, White_space -> Some Equal
+  | White_space_collapse, White_space_collapse -> Some Equal
   | Border, Border -> Some Equal
   | Border_block, Border_block -> Some Equal
   | Border_block_start, Border_block_start -> Some Equal
@@ -3176,6 +3180,7 @@ let read_any_property t =
   | "transition-timing-function" -> Prop Transition_timing_function
   | "unicode-bidi" -> Prop Unicode_bidi
   | "white-space" -> Prop White_space
+  | "white-space-collapse" -> Prop White_space_collapse
   | "will-change" -> Prop Will_change
   | "word-break" -> Prop Word_break
   | "word-spacing" -> Prop Word_spacing
@@ -3880,6 +3885,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Forced_color_adjust, value -> value
   | Scroll_snap_type, value -> value
   | White_space, value -> value
+  | White_space_collapse, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
       | Border_inline | Border_inline_start | Border_inline_end | Column_rule
       | Border_top | Border_right | Border_bottom | Border_left ),
@@ -4826,6 +4832,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Container_type -> pp pp_container_type
   | Container -> pp pp_container_shorthand
   | White_space -> pp pp_white_space
+  | White_space_collapse -> pp pp_white_space_collapse
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
   | Grid_template_areas -> pp pp_grid_template_areas

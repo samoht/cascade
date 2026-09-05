@@ -1894,6 +1894,40 @@ let rec read_white_space t : white_space =
         ~var:(fun t -> Var (read_var read_white_space t))
         t
 
+(* CSS Text 4 sec. 3.1. *)
+let rec pp_white_space_collapse : white_space_collapse Pp.t =
+ fun ctx -> function
+  | Collapse -> Pp.string ctx "collapse"
+  | Discard -> Pp.string ctx "discard"
+  | Preserve -> Pp.string ctx "preserve"
+  | Preserve_breaks -> Pp.string ctx "preserve-breaks"
+  | Preserve_spaces -> Pp.string ctx "preserve-spaces"
+  | Break_spaces -> Pp.string ctx "break-spaces"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_white_space_collapse ctx v
+
+let rec read_white_space_collapse t : white_space_collapse =
+  Cursor.enum_or_var "white-space-collapse"
+    [
+      ("collapse", (Collapse : white_space_collapse));
+      ("discard", Discard);
+      ("preserve", Preserve);
+      ("preserve-breaks", Preserve_breaks);
+      ("preserve-spaces", Preserve_spaces);
+      ("break-spaces", Break_spaces);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_white_space_collapse t))
+    t
+
 let rec read_word_break t : word_break =
   Cursor.enum_or_var "word-break"
     [

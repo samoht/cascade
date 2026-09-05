@@ -1401,6 +1401,9 @@ let vars_of_initial_letter (value : Properties.initial_letter) =
 let vars_of_white_space (value : Properties.white_space) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_white_space_collapse (value : Properties.white_space_collapse) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_word_break (value : Properties.word_break) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2538,6 +2541,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_text_stroke_color, value -> vars_of_color value
   | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
+  | White_space_collapse, value -> vars_of_white_space_collapse value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
   | Z_index, value -> vars_of_z_index value

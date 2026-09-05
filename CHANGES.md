@@ -578,6 +578,9 @@ entry points both moved.
   `column-rule-style`, which this release adds as typed properties beside the
   colour longhand it already had (#927)
 
+- `--minify` contracts `white-space` from `white-space-collapse`, which this
+  release adds as a typed property, and `text-wrap-mode` (#928)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

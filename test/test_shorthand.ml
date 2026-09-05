@@ -809,6 +809,29 @@ let test_column_rule_composes () =
       ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
     ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
 
+(* CSS Text 4 sec. 3: [white-space] is a shorthand of [white-space-collapse] and
+   [text-wrap-mode], and one keyword names each of the four pairs its table
+   lists. *)
+let test_white_space_composes () =
+  sheet_optimizes_to ~into:".x{white-space:pre-wrap}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:wrap}";
+  sheet_optimizes_to ~into:".x{white-space:normal}"
+    ".x{white-space-collapse:collapse;text-wrap-mode:wrap}";
+  sheet_optimizes_to ~into:".x{white-space:pre}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:nowrap}";
+  sheet_optimizes_to ~into:".x{white-space:nowrap}"
+    ".x{white-space-collapse:collapse;text-wrap-mode:nowrap}";
+  sheet_optimizes_to ~into:".x{white-space:pre-line}"
+    ".x{white-space-collapse:preserve-breaks;text-wrap-mode:wrap}";
+  (* A pair outside that table has no one-keyword spelling. *)
+  sheet_optimizes_to
+    ~into:".x{white-space-collapse:preserve-spaces;text-wrap-mode:wrap}"
+    ".x{white-space-collapse:preserve-spaces;text-wrap-mode:wrap}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1409,6 +1432,7 @@ let suite =
       Alcotest.test_case "background position composes" `Quick
         test_background_position_composes;
       Alcotest.test_case "column rule composes" `Quick test_column_rule_composes;
+      Alcotest.test_case "white space composes" `Quick test_white_space_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

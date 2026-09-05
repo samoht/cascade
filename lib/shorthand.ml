@@ -931,6 +931,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   (* CSS Text 4 sec. 3 and 5.1: [white-space] and [text-wrap] both reset
      [text-wrap-mode]. *)
   | White_space -> [ key "white-space-collapse"; key "text-wrap-mode" ]
+  | White_space_collapse -> [ key "white-space-collapse" ]
   | Text_wrap -> [ key "text-wrap-mode"; key "text-wrap-style" ]
   | Text_wrap_mode -> [ key "text-wrap-mode" ]
   | Text_wrap_style -> [ key "text-wrap-style" ]
@@ -2604,6 +2605,51 @@ let duo_background_position idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_background_position_part ~build i
 
+(* CSS Text 4 sec. 3: [white-space] is a shorthand of [white-space-collapse] and
+   [text-wrap-mode], and sec. 3 table 1 gives the four pairs a single keyword
+   names. A pair outside that table has no one-keyword spelling and stays two
+   declarations. *)
+let extract_white_space_part :
+    declaration ->
+    (axis_side
+    * (Properties.white_space_collapse option
+      * Properties.text_wrap_mode option)
+    * bool)
+    option = function
+  | Declaration { property = White_space_collapse; value = Var _; _ }
+  | Declaration { property = Text_wrap_mode; value = Var _; _ } ->
+      None
+  | Declaration { property = White_space_collapse; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Text_wrap_mode; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let white_space_of_pair (c : Properties.white_space_collapse)
+    (m : Properties.text_wrap_mode) : Properties.white_space option =
+  match (c, m) with
+  | Collapse, Wrap -> Some Normal
+  | Collapse, No_wrap -> Some Nowrap
+  | Preserve, Wrap -> Some Pre_wrap
+  | Preserve, No_wrap -> Some Pre
+  | Preserve_breaks, Wrap -> Some Pre_line
+  | Break_spaces, Wrap -> Some Break_spaces
+  | _ -> Option.None
+
+let duo_white_space idx i =
+  let build ~important ~start ~end_ =
+    let collapse, _ = start and _, mode = end_ in
+    match (collapse, mode) with
+    | Some c, Some m ->
+        Option.map
+          (Declaration.v ~important White_space)
+          (white_space_of_pair c m)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_white_space_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2638,6 +2684,7 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_scroll_timeline idx i);
     (fun () -> duo_container idx i);
     (fun () -> duo_background_position idx i);
+    (fun () -> duo_white_space idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

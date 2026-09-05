@@ -1568,6 +1568,22 @@ type white_space =
   | Revert_layer
   | Var of white_space var
 
+(* CSS Text 4 sec. 3.1: [white-space-collapse] says how white space and segment
+   breaks in the source collapse. *)
+type white_space_collapse =
+  | Collapse
+  | Discard
+  | Preserve
+  | Preserve_breaks
+  | Preserve_spaces
+  | Break_spaces
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of white_space_collapse var
+
 type word_break =
   | Normal
   | Break_all
@@ -4876,6 +4892,7 @@ type 'a property =
   | Forced_color_adjust : forced_color_adjust property
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
+  | White_space_collapse : white_space_collapse property
   | Border : border property
   | Border_block : border property
   | Border_block_start : border property

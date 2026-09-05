@@ -1178,6 +1178,14 @@ val pp_text_size_adjust : text_size_adjust Pp.t
 val pp_white_space : white_space Pp.t
 (** [pp_white_space] is the pretty-printer for [white_space]. *)
 
+val pp_white_space_collapse : white_space_collapse Pp.t
+(** [pp_white_space_collapse] is the pretty-printer for [white_space_collapse].
+*)
+
+val read_white_space_collapse : Cursor.t -> white_space_collapse
+(** [read_white_space_collapse t] is the [white_space_collapse] parsed from [t].
+*)
+
 val read_white_space : Cursor.t -> white_space
 (** [read_white_space t] is the [white_space] parsed from [t]. *)
 
