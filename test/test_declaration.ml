@@ -2364,6 +2364,21 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* A [-webkit-gradient] stop position is a number or a percentage, and the
+     minified spelling is the number, so both read back. *)
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(linear,0 0,0 \
+       100%,from(#00f),color-stop(.5,red),to(#ff0))"
+    "background: -webkit-gradient(linear, 0 0, 0 100%, from(#00f), \
+     color-stop(.5, red), to(#ff0))";
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(linear,0 0,0 \
+       100%,from(#00f),color-stop(.5,red),to(#ff0))"
+    "background: -webkit-gradient(linear, 0 0, 0 100%, from(#00f), \
+     color-stop(50%, red), to(#ff0))";
+
   (* CSS Transforms 2 sec. 5: minified [rotate] leads with the angle, and a
      following axis number that starts with a sign needs no separator. The first
      one does: the angle ends in its unit, so [0deg-1] is the one dimension
