@@ -908,6 +908,29 @@ let test_text_decoration_thickness_composes () =
       ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
     ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
 
+(* CSS Backgrounds 3 (ED) sec. 4.1: an elliptical corner names a horizontal
+   radius and a vertical one, and [border-radius] writes the four horizontals,
+   then [/], then the four verticals. *)
+let test_border_radius_ellipse_composes () =
+  sheet_optimizes_to ~into:".x{border-radius:1px 2px 3px 4px/5px}"
+    ".x{border-top-left-radius:1px 5px;border-top-right-radius:2px \
+     5px;border-bottom-right-radius:3px 5px;border-bottom-left-radius:4px 5px}";
+  sheet_optimizes_to ~into:".x{border-radius:10%/20%}"
+    ".x{border-top-left-radius:10% 20%;border-top-right-radius:10% \
+     20%;border-bottom-right-radius:10% 20%;border-bottom-left-radius:10% 20%}";
+  sheet_optimizes_to ~into:".x{border-radius:1px 2px/3px 4px}"
+    ".x{border-top-left-radius:1px 3px;border-top-right-radius:2px \
+     4px;border-bottom-right-radius:1px 3px;border-bottom-left-radius:2px 4px}";
+  (* Mixing a round corner with an elliptical one has no box spelling. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-top-left-radius:1px \
+       5px;border-top-right-radius:2px;border-bottom-right-radius:3px \
+       5px;border-bottom-left-radius:4px 5px}"
+    ".x{border-top-left-radius:1px \
+     5px;border-top-right-radius:2px;border-bottom-right-radius:3px \
+     5px;border-bottom-left-radius:4px 5px}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1516,6 +1539,8 @@ let suite =
         test_webkit_text_stroke_composes;
       Alcotest.test_case "text decoration thickness composes" `Quick
         test_text_decoration_thickness_composes;
+      Alcotest.test_case "border radius ellipse composes" `Quick
+        test_border_radius_ellipse_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

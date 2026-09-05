@@ -1656,6 +1656,28 @@ let extract_border_radius_corner :
       Some (Left, v, important)
   | _ -> None
 
+(* An elliptical corner names a horizontal radius and a vertical one. CSS
+   Backgrounds 3 (ED) sec. 4.1 writes the four horizontals, then [/], then the
+   four verticals, so the four corners compose into one box per axis. *)
+let extract_border_radius_ellipse :
+    declaration -> (box_side * (Values.length * Values.length) * bool) option =
+  function
+  | Declaration
+      { property = Border_top_left_radius; value = [ h; v ]; important; _ } ->
+      Some (Top, (h, v), important)
+  | Declaration
+      { property = Border_top_right_radius; value = [ h; v ]; important; _ } ->
+      Some (Right, (h, v), important)
+  | Declaration
+      { property = Border_bottom_right_radius; value = [ h; v ]; important; _ }
+    ->
+      Some (Bottom, (h, v), important)
+  | Declaration
+      { property = Border_bottom_left_radius; value = [ h; v ]; important; _ }
+    ->
+      Some (Left, (h, v), important)
+  | _ -> None
+
 (* CSS Scroll Snap 1 sec. 4.2 and 5.1: [scroll-padding] sets the four snapport
    insets and [scroll-margin] the four snap area outsets, each assigning its
    sides exactly as [padding] and [margin] do. *)
@@ -1744,6 +1766,15 @@ let build_border_radius_box ~important ~top ~right ~bottom ~left =
   Some
     (Declaration.v ~important Border_radius
        (Radius { horizontal; vertical = None }))
+
+let build_border_radius_ellipse ~important ~top ~right ~bottom ~left =
+  let lp v : Values.length_percentage = Length v in
+  let axis f =
+    List.map lp (collapse_box_lengths [ f top; f right; f bottom; f left ])
+  in
+  Some
+    (Declaration.v ~important Border_radius
+       (Radius { horizontal = axis fst; vertical = Some (axis snd) }))
 
 let build_scroll_margin_box ~important ~top ~right ~bottom ~left =
   Some
@@ -1951,6 +1982,9 @@ let box_composers ~ctx idx =
     try_same len extract_padding_side build_padding_box;
     try_same len extract_inset_side build_inset_box;
     try_same len extract_border_radius_corner build_border_radius_box;
+    try_same
+      (fun (h, v) -> len h && len v)
+      extract_border_radius_ellipse build_border_radius_ellipse;
     try_same len extract_scroll_margin_side build_scroll_margin_box;
     try_same len extract_scroll_padding_side build_scroll_padding_box;
     try_same width border_width_of build_border_width_box;
