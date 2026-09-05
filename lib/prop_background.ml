@@ -72,7 +72,6 @@ module Shadow = struct
         | Some l ->
             lengths_rev := l :: !lengths_rev;
             Cursor.ws t;
-            let _ : bool = try_inset () in
             read_lengths_loop (n + 1)
         | None -> ()
     in

@@ -2033,12 +2033,40 @@ let rec read_text_shadow t : text_shadow =
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let components, _ = Cursor.many Text_shadow.read_component t in
-      let lengths, color = Text_shadow.fold_components components in
-      match lengths with
+      (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
+         the colour on either side of the length run but never inside it, and
+         caps the run at three: there is no spread slot to hold a fourth. *)
+      let color : color option ref = ref (Option.None : color option) in
+      let try_color () =
+        match !color with
+        | Option.Some _ -> ()
+        | Option.None -> (
+            match Cursor.option (fun t -> read_color t) t with
+            | Option.Some c ->
+                color := Option.Some c;
+                Cursor.ws t
+            | Option.None -> ())
+      in
+      try_color ();
+      let lengths_rev = ref [] in
+      let rec read_lengths_loop n =
+        if n >= 3 then ()
+        else
+          match Cursor.option (fun t -> read_length t) t with
+          | Option.Some l ->
+              lengths_rev := l :: !lengths_rev;
+              Cursor.ws t;
+              read_lengths_loop (n + 1)
+          | Option.None -> ()
+      in
+      read_lengths_loop 0;
+      try_color ();
+      match List.rev !lengths_rev with
       | h :: v :: rest ->
-          let blur = match rest with b :: _ -> Some b | _ -> None in
-          (Text_shadow { h_offset = h; v_offset = v; blur; color }
+          let blur =
+            match rest with b :: _ -> Option.Some b | _ -> Option.None
+          in
+          (Text_shadow { h_offset = h; v_offset = v; blur; color = !color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
     t

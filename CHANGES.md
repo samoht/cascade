@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- A shadow whose colour or `inset` interrupts the length run is refused, and
+  `text-shadow` refuses a fourth length or a second colour rather than
+  dropping it (#890).
+
 - `transition-property` keeps `all` beside another property, so
   `transition-property: all, opacity` parses. `none` and the CSS-wide
   keywords are still refused in a list (#889).
