@@ -5906,6 +5906,16 @@ let compose_shorthands ?(held = held_none) ~ctx kept =
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
+let drained_border_image : Properties.border_image =
+  {
+    source = None;
+    slice = None;
+    width = None;
+    outset = None;
+    repeat = None;
+    mode = None;
+  }
+
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
@@ -5986,6 +5996,10 @@ let implied_longhand covering covered : Declaration.declaration option =
               Option.map border_width s.width
           | Declaration { property = Properties.Border_style; _ } ->
               Option.map border_style s.style
+          (* sec. 3.4 also resets [border-image], so the shorthand says what an
+             all-initial [border-image] says. *)
+          | Declaration { property = Properties.Border_image; _ } ->
+              Some (Declaration.v Border_image drained_border_image)
           | _ -> None)
       | _ -> None)
   | Declaration { property = Properties.Font; value; _ } -> (
@@ -6054,6 +6068,9 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
+  (* Composition writes shorthands the input did not carry, so the longhands one
+     of them now restates are only visible on a second pass. *)
+  let kept = drop_longhands_after_covering_shorthand kept in
   let result = duplicate_buggy_properties kept in
   (* Each pipeline step keeps untouched declarations, so [preserve_list]
      restores the input list when every declaration is physically unchanged -

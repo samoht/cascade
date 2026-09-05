@@ -545,6 +545,11 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` drops a `border-image` that names nothing but initials after a
+  `border`, which CSS Backgrounds 3 sec. 3.4 already resets it to. The whole
+  border family written out as longhands now minifies to `border: 1px solid
+  red` alone, where a `border-image: none` trailed it (#956)
+
 - `--minify` contracts the eight border sides from their own three longhands,
   as it already did for `outline`: `border-top-width`, `border-top-style` and
   `border-top-color` written together become `border-top`, and a longhand
