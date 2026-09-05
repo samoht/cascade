@@ -6350,9 +6350,18 @@ let v4102_calc_single () =
   Alcotest.(check string)
     "calc(1px) -> 1px" ".x{width:1px}"
     (normalize ".x { width: calc(1px) }");
+  (* CSS Values 4 (ED) sec. 10.3 keeps a [calc()] valid where the property's
+     range is exceeded and clamps at used-value time, so [width: calc(-5px)]
+     computes to [0px] in Chrome 146 and [width: -5px] is dropped there. The
+     call stays on where the range starts at zero and folds where it does
+     not. *)
   Alcotest.(check string)
-    "calc(-5px) -> -5px" ".x{width:-5px}"
+    "calc(-5px) on a non-negative property keeps the call"
+    ".x{width:calc(-5px)}"
     (normalize ".x { width: calc(-5px) }");
+  Alcotest.(check string)
+    "calc(-5px) -> -5px" ".x{margin-left:-5px}"
+    (normalize ".x { margin-left: calc(-5px) }");
   Alcotest.(check string)
     "calc(1) -> 1" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: calc(1) }")

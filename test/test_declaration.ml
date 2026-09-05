@@ -1719,6 +1719,44 @@ let mask_drained_layer () =
     ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
     "mask: url(a.png), none"
 
+(* CSS Values 4 (ED) sec. 10.3 keeps a [calc()] valid where its range is
+   exceeded and clamps at used-value time, so a property whose range starts at
+   zero reads [calc(-10px)] and drops [-10px]. Chrome 146 computes the first as
+   [0px] and drops the second, so the call stays on and folding it away would
+   write a declaration browsers throw out. A property that takes a negative
+   folds as before. *)
+let negative_calc_keeps_the_call () =
+  List.iter
+    (fun prop ->
+      check_declaration ~expected:(prop ^ ":calc(-10px)")
+        ~optimized:(prop ^ ":calc(-10px)") (prop ^ ": calc(-10px)"))
+    [
+      "width";
+      "height";
+      "min-width";
+      "max-width";
+      "inline-size";
+      "padding-left";
+      "padding-inline-start";
+      "column-gap";
+      "row-gap";
+      "perspective";
+      "scroll-padding-top";
+      "border-top-left-radius";
+    ];
+  List.iter
+    (fun prop ->
+      check_declaration ~expected:(prop ^ ":calc(-10px)")
+        ~optimized:(prop ^ ":-10px") (prop ^ ": calc(-10px)"))
+    [ "margin-left"; "top"; "text-decoration-thickness"; "outline-offset" ];
+  (* A fold that stays in range is unaffected. *)
+  check_declaration ~expected:"width:calc(1px + 2px)" ~optimized:"width:3px"
+    "width: calc(1px + 2px)";
+  (* The record this was found on: the sign is known but the result is not a
+     length any of these properties reads as a literal. *)
+  check_declaration ~expected:"width:calc(10px*sign(-1vw))"
+    ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))"
+
 (* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
    so a layer that fills no slot declares what [background: none] declares. [0
    0] is the shortest spelling of that layer, so it is the node the spellings
@@ -5293,20 +5331,25 @@ let check_sheet_roundtrip name css =
    components with [||], so no single component is mandatory. *)
 let text_decoration_thickness_range () =
   (* CSS Text Decoration 4 section 2.4: <length-percentage> has no non-negative
-     grammar range. The minimum device-pixel thickness is a rendering rule. *)
+     grammar range. The minimum device-pixel thickness is a rendering rule.
+     Unwrapping a negative [calc()] is the optimizer's to make and not the
+     printer's: which properties read the bare value back is a fact about the
+     property, so the two spellings differ in the held form and meet in the
+     optimised one. *)
   List.iter
-    (fun (value, printed) ->
+    (fun (value, printed, optimized) ->
       check_declaration ~roundtrip:true
         ~expected:("text-decoration-thickness:" ^ printed)
+        ~optimized:("text-decoration-thickness:" ^ optimized)
         ("text-decoration-thickness:" ^ value))
     [
-      ("-1px", "-1px");
-      ("-10%", "-10%");
-      ("-.25em", "-.25em");
-      ("calc(-1px)", "-1px");
-      ("calc(-10%)", "-10%");
-      ("calc(2px - 3px)", "calc(2px - 3px)");
-      ("min(-1px,2px)", "min(-1px,2px)");
+      ("-1px", "-1px", "-1px");
+      ("-10%", "-10%", "-10%");
+      ("-.25em", "-.25em", "-.25em");
+      ("calc(-1px)", "calc(-1px)", "-1px");
+      ("calc(-10%)", "calc(-10%)", "-10%");
+      ("calc(2px - 3px)", "calc(2px - 3px)", "-1px");
+      ("min(-1px,2px)", "min(-1px,2px)", "-1px");
     ];
   check_declaration ~roundtrip:true "text-decoration:underline -1px";
   none_cursor read_declaration "text-decoration-thickness:-1s"
@@ -6428,6 +6471,7 @@ let declaration_tests =
       component_var_keeps_typed_value;
     test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
+    test_case "negative calc keeps the call" `Quick negative_calc_keeps_the_call;
     test_case "mask drained layer" `Quick mask_drained_layer;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
