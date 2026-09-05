@@ -2864,14 +2864,23 @@ let compose_border_via_index idx =
 let no_line : Properties.border_shorthand =
   { width = None; style = None; color = None }
 
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what the shorthand assigns to a component left out, so the longhand fills its
+   slot in the run and contributes no value to it. *)
 let line_of_width v : line_part * Properties.border_shorthand =
-  (Width, { no_line with width = Some v })
+  match (v : Properties.border_width) with
+  | Initial -> (Width, no_line)
+  | v -> (Width, { no_line with width = Some v })
 
 let line_of_style v : line_part * Properties.border_shorthand =
-  (Style, { no_line with style = Some v })
+  match (v : Properties.border_style) with
+  | Initial -> (Style, no_line)
+  | v -> (Style, { no_line with style = Some v })
 
 let line_of_color v : line_part * Properties.border_shorthand =
-  (Color, { no_line with color = Some v })
+  match (v : Values.color) with
+  | Initial -> (Color, no_line)
+  | v -> (Color, { no_line with color = Some v })
 
 let merge_line (a : Properties.border_shorthand)
     (b : Properties.border_shorthand) : Properties.border_shorthand =

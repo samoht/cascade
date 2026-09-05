@@ -546,7 +546,8 @@ entry points both moved.
 
 - `--minify` contracts the eight border sides from their own three longhands,
   as it already did for `outline`: `border-top-width`, `border-top-style` and
-  `border-top-color` written together become `border-top` (#918)
+  `border-top-color` written together become `border-top`, and a longhand
+  written `initial` reads as the component the shorthand leaves out (#918, #919)
 
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
