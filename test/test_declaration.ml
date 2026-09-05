@@ -2364,6 +2364,19 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* [center] minifies to the same pair of percentages a written-out position
+     does, and a percentage delimits itself, so neither spelling keeps the space
+     between them. *)
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(blue),to(yellow))"
+    "background: -webkit-gradient(radial, center center, 0, center center, \
+     100, from(blue), to(yellow))";
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(#00f),to(#ff0))"
+    "background: -webkit-gradient(radial, 50% 50%, 0, 50% 50%, 100, \
+     from(#00f), to(#ff0))";
   (* A [-webkit-gradient] stop position is a number or a percentage, and the
      minified spelling is the number, so both read back. *)
   check_declaration
