@@ -374,8 +374,13 @@ let normalize_logical_border_color ?(lossless = false) :
   match value with
   | Single c -> preserve_if_equal value (Single (normalize_color ~lossless c))
   | Pair (a, b) ->
-      preserve_if_equal value
-        (Pair (normalize_color ~lossless a, normalize_color ~lossless b))
+      let a = normalize_color ~lossless a and b = normalize_color ~lossless b in
+      if
+        (not (is_color_substitution a))
+        && (not (is_color_substitution b))
+        && Values.equal_color a b
+      then Single a
+      else preserve_if_equal value (Pair (a, b))
   | other -> other
 
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
@@ -1946,12 +1951,37 @@ let border_width_has_runtime_subst (bw : border_width) : bool =
   | Clamp (lower, value, upper) -> calc lower || calc value || calc upper
   | _ -> false
 
+(* CSS Logical 1 sec. 4.3 and 4.4: an axis shorthand takes [<side>{1,2}], so a
+   repeated side has a shorter spelling naming the same two sides, exactly as
+   [collapse_box_shorthand] picks one for the four-side families. An arbitrary
+   substitution defers the component count to computed-value time, so a pair
+   holding one keeps both. *)
 let normalize_logical_border_width :
     logical_border_width -> logical_border_width =
  fun value ->
   match value with
   | Single w -> Single (normalize_border_width w)
-  | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
+  | Pair (a, b) ->
+      let a = normalize_border_width a and b = normalize_border_width b in
+      if
+        (not (is_border_width_substitution a))
+        && (not (is_border_width_substitution b))
+        && equal_border_width a b
+      then Single a
+      else Pair (a, b)
+  | other -> other
+
+(* [border-style] takes keywords, so the axis has nothing to canonicalise per
+   value and only the spelling is at stake. *)
+let normalize_logical_border_style :
+    logical_border_style -> logical_border_style =
+ fun value ->
+  match value with
+  | Pair (a, b)
+    when (not (is_border_style_substitution a))
+         && (not (is_border_style_substitution b))
+         && equal_border_style a b ->
+      Single a
   | other -> other
 
 (* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,

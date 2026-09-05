@@ -4490,7 +4490,9 @@ let normalize_property_value : type a.
   | Flood_opacity -> normalize_opacity value
   | Line_height -> normalize_line_height ~lossless value
   | Vertical_align -> normalize_vertical_align value
-  | Border_width -> map_preserve normalize_border_width value
+  | Border_width ->
+      normalize_box_shorthand ~is_substitution:is_border_width_substitution
+        normalize_border_width value
   | Border_top_width -> normalize_border_width value
   | Border_right_width -> normalize_border_width value
   | Border_bottom_width -> normalize_border_width value
@@ -4501,6 +4503,8 @@ let normalize_property_value : type a.
   | Border_block_end_width -> normalize_border_width value
   | Border_inline_width -> normalize_logical_border_width value
   | Border_block_width -> normalize_logical_border_width value
+  | Border_inline_style -> normalize_logical_border_style value
+  | Border_block_style -> normalize_logical_border_style value
   | Transition_duration -> Values.normalize_duration ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
   | Animation_duration -> Values.normalize_duration ~ctx value

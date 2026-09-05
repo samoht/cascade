@@ -544,6 +544,11 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` folds a repeated side of `border-width` and of the three border
+  logical axes to the shortest spelling naming the same sides, as it already
+  did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
+  2px` minifies to `border-width: 2px` (#917)
+
 - `--minify` no longer contracts a run of longhands one of which is `inherit`,
   `unset`, `revert` or `revert-layer`. A CSS-wide keyword is a whole
   declaration value, so pasting one into a shorthand made a declaration every

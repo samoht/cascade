@@ -189,6 +189,10 @@ let is_border_style_substitution : border_style -> bool = function
   | Var _ -> true
   | _ -> false
 
+let is_border_width_substitution : border_width -> bool = function
+  | Var _ -> true
+  | _ -> false
+
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the
    shortest of the spellings that name those sides. Keep the authored number of
    components when arbitrary substitution defers their computed arity. *)
