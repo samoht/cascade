@@ -686,6 +686,11 @@ entry points both moved.
   `margin-top: none` parsed. `Css.Values.read_length` gains `?sizing` for the
   readers whose property takes them (#952)
 
+- A time and an angle need their unit. CSS Values 4 sec. 6.2 omits it only for
+  a zero length, and cascade read `transition-duration: 0` as `0s` and
+  `rotate: 0` as `0deg`, turning a declaration browsers drop into one that
+  works (#953)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

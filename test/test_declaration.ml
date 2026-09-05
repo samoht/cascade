@@ -3199,7 +3199,27 @@ let invalid () =
   neg "outline-width: 200%";
   neg "column-rule-width: 10%";
   neg "-webkit-text-stroke-width: 20%";
-  neg "border-width: calc(50%)"
+  neg "border-width: calc(50%)";
+
+  (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
+     a property reading a plain length does not take them. Chrome 146 refuses
+     each of these. *)
+  neg "top: min-content";
+  neg "top: normal";
+  neg "margin-top: none";
+  neg "inset: min-content";
+  neg "column-width: min-content";
+  neg "background-size: min-content";
+
+  (* CSS Values 4 (ED) sec. 6.2 omits the unit only for a zero length, so a bare
+     [0] is neither a time nor an angle. Cascade used to read one as [0s] or
+     [0deg], turning input Chrome 146 refuses into a working declaration. *)
+  neg "transition-duration: 0";
+  neg "transition-delay: 0";
+  neg "animation-duration: 0";
+  neg "animation-delay: 0";
+  neg "rotate: 0";
+  neg "offset-rotate: 0"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:

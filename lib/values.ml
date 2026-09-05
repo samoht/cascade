@@ -7111,24 +7111,27 @@ let duration_css_wide =
     ("revert-layer", Revert_layer);
   ]
 
+(* CSS Values 4 (ED) sec. 6.2: "the unit may be omitted [...] only for zero
+   lengths", so a bare [0] is not a time. Reading one as [0s] turned input a
+   browser refuses into a declaration that works. *)
 let read_duration_number ~canonicalize_ms:_ t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
   if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
   else
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
-    | "" when n = 0.0 -> S 0.0
     | "s" -> S n
     | "ms" -> Ms n
+    | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
     | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
 
 let read_time_number t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   match unit with
-  | "" when n = 0.0 -> S 0.0
   | "s" -> S n
   | "ms" -> Ms n
+  | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 let read_duration_round read_duration_self t =

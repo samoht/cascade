@@ -775,13 +775,14 @@ let rec read_offset_rotate t : offset_rotate =
   let read_mode_first t : offset_rotate =
     let mode = read_offset_rotate_mode t in
     Cursor.ws t;
-    match Cursor.option read_angle t with
+    match Cursor.option read_angle_unit_required t with
     | Some angle -> With_angle (mode, angle)
     | None -> (
         match mode with Auto -> (Auto : offset_rotate) | Reverse -> Reverse)
   in
   let read_angle_first t : offset_rotate =
-    let angle = read_angle t in
+    (* Same reading as [rotate]: the angle carries a unit. *)
+    let angle = read_angle_unit_required t in
     Cursor.ws t;
     match Cursor.option read_offset_rotate_mode t with
     | Some mode -> With_angle (mode, angle)
@@ -1029,7 +1030,9 @@ let read_rotate_angle_axis_tail angle t =
    x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
    consume the angle, then look for a trailing axis. *)
 let read_rotate_angle_then_axis t : rotate_value =
-  let angle = read_angle t in
+  (* CSS Values 4 (ED) sec. 6.2 omits the unit only for a zero length, so the
+     angle here carries one; Chrome 146 refuses [rotate: 0]. *)
+  let angle = read_angle_unit_required t in
   Cursor.ws t;
   if Cursor.is_done t then Angle angle else read_rotate_angle_axis_tail angle t
 
