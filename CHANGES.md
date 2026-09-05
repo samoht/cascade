@@ -648,6 +648,12 @@ entry points both moved.
   `cascade prune` used to read `[TITLE=x]` and `[type=TEXT]` as matching
   nothing (#944, #945)
 
+- A `@counter-style` missing a descriptor its system needs is kept. CSS
+  Counter Styles 3 sec. 3.1.1 has such a rule define no counter style while
+  staying a valid rule, and cascade dropped it along with everything the
+  parser had read after it. A rule with no descriptor at all is dropped, since
+  it renders as an unknown name does (#946)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

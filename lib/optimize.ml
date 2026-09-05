@@ -280,7 +280,11 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       in
       preserve_list stmts stmts'
 
-(* Walk the statement list left to right over a reversed accumulator. *)
+(* Walk the statement list left to right over a reversed accumulator.
+
+   CSS Counter Styles 3 sec. 3: a [@counter-style] with no descriptor defines no
+   counter style, and a name that defines none falls back to [decimal] exactly
+   as an unknown name does, so the rule renders nothing and goes. *)
 and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (acc : statement list) (remaining : statement list) : statement list =
   match remaining with
@@ -354,6 +358,9 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   (* Listed rather than closed with a wildcard: everything left holds no block,
      so a statement that grows one has to be classified above before it
      compiles. *)
+  | Counter_style (_, []) :: rest ->
+      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc
+        rest
   | (( Property _ | Bang_comment _ | Charset _ | Namespace _ | Layer_decl _
      | Supports_condition _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
      | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _

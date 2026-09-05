@@ -1061,7 +1061,6 @@ let test_invalid_atrule_descriptor buf =
         "@page { @top-center { display: 1px } }";
         "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
         "@font-palette-values --brand { override-colors: -1 red }";
-        "@counter-style thumbs { system: cyclic }";
         "@view-transition { navigation: always; }";
         "@position-try default { top: 0; }";
         "@position-try --fallback { @media screen { .x { color: red } } }";

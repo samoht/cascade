@@ -2815,34 +2815,6 @@ let read_counter_style_descriptors r =
         inner [])
     r
 
-let counter_style_system descriptors =
-  List.find_map
-    (function System system -> Some system | _ -> None)
-    descriptors
-
-let counter_style_has_symbols descriptors =
-  List.exists (function Symbols _ -> true | _ -> false) descriptors
-
-let counter_style_has_additive_symbols descriptors =
-  List.exists (function Additive_symbols _ -> true | _ -> false) descriptors
-
-let counter_style_validate r descriptors =
-  let system =
-    match counter_style_system descriptors with
-    | Some system -> system
-    | None -> Cursor.err_invalid r "@counter-style requires a system descriptor"
-  in
-  match system with
-  | Cyclic | Numeric | Alphabetic | Symbolic | Fixed _ ->
-      if not (counter_style_has_symbols descriptors) then
-        Cursor.err_invalid r
-          "@counter-style system requires a symbols descriptor"
-  | Additive ->
-      if not (counter_style_has_additive_symbols descriptors) then
-        Cursor.err_invalid r
-          "@counter-style additive system requires additive-symbols"
-  | Extends _ -> ()
-
 let read_counter_style (r : Cursor.t) : statement =
   Cursor.with_context r "@counter-style" @@ fun () ->
   Cursor.expect_at_keyword "counter-style" r;
@@ -2856,7 +2828,6 @@ let read_counter_style (r : Cursor.t) : statement =
           (counter_style_descriptor_rank a)
           (counter_style_descriptor_rank b))
   in
-  counter_style_validate r descriptors;
   Counter_style (name, descriptors)
 
 (* CSS Paged Media 3 sec. 4.2: a page selector is an optional page name followed

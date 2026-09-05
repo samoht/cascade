@@ -1412,6 +1412,16 @@ let spec_strict_accepts_valid_stylesheets () =
       ( "counter-style cyclic",
         "@counter-style thumbs { system: cyclic; symbols: \"*\" \"x\"; suffix: \
          \" \" }" );
+      (* CSS Counter Styles 3 sec. 3.1.1: without the symbols a cyclic system
+         "does not define a counter style (but is still a valid rule)", and sec.
+         3 keeps a rule whose descriptors a UA does not implement, so a missing
+         descriptor is not a parse error. *)
+      ( "counter-style missing system",
+        "@counter-style thumbs { symbols: \"*\" }" );
+      ( "counter-style cyclic missing symbols",
+        "@counter-style thumbs { system: cyclic }" );
+      ( "counter-style additive missing additive-symbols",
+        "@counter-style thumbs { system: additive }" );
     ]
 
 let spec_strict_rejects_invalid_stylesheets () =
@@ -1560,10 +1570,6 @@ let spec_strict_rejects_invalid_stylesheets () =
          block swap }" );
       ( "font-palette missing font-family",
         "@font-palette-values --brand { override-colors: 0 red }" );
-      ( "counter-style missing system",
-        "@counter-style thumbs { symbols: \"*\" }" );
-      ( "counter-style cyclic missing symbols",
-        "@counter-style thumbs { system: cyclic }" );
       ("page margin invalid declaration", "@page { @top-left { display: 1px } }");
       ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
       ("keyframes forbidden name none", "@keyframes none { to { opacity: 1 } }");
