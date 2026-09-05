@@ -1974,12 +1974,12 @@ let try_compose_gap_at idx i =
     | _ -> None
 
 (* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
-   longhands. Both longhands carry exactly one length value (wrapped in a
-   1-element list for [inset-*] grammar reasons). The result is a [length list]
-   payload: [v] when both sides match, [v_start; v_end] otherwise. *)
+   longhands. The side longhands carry one value of the family's own type, and
+   [build] turns the ordered pair into the shorthand's payload: a [length list]
+   for the box families, a [Single] / [Pair] for the border ones. *)
 type axis_side = Start | End
 
-let try_compose_axis_pair_at idx ~extract ~build i =
+let try_compose_axis_pair_at idx ~foldable ~extract ~build i =
   let n = Rule_index.length idx in
   if
     i + 1 >= n
@@ -1991,17 +1991,11 @@ let try_compose_axis_pair_at idx ~extract ~build i =
     let d2 = Rule_index.decl_at idx (i + 1) in
     match (extract d1, extract d2) with
     | Some (s1, v1, imp1), Some (s2, v2, imp2)
-      when imp1 = imp2 && s1 <> s2
-           && (not (Values.length_has_runtime_subst v1))
-           && not (Values.length_has_runtime_subst v2) ->
+      when imp1 = imp2 && s1 <> s2 && foldable v1 && foldable v2 ->
         let pair = [ (s1, v1); (s2, v2) ] in
-        let v_start = List.assoc Start pair in
-        let v_end = List.assoc End pair in
-        let value =
-          if Values.equal_length v_start v_end then [ v_start ]
-          else [ v_start; v_end ]
-        in
-        Some (build ~important:imp1 ~value)
+        Some
+          (build ~important:imp1 ~start:(List.assoc Start pair)
+             ~end_:(List.assoc End pair))
     | _ -> None
 
 let extract_margin_inline_side :
@@ -2091,6 +2085,61 @@ let extract_inset_block_side :
       Some (End, v, important)
   | _ -> None
 
+(* CSS Logical 1 sec. 4.3 and 4.4: [border-block-*] and [border-inline-*] take
+   one or two values of the side longhand's own type, so the two sides compose
+   the way the length axes do. *)
+let extract_border_inline_width_side :
+    declaration -> (axis_side * Properties.border_width * bool) option =
+  function
+  | Declaration { property = Border_inline_start_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_width; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_width_side :
+    declaration -> (axis_side * Properties.border_width * bool) option =
+  function
+  | Declaration { property = Border_block_start_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_width; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_inline_style_side :
+    declaration -> (axis_side * Properties.border_style * bool) option =
+  function
+  | Declaration { property = Border_inline_start_style; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_style; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_style_side :
+    declaration -> (axis_side * Properties.border_style * bool) option =
+  function
+  | Declaration { property = Border_block_start_style; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_style; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_inline_color_side :
+    declaration -> (axis_side * Values.color * bool) option = function
+  | Declaration { property = Border_inline_start_color; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_color; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_color_side :
+    declaration -> (axis_side * Values.color * bool) option = function
+  | Declaration { property = Border_block_start_color; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_color; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
 (* CSS Align 3 sec. 5.2, 6.3 and 7.3: [place-items] / [place-content] /
    [place-self] are the [<align> <justify>] shorthands. When the two longhands
    appear contiguously with matching importance, fold them; the per-property
@@ -2141,33 +2190,83 @@ let try_compose_place_at idx i =
         Some (Declaration.v ~important:i1 Place_self (a, j))
     | _ -> None
 
-let compose_pair_via_index idx =
-  let axis property extract i =
-    let build ~important ~value = Declaration.v ~important property value in
-    try_compose_axis_pair_at idx ~extract ~build i
+(* Fold an axis pair into the shorthand's own payload: a length list for the box
+   families, a [Single] / [Pair] for the border ones. *)
+let axis_length idx property extract i =
+  let build ~important ~start ~end_ =
+    let value =
+      if Values.equal_length start end_ then [ start ] else [ start; end_ ]
+    in
+    Declaration.v ~important property value
   in
-  (* One entry per logical axis family; each pairs a start longhand with its end
-     longhand under the shorthand that names the axis. *)
-  let axes i =
-    [
-      (fun () -> axis Margin_inline extract_margin_inline_side i);
-      (fun () -> axis Margin_block extract_margin_block_side i);
-      (fun () -> axis Padding_inline extract_padding_inline_side i);
-      (fun () -> axis Padding_block extract_padding_block_side i);
-      (fun () -> axis Inset_inline extract_inset_inline_side i);
-      (fun () -> axis Inset_block extract_inset_block_side i);
-      (fun () -> axis Scroll_margin_inline extract_scroll_margin_inline_side i);
-      (fun () -> axis Scroll_margin_block extract_scroll_margin_block_side i);
-      (fun () ->
-        axis Scroll_padding_inline extract_scroll_padding_inline_side i);
-      (fun () -> axis Scroll_padding_block extract_scroll_padding_block_side i);
-    ]
+  try_compose_axis_pair_at idx ~foldable:foldable_length_strict ~extract ~build
+    i
+
+let axis_border_width ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_width =
+      if same_border_width start end_ then Single start else Pair (start, end_)
+    in
+    Declaration.v ~important property value
   in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_width ~ctx)
+    ~extract ~build i
+
+let axis_border_style ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_style =
+      if same_border_style start end_ then Single start else Pair (start, end_)
+    in
+    Declaration.v ~important property value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_style ~ctx)
+    ~extract ~build i
+
+let axis_border_color ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_color =
+      if Values.equal_color start end_ then Single start else Pair (start, end_)
+    in
+    Declaration.v ~important property value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_color ~ctx)
+    ~extract ~build i
+
+(* One entry per logical axis family; each pairs a start longhand with its end
+   longhand under the shorthand that names the axis. *)
+let pair_axes ~ctx idx i =
+  let axis = axis_length idx in
+  let width = axis_border_width ~ctx idx in
+  let style = axis_border_style ~ctx idx in
+  let color = axis_border_color ~ctx idx in
+  [
+    (fun () -> axis Margin_inline extract_margin_inline_side i);
+    (fun () -> axis Margin_block extract_margin_block_side i);
+    (fun () -> axis Padding_inline extract_padding_inline_side i);
+    (fun () -> axis Padding_block extract_padding_block_side i);
+    (fun () -> axis Inset_inline extract_inset_inline_side i);
+    (fun () -> axis Inset_block extract_inset_block_side i);
+    (fun () -> axis Scroll_margin_inline extract_scroll_margin_inline_side i);
+    (fun () -> axis Scroll_margin_block extract_scroll_margin_block_side i);
+    (fun () -> axis Scroll_padding_inline extract_scroll_padding_inline_side i);
+    (fun () -> axis Scroll_padding_block extract_scroll_padding_block_side i);
+    (fun () -> width Border_inline_width extract_border_inline_width_side i);
+    (fun () -> width Border_block_width extract_border_block_width_side i);
+    (fun () -> style Border_inline_style extract_border_inline_style_side i);
+    (fun () -> style Border_block_style extract_border_block_style_side i);
+    (fun () -> color Border_inline_color extract_border_inline_color_side i);
+    (fun () -> color Border_block_color extract_border_block_color_side i);
+  ]
+
+let compose_pair_via_index ~ctx idx =
   let try_any i =
     match try_compose_gap_at idx i with
     | Some _ as r -> r
     | None -> (
-        match List.find_map (fun f -> f ()) (axes i) with
+        match List.find_map (fun f -> f ()) (pair_axes ~ctx idx i) with
         | Some _ as r -> r
         | None -> try_compose_place_at idx i)
   in
@@ -4533,7 +4632,7 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
 let compose_index_group_a ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_box_via_index ~ctx idx;
-  compose_pair_via_index idx;
+  compose_pair_via_index ~ctx idx;
   compose_outline_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 

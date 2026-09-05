@@ -202,8 +202,9 @@ entry points both moved.
 
 ### Parsing
 
-- The `scroll-margin` and `scroll-padding` logical axes contract from their
-  two longhands, as the margin, padding and inset axes already did (#915).
+- The `scroll-margin`, `scroll-padding` and `border-block` / `border-inline`
+  width, style and colour axes contract from their two longhands, as the
+  margin, padding and inset axes already did (#915, #916).
 
 - Contracting animation longhands into `animation` no longer resets a longhand
   the run does not write, so `animation-name` set in another rule survives
