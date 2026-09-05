@@ -401,6 +401,11 @@ to lose a whole rule over one bad piece. Both are gone.
   it already wrote, so the whole border family written out minifies to
   `border: 1px solid red` alone (#956)
 
+- `--minify` no longer loses a `border-image` a neighbouring rule set when the
+  border longhands contract. The family shared one slot in the hazard model, so
+  a rule holding the slice answered for a neighbour holding the source and the
+  picture went missing from the output (#968)
+
 - `--minify` no longer contracts a run of longhands one of which is `inherit`,
   `unset`, `revert` or `revert-layer`. A CSS-wide keyword is a whole
   declaration value, so pasting one into a shorthand made a declaration every

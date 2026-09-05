@@ -4927,18 +4927,28 @@ let all_an_bits = an_bits an_slots
    transition and animation sets. *)
 let td_thickness_bit = 16384
 
-(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family
-   as well, so that family needs one bit of its own beside the others. *)
-let border_image_bit = 32768
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
+   and each longhand of it gets a bit rather than the family sharing one: a rule
+   holding the slice says nothing about a neighbour holding the source, and one
+   bit makes the first cancel the second in [held_outside]. *)
+let bi_source_bit = 1 lsl 18
+let bi_slice_bit = 1 lsl 19
+let bi_width_bit = 1 lsl 20
+let bi_outset_bit = 1 lsl 21
+let bi_repeat_bit = 1 lsl 22
+
+let border_image_bit =
+  bi_source_bit lor bi_slice_bit lor bi_width_bit lor bi_outset_bit
+  lor bi_repeat_bit
 
 let bi_overwritten_slots d =
   match unwrap_theme_guard d with
+  | Declaration { property = Border_image_source; _ } -> bi_source_bit
+  | Declaration { property = Border_image_slice; _ } -> bi_slice_bit
+  | Declaration { property = Border_image_width; _ } -> bi_width_bit
+  | Declaration { property = Border_image_outset; _ } -> bi_outset_bit
+  | Declaration { property = Border_image_repeat; _ } -> bi_repeat_bit
   | Declaration { property = Border_image; _ }
-  | Declaration { property = Border_image_source; _ }
-  | Declaration { property = Border_image_slice; _ }
-  | Declaration { property = Border_image_width; _ }
-  | Declaration { property = Border_image_outset; _ }
-  | Declaration { property = Border_image_repeat; _ }
   | Declaration { property = Border; _ } ->
       border_image_bit
   | Declaration { property = All; value = Initial | Unset; _ } -> 0
