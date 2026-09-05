@@ -1186,6 +1186,13 @@ val read_white_space_collapse : Cursor.t -> white_space_collapse
 (** [read_white_space_collapse t] is the [white_space_collapse] parsed from [t].
 *)
 
+val pp_webkit_text_stroke : webkit_text_stroke Pp.t
+(** [pp_webkit_text_stroke] is the pretty-printer for [webkit_text_stroke]. *)
+
+val read_webkit_text_stroke : Cursor.t -> webkit_text_stroke
+(** [read_webkit_text_stroke t] is the [-webkit-text-stroke] shorthand parsed
+    from [t]. *)
+
 val read_white_space : Cursor.t -> white_space
 (** [read_white_space t] is the [white_space] parsed from [t]. *)
 

@@ -1928,6 +1928,44 @@ let rec read_white_space_collapse t : white_space_collapse =
     ~var:(fun t -> Var (read_var read_white_space_collapse t))
     t
 
+(* [-webkit-text-stroke] is [<line-width> || <color>]: either component may be
+   left out and either order is accepted, so the two are read by type. A
+   component left out takes its longhand's initial - [0] for the width and
+   [currentColor] for the colour - which is what the printer then omits. *)
+let pp_webkit_text_stroke : webkit_text_stroke Pp.t =
+ fun ctx s ->
+  let wrote = ref false in
+  let sep () = if !wrote then Pp.space ctx () else wrote := true in
+  Option.iter
+    (fun w ->
+      sep ();
+      pp_border_width ctx w)
+    s.width;
+  Option.iter
+    (fun c ->
+      sep ();
+      pp_color ctx c)
+    s.color;
+  if not !wrote then Pp.string ctx "currentColor"
+
+let read_webkit_text_stroke t : webkit_text_stroke =
+  let width = ref Option.None and color = ref Option.None in
+  let read_one t =
+    match Cursor.peek_ident t with
+    | Some ("thin" | "medium" | "thick") -> width := Some (read_border_width t)
+    | _ -> (
+        let snap = Cursor.save t in
+        match read_border_width t with
+        | w -> width := Some w
+        | exception Cursor.Parse_error _ ->
+            Cursor.restore t snap;
+            color := Some (Values.read_color t))
+  in
+  read_one t;
+  Cursor.ws t;
+  if not (Cursor.is_done t || Cursor.peek_comma t) then read_one t;
+  { width = !width; color = !color }
+
 let rec read_word_break t : word_break =
   Cursor.enum_or_var "word-break"
     [

@@ -148,6 +148,8 @@ let covers_longhand : type a b.
   | Font_synthesis, Font_synthesis_style -> true
   | Font_synthesis, Font_synthesis_small_caps -> true
   | Font_synthesis, Font_synthesis_position -> true
+  | Webkit_text_stroke, Webkit_text_stroke_width -> true
+  | Webkit_text_stroke, Webkit_text_stroke_color -> true
   (* CSS Multicol 1 sec. 4.3: [column-rule] is the three rule longhands. *)
   | Column_rule, Column_rule_width -> true
   | Column_rule, Column_rule_style -> true
@@ -905,6 +907,12 @@ let property_slots : type a. a Properties.property -> overlap_key list =
       [ key "overscroll-behavior-x"; key "overscroll-behavior-y" ]
   | Overscroll_behavior_x -> [ key "overscroll-behavior-x" ]
   | Overscroll_behavior_y -> [ key "overscroll-behavior-y" ]
+  (* [-webkit-text-stroke] is [<line-width> || <color>] over its two
+     longhands. *)
+  | Webkit_text_stroke ->
+      [ key "-webkit-text-stroke-width"; key "-webkit-text-stroke-color" ]
+  | Webkit_text_stroke_width -> [ key "-webkit-text-stroke-width" ]
+  | Webkit_text_stroke_color -> [ key "-webkit-text-stroke-color" ]
   (* CSS Contain 3 sec. 4.3. *)
   | Container -> [ key "container-name"; key "container-type" ]
   | Container_name -> [ key "container-name" ]
@@ -2712,6 +2720,32 @@ let duo_text_wrap idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_text_wrap_part ~build i
 
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands.
+   Both are typed differently, so either order names the same declaration. *)
+let extract_webkit_stroke_part :
+    declaration ->
+    (axis_side * (Properties.border_width option * Values.color option) * bool)
+    option = function
+  | Declaration { property = Webkit_text_stroke_width; value = Var _; _ }
+  | Declaration { property = Webkit_text_stroke_color; value = Var _; _ } ->
+      None
+  | Declaration { property = Webkit_text_stroke_width; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Webkit_text_stroke_color; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_webkit_text_stroke idx i =
+  let build ~important ~start ~end_ =
+    let width, _ = start and _, color = end_ in
+    Some
+      (Declaration.v ~important Webkit_text_stroke
+         ({ width; color } : Properties.webkit_text_stroke))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_webkit_stroke_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2748,6 +2782,7 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_background_position idx i);
     (fun () -> duo_white_space idx i);
     (fun () -> duo_text_wrap idx i);
+    (fun () -> duo_webkit_text_stroke idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

@@ -874,6 +874,19 @@ let test_font_synthesis_composes () =
       ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
     ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
 
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands,
+   the shape the border sides take, so the pair contracts the same way. *)
+let test_webkit_text_stroke_composes () =
+  sheet_optimizes_to ~into:".x{-webkit-text-stroke:1px red}"
+    ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red}";
+  sheet_optimizes_to ~into:".x{-webkit-text-stroke:0 currentColor}"
+    ".x{-webkit-text-stroke-width:0;-webkit-text-stroke-color:currentcolor}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
+    ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1478,6 +1491,8 @@ let suite =
       Alcotest.test_case "text wrap composes" `Quick test_text_wrap_composes;
       Alcotest.test_case "font synthesis composes" `Quick
         test_font_synthesis_composes;
+      Alcotest.test_case "webkit text stroke composes" `Quick
+        test_webkit_text_stroke_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

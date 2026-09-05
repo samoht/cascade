@@ -588,6 +588,10 @@ entry points both moved.
   rule that also writes `font-synthesis-position` alone since the shorthand
   resets it (#930)
 
+- `--minify` contracts `-webkit-text-stroke` from its width and colour
+  longhands. The shorthand and `-webkit-text-stroke-width` are new typed
+  properties; only the colour longhand had a spelling before (#931)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

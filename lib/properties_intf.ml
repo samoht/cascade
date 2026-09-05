@@ -1825,6 +1825,11 @@ type logical_border_style =
   | Revert_layer
   | Var of logical_border_style var
 
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands. It
+   is not in a CSS specification; the shape is what WebKit and Blink accept and
+   what their CSSOM reports back. *)
+type webkit_text_stroke = { width : border_width option; color : color option }
+
 type outline_style =
   | None
   | Solid
@@ -4913,6 +4918,8 @@ type 'a property =
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
   | Webkit_text_fill_color : color property
+  | Webkit_text_stroke : webkit_text_stroke property
+  | Webkit_text_stroke_width : border_width property
   | Webkit_text_stroke_color : color property
   | Text_indent : text_indent_value property
   | List_style : list_style property

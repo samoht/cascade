@@ -2539,6 +2539,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Ms_user_select, value -> vars_of_user_select value
   | Webkit_text_fill_color, value -> vars_of_color value
   | Webkit_text_stroke_color, value -> vars_of_color value
+  | Webkit_text_stroke_width, value -> vars_of_border_width value
+  | Webkit_text_stroke, value ->
+      Option.fold ~none:[] ~some:vars_of_border_width value.width
+      @ Option.fold ~none:[] ~some:vars_of_color value.color
   | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
   | White_space_collapse, value -> vars_of_white_space_collapse value

@@ -468,6 +468,8 @@ let pp_property : type a. a property Pp.t =
   | Webkit_tap_highlight_color -> Pp.string ctx "-webkit-tap-highlight-color"
   | Webkit_text_fill_color -> Pp.string ctx "-webkit-text-fill-color"
   | Webkit_text_stroke_color -> Pp.string ctx "-webkit-text-stroke-color"
+  | Webkit_text_stroke -> Pp.string ctx "-webkit-text-stroke"
+  | Webkit_text_stroke_width -> Pp.string ctx "-webkit-text-stroke-width"
   | Webkit_user_select -> Pp.string ctx "-webkit-user-select"
   | Ms_user_select -> Pp.string ctx "-ms-user-select"
   | Moz_user_select -> Pp.string ctx "-moz-user-select"
@@ -885,6 +887,8 @@ let property_class : type a. a property -> a property_class = function
   | Webkit_tap_highlight_color -> Inherited
   | Webkit_text_fill_color -> Inherited
   | Webkit_text_stroke_color -> Inherited
+  | Webkit_text_stroke -> Inherited
+  | Webkit_text_stroke_width -> Inherited
   | List_style -> Inherited
   | Font -> Inherited
   | Scrollbar_color -> Inherited
@@ -1333,6 +1337,8 @@ let property_tag : type a. a property -> int = function
   | Webkit_text_decoration_color -> 218
   | Webkit_text_fill_color -> 219
   | Webkit_text_stroke_color -> 220
+  | Webkit_text_stroke -> 542
+  | Webkit_text_stroke_width -> 543
   | Text_indent -> 221
   | List_style -> 222
   | Font -> 223
@@ -1901,6 +1907,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Webkit_text_decoration_color, Webkit_text_decoration_color -> Some Equal
   | Webkit_text_fill_color, Webkit_text_fill_color -> Some Equal
   | Webkit_text_stroke_color, Webkit_text_stroke_color -> Some Equal
+  | Webkit_text_stroke, Webkit_text_stroke -> Some Equal
+  | Webkit_text_stroke_width, Webkit_text_stroke_width -> Some Equal
   | Text_indent, Text_indent -> Some Equal
   | List_style, List_style -> Some Equal
   | Font, Font -> Some Equal
@@ -3239,6 +3247,8 @@ let read_any_property t =
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
   | "-webkit-text-fill-color" -> Prop Webkit_text_fill_color
   | "-webkit-text-stroke-color" -> Prop Webkit_text_stroke_color
+  | "-webkit-text-stroke" -> Prop Webkit_text_stroke
+  | "-webkit-text-stroke-width" -> Prop Webkit_text_stroke_width
   | "-webkit-user-select" -> Prop Webkit_user_select
   | "-ms-user-select" -> Prop Ms_user_select
   | "-moz-user-select" -> Prop Moz_user_select
@@ -3738,8 +3748,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       | Border_block_start_color | Border_block_end_color | Outline_color
       | Webkit_tap_highlight_color | Webkit_text_decoration_color
       | Webkit_text_fill_color | Webkit_text_stroke_color | Column_rule_color
-      | Stop_color | Flood_color | Lighting_color | Accent_color | Caret_color
-        ),
+      | Webkit_text_stroke | Stop_color | Flood_color | Lighting_color
+      | Accent_color | Caret_color ),
       value ) ->
       value
   | Border_color, value -> value
@@ -3842,7 +3852,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | ( ( Border_top_width | Border_right_width | Border_bottom_width
       | Border_left_width | Border_inline_start_width | Border_inline_end_width
       | Border_block_start_width | Border_block_end_width | Outline_width
-      | Column_rule_width ),
+      | Column_rule_width | Webkit_text_stroke_width ),
       value ) ->
       value
   | (Border_inline_width | Border_block_width), value -> value
@@ -4353,6 +4363,7 @@ let normalize_property_value : type a.
   | Webkit_text_decoration_color -> normalize_color value
   | Webkit_text_fill_color -> normalize_color value
   | Webkit_text_stroke_color -> normalize_color value
+  | Webkit_text_stroke_width -> normalize_border_width value
   | Column_rule_color -> normalize_color value
   | Column_rule_width -> normalize_border_width value
   | Webkit_tap_highlight_color -> normalize_color value
@@ -4723,6 +4734,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_tap_highlight_color -> pp pp_color
   | Webkit_text_fill_color -> pp pp_color
   | Webkit_text_stroke_color -> pp pp_color
+  | Webkit_text_stroke -> pp pp_webkit_text_stroke
+  | Webkit_text_stroke_width -> pp pp_border_width
   | Column_rule_color -> pp pp_color
   | Column_rule_width -> pp pp_border_width
   | Column_rule_style -> pp pp_border_style
@@ -5379,6 +5392,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_decoration_color -> Some Color
   | Webkit_text_fill_color -> Some Color
   | Webkit_text_stroke_color -> Some Color
+  | Webkit_text_stroke_width -> Some Border_width
   | Column_rule_color -> Some Color
   | Column_rule_width -> Some Border_width
   | Accent_color -> Some Color
