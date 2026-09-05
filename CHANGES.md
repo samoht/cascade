@@ -545,6 +545,13 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` no longer resets the animation range when it contracts. Scroll
+  driven Animations 1 makes `animation-range-start` and `animation-range-end`
+  reset-only sub-properties of `animation`, and a rule holding either lost it
+  when the surrounding longhands became the shorthand. A range or a timeline
+  written after the shorthand that only restates the reset is now dropped
+  (#957)
+
 - `--minify` drops a `border-image` that names nothing but initials after a
   `border`, which CSS Backgrounds 3 sec. 3.4 already resets it to. The whole
   border family written out as longhands now minifies to `border: 1px solid

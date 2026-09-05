@@ -80,9 +80,10 @@ let covers_longhand : type a b.
   | Transition, Transition_delay -> true
   | Transition, Transition_behavior -> true
   (* CSS Animations 2 sec. 4.11 and 4.12: [animation] resets every longhand
-     [animation_keys] names, [animation-timeline] included.
-     [animation-composition] and the [animation-range-*] longhands are not part
-     of it and are absent here for that reason. *)
+     [animation_keys] names, [animation-timeline] included. Scroll-driven
+     Animations 1 appendix A.3 makes the two [animation-range-*] longhands
+     reset-only sub-properties of it, so they are reset as well.
+     [animation-composition] is no part of it and is absent for that reason. *)
   | Animation, Animation_name -> true
   | Animation, Animation_duration -> true
   | Animation, Animation_timing_function -> true
@@ -92,6 +93,9 @@ let covers_longhand : type a b.
   | Animation, Animation_fill_mode -> true
   | Animation, Animation_play_state -> true
   | Animation, Animation_timeline -> true
+  | Animation, Animation_range -> true
+  | Animation, Animation_range_start -> true
+  | Animation, Animation_range_end -> true
   (* CSS Logical 1: physical-axis pairs. *)
   | Margin_inline, Margin_inline_start -> true
   | Margin_inline, Margin_inline_end -> true
@@ -378,6 +382,8 @@ let animation_keys =
     key "animation-fill-mode";
     key "animation-play-state";
     key "animation-timeline";
+    key "animation-range-start";
+    key "animation-range-end";
   ]
 
 let transition_keys =
@@ -570,8 +576,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Moz_animation_play_state ->
       [ key "animation-play-state" ]
   | Animation_timeline -> [ key "animation-timeline" ]
-  (* Scroll-driven Animations 1 sec. 5.3: [animation-range] is its own
-     shorthand, and [animation] does not reset either end. *)
+  (* Scroll-driven Animations 1 appendix A.3: [animation-range] is its own
+     shorthand over the two ends. *)
   | Animation_range ->
       [ key "animation-range-start"; key "animation-range-end" ]
   | Animation_range_start -> [ key "animation-range-start" ]
@@ -4735,9 +4741,23 @@ type an_slot =
   | Fill
   | Play
   | Timeline
+  | Range_start
+  | Range_end
 
 let an_slots =
-  [ Name; Duration; Timing; Delay; Iteration; Direction; Fill; Play; Timeline ]
+  [
+    Name;
+    Duration;
+    Timing;
+    Delay;
+    Iteration;
+    Direction;
+    Fill;
+    Play;
+    Timeline;
+    Range_start;
+    Range_end;
+  ]
 
 let an_slot_bit : an_slot -> int = function
   | Name -> 32
@@ -4749,6 +4769,8 @@ let an_slot_bit : an_slot -> int = function
   | Fill -> 2048
   | Play -> 4096
   | Timeline -> 8192
+  | Range_start -> 65536
+  | Range_end -> 131072
 
 let an_bits slots = List.fold_left (fun acc s -> acc lor an_slot_bit s) 0 slots
 let all_an_bits = an_bits an_slots
@@ -4801,6 +4823,11 @@ let an_overwritten_slots d =
   | Declaration { property = Animation_fill_mode; _ } -> an_slot_bit Fill
   | Declaration { property = Animation_play_state; _ } -> an_slot_bit Play
   | Declaration { property = Animation_timeline; _ } -> an_slot_bit Timeline
+  | Declaration { property = Animation_range_start; _ } ->
+      an_slot_bit Range_start
+  | Declaration { property = Animation_range_end; _ } -> an_slot_bit Range_end
+  | Declaration { property = Animation_range; _ } ->
+      an_slot_bit Range_start lor an_slot_bit Range_end
   | Declaration { property = Animation; _ } -> all_an_bits
   (* CSS Cascade 5 sec. 3.2: [all] writes every longhand, and no animation
      longhand inherits, so [initial] and [unset] both leave the initials. *)
@@ -6000,6 +6027,32 @@ let implied_longhand covering covered : Declaration.declaration option =
              all-initial [border-image] says. *)
           | Declaration { property = Properties.Border_image; _ } ->
               Some (Declaration.v Border_image drained_border_image)
+          | _ -> None)
+      | _ -> None)
+  | Declaration { property = Properties.Animation; value; _ } -> (
+      (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
+         make the timeline and the two range ends reset-only sub-properties: the
+         shorthand has no slot for a range, so it always writes [normal] there.
+         Single animation only; a comma list assigns per-item values. *)
+      match (value : Properties.animation list) with
+      | [ Properties.Shorthand s ] -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Animation_timeline; _ } ->
+              Some
+                (Declaration.v Animation_timeline
+                   (Option.value s.timeline ~default:Properties.Auto))
+          | Declaration { property = Properties.Animation_range_start; _ } ->
+              Some
+                (Declaration.v Animation_range_start
+                   (Normal : Properties.animation_range_item))
+          | Declaration { property = Properties.Animation_range_end; _ } ->
+              Some
+                (Declaration.v Animation_range_end
+                   (Normal : Properties.animation_range_item))
+          | Declaration { property = Properties.Animation_range; _ } ->
+              Some
+                (Declaration.v Animation_range
+                   (Range (Normal, None) : Properties.animation_range))
           | _ -> None)
       | _ -> None)
   | Declaration { property = Properties.Font; value; _ } -> (
