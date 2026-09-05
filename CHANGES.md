@@ -612,6 +612,9 @@ entry points both moved.
   keyword list includes `stretch`, so `border-image: url(a.png) 30/1/0 stretch`
   parsed the repeat as part of the outset (#936)
 
+- `--minify` contracts `offset` from a run naming all five of its longhands
+  (#937)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

@@ -960,6 +960,21 @@ let test_border_image_full_run_composes () =
       ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
     ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
 
+(* Motion Path 1 sec. 2.6: [offset] resets all five of its longhands, so the run
+   naming the same declaration is all five, and a component at its initial is
+   what leaving it out names. *)
+let test_offset_composes () =
+  sheet_optimizes_to ~into:".x{offset:path(\"M 0 0 L 10 10\")10px}"
+    ".x{offset-position:normal;offset-path:path(\"M 0 0 L 10 \
+     10\");offset-distance:10px;offset-rotate:auto;offset-anchor:auto}";
+  sheet_optimizes_to ~into:".x{offset:none}"
+    ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto;offset-anchor:auto}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
+    ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1573,6 +1588,7 @@ let suite =
       Alcotest.test_case "flex keyword forms" `Quick test_flex_keyword_forms;
       Alcotest.test_case "border image full run composes" `Quick
         test_border_image_full_run_composes;
+      Alcotest.test_case "offset composes" `Quick test_offset_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

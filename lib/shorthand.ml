@@ -4766,6 +4766,86 @@ let try_compose_text_decoration_at ~held idx i =
 let compose_text_decoration_via_index ~held idx =
   compose_run_via_index idx ~try_compose:(try_compose_text_decoration_at ~held)
 
+(* Motion Path 1 sec. 2.6: [offset] is [<position>? [<path> [<distance> ||
+   <rotate>]?]? [/ <anchor>]?] over its five longhands, and it resets every one
+   of them, so the run that names the same declaration is all five. A component
+   at its initial - [normal] for the position (sec. 2.1), [0] for the distance
+   (sec. 2.3), [auto] for the rotate (sec. 2.4) and for the anchor (sec. 2.5) -
+   is what leaving it out names. *)
+type offset_part = Position | Path | Distance | Rotate | Anchor
+
+let offset_part_of : declaration -> offset_part option = function
+  | Declaration { property = Offset_position; _ } -> Some Position
+  | Declaration { property = Offset_path; _ } -> Some Path
+  | Declaration { property = Offset_distance; _ } -> Some Distance
+  | Declaration { property = Offset_rotate; _ } -> Some Rotate
+  | Declaration { property = Offset_anchor; _ } -> Some Anchor
+  | _ -> None
+
+let offset_position_of : declaration -> Properties.offset_position option =
+  function
+  | Declaration { property = Offset_position; value = Normal | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_position; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_path_of : declaration -> Properties.offset_path option = function
+  | Declaration { property = Offset_path; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_distance_of : declaration -> Values.length_percentage option =
+  function
+  | Declaration { property = Offset_distance; value = Length Zero; _ } ->
+      Option.None
+  | Declaration { property = Offset_distance; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_rotate_of : declaration -> Properties.offset_rotate option = function
+  | Declaration { property = Offset_rotate; value = Auto | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_rotate; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_anchor_of : declaration -> Properties.offset_anchor option = function
+  | Declaration { property = Offset_anchor; value = Auto | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_anchor; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_of_run raw : Properties.offset option =
+  let parts = List.filter_map offset_part_of raw in
+  if List.length (List.sort_uniq compare parts) <> 5 then Option.None
+  else
+    let position = List.find_map offset_position_of raw in
+    let distance = List.find_map offset_distance_of raw in
+    let rotate = List.find_map offset_rotate_of raw in
+    let anchor = List.find_map offset_anchor_of raw in
+    match List.find_map offset_path_of raw with
+    | Some path ->
+        Some
+          (Shorthand
+             { target = With_path { position; path; distance; rotate }; anchor })
+    | Option.None -> Option.None
+
+let try_compose_offset_at idx i =
+  let n = Rule_index.length idx in
+  if i + 4 >= n then None
+  else
+    let positions = List.init 5 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        Option.map
+          (fun v ->
+            (Declaration.v ~important:(is_important (List.hd raw)) Offset v, 5))
+          (offset_of_run raw)
+
+let compose_offset_via_index idx =
+  compose_run_via_index idx ~try_compose:try_compose_offset_at
+
 let try_compose_transition_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -5572,6 +5652,7 @@ let compose_index_group_b ~held kept =
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
   compose_text_decoration_via_index ~held idx;
+  compose_offset_via_index idx;
   compose_border_via_index idx;
   compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
