@@ -4162,6 +4162,16 @@ let spec_values_l45_edges () =
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
+      (* Each channel is one component value, so a space between two of them is
+         a separator the tokens do not need: [20%g] is a percentage and an
+         ident, and [calc(...)10] a function and a number. *)
+      ("color: rgb(from red 20%g b / alpha)", "color:rgb(from red 20%g b/alpha)");
+      ( "color: rgb(from red 20% g b / alpha)",
+        "color:rgb(from red 20%g b/alpha)" );
+      ( "color: rgb(from red r calc(g * 2)10)",
+        "color:rgb(from red r calc(g * 2)10)" );
+      ( "color: rgb(from red r calc(g * 2) 10)",
+        "color:rgb(from red r calc(g * 2)10)" );
       (* pp holds the authored node for the Named blue, the rgb()/alpha, and the
          turn unit. The colour cross-fold and angle conversion are optimize
          transforms. *)
