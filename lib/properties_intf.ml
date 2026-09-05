@@ -5256,4 +5256,9 @@ let equal_container_shorthand (a : container_shorthand) b = a = b
 let equal_paint_order_keyword (a : paint_order_keyword) b = a = b
 let equal_paint_order (a : paint_order) b = a = b
 let equal_border_width (a : border_width) b = a = b
+let equal_overscroll_behavior (a : overscroll_behavior) b = a = b
+
+let equal_contain_intrinsic_size_item (a : contain_intrinsic_size_item) b =
+  a = b
+
 let equal_border_style (a : border_style) b = a = b

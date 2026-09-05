@@ -552,6 +552,9 @@ entry points both moved.
 - `--minify` contracts `border-block` and `border-inline` from the three axis
   shorthands that set the same six longhands between them (#920)
 
+- `--minify` contracts `overscroll-behavior` and `contain-intrinsic-size` from
+  their x and y longhands, as it already did for `overflow` (#921)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

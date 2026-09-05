@@ -1974,9 +1974,12 @@ let try_compose_gap_at idx i =
     | _ -> None
 
 (* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
-   longhands. The side longhands carry one value of the family's own type, and
-   [build] turns the ordered pair into the shorthand's payload: a [length list]
-   for the box families, a [Single] / [Pair] for the border ones. *)
+   longhands, and the same walk over the two physical axes of an
+   [overflow]-shaped family, where [Start] is the x value and [End] the y. The
+   longhands carry one value of the family's own type, and [build] turns the
+   ordered pair into the shorthand's payload - a [length list] for the box
+   families, a [Single] / [Pair] for the border ones - or declines a pair the
+   shorthand has no spelling for. *)
 type axis_side = Start | End
 
 let try_compose_axis_pair_at idx ~foldable ~extract ~build i =
@@ -1993,9 +1996,8 @@ let try_compose_axis_pair_at idx ~foldable ~extract ~build i =
     | Some (s1, v1, imp1), Some (s2, v2, imp2)
       when imp1 = imp2 && s1 <> s2 && foldable v1 && foldable v2 ->
         let pair = [ (s1, v1); (s2, v2) ] in
-        Some
-          (build ~important:imp1 ~start:(List.assoc Start pair)
-             ~end_:(List.assoc End pair))
+        build ~important:imp1 ~start:(List.assoc Start pair)
+          ~end_:(List.assoc End pair)
     | _ -> None
 
 let extract_margin_inline_side :
@@ -2140,6 +2142,27 @@ let extract_border_block_color_side :
       Some (End, value, important)
   | _ -> None
 
+(* CSS Overscroll 1 sec. 2.1 and CSS Sizing 4 sec. 5.1 write the x axis first
+   and the y axis second, the order [overflow] uses, so the physical pair takes
+   the same walk as a logical axis. *)
+let extract_overscroll_side :
+    declaration -> (axis_side * Properties.overscroll_behavior * bool) option =
+  function
+  | Declaration { property = Overscroll_behavior_x; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Overscroll_behavior_y; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_contain_intrinsic_side :
+    declaration ->
+    (axis_side * Properties.contain_intrinsic_longhand * bool) option = function
+  | Declaration { property = Contain_intrinsic_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Contain_intrinsic_height; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
 (* CSS Align 3 sec. 5.2, 6.3 and 7.3: [place-items] / [place-content] /
    [place-self] are the [<align> <justify>] shorthands. When the two longhands
    appear contiguously with matching importance, fold them; the per-property
@@ -2197,7 +2220,7 @@ let axis_length idx property extract i =
     let value =
       if Values.equal_length start end_ then [ start ] else [ start; end_ ]
     in
-    Declaration.v ~important property value
+    Some (Declaration.v ~important property value)
   in
   try_compose_axis_pair_at idx ~foldable:foldable_length_strict ~extract ~build
     i
@@ -2207,7 +2230,7 @@ let axis_border_width ~ctx idx property extract i =
     let value : Properties.logical_border_width =
       if same_border_width start end_ then Single start else Pair (start, end_)
     in
-    Declaration.v ~important property value
+    Some (Declaration.v ~important property value)
   in
   try_compose_axis_pair_at idx
     ~foldable:(foldable_border_width ~ctx)
@@ -2218,18 +2241,58 @@ let axis_border_style ~ctx idx property extract i =
     let value : Properties.logical_border_style =
       if same_border_style start end_ then Single start else Pair (start, end_)
     in
-    Declaration.v ~important property value
+    Some (Declaration.v ~important property value)
   in
   try_compose_axis_pair_at idx
     ~foldable:(foldable_border_style ~ctx)
     ~extract ~build i
+
+let axis_overscroll idx i =
+  let build ~important ~start ~end_ =
+    let value =
+      if Properties.equal_overscroll_behavior start end_ then [ start ]
+      else [ start; end_ ]
+    in
+    Some (Declaration.v ~important Overscroll_behavior value)
+  in
+  let foldable : Properties.overscroll_behavior -> bool = function
+    | Var _ -> false
+    | _ -> true
+  in
+  try_compose_axis_pair_at idx ~foldable ~extract:extract_overscroll_side ~build
+    i
+
+(* [contain-intrinsic-size] says one axis at [none] only by saying it for both,
+   so a [none] beside a sized axis has no shorthand spelling. *)
+let axis_contain_intrinsic idx i =
+  let build ~important ~start ~end_ =
+    let value : Properties.contain_intrinsic_size option =
+      match
+        ( (start : Properties.contain_intrinsic_longhand),
+          (end_ : Properties.contain_intrinsic_longhand) )
+      with
+      | None, None -> Some None
+      | Size a, Size b ->
+          if Properties.equal_contain_intrinsic_size_item a b then
+            Some (Intrinsic (a, Option.None))
+          else Some (Intrinsic (a, Some b))
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Contain_intrinsic_size) value
+  in
+  let foldable : Properties.contain_intrinsic_longhand -> bool = function
+    | Var _ -> false
+    | _ -> true
+  in
+  try_compose_axis_pair_at idx ~foldable ~extract:extract_contain_intrinsic_side
+    ~build i
 
 let axis_border_color ~ctx idx property extract i =
   let build ~important ~start ~end_ =
     let value : Properties.logical_border_color =
       if Values.equal_color start end_ then Single start else Pair (start, end_)
     in
-    Declaration.v ~important property value
+    Some (Declaration.v ~important property value)
   in
   try_compose_axis_pair_at idx
     ~foldable:(foldable_border_color ~ctx)
@@ -2259,6 +2322,8 @@ let pair_axes ~ctx idx i =
     (fun () -> style Border_block_style extract_border_block_style_side i);
     (fun () -> color Border_inline_color extract_border_inline_color_side i);
     (fun () -> color Border_block_color extract_border_block_color_side i);
+    (fun () -> axis_overscroll idx i);
+    (fun () -> axis_contain_intrinsic idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =
