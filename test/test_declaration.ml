@@ -1704,6 +1704,21 @@ let background_repeat_axes () =
   check_declaration ~expected:"background-repeat:repeat"
     ~optimized:"background-repeat:repeat" "background-repeat: repeat"
 
+(* CSS Masking 1 (ED) sec. 8.7 sets an omitted [mask] slot to its initial value,
+   so a layer that fills no slot declares what [mask: none] declares. Every
+   spelling of it meets on [none], and none of them prints as the empty
+   value. *)
+let mask_drained_layer () =
+  check_declaration ~expected:"mask:none"
+    ~optimized:"-webkit-mask:none;mask:none" "mask: none";
+  check_declaration ~expected:"mask:0 0"
+    ~optimized:"-webkit-mask:none;mask:none" "mask: 0 0";
+  check_declaration ~expected:"mask:match-source"
+    ~optimized:"-webkit-mask:none;mask:none" "mask: match-source";
+  check_declaration ~expected:"mask:url(a.png),none"
+    ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
+    "mask: url(a.png), none"
+
 (* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
    so a layer that fills no slot declares what [background: none] declares. [0
    0] is the shortest spelling of that layer, so it is the node the spellings
@@ -1808,6 +1823,18 @@ let empty_shorthand_value () =
    so. An empty string is not a spelling of anything: no parser accepts it.
    [Css.to_string] does not normalize, so the printer is the only thing standing
    between such a record and the output. *)
+let drained_mask_layer : Css.Properties.mask_layer =
+  {
+    image = None;
+    position = None;
+    size = None;
+    repeat = None;
+    origin = None;
+    clip = None;
+    mode = None;
+    composite = None;
+  }
+
 let all_initial_shorthand_prints_none () =
   let pp v = Css.Pp.to_string ~minify:true Css.Declaration.pp v in
   let border : Css.border =
@@ -1852,7 +1879,19 @@ let all_initial_shorthand_prints_none () =
     (pp (Css.Declaration.v Mask_border border_image));
   Alcotest.(check string)
     "drained border-image shorthand" "border-image:none"
-    (pp (Css.Declaration.v Border_image border_image))
+    (pp (Css.Declaration.v Border_image border_image));
+  Alcotest.(check string)
+    "drained mask layer" "mask:none"
+    (pp (Css.Declaration.v Mask (Layer drained_mask_layer)));
+  Alcotest.(check string)
+    "drained mask layer beside another" "mask:none,url(a.png)"
+    (pp
+       (Css.Declaration.v Mask
+          (Layers
+             [
+               drained_mask_layer;
+               { drained_mask_layer with image = Some (Url "a.png") };
+             ])))
 
 let logical_border_shorthands () =
   (* css-logical-1 sec. 4.4.1: border-block-start, border-block-end,
@@ -6352,6 +6391,7 @@ let declaration_tests =
       component_var_keeps_typed_value;
     test_case "border-spacing pair" `Quick border_spacing_pair;
     test_case "background repeat axes" `Quick background_repeat_axes;
+    test_case "mask drained layer" `Quick mask_drained_layer;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;
