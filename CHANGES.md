@@ -670,6 +670,11 @@ entry points both moved.
   `@scope ) { .a { color: green } }` scoped the block to whatever form
   controls were in an invalid state (#949)
 
+- `Css.Selector.of_string` refuses a string that is not a selector rather than
+  reading it as an element name. Its single-name shortcut accepted anything
+  without selector punctuation in it, so `@scope (})` became an element
+  selector named `}` (#950)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

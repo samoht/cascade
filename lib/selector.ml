@@ -2028,6 +2028,16 @@ let rec drop_redundant_nesting_prefix (sel : t) : t =
   | List sels -> List (List.map drop_redundant_nesting_prefix sels)
   | other -> other
 
+(* CSS Syntax 3 (ED) sec. 4.3.11 builds an identifier from ident code points -
+   letters, digits, [-], [_] and anything non-ASCII - and escapes. The shortcut
+   below reads the whole string as one name, so anything else in it means the
+   string is not a name: selector punctuation ([:], [>], [,] ...) but equally a
+   [}] or a [;], which name nothing and used to be taken for an element. *)
+let is_ident_code_point c =
+  match c with
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
+  | c -> Char.code c >= 0x80
+
 let is_unescaped_selector_syntax s start =
   let len = String.length s in
   let rec loop i =
@@ -2038,10 +2048,8 @@ let is_unescaped_selector_syntax s start =
           let j = ref i in
           skip_css_escape s j;
           loop !j
-      | ':' | '(' | ')' | '[' | ']' | ',' | '>' | '+' | '~' | '|' | '*' | ' '
-      | '\t' | '\n' | '\r' | '\012' ->
-          true
-      | _ -> loop (i + 1)
+      | c when is_ident_code_point c -> loop (i + 1)
+      | _ -> true
   in
   loop start
 

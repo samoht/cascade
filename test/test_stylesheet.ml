@@ -1582,6 +1582,10 @@ let spec_strict_rejects_invalid_stylesheets () =
          whatever form controls were in an invalid state. *)
       ("scope unparseable start bound", "@scope ) { .a { color: green } }");
       ("scope unparseable end bound", "@scope (.s) to ) { .a { color: green } }");
+      (* The single-name shortcut in [Selector.of_string] read the whole bound
+         as an element name. CSS Syntax 3 (ED) sec. 4.3.11 builds a name from
+         ident code points, and a [}] is not one, so the bound names nothing. *)
+      ("scope bound that is not a name", "@scope (}) { .a { color: green } }");
       ( "media ungrouped mixed boolean operators",
         "@media (width) and (height) or (color) { .x { color: red } }" );
       ("media dangling not", "@media not { .x { color: red } }");
