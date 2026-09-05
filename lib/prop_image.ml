@@ -1835,7 +1835,13 @@ let read_webkit_gradient_stop t =
     when String.lowercase_ascii_preserve name = "color-stop" ->
       Cursor.call "color-stop" t (fun inner ->
           Cursor.ws inner;
-          let position = read_percentage inner in
+          (* The legacy stop position is a number or a percentage, and the
+             minified spelling is the number, so both read back. *)
+          let position : percentage =
+            match Cursor.number_opt inner with
+            | Some n -> Num n
+            | None -> read_percentage inner
+          in
           Cursor.ws inner;
           Cursor.comma inner;
           Cursor.ws inner;

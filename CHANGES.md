@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A `-webkit-gradient` `color-stop()` takes a number as well as a percentage,
+  so cascade reads back the minified form it writes (#902).
+
 - A quoted `animation-name` that spells `none`, `default` or a CSS-wide
   keyword keeps its quotes, which unquoting turned into a different
   declaration and, in a list, into none at all (#901).
