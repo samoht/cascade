@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- Minified `@scope to (...)` keeps the space before `to`, which it needs to
+  read back as `@scope` rather than as an at-rule named `@scopeto` (#898).
+
 - A custom property whose value carries an unmatched closer or a bad url is
   invalid, and an item written as `--x: hover { }` stays a declaration rather
   than becoming a rule when its value turns out to be bad (#897).

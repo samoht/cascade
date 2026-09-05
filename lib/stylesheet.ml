@@ -1602,7 +1602,11 @@ and pp_scope_statement ctx start end_ content =
   | None -> ());
   (match end_ with
   | Some e ->
-      Pp.string ctx (if Pp.minified ctx then "to (" else " to (");
+      (* [@scope] and [to] are both ident-shaped, so with nothing between them
+         they lex as the one at-keyword [@scopeto]. The [)] closing a start
+         selector already delimits them. *)
+      if (not (Pp.minified ctx)) || Option.is_none start then Pp.char ctx ' ';
+      Pp.string ctx "to (";
       pp_scope_selector ctx e;
       Pp.string ctx ")"
   | None -> ());
