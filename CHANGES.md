@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- The `animation` shorthand keeps an explicit `0s` duration, which it used to
+  drop as the initial value; `auto` holds that place now, so
+  `animation: spin 0s` no longer resolves to `animation: spin` (#913).
+
 - A string the input ended before closing is written with its closing quote,
   so a sheet holding one no longer grows a brace on every pass (#912).
 

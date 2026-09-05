@@ -1401,8 +1401,8 @@ module Animation = struct
     {
       name = None;
       (* CSS default: none *)
-      duration = Some (S 0.0);
-      (* CSS default: 0s *)
+      duration = Some Auto;
+      (* CSS Animations 2 sec. 4.1: auto, not 0s *)
       timing_function = Some Ease;
       (* CSS default: ease *)
       delay = Some (S 0.0);
@@ -1597,6 +1597,13 @@ module Animation = struct
     | Some d when not (is_zero_duration d) -> true
     | _ -> false
 
+  (* CSS Animations 2 sec. 4.1 makes [auto] the initial duration, so an explicit
+     [0s] is a value of its own and has to print. The delay's initial is still
+     [0s], which is what [is_duration] answers for. *)
+  let is_animation_duration : duration option -> bool = function
+    | Option.None | Some Auto -> false
+    | Some _ -> true
+
   let is_default_timing = function Ease -> true | _ -> false
 
   let is_timing : timing_function option -> bool = function
@@ -1624,7 +1631,7 @@ module Animation = struct
     | Some _ -> true
 
   let has_non_defaults (anim : animation_shorthand) =
-    is_duration anim.duration
+    is_animation_duration anim.duration
     || is_timing anim.timing_function
     || is_duration anim.delay
     || is_iteration anim.iteration_count
@@ -1663,13 +1670,7 @@ module Animation = struct
     | Some Timeline -> is_timeline anim.timeline
 
   let duration (anim : animation_shorthand) : duration option =
-    match (anim.duration, anim.delay) with
-    | Some d, Some delay when is_zero_duration d && is_duration (Some delay) ->
-        Some d
-    | _ -> (
-        match anim.duration with
-        | Some d when not (is_zero_duration d) -> Some d
-        | _ -> None)
+    if is_animation_duration anim.duration then anim.duration else Option.None
 
   let timing ?(quote_name = false) (anim : animation_shorthand) :
       timing_function option =
