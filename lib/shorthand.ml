@@ -5271,6 +5271,169 @@ let compose_grid_template_via_index idx =
   compose_run_via_index idx ~try_compose:(fun idx i ->
       Option.map (fun d -> (d, 3)) (try_compose_grid_template_at idx i))
 
+(* CSS Grid 2 (ED) sec. 7.8: [grid] is [<'grid-template'> |
+   <'grid-template-rows'> / [auto-flow && dense?] <'grid-auto-columns'>? |
+   [auto-flow && dense?] <'grid-auto-rows'>? / <'grid-template-columns'>], and
+   it resets all six longhands. Only one of the two auto-flow axes can be
+   written, and the other three longhands have to be at the initials the
+   shorthand leaves them. *)
+let gd_auto_flow_of : declaration -> Properties.grid_auto_flow option = function
+  | Declaration { property = Grid_auto_flow; value; _ } -> Some value
+  | _ -> None
+
+let gd_auto_rows_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_auto_rows; value; _ } -> Some value
+  | _ -> None
+
+let gd_auto_columns_of : declaration -> Properties.grid_template option =
+  function
+  | Declaration { property = Grid_auto_columns; value; _ } -> Some value
+  | _ -> None
+
+type gd_kind =
+  | Template_rows
+  | Template_columns
+  | Template_areas
+  | Flow
+  | Auto_rows
+  | Auto_columns
+
+let gd_kind_of : declaration -> gd_kind option = function
+  | Declaration { property = Grid_template_rows; _ } -> Some Template_rows
+  | Declaration { property = Grid_template_columns; _ } -> Some Template_columns
+  | Declaration { property = Grid_template_areas; _ } -> Some Template_areas
+  | Declaration { property = Grid_auto_flow; _ } -> Some Flow
+  | Declaration { property = Grid_auto_rows; _ } -> Some Auto_rows
+  | Declaration { property = Grid_auto_columns; _ } -> Some Auto_columns
+  | _ -> None
+
+(* [auto] is the initial of both auto-track properties (sec. 7.6), so a slot
+   holding it is one the shorthand can leave out. *)
+let gd_is_auto : Properties.grid_template -> bool = function
+  | Auto -> true
+  | _ -> false
+
+let gd_flow_text (flow : Properties.grid_auto_flow) ~axis =
+  match flow with
+  | Row | Column -> Some "auto-flow"
+  | Row_dense | Column_dense | Dense -> Some "auto-flow dense"
+  | Components _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      ignore axis;
+      Option.None
+
+let gd_flow_axis : Properties.grid_auto_flow -> [ `Row | `Column | `Other ] =
+  function
+  | Row | Row_dense -> `Row
+  | Column | Column_dense -> `Column
+  (* [dense] alone leaves the axis at its initial, which is [row]. *)
+  | Dense -> `Row
+  | Components _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      `Other
+
+let gd_auto_flow_rows_text ~flow ~auto_rows ~columns =
+  match gd_flow_text flow ~axis:`Row with
+  | Option.None -> Option.None
+  | Some flow_text ->
+      let buf = Buffer.create 32 in
+      Buffer.add_string buf flow_text;
+      if not (gd_is_auto auto_rows) then (
+        Buffer.add_char buf ' ';
+        Buffer.add_string buf (gt_track_text auto_rows));
+      Buffer.add_char buf '/';
+      Buffer.add_string buf
+        (String.concat " " (List.map gt_track_text (gt_tracks_of columns)));
+      Some (Buffer.contents buf)
+
+let gd_auto_flow_columns_text ~rows ~flow ~auto_columns =
+  match gd_flow_text flow ~axis:`Column with
+  | Option.None -> Option.None
+  | Some flow_text ->
+      let buf = Buffer.create 32 in
+      Buffer.add_string buf
+        (String.concat " " (List.map gt_track_text (gt_tracks_of rows)));
+      Buffer.add_char buf '/';
+      Buffer.add_string buf flow_text;
+      if not (gd_is_auto auto_columns) then (
+        Buffer.add_char buf ' ';
+        Buffer.add_string buf (gt_track_text auto_columns));
+      Some (Buffer.contents buf)
+
+let gd_read_grid text =
+  let t = Cursor.of_string text in
+  match Properties.read_grid t with
+  | value when Cursor.is_done t -> Some value
+  | _ -> Option.None
+  | exception _ -> Option.None
+
+let gd_is_none : Properties.grid_template -> bool = function
+  | None -> true
+  | _ -> false
+
+let gd_template_form ~(rows : Properties.grid_template)
+    ~(columns : Properties.grid_template)
+    ~(areas : Properties.grid_template_areas) =
+  match (gd_is_none rows, gd_is_none columns, areas) with
+  | true, true, No_areas -> Some (Properties.None : Properties.grid_template)
+  | _ -> (
+      match gt_shorthand_text ~rows ~columns ~areas with
+      | Option.None -> Option.None
+      | Some text -> gd_read_grid text)
+
+let grid_of_run raw : Properties.grid_template option =
+  let rows = List.find_map gt_rows_of raw in
+  let columns = List.find_map gt_columns_of raw in
+  let areas = List.find_map gt_areas_of raw in
+  let flow = List.find_map gd_auto_flow_of raw in
+  let auto_rows = List.find_map gd_auto_rows_of raw in
+  let auto_columns = List.find_map gd_auto_columns_of raw in
+  match (rows, columns, areas, flow, auto_rows, auto_columns) with
+  | ( Some rows,
+      Some columns,
+      Some areas,
+      Some flow,
+      Some auto_rows,
+      Some auto_columns )
+    when gt_track_is_plain rows && gt_track_is_plain columns
+         && gt_track_is_plain auto_rows
+         && gt_track_is_plain auto_columns -> (
+      match (gd_flow_axis flow, areas) with
+      | `Row, _
+        when gd_is_auto auto_rows && gd_is_auto auto_columns
+             && flow = (Row : Properties.grid_auto_flow) ->
+          gd_template_form ~rows ~columns ~areas
+      | `Row, No_areas when gd_is_none rows && gd_is_auto auto_columns ->
+          Option.bind
+            (gd_auto_flow_rows_text ~flow ~auto_rows ~columns)
+            gd_read_grid
+      | `Column, No_areas when gd_is_none columns && gd_is_auto auto_rows ->
+          Option.bind
+            (gd_auto_flow_columns_text ~rows ~flow ~auto_columns)
+            gd_read_grid
+      | (`Row | `Column | `Other), _ -> Option.None)
+  | _ -> Option.None
+
+let try_compose_grid_at idx i =
+  let n = Rule_index.length idx in
+  if i + 5 >= n then None
+  else
+    let positions = List.init 6 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let kinds = List.filter_map gd_kind_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare kinds) <> 6
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Grid)
+          (grid_of_run raw)
+
+let compose_grid_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 6)) (try_compose_grid_at idx i))
+
 let try_compose_transition_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -6104,6 +6267,7 @@ let compose_index_group_b ~held kept =
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
   compose_columns_via_index idx;
+  compose_grid_via_index idx;
   compose_grid_template_via_index idx;
   compose_border_via_index
     ~bi_hazard:(fun i ~important ->

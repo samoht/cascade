@@ -576,6 +576,10 @@ entry points both moved.
   `grid-template-areas: "a b"` and `grid-template-columns: 1fr 1fr` minifies to
   `grid-template: "a b" 1fr / 1fr 1fr` (#960)
 
+- `--minify` contracts `grid` from those three and the three `grid-auto-*`
+  longhands, including the flowing-axis forms: the six written out become
+  `grid: auto-flow dense 2em / 1fr` (#961)
+
 - `--minify` contracts `border-block` and `border-inline` from the three axis
   shorthands that set the same six longhands between them (#920)
 
