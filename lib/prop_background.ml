@@ -83,10 +83,6 @@ module Shadow = struct
     let lengths = List.rev !lengths_rev in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
-        if
-          blur = None && spread = None && !color = None && h_offset = Zero
-          && v_offset = Zero
-        then err_invalid_value t "shadow" "blur, spread, or color is required";
         let body = { h_offset; v_offset; blur; spread; color = !color } in
         (if !inset then Inset (Body body) else Shadow body : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"

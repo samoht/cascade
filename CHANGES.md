@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A shadow whose offsets are both zero is kept, so `box-shadow: 0 0` and
+  `text-shadow: 0 0` parse instead of being dropped (#887).
+
 - `text-wrap` reads its full grammar: `auto` and `stable`, and a wrap mode
   combined with a wrap style in either order. `Css.text_wrap` gains `Auto`,
   `Stable` and `Mode_style` (#886).
