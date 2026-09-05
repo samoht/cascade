@@ -816,7 +816,28 @@ let controls =
       ~expect:
         (Differs "cascade is asked about .a and the browser about its negation")
       ":not(.a)";
-    probe "calib" "calib-rejected" ~expect:(Cascade_rejects "u+a") "u+a";
+    (* The refusal path is driven the way the other controls drive theirs, by
+       handing cascade a different text: an empty string is not a selector and
+       never will be, where a text cascade happens to refuse today stops
+       calibrating anything the day that gap is closed. [u+a] was such a text
+       until the reader learned to tokenise it as the sibling combinator it
+       is. *)
+    probe "calib" "calib-rejected" ~read:""
+      ~expect:(Cascade_rejects "the empty string") "div";
+  ]
+
+(* A selector the browser answers against its own specification. The finding is
+   real and it is not cascade's, so it is named here with the text that settles
+   it, and an entry that stops excusing anything is reported the way a stale
+   control is: a browser that fixes its bug takes its excuse with it. *)
+let browser_disagrees =
+  [
+    ( ":nth-child(0)",
+      "Selectors 4 sec. 9.3 reads An+B as the index i = A*n + B for a \
+       non-negative n over a 1-indexed sibling list, so 0n+0 names index 0, \
+       which no element has. Chrome 151 matches every element instead, and \
+       matches none for :nth-last-child(0) and for :nth-child(0 of *), so the \
+       fast path without an S is the one that reads the expression wrong" );
   ]
 
 (* ===== What each side answers ===== *)
@@ -1140,6 +1161,8 @@ let () =
 
   (* --- Classify every pair --- *)
   let wrong = ref [] and rejected = ref [] and undecided = ref [] in
+  let browser_excused = ref [] in
+  let browser_excused_used = Hashtbl.create 8 in
   let accepted = ref [] and guard = ref [] and conservative = ref [] in
   let missing = ref 0 and pairs = ref 0 and agreed = ref 0 in
   let blind_unsupported = ref 0 in
@@ -1224,6 +1247,19 @@ let () =
                              "Resolve.supported says no, match_selector \
                               decided every node of this document";
                            ]))
+                  else if List.mem_assoc p.text browser_disagrees then (
+                    incr disagreements;
+                    Hashtbl.replace browser_excused_used p.text ();
+                    record browser_excused
+                      (finding
+                         [
+                           String.concat "" [ "browser: "; show_set els hits ];
+                           String.concat "" [ "cascade: "; show_set els mine ];
+                           String.concat ""
+                             [
+                               "excused: "; List.assoc p.text browser_disagrees;
+                             ];
+                         ]))
                   else (
                     incr disagreements;
                     record wrong
@@ -1361,6 +1397,8 @@ let () =
     "CONSERVATIVE (Resolve.supported declines a selector this document never \
      met a declining element for)"
     !conservative;
+  section "BROWSER (the browser answers against its own specification)"
+    !browser_excused;
   line "";
   line "calibration:";
   List.iter
@@ -1414,6 +1452,23 @@ let () =
            string_of_int !missing;
            " unanswered";
          ]);
+  (* An excuse for a browser bug that no longer excuses anything is reported and
+     not failed on: which build answers the run decides whether the bug is
+     there, so the same list is stale against a browser that has fixed it and
+     current against one that has not. A spec-ahead excuse is a fact about
+     cascade and fails when it goes stale; this one is a fact about a
+     version. *)
+  let stale_excuses =
+    List.filter
+      (fun (text, _) -> not (Hashtbl.mem browser_excused_used text))
+      browser_disagrees
+  in
+  List.iter
+    (fun (text, _) ->
+      line
+        (String.concat ""
+           [ "LOST browser excuse: "; text; " no longer disagrees, drop it" ]))
+    stale_excuses;
   let none l = match l with [] -> true | _ -> false in
   let fatal =
     (not population_ok) || !adapter_bad > 0
