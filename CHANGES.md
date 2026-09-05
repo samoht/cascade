@@ -202,6 +202,11 @@ entry points both moved.
 
 ### Parsing
 
+- `font-variant-alternates` has a typed value. It was carried as opaque text,
+  so `swash(fancy) swash(x)`, `swash(inherit)` and a bare ident all parsed
+  where Chrome refuses them, and `Css.Properties.Font_variant_alternates` now
+  names the property (#963)
+
 - The `scroll-margin`, `scroll-padding` and `border-block` / `border-inline`
   width, style and colour axes contract from their two longhands, as the
   margin, padding and inset axes already did (#915, #916).

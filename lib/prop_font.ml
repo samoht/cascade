@@ -399,6 +399,116 @@ let rec pp_font_variant_caps : font_variant_caps Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_variant_caps ctx v
 
+let pp_feature_value_names ctx names = Pp.list ~sep:Pp.comma pp_ident ctx names
+
+let pp_font_variant_alternates_item ctx (item : font_variant_alternates_item) =
+  let call name arg =
+    Pp.string ctx name;
+    Pp.char ctx '(';
+    pp_ident ctx arg;
+    Pp.char ctx ')'
+  in
+  let call_list name args =
+    Pp.string ctx name;
+    Pp.char ctx '(';
+    pp_feature_value_names ctx args;
+    Pp.char ctx ')'
+  in
+  match item with
+  | Stylistic name -> call "stylistic" name
+  | Historical_forms -> Pp.string ctx "historical-forms"
+  | Styleset names -> call_list "styleset" names
+  | Character_variant names -> call_list "character-variant" names
+  | Swash name -> call "swash" name
+  | Ornaments name -> call "ornaments" name
+  | Annotation name -> call "annotation" name
+
+let rec pp_font_variant_alternates : font_variant_alternates Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Alternates items ->
+      Pp.list ~sep:Pp.space pp_font_variant_alternates_item ctx items
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_font_variant_alternates ctx v
+
+(* A feature value name is a [<custom-ident>], so it is neither a CSS-wide
+   keyword nor [default] (CSS Values 4 sec. 3.2). *)
+let read_feature_value_name t =
+  let name = Cursor.ident t in
+  (match String.lowercase_ascii name with
+  | "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "default" ->
+      Cursor.err_invalid t "font-variant-alternates reserved feature name"
+  | _ -> ());
+  name
+
+let read_feature_value_names t =
+  Cursor.list ~sep:Cursor.comma ~at_least:1 read_feature_value_name t
+
+let read_font_variant_alternates_item t : font_variant_alternates_item =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "historical-forms" ->
+      let _ = Cursor.ident t in
+      Historical_forms
+  | _ ->
+      Cursor.one_of
+        [
+          (fun t ->
+            Cursor.call "stylistic" t (fun t ->
+                Stylistic (read_feature_value_name t)));
+          (fun t ->
+            Cursor.call "styleset" t (fun t ->
+                Styleset (read_feature_value_names t)));
+          (fun t ->
+            Cursor.call "character-variant" t (fun t ->
+                Character_variant (read_feature_value_names t)));
+          (fun t ->
+            Cursor.call "swash" t (fun t -> Swash (read_feature_value_name t)));
+          (fun t ->
+            Cursor.call "ornaments" t (fun t ->
+                Ornaments (read_feature_value_name t)));
+          (fun t ->
+            Cursor.call "annotation" t (fun t ->
+                Annotation (read_feature_value_name t)));
+        ]
+        t
+
+(* [||] takes one or more of its options, each at most once. *)
+let font_variant_alternates_tag : font_variant_alternates_item -> int = function
+  | Stylistic _ -> 0
+  | Historical_forms -> 1
+  | Styleset _ -> 2
+  | Character_variant _ -> 3
+  | Swash _ -> 4
+  | Ornaments _ -> 5
+  | Annotation _ -> 6
+
+let read_font_variant_alternates_items t =
+  let items =
+    Cursor.list ~sep:Cursor.ws ~at_least:1 read_font_variant_alternates_item t
+  in
+  let tags = List.map font_variant_alternates_tag items in
+  if List.length (List.sort_uniq compare tags) <> List.length tags then
+    Cursor.err_invalid t "font-variant-alternates duplicate component";
+  (Alternates items : font_variant_alternates)
+
+let rec read_font_variant_alternates t : font_variant_alternates =
+  Cursor.enum_or_var "font-variant-alternates"
+    [
+      ("normal", (Normal : font_variant_alternates));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_font_variant_alternates t))
+    ~default:read_font_variant_alternates_items t
+
 let rec read_font_variant_caps t : font_variant_caps =
   Cursor.enum_or_var "font-variant-caps"
     [

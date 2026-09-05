@@ -657,6 +657,7 @@ let pp_property : type a. a property Pp.t =
   | Caps -> Pp.string ctx "font-variant-caps"
   | Numeric -> Pp.string ctx "font-variant-numeric"
   | Font_variant_position -> Pp.string ctx "font-variant-position"
+  | Font_variant_alternates -> Pp.string ctx "font-variant-alternates"
   | East_asian -> Pp.string ctx "font-variant-east-asian"
   | Backdrop_filter -> Pp.string ctx "backdrop-filter"
   | Webkit_backdrop_filter -> Pp.string ctx "-webkit-backdrop-filter"
@@ -884,6 +885,7 @@ let property_class : type a. a property -> a property_class = function
   | Forced_color_adjust -> Inherited
   | White_space -> Inherited
   | White_space_collapse -> Inherited
+  | Font_variant_alternates -> Inherited
   | Tab_size -> Inherited
   | Webkit_text_size_adjust -> Inherited
   | Font_feature_settings -> Inherited
@@ -1321,6 +1323,7 @@ let property_tag : type a. a property -> int = function
   | Scroll_snap_type -> 198
   | White_space -> 199
   | White_space_collapse -> 541
+  | Font_variant_alternates -> 548
   | Border -> 200
   | Border_block -> 201
   | Border_block_start -> 202
@@ -1895,6 +1898,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Scroll_snap_type, Scroll_snap_type -> Some Equal
   | White_space, White_space -> Some Equal
   | White_space_collapse, White_space_collapse -> Some Equal
+  | Font_variant_alternates, Font_variant_alternates -> Some Equal
   | Border, Border -> Some Equal
   | Border_block, Border_block -> Some Equal
   | Border_block_start, Border_block_start -> Some Equal
@@ -3206,6 +3210,7 @@ let read_any_property t =
   | "unicode-bidi" -> Prop Unicode_bidi
   | "white-space" -> Prop White_space
   | "white-space-collapse" -> Prop White_space_collapse
+  | "font-variant-alternates" -> Prop Font_variant_alternates
   | "will-change" -> Prop Will_change
   | "word-break" -> Prop Word_break
   | "word-spacing" -> Prop Word_spacing
@@ -3913,6 +3918,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Scroll_snap_type, value -> value
   | White_space, value -> value
   | White_space_collapse, value -> value
+  | Font_variant_alternates, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
       | Border_inline | Border_inline_start | Border_inline_end | Column_rule
       | Border_top | Border_right | Border_bottom | Border_left ),
@@ -4872,6 +4878,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Container -> pp pp_container_shorthand
   | White_space -> pp pp_white_space
   | White_space_collapse -> pp pp_white_space_collapse
+  | Font_variant_alternates -> pp pp_font_variant_alternates
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
   | Grid_template_areas -> pp pp_grid_template_areas

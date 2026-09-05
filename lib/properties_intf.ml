@@ -1249,6 +1249,32 @@ type font_variant_caps =
   | Revert_layer
   | Var of font_variant_caps var
 
+(* CSS Fonts 4 (ED) sec. 6.6: [font-variant-alternates] is [normal | [
+   stylistic(<font-feature-value-name>) || historical-forms ||
+   styleset(<font-feature-value-name>#) ||
+   character-variant(<font-feature-value-name>#) ||
+   swash(<font-feature-value-name>) || ornaments(<font-feature-value-name>) ||
+   annotation(<font-feature-value-name>) ]]. A feature value name is a
+   [<custom-ident>] naming a block of the [@font-feature-values] rule. *)
+type font_variant_alternates_item =
+  | Stylistic of string
+  | Historical_forms
+  | Styleset of string list
+  | Character_variant of string list
+  | Swash of string
+  | Ornaments of string
+  | Annotation of string
+
+type font_variant_alternates =
+  | Normal
+  | Alternates of font_variant_alternates_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_alternates var
+
 type font_variant_position =
   | Normal
   | Sub
@@ -5160,6 +5186,7 @@ type 'a property =
   | Caps : font_variant_caps property
   | Numeric : font_variant_numeric property
   | Font_variant_position : font_variant_position property
+  | Font_variant_alternates : font_variant_alternates property
   | East_asian : font_variant_east_asian property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property
