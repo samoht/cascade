@@ -1878,6 +1878,17 @@ let animations_timing () =
     ~optimized:"transition-duration:1s" "transition-duration: round(1.1s, .5s)";
   check_declaration ~expected:"animation-duration:2.5s"
     "animation-duration: 2.5s";
+  (* CSS Animations 2 sec. 4.1: [ auto | <time [0s,inf]> ]#, with auto the
+     initial value. The time arm keeps its lower bound, and the delays and
+     transition-duration have no auto arm at all. *)
+  check_declaration ~expected:"animation-duration:auto"
+    "animation-duration: auto";
+  check_declaration ~expected:"animation-duration:auto,1s"
+    "animation-duration: auto, 1s";
+  neg_cursor read_declaration "animation-duration: -1s";
+  neg_cursor read_declaration "transition-duration: auto";
+  neg_cursor read_declaration "animation-delay: auto";
+  neg_cursor read_declaration "transition-delay: auto";
 
   check_declaration ~expected:"animation-timing-function:ease"
     "animation-timing-function: ease";
