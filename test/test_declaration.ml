@@ -972,7 +972,29 @@ let text_properties () =
   check_declaration ~expected:"white-space:pre-wrap" "white-space: pre-wrap";
   check_declaration ~expected:"white-space:pre-line" "white-space: pre-line";
   check_declaration ~expected:"white-space:break-spaces"
-    "white-space: break-spaces"
+    "white-space: break-spaces";
+
+  (* CSS Text 4 sec. 5.5: [text-wrap] is [<'text-wrap-mode'> ||
+     <'text-wrap-style'>], with sec. 5.1 giving the mode [wrap | nowrap] and
+     sec. 5.4 the style [auto | balance | stable | pretty]. Either component may
+     be omitted and they may appear in either order, but neither may repeat. *)
+  check_declaration ~expected:"text-wrap:wrap" "text-wrap: wrap";
+  check_declaration ~expected:"text-wrap:nowrap" "text-wrap: nowrap";
+  check_declaration ~expected:"text-wrap:auto" "text-wrap: auto";
+  check_declaration ~expected:"text-wrap:balance" "text-wrap: balance";
+  check_declaration ~expected:"text-wrap:pretty" "text-wrap: pretty";
+  check_declaration ~expected:"text-wrap:stable" "text-wrap: stable";
+  check_declaration ~expected:"text-wrap:nowrap balance"
+    "text-wrap: nowrap balance";
+  (* The two components print mode-first whichever order they arrived in, which
+     is how Chrome serialises them too. *)
+  check_declaration ~expected:"text-wrap:nowrap balance"
+    "text-wrap: balance nowrap";
+  check_declaration ~expected:"text-wrap:wrap auto" "text-wrap: wrap auto";
+  neg_cursor read_declaration "text-wrap: wrap nowrap";
+  neg_cursor read_declaration "text-wrap: wrap wrap";
+  neg_cursor read_declaration "text-wrap: balance pretty";
+  neg_cursor read_declaration "text-wrap: wrap balance pretty"
 
 let flexbox_direction () =
   (* Flex direction *)

@@ -461,8 +461,16 @@ let property_grammar_ui_vectors =
       [ "clip"; "ellipsis"; "\"...\""; "clip ellipsis" ]
       [ "clip ellipsis clip"; "auto" ];
     vector "text-wrap" Css.Properties.read_text_wrap Css.Properties.pp_text_wrap
-      [ "wrap"; "nowrap"; "balance"; "pretty" ]
-      [ "wrap nowrap"; "auto" ];
+      [
+        "wrap";
+        "nowrap";
+        "auto";
+        "balance";
+        "stable";
+        "pretty";
+        "nowrap balance";
+      ]
+      [ "wrap nowrap"; "balance pretty" ];
     vector "overflow-wrap" Css.Properties.read_overflow_wrap
       Css.Properties.pp_overflow_wrap
       [ "normal"; "break-word"; "anywhere" ]

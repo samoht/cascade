@@ -1523,12 +1523,17 @@ let test_text_overflow () =
 let test_text_wrap () =
   check_text_wrap "wrap";
   check_text_wrap "nowrap";
+  check_text_wrap "auto";
   check_text_wrap "balance";
+  check_text_wrap "stable";
   check_text_wrap "pretty";
+  check_text_wrap "nowrap balance";
+  check_text_wrap ~expected:"nowrap balance" "balance nowrap";
   check_text_wrap "inherit";
   neg_cursor read_text_wrap "invalid-wrap";
   (* contradictory *)
   neg_cursor ~allow_partial:true read_text_wrap "wrap nowrap";
+  neg_cursor ~allow_partial:true read_text_wrap "balance pretty";
   (* wrong form *)
   neg_cursor read_text_wrap "no-wrap";
   neg_cursor read_text_wrap "balanced"
