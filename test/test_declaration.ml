@@ -1892,6 +1892,23 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:slide-in"
     "animation-name: slide-in";
   check_declaration ~expected:"animation-name:none" "animation-name: none";
+  (* CSS Animations 1 sec. 3: a <keyframes-name> is a <custom-ident> or a
+     <string>, and only the ident arm excludes none, default and the CSS-wide
+     keywords. Unquoting such a name is a different declaration, and in a list
+     it is no declaration at all. *)
+  check_declaration ~expected:"animation-name:\"unset\""
+    "animation-name: \"unset\"";
+  check_declaration ~expected:"animation-name:\"none\""
+    "animation-name: \"none\"";
+  check_declaration ~expected:"animation-name:\"default\""
+    "animation-name: \"default\"";
+  check_declaration ~expected:"animation-name:\"UNSET\""
+    "animation-name: \"UNSET\"";
+  check_declaration ~expected:"animation-name:\"unset\",\"revert\""
+    "animation-name: \"unset\", \"revert\"";
+  check_declaration ~expected:"animation-name:slide" "animation-name: \"slide\"";
+  check_declaration ~expected:"animation-name:a,b"
+    "animation-name: \"a\", \"b\"";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
   check_declaration ~expected:"animation-duration:.5s"
