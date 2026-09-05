@@ -1039,7 +1039,7 @@ let negative_branch_vectors =
     "view-timeline-inset:auto auto auto";
     "container:card/inline-size/size";
     "position-area:top bottom";
-    "position-try-fallbacks:flip-block --below";
+    "position-try-fallbacks:flip-block flip-block";
     "position-try-order:most-width normal";
     "position-visibility:always anchors-visible";
     "overlay:auto none";

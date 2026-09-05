@@ -4321,6 +4321,18 @@ let spec_remaining_prop_vectors () =
       ("position-area: top span-left", "position-area:top span-left");
       ( "position-try-fallbacks: --below, flip-block",
         "position-try-fallbacks:--below,flip-block" );
+      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>],
+         and <try-tactic> is itself [flip-block || flip-inline || flip-start].
+         || is order-free, so each component appears at most once in any order
+         and reads back name-first. *)
+      ( "position-try-fallbacks: flip-block --below",
+        "position-try-fallbacks:--below flip-block" );
+      ( "position-try-fallbacks: --below flip-block",
+        "position-try-fallbacks:--below flip-block" );
+      ( "position-try-fallbacks: flip-inline flip-block",
+        "position-try-fallbacks:flip-block flip-inline" );
+      ( "position-try-fallbacks: --a flip-start, flip-inline",
+        "position-try-fallbacks:--a flip-start,flip-inline" );
       ("scrollbar-color: auto", "scrollbar-color:auto");
       ("overlay: auto", "overlay:auto");
       ( "transition-behavior: allow-discrete",
@@ -4423,8 +4435,9 @@ let spec_remaining_prop_vectors () =
       "anchor-name: target";
       "anchor-name: --a none";
       "position-anchor: --a --b";
+      "position-try-fallbacks: --a --b";
+      "position-try-fallbacks: flip-block flip-block";
       "position-area: top bottom";
-      "position-try-fallbacks: flip-block --below";
       "overlay: auto none";
       "transition-behavior: allow-discrete normal";
       "font-size-adjust: ex-height";
