@@ -544,6 +544,32 @@ let test_transition_contraction_covers_reset_longhands () =
    declaration that can reach the same element and holds that slot is at risk,
    whichever rule it sits in. Composition reads one rule, so it cannot see the
    holders next door. *)
+(* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
+   [animation-name] included, so contracting a run that has no name beside a
+   name written earlier says [none] and animates nothing. The transition family
+   already reasons this way; animation had no coverage arms at all. *)
+let test_animation_contraction_covers_other_rules () =
+  (* Split across two rules with the same selector: the shortest spelling that
+     keeps the name groups the two and carries it into the shorthand. *)
+  sheet_optimizes_to ~into:".a{animation:spin 2s linear}"
+    ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}";
+  (* Same rule: the name is reset by a contraction that does not carry it, so
+     the run stays expanded. *)
+  sheet_optimizes_to
+    ~into:".a{animation-name:spin;color:red;animation-duration:2s}"
+    ".a{animation-name:spin;color:red;animation-duration:2s}";
+  (* An important name outranks the non-important shorthand whatever the order,
+     so the run contracts. *)
+  sheet_optimizes_to
+    ~into:".a{animation-name:spin!important;color:red;animation:2s linear}"
+    ".a{animation-name:spin!important;color:red;animation-duration:2s;animation-timing-function:linear}";
+  (* A non-important name is reset by the contraction, so the run stays
+     expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+
 let test_transition_contraction_covers_other_rules () =
   (* Same rule, both sides of the guard. A non-important holder is reset by the
      contraction, so the run stays expanded; an important one outranks the
@@ -1095,6 +1121,8 @@ let suite =
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick
         test_transition_contraction_covers_other_rules;
+      Alcotest.test_case "animation contraction covers other rules" `Quick
+        test_animation_contraction_covers_other_rules;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
