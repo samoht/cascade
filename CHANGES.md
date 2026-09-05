@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- An invalid nested rule is dropped on its own, leaving the rule that holds
+  it and the rules written after it in place (#895).
+
 - A `url(` that runs into the end of the input reads as the empty url the
   spec ends it as, instead of dropping the declaration (#894).
 

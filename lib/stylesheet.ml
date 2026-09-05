@@ -3733,6 +3733,11 @@ let read_property_rule (r : Cursor.t) : statement =
 (* Does the item ahead hold a curly block before its terminating [;]? Then it is
    a nested rule, not a declaration, however much its prelude looks like one.
    Leaves the cursor where it found it. *)
+(* CSS Syntax 3 (ED) sec. 5.5.3 consumes a qualified rule whole, block and all,
+   before deciding it is invalid, so sec. 5.5.5 resumes right after that block.
+   Recovering a rule to the next semicolon, which is what sec. 5.5.6 does for a
+   bad declaration, would take the items written after it. The caller rewinds
+   first so the item is skipped from its start. *)
 let item_opens_block inner =
   let start = Cursor.save inner in
   let rec scan () =
@@ -3747,6 +3752,14 @@ let item_opens_block inner =
   let found = scan () in
   Cursor.restore inner start;
   found
+
+let skip_invalid_nesting_item r =
+  if item_opens_block r then (
+    skip_past_rule r;
+    Error.Recovery.Rule)
+  else (
+    Cursor.skip_past_semicolon r;
+    Error.Recovery.Declaration)
 
 (* Discard an at-rule that is invalid in a style rule and resume at the next
    item, the recovery CSS Syntax 3 (ED) sec. 5.5.5 describes. The warning is
@@ -4032,9 +4045,10 @@ and read_nesting_block (r : Cursor.t) : block =
     match read_nesting_item ~prev:acc r with
     | item -> add_item acc item
     | exception Error.Parse_error e ->
-        Cursor.skip_past_semicolon r;
+        Cursor.restore r start;
+        let construct = skip_invalid_nesting_item r in
         Cursor.push_warning r
-          ~recovery:(Cursor.dropped_since r start Error.Recovery.Declaration)
+          ~recovery:(Cursor.dropped_since r start construct)
           e;
         read_items acc
   and add_item acc = function
@@ -4219,9 +4233,10 @@ and read_recovering_rule_item selector inner loop decls nested =
   | `Done result -> result
   | `Continue (decls, nested) -> loop decls nested
   | exception Error.Parse_error e ->
-      Cursor.skip_past_semicolon inner;
+      Cursor.restore inner start;
+      let construct = skip_invalid_nesting_item inner in
       Cursor.push_warning inner
-        ~recovery:(Cursor.dropped_since inner start Error.Recovery.Declaration)
+        ~recovery:(Cursor.dropped_since inner start construct)
         e;
       loop decls nested
 
