@@ -646,7 +646,7 @@ entry points both moved.
   lists fold without needing an `i` flag, and `~=` splits its list on any
   ASCII whitespace rather than on spaces alone. `cascade apply` and
   `cascade prune` used to read `[TITLE=x]` and `[type=TEXT]` as matching
-  nothing (#944)
+  nothing (#944, #945)
 
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already

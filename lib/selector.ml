@@ -407,6 +407,7 @@ let list selectors =
   | [] -> invalid_arg "CSS selector list cannot be empty"
   | _ -> List selectors
 
+let unescape_attribute_value = unescape_selector_name
 let is_compound_list = function List _ -> true | _ -> false
 let as_list = function List sels -> Some sels | _ -> None
 let compound selectors = Compound selectors

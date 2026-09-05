@@ -301,20 +301,27 @@ module Make (N : NODE) = struct
     | None -> false
     | Some v -> (
         let v = fold v in
+        (* An unquoted value keeps the escapes it was written with so the
+           printer round-trips them, so the characters it stands for are what
+           the comparison wants. A quoted one is decoded already. *)
+        let raw s = fold (Selector.unescape_attribute_value s) in
+        let quoted s = fold s in
+        let hyphen s = v = s || starts v (String.concat "" [ s; "-" ]) in
         match m with
         | Selector.Presence -> true
-        | Selector.Exact s | Selector.Exact_quoted (s, _) -> v = fold s
-        | Selector.Whitespace_list s | Selector.Whitespace_list_quoted (s, _) ->
-            List.mem (fold s) (words v)
-        | Selector.Prefix s | Selector.Prefix_quoted (s, _) ->
-            s <> "" && starts v (fold s)
-        | Selector.Suffix s | Selector.Suffix_quoted (s, _) ->
-            s <> "" && ends v (fold s)
-        | Selector.Substring s | Selector.Substring_quoted (s, _) ->
-            s <> "" && contains v (fold s)
-        | Selector.Hyphen_list s | Selector.Hyphen_list_quoted (s, _) ->
-            let s = fold s in
-            v = s || starts v (String.concat "" [ s; "-" ]))
+        | Selector.Exact s -> v = raw s
+        | Selector.Exact_quoted (s, _) -> v = quoted s
+        | Selector.Whitespace_list s -> List.mem (raw s) (words v)
+        | Selector.Whitespace_list_quoted (s, _) ->
+            List.mem (quoted s) (words v)
+        | Selector.Prefix s -> s <> "" && starts v (raw s)
+        | Selector.Prefix_quoted (s, _) -> s <> "" && starts v (quoted s)
+        | Selector.Suffix s -> s <> "" && ends v (raw s)
+        | Selector.Suffix_quoted (s, _) -> s <> "" && ends v (quoted s)
+        | Selector.Substring s -> s <> "" && contains v (raw s)
+        | Selector.Substring_quoted (s, _) -> s <> "" && contains v (quoted s)
+        | Selector.Hyphen_list s -> hyphen (raw s)
+        | Selector.Hyphen_list_quoted (s, _) -> hyphen (quoted s))
 
   (* selectors-4 sec. 13.3: the child-indexed pseudo-classes read an element's
      "relative index amongst its siblings", counting the inclusive ones, since

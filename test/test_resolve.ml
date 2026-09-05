@@ -534,6 +534,10 @@ let test_attribute_case_flags () =
   no ~reading:Resolve.Spec "the other way round" "[type=\"a\" s]" type_upper;
   yes ~reading:Resolve.Spec "and back" "[type=\"A\" s]" type_upper;
   yes "i puts them together" "[type=\"a\" i]" type_lower;
+  (* An unquoted value keeps the escapes it was written with so the printer
+     round-trips them; the match reads the characters they stand for. *)
+  yes "an escaped unquoted value decodes" "[frame=\\48 SIDES]" framed;
+  yes "an escaped punctuation decodes" "[lang=EN\\-GB]" framed;
   yes "both ways" "[type=\"a\" i]" type_upper
 
 (* selectors-4 sec. 8.4: ":scope represents this scoping root", and "if there is
