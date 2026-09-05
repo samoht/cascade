@@ -2598,6 +2598,28 @@ let at_rule_text_change text1 text2 =
       removed_properties = [];
     }
 
+(* A [Content_changed] naming a rule whose own declarations are untouched states
+   a difference nothing shows: the rules nested inside it are reported as the
+   nesting containers they are. Dropping it keeps the summary's count and the
+   report's entries in step. *)
+let content_change_says_something (diff : rule_diff) =
+  match diff with
+  | Content_changed
+      {
+        old_declarations;
+        new_declarations;
+        property_changes;
+        added_properties;
+        removed_properties;
+        _;
+      } ->
+      property_changes <> [] || added_properties <> []
+      || removed_properties <> []
+      || not
+           (List.equal Declaration.equal_declaration old_declarations
+              new_declarations)
+  | _ -> true
+
 let to_rule_changes rules1 rules2 : rule_diff list =
   let rules1 =
     List.filter (fun s -> not (is_reported_by_own_processor s)) rules1
@@ -2613,6 +2635,7 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
   |> dedup_reorders
+  |> List.filter content_change_says_something
 
 (* Generic helpers for processing nested containers *)
 let extract_items_with_positions extract_fn stmts =

@@ -12,7 +12,7 @@ rule it belongs to. Prefixing it the way an at-rule container is named prints
   > EOF
   $ NO_COLOR=1 cascade diff --diff=tree nest-a.css nest-b.css
   CSS: 30 chars vs 31 chars (3.3% diff)
-  Changes: 1 modified rule, 1 changed container
+  Changes: 1 changed container
   
   --- nest-a.css
   +++ nest-b.css
