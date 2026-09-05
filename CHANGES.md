@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A `url(` that runs into the end of the input reads as the empty url the
+  spec ends it as, instead of dropping the declaration (#894).
+
 - `color-scheme` refuses a repeated `only`, so `color-scheme: only light only`
   no longer parses (#891).
 
