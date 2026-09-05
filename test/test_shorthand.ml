@@ -672,6 +672,28 @@ let test_xy_pair_composes () =
     ~into:".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
     ".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
 
+(* CSS Grid 2 sec. 8.3 and 8.4: [grid-row] and [grid-column] are [<grid-line> [/
+   <grid-line>]?] over their start and end longhands, and [grid-area] is the
+   same over all four. The printer then picks the shortest spelling of the lines
+   the shorthand names. *)
+let test_grid_placement_composes () =
+  sheet_optimizes_to ~into:".x{grid-row:1/3}"
+    ".x{grid-row-start:1;grid-row-end:3}";
+  sheet_optimizes_to ~into:".x{grid-column:1/3}"
+    ".x{grid-column-start:1;grid-column-end:3}";
+  sheet_optimizes_to ~into:".x{grid-row:span 2}"
+    ".x{grid-row-start:span 2;grid-row-end:auto}";
+  sheet_optimizes_to ~into:".x{grid-area:1/2/3/4}"
+    ".x{grid-row-start:1;grid-column-start:2;grid-row-end:3;grid-column-end:4}";
+  sheet_optimizes_to ~into:".x{grid-area:a}"
+    ".x{grid-row-start:a;grid-column-start:a;grid-row-end:a;grid-column-end:a}";
+  (* A substituted line can be a whole [<start> / <end>], so it stays put. *)
+  sheet_optimizes_to ~into:".x{grid-row-start:var(--l);grid-row-end:3}"
+    ".x{grid-row-start:var(--l);grid-row-end:3}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to ~into:".x{grid-row-start:1;grid-row-end:3!important}"
+    ".x{grid-row-start:1;grid-row-end:3!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1262,6 +1284,8 @@ let suite =
       Alcotest.test_case "logical border whole composes" `Quick
         test_logical_border_whole_composes;
       Alcotest.test_case "xy pair composes" `Quick test_xy_pair_composes;
+      Alcotest.test_case "grid placement composes" `Quick
+        test_grid_placement_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
