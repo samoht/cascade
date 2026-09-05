@@ -2890,16 +2890,22 @@ let keyframe_frames_diff frames1 frames2 =
   let selector_str (frame : Css.keyframe) =
     Css.Keyframe.to_string frame.selector
   in
+  (* A frame carries its declarations like any other rule: naming one modified
+     without saying what changed states a difference the report then
+     withholds. *)
   let added_changes =
     List.map
       (fun (frame : Css.keyframe) ->
-        (Added { selector = selector_str frame; declarations = [] } : rule_diff))
+        (Added
+           { selector = selector_str frame; declarations = frame.declarations }
+          : rule_diff))
       added
   in
   let removed_changes =
     List.map
       (fun (frame : Css.keyframe) ->
-        (Removed { selector = selector_str frame; declarations = [] }
+        (Removed
+           { selector = selector_str frame; declarations = frame.declarations }
           : rule_diff))
       removed
   in
@@ -2912,15 +2918,7 @@ let keyframe_frames_diff frames1 frames2 =
                f2.declarations)
         then
           Some
-            (Content_changed
-               {
-                 selector = selector_str f1;
-                 old_declarations = [];
-                 new_declarations = [];
-                 property_changes = [];
-                 added_properties = [];
-                 removed_properties = [];
-               })
+            (content_changed (selector_str f1) f1.declarations f2.declarations)
         else None)
       modified_pairs
   in

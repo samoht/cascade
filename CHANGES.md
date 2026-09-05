@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `cascade diff` shows the declarations a `@keyframes` frame gained, lost or
+  changed, instead of naming the frame and saying nothing (#906).
+
 - `color(from <origin> srgb r g b)` folds to the origin when that origin is
   itself a `color()`, not only when it is a hex or a named colour (#905).
 
