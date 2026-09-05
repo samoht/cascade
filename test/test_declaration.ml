@@ -4253,7 +4253,9 @@ let spec_platform_property_vectors () =
     "width: attr(data-w px, calc(10px + 0px))";
   check_declaration
     ~expected:"border-image:linear-gradient(red,blue)30 fill/10px/1 stretch"
-    ~optimized:"border-image:linear-gradient(red,blue)30 fill/10px/1 stretch"
+      (* [stretch] is the repeat's initial (CSS Backgrounds 3 sec. 5.5), which
+         is what leaving the component out names. *)
+    ~optimized:"border-image:linear-gradient(red,blue)30 fill/10px/1"
     "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch";
   List.iter
     (fun input -> neg_cursor read_declaration input)

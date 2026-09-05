@@ -2255,11 +2255,14 @@ let read_border_image_slice t : border_image_slice =
   | offsets, fill -> { offsets; fill }
 
 let read_border_image_width_item t : border_image_width_item =
-  match Cursor.peek_ident t with
-  | Some "auto" ->
-      ignore (Cursor.ident t : string);
-      Auto
-  | _ -> (
+  let auto t =
+    Cursor.enum "border-image-width"
+      [ ("auto", (Auto : border_image_width_item)) ]
+      t
+  in
+  match Cursor.option auto t with
+  | Some value -> value
+  | None -> (
       match Cursor.percentage_opt t with
       | Some n when n >= 0. -> Pct n
       | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
@@ -2269,15 +2272,22 @@ let read_border_image_width_item t : border_image_width_item =
           | Some _ ->
               Cursor.err_invalid t "border-image value cannot be negative"
           | None ->
-              let len = read_length ~allow_negative:false t in
+              (* Sec. 5.3 gives the width a number, a length-percentage or
+                 [auto], read above. The generic length reader carries keywords
+                 of its own - [stretch] and [contain] among them, which name a
+                 repeat here - so this call takes none. *)
+              let len =
+                read_length ~allow_negative:false ~with_keywords:false t
+              in
               Length len))
 
+(* Sec. 5.4 gives the outset a number or a length per side and no keyword. *)
 let read_border_image_outset_item t : border_image_outset_item =
   match Cursor.number_opt t with
   | Some n when n >= 0. -> Number n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
   | None ->
-      let len = read_length ~allow_negative:false t in
+      let len = read_length ~allow_negative:false ~with_keywords:false t in
       Length len
 
 let read_border_image_box_step ~what read_item t acc =

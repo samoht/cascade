@@ -607,6 +607,11 @@ entry points both moved.
   longhands whatever the scope, where it used to need `--scope=stylesheet`,
   and drops a component of the shorthand that names its own initial (#935)
 
+- `border-image-outset` and `border-image-width` reject a keyword their
+  grammar does not carry. Both read through the generic length reader, whose
+  keyword list includes `stretch`, so `border-image: url(a.png) 30/1/0 stretch`
+  parsed the repeat as part of the outset (#936)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
