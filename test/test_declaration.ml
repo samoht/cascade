@@ -2346,6 +2346,13 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+
+  (* CSS Syntax 3 sec. 4.3.6 ends a url token at EOF as it does at [)]: the
+     missing closer is a parse error and the token still reads. *)
+  check_declaration ~expected:"background-image:url()" "background-image:url(";
+  check_declaration ~expected:"background-image:url(foo)"
+    "background-image:url(foo";
+  check_declaration ~expected:"background-image:url()" "background-image:url()";
   (* CSS Backgrounds 3 sec. 6.1 and CSS Text Decoration 3 sec. 5 both build a
      shadow with &&, so the length run is contiguous and neither the colour nor
      inset may sit inside it. text-shadow takes three lengths, not four, and one
