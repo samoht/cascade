@@ -16,15 +16,29 @@ type comment = { loc : Loc.t; terminated : bool }
     [false]. Comments remain absent from the token stream as CSS Syntax
     requires; this record is an opt-in tooling hook. *)
 
-val of_reader : ?on_comment:(comment -> unit) -> Reader.t -> t
-(** [of_reader ?on_comment r] wraps an existing character reader. [on_comment]
-    observes each consumed comment exactly once. *)
+val of_reader :
+  ?on_comment:(comment -> unit) -> ?unicode_ranges:bool -> Reader.t -> t
+(** [of_reader ?on_comment ?unicode_ranges r] wraps an existing character
+    reader. [on_comment] observes each consumed comment exactly once.
+    [unicode_ranges] is CSS Syntax 3 (ED) sec. 4.3.1's "unicode ranges allowed",
+    defaulting to [false]: sec. 4.3.14 names its one caller, the value of a
+    [unicode-range] descriptor, so everywhere else [u+a] is an ident, a delim
+    and an ident. *)
 
 val of_string :
-  ?enforce_spec:bool -> ?on_comment:(comment -> unit) -> string -> t
+  ?enforce_spec:bool ->
+  ?on_comment:(comment -> unit) ->
+  ?unicode_ranges:bool ->
+  string ->
+  t
 (** [of_string s] builds a fresh reader from an already-decoded UTF-8 string and
-    wraps it. [enforce_spec] is passed to {!Reader.of_string}; [on_comment] has
-    the meaning documented on {!of_reader}. *)
+    wraps it. [enforce_spec] is passed to {!Reader.of_string}; [on_comment] and
+    [unicode_ranges] have the meaning documented on {!of_reader}. *)
+
+val with_unicode_ranges : t -> (unit -> 'a) -> 'a
+(** [with_unicode_ranges t f] runs [f] with CSS Syntax 3 (ED) sec. 4.3.1's
+    "unicode ranges allowed" set, restoring it afterwards. Sec. 5.5.11 is the
+    one caller: the value of a [unicode-range] descriptor. *)
 
 val source : t -> string
 (** [source t] is the full input string the underlying reader was built from. *)

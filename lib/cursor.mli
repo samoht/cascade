@@ -60,9 +60,11 @@ val drain_warnings : t -> Error.t list
 (** [drain_warnings t] returns and clears the warnings accumulated on [t] in
     source order. *)
 
-val of_string : ?meta:Loc.meta_level -> string -> t
-(** [of_string ?meta s] lexes [s] into a {!Component.t} list and wraps it. The
-    trailing [Eof] token is dropped. *)
+val of_string : ?meta:Loc.meta_level -> ?unicode_ranges:bool -> string -> t
+(** [of_string ?meta ?unicode_ranges s] lexes [s] into a {!Component.t} list and
+    wraps it. The trailing [Eof] token is dropped. [unicode_ranges] is passed to
+    {!Lexer.of_reader}, and only the value of a [unicode-range] descriptor sets
+    it. *)
 
 val of_reader : ?meta:Loc.meta_level -> Reader.t -> t
 (** [of_reader ?meta r] consumes the rest of [r]'s input as a component stream

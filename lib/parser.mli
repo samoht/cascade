@@ -11,11 +11,12 @@ type t
 val of_lexer : Lexer.t -> t
 (** [of_lexer l] wraps an existing lexer stream. *)
 
-val of_reader : Reader.t -> t
-(** [of_reader r] builds a lexer from [r] and wraps it. *)
+val of_reader : ?unicode_ranges:bool -> Reader.t -> t
+(** [of_reader ?unicode_ranges r] builds a lexer from [r] and wraps it.
+    [unicode_ranges] is passed to {!Lexer.of_reader}. *)
 
-val of_string : string -> t
-(** [of_string s] builds a fresh reader and lexer from [s]. *)
+val of_string : ?unicode_ranges:bool -> string -> t
+(** [of_string ?unicode_ranges s] builds a fresh reader and lexer from [s]. *)
 
 (** {1 Stream API} *)
 

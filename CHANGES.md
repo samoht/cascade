@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A unicode range is tokenised only in the `unicode-range` descriptor it
+  belongs to, so `u+a` is the selector it reads as everywhere else (#896).
+
 - An invalid nested rule is dropped on its own, leaving the rule that holds
   it and the rules written after it in place (#895).
 

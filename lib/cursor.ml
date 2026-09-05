@@ -63,9 +63,9 @@ let lex_to_cv_list parser =
    which is what the lexer indexes against. Using the caller's raw string would
    desync [Loc.offset] from [Loc.snippet] when the input contains BOM, NUL, CR,
    FF, or CRLF. *)
-let of_string ?(meta = Loc.default_meta_level) s =
+let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
   let reader = Reader.of_string s in
-  let parser = Parser.of_reader reader in
+  let parser = Parser.of_reader ?unicode_ranges reader in
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source reader);

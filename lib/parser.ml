@@ -10,8 +10,8 @@ open Syntax
 type t = { lexer : Lexer.t; mutable lookback : Component.t option }
 
 let of_lexer lexer = { lexer; lookback = None }
-let of_reader r = of_lexer (Lexer.of_reader r)
-let of_string s = of_reader (Reader.of_string s)
+let of_reader ?unicode_ranges r = of_lexer (Lexer.of_reader ?unicode_ranges r)
+let of_string ?unicode_ranges s = of_reader ?unicode_ranges (Reader.of_string s)
 
 (** {1 section 5.3 algorithms operating on a {!Lexer.t}} *)
 
@@ -1225,7 +1225,13 @@ let skip_bad_declaration lexer tok =
   skip (Component.source_loc (consume_component_value_from lexer tok))
 
 let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
-  let body = consume_declaration_body lexer in
+  (* CSS Syntax 3 (ED) sec. 5.5.11: the value of a unicode-range descriptor is
+     the one place in the language the tokenizer is asked for unicode ranges. *)
+  let body =
+    if String.equal (String.lowercase_ascii name) "unicode-range" then
+      Lexer.with_unicode_ranges lexer (fun () -> consume_declaration_body lexer)
+    else consume_declaration_body lexer
+  in
   match declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings body with
   | Some d -> Some (`Decl d)
   | None -> None

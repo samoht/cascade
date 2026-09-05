@@ -2378,11 +2378,22 @@ let read_font_stretch_descriptor r =
         Font_stretch_range (first, second))
     r
 
+(* CSS Syntax 3 (ED) sec. 4.3.14: this descriptor's value is the one place in
+   the language the tokenizer is asked for unicode ranges, so re-lex it with the
+   flag the rest of the sheet is read without. *)
 let read_unicode_range_descriptor r =
   read_descriptor_value
     (fun cur ->
-      Cursor.list ~at_least:1 ~sep:Cursor.comma Properties.read_unicode_range
-        cur)
+      let raw = Cursor.consume_to_decl_end ~trim:true cur in
+      let inner = Cursor.of_string ~unicode_ranges:true raw in
+      let values =
+        Cursor.list ~at_least:1 ~sep:Cursor.comma Properties.read_unicode_range
+          inner
+      in
+      Cursor.ws inner;
+      if not (Cursor.is_done inner) then
+        Cursor.err_invalid cur "unicode-range trailing tokens";
+      values)
     (fun vs -> Unicode_range vs)
     r
 
