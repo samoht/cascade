@@ -879,6 +879,12 @@ let vars_of_border_image_outset (value : Properties.border_image_outset) :
 let vars_of_column_width (value : Properties.column_width) : any_var list =
   match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
 
+let vars_of_column_height (value : Properties.column_height) : any_var list =
+  match value with Var v -> [ V v ] | Height l -> vars_of_length l | _ -> []
+
+let vars_of_column_wrap (value : Properties.column_wrap) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_column_count (value : Properties.column_count) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2249,6 +2255,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Columns *)
   | Columns, value -> vars_of_columns_value value
   | Column_width, value -> vars_of_column_width value
+  | Column_height, value -> vars_of_column_height value
+  | Column_wrap, value -> vars_of_column_wrap value
   | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
   | Column_rule_color, value -> vars_of_color value

@@ -586,6 +586,8 @@ let pp_property : type a. a property Pp.t =
   | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
   | Column_width -> Pp.string ctx "column-width"
+  | Column_height -> Pp.string ctx "column-height"
+  | Column_wrap -> Pp.string ctx "column-wrap"
   | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
   | Column_rule_width -> Pp.string ctx "column-rule-width"
@@ -1041,9 +1043,9 @@ let property_class : type a. a property -> a property_class = function
   | Transition_property | Transition_behavior | Overlay | Will_change | Contain
   | Isolation | Break_before | Break_after | Break_inside | Page_break_before
   | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
-  | Column_count | Column_rule | Column_rule_color | Column_rule_width
-  | Column_rule_style | Column_span | Background_attachment | Border_top
-  | Border_right | Border_bottom | Border_left | Transform_origin
+  | Column_height | Column_wrap | Column_count | Column_rule | Column_rule_color
+  | Column_rule_width | Column_rule_style | Column_span | Background_attachment
+  | Border_top | Border_right | Border_bottom | Border_left | Transform_origin
   | Transform_box | Mask | Mask_border | Content_visibility | Filter
   | Background_image | Background_origin | Background_clip
   | Webkit_background_clip | Animation | Aspect_ratio | Overflow_x | Overflow_y
@@ -1489,6 +1491,8 @@ let property_tag : type a. a property -> int = function
   | Page_size -> 368
   | Columns -> 369
   | Column_width -> 370
+  | Column_height -> 544
+  | Column_wrap -> 545
   | Column_count -> 371
   | Column_rule -> 372
   | Column_rule_color -> 373
@@ -2065,6 +2069,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Page_size, Page_size -> Some Equal
   | Columns, Columns -> Some Equal
   | Column_width, Column_width -> Some Equal
+  | Column_height, Column_height -> Some Equal
+  | Column_wrap, Column_wrap -> Some Equal
   | Column_count, Column_count -> Some Equal
   | Column_rule, Column_rule -> Some Equal
   | Column_rule_color, Column_rule_color -> Some Equal
@@ -2977,6 +2983,8 @@ let read_any_property t =
   | "page-break-inside" -> Prop Page_break_inside
   | "columns" -> Prop Columns
   | "column-width" -> Prop Column_width
+  | "column-height" -> Prop Column_height
+  | "column-wrap" -> Prop Column_wrap
   | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
   | "column-rule-color" -> Prop Column_rule_color
@@ -4043,6 +4051,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Page_size, value -> value
   | Columns, value -> value
   | Column_width, value -> value
+  | Column_height, value -> value
+  | Column_wrap, value -> value
   | Column_count, value -> value
   | Column_span, value -> value
   | Background_attachment, value -> value
@@ -4767,6 +4777,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Column_width -> pp pp_column_width
+  | Column_height -> pp pp_column_height
+  | Column_wrap -> pp pp_column_wrap
   | Column_count -> pp pp_column_count
   | Column_rule -> pp pp_border
   | Column_span -> pp pp_column_span

@@ -1787,6 +1787,8 @@ let read_object_transition_value : type a.
   | Page_size -> Some (v Page_size (read_page_size t))
   | Columns -> Some (v Columns (read_columns_value t))
   | Column_width -> Some (v Column_width (read_column_width t))
+  | Column_height -> Some (v Column_height (read_column_height t))
+  | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
   | Column_rule_color -> Some (v Column_rule_color (read_color t))

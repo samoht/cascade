@@ -3933,6 +3933,30 @@ type column_count =
   | Revert_layer
   | Var of column_count var
 
+(* CSS Multicol 2 sec. 4.2: [column-height] is [auto | <length [0,inf]>]; it
+   takes no percentage, which Chrome 146 refuses. Sec. 4.4 gives [column-wrap]
+   the three keywords below. Both start at [auto]. *)
+type column_height =
+  | Auto
+  | Height of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_height var
+
+type column_wrap =
+  | Auto
+  | Nowrap
+  | Wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_wrap var
+
 type column_span =
   | None
   | All
@@ -5071,6 +5095,8 @@ type 'a property =
   | Page_size : page_size property
   | Columns : columns_value property
   | Column_width : column_width property
+  | Column_height : column_height property
+  | Column_wrap : column_wrap property
   | Column_count : column_count property
   | Column_rule : border property
   | Column_rule_width : border_width property

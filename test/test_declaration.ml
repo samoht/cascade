@@ -557,6 +557,12 @@ let special_cases () =
     ~optimized:"border-block-width:1px 2px" "border-block-width: 1px 2px";
   check_declaration ~expected:"border-block-style:solid solid"
     ~optimized:"border-block-style:solid" "border-block-style: solid solid";
+  check_declaration ~expected:"column-height:auto"
+    ~optimized:"column-height:auto" "column-height: auto";
+  check_declaration ~expected:"column-height:10px"
+    ~optimized:"column-height:10px" "column-height: 10px";
+  check_declaration ~expected:"column-wrap:wrap" ~optimized:"column-wrap:wrap"
+    "column-wrap: wrap";
   check_declaration ~expected:"border-inline-color:red red"
     ~optimized:"border-inline-color:red" "border-inline-color: red red";
 
@@ -3162,7 +3168,18 @@ let invalid () =
   neg "border-image-outset: 0 stretch";
   neg "border-image-outset: auto";
   neg "border-image-width: stretch";
-  neg "border-image-width: 1 min-content"
+  neg "border-image-width: 1 min-content";
+
+  (* CSS Multicol 2 sec. 4.2 gives [column-height] a length and no percentage,
+     which Chrome 146 refuses, and sec. 4.4 gives [column-wrap] three
+     keywords. *)
+  neg "column-height: 50%";
+  neg "column-height: nowrap";
+  neg "column-height: min-content";
+  neg "column-height: none";
+  neg "column-height: normal";
+  neg "column-wrap: sideways";
+  neg "column-wrap: 10px"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:

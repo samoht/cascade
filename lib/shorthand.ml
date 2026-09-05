@@ -151,6 +151,10 @@ let covers_longhand : type a b.
   | Webkit_text_stroke, Webkit_text_stroke_width -> true
   | Webkit_text_stroke, Webkit_text_stroke_color -> true
   (* CSS Multicol 1 sec. 4.3: [column-rule] is the three rule longhands. *)
+  | Columns, Column_width -> true
+  | Columns, Column_count -> true
+  | Columns, Column_height -> true
+  | Columns, Column_wrap -> true
   | Column_rule, Column_rule_width -> true
   | Column_rule, Column_rule_style -> true
   | Column_rule, Column_rule_color -> true
@@ -813,9 +817,19 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Overflow_block -> [ key "overflow-block" ]
   | Overflow_inline -> [ key "overflow-inline" ]
   (* CSS Multicol 1 sec. 3.3. *)
-  | Columns -> [ key "column-width"; key "column-count" ]
+  (* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the
+     height, and Chrome 146 has it reset [column-wrap] as well. *)
+  | Columns ->
+      [
+        key "column-width";
+        key "column-count";
+        key "column-height";
+        key "column-wrap";
+      ]
   | Column_width -> [ key "column-width" ]
   | Column_count -> [ key "column-count" ]
+  | Column_height -> [ key "column-height" ]
+  | Column_wrap -> [ key "column-wrap" ]
   (* CSS Multicol 1 sec. 4.4: [column-rule] resets the rule width, style and
      colour. Naming those three is what keeps [column-rule-color] from reading
      as a slot of its own that [column-rule] never touches. *)

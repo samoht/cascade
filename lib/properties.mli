@@ -872,6 +872,18 @@ val pp_flex : flex Pp.t
 val read_flex : Cursor.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
 
+val pp_column_height : column_height Pp.t
+(** [pp_column_height] is the pretty-printer for [column_height]. *)
+
+val read_column_height : Cursor.t -> column_height
+(** [read_column_height t] is the [column_height] parsed from [t]. *)
+
+val pp_column_wrap : column_wrap Pp.t
+(** [pp_column_wrap] is the pretty-printer for [column_wrap]. *)
+
+val read_column_wrap : Cursor.t -> column_wrap
+(** [read_column_wrap t] is the [column_wrap] parsed from [t]. *)
+
 val pp_column_width : column_width Pp.t
 (** [pp_column_width] is the pretty-printer for [column_width]. *)
 
