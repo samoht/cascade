@@ -648,6 +648,30 @@ let test_logical_border_whole_composes () =
     ".x{border-block-width:1px \
      2px;border-block-style:solid;border-block-color:red}"
 
+(* CSS Overscroll 1 sec. 2.1 and CSS Sizing 4 sec. 5.1 assign their two
+   longhands the way [overflow] does: the first value is the x axis, the second
+   the y axis, and one value names both. *)
+let test_xy_pair_composes () =
+  sheet_optimizes_to ~into:".x{overscroll-behavior:contain}"
+    ".x{overscroll-behavior-x:contain;overscroll-behavior-y:contain}";
+  sheet_optimizes_to ~into:".x{overscroll-behavior:auto none}"
+    ".x{overscroll-behavior-x:auto;overscroll-behavior-y:none}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:100px}"
+    ".x{contain-intrinsic-width:100px;contain-intrinsic-height:100px}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:100px 200px}"
+    ".x{contain-intrinsic-width:100px;contain-intrinsic-height:200px}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:auto 300px}"
+    ".x{contain-intrinsic-width:auto 300px;contain-intrinsic-height:auto 300px}";
+  (* [contain-intrinsic-size] has no spelling for one axis at [none] beside a
+     sized other, so that pair stays two declarations. *)
+  sheet_optimizes_to
+    ~into:".x{contain-intrinsic-width:none;contain-intrinsic-height:100px}"
+    ".x{contain-intrinsic-width:none;contain-intrinsic-height:100px}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
+    ".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1237,6 +1261,7 @@ let suite =
         test_line_shorthand_initial_slot;
       Alcotest.test_case "logical border whole composes" `Quick
         test_logical_border_whole_composes;
+      Alcotest.test_case "xy pair composes" `Quick test_xy_pair_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
