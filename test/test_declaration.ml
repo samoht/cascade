@@ -3152,7 +3152,17 @@ let invalid () =
   neg "color: red inherit";
   neg "font-size: unset 12px";
   neg "opacity: revert 0.5";
-  neg "z-index: revert-layer 10"
+  neg "z-index: revert-layer 10";
+
+  (* CSS Backgrounds 3 (ED) sec. 5.4 gives [border-image-outset] a number or a
+     length per side and no keyword, and sec. 5.3 lets [border-image-width] add
+     [auto] and nothing else. The generic length reader takes a keyword list of
+     its own, [stretch] included, which is a repeat keyword here. *)
+  neg "border-image-outset: stretch";
+  neg "border-image-outset: 0 stretch";
+  neg "border-image-outset: auto";
+  neg "border-image-width: stretch";
+  neg "border-image-width: 1 min-content"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:
