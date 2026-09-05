@@ -4891,6 +4891,38 @@ let reset_hazard ~slots_of idx i ~held ~missing ~important =
   in
   scan (i - 1)
 
+(* A slot a declaration after the run writes again is one the shorthand's reset
+   cannot reach: the later write is what the element ends up with, whatever the
+   reset put there. Unlike [*_overwritten_slots] this counts a write back to the
+   slot initial, which answers the reset just as well. *)
+let rec slots_written_after ~slots_of idx ~from =
+  let n = Rule_index.length idx in
+  if from >= n then 0
+  else
+    let rest = slots_written_after ~slots_of idx ~from:(from + 1) in
+    if Rule_index.is_absorbed idx from then rest
+    else slots_of (Rule_index.decl_at idx from) lor rest
+
+let tr_written_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Transition_property; _ } -> tr_slot_bit Property
+  | Declaration { property = Transition_duration; _ } -> tr_slot_bit Duration
+  | Declaration { property = Transition_timing_function; _ } ->
+      tr_slot_bit Timing
+  | Declaration { property = Transition_delay; _ } -> tr_slot_bit Delay
+  | Declaration { property = Transition_behavior; _ } -> tr_slot_bit Behavior
+  | Declaration { property = Transition; _ } | Declaration { property = All; _ }
+    ->
+      all_tr_bits
+  | _ -> 0
+
+let an_written_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Animation_range; _ } ->
+      an_slot_bit Range_start lor an_slot_bit Range_end
+  | Declaration { property = All; _ } -> all_an_bits
+  | d -> an_overwritten_slots d
+
 let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
 let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
 let bi_reset_hazard = reset_hazard ~slots_of:bi_overwritten_slots
@@ -5088,7 +5120,7 @@ let compose_columns_via_index idx =
   compose_run_via_index idx ~try_compose:(fun idx i ->
       Option.map (fun d -> (d, 4)) (try_compose_columns_at idx i))
 
-let try_compose_transition_at ~held idx i =
+let try_compose_transition_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
@@ -5103,7 +5135,16 @@ let try_compose_transition_at ~held idx i =
           0 parts
       in
       let missing = all_tr_bits land lnot written in
-      if tr_reset_hazard idx i ~held ~missing ~important then None
+      let unanswered =
+        missing
+        land lnot
+               (slots_written_after ~slots_of:tr_written_slots idx
+                  ~from:(i + len))
+      in
+      if
+        (unanswered <> 0 && not allow_partial)
+        || tr_reset_hazard idx i ~held ~missing ~important
+      then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_tr_shorthand parts
@@ -5114,8 +5155,10 @@ let try_compose_transition_at ~held idx i =
         in
         Some (shorthand, len)
 
-let compose_transition_via_index ~held idx =
-  compose_run_via_index idx ~try_compose:(try_compose_transition_at ~held)
+let compose_transition_via_index ~ctx ~held idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_transition_at ~allow_partial ~held)
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -5250,7 +5293,7 @@ let empty_an_shorthand : Properties.animation_shorthand =
    only safe when nothing else in the cascade holds that slot. *)
 let an_reset_hazard = reset_hazard ~slots_of:an_overwritten_slots
 
-let try_compose_animation_at ~held idx i =
+let try_compose_animation_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
@@ -5264,7 +5307,19 @@ let try_compose_animation_at ~held idx i =
           0 parts
       in
       let missing = all_an_bits land lnot written in
-      if an_reset_hazard idx i ~held ~missing ~important then None
+      (* A slot the shorthand resets that neither the run nor a later
+         declaration writes is one the surrounding CSS may hold, so contracting
+         needs the whole graph in view. *)
+      let unanswered =
+        missing
+        land lnot
+               (slots_written_after ~slots_of:an_written_slots idx
+                  ~from:(i + len))
+      in
+      if
+        (unanswered <> 0 && not allow_partial)
+        || an_reset_hazard idx i ~held ~missing ~important
+      then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_an_shorthand parts
@@ -5275,8 +5330,10 @@ let try_compose_animation_at ~held idx i =
         in
         Some (shorthand, len)
 
-let compose_animation_via_index ~held idx =
-  compose_run_via_index idx ~try_compose:(try_compose_animation_at ~held)
+let compose_animation_via_index ~ctx ~held idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_animation_at ~allow_partial ~held)
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -5908,8 +5965,8 @@ let compose_index_group_b ~held kept =
 let compose_index_group_c ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
-  compose_transition_via_index ~held idx;
-  compose_animation_via_index ~held idx;
+  compose_transition_via_index ~ctx ~held idx;
+  compose_animation_via_index ~ctx ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_border_whole_step ~held ~ctx kept =

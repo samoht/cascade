@@ -545,6 +545,14 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` contracts an `animation` or `transition` longhand run that leaves
+  one of the shorthand's own longhands unwritten only under
+  `--scope=stylesheet`, which is what the flag promises: the shorthand resets
+  what the run left out, and under the default fragment scope an earlier
+  `transition-timing-function` from another file is not cascade's to reset. A
+  run whose omitted slots the same rule writes back still contracts in either
+  scope (#958)
+
 - `--minify` no longer resets the animation range when it contracts. Scroll
   driven Animations 1 makes `animation-range-start` and `animation-range-end`
   reset-only sub-properties of `animation`, and a rule holding either lost it
