@@ -1376,6 +1376,31 @@ let test_transition_contraction_covers_other_rules () =
       ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
     ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
 
+(* CSS Backgrounds 3 (ED) sec. 3.4: [border] resets the whole border-image
+   family, so a neighbour holding one of those longhands is at risk from a
+   contraction that does not carry it. The family shares no single slot: a rule
+   holding the slice says nothing about the neighbour holding the source, and
+   answering for the two together let the source through. Chrome 146 computes
+   the image on both sides of each pair below. *)
+let test_border_image_held_across_rules () =
+  (* The run holds the slice and the repeat itself; the source next door is the
+     one the contraction would reset, so the shorthand goes in front of the
+     whole family and the reset is overridden. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border:4px \
+       solid#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
+    ".x{border-image-source:url(b.png)}.x{border-image-slice:30;border-image-repeat:round;border-width:4px;border-style:solid;border-color:transparent}";
+  (* The same run with nothing of its own to hold. *)
+  sheet_optimizes_to
+    ~into:".x{border:4px solid#0000;border-image-source:url(b.png)}"
+    ".x{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}";
+  (* A neighbour that cannot be reordered into place keeps the run expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:#0000}"
+    ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}"
+
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
      is dropped. A differing value or a per-side list is kept. *)
@@ -1935,6 +1960,8 @@ let suite =
         test_mask_full_run_composes;
       Alcotest.test_case "border contraction covers border-image" `Quick
         test_border_contraction_covers_border_image;
+      Alcotest.test_case "border-image held across rules" `Quick
+        test_border_image_held_across_rules;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
