@@ -600,6 +600,9 @@ entry points both moved.
 - `--minify` contracts `border-radius` from four elliptical corners, writing
   the horizontal radii before the `/` and the vertical ones after (#933)
 
+- `--minify` writes `flex: none` and `flex: auto` for the triples they name,
+  where it used to spell them out as `0 0 auto` and `1 auto` (#934)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

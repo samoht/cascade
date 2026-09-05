@@ -931,6 +931,18 @@ let test_border_radius_ellipse_composes () =
      5px;border-top-right-radius:2px;border-bottom-right-radius:3px \
      5px;border-bottom-left-radius:4px 5px}"
 
+(* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names of [0
+   0 auto] and [1 1 auto], so a run composing to either takes the shorter
+   spelling. *)
+let test_flex_keyword_forms () =
+  sheet_optimizes_to ~into:".x{flex:none}"
+    ".x{flex-grow:0;flex-shrink:0;flex-basis:auto}";
+  sheet_optimizes_to ~into:".x{flex:auto}"
+    ".x{flex-grow:1;flex-shrink:1;flex-basis:auto}";
+  (* [initial] is [0 1 auto], which has no one-word name of its own. *)
+  sheet_optimizes_to ~into:".x{flex:0 auto}"
+    ".x{flex-grow:0;flex-shrink:1;flex-basis:auto}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1541,6 +1553,7 @@ let suite =
         test_text_decoration_thickness_composes;
       Alcotest.test_case "border radius ellipse composes" `Quick
         test_border_radius_ellipse_composes;
+      Alcotest.test_case "flex keyword forms" `Quick test_flex_keyword_forms;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

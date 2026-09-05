@@ -105,11 +105,16 @@ let normalize_flex (value : flex) : flex =
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
       if g' == g && s' == s then value else Grow_shrink (g', s')
-  | Full (g, s, b) ->
+  | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
       let b' = normalize_flex_basis b in
-      if g' == g && s' == s && b' == b then value else Full (g', s', b')
+      (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
+         of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
+      match (g', s', b') with
+      | Number 0., Number 0., (Auto : flex_basis) -> None
+      | Number 1., Number 1., Auto -> Auto
+      | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
 let rec pp_order : order Pp.t =
