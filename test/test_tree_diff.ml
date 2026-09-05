@@ -1331,6 +1331,32 @@ let modified_keyframes_names_the_at_rule () =
     "and does not call it a layer" false
     (string_contains ~needle:"@layer" s)
 
+(* Naming a frame modified without saying what changed states a difference the
+   report then withholds; a frame carries its declarations like any other
+   rule. *)
+let modified_keyframe_shows_its_change () =
+  let d =
+    diff_of ~expected:"@keyframes fade{0%{opacity:0}100%{opacity:1}}"
+      ~actual:"@keyframes fade{0%{opacity:.7}100%{opacity:1}}"
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "the frame that changed is named" true
+    (string_contains ~needle:"0%" s);
+  Alcotest.(check bool)
+    "and the property change is shown" true
+    (string_contains ~needle:"opacity" s)
+
+let added_keyframe_shows_its_declarations () =
+  let d =
+    diff_of ~expected:"@keyframes fade{0%{opacity:0}}"
+      ~actual:"@keyframes fade{0%{opacity:0}100%{opacity:1}}"
+  in
+  let s = render d in
+  Alcotest.(check bool)
+    "the frame that arrived carries its declarations" true
+    (string_contains ~needle:"opacity" s)
+
 let removed_layer_statement_is_named () =
   let d =
     diff_of ~expected:"@layer a,b;.x{color:red}" ~actual:".x{color:red}"
@@ -1624,6 +1650,10 @@ let suite =
         added_namespace_is_an_at_rule_container;
       Alcotest.test_case "removed layer statement is named" `Quick
         removed_layer_statement_is_named;
+      Alcotest.test_case "modified keyframe shows its change" `Quick
+        modified_keyframe_shows_its_change;
+      Alcotest.test_case "added keyframe shows its declarations" `Quick
+        added_keyframe_shows_its_declarations;
       Alcotest.test_case "modified keyframes names the at-rule" `Quick
         modified_keyframes_names_the_at_rule;
       Alcotest.test_case "selector group split reported" `Quick
