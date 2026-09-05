@@ -3179,7 +3179,17 @@ let invalid () =
   neg "column-height: none";
   neg "column-height: normal";
   neg "column-wrap: sideways";
-  neg "column-wrap: 10px"
+  neg "column-wrap: 10px";
+
+  (* CSS Backgrounds 3 (ED) sec. 3.3: [<line-width>] is [<length [0,inf]> | thin
+     | medium | thick] and takes no percentage, in math or out of it. Chrome 146
+     refuses one. *)
+  neg "border-width: 50%";
+  neg "border-top-width: 50%";
+  neg "outline-width: 200%";
+  neg "column-rule-width: 10%";
+  neg "-webkit-text-stroke-width: 20%";
+  neg "border-width: calc(50%)"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:

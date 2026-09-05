@@ -1367,6 +1367,13 @@ let length_to_border_width t (length : length) : border_width =
       | Some (unit, value) -> typed_dimension value unit
       | None -> err_invalid_value t "border-width" "unsupported length type")
 
+(* CSS Backgrounds 3 (ED) sec. 3.3: [<line-width>] is [<length [0,inf]> | thin |
+   medium | thick] and takes no percentage, which Chrome 146 refuses.
+   [length_only] refuses one nested in math as well. *)
+let read_length_as_border_width t =
+  let length = read_length ~with_keywords:false ~length_only:true t in
+  length_to_border_width t length
+
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
   let read_calc t : border_width =
@@ -1391,11 +1398,6 @@ let rec read_border_width t : border_width =
     | [ lower; value; upper ] -> Clamp (lower, value, upper)
     | _ -> Cursor.err_invalid t "invalid clamp"
   in
-  let read_length_as_border_width t =
-    let length = read_length ~with_keywords:false t in
-    length_to_border_width t length
-  in
-
   Cursor.enum_or_calls "border-width"
     [
       ("thin", (Thin : border_width));

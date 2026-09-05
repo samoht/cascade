@@ -675,6 +675,11 @@ entry points both moved.
   without selector punctuation in it, so `@scope (})` became an element
   selector named `}` (#950)
 
+- A line width takes no percentage. CSS Backgrounds 3 sec. 3.3 gives
+  `<line-width>` a length, so `border-width: 50%` and the same value on the 40
+  other properties reading one, `outline-width` and `-webkit-text-stroke-width`
+  among them, are refused as browsers refuse them (#951)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
