@@ -202,332 +202,138 @@ entry points both moved.
 
 ### Parsing
 
-- `font-variant` has a typed value and contracts from its seven longhands. It
-  was carried as opaque text, so `small-caps unicase` and `jis78 jis83` parsed
-  where Chrome refuses them, and the seven longhands written out never met the
-  shorthand under `--diff=canonical` (#964)
+Cascade used to keep the part of a value it recognised and ignore the rest, and
+to lose a whole rule over one bad piece. Both are gone.
 
-- `font-variant-alternates` has a typed value. It was carried as opaque text,
-  so `swash(fancy) swash(x)`, `swash(inherit)` and a bare ident all parsed
-  where Chrome refuses them, and `Css.Properties.Font_variant_alternates` now
-  names the property (#963)
+- A value a browser rejects is rejected whole, where the recognised prefix used
+  to survive: `translateX(10px red)`, `max(1px, red)`, a mismatched `calc()`, a
+  shadow whose colour interrupts its lengths, a fourth `text-shadow` length, a
+  repeated `color-scheme: only`, a fractional `steps()` count, two edges on one
+  axis of a `<position>`, `auto` as a colour or an SVG paint, a sizing keyword
+  as the corner radius of a basic shape, and an unrelated keyword on a box size
+  (#417, #617, #627, #629, #631, #673, #680, #688, #699, #701, #878, #882,
+  #890, #891)
 
-- The `scroll-margin`, `scroll-padding` and `border-block` / `border-inline`
-  width, style and colour axes contract from their two longhands, as the
-  margin, padding and inset axes already did (#915, #916).
+- A property whose grammar names a `<length>` takes neither a percentage nor an
+  intrinsic-sizing keyword, and a `<time>` or `<angle>` needs its unit. Cascade
+  read them wherever it read a length, so `border-width: 50%`, `perspective:
+  50%`, `top: min-content`, `margin-top: none`, `transition-duration: 0` and
+  `rotate: 0` all parsed, the last two turning a declaration browsers drop into
+  one that works. `Css.Values.read_length` gains `?sizing` and
+  `read_non_negative_length` gains `?length_only` (#871, #879, #880, #951,
+  #952, #953, #954)
 
-- Contracting animation longhands into `animation` no longer resets a longhand
-  the run does not write, so `animation-name` set in another rule survives
-  minification (#914).
+- Each grid property takes its own grammar. Values a browser drops are dropped
+  (`grid-template-columns: [a]`, `[span] 1px`, `grid-column-start: 0`, `span
+  -1`), `grid-auto-rows` refuses the area forms `grid-template` owns, `subgrid`
+  takes its line-name list, and a track size accepts math resolving to `<flex>`
+  (#708, #711, #712, #714, #717, #718, #724, #749)
 
-- The `animation` shorthand keeps an explicit `0s` duration, which it used to
-  drop as the initial value; `auto` holds that place now, so
-  `animation: spin 0s` no longer resolves to `animation: spin` (#913).
+- `font-variant` and `font-variant-alternates` have typed values, and
+  `@font-face` and `@font-palette-values` read their own `font-family`
+  grammars. Carried as opaque text the first two accepted anything, so
+  `small-caps unicase`, `jis78 jis83` and `swash(inherit)` parsed where Chrome
+  refuses them (#695, #963, #964)
 
-- A string the input ended before closing is written with its closing quote,
-  so a sheet holding one no longer grows a brace on every pass (#912).
+- An `@property` syntax rejects a component with two multipliers, a multiplied
+  `<transform-list>` and a `*` combined with anything, so the registration
+  drops rather than typing values by a grammar it cannot honour. Two syntaxes
+  that used to hang the parser are read (#398, #707, #710, #713)
 
-- `transition` reads `none` as the property it is when a duration or a timing
-  function follows, so the contraction the optimizer writes for that run of
-  longhands reads back (#911).
-
-- `text-decoration` reads `none` as the line it is when a style or a colour
-  follows, so the contraction the optimizer writes for that run of longhands
-  reads back (#910).
-
-- `place-items` reads the `<self-position>` keywords `align-items` takes, so
-  `place-items: flex-start baseline` parses and the contraction the optimizer
-  writes for that pair of longhands reads back (#909).
-
-- `cascade diff` counts a rule as changed only when its own declarations
-  changed, so a rule holding an edited nested rule is no longer summarised as
-  a difference the report has nothing to show for (#907).
-
-- `cascade diff` shows the declarations a `@keyframes` frame gained, lost or
-  changed, instead of naming the frame and saying nothing (#906).
-
-- `color(from <origin> srgb r g b)` folds to the origin when that origin is
-  itself a `color()`, not only when it is a hex or a named colour (#905).
-
-- An out-of-range `oklab()` or `oklch()` lightness written as a percentage
-  clamps as the bare number already did (#904).
-
-- A `-webkit-gradient` point written `center` minifies to the same text as
-  the percentage pair it means (#903).
-
-- A `-webkit-gradient` `color-stop()` takes a number as well as a percentage,
-  so cascade reads back the minified form it writes (#902).
-
-- A quoted `animation-name` that spells `none`, `default` or a CSS-wide
-  keyword keeps its quotes, which unquoting turned into a different
-  declaration and, in a list, into none at all (#901).
-
-- Minified `rotate` keeps the space between its angle and a negative axis
-  number, which `0deg-1` folded into one dimension (#900).
-
-- A relative colour reads its channels whether or not a space separates them,
-  so `rgb(from red 20%g b/alpha)` parses and cascade reads back the minified
-  form it writes (#899).
-
-- Minified `@scope to (...)` keeps the space before `to`, which it needs to
-  read back as `@scope` rather than as an at-rule named `@scopeto` (#898).
-
-- A custom property whose value carries an unmatched closer or a bad url is
-  invalid, and an item written as `--x: hover { }` stays a declaration rather
-  than becoming a rule when its value turns out to be bad (#897).
-
-- A unicode range is tokenised only in the `unicode-range` descriptor it
-  belongs to, so `u+a` is the selector it reads as everywhere else (#896).
-
-- An invalid nested rule is dropped on its own, leaving the rule that holds
-  it and the rules written after it in place (#895).
-
-- A `url(` that runs into the end of the input reads as the empty url the
-  spec ends it as, instead of dropping the declaration (#894).
-
-- `color-scheme` refuses a repeated `only`, so `color-scheme: only light only`
-  no longer parses (#891).
-
-- A shadow whose colour or `inset` interrupts the length run is refused, and
-  `text-shadow` refuses a fourth length or a second colour rather than
-  dropping it (#890).
-
-- `transition-property` keeps `all` beside another property, so
-  `transition-property: all, opacity` parses. `none` and the CSS-wide
-  keywords are still refused in a list (#889).
-
-- `position-try-fallbacks` reads a dashed ident and a try tactic together in
-  either order, rejecting only a repeated component. `Fallbacks` now carries
-  a component group per entry (#888).
-
-- A shadow whose offsets are both zero is kept, so `box-shadow: 0 0` and
-  `text-shadow: 0 0` parse instead of being dropped (#887).
-
-- `text-wrap` reads its full grammar: `auto` and `stable`, and a wrap mode
-  combined with a wrap style in either order. `Css.text_wrap` gains `Auto`,
-  `Stable` and `Mode_style` (#886).
-
-- `animation-duration` accepts `auto`, its initial value, instead of dropping
-  the declaration. `Css.duration` gains an `Auto` constructor; the delays and
-  `transition-duration` still reject it (#885).
-
-- `grid` and `grid-template` accept `none` on either side of the slash
-  instead of dropping the declaration, and `grid: auto-flow / 200px` now
-  serialises to a form cascade reads back (#884).
-
-- Physical and logical box sizes reject unrelated keywords: `none` is only
-  valid for maximum sizes, which reject `auto`; `normal`, `from-font` and
-  bare `size` are rejected throughout (#882).
-
-- `row-gap` and `column-gap` accept `normal` and preserve its layout-dependent
-  meaning during optimisation (#881).
-
-- `outline-offset` and `line-height-step` reject percentages, including inside
-  math functions. Negative lengths remain valid for `outline-offset` (#879,
-  #880).
-
-- `auto` is rejected in colour values and SVG paint, including nested colour
-  functions and paint-server fallbacks. Explicit UI-property alternatives and
-  variable fallback token streams remain valid (#878).
-
-- Custom counter-style names are accepted in `list-style-type` and `list-style`,
-  with case and position-keyword disambiguation preserved. `list_style_type`
-  gains `Name of string` (#877).
-
-- `animation` preserves keyword-shaped keyframe names and their case through
-  parsing and printing, including names supplied by callers (#875, #876).
-
-- Negative `text-decoration-thickness` lengths and percentages are retained,
-  including inside `calc()`, instead of dropping valid declarations (#874).
-
-- `blur()` rejects percentages, sizing functions and negative literal lengths,
-  including percentages nested in math, instead of emitting invalid filters
-  (#871).
-
-- `filter` and backdrop/vendor variants accept omitted function arguments,
-  retaining the empty call and shortening explicit defaults when optimized
-  (#870).
-
-- Unknown enclosed media and `@supports` conditions retain their guards, so
-  applicable `or` branches and negated capability tests no longer lose their
-  rules (#867, #869).
+- Values browsers accept are read rather than dropped: `animation-duration:
+  auto`, `grid: none / 200px`, `place-items: flex-start baseline`, the full
+  `text-wrap` grammar, `row-gap: normal`, a negative
+  `text-decoration-thickness`, a custom counter-style name,
+  `transition-property: all, opacity`, a zero-offset `box-shadow`, an empty
+  `blur()`, a `style()` range query, a `calc()` resolving to a number, a sole
+  baseline in `place-content`, `display: flow-root list-item`, `outline: thin
+  solid red`, a bare `stroke-width` number, the `svg||td` column combinator,
+  `border-inline`, a descending `@font-face` range, a valid
+  `@font-palette-values` rule, `:dir(auto)`, `@media (min-width: 0)`,
+  `@-moz-document`'s URL matchers, a `border-image` repeat keyword standing
+  alone, a `text-decoration` component with no line, `white-space: collapse`, a
+  time-valued `round()` in a delay, and a value whose grammar ends in an
+  optional component (#334, #335, #427, #456, #461, #551, #572, #579, #594,
+  #633, #641, #644, #646, #665, #666, #667, #682, #739, #805, #827, #870,
+  #874, #877, #881, #884, #885, #886, #887, #889, #909)
 
 - `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
   side styles, `border-block-style` and `border-inline-style` take the start and
   end edges, and every `border-*-radius` corner takes a horizontal and a
   vertical radius
-- An at-rule written among `@font-face` descriptors costs itself alone, as CSS
-  Syntax 3 §5.5.5 requires, instead of taking the whole rule with it
-- A `style()` container query takes the single-comparison range CSS Conditional
-  Rules 5 defines, `style(--gap = 10px)` included, and rejects an interval whose
-  two bounds point different ways; `Css.inline_vars` reads its operands (#805)
-- A parse error marks the text that failed, the caret at the line and column of
-  the value the author wrote rather than under the token after it (#472, #477,
-  #789, #793, #801)
-- Lenient parsing preserves a value opaquely when the property is unknown, the
-  value carries a runtime substitution, or it is a colour fallback; a value the
-  typed reader rejects is an invalid declaration and is dropped (#787, #813)
+
 - `display` accepts `grid-lanes` and `inline-grid-lanes`, the two values CSS
   Grid 3 sec. 2.2 establishes grid lanes layout with
-- Grid track sizes accept math functions that resolve to `<flex>`, including
-  `calc(1fr * 2)`, `min(1fr, 2fr)` and `clamp(100px, 1fr, 300px)`, in explicit,
-  repeated and automatic tracks (#749)
-- `tab-size`, `column-count`, the `columns` shorthand, a `repeat()` track count
-  and a `span` grid line accept a `calc()` resolving to a number, which CSS
-  Values 4 allows wherever an integer is (#827)
-- A sole baseline position in `place-content` is accepted and defaults its
-  omitted `justify-content` slot to `start`, as required by CSS Align (#739)
-- Custom-property declarations containing a `<bad-string-token>` are dropped
-  during stylesheet recovery, so minified output no longer swallows the
-  containing rule's closing brace when it is parsed again (#727)
-- Declarations containing a non-empty `var()`, `env()` or `attr()` call defer
-  CSS-wide keyword mix validation until substitution, instead of being dropped
-  while the substituted token stream is still unknown (#726)
-- A `var()` written as one component of `border-radius`, `gap`, `place-*`,
-  `grid-auto-flow`, `transform-origin`, `border-spacing` or a border-image
-  dimension keeps its type, so the values beside it still fold and the variable
-  is still found when cascade lists the ones a sheet uses (#729, #734, #735)
-- Grid values a browser drops are dropped: `grid-template-columns: [a]` and
-  `1px [a] [b] 2px`, `[span] 1px`, `grid-column-start: 0`, `span -1` and
-  `grid-column: 2 / initial` (#708, #712, #714, #724)
-- Each grid property takes its own grammar: `grid-auto-rows` rejects the area
-  forms `grid-template` owns, `subgrid` takes its optional line-name list, and
-  `grid-column-start: 3 span` prints `span 3` (#711, #717, #718)
-- An `@property` syntax rejects a component with two multipliers, a multiplied
-  `<transform-list>` and a `*` combined with anything, so the registration
-  drops rather than typing the property as something else (#707, #713)
-- A stylesheet that used to hang the parser is read: an `@property` syntax
-  multiplying `<transform-function>` or `<resolution>`, and
-  `@page { @top-center { .a { b: c } } }` (#398, #710)
-- A value a browser rejects is dropped, where cascade used to keep the part of
-  it that it recognised and ignore the rest: `translateX(10px red)`,
-  `max(1px, red)`, `calc((1px 2px))` and `calc(100%- 10px)`
-  (#617, #627, #629, #631, #699, #701)
-- Keyword, at-rule and function names are matched without regard to case, so
-  `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)`, `:dir(LTR)` and a
-  capitalised `COLOR-STOP()` read and optimise like their lower-case spellings.
-  A name the author chose keeps its case, and `@charset` stays the byte
-  sequence CSS Syntax 3 sec. 8.2 matches (#602, #603, #604, #620, #622, #767)
-- `:dir()` accepts any single identifier, so `:dir(auto)` is read and written
-  back instead of invalidating its rule. A direction that cascade cannot model
-  matches no element, so `:not(:dir(auto))` matches every element (#594)
-- `@font-face` and `@font-palette-values` use their descriptor-specific
-  `font-family` grammars: one named family for the former, a non-empty list for
-  the latter, and neither takes a generic family or CSS-wide keyword (#695)
-- `steps()` rejects fractional counts, and `jump-none` requires at least two
-  steps (#688)
-- `offset`, `offset-anchor` and `offset-position` are typed: they validate the
-  Motion Path grammar and canonicalize their `<position>` branches, so
-  `offset: total nonsense here` and a `normal` coordinate drop (#674, #683)
-- The three- and four-value `<position>` readers reject two edges on one axis
-  and any identifier that is not an edge, so generic `<position>` takes no
-  three-value form and `transform-origin` no edge-offset form (#673, #680)
-- `border-image` accepts a repeat keyword with no source or slice, the omitted
-  slots taking their initial values, and rejects the mode keyword only
-  `mask-border` has a slot for (#667, #682)
-- `white-space: collapse` parses, as the new public `white_space.Collapse`
-  node. The shorthand's other longhands are optional, so a
-  white-space-collapse value stands on its own (#666)
-- `text-decoration` accepts a colour, style or thickness with no line value.
-  None of its four components is mandatory (#665)
-- A CSS-wide keyword mixed into a `font-family` list reads as the exported
-  `font_family.Invalid` node instead of raising during property parsing (#657)
-- `repeating-linear-gradient(var(...))` keeps its repeating function name
-  instead of serializing back as a non-repeating linear gradient (#656)
-- A literal value reads as the node the library exports, so constructed and
-  parsed declarations compare and hash equally: `caret: auto`, `aspect-ratio`,
-  a `var()` gradient body and a typed percentage (#651, #652, #653, #654)
-- The animation and transition delay longhands read time-valued `round()`,
-  `mod()` and `rem()` calls instead of dropping the declaration (#646)
-- A declaration whose grammar ends in an optional component keeps its value:
-  `rotate: 45deg !important` and `text-box: none;` read the `;` and the
-  `!important` as part of the value and went missing with only a warning (#644)
-- An empty value is no longer a declaration: `border:`, its per-side and
-  logical variants, `column-rule:` and `outline:` are dropped with a warning,
-  where `border:` read as `border: none` (#640)
-- `display: flow-root list-item` and `display: flow list-item` are read, since
-  CSS Display 3 sec. 2 puts no order on the three components, while
-  `display: list-item table` and a repeated `list-item` are rejected (#641)
-- `outline-width` and the width slot of the `outline` shorthand read a
-  `<length>` where CSS UI 4 sec. 3.2 gives them a `<line-width>`, so
-  `outline: thin solid red` was dropped as invalid (#633)
-- `stroke-width` accepts a bare number, which cascade printed but its own
-  reader then rejected, and `stroke-miterlimit` accepts a value between 0 and 1
-  (#334, #579)
-- A selector using the column combinator, such as `svg||td`, is read and
-  written back instead of dropped. The namespace reader consumed the first bar
-  of the `||` that CSS Selectors 4 sec. 15.2 defines (#572)
-- A selector no browser can ever match is dropped instead of being written
-  back: a combinator after a pseudo-element, a rule nested under a
-  pseudo-element parent, `:not(::before)` and `::before:hover` (#426, #430,
-  #552, #559)
-- A pseudo-element that carries structure keeps the compounds it allows, so
-  `::file-selector-button:hover`, `::part(p):hover`, a chained
-  `::part(label)::before` and WebKit's scrollbar state pseudo-classes read and
-  print back (#418, #441, #553, #556)
-- `position-area` takes the logical `start`/`end` keywords with their `self-`
-  and `span-` forms, and rejects a pair from different branches of its grammar
-  such as `left block-start`, which Chrome 151 rejects too (#478, #485, #495)
-- `@media (min-width: 0)` and four of `@-moz-document`'s five URL-matching
-  functions are read, where a condition that cascade could not parse took the
-  at-rule and every rule inside it down with it (#427, #461)
-- The `border-inline` and `border-block` properties keep their value. None of
-  them had a value reader, so a file containing nothing else exited 1 (#456)
-- A descending `@font-face` range such as `font-weight: 700 400` parses without
-  a warning, only `unicode-range` keeping an ordering rule (#335)
-- A valid `@font-palette-values` rule no longer warns, so `cascade apply`
-  accepts it: a missing `base-palette` defaults to 0, and `font-family` is the
-  mandatory descriptor whose absence warns in its place (#551)
-- `clip-path`, `shape-outside` and `object-view-box` stop taking an
-  intrinsic-sizing or CSS-wide keyword as the corner radius of a basic shape,
-  which browsers drop anyway (#417)
-- A `var()` in a `page-break-*` declaration is read as the property it names,
-  and an error in one is reported against the property the author wrote rather
-  than the `break-*` property it minifies to (#511, #518)
-- `@supports (--x\3b y: red)` is read instead of the whole rule being dropped.
-  The reader rejected an escaped property name because reading its text back
-  did not give the same name (#437)
-- A `@layer` name is read as the identifiers it is made of, so the layer named
-  `a.b` written `@layer a\2e b` is no longer the sublayer `b` of `a`; both
-  printed `@layer a.b`, and minification merged the two blocks (#442)
-- An at-rule nested inside a style rule reads its body as nested rules, where
-  `.a { @starting-style { color: blue } }` dropped the declaration and
-  `.a { @layer n { color: red } }` read its body as a selector list (#374, #384)
-- An at-rule whose body holds no style rule is dropped inside a style rule, and
-  the discard ends there, where `.a { @import url(x) { } color: red }` lost
-  `color: red` along with the `@import` (#388)
-- A declaration written after a nested rule keeps its place, so
-  `.a { @supports (color: red) { color: blue } color: green }` computes green
-  as browsers do, where cascade printed a sheet that computed blue (#380)
-- A bad descriptor, a stray `;`, a nested rule or a margin at-rule inside an
-  at-rule body is dropped on its own rather than taking the block and the
-  stylesheet holding it (#392, #398, #399, #402, #419, #420)
-- Tokens left after a descriptor's value, such as a trailing `!important`,
-  invalidate the declaration they follow rather than the leftover alone
-  (#399, #419)
-- `@page` keeps what it is given: any property in its body or a margin box,
-  where a seven-name allowlist rejected them, and an empty margin box is elided
-  rather than taking the `@page` with it (#403, #405)
-- A duplicate descriptor in a `@page` body or a page margin box keeps the
-  important declaration rather than the one written last (#404)
-- An unrecognised at-rule reaches the output with its block intact, where
-  `cascade fmt` silently deleted it and every rule inside it.
-  `Optimize.drop_unknown_at_rules` drops such at-rules on request (#469, #483)
-- An unknown at-rule whose raw body ends on a backslash is written with a
-  closer that closes it, where the backslash escaped the `}` the printer wrote
-  and the next statement was swallowed into the body (#558)
-- A qualified rule whose prelude reads as a custom property, such as
-  `--x:hover { color: red }`, is reported when it is dropped, and `~strict:true`
-  rejects it; the drop itself was silent (#473)
+
+- An empty value is no longer a declaration: `border:`, its per-side and logical
+  variants, `column-rule:` and `outline:` are dropped with a warning, where
+  `border:` read as `border: none` (#640)
+
+- `offset`, `offset-anchor`, `offset-position`, `position-area`,
+  `position-try-fallbacks` and `white-space` are typed against their own
+  grammars, and a literal reads as the node the library exports, so a
+  constructed declaration and a parsed one compare and hash equally (#478,
+  #485, #495, #651, #652, #653, #654, #657, #674, #683, #888)
+
+- A bad piece is dropped on its own and the rule around it survives. A nested
+  rule, a descriptor, a stray `;`, a margin at-rule, an `@counter-style` with no
+  descriptor, an `@media` condition, an `@font-face` descriptor name, an
+  `@scope` bound and leftover tokens after a value are each dropped alone, and
+  an unrecognised at-rule reaches the output with its block intact.
+  `Optimize.drop_unknown_at_rules` drops such a rule on request (#374, #380,
+  #384, #388, #392, #399, #402, #403, #404, #405, #419, #420, #469, #483,
+  #727, #895, #897, #946, #947, #948, #949)
+
+- An at-rule written among `@font-face` descriptors costs itself alone, as CSS
+  Syntax 3 §5.5.5 requires, instead of taking the whole rule with it
+
+- An unknown `@supports` or media condition keeps its guard, so an applicable
+  `or` branch and a negated capability test no longer lose their rules (#867,
+  #869)
+
+- A selector no browser can match is dropped rather than written back, and a
+  pseudo-element that carries structure keeps the compounds it allows:
+  `::file-selector-button:hover` and a chained `::part(label)::before` survive
+  where a combinator after a pseudo-element does not. `Css.Selector.of_string`
+  refuses a string that is not a selector rather than reading it as an element
+  name (#418, #426, #430, #441, #552, #553, #556, #559, #950)
+
+- Keyword, at-rule and function names match without regard to case, so
+  `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)` and `:dir(LTR)` read
+  (#602, #603, #604, #620, #622, #767)
+
+- An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
+  read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
+  of `a` (#437, #442)
+
+- A `var()`, `env()` or `attr()` call keeps the type of the component it stands
+  for and defers CSS-wide keyword validation to substitution, so one written as
+  a slot of `border-radius`, `gap`, `place-*`, `grid-auto-flow`,
+  `transform-origin`, `border-spacing`, a border-image dimension or a
+  `page-break-*` property is read as that slot. A value the typed reader
+  refuses is preserved opaquely when the property is unknown or the value is a
+  runtime substitution (#511, #518, #726, #729, #734, #735, #787, #813)
+
+- Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
+  with a negative axis, a relative colour's channels, a `-webkit-gradient`
+  `color-stop()` and `center` point, `text-decoration: none solid`,
+  `transition: none 1s`, an unterminated string, a quoted `animation-name`, a
+  keyword-shaped keyframe name, an at-rule body ending on a backslash, a `u+a`
+  selector outside `unicode-range`, an explicit `animation: spin 0s`, a `url(`
+  at end of input and a repeating gradient built from a `var()` each survive
+  the round trip (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901,
+  #902, #903, #910, #911, #912, #913)
+
+- An out-of-range `oklab()` or `oklch()` lightness written as a percentage
+  clamps as the bare number already did, and `color(from <origin> srgb r g b)`
+  folds to the origin when that origin is itself a `color()` (#904, #905)
+
 - Everything the parser repaired or dropped is reported, so strict mode rejects
-  it. `@media screen {` swallowed the rest of the file and still returned `Ok`
-  with no warnings, hiding a truncated stylesheet (#484)
-- An error inside an at-rule condition or an `@font-face` descriptor points at
-  the slice that failed, not at the end of the file with the caret past the
-  last byte (#496, #497, #499, #501, #538)
-- `Cascade.Reader.int` raises `Parse_error` on a number with a fractional part
-  or one outside the `int` range, where it truncated `3.9` to `3` and answered
-  `-1` for `1e30` (#466)
+  it and the caret points at the value the author wrote rather than past the
+  last byte. `@media screen {` used to swallow the rest of the file and still
+  return `Ok` with no warnings. `Cascade.Reader.int` raises `Parse_error` on a
+  fractional or out-of-range number instead of truncating (#466, #472, #473,
+  #477, #484, #496, #497, #499, #501, #538, #789, #793, #801)
 
 ### Printing
 
@@ -535,759 +341,329 @@ entry points both moved.
   an empty value. `text-decoration:solid` printed `text-decoration:`, which no
   parser reads back, once dropping the initial style left no slot, and a `mask`
   layer holding only initials printed the same way (#682, #955)
-- A `calc()` printed without `--minify` keeps the parentheses the author wrote,
-  redundant ones included, while `--minify` removes those and keeps a
-  precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
+
 - An identifier is printed with the escapes needed to read it back as the same
   name, where `@layer a\3b b` printed two statements naming a layer the input
   never had and `--x\3b y` split into two declarations (#435, #436, #526, #598)
+
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps its
-  parentheses, where `not ((min-width:1px) or (max-width:2px))` printed CSS
-  browsers and cascade's own reader reject, losing the whole block (#319)
-- Unwrapping a `@supports` nested in a style rule keeps the `;` before the
-  sibling that follows, where the declaration it held ran into the next one as
-  `color:#00fcolor:green` (#370)
+  parentheses, and unwrapping a `@supports` nested in a style rule keeps the
+  `;` before the sibling that follows. Both printed CSS browsers and cascade's
+  own reader reject, losing the block or running two declarations together as
+  `color:#00fcolor:green` (#319, #370)
+
+- A `calc()` printed without `--minify` keeps the parentheses the author wrote,
+  redundant ones included, while `--minify` removes those and keeps a
+  precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
+
 - A NaN-valued number prints as `calc(NaN)` and a NaN-valued dimension as
   `calc(NaN * 1unit)`, where `calc(sqrt(-1) * 1px)` printed `NaNpx`, which
   browsers drop (#425)
+
 - `Css.to_string` renders the sheet once. It used to render it twice, the first
   pass only to measure the output and size the buffer exactly (#479)
 
 ### Minification
 
-- `--minify` contracts `font` from the whole font family written out, not just
-  from its five core longhands. CSS Fonts 4 sec. 5.3 has the shorthand reset
-  thirteen more, so a run holding any of them at its initial says what the
-  shorthand says. As for `animation` and `transition`, a run that leaves one of
-  the twenty to the reset needs `--scope=stylesheet` (#965)
+- `--minify` contracts every shorthand family from the longhands that name it.
+  This release adds the four-sided box families (`border-width`, `border-style`,
+  `border-color`, `scroll-margin`, `scroll-padding`), the eight border sides and
+  the logical axes, `border-radius` with elliptical corners, `border-image`,
+  `background`, `mask`, `columns`, `column-rule`, `offset`, `font-synthesis`,
+  `-webkit-text-stroke`, `text-decoration`, `flex-flow`, `text-emphasis`,
+  `grid-row`, `grid-column`, `grid-area`, `grid-template`, `grid`,
+  `overscroll-behavior`, `contain-intrinsic-size`, `animation-range`,
+  `scroll-timeline`, `view-timeline`, `container`, `background-position`,
+  `white-space`, `text-wrap` and `font` (#915, #916, #918, #919, #920, #921,
+  #922, #923, #924, #925, #926, #927, #928, #929, #930, #931, #932, #933,
+  #935, #937, #939, #940, #942, #959, #960, #961, #965)
 
-- `--minify` contracts an `animation` or `transition` longhand run that leaves
-  one of the shorthand's own longhands unwritten only under
-  `--scope=stylesheet`, which is what the flag promises: the shorthand resets
-  what the run left out, and under the default fragment scope an earlier
+- A component written at its own initial, or written `initial`, reads as the
+  slot the shorthand leaves out, so `flex-flow: row wrap` minifies to
+  `flex-flow: wrap` and `flex: 0 0 auto` to `flex: none`. A repeated side folds
+  to the shortest spelling naming the same sides (#917, #923, #924, #925,
+  #934, #959)
+
+- Contraction never resets a longhand the run did not write. A run that leaves
+  one of the shorthand's own longhands unwritten now needs `--scope=stylesheet`,
+  which is what the flag promises: under the default fragment scope an earlier
   `transition-timing-function` from another file is not cascade's to reset. A
-  run whose omitted slots the same rule writes back still contracts in either
-  scope (#958)
+  slot the same rule writes back after the run is answered and still contracts
+  (#843, #845, #914, #943, #957, #958)
 
-- `--minify` no longer resets the animation range when it contracts. Scroll
-  driven Animations 1 makes `animation-range-start` and `animation-range-end`
-  reset-only sub-properties of `animation`, and a rule holding either lost it
-  when the surrounding longhands became the shorthand. A range or a timeline
-  written after the shorthand that only restates the reset is now dropped
-  (#957)
-
-- `--minify` drops a `border-image` that names nothing but initials after a
-  `border`, which CSS Backgrounds 3 sec. 3.4 already resets it to. The whole
-  border family written out as longhands now minifies to `border: 1px solid
-  red` alone, where a `border-image: none` trailed it (#956)
-
-- `--minify` contracts the eight border sides from their own three longhands,
-  as it already did for `outline`: `border-top-width`, `border-top-style` and
-  `border-top-color` written together become `border-top`, and a longhand
-  written `initial` reads as the component the shorthand leaves out, as it now
-  does for `text-decoration` (#918, #919, #959)
-
-- `--minify` contracts `grid-template` from its rows, columns and areas
-  longhands, the areas form included: `grid-template-rows: 1fr` beside
-  `grid-template-areas: "a b"` and `grid-template-columns: 1fr 1fr` minifies to
-  `grid-template: "a b" 1fr / 1fr 1fr` (#960)
-
-- `--minify` contracts `grid` from those three and the three `grid-auto-*`
-  longhands, including the flowing-axis forms: the six written out become
-  `grid: auto-flow dense 2em / 1fr` (#961)
-
-- `--minify` contracts `border-block` and `border-inline` from the three axis
-  shorthands that set the same six longhands between them (#920)
-
-- `--minify` contracts `overscroll-behavior` and `contain-intrinsic-size` from
-  their x and y longhands, as it already did for `overflow` (#921)
-
-- `--minify` contracts `grid-row`, `grid-column` and `grid-area` from the line
-  longhands they name (#922)
-
-- `--minify` contracts `flex-flow` and `text-emphasis` from their two
-  longhands, and drops a component of either that names its own initial:
-  `flex-flow: row wrap` minifies to `flex-flow: wrap` (#923)
-
-- `--minify` contracts `animation-range` and `scroll-timeline` from their two
-  longhands, and drops a `scroll-timeline` axis that names its own initial:
-  `scroll-timeline: --t block` minifies to `scroll-timeline: --t` (#924)
-
-- `--minify` contracts `container` and `view-timeline` from their longhands,
-  and drops a `view-timeline` axis or inset that names its own initial (#925)
-
-- `--minify` contracts `background-position` from `background-position-x` and
-  `background-position-y`, which this release adds as typed properties: they
-  used to parse as unknown declarations, so nothing could equate the shorthand
-  with them (#926)
-
-- `--minify` contracts `column-rule` from `column-rule-width` and
-  `column-rule-style`, which this release adds as typed properties beside the
-  colour longhand it already had (#927)
-
-- `--minify` contracts `white-space` from `white-space-collapse`, which this
-  release adds as a typed property, and `text-wrap-mode` (#928)
-
-- `--minify` contracts `text-wrap` from `text-wrap-mode` and `text-wrap-style`
-  (#929)
-
-- `--minify` contracts `font-synthesis` from its three longhands, leaving a
-  rule that also writes `font-synthesis-position` alone since the shorthand
-  resets it (#930)
-
-- `--minify` contracts `-webkit-text-stroke` from its width and colour
-  longhands. The shorthand and `-webkit-text-stroke-width` are new typed
-  properties; only the colour longhand had a spelling before (#931)
-
-- `--minify` contracts `text-decoration` only from the full run of its four
-  longhands. Contracting the three without the thickness reset it to `auto`,
-  losing a thickness set elsewhere, and the run that does write the thickness
-  now contracts where it did not before (#932)
-
-- `--minify` contracts `border-radius` from four elliptical corners, writing
-  the horizontal radii before the `/` and the vertical ones after (#933)
-
-- `--minify` writes `flex: none` and `flex: auto` for the triples they name,
-  where it used to spell them out as `0 0 auto` and `1 auto` (#934)
-
-- `--minify` contracts `border-image` from a run naming all five of its
-  longhands whatever the scope, where it used to need `--scope=stylesheet`,
-  and drops a component of the shorthand that names its own initial (#935)
-
-- `border-image-outset` and `border-image-width` reject a keyword their
-  grammar does not carry. Both read through the generic length reader, whose
-  keyword list includes `stretch`, so `border-image: url(a.png) 30/1/0 stretch`
-  parsed the repeat as part of the outset (#936)
-
-- `--minify` contracts `offset` from a run naming all five of its longhands
-  (#937)
-
-- `Css.column_height` and `Css.column_wrap` are new, with the `column-height`
-  and `column-wrap` properties CSS Multicol 2 adds. Chrome expands `columns`
-  to all four longhands, so `columns` now records resetting both (#938)
-
-- `--minify` contracts `columns` from a run naming all four of its longhands,
-  and no longer synthesises it over a rule that sets `column-height` or
-  `column-wrap`, which the shorthand resets. `columns: auto 3` minifies to
-  `columns: 3` (#939)
-
-- `--minify` contracts `background` from a run whose untouched longhands are
-  written `initial`, which names the value the shorthand resets each slot to
-  (#940)
-
-- `Css.Properties` gains `-webkit-mask-position-x` and `-webkit-mask-position-y`,
-  the spelling the CSSOM reports when it expands `mask`; the pair contracts
-  into `-webkit-mask-position`, and an `initial` mask longhand fills its slot
-  the way a background one does (#941)
-
-- `--minify` contracts `mask` from a run naming all eight of its layer
-  longhands whatever the scope, where it used to need `--scope=stylesheet`,
-  and drops a component of the shorthand that names its own initial (#942)
-
-- `--minify` no longer contracts a border width/style/colour run when a
-  `border-image` longhand in reach holds a value: the shorthand resets that
-  whole family, so the contraction dropped it (#943)
-
-- `Css.Resolve` matches an attribute selector the way an HTML document does:
-  the name part folds to ASCII lowercase, the values of the attributes HTML
-  lists fold without needing an `i` flag, and `~=` splits its list on any
-  ASCII whitespace rather than on spaces alone. `cascade apply` and
-  `cascade prune` used to read `[TITLE=x]` and `[type=TEXT]` as matching
-  nothing (#944, #945)
-
-- A `@counter-style` missing a descriptor its system needs is kept. CSS
-  Counter Styles 3 sec. 3.1.1 has such a rule define no counter style while
-  staying a valid rule, and cascade dropped it along with everything the
-  parser had read after it. A rule with no descriptor at all is dropped, since
-  it renders as an unknown name does (#946)
-
-- An `@media` whose query does not match the grammar keeps its rule and its
-  contents, matching nothing. Media Queries 5 sec. 3.2 replaces such a query
-  with `not all`, and cascade dropped the rule and everything inside it. The
-  query is still reported as a warning, and `~strict:true` still refuses the
-  stylesheet (#947)
-
-- A `@font-face` descriptor with no name is dropped and the rule kept, as an
-  unknown name and an invalid value already were. The name was read outside
-  the recovery, so `@font-face { font-family: f; : url(a.woff2) }` took the
-  rule and everything the parser had read after it (#948)
-
-- An `@scope` bound that does not parse invalidates the rule, as it does in
-  browsers. Such a bound used to become the `:invalid` pseudo-class, so
-  `@scope ) { .a { color: green } }` scoped the block to whatever form
-  controls were in an invalid state (#949)
-
-- `Css.Selector.of_string` refuses a string that is not a selector rather than
-  reading it as an element name. Its single-name shortcut accepted anything
-  without selector punctuation in it, so `@scope (})` became an element
-  selector named `}` (#950)
-
-- A line width takes no percentage. CSS Backgrounds 3 sec. 3.3 gives
-  `<line-width>` a length, so `border-width: 50%` and the same value on the 40
-  other properties reading one, `outline-width` and `-webkit-text-stroke-width`
-  among them, are refused as browsers refuse them (#951)
-
-- The intrinsic sizes belong to the sizing properties. CSS Sizing 3 sec. 5
-  gives `min-content` and its siblings to `width` and the rest, and cascade
-  read them wherever it read a length, so `top: min-content` and
-  `margin-top: none` parsed. `Css.Values.read_length` gains `?sizing` for the
-  readers whose property takes them (#952)
-
-- A time and an angle need their unit. CSS Values 4 sec. 6.2 omits it only for
-  a zero length, and cascade read `transition-duration: 0` as `0s` and
-  `rotate: 0` as `0deg`, turning a declaration browsers drop into one that
-  works (#953)
-
-- A property whose grammar names a `<length>` takes no percentage. Chrome
-  refuses `perspective: 50%`, and cascade accepted a percentage there and on
-  `tab-size`, `column-width`, `border-spacing`, `border-image-outset`,
-  `overflow-clip-margin` and the `contain-intrinsic-*` sizes. A negative
-  `column-width` is refused with them. `Css.Values.read_non_negative_length`
-  gains `?length_only` (#954)
-
-- `--minify` folds a repeated side of `border-width` and of the three border
-  logical axes to the shortest spelling naming the same sides, as it already
-  did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
-  2px` minifies to `border-width: 2px` (#917)
+- `--minify` drops a longhand that only restates what the shorthand in front of
+  it already wrote, so the whole border family written out minifies to
+  `border: 1px solid red` alone (#956)
 
 - `--minify` no longer contracts a run of longhands one of which is `inherit`,
   `unset`, `revert` or `revert-layer`. A CSS-wide keyword is a whole
   declaration value, so pasting one into a shorthand made a declaration every
   browser drops: `padding-left: inherit` beside its three siblings became
   `padding: 0 2em 10% inherit` and the element lost all four paddings
-- `--minify` keeps a transition longhand written before a run of other
-  transition longhands. The run contracted into the `transition` shorthand,
-  which resets the rest of the family, so a `transition-behavior:
-  allow-discrete` ahead of it was deleted and the element stopped transitioning
-  discrete values (#843)
-- `--minify` keeps that longhand when it sits in a different rule from the run.
-  The contraction reads one rule, so a holder next door was invisible to it and
-  the reset landed on the element anyway (#845)
-- `cascade diff --diff=canonical` reports a rule as moved only when it really
-  moved. Writing one selector as a nested branch or as its flat expansion, and
-  writing two rules of one selector next to each other or as a single rule, now
-  compare equal, so a sheet and its minified form agree. A declaration hoisted
-  into a selector-list group also compares equal to the same declaration
-  written inline in every branch of that group (#825, #826, #831)
-- Nesting emits only selectors a browser can match. A rule nested under a
-  pseudo-element parent is dropped wherever it sits, and so is a branch that
-  adds a pseudo-class the pseudo-element does not accept (#818, #822, #823)
-- `--minify` merges a `@container` block into an earlier one carrying the same
-  name and query across the rules written between them, where only adjacent
-  blocks merged and a hoist over a conflicting rule stays refused (#809)
-- `--minify` keeps the time unit the author wrote for a `var()` fallback inside
-  a `calc()`, as it already did for the operand beside it. Rewriting the unit
-  left two declarations printing the same text while differing internally, so
-  they did not factor into one rule (#803)
-- `--minify` keeps a vendor-prefixed gradient written with the `background`,
-  `mask`, `border-image` or `mask-border` shorthand, so deduplication no longer
-  deletes the fallback a browser without the standard function needs (#782)
-- Invalid math results in `shape-margin` and `offset-distance` are dropped like
-  those in every other `<length-percentage>` property (#766)
-- Flattening a rule nested under a selector list wraps the parent in `:is()`,
-  where `.a,.b{&:hover{color:red}}` printed `.a,.b:hover` and bound `:hover` to
-  the last branch, CSS Nesting 1 sec. 4 (ED) reading `&` as the group (#800)
-- `--flatten-nesting` leaves the optimised stylesheet flat even when later
-  regrouping can shorten adjacent selectors by synthesizing nesting (#759)
-- Canonical diff flattens authored nesting before comparing, so a nested
-  stylesheet and its flat equivalent are reported as identical (#760)
-- Computed-value evaluation resolves direct `inherit`, `initial`, `unset`,
-  `revert` and `revert-layer` values for every typed property, including value
-  shapes without a property-specific optimizer (#764)
-- Whether a property inherits is decided in one place, from the typed property,
-  so `cascade apply --minimal` drops a restated `writing-mode` and `unset`
-  resolution uses that same answer (#763)
-- Default `--minify` evaluates all-static unitless `line-height: calc()` to its
-  six-significant-figure budget, so `calc(28/18)` becomes `1.55556`;
-  `--lossless` keeps a repeating quotient symbolic (#756)
-- `--minify` converts modern colour operands to floating-point sRGB before
-  resolving an `in srgb` `color-mix()`, so channel bytes are rounded once after
-  interpolation instead of once per operand and again afterward (#755)
-- `--minify` reaches a stable result in one invocation on large stylesheets,
-  where synthesized shorthands, vendor transition aliases, factoring and
-  selector-branch order each needed another pass to settle (#750)
-- Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
-  need, with matching `@supports` tests, for `user-select`, `backdrop-filter`,
-  `hyphens`, `mask` and `-webkit-text-decoration-color` (#751, #758, #797)
-- Lossless optimisation keeps otherwise-independent declarations in authored
-  order, so stylesheet text and CSSOM enumeration no longer change solely for
-  gzip alignment (#742)
-- Numeric tokens in a custom-property or unknown-property stream take their
-  shortest exact spelling, so `--x: 1.0px` becomes `--x:1px`. A declaration
-  feature query keeps the author's spelling (#719)
-- `--minify` prints a custom property as the author's own token stream: no
-  separator between tokens held side by side, and the space a math `+` or `-`
-  needs for a browser to read the value at all (#697, #709)
-- `--minify` keeps the space after a closing parenthesis in a typed position or
-  colour value, so `background-position: var(--x) 20%` minifies to itself
-  (#700, #703, #722)
-- `--minify` treats `[]` and `{}` blocks as ordinary tokens, since only `()`
-  groups a math expression, so a bracketed run inside a custom property has its
-  separators minified like any other token stream (#720)
-- `--minify` drops the space at a `%` or `)` boundary in the box shorthands and
-  in `inset()`, so `margin:10% 0` prints as `margin:10%0`. A value ending in a
-  unit keeps its space, `10px 0` re-tokenising as `10px0` (#614, #619, #623)
-- `Css.to_string ~minify:true` keeps choosing the shorter exact spelling for
-  constructed millisecond durations and degree hues without running the AST
-  optimisation phase (#678)
-- `calc()` keeps type-bearing zero terms with compatible dimensions and rejects
-  incompatible result types at property boundaries, where
-  `width:calc(1px + 0)` used to survive (#676, #731)
+
+- `Css.Properties` gains the typed properties the contractions need:
+  `background-position-x` / `-y` and their `-webkit-mask` twins,
+  `column-rule-width` / `-style`, `white-space-collapse`, `column-height` and
+  `column-wrap`. `border-image-outset` and `border-image-width` reject a keyword
+  their grammar does not carry (#926, #927, #928, #936, #938, #941)
+
+- A value keeps every digit and every unit the author wrote unless the shorter
+  spelling means the same number. `.4285714em` came out short, `calc(hypot(1px,
+  1px))` came out as `1.41421356`, and a computed dimension past a million units
+  lost its own digits (#350, #354, #362, #367, #676, #731)
+
 - `--minify` folds a value's spelling before two rules are compared, so a hex
-  colour, a NaN, an unreduced `min()` and a same-unit `calc()` written two ways
-  factor into one rule (#471, #482, #597, #624, #639)
-- A shorthand component left at its longhand's initial, a repeated
-  `font-family` entry and a box shorthand whose sides repeat fold before
-  comparison (#635, #636, #637, #639, #640, #641)
-- Logical minimum sizes, duration units, stepped functions, hue-angle units,
-  constructed `transform-origin` positions and repeated `scroll-margin` sides
-  canonicalise before declaration hashes are compared (#647, #650, #672)
-- A whole-rule `:is(a, b)` whose arguments share one specificity splits into the
-  list `a, b` before rules are compared, so it factors with a rule that wrote
-  the list out; `:is(a)` and `:is(*)` lose the wrapper too (#655)
-- A box shorthand whose value holds a top-level substitution function such as
-  `var()` keeps the number of components the author wrote, so the value stays
-  valid and each side keeps the value meant for it (#736)
-- `--minify` collapses `margin-inline` and `margin-block` to one value when the
-  two edges match, which the four-sided box shorthands already did (#641)
-- `--minify` folds `steps(1)` to `step-end`, CSS Easing 1 sec. 2.3 assuming
-  `end` when the step position is left out (#641)
-- `--minify` keeps `display: block ruby`. It printed `ruby`, which CSS Display
-  3 reads as `inline ruby`, so a block-level ruby container came back
-  inline-level (#637)
-- `--minify` keeps the zero duration a `transition` delay stands behind.
-  `transition: opacity 0s 2s` printed `transition:opacity 2s`, so the delayed
-  instant change came back as a two-second one starting straight away (#641)
-- `--minify` keeps a lone `background` position value and both `<box>` values of
-  a layer that disagree, where `background: url(a.png) 0` came back
-  top-aligned and a `content-box border-box` pair lost its origin (#640)
-- `--minify` folds the width slot of the `border` shorthands, `column-rule` and
-  `outline`, so `border: 0px solid red` prints as `border:0 solid red` and
-  `border: calc(1px + 1px) solid red` as `border:2px solid red` (#633, #634)
-- `--minify` folds `sin()` through `atan2()` inside a custom-property stream,
-  matching `calc()`'s family (#626)
-- `--minify` folds a `color-mix()` in a wide-gamut rectangular space, and one
-  in `srgb` whose result leaves that gamut; both used to reach the browser
-  unfolded. The result keeps the space that was named (#618)
-- `--minify` keeps `.c:not(:enabled)` rather than rewriting it to
-  `.c:disabled`, since `<p class=c>` matched before the rewrite and not after;
-  the rewrite needs a compound that proves the subject carries the state (#596)
-- `--minify --enforce-spec` keeps the author's `:not(:dir(ltr))` instead of
-  shortening it to `:dir(rtl)`: only a host document like HTML makes `ltr` and
-  `rtl` a partition, and that is one of the facts `--enforce-spec` drops (#593)
-- `--minify` merges a run of adjacent `@starting-style` blocks, which take no
-  prelude, so the run holds the same starting styles as one block over their
-  concatenation (#592)
-- `--minify` simplifies a nested `@supports` condition against the ones
-  enclosing it: under `@supports (A)`, an inner `(A)` loses its guard, an inner
-  `(A) and (B)` narrows to `(B)`, and an inner `(not (A))` is dead code (#585)
-- `Css.optimize` writes an unrecognised at-rule's opaque body back as the token
-  stream it read, so `@foo{ .a { color: red } }` minifies to
-  `@foo{.a{color:red}}`. `~lossless:true` leaves the body as authored (#560)
-- `--minify` merges `@media` and `@container` blocks by query structure, not
-  serialised text, so `(min-width: 10px)` and `(width >= 10px)` are one bound;
-  `Css.Container.equal` and `.normalize` expose the comparison (#516, #519)
-- `--minify` merges adjacent `@container` blocks whose `style()` conditions are
-  written the same way, where two byte-identical `style(--x: 1)` queries never
-  compared equal and their blocks stayed separate (#465)
-- `--minify` shortens an `src:` declaration outside `@font-face` the way it
-  already shortened the descriptor, where the declaration route spelled a
-  multi-word `format("...")` unquoted, which no browser reads back (#470)
-- `--minify` keeps the `center` in `position-area: top center`. A lone keyword
-  stands for `X span-all`, not `X center`, so dropping it moved the box to a
-  different area (#457)
-- `--minify` keeps a `@layer` whose own rules write no declarations but nest
-  rules that do, where `@layer a { .x { .y { color: red } } }` collapsed to
-  `@layer a;` and every declaration below the brace was deleted (#389)
-- `--minify` optimises the body of `@-moz-document`, `@starting-style`, `@when`
-  and `@else`, which it walked past (#343)
-- An empty `@-moz-document`, `@when` or `@else` is dropped, as an empty
-  `@media` already was. An empty `@when` or `@else` stays while a later `@else`
-  binds to it, since dropping it leaves a bare `@else` no parser accepts (#396)
-- `.a { @layer n {} }` keeps its block form: the statement form is a
-  layer-order declaration, which no style rule accepts, so `.a{@layer n;}` was
-  CSS neither a browser nor cascade's own reader takes back (#374)
-- A drop that already applied in a style rule applies inside a `@keyframes`
-  frame: a spec-invalid value, and under `--scope=stylesheet` a
-  `position-try-fallbacks` name with no `@position-try` rule (#341, #372)
-- A custom property registered by `@property` is typed wherever it is declared,
-  so the same value minifies the same way inside `@keyframes`, `@position-try`
-  and a `@supports` condition (#337, #349)
-- `--flatten-nesting` treats `@-moz-document` as the grouping at-rule it is:
-  nesting inside one flattens, and a rule wrapping one keeps its selector
-  instead of the at-rule being emitted at top level under no parent (#344)
-- A rule whose declarations a later rule all rewrites is dropped only when it
-  nests nothing, where a rule holding both `all: unset` and a nested `@media`
-  lost its nested block along with the rule (#376)
-- A declaration written after a nested rule rejoins the ones before it when
-  nothing it crosses writes the same property at the same importance; one that
-  clashes keeps its place (#383, #386)
-- Merging same-selector or same-condition rules reads source order and what
-  each side writes, so neither a nested conditional group nor a declaration
-  after a nested rule is merged across (#352, #364, #376, #414, #415)
-- A declaration keeps its place against one whose shorthand or alias writes the
-  same longhand, where `column-rule-color`, the flow-relative border styles,
-  `word-wrap` and `-webkit-transform` merged across it (#447, #452, #453, #454)
-- A value keeps every digit the author wrote, and a computed dimension past a
-  million units keeps its own, where `.4285714em` came out `.428571em` and
-  `calc(1in + 999999999px)` came out 95px short (#350, #354, #367)
-- A math function inside `calc()` keeps its unit, where `calc(hypot(1px, 1px))`
-  came out as `1.41421356`, a declaration browsers and cascade's own reader
-  both drop (#362)
-- A `font-family` name keeps the author's spelling and the quotes it needs,
-  where `open-sans` became `"Open Sans"` from a table of known names and
-  `"2Brand"` came out bare for a browser to drop (#387, #390, #401)
-- `column-rule-color` and `-webkit-text-stroke-color` are typed as colours and
-  `-webkit-text-fill-color` minified as one, so a colour-valued property
-  minifies to the same spelling whatever its name (#447)
-- A single-argument `:is()` and a double `:not()` keep their wrapper where
-  removing it breaks the selector: `.a:is(code)` printed `.acode`, and
-  `.a::before:is(.b)` printed the `.a:before.b` browsers drop (#377, #431)
-- A vendor prefix is dropped only when its unprefixed twin is Baseline widely
-  available, where `-webkit-backdrop-filter` and `-webkit-user-select` were
-  dropped against a twin no shipping Safari understands (#325)
-- A feature query on a vendor-prefixed property keeps its guard, so
-  `@supports (-webkit-hyphens: none)` is no longer read as true. The
-  web-features dataset behind the Baseline facts covers unprefixed features
-  only (#378)
-- `@media not all and (X)` minifies to the Level 4 `@media not (X)`, `all`
-  matching every device. `--enforce-spec` keeps both Level 3 spellings (#323)
-- `--minify` keeps one declaration where a rule writes both a `page-break-*`
-  property and its `break-*` twin, CSS Fragmentation 3 sec. 3.4 making the pair
-  one property (#547)
-- `min-inline-size: initial` and `min-block-size: initial` minify to `auto`,
-  the initial value they share with `min-width` and `min-height`, rather than
-  to a zero that drops a flex item's automatic minimum size (#675, #681)
+  colour, a NaN, an unreduced `min()`, a same-unit `calc()`, a shorthand
+  component at its longhand's initial, a repeated `font-family` entry, a
+  `color-mix()` in a wide-gamut space, the `sin()`-`atan2()` family inside a
+  custom property, an unitless `line-height: calc()`, logical minimum sizes,
+  duration units, stepped functions, hue-angle units and `steps(1)` all reach
+  one form (#471, #482, #597, #618, #624, #626, #635, #636, #637, #639, #640,
+  #641, #647, #650, #672, #675, #681, #678, #755, #756)
+
+- `--minify` keeps a value whose shorter spelling would mean something else:
+  `display: block ruby`, `transition: opacity 0s 2s`, a lone `background`
+  position, both disagreeing `<box>` values of a layer, `position-area: top
+  center`, a box shorthand holding a top-level `var()`, an `src:` outside
+  `@font-face`, a time unit in a `var()` fallback, a vendor-prefixed gradient
+  written through a shorthand, a `font-family` name the author spelled out, and
+  the `page-break-*` twin of a `break-*` property (#387, #390, #401, #457,
+  #470, #547, #633, #634, #637, #640, #641, #736, #766, #782, #803)
+
+- `--minify` drops the space at a `%` or `)` boundary in the box shorthands and
+  in `inset()`, and prints a custom property as the author's own token stream,
+  keeping the space a typed position or colour needs after a closing
+  parenthesis and treating `[]` and `{}` as ordinary tokens (#614, #619, #623,
+  #697, #700, #703, #709, #719, #720, #722)
+
+- A selector rewrite that changes what an element matches is gone.
+  `.c:not(:enabled)`, an author's `:not(:dir(ltr))` under `--enforce-spec`, a
+  single-argument `:is()` and a double `:not()` all keep their form, while a
+  whole-rule `:is(a, b)` whose arguments share one specificity splits into the
+  list `a, b` before rules are compared (#377, #431, #593, #596, #655)
+
+- Rules merge on what they mean rather than on how they are spelled: `@media`
+  and `@container` blocks merge by query structure, adjacent `@starting-style`
+  and `@container` runs merge, a nested `@supports` condition simplifies
+  against the ones enclosing it, and `@media not all and (X)` minifies to the
+  Level 4 `@media not (X)` (#323, #465, #516, #519, #585, #592, #809)
+
+- A declaration keeps its place whenever moving it would change what an element
+  computes, whether the neighbour writes the same longhand under another
+  property name, sits behind a nested rule, or reaches the same element from
+  another rule (#352, #364, #376, #383, #386, #414, #415, #447, #452, #453,
+  #454, #742)
+
+- `--minify` reaches inside every at-rule that has a body. `@-moz-document`,
+  `@starting-style`, `@when` and `@else` are optimised and flattened, an empty
+  one is dropped, a `@layer` whose own rules nest declarations is kept, and an
+  unrecognised at-rule's opaque body is written back as the token stream it was
+  read from (#341, #343, #344, #349, #372, #374, #389, #396, #560)
+
+- Nesting emits only selectors a browser can match: a rule nested under a
+  pseudo-element parent is dropped wherever it sits, flattening a rule nested
+  under a selector list wraps the parent in `:is()`, and `--flatten-nesting`
+  leaves the result flat (#759, #800, #818, #822, #823)
+
+- Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
+  need, with matching `@supports` tests, and drops a vendor prefix only when its
+  unprefixed twin is Baseline widely available. A feature query on a prefixed
+  property keeps its guard (#325, #378, #447, #751, #758, #797)
+
+- `Css.Resolve` matches an attribute selector the way an HTML document does:
+  the name folds to ASCII lowercase, the values of the HTML attributes that
+  ignore case fold with it, whitespace splits on every ASCII space, and an
+  unquoted value's escapes are decoded (#944, #945)
+
+- Computed-value evaluation resolves a direct `inherit`, `initial`, `unset`,
+  `revert` or `revert-layer` for every typed property, and whether a property
+  inherits is decided in one place from the typed property (#763, #764)
+
 - `--minify` and `cascade diff` are faster on a large stylesheet, for
-  byte-identical output: the slowest corpus stylesheet drops from about 80s of
-  CPU to under 2s (#413, #422, #424, #468, #493, #507, #542, #664)
-- `--minify` no longer allocates quadratically on a long run of rules sharing
-  one selector, body or declaration: a 4,000-statement sheet's distant-`@media`
-  merge falls from 24.4M words to 0.4M (#480, #486, #487, #502, #505, #517,
-  #519, #523, #543, #566)
-- Nested group-rule merges optimise only the newly joined statement list rather
-  than walking already-optimised child blocks again at every ancestor, so
-  doubling a repeated `@media` merge's depth doubles the work (#746)
+  byte-identical output. The slowest corpus stylesheet drops sharply, a long run
+  of rules sharing one selector no longer allocates quadratically, a 4,000
+  statement sheet is linear, nested group-rule merges optimise only the newly
+  joined list, and a single invocation reaches a stable result where it used to
+  need a second (#413, #422, #424, #468, #480, #486, #487, #493, #502, #505,
+  #507, #517, #519, #523, #542, #543, #566, #664, #746, #750)
 
 ### Custom properties
 
+- `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
+  descriptor, `@page` and its margin boxes, a `@keyframes` frame,
+  `@position-try`, a `@supports` condition and a nested rule. A descriptor
+  reference used to be dropped at parse time, and `Css.custom_props` missed a
+  name declared inside `@scope`, `@starting-style`, `@-moz-document`, `@when`
+  or `@else` (#322, #341, #342, #375, #423, #555, #571, #573, #575, #577)
+
+- Substitution preserves what the declaration was. A custom property keeps its
+  cascade layer and caller metadata, a `page-break-*` declaration survives as
+  itself, a reference marked resolved at runtime stays marked, and an
+  overridden variable is reported through `~warn` (#315, #506, #520)
+
+- `Css.inline_vars` resolves a property defined across cascade layers against
+  the sheet's layer order, unwraps an `@layer` only where layer order and
+  document order already pick the same winner, and keeps the `@property`
+  registration of a custom property it leaves live (#357, #371, #373, #416)
+
 - `--minify` keeps the quotes on a `<string>` written to a custom property whose
-  `@property` syntax accepts only an ident sequence, where unquoted it computed
-  the name rather than the initial value (#704)
-- `--minify` keeps the space between the repetitions of a `@property`
-  `<type>+` initial value, CSS Values 4 sec. 2.3 making it the separator:
-  dropped, `10px 20px` read back as one `px20px` dimension (#626)
-- `Css.Variables.read_reference_body` reads a `var()` argument list into a typed
-  variable handle, and `read_reference_body_as_string` returns the name and
-  fallback as text for a caller with no value type (#630, #642)
-- `Css.Variables.typed_custom_property` writes a custom-property declaration
-  from a value already typed by a `@property` registration's syntax, where
-  `Declaration.custom_property` takes a plain string (#626)
-- A `var()` in an `@font-face` descriptor is resolved by `Css.inline_vars`
-  rather than dropped at parse time, for every descriptor and for a single
-  endpoint of a `font-weight`, `font-style` or `font-stretch` range. The parse
-  keeps the reference without a warning and `~strict:true` accepts it, where
-  `var()` substitutes in property values only and a browser drops the whole
-  declaration (#322, #571, #573, #575, #577)
-- `Css.inline_vars` resolves every `@page` descriptor under one unit policy,
-  where `margin-top` alone kept the authored unit and one block answered `1cm`
-  for it and `37.79527559px` for the `margin-left` beside it (#555)
-- A custom property keeps its cascade layer and caller metadata through
-  `Css.inline_vars`, where rewriting a custom value rebuilt the declaration
-  from the value alone and lost both (#520)
-- A `page-break-*` declaration survives `Css.inline_vars` as itself, where
-  substituting a `var()` brought `page-break-inside` back as `break-inside`
-  with a value that property does not accept (#506)
-- `Css.inline_vars` keeps a `var()` reference marked as resolved at runtime,
-  including one whose typed fallback is simplified through a scalar value or a
-  shorthand. Such a reference is a point the browser can override, and it was
-  being replaced with a compile-time default (#315)
-- `Css.inline_vars` resolves a custom property defined across cascade layers
-  against the order every `@layer` in the sheet gives it, counting the ones a
-  rule nests and the ones a conditional group holds (#357)
-- `Css.inline_vars` unwraps an `@layer` only where layer order and document
-  order already pick the same winner for every property two layers write, where
-  unwrapping handed the decision back to specificity (#371)
-- `Css.inline_vars` unwraps an `@layer` and drops an `@property` registration
-  written inside a rule, as it already did at top level, so a sheet using CSS
-  nesting no longer comes back half cleaned (#373)
-- `Css.inline_vars` keeps the `@property` registration of a custom property it
-  leaves live, where every registration was dropped and a property it could not
-  inline lost its `initial-value` and its `inherits: false` (#416)
-- `Css.inline_vars` counts a `var()` in a `@keyframes` frame, `@page` and its
-  margin boxes, `@position-try`, a `@supports` condition or a `style()` query
-  as a reference, so pruning keeps the bindings they use (#341, #342, #423)
-- `Css.inline_vars` reports an overridden variable through `~warn` (#341, #342,
-  #423)
-- `Css.inline_vars` stays linear in at-rule nesting depth and no longer costs a
-  square in the variable count: a 12,800-variable sheet goes from 2.4s to
-  0.11s (#481, #568, #569)
+  `@property` syntax accepts only an ident, and the space between the
+  repetitions of a `<type>+` initial value (#626, #704)
+
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
-  `@position-try` and `@supports-condition` carry, so a name referenced only
-  from inside one keeps its theme binding (#317, #324, #327)
-- `Css.resolve_theme` builds each `theme_defaults` binding with
-  `parse_custom_property` rather than assembling and reparsing `:root { ... }`
-  text, where one bad value could drop every other theme default (#421)
-- A custom-property name that needs escaping binds instead of being refused, so
-  a `theme_defaults` answer for `x;y` emits `:root{--x\;y:red}` (#439)
-- `Css.custom_props` reports a name declared inside `@scope`,
-  `@starting-style`, `@-moz-document`, `@when`, `@else` or a bare nesting
-  block, as it already did for `@media` and `@supports` (#375)
+  `@position-try` and a `@supports` condition carry, builds each
+  `theme_defaults` binding with `parse_custom_property` rather than reparsing
+  assembled text, and binds a name that needs escaping instead of refusing it
+  (#317, #324, #327, #421, #439)
+
+- `Css.inline_vars` stays linear in at-rule nesting depth and no longer costs a
+  square in the variable count: a 12,800-variable sheet is no longer quadratic
+  (#481, #568, #569)
+
+- `Css.Variables.read_reference_body` reads a `var()` argument list into a typed
+  variable handle, and `typed_custom_property` writes a declaration from a value
+  already typed by its `@property` registration (#626, #630, #642)
 
 ### Canonical diff
 
 - A browser-backed sweep checks the guarantee itself: every pair
   `--diff=canonical` reports identical is rendered in headless Chrome and every
   computed-style difference is a conflation
-- A shorthand and its four side longhands compare equal for `border-width`,
-  `border-style`, `border-color`, `scroll-margin` and `scroll-padding`, as they
-  already did for `margin` and `padding`. A side that is missing or carries a
-  different value still reports (#842)
-- A cascade-neutral reordering stays unreported when the two sheets also
-  differ elsewhere, where one changed rule turned every such move in the
-  sheet into a reported difference (#819)
-- Canonical diff equates more rewrites that cannot change what a browser
-  computes, such as equal `@supports` blocks hoisted together; a crossing that
-  changes which declaration wins stays distinct (#775, #776, #777)
-- Canonical numeric arithmetic has an explicit precision contract:
-  `calc(28/14)` compares equal to `2`; default mode equates `calc(28/18)` with
-  the minifier's `1.55556`, while `--lossless` keeps them distinct (#753, #756)
-- `:is(a, b)` and the selector list `a, b` compare equal when the arguments
-  share one specificity (#655)
-- The canonical projection keeps structurally distinct `@container` conditions
-  in separate cascade slots even when their minified text is identical, so an
-  escaped unknown feature no longer merges into the real range (#529)
-- Canonical diff keeps content that is dead only under an assumption about
-  browser support, where deleting it made two sheets that render differently
-  compare equal (#576)
-- A redundant `@layer` order pin no longer reads as a difference, so
-  `@layer a;@layer a{...}` and `@layer a{...}` compare equal. A pin that fixes
-  the order, or one over a position the projection cannot read, is kept (#475)
-- Canonical diff normalises the rules inside every at-rule that has a block, so
-  the result no longer depends on which at-rule encloses a rule. It normalised
-  inside `@layer` and `@media` but not inside `@scope` or `@when` (#393)
-- A `none` colour channel compares as the zero CSS Color 4 sec. 4.4 makes a
-  missing component behave as, so the `oklab(0% none none / .5)` a minifier
-  writes for a colour it reached by conversion compares equal to the hex
-  cascade folds the same colour to. Where the stylesheet interpolates the
-  colour instead - a gradient stop, a `color-mix()` operand, a `@keyframes`
-  frame, `@starting-style`, a rule that transitions the property it sets - the
-  two spellings stay distinct, since sec. 13.3 gives a missing component the
-  other colour's rather than a zero (#312, #847)
-- A relative-colour function keeps its origin as a typed colour, so `red` and
-  `#f00` compare equal in `rgb()`, `oklab()` and the rest, including inside
-  custom properties (#313)
-- A complete shadow value in an unregistered custom property has its colour
-  compared as a colour. Non-colour identifiers stay opaque (#314)
-- A one-word family name in a custom property compares equal quoted and
-  unquoted when a generic family in the stream proves the value is a font
-  stack; without one the two spellings stay distinct diff keys (#696, #705)
-- `Css_compare.equivalent_value ~property` spells the property name the way the
-  printer does before comparing two values under it, where a name carrying an
-  escaped `}` made any two values under it compare equal (#440)
-- `cascade diff` no longer aborts when a reordered selector has the same rule
-  index on both sides. An internal assertion fired and the whole report was
-  lost; the move is now reported without a position (#582)
-- `--diff=tree` compares a value on its minified spelling, so `16 / 9` matches
-  `16/9` and `padding: 0.50px` matches `padding: .5px`. The space a math `+` or
-  `-` needs, and the space beside a `var()`, still separate two values (#702)
-- `--diff=tree` prints a changed declaration the way its own file spells it,
-  where the value was read off the comparison key and a quoted multi-word
-  family name was reported unquoted on both sides (#702)
-- `--diff=tree` prints the body of an added or removed rule as declarations,
-  with the separator and the `!important` flag, where a rule gaining
-  `color: red !important` read like one gaining `color: red` (#706)
-- `--diff=tree` pairs repeated occurrences of one selector by their declaration
-  properties, source order breaking ties, so a compatibility block no longer
-  makes declarations present on both sides read as added or removed (#752)
+
+- Canonical diff equates the rewrites that cannot change what a browser
+  computes: a shorthand against its four side longhands, `:is(a, b)` against the
+  list `a, b` when the arguments share one specificity, equal `@supports` blocks
+  hoisted apart, `calc(28/14)` against `2`, and a redundant `@layer` order pin
+  (#475, #655, #753, #756, #775, #776, #777, #842)
+
+- A colour compares as a colour wherever it is written: a `none` channel as the
+  zero CSS Color 4 sec. 4.4 makes it behave as, a relative colour's origin as a
+  typed colour, a shadow in an unregistered custom property, and a one-word
+  family name quoted or unquoted when the stream proves it is a family (#312,
+  #313, #314, #440, #696, #705, #847)
+
 - Canonical diff reports only reorderings that are really present in the two
-  inputs, so a changed declaration no longer makes unchanged rules look moved
-  (#779, #780, #781)
+  inputs, so a changed declaration no longer makes a neighbour read as moved, a
+  cascade-neutral reordering stays unreported when the sheets also differ
+  elsewhere, and writing one selector as a nested branch or as its own rule is
+  not a move (#779, #780, #781, #819, #825, #826, #831)
+
+- The canonical projection normalises the rules inside every at-rule that has a
+  block, flattens authored nesting before comparing so a nested stylesheet and
+  its flat equivalent read as identical, keeps structurally distinct
+  `@container` conditions in separate cascade slots, and keeps content that is
+  dead only under an assumption about browser support (#393, #529, #576, #760)
+
+- `--diff=tree` compares a value on its minified spelling and prints it the way
+  its own file spells it, prints the body of an added or removed rule as
+  declarations, and pairs repeated occurrences of one selector by their
+  declaration properties (#702, #706, #752)
+
+- `cascade diff` no longer aborts when a reordered selector has the same rule
+  index on both sides (#582)
 
 ### Library
 
-- `Properties.read_filter_function` and `pp_filter_function` expose the names
-  used by `Omitted` filter values (#872).
+- `Css.Resolve` answers the selectors engines answer: `:nth-child(... of S)`,
+  the typed `:nth-of-type()` family, `:has()`, the `i` and `s` attribute case
+  flags, and `:empty` for the elements Selectors 4 and the engines agree on
+  (#607, #873)
 
-- `Css.Context.matches_media` respects zero-valued boolean features and
-  resolution units, preserves unknown through negation, and matches an empty
-  query list (#868).
-- `Css.Context.matches_container` requires the supplied container to support
-  all queried features, so negation and disjunction cannot make an ineligible
-  container match (#868).
-- `Resolve.Make.match_selector` answers `:empty` for the elements Selectors 4
-  and the engines agree on, declining only the element whose children are
-  document white space alone. `Resolve.supported` is unchanged, so `cascade
-  apply` and `cascade prune` keep such a rule as before (#873).
-
-- `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, which
-  counts one replacement character per maximal subpart of an ill-formed
-  sequence, as a browser does (#788)
-- The library no longer links `unix`: `mtime` reads the monotonic clock
-  `--profile` wanted and ships a js_of_ocaml implementation, so embedding
-  cascade in a browser links no operating system (#609)
-- `Css.Resolve` answers `:nth-child(... of S)`, the typed `:nth-of-type()`
-  family, `:has()`, the `i` and `s` attribute case flags and `:scope`, which
-  read `Unsupported` and left `Css.Apply` keeping the rule (#607)
 - `Css.Resolve` ranks a cascade layer's own rules after every one of its
   sublayers, as css-cascade-5 sec. 6.4.3 requires, so `@layer a` outranks
   `@layer a.b` however the two were declared
+
 - `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
-  work out of `resolve`, so a caller walking a document buckets the rules once
-  rather than per node, allocating 4.6x less over ten queries (#567)
-- `Css.unknown_at_rule` builds an at-rule cascade has no grammar for, where
-  emitting one meant assembling a sheet as text and reading it back. The
-  constructor refuses one that ends the at-rule early (#600)
-- `Css.Color_space.gamut_mapped_srgb_of_oklch` and `Css.Values.gamut_map_color`
-  name the sRGB colour to write for an OKLCh colour sRGB cannot hold, per CSS
-  Color 4 sec. 14.2. Minify still keeps the colour the author wrote (#591)
+  work out of `resolve`, so a caller walking a document pays it once.
+  `Resolve.Make.resolve` and `layer_order` document every block they leave out
+  (#394, #567)
+
+- `Css.Context.matches_media` respects zero-valued boolean features and
+  resolution units and preserves unknown through negation, and
+  `matches_container` requires the supplied container to support every queried
+  feature (#868)
+
+- `Css.Stylesheet` reaches every statement and declaration a sheet holds:
+  `fold_statements`, `iter_statements`, `edit_statements`,
+  `fold_declarations`, `statement_declarations`, `statement_children`,
+  `map_statement_children`, `map_statement_declarations` and
+  `at_declaration_site`. `Css.map`, `Css.sort`, `Css.layers`,
+  `Css.layer_block` and `Css.flatten_nesting` reach a rule inside `@scope`,
+  `@starting-style`, `@-moz-document`, `@when` or `@else` (#317, #337, #355,
+  #356, #363, #368, #381, #382, #384, #389)
+
 - `Css.equal_statement` and `Css.hash_statement` compare and key a statement
-  without rendering it to CSS text, so two `@media` blocks selecting the same
-  media are one statement however their queries are spelled (#595)
-- `Css.Values.hash_color` keys a colour and `Css.Values.with_alpha` sets a
-  colour's alpha (#595)
-- The statement-merging passes are callable on their own:
-  `Css.Optimize.merge_consecutive_layers`, `merge_named_layers_by_name`,
-  `merge_consecutive_media`, `merge_distant_media`,
-  `merge_consecutive_supports`, `merge_consecutive_containers` and
-  `merge_consecutive_starting_style` (#592)
-- `Css.Declaration.value_of` reads a declaration's value at a property witness,
-  the counterpart of `Declaration.property_key`, where the value was reachable
-  only as text; `Properties.eq_property` carries the type equality (#616)
-- `Css.Properties.compare_property` and `Css.Declaration.compare_prop_key` are a
-  total order on a property identity, `0` exactly where equality holds (#513)
-- `Css.Properties.read_grid_template_tracks` parses the track-list grammar of
-  `grid-template-columns` and `grid-template-rows` without accepting the wider
-  shorthand forms handled by `read_grid_template` (#717)
-- `Cascade.Syntax.is_ident` answers whether a whole string is a single CSS
-  ident, the same check `Cascade.Parser.escape_ident` makes when printing. A
-  per-character scan reads the leading `-` of `-4` as an ident start and gets
-  the answer wrong (#626)
-- `Css.Stylesheet` traverses a whole block with `fold_statements`,
-  `iter_statements`, `edit_statements`, and `fold_declarations`,
-  `iter_declarations` and `map_declarations`, which take `?sites` (#356, #363)
-- `Css.Stylesheet.statement_declarations`, `statement_children`,
-  `map_statement_children` and `map_statement_declarations` read and rebuild a
-  statement's declarations and its children (#317, #337, #355)
-- `Css.Stylesheet.at_declaration_site` answers whether a statement holds its
-  declarations in one of the places a `declaration_sites` record names (#368)
-- `Css.map` and `Css.sort` reach a rule inside `@scope`, `@starting-style`,
-  `@-moz-document`, `@when` or `@else`, where a caller rewriting all rules at
-  all nesting levels got five of them silently untouched (#381)
-- `Css.layers` and `Css.layer_block` find a layer declared inside a grouping
-  at-rule, so a caller asking which layers a sheet declares was given a wrong
-  answer rather than a partial one (#382)
-- `Css.Stylesheet.layers` is what `Css.layers` calls, so the two answer the same
-  question alike. `Css.Stylesheet.media_queries`, `container_queries` and
-  `Css.media_queries` report a query written inside a grouping at-rule (#389)
-- `Css.flatten_nesting` carries the parent selector into an `@-moz-document`
-  block, the one grouping at-rule it did not descend into, where the
-  declarations came out bare at the top of the block (#384)
+  without rendering it to CSS text, `Css.Values.hash_color` keys a colour,
+  `with_alpha` sets one, and `Css.Properties.compare_property` and
+  `Declaration.compare_prop_key` are a total order on a property identity
+  (#513, #595)
+
+- New building blocks: `Css.unknown_at_rule` for an at-rule cascade has no
+  grammar for, `Css.Declaration.value_of` to read a value at a property
+  witness, `Css.Properties.read_grid_template_tracks`,
+  `Cascade.Syntax.is_ident`, `Css.Color_space.gamut_mapped_srgb_of_oklch`,
+  `Css.Values.gamut_map_color`, `Properties.read_filter_function` and
+  `pp_filter_function`, and the statement-merging passes as callable functions
+  (#591, #592, #600, #616, #626, #717, #872)
+
 - `Cascade_diff.Tree_diff.has_container_added_of_type` and
-  `has_container_removed_of_type` look inside a container reported as modified,
-  as `count_containers_by_type` already did (#395)
-- `Cascade.Resolve.Make.resolve` and `Cascade.Resolve.layer_order` document
-  every block they leave out: `@starting-style`, `@scope` and an origin wrapper
-  each carry something the resolver does not model (#394)
-- `Cascade.Error.to_string` prints back a snippet that is valid UTF-8, where a
-  byte-counted column could open the snippet inside a multibyte code point
-  (#472)
+  `has_container_removed_of_type` look inside a container reported as a whole,
+  and `Cascade.Error.to_string` prints back a snippet that is valid UTF-8
+  (#395, #472)
+
+- `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, and the
+  library no longer links `unix`: `mtime` reads the monotonic clock `--profile`
+  wanted and ships a js_of_ocaml implementation (#609, #788)
 
 ### CLI tools
 
-- `cascade apply` and `cascade prune` leave alone the two selector forms
-  Selectors 4 defines and no engine implements, `:empty` over an element
-  holding only white space and the `s` attribute flag, where `apply` used to
-  inline a declaration the browser does not apply (#863)
-- `cascade diff` prints rule differences in the order the expected side names
-  the rules, where a hash table's bucket layout decided it, so a report reads
-  down the sheet and `--limit` keeps the ones nearest the top (#814, #815)
-- `cascade diff --json` writes the comparison as one JSON document on standard
-  output in place of the report, so a harness reads what changed rather than
-  parsing prose. The exit status is unchanged (#799)
-- `cascade diff` reads either side from standard input when the argument is
-  `-`, so the output of a build can be compared without a temporary file. The
-  report names that side `<stdin>` (#796)
-- `cascade diff --limit` bounds a report by whole differences: `auto` keeps as
-  many as stay readable, `none` prints every one, and an integer prints exactly
-  that many, where a wide report named every selector and explained none (#792)
-- `cascade diff` counts one difference for each thing that really differs, so
-  two `@namespace` rules with different URLs count once and a selector list the
-  two sides write in a different order counts as nothing at all (#783, #784,
-  #794, #798)
-- A `cascade diff` report on an empty file no longer prints `(0.0% diff)`
-  (#783, #784, #794, #798)
-- `cascade diff` prints a parse warning both inputs raise once, under a label
-  naming both files, so the report's warning budget reaches the warnings only
-  one side raised (#795)
-- A `cascade diff` character-level hunk escapes a byte with no glyph, so a
-  line-ending difference is visible and a control byte cannot drive the
-  reader's terminal (#785, #790, #791)
-- `cascade diff` scales near-linearly on a sheet where every rule changed
-  (#786)
-- `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
-  the canonical root and its descendants, rejecting both lexical and symlink
-  escapes. Omitting it retains unrestricted resolution for trusted CSS (#744)
-- CLI help lists each option and exit status once, and `cascade prune --help`
-  classifies representative selectors through the resolver instead of naming
-  `:nth-child()` as unsupported (#740)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
-  documents cannot use, `--dry-run` reporting instead. A rule goes only when the
-  matcher has a model for its selector and every element answers that it does
-  not match, so a class a script adds at runtime takes its rule with it (#605)
-- `cascade fmt --help` says what `--enforce-spec` gates, from the vendor-prefix
-  drop and the media range grammar to the ident code points the reader accepts
-  (#611)
-- `cascade fmt --enforce-spec` can drop a rule with a raw non-ASCII selector
-  without `--minify`: the flag also gates the parser's ident range, so the
-  "has no effect without --minify" warning was false (#625)
-- `cascade fmt --profile` without `--minify` printed an empty
-  factoring-fixpoint report, contradicting its own "has no effect without
-  --minify" warning; the report is skipped when nothing ran (#628)
-- `cascade fmt` exits 1 when parse recovery left no statement at all, where it
-  exited 1 whenever the printed output was empty and the parse had warned, so a
-  build failed over CSS the parser used in full (#494)
-- `cascade apply` exits 0 when a `<style>` block parses to at least one
-  statement, so a build gating on the exit status passes on valid CSS. The
-  check looked at the printed text instead, and an empty rule prints nothing
-  even though nothing was lost (#489)
-- `cascade apply` reads a `style` attribute as a declaration list in source
-  order, where the declarations came out reversed and a `}` inside the attribute
-  closed the list early (#326)
-- `cascade apply --minimal` drops an inherited declaration only when it truly
-  restates the value the element would inherit, where it uncovered the
-  user-agent link colour and halved a paragraph's `2em` font size (#326, #329)
-- `cascade apply --minimal` keeps a restated inherited shorthand when an
-  element in between sets one of the longhands it resets, where a
-  `#mid{font-weight:bold}` above `#c{font:16px serif}` left `#c` bold (#332)
-- `cascade apply` empties the `<style>` blocks it projects instead of removing
-  them: a `<style>` element is a sibling like any other, so unlinking it
-  stopped `.navbox + style + .portal-bar` from matching (#339)
-- `cascade apply` keeps a declaration in the sheet when a kept rule writes the
-  same longhand under another property name, where `p{margin:0}` went into a
-  style attribute and outranked the `.my-7{margin-top:1.75rem}` above it (#340)
-- `cascade apply` keeps the comments a page holds, React writing an empty one
-  between two adjacent text nodes to keep them apart. The page is parsed and
-  printed with markup.ml in place of lambdasoup (#346)
-- `cascade diff` reports a rule that changed places next to whatever else the
-  two sheets differ on, where one modified or added rule anywhere in the sheet
-  hid every transposition (#474)
-- `cascade diff` identifies an at-rule with no condition of its own by the
-  header it prints, which is what the ordering comparison keys on, so a
-  `@media` that moved between a `@page` and a `@starting-style` is reported as
-  a move rather than as no change (#345)
-- `cascade diff` names a rule's nested block after the rule it belongs to,
-  where the block printed as `& .a`, a selector matching a `.a` inside the
-  parent rather than the parent's own block (#385)
-- `cascade diff --diff=tree` shows the contents of a block added or removed
-  wholesale whatever the block holds, where a `@scope` or a rule nested in
-  another rule printed a header with nothing beneath it (#389)
-- `cascade diff --diff=tree` states a selector's move once. The entry names the
-  selector, not the rule, so a selector whose several rules cross together
-  printed the same line once per rule (#581)
-- `cascade diff` names a selector whose rules a feature query splits once,
-  where two entries under it claimed a declaration gained and another lost that
-  the selector never stopped writing (#580)
+  documents cannot use, `--dry-run` reporting instead of writing. It and
+  `cascade apply` leave alone the two selector forms Selectors 4 defines and no
+  engine implements (#605, #863)
+
+- `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
+  the canonical root and its descendants (#744)
+
+- `cascade diff` reads either side from standard input when the argument is `-`,
+  writes the comparison as one JSON document with `--json`, and bounds a report
+  by whole differences with `--limit` (#792, #796, #799)
+
+- A `cascade diff` report counts one difference for each thing that really
+  differs, prints rule differences in the order the expected side names them,
+  states a selector's move once, names a rule's nested block after the rule it
+  belongs to, shows the contents of a block added or removed wholesale, and
+  reports a rule that changed places next to whatever else the two sheets
+  differ on (#345, #385, #389, #474, #580, #581, #783, #784, #794, #798, #814,
+  #815)
+
+- `cascade diff` shows the declarations a `@keyframes` frame gained, lost or
+  changed, and counts a rule as changed only when its own declarations changed,
+  so a rule holding an edited nested rule is no longer summarised as a
+  difference the report cannot show (#906, #907)
+
+- A `cascade diff` character-level hunk escapes a byte with no glyph, a parse
+  warning both inputs raise prints once under a label naming both files, and
+  the tool scales near-linearly on a sheet where every rule changed (#785,
+  #786, #790, #791, #795)
+
+- `cascade apply` reads a `style` attribute in source order, empties the
+  `<style>` blocks it projects rather than removing them, keeps the comments a
+  page holds, and keeps a declaration whose longhand a kept rule writes under
+  another property name. `--minimal` drops an inherited declaration only when it
+  truly restates what the element would inherit (#326, #329, #332, #339, #340,
+  #346)
+
+- Exit statuses say what happened: `cascade fmt` exits 1 when parse recovery
+  left no statement at all, and `cascade apply` exits 0 when a `<style>` block
+  parses to at least one statement (#489, #494)
+
+- CLI help lists each option and exit status once, says what `--enforce-spec`
+  gates, and classifies representative selectors for `cascade prune`.
+  `--enforce-spec` can drop a rule with a raw non-ASCII selector without
+  `--minify`, and `--profile` without `--minify` no longer prints an empty
+  factoring report (#611, #625, #628, #740)
+
 
 ## 1.1.0
 
