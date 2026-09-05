@@ -5132,6 +5132,145 @@ let compose_columns_via_index idx =
   compose_run_via_index idx ~try_compose:(fun idx i ->
       Option.map (fun d -> (d, 4)) (try_compose_columns_at idx i))
 
+(* CSS Grid 2 (ED) sec. 7.4: [grid-template] is [none | [<'grid-template-rows'>
+   / <'grid-template-columns'>] | [<line-names>? <string> <track-size>?
+   <line-names>?]+ [/ <explicit-track-list>]?], and it resets all three
+   longhands, so the run naming the same declaration is all three. The areas
+   form writes each row's string beside that row's size, so composing it needs
+   one track per area row. *)
+type gt_kind = Rows | Columns | Areas
+
+let gt_kind_of : declaration -> gt_kind option = function
+  | Declaration { property = Grid_template_rows; _ } -> Some Rows
+  | Declaration { property = Grid_template_columns; _ } -> Some Columns
+  | Declaration { property = Grid_template_areas; _ } -> Some Areas
+  | _ -> None
+
+(* A track list the shorthand can write out: a CSS-wide keyword is the whole
+   declaration value, and the slash and raw-template forms belong to the
+   shorthand itself, not to a longhand it reads. *)
+let rec gt_track_is_plain : Properties.grid_template -> bool = function
+  | Inherit | Initial | Unset | Revert | Revert_layer | Split _ | Template _
+  | Auto_flow_columns _ | Auto_flow_rows _ ->
+      false
+  | Tracks tracks -> List.for_all gt_track_is_plain tracks
+  | _ -> true
+
+let gt_tracks_of : Properties.grid_template -> Properties.grid_template list =
+  function
+  | Tracks tracks -> tracks
+  | track -> [ track ]
+
+let gt_track_text (track : Properties.grid_template) =
+  Declaration.string_of_value ~minify:true
+    (Declaration.v Grid_template_rows track)
+
+(* The rendered rows of an [Areas] value, quotes included. A cell name carries
+   no quote of its own, so the delimiters alternate. *)
+let gt_area_rows text =
+  let rec loop i acc =
+    match String.index_from_opt text i '"' with
+    | Option.None -> List.rev acc
+    | Some start -> (
+        match String.index_from_opt text (start + 1) '"' with
+        | Option.None -> List.rev acc
+        | Some stop ->
+            loop (stop + 1) (String.sub text start (stop - start + 1) :: acc))
+  in
+  loop 0 []
+
+let gt_shorthand_text ~rows ~columns ~areas =
+  let buf = Buffer.create 64 in
+  let add_track track =
+    if Buffer.length buf > 0 then Buffer.add_char buf ' ';
+    Buffer.add_string buf (gt_track_text track)
+  in
+  let ok =
+    match (areas : Properties.grid_template_areas) with
+    | No_areas ->
+        List.iter add_track (gt_tracks_of rows);
+        true
+    | Areas text ->
+        let area_rows = gt_area_rows text in
+        let tracks = gt_tracks_of rows in
+        List.length area_rows = List.length tracks
+        && area_rows <> []
+        &&
+        (List.iter2
+           (fun row track ->
+             if Buffer.length buf > 0 then Buffer.add_char buf ' ';
+             Buffer.add_string buf row;
+             Buffer.add_char buf ' ';
+             Buffer.add_string buf (gt_track_text track))
+           area_rows tracks;
+         true)
+    | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> false
+  in
+  if not ok then Option.None
+  else (
+    Buffer.add_char buf '/';
+    List.iter
+      (fun track ->
+        Buffer.add_string buf (gt_track_text track);
+        Buffer.add_char buf ' ')
+      (gt_tracks_of columns);
+    Some (String.trim (Buffer.contents buf)))
+
+let gt_rows_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_template_rows; value; _ } -> Some value
+  | _ -> None
+
+let gt_columns_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_template_columns; value; _ } -> Some value
+  | _ -> None
+
+let gt_areas_of : declaration -> Properties.grid_template_areas option =
+  function
+  | Declaration { property = Grid_template_areas; value; _ } -> Some value
+  | _ -> None
+
+let grid_template_of_run raw : Properties.grid_template option =
+  let rows = List.find_map gt_rows_of raw in
+  let columns = List.find_map gt_columns_of raw in
+  let areas = List.find_map gt_areas_of raw in
+  match (rows, columns, areas) with
+  | Some rows, Some columns, Some areas
+    when gt_track_is_plain rows && gt_track_is_plain columns -> (
+      match (rows, columns, areas) with
+      | None, None, No_areas -> Some (None : Properties.grid_template)
+      | _ -> (
+          match gt_shorthand_text ~rows ~columns ~areas with
+          | Option.None -> Option.None
+          | Some text -> (
+              let t = Cursor.of_string text in
+              match Properties.read_grid_template t with
+              | value when Cursor.is_done t -> Some value
+              | _ -> Option.None
+              | exception _ -> Option.None)))
+  | _ -> Option.None
+
+let try_compose_grid_template_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = List.init 3 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let kinds = List.filter_map gt_kind_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare kinds) <> 3
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Grid_template)
+          (grid_template_of_run raw)
+
+let compose_grid_template_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 3)) (try_compose_grid_template_at idx i))
+
 let try_compose_transition_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -5965,6 +6104,7 @@ let compose_index_group_b ~held kept =
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
   compose_columns_via_index idx;
+  compose_grid_template_via_index idx;
   compose_border_via_index
     ~bi_hazard:(fun i ~important ->
       bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)

@@ -571,6 +571,11 @@ entry points both moved.
   written `initial` reads as the component the shorthand leaves out, as it now
   does for `text-decoration` (#918, #919, #959)
 
+- `--minify` contracts `grid-template` from its rows, columns and areas
+  longhands, the areas form included: `grid-template-rows: 1fr` beside
+  `grid-template-areas: "a b"` and `grid-template-columns: 1fr 1fr` minifies to
+  `grid-template: "a b" 1fr / 1fr 1fr` (#960)
+
 - `--minify` contracts `border-block` and `border-inline` from the three axis
   shorthands that set the same six longhands between them (#920)
 
