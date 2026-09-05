@@ -2985,6 +2985,29 @@ let try_compose_line_at ~part_of ~property idx i =
                    : Properties.border))
         | _ -> None
 
+(* CSS Logical 1 sec. 4.6: [border-block] and [border-inline] set the width,
+   style and colour of both sides of their axis and reset nothing else, which is
+   what the three axis shorthands set between them. An axis naming two different
+   sides has no slot in the shorthand, so only a single-valued one takes
+   part. *)
+let border_block_axis_part = function
+  | Declaration { property = Border_block_width; value = Single w; _ } ->
+      Some (line_of_width w)
+  | Declaration { property = Border_block_style; value = Single s; _ } ->
+      Some (line_of_style s)
+  | Declaration { property = Border_block_color; value = Single c; _ } ->
+      Some (line_of_color c)
+  | _ -> None
+
+let border_inline_axis_part = function
+  | Declaration { property = Border_inline_width; value = Single w; _ } ->
+      Some (line_of_width w)
+  | Declaration { property = Border_inline_style; value = Single s; _ } ->
+      Some (line_of_style s)
+  | Declaration { property = Border_inline_color; value = Single c; _ } ->
+      Some (line_of_color c)
+  | _ -> None
+
 let line_families =
   Properties.
     [
@@ -2996,6 +3019,8 @@ let line_families =
       (border_block_end_part, Border_block_end);
       (border_inline_start_part, Border_inline_start);
       (border_inline_end_part, Border_inline_end);
+      (border_block_axis_part, Border_block);
+      (border_inline_axis_part, Border_inline);
     ]
 
 let compose_line_via_index idx =
