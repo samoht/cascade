@@ -555,6 +555,12 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` contracts `font` from the whole font family written out, not just
+  from its five core longhands. CSS Fonts 4 sec. 5.3 has the shorthand reset
+  thirteen more, so a run holding any of them at its initial says what the
+  shorthand says. As for `animation` and `transition`, a run that leaves one of
+  the twenty to the reset needs `--scope=stylesheet` (#965)
+
 - `--minify` contracts an `animation` or `transition` longhand run that leaves
   one of the shorthand's own longhands unwritten only under
   `--scope=stylesheet`, which is what the flag promises: the shorthand resets

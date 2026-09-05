@@ -2955,6 +2955,18 @@ let take_run_at idx ~part_of i =
   in
   aux i []
 
+(* A slot a declaration after the run writes again is one the shorthand's reset
+   cannot reach: the later write is what the element ends up with, whatever the
+   reset put there. Unlike [*_overwritten_slots] this counts a write back to the
+   slot initial, which answers the reset just as well. *)
+let rec slots_written_after ~slots_of idx ~from =
+  let n = Rule_index.length idx in
+  if from >= n then 0
+  else
+    let rest = slots_written_after ~slots_of idx ~from:(from + 1) in
+    if Rule_index.is_absorbed idx from then rest
+    else slots_of (Rule_index.decl_at idx from) lor rest
+
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
 type line_part = Width | Style | Color
@@ -3060,7 +3072,106 @@ let same_importance = function
       let important = is_important first in
       List.for_all (fun d -> is_important d = important) rest
 
-let render_font_shorthand decls : Properties.font option =
+(* CSS Fonts 4 (ED) sec. 5.3 splits the [font] sub-properties in two. The seven
+   in the Set Explicitly group are the shorthand's own components; the thirteen
+   in the Reset Implicitly group have no slot in it and are reset to their
+   initials. So a run carrying one of the thirteen composes only when it holds
+   that initial, which is what the shorthand writes there anyway.
+
+   The bits below number the twenty in that order. They answer one question,
+   whether the run writes every slot the shorthand resets, and are read nowhere
+   else. *)
+let font_slot_bits d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Font_style; _ } -> 1 lsl 0
+  | Declaration { property = Caps; _ } -> 1 lsl 1
+  | Declaration { property = Font_weight; _ } -> 1 lsl 2
+  | Declaration { property = Font_stretch; _ } -> 1 lsl 3
+  | Declaration { property = Font_size; _ } -> 1 lsl 4
+  | Declaration { property = Line_height; _ } -> 1 lsl 5
+  | Declaration { property = Font_family; _ } -> 1 lsl 6
+  | Declaration { property = Font_feature_settings; _ } -> 1 lsl 7
+  | Declaration { property = Font_kerning; _ } -> 1 lsl 8
+  | Declaration { property = Font_language_override; _ } -> 1 lsl 9
+  | Declaration { property = Font_optical_sizing; _ } -> 1 lsl 10
+  | Declaration { property = Font_size_adjust; _ } -> 1 lsl 11
+  | Declaration { property = Font_variant_alternates; _ } -> 1 lsl 12
+  | Declaration { property = East_asian; _ } -> 1 lsl 13
+  | Declaration { property = Font_variant_emoji; _ } -> 1 lsl 14
+  | Declaration { property = Font_variant_ligatures; _ } -> 1 lsl 15
+  | Declaration { property = Numeric; _ } -> 1 lsl 16
+  | Declaration { property = Font_variant_position; _ } -> 1 lsl 17
+  | Declaration { property = Font_variation_settings; _ } -> 1 lsl 18
+  (* [font-variant] writes seven of the thirteen at once. *)
+  | Declaration { property = Font_variant; _ } ->
+      (1 lsl 1) lor (1 lsl 12) lor (1 lsl 13) lor (1 lsl 14) lor (1 lsl 15)
+      lor (1 lsl 16) lor (1 lsl 17)
+  | Declaration { property = Font; _ } -> (1 lsl 19) - 1
+  | Declaration { property = All; _ } -> (1 lsl 19) - 1
+  | _ -> 0
+
+let all_font_bits = (1 lsl 19) - 1
+
+(* A Reset Implicitly longhand at the initial the shorthand would write there:
+   [normal] for the feature and variation settings, the language override and
+   the five font-variant longhands that take it, [auto] for the kerning and the
+   optical sizing, [none] for the size adjust. *)
+let font_reset_only_at_initial d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Font_feature_settings; value = Normal; _ }
+  | Declaration { property = Font_variation_settings; value = Normal; _ }
+  | Declaration { property = Font_language_override; value = Normal; _ }
+  | Declaration { property = Font_variant_alternates; value = Normal; _ }
+  | Declaration { property = East_asian; value = Normal; _ }
+  | Declaration { property = Font_variant_emoji; value = Normal; _ }
+  | Declaration { property = Font_variant_ligatures; value = Normal; _ }
+  | Declaration { property = Numeric; value = Normal; _ }
+  | Declaration { property = Font_variant_position; value = Normal; _ }
+  | Declaration { property = Font_kerning; value = Auto; _ }
+  | Declaration { property = Font_optical_sizing; value = Auto; _ }
+  | Declaration { property = Font_size_adjust; value = None; _ } ->
+      true
+  | _ -> false
+
+(* sec. 5.3 lets the shorthand write only the CSS 2.1 subset of the caps
+   longhand, so [normal] and [small-caps] are components and the rest is a value
+   the shorthand cannot spell. *)
+let font_caps_component : declaration -> Properties.font_variant_css21 option =
+  function
+  | Declaration { property = Caps; value = Normal; _ } -> Some Normal
+  | Declaration { property = Caps; value = Small_caps; _ } -> Some Small_caps
+  | _ -> None
+
+(* sec. 5.3 gives [font-width] the initial [normal], which normalises to [100%],
+   and an omitted slot names it, so both spellings leave the slot out. *)
+let font_stretch_component : declaration -> Properties.font_stretch option =
+  function
+  | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
+      Option.None
+  | Declaration { property = Font_stretch; value; _ } -> Some value
+  | _ -> Option.None
+
+let font_stretch_slot : declaration -> bool = function
+  | Declaration { property = Font_stretch; _ } -> true
+  | _ -> false
+
+let font_run_member d =
+  is_font_longhand d
+  || Option.is_some (font_caps_component d)
+  || font_stretch_slot d
+  || font_reset_only_at_initial d
+
+let font_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n || Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      if font_run_member d then aux (j + 1) (d :: acc) else (List.rev acc, j - i)
+  in
+  aux i []
+
+let render_font_run decls : Properties.font option =
   let pick f = List.find_map f decls in
   match (pick font_size_of, pick font_family_of) with
   | Some size, Some family ->
@@ -3068,49 +3179,41 @@ let render_font_shorthand decls : Properties.font option =
         (Shorthand
            {
              style = pick font_style_of;
-             variant = Option.None;
+             variant = pick font_caps_component;
              weight = pick font_weight_of;
-             stretch = Option.None;
+             stretch = pick font_stretch_component;
              size;
              line_height = pick line_height_of;
              family;
            })
   | _ -> Option.None
 
-let try_compose_font_at idx i =
-  let n = Rule_index.length idx in
-  if i + 4 >= n then None
+let try_compose_font_at ~allow_partial idx i =
+  let raw_decls, len = font_run_at idx i in
+  if len < 2 then None
+  else if not (same_importance raw_decls) then None
   else
-    let positions = [ i; i + 1; i + 2; i + 3; i + 4 ] in
-    if List.exists (Rule_index.is_absorbed idx) positions then None
+    let written =
+      List.fold_left (fun acc d -> acc lor font_slot_bits d) 0 raw_decls
+    in
+    let unanswered =
+      all_font_bits land lnot written
+      land lnot
+             (slots_written_after ~slots_of:font_slot_bits idx ~from:(i + len))
+    in
+    if unanswered <> 0 && not allow_partial then None
     else
-      let raw_decls = List.map (Rule_index.decl_at idx) positions in
-      if
-        (not (List.for_all is_font_longhand raw_decls))
-        || not (same_importance raw_decls)
-      then None
-      else
-        match render_font_shorthand raw_decls with
-        | Some font_value ->
-            Some
-              (Declaration.v
-                 ~important:(is_important (List.hd raw_decls))
-                 Font font_value)
-        | None -> None
+      Option.map
+        (fun font_value ->
+          ( Declaration.v
+              ~important:(is_important (List.hd raw_decls))
+              Font font_value,
+            len ))
+        (render_font_run raw_decls)
 
-let compose_font_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 4 < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_font_at idx !i with
-      | None -> incr i
-      | Some shorthand ->
-          let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
-          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 5
-          else incr i
-  done
+let compose_font_via_index ~ctx idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx ~try_compose:(try_compose_font_at ~allow_partial)
 
 (* The property a name spells, when the reader types one.
    [Properties.read_any_property] is the table [pp_property] inverts, so a name
@@ -4925,18 +5028,6 @@ let reset_hazard ~slots_of idx i ~held ~missing ~important =
   in
   scan (i - 1)
 
-(* A slot a declaration after the run writes again is one the shorthand's reset
-   cannot reach: the later write is what the element ends up with, whatever the
-   reset put there. Unlike [*_overwritten_slots] this counts a write back to the
-   slot initial, which answers the reset just as well. *)
-let rec slots_written_after ~slots_of idx ~from =
-  let n = Rule_index.length idx in
-  if from >= n then 0
-  else
-    let rest = slots_written_after ~slots_of idx ~from:(from + 1) in
-    if Rule_index.is_absorbed idx from then rest
-    else slots_of (Rule_index.decl_at idx from) lor rest
-
 let tr_written_slots d =
   match unwrap_theme_guard d with
   | Declaration { property = Transition_property; _ } -> tr_slot_bit Property
@@ -6432,9 +6523,9 @@ let compose_index_group_a ~ctx kept =
 
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
-let compose_index_group_b ~held kept =
+let compose_index_group_b ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
-  compose_font_via_index idx;
+  compose_font_via_index ~ctx idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
   compose_text_decoration_via_index ~held idx;
@@ -6469,7 +6560,7 @@ let compose_border_whole_step ~held ~ctx kept =
 
 let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_index_group_b ~held
+  |> compose_index_group_b ~ctx ~held
   |> reorder_border_image_before_border
   |> compose_border_whole_step ~held ~ctx
   |> drop_bimg_shadowed_by_border
