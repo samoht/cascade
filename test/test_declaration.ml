@@ -3752,7 +3752,17 @@ let spec_custom_tokens () =
     "--bad-string: \"unterminated";
   neg_cursor read_declaration "--: value";
   neg_cursor read_declaration "-x: value";
-  neg_cursor read_declaration "--x"
+  neg_cursor read_declaration "--x";
+
+  (* CSS Syntax 3 sec. 7.2: a <declaration-value> is any token sequence that
+     holds no unmatched closer and no bad-url, so a custom property whose value
+     carries one is invalid rather than opaque. *)
+  check_declaration ~expected:"--x:hover{}" "--x: hover { }";
+  check_declaration ~expected:"--x:a b" "--x: a b";
+  neg_cursor read_declaration "--x: hover { ] }";
+  neg_cursor read_declaration "--x: a ] b";
+  neg_cursor read_declaration "--x: a ) b";
+  neg_cursor read_declaration "--x: url(a b)"
 
 (* CSS Fonts 4 sec. 2.1.1 gives a [<font-family-name>] two spellings, a
    [<string>] and a [<custom-ident>+], and they name the same family whether
