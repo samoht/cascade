@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- Contracting animation longhands into `animation` no longer resets a longhand
+  the run does not write, so `animation-name` set in another rule survives
+  minification (#914).
+
 - The `animation` shorthand keeps an explicit `0s` duration, which it used to
   drop as the initial value; `auto` holds that place now, so
   `animation: spin 0s` no longer resolves to `animation: spin` (#913).

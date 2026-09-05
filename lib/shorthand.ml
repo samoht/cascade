@@ -75,6 +75,19 @@ let covers_longhand : type a b.
   | Transition, Transition_timing_function -> true
   | Transition, Transition_delay -> true
   | Transition, Transition_behavior -> true
+  (* CSS Animations 2 sec. 4.11 and 4.12: [animation] resets every longhand
+     [animation_keys] names, [animation-timeline] included.
+     [animation-composition] and the [animation-range-*] longhands are not part
+     of it and are absent here for that reason. *)
+  | Animation, Animation_name -> true
+  | Animation, Animation_duration -> true
+  | Animation, Animation_timing_function -> true
+  | Animation, Animation_delay -> true
+  | Animation, Animation_iteration_count -> true
+  | Animation, Animation_direction -> true
+  | Animation, Animation_fill_mode -> true
+  | Animation, Animation_play_state -> true
+  | Animation, Animation_timeline -> true
   (* CSS Logical 1: physical-axis pairs. *)
   | Margin_inline, Margin_inline_start -> true
   | Margin_inline, Margin_inline_end -> true
@@ -3566,6 +3579,60 @@ let tr_overwritten_slots d =
   | Declaration { property = All; _ } -> all_tr_bits
   | _ -> 0
 
+(* CSS Animations 2 sec. 4.11: the slots [animation] resets. The bits sit above
+   the transition ones so a single [held] set can carry both families. *)
+type an_slot =
+  | Name
+  | Duration
+  | Timing
+  | Delay
+  | Iteration
+  | Direction
+  | Fill
+  | Play
+  | Timeline
+
+let an_slots =
+  [ Name; Duration; Timing; Delay; Iteration; Direction; Fill; Play; Timeline ]
+
+let an_slot_bit : an_slot -> int = function
+  | Name -> 32
+  | Duration -> 64
+  | Timing -> 128
+  | Delay -> 256
+  | Iteration -> 512
+  | Direction -> 1024
+  | Fill -> 2048
+  | Play -> 4096
+  | Timeline -> 8192
+
+let an_bits slots = List.fold_left (fun acc s -> acc lor an_slot_bit s) 0 slots
+let all_an_bits = an_bits an_slots
+
+(* Which slots a declaration leaves holding something. Cruder than the
+   transition answer, which compares against each slot initial: this one says
+   "set at all". It is only ever consulted for slots MISSING from the run being
+   composed, so the extra caution costs a contraction, never a cascade. *)
+let an_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Animation_name; _ } -> an_slot_bit Name
+  | Declaration { property = Animation_duration; _ } -> an_slot_bit Duration
+  | Declaration { property = Animation_timing_function; _ } ->
+      an_slot_bit Timing
+  | Declaration { property = Animation_delay; _ } -> an_slot_bit Delay
+  | Declaration { property = Animation_iteration_count; _ } ->
+      an_slot_bit Iteration
+  | Declaration { property = Animation_direction; _ } -> an_slot_bit Direction
+  | Declaration { property = Animation_fill_mode; _ } -> an_slot_bit Fill
+  | Declaration { property = Animation_play_state; _ } -> an_slot_bit Play
+  | Declaration { property = Animation_timeline; _ } -> an_slot_bit Timeline
+  | Declaration { property = Animation; _ } -> all_an_bits
+  (* CSS Cascade 5 sec. 3.2: [all] writes every longhand, and no animation
+     longhand inherits, so [initial] and [unset] both leave the initials. *)
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> all_an_bits
+  | _ -> 0
+
 (* Slots a set of declarations leaves holding something other than the slot
    initial, split by importance. Composition reads one rule, so a holder in
    another rule of the same run reaches the scan below only through this. *)
@@ -3577,7 +3644,7 @@ let held_nothing h = Int.equal (h.normal_slots lor h.important_slots) 0
 let held_add held decls =
   List.fold_left
     (fun held d ->
-      let slots = tr_overwritten_slots d in
+      let slots = tr_overwritten_slots d lor an_overwritten_slots d in
       if Int.equal slots 0 then held
       else if is_important d then
         { held with important_slots = held.important_slots lor slots }
@@ -3731,27 +3798,33 @@ let an_play_state_part : declaration -> Properties.animation_play_state option =
   | _ -> None
 
 type an_part = Properties.animation_shorthand -> Properties.animation_shorthand
-type an_updater = declaration -> an_part option
+type an_updater = declaration -> (an_slot * an_part) option
 
 let lift_an_part :
     'a.
+    an_slot ->
     (declaration -> 'a option) ->
     (Properties.animation_shorthand -> 'a -> Properties.animation_shorthand) ->
     an_updater =
- fun extract set d ->
-  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+ fun slot extract set d ->
+  match extract d with Some v -> Some (slot, fun s -> set s v) | None -> None
 
 let an_updaters : an_updater list =
   [
-    lift_an_part an_name_part (fun s v -> { s with name = Some v });
-    lift_an_part an_duration_part (fun s v -> { s with duration = Some v });
-    lift_an_part an_timing_part (fun s v -> { s with timing_function = Some v });
-    lift_an_part an_delay_part (fun s v -> { s with delay = Some v });
-    lift_an_part an_iteration_part (fun s v ->
+    lift_an_part Name an_name_part (fun s v -> { s with name = Some v });
+    lift_an_part Duration an_duration_part (fun s v ->
+        { s with duration = Some v });
+    lift_an_part Timing an_timing_part (fun s v ->
+        { s with timing_function = Some v });
+    lift_an_part Delay an_delay_part (fun s v -> { s with delay = Some v });
+    lift_an_part Iteration an_iteration_part (fun s v ->
         { s with iteration_count = Some v });
-    lift_an_part an_direction_part (fun s v -> { s with direction = Some v });
-    lift_an_part an_fill_mode_part (fun s v -> { s with fill_mode = Some v });
-    lift_an_part an_play_state_part (fun s v -> { s with play_state = Some v });
+    lift_an_part Direction an_direction_part (fun s v ->
+        { s with direction = Some v });
+    lift_an_part Fill an_fill_mode_part (fun s v ->
+        { s with fill_mode = Some v });
+    lift_an_part Play an_play_state_part (fun s v ->
+        { s with play_state = Some v });
   ]
 
 let animation_part_of (d : declaration) =
@@ -3770,26 +3843,55 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let try_compose_animation_at idx i =
+(* The same reset hazard [tr_reset_hazard] answers for transition: a slot the
+   run does not write is reset to its initial by the shorthand, so composing is
+   only safe when nothing else in the cascade holds that slot. *)
+let an_reset_hazard idx i ~held ~missing ~important =
+  (not (Int.equal missing 0))
+  &&
+  let outside =
+    if important then held.normal_slots lor held.important_slots
+    else held.normal_slots
+  in
+  (not (Int.equal (missing land outside) 0))
+  ||
+  let rec scan j =
+    j >= 0
+    &&
+    let d = Rule_index.decl_at idx j in
+    (important || not (is_important d))
+    && not (Int.equal (an_overwritten_slots d land missing) 0)
+    || scan (j - 1)
+  in
+  scan (i - 1)
+
+let try_compose_animation_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
     if not (same_importance raw_decls) then None
     else
-      let layer =
-        List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
+      let important = is_important (List.hd raw_decls) in
+      let written =
+        List.fold_left
+          (fun acc (_, (slot, _)) -> acc lor an_slot_bit slot)
+          0 parts
       in
-      let shorthand =
-        Declaration.v
-          ~important:(is_important (List.hd raw_decls))
-          Animation
-          [ (Shorthand layer : Properties.animation) ]
-      in
-      Some (shorthand, len)
+      let missing = all_an_bits land lnot written in
+      if an_reset_hazard idx i ~held ~missing ~important then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, (_, f)) -> f acc) empty_an_shorthand parts
+        in
+        let shorthand =
+          Declaration.v ~important Animation
+            [ (Shorthand layer : Properties.animation) ]
+        in
+        Some (shorthand, len)
 
-let compose_animation_via_index idx =
-  compose_run_via_index idx ~try_compose:try_compose_animation_at
+let compose_animation_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_animation_at ~held)
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -4414,7 +4516,7 @@ let compose_index_group_c ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
   compose_transition_via_index ~held idx;
-  compose_animation_via_index idx;
+  compose_animation_via_index ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_border_whole_step ~ctx kept =
