@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `text-decoration` reads `none` as the line it is when a style or a colour
+  follows, so the contraction the optimizer writes for that run of longhands
+  reads back (#910).
+
 - `place-items` reads the `<self-position>` keywords `align-items` takes, so
   `place-items: flex-start baseline` parses and the contraction the optimizer
   writes for that pair of longhands reads back (#909).

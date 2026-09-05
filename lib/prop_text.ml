@@ -168,20 +168,34 @@ let read_text_decoration_shorthand t : text_decoration_shorthand =
 
 let rec read_text_decoration t : text_decoration =
   let read_var t : text_decoration = Var (read_var read_text_decoration t) in
-  Cursor.enum_or_calls "text-decoration"
-    [
-      ("inherit", (Inherit : text_decoration));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-      ("none", None);
-    ]
-    ~calls:[ ("var", read_var) ]
-    ~default:(fun t ->
-      let shorthand = read_text_decoration_shorthand t in
-      (Shorthand shorthand : text_decoration))
-    t
+  let snap = Cursor.save t in
+  let value =
+    Cursor.enum_or_calls "text-decoration"
+      [
+        ("inherit", (Inherit : text_decoration));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+        ("none", None);
+      ]
+      ~calls:[ ("var", read_var) ]
+      ~default:(fun t ->
+        let shorthand = read_text_decoration_shorthand t in
+        (Shorthand shorthand : text_decoration))
+      t
+  in
+  (* CSS Text Decoration 4 sec. 2.5: the shorthand is a [||] of its longhands
+     and [none] is a [<text-decoration-line>], so it is the whole value only
+     when nothing follows it. *)
+  match value with
+  | None ->
+      Cursor.ws t;
+      if Cursor.is_done t then value
+      else (
+        Cursor.restore t snap;
+        (Shorthand (read_text_decoration_shorthand t) : text_decoration))
+  | _ -> value
 
 let rec read_text_decoration_skip t : text_decoration_skip =
   Cursor.enum_or_var "text-decoration-skip"
