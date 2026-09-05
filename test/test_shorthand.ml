@@ -933,7 +933,23 @@ let test_text_decoration_thickness_composes () =
   sheet_optimizes_to
     ~into:
       ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
-    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}";
+  (* CSS Cascade 5 (ED) sec. 7.3 gives a longhand written [initial] the
+     property's initial value, which is the component the shorthand leaves out,
+     so it contracts the same way the written-out initials do. Chrome 146
+     expands [text-decoration: none] to these four. *)
+  sheet_optimizes_to ~into:".x{text-decoration:none}"
+    ".x{text-decoration-line:none;text-decoration-thickness:initial;text-decoration-style:initial;text-decoration-color:initial}";
+  sheet_optimizes_to ~into:".x{text-decoration:overline 2px}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:initial;text-decoration-color:initial}";
+  sheet_optimizes_to ~into:".x{text-decoration:none red 2px}"
+    ".x{text-decoration-line:initial;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red}";
+  (* The other CSS-wide keywords name no value of their own, so a run carrying
+     one stays expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
 
 (* CSS Backgrounds 3 (ED) sec. 4.1: an elliptical corner names a horizontal
    radius and a vertical one, and [border-radius] writes the four horizontals,
