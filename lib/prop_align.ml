@@ -719,31 +719,36 @@ let rec pp_align_content : align_content Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* Gap shorthand parser *)
-let rec read_gap t : gap =
-  let read_non_negative_length t =
-    let len = read_length t in
-    match len with
-    | Px v
-    | Rem v
-    | Em v
-    | Ch v
-    | Ex v
-    | Vw v
-    | Vh v
-    | Vmin v
-    | Vmax v
-    | Pt v
-    | Pc v
-    | In v
-    | Cm v
-    | Mm v
-    | Q v
-      when v < 0.0 ->
-        Cursor.err t "gap values cannot be negative"
-    | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Fit_content ->
-        Cursor.err t "gap values must be explicit lengths, not keywords"
-    | _ -> len
+(* CSS Box Alignment 3 sec. 8.3: each half is a [<'row-gap'>], which is
+   [normal | <length-percentage [0,inf]>]. The keyword is read here rather than
+   taken from the length grammar, which does not carry it. *)
+let read_gap_half t =
+  let len =
+    Cursor.enum "gap" [ ("normal", (Normal : length)) ] ~default:read_length t
   in
+  match len with
+  | Px v
+  | Rem v
+  | Em v
+  | Ch v
+  | Ex v
+  | Vw v
+  | Vh v
+  | Vmin v
+  | Vmax v
+  | Pt v
+  | Pc v
+  | In v
+  | Cm v
+  | Mm v
+  | Q v
+    when v < 0.0 ->
+      Cursor.err t "gap values cannot be negative"
+  | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Fit_content ->
+      Cursor.err t "gap values must be explicit lengths, not keywords"
+  | _ -> len
+
+let rec read_gap t : gap =
   Cursor.enum_or_whole_value_var "gap"
     [
       ("inherit", (Inherit : gap));
@@ -754,9 +759,9 @@ let rec read_gap t : gap =
     ]
     ~var:(fun t -> Var (read_var read_gap t))
     ~default:(fun t ->
-      let first_length = read_non_negative_length t in
+      let first_length = read_gap_half t in
       Cursor.ws t;
-      let second_length = Cursor.option read_non_negative_length t in
+      let second_length = Cursor.option read_gap_half t in
       match second_length with
       | Some col_gap ->
           (Lengths { row_gap = Some first_length; column_gap = Some col_gap }

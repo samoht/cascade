@@ -1129,8 +1129,10 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_text_decoration_color (read_color t))
   | _ -> None
 
+(* CSS Sizing 3 sec. 5: the box sizes are the properties the intrinsic sizes
+   belong to, so this reader asks for them. *)
 let read_box_size ?(maximum = false) t =
-  match read_length_percentage ~allow_negative:false t with
+  match read_length_percentage ~allow_negative:false ~sizing:true t with
   | Length (Normal | From_font | Size) ->
       Cursor.err_invalid t "expected a box size"
   | Length Auto when maximum ->

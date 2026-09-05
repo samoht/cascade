@@ -5095,34 +5095,46 @@ let read_length_unit ?(allow_negative = true) ?(length_only = false) t =
              [calc(1x + 2x)] still parses. *)
           Cursor.err_invalid t ("unknown dimension unit: " ^ unit))
 
-let read_length_keyword t : length =
+(* CSS Values 4 (ED) sec. 6 gives a [<length>] no keyword of its own beyond the
+   CSS-wide ones, and [auto] belongs to nearly every property that reads one.
+   The intrinsic sizes ([min-content] and the rest) belong to CSS Sizing 3 sec.
+   5 alone, so a property reading a length asks for them; [top: min-content] and
+   [margin-top: none] are values Chrome 146 refuses. *)
+let length_cssvalue_keywords : (string * length) list =
+  [
+    ("auto", (Auto : length));
+    ("inherit", Inherit);
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
+let length_sizing_keywords : (string * length) list =
+  [
+    ("none", (None : length));
+    ("normal", Normal);
+    ("size", Size);
+    ("max-content", Max_content);
+    ("min-content", Min_content);
+    ("fit-content", Fit_content);
+    (* Legacy vendor-prefixed intrinsic sizing keywords (kept as a fallback for
+       old Safari / Firefox; the unprefixed forms above win in modern ones). *)
+    ("-webkit-max-content", Webkit_max_content);
+    ("-webkit-min-content", Webkit_min_content);
+    ("-webkit-fit-content", Webkit_fit_content);
+    ("-moz-max-content", Moz_max_content);
+    ("-moz-min-content", Moz_min_content);
+    ("-moz-fit-content", Moz_fit_content);
+    ("contain", Contain);
+    ("stretch", Stretch);
+    ("from-font", From_font);
+  ]
+
+let read_length_keyword ?(sizing = true) t : length =
   Cursor.enum "length"
-    [
-      ("auto", (Auto : length));
-      ("none", None);
-      ("normal", Normal);
-      ("size", Size);
-      ("max-content", Max_content);
-      ("min-content", Min_content);
-      ("fit-content", Fit_content);
-      (* Legacy vendor-prefixed intrinsic sizing keywords (kept as a fallback
-         for old Safari / Firefox; the unprefixed forms above win in modern
-         ones). *)
-      ("-webkit-max-content", Webkit_max_content);
-      ("-webkit-min-content", Webkit_min_content);
-      ("-webkit-fit-content", Webkit_fit_content);
-      ("-moz-max-content", Moz_max_content);
-      ("-moz-min-content", Moz_min_content);
-      ("-moz-fit-content", Moz_fit_content);
-      ("contain", Contain);
-      ("stretch", Stretch);
-      ("from-font", From_font);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if sizing then length_cssvalue_keywords @ length_sizing_keywords
+     else length_cssvalue_keywords)
     t
 
 let calc_factor_is_dimension : type a. a calc -> bool = function
@@ -5760,7 +5772,7 @@ let read_attr_type_hint inner : attr_type option =
   else read_plain_attr_type_hint inner
 
 let rec read_length ?(allow_negative = true) ?(with_keywords = true)
-    ?(length_only = false) t : length =
+    ?(sizing = false) ?(length_only = false) t : length =
   Cursor.ws t;
   let parsers =
     [
@@ -5772,7 +5784,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true)
     ]
   in
   let parsers =
-    if with_keywords then read_length_keyword :: parsers else parsers
+    if with_keywords then read_length_keyword ~sizing :: parsers else parsers
   in
   Cursor.one_of parsers t
 
@@ -5970,15 +5982,17 @@ and read_sign_length ~allow_negative ~length_only ~with_keywords inner =
     (fun (value : length) -> (Sign value : length))
     inner
 
+(* CSS Values 5 (ED) sec. 12: [calc-size()] takes a sizing basis and then a
+   calculation over [size], so both halves read the intrinsic sizes whatever
+   property the function sits in. *)
 and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
-  let basis = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let read t =
+    read_length ~allow_negative ~length_only ~with_keywords ~sizing:true t
+  in
+  let basis = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let calc =
-    read_calc_expr
-      (read_length ~allow_negative ~length_only ~with_keywords)
-      inner
-  in
+  let calc = read_calc_expr read inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
@@ -7329,13 +7343,13 @@ let read_length_percentage_pct ~allow_negative t : length_percentage =
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
   Pct n
 
-let read_length_percentage_length ~allow_negative ~with_keywords t :
+let read_length_percentage_length ~allow_negative ~with_keywords ~sizing t :
     length_percentage =
-  Length (read_length ~allow_negative ~with_keywords t)
+  Length (read_length ~allow_negative ~with_keywords ~sizing t)
 
 (** Read length_percentage value *)
 let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
-    t : length_percentage =
+    ?(sizing = false) t : length_percentage =
   Cursor.ws t;
   Cursor.one_of
     [
@@ -7344,7 +7358,7 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
       read_length_percentage_calc ~with_keywords;
       read_invalid_length_percentage_function;
       read_length_percentage_pct ~allow_negative;
-      read_length_percentage_length ~allow_negative ~with_keywords;
+      read_length_percentage_length ~allow_negative ~with_keywords ~sizing;
     ]
     t
 

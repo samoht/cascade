@@ -455,12 +455,17 @@ val normalize_signed_zero : float -> string -> float * string
 val read_length :
   ?allow_negative:bool ->
   ?with_keywords:bool ->
+  ?sizing:bool ->
   ?length_only:bool ->
   Cursor.t ->
   length
 (** [read_length t] parses a CSS length. [length_only] excludes percentages,
     including those nested in math, and sizing-only functions. It defaults to
-    [false] for readers whose grammar permits length-percentage values. *)
+    [false] for readers whose grammar permits length-percentage values. [sizing]
+    adds the intrinsic sizes CSS Sizing 3 sec. 5 defines - [min-content],
+    [fit-content] and the rest - which belong to the sizing properties and not
+    to a [<length>] as such; it defaults to [false], so a reader whose property
+    takes them asks. *)
 
 val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
@@ -597,7 +602,11 @@ val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
 val read_length_percentage :
-  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length_percentage
+  ?allow_negative:bool ->
+  ?with_keywords:bool ->
+  ?sizing:bool ->
+  Cursor.t ->
+  length_percentage
 (** [read_length_percentage t] parses a CSS length or percentage. *)
 
 val read_number_percentage : Cursor.t -> number_percentage

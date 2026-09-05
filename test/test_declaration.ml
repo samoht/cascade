@@ -557,6 +557,16 @@ let special_cases () =
     ~optimized:"border-block-width:1px 2px" "border-block-width: 1px 2px";
   check_declaration ~expected:"border-block-style:solid solid"
     ~optimized:"border-block-style:solid" "border-block-style: solid solid";
+  (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
+     those keep them where a property reading a plain length does not. [gap]
+     reads [normal] from CSS Box Alignment 3 sec. 8.3. *)
+  check_declaration ~expected:"width:min-content" ~optimized:"width:min-content"
+    "width: min-content";
+  check_declaration ~expected:"max-width:none" ~optimized:"max-width:none"
+    "max-width: none";
+  check_declaration ~expected:"flex-basis:min-content"
+    ~optimized:"flex-basis:min-content" "flex-basis: min-content";
+  check_declaration ~expected:"gap:normal" ~optimized:"gap:normal" "gap: normal";
   check_declaration ~expected:"column-height:auto"
     ~optimized:"column-height:auto" "column-height: auto";
   check_declaration ~expected:"column-height:10px"

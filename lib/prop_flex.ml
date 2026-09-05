@@ -568,14 +568,20 @@ let rec read_flex_basis t : flex_basis =
         ("var", fun t -> Var (read_var read_flex_basis t));
         ("calc", fun t -> Calc (read_calc ~result_type:`Value read_flex_basis t));
       ]
+      (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
+         the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
+      let size t =
+        read_length ~allow_negative:false ~sizing:true t
+        |> flex_basis_of_length t
+      in
       let pos = Cursor.save t in
       match Cursor.option Cursor.number_with_unit t with
       | Some (0.0, None) -> (Zero : flex_basis)
       | Some _ ->
           Cursor.restore t pos;
-          read_length ~allow_negative:false t |> flex_basis_of_length t
-      | None -> read_length ~allow_negative:false t |> flex_basis_of_length t)
+          size t
+      | None -> size t)
     t
 
 module Flex = struct

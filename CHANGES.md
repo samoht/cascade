@@ -680,6 +680,12 @@ entry points both moved.
   other properties reading one, `outline-width` and `-webkit-text-stroke-width`
   among them, are refused as browsers refuse them (#951)
 
+- The intrinsic sizes belong to the sizing properties. CSS Sizing 3 sec. 5
+  gives `min-content` and its siblings to `width` and the rest, and cascade
+  read them wherever it read a length, so `top: min-content` and
+  `margin-top: none` parsed. `Css.Values.read_length` gains `?sizing` for the
+  readers whose property takes them (#952)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
