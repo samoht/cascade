@@ -3574,15 +3574,17 @@ let scope_prelude r prelude_components : Selector.t option * Selector.t option =
       Cursor.err_invalid r "@scope start selector cannot be empty";
     if end_cvs <> [] && end_parens && end_ = "" then
       Cursor.err_invalid r "@scope end selector cannot be empty";
-    (* Parse each bound into a selector; an unparseable bound is
-       [Selector.Invalid]. *)
+    (* CSS Cascade 6 sec. 3.5.2 gives each bound a [<complex-selector-list>], so
+       a bound that does not parse leaves the prelude invalid and the rule with
+       it, which is what Chrome 146 does. [Selector.Invalid] stood here as a
+       placeholder, but it is the [:invalid] pseudo-class: emitting it scoped
+       the block to whatever form controls are in an invalid state. *)
     let opt s : Selector.t option =
       if s = "" then None
       else
         match Selector.of_string s with
         | sel -> Some sel
-        | exception (Cursor.Parse_error _ | Invalid_argument _) ->
-            Some Selector.Invalid
+        | exception Invalid_argument m -> Cursor.err_invalid r m
     in
     (opt start, opt end_)
 

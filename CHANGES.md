@@ -665,6 +665,11 @@ entry points both moved.
   the recovery, so `@font-face { font-family: f; : url(a.woff2) }` took the
   rule and everything the parser had read after it (#948)
 
+- An `@scope` bound that does not parse invalidates the rule, as it does in
+  browsers. Such a bound used to become the `:invalid` pseudo-class, so
+  `@scope ) { .a { color: green } }` scoped the block to whatever form
+  controls were in an invalid state (#949)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

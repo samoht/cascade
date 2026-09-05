@@ -1576,6 +1576,12 @@ let spec_strict_rejects_invalid_stylesheets () =
       ( "keyframes forbidden css-wide name",
         "@keyframes initial { to { opacity: 1 } }" );
       (* Conditional query grammars. *)
+      (* CSS Cascade 6 sec. 3.5.2 gives each [@scope] bound a complex selector
+         list, so a bound that does not parse leaves the prelude invalid. It
+         used to become the [:invalid] pseudo-class, scoping the block to
+         whatever form controls were in an invalid state. *)
+      ("scope unparseable start bound", "@scope ) { .a { color: green } }");
+      ("scope unparseable end bound", "@scope (.s) to ) { .a { color: green } }");
       ( "media ungrouped mixed boolean operators",
         "@media (width) and (height) or (color) { .x { color: red } }" );
       ("media dangling not", "@media not { .x { color: red } }");
