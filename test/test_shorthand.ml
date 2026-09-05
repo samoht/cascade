@@ -795,6 +795,20 @@ let test_background_position_composes () =
     ~into:".x{background-position-x:10px;background-position-y:20px!important}"
     ".x{background-position-x:10px;background-position-y:20px!important}"
 
+(* CSS Multicol 1 sec. 4.3: [column-rule] is [<line-width> || <line-style> ||
+   <line-color>] over its own three longhands, the shape the border sides take,
+   and sec. 4.1 to 4.2 give the same initials. *)
+let test_column_rule_composes () =
+  sheet_optimizes_to ~into:".x{column-rule:1px solid red}"
+    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red}";
+  sheet_optimizes_to ~into:".x{column-rule:none}"
+    ".x{column-rule-width:medium;column-rule-style:none;column-rule-color:currentcolor}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
+    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1394,6 +1408,7 @@ let suite =
         test_named_shorthand_composes;
       Alcotest.test_case "background position composes" `Quick
         test_background_position_composes;
+      Alcotest.test_case "column rule composes" `Quick test_column_rule_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

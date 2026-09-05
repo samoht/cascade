@@ -1788,6 +1788,8 @@ let read_object_transition_value : type a.
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
   | Column_rule_color -> Some (v Column_rule_color (read_color t))
+  | Column_rule_width -> Some (v Column_rule_width (read_border_width t))
+  | Column_rule_style -> Some (v Column_rule_style (read_border_style t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 

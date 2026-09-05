@@ -574,6 +574,10 @@ entry points both moved.
   used to parse as unknown declarations, so nothing could equate the shorthand
   with them (#926)
 
+- `--minify` contracts `column-rule` from `column-rule-width` and
+  `column-rule-style`, which this release adds as typed properties beside the
+  colour longhand it already had (#927)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

@@ -142,6 +142,10 @@ let covers_longhand : type a b.
   | Border_top, Border_top_width -> true
   | Border_top, Border_top_style -> true
   | Border_top, Border_top_color -> true
+  (* CSS Multicol 1 sec. 4.3: [column-rule] is the three rule longhands. *)
+  | Column_rule, Column_rule_width -> true
+  | Column_rule, Column_rule_style -> true
+  | Column_rule, Column_rule_color -> true
   | Border_right, Border_right_width -> true
   | Border_right, Border_right_style -> true
   | Border_right, Border_right_color -> true
@@ -813,6 +817,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "column-rule-style";
         key "column-rule-color";
       ]
+  | Column_rule_width -> [ key "column-rule-width" ]
+  | Column_rule_style -> [ key "column-rule-style" ]
   | Column_rule_color -> [ key "column-rule-color" ]
   (* CSS Fragmentation 3 sec. 3.4: a [page-break-*] alias writes the slot of the
      [break-*] property it aliases. *)
@@ -3336,6 +3342,15 @@ let border_inline_end_part = function
       Some (line_of_color value)
   | _ -> None
 
+let column_rule_part = function
+  | Declaration { property = Column_rule_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Column_rule_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Column_rule_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
 let try_compose_line_at ~part_of ~property idx i =
   let n = Rule_index.length idx in
   if i + 2 >= n then None
@@ -3392,6 +3407,7 @@ let line_families =
       (border_block_end_part, Border_block_end);
       (border_inline_start_part, Border_inline_start);
       (border_inline_end_part, Border_inline_end);
+      (column_rule_part, Column_rule);
       (border_block_axis_part, Border_block);
       (border_inline_axis_part, Border_inline);
     ]

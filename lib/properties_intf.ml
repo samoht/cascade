@@ -5049,6 +5049,8 @@ type 'a property =
   | Column_width : column_width property
   | Column_count : column_count property
   | Column_rule : border property
+  | Column_rule_width : border_width property
+  | Column_rule_style : border_style property
   | Column_rule_color : color property
   | Column_span : column_span property
   | Word_spacing : length property

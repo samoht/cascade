@@ -585,6 +585,8 @@ let pp_property : type a. a property Pp.t =
   | Column_width -> Pp.string ctx "column-width"
   | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
+  | Column_rule_width -> Pp.string ctx "column-rule-width"
+  | Column_rule_style -> Pp.string ctx "column-rule-style"
   | Column_rule_color -> Pp.string ctx "column-rule-color"
   | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
@@ -1033,35 +1035,35 @@ let property_class : type a. a property -> a property_class = function
   | Transition_property | Transition_behavior | Overlay | Will_change | Contain
   | Isolation | Break_before | Break_after | Break_inside | Page_break_before
   | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
-  | Column_count | Column_rule | Column_rule_color | Column_span
-  | Background_attachment | Border_top | Border_right | Border_bottom
-  | Border_left | Transform_origin | Transform_box | Mask | Mask_border
-  | Content_visibility | Filter | Background_image | Background_origin
-  | Background_clip | Webkit_background_clip | Animation | Aspect_ratio
-  | Overflow_x | Overflow_y | Overflow_block | Overflow_inline | Vertical_align
-  | Background_position | Background_position_x | Background_position_y
-  | Background_repeat | Background_size | Webkit_line_clamp | Webkit_box_orient
-  | Moz_orient | Text_overflow | Backdrop_filter | Webkit_backdrop_filter
-  | Webkit_mask_image | Webkit_mask_composite | Webkit_mask_source_type
-  | Webkit_mask_size | Webkit_mask_position | Webkit_mask_repeat
-  | Webkit_mask_clip | Webkit_mask_origin | Mask_image | Mask_composite
-  | Mask_mode | Mask_size | Mask_position | Mask_repeat | Mask_clip
-  | Mask_origin | Mask_type | Scroll_snap_align | Scroll_snap_stop
-  | Scroll_behavior | Box_sizing | Field_sizing | Resize | Object_fit
-  | Object_view_box | Appearance | Box_decoration_break
-  | Webkit_box_decoration_break | Content | Counter_reset | Counter_increment
-  | Text_decoration_thickness | Touch_action | Clip | Clear | Float | Scale
-  | Transition | Box_shadow | Vector_effect | Stop_color | Flood_color
-  | Lighting_color | Unicode_bidi | Animation_name | Animation_duration
-  | Animation_timing_function | Animation_delay | Animation_iteration_count
-  | Animation_direction | Animation_fill_mode | Animation_play_state
-  | Animation_composition | Background_blend_mode | Scroll_margin
-  | Scroll_margin_top | Scroll_margin_right | Scroll_margin_bottom
-  | Scroll_margin_left | Scroll_margin_inline | Scroll_margin_inline_start
-  | Scroll_margin_inline_end | Scroll_margin_block | Scroll_margin_block_start
-  | Scroll_margin_block_end | Scroll_padding | Scroll_padding_top
-  | Scroll_padding_right | Scroll_padding_bottom | Scroll_padding_left
-  | Scroll_padding_inline | Scroll_padding_inline_start
+  | Column_count | Column_rule | Column_rule_color | Column_rule_width
+  | Column_rule_style | Column_span | Background_attachment | Border_top
+  | Border_right | Border_bottom | Border_left | Transform_origin
+  | Transform_box | Mask | Mask_border | Content_visibility | Filter
+  | Background_image | Background_origin | Background_clip
+  | Webkit_background_clip | Animation | Aspect_ratio | Overflow_x | Overflow_y
+  | Overflow_block | Overflow_inline | Vertical_align | Background_position
+  | Background_position_x | Background_position_y | Background_repeat
+  | Background_size | Webkit_line_clamp | Webkit_box_orient | Moz_orient
+  | Text_overflow | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
+  | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
+  | Webkit_mask_position | Webkit_mask_repeat | Webkit_mask_clip
+  | Webkit_mask_origin | Mask_image | Mask_composite | Mask_mode | Mask_size
+  | Mask_position | Mask_repeat | Mask_clip | Mask_origin | Mask_type
+  | Scroll_snap_align | Scroll_snap_stop | Scroll_behavior | Box_sizing
+  | Field_sizing | Resize | Object_fit | Object_view_box | Appearance
+  | Box_decoration_break | Webkit_box_decoration_break | Content | Counter_reset
+  | Counter_increment | Text_decoration_thickness | Touch_action | Clip | Clear
+  | Float | Scale | Transition | Box_shadow | Vector_effect | Stop_color
+  | Flood_color | Lighting_color | Unicode_bidi | Animation_name
+  | Animation_duration | Animation_timing_function | Animation_delay
+  | Animation_iteration_count | Animation_direction | Animation_fill_mode
+  | Animation_play_state | Animation_composition | Background_blend_mode
+  | Scroll_margin | Scroll_margin_top | Scroll_margin_right
+  | Scroll_margin_bottom | Scroll_margin_left | Scroll_margin_inline
+  | Scroll_margin_inline_start | Scroll_margin_inline_end | Scroll_margin_block
+  | Scroll_margin_block_start | Scroll_margin_block_end | Scroll_padding
+  | Scroll_padding_top | Scroll_padding_right | Scroll_padding_bottom
+  | Scroll_padding_left | Scroll_padding_inline | Scroll_padding_inline_start
   | Scroll_padding_inline_end | Scroll_padding_block
   | Scroll_padding_block_start | Scroll_padding_block_end | Overscroll_behavior
   | Overscroll_behavior_x | Overscroll_behavior_y | Overscroll_behavior_block
@@ -1481,6 +1483,8 @@ let property_tag : type a. a property -> int = function
   | Column_count -> 371
   | Column_rule -> 372
   | Column_rule_color -> 373
+  | Column_rule_width -> 539
+  | Column_rule_style -> 540
   | Column_span -> 374
   | Word_spacing -> 375
   | Background_attachment -> 376
@@ -2052,6 +2056,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Column_count, Column_count -> Some Equal
   | Column_rule, Column_rule -> Some Equal
   | Column_rule_color, Column_rule_color -> Some Equal
+  | Column_rule_width, Column_rule_width -> Some Equal
+  | Column_rule_style, Column_rule_style -> Some Equal
   | Column_span, Column_span -> Some Equal
   | Word_spacing, Word_spacing -> Some Equal
   | Background_attachment, Background_attachment -> Some Equal
@@ -2962,6 +2968,8 @@ let read_any_property t =
   | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
   | "column-rule-color" -> Prop Column_rule_color
+  | "column-rule-width" -> Prop Column_rule_width
+  | "column-rule-style" -> Prop Column_rule_style
   | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
@@ -3733,7 +3741,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | ( ( Border_style | Border_top_style | Border_right_style
       | Border_bottom_style | Border_left_style | Border_inline_start_style
       | Border_inline_end_style | Border_block_start_style
-      | Border_block_end_style | Border_inline_style | Border_block_style ),
+      | Border_block_end_style | Border_inline_style | Border_block_style
+      | Column_rule_style ),
       value ) ->
       value
   | ( ( Padding | Padding_inline | Padding_block | Margin | Margin_inline
@@ -3827,7 +3836,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Border_width, value -> value
   | ( ( Border_top_width | Border_right_width | Border_bottom_width
       | Border_left_width | Border_inline_start_width | Border_inline_end_width
-      | Border_block_start_width | Border_block_end_width | Outline_width ),
+      | Border_block_start_width | Border_block_end_width | Outline_width
+      | Column_rule_width ),
       value ) ->
       value
   | (Border_inline_width | Border_block_width), value -> value
@@ -4338,6 +4348,7 @@ let normalize_property_value : type a.
   | Webkit_text_fill_color -> normalize_color value
   | Webkit_text_stroke_color -> normalize_color value
   | Column_rule_color -> normalize_color value
+  | Column_rule_width -> normalize_border_width value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -4707,6 +4718,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_fill_color -> pp pp_color
   | Webkit_text_stroke_color -> pp pp_color
   | Column_rule_color -> pp pp_color
+  | Column_rule_width -> pp pp_border_width
+  | Column_rule_style -> pp pp_border_style
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -5360,6 +5373,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_fill_color -> Some Color
   | Webkit_text_stroke_color -> Some Color
   | Column_rule_color -> Some Color
+  | Column_rule_width -> Some Border_width
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color
