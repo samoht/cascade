@@ -2420,6 +2420,77 @@ let duo_text_emphasis idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_text_emphasis_part ~build i
 
+(* CSS Animations 2 sec. 6.3 and CSS Scroll Animations 1 sec. 4.3:
+   [animation-range] is [<start> <end>?] and [scroll-timeline] is [<name>
+   <axis>?], each written over its own two longhands. *)
+let extract_animation_range_part :
+    declaration ->
+    (axis_side
+    * (Properties.animation_range_item option
+      * Properties.animation_range_item option)
+    * bool)
+    option = function
+  | Declaration { property = Animation_range_start; value = Var _; _ }
+  | Declaration { property = Animation_range_end; value = Var _; _ } ->
+      None
+  | Declaration { property = Animation_range_start; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Animation_range_end; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let extract_scroll_timeline_part :
+    declaration ->
+    (axis_side
+    * (Properties.timeline_name option * Properties.timeline_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Scroll_timeline_name; value = Var _; _ }
+  | Declaration { property = Scroll_timeline_axis; value = Var _; _ } ->
+      None
+  | Declaration { property = Scroll_timeline_name; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Scroll_timeline_axis; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_animation_range idx i =
+  let build ~important ~start ~end_ =
+    let range_start, _ = start and _, range_end = end_ in
+    match range_start with
+    | Option.None -> Option.None
+    | Some range_start ->
+        Some
+          (Declaration.v ~important Animation_range
+             (Range (range_start, range_end) : Properties.animation_range))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_animation_range_part ~build i
+
+(* [scroll-timeline: none] leaves the axis at [block], so a named axis beside an
+   unnamed timeline has no shorthand spelling, and neither has a name list: the
+   shorthand pairs each name with its own axis. *)
+let duo_scroll_timeline idx i =
+  let build ~important ~start ~end_ =
+    let name, _ = start and _, axis = end_ in
+    let axis =
+      match axis with
+      | Some (Block : Properties.timeline_axis) | Some Initial -> Option.None
+      | axis -> axis
+    in
+    let value : Properties.timeline_shorthand option =
+      match (name : Properties.timeline_name option) with
+      | Some None when Option.is_none axis -> Some None
+      | Some (Names [ n ]) -> Some (Timelines [ { name = n; axis } ])
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Scroll_timeline) value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_scroll_timeline_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2450,6 +2521,8 @@ let pair_axes ~ctx idx i =
     (fun () -> axis_grid_line idx Grid_column extract_grid_column_side i);
     (fun () -> duo_flex_flow idx i);
     (fun () -> duo_text_emphasis idx i);
+    (fun () -> duo_animation_range idx i);
+    (fun () -> duo_scroll_timeline idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

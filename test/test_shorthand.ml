@@ -728,7 +728,9 @@ let test_timeline_range_composes () =
     ".x{animation-range-start:normal;animation-range-end:normal}";
   sheet_optimizes_to ~into:".x{animation-range:entry 10%exit 90%}"
     ".x{animation-range-start:entry 10%;animation-range-end:exit 90%}";
-  sheet_optimizes_to ~into:".x{scroll-timeline:--t block}"
+  (* [block] is the axis's initial, so the composed value names it by leaving
+     the component out. *)
+  sheet_optimizes_to ~into:".x{scroll-timeline:--t}"
     ".x{scroll-timeline-name:--t;scroll-timeline-axis:block}";
   sheet_optimizes_to ~into:".x{scroll-timeline:none}"
     ".x{scroll-timeline-name:none;scroll-timeline-axis:block}";

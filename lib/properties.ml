@@ -4299,6 +4299,7 @@ let normalize_property_value : type a.
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Scroll_timeline -> normalize_timeline_shorthand value
   | View_timeline_inset -> normalize_timeline_inset value
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value

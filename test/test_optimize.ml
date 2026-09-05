@@ -1400,9 +1400,11 @@ let shorthand_longhand_order_cases =
     ( "container",
       ".a{container:a/size;container-type:normal}",
       ".a{container:a/size;container-type:normal}" );
+    (* CSS Scroll Animations 1 sec. 4.2 makes [block] the axis's initial, so the
+       shorthand names it by leaving the component out. *)
     ( "scroll-timeline",
       ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}",
-      ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}" );
+      ".a{scroll-timeline:--a;scroll-timeline-axis:inline}" );
     ( "view-timeline",
       ".a{view-timeline:--a block;view-timeline-axis:inline}",
       ".a{view-timeline:--a block;view-timeline-axis:inline}" );

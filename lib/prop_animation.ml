@@ -344,6 +344,22 @@ let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
       Pp.space ctx ();
       pp_timeline_axis ctx axis
 
+(* CSS Scroll Animations 1 sec. 4.3: [scroll-timeline] is [<name> <axis>?], and
+   an axis left out takes [scroll-timeline-axis]'s initial (sec. 4.2), which is
+   [block]. Writing it out names what leaving it out names, so the shorter
+   spelling wins. *)
+let normalize_timeline_shorthand : timeline_shorthand -> timeline_shorthand =
+ fun value ->
+  let drop_initial_axis (item : timeline_shorthand_item) =
+    match item.axis with
+    | Some (Block : timeline_axis) | Some Initial ->
+        { item with axis = Option.None }
+    | _ -> item
+  in
+  match value with
+  | Timelines items -> Timelines (map_preserve drop_initial_axis items)
+  | other -> other
+
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"

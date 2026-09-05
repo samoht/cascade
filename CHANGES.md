@@ -562,6 +562,10 @@ entry points both moved.
   longhands, and drops a component of either that names its own initial:
   `flex-flow: row wrap` minifies to `flex-flow: wrap` (#923)
 
+- `--minify` contracts `animation-range` and `scroll-timeline` from their two
+  longhands, and drops a `scroll-timeline` axis that names its own initial:
+  `scroll-timeline: --t block` minifies to `scroll-timeline: --t` (#924)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
