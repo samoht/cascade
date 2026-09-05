@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `animation-duration` accepts `auto`, its initial value, instead of dropping
+  the declaration. `Css.duration` gains an `Auto` constructor; the delays and
+  `transition-duration` still reject it (#885).
+
 - `grid` and `grid-template` accept `none` on either side of the slash
   instead of dropping the declaration, and `grid: auto-flow / 200px` now
   serialises to a form cascade reads back (#884).

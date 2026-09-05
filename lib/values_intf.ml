@@ -559,6 +559,9 @@ type color =
 type duration =
   | Ms of float
   | S of float
+  (* CSS Animations 2 sec. 4.1: [animation-duration] alone has an [auto] arm,
+     and it is that property's initial value. *)
+  | Auto
   | Durations of duration list
   | Round of string * duration * duration
   | Mod of duration * duration

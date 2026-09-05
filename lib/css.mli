@@ -5847,6 +5847,7 @@ type timing_function = Properties.timing_function =
 type duration = Values.duration =
   | Ms of float  (** milliseconds *)
   | S of float  (** seconds *)
+  | Auto  (** [animation-duration] only *)
   | Durations of duration list  (** comma-separated list of durations *)
   | Round of string * duration * duration
   | Mod of duration * duration

@@ -4857,6 +4857,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Auto -> Pp.string ctx "auto"
   | Durations durations ->
       Pp.list ~sep:Pp.comma (pp_duration_with ~shorten_ms) ctx durations
   | Round (strategy, value, step) ->

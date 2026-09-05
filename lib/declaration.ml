@@ -858,6 +858,13 @@ let read_gap_longhand t =
     [ ("normal", (Normal : length)) ]
     ~default:read_nn_length_or_global t
 
+(* CSS Animations 2 sec. 4.1: [animation-duration] is [ auto | <time [0s,inf]>
+   ]#. The transition durations and both delays keep the time grammar alone. *)
+let read_animation_duration t =
+  Cursor.enum "animation-duration"
+    [ ("auto", (Auto : duration)) ]
+    ~default:read_duration t
+
 (* CSS Text 3 section 7: [letter-spacing] is [normal | <length>], [word-spacing]
    is [normal | <length-percentage>]; both accept negative values. *)
 let read_normal_or_length name t =
@@ -1322,7 +1329,9 @@ let read_vendor_alias_value : type a.
   | Webkit_animation_delay ->
       Some (v Webkit_animation_delay (read_duration_list read_time t))
   | Webkit_animation_duration ->
-      Some (v Webkit_animation_duration (read_duration_list read_duration t))
+      Some
+        (v Webkit_animation_duration
+           (read_duration_list read_animation_duration t))
   | Webkit_animation_direction ->
       Some (v Webkit_animation_direction (read_animation_direction t))
   | Webkit_animation_iteration_count ->
@@ -1353,7 +1362,9 @@ let read_vendor_alias_value : type a.
   | Moz_animation_delay ->
       Some (v Moz_animation_delay (read_duration_list read_time t))
   | Moz_animation_duration ->
-      Some (v Moz_animation_duration (read_duration_list read_duration t))
+      Some
+        (v Moz_animation_duration
+           (read_duration_list read_animation_duration t))
   | Moz_animation_direction ->
       Some (v Moz_animation_direction (read_animation_direction t))
   | Moz_animation_iteration_count ->
@@ -1924,7 +1935,7 @@ let read_interaction_value : type a.
       Some (v Text_combine_upright (read_text_combine_upright t))
   | Animation_name -> Some (v Animation_name (read_animation_name t))
   | Animation_duration ->
-      Some (v Animation_duration (read_duration_list read_duration t))
+      Some (v Animation_duration (read_duration_list read_animation_duration t))
   | Animation_timing_function ->
       Some (v Animation_timing_function (read_timing_function_list t))
   | Animation_delay -> Some (v Animation_delay (read_duration_list read_time t))
