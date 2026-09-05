@@ -202,6 +202,11 @@ entry points both moved.
 
 ### Parsing
 
+- `font-variant` has a typed value and contracts from its seven longhands. It
+  was carried as opaque text, so `small-caps unicase` and `jis78 jis83` parsed
+  where Chrome refuses them, and the seven longhands written out never met the
+  shorthand under `--diff=canonical` (#964)
+
 - `font-variant-alternates` has a typed value. It was carried as opaque text,
   so `swash(fancy) swash(x)`, `swash(inherit)` and a bare ident all parsed
   where Chrome refuses them, and `Css.Properties.Font_variant_alternates` now

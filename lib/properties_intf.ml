@@ -2136,6 +2136,31 @@ type font_variant_numeric =
     }
   | Var of font_variant_numeric var
 
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] is [normal | none | [ <ligatures>
+   || <alternates> || <caps> || <numeric> || <east-asian> || <position> ||
+   <emoji> ]] over its seven longhands, each written at most once. A slot the
+   value leaves out is reset to that longhand's initial. *)
+type font_variant_shorthand = {
+  ligatures : font_variant_ligature list;
+  alternates : font_variant_alternates_item list;
+  caps : font_variant_caps option;
+  numeric : font_variant_numeric_token list;
+  east_asian : east_asian_feature list;
+  position : font_variant_position option;
+  emoji : font_variant_emoji option;
+}
+
+type font_variant =
+  | Normal
+  | None
+  | Shorthand of font_variant_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant var
+
 type font_feature_value = On | Off | Index of int
 type font_feature_setting = { tag : string; value : font_feature_value option }
 
@@ -5187,6 +5212,7 @@ type 'a property =
   | Numeric : font_variant_numeric property
   | Font_variant_position : font_variant_position property
   | Font_variant_alternates : font_variant_alternates property
+  | Font_variant : font_variant property
   | East_asian : font_variant_east_asian property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property

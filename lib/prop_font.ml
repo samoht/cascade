@@ -593,23 +593,26 @@ let read_east_asian_feature t =
     ]
     t
 
+(* sec. 6.5 gives the property one variant option, one width option and [ruby],
+   each at most once. *)
+let invalid_east_asian_feature_set features =
+  let variant_count = ref 0 in
+  let width_count = ref 0 in
+  let seen = ref [] in
+  List.exists
+    (fun feature ->
+      let duplicate = List.mem feature !seen in
+      seen := feature :: !seen;
+      (match feature with
+      | Jis78 | Jis83 | Jis90 | Jis04 | Simplified | Traditional ->
+          incr variant_count
+      | Full_width | Proportional_width -> incr width_count
+      | Ruby -> ());
+      duplicate || !variant_count > 1 || !width_count > 1)
+    features
+
 let rec read_font_variant_east_asian t : font_variant_east_asian =
-  let invalid_feature_set features =
-    let variant_count = ref 0 in
-    let width_count = ref 0 in
-    let seen = ref [] in
-    List.exists
-      (fun feature ->
-        let duplicate = List.mem feature !seen in
-        seen := feature :: !seen;
-        (match feature with
-        | Jis78 | Jis83 | Jis90 | Jis04 | Simplified | Traditional ->
-            incr variant_count
-        | Full_width | Proportional_width -> incr width_count
-        | Ruby -> ());
-        duplicate || !variant_count > 1 || !width_count > 1)
-      features
-  in
+  let invalid_feature_set = invalid_east_asian_feature_set in
   Cursor.enum_or_var "font-variant-east-asian"
     [
       ("normal", (Normal : font_variant_east_asian));
@@ -2007,6 +2010,156 @@ let rec read_font_variant_numeric t : font_variant_numeric =
     ]
     ~var:(fun t -> Var (read_var read_font_variant_numeric t))
     ~default:read_font_variant_numeric_tokens t
+
+(* CSS Fonts 4 (ED) sec. 6.10: the shorthand's components are the seven
+   longhands' own values, so each component reads through its longhand's item
+   reader and lands in that longhand's slot. [||] takes each option at most
+   once, which the slot being filled already says. *)
+let empty_font_variant_shorthand : font_variant_shorthand =
+  {
+    ligatures = [];
+    alternates = [];
+    caps = Option.none;
+    numeric = [];
+    east_asian = [];
+    position = Option.none;
+    emoji = Option.none;
+  }
+
+let font_variant_is_empty (v : font_variant_shorthand) =
+  v.ligatures = [] && v.alternates = [] && Option.is_none v.caps
+  && v.numeric = [] && v.east_asian = [] && Option.is_none v.position
+  && Option.is_none v.emoji
+
+let read_font_variant_caps_component t : font_variant_caps =
+  Cursor.enum "font-variant caps"
+    [
+      ("small-caps", (Small_caps : font_variant_caps));
+      ("all-small-caps", All_small_caps);
+      ("petite-caps", Petite_caps);
+      ("all-petite-caps", All_petite_caps);
+      ("unicase", Unicase);
+      ("titling-caps", Titling_caps);
+    ]
+    t
+
+let read_font_variant_position_component t : font_variant_position =
+  Cursor.enum "font-variant position"
+    [ ("sub", (Sub : font_variant_position)); ("super", Super) ]
+    t
+
+let read_font_variant_emoji_component t : font_variant_emoji =
+  Cursor.enum "font-variant emoji"
+    [
+      ("text", (Text : font_variant_emoji));
+      ("emoji", Emoji);
+      ("unicode", Unicode);
+    ]
+    t
+
+let font_variant_component acc t =
+  let once what = function
+    | Option.Some _ -> Cursor.err_invalid t what
+    | Option.None -> ()
+  in
+  Cursor.one_of
+    [
+      (fun t ->
+        let ligature = read_font_variant_ligature t in
+        let ligatures = acc.ligatures @ [ ligature ] in
+        if has_duplicate_ligature_slot ligatures then
+          Cursor.err_invalid t "font-variant duplicate ligature";
+        { acc with ligatures });
+      (fun t ->
+        let item = read_font_variant_alternates_item t in
+        let alternates = acc.alternates @ [ item ] in
+        let tags = List.map font_variant_alternates_tag alternates in
+        if List.length (List.sort_uniq compare tags) <> List.length tags then
+          Cursor.err_invalid t "font-variant duplicate alternate";
+        { acc with alternates });
+      (fun t ->
+        let caps = read_font_variant_caps_component t in
+        once "font-variant duplicate caps" acc.caps;
+        { acc with caps = Some caps });
+      (fun t ->
+        let token = read_font_variant_numeric_token t in
+        let numeric = acc.numeric @ [ token ] in
+        reject_duplicate_numeric_families t numeric;
+        { acc with numeric });
+      (fun t ->
+        let feature = read_east_asian_feature t in
+        let east_asian = acc.east_asian @ [ feature ] in
+        if invalid_east_asian_feature_set east_asian then
+          Cursor.err_invalid t "font-variant duplicate east-asian";
+        { acc with east_asian });
+      (fun t ->
+        let position = read_font_variant_position_component t in
+        once "font-variant duplicate position" acc.position;
+        { acc with position = Some position });
+      (fun t ->
+        let emoji = read_font_variant_emoji_component t in
+        once "font-variant duplicate emoji" acc.emoji;
+        { acc with emoji = Some emoji });
+    ]
+    t
+
+let read_font_variant_components t : font_variant =
+  let rec loop acc =
+    Cursor.ws t;
+    if Cursor.is_done t then acc
+    else
+      match Cursor.option (font_variant_component acc) t with
+      | Some acc -> loop acc
+      | Option.None -> acc
+  in
+  let value = loop empty_font_variant_shorthand in
+  if font_variant_is_empty value then
+    Cursor.err_expected t "font-variant component";
+  Shorthand value
+
+let rec read_font_variant t : font_variant =
+  Cursor.enum_or_var "font-variant"
+    [
+      ("normal", (Normal : font_variant));
+      ("none", None);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_font_variant t))
+    ~default:read_font_variant_components t
+
+let pp_font_variant_shorthand ctx (v : font_variant_shorthand) =
+  let first = ref true in
+  let sep () = if !first then first := false else Pp.space ctx () in
+  let item pp x =
+    sep ();
+    pp ctx x
+  in
+  List.iter (item pp_font_variant_ligature) v.ligatures;
+  List.iter (item pp_font_variant_alternates_item) v.alternates;
+  Option.iter (item pp_font_variant_caps) v.caps;
+  List.iter (item pp_font_variant_numeric_token) v.numeric;
+  List.iter (item pp_east_asian_feature) v.east_asian;
+  Option.iter (item pp_font_variant_position) v.position;
+  Option.iter (item pp_font_variant_emoji) v.emoji;
+  (* Every slot empty declares the seven initials, which is what [normal]
+     declares; the empty string is not a value any parser reads back. *)
+  if !first then Pp.string ctx "normal"
+
+let rec pp_font_variant : font_variant Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | None -> Pp.string ctx "none"
+  | Shorthand v -> pp_font_variant_shorthand ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_font_variant ctx v
 
 let read_opentype_tag t =
   let tag = Cursor.string t in

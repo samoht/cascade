@@ -1407,6 +1407,9 @@ let vars_of_initial_letter (value : Properties.initial_letter) =
 let vars_of_white_space (value : Properties.white_space) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_font_variant (value : Properties.font_variant) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_font_variant_alternates (value : Properties.font_variant_alternates)
     =
   match value with Var v -> [ V v ] | _ -> []
@@ -2559,6 +2562,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | White_space, value -> vars_of_white_space value
   | White_space_collapse, value -> vars_of_white_space_collapse value
   | Font_variant_alternates, value -> vars_of_font_variant_alternates value
+  | Font_variant, value -> vars_of_font_variant value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
   | Z_index, value -> vars_of_z_index value

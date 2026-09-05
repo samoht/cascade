@@ -211,6 +211,15 @@ let covers_longhand : type a b.
   | Font, Font_size_adjust -> true
   | Font, Font_kerning -> true
   | Font, Font_optical_sizing -> true
+  | Font, Font_variant_alternates -> true
+  (* CSS Fonts 4 sec. 6.10: [font-variant] resets its seven longhands. *)
+  | Font_variant, Font_variant_ligatures -> true
+  | Font_variant, Font_variant_alternates -> true
+  | Font_variant, Caps -> true
+  | Font_variant, Numeric -> true
+  | Font_variant, East_asian -> true
+  | Font_variant, Font_variant_position -> true
+  | Font_variant, Font_variant_emoji -> true
   (* Motion Path 1 sec. 2.6: [offset] resets the five motion path longhands. *)
   | Offset, Offset_position -> true
   | Offset, Offset_path -> true
@@ -738,6 +747,18 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "font-optical-sizing";
         key "font-language-override";
         key "font-palette";
+        key "font-variant-alternates";
+      ]
+  (* CSS Fonts 4 sec. 6.10. *)
+  | Font_variant ->
+      [
+        key "font-variant-ligatures";
+        key "font-variant-alternates";
+        key "font-variant-caps";
+        key "font-variant-numeric";
+        key "font-variant-east-asian";
+        key "font-variant-position";
+        key "font-variant-emoji";
       ]
   (* Motion Path 1 sec. 2.6. *)
   | Offset ->
@@ -755,6 +776,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Line_height -> [ key "line-height" ]
   | Font_family -> [ key "font-family" ]
   | Font_variant_ligatures -> [ key "font-variant-ligatures" ]
+  | Font_variant_alternates -> [ key "font-variant-alternates" ]
   | Caps -> [ key "font-variant-caps" ]
   | Numeric -> [ key "font-variant-numeric" ]
   | Font_variant_position -> [ key "font-variant-position" ]
@@ -5434,6 +5456,157 @@ let compose_grid_via_index idx =
   compose_run_via_index idx ~try_compose:(fun idx i ->
       Option.map (fun d -> (d, 6)) (try_compose_grid_at idx i))
 
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, so the
+   run naming the same declaration is all seven. A longhand at [normal] is the
+   slot the shorthand leaves out; a CSS-wide keyword or a [var()] is the whole
+   declaration value and no shorthand component. *)
+(* [`None] is the [font-variant: none] form, which the ligatures longhand alone
+   can ask for and which carries no other component. *)
+let fv_ligatures_of : declaration -> [ `Slot of _ | `None ] option = function
+  | Declaration { property = Font_variant_ligatures; value = Normal; _ } ->
+      Some (`Slot [])
+  | Declaration { property = Font_variant_ligatures; value = None; _ } ->
+      Some `None
+  | Declaration { property = Font_variant_ligatures; value = Ligatures l; _ } ->
+      Some (`Slot l)
+  | _ -> None
+
+let fv_alternates_of : declaration -> _ list option = function
+  | Declaration { property = Font_variant_alternates; value = Normal; _ } ->
+      Some []
+  | Declaration { property = Font_variant_alternates; value = Alternates l; _ }
+    ->
+      Some l
+  | _ -> None
+
+let fv_caps_of : declaration -> Properties.font_variant_caps option option =
+  function
+  | Declaration { property = Caps; value = Normal; _ } -> Some Option.None
+  | Declaration
+      {
+        property = Caps;
+        value =
+          ( Small_caps | All_small_caps | Petite_caps | All_petite_caps
+          | Unicase | Titling_caps ) as caps;
+        _;
+      } ->
+      Some (Some caps)
+  | _ -> None
+
+let fv_numeric_of : declaration -> _ list option = function
+  | Declaration { property = Numeric; value = Normal; _ } -> Some []
+  | Declaration { property = Numeric; value = Tokens tokens; _ } -> Some tokens
+  | Declaration
+      {
+        property = Numeric;
+        value =
+          Composed
+            {
+              ordinal;
+              slashed_zero;
+              numeric_figure;
+              numeric_spacing;
+              numeric_fraction;
+            };
+        _;
+      } ->
+      Some
+        (List.filter_map Fun.id
+           [
+             numeric_figure;
+             numeric_spacing;
+             numeric_fraction;
+             ordinal;
+             slashed_zero;
+           ])
+  | _ -> None
+
+let fv_east_asian_of : declaration -> _ list option = function
+  | Declaration { property = East_asian; value = Normal; _ } -> Some []
+  | Declaration { property = East_asian; value = Features f; _ } -> Some f
+  | _ -> None
+
+let fv_position_of :
+    declaration -> Properties.font_variant_position option option = function
+  | Declaration { property = Font_variant_position; value = Normal; _ } ->
+      Some Option.None
+  | Declaration
+      { property = Font_variant_position; value = (Sub | Super) as p; _ } ->
+      Some (Some p)
+  | _ -> None
+
+let fv_emoji_of : declaration -> Properties.font_variant_emoji option option =
+  function
+  | Declaration { property = Font_variant_emoji; value = Normal; _ } ->
+      Some Option.None
+  | Declaration
+      {
+        property = Font_variant_emoji;
+        value = (Text | Emoji | Unicode) as e;
+        _;
+      } ->
+      Some (Some e)
+  | _ -> None
+
+let font_variant_of_run raw : Properties.font_variant option =
+  let ligatures = List.find_map fv_ligatures_of raw in
+  let alternates = List.find_map fv_alternates_of raw in
+  let caps = List.find_map fv_caps_of raw in
+  let numeric = List.find_map fv_numeric_of raw in
+  let east_asian = List.find_map fv_east_asian_of raw in
+  let position = List.find_map fv_position_of raw in
+  let emoji = List.find_map fv_emoji_of raw in
+  match (ligatures, alternates, caps, numeric, east_asian, position, emoji) with
+  | ( Some ligatures,
+      Some alternates,
+      Some caps,
+      Some numeric,
+      Some east_asian,
+      Some position,
+      Some emoji ) -> (
+      let others_empty =
+        alternates = [] && Option.is_none caps && numeric = []
+        && east_asian = [] && Option.is_none position && Option.is_none emoji
+      in
+      match ligatures with
+      | `None when others_empty -> Some (None : Properties.font_variant)
+      | `None -> Option.None
+      | `Slot ligatures ->
+          if ligatures = [] && others_empty then Some Normal
+          else
+            Some
+              (Shorthand
+                 {
+                   ligatures;
+                   alternates;
+                   caps;
+                   numeric;
+                   east_asian;
+                   position;
+                   emoji;
+                 }))
+  | _ -> Option.None
+
+let try_compose_font_variant_at idx i =
+  let n = Rule_index.length idx in
+  if i + 6 >= n then None
+  else
+    let positions = List.init 7 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      (* Each slot reader answers for one longhand, so a run missing one or
+         naming one twice leaves a slot empty and does not compose. *)
+      if not (same_importance raw) then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Font_variant)
+          (font_variant_of_run raw)
+
+let compose_font_variant_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 7)) (try_compose_font_variant_at idx i))
+
 let try_compose_transition_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -6267,6 +6440,7 @@ let compose_index_group_b ~held kept =
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
   compose_columns_via_index idx;
+  compose_font_variant_via_index idx;
   compose_grid_via_index idx;
   compose_grid_template_via_index idx;
   compose_border_via_index

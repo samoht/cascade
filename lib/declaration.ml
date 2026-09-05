@@ -1279,6 +1279,7 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
       Some (v White_space_collapse (read_white_space_collapse t))
   | Font_variant_alternates ->
       Some (v Font_variant_alternates (read_font_variant_alternates t))
+  | Font_variant -> Some (v Font_variant (read_font_variant t))
   | Text_decoration -> Some (v Text_decoration (read_text_decoration t))
   | Text_decoration_line ->
       Some (v Text_decoration_line (read_text_decoration_lines t))
