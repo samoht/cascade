@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- A relative colour reads its channels whether or not a space separates them,
+  so `rgb(from red 20%g b/alpha)` parses and cascade reads back the minified
+  form it writes (#899).
+
 - Minified `@scope to (...)` keeps the space before `to`, which it needs to
   read back as `@scope` rather than as an at-rule named `@scopeto` (#898).
 

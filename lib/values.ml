@@ -6686,6 +6686,11 @@ let normalize_relative_color_tail tail =
   loop 0 false;
   Buffer.contents buf
 
+(* CSS Color 5 sec. 4.1 gives each channel one component value, so the channels
+   are the components before the alpha slash that are not whitespace. Splitting
+   on whitespace instead would miscount the spellings that need no separator:
+   [20%g] is a percentage and an ident, [calc(...)10] a function and a
+   number. *)
 let relative_color_channel_count cvs =
   let is_ws = function
     | Component.Preserved { Token.kind = Whitespace; _ } -> true
@@ -6695,14 +6700,13 @@ let relative_color_channel_count cvs =
     | Component.Preserved { Token.kind = Delim "/"; _ } -> true
     | _ -> false
   in
-  let rec loop count in_channel = function
-    | [] -> if in_channel then count + 1 else count
-    | cv :: _ when is_alpha_sep cv -> if in_channel then count + 1 else count
-    | cv :: rest when is_ws cv ->
-        loop (if in_channel then count + 1 else count) false rest
-    | _ :: rest -> loop count true rest
+  let rec loop count = function
+    | [] -> count
+    | cv :: _ when is_alpha_sep cv -> count
+    | cv :: rest when is_ws cv -> loop count rest
+    | _ :: rest -> loop (count + 1) rest
   in
-  loop 0 false cvs
+  loop 0 cvs
 
 let relative_color_has_empty_alpha cvs =
   let is_ws = function
