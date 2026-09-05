@@ -6,7 +6,11 @@ let parser branch input = { branch; input }
 
 let token_rows =
   [
-    token "unicode range wildcard" "U+4??" [ "<unicode-range U+400-4FF>" ];
+    (* CSS Syntax 3 sec. 4.3.1 leaves "unicode ranges allowed" unset outside the
+       value of a unicode-range descriptor (sec. 4.3.14), so this is what the
+       tokenizer gives everywhere else. *)
+    token "unicode range wildcard" "U+4??"
+      [ "<ident U>"; "<number +4>"; "<delim '?'>"; "<delim '?'>" ];
     token "bad string newline" "\"oops\n" [ "<bad-string>"; "<ws>" ];
     token "bad url whitespace" "url(a b) foo"
       [ "<bad-url>"; "<ws>"; "<ident foo>" ];

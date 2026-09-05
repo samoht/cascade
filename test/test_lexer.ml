@@ -2,8 +2,8 @@
 
 open Cascade
 
-let tokens_of ?enforce_spec css =
-  let lexer = Lexer.of_string ?enforce_spec css in
+let tokens_of ?enforce_spec ?unicode_ranges css =
+  let lexer = Lexer.of_string ?enforce_spec ?unicode_ranges css in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
@@ -15,9 +15,14 @@ let tokens_of ?enforce_spec css =
 let pp_tokens kinds =
   String.concat " " (List.map (Css.Pp.to_string Token.pp_kind) kinds)
 
-let check ?enforce_spec input expected_summary =
-  let got = pp_tokens (tokens_of ?enforce_spec input) in
+let check ?enforce_spec ?unicode_ranges input expected_summary =
+  let got = pp_tokens (tokens_of ?enforce_spec ?unicode_ranges input) in
   Alcotest.(check string) (Fmt.str "tokenize %S" input) expected_summary got
+
+(* CSS Syntax 3 sec. 4.3.14: the tokenizer produces a unicode-range only for the
+   value of a unicode-range descriptor, so these vectors ask for it. *)
+let check_range input expected_summary =
+  check ~unicode_ranges:true input expected_summary
 
 let check_first_hash input expected_value expected_flag =
   match tokens_of input with
@@ -72,15 +77,15 @@ let spec_token_railroad_diagrams () =
 
 let spec_unicode_range_tokens () =
   (* CSS Syntax Level 3 sections 4.1, 4.3.11, and 4.3.14. *)
-  check "U+26" "<unicode-range U+26>";
-  check "u+0-7f" "<unicode-range U+0-7F>";
-  check "U+0025-00FF" "<unicode-range U+25-FF>";
-  check "U+4??" "<unicode-range U+400-4FF>";
-  check "U+10????" "<unicode-range U+100000-10FFFF>";
-  check "U+??????" "<unicode-range U+0-FFFFFF>";
-  check "U+1234567" "<unicode-range U+123456> <number 7>";
-  check "U+12??-f" "<unicode-range U+1200-12FF> <ident -f>";
-  check "u+???????" "<unicode-range U+0-FFFFFF> <delim '?'>";
+  check_range "U+26" "<unicode-range U+26>";
+  check_range "u+0-7f" "<unicode-range U+0-7F>";
+  check_range "U+0025-00FF" "<unicode-range U+25-FF>";
+  check_range "U+4??" "<unicode-range U+400-4FF>";
+  check_range "U+10????" "<unicode-range U+100000-10FFFF>";
+  check_range "U+??????" "<unicode-range U+0-FFFFFF>";
+  check_range "U+1234567" "<unicode-range U+123456> <number 7>";
+  check_range "U+12??-f" "<unicode-range U+1200-12FF> <ident -f>";
+  check_range "u+???????" "<unicode-range U+0-FFFFFF> <delim '?'>";
   check "u+-1" "<ident u> <delim '+'> <number -1>";
   check "u+" "<ident u> <delim '+'>";
   check "u+g" "<ident u> <delim '+'> <ident g>"
@@ -261,7 +266,7 @@ let spec12_tokenization_checklist () =
   check "+10 -2.5 1e2 1e+2 1e-2 4e5px"
     "<number +10> <ws> <number -2.5> <ws> <number 1e2> <ws> <number 1e+2> <ws> \
      <number 1e-2> <ws> <dimension 4e5px>";
-  check "U+26 u+a" "<unicode-range U+26> <ws> <unicode-range U+A>"
+  check_range "U+26 u+a" "<unicode-range U+26> <ws> <unicode-range U+A>"
 
 let spec_token_boundary_edges () =
   (* CSS Syntax Level 3 section 9 serialization constraints are driven by
@@ -304,7 +309,7 @@ let spec_wpt_url_unicode_edges () =
   (* WPT url-whitespace-consumption and inclusive-ranges vectors. *)
   check "url(  \tfoo\\ bar\n )" "<url foo bar>";
   check "url(foo)/**/url(bar)" "<url foo> <url bar>";
-  check "U+000000-10FFFF U+10FFFF U+110000"
+  check_range "U+000000-10FFFF U+10FFFF U+110000"
     "<unicode-range U+0-10FFFF> <ws> <unicode-range U+10FFFF> <ws> \
      <unicode-range U+110000>";
   check "a<!--b-->c" "<ident a> <CDO> <ident b--> <delim '>'> <ident c>"

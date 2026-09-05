@@ -40,8 +40,11 @@ let check_font_style =
 let check_font_display =
   check_value_cursor "font-display" read_font_display pp_font_display
 
+(* CSS Syntax 3 sec. 5.5.11 is the one caller that asks the tokenizer for
+   unicode ranges, so these vectors read as that descriptor's value does. *)
 let check_unicode_range =
-  check_value_cursor "unicode-range" read_unicode_range pp_unicode_range
+  check_value_cursor ~unicode_ranges:true "unicode-range" read_unicode_range
+    pp_unicode_range
 
 let check_text_align =
   check_value_cursor "text-align" read_text_align pp_text_align

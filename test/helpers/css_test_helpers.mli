@@ -52,6 +52,7 @@ val check_error : (Cursor.t -> 'a) -> string -> string -> unit
     [expected]. Use to pin down error shape exactly. *)
 
 val check_value_cursor :
+  ?unicode_ranges:bool ->
   string ->
   (Cursor.t -> 'a) ->
   'a Css.Pp.t ->

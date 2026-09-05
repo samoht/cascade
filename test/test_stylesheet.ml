@@ -4233,6 +4233,28 @@ let nesting_invalid_rule_recovery () =
     ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
     ".a{color:red;.c{color:#00f}}" 1
 
+(* CSS Syntax 3 sec. 4.3.1 consumes a unicode-range token only while "unicode
+   ranges allowed" is set, and sec. 4.3.14 says the one caller that sets it is
+   the value of a unicode-range descriptor. Everywhere else [u+a] is an ident, a
+   delim and an ident, which the selector grammar reads as a sibling
+   combination. *)
+let unicode_range_only_in_its_descriptor () =
+  check_stylesheet ~expected:"u+a{color:red}" "u+a { color: red }";
+  check_stylesheet ~expected:"a{color:red}u+a{color:blue}"
+    "a { color: red } u+a { color: blue }";
+  check_stylesheet ~expected:"u+a b{color:red}" "u+a b { color: red }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+0-7F}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+0-7F }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+4??}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+4?? }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:X;src:url(a.woff2);unicode-range:U+26,U+0-7F}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+26, \
+     U+0-7F }"
+
 (* A nested @layer holds nesting content: bare declarations belong to the parent
    selector, exactly as in @media/@supports. Blink and WebKit both read
    [.a{@layer n{color:red}}] as a layer block wrapping nested declarations. *)
@@ -9313,6 +9335,9 @@ let additional_tests =
     ("nesting deeply nested", `Quick, test_nesting_deep);
     ("nesting with declarations", `Quick, test_nesting_with_declarations);
     ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
+    ( "unicode range only in its descriptor",
+      `Quick,
+      unicode_range_only_in_its_descriptor );
     ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
     ( "spec nesting selector and conditional edges",
       `Quick,
