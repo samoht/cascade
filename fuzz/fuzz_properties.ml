@@ -712,13 +712,21 @@ let invalid_property_mutation
        token/substitution layer instead. *)
     pick [ "var()"; value ^ " attr()"; value ^ " env()" ] buf 4
   else
+    (* A negative is invalid as a whole value, which does not make it invalid
+       after a positive one: in a && or || grammar it is often exactly the
+       component the positive was missing, as [text-indent: 10% hanging] is. CSS
+       Cascade 5 sec. 7.3 gives a trailing mutation that holds for every
+       property instead, since a CSS-wide keyword is the whole value or
+       nothing. *)
     match byte_at buf 4 mod 6 with
     | 0 -> pick row.negatives buf 5
     | 1 -> "initial " ^ value
     | 2 -> "inherit " ^ value
     | 3 -> "var()"
     | 4 -> value ^ " )"
-    | _ -> value ^ " " ^ pick row.negatives buf 6
+    | _ ->
+        value ^ " "
+        ^ pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 6
 
 let var_token_stream_fallback buf =
   pick
