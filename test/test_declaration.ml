@@ -2082,8 +2082,17 @@ let animations_state () =
 let animation_drained_shorthand () =
   check_declaration ~expected:"animation:none" ~optimized:"animation:none"
     "animation: none none";
-  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+  (* CSS Animations 2 sec. 4.1 makes auto the initial duration, so an explicit
+     0s is a value of its own: dropping it says auto, which Chrome resolves to a
+     different animation-duration. The delay's initial is still 0s. *)
+  check_declaration ~expected:"animation:0s" ~optimized:"animation:0s"
     "animation: 0s ease 0s 1 normal none running none";
+  check_declaration ~expected:"animation:spin 0s" "animation: spin 0s";
+  check_declaration ~expected:"animation:spin 0s linear"
+    "animation: spin 0s linear";
+  check_declaration ~expected:"animation:spin" "animation: spin";
+  check_declaration ~expected:"animation:spin" "animation: spin auto";
+  check_declaration ~expected:"animation:spin 1s" "animation: spin 1s 0s";
   (* Controls: the drop still runs wherever a slot outlives it. *)
   check_declaration ~expected:"animation:1s" ~optimized:"animation:1s"
     "animation: 1s none";
