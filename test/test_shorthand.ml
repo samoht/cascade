@@ -630,6 +630,24 @@ let test_line_shorthand_initial_slot () =
   sheet_optimizes_to ~into:".x{border-left:none}"
     ".x{border-left-width:initial;border-left-style:initial;border-left-color:initial}"
 
+(* CSS Logical 1 sec. 4.6: [border-block] and [border-inline] set the width,
+   style and colour of both sides of their axis, which is what the three axis
+   shorthands set between them, so a single-valued run of the three contracts
+   the way [border-width] / [border-style] / [border-color] contract into
+   [border]. *)
+let test_logical_border_whole_composes () =
+  sheet_optimizes_to ~into:".x{border-block:1px solid red}"
+    ".x{border-block-width:1px;border-block-style:solid;border-block-color:red}";
+  sheet_optimizes_to ~into:".x{border-inline:1px solid red}"
+    ".x{border-inline-start-width:1px;border-inline-end-width:1px;border-inline-start-style:solid;border-inline-end-style:solid;border-inline-start-color:red;border-inline-end-color:red}";
+  (* An axis naming two different sides has no slot in the shorthand. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-block-width:1px \
+       2px;border-block-style:solid;border-block-color:red}"
+    ".x{border-block-width:1px \
+     2px;border-block-style:solid;border-block-color:red}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1217,6 +1235,8 @@ let suite =
         test_line_shorthand_composes;
       Alcotest.test_case "line shorthand initial slot" `Quick
         test_line_shorthand_initial_slot;
+      Alcotest.test_case "logical border whole composes" `Quick
+        test_logical_border_whole_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
