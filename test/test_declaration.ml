@@ -4592,6 +4592,19 @@ let spec_remaining_prop_vectors () =
         "font-variant-numeric:oldstyle-nums tabular-nums stacked-fractions \
          ordinal slashed-zero" );
       ("font-variant-position: sub", "font-variant-position:sub");
+      (* CSS Fonts 4 (ED) sec. 6.6. Chrome 146 reads each of these and refuses a
+         repeated component, a reserved feature name and a bare ident. *)
+      ("font-variant-alternates: normal", "font-variant-alternates:normal");
+      ( "font-variant-alternates: historical-forms",
+        "font-variant-alternates:historical-forms" );
+      ( "font-variant-alternates: swash(fancy)",
+        "font-variant-alternates:swash(fancy)" );
+      ( "font-variant-alternates: styleset(a, b) historical-forms",
+        "font-variant-alternates:styleset(a,b) historical-forms" );
+      ( "font-variant-alternates: character-variant(a, b) annotation(c)",
+        "font-variant-alternates:character-variant(a,b) annotation(c)" );
+      ( "font-variant-alternates: stylistic(a) ornaments(b)",
+        "font-variant-alternates:stylistic(a) ornaments(b)" );
       ("font-variant-east-asian: ruby", "font-variant-east-asian:ruby");
       ( "font-variant-east-asian: traditional proportional-width ruby",
         "font-variant-east-asian:traditional proportional-width ruby" );
@@ -4727,6 +4740,11 @@ let spec_remaining_prop_vectors () =
       "font-variant-numeric: normal tabular-nums";
       "font-variant-numeric: lining-nums oldstyle-nums";
       "font-variant-position: sub super";
+      "font-variant-alternates: swash(fancy) swash(x)";
+      "font-variant-alternates: swash(inherit)";
+      "font-variant-alternates: swash(default)";
+      "font-variant-alternates: bogus";
+      "font-variant-alternates: normal historical-forms";
       "font-variant-east-asian: jis78 jis83";
       "font-variant-east-asian: normal ruby";
       "object-view-box: inset()";
