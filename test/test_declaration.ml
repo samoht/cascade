@@ -4450,6 +4450,8 @@ let spec_remaining_prop_vectors () =
       "position-visibility: anchors-visible always";
       "accent-color: auto red";
       "color-scheme: only only";
+      "color-scheme: only light only";
+      "color-scheme: only dark only";
       "forced-color-adjust: auto none";
       "print-color-adjust: exact economy";
       "isolation: isolate auto";
