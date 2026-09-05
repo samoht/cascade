@@ -2337,6 +2337,15 @@ let misc () =
 let list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
+  (* CSS Backgrounds 3 sec. 6.1: <shadow> is [<color>? && [<length>{2,4}] &&
+     inset?], so the two offsets alone are a whole shadow whatever they hold,
+     and one length is not. *)
+  check_declaration ~expected:"box-shadow:0 0" "box-shadow: 0 0";
+  check_declaration ~expected:"box-shadow:inset 0 0" "box-shadow: inset 0 0";
+  check_declaration ~expected:"text-shadow:0 0" "text-shadow: 0 0";
+  neg_cursor read_declaration "box-shadow: 0";
+  neg_cursor read_declaration "text-shadow: 1px";
+  neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
   check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
     ~optimized:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
