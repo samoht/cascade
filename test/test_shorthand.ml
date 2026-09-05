@@ -1150,7 +1150,20 @@ let test_drop_redundant_border_longhand () =
   decl_optimizes_to ~into:"border:1px solid red;border-color:#00f"
     "border:1px solid red;border-color:blue";
   decl_optimizes_to ~into:"border:1px solid red;border-color:red green"
-    "border:1px solid red;border-color:red green"
+    "border:1px solid red;border-color:red green";
+  (* CSS Backgrounds 3 (ED) sec. 3.4 resets [border-image] too, so an
+     all-initial one after the shorthand says what the shorthand said. A
+     picture, or a stronger importance, is a real declaration. *)
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border:1px solid red;border-image:none";
+  decl_optimizes_to ~into:"border:1px solid red;border-image:url(a.png)"
+    "border:1px solid red;border-image:url(a.png)";
+  decl_optimizes_to ~into:"border:1px solid red;border-image:none!important"
+    "border:1px solid red;border-image:none!important";
+  (* Composition writes the shorthand the input never carried, and the
+     border-image run it leaves behind is redundant against it. *)
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:1px;border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:solid;border-top-color:red;border-right-color:red;border-bottom-color:red;border-left-color:red;border-image-source:none;border-image-slice:100%;border-image-width:1;border-image-outset:0;border-image-repeat:stretch"
 
 let test_drop_redundant_font_longhand () =
   (* [font] resets style/weight/stretch/line-height to normal; a later longhand
