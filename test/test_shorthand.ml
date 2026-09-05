@@ -563,6 +563,35 @@ let test_scroll_axis_pair_composes () =
       ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
     ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
 
+(* CSS Logical 1 sec. 4.3 and 4.4: [border-block-*] and [border-inline-*] take
+   one or two values of the side longhand's own type, so the start and end
+   longhands compose into the axis shorthand the way the length axes do. Without
+   it the canonical comparator cannot equate the shorthand with its
+   longhands. *)
+let test_border_axis_pair_composes () =
+  sheet_optimizes_to ~into:".x{border-inline-width:2px 1px}"
+    ".x{border-inline-start-width:2px;border-inline-end-width:1px}";
+  sheet_optimizes_to ~into:".x{border-block-width:2px}"
+    ".x{border-block-start-width:2px;border-block-end-width:2px}";
+  sheet_optimizes_to ~into:".x{border-inline-style:solid dashed}"
+    ".x{border-inline-start-style:solid;border-inline-end-style:dashed}";
+  sheet_optimizes_to ~into:".x{border-block-style:double}"
+    ".x{border-block-start-style:double;border-block-end-style:double}";
+  sheet_optimizes_to ~into:".x{border-inline-color:red currentColor}"
+    ".x{border-inline-start-color:red;border-inline-end-color:currentcolor}";
+  sheet_optimizes_to ~into:".x{border-block-color:#0f0}"
+    ".x{border-block-start-color:#0f0;border-block-end-color:#0f0}";
+  (* A CSS-wide keyword is the whole value or nothing, so a mixed pair stays two
+     declarations. *)
+  sheet_optimizes_to
+    ~into:".x{border-inline-start-width:inherit;border-inline-end-width:thin}"
+    ".x{border-inline-start-width:inherit;border-inline-end-width:thin}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-block-start-color:red;border-block-end-color:#00f!important}"
+    ".x{border-block-start-color:red;border-block-end-color:blue!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1144,6 +1173,8 @@ let suite =
         test_animation_contraction_covers_other_rules;
       Alcotest.test_case "scroll axis pair composes" `Quick
         test_scroll_axis_pair_composes;
+      Alcotest.test_case "border axis pair composes" `Quick
+        test_border_axis_pair_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
