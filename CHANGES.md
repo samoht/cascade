@@ -555,6 +555,9 @@ entry points both moved.
 - `--minify` contracts `overscroll-behavior` and `contain-intrinsic-size` from
   their x and y longhands, as it already did for `overflow` (#921)
 
+- `--minify` contracts `grid-row`, `grid-column` and `grid-area` from the line
+  longhands they name (#922)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

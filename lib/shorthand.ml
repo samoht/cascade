@@ -1868,6 +1868,39 @@ type box_outcome =
 (* Every 4-side family, each paired with the guard its value type needs. The
    same-importance forms come first: a mixed-importance split re-states the
    important sides, so it is the fallback. *)
+(* CSS Grid 2 sec. 8.4: [grid-area] names four lines, in the order row-start,
+   column-start, row-end, column-end. They are four distinct slots of one
+   contiguous run, which is what the box walk tests, so the four [box_side] tags
+   stand for the four lines in that order. A substituted line can stand for a
+   whole [<start> / <end>], so only a resolved one takes part. *)
+let foldable_grid_line : Properties.grid_line -> bool = function
+  | Var _ -> false
+  | _ -> true
+
+let extract_grid_area_side :
+    declaration -> (box_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_row_start; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Grid_column_start; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Grid_row_end; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Grid_column_end; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let build_grid_area ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Grid_area
+       (Lines
+          {
+            row_start = top;
+            column_start = right;
+            row_end = bottom;
+            column_end = left;
+          }
+         : Properties.grid_area))
+
 let box_composers ~ctx idx =
   let try_same foldable extract build i =
     Option.map
@@ -1894,6 +1927,7 @@ let box_composers ~ctx idx =
     try_same width border_width_of build_border_width_box;
     try_same style border_style_of build_border_style_box;
     try_same color border_color_of build_border_color_box;
+    try_same foldable_grid_line extract_grid_area_side build_grid_area;
     try_split strict extract_margin_side build_margin_box;
     try_split strict extract_padding_side build_padding_box;
     try_split strict extract_inset_side build_inset_box;
@@ -2163,6 +2197,25 @@ let extract_contain_intrinsic_side :
       Some (End, value, important)
   | _ -> None
 
+(* CSS Grid 2 sec. 8.3: [grid-row] and [grid-column] are [<grid-line> [/
+   <grid-line>]?] over their own start and end longhands. A substituted line can
+   stand for the whole [<start> / <end>], so only a resolved one takes part. *)
+let extract_grid_row_side :
+    declaration -> (axis_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_row_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Grid_row_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_grid_column_side :
+    declaration -> (axis_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_column_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Grid_column_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
 (* CSS Align 3 sec. 5.2, 6.3 and 7.3: [place-items] / [place-content] /
    [place-self] are the [<align> <justify>] shorthands. When the two longhands
    appear contiguously with matching importance, fold them; the per-property
@@ -2287,6 +2340,14 @@ let axis_contain_intrinsic idx i =
   try_compose_axis_pair_at idx ~foldable ~extract:extract_contain_intrinsic_side
     ~build i
 
+let axis_grid_line idx property extract i =
+  let build ~important ~start ~end_ =
+    Some
+      (Declaration.v ~important property
+         (Lines (start, end_) : Properties.grid_line_pair))
+  in
+  try_compose_axis_pair_at idx ~foldable:foldable_grid_line ~extract ~build i
+
 let axis_border_color ~ctx idx property extract i =
   let build ~important ~start ~end_ =
     let value : Properties.logical_border_color =
@@ -2324,6 +2385,8 @@ let pair_axes ~ctx idx i =
     (fun () -> color Border_block_color extract_border_block_color_side i);
     (fun () -> axis_overscroll idx i);
     (fun () -> axis_contain_intrinsic idx i);
+    (fun () -> axis_grid_line idx Grid_row extract_grid_row_side i);
+    (fun () -> axis_grid_line idx Grid_column extract_grid_column_side i);
   ]
 
 let compose_pair_via_index ~ctx idx =
