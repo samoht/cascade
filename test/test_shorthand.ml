@@ -951,6 +951,40 @@ let test_text_decoration_thickness_composes () =
       ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
     ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
 
+(* CSS Grid 2 (ED) sec. 7.8: [grid] writes the three template longhands and the
+   three auto ones, and only one of its two auto-flow axes can be spelled, so
+   the other axis and its track size have to be at the initials the shorthand
+   leaves them. Chrome 146 computes the same six values for each pair below. *)
+let test_grid_composes () =
+  sheet_optimizes_to ~into:".x{grid:none/1fr 1fr}"
+    ".x{grid-template-columns:1fr \
+     1fr;grid-template-rows:none;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:none}"
+    ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:1fr/auto-flow 2em}"
+    ".x{grid-template-columns:none;grid-template-rows:1fr;grid-template-areas:none;grid-auto-flow:column;grid-auto-columns:2em;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:1fr/2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:auto-flow dense 2em/1fr}"
+    ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row \
+     dense;grid-auto-columns:auto;grid-auto-rows:2em}";
+  (* Where [grid] has no spelling, the three template longhands still contract
+     on their own: the row axis flows and the column tracks are sized, an area
+     sits beside a flowing axis, and the importance is mixed. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:none/1fr;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}"
+    ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}";
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:\"a\" \
+       1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\";grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:1fr/2fr;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto!important}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto!important}"
+
 (* CSS Grid 2 (ED) sec. 7.4: [grid-template] is [none], a [<rows> / <columns>]
    pair, or the areas form writing each row's string beside that row's size, and
    it resets all three longhands. Chrome 146 expands each shorthand below to the
@@ -1804,6 +1838,7 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "grid composes" `Quick test_grid_composes;
       Alcotest.test_case "grid-template composes" `Quick
         test_grid_template_composes;
       Alcotest.test_case "text decoration thickness composes" `Quick
