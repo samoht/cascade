@@ -3219,7 +3219,22 @@ let invalid () =
   neg "animation-duration: 0";
   neg "animation-delay: 0";
   neg "rotate: 0";
-  neg "offset-rotate: 0"
+  neg "offset-rotate: 0";
+
+  (* Each of these is a [<length>] in its own specification and takes no
+     percentage: CSS Transforms 2 sec. 3 for the perspective, CSS Tables 3 sec.
+     4.3.1 for the spacing, CSS Multicol 2 sec. 4.1 for the column width, CSS
+     Backgrounds 3 sec. 5.4 for the outset and CSS Sizing 4 sec. 5 for the
+     intrinsic size. Chrome 146 refuses each. *)
+  neg "perspective: 50%";
+  neg "border-spacing: 50%";
+  neg "column-width: 50%";
+  neg "border-image-outset: 50%";
+  neg "contain-intrinsic-size: 50%";
+  neg "contain-intrinsic-width: 200%";
+  neg "tab-size: 50%";
+  neg "overflow-clip-margin: 50%";
+  neg "column-width: -5px"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:
