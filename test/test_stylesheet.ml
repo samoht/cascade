@@ -3843,6 +3843,11 @@ let spec_current_at_rules () =
     "@page chapter:left { margin: 2cm }";
   check_stylesheet ~expected:"@media(width >){.x{color:red}}"
     "@media (width >) { .x { color: red } }";
+  (* Mediaqueries 5 sec. 3.1 sends a condition no grammar claims to
+     <general-enclosed>, which a parser keeps and never matches. Chrome keeps
+     both of these in cssText for the same reason. *)
+  check_stylesheet ~expected:"@media(width >= ){.x{color:red}}"
+    "@media (width >= ) { .x { color: red } }";
   check_stylesheet ~expected:"@supports selector(){.x{color:red}}"
     "@supports selector() { .x { color: red } }";
   neg_cursor read "@scope (.card) .title { color: red }";

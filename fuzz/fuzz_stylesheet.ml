@@ -1066,14 +1066,12 @@ let test_invalid_atrule_descriptor buf =
         "@position-try default { top: 0; }";
         "@position-try --fallback { @media screen { .x { color: red } } }";
         "@namespace svg;";
-        "@container () { .x { color: red } }";
         "@container style() { .x { color: red } }";
         "@container scroll-state() { .x { color: red } }";
         "@scope () { .x { color: red } }";
         "@scope (.x) to () { .x { color: red } }";
         "@starting-style;";
         "@media screen and { .x { color: red } }";
-        "@media (width >= ) { .x { color: red } }";
         "@supports not { .x { color: red } }";
         "@supports (display: grid) and (color: red) or (width: 1px) { .x { \
          color: red } }";

@@ -17,6 +17,9 @@ let positive =
       "@supports font-format(\"woff2\") { .x { color: red } }";
     row "container" "general-enclosed-empty" "@container(){.x{color:red}}"
       "@container () { .x { color: red } }";
+    row "media" "general-enclosed-incomplete-comparison"
+      "@media(width >= ){.x{color:red}}"
+      "@media (width >= ) { .x { color: red } }";
     row "media" "general-enclosed-interval"
       "@media(30em < width > 60em){.x{color:red}}"
       "@media (30em < width > 60em) { .x { color: red } }";
