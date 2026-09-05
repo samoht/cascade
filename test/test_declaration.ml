@@ -2364,6 +2364,18 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* CSS Text Decoration 4 sec. 2.5: the shorthand is a || of its longhands and
+     [none] is a <text-decoration-line>, so it is the whole value only when
+     nothing follows it. The optimizer contracts a none line beside a style and
+     a colour into exactly this spelling. *)
+  check_declaration ~expected:"text-decoration:none" "text-decoration: none";
+  check_declaration ~expected:"text-decoration:none dotted"
+    "text-decoration: none dotted";
+  check_declaration ~expected:"text-decoration:none dotted #12345680"
+    "text-decoration: none dotted #12345680";
+  check_declaration ~expected:"text-decoration:underline dotted red"
+    "text-decoration: underline dotted red";
+
   (* CSS Align 3 sec. 5.2: [place-items] is [<'align-items'>
      <'justify-items'>?], so it takes every <self-position> keyword align-items
      does, and a lone value sets both axes. The optimizer contracts
