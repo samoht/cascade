@@ -6726,6 +6726,24 @@ let relative_color_has_empty_alpha cvs =
   in
   loop cvs
 
+(* The origin may be a [color()] node, which the byte converter has no arm for.
+   The linear route covers every space whose matrices are wired up, so a
+   relative colour folds whether its origin was written as a hex or as the
+   [color()] the same conversion reaches. *)
+let relative_origin_srgb_bytes origin : (int * int * int * int) option =
+  match static_color_to_srgb_bytes origin with
+  | Some _ as found -> found
+  | Option.None -> (
+      match static_color_to_linear_srgb origin with
+      | Some (linear, alpha_f) -> (
+          match Color_space.srgb_bytes_of_linear linear with
+          | Some (r, g, b) ->
+              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+              Some
+                (r, g, b, Float.to_int (Float.round (clamp01 alpha_f *. 255.0)))
+          | Option.None -> Option.None)
+      | Option.None -> Option.None)
+
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
   let read_keyword kw =
@@ -6744,7 +6762,7 @@ let try_fold_color_function_static origin t : color option =
     Cursor.ws t;
     if not (Cursor.is_done t) then Option.None
     else
-      match static_color_to_srgb_bytes origin with
+      match relative_origin_srgb_bytes origin with
       | Some (r, g, b, origin_a_byte) ->
           let final_alpha : alpha =
             match alpha with

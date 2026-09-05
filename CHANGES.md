@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `color(from <origin> srgb r g b)` folds to the origin when that origin is
+  itself a `color()`, not only when it is a hex or a named colour (#905).
+
 - An out-of-range `oklab()` or `oklch()` lightness written as a percentage
   clamps as the bare number already did (#904).
 
