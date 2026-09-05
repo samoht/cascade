@@ -2364,6 +2364,18 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* CSS Color 5 sec. 5.1: [color(from <origin> srgb r g b)] is the origin's own
+     sRGB channels, so it folds to the origin whether that was written as a hex
+     or as a [color()] the same conversion reaches. *)
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from #b3804d srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from color(srgb .7 .5 .3) srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77/.4)"
+    "color: color(from color(srgb .7 .5 .3/40%) srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from color(from color(srgb .7 .5 .3) srgb r g b) srgb r g b)";
+
   (* CSS Color 4 sec. 9.4: an out-of-range Oklab lightness clamps rather than
      invalidating the colour, and 0% to 100% is the same 0 to 1 a bare number
      names, so both spellings clamp alike. *)
