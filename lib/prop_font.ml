@@ -1337,6 +1337,29 @@ let read_font_variant_css21 t : font_variant_css21 =
     [ ("normal", (Normal : font_variant_css21)); ("small-caps", Small_caps) ]
     t
 
+(* CSS Fonts 4 (ED) sec. 5.3 writes the shorthand's width slot as
+   [<font-width-css3>], the nine keywords and no percentage, so a width the
+   longhand normalised to its percentage prints as the keyword it stands for.
+   Chrome 146 refuses `font: 125% 12px serif` and reads `font: expanded 12px
+   serif`. sec. 4.5 pairs each keyword with its percentage. *)
+let font_width_css3 : font_stretch -> font_stretch option = function
+  | Pct 50. | Ultra_condensed -> Some (Ultra_condensed : font_stretch)
+  | Pct 62.5 | Extra_condensed -> Some Extra_condensed
+  | Pct 75. | Condensed -> Some Condensed
+  | Pct 87.5 | Semi_condensed -> Some Semi_condensed
+  | Pct 100. | Normal -> Some Normal
+  | Pct 112.5 | Semi_expanded -> Some Semi_expanded
+  | Pct 125. | Expanded -> Some Expanded
+  | Pct 150. | Extra_expanded -> Some Extra_expanded
+  | Pct 200. | Ultra_expanded -> Some Ultra_expanded
+  | Pct _ | Var _ | Inherit | Initial | Unset | Revert | Revert_layer -> None
+
+let pp_font_width_css3 : font_stretch Pp.t =
+ fun ctx width ->
+  match font_width_css3 width with
+  | Some keyword -> pp_font_stretch ctx keyword
+  | None -> pp_font_stretch ctx width
+
 let pp_font_prefix ctx style variant weight stretch =
   let first = ref true in
   let emit pp opt =
@@ -1350,7 +1373,7 @@ let pp_font_prefix ctx style variant weight stretch =
   emit pp_font_style style;
   emit pp_font_variant_css21 variant;
   emit pp_font_weight weight;
-  emit pp_font_stretch stretch;
+  emit pp_font_width_css3 stretch;
   !first
 
 let pp_font_shorthand : font_shorthand Pp.t =
@@ -1720,7 +1743,9 @@ let long_generic_family_start r =
 let font_shorthand_prefix_ident = function
   | Some
       ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
-      | "lighter" | "condensed" | "expanded" ) ->
+      | "lighter" | "ultra-condensed" | "extra-condensed" | "condensed"
+      | "semi-condensed" | "semi-expanded" | "expanded" | "extra-expanded"
+      | "ultra-expanded" ) ->
       true
   | _ -> false
 
@@ -1741,8 +1766,16 @@ let font_prefix_slot_of = function
   | "bold" -> Weight Bold
   | "bolder" -> Weight Bolder
   | "lighter" -> Weight Lighter
+  (* CSS Fonts 4 (ED) sec. 5.3 writes the width slot as [<font-width-css3>],
+     which is all nine keywords; Chrome 146 reads every one of them. *)
+  | "ultra-condensed" -> Stretch Ultra_condensed
+  | "extra-condensed" -> Stretch Extra_condensed
   | "condensed" -> Stretch Condensed
+  | "semi-condensed" -> Stretch Semi_condensed
+  | "semi-expanded" -> Stretch Semi_expanded
   | "expanded" -> Stretch Expanded
+  | "extra-expanded" -> Stretch Extra_expanded
+  | "ultra-expanded" -> Stretch Ultra_expanded
   | "normal" | _ -> No_op
 
 let assign_font_prefix_slot ~(style : font_style option ref)

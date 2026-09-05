@@ -2398,6 +2398,11 @@ val read_font_variant_ligatures : Cursor.t -> font_variant_ligatures
 val pp_font_variant_caps : font_variant_caps Pp.t
 (** [pp_font_variant_caps] is the pretty-printer for [font_variant_caps]. *)
 
+val font_width_css3 : font_stretch -> font_stretch option
+(** [font_width_css3 width] is the [<font-width-css3>] keyword [width] stands
+    for, which is the only spelling the [font] shorthand's width slot takes (CSS
+    Fonts 4 sec. 5.3). [None] when no keyword names it. *)
+
 val read_font_variant : Cursor.t -> font_variant
 (** [read_font_variant t] parses the [font-variant] shorthand. *)
 

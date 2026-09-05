@@ -983,7 +983,17 @@ let test_font_composes_the_whole_run () =
     ".x{font-style:italic;font-variant-caps:small-caps;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
   sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{font:italic 700 12px/1.5 serif;font-variant-caps:unicase}"
-    ".x{font-variant-caps:unicase;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}"
+    ".x{font-variant-caps:unicase;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* sec. 5.3 writes the width slot as [<font-width-css3>], the nine keywords
+     and no percentage, so a width the longhand normalised to its percentage
+     takes its keyword back and one no keyword names stays a longhand. Chrome
+     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px
+     serif`. *)
+  sheet_optimizes_to ~scope:`Stylesheet ~into:".x{font:expanded 12px serif}"
+    ".x{font-family:serif;font-size:12px;font-stretch:expanded}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:12px serif;font-stretch:110%}"
+    ".x{font-family:serif;font-size:12px;font-stretch:110%}"
 
 (* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, and a
    longhand at [normal] is the component the shorthand leaves out. Chrome 146

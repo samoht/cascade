@@ -235,6 +235,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `small-caps unicase`, `jis78 jis83` and `swash(inherit)` parsed where Chrome
   refuses them (#695, #963, #964)
 
+- The `font` shorthand reads and writes all nine `<font-width-css3>` keywords.
+  It read two of them, and printed the width its longhand had normalised to a
+  percentage, which the slot has no room for and cascade's own reader refused,
+  so `font: ultra-condensed 12px serif` was dropped and `font-stretch:
+  expanded` contracted to a `font` no browser reads (#965)
+
 - An `@property` syntax rejects a component with two multipliers, a multiplied
   `<transform-list>` and a `*` combined with anything, so the registration
   drops rather than typing values by a grammar it cannot honour. Two syntaxes

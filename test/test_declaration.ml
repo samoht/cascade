@@ -4598,6 +4598,11 @@ let spec_remaining_prop_vectors () =
       (* CSS Fonts 4 (ED) sec. 6.10. Chrome 146 reads each of these and refuses
          a component written twice over. *)
       ("font-variant: normal", "font-variant:normal");
+      (* CSS Fonts 4 (ED) sec. 5.3 writes the shorthand's width slot as
+         [<font-width-css3>], so the keyword is the only spelling that reads
+         back. *)
+      ("font: expanded 12px serif", "font:expanded 12px serif");
+      ("font: ultra-condensed 12px serif", "font:ultra-condensed 12px serif");
       ("font-variant: none", "font-variant:none");
       ("font-variant: small-caps", "font-variant:small-caps");
       ( "font-variant: common-ligatures small-caps tabular-nums ruby sub text",
@@ -4753,6 +4758,8 @@ let spec_remaining_prop_vectors () =
       "font-variant: common-ligatures no-common-ligatures";
       "font-variant: jis78 jis83";
       "font-variant: bogus";
+      "font: 125% 12px serif";
+      "font: 110% 12px serif";
       "font-variant-alternates: swash(inherit)";
       "font-variant-alternates: swash(default)";
       "font-variant-alternates: bogus";

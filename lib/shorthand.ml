@@ -3143,7 +3143,9 @@ let font_caps_component : declaration -> Properties.font_variant_css21 option =
   | _ -> None
 
 (* sec. 5.3 gives [font-width] the initial [normal], which normalises to [100%],
-   and an omitted slot names it, so both spellings leave the slot out. *)
+   and an omitted slot names it, so both spellings leave the slot out. The slot
+   itself is a [<font-width-css3>] keyword, so a width no keyword names has no
+   spelling there and [None] here would reset it instead. *)
 let font_stretch_component : declaration -> Properties.font_stretch option =
   function
   | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
@@ -3151,15 +3153,23 @@ let font_stretch_component : declaration -> Properties.font_stretch option =
   | Declaration { property = Font_stretch; value; _ } -> Some value
   | _ -> Option.None
 
+let font_stretch_has_slot : declaration -> bool = function
+  | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
+      true
+  | Declaration { property = Font_stretch; value; _ } ->
+      Option.is_some (Properties.font_width_css3 value)
+  | _ -> true
+
 let font_stretch_slot : declaration -> bool = function
   | Declaration { property = Font_stretch; _ } -> true
   | _ -> false
 
 let font_run_member d =
-  is_font_longhand d
+  (is_font_longhand d
   || Option.is_some (font_caps_component d)
   || font_stretch_slot d
-  || font_reset_only_at_initial d
+  || font_reset_only_at_initial d)
+  && font_stretch_has_slot d
 
 let font_run_at idx i =
   let n = Rule_index.length idx in
