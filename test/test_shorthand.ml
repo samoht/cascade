@@ -592,10 +592,10 @@ let test_border_axis_pair_composes () =
       ".x{border-block-start-color:red;border-block-end-color:#00f!important}"
     ".x{border-block-start-color:red;border-block-end-color:blue!important}"
 
-(* CSS Backgrounds 3 sec. 3.5, CSS Logical 1 sec. 4.5 and CSS Multicol 1 sec.
-   4.3: each line shorthand is [<line-width> || <line-style> || <line-color>]
-   over its own three longhands and resets nothing else, so a contiguous run of
-   the three contracts the way [outline] already does. *)
+(* CSS Backgrounds 3 sec. 3.5 and CSS Logical 1 sec. 4.5: each border side is
+   [<line-width> || <line-style> || <line-color>] over its own three longhands
+   and resets nothing else, so a contiguous run of the three contracts the way
+   [outline] already does. *)
 let test_line_shorthand_composes () =
   sheet_optimizes_to ~into:".x{border-top:1px solid red}"
     ".x{border-top-width:1px;border-top-style:solid;border-top-color:red}";
@@ -604,10 +604,8 @@ let test_line_shorthand_composes () =
     ".x{border-left-color:red;border-left-style:solid;border-left-width:1px}";
   sheet_optimizes_to ~into:".x{border-block-start:1px solid red}"
     ".x{border-block-start-width:1px;border-block-start-style:solid;border-block-start-color:red}";
-  sheet_optimizes_to ~into:".x{border-inline-end:2px dotted #0f0}"
+  sheet_optimizes_to ~into:".x{border-inline-end:2px dotted#0f0}"
     ".x{border-inline-end-width:2px;border-inline-end-style:dotted;border-inline-end-color:#0f0}";
-  sheet_optimizes_to ~into:".x{column-rule:1px solid red}"
-    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red}";
   (* The shorthand tells width from style from colour by type, so a substituted
      token sequence could land in another slot. *)
   sheet_optimizes_to

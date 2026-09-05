@@ -2332,9 +2332,9 @@ let take_run_at idx ~part_of i =
 
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
-type outline_part = Width | Style | Color
+type line_part = Width | Style | Color
 
-let outline_part_of : declaration -> outline_part option = function
+let outline_part_of : declaration -> line_part option = function
   | Declaration { property = Outline_width; _ } -> Some Width
   | Declaration { property = Outline_style; _ } -> Some Style
   | Declaration { property = Outline_color; _ } -> Some Color
@@ -2855,6 +2855,146 @@ let compose_border_via_index idx =
           if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 12
           else incr i
   done
+
+(* CSS Backgrounds 3 sec. 3.5, CSS Logical 1 sec. 4.5 and CSS Multicol 1 sec.
+   4.3: each of the eight border sides is [<line-width> || <line-style> ||
+   <line-color>] over its own three longhands and resets nothing else, so a
+   contiguous run of the three composes the way [outline] does. Each part
+   carries the slot it fills, so the run may be written in any order. *)
+let no_line : Properties.border_shorthand =
+  { width = None; style = None; color = None }
+
+let line_of_width v : line_part * Properties.border_shorthand =
+  (Width, { no_line with width = Some v })
+
+let line_of_style v : line_part * Properties.border_shorthand =
+  (Style, { no_line with style = Some v })
+
+let line_of_color v : line_part * Properties.border_shorthand =
+  (Color, { no_line with color = Some v })
+
+let merge_line (a : Properties.border_shorthand)
+    (b : Properties.border_shorthand) : Properties.border_shorthand =
+  let pick x y = if Option.is_none x then y else x in
+  {
+    width = pick a.width b.width;
+    style = pick a.style b.style;
+    color = pick a.color b.color;
+  }
+
+let border_top_part = function
+  | Declaration { property = Border_top_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_top_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_top_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_right_part = function
+  | Declaration { property = Border_right_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_right_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_right_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_bottom_part = function
+  | Declaration { property = Border_bottom_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_bottom_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_bottom_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_left_part = function
+  | Declaration { property = Border_left_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_left_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_left_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_block_start_part = function
+  | Declaration { property = Border_block_start_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_block_start_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_block_start_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_block_end_part = function
+  | Declaration { property = Border_block_end_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_block_end_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_block_end_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_inline_start_part = function
+  | Declaration { property = Border_inline_start_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_inline_start_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_inline_start_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_inline_end_part = function
+  | Declaration { property = Border_inline_end_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_inline_end_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_inline_end_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let try_compose_line_at ~part_of ~property idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        match List.map part_of raw with
+        | [ Some (p1, s1); Some (p2, s2); Some (p3, s3) ]
+          when List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw))
+                 property
+                 (Shorthand (merge_line s1 (merge_line s2 s3))
+                   : Properties.border))
+        | _ -> None
+
+let line_families =
+  Properties.
+    [
+      (border_top_part, Border_top);
+      (border_right_part, Border_right);
+      (border_bottom_part, Border_bottom);
+      (border_left_part, Border_left);
+      (border_block_start_part, Border_block_start);
+      (border_block_end_part, Border_block_end);
+      (border_inline_start_part, Border_inline_start);
+      (border_inline_end_part, Border_inline_end);
+    ]
+
+let compose_line_via_index idx =
+  List.iter
+    (fun (part_of, property) ->
+      compose_fixed3_via_index idx
+        ~try_compose:(try_compose_line_at ~part_of ~property))
+    line_families
 
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
@@ -4645,6 +4785,7 @@ let compose_index_group_b kept =
   compose_flex_via_index idx;
   compose_text_decoration_via_index idx;
   compose_border_via_index idx;
+  compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Third index group runs at the very end: mask + transition + animation share

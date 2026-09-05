@@ -544,6 +544,10 @@ entry points both moved.
 
 ### Minification
 
+- `--minify` contracts the eight border sides from their own three longhands,
+  as it already did for `outline`: `border-top-width`, `border-top-style` and
+  `border-top-color` written together become `border-top` (#918)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
