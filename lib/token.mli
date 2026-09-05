@@ -38,8 +38,8 @@ type kind =
           [@charset] per CSS Syntax 3 (ED) sec. 8.3) and to round-trip the input
           style. [terminated] is [false] when the lexer reached EOF without
           seeing the closing quote (CSS Syntax 3 (ED) sec. 4.3.5 returns the
-          string token but flags a parse error); the serializer omits the
-          closing quote so the original byte sequence is preserved. *)
+          string token but flags a parse error); the serializer writes the
+          closing quote either way, since what the token holds is a string. *)
   | Bad_string
       (** Unterminated string (newline or EOF before the closing quote). *)
   | Url of string

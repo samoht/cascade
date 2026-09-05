@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A string the input ended before closing is written with its closing quote,
+  so a sheet holding one no longer grows a brace on every pass (#912).
+
 - `transition` reads `none` as the property it is when a duration or a timing
   function follows, so the contraction the optimizer writes for that run of
   longhands reads back (#911).

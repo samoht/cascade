@@ -192,7 +192,7 @@ let escape_name s =
     Common.String.utf8_fold folder () s;
     Buffer.contents buf
 
-let add_escaped_string buf ~quote ~terminated s =
+let add_escaped_string buf ~quote s =
   Buffer.add_char buf quote;
   String.iter
     (fun c ->
@@ -203,7 +203,7 @@ let add_escaped_string buf ~quote ~terminated s =
       else if code < 0x20 || code = 0x7F then add_hex_escape buf c
       else Buffer.add_char buf c)
     s;
-  if terminated then Buffer.add_char buf quote
+  Buffer.add_char buf quote
 
 let add_escaped_url buf s =
   Buffer.add_string buf "url(";
@@ -265,12 +265,14 @@ let add_token_kind buf : Token.kind -> unit = function
   | Token.Hash { value; _ } ->
       Buffer.add_char buf '#';
       Buffer.add_string buf (escape_name value)
-  | Token.String { value; quote = _; terminated } ->
+  | Token.String { value; quote = _; _ } ->
       (* Normalize quoting to double-quote (the original quote is kept on the
          token only for quote-sensitive lookups like @charset). CSS Syntax 3
-         (ED) sec. 4.3.5 recovers an unterminated string; the [terminated] flag
-         is preserved so one round-trips, emitting without its closing quote. *)
-      add_escaped_string buf ~quote:'"' ~terminated value
+         (ED) sec. 4.3.5 returns the string token when the input ends before the
+         closing quote, so what it holds is a string and prints as one. Omitting
+         the quote to keep the original bytes leaves the value swallowing the
+         brace after it, and the sheet grows one per pass. *)
+      add_escaped_string buf ~quote:'"' value
   | Token.Bad_string ->
       (* A bad string keeps no text, so serialize the shortest source that
          re-tokenizes as one, the way [Bad_url] serializes to [url(a b)]. CSS
