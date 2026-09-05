@@ -2560,9 +2560,13 @@ let animation_infinite_name () =
     | Shorthand { name = Some (Ambiguous name | Name name); iteration_count; _ }
       ->
         Alcotest.(check string) "animation name" expected_name name;
-        Alcotest.(check bool)
-          "iteration count" true
-          (iteration_count = Some expected_count)
+        let shown c =
+          Css.Pp.to_string ~minify:true pp_animation_iteration_count c
+        in
+        Alcotest.(check (option string))
+          "iteration count"
+          (Some (shown expected_count))
+          (Option.map shown iteration_count)
     | _ -> Alcotest.failf "missing animation name in %s" input);
     value
   in
@@ -2606,10 +2610,15 @@ let animation_keyword_names () =
     | Some (Name value | Ambiguous value) ->
         Alcotest.(check string) input name value
     | _ -> Alcotest.failf "missing name in %s" input);
-    Alcotest.(check bool)
+    (* The slots read the same when the value they print does, and the printed
+       form says which slot differs when they do not. *)
+    let without_name v =
+      Css.Pp.to_string ~minify:true pp_animation
+        (Shorthand { v with name = Option.None })
+    in
+    Alcotest.(check string)
       (input ^ " keeps non-name slots")
-      true
-      ({ actual with name = None } = { expected with name = None })
+      (without_name expected) (without_name actual)
   in
   let check_print expected name value =
     List.iter

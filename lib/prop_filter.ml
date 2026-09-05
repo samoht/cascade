@@ -188,7 +188,8 @@ let rec normalize_filter ?(lossless = false) : filter -> filter =
       preserve_if_equal value (Drop_shadow (normalize_shadow ~lossless s))
   | Hue_rotate a ->
       let a = Values.normalize_angle a in
-      if a = Deg 0. then Omitted Hue_rotate_function
+      if match a with Deg 0. -> true | _ -> false then
+        Omitted Hue_rotate_function
       else preserve_if_equal value (Hue_rotate a)
   | Brightness x -> amount Brightness_function (fun n -> Brightness n) x
   | Contrast x -> amount Contrast_function (fun n -> Contrast n) x
