@@ -1078,6 +1078,31 @@ let test_animation_contraction_covers_other_rules () =
       ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
     ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
 
+(* Scroll-driven Animations 1 (ED) appendix A.3 makes the two animation-range
+   longhands reset-only sub-properties of [animation], which Chrome 146 agrees
+   with: [animation-range-start: 20%] beside the shorthand computes to [normal].
+   So a range the rule holds blocks the contraction, a range written after the
+   shorthand is the reset spelled out, and one written before it is dead. *)
+let test_animation_resets_the_range () =
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-range-start:20%;animation-name:x;animation-duration:1s;animation-timing-function:linear}"
+    ".a{animation-range-start:20%;animation-name:x;animation-duration:1s;animation-timing-function:linear}";
+  decl_optimizes_to ~into:"animation:x 1s" "animation-range:20%;animation:x 1s";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-range:normal";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-range-start:normal;animation-range-end:normal";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-timeline:auto";
+  (* A range or a timeline the shorthand does not write is a real override. *)
+  decl_optimizes_to ~into:"animation:x 1s;animation-range:20%"
+    "animation:x 1s;animation-range:20%";
+  decl_optimizes_to ~into:"animation:x 1s;animation-timeline:view()"
+    "animation:x 1s;animation-timeline:view()";
+  decl_optimizes_to ~into:"animation:x 1s;animation-range:normal!important"
+    "animation:x 1s;animation-range:normal!important"
+
 let test_transition_contraction_covers_other_rules () =
   (* Same rule, both sides of the guard. A non-important holder is reset by the
      contraction, so the run stays expanded; an important one outranks the
@@ -1644,6 +1669,8 @@ let suite =
         test_transition_contraction_covers_other_rules;
       Alcotest.test_case "animation contraction covers other rules" `Quick
         test_animation_contraction_covers_other_rules;
+      Alcotest.test_case "animation resets the range" `Quick
+        test_animation_resets_the_range;
       Alcotest.test_case "scroll axis pair composes" `Quick
         test_scroll_axis_pair_composes;
       Alcotest.test_case "border axis pair composes" `Quick
