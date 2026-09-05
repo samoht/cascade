@@ -694,6 +694,30 @@ let test_grid_placement_composes () =
   sheet_optimizes_to ~into:".x{grid-row-start:1;grid-row-end:3!important}"
     ".x{grid-row-start:1;grid-row-end:3!important}"
 
+(* CSS Flexbox 1 sec. 5.1 and CSS Text Decoration 4 sec. 3.4: [flex-flow] and
+   [text-emphasis] each take two longhands, one per component. A longhand at its
+   initial names what leaving the component out names, so it drops - unless both
+   do and the value would then say nothing. *)
+let test_duo_keyword_composes () =
+  sheet_optimizes_to ~into:".x{flex-flow:row wrap}"
+    ".x{flex-direction:row;flex-wrap:wrap}";
+  sheet_optimizes_to ~into:".x{flex-flow:column}"
+    ".x{flex-direction:column;flex-wrap:nowrap}";
+  sheet_optimizes_to ~into:".x{flex-flow:wrap-reverse}"
+    ".x{flex-direction:row;flex-wrap:wrap-reverse}";
+  sheet_optimizes_to ~into:".x{flex-flow:row}"
+    ".x{flex-direction:row;flex-wrap:nowrap}";
+  sheet_optimizes_to ~into:".x{text-emphasis:filled red}"
+    ".x{text-emphasis-style:filled;text-emphasis-color:red}";
+  sheet_optimizes_to ~into:".x{text-emphasis:none}"
+    ".x{text-emphasis-style:none;text-emphasis-color:initial}";
+  (* A substituted component can be the whole value, so it stays put. *)
+  sheet_optimizes_to ~into:".x{flex-direction:var(--d);flex-wrap:wrap}"
+    ".x{flex-direction:var(--d);flex-wrap:wrap}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to ~into:".x{flex-direction:row;flex-wrap:wrap!important}"
+    ".x{flex-direction:row;flex-wrap:wrap!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1286,6 +1310,7 @@ let suite =
       Alcotest.test_case "xy pair composes" `Quick test_xy_pair_composes;
       Alcotest.test_case "grid placement composes" `Quick
         test_grid_placement_composes;
+      Alcotest.test_case "duo keyword composes" `Quick test_duo_keyword_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
