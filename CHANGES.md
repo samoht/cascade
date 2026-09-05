@@ -521,9 +521,10 @@ entry points both moved.
 
 ### Printing
 
-- `text-decoration`, `mask-border` and `animation` no longer minify to an empty
-  value. `text-decoration:solid` printed `text-decoration:`, which no parser
-  reads back, once dropping the initial style left no slot (#682)
+- `text-decoration`, `mask-border`, `animation` and `mask` no longer minify to
+  an empty value. `text-decoration:solid` printed `text-decoration:`, which no
+  parser reads back, once dropping the initial style left no slot, and a `mask`
+  layer holding only initials printed the same way (#682, #955)
 - A `calc()` printed without `--minify` keeps the parentheses the author wrote,
   redundant ones included, while `--minify` removes those and keeps a
   precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
