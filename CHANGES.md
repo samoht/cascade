@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- Minified `rotate` keeps the space between its angle and a negative axis
+  number, which `0deg-1` folded into one dimension (#900).
+
 - A relative colour reads its channels whether or not a space separates them,
   so `rgb(from red 20%g b/alpha)` parses and cascade reads back the minified
   form it writes (#899).
