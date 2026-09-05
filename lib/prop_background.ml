@@ -1126,6 +1126,62 @@ let pp_mask_border_mode ctx = function
   | (Alpha : mask_border_mode) -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
 
+(* CSS Backgrounds 3 sec. 6.1: a component the shorthand leaves out takes its
+   longhand's initial - [none] for the source (sec. 5.1), [100%] for the slice
+   (sec. 5.2), [1] for the width (sec. 5.3), [0] for the outset (sec. 5.4) and
+   [stretch] for the repeat (sec. 5.5) - so writing one out names what leaving
+   it out names. Drained of every slot the shorthand declares nothing but
+   initials, which is what [none] declares, so the source stays to say it. *)
+let normalize_border_image : border_image -> border_image =
+ fun value ->
+  let drop is_initial slot =
+    match slot with Some v when is_initial v -> Option.None | slot -> slot
+  in
+  let source =
+    drop
+      (function (None : background_image) | Initial -> true | _ -> false)
+      value.source
+  in
+  let slice_initial =
+    drop
+      (fun (s : border_image_slice) ->
+        (not s.fill) && s.offsets = [ (Pct 100. : border_image_slice_item) ])
+      value.slice
+  in
+  let outset =
+    drop
+      (function
+        | [ (Number 0. : border_image_outset_item) ] | [ Length Zero ] -> true
+        | _ -> false)
+      value.outset
+  in
+  (* The printer writes one [/] per slot, so a dropped width with a kept outset
+     would put the outset in the width's place. The width only goes when the
+     outset does. *)
+  let width =
+    if Option.is_some outset then value.width
+    else
+      drop
+        (function
+          | [ (Number 1. : border_image_width_item) ] -> true | _ -> false)
+        value.width
+  in
+  let repeat =
+    drop (fun r -> r = [ (Stretch : border_image_repeat_keyword) ]) value.repeat
+  in
+  (* The printer writes the slice before the first [/], so a kept width or
+     outset needs it even at its initial. *)
+  let slice =
+    if Option.is_some width || Option.is_some outset then value.slice
+    else slice_initial
+  in
+  let drained =
+    Option.is_none source && Option.is_none slice && Option.is_none width
+    && Option.is_none outset && Option.is_none repeat
+  in
+  let source = if drained then Some (None : background_image) else source in
+  { value with source; slice; width; outset; repeat }
+
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->
   let first = ref true in

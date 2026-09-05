@@ -943,6 +943,23 @@ let test_flex_keyword_forms () =
   sheet_optimizes_to ~into:".x{flex:0 auto}"
     ".x{flex-grow:0;flex-shrink:1;flex-basis:auto}"
 
+(* CSS Backgrounds 3 sec. 6.1: [border-image] resets all five of its longhands,
+   so a run naming every one of them is the same declaration whatever else the
+   sheet holds. A shorter run leaves the rest to the reset, which only the
+   whole-sheet scope can judge. *)
+let test_border_image_full_run_composes () =
+  (* Every component but the source and slice is at its initial, so the
+     shorthand names them by leaving them out. *)
+  sheet_optimizes_to ~into:".x{border-image:url(a.png)30}"
+    ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0;border-image-repeat:stretch}";
+  sheet_optimizes_to ~into:".x{border-image:none}"
+    ".x{border-image-source:none;border-image-slice:100%;border-image-width:1;border-image-outset:0;border-image-repeat:stretch}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
+    ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1554,6 +1571,8 @@ let suite =
       Alcotest.test_case "border radius ellipse composes" `Quick
         test_border_radius_ellipse_composes;
       Alcotest.test_case "flex keyword forms" `Quick test_flex_keyword_forms;
+      Alcotest.test_case "border image full run composes" `Quick
+        test_border_image_full_run_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

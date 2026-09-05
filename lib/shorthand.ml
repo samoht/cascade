@@ -3903,19 +3903,31 @@ let span_border_image_run_at idx i =
   in
   aux i []
 
-let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
+(* The shorthand resets all five longhands, so a run naming every one of them is
+   the same declaration whatever else the sheet holds. A shorter run leaves the
+   rest to the reset, which is only safe with the whole sheet in view. *)
+let border_image_run_can_compose run ~allow_partial ~foldable ~source ~slice
+    ~width ~outset ~repeat =
   let need_slice =
     (Option.is_some width || Option.is_some outset) && Option.is_none slice
   in
+  let complete =
+    Option.is_some source && Option.is_some slice && Option.is_some width
+    && Option.is_some outset && Option.is_some repeat
+  in
   List.length run >= 2
   && same_importance (List.map snd run)
-  && foldable && not need_slice
+  && foldable && (not need_slice)
+  && (allow_partial || complete)
 
+(* The record is built here rather than read, so the slot-initial fold the
+   reader's values get has to be applied to it as well. *)
 let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
   Declaration.v
     ~important:(is_important (snd (List.hd run)))
     Border_image
-    { source; slice; width; outset; repeat; mode = None }
+    (Properties.normalize_border_image
+       { source; slice; width; outset; repeat; mode = None })
 
 let record_border_image_longhand
     ~(source : Properties.background_image option ref)
@@ -3940,7 +3952,8 @@ let record_border_image_longhand
   | Declaration { property = Border_image_repeat; _ } -> foldable := false
   | _ -> ()
 
-let compose_border_image_run (run : (int * Declaration.declaration) list) :
+let compose_border_image_run ~allow_partial
+    (run : (int * Declaration.declaration) list) :
     (int * Declaration.declaration) option =
   let source : Properties.background_image option ref = ref Option.None in
   let slice : Properties.border_image_slice option ref = ref Option.None in
@@ -3962,8 +3975,9 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     run;
   if
     not
-      (border_image_run_can_compose run ~foldable:!foldable ~slice:!slice
-         ~width:!width ~outset:!outset)
+      (border_image_run_can_compose run ~allow_partial ~foldable:!foldable
+         ~source:!source ~slice:!slice ~width:!width ~outset:!outset
+         ~repeat:!repeat)
   then Option.None
   else
     let merged =
@@ -3972,18 +3986,19 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     in
     Some (fst (List.hd run), merged)
 
-let try_compose_border_image_at idx i =
+let try_compose_border_image_at ~allow_partial idx i =
   let d = Rule_index.decl_at idx i in
   if not (is_border_image_longhand_decl d) then None
   else
     let run, len = span_border_image_run_at idx i in
-    match compose_border_image_run run with
+    match compose_border_image_run ~allow_partial run with
     | Some (_, shorthand) -> Some (shorthand, len)
     | None -> None
 
 let compose_border_image_via_index ~ctx idx =
-  if scope ctx <> `Stylesheet then ()
-  else compose_run_via_index idx ~try_compose:try_compose_border_image_at
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_border_image_at ~allow_partial)
 
 let compose_border_image_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in

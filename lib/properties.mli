@@ -503,6 +503,10 @@ val pp_mask_border_mode : mask_border_mode Pp.t
 val read_mask_border_mode : Cursor.t -> mask_border_mode
 (** [read_mask_border_mode t] parses a [mask-border] mode keyword. *)
 
+val normalize_border_image : border_image -> border_image
+(** [normalize_border_image v] drops each component of [v] that names its own
+    longhand's initial, which is what leaving the component out names. *)
+
 val pp_border_image : border_image Pp.t
 (** [pp_border_image] pretty-prints the [border-image] shorthand. *)
 

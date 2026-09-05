@@ -603,6 +603,10 @@ entry points both moved.
 - `--minify` writes `flex: none` and `flex: auto` for the triples they name,
   where it used to spell them out as `0 0 auto` and `1 auto` (#934)
 
+- `--minify` contracts `border-image` from a run naming all five of its
+  longhands whatever the scope, where it used to need `--scope=stylesheet`,
+  and drops a component of the shorthand that names its own initial (#935)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

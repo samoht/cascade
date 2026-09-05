@@ -4533,6 +4533,7 @@ let normalize_property_value : type a.
   | Flood_opacity -> normalize_opacity value
   | Line_height -> normalize_line_height ~lossless value
   | Vertical_align -> normalize_vertical_align value
+  | Border_image -> normalize_border_image value
   | Border_width ->
       normalize_box_shorthand ~is_substitution:is_border_width_substitution
         normalize_border_width value
