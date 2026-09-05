@@ -776,13 +776,15 @@ let test_named_shorthand_composes () =
    axis longhands, the first value the x axis. A bare offset is measured from
    the start edge, so [left 10px] and [10px] name the same position. *)
 let test_background_position_composes () =
-  sheet_optimizes_to ~into:".x{background-position:50% 10px}"
+  sheet_optimizes_to ~into:".x{background-position:50%10px}"
     ".x{background-position-x:50%;background-position-y:10px}";
-  sheet_optimizes_to ~into:".x{background-position:10px center}"
+  (* Sec. 2.6 reads a lone value as the x axis and centres the y, so the
+     one-value spelling names the same position and is shorter. *)
+  sheet_optimizes_to ~into:".x{background-position:10px}"
     ".x{background-position-x:10px;background-position-y:center}";
-  sheet_optimizes_to ~into:".x{background-position:left center}"
+  sheet_optimizes_to ~into:".x{background-position:0}"
     ".x{background-position-x:left;background-position-y:center}";
-  sheet_optimizes_to ~into:".x{background-position:right 5% bottom 2px}"
+  sheet_optimizes_to ~into:".x{background-position:right 5%bottom 2px}"
     ".x{background-position-x:right 5%;background-position-y:bottom 2px}";
   (* A substituted axis can be the whole value, so it stays put. *)
   sheet_optimizes_to

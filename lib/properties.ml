@@ -620,6 +620,8 @@ let pp_property : type a. a property Pp.t =
   | Vertical_align -> Pp.string ctx "vertical-align"
   | Font_family -> Pp.string ctx "font-family"
   | Background_position -> Pp.string ctx "background-position"
+  | Background_position_x -> Pp.string ctx "background-position-x"
+  | Background_position_y -> Pp.string ctx "background-position-y"
   | Background_repeat -> Pp.string ctx "background-repeat"
   | Background_size -> Pp.string ctx "background-size"
   | Webkit_font_smoothing -> Pp.string ctx "-webkit-font-smoothing"
@@ -1037,28 +1039,29 @@ let property_class : type a. a property -> a property_class = function
   | Content_visibility | Filter | Background_image | Background_origin
   | Background_clip | Webkit_background_clip | Animation | Aspect_ratio
   | Overflow_x | Overflow_y | Overflow_block | Overflow_inline | Vertical_align
-  | Background_position | Background_repeat | Background_size
-  | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
-  | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
-  | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
-  | Webkit_mask_position | Webkit_mask_repeat | Webkit_mask_clip
-  | Webkit_mask_origin | Mask_image | Mask_composite | Mask_mode | Mask_size
-  | Mask_position | Mask_repeat | Mask_clip | Mask_origin | Mask_type
-  | Scroll_snap_align | Scroll_snap_stop | Scroll_behavior | Box_sizing
-  | Field_sizing | Resize | Object_fit | Object_view_box | Appearance
-  | Box_decoration_break | Webkit_box_decoration_break | Content | Counter_reset
-  | Counter_increment | Text_decoration_thickness | Touch_action | Clip | Clear
-  | Float | Scale | Transition | Box_shadow | Vector_effect | Stop_color
-  | Flood_color | Lighting_color | Unicode_bidi | Animation_name
-  | Animation_duration | Animation_timing_function | Animation_delay
-  | Animation_iteration_count | Animation_direction | Animation_fill_mode
-  | Animation_play_state | Animation_composition | Background_blend_mode
-  | Scroll_margin | Scroll_margin_top | Scroll_margin_right
-  | Scroll_margin_bottom | Scroll_margin_left | Scroll_margin_inline
-  | Scroll_margin_inline_start | Scroll_margin_inline_end | Scroll_margin_block
-  | Scroll_margin_block_start | Scroll_margin_block_end | Scroll_padding
-  | Scroll_padding_top | Scroll_padding_right | Scroll_padding_bottom
-  | Scroll_padding_left | Scroll_padding_inline | Scroll_padding_inline_start
+  | Background_position | Background_position_x | Background_position_y
+  | Background_repeat | Background_size | Webkit_line_clamp | Webkit_box_orient
+  | Moz_orient | Text_overflow | Backdrop_filter | Webkit_backdrop_filter
+  | Webkit_mask_image | Webkit_mask_composite | Webkit_mask_source_type
+  | Webkit_mask_size | Webkit_mask_position | Webkit_mask_repeat
+  | Webkit_mask_clip | Webkit_mask_origin | Mask_image | Mask_composite
+  | Mask_mode | Mask_size | Mask_position | Mask_repeat | Mask_clip
+  | Mask_origin | Mask_type | Scroll_snap_align | Scroll_snap_stop
+  | Scroll_behavior | Box_sizing | Field_sizing | Resize | Object_fit
+  | Object_view_box | Appearance | Box_decoration_break
+  | Webkit_box_decoration_break | Content | Counter_reset | Counter_increment
+  | Text_decoration_thickness | Touch_action | Clip | Clear | Float | Scale
+  | Transition | Box_shadow | Vector_effect | Stop_color | Flood_color
+  | Lighting_color | Unicode_bidi | Animation_name | Animation_duration
+  | Animation_timing_function | Animation_delay | Animation_iteration_count
+  | Animation_direction | Animation_fill_mode | Animation_play_state
+  | Animation_composition | Background_blend_mode | Scroll_margin
+  | Scroll_margin_top | Scroll_margin_right | Scroll_margin_bottom
+  | Scroll_margin_left | Scroll_margin_inline | Scroll_margin_inline_start
+  | Scroll_margin_inline_end | Scroll_margin_block | Scroll_margin_block_start
+  | Scroll_margin_block_end | Scroll_padding | Scroll_padding_top
+  | Scroll_padding_right | Scroll_padding_bottom | Scroll_padding_left
+  | Scroll_padding_inline | Scroll_padding_inline_start
   | Scroll_padding_inline_end | Scroll_padding_block
   | Scroll_padding_block_start | Scroll_padding_block_end | Overscroll_behavior
   | Overscroll_behavior_x | Overscroll_behavior_y | Overscroll_behavior_block
@@ -1506,6 +1509,8 @@ let property_tag : type a. a property -> int = function
   | Vertical_align -> 399
   | Font_family -> 400
   | Background_position -> 401
+  | Background_position_x -> 537
+  | Background_position_y -> 538
   | Background_repeat -> 402
   | Background_size -> 403
   | Webkit_font_smoothing -> 404
@@ -2075,6 +2080,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Vertical_align, Vertical_align -> Some Equal
   | Font_family, Font_family -> Some Equal
   | Background_position, Background_position -> Some Equal
+  | Background_position_x, Background_position_x -> Some Equal
+  | Background_position_y, Background_position_y -> Some Equal
   | Background_repeat, Background_repeat -> Some Equal
   | Background_size, Background_size -> Some Equal
   | Webkit_font_smoothing, Webkit_font_smoothing -> Some Equal
@@ -2914,6 +2921,8 @@ let read_any_property t =
   | "background-clip" -> Prop Background_clip
   | "-webkit-background-clip" -> Prop Webkit_background_clip
   | "background-position" -> Prop Background_position
+  | "background-position-x" -> Prop Background_position_x
+  | "background-position-y" -> Prop Background_position_y
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
   | "border-block" -> Prop Border_block
@@ -4024,6 +4033,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Vertical_align, value -> value
   | Font_family, value -> value
   | (Background_position | Webkit_mask_position | Mask_position), value -> value
+  | (Background_position_x | Background_position_y), value -> value
   | (Background_repeat | Webkit_mask_repeat | Mask_repeat), value -> value
   | Webkit_font_smoothing, value -> value
   | Moz_osx_font_smoothing, value -> value
@@ -4295,6 +4305,8 @@ let normalize_property_value : type a.
   | Object_position -> normalize_position_value value
   | Perspective_origin -> normalize_position_value value
   | Background_position -> map_preserve normalize_position_value value
+  | Background_position_x -> normalize_background_position_axis value
+  | Background_position_y -> normalize_background_position_axis value
   | Mask_position -> map_preserve normalize_position_value value
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
@@ -4861,6 +4873,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_row_end -> pp pp_grid_line
   | Text_underline_offset -> pp pp_length
   | Background_position -> pp pp_background_position
+  | Background_position_x -> pp pp_background_position_axis
+  | Background_position_y -> pp pp_background_position_axis
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing

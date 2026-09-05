@@ -737,6 +737,13 @@ let vars_of_position_value (value : Properties.position_value) : any_var list =
       vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
   | _ -> []
 
+let vars_of_background_position_axis
+    (value : Properties.background_position_axis) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Offset lp | Edge_offset (_, lp) -> vars_of_length_percentage lp
+  | _ -> []
+
 let rec vars_of_gradient_direction (value : Properties.gradient_direction) :
     any_var list =
   match value with
@@ -2617,6 +2624,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scroll_padding_block_end, value -> vars_of_length value
   (* One position per background / mask layer, as for [object-position]. *)
   | Background_position, value -> List.concat_map vars_of_position_value value
+  | Background_position_x, value -> vars_of_background_position_axis value
+  | Background_position_y, value -> vars_of_background_position_axis value
   | Mask_position, value -> List.concat_map vars_of_position_value value
   | Webkit_mask_position, value -> List.concat_map vars_of_position_value value
   (* Remaining typed longhands. *)

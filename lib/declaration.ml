@@ -1413,6 +1413,10 @@ let read_background_value : type a. a property -> Cursor.t -> declaration option
       Some (v Webkit_background_clip (read_background_box_list t))
   | Background_position ->
       Some (v Background_position (read_background_position t))
+  | Background_position_x ->
+      Some (v Background_position_x (read_background_position_x t))
+  | Background_position_y ->
+      Some (v Background_position_y (read_background_position_y t))
   | Background_repeat ->
       Some (v Background_repeat (read_background_repeat_list t))
   | Background_size -> Some (v Background_size (read_background_size_list t))

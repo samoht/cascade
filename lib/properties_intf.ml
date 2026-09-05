@@ -2653,6 +2653,24 @@ type position_value =
       string * length_percentage * string * length_percentage
   | Var of position_value var
 
+(* CSS Backgrounds 4 sec. 3.3: [background-position-x] and
+   [background-position-y] each take [center | [<edge>? <length-percentage>]].
+   One type serves both, each edge keyword naming exactly one axis, and the
+   per-property reader refuses the other axis's keywords. *)
+type position_axis_edge = Left | Right | Top | Bottom
+
+type background_position_axis =
+  | Center
+  | Edge of position_axis_edge
+  | Offset of length_percentage
+  | Edge_offset of position_axis_edge * length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of background_position_axis var
+
 type radial_gradient_config = {
   shape : radial_shape option;
   size : radial_size option;
@@ -5060,6 +5078,8 @@ type 'a property =
   | Vertical_align : vertical_align property
   | Font_family : font_family property
   | Background_position : background_position property
+  | Background_position_x : background_position_axis property
+  | Background_position_y : background_position_axis property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
   | Webkit_font_smoothing : webkit_font_smoothing property

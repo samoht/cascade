@@ -1022,6 +1022,31 @@ let rec pp_background_size : background_size Pp.t =
 let pp_background_position : background_position Pp.t =
  fun ctx positions -> Pp.list ~sep:Pp.comma pp_position_value ctx positions
 
+(* CSS Backgrounds 4 sec. 3.3: each axis longhand is [center | [<edge>?
+   <length-percentage>]], the edge naming that axis only. *)
+let pp_position_axis_edge : position_axis_edge Pp.t =
+ fun ctx -> function
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+
+let rec pp_background_position_axis : background_position_axis Pp.t =
+ fun ctx -> function
+  | Center -> Pp.string ctx "center"
+  | Edge e -> pp_position_axis_edge ctx e
+  | Offset lp -> pp_length_percentage ctx lp
+  | Edge_offset (e, lp) ->
+      pp_position_axis_edge ctx e;
+      Pp.space ctx ();
+      pp_length_percentage ctx lp
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_background_position_axis ctx v
+
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
       maybe_space ();
@@ -1704,8 +1729,80 @@ let read_background_box_list t : background_box =
   | [ one ] -> one
   | many -> Layers many
 
+(* CSS Backgrounds 4 sec. 3.3 measures a bare offset from the start edge, so
+   [left 10px] and [10px] name the same position and the shorter wins. The zero
+   percentage of the start edge is what [left] / [top] names, and the hundred
+   percent is [right] / [bottom]. *)
+let normalize_background_position_axis :
+    background_position_axis -> background_position_axis =
+ fun value ->
+  let lp = Values.normalize_length_percentage in
+  let start_edge : position_axis_edge -> bool = function
+    | Left | Top -> true
+    | _ -> false
+  in
+  match value with
+  | Offset o -> preserve_if_equal value (Offset (lp o))
+  | Edge_offset (e, o) when start_edge e -> Offset (lp o)
+  | Edge_offset (e, o) -> preserve_if_equal value (Edge_offset (e, lp o))
+  | other -> other
+
 let read_background_position t : background_position =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_background_position_value t
+
+(* The edge keywords belong to one axis each, so the reader takes the pair its
+   property accepts and refuses the other axis's. An edge may carry an offset
+   from it; a bare offset is measured from the start edge. *)
+let read_background_position_axis ~label ~start_edge ~end_edge =
+  let rec read t : background_position_axis =
+    let edges =
+      [
+        (Pp.to_string pp_position_axis_edge start_edge, start_edge);
+        (Pp.to_string pp_position_axis_edge end_edge, end_edge);
+      ]
+    in
+    let after_edge e t : background_position_axis =
+      if Cursor.is_done t || Cursor.peek_comma t then Edge e
+      else
+        let snap = Cursor.save t in
+        match Values.read_length_percentage t with
+        | lp -> Edge_offset (e, lp)
+        | exception Cursor.Parse_error _ ->
+            Cursor.restore t snap;
+            Edge e
+    in
+    Cursor.enum_or_whole_value_var label
+      [
+        ("inherit", (Inherit : background_position_axis));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+      ]
+      ~var:(fun t -> Var (Values.read_var read t))
+      ~default:(fun t : background_position_axis ->
+        match Cursor.peek_ident t with
+        | Some "center" ->
+            ignore (Cursor.ident_opt t);
+            Center
+        | Some name -> (
+            match List.assoc_opt name edges with
+            | Some e ->
+                ignore (Cursor.ident_opt t);
+                after_edge e t
+            | Option.None -> Cursor.err_expected t label)
+        | Option.None -> Offset (Values.read_length_percentage t))
+      t
+  in
+  read
+
+let read_background_position_x t =
+  read_background_position_axis ~label:"background-position-x" ~start_edge:Left
+    ~end_edge:Right t
+
+let read_background_position_y t =
+  read_background_position_axis ~label:"background-position-y" ~start_edge:Top
+    ~end_edge:Bottom t
 
 module Background_shorthand = struct
   let read_image_item t =

@@ -63,6 +63,10 @@ let covers_longhand : type a b.
   | Background, Background_image -> true
   | Background, Background_origin -> true
   | Background, Background_position -> true
+  | Background, Background_position_x -> true
+  | Background, Background_position_y -> true
+  | Background_position, Background_position_x -> true
+  | Background_position, Background_position_y -> true
   | Background, Background_repeat -> true
   | Background, Background_size -> true
   | Flex, Flex_grow -> true
@@ -467,7 +471,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "background-color";
         key "background-image";
         key "background-origin";
-        key "background-position";
+        key "background-position-x";
+        key "background-position-y";
         key "background-repeat";
         key "background-size";
       ]
@@ -477,7 +482,10 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Background_color -> [ key "background-color" ]
   | Background_image -> [ key "background-image" ]
   | Background_origin -> [ key "background-origin" ]
-  | Background_position -> [ key "background-position" ]
+  | Background_position ->
+      [ key "background-position-x"; key "background-position-y" ]
+  | Background_position_x -> [ key "background-position-x" ]
+  | Background_position_y -> [ key "background-position-y" ]
   | Background_repeat -> [ key "background-repeat" ]
   | Background_size | Webkit_background_size -> [ key "background-size" ]
   | Flex -> [ key "flex-grow"; key "flex-shrink"; key "flex-basis" ]
@@ -2530,6 +2538,66 @@ let duo_container idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_container_part ~build i
 
+(* CSS Backgrounds 4 sec. 3.3: [background-position] is [<x> <y>] over the two
+   axis longhands, [Start] here the x axis. The shorthand carries one position
+   per layer, so a single-valued pair is what composes; the four-value edge form
+   needs each axis to name its own edge. *)
+let extract_background_position_part :
+    declaration ->
+    (axis_side
+    * (Properties.background_position_axis option
+      * Properties.background_position_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Background_position_x; value = Var _; _ }
+  | Declaration { property = Background_position_y; value = Var _; _ } ->
+      None
+  | Declaration { property = Background_position_x; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Background_position_y; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let position_of_axes (x : Properties.background_position_axis)
+    (y : Properties.background_position_axis) : Properties.position_value option
+    =
+  let axis_length : Properties.background_position_axis -> Values.length option
+      = function
+    | Center -> Some (Pct 50.)
+    | Edge Left | Edge Top -> Some Zero
+    | Edge Right | Edge Bottom -> Some (Pct 100.)
+    | Offset (Length l) -> Some l
+    | Offset (Pct p) -> Some (Pct p)
+    | _ -> Option.None
+  in
+  let edge_name : Properties.position_axis_edge -> string = function
+    | Left -> "left"
+    | Right -> "right"
+    | Top -> "top"
+    | Bottom -> "bottom"
+  in
+  match (axis_length x, axis_length y) with
+  | Some lx, Some ly -> Some (Prop_image.position_of_xy lx ly)
+  | _ -> (
+      match (x, y) with
+      | Edge_offset (ex, ox), Edge_offset (ey, oy) ->
+          Some (Edge_offset_edge_offset (edge_name ex, ox, edge_name ey, oy))
+      | _ -> Option.None)
+
+let duo_background_position idx i =
+  let build ~important ~start ~end_ =
+    let x, _ = start and _, y = end_ in
+    match (x, y) with
+    | Some x, Some y ->
+        Option.map
+          (fun p -> Declaration.v ~important Background_position [ p ])
+          (position_of_axes x y)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_background_position_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2563,6 +2631,7 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_animation_range idx i);
     (fun () -> duo_scroll_timeline idx i);
     (fun () -> duo_container idx i);
+    (fun () -> duo_background_position idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

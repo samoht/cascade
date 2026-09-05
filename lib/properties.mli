@@ -1938,6 +1938,18 @@ val read_position_value : Cursor.t -> position_value
 val pp_background_position : background_position Pp.t
 (** [pp_background_position] is the pretty-printer for [background_position]. *)
 
+val pp_background_position_axis : background_position_axis Pp.t
+(** [pp_background_position_axis] is the pretty-printer for one axis of
+    [background-position]. *)
+
+val read_background_position_x : Cursor.t -> background_position_axis
+(** [read_background_position_x t] is the [background-position-x] value parsed
+    from [t]. *)
+
+val read_background_position_y : Cursor.t -> background_position_axis
+(** [read_background_position_y t] is the [background-position-y] value parsed
+    from [t]. *)
+
 val read_background_position : Cursor.t -> background_position
 (** [read_background_position t] is the [background_position] parsed from [t].
 *)
