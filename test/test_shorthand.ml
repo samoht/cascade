@@ -19,13 +19,14 @@ let unindexed decls = List.map snd decls
 
 (* [decl_optimizes_to] wraps its input in one rule; these cases turn on what a
    neighbouring rule holds, so they optimize a whole sheet. *)
-let sheet_optimizes_to ~into input =
+let sheet_optimizes_to ?scope ~into input =
   match Css.of_string input with
   | Ok { stylesheet; _ } ->
       Alcotest.(check string)
         (String.concat "" [ input; " minify+optimize" ])
         into
-        (String.trim (Css.to_string ~minify:true (Css.optimize stylesheet)))
+        (String.trim
+           (Css.to_string ~minify:true (Css.optimize ?scope stylesheet)))
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let test_declaration_covers_reset_boundaries () =
@@ -503,13 +504,32 @@ let test_transition_contraction_covers_reset_longhands () =
      and [0s] are initials and drop out. *)
   decl_optimizes_to ~into:"transition:color 1s allow-discrete"
     "transition-behavior:allow-discrete;transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
-  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+  (* A run leaving a slot out contracts into a shorthand that resets it, and
+     under the fragment scope the optimizer assumes by default the surrounding
+     CSS may hold that slot. So the two runs below keep their longhands, and
+     take the shorthand only once the caller says the input is the whole
+     graph. *)
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete"
     "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
-  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s"
     "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
-  (* A run covering only the Transitions 1 longhands still contracts: nothing in
-     the rule writes the behaviour, so resetting it to [normal] is a no-op. *)
-  decl_optimizes_to ~into:"transition:color 1s"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
+  (* A run covering only the Transitions 1 longhands leaves the behaviour to the
+     reset, which is the same partial contraction. *)
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s"
+    "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  decl_optimizes_to ~scope:`Stylesheet ~into:"transition:color 1s"
     "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
   (* [inherit] is not a shorthand component, so the run cannot carry it and the
      contraction would drop it. *)
@@ -524,20 +544,27 @@ let test_transition_contraction_covers_reset_longhands () =
       "transition-delay:5s;color:red;transition-property:color;transition-duration:1s"
     "transition-delay:5s;color:red;transition-property:color;transition-duration:1s";
   (* An earlier shorthand holds the slots its own run left out. Contracting the
-     later run resets the delay it set. *)
+     later run resets the delay it set, in either scope. *)
   decl_optimizes_to
     ~into:
       "transition:color 1s \
        5s;transition-property:opacity;transition-duration:2s"
     "transition:color 1s ease \
      5s;transition-property:opacity;transition-duration:2s";
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:
+      "transition:color 1s \
+       5s;transition-property:opacity;transition-duration:2s"
+    "transition:color 1s ease \
+     5s;transition-property:opacity;transition-duration:2s";
   (* An earlier shorthand whose unwritten slots are already initials shadows
-     nothing, so the later run contracts. *)
-  decl_optimizes_to ~into:"transition:opacity 2s"
+     nothing, so the later run contracts once the graph is in view. *)
+  decl_optimizes_to ~scope:`Stylesheet ~into:"transition:opacity 2s"
     "transition:color 1s;transition-property:opacity;transition-duration:2s";
   (* An important longhand outranks the composed shorthand whatever the order,
      so it is not a hazard. *)
-  decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition-delay:5s!important;transition:color 1s"
     "transition-delay:5s!important;transition-property:color;transition-duration:1s"
 
 (* The slot a contraction resets belongs to the element, not to the rule: any
@@ -1057,26 +1084,34 @@ let test_border_contraction_covers_border_image () =
    name written earlier says [none] and animates nothing. The transition family
    already reasons this way; animation had no coverage arms at all. *)
 let test_animation_contraction_covers_other_rules () =
+  (* [animation] has more longhands than [<single-animation>] can carry, so
+     every run here leaves the shorthand resetting something and each case asks
+     for the whole graph; the control at the end pins the fragment scope. *)
   (* Split across two rules with the same selector: the shortest spelling that
      keeps the name groups the two and carries it into the shorthand. *)
-  sheet_optimizes_to ~into:".a{animation:spin 2s linear}"
+  sheet_optimizes_to ~scope:`Stylesheet ~into:".a{animation:spin 2s linear}"
     ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}";
   (* Same rule: the name is reset by a contraction that does not carry it, so
      the run stays expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{animation-name:spin;color:red;animation-duration:2s}"
     ".a{animation-name:spin;color:red;animation-duration:2s}";
   (* An important name outranks the non-important shorthand whatever the order,
      so the run contracts. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{animation-name:spin!important;color:red;animation:2s linear}"
     ".a{animation-name:spin!important;color:red;animation-duration:2s;animation-timing-function:linear}";
   (* A non-important name is reset by the contraction, so the run stays
      expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
-    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}";
+  (* The control: the first input under the fragment scope. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-duration:2s;animation-timing-function:linear;animation-name:spin}"
+    ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}"
 
 (* Scroll-driven Animations 1 (ED) appendix A.3 makes the two animation-range
    longhands reset-only sub-properties of [animation], which Chrome 146 agrees
@@ -1104,14 +1139,18 @@ let test_animation_resets_the_range () =
     "animation:x 1s;animation-range:normal!important"
 
 let test_transition_contraction_covers_other_rules () =
+  (* Every case here contracts a run that leaves a slot to the shorthand's
+     reset, so each one asks for the whole graph. Under the fragment scope the
+     run stays expanded whatever the neighbours say, which the two controls at
+     the end pin. *)
   (* Same rule, both sides of the guard. A non-important holder is reset by the
      contraction, so the run stays expanded; an important one outranks the
      non-important shorthand whatever the order, so the run contracts. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}"
     ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete!important;color:red;transition:color \
        1s}"
@@ -1119,23 +1158,26 @@ let test_transition_contraction_covers_other_rules () =
   (* Split across two rules with the same selector, the element sees exactly the
      cascade above. The behaviour has to survive, and the shortest spelling that
      keeps it groups the two rules and carries it into the shorthand. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete}"
     ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{transition:color 1s;transition-behavior:allow-discrete!important}"
     ".a{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
   (* Both important: the shorthand no longer loses to the holder, so dropping
      the behaviour would change what the element animates. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete!important}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete!important}"
     ".a{transition-behavior:allow-discrete!important}.a{transition-property:color!important;transition-duration:1s!important}";
   (* An unrelated rule between them changes nothing: the holder is still in the
      cascade the second rule lands on. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
     ".a{transition-behavior:allow-discrete}.b{color:red}.a{transition-property:color;transition-duration:1s}";
   (* A rule between them that writes the same family keeps the two apart, so
      there is no grouping to carry the behaviour into and the run stays
      expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete}.b{transition:opacity \
        2s}.a{transition-property:color;transition-duration:1s}"
@@ -1143,25 +1185,35 @@ let test_transition_contraction_covers_other_rules () =
      2s}.a{transition-property:color;transition-duration:1s}";
   (* The holder needs no relation to the run's selector: an element carrying
      both classes reads one cascade. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}"
     ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
   (* The other side of the guard, so it stays a hazard test and not a blanket
      refusal: a neighbour holding the slot at its initial resets to the same
      thing, and an important neighbour outranks the shorthand. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".b{transition-behavior:normal}.a{transition:color 1s}"
     ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".b{transition-behavior:allow-discrete!important}.a{transition:color 1s}"
     ".b{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
   (* A slot the rule itself rewrites after the run is not at risk from a
      neighbour holding it: the rewrite lands after the reset. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{transition:color 1s;color:red;transition-delay:5s}"
-    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}"
+    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}";
+  (* The controls: the same two inputs under the fragment scope the optimizer
+     assumes by default. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete;transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
+    ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
 
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot

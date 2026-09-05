@@ -111,7 +111,7 @@ let decl_optimizes ~prop ?held ~into input =
         (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
-let decl_optimizes_to ?held ~into input =
+let decl_optimizes_to ?held ?scope ~into input =
   let wrap decl = String.concat "" [ ".x{"; decl; "}" ] in
   match Css.of_string ~strict:false (wrap input) with
   | Ok p ->
@@ -125,7 +125,8 @@ let decl_optimizes_to ?held ~into input =
       Alcotest.(check string)
         (wrap input ^ " minify+optimize")
         (wrap into)
-        (Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim)
+        (Css.to_string ~minify:true (Css.optimize ?scope p.stylesheet)
+        |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
 (** [decl_lossless ~prop ~into input] asserts the lossless minify+optimize
