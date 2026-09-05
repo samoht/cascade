@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- `color-scheme` refuses a repeated `only`, so `color-scheme: only light only`
+  no longer parses (#891).
+
 - A shadow whose colour or `inset` interrupts the length run is refused, and
   `text-shadow` refuses a fourth length or a second colour rather than
   dropping it (#890).

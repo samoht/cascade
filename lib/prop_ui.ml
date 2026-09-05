@@ -1159,12 +1159,13 @@ let color_scheme_of_idents t names : color_scheme =
       if has_css_wide then
         Cursor.err_invalid t
           "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
-      let non_only_names =
-        List.filter (fun n -> String.lowercase_ascii n <> "only") names
-      in
+      let is_only n = String.equal (String.lowercase_ascii n) "only" in
+      let non_only_names = List.filter (fun n -> not (is_only n)) names in
       if non_only_names = [] then
         Cursor.err_invalid t
           "color-scheme: [only] must be combined with a color scheme";
+      if List.length (List.filter is_only names) > 1 then
+        Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
       Custom names
 
 let rec read_color_scheme t : color_scheme =
