@@ -2364,6 +2364,17 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* CSS Align 3 sec. 5.2: [place-items] is [<'align-items'>
+     <'justify-items'>?], so it takes every <self-position> keyword align-items
+     does, and a lone value sets both axes. The optimizer contracts
+     [align-items: flex-start; justify-items: baseline] into this spelling. *)
+  check_declaration ~expected:"place-items:flex-start baseline"
+    "place-items: flex-start baseline";
+  check_declaration ~expected:"place-items:self-start end"
+    "place-items: self-start end";
+  check_declaration ~expected:"place-items:start baseline"
+    "place-items: start baseline";
+
   (* CSS Color 5 sec. 5.1: [color(from <origin> srgb r g b)] is the origin's own
      sRGB channels, so it folds to the origin whether that was written as a hex
      or as a [color()] the same conversion reaches. *)
