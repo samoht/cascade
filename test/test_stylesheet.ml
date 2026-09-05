@@ -1926,10 +1926,14 @@ let spec_lenient_recovery_block_statements () =
     "@supports (color: red) { @supports (display: grid) bogus { a { color: red \
      } } b { color: blue } }"
     "@supports(color:red){b{color:#00f}}" 1;
-  lenient_recover "bad @media prelude in @media ends at its block"
+  (* Media Queries 5 sec. 3.2 replaces a query that does not match the grammar
+     with [not all] rather than dropping the rule, so the rule and its contents
+     survive and match nothing. [@supports] and [@container] above still drop:
+     their own specifications are read separately. *)
+  lenient_recover "bad @media prelude in @media is replaced by not all"
     "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
      color: blue } }"
-    "@media screen{b{color:#00f}}" 1;
+    "@media screen{@media not all{a{color:red}}b{color:#00f}}" 1;
   lenient_recover "bad @container prelude in @media ends at its block"
     "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
      color: blue } }"

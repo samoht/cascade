@@ -3595,11 +3595,18 @@ let read_supports_condition (r : Cursor.t) : statement =
 
 let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 
+(* Media Queries 5 sec. 3.2: "A media query that does not match the grammar
+   [...] must be replaced by not all during parsing", so a prelude the reader
+   refuses leaves the rule standing and matching nothing rather than taking the
+   rule and its contents with it. The query is still lost, so it is reported:
+   the recovery is {!Error.Recovery.Recovered}, the rule surviving. *)
 let read_nested_media_condition t =
   if Cursor.is_done t then Media.List []
   else
     try Media.read ~recover:false t
-    with Error.Parse_error _ -> Media.of_string "not all"
+    with Error.Parse_error e when Cursor.recover t ->
+      Cursor.push_warning t ~recovery:Error.Recovery.Recovered e;
+      Media.of_string "not all"
 
 let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
@@ -3933,10 +3940,10 @@ and read_media (r : Cursor.t) : statement =
   let condition_components = Cursor.drain_until_block r in
   let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  let condition =
-    if Cursor.is_done query then Media.List []
-    else Media.read ~recover:false query
-  in
+  let condition = read_nested_media_condition query in
+  List.iter
+    (fun w -> Cursor.push_warning r ~recovery:Error.Recovery.Recovered w)
+    (Cursor.drain_warnings query);
   Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =

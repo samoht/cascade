@@ -72,8 +72,9 @@ that carried it, and the rules either side are written.
   $ cascade fmt --minify bad-selector.css 2> /dev/null
   .ok{color:red}.ok2{color:green}
 
-An at-rule prelude it cannot read is the same shape: the block goes, its
-neighbours stay.
+A media query it cannot read is not the same shape. Media Queries 5 sec. 3.2
+replaces such a query with `not all`, so the block stays, matches nothing, and
+its neighbours are untouched either way.
 
   $ cat > bad-prelude.css <<EOF
   > .ok { color: red }
@@ -81,6 +82,16 @@ neighbours stay.
   > .ok2 { color: green }
   > EOF
   $ cascade fmt --minify bad-prelude.css 2> /dev/null
+  .ok{color:red}@media not all{.x{color:#00f}}.ok2{color:green}
+
+A prelude with no such rule behind it does go, and its neighbours stay.
+
+  $ cat > bad-at-rule.css <<EOF
+  > .ok { color: red }
+  > @supports ^^^ { .x { color: blue } }
+  > .ok2 { color: green }
+  > EOF
+  $ cascade fmt --minify bad-at-rule.css 2> /dev/null
   .ok{color:red}.ok2{color:green}
 
 An input with no rules to begin with is legitimately empty: nothing was

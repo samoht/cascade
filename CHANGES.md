@@ -654,6 +654,12 @@ entry points both moved.
   parser had read after it. A rule with no descriptor at all is dropped, since
   it renders as an unknown name does (#946)
 
+- An `@media` whose query does not match the grammar keeps its rule and its
+  contents, matching nothing. Media Queries 5 sec. 3.2 replaces such a query
+  with `not all`, and cascade dropped the rule and everything inside it. The
+  query is still reported as a warning, and `~strict:true` still refuses the
+  stylesheet (#947)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
