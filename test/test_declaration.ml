@@ -2364,6 +2364,20 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* CSS Color 4 sec. 9.4: an out-of-range Oklab lightness clamps rather than
+     invalidating the colour, and 0% to 100% is the same 0 to 1 a bare number
+     names, so both spellings clamp alike. *)
+  (* pp holds the percentage spelling; each pair asserts that the out-of-range
+     value reads as the in-range one beside it. *)
+  check_declaration ~expected:"color:oklab(100%0 0)" "color: oklab(100% 0 0)";
+  check_declaration ~expected:"color:oklab(100%0 0)" "color: oklab(200% 0 0)";
+  check_declaration ~expected:"color:oklab(0%0 0)" "color: oklab(0% 0 0)";
+  check_declaration ~expected:"color:oklab(0%0 0)" "color: oklab(-200% 0 0)";
+  check_declaration ~expected:"color:oklch(100%0 0)" "color: oklch(100% 0 0)";
+  check_declaration ~expected:"color:oklch(100%0 0)" "color: oklch(200% 0 0)";
+  check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(0% 0 0)";
+  check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(-200% 0 0)";
+
   (* [center] minifies to the same pair of percentages a written-out position
      does, and a percentage delimits itself, so neither spelling keeps the space
      between them. *)
