@@ -2020,6 +2020,44 @@ let extract_margin_block_side :
       Some (End, value, important)
   | _ -> None
 
+(* CSS Scroll Snap 1 sec. 6.1 and 6.2: the scroll-margin and scroll-padding
+   logical axes take [<length>{1,2}], the shape the margin and padding axes
+   take, so the same pair composition applies. *)
+let extract_scroll_margin_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_margin_block_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_margin_block_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_margin_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_margin_inline_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_margin_inline_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_padding_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_padding_block_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_padding_block_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_padding_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_padding_inline_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_padding_inline_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
 let extract_padding_inline_side :
     declaration -> (axis_side * Values.length * bool) option = function
   | Declaration { property = Padding_inline_start; value; important; _ } ->
@@ -2108,30 +2146,30 @@ let compose_pair_via_index idx =
     let build ~important ~value = Declaration.v ~important property value in
     try_compose_axis_pair_at idx ~extract ~build i
   in
+  (* One entry per logical axis family; each pairs a start longhand with its end
+     longhand under the shorthand that names the axis. *)
+  let axes i =
+    [
+      (fun () -> axis Margin_inline extract_margin_inline_side i);
+      (fun () -> axis Margin_block extract_margin_block_side i);
+      (fun () -> axis Padding_inline extract_padding_inline_side i);
+      (fun () -> axis Padding_block extract_padding_block_side i);
+      (fun () -> axis Inset_inline extract_inset_inline_side i);
+      (fun () -> axis Inset_block extract_inset_block_side i);
+      (fun () -> axis Scroll_margin_inline extract_scroll_margin_inline_side i);
+      (fun () -> axis Scroll_margin_block extract_scroll_margin_block_side i);
+      (fun () ->
+        axis Scroll_padding_inline extract_scroll_padding_inline_side i);
+      (fun () -> axis Scroll_padding_block extract_scroll_padding_block_side i);
+    ]
+  in
   let try_any i =
     match try_compose_gap_at idx i with
     | Some _ as r -> r
     | None -> (
-        match axis Margin_inline extract_margin_inline_side i with
+        match List.find_map (fun f -> f ()) (axes i) with
         | Some _ as r -> r
-        | None -> (
-            match axis Margin_block extract_margin_block_side i with
-            | Some _ as r -> r
-            | None -> (
-                match axis Padding_inline extract_padding_inline_side i with
-                | Some _ as r -> r
-                | None -> (
-                    match axis Padding_block extract_padding_block_side i with
-                    | Some _ as r -> r
-                    | None -> (
-                        match axis Inset_inline extract_inset_inline_side i with
-                        | Some _ as r -> r
-                        | None -> (
-                            match
-                              axis Inset_block extract_inset_block_side i
-                            with
-                            | Some _ as r -> r
-                            | None -> try_compose_place_at idx i))))))
+        | None -> try_compose_place_at idx i)
   in
   let n = Rule_index.length idx in
   let i = ref 0 in
