@@ -3793,6 +3793,11 @@ let spec_current_at_rules () =
      }";
   check_stylesheet ~expected:"@scope(.card)to (.footer){.title{color:red}}"
     "@scope (.card) to (.footer) { .title { color: red } }";
+  (* [@scope] and [to] are both ident-shaped, so with nothing between them they
+     lex as the one at-keyword [@scopeto]. The [)] closing a start selector
+     already delimits them. *)
+  check_stylesheet ~expected:"@scope to (.footer){.title{color:red}}"
+    "@scope to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
   (* The scope-end selector list is held in authored order by pp; only optimize
