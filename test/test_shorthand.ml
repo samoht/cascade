@@ -544,6 +544,25 @@ let test_transition_contraction_covers_reset_longhands () =
    declaration that can reach the same element and holds that slot is at risk,
    whichever rule it sits in. Composition reads one rule, so it cannot see the
    holders next door. *)
+(* CSS Scroll Snap 1 sec. 6.1 and 6.2 give the scroll-margin and scroll-padding
+   logical axes the same [<length>{1,2}] shape the margin and padding axes have,
+   so the pair composes the same way. Without it the canonical comparator cannot
+   equate the shorthand with its own longhands. *)
+let test_scroll_axis_pair_composes () =
+  sheet_optimizes_to ~into:".x{scroll-margin-block:1px 2px}"
+    ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px}";
+  sheet_optimizes_to ~into:".x{scroll-margin-inline:1px}"
+    ".x{scroll-margin-inline-start:1px;scroll-margin-inline-end:1px}";
+  sheet_optimizes_to ~into:".x{scroll-padding-block:1px 2px}"
+    ".x{scroll-padding-block-start:1px;scroll-padding-block-end:2px}";
+  sheet_optimizes_to ~into:".x{scroll-padding-inline:3em}"
+    ".x{scroll-padding-inline-start:3em;scroll-padding-inline-end:3em}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
+    ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1123,6 +1142,8 @@ let suite =
         test_transition_contraction_covers_other_rules;
       Alcotest.test_case "animation contraction covers other rules" `Quick
         test_animation_contraction_covers_other_rules;
+      Alcotest.test_case "scroll axis pair composes" `Quick
+        test_scroll_axis_pair_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
