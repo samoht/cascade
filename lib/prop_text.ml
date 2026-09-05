@@ -1040,8 +1040,19 @@ let rec pp_text_wrap : text_wrap Pp.t =
   | Var v -> pp_var pp_text_wrap ctx v
   | Wrap -> Pp.string ctx "wrap"
   | No_wrap -> Pp.string ctx "nowrap"
+  | Auto -> Pp.string ctx "auto"
   | Balance -> Pp.string ctx "balance"
+  | Stable -> Pp.string ctx "stable"
   | Pretty -> Pp.string ctx "pretty"
+  | Mode_style (mode, style) ->
+      Pp.string ctx (match mode with `Wrap -> "wrap" | `No_wrap -> "nowrap");
+      Pp.space ctx ();
+      Pp.string ctx
+        (match style with
+        | `Auto -> "auto"
+        | `Balance -> "balance"
+        | `Stable -> "stable"
+        | `Pretty -> "pretty")
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1464,12 +1475,16 @@ let rec read_text_overflow t : text_overflow =
     ]
     t
 
+(* CSS Text 4 sec. 5.5: [<'text-wrap-mode'> || <'text-wrap-style'>], so each
+   side appears at most once and either may be omitted. *)
 let rec read_text_wrap t : text_wrap =
-  Cursor.enum_or_var "text-wrap"
+  let single =
     [
       ("wrap", (Wrap : text_wrap));
       ("nowrap", No_wrap);
+      ("auto", Auto);
       ("balance", Balance);
+      ("stable", Stable);
       ("pretty", Pretty);
       ("inherit", Inherit);
       ("initial", Initial);
@@ -1477,8 +1492,46 @@ let rec read_text_wrap t : text_wrap =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (read_var read_text_wrap t))
-    t
+  in
+  let first =
+    Cursor.enum_or_var "text-wrap" single
+      ~var:(fun t -> Var (read_var read_text_wrap t))
+      t
+  in
+  let mode_of : text_wrap -> _ = function
+    | Wrap -> Some `Wrap
+    | No_wrap -> Some `No_wrap
+    | _ -> None
+  in
+  let style_of : text_wrap -> _ = function
+    | Auto -> Some `Auto
+    | Balance -> Some `Balance
+    | Stable -> Some `Stable
+    | Pretty -> Some `Pretty
+    | _ -> None
+  in
+  let second () =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some _ -> Cursor.option (Cursor.enum "text-wrap" single) t
+    | None -> None
+  in
+  match (mode_of first, style_of first) with
+  | Some mode, _ -> (
+      match second () with
+      | Some other -> (
+          match style_of other with
+          | Some style -> Mode_style (mode, style)
+          | None -> Cursor.err_invalid t "text-wrap repeats its wrap mode")
+      | None -> first)
+  | _, Some style -> (
+      match second () with
+      | Some other -> (
+          match mode_of other with
+          | Some mode -> Mode_style (mode, style)
+          | None -> Cursor.err_invalid t "text-wrap repeats its wrap style")
+      | None -> first)
+  | None, None -> first
 
 let rec read_text_wrap_mode t : text_wrap_mode =
   Cursor.enum_or_var "text-wrap-mode"

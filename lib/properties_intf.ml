@@ -1293,11 +1293,18 @@ type text_overflow =
   | Revert_layer
   | Var of text_overflow var
 
+(* CSS Text 4 sec. 5.5: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>]. A single component names the arm it came from;
+   [Mode_style] carries both, and prints mode-first whatever order it was
+   written in. *)
 type text_wrap =
   | Wrap
   | No_wrap
+  | Auto
   | Balance
+  | Stable
   | Pretty
+  | Mode_style of [ `Wrap | `No_wrap ] * [ `Auto | `Balance | `Stable | `Pretty ]
   | Inherit
   | Initial
   | Unset

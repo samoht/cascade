@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `text-wrap` reads its full grammar: `auto` and `stable`, and a wrap mode
+  combined with a wrap style in either order. `Css.text_wrap` gains `Auto`,
+  `Stable` and `Mode_style` (#886).
+
 - `animation-duration` accepts `auto`, its initial value, instead of dropping
   the declaration. `Css.duration` gains an `Auto` constructor; the delays and
   `transition-duration` still reject it (#885).

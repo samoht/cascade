@@ -2467,8 +2467,12 @@ val text_overflow : text_overflow -> declaration
 type text_wrap = Properties.text_wrap =
   | Wrap
   | No_wrap
+  | Auto
   | Balance
+  | Stable
   | Pretty
+  | Mode_style of [ `Wrap | `No_wrap ] * [ `Auto | `Balance | `Stable | `Pretty ]
+      (** both components, printed mode-first *)
   | Inherit
   | Initial
   | Unset
