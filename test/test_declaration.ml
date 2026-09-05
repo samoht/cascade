@@ -3870,7 +3870,10 @@ let spec_custom_tokens () =
     "var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--nested-var:var(--a,var(--b,{color:red;}))"
     "--nested-var: var(--a, var(--b, { color: red; }))";
-  check_declaration ~expected:"--bad-string:\"unterminated"
+  (* CSS Syntax 3 sec. 4.3.5 returns the string token when the input ends before
+     the closing quote, so the value holds a string and prints as one. Keeping
+     the original bytes instead left it swallowing whatever followed. *)
+  check_declaration ~expected:"--bad-string:\"unterminated\""
     "--bad-string: \"unterminated";
   neg_cursor read_declaration "--: value";
   neg_cursor read_declaration "-x: value";

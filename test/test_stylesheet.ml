@@ -4227,6 +4227,15 @@ let test_nesting_check_stylesheet () =
    Recovering to the next semicolon, which is what sec. 5.5.6 does for a bad
    declaration, would take every item written after the bad rule and the parent
    with them. *)
+(* CSS Syntax 3 sec. 4.3.5 returns the string token when the input ends before
+   the closing quote, so the token is a string and prints as one. Omitting the
+   quote to keep the original bytes leaves the value swallowing the brace that
+   follows, and the sheet grows one per pass. *)
+let unterminated_string_closes () =
+  check_stylesheet ~expected:"foo{--foo:\"foo\"}" "foo{--foo:\"foo";
+  check_stylesheet ~expected:"foo{--foo:\"foo\"}" "foo{--foo:\"foo\"}";
+  check_stylesheet ~expected:"foo{content:\"a\"}" "foo{content:\"a\"}"
+
 let nesting_invalid_rule_recovery () =
   (* Each expectation is what the same sheet gives with the bad rule deleted:
      dropping it costs the parent nothing and the items around it nothing. *)
@@ -9344,6 +9353,7 @@ let additional_tests =
       `Quick,
       unicode_range_only_in_its_descriptor );
     ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
+    ("unterminated string closes", `Quick, unterminated_string_closes);
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
