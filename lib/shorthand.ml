@@ -2650,6 +2650,62 @@ let duo_white_space idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_white_space_part ~build i
 
+(* CSS Text 4 sec. 5.1: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>] over its two longhands, with [wrap] the mode's initial
+   (sec. 5.2) and [auto] the style's (sec. 5.3), so a longhand at its initial
+   names what leaving the component out names. *)
+let extract_text_wrap_part :
+    declaration ->
+    (axis_side
+    * (Properties.text_wrap_mode option * Properties.text_wrap_style option)
+    * bool)
+    option = function
+  | Declaration { property = Text_wrap_mode; value = Var _; _ }
+  | Declaration { property = Text_wrap_style; value = Var _; _ } ->
+      None
+  | Declaration { property = Text_wrap_mode; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Text_wrap_style; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let text_wrap_of_pair (m : Properties.text_wrap_mode)
+    (st : Properties.text_wrap_style) : Properties.text_wrap option =
+  let mode =
+    match m with
+    | Wrap | Initial -> Some `Wrap
+    | No_wrap -> Some `No_wrap
+    | _ -> Option.None
+  in
+  let style =
+    match st with
+    | Auto | Initial -> Some `Auto
+    | Balance -> Some `Balance
+    | Stable -> Some `Stable
+    | Pretty -> Some `Pretty
+    | _ -> Option.None
+  in
+  match (mode, style) with
+  | Some `Wrap, Some `Auto -> Some (Wrap : Properties.text_wrap)
+  | Some `No_wrap, Some `Auto -> Some No_wrap
+  | Some `Wrap, Some `Balance -> Some Balance
+  | Some `Wrap, Some `Stable -> Some Stable
+  | Some `Wrap, Some `Pretty -> Some Pretty
+  | Some m, Some st -> Some (Mode_style (m, st))
+  | _ -> Option.None
+
+let duo_text_wrap idx i =
+  let build ~important ~start ~end_ =
+    let mode, _ = start and _, style = end_ in
+    match (mode, style) with
+    | Some m, Some st ->
+        Option.map (Declaration.v ~important Text_wrap) (text_wrap_of_pair m st)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_text_wrap_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2685,6 +2741,7 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_container idx i);
     (fun () -> duo_background_position idx i);
     (fun () -> duo_white_space idx i);
+    (fun () -> duo_text_wrap idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =

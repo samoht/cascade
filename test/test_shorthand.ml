@@ -832,6 +832,26 @@ let test_white_space_composes () =
     ~into:".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
     ".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
 
+(* CSS Text 4 sec. 5.1: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>] over its two longhands, and a longhand at its initial
+   names what leaving the component out names. *)
+let test_text_wrap_composes () =
+  sheet_optimizes_to ~into:".x{text-wrap:balance}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:balance}";
+  sheet_optimizes_to ~into:".x{text-wrap:wrap}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:auto}";
+  sheet_optimizes_to ~into:".x{text-wrap:nowrap}"
+    ".x{text-wrap-mode:nowrap;text-wrap-style:auto}";
+  sheet_optimizes_to ~into:".x{text-wrap:pretty}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:pretty}";
+  (* Neither component at its initial needs both written out. *)
+  sheet_optimizes_to ~into:".x{text-wrap:nowrap balance}"
+    ".x{text-wrap-mode:nowrap;text-wrap-style:balance}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1433,6 +1453,7 @@ let suite =
         test_background_position_composes;
       Alcotest.test_case "column rule composes" `Quick test_column_rule_composes;
       Alcotest.test_case "white space composes" `Quick test_white_space_composes;
+      Alcotest.test_case "text wrap composes" `Quick test_text_wrap_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
