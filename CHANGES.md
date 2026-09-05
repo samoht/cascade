@@ -660,6 +660,11 @@ entry points both moved.
   query is still reported as a warning, and `~strict:true` still refuses the
   stylesheet (#947)
 
+- A `@font-face` descriptor with no name is dropped and the rule kept, as an
+  unknown name and an invalid value already were. The name was read outside
+  the recovery, so `@font-face { font-family: f; : url(a.woff2) }` took the
+  rule and everything the parser had read after it (#948)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

@@ -2566,7 +2566,11 @@ let spec_s7_block_examples () =
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
   check_stylesheet ~expected:"@keyframes slide{50%{opacity:1}}"
     "@keyframes slide { color: red; 50% { opacity: 1 } }";
-  expect_parse_error "@font-face { .x { color: red } }"
+  (* A qualified rule is not a descriptor, so it is dropped the way any other
+     bad descriptor is and the @font-face is kept. It then carries neither
+     font-family nor src, so nothing is emitted. Chrome 146 keeps an empty
+     CSSFontFaceRule for the same input. *)
+  check_stylesheet ~expected:"" "@font-face { .x { color: red } }"
 
 (* Not a roundtrip test *)
 let spec_s8_rule_shapes () =

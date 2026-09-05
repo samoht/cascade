@@ -2641,8 +2641,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         None
     | _ -> (
         let start = Cursor.save r in
-        let name = Cursor.ident ~keep_case:false r in
         match
+          (* The name is read inside the recovered region: a descriptor with no
+             name at all ([@font-face { : url(a.woff2) }]) fails here, and it is
+             dropped like any other bad one rather than taking the rule. *)
+          let name = Cursor.ident ~keep_case:false r in
           if descriptor_value_has_var r && not (descriptor_resolves_var name)
           then Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
           else read_font_face_desc name r
@@ -2653,9 +2656,9 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
             Some descriptor
         | exception Error.Parse_error e ->
             (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
-               that does not parse - an unknown name (Fontsource's
-               [font-named-instance]) or an invalid value of a known one
-               ([font-display:maybe]) - is dropped and the rest of the
+               that does not parse - one with no name at all, an unknown name
+               (Fontsource's [font-named-instance]) or an invalid value of a
+               known one ([font-display:maybe]) - is dropped and the rest of the
                @font-face is kept, matching browsers. *)
             Cursor.skip_past_semicolon r;
             Cursor.push_warning r
