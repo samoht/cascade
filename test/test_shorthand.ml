@@ -745,6 +745,33 @@ let test_timeline_range_composes () =
       ".x{animation-range-start:normal;animation-range-end:normal!important}"
     ".x{animation-range-start:normal;animation-range-end:normal!important}"
 
+(* CSS Contain 3 sec. 4.3 and CSS Scroll Animations 1 sec. 5.2: [container] is
+   [<name> [/ <type>]?] and [view-timeline] is [<name> <axis>? <inset>?], each
+   over its own name longhand and its modifiers. A modifier at its initial names
+   what leaving it out names. *)
+let test_named_shorthand_composes () =
+  sheet_optimizes_to ~into:".x{container:card/inline-size}"
+    ".x{container-name:card;container-type:inline-size}";
+  sheet_optimizes_to ~into:".x{container:none}"
+    ".x{container-name:none;container-type:normal}";
+  sheet_optimizes_to ~into:".x{container:card}"
+    ".x{container-name:card;container-type:normal}";
+  sheet_optimizes_to ~into:".x{view-timeline:--v}"
+    ".x{view-timeline-name:--v;view-timeline-axis:block;view-timeline-inset:auto}";
+  sheet_optimizes_to ~into:".x{view-timeline:--v inline}"
+    ".x{view-timeline-name:--v;view-timeline-axis:inline;view-timeline-inset:auto}";
+  sheet_optimizes_to ~into:".x{view-timeline:none}"
+    ".x{view-timeline-name:none;view-timeline-axis:block;view-timeline-inset:auto}";
+  (* An unnamed timeline carries no modifier, so a non-initial one beside it has
+     no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:".x{view-timeline-name:none;view-timeline-axis:inline}"
+    ".x{view-timeline-name:none;view-timeline-axis:inline}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{container-name:card;container-type:inline-size!important}"
+    ".x{container-name:card;container-type:inline-size!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1340,6 +1367,8 @@ let suite =
       Alcotest.test_case "duo keyword composes" `Quick test_duo_keyword_composes;
       Alcotest.test_case "timeline and range compose" `Quick
         test_timeline_range_composes;
+      Alcotest.test_case "named shorthand composes" `Quick
+        test_named_shorthand_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
