@@ -51,11 +51,11 @@ let test_unknown_property_overlap () =
   Alcotest.(check bool)
     "an unknown longhand overlaps the shorthand that resets it" true
     (Shorthand.declarations_overlap (decl "background:red")
-       (decl "background-position-x:10px"));
+       (decl "background-repeat-x:repeat"));
   Alcotest.(check bool)
     "the relation is symmetric" true
     (Shorthand.declarations_overlap
-       (decl "background-position-x:10px")
+       (decl "background-repeat-x:repeat")
        (decl "background:red"));
   (* [grid-row-gap] is the legacy alias of [row-gap], which [gap] resets. *)
   Alcotest.(check bool)
@@ -772,6 +772,27 @@ let test_named_shorthand_composes () =
     ~into:".x{container-name:card;container-type:inline-size!important}"
     ".x{container-name:card;container-type:inline-size!important}"
 
+(* CSS Backgrounds 4 sec. 3.3: [background-position] is [<x> <y>] over the two
+   axis longhands, the first value the x axis. A bare offset is measured from
+   the start edge, so [left 10px] and [10px] name the same position. *)
+let test_background_position_composes () =
+  sheet_optimizes_to ~into:".x{background-position:50% 10px}"
+    ".x{background-position-x:50%;background-position-y:10px}";
+  sheet_optimizes_to ~into:".x{background-position:10px center}"
+    ".x{background-position-x:10px;background-position-y:center}";
+  sheet_optimizes_to ~into:".x{background-position:left center}"
+    ".x{background-position-x:left;background-position-y:center}";
+  sheet_optimizes_to ~into:".x{background-position:right 5% bottom 2px}"
+    ".x{background-position-x:right 5%;background-position-y:bottom 2px}";
+  (* A substituted axis can be the whole value, so it stays put. *)
+  sheet_optimizes_to
+    ~into:".x{background-position-x:var(--x);background-position-y:10px}"
+    ".x{background-position-x:var(--x);background-position-y:10px}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{background-position-x:10px;background-position-y:20px!important}"
+    ".x{background-position-x:10px;background-position-y:20px!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1369,6 +1390,8 @@ let suite =
         test_timeline_range_composes;
       Alcotest.test_case "named shorthand composes" `Quick
         test_named_shorthand_composes;
+      Alcotest.test_case "background position composes" `Quick
+        test_background_position_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
