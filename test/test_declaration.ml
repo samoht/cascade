@@ -4595,6 +4595,14 @@ let spec_remaining_prop_vectors () =
       (* CSS Fonts 4 (ED) sec. 6.6. Chrome 146 reads each of these and refuses a
          repeated component, a reserved feature name and a bare ident. *)
       ("font-variant-alternates: normal", "font-variant-alternates:normal");
+      (* CSS Fonts 4 (ED) sec. 6.10. Chrome 146 reads each of these and refuses
+         a component written twice over. *)
+      ("font-variant: normal", "font-variant:normal");
+      ("font-variant: none", "font-variant:none");
+      ("font-variant: small-caps", "font-variant:small-caps");
+      ( "font-variant: common-ligatures small-caps tabular-nums ruby sub text",
+        "font-variant:common-ligatures small-caps tabular-nums ruby sub text" );
+      ("font-variant: swash(a) small-caps", "font-variant:swash(a) small-caps");
       ( "font-variant-alternates: historical-forms",
         "font-variant-alternates:historical-forms" );
       ( "font-variant-alternates: swash(fancy)",
@@ -4741,6 +4749,10 @@ let spec_remaining_prop_vectors () =
       "font-variant-numeric: lining-nums oldstyle-nums";
       "font-variant-position: sub super";
       "font-variant-alternates: swash(fancy) swash(x)";
+      "font-variant: small-caps unicase";
+      "font-variant: common-ligatures no-common-ligatures";
+      "font-variant: jis78 jis83";
+      "font-variant: bogus";
       "font-variant-alternates: swash(inherit)";
       "font-variant-alternates: swash(default)";
       "font-variant-alternates: bogus";

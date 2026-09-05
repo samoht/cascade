@@ -951,6 +951,35 @@ let test_text_decoration_thickness_composes () =
       ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
     ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
 
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, and a
+   longhand at [normal] is the component the shorthand leaves out. Chrome 146
+   expands each shorthand below to the run beside it. *)
+let test_font_variant_composes () =
+  sheet_optimizes_to ~into:".x{font-variant:small-caps}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:common-ligatures}"
+    ".x{font-variant-ligatures:common-ligatures;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:none}"
+    ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  (* [none] is the whole value, so it has no spelling beside another
+     component. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  (* A CSS-wide keyword is no component, and a run missing one of the seven is
+     not the same declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:inherit;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:inherit;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-position:normal;font-variant-emoji:normal}"
+
 (* CSS Grid 2 (ED) sec. 7.8: [grid] writes the three template longhands and the
    three auto ones, and only one of its two auto-flow axes can be spelled, so
    the other axis and its track size have to be at the initials the shorthand
@@ -1838,6 +1867,8 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "font-variant composes" `Quick
+        test_font_variant_composes;
       Alcotest.test_case "grid composes" `Quick test_grid_composes;
       Alcotest.test_case "grid-template composes" `Quick
         test_grid_template_composes;
