@@ -1407,7 +1407,7 @@ let shorthand_longhand_order_cases =
       ".a{scroll-timeline:--a;scroll-timeline-axis:inline}" );
     ( "view-timeline",
       ".a{view-timeline:--a block;view-timeline-axis:inline}",
-      ".a{view-timeline:--a block;view-timeline-axis:inline}" );
+      ".a{view-timeline:--a;view-timeline-axis:inline}" );
     ("caret", ".a{caret:red;caret-shape:bar}", ".a{caret:red;caret-shape:bar}");
     ( "text-box",
       ".a{text-box:trim-both cap alphabetic;text-box-edge:auto}",

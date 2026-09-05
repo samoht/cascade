@@ -2491,6 +2491,45 @@ let duo_scroll_timeline idx i =
     ~foldable:(fun _ -> true)
     ~extract:extract_scroll_timeline_part ~build i
 
+(* CSS Contain 3 sec. 4.3: [container] is [<name> [/ <type>]?] over its two
+   longhands, and [normal] is the type's initial (sec. 4.2), so writing it out
+   names what leaving it out names. The shorthand pairs one name with one type,
+   so a name list has no spelling in it. *)
+let extract_container_part :
+    declaration ->
+    (axis_side
+    * (Properties.container_name option * Properties.container_type option)
+    * bool)
+    option = function
+  | Declaration { property = Container_name; value = Var _; _ }
+  | Declaration { property = Container_type; value = Var _; _ } ->
+      None
+  | Declaration { property = Container_name; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Container_type; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_container idx i =
+  let build ~important ~start ~end_ =
+    let name, _ = start and _, ctype = end_ in
+    let ctype =
+      match ctype with
+      | Some (Normal : Properties.container_type) | Some Initial -> Option.None
+      | ctype -> ctype
+    in
+    let value : Properties.container_shorthand option =
+      match (name : Properties.container_name option) with
+      | Some None -> Some (Shorthand { name = Some "none"; ctype })
+      | Some (Names [ n ]) -> Some (Shorthand { name = Some n; ctype })
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Container) value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_container_part ~build i
+
 (* One entry per logical axis family; each pairs a start longhand with its end
    longhand under the shorthand that names the axis. *)
 let pair_axes ~ctx idx i =
@@ -2523,6 +2562,7 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_text_emphasis idx i);
     (fun () -> duo_animation_range idx i);
     (fun () -> duo_scroll_timeline idx i);
+    (fun () -> duo_container idx i);
   ]
 
 let compose_pair_via_index ~ctx idx =
@@ -3293,6 +3333,75 @@ let compose_line_via_index idx =
       compose_fixed3_via_index idx
         ~try_compose:(try_compose_line_at ~part_of ~property))
     line_families
+
+(* CSS Scroll Animations 1 sec. 5.2: [view-timeline] is [<name> <axis>?
+   <inset>?] over its three longhands, with [block] the axis's initial (sec.
+   5.1) and [auto] the inset's (sec. 5.3), so a modifier written out at its
+   initial names what leaving it out names. The shorthand pairs one name with
+   its own modifiers, so a name list has no spelling in it. *)
+type view_timeline_part =
+  | Name of Properties.timeline_name
+  | Axis of Properties.timeline_axis
+  | Inset of Properties.timeline_inset
+
+let view_timeline_part_of : declaration -> view_timeline_part option = function
+  | Declaration { property = View_timeline_name; value; _ } -> Some (Name value)
+  | Declaration { property = View_timeline_axis; value; _ } -> Some (Axis value)
+  | Declaration { property = View_timeline_inset; value; _ } ->
+      Some (Inset value)
+  | _ -> None
+
+let view_timeline_slot = function Name _ -> 0 | Axis _ -> 1 | Inset _ -> 2
+
+let view_timeline_item parts : Properties.view_timeline_shorthand_item option =
+  let pick f = List.find_map f parts in
+  let name = pick (function Name n -> Some n | _ -> Option.None) in
+  let axis =
+    pick (function
+      | Axis (Block : Properties.timeline_axis) | Axis Initial -> Option.None
+      | Axis a -> Some a
+      | _ -> Option.None)
+  in
+  let inset =
+    pick (function
+      | Inset (Inset (Auto, Option.None) : Properties.timeline_inset)
+      | Inset Initial ->
+          Option.None
+      | Inset i -> Some i
+      | _ -> Option.None)
+  in
+  match (name : Properties.timeline_name option) with
+  | Some (Names [ n ]) -> Some { name = n; axis; inset }
+  | Some None when Option.is_none axis && Option.is_none inset ->
+      Some { name = "none"; axis; inset }
+  | _ -> Option.None
+
+let view_timeline_of_run raw =
+  let parts = List.filter_map view_timeline_part_of raw in
+  let slots = List.sort_uniq compare (List.map view_timeline_slot parts) in
+  if List.length slots <> 3 then None else view_timeline_item parts
+
+let try_compose_view_timeline_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        Option.map
+          (fun item ->
+            Declaration.v
+              ~important:(is_important (List.hd raw))
+              View_timeline
+              (Timelines [ item ] : Properties.view_timeline_shorthand))
+          (view_timeline_of_run raw)
+
+let compose_view_timeline_via_index idx =
+  compose_fixed3_via_index idx ~try_compose:try_compose_view_timeline_at
 
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
@@ -5072,6 +5181,7 @@ let compose_index_group_a ~ctx kept =
   compose_box_via_index ~ctx idx;
   compose_pair_via_index ~ctx idx;
   compose_outline_via_index idx;
+  compose_view_timeline_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Second index group runs after the font-reset reorder. Font + list-style +

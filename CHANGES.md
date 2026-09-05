@@ -566,6 +566,9 @@ entry points both moved.
   longhands, and drops a `scroll-timeline` axis that names its own initial:
   `scroll-timeline: --t block` minifies to `scroll-timeline: --t` (#924)
 
+- `--minify` contracts `container` and `view-timeline` from their longhands,
+  and drops a `view-timeline` axis or inset that names its own initial (#925)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

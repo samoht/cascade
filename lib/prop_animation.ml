@@ -360,6 +360,30 @@ let normalize_timeline_shorthand : timeline_shorthand -> timeline_shorthand =
   | Timelines items -> Timelines (map_preserve drop_initial_axis items)
   | other -> other
 
+(* Same reading for [view-timeline] (CSS Scroll Animations 1 sec. 5.2), which
+   carries an inset slot as well; [auto] is its initial (sec. 5.3). *)
+let normalize_view_timeline_shorthand :
+    view_timeline_shorthand -> view_timeline_shorthand =
+ fun value ->
+  let drop_initials (item : view_timeline_shorthand_item) =
+    let axis =
+      match item.axis with
+      | Some (Block : timeline_axis) | Some Initial -> Option.None
+      | axis -> axis
+    in
+    let inset =
+      match item.inset with
+      | Some (Inset (Auto, Option.None) : timeline_inset) | Some Initial ->
+          Option.None
+      | inset -> inset
+    in
+    if axis == item.axis && inset == item.inset then item
+    else { item with axis; inset }
+  in
+  match value with
+  | Timelines items -> Timelines (map_preserve drop_initials items)
+  | other -> other
+
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"

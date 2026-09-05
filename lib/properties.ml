@@ -4300,6 +4300,7 @@ let normalize_property_value : type a.
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
   | Scroll_timeline -> normalize_timeline_shorthand value
+  | View_timeline -> normalize_view_timeline_shorthand value
   | View_timeline_inset -> normalize_timeline_inset value
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
