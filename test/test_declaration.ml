@@ -2364,6 +2364,17 @@ let list_properties () =
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
 
+  (* CSS Transitions 1 sec. 3: the shorthand takes a
+     <single-transition-property>, and none is one of them, so it is the whole
+     value only when the item ends there. The optimizer contracts a none
+     property beside a duration and a timing function into this spelling. *)
+  check_declaration ~expected:"transition:none" "transition: none";
+  check_declaration ~expected:"transition:none 1s" "transition: none 1s";
+  check_declaration ~expected:"transition:none 1s steps(2,end)"
+    "transition: none 1s steps(2, end)";
+  check_declaration ~expected:"transition:none,opacity 1s"
+    "transition: none, opacity 1s";
+
   (* CSS Text Decoration 4 sec. 2.5: the shorthand is a || of its longhands and
      [none] is a <text-decoration-line>, so it is the whole value only when
      nothing follows it. The optimizer contracts a none line beside a style and
