@@ -478,6 +478,13 @@ let normalize_expected ~category ~id expected =
          it is shorter and equivalent. *)
       fixture ~category ~id ~upstream:"a{transition:color ease}"
         ~cascade:"a{transition:color}" upstream
+  | "shorthands", "0027" ->
+      (* The fixture keeps the explicit [auto] width. CSS Multicol 2 sec. 4.1
+         makes [auto] the width's initial and sec. 4.5 leaves an omitted
+         component there, so the count alone names the same pair and is
+         shorter. *)
+      fixture ~category ~id ~upstream:"a{columns:auto 3}"
+        ~cascade:"a{columns:3}" upstream
   | "shorthands", "0014" ->
       (* The fixture contracts the three longhands into [text-decoration]. CSS
          Text Decoration 4 sec. 2.5 makes the shorthand reset

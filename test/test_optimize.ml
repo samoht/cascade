@@ -1397,6 +1397,11 @@ let shorthand_longhand_order_cases =
     ( "overscroll-behavior",
       ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}",
       ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}" );
+    (* CSS Multicol 2 sec. 4.5: the shorthand resets the height and the wrap, so
+       synthesising it over a rule that writes either would drop it. *)
+    ( "columns",
+      ".a{column-height:5em;column-width:10em;column-count:2}",
+      ".a{column-height:5em;column-width:10em;column-count:2}" );
     ( "container",
       ".a{container:a/size;container-type:normal}",
       ".a{container:a/size;container-type:normal}" );

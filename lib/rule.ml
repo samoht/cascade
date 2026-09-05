@@ -84,6 +84,22 @@ let columns_value_of_longhands width count : Properties.columns_value =
 (* Compose the unique [column-width]/[column-count] pair into [columns] when
    both carry a plain (non-[var()], non-CSS-wide) matching-importance value, at
    the position of the first. *)
+(* CSS Multicol 2 sec. 4.5: the shorthand sets the height too, and Chrome 146
+   has it reset [column-wrap] as well, so synthesising it over a rule that
+   writes either at a value other than its [auto] initial would drop that
+   value. *)
+let columns_holds_reset_slot d =
+  match d with
+  | Declaration { property = Column_height; value; _ } -> (
+      match (value : Properties.column_height) with
+      | Auto | Initial -> false
+      | _ -> true)
+  | Declaration { property = Column_wrap; value; _ } -> (
+      match (value : Properties.column_wrap) with
+      | Auto | Initial -> false
+      | _ -> true)
+  | _ -> false
+
 let synthesize_columns decls =
   let width_of d : (Properties.column_width * bool) option =
     match d with
@@ -100,41 +116,44 @@ let synthesize_columns decls =
   let uniq f =
     match List.filter_map f decls with [ x ] -> Some x | _ -> None
   in
-  match (uniq width_of, uniq count_of) with
-  | Some (w, wi), Some (c, ci) when wi = ci -> (
-      let plain_width :
-          Properties.column_width -> [ `Auto | `Width of Values.length ] option
-          = function
-        | Auto -> Some `Auto
-        | Width l -> Some (`Width l)
-        | _ -> None
-      in
-      let plain_count :
-          Properties.column_count -> [ `Auto | `Count of int ] option = function
-        | Auto -> Some `Auto
-        | Count n -> Some (`Count n)
-        | _ -> None
-      in
-      match (plain_width w, plain_count c) with
-      | Some w, Some c ->
-          let shorthand =
-            Declaration.v ~important:wi Properties.Columns
-              (columns_value_of_longhands w c)
-          in
-          let placed = ref false in
-          List.filter_map
-            (fun d ->
-              match d with
-              | Declaration { property = Column_width; _ }
-              | Declaration { property = Column_count; _ } ->
-                  if !placed then None
-                  else (
-                    placed := true;
-                    Some shorthand)
-              | _ -> Some d)
-            decls
-      | _ -> decls)
-  | _ -> decls
+  if List.exists columns_holds_reset_slot decls then decls
+  else
+    match (uniq width_of, uniq count_of) with
+    | Some (w, wi), Some (c, ci) when wi = ci -> (
+        let plain_width :
+            Properties.column_width ->
+            [ `Auto | `Width of Values.length ] option = function
+          | Auto -> Some `Auto
+          | Width l -> Some (`Width l)
+          | _ -> None
+        in
+        let plain_count :
+            Properties.column_count -> [ `Auto | `Count of int ] option =
+          function
+          | Auto -> Some `Auto
+          | Count n -> Some (`Count n)
+          | _ -> None
+        in
+        match (plain_width w, plain_count c) with
+        | Some w, Some c ->
+            let shorthand =
+              Declaration.v ~important:wi Properties.Columns
+                (columns_value_of_longhands w c)
+            in
+            let placed = ref false in
+            List.filter_map
+              (fun d ->
+                match d with
+                | Declaration { property = Column_width; _ }
+                | Declaration { property = Column_count; _ } ->
+                    if !placed then None
+                    else (
+                      placed := true;
+                      Some shorthand)
+                | _ -> Some d)
+              decls
+        | _ -> decls)
+    | _ -> decls
 
 (* CSS Anchor Positioning 1: [position-try] is [<order> || <fallbacks>]. No
    typed [position-try] shorthand exists, so the synthesised value is re-parsed

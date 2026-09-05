@@ -975,6 +975,25 @@ let test_offset_composes () =
       ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
     ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
 
+(* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the height,
+   and Chrome 146 has it reset [column-wrap] too, so the run naming the same
+   declaration is all four and the shorthand only stands for a height at its
+   [auto] initial. *)
+let test_columns_composes () =
+  sheet_optimizes_to ~into:".x{columns:10em 2}"
+    ".x{column-width:10em;column-count:2;column-height:auto;column-wrap:auto}";
+  sheet_optimizes_to ~into:".x{columns:auto}"
+    ".x{column-width:auto;column-count:auto;column-height:auto;column-wrap:auto}";
+  (* [auto] is the width's initial, so the count alone names the same pair. *)
+  sheet_optimizes_to ~into:".x{columns:3}"
+    ".x{column-width:auto;column-count:3;column-height:auto;column-wrap:auto}";
+  (* The shorthand has no spelling for a height of its own, so that run keeps
+     its longhands. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
+    ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1589,6 +1608,7 @@ let suite =
       Alcotest.test_case "border image full run composes" `Quick
         test_border_image_full_run_composes;
       Alcotest.test_case "offset composes" `Quick test_offset_composes;
+      Alcotest.test_case "columns composes" `Quick test_columns_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

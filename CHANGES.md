@@ -619,6 +619,11 @@ entry points both moved.
   and `column-wrap` properties CSS Multicol 2 adds. Chrome expands `columns`
   to all four longhands, so `columns` now records resetting both (#938)
 
+- `--minify` contracts `columns` from a run naming all four of its longhands,
+  and no longer synthesises it over a rule that sets `column-height` or
+  `column-wrap`, which the shorthand resets. `columns: auto 3` minifies to
+  `columns: 3` (#939)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

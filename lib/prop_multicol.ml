@@ -100,6 +100,12 @@ let break_inside_of_page_break (value : page_break_inside_value) :
   | Inherit -> Some Inherit
   | Var _ -> None
 
+(* CSS Multicol 2 sec. 4.5 leaves an omitted component at its longhand's
+   initial, and [auto] is the width's (sec. 4.1), so [auto <count>] names what
+   [<count>] names and the shorter spelling wins. *)
+let normalize_columns_value : columns_value -> columns_value =
+ fun value -> match value with Auto_count n -> Count n | other -> other
+
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"

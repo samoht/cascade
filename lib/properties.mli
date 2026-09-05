@@ -2179,6 +2179,10 @@ val read_page_break_inside_value : Cursor.t -> page_break_inside_value
 (** [read_page_break_inside_value t] is the legacy [page-break-inside] value
     parsed from [t]. *)
 
+val normalize_columns_value : columns_value -> columns_value
+(** [normalize_columns_value v] drops an explicit [auto] width beside a count,
+    which is what leaving the component out names. *)
+
 val pp_columns_value : columns_value Pp.t
 (** [pp_columns_value] is the pretty-printer for [columns_value]. *)
 

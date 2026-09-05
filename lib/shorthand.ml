@@ -4860,6 +4860,71 @@ let try_compose_offset_at idx i =
 let compose_offset_via_index idx =
   compose_run_via_index idx ~try_compose:try_compose_offset_at
 
+(* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the height,
+   and Chrome 146 has it reset [column-wrap] too, so the run naming the same
+   declaration is all four. The shorthand has no spelling for a height other
+   than its [auto] initial, so a run carrying one keeps its longhands. *)
+type columns_part = Width | Count | Height | Wrap
+
+let columns_part_of : declaration -> columns_part option = function
+  | Declaration { property = Column_width; _ } -> Some Width
+  | Declaration { property = Column_count; _ } -> Some Count
+  | Declaration { property = Column_height; _ } -> Some Height
+  | Declaration { property = Column_wrap; _ } -> Some Wrap
+  | _ -> None
+
+let columns_initial_tail : declaration -> bool = function
+  | Declaration { property = Column_height; value; _ } -> (
+      match (value : Properties.column_height) with
+      | Auto | Initial -> true
+      | _ -> false)
+  | Declaration { property = Column_wrap; value; _ } -> (
+      match (value : Properties.column_wrap) with
+      | Auto | Initial -> true
+      | _ -> false)
+  | _ -> true
+
+let columns_width_of : declaration -> Properties.column_width option = function
+  | Declaration { property = Column_width; value; _ } -> Some value
+  | _ -> Option.None
+
+let columns_count_of : declaration -> Properties.column_count option = function
+  | Declaration { property = Column_count; value; _ } -> Some value
+  | _ -> Option.None
+
+let columns_of_run raw : Properties.columns_value option =
+  let width = List.find_map columns_width_of raw in
+  let count = List.find_map columns_count_of raw in
+  match (width, count) with
+  | Some Auto, Some Auto -> Some (Auto : Properties.columns_value)
+  | Some Auto, Some (Count n) -> Some (Auto_count n)
+  | Some (Width w), Some Auto -> Some (Width w)
+  | Some (Width w), Some (Count n) -> Some (Both (w, n))
+  | _ -> Option.None
+
+let try_compose_columns_at idx i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else
+    let positions = List.init 4 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let parts = List.filter_map columns_part_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare parts) <> 4
+        || not (List.for_all columns_initial_tail raw)
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Columns)
+          (columns_of_run raw)
+
+let compose_columns_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 4)) (try_compose_columns_at idx i))
+
 let try_compose_transition_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
@@ -5667,6 +5732,7 @@ let compose_index_group_b ~held kept =
   compose_flex_via_index idx;
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
+  compose_columns_via_index idx;
   compose_border_via_index idx;
   compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
