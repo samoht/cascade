@@ -544,6 +544,21 @@ let special_cases () =
     "inset: 1px 1px 1px 1px";
   check_declaration ~expected:"border-color:red red red red"
     ~optimized:"border-color:red" "border-color: red red red red";
+  (* CSS Backgrounds 3 (ED) sec. 3.2 and 3.3 assign [border-width] and
+     [border-style] over the same four sides, and CSS Logical 1 sec. 4.3 and 4.4
+     give each of the three border axes its own one-to-two assignment. *)
+  check_declaration ~expected:"border-width:2px 2px 2px 2px"
+    ~optimized:"border-width:2px" "border-width: 2px 2px 2px 2px";
+  check_declaration ~expected:"border-width:2px 3px 2px 3px"
+    ~optimized:"border-width:2px 3px" "border-width: 2px 3px 2px 3px";
+  check_declaration ~expected:"border-inline-width:2px 2px"
+    ~optimized:"border-inline-width:2px" "border-inline-width: 2px 2px";
+  check_declaration ~expected:"border-block-width:1px 2px"
+    ~optimized:"border-block-width:1px 2px" "border-block-width: 1px 2px";
+  check_declaration ~expected:"border-block-style:solid solid"
+    ~optimized:"border-block-style:solid" "border-block-style: solid solid";
+  check_declaration ~expected:"border-inline-color:red red"
+    ~optimized:"border-inline-color:red" "border-inline-color: red red";
 
   (* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
      <'list-style-image'> || <'list-style-type'>], so a component left out takes
