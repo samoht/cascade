@@ -1040,6 +1040,18 @@ let test_mask_full_run_composes () =
       ".x{-webkit-mask-image:url(a.png);mask-image:url(a.png);-webkit-mask-size:cover;mask-size:cover}"
     ".x{mask-image:url(a.png);mask-size:cover}"
 
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
+   so contracting a width/style/colour run over a rule that holds one of those
+   longhands would drop it. *)
+let test_border_contraction_covers_border_image () =
+  sheet_optimizes_to
+    ~into:
+      ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}"
+    ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}";
+  (* Nothing holds the family, so the run contracts. *)
+  sheet_optimizes_to ~into:".x{color:red;border:4px solid red}"
+    ".x{color:red;border-width:4px;border-style:solid;border-color:red}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1661,6 +1673,8 @@ let suite =
         test_webkit_mask_position_axes;
       Alcotest.test_case "mask full run composes" `Quick
         test_mask_full_run_composes;
+      Alcotest.test_case "border contraction covers border-image" `Quick
+        test_border_contraction_covers_border_image;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

@@ -3368,7 +3368,7 @@ let declaration_of_border_parts ~important widths styles colors =
    exempt. *)
 let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
 
-let try_compose_border_at idx i =
+let try_compose_border_at ~bi_hazard idx i =
   let n = Rule_index.length idx in
   if i + 11 >= n then None
   else
@@ -3394,21 +3394,23 @@ let try_compose_border_at idx i =
       if not (same_importance raw_decls) then None
       else if List.exists has_runtime_substitution raw_decls then None
       else
-        match border_parts_of raw_decls with
-        | None -> None
-        | Some (widths, styles, colors) ->
-            Some
-              (declaration_of_border_parts
-                 ~important:(is_important (List.hd raw_decls))
-                 widths styles colors)
+        let important = is_important (List.hd raw_decls) in
+        (* The shorthand resets the whole [border-image] family, so a value one
+           of those longhands holds elsewhere would be dropped. *)
+        if bi_hazard i ~important then None
+        else
+          Option.map
+            (fun (widths, styles, colors) ->
+              declaration_of_border_parts ~important widths styles colors)
+            (border_parts_of raw_decls)
 
-let compose_border_via_index idx =
+let compose_border_via_index ~bi_hazard idx =
   let n = Rule_index.length idx in
   let i = ref 0 in
   while !i + 11 < n do
     if Rule_index.is_absorbed idx !i then incr i
     else
-      match try_compose_border_at idx !i with
+      match try_compose_border_at ~bi_hazard idx !i with
       | None -> incr i
       | Some shorthand ->
           let absorbed =
@@ -3762,7 +3764,7 @@ let compose_font_synthesis_via_index idx =
    shorthand also resets [border-image] to its initial, so only compose when no
    [border-image] declaration is present in the rule - otherwise the synthesised
    [border] would clobber it (the reset/reorder case is handled separately). *)
-let try_compose_border_whole_at ~ctx idx i =
+let try_compose_border_whole_at ~bi_hazard ~ctx idx i =
   let n = Rule_index.length idx in
   if i + 2 >= n then None
   else
@@ -3789,7 +3791,8 @@ let try_compose_border_whole_at ~ctx idx i =
         | Some width, Some style, Some color
           when foldable_border_width ~ctx width
                && foldable_border_style ~ctx style
-               && foldable_border_color ~ctx color ->
+               && foldable_border_color ~ctx color
+               && not (bi_hazard i ~important:(is_important (List.hd raw))) ->
             Some
               (Declaration.v
                  ~important:(is_important (List.hd raw))
@@ -3859,7 +3862,7 @@ let reorder_border_image_before_border decls =
   in
   go [] decls
 
-let compose_border_whole_via_index ~ctx idx =
+let compose_border_whole_via_index ~bi_hazard ~ctx idx =
   let n = Rule_index.length idx in
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
      is only safe when it ends up before every [border-image] declaration. Walk
@@ -3878,7 +3881,7 @@ let compose_border_whole_via_index ~ctx idx =
         if is_border_image_decl d then seen_border_image := true;
         incr i
       in
-      match try_compose_border_whole_at ~ctx idx !i with
+      match try_compose_border_whole_at ~bi_hazard ~ctx idx !i with
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2 ] in
           if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 3
@@ -4755,6 +4758,24 @@ let all_an_bits = an_bits an_slots
    transition and animation sets. *)
 let td_thickness_bit = 16384
 
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family
+   as well, so that family needs one bit of its own beside the others. *)
+let border_image_bit = 32768
+
+let bi_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Border_image; _ }
+  | Declaration { property = Border_image_source; _ }
+  | Declaration { property = Border_image_slice; _ }
+  | Declaration { property = Border_image_width; _ }
+  | Declaration { property = Border_image_outset; _ }
+  | Declaration { property = Border_image_repeat; _ }
+  | Declaration { property = Border; _ } ->
+      border_image_bit
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> border_image_bit
+  | _ -> 0
+
 let td_overwritten_slots d =
   match unwrap_theme_guard d with
   | Declaration { property = Text_decoration_thickness; _ } -> td_thickness_bit
@@ -4800,7 +4821,7 @@ let held_add held decls =
     (fun held d ->
       let slots =
         tr_overwritten_slots d lor an_overwritten_slots d
-        lor td_overwritten_slots d
+        lor td_overwritten_slots d lor bi_overwritten_slots d
       in
       if Int.equal slots 0 then held
       else if is_important d then
@@ -4845,6 +4866,7 @@ let reset_hazard ~slots_of idx i ~held ~missing ~important =
 
 let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
 let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
+let bi_reset_hazard = reset_hazard ~slots_of:bi_overwritten_slots
 
 (* [text-decoration] resets the thickness slot, so a run that leaves the
    thickness out contracts into a declaration saying [auto] where the run said
@@ -5847,7 +5869,10 @@ let compose_index_group_b ~held kept =
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
   compose_columns_via_index idx;
-  compose_border_via_index idx;
+  compose_border_via_index
+    ~bi_hazard:(fun i ~important ->
+      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    idx;
   compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
@@ -5860,16 +5885,19 @@ let compose_index_group_c ~ctx ~held kept =
   compose_animation_via_index ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-let compose_border_whole_step ~ctx kept =
+let compose_border_whole_step ~held ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
-  compose_border_whole_via_index ~ctx idx;
+  compose_border_whole_via_index
+    ~bi_hazard:(fun i ~important ->
+      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
   |> compose_index_group_b ~held
   |> reorder_border_image_before_border
-  |> compose_border_whole_step ~ctx
+  |> compose_border_whole_step ~held ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx

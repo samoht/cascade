@@ -637,6 +637,10 @@ entry points both moved.
   longhands whatever the scope, where it used to need `--scope=stylesheet`,
   and drops a component of the shorthand that names its own initial (#942)
 
+- `--minify` no longer contracts a border width/style/colour run when a
+  `border-image` longhand in reach holds a value: the shorthand resets that
+  whole family, so the contraction dropped it (#943)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
