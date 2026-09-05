@@ -641,6 +641,13 @@ entry points both moved.
   `border-image` longhand in reach holds a value: the shorthand resets that
   whole family, so the contraction dropped it (#943)
 
+- `Css.Resolve` matches an attribute selector the way an HTML document does:
+  the name part folds to ASCII lowercase, the values of the attributes HTML
+  lists fold without needing an `i` flag, and `~=` splits its list on any
+  ASCII whitespace rather than on spaces alone. `cascade apply` and
+  `cascade prune` used to read `[TITLE=x]` and `[type=TEXT]` as matching
+  nothing (#944)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px

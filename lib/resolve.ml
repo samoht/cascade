@@ -39,7 +39,18 @@ let negate = function
   | Unsupported -> Unsupported
 
 let ci a b = String.lowercase_ascii a = String.lowercase_ascii b
-let words s = String.split_on_char ' ' s |> List.filter (( <> ) "")
+
+(* selectors-4 sec. 6.1 reads [~=] over "a list of whitespace-separated values",
+   and css-syntax-3 sec. 4.2 counts newline, tab and space as whitespace, a
+   newline being any of line feed, carriage return and form feed. *)
+let is_ascii_ws = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let words s =
+  String.split_on_char ' '
+    (String.map (fun c -> if is_ascii_ws c then ' ' else c) s)
+  |> List.filter (( <> ) "")
 
 let contains hay needle =
   let lh = String.length hay and ln = String.length needle in
@@ -59,10 +70,28 @@ let ends s p =
   let ls = String.length s and lp = String.length p in
   ls >= lp && String.sub s (ls - lp) lp = p
 
+(* HTML sec. 4.16.2: "the name part of the CSS attribute selector must first be
+   converted to ASCII lowercase" before it is compared to an attribute name on
+   an HTML element. *)
 let attr_key : Selector.attr_name -> string = function
-  | Selector.Regular s -> s
-  | Selector.Data s -> "data-" ^ s
-  | Selector.Aria a -> Aria.to_string a
+  | Selector.Regular s -> String.lowercase_ascii s
+  | Selector.Data s -> String.lowercase_ascii ("data-" ^ s)
+  | Selector.Aria a -> String.lowercase_ascii (Aria.to_string a)
+
+(* The same section lists the attributes whose VALUE an HTML document compares
+   ASCII case-insensitively however the selector is written. Engines apply it,
+   so it belongs to the browser reading; selectors-4 alone leaves the answer to
+   the document language, which a {!NODE} does not carry. *)
+let html_case_insensitive_value = function
+  | "accept" | "accept-charset" | "align" | "alink" | "axis" | "bgcolor"
+  | "charset" | "checked" | "clear" | "codetype" | "color" | "compact"
+  | "declare" | "defer" | "dir" | "direction" | "disabled" | "enctype" | "face"
+  | "frame" | "hreflang" | "http-equiv" | "lang" | "language" | "link" | "media"
+  | "method" | "multiple" | "nohref" | "noresize" | "noshade" | "nowrap"
+  | "readonly" | "rel" | "rev" | "rules" | "scope" | "scrolling" | "selected"
+  | "shape" | "target" | "text" | "type" | "valign" | "valuetype" | "vlink" ->
+      true
+  | _ -> false
 
 (* The An+B microsyntax (css-syntax-3 sec. 6), where [odd] is [2n+1] and [even]
    is [2n]. It "represents any index i = An + B for any non-negative integer n"
@@ -258,9 +287,14 @@ module Make (N : NODE) = struct
      read as written - the answer [s] gives. Folding is ASCII-only, which is why
      the spec has [green] match [GREEN] but not the umlauted [grun] match its
      own upper case. *)
-  let attr_fold : Selector.attr_flag option -> string -> string = function
+  let attr_fold ~reading name : Selector.attr_flag option -> string -> string =
+    function
     | Some Selector.Insensitive -> String.lowercase_ascii
-    | None | Some Selector.Sensitive -> Fun.id
+    | Some Selector.Sensitive -> Fun.id
+    | None ->
+        if is_browser reading && html_case_insensitive_value (attr_key name)
+        then String.lowercase_ascii
+        else Fun.id
 
   let attr_matches ~fold n name (m : Selector.attribute_match) =
     match N.attribute n (attr_key name) with
@@ -405,7 +439,7 @@ module Make (N : NODE) = struct
       when is_browser reading ->
         Unsupported
     | Selector.Attribute (None, name, m, flag) ->
-        of_bool (attr_matches ~fold:(attr_fold flag) n name m)
+        of_bool (attr_matches ~fold:(attr_fold ~reading name flag) n name m)
     | Selector.Compound ps ->
         List.fold_left
           (fun acc p -> conj acc (match_selector ~reading p n))

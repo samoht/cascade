@@ -508,7 +508,16 @@ let test_attribute_case_flags () =
   (* sec. 6.3's own example: [frame=hsides i] styles the attribute "whether that
      value is represented as hsides, HSIDES, hSides, etc." *)
   yes "i folds the case" "[frame=hsides i]" framed;
-  no "without a flag the value is read as written" "[frame=hsides]" framed;
+  (* HTML sec. 4.16.2 lists [frame] among the attributes an HTML document
+     compares ASCII case-insensitively however the selector is written, and the
+     engines apply it, so the browser reading folds without a flag. *)
+  yes "an HTML-folded name folds without a flag" "[frame=hsides]" framed;
+  no ~reading:Resolve.Spec "the specification alone reads it as written"
+    "[frame=hsides]" framed;
+  (* [data-k] is not on that list, so its value is read as written. *)
+  no "a name off the list is read as written" "[data-k=\"gr\u{00dc}n\"]" framed;
+  (* The name part is converted to ASCII lowercase before it is compared. *)
+  yes "the name folds" "[FRAME=hsides]" framed;
   no ~reading:Resolve.Spec "s is identical-to" "[frame=hsides s]" framed;
   yes ~reading:Resolve.Spec "and the written value is identical to itself"
     "[frame=HSIDES s]" framed;
