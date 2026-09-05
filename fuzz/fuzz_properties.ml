@@ -1016,7 +1016,6 @@ let negative_branch_vectors =
     "grid-template-areas:\"nav/main\"";
     "grid-template-areas:\"nav main\" \"foot\"";
     "grid-template-areas:\"a .\" \". a\"";
-    "grid-template:none/1fr";
     "animation:1s 2s 3s";
     "animation-composition:add replace";
     "animation-range-start:entry exit";

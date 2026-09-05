@@ -2198,6 +2198,24 @@ let grid () =
   neg_cursor read_declaration "grid-template: 1px / [a]";
   neg_cursor read_declaration "grid: auto-flow [a] / 1px";
 
+  (* CSS Grid 2 sec. 7.4 builds the shorthand from [<'grid-template-rows'> /
+     <'grid-template-columns'>], and sec. 7.2 gives each of those a [none] arm,
+     so [none] is a track list like any other on either side of the slash. *)
+  check_declaration ~expected:"grid-template:none/1fr"
+    "grid-template: none / 1fr";
+  check_declaration ~expected:"grid-template:1fr/none"
+    "grid-template: 1fr / none";
+  check_declaration ~expected:"grid-template:none/none"
+    "grid-template: none / none";
+  check_declaration ~expected:"grid-template:none/auto"
+    "grid-template: none / auto";
+  check_declaration ~expected:"grid:none/200px" "grid: none / 200px";
+  check_declaration ~expected:"grid:200px/none" "grid: 200px / none";
+  check_declaration ~expected:"grid:none/auto" "grid: none / auto";
+  (* sec. 7.8: [auto-flow] with no [<grid-auto-rows>] leaves the row track list
+     empty, which is the same declaration as a [none] rows arm. *)
+  check_declaration ~expected:"grid:none/200px" "grid: auto-flow / 200px";
+
   (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
      declaration, so a CSS-wide keyword is a placement value on its own and
      never one slot of one. *)
@@ -4044,7 +4062,6 @@ let spec_platform_property_vectors () =
       "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";
-      "grid-template: none / 1fr";
       "transition: allow-discrete allow-discrete";
       "scroll-timeline: block --scroller";
       "view-timeline: inline --reveal";
