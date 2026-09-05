@@ -1011,6 +1011,20 @@ let test_background_initial_slots () =
       ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
     ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
 
+(* The CSSOM reports [-webkit-mask-position-x] and [-webkit-mask-position-y]
+   when it expands [mask], and the two share a cascade slot with
+   [mask-position], so the pair contracts into it. *)
+let test_webkit_mask_position_axes () =
+  sheet_optimizes_to ~into:".x{-webkit-mask-position:50%10px}"
+    ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px}";
+  sheet_optimizes_to ~into:".x{-webkit-mask-position:0 0}"
+    ".x{-webkit-mask-position-x:initial;-webkit-mask-position-y:initial}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
+    ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1628,6 +1642,8 @@ let suite =
       Alcotest.test_case "columns composes" `Quick test_columns_composes;
       Alcotest.test_case "background initial slots" `Quick
         test_background_initial_slots;
+      Alcotest.test_case "webkit mask position axes" `Quick
+        test_webkit_mask_position_axes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

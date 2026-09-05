@@ -702,7 +702,10 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Mask_image | Webkit_mask_image -> [ key "mask-image" ]
   | Mask_repeat | Webkit_mask_repeat -> [ key "mask-repeat" ]
   | Mask_size | Webkit_mask_size -> [ key "mask-size" ]
-  | Mask_position | Webkit_mask_position -> [ key "mask-position" ]
+  | Mask_position | Webkit_mask_position ->
+      [ key "-webkit-mask-position-x"; key "-webkit-mask-position-y" ]
+  | Webkit_mask_position_x -> [ key "-webkit-mask-position-x" ]
+  | Webkit_mask_position_y -> [ key "-webkit-mask-position-y" ]
   | Mask_origin | Webkit_mask_origin -> [ key "mask-origin" ]
   | Mask_clip | Webkit_mask_clip -> [ key "mask-clip" ]
   | Mask_mode -> [ key "mask-mode" ]
@@ -2611,6 +2614,22 @@ let duo_container idx i =
    axis longhands, [Start] here the x axis. The shorthand carries one position
    per layer, so a single-valued pair is what composes; the four-value edge form
    needs each axis to name its own edge. *)
+let extract_webkit_mask_position_part :
+    declaration ->
+    (axis_side
+    * (Properties.background_position_axis option
+      * Properties.background_position_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Webkit_mask_position_x; value = Var _; _ }
+  | Declaration { property = Webkit_mask_position_y; value = Var _; _ } ->
+      None
+  | Declaration { property = Webkit_mask_position_x; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Webkit_mask_position_y; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
 let extract_background_position_part :
     declaration ->
     (axis_side
@@ -2656,19 +2675,17 @@ let position_of_axes (x : Properties.background_position_axis)
           Some (Edge_offset_edge_offset (edge_name ex, ox, edge_name ey, oy))
       | _ -> Option.None)
 
-let duo_background_position idx i =
+let duo_position_axes idx property extract i =
   let build ~important ~start ~end_ =
     let x, _ = start and _, y = end_ in
     match (x, y) with
     | Some x, Some y ->
         Option.map
-          (fun p -> Declaration.v ~important Background_position [ p ])
+          (fun p -> Declaration.v ~important property [ p ])
           (position_of_axes x y)
     | _ -> Option.None
   in
-  try_compose_axis_pair_at idx
-    ~foldable:(fun _ -> true)
-    ~extract:extract_background_position_part ~build i
+  try_compose_axis_pair_at idx ~foldable:(fun _ -> true) ~extract ~build i
 
 (* CSS Text 4 sec. 3: [white-space] is a shorthand of [white-space-collapse] and
    [text-wrap-mode], and sec. 3 table 1 gives the four pairs a single keyword
@@ -2830,7 +2847,12 @@ let pair_axes ~ctx idx i =
     (fun () -> duo_animation_range idx i);
     (fun () -> duo_scroll_timeline idx i);
     (fun () -> duo_container idx i);
-    (fun () -> duo_background_position idx i);
+    (fun () ->
+      duo_position_axes idx Background_position extract_background_position_part
+        i);
+    (fun () ->
+      duo_position_axes idx Webkit_mask_position
+        extract_webkit_mask_position_part i);
     (fun () -> duo_white_space idx i);
     (fun () -> duo_text_wrap idx i);
     (fun () -> duo_webkit_text_stroke idx i);
@@ -4226,47 +4248,70 @@ let compose_background_shorthand ~ctx decls =
 let mask_image_part : declaration -> Properties.background_image option =
   function
   | Declaration { property = Mask_image; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (None : Properties.background_image)
+      | v -> Some v)
   | _ -> None
 
 let mask_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Mask_repeat; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
   | _ -> None
 
 let mask_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Mask_size; value; _ } -> (
       match value with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
 
+(* The two spellings share a cascade slot, and the CSSOM reports the prefixed
+   one when it expands [mask], so either fills the position slot. *)
 let mask_position_part : declaration -> Properties.position_value option =
   function
   | Declaration { property = Mask_position; value; _ } ->
+      background_position_singleton value
+  | Declaration { property = Webkit_mask_position; value; _ } ->
       background_position_singleton value
   | _ -> None
 
 let mask_origin_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_origin; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
   | _ -> None
 
 let mask_clip_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_clip; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
   | _ -> None
 
 let mask_mode_part : declaration -> Properties.mask_mode option = function
   | Declaration { property = Mask_mode; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Match_source : Properties.mask_mode)
+      | v -> Some v)
   | _ -> None
 
 let mask_composite_part : declaration -> Properties.mask_composite option =
   function
   | Declaration { property = Mask_composite; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Add : Properties.mask_composite)
+      | v -> Some v)
   | _ -> None
 
 type mask_part = Properties.mask_layer -> Properties.mask_layer

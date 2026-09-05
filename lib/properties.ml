@@ -629,6 +629,8 @@ let pp_property : type a. a property Pp.t =
   | Background_position -> Pp.string ctx "background-position"
   | Background_position_x -> Pp.string ctx "background-position-x"
   | Background_position_y -> Pp.string ctx "background-position-y"
+  | Webkit_mask_position_x -> Pp.string ctx "-webkit-mask-position-x"
+  | Webkit_mask_position_y -> Pp.string ctx "-webkit-mask-position-y"
   | Background_repeat -> Pp.string ctx "background-repeat"
   | Background_size -> Pp.string ctx "background-size"
   | Webkit_font_smoothing -> Pp.string ctx "-webkit-font-smoothing"
@@ -1050,9 +1052,10 @@ let property_class : type a. a property -> a property_class = function
   | Background_image | Background_origin | Background_clip
   | Webkit_background_clip | Animation | Aspect_ratio | Overflow_x | Overflow_y
   | Overflow_block | Overflow_inline | Vertical_align | Background_position
-  | Background_position_x | Background_position_y | Background_repeat
-  | Background_size | Webkit_line_clamp | Webkit_box_orient | Moz_orient
-  | Text_overflow | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
+  | Background_position_x | Background_position_y | Webkit_mask_position_x
+  | Webkit_mask_position_y | Background_repeat | Background_size
+  | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
+  | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
   | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
   | Webkit_mask_position | Webkit_mask_repeat | Webkit_mask_clip
   | Webkit_mask_origin | Mask_image | Mask_composite | Mask_mode | Mask_size
@@ -1528,6 +1531,8 @@ let property_tag : type a. a property -> int = function
   | Background_position -> 401
   | Background_position_x -> 537
   | Background_position_y -> 538
+  | Webkit_mask_position_x -> 546
+  | Webkit_mask_position_y -> 547
   | Background_repeat -> 402
   | Background_size -> 403
   | Webkit_font_smoothing -> 404
@@ -2106,6 +2111,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Background_position, Background_position -> Some Equal
   | Background_position_x, Background_position_x -> Some Equal
   | Background_position_y, Background_position_y -> Some Equal
+  | Webkit_mask_position_x, Webkit_mask_position_x -> Some Equal
+  | Webkit_mask_position_y, Webkit_mask_position_y -> Some Equal
   | Background_repeat, Background_repeat -> Some Equal
   | Background_size, Background_size -> Some Equal
   | Webkit_font_smoothing, Webkit_font_smoothing -> Some Equal
@@ -2947,6 +2954,8 @@ let read_any_property t =
   | "background-position" -> Prop Background_position
   | "background-position-x" -> Prop Background_position_x
   | "background-position-y" -> Prop Background_position_y
+  | "-webkit-mask-position-x" -> Prop Webkit_mask_position_x
+  | "-webkit-mask-position-y" -> Prop Webkit_mask_position_y
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
   | "border-block" -> Prop Border_block
@@ -4070,6 +4079,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Font_family, value -> value
   | (Background_position | Webkit_mask_position | Mask_position), value -> value
   | (Background_position_x | Background_position_y), value -> value
+  | (Webkit_mask_position_x | Webkit_mask_position_y), value -> value
   | (Background_repeat | Webkit_mask_repeat | Mask_repeat), value -> value
   | Webkit_font_smoothing, value -> value
   | Moz_osx_font_smoothing, value -> value
@@ -4343,6 +4353,8 @@ let normalize_property_value : type a.
   | Background_position -> map_preserve normalize_position_value value
   | Background_position_x -> normalize_background_position_axis value
   | Background_position_y -> normalize_background_position_axis value
+  | Webkit_mask_position_x -> normalize_background_position_axis value
+  | Webkit_mask_position_y -> normalize_background_position_axis value
   | Mask_position -> map_preserve normalize_position_value value
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
@@ -4922,6 +4934,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Background_position -> pp pp_background_position
   | Background_position_x -> pp pp_background_position_axis
   | Background_position_y -> pp pp_background_position_axis
+  | Webkit_mask_position_x -> pp pp_background_position_axis
+  | Webkit_mask_position_y -> pp pp_background_position_axis
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing

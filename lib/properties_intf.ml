@@ -5132,6 +5132,8 @@ type 'a property =
   | Background_position : background_position property
   | Background_position_x : background_position_axis property
   | Background_position_y : background_position_axis property
+  | Webkit_mask_position_x : background_position_axis property
+  | Webkit_mask_position_y : background_position_axis property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
   | Webkit_font_smoothing : webkit_font_smoothing property

@@ -2644,6 +2644,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_position, value -> List.concat_map vars_of_position_value value
   | Background_position_x, value -> vars_of_background_position_axis value
   | Background_position_y, value -> vars_of_background_position_axis value
+  | Webkit_mask_position_x, value -> vars_of_background_position_axis value
+  | Webkit_mask_position_y, value -> vars_of_background_position_axis value
   | Mask_position, value -> List.concat_map vars_of_position_value value
   | Webkit_mask_position, value -> List.concat_map vars_of_position_value value
   (* Remaining typed longhands. *)

@@ -628,6 +628,11 @@ entry points both moved.
   written `initial`, which names the value the shorthand resets each slot to
   (#940)
 
+- `Css.Properties` gains `-webkit-mask-position-x` and `-webkit-mask-position-y`,
+  the spelling the CSSOM reports when it expands `mask`; the pair contracts
+  into `-webkit-mask-position`, and an `initial` mask longhand fills its slot
+  the way a background one does (#941)
+
 - `--minify` folds a repeated side of `border-width` and of the three border
   logical axes to the shortest spelling naming the same sides, as it already
   did for `margin`, `padding` and `border-color`: `border-width: 2px 2px 2px
