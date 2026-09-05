@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `place-items` reads the `<self-position>` keywords `align-items` takes, so
+  `place-items: flex-start baseline` parses and the contraction the optimizer
+  writes for that pair of longhands reads back (#909).
+
 - `cascade diff` counts a rule as changed only when its own declarations
   changed, so a rule holding an edited nested rule is no longer summarised as
   a difference the report has nothing to show for (#907).

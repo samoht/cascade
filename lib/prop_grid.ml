@@ -619,14 +619,33 @@ let read_place_items_default t =
     let justify = read_justify_items t in
     Align_justify (align, justify))
   else
-    let first = read_place_items_first t in
-    Cursor.ws t;
-    match Cursor.option read_justify_items t with
-    | None -> first
-    | Some justify -> (
-        match place_items_align first with
-        | Some align -> Align_justify (align, justify)
-        | None -> Cursor.err_invalid t "place-items two-value")
+    let snap = Cursor.save t in
+    match Cursor.option read_place_items_first t with
+    | Some first -> (
+        Cursor.ws t;
+        match Cursor.option read_justify_items t with
+        | None -> first
+        | Some justify -> (
+            match place_items_align first with
+            | Some align -> Align_justify (align, justify)
+            | None -> Cursor.err_invalid t "place-items two-value"))
+    | None ->
+        (* css-align-3 (ED) sec. 5.2: [place-items] is [<'align-items'>
+           <'justify-items'>?], so it takes every <self-position> keyword
+           align-items does. Those have no single-arm spelling here, so the pair
+           carries them, and a lone value sets both axes: it reads a second time
+           as the justify half. *)
+        Cursor.restore t snap;
+        let align = read_align_items t in
+        Cursor.ws t;
+        let justify =
+          match Cursor.option read_justify_items t with
+          | Some justify -> justify
+          | None ->
+              Cursor.restore t snap;
+              read_justify_items t
+        in
+        Align_justify (align, justify)
 
 let rec read_place_items t : place_items =
   Cursor.ws t;
