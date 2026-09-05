@@ -92,18 +92,28 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* The names a [<custom-ident>] may not spell, so the string arm is the only one
+   that carries them and the quotes are part of the value. *)
+let keyframes_name_needs_quotes name =
+  match String.lowercase_ascii name with
+  | "none" | "default" | "inherit" | "initial" | "unset" | "revert"
+  | "revert-layer" ->
+      true
+  | _ -> false
+
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Name name -> pp_ident ctx name
   | Ambiguous name -> pp_ident ctx name
   | Quoted name ->
-      (* CSS Animations 1 sec. 3: [<keyframes-name>] excludes [none], the
-         CSS-wide keywords, and [default]. A source [animation-name: "none"]
-         therefore can't refer to a real [@keyframes none] - it's invalid input
-         that browsers tolerate. Minified output drops the quotes so the value
-         collapses to the equivalent (and shorter) keyword form. *)
-      if Pp.minified ctx then Pp.string ctx name else Pp.quoted_string ctx name
+      (* CSS Animations 1 sec. 3: a [<keyframes-name>] is a [<custom-ident>] or
+         a [<string>], and only the ident arm excludes [none], [default] and the
+         CSS-wide keywords. Unquoting one of those names writes a different
+         declaration, and in a list it writes no declaration at all. *)
+      if Pp.minified ctx && not (keyframes_name_needs_quotes name) then
+        Pp.string ctx name
+      else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"

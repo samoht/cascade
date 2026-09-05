@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- A quoted `animation-name` that spells `none`, `default` or a CSS-wide
+  keyword keeps its quotes, which unquoting turned into a different
+  declaration and, in a list, into none at all (#901).
+
 - Minified `rotate` keeps the space between its angle and a negative axis
   number, which `0deg-1` folded into one dimension (#900).
 
