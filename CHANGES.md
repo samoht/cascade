@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- An out-of-range `oklab()` or `oklch()` lightness written as a percentage
+  clamps as the bare number already did (#904).
+
 - A `-webkit-gradient` point written `center` minifies to the same text as
   the percentage pair it means (#903).
 

@@ -6478,10 +6478,11 @@ let read_ok_lightness t : percentage option =
     Option.None)
   else
     let n, unit = Cursor.number_with_unit t in
-    (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps (to [0, 1] for
-       a bare number) rather than invalidating the colour, matching lab/lch. *)
+    (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
+       invalidating the colour, matching lab/lch. 0% to 100% names the same 0 to
+       1 a bare number does, so both spellings clamp alike. *)
     match unit with
-    | Some "%" -> Some (Pct n : percentage)
+    | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
     | None -> Some (Num (max 0. (min 1. n)) : percentage)
     | Some u -> Cursor.err_invalid t ("oklch() L unit: " ^ u)
 
