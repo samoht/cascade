@@ -371,7 +371,9 @@ let pp_webkit_gradient_point ctx = function
   | Webkit_gradient.Left_bottom ->
       Pp.string ctx (if Pp.minified ctx then "0 100%" else "left bottom")
   | Webkit_gradient.Center ->
-      Pp.string ctx (if Pp.minified ctx then "50% 50%" else "center center")
+      (* A percentage delimits itself, so the pair needs no space between them
+         and the written-out position prints the same way. *)
+      Pp.string ctx (if Pp.minified ctx then "50%50%" else "center center")
   | Webkit_gradient.Position position -> pp_position_value ctx position
 
 let pp_webkit_gradient_position ctx (pct : percentage) =

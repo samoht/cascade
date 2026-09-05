@@ -202,6 +202,9 @@ entry points both moved.
 
 ### Parsing
 
+- A `-webkit-gradient` point written `center` minifies to the same text as
+  the percentage pair it means (#903).
+
 - A `-webkit-gradient` `color-stop()` takes a number as well as a percentage,
   so cascade reads back the minified form it writes (#902).
 
