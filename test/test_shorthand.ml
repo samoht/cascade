@@ -720,6 +720,29 @@ let test_duo_keyword_composes () =
   sheet_optimizes_to ~into:".x{flex-direction:row;flex-wrap:wrap!important}"
     ".x{flex-direction:row;flex-wrap:wrap!important}"
 
+(* CSS Animations 2 sec. 6.3 and CSS Scroll Animations 1 sec. 4.3:
+   [animation-range] is [<start> <end>?] and [scroll-timeline] is [<name>
+   <axis>?], each over its own two longhands. *)
+let test_timeline_range_composes () =
+  sheet_optimizes_to ~into:".x{animation-range:normal}"
+    ".x{animation-range-start:normal;animation-range-end:normal}";
+  sheet_optimizes_to ~into:".x{animation-range:entry 10%exit 90%}"
+    ".x{animation-range-start:entry 10%;animation-range-end:exit 90%}";
+  sheet_optimizes_to ~into:".x{scroll-timeline:--t block}"
+    ".x{scroll-timeline-name:--t;scroll-timeline-axis:block}";
+  sheet_optimizes_to ~into:".x{scroll-timeline:none}"
+    ".x{scroll-timeline-name:none;scroll-timeline-axis:block}";
+  (* [scroll-timeline: none] sets the axis to [block], so a named axis beside an
+     unnamed timeline has no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:".x{scroll-timeline-name:none;scroll-timeline-axis:inline}"
+    ".x{scroll-timeline-name:none;scroll-timeline-axis:inline}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{animation-range-start:normal;animation-range-end:normal!important}"
+    ".x{animation-range-start:normal;animation-range-end:normal!important}"
+
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
    [animation-name] included, so contracting a run that has no name beside a
    name written earlier says [none] and animates nothing. The transition family
@@ -1313,6 +1336,8 @@ let suite =
       Alcotest.test_case "grid placement composes" `Quick
         test_grid_placement_composes;
       Alcotest.test_case "duo keyword composes" `Quick test_duo_keyword_composes;
+      Alcotest.test_case "timeline and range compose" `Quick
+        test_timeline_range_composes;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
