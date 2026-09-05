@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `transition-property` keeps `all` beside another property, so
+  `transition-property: all, opacity` parses. `none` and the CSS-wide
+  keywords are still refused in a list (#889).
+
 - `position-try-fallbacks` reads a dashed ident and a try tactic together in
   either order, rejecting only a repeated component. `Fallbacks` now carries
   a component group per entry (#888).

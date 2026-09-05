@@ -936,9 +936,12 @@ let read_transition_property t : transition_property =
     if Cursor.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
   in
   let values = loop [] in
+  (* CSS Transitions 1 sec. 2.1: the exclusion clause names none, inherit and
+     initial as what a list of more than one may not hold. [all] is an ordinary
+     <single-transition-property> and combines with the rest. *)
   let singleton_only : transition_property_value -> bool = function
-    | All | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
-    | Property _ | Var _ -> false
+    | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
+    | All | Property _ | Var _ -> false
   in
   if List.length values > 1 && List.exists singleton_only values then
     Cursor.err_invalid t "transition-property singleton value in list";
