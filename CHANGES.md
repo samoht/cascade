@@ -202,6 +202,10 @@ entry points both moved.
 
 ### Parsing
 
+- `transition` reads `none` as the property it is when a duration or a timing
+  function follows, so the contraction the optimizer writes for that run of
+  longhands reads back (#911).
+
 - `text-decoration` reads `none` as the line it is when a style or a colour
   follows, so the contraction the optimizer writes for that run of longhands
   reads back (#910).

@@ -1080,26 +1080,40 @@ let read_transition_shorthand t : transition_shorthand =
   }
 
 let rec read_transition t : transition =
-  Cursor.enum "transition"
-    [
-      ("inherit", (Inherit : transition));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-      ("none", None);
-    ]
-    ~default:(fun t : transition ->
-      if Cursor.looking_at_func "var" t then (
-        let snap = Cursor.save t in
-        let value = (Var (read_var read_transition t) : transition) in
-        Cursor.ws t;
-        if Cursor.is_done t then value
-        else (
-          Cursor.restore t snap;
-          Shorthand (read_transition_shorthand t)))
-      else Shorthand (read_transition_shorthand t))
-    t
+  let snap = Cursor.save t in
+  let value =
+    Cursor.enum "transition"
+      [
+        ("inherit", (Inherit : transition));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+        ("none", None);
+      ]
+      ~default:(fun t : transition ->
+        if Cursor.looking_at_func "var" t then (
+          let snap = Cursor.save t in
+          let value = (Var (read_var read_transition t) : transition) in
+          Cursor.ws t;
+          if Cursor.is_done t then value
+          else (
+            Cursor.restore t snap;
+            Shorthand (read_transition_shorthand t)))
+        else Shorthand (read_transition_shorthand t))
+      t
+  in
+  (* CSS Transitions 1 sec. 3: [none] is a [<single-transition-property>], so it
+     is the whole item only when the item ends there. Anything else after it
+     belongs to the same [<single-transition>]. *)
+  match value with
+  | None ->
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_comma t then value
+      else (
+        Cursor.restore t snap;
+        (Shorthand (read_transition_shorthand t) : transition))
+  | _ -> value
 
 let read_transitions t : transition list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_transition t
