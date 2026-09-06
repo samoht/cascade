@@ -3357,7 +3357,7 @@ let border ?width ?style ?color () =
   v Border border_value
 
 let border_block value = v Border_block value
-let tab_size value = v Tab_size (Int value : tab_size)
+let tab_size value = v Tab_size (Number (Num (float_of_int value)) : tab_size)
 let tab_size_value value = v Tab_size (value : tab_size)
 let scrollbar_width value = v Scrollbar_width value
 let scrollbar_color value = v Scrollbar_color value

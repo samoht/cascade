@@ -868,9 +868,17 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            })
   | other -> other
 
+let normalize_tab_size ~ctx : tab_size -> tab_size =
+ fun value ->
+  match value with
+  | Number n ->
+      let n' = Values.normalize_number ~ctx n in
+      if n' == n then value else Number n'
+  | other -> other
+
 let rec pp_tab_size : tab_size Pp.t =
  fun ctx -> function
-  | Int i -> Pp.int ctx i
+  | Number n -> Values.pp_number ctx n
   | Length len -> pp_length ~always:true ctx len
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -2087,25 +2095,26 @@ let rec read_text_size_adjust t : text_size_adjust =
         t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
-  let number_value t i =
-    if i < 0 then Cursor.err_invalid t "negative tab-size integer";
-    (Int i : tab_size)
+  let checked t (n : number) : tab_size =
+    (match n with
+    | Num f when f < 0. -> Cursor.err_invalid t "negative tab-size"
+    | _ -> ());
+    Number n
   in
+  (* CSS Text 4 sec. 4.4: [<number [0,inf]> | <length [0,inf]>], so a math
+     function lands in whichever slot its result type names, and only a literal
+     has a value to turn away. The measure is a count of advance widths rather
+     than an integer, so a fraction is one. *)
   let read_value t =
-    match Cursor.integer_opt t with
-    | Some i -> number_value t i
-    | None ->
-        (* CSS Text 4 (ED) sec. 4.4: [<number> | <length>], so a math function
-           lands in whichever slot its result type names. *)
-        Cursor.one_of
-          [
-            (fun t -> number_value t (Values.read_integer "tab-size" t));
-            (fun t ->
-              Length
-                (Values.read_length ~allow_negative:false ~with_keywords:false
-                   ~length_only:true t));
-          ]
-          t
+    Cursor.one_of
+      [
+        (fun t -> checked t (Values.read_number t));
+        (fun t ->
+          Length
+            (Values.read_length ~allow_negative:false ~with_keywords:false
+               ~length_only:true t));
+      ]
+      t
   in
   Cursor.enum_or_var "tab-size"
     [
