@@ -1060,6 +1060,10 @@ let check_position_try_fallback =
   check_value_cursor "position_try_fallback" read_position_try_fallback
     pp_position_try_fallback
 
+let check_position_try_fallback_entry =
+  check_value_cursor "position_try_fallback_entry"
+    read_position_try_fallback_entry pp_position_try_fallback_entry
+
 let check_position_try_fallbacks =
   check_value_cursor "position_try_fallbacks" read_position_try_fallbacks
     pp_position_try_fallbacks
@@ -4081,6 +4085,13 @@ let test_position_try () =
   check_position_try "inherit";
   check_position_try "--foo";
   check_position_try "most-width --bar";
+  (* Sec. 6.1 lets a fallback entry be a [<position-area>], and sec. 6.3 makes
+     the fallbacks the required half of the shorthand. *)
+  check_position_try "center";
+  check_position_try "most-width none";
+  check_position_try ~expected:"--a,center" "--a, center";
+  neg_cursor ~allow_partial:true read_position_try "normal";
+  neg_cursor ~allow_partial:true read_position_try "most-width";
   neg_cursor ~allow_partial:true read_position_try "123"
 
 let test_border_image_repeat () =
@@ -5212,6 +5223,8 @@ let spec_generated_position_interaction_edges () =
   check_position_area "top span-left";
   check_position_area_keyword "span-inline-start";
   check_position_try_fallback "flip-block";
+  check_position_try_fallback_entry "flip-block";
+  check_position_try_fallback_entry "start end";
   check_position_try_fallbacks ~expected:"flip-block,--fallback"
     "flip-block, --fallback";
   check_position_try_order "most-inline-size";
@@ -5264,6 +5277,9 @@ let spec_generated_position_interaction_edges () =
   neg_cursor read_position_area_keyword "middle";
   neg_cursor read_position_try_fallback "flip";
   neg_cursor ~allow_partial:true read_position_try_fallbacks "none flip-block";
+  (* Sec. 6.1 keeps the tactic group and the position area apart, so an entry
+     never mixes one with the other. *)
+  neg_cursor ~allow_partial:true read_position_try_fallbacks "--a center";
   neg_cursor read_position_try_order "most-size";
   neg_cursor ~allow_partial:true read_position_visibility
     "always anchors-visible";
