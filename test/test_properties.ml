@@ -4694,8 +4694,11 @@ let test_columns_value () =
    not one of them: sec. 7.2.1 admits a <length-percentage> or a <flex> there,
    never a bare <number>. *)
 let math_function_at_integer_positions () =
-  check_tab_size ~expected:"3" "calc(1 + 2)";
+  (* [tab-size] keeps the authored call because its value is a {!number}; the
+     positions below still hold an [int], so their reader folds to reach it. *)
+  check_tab_size "calc(1 + 2)";
   check_tab_size "4";
+  check_tab_size "10.5";
   check_tab_size "2px";
   check_column_count ~expected:"3" "calc(1 + 2)";
   check_column_count "3";
