@@ -4873,7 +4873,7 @@ let spec_remaining_prop_vectors () =
       "print-color-adjust: exact economy";
       "isolation: isolate auto";
       "mix-blend-mode: multiply plus-lighter";
-      "shape-image-threshold: 1.5";
+      "shape-image-threshold: 1.5 2";
       "container-name: none card";
       "container: card inline-size";
       "anchor-name: target";

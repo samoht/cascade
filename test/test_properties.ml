@@ -4936,6 +4936,14 @@ let spec_generated_box_layout_edges () =
   check_overflow_clip_box "content-box";
   check_overflow_clip_margin "content-box 1px";
   check_shape_image_threshold ".5";
+  (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
+     [<number> | <percentage>], and clamps it to [0,1] at computed-value time,
+     so a value outside the range still reads. *)
+  check_shape_image_threshold "-1";
+  check_shape_image_threshold "2";
+  check_value_cursor "shape_image_threshold" read_shape_image_threshold
+    pp_shape_image_threshold ~expected:".5" "50%";
+  neg_cursor read_shape_image_threshold "2px";
   check_tab_size "4";
   check_zoom "50%";
   check_zoom "normal";
@@ -4977,7 +4985,9 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_min_intrinsic_sizing_keyword "zero";
   neg_cursor read_overflow_clip_box "margin-box";
   neg_cursor ~allow_partial:true read_overflow_clip_margin "1px 2px";
-  neg_cursor read_shape_image_threshold "-1";
+  (* CSS Shapes 1 sec. 6.2 clamps the threshold at computed-value time, so a
+     value outside [0,1] reads; a unit is what it has no place for. *)
+  neg_cursor read_shape_image_threshold "2px";
   neg_cursor read_tab_size "-1"
 
 (* ignore-test: grouped generated-surface vectors. *)
