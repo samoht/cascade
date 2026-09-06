@@ -873,8 +873,12 @@ module Grid_template = struct
     (* [~with_keywords:false]: track keywords (auto / min-content / ...) are a
        separate [one_of] alternative, so this reader handles only real lengths -
        the unit-specific cases below, plus a general [Length] carrier for a
-       [calc()], a [var()] in a [calc()], or a less common unit. *)
-    match read_length ~with_keywords:false t with
+       [calc()], a [var()] in a [calc()], or a less common unit.
+
+       CSS Grid 2 sec. 7.2 spells a [<track-breadth>] as [<length-percentage
+       [0,inf]> | <flex [0,inf]> | min-content | max-content | auto], so a
+       negative length is no breadth. *)
+    match read_length ~allow_negative:false ~with_keywords:false t with
     | Px n -> (Px n : grid_template)
     | Rem n -> Rem n
     | Em n -> Em n

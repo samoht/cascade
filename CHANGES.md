@@ -364,6 +364,10 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A negative length is no grid track, so `grid-template-rows: -2px` and a
+  `minmax()` holding one are dropped with a warning. CSS Grid 2 sec. 7.2 spells
+  a `<track-breadth>` with a `[0,inf]` range on its length (#1001)
+
 - A colour property keeps an unknown function only where its name is vendor
   prefixed. CSS Color 5 sec. 3 closes the `<color>` production, so
   `border-top-color: calc(2px - 3px)` and `color: brightness()` are dropped
