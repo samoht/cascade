@@ -4109,11 +4109,16 @@ let test_border_image_width () =
   check_border_image_width "10px";
   check_border_image_width "auto";
   check_border_image_width "1 2";
+  (* CSS Backgrounds 3 sec. 5.3 writes the number half as <number [0,inf]>,
+     which a calc() satisfies. *)
+  check_border_image_width "calc(1 + 2)";
+  check_border_image_width "calc(1 + 2) 3";
   check_border_image_width "inherit";
   neg_cursor read_border_image_width "blue"
 
 let test_border_image_outset () =
   check_border_image_outset "1";
+  check_border_image_outset "calc(1 + 2)";
   check_border_image_outset "10px";
   check_border_image_outset "1 2";
   check_border_image_outset "inherit";
