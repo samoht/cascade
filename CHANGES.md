@@ -342,11 +342,11 @@ to lose a whole rule over one bad piece. Both are gone.
   name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
 
 - `--inline-vars` keeps a `var()` live where the definition it names sits on a
-  selector the pass cannot prove reaches the element, since `#o { --x: red }`
-  may well style an ancestor of `#i`. CSS Variables 1 sec. 3 puts the fallback
-  in only for a custom property holding its guaranteed-invalid initial value,
-  and `#i { color: var(--x, lime) }` took `lime` where the browser paints red
-  (#985)
+  selector or in an `@media` the pass cannot prove reaches the element, and
+  every definition of a name still referenced reaches the output. CSS Variables
+  1 sec. 3 puts the fallback in only for a custom property holding its
+  guaranteed-invalid initial value, so `#o { --x: red } #i { color: var(--x,
+  lime) }` took `lime` where the browser paints red (#985, #986)
 
 - A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
   dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a

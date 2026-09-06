@@ -1185,9 +1185,11 @@ let live_marker () =
   (live, pending, mark)
 
 let live_customs ~consumers ~customs =
-  let path_visible ~scope_path ~consumer_path =
-    at_path_prefix ~outer:scope_path ~inner:consumer_path
-  in
+  (* A reference still in the sheet is answered by the browser's own cascade, so
+     a definition of the name it holds is live wherever it sits. The at-rule
+     path decides what may be folded here; it never decides what a reference
+     left standing can reach. *)
+  let path_visible ~scope_path:_ ~consumer_path:_ = true in
   let visible_ref_set = visible_ref_sets ~path_visible ~consumers in
   let by_name = index_customs (fun (_, _, name, _) -> name) customs in
   let by_scope = index_customs (fun (path, sel, _, _) -> (path, sel)) customs in
