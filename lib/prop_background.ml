@@ -1145,7 +1145,11 @@ let normalize_border_image : border_image -> border_image =
   let slice_initial =
     drop
       (fun (s : border_image_slice) ->
-        (not s.fill) && s.offsets = [ (Pct 100. : border_image_slice_item) ])
+        (not s.fill)
+        &&
+        match s.offsets with
+        | [ (Pct 100. : border_image_slice_item) ] -> true
+        | _ -> false)
       value.slice
   in
   let outset =

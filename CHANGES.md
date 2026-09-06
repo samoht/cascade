@@ -281,16 +281,19 @@ to lose a whole rule over one bad piece. Both are gone.
   constructed declaration and a parsed one compare and hash equally (#478,
   #485, #495, #651, #652, #653, #654, #657, #674, #683, #888)
 
+- `border-image` compares a slice against its initial without a polymorphic
+  equality, which walked another module's representation (#935)
+
 - A value the input ended in the middle of a string keeps its declaration. CSS
   Syntax 3 sec. 4.3.5 ends a string at EOF as the string it read and only a
   newline makes a `<bad-string-token>`, which sec. 7.2 excludes; cascade treated
   the two alike and dropped the rule, and printed the value back without its
-  closing quote so the rest of the sheet was swallowed (#NNN)
+  closing quote so the rest of the sheet was swallowed (#972)
 
 - The `@font-face` `src` descriptor reads an empty `url()` and drops only the
   item it cannot read. CSS Fonts 4 sec. 4.3.1 leaves an unusable reference to
   loading and keeps the descriptor while any item parses, so a trailing comma
-  and an unreadable neighbour no longer cost the whole font (#NNN)
+  and an unreadable neighbour no longer cost the whole font (#972)
 
 - A bad piece is dropped on its own and the rule around it survives. A nested
   rule, a descriptor, a stray `;`, a margin at-rule, an `@counter-style` with no
