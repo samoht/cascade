@@ -4494,7 +4494,7 @@ let spec_platform_property_vectors () =
       "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";
-      "transition: allow-discrete allow-discrete";
+      "transition: allow-discrete allow-discrete allow-discrete";
       "scroll-timeline: block --scroller";
       "view-timeline: inline --reveal";
     ]
