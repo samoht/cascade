@@ -549,7 +549,8 @@ optimisation; it is not a complete web-platform runtime.
 | [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords, `all` reset semantics in the optimiser |
 | [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
 | [Container Queries Level 5](https://www.w3.org/TR/css-conditional-5/#container-queries) | `@container` with size queries and typed `style()` / `scroll-state()` queries, including range operators |
-| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution, `@property` registration |
+| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution |
+| [Properties and Values API Level 1](https://www.w3.org/TR/css-properties-values-api-1/) | `@property` registration with `syntax`, `inherits` and `initial-value` |
 | [Fonts Level 4](https://www.w3.org/TR/css-fonts-4/) | `@font-face` descriptors |
 | [Animations Level 1](https://www.w3.org/TR/css-animations-1/) | `@keyframes`, `@starting-style` |
 

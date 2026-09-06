@@ -69,6 +69,10 @@
     page instead of duplicating each full signature here. *)
 
 module Selector = Selector
+(** Selector syntax, matching and specificity.
+
+    @see <https://www.w3.org/TR/selectors-4/> Selectors Level 4 *)
+
 module Selector_summary = Selector_summary
 module Aria = Aria
 module Color_space = Color_space
@@ -103,7 +107,8 @@ end
 
     Core building blocks for CSS rules and stylesheet construction.
 
-    See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3}. *)
+    See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3} and
+    {:https://www.w3.org/TR/css-nesting-1/ CSS Nesting Module Level 1}. *)
 
 type declaration = Declaration.declaration
 (** The type for CSS declarations (property-value pairs). *)
@@ -458,13 +463,17 @@ val as_import : statement -> Stylesheet.import_rule option
     an at sign (@) followed by an identifier and include everything up to the
     next semicolon or CSS block.
 
-    See {:https://www.w3.org/TR/css-conditional-3/ CSS Conditional Rules Module
-    Level 3} and {:https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule MDN
+    See {:https://www.w3.org/TR/css-conditional-5/ CSS Conditional Rules Module
+    Level 5} and {:https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule MDN
     At-rules}. *)
 
 (** {2:stylesheet_construction Stylesheet Construction}
 
-    Tools for building complete CSS stylesheets from rules and declarations. *)
+    Tools for building complete CSS stylesheets from rules and declarations.
+
+    See {:https://www.w3.org/TR/css-cascade-5/ CSS Cascading and Inheritance
+    Level 5}, which gives the origins, the [@layer] ordering and the CSS-wide
+    keywords the builders below write. *)
 
 type t = Stylesheet.t
 (** The type for CSS stylesheets. *)
@@ -623,7 +632,12 @@ val starting_style_nested : declaration list -> statement
 
     Core value types and declaration building blocks. *)
 
-(** {2:variables Custom Properties (Variables)} *)
+(** {2:variables Custom Properties (Variables)}
+
+    See {:https://www.w3.org/TR/css-variables-1/ CSS Custom Properties for
+    Cascading Variables Module Level 1} for [var()] and
+    {:https://www.w3.org/TR/css-properties-values-api-1/ CSS Properties and
+    Values API Level 1} for the [@property] registration. *)
 
 type 'a var = 'a Values.var
 (** The type of CSS variable holding values of type ['a]. *)
@@ -679,7 +693,7 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 
     See {:https://www.w3.org/TR/css-variables-1/ CSS Custom Properties for
     Cascading Variables Module Level 1} and
-    {:https://www.w3.org/TR/css-values-3/ CSS Values and Units Module Level 3}.
+    {:https://www.w3.org/TR/css-values-4/ CSS Values and Units Module Level 4}.
 *)
 
 (** CSS calc operations. *)
@@ -890,7 +904,10 @@ type length = Values.length =
   | Abs of length  (** CSS [abs()] math function *)
   | Sign of length  (** CSS [sign()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
-  | Anchor_size of string  (** CSS [anchor-size()] function *)
+  | Anchor_size of string
+      (** CSS [anchor-size()] function, from
+          {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor
+           Positioning Level 1}. *)
   | Anchor of string option * string * length option
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
@@ -1888,7 +1905,9 @@ val margin_block_end : length -> declaration
 
     @see <https://www.w3.org/TR/css-display-3/> CSS Display Module Level 3
     @see <https://www.w3.org/TR/css-position-3/>
-      CSS Positioned Layout Module Level 3 *)
+      CSS Positioned Layout Module Level 3
+    @see <https://www.w3.org/TR/css-break-3/> CSS Fragmentation Module Level 3
+*)
 
 (** CSS display values. *)
 type display = Properties.display =
@@ -2812,8 +2831,10 @@ val list_style_position : list_style_position -> declaration
     related visual styling for element backgrounds.
 
     @see <https://www.w3.org/TR/css-color-4/> CSS Color Module Level 4
+    @see <https://www.w3.org/TR/css-color-5/> CSS Color Module Level 5
     @see <https://www.w3.org/TR/css-backgrounds-3/>
-      CSS Backgrounds and Borders Module Level 3 *)
+      CSS Backgrounds and Borders Module Level 3
+    @see <https://www.w3.org/TR/css-images-4/> CSS Images Module Level 4 *)
 
 (** CSS forced-color-adjust values. *)
 type forced_color_adjust = Properties.forced_color_adjust =
@@ -3551,7 +3572,10 @@ type font_size = Properties.font_size =
 
 (** {2:alignment_properties Alignment Properties}
 
-    CSS Box Alignment properties for flexbox and grid layouts. *)
+    CSS Box Alignment properties for flexbox and grid layouts.
+
+    @see <https://www.w3.org/TR/css-align-3/> CSS Box Alignment Module Level 3
+*)
 
 (** CSS align-content values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
@@ -6708,6 +6732,8 @@ val webkit_background_clip : background_box -> declaration
     CSS container queries and containment features for component-based
     responsive design and performance optimization through layout isolation.
 
+    @see <https://www.w3.org/TR/css-conditional-5/>
+      CSS Conditional Rules Module Level 5, which owns [@container]
     @see <https://www.w3.org/TR/css-contain-3/> CSS Containment Module Level 3
     @see <https://www.w3.org/TR/css-contain-2/> CSS Containment Module Level 2
 *)
@@ -6909,7 +6935,11 @@ val webkit_text_size_adjust : text_size_adjust -> declaration
 
 (** {2:lists_tables Lists & Tables}
 
-    Properties for styling HTML lists and tables. *)
+    Properties for styling HTML lists and tables.
+
+    @see <https://www.w3.org/TR/css-lists-3/>
+      CSS Lists and Counters Module Level 3
+    @see <https://www.w3.org/TR/css-tables-3/> CSS Table Module Level 3 *)
 
 (** CSS [symbols()] counter-system keywords *)
 type symbols_type = Properties.symbols_type =
@@ -7101,7 +7131,9 @@ val border_spacing_values : length list -> border_spacing
 
 (** {2:svg_properties SVG Properties}
 
-    Properties specific to SVG rendering and styling. *)
+    Properties specific to SVG rendering and styling.
+
+    @see <https://www.w3.org/TR/SVG2/> Scalable Vector Graphics (SVG) 2 *)
 
 (** SVG paint values for fill and stroke properties *)
 type svg_paint = Properties.svg_paint =
@@ -7144,7 +7176,14 @@ val stroke_width : stroke_width -> declaration
 
 (** {2:scroll_touch Scroll & Touch}
 
-    Properties for scroll behavior and touch interaction. *)
+    Properties for scroll behavior and touch interaction.
+
+    @see <https://www.w3.org/TR/css-scroll-snap-1/>
+      CSS Scroll Snap Module Level 1
+    @see <https://www.w3.org/TR/css-overscroll-1/>
+      CSS Overscroll Behavior Module Level 1
+    @see <https://www.w3.org/TR/pointerevents3/>
+      Pointer Events Level 3, which owns [touch-action] *)
 
 (** CSS touch-action values *)
 type touch_action = Properties.touch_action =
