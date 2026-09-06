@@ -542,7 +542,7 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Webkit_text_decoration_color -> p value
   | Webkit_text_fill_color -> p value
   | Webkit_text_stroke_color -> p value
-  | Column_rule_color -> p value
+  | Column_rule_color -> List.exists p value
   | Border_inline_color -> logical_color_uses p value
   | Border_block_color -> logical_color_uses p value
   | Box_shadow -> shadow_uses_color p value
@@ -1853,9 +1853,20 @@ let read_object_transition_value : type a.
   | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
-  | Column_rule_color -> Some (v Column_rule_color (read_color t))
-  | Column_rule_width -> Some (v Column_rule_width (read_border_width t))
-  | Column_rule_style -> Some (v Column_rule_style (read_border_style t))
+  (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
+     list, one entry per rule line. *)
+  | Column_rule_color ->
+      Some
+        (v Column_rule_color
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_color t))
+  | Column_rule_width ->
+      Some
+        (v Column_rule_width
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border_width t))
+  | Column_rule_style ->
+      Some
+        (v Column_rule_style
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border_style t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 

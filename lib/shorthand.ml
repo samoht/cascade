@@ -3692,13 +3692,15 @@ let border_inline_end_part = function
       Some (line_of_color value)
   | _ -> None
 
+(* CSS Gaps 1 sec. 4 gives each longhand a list, and sec. 4.4 writes the
+   shorthand over one line, so only a single-entry list composes. *)
 let column_rule_part = function
-  | Declaration { property = Column_rule_width; value; _ } ->
-      Some (line_of_width value)
-  | Declaration { property = Column_rule_style; value; _ } ->
-      Some (line_of_style value)
-  | Declaration { property = Column_rule_color; value; _ } ->
-      Some (line_of_color value)
+  | Declaration { property = Column_rule_width; value = [ width ]; _ } ->
+      Some (line_of_width width)
+  | Declaration { property = Column_rule_style; value = [ style ]; _ } ->
+      Some (line_of_style style)
+  | Declaration { property = Column_rule_color; value = [ color ]; _ } ->
+      Some (line_of_color color)
   | _ -> None
 
 let try_compose_line_at ~part_of ~property idx i =

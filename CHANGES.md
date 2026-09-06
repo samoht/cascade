@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `column-rule-width`, `column-rule-style` and `column-rule-color` carry a list
+  where they carried a single value, so `column-rule-style: dotted, dashed`
+  reads. CSS Gaps 1 sec. 4 gives each gap decoration longhand a
+  comma-separated list, one entry per rule line. A caller writing one line
+  passes a one-element list (#1024)
+
 - `Cascade.Properties.flex_basis` gains `Dimension`, the arm
   `Cascade.Values.length` uses for a length whose authored spelling no typed
   constructor carries, so `flex-basis: 1e3px`, `flex-basis: 10.0px` and

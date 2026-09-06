@@ -5213,9 +5213,11 @@ type 'a property =
   | Column_wrap : column_wrap property
   | Column_count : column_count property
   | Column_rule : border property
-  | Column_rule_width : border_width property
-  | Column_rule_style : border_style property
-  | Column_rule_color : color property
+      (** CSS Gaps 1 sec. 4 gives the three longhands below a comma-separated
+          list, one entry per gap decoration line. *)
+  | Column_rule_width : border_width list property
+  | Column_rule_style : border_style list property
+  | Column_rule_color : color list property
   | Column_span : column_span property
   | Word_spacing : length property
   | Background_attachment : background_attachment property

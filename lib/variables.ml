@@ -2272,9 +2272,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Column_wrap, value -> vars_of_column_wrap value
   | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
-  | Column_rule_color, value -> vars_of_color value
-  | Column_rule_width, value -> vars_of_border_width value
-  | Column_rule_style, value -> vars_of_border_style value
+  | Column_rule_color, value -> List.concat_map vars_of_color value
+  | Column_rule_width, value -> List.concat_map vars_of_border_width value
+  | Column_rule_style, value -> List.concat_map vars_of_border_style value
   | Column_span, value -> vars_of_column_span value
   (* Contain *)
   | Contain, value -> vars_of_contain value

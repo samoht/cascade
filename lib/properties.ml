@@ -4416,8 +4416,8 @@ let normalize_property_value : type a.
   | Webkit_text_fill_color -> normalize_color value
   | Webkit_text_stroke_color -> normalize_color value
   | Webkit_text_stroke_width -> normalize_border_width value
-  | Column_rule_color -> normalize_color value
-  | Column_rule_width -> normalize_border_width value
+  | Column_rule_color -> List.map normalize_color value
+  | Column_rule_width -> List.map normalize_border_width value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -4803,9 +4803,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_stroke_color -> pp pp_color
   | Webkit_text_stroke -> pp pp_webkit_text_stroke
   | Webkit_text_stroke_width -> pp pp_border_width
-  | Column_rule_color -> pp pp_color
-  | Column_rule_width -> pp pp_border_width
-  | Column_rule_style -> pp pp_border_style
+  | Column_rule_color -> pp (Pp.list ~sep:Pp.comma pp_color)
+  | Column_rule_width -> pp (Pp.list ~sep:Pp.comma pp_border_width)
+  | Column_rule_style -> pp (Pp.list ~sep:Pp.comma pp_border_style)
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -5466,8 +5466,8 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_fill_color -> Some Color
   | Webkit_text_stroke_color -> Some Color
   | Webkit_text_stroke_width -> Some Border_width
-  | Column_rule_color -> Some Color
-  | Column_rule_width -> Some Border_width
+  | Column_rule_color -> Some Colors
+  | Column_rule_width -> Some Border_widths
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color
