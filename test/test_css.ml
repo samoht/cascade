@@ -2581,6 +2581,27 @@ let border_image_builders () =
          mode = Some Luminance;
        })
 
+(* CSS Sizing 4 sec. 5 models the shorthand and its four axis longhands, and the
+   facade wrote none of them. *)
+let contain_intrinsic_size_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "contain-intrinsic-size:auto 300px"
+    (Css.contain_intrinsic_size (Intrinsic (Auto (Px 300.), None)));
+  check "contain-intrinsic-size:100px 200px"
+    (Css.contain_intrinsic_size
+       (Intrinsic (Length (Px 100.), Some (Length (Px 200.)))));
+  check "contain-intrinsic-width:none" (Css.contain_intrinsic_width None);
+  check "contain-intrinsic-height:10px"
+    (Css.contain_intrinsic_height (Size (Length (Px 10.))));
+  check "contain-intrinsic-block-size:10px"
+    (Css.contain_intrinsic_block_size (Size (Length (Px 10.))));
+  check "contain-intrinsic-inline-size:10px"
+    (Css.contain_intrinsic_inline_size (Size (Length (Px 10.))))
+
 let suite =
   ( "css",
     [
@@ -2684,6 +2705,8 @@ let suite =
       Alcotest.test_case "public multicol builders" `Quick multicol_builders;
       Alcotest.test_case "public border image builders" `Quick
         border_image_builders;
+      Alcotest.test_case "public contain intrinsic size builders" `Quick
+        contain_intrinsic_size_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
