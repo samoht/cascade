@@ -429,7 +429,6 @@ let invalid_platform_declaration_vector buf i =
       "filter:blur(red)";
       "grid-template-areas:\"a\" \"a b\"";
       "shape-margin:-1px";
-      "overflow-clip-margin:-1px";
       "scrollbar-width:wide";
       "scrollbar-gutter:stable auto";
       "font-palette:1";

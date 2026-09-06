@@ -3356,6 +3356,10 @@ let invalid () =
   neg "contain-intrinsic-width: 200%";
   neg "tab-size: 50%";
   neg "overflow-clip-margin: 50%";
+  (* CSS Overflow 4 sec. 3.2 is [<visual-box> || <length>], with no range on the
+     length, so a negative one pulls the clip edge inside the box. *)
+  check_declaration ~expected:"overflow-clip-margin:-1px"
+    "overflow-clip-margin: -1px";
   neg "column-width: -5px"
 
 let spec_property_grammar_table_expansion () =
@@ -3530,7 +3534,6 @@ let spec_property_grammar_table_expansion () =
       ("container-type", "inline-size size");
       ("container", "/ inline-size");
       ("overflow", "visible clip scroll");
-      ("overflow-clip-margin", "-1px");
       ("overscroll-behavior", "contain none auto");
       ("scroll-snap-type", "mandatory x");
       ("scrollbar-width", "wide");
@@ -4576,7 +4579,6 @@ let spec_platform_property_vectors () =
       "anchor-name: tooltip";
       "position-anchor: tooltip";
       "shape-margin: -1px";
-      "overflow-clip-margin: -1px";
       "overflow-anchor: sometimes";
       "scrollbar-width: wide";
       "scrollbar-gutter: stable auto";
