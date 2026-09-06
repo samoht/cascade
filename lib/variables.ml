@@ -1849,12 +1849,13 @@ let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
 let vars_of_timeline_inset_item (value : Properties.timeline_inset_item) =
   match value with Auto -> [] | Length lp -> vars_of_length_percentage lp
 
-let vars_of_timeline_inset (value : Properties.timeline_inset) =
+let rec vars_of_timeline_inset (value : Properties.timeline_inset) =
   match value with
   | Var v -> [ V v ]
   | Inset (first, second) ->
       vars_of_timeline_inset_item first
       @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
+  | Insets insets -> List.concat_map vars_of_timeline_inset insets
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_view_timeline_shorthand (value : Properties.view_timeline_shorthand)

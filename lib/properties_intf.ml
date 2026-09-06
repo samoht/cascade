@@ -4238,6 +4238,7 @@ type timeline_axis =
   | Inline
   | X
   | Y
+  | Axes of timeline_axis list
   | Initial
   | Inherit
   | Unset
@@ -4271,6 +4272,7 @@ type timeline_inset_item = Auto | Length of length_percentage
 
 type timeline_inset =
   | Inset of timeline_inset_item * timeline_inset_item option
+  | Insets of timeline_inset list
   | Initial
   | Inherit
   | Unset

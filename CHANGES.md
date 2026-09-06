@@ -36,6 +36,13 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- `Cascade.Properties.timeline_axis` gains `Axes` and `timeline_inset` gains
+  `Insets`, so `scroll-timeline-axis: block, inline` and
+  `view-timeline-inset: auto, 1rem` read where they were dropped with a
+  warning. Scroll-driven Animations 1 secs. 4.2, 5.2 and 5.3 put a `#` on all
+  three, one entry per timeline. Exhaustive visitors must handle the two new
+  leaves (#1050)
+
 - `Cascade.Properties.hyphenate_limit_chars` gives each slot a
   `hyphenate_limit_chars_item`, `Auto` or a `Chars` count, where it carried a
   bare `int` and a whole-value `Auto`, so `hyphenate-limit-chars: auto 3` and
