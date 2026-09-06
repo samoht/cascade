@@ -352,7 +352,9 @@ to lose a whole rule over one bad piece. Both are gone.
   property's grammar refuses, and a CSS-wide keyword, whose meaning CSS
   Variables 1 sec. 2.1 leaves to the cascade. Sec. 3 puts the fallback in only
   for a property holding its guaranteed-invalid initial value, so
-  `Css.eval_stylesheet` measured `8px` where the browser lays out `auto` (#991)
+  `Css.eval_stylesheet` measured `8px` where the browser lays out `auto`. A
+  binding that references itself is that initial value, and there the fallback
+  answers in a length as it already did elsewhere (#991, #992)
 
 - `Css.Declaration.parse_custom_property` takes the empty value, the one CSS
   Variables 1 sec. 2 gives a custom property alongside every

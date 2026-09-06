@@ -1090,10 +1090,24 @@ module Calc_residual = struct
         simplify_calc_value ops simplify simplify_calc ~authored ~visited calc
     | None -> simplify_plain_value ops simplify simplify_calc ~visited value
 
+  (* A binding that resolves to a reference of its own is a cycle, which CSS
+     Variables 1 sec. 3 makes the guaranteed-invalid value, so the consumer's
+     fallback answers for it. This is the reading {!Var_residual} already takes
+     for a value with no calc arm. *)
+  let calc_var_result (type a) (ops : a ops) simplify_resolved ~visited
+      (var : a Values.var) (value : a) : a =
+    if Option.is_none (ops.as_var value) then value
+    else
+      match (var.Values.fallback : a Values.fallback) with
+      | Values.Fallback fb -> simplify_resolved ~authored:false ~visited fb
+      | Values.Syntax_fallback _ | Values.Var_fallback _ | Values.Empty
+      | Values.Empty2 | Values.None ->
+          value
+
   let simplify_calc_var ops resolve_var simplify_var_record simplify_resolved
       ~visited var =
     match resolve_var ~simplify:simplify_resolved ~visited var with
-    | Some value -> value
+    | Some value -> calc_var_result ops simplify_resolved ~visited var value
     | None ->
         ops.of_var
           (simplify_var_record ~simplify:simplify_resolved ~visited var)
@@ -1109,7 +1123,9 @@ module Calc_residual = struct
       | Values.Val value -> calc_of_value ~visited value
       | Values.Var var -> (
           match resolve_var ~simplify:simplify_resolved ~visited var with
-          | Some value -> calc_of_value ~visited value
+          | Some value ->
+              calc_of_value ~visited
+                (calc_var_result ops simplify_resolved ~visited var value)
           | None ->
               Values.Var
                 (simplify_var_record ~simplify:simplify_resolved ~visited var))
