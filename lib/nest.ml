@@ -52,8 +52,42 @@ let splices_bare ~leftmost ~parent sel =
     match sel with Selector.Nesting -> one_weight parent | _ -> false
   else leftmost && heads sel && count_nesting sel = 1
 
+(* Selectors 4 sec. 4.1: a type or universal selector leads its compound. A
+   parent carrying one can only go in bare where the [&] leads too, so [.x &]
+   under [a] is [a .x] and [.x&] is not [.xa], which reads back as one class
+   named [xa] and matches nothing the author wrote. The wrapper puts it where
+   any simple selector may stand, at the weight sec. 4.2 gives it. *)
+let rec leads_compound = function
+  | Selector.Element _ | Selector.Universal _ -> true
+  | Selector.Compound (x :: _) -> leads_compound x
+  | _ -> false
+
+let nesting_leads_every_compound sel =
+  let rec walk ~leading = function
+    | Selector.Nesting -> leading
+    | Selector.Compound (x :: rest) ->
+        walk ~leading x
+        && List.for_all
+             (fun s ->
+               not
+                 (Selector.any
+                    (function Selector.Nesting -> true | _ -> false)
+                    s))
+             rest
+    | Selector.Combined (l, _, r) ->
+        walk ~leading:true l && walk ~leading:true r
+    | Selector.Relative (_, r) -> walk ~leading:true r
+    | Selector.List branches -> List.for_all (walk ~leading:true) branches
+    | s ->
+        not (Selector.any (function Selector.Nesting -> true | _ -> false) s)
+  in
+  walk ~leading:true sel
+
 let substitute ?(leftmost = true) ~parent sel =
-  let verbatim = (not (complex parent)) || splices_bare ~leftmost ~parent sel in
+  let verbatim =
+    ((not (complex parent)) || splices_bare ~leftmost ~parent sel)
+    && ((not (leads_compound parent)) || nesting_leads_every_compound sel)
+  in
   let parent = if verbatim then parent else Selector.Is [ parent ] in
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
 

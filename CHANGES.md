@@ -499,9 +499,10 @@ to lose a whole rule over one bad piece. Both are gone.
   read from (#341, #343, #344, #349, #372, #374, #389, #396, #560)
 
 - Nesting emits only selectors a browser can match: a rule nested under a
-  pseudo-element parent is dropped wherever it sits, flattening a rule nested
-  under a selector list wraps the parent in `:is()`, and `--flatten-nesting`
-  leaves the result flat (#759, #800, #818, #822, #823)
+  pseudo-element parent is dropped wherever it sits, a selector-list or
+  type-selector parent keeps its `:is()` wrapper so `a { .x& { } }` flattens to
+  `.x:is(a)` and not the class `.xa`, and `--flatten-nesting` leaves the result
+  flat (#759, #800, #818, #822, #823, #975)
 
 - Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
   need, with matching `@supports` tests, and drops a vendor prefix only when its
