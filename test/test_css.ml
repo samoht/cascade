@@ -2487,6 +2487,18 @@ let view_transition_builders () =
   check "view-transition-class:hero wide"
     (Css.view_transition_class (Classes [ "hero"; "wide" ]))
 
+(* CSS Cascading 5 sec. 3.3 gives [all] every longhand but [direction] and
+   [unicode-bidi]; the optimiser acts on it and the facade could not write
+   one. *)
+let all_shorthand_builder () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "all:initial" (Css.all Initial);
+  check "all:revert-layer" (Css.all Revert_layer)
+
 let suite =
   ( "css",
     [
@@ -2583,6 +2595,8 @@ let suite =
         anchor_positioning_builders;
       Alcotest.test_case "public view transition builders" `Quick
         view_transition_builders;
+      Alcotest.test_case "public all shorthand builder" `Quick
+        all_shorthand_builder;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
