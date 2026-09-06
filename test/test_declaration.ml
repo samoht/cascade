@@ -3842,8 +3842,8 @@ let typed_custom_font_family_layer_printing () =
 (* [parse_custom_property] builds a declaration from a name and value that came
    from outside the parser, so it takes only a pair that writes back as the one
    declaration it claims to be: a [<dashed-ident>] name, written back with the
-   escapes that read it (CSS Syntax 3 sec. 4.3.7), and a CSS Syntax 3 sec. 8.2
-   [<declaration-value>]. *)
+   escapes that read it (CSS Syntax 3 sec. 4.3.7), and the
+   [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property. *)
 let parse_custom_property_guard () =
   let bind name value =
     match parse_custom_property name value with
@@ -3875,7 +3875,10 @@ let parse_custom_property_guard () =
       ("red]", "<rejected>");
       ("rgb(1,2,3", "<rejected>");
       ("{a:b", "<rejected>");
-      ("", "<rejected>");
+      (* CSS Variables 1 sec. 2 gives a custom property the value grammar
+         [<declaration-value>?], so the empty value is one of its values and
+         writes back as the declaration it names. *)
+      ("", "--x:");
     ];
   List.iter
     (fun (name, expected) ->
