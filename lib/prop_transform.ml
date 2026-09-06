@@ -885,18 +885,21 @@ let rec read_translate_value t : translate_value =
 
      - [translate: var(--t)] is a whole-value [var()] -- produce [Var _]. -
      [translate: var(--x) var(--y)] is per-slot -- produce [XY (_, _)]. *)
+  (* The grammar names lengths, so the intrinsic-sizing keywords a bare length
+     would accept are out. *)
+  let read_slot t = read_length ~with_keywords:false t in
   let read_lengths_from t (x : length) : translate_value =
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some y -> (
         Cursor.ws t;
-        match Cursor.option read_length t with
+        match Cursor.option read_slot t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> X x
   in
   let read_lengths t : translate_value =
-    let x = read_length t in
+    let x = read_slot t in
     read_lengths_from t x
   in
   let read_var_or_components t : translate_value =
@@ -906,7 +909,7 @@ let rec read_translate_value t : translate_value =
     if Cursor.is_done t then whole_var
     else
       let () = Cursor.restore t snap in
-      let x = read_length t in
+      let x = read_slot t in
       read_lengths_from t x
   in
   Cursor.enum_or_calls "translate"
@@ -1139,6 +1142,13 @@ let rec read_scale t : scale =
 module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
+  (* CSS Transforms 1 sec. 4 spells the property [[ left | center | right | top
+     | bottom | <length-percentage> ] | [ [ left | center | right |
+     <length-percentage> ] [ top | center | bottom | <length-percentage> ] ]
+     <length>? | ...], so each slot is a length or one of those keywords and the
+     intrinsic-sizing ones a bare length would accept are out. *)
+  let read_slot t = read_length ~with_keywords:false t
+
   let read_position t : transform_origin =
     let position =
       match read_position_value t with
@@ -1147,7 +1157,7 @@ module Transform_origin = struct
       | position -> position
     in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some z -> (
         match position with
         | XY (x, y) -> XYZ (x, y, z)
@@ -1160,12 +1170,12 @@ module Transform_origin = struct
         | position -> Position position)
 
   let read_xyz (t : Cursor.t) : transform_origin =
-    let x = read_length t in
+    let x = read_slot t in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some y -> (
         Cursor.ws t;
-        match Cursor.option read_length t with
+        match Cursor.option read_slot t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin

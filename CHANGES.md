@@ -367,6 +367,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `translate`, `transform-origin` and the `animation-range-*` family refuse an
+  intrinsic-sizing keyword, so `translate: auto` is dropped with a warning. Each
+  grammar names a length in every slot, and the length carrier brought the
+  keywords with it (#1007)
+
 - An `anchor()` or `anchor-size()` reaches only the properties that take one,
   so `padding-bottom: anchor-size(width)` and `translate: anchor-size(width)`
   are dropped with a warning. CSS Anchor Positioning 1 sec. 3.2 keeps `anchor()`

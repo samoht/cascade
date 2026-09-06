@@ -1992,6 +1992,12 @@ let read_animation_range_name t : animation_range_name =
 let is_animation_range_name name =
   List.mem (String.lowercase_ascii_preserve name) Keyframe.timeline_range_names
 
+(* Scroll Animations 1 sec. 5.1 spells each item [normal | <length-percentage> |
+   <timeline-range-name> <length-percentage>?], so the intrinsic-sizing keywords
+   a bare length would accept are out. *)
+let read_range_length_percentage t =
+  Values.read_length_percentage ~with_keywords:false t
+
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
   if Cursor.is_done t then (None : length_percentage option)
@@ -2000,7 +2006,7 @@ let read_animation_range_offset t : length_percentage option =
     | Some "normal" -> (None : length_percentage option)
     | Some next when List.mem next Keyframe.timeline_range_names ->
         (None : length_percentage option)
-    | _ -> (Some (Values.read_length_percentage t) : length_percentage option)
+    | _ -> (Some (read_range_length_percentage t) : length_percentage option)
 
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
@@ -2021,7 +2027,7 @@ let rec read_animation_range_item t : animation_range_item =
         let lp = read_animation_range_offset t in
         (Named (name, lp) : animation_range_item)
     | _ ->
-        let lp = Values.read_length_percentage t in
+        let lp = read_range_length_percentage t in
         Offset lp
   in
   Cursor.enum_or_var "animation-range-item" keywords
@@ -2053,7 +2059,7 @@ let rec read_animation_range t : animation_range =
           let lp = read_animation_range_offset t in
           (Named (name, lp) : animation_range_item)
       | _ ->
-          let lp = Values.read_length_percentage t in
+          let lp = read_range_length_percentage t in
           Offset lp
     in
     let first = read_single t in
