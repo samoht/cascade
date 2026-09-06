@@ -375,6 +375,20 @@ let test_inline_vars_fallback_edges () =
   check_inline_case "resolved var ignores fallback"
     ":root{--gap:10px}.a{padding:var(--gap,20px)}" ".a{padding:10px}"
 
+(* CSS Variables 1 sec. 3 puts the fallback in only where the custom property
+   holds the guaranteed-invalid initial value. A definition the pass cannot
+   prove reaches the consumer is not an absent one: [#o] may well hold [#i], so
+   the reference stays live rather than taking the fallback. *)
+let test_inline_vars_out_of_scope_definition_stays_live () =
+  check_inline_case "a definition on another selector keeps the reference live"
+    "#o{--x:red}#i{color:var(--x,lime)}" "#o{--x:red}#i{color:var(--x,lime)}";
+  check_inline_case "an empty definition on another selector keeps it live"
+    "#o{--x:}#i{color:var(--x,lime)}" "#o{--x:}#i{color:var(--x,lime)}";
+  check_inline_case "a definition that covers the consumer still folds"
+    ":root{--x:red}#i{color:var(--x,lime)}" "#i{color:red}";
+  check_inline_case "a name the sheet never defines takes the fallback"
+    "#i{color:var(--nope,lime)}" "#i{color:lime}"
+
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
     ".a{font-family:var(--font,\"Helvetica Neue\",sans-serif)}"
@@ -907,6 +921,8 @@ let suite =
         `Quick test_inline_font_face_var_stretch_range;
       Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
         test_inline_vars_liveness_propagates_through_scopes;
+      Alcotest.test_case "inline vars keep an out-of-scope definition live"
+        `Quick test_inline_vars_out_of_scope_definition_stays_live;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"
         `Quick test_inline_at_path_containment;
       Alcotest.test_case "inline vars cost stays linear in at-rule depth" `Quick
