@@ -2450,6 +2450,30 @@ let svg_longhand_builders () =
   check "baseline-shift:super" (Css.baseline_shift Super);
   check "baseline-source:last" (Css.baseline_source Last)
 
+(* CSS Anchor Positioning 1 is modelled end to end and the facade built none of
+   it, so a caller could parse an anchored box but not write one. *)
+let anchor_positioning_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "anchor-name:--tip" (Css.anchor_name (Names [ "--tip" ]));
+  check "position-anchor:--tip" (Css.position_anchor (Anchor "--tip"));
+  check "position-anchor:normal" (Css.position_anchor Normal);
+  check "position-area:block-start span-inline-end"
+    (Css.position_area (Area (Block_start, Some Span_inline_end)));
+  check "position-try-fallbacks:--a flip-block"
+    (Css.position_try_fallbacks
+       (Fallbacks [ Tactics [ Name "--a"; Flip_block ] ]));
+  check "position-try-fallbacks:start end"
+    (Css.position_try_fallbacks (Fallbacks [ Area (Start, Some End) ]));
+  check "position-try-order:most-width" (Css.position_try_order Most_width);
+  check "position-try:most-width --a"
+    (Css.position_try (Try (Most_width, Fallbacks [ Tactics [ Name "--a" ] ])));
+  check "position-visibility:anchors-visible"
+    (Css.position_visibility (Conditions [ Anchors_visible ]))
+
 let suite =
   ( "css",
     [
@@ -2542,6 +2566,8 @@ let suite =
         `Quick spec_author_ident_case_sensitive;
       Alcotest.test_case "public svg longhand builders" `Quick
         svg_longhand_builders;
+      Alcotest.test_case "public anchor positioning builders" `Quick
+        anchor_positioning_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
