@@ -792,6 +792,13 @@ let page_case () =
     ~optimized:"";
   check_stylesheet ~expected:"@page foo{margin:1in}"
     "@page foo { margin: 1in; }";
+  (* CSS Syntax 3 (ED) sec. 5.5.5 discards a [;] among a block's contents, so a
+     stray one costs nothing and the rule after it reads. Chrome 151 reads it as
+     the start of a prelude and loses the block instead. *)
+  check_stylesheet ~expected:"@layer{a{color:red}}"
+    "@layer { ; a { color: red } }";
+  check_stylesheet ~expected:"@media all{a{color:red}}"
+    "@media all { ; a { color: red } }";
   check_stylesheet ~expected:"@page:first{margin:2in}"
     "@page :first { margin: 2in; }";
   check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
