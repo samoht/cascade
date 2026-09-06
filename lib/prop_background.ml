@@ -1068,7 +1068,7 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
   | None -> ()
 
 let pp_border_image_slice_item ctx (value : border_image_slice_item) =
-  match value with Number n -> Pp.float ctx n | Pct n -> Pp.pct ctx n
+  match value with Number n -> Values.pp_number ctx n | Pct n -> Pp.pct ctx n
 
 let pp_border_image_slice_offsets ctx { offsets; fill } =
   Pp.list ~sep:Pp.space pp_border_image_slice_item ctx offsets;
@@ -1088,14 +1088,14 @@ let rec pp_border_image_slice ctx (value : border_image_slice) =
 
 let pp_border_image_width_item ctx (value : border_image_width_item) =
   match value with
-  | Number n -> Pp.float ctx n
+  | Number n -> Values.pp_number ctx n
   | Pct n -> Pp.pct ctx n
   | Length len -> pp_length ctx len
   | Auto -> Pp.string ctx "auto"
 
 let pp_border_image_outset_item ctx (value : border_image_outset_item) =
   match value with
-  | Number n -> Pp.float ctx n
+  | Number n -> Values.pp_number ctx n
   | Length len -> pp_length ctx len
 
 let pp_border_image_repeat_keyword ctx (value : border_image_repeat_keyword) =
@@ -1165,7 +1165,8 @@ let normalize_border_image : border_image -> border_image =
   let outset =
     drop
       (function
-        | [ (Number 0. : border_image_outset_item) ] | [ Length Zero ] -> true
+        | [ (Number (Num 0.) : border_image_outset_item) ] | [ Length Zero ] ->
+            true
         | _ -> false)
       value.outset
   in
@@ -1177,7 +1178,7 @@ let normalize_border_image : border_image -> border_image =
     else
       drop
         (function
-          | [ (Number 1. : border_image_width_item) ] -> true | _ -> false)
+          | [ (Number (Num 1.) : border_image_width_item) ] -> true | _ -> false)
         value.width
   in
   let repeat =
@@ -2238,15 +2239,29 @@ let rec read_border_spacing t : border_spacing =
         : border_spacing))
     t
 
+(* Sec. 5.2 to 5.4 keep the numeric halves at [0,inf]. A [calc()] holds no value
+   to compare, so only a literal is turned away here. Each side is one component
+   of a list, and the whole-value number reader refuses a number after the one
+   it read, so the component is handed to it on its own. *)
+let read_border_image_number t =
+  let value : number =
+    match Cursor.peek t with
+    | Some (Component.Func _ as component) ->
+        let _ = Cursor.next t in
+        Values.read_number (Cursor.of_components [ component ])
+    | _ -> Num (Cursor.number t)
+  in
+  (match value with
+  | (Num n : number) when n < 0. ->
+      Cursor.err_invalid t "border-image value cannot be negative"
+  | _ -> ());
+  value
+
 let read_border_image_slice_item t : border_image_slice_item =
   match Cursor.percentage_opt t with
   | Some n when n >= 0. -> Pct n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-  | None -> (
-      match Cursor.number_opt t with
-      | Some n when n >= 0. -> Number n
-      | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-      | None -> Cursor.err_expected t "border-image slice")
+  | None -> Number (read_border_image_number t)
 
 let read_border_image_slice_value t values has_fill =
   match Cursor.option read_border_image_slice_item t with
@@ -2310,33 +2325,34 @@ let read_border_image_width_item t : border_image_width_item =
       match Cursor.percentage_opt t with
       | Some n when n >= 0. -> Pct n
       | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-      | None -> (
-          match Cursor.number_opt t with
-          | Some n when n >= 0. -> Number n
-          | Some _ ->
-              Cursor.err_invalid t "border-image value cannot be negative"
-          | None ->
+      | None ->
+          Cursor.one_of
+            [
+              (fun t ->
+                (Number (read_border_image_number t) : border_image_width_item));
               (* Sec. 5.3 gives the width a number, a length-percentage or
                  [auto], read above. The generic length reader carries keywords
                  of its own - [stretch] and [contain] among them, which name a
                  repeat here - so this call takes none. *)
-              let len =
-                read_length ~allow_negative:false ~with_keywords:false t
-              in
-              Length len))
+              (fun t ->
+                Length
+                  (read_length ~allow_negative:false ~with_keywords:false t));
+            ]
+            t)
 
 (* Sec. 5.4 gives the outset a number or a length per side and no keyword. *)
 let read_border_image_outset_item t : border_image_outset_item =
-  match Cursor.number_opt t with
-  | Some n when n >= 0. -> Number n
-  | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-  | None ->
+  Cursor.one_of
+    [
+      (fun t ->
+        (Number (read_border_image_number t) : border_image_outset_item));
       (* Sec. 5.4 gives the outset a number or a length, and no percentage. *)
-      let len =
-        read_length ~allow_negative:false ~with_keywords:false ~length_only:true
-          t
-      in
-      Length len
+      (fun t ->
+        Length
+          (read_length ~allow_negative:false ~with_keywords:false
+             ~length_only:true t));
+    ]
+    t
 
 let read_border_image_box_step ~what read_item t acc =
   Cursor.ws t;

@@ -861,7 +861,10 @@ let vars_of_border_image_width (value : Properties.border_image_width) :
   | Widths values ->
       List.concat_map
         (fun (item : Properties.border_image_width_item) ->
-          match item with Length length -> vars_of_length length | _ -> [])
+          match item with
+          | Length length -> vars_of_length length
+          | Number n -> vars_of_number_value n
+          | _ -> [])
         values
   | _ -> []
 
@@ -872,7 +875,9 @@ let vars_of_border_image_outset (value : Properties.border_image_outset) :
   | Outsets values ->
       List.concat_map
         (fun (item : Properties.border_image_outset_item) ->
-          match item with Length length -> vars_of_length length | _ -> [])
+          match item with
+          | Length length -> vars_of_length length
+          | Number n -> vars_of_number_value n)
         values
   | _ -> []
 

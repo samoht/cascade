@@ -24,6 +24,13 @@ entry points both moved.
 
 ### Breaking
 
+- The `Number` of `Cascade.Properties.border_image_width_item`,
+  `border_image_outset_item` and `border_image_slice_item` carries a `number`
+  where it carried a `float`, so `border-image-width: calc(1 + 2)` reads. CSS
+  Backgrounds 3 secs. 5.2 to 5.4 write those halves as `<number [0,inf]>`, and
+  a `calc()` is one. A caller building a literal writes `Number (Num 1.)`
+  (#1021)
+
 - `Cascade.Properties.content` gains `Image of background_image`, so
   `content: url(a.png)` and `content: linear-gradient(red, blue)` read where
   they were dropped with a warning. CSS Generated Content 3 sec. 2 puts an
