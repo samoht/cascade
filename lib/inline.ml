@@ -161,6 +161,12 @@ type scope = {
   customs : Declaration.declaration list;
 }
 
+(* The scopes plus the names the sheet defines anywhere. A consumer sees only
+   the scopes that cover it, and a name it cannot see is not a name the sheet is
+   without: the two answers part ways in [substitute_var], where only the second
+   lets the fallback stand in. *)
+type scope_set = { all : scope list; declared : (string, unit) Hashtbl.t }
+
 let custom_name = Variables.custom_declaration_name
 
 (* [Declaration.custom_property] refuses a value it cannot write back as part of
@@ -218,7 +224,19 @@ let collect_scopes ~kept stylesheet =
     | _ -> ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
-  List.rev !acc
+  let all = List.rev !acc in
+  let declared = Hashtbl.create 64 in
+  List.iter
+    (fun s ->
+      List.iter
+        (fun d ->
+          match custom_name d with
+          | Some name ->
+              Hashtbl.replace declared (Custom_property_name.add_prefix name) ()
+          | None -> ())
+        s.customs)
+    all;
+  { all; declared }
 
 (** {1 Pass 2 - substitute var() in every declaration} *)
 
@@ -229,9 +247,10 @@ let collect_scopes ~kept stylesheet =
 type visible = {
   decls : Declaration.declaration list;
   by_name : (string, (int * Declaration.declaration) list) Hashtbl.t;
+  declared : (string, unit) Hashtbl.t;
 }
 
-let visible_of_decls decls =
+let visible_of_decls ~declared decls =
   let by_name = Hashtbl.create 64 in
   List.iteri
     (fun idx decl ->
@@ -247,7 +266,7 @@ let visible_of_decls decls =
   Hashtbl.iter
     (fun name entries -> Hashtbl.replace by_name name (List.rev entries))
     (Hashtbl.copy by_name);
-  { decls; by_name }
+  { decls; by_name; declared }
 
 (* A name reaches its declarations under the spelling it was written with, so
    ask for both: [--x] is stored as written and [x] is the bare form callers
@@ -263,8 +282,8 @@ let named visible name =
           List.merge (fun (a, _) (b, _) -> Int.compare a b) entries more)
   | None -> Option.value ~default:[] (Hashtbl.find_opt visible.by_name dashed)
 
-let visible_customs ~scopes ~at_path ~selector =
-  visible_of_decls
+let visible_customs ~(scopes : scope_set) ~at_path ~selector =
+  visible_of_decls ~declared:scopes.declared
     (List.concat_map
        (fun s ->
          if
@@ -272,7 +291,7 @@ let visible_customs ~scopes ~at_path ~selector =
            && selector_covers ~ancestor:s.selector ~consumer:selector
          then s.customs
          else [])
-       scopes)
+       scopes.all)
 
 (* [kept] names carry the [--] prefix; [Context.runtime_vars] expects the bare
    custom-property name. *)
@@ -312,6 +331,20 @@ let lookup_visible_custom ?unicode_ranges visible name read =
     (fun (_, decl) -> read_custom_components ?unicode_ranges read decl)
     (named visible name)
 
+(* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+   property "its usual meaning", so the binding is what the cascade makes of the
+   keyword and not the keyword's own tokens: with nothing above to inherit from,
+   [--x: unset] is the guaranteed-invalid initial value and a reference takes
+   its fallback. What it is depends on the element the sheet is read against, so
+   the binding is one this pass does not fold. *)
+let is_css_wide_keyword_value components =
+  match List.filter (fun c -> not (Component.is_whitespace c)) components with
+  | [ Component.Preserved { kind = Token.Ident name; _ } ] -> (
+      match String.lowercase_ascii name with
+      | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+      | _ -> false)
+  | _ -> false
+
 let custom_value_components = function
   | Declaration.Declaration
       {
@@ -335,6 +368,9 @@ let consider_custom_candidate idx best decl value =
   let candidate = (important, idx, value) in
   if better_custom_candidate ~important ~idx best then Some candidate else best
 
+(* The candidate that wins the cascade is the one that answers, so a keyword
+   winning over a token stream stops the fold rather than handing the fold the
+   runner-up. *)
 let lookup_visible_custom_components visible name =
   List.fold_left
     (fun best (idx, decl) ->
@@ -342,7 +378,9 @@ let lookup_visible_custom_components visible name =
       | None -> best
       | Some value -> consider_custom_candidate idx best decl value)
     None (named visible name)
-  |> Option.map (fun (_, _, value) -> value)
+  |> fun best ->
+  Option.bind best (fun (_, _, value) ->
+      if is_css_wide_keyword_value value then None else Some value)
 
 let trim_components components =
   let is_ws = function
@@ -439,7 +477,13 @@ and substitute_var ~kept visible ~visited original name fallback =
   else
     match lookup_visible_custom_components visible name with
     | None ->
-        if List.mem (String.concat "" [ "--"; name ]) kept then
+        (* CSS Variables 1 sec. 3 puts the fallback in only where the custom
+           property holds its guaranteed-invalid initial value. A definition
+           this consumer cannot see is not an absent one: the element it styles
+           may sit under the element the definition is written for, so the
+           reference stays live. *)
+        let dashed = Custom_property_name.add_prefix name in
+        if List.mem dashed kept || Hashtbl.mem visible.declared dashed then
           keep_wrapper ~kept visible ~visited original fallback
         else fallback_or_original ()
     | Some value -> resolved_or_fallback value
@@ -488,11 +532,6 @@ let declaration_with_components decl components : Declaration.declaration option
         | { kind = Token.String _; _ } -> true
         | _ -> false)
     in
-    let has_comma =
-      components_contain (function
-        | { kind = Token.Comma; _ } -> true
-        | _ -> false)
-    in
     (* [font-family] reaches here typed or, when its value never parsed as one,
        as the unknown property of that name; both are the same property. *)
     let is_font_family =
@@ -506,20 +545,28 @@ let declaration_with_components decl components : Declaration.declaration option
     match Declaration.with_value decl value with
     | decl -> Some decl
     | exception Cursor.Parse_error _ ->
-        if is_font_family && has_string components then opaque ()
-        else if has_comma components then None
-        else opaque ()
+        (* [font-family] takes a list of names this reader does not model as
+           one, so the substituted text is written back as it stands. Anywhere
+           else a refused substitution is CSS Variables 1 sec. 3's invalid at
+           computed-value time, which is the property's inherited or initial
+           value: writing the refused text back hands the slot to the
+           declaration before it instead, and dropping it does the same. *)
+        if is_font_family && has_string components then opaque () else None
 
 let should_use_typed_default ~kept visible vars =
   vars <> []
   && List.for_all
        (fun (Variables.V var) ->
+         let dashed = Custom_property_name.add_prefix var.Values.name in
          Option.is_some var.Values.default
          && Option.is_none
               (lookup_visible_custom_components visible var.Values.name)
          (* A kept var must keep its live [var()] reference, so do not collapse
-            it to its typed default. *)
-         && not (List.mem (String.concat "" [ "--"; var.Values.name ]) kept))
+            it to its typed default, and neither may a name the sheet defines
+            out of this consumer's sight: the fallback stands in only for a
+            custom property that holds its guaranteed-invalid initial value. *)
+         && (not (List.mem dashed kept))
+         && not (Hashtbl.mem visible.declared dashed))
        vars
 
 (* [Context.eval] leaves a kept var's [var()] intact (it is in [runtime_vars])
@@ -530,16 +577,61 @@ let apply_substituted_components ctx decl ~original_components components =
     Some (Context.eval ctx decl)
   else
     match declaration_with_components decl components with
-    | None -> None
+    | None ->
+        (* The substitution is no value for this property, so the declaration is
+           invalid at computed-value time and neither the refused text nor the
+           declaration's absence says that. The reference stays, and the browser
+           answers it. *)
+        Some decl
     | Some decl -> Some (Context.eval ctx decl)
+
+(* A name the sheet defines out of this consumer's sight is live here for the
+   same reason a kept one is: the evaluator resolves a name it does not hold to
+   the reference's fallback, and CSS Variables 1 sec. 3 puts the fallback in
+   only where the custom property holds its guaranteed-invalid initial value.
+   Only the names this declaration references have to be named, so the list
+   stays as short as the declaration is. *)
+let rec var_names_in acc components =
+  List.fold_left
+    (fun acc (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          let acc = var_names_in acc arguments in
+          if String.equal (String.lowercase_ascii name) "var" then
+            match
+              List.filter (fun c -> not (Component.is_whitespace c)) arguments
+            with
+            | Component.Preserved { kind = Token.Ident n; _ } :: _ -> n :: acc
+            | _ -> acc
+          else acc
+      | Component.Block { node = { value; _ }; _ } -> var_names_in acc value
+      | Component.Preserved _ -> acc)
+    acc components
+
+let out_of_sight visible components =
+  var_names_in [] components
+  |> List.filter_map (fun name ->
+      let dashed = Custom_property_name.add_prefix name in
+      let bare = Custom_property_name.strip_prefix name in
+      if
+        Hashtbl.mem visible.declared dashed
+        && Option.is_none (lookup_visible_custom_components visible bare)
+      then Some dashed
+      else None)
+  |> List.sort_uniq String.compare
 
 let substitute_non_custom ~kept visible ctx decl =
   let vars = Variables.vars_of_declarations [ decl ] in
+  let value = Declaration.string_of_value ~minify:false decl in
+  let original_components = Cursor.remaining (Cursor.of_string value) in
+  let ctx =
+    match out_of_sight visible original_components with
+    | [] -> ctx
+    | live -> context_for ~kept:(kept @ live) visible
+  in
   if should_use_typed_default ~kept visible vars then
     Some (Context.eval ctx decl)
   else
-    let value = Declaration.string_of_value ~minify:false decl in
-    let original_components = Cursor.remaining (Cursor.of_string value) in
     match
       substitute_components ~kept visible ~visited:[] original_components
     with
@@ -1000,7 +1092,14 @@ let refs_of_declaration decl =
         _;
       } ->
       refs_of_components (Properties.components_of_custom_property_value value)
-  | _ -> names_of_vars (Variables.vars_of_declarations [ decl ])
+  | _ ->
+      (* The typed reading names the [var()] the value is built on; a name
+         written inside another reference's fallback reaches the census only
+         through the token stream, and it is referenced like any other. *)
+      names_of_vars (Variables.vars_of_declarations [ decl ])
+      @ refs_of_component_string
+          (Declaration.string_of_value ~minify:false decl)
+      |> List.sort_uniq String.compare
 
 (* Collect, per declaration, its scope and the var names its body references.
    [consumers] are non-custom declarations (direct liveness); [customs] are
@@ -1133,9 +1232,11 @@ let live_marker () =
   (live, pending, mark)
 
 let live_customs ~consumers ~customs =
-  let path_visible ~scope_path ~consumer_path =
-    at_path_prefix ~outer:scope_path ~inner:consumer_path
-  in
+  (* A reference still in the sheet is answered by the browser's own cascade, so
+     a definition of the name it holds is live wherever it sits. The at-rule
+     path decides what may be folded here; it never decides what a reference
+     left standing can reach. *)
+  let path_visible ~scope_path:_ ~consumer_path:_ = true in
   let visible_ref_set = visible_ref_sets ~path_visible ~consumers in
   let by_name = index_customs (fun (_, _, name, _) -> name) customs in
   let by_scope = index_customs (fun (path, sel, _, _) -> (path, sel)) customs in
@@ -1338,7 +1439,7 @@ let var_census stylesheet =
           Option.map normalise_var_name (custom_name d))
       |> List.sort_uniq compare
       |> List.iter (fun n -> add n key))
-    (collect_scopes ~kept:[] stylesheet);
+    (collect_scopes ~kept:[] stylesheet).all;
   let counts : (string, int) Hashtbl.t = Hashtbl.create 64 in
   Hashtbl.iter
     (fun name keys -> Hashtbl.replace counts name (List.length keys))
@@ -1616,7 +1717,7 @@ let layer_decided_customs ~keep stylesheet =
   match layer_order stylesheet with
   | None -> fold
   | Some layer_order ->
-      let scopes = collect_scopes ~kept:keep stylesheet in
+      let scopes = (collect_scopes ~kept:keep stylesheet).all in
       let by_name = Hashtbl.create 64 in
       List.iter
         (fun (s : scope) ->

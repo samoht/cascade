@@ -26,6 +26,23 @@ jobs:
 
       - run: opam install . --deps-only --with-test
       - run: opam exec -- dune build
+
+      # The browser oracles compare cascade against a real engine, so every job
+      # has to run the same one. The runner images ship their own Chrome, and it
+      # differs between ubuntu and macos: a property one build implements and
+      # the other does not makes the comparison fail on whichever runner is
+      # behind, whatever the diff under test says. [CHROME] is the override
+      # test/render/browser.ml reads before it goes looking.
+      - name: Install the pinned browser
+        run: |
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/cascade-browser" \
+            npx --yes playwright@1.63.0 install chromium-headless-shell
+      - name: Point the browser oracles at it
+        shell: bash
+        run: |
+          shell=$(find "$HOME/.cache/cascade-browser" -name chrome-headless-shell -type f | head -1)
+          test -x "$shell"
+          echo "CHROME=$shell" >> "$GITHUB_ENV"
       - run: opam exec -- dune test
 
   lower-bounds:
@@ -43,6 +60,23 @@ jobs:
       # removed upstream) fails here rather than in a downstream opam build.
       - run: opam install . --deps-only --with-test --criteria="+count[version-lag,solution]"
       - run: opam exec -- dune build
+
+      # The browser oracles compare cascade against a real engine, so every job
+      # has to run the same one. The runner images ship their own Chrome, and it
+      # differs between ubuntu and macos: a property one build implements and
+      # the other does not makes the comparison fail on whichever runner is
+      # behind, whatever the diff under test says. [CHROME] is the override
+      # test/render/browser.ml reads before it goes looking.
+      - name: Install the pinned browser
+        run: |
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/cascade-browser" \
+            npx --yes playwright@1.63.0 install chromium-headless-shell
+      - name: Point the browser oracles at it
+        shell: bash
+        run: |
+          shell=$(find "$HOME/.cache/cascade-browser" -name chrome-headless-shell -type f | head -1)
+          test -x "$shell"
+          echo "CHROME=$shell" >> "$GITHUB_ENV"
       - run: opam exec -- dune test
 
   ascii:

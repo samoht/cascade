@@ -121,7 +121,8 @@ let test_invalid_container_vectors buf =
     if byte_at buf 1 mod 2 = 0 then
       (pick Cascade_spec_inventory.Query_grammar.container_negative buf 2).input
     else
-      Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 3)
+      (Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 3))
+        .input
   in
   assert_invalid_container_contract "invalid container query vector" input
 

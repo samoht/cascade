@@ -520,21 +520,19 @@ let to_string ?(minify = false) t = Pp.to_string ~minify pp t
 
 (* ===== Parser ===== *)
 
-type recovery_scope = Branch | Query_list
-
 (* A branch failure is buffered rather than raised straight out: [of_components]
    decides from [recover] whether to swallow it into [not all] or re-raise it,
    so the error travels as a value with the span already attached. *)
-exception Parse_error of recovery_scope * Error.t
+exception Parse_error of Error.t
 
-let fail_parse ?(scope = Branch) e = raise (Parse_error (scope, e))
+let fail_parse e = raise (Parse_error e)
 
 (* Anchoring a failure on the components that failed puts the caret on that
    slice of the query. [t] anchors the smallest enclosing construct, for a
    failure that has no components of its own. *)
-let err ?scope t cvs reason =
+let err t cvs reason =
   let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
-  fail_parse ?scope (Cursor.condition_error at ~at_rule:"@media" reason)
+  fail_parse (Cursor.condition_error at ~at_rule:"@media" reason)
 
 let rec drop_whitespace = function
   | component :: rest when Component.is_whitespace component ->
@@ -1003,7 +1001,7 @@ let read_media_type_query t components =
   (match (prefix, components) with
   | Some _, (first :: _ as rest)
     when ident_is "not" first || ident_is "only" first ->
-      err ~scope:Query_list t rest "duplicate media query prefix"
+      err t rest "duplicate media query prefix"
   | _ -> ());
   match components with
   | name_component :: rest -> (
@@ -1053,8 +1051,7 @@ let parse_query_branch t components =
   (* Anchor the branch, not the whole query list, so a fallback with no
      components of its own still lands inside the branch that failed. *)
   let t = Cursor.sub t components in
-  try Ok (single_query t components)
-  with Parse_error (scope, e) -> Error (scope, e)
+  try Ok (single_query t components) with Parse_error e -> Error e
 
 let read ?(recover = true) t =
   let components = Cursor.remaining t in
@@ -1062,18 +1059,15 @@ let read ?(recover = true) t =
   if (not saw_comma) && List.for_all components_empty branches then
     (List [] : t)
   else
+    (* CSS Media Queries 4 sec. 3.2 replaces a query that does not match the
+       grammar with [not all] "during parsing", one entry of the comma-separated
+       list at a time, so the branches beside it keep what they say. *)
     let rec parse acc = function
       | [] -> List.rev acc
-      | [ branch ] -> (
-          match parse_query_branch t branch with
-          | Ok query -> List.rev (query :: acc)
-          | Error (_, e) -> if recover then [ not_all_query ] else Error.fail e)
       | branch :: rest -> (
           match parse_query_branch t branch with
           | Ok query -> parse (query :: acc) rest
-          | Error (Query_list, e) ->
-              if recover then [ not_all_query ] else Error.fail e
-          | Error (Branch, e) ->
+          | Error e ->
               if recover then parse (not_all_query :: acc) rest
               else Error.fail e)
     in
@@ -1081,9 +1075,6 @@ let read ?(recover = true) t =
     | false, [ query ] -> query
     | false, [] -> List []
     | false, _ :: _ :: _ -> assert false
-    | true, [ Type { prefix = Some Not; type_ = All; trailing = Option.None } ]
-      ->
-        not_all_query
     | true, queries -> List queries
 
 let of_string s = read (Cursor.of_string s)

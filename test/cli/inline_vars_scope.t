@@ -12,8 +12,10 @@ preserves the var() reference for non-descendant uses.
   $ cascade --minify --inline-vars scoped-decl.css
   .theme{--c:red;.descendant{color:red}}.other{color:var(--c)}
 
-A variable declared inside @media is in scope only for consumers within
-that @media block.
+A variable declared inside @media is folded only into consumers within
+that @media block. A consumer outside keeps its var() reference, and the
+definition goes to the output with it: the browser answers the reference
+from its own cascade whenever the condition holds.
 
   $ cat > media.css <<EOF
   > @media (min-width: 30em) {
@@ -23,7 +25,7 @@ that @media block.
   > .b { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars media.css
-  @media(width>=30em){.a{color:red}}.b{color:var(--brand)}
+  @media(width>=30em){:root{--brand:red}.a{color:red}}.b{color:var(--brand)}
 
 A cascade layer only orders competing declarations, it does not scope
 custom-property visibility (unlike the conditional @media / @container),
@@ -112,14 +114,16 @@ the now-unreferenced custom property is dead-stripped.
   .a{color:red}
 
 A two-cycle [--a -> --b -> --a] is detected and both definitions stay
-verbatim with consumers falling back.
+verbatim. The consumer's fallback is no colour, so its declaration is
+invalid at computed-value time and the reference stays for the browser
+to answer.
 
   $ cat > two-cycle.css <<EOF
   > :root { --a: var(--b); --b: var(--a) }
   > .x { color: var(--a, fallback) }
   > EOF
   $ cascade --minify --inline-vars two-cycle.css 2>&1 | grep -v "warning"
-  :root{--a:var(--b);--b:var(--a)}.x{color:fallback}
+  :root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}
 
 A three-step indirect cycle [--a -> --b -> --c -> --a] is detected the
 same way.
@@ -133,7 +137,7 @@ same way.
   > .x { color: var(--a, fallback) }
   > EOF
   $ cascade --minify --inline-vars three-cycle.css 2>&1 | grep -v "warning"
-  :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}
+  :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}
 
 A var() inside a string token is NOT substituted - per CSS Custom
 Properties L1 §2 substitution does not look inside [<string>] tokens.

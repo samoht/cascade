@@ -61,10 +61,17 @@ val to_string : ?minify:bool -> t -> string
 
 val is_declaration_value : string -> bool
 (** [is_declaration_value s] is whether [s] is a [<declaration-value>]: one or
-    more component values with no unmatched closing bracket, no top-level [;],
-    no [<bad-string-token>] or [<bad-url-token>] and no unterminated function,
-    block or string (CSS Syntax 3 (ED) sec. 7.2). Text outside it stops being
-    part of the declaration it is written into. *)
+    more component values with no unmatched closing bracket, no top-level [;] or
+    [!], no [<bad-string-token>] or [<bad-url-token>] and no unterminated
+    function, block or string (CSS Syntax 3 (ED) sec. 7.2). Text outside it
+    stops being part of the declaration it is written into. Pass the value with
+    its [!important] flag already off, as {!split_important} takes it. *)
+
+val split_important : string -> string * bool
+(** [split_important s] is [s] without its [!important] flag, and whether it
+    carried one. CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last
+    two non-whitespace values are a [!] delim and the ident naming the flag, so
+    [1 ! important] carries one and [1 !importantly] does not. *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
@@ -106,14 +113,15 @@ val parse_opaque_declaration : string -> string -> declaration option
 val parse_custom_property : string -> string -> declaration option
 (** [parse_custom_property name value] is {!parse_declaration} restricted to a
     custom property that a rule can hold. It is [None] unless [name] is a
-    [<dashed-ident>] and [value] is one [<declaration-value>] (CSS Syntax 3 (ED)
-    sec. 7.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched
-    closing bracket, no unterminated function or block, and no top-level [;].
+    [<dashed-ident>] and [value] is the [<declaration-value>?] CSS Variables 1
+    sec. 2 gives a custom property: no [<bad-string-token>], no
+    [<bad-url-token>], no unmatched closing bracket, no unterminated function or
+    block, and no top-level [;] or [!] (CSS Syntax 3 (ED) sec. 7.2). The empty
+    value is one of its values.
 
     Use it for a name or value that comes from outside the parser, where the
     string may close the block it is placed in or start a second declaration.
-    {!custom_property} takes the same pairs and raises on the rest, and also
-    takes the empty value CSS Variables 1 sec. 2 allows. *)
+    {!custom_property} takes the same pairs and raises on the rest. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
@@ -936,6 +944,505 @@ val stroke_width : stroke_width -> declaration
 (** [stroke_width v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-width}
      stroke-width} property. *)
+
+val fill_rule : fill_rule -> declaration
+(** [fill_rule v] is the [fill-rule] property. *)
+
+val clip_rule : fill_rule -> declaration
+(** [clip_rule v] is the [clip-rule] property, which takes what [fill-rule]
+    takes. *)
+
+val fill_opacity : opacity -> declaration
+(** [fill_opacity v] is the [fill-opacity] property. *)
+
+val stroke_opacity : opacity -> declaration
+(** [stroke_opacity v] is the [stroke-opacity] property. *)
+
+val stroke_linecap : stroke_linecap -> declaration
+(** [stroke_linecap v] is the [stroke-linecap] property. *)
+
+val stroke_linejoin : stroke_linejoin -> declaration
+(** [stroke_linejoin v] is the [stroke-linejoin] property. *)
+
+val stroke_miterlimit : stroke_miterlimit -> declaration
+(** [stroke_miterlimit v] is the [stroke-miterlimit] property. *)
+
+val stroke_dashoffset : stroke_dashoffset -> declaration
+(** [stroke_dashoffset v] is the [stroke-dashoffset] property. *)
+
+val stroke_dasharray : stroke_dasharray -> declaration
+(** [stroke_dasharray v] is the [stroke-dasharray] property. *)
+
+val paint_order : paint_order -> declaration
+(** [paint_order v] is the [paint-order] property. *)
+
+val vector_effect : vector_effect -> declaration
+(** [vector_effect v] is the [vector-effect] property. *)
+
+val stop_color : color -> declaration
+(** [stop_color v] is the [stop-color] property of a gradient stop. *)
+
+val stop_opacity : opacity -> declaration
+(** [stop_opacity v] is the [stop-opacity] property of a gradient stop. *)
+
+val flood_color : color -> declaration
+(** [flood_color v] is the [flood-color] property of [feFlood]. *)
+
+val flood_opacity : opacity -> declaration
+(** [flood_opacity v] is the [flood-opacity] property of [feFlood]. *)
+
+val lighting_color : color -> declaration
+(** [lighting_color v] is the [lighting-color] property of a light filter. *)
+
+val dominant_baseline : dominant_baseline -> declaration
+(** [dominant_baseline v] is the [dominant-baseline] property. *)
+
+val alignment_baseline : alignment_baseline -> declaration
+(** [alignment_baseline v] is the [alignment-baseline] property. *)
+
+val baseline_shift : baseline_shift -> declaration
+(** [baseline_shift v] is the [baseline-shift] property. *)
+
+val baseline_source : baseline_source -> declaration
+(** [baseline_source v] is the [baseline-source] property. *)
+
+val anchor_name : anchor_name -> declaration
+(** [anchor_name v] is the [anchor-name] property. *)
+
+val position_anchor : position_anchor -> declaration
+(** [position_anchor v] is the [position-anchor] property. *)
+
+val position_area : position_area -> declaration
+(** [position_area v] is the [position-area] property. *)
+
+val position_try_fallbacks : position_try_fallbacks -> declaration
+(** [position_try_fallbacks v] is the [position-try-fallbacks] property. *)
+
+val position_try_order : position_try_order -> declaration
+(** [position_try_order v] is the [position-try-order] property. *)
+
+val position_try : position_try -> declaration
+(** [position_try v] is the [position-try] shorthand. *)
+
+val position_visibility : position_visibility -> declaration
+(** [position_visibility v] is the [position-visibility] property. *)
+
+val view_transition_name : view_transition_name -> declaration
+(** [view_transition_name v] is the [view-transition-name] property. *)
+
+val view_transition_class : view_transition_class -> declaration
+(** [view_transition_class v] is the [view-transition-class] property. *)
+
+val offset_path : offset_path -> declaration
+(** [offset_path v] is the [offset-path] property. *)
+
+val offset_distance : length_percentage -> declaration
+(** [offset_distance v] is the [offset-distance] property. *)
+
+val offset_rotate : offset_rotate -> declaration
+(** [offset_rotate v] is the [offset-rotate] property. *)
+
+val offset_anchor : offset_anchor -> declaration
+(** [offset_anchor v] is the [offset-anchor] property. *)
+
+val offset_position : offset_position -> declaration
+(** [offset_position v] is the [offset-position] property. *)
+
+val offset : offset -> declaration
+(** [offset v] is the [offset] shorthand. *)
+
+val column_width : column_width -> declaration
+(** [column_width v] is the [column-width] property. *)
+
+val column_count : column_count -> declaration
+(** [column_count v] is the [column-count] property. *)
+
+val column_height : column_height -> declaration
+(** [column_height v] is the [column-height] property. *)
+
+val column_wrap : column_wrap -> declaration
+(** [column_wrap v] is the [column-wrap] property. *)
+
+val column_rule_width : border_width list -> declaration
+(** [column_rule_width v] is the [column-rule-width] property, one entry per gap
+    decoration line. *)
+
+val column_rule_style : border_style list -> declaration
+(** [column_rule_style v] is the [column-rule-style] property, one entry per gap
+    decoration line. *)
+
+val column_rule_color : color list -> declaration
+(** [column_rule_color v] is the [column-rule-color] property, one entry per gap
+    decoration line. *)
+
+val border_image : border_image -> declaration
+(** [border_image v] is the [border-image] shorthand. *)
+
+val border_image_source : background_image -> declaration
+(** [border_image_source v] is the [border-image-source] property. *)
+
+val border_image_slice : border_image_slice -> declaration
+(** [border_image_slice v] is the [border-image-slice] property. *)
+
+val border_image_width : border_image_width -> declaration
+(** [border_image_width v] is the [border-image-width] property. *)
+
+val border_image_outset : border_image_outset -> declaration
+(** [border_image_outset v] is the [border-image-outset] property. *)
+
+val border_image_repeat : border_image_repeat -> declaration
+(** [border_image_repeat v] is the [border-image-repeat] property. *)
+
+val contain_intrinsic_size : contain_intrinsic_size -> declaration
+(** [contain_intrinsic_size v] is the [contain-intrinsic-size] shorthand. *)
+
+val contain_intrinsic_width : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_width v] is the [contain-intrinsic-width] property. *)
+
+val contain_intrinsic_height : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_height v] is the [contain-intrinsic-height] property. *)
+
+val contain_intrinsic_block_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_block_size v] is the [contain-intrinsic-block-size]
+    property. *)
+
+val contain_intrinsic_inline_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_inline_size v] is the [contain-intrinsic-inline-size]
+    property. *)
+
+val mask_border : border_image -> declaration
+(** [mask_border v] is the [mask-border] shorthand, which takes what
+    [border-image] takes plus the mode slot. *)
+
+val animation_timeline : animation_timeline -> declaration
+(** [animation_timeline v] is the [animation-timeline] property. *)
+
+val animation_range : animation_range -> declaration
+(** [animation_range v] is the [animation-range] shorthand. *)
+
+val animation_range_start : animation_range_item -> declaration
+(** [animation_range_start v] is the [animation-range-start] property. *)
+
+val animation_range_end : animation_range_item -> declaration
+(** [animation_range_end v] is the [animation-range-end] property. *)
+
+val scroll_timeline : timeline_shorthand -> declaration
+(** [scroll_timeline v] is the [scroll-timeline] shorthand. *)
+
+val scroll_timeline_name : timeline_name -> declaration
+(** [scroll_timeline_name v] is the [scroll-timeline-name] property. *)
+
+val scroll_timeline_axis : timeline_axis -> declaration
+(** [scroll_timeline_axis v] is the [scroll-timeline-axis] property. *)
+
+val view_timeline : view_timeline_shorthand -> declaration
+(** [view_timeline v] is the [view-timeline] shorthand. *)
+
+val view_timeline_name : timeline_name -> declaration
+(** [view_timeline_name v] is the [view-timeline-name] property. *)
+
+val view_timeline_axis : timeline_axis -> declaration
+(** [view_timeline_axis v] is the [view-timeline-axis] property. *)
+
+val view_timeline_inset : timeline_inset -> declaration
+(** [view_timeline_inset v] is the [view-timeline-inset] property. *)
+
+val timeline_scope : timeline_name -> declaration
+(** [timeline_scope v] is the [timeline-scope] property. *)
+
+val shape_image_threshold : shape_image_threshold -> declaration
+(** [shape_image_threshold v] is the [shape-image-threshold] property. *)
+
+val shape_margin : length_percentage -> declaration
+(** [shape_margin v] is the [shape-margin] property. *)
+
+val shape_outside : string -> declaration
+(** [shape_outside v] is the [shape-outside] property. *)
+
+val overflow_clip_margin : overflow_clip_margin -> declaration
+(** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
+
+val overflow_anchor : overflow_anchor -> declaration
+(** [overflow_anchor v] is the [overflow-anchor] property. *)
+
+val overflow_block : overflow -> declaration
+(** [overflow_block v] is the [overflow-block] property. *)
+
+val overflow_inline : overflow -> declaration
+(** [overflow_inline v] is the [overflow-inline] property. *)
+
+val overscroll_behavior_block : overscroll_behavior -> declaration
+(** [overscroll_behavior_block v] is the [overscroll-behavior-block] property.
+*)
+
+val overscroll_behavior_inline : overscroll_behavior -> declaration
+(** [overscroll_behavior_inline v] is the [overscroll-behavior-inline] property.
+*)
+
+val image_orientation : image_orientation -> declaration
+(** [image_orientation v] is the [image-orientation] property. *)
+
+val margin_trim : margin_trim -> declaration
+(** [margin_trim v] is the [margin-trim] property. *)
+
+val overlay : overlay -> declaration
+(** [overlay v] is the [overlay] property. *)
+
+val animation_composition : animation_composition -> declaration
+(** [animation_composition v] is the [animation-composition] property. *)
+
+val background_position_x : background_position_axis -> declaration
+(** [background_position_x v] is the [background-position-x] property. *)
+
+val background_position_y : background_position_axis -> declaration
+(** [background_position_y v] is the [background-position-y] property. *)
+
+val webkit_mask_position_x : background_position_axis -> declaration
+(** [webkit_mask_position_x v] is the [webkit-mask-position-x] property. *)
+
+val webkit_mask_position_y : background_position_axis -> declaration
+(** [webkit_mask_position_y v] is the [webkit-mask-position-y] property. *)
+
+val moz_orient : moz_orient -> declaration
+(** [moz_orient v] is the [moz-orient] property. *)
+
+val grid : grid_template -> declaration
+(** [grid v] is the [grid] property. *)
+
+val webkit_text_stroke : webkit_text_stroke -> declaration
+(** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
+
+val page_size : page_size -> declaration
+(** [page_size v] is the [size] descriptor of an [\@page] rule. *)
+
+val white_space_collapse : white_space_collapse -> declaration
+(** [white_space_collapse v] is the [white-space-collapse] property. *)
+
+val line_height_step : length -> declaration
+(** [line_height_step v] is the [line-height-step] property. *)
+
+val font_palette : font_palette -> declaration
+(** [font_palette v] is the [font-palette] property. *)
+
+val font_synthesis : font_synthesis -> declaration
+(** [font_synthesis v] is the [font-synthesis] property. *)
+
+val font_size_adjust : font_size_adjust -> declaration
+(** [font_size_adjust v] is the [font-size-adjust] property. *)
+
+val font_variant_emoji : font_variant_emoji -> declaration
+(** [font_variant_emoji v] is the [font-variant-emoji] property. *)
+
+val font_variant_alternates : font_variant_alternates -> declaration
+(** [font_variant_alternates v] is the [font-variant-alternates] property. *)
+
+val font_variant : font_variant -> declaration
+(** [font_variant v] is the [font-variant] property. *)
+
+val text_wrap_style : text_wrap_style -> declaration
+(** [text_wrap_style v] is the [text-wrap-style] property. *)
+
+val text_box_trim : text_box_trim -> declaration
+(** [text_box_trim v] is the [text-box-trim] property. *)
+
+val text_box : text_box -> declaration
+(** [text_box v] is the [text-box] property. *)
+
+val text_spacing_trim : text_spacing_trim -> declaration
+(** [text_spacing_trim v] is the [text-spacing-trim] property. *)
+
+val hyphenate_limit_chars : hyphenate_limit_chars -> declaration
+(** [hyphenate_limit_chars v] is the [hyphenate-limit-chars] property. *)
+
+val initial_letter : initial_letter -> declaration
+(** [initial_letter v] is the [initial-letter] property. *)
+
+val initial_letter_align : initial_letter_align -> declaration
+(** [initial_letter_align v] is the [initial-letter-align] property. *)
+
+val initial_letter_wrap : initial_letter_wrap -> declaration
+(** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
+
+val moz_user_select : user_select -> declaration
+(** [moz_user_select v] is the [-moz-user-select] property. *)
+
+val ms_user_select : user_select -> declaration
+(** [ms_user_select v] is the [-ms-user-select] property. *)
+
+val webkit_text_fill_color : color -> declaration
+(** [webkit_text_fill_color v] is the [-webkit-text-fill-color] property. *)
+
+val webkit_text_stroke_width : border_width -> declaration
+(** [webkit_text_stroke_width v] is the [-webkit-text-stroke-width] property. *)
+
+val webkit_text_stroke_color : color -> declaration
+(** [webkit_text_stroke_color v] is the [-webkit-text-stroke-color] property. *)
+
+val webkit_transform : transform list -> declaration
+(** [webkit_transform v] is the [-webkit-transform] property. *)
+
+val moz_transform : transform list -> declaration
+(** [moz_transform v] is the [-moz-transform] property. *)
+
+val ms_transform : transform list -> declaration
+(** [ms_transform v] is the [-ms-transform] property. *)
+
+val o_transform : transform list -> declaration
+(** [o_transform v] is the [-o-transform] property. *)
+
+val webkit_transition : transition list -> declaration
+(** [webkit_transition v] is the [-webkit-transition] property. *)
+
+val webkit_transition_delay : duration -> declaration
+(** [webkit_transition_delay v] is the [-webkit-transition-delay] property. *)
+
+val webkit_transition_duration : duration -> declaration
+(** [webkit_transition_duration v] is the [-webkit-transition-duration]
+    property. *)
+
+val webkit_transition_property : transition_property -> declaration
+(** [webkit_transition_property v] is the [-webkit-transition-property]
+    property. *)
+
+val webkit_transition_timing_function : timing_function -> declaration
+(** [webkit_transition_timing_function v] is the
+    [-webkit-transition-timing-function] property. *)
+
+val webkit_animation : animation list -> declaration
+(** [webkit_animation v] is the [-webkit-animation] property. *)
+
+val webkit_animation_delay : duration -> declaration
+(** [webkit_animation_delay v] is the [-webkit-animation-delay] property. *)
+
+val webkit_animation_duration : duration -> declaration
+(** [webkit_animation_duration v] is the [-webkit-animation-duration] property.
+*)
+
+val webkit_animation_direction : animation_direction -> declaration
+(** [webkit_animation_direction v] is the [-webkit-animation-direction]
+    property. *)
+
+val webkit_animation_iteration_count : animation_iteration_count -> declaration
+(** [webkit_animation_iteration_count v] is the
+    [-webkit-animation-iteration-count] property. *)
+
+val webkit_animation_name : animation_name -> declaration
+(** [webkit_animation_name v] is the [-webkit-animation-name] property. *)
+
+val webkit_animation_timing_function : timing_function -> declaration
+(** [webkit_animation_timing_function v] is the
+    [-webkit-animation-timing-function] property. *)
+
+val webkit_animation_fill_mode : animation_fill_mode -> declaration
+(** [webkit_animation_fill_mode v] is the [-webkit-animation-fill-mode]
+    property. *)
+
+val webkit_animation_play_state : animation_play_state -> declaration
+(** [webkit_animation_play_state v] is the [-webkit-animation-play-state]
+    property. *)
+
+val webkit_flex_direction : flex_direction -> declaration
+(** [webkit_flex_direction v] is the [-webkit-flex-direction] property. *)
+
+val webkit_flex_wrap : flex_wrap -> declaration
+(** [webkit_flex_wrap v] is the [-webkit-flex-wrap] property. *)
+
+val webkit_flex_flow : flex_flow -> declaration
+(** [webkit_flex_flow v] is the [-webkit-flex-flow] property. *)
+
+val webkit_justify_content : justify_content -> declaration
+(** [webkit_justify_content v] is the [-webkit-justify-content] property. *)
+
+val webkit_align_items : align_items -> declaration
+(** [webkit_align_items v] is the [-webkit-align-items] property. *)
+
+val webkit_align_content : align_content -> declaration
+(** [webkit_align_content v] is the [-webkit-align-content] property. *)
+
+val webkit_align_self : align_self -> declaration
+(** [webkit_align_self v] is the [-webkit-align-self] property. *)
+
+val webkit_border_radius : border_radius -> declaration
+(** [webkit_border_radius v] is the [-webkit-border-radius] property. *)
+
+val webkit_box_sizing : box_sizing -> declaration
+(** [webkit_box_sizing v] is the [-webkit-box-sizing] property. *)
+
+val moz_box_sizing : box_sizing -> declaration
+(** [moz_box_sizing v] is the [-moz-box-sizing] property. *)
+
+val webkit_box_shadow : shadow -> declaration
+(** [webkit_box_shadow v] is the [-webkit-box-shadow] property. *)
+
+val webkit_background_size : background_size -> declaration
+(** [webkit_background_size v] is the [-webkit-background-size] property. *)
+
+val webkit_filter : filter -> declaration
+(** [webkit_filter v] is the [-webkit-filter] property. *)
+
+val moz_appearance : appearance -> declaration
+(** [moz_appearance v] is the [-moz-appearance] property. *)
+
+val moz_animation : animation list -> declaration
+(** [moz_animation v] is the [-moz-animation] property. *)
+
+val moz_animation_delay : duration -> declaration
+(** [moz_animation_delay v] is the [-moz-animation-delay] property. *)
+
+val moz_animation_duration : duration -> declaration
+(** [moz_animation_duration v] is the [-moz-animation-duration] property. *)
+
+val moz_animation_direction : animation_direction -> declaration
+(** [moz_animation_direction v] is the [-moz-animation-direction] property. *)
+
+val moz_animation_iteration_count : animation_iteration_count -> declaration
+(** [moz_animation_iteration_count v] is the [-moz-animation-iteration-count]
+    property. *)
+
+val moz_animation_name : animation_name -> declaration
+(** [moz_animation_name v] is the [-moz-animation-name] property. *)
+
+val moz_animation_timing_function : timing_function -> declaration
+(** [moz_animation_timing_function v] is the [-moz-animation-timing-function]
+    property. *)
+
+val moz_animation_fill_mode : animation_fill_mode -> declaration
+(** [moz_animation_fill_mode v] is the [-moz-animation-fill-mode] property. *)
+
+val moz_animation_play_state : animation_play_state -> declaration
+(** [moz_animation_play_state v] is the [-moz-animation-play-state] property. *)
+
+val moz_transition : transition list -> declaration
+(** [moz_transition v] is the [-moz-transition] property. *)
+
+val moz_transition_delay : duration -> declaration
+(** [moz_transition_delay v] is the [-moz-transition-delay] property. *)
+
+val moz_transition_duration : duration -> declaration
+(** [moz_transition_duration v] is the [-moz-transition-duration] property. *)
+
+val moz_transition_property : transition_property -> declaration
+(** [moz_transition_property v] is the [-moz-transition-property] property. *)
+
+val moz_transition_timing_function : timing_function -> declaration
+(** [moz_transition_timing_function v] is the [-moz-transition-timing-function]
+    property. *)
+
+val moz_border_radius : border_radius -> declaration
+(** [moz_border_radius v] is the [-moz-border-radius] property. *)
+
+val moz_box_shadow : shadow -> declaration
+(** [moz_box_shadow v] is the [-moz-box-shadow] property. *)
+
+val ms_filter : filter -> declaration
+(** [ms_filter v] is the [-ms-filter] property. *)
+
+val o_transition : transition list -> declaration
+(** [o_transition v] is the [-o-transition] property. *)
+
+val all : css_wide -> declaration
+(** [all v] is the [all] property. It resets every longhand to [v] but the two
+    writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)
 
 val outline_style : outline_style -> declaration
 (** [outline_style v] is the
@@ -1867,6 +2374,23 @@ val column_rule : border -> declaration
 
 val border_block : border -> declaration
 (** [border_block v] is the CSS [border-block] shorthand property. *)
+
+val border_block_start : border -> declaration
+(** [border_block_start v] is the CSS [border-block-start] shorthand property.
+*)
+
+val border_block_end : border -> declaration
+(** [border_block_end v] is the CSS [border-block-end] shorthand property. *)
+
+val border_inline : border -> declaration
+(** [border_inline v] is the CSS [border-inline] shorthand property. *)
+
+val border_inline_start : border -> declaration
+(** [border_inline_start v] is the CSS [border-inline-start] shorthand property.
+*)
+
+val border_inline_end : border -> declaration
+(** [border_inline_end v] is the CSS [border-inline-end] shorthand property. *)
 
 val column_span : column_span -> declaration
 (** [column_span v] is the CSS [column-span] property. *)

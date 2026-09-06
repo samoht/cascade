@@ -1299,15 +1299,73 @@ let eval_typed_calc : type a.
   in
   normalize_calc_parens (settle_computed round (reduce calc))
 
-let pp_calc_with : type a. ?unwrap_num:bool -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) pp_value ctx calc ->
+(* A dimension the author could not have written as a literal. CSS Values 4 sec.
+   10.3 keeps a [calc()] valid wherever its range is exceeded and clamps at
+   used-value time, so [width: calc(-10px)] is a declaration Chrome computes as
+   [0px] while [width: -10px] is one it drops. Folding the call away on such a
+   property has to stop at the sign. *)
+let negative_length : length -> bool = function
+  | Px f
+  | Cm f
+  | Mm f
+  | Q f
+  | In f
+  | Pt f
+  | Pc f
+  | Rem f
+  | Em f
+  | Ex f
+  | Cap f
+  | Ic f
+  | Ric f
+  | Rlh f
+  | Pct f
+  | Vw f
+  | Vh f
+  | Vmin f
+  | Vmax f
+  | Vi f
+  | Vb f
+  | Dvh f
+  | Dvw f
+  | Dvmin f
+  | Dvmax f
+  | Lvh f
+  | Lvw f
+  | Lvmin f
+  | Lvmax f
+  | Svh f
+  | Svw f
+  | Svmin f
+  | Svmax f
+  | Cqw f
+  | Cqh f
+  | Cqi f
+  | Cqb f
+  | Cqmin f
+  | Cqmax f
+  | Ch f
+  | Lh f
+  | Dimension { value = f; _ } ->
+      f < 0.
+  | _ -> false
+
+let pp_calc_with : type a.
+    ?unwrap_num:bool -> ?unwrap:(a -> bool) -> a Pp.t -> a calc Pp.t =
+ fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
      grammar, not the surrounding property's grammar. Unwrapping
      [calc(var(--x))] to bare [var(--x)] would change which substitution shape
      is valid. *)
-  | Val v when Pp.minified ctx -> pp_value ctx v
+  (* CSS Values 4 sec. 10.3 keeps a [calc()] valid where its range is exceeded
+     and clamps at used-value time, so [width: calc(-10px)] is a declaration
+     Chrome computes as [0px] and [width: -10px] one it drops. Which properties
+     those are is not knowable here, so the wrapper stays on a value that reads
+     back differently without it; [Declaration.normalize] unwraps the rest,
+     where the property is in hand. *)
+  | Val v when Pp.minified ctx && unwrap v -> pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
@@ -1750,6 +1808,9 @@ let unit_of_string = function
   | "cqmin" -> Some Cqmin
   | "cqmax" -> Some Cqmax
   | _ -> None
+
+let is_length_unit unit =
+  Option.is_some (unit_of_string (String.lowercase_ascii unit))
 
 let unit_of_length = function
   | Zero -> Some (Px, 0.)
@@ -2394,7 +2455,9 @@ and pp_generic_length_calc ~always ctx cv =
       pp_calc_wrapped_length ~always ctx length
   | _ ->
       let always = always || calc_contains_var cv in
-      pp_calc_with ~unwrap_num:false (pp_length ~always) ctx cv
+      pp_calc_with ~unwrap_num:false
+        ~unwrap:(fun v -> not (negative_length v))
+        (pp_length ~always) ctx cv
 
 let pp_color_name : color_name Pp.t =
  fun ctx name -> Pp.string ctx (fst (color_name_hex name))
@@ -3742,8 +3805,8 @@ let strip_zero_length (l : length) : length =
 
 (* [strip] is true for a top-level [<length>] (a direct property/shorthand
    value) and false for a calc / math-function operand, which keeps its unit. *)
-let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
-    : length =
+let rec normalize_length ?(strip = true) ?(non_negative = false)
+    ?(ctx = default_calc_ctx) (l : length) : length =
   let nf = normalize_length ~strip:false ~ctx in
   let result =
     match l with
@@ -3752,6 +3815,7 @@ let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
           cv |> eval_length_calc ~ctx |> linear_length_calc
           |> eval_length_calc ~ctx
         with
+        | Val v when non_negative && negative_length v -> l
         | Val v -> v
         | folded -> Calc folded)
     | Clamp (mn, v, mx) -> (
@@ -3818,15 +3882,16 @@ let rec normalize_length ?(strip = true) ?(ctx = default_calc_ctx) (l : length)
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. A wrapped [<length>] folds its own math functions. *)
-let normalize_length_percentage ?(strip = true) ?(ctx = default_calc_ctx)
-    (lp : length_percentage) : length_percentage =
+let normalize_length_percentage ?(strip = true) ?(non_negative = false)
+    ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+      | Val (Length v) when non_negative && negative_length v -> lp
       | Val v -> v
       | folded -> Calc folded)
   | Length l ->
-      let l' = normalize_length ~strip ~ctx l in
+      let l' = normalize_length ~strip ~non_negative ~ctx l in
       if l' == l then lp else Length l'
   | _ -> lp
 
@@ -4179,7 +4244,14 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
       (* Inline mode substitutes a [var()]'s default value into the calc. *)
       let c = if Pp.minified ctx then resolve_lp_calc_vars ctx c else c in
       let always = always || calc_contains_var c in
-      pp_calc_with ~unwrap_num:false (pp_length_percentage ~always) ctx c
+      pp_calc_with ~unwrap_num:false
+        ~unwrap:(fun v ->
+          match (v : length_percentage) with
+          | Length l -> not (negative_length l)
+          | Pct f -> f >= 0.
+          | _ -> true)
+        (pp_length_percentage ~always)
+        ctx c
   | Invalid tokens ->
       Pp.string ctx
         (if Pp.minified ctx then Parser.to_string_minified tokens
@@ -5095,34 +5167,46 @@ let read_length_unit ?(allow_negative = true) ?(length_only = false) t =
              [calc(1x + 2x)] still parses. *)
           Cursor.err_invalid t ("unknown dimension unit: " ^ unit))
 
-let read_length_keyword t : length =
+(* CSS Values 4 (ED) sec. 6 gives a [<length>] no keyword of its own beyond the
+   CSS-wide ones, and [auto] belongs to nearly every property that reads one.
+   The intrinsic sizes ([min-content] and the rest) belong to CSS Sizing 3 sec.
+   5 alone, so a property reading a length asks for them; [top: min-content] and
+   [margin-top: none] are values Chrome 146 refuses. *)
+let length_cssvalue_keywords : (string * length) list =
+  [
+    ("auto", (Auto : length));
+    ("inherit", Inherit);
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
+let length_sizing_keywords : (string * length) list =
+  [
+    ("none", (None : length));
+    ("normal", Normal);
+    ("size", Size);
+    ("max-content", Max_content);
+    ("min-content", Min_content);
+    ("fit-content", Fit_content);
+    (* Legacy vendor-prefixed intrinsic sizing keywords (kept as a fallback for
+       old Safari / Firefox; the unprefixed forms above win in modern ones). *)
+    ("-webkit-max-content", Webkit_max_content);
+    ("-webkit-min-content", Webkit_min_content);
+    ("-webkit-fit-content", Webkit_fit_content);
+    ("-moz-max-content", Moz_max_content);
+    ("-moz-min-content", Moz_min_content);
+    ("-moz-fit-content", Moz_fit_content);
+    ("contain", Contain);
+    ("stretch", Stretch);
+    ("from-font", From_font);
+  ]
+
+let read_length_keyword ?(sizing = true) t : length =
   Cursor.enum "length"
-    [
-      ("auto", (Auto : length));
-      ("none", None);
-      ("normal", Normal);
-      ("size", Size);
-      ("max-content", Max_content);
-      ("min-content", Min_content);
-      ("fit-content", Fit_content);
-      (* Legacy vendor-prefixed intrinsic sizing keywords (kept as a fallback
-         for old Safari / Firefox; the unprefixed forms above win in modern
-         ones). *)
-      ("-webkit-max-content", Webkit_max_content);
-      ("-webkit-min-content", Webkit_min_content);
-      ("-webkit-fit-content", Webkit_fit_content);
-      ("-moz-max-content", Moz_max_content);
-      ("-moz-min-content", Moz_min_content);
-      ("-moz-fit-content", Moz_fit_content);
-      ("contain", Contain);
-      ("stretch", Stretch);
-      ("from-font", From_font);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if sizing then length_cssvalue_keywords @ length_sizing_keywords
+     else length_cssvalue_keywords)
     t
 
 let calc_factor_is_dimension : type a. a calc -> bool = function
@@ -5760,7 +5844,7 @@ let read_attr_type_hint inner : attr_type option =
   else read_plain_attr_type_hint inner
 
 let rec read_length ?(allow_negative = true) ?(with_keywords = true)
-    ?(length_only = false) t : length =
+    ?(sizing = false) ?(length_only = false) t : length =
   Cursor.ws t;
   let parsers =
     [
@@ -5772,7 +5856,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true)
     ]
   in
   let parsers =
-    if with_keywords then read_length_keyword :: parsers else parsers
+    if with_keywords then read_length_keyword ~sizing :: parsers else parsers
   in
   Cursor.one_of parsers t
 
@@ -5825,25 +5909,35 @@ and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
   | None -> Cursor.err t ("unknown function " ^ name)
 
 and length_function_readers ~allow_negative ~length_only ~with_keywords =
-  [
-    ("clamp", read_clamp_length ~length_only);
-    ("minmax", read_minmax_length ~length_only);
-    ("min", read_min_length ~length_only);
-    ("max", read_max_length ~length_only);
-    ( "fit-content",
-      read_fit_content_length ~allow_negative ~length_only ~with_keywords );
-    ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
-    ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
-    ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
-    ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
-    ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
-    ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
-    ( "calc-size",
-      read_calc_size_length ~allow_negative ~length_only ~with_keywords );
-    ("anchor-size", read_anchor_size_length);
-    ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
-    ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
-  ]
+  (* CSS Sizing 4 sec. 3.2 puts [fit-content()] and [calc-size()] in
+     [<box-size>] and CSS Grid 2 sec. 7.2.1 puts [minmax()] in [<track-size>],
+     so a caller reading a plain [<length>] takes none of the three. The math
+     functions and the substitutions stay: those resolve to a length wherever
+     one may stand. *)
+  let sizing_functions =
+    [
+      ("minmax", read_minmax_length ~length_only);
+      ( "fit-content",
+        read_fit_content_length ~allow_negative ~length_only ~with_keywords );
+      ( "calc-size",
+        read_calc_size_length ~allow_negative ~length_only ~with_keywords );
+    ]
+  in
+  (if with_keywords then sizing_functions else [])
+  @ [
+      ("clamp", read_clamp_length ~length_only);
+      ("min", read_min_length ~length_only);
+      ("max", read_max_length ~length_only);
+      ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
+      ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
+      ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
+      ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
+      ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
+      ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
+      ("anchor-size", read_anchor_size_length);
+      ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
+      ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
+    ]
 
 (* CSS Values 4 sec. 10.2: arguments to [clamp()], [min()], [max()], [minmax()]
    are implicit math expressions, so [clamp(.5rem, 2vw + .5rem, 2rem)] is valid
@@ -5970,15 +6064,17 @@ and read_sign_length ~allow_negative ~length_only ~with_keywords inner =
     (fun (value : length) -> (Sign value : length))
     inner
 
+(* CSS Values 5 (ED) sec. 12: [calc-size()] takes a sizing basis and then a
+   calculation over [size], so both halves read the intrinsic sizes whatever
+   property the function sits in. *)
 and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
-  let basis = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let read t =
+    read_length ~allow_negative ~length_only ~with_keywords ~sizing:true t
+  in
+  let basis = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let calc =
-    read_calc_expr
-      (read_length ~allow_negative ~length_only ~with_keywords)
-      inner
-  in
+  let calc = read_calc_expr read inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
@@ -6021,8 +6117,9 @@ and read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
   else No_fallback
 
 (** Read a non-negative length value (for padding properties) *)
-let read_non_negative_length ?(with_keywords = true) t : length =
-  read_length ~allow_negative:false ~with_keywords t
+let read_non_negative_length ?(with_keywords = true) ?(length_only = false) t :
+    length =
+  read_length ~allow_negative:false ~with_keywords ~length_only t
 
 (** Read a percentage value as float (number followed by %) Used for color
     components where 0-100% clamping is required *)
@@ -7097,24 +7194,27 @@ let duration_css_wide =
     ("revert-layer", Revert_layer);
   ]
 
+(* CSS Values 4 (ED) sec. 6.2: "the unit may be omitted [...] only for zero
+   lengths", so a bare [0] is not a time. Reading one as [0s] turned input a
+   browser refuses into a declaration that works. *)
 let read_duration_number ~canonicalize_ms:_ t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
   if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
   else
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
-    | "" when n = 0.0 -> S 0.0
     | "s" -> S n
     | "ms" -> Ms n
+    | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
     | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
 
 let read_time_number t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
   let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   match unit with
-  | "" when n = 0.0 -> S 0.0
   | "s" -> S n
   | "ms" -> Ms n
+  | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 let read_duration_round read_duration_self t =
@@ -7329,13 +7429,13 @@ let read_length_percentage_pct ~allow_negative t : length_percentage =
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
   Pct n
 
-let read_length_percentage_length ~allow_negative ~with_keywords t :
+let read_length_percentage_length ~allow_negative ~with_keywords ~sizing t :
     length_percentage =
-  Length (read_length ~allow_negative ~with_keywords t)
+  Length (read_length ~allow_negative ~with_keywords ~sizing t)
 
 (** Read length_percentage value *)
 let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
-    t : length_percentage =
+    ?(sizing = false) t : length_percentage =
   Cursor.ws t;
   Cursor.one_of
     [
@@ -7344,7 +7444,7 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
       read_length_percentage_calc ~with_keywords;
       read_invalid_length_percentage_function;
       read_length_percentage_pct ~allow_negative;
-      read_length_percentage_length ~allow_negative ~with_keywords;
+      read_length_percentage_length ~allow_negative ~with_keywords ~sizing;
     ]
     t
 

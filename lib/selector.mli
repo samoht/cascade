@@ -13,6 +13,12 @@ val element : ?ns:ns -> string -> t
 (** [element ?ns name] element selector (e.g., "div"). Validates CSS
     identifiers; raises [Invalid_argument] on invalid. *)
 
+val unescape_attribute_value : string -> string
+(** [unescape_attribute_value v] is [v] with its CSS escapes decoded. An
+    unquoted attribute value keeps the escapes it was written with so the
+    printer round-trips them, and a matcher compares against the characters they
+    stand for. *)
+
 val class_ : string -> t
 (** [class_ name] class selector from raw (unescaped) string. Accepts any
     serializable characters including special chars that will be escaped during

@@ -536,7 +536,30 @@ let dropped_definition d =
   && String.equal (String.trim d.variant) ""
   && not (String.equal (String.trim d.reference) "")
 
-let disagreement d = not (dropped_definition d)
+(* CSS Syntax 3 (ED) sec. 10 asks a serialization to round-trip with parsing
+   "except for consecutive <whitespace-token>s, which may be collapsed into a
+   single token", since "CSS grammars always interpret any amount of whitespace
+   as identical to a single space". A custom property's computed value is the
+   token stream it was written with, so two readings that differ only in
+   whitespace no grammar can see substitute alike wherever the binding is used.
+   cascade's own custom-value printer drops a space only where the token
+   sequence is unchanged, so running both readings through it is what decides:
+   [a b] and [a b] agree, [a b] and [ab] do not. *)
+let same_token_stream a b =
+  let canonical v =
+    match Css.Declaration.custom_property "--x" v with
+    | d -> Some (Css.Declaration.to_string ~minify:true d)
+    | exception Failure _ -> None
+  in
+  match (canonical a, canonical b) with
+  | Some x, Some y -> String.equal x y
+  | Some _, None | None, Some _ | None, None -> false
+
+let same_but_for_whitespace d =
+  is_custom d && same_token_stream d.reference d.variant
+
+let disagreement d =
+  (not (dropped_definition d)) && not (same_but_for_whitespace d)
 
 type answer = {
   diffs : diff list;

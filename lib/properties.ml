@@ -142,7 +142,7 @@ let rec pp_list_style_position : list_style_position Pp.t =
 let rec pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Url u -> Pp.url ctx u
+  | Image i -> pp_background_image ctx i
   | Var v -> pp_var pp_list_style_image ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -657,6 +657,8 @@ let pp_property : type a. a property Pp.t =
   | Caps -> Pp.string ctx "font-variant-caps"
   | Numeric -> Pp.string ctx "font-variant-numeric"
   | Font_variant_position -> Pp.string ctx "font-variant-position"
+  | Font_variant_alternates -> Pp.string ctx "font-variant-alternates"
+  | Font_variant -> Pp.string ctx "font-variant"
   | East_asian -> Pp.string ctx "font-variant-east-asian"
   | Backdrop_filter -> Pp.string ctx "backdrop-filter"
   | Webkit_backdrop_filter -> Pp.string ctx "-webkit-backdrop-filter"
@@ -884,6 +886,8 @@ let property_class : type a. a property -> a property_class = function
   | Forced_color_adjust -> Inherited
   | White_space -> Inherited
   | White_space_collapse -> Inherited
+  | Font_variant_alternates -> Inherited
+  | Font_variant -> Inherited
   | Tab_size -> Inherited
   | Webkit_text_size_adjust -> Inherited
   | Font_feature_settings -> Inherited
@@ -1321,6 +1325,8 @@ let property_tag : type a. a property -> int = function
   | Scroll_snap_type -> 198
   | White_space -> 199
   | White_space_collapse -> 541
+  | Font_variant_alternates -> 548
+  | Font_variant -> 549
   | Border -> 200
   | Border_block -> 201
   | Border_block_start -> 202
@@ -1895,6 +1901,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Scroll_snap_type, Scroll_snap_type -> Some Equal
   | White_space, White_space -> Some Equal
   | White_space_collapse, White_space_collapse -> Some Equal
+  | Font_variant_alternates, Font_variant_alternates -> Some Equal
+  | Font_variant, Font_variant -> Some Equal
   | Border, Border -> Some Equal
   | Border_block, Border_block -> Some Equal
   | Border_block_start, Border_block_start -> Some Equal
@@ -2262,6 +2270,7 @@ let rec pp_content : content Pp.t =
             Pp.char ctx quote;
             Pp.string ctx value;
             Pp.char ctx quote)
+  | Image image -> pp_background_image ctx image
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
@@ -2448,12 +2457,13 @@ let rec read_list_style_position t : list_style_position =
     ~var:(fun t -> Var (read_var read_list_style_position t))
     t
 
+(* CSS Lists 3 sec. 3.5 gives [list-style-image] an [<image>], so every image
+   the [background-image] vocabulary reads goes here: the comma list is what
+   only that property takes. *)
 let rec read_list_style_image t : list_style_image =
-  let read_url t = (Url (Cursor.url t) : list_style_image) in
   let read_var t : list_style_image = Var (read_var read_list_style_image t) in
   Cursor.one_of
     [
-      read_url;
       (fun t ->
         Cursor.enum_or_calls "list-style-image"
           [
@@ -2466,6 +2476,7 @@ let rec read_list_style_image t : list_style_image =
           ]
           ~calls:[ ("var", read_var) ]
           t);
+      (fun t -> (Image (read_bg_image t) : list_style_image));
     ]
     t
 
@@ -2642,7 +2653,10 @@ and read_content_single t =
         ("string", read_content_string_ref);
         ("counters", read_content_counters);
       ]
-    ~default:read_content_string t
+    ~default:
+      (Cursor.one_of
+         [ read_content_string; (fun t -> (Image (read_bg_image t) : content)) ])
+    t
 
 and read_content t : content =
   let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_content_single t in
@@ -3206,6 +3220,8 @@ let read_any_property t =
   | "unicode-bidi" -> Prop Unicode_bidi
   | "white-space" -> Prop White_space
   | "white-space-collapse" -> Prop White_space_collapse
+  | "font-variant-alternates" -> Prop Font_variant_alternates
+  | "font-variant" -> Prop Font_variant
   | "will-change" -> Prop Will_change
   | "word-break" -> Prop Word_break
   | "word-spacing" -> Prop Word_spacing
@@ -3657,8 +3673,9 @@ let string_of_kind_value : type a. a kind -> a -> string =
       | Normal -> "normal"
       | Open_quote -> "open-quote"
       | Close_quote -> "close-quote"
-      | Attr _ | Counter _ | Counters _ | String_ref _ | Content_list _
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      | Image _ | Attr _ | Counter _ | Counters _ | String_ref _
+      | Content_list _ | Inherit | Initial | Unset | Revert | Revert_layer
+      | Var _ ->
           "initial")
   | Font_weight -> Pp.to_string pp_font_weight value
   | Shadow -> "0 0 #0000"
@@ -3913,6 +3930,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Scroll_snap_type, value -> value
   | White_space, value -> value
   | White_space_collapse, value -> value
+  | Font_variant_alternates, value -> value
+  | Font_variant, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
       | Border_inline | Border_inline_start | Border_inline_end | Column_rule
       | Border_top | Border_right | Border_bottom | Border_left ),
@@ -4321,19 +4340,30 @@ let normalize_property_value : type a.
   | Offset_position -> normalize_offset_position value
   | Offset_rotate -> normalize_offset_rotate value
   | Font_style -> normalize_font_style value
-  | Width -> Values.normalize_length_percentage ~ctx value
-  | Height -> Values.normalize_length_percentage ~ctx value
-  | Min_width -> Values.normalize_length_percentage ~ctx value
-  | Min_height -> Values.normalize_length_percentage ~ctx value
-  | Min_inline_size -> Values.normalize_length_percentage ~ctx value
-  | Min_block_size -> Values.normalize_length_percentage ~ctx value
-  | Max_width -> Values.normalize_length_percentage ~ctx value
-  | Max_height -> Values.normalize_length_percentage ~ctx value
-  | Inline_size -> Values.normalize_length_percentage ~ctx value
-  | Max_inline_size -> Values.normalize_length_percentage ~ctx value
-  | Block_size -> Values.normalize_length_percentage ~ctx value
-  | Max_block_size -> Values.normalize_length_percentage ~ctx value
-  | Shape_margin -> Values.normalize_length_percentage ~ctx value
+  | Width -> Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Height -> Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_width ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_height ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Min_block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_width ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_height ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_inline_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Max_block_size ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
+  | Shape_margin ->
+      Values.normalize_length_percentage ~non_negative:true ~ctx value
   | Offset_distance -> Values.normalize_length_percentage ~ctx value
   | Border_radius -> normalize_border_radius value
   | Background_image ->
@@ -4386,8 +4416,8 @@ let normalize_property_value : type a.
   | Webkit_text_fill_color -> normalize_color value
   | Webkit_text_stroke_color -> normalize_color value
   | Webkit_text_stroke_width -> normalize_border_width value
-  | Column_rule_color -> normalize_color value
-  | Column_rule_width -> normalize_border_width value
+  | Column_rule_color -> List.map normalize_color value
+  | Column_rule_width -> List.map normalize_border_width value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -4462,14 +4492,15 @@ let normalize_property_value : type a.
   | Webkit_animation -> map_preserve normalize_animation value
   | Moz_animation -> map_preserve normalize_animation value
   | Animation_timing_function -> normalize_timing_function value
-  | Padding_left -> Values.normalize_length ~ctx value
-  | Padding_right -> Values.normalize_length ~ctx value
-  | Padding_bottom -> Values.normalize_length ~ctx value
-  | Padding_top -> Values.normalize_length ~ctx value
-  | Padding_inline_start -> Values.normalize_length ~ctx value
-  | Padding_inline_end -> Values.normalize_length ~ctx value
-  | Padding_block_start -> Values.normalize_length ~ctx value
-  | Padding_block_end -> Values.normalize_length ~ctx value
+  | Padding_left -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_right -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_bottom -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_top -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_inline_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_inline_end -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_block_start -> Values.normalize_length ~non_negative:true ~ctx value
+  | Padding_block_end -> Values.normalize_length ~non_negative:true ~ctx value
   | Margin_inline_end -> Values.normalize_length ~ctx value
   | Margin_inline_start -> Values.normalize_length ~ctx value
   | Margin_left -> Values.normalize_length ~ctx value
@@ -4478,22 +4509,28 @@ let normalize_property_value : type a.
   | Margin_bottom -> Values.normalize_length ~ctx value
   | Margin_block_start -> Values.normalize_length ~ctx value
   | Margin_block_end -> Values.normalize_length ~ctx value
-  | Column_gap -> Values.normalize_length ~ctx value
-  | Row_gap -> Values.normalize_length ~ctx value
+  | Column_gap -> Values.normalize_length ~non_negative:true ~ctx value
+  | Row_gap -> Values.normalize_length ~non_negative:true ~ctx value
   | Text_underline_offset -> Values.normalize_length ~ctx value
   | Letter_spacing -> Values.normalize_length ~ctx value
-  | Border_top_left_radius -> normalize_length_box ~ctx value
-  | Border_top_right_radius -> normalize_length_box ~ctx value
-  | Border_bottom_left_radius -> normalize_length_box ~ctx value
-  | Border_bottom_right_radius -> normalize_length_box ~ctx value
-  | Border_start_start_radius -> normalize_length_box ~ctx value
-  | Border_start_end_radius -> normalize_length_box ~ctx value
-  | Border_end_start_radius -> normalize_length_box ~ctx value
-  | Border_end_end_radius -> normalize_length_box ~ctx value
+  | Border_top_left_radius -> normalize_length_box ~non_negative:true ~ctx value
+  | Border_top_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_bottom_left_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_bottom_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_start_start_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_start_end_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_end_start_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Border_end_end_radius -> normalize_length_box ~non_negative:true ~ctx value
   | Outline_width -> normalize_border_width value
   | Outline_offset -> Values.normalize_length ~ctx value
-  | Line_height_step -> Values.normalize_length ~ctx value
-  | Perspective -> Values.normalize_length ~ctx value
+  | Line_height_step -> Values.normalize_length ~non_negative:true ~ctx value
+  | Perspective -> Values.normalize_length ~non_negative:true ~ctx value
   | Word_spacing -> Values.normalize_length ~ctx value
   | Text_decoration_thickness -> Values.normalize_length ~ctx value
   | Stroke_width -> normalize_stroke_width ~ctx value
@@ -4505,17 +4542,23 @@ let normalize_property_value : type a.
   | Scroll_margin_inline_end -> Values.normalize_length ~ctx value
   | Scroll_margin_block_start -> Values.normalize_length ~ctx value
   | Scroll_margin_block_end -> Values.normalize_length ~ctx value
-  | Scroll_padding_top -> Values.normalize_length ~ctx value
-  | Scroll_padding_right -> Values.normalize_length ~ctx value
-  | Scroll_padding_bottom -> Values.normalize_length ~ctx value
-  | Scroll_padding_left -> Values.normalize_length ~ctx value
-  | Scroll_padding_inline_start -> Values.normalize_length ~ctx value
-  | Scroll_padding_inline_end -> Values.normalize_length ~ctx value
-  | Scroll_padding_block_start -> Values.normalize_length ~ctx value
-  | Scroll_padding_block_end -> Values.normalize_length ~ctx value
-  | Padding -> normalize_length_box ~ctx value
-  | Padding_inline -> normalize_length_box ~ctx value
-  | Padding_block -> normalize_length_box ~ctx value
+  | Scroll_padding_top -> Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_right ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_bottom ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_left -> Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_inline_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_inline_end ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_block_start ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Scroll_padding_block_end ->
+      Values.normalize_length ~non_negative:true ~ctx value
+  | Padding -> normalize_length_box ~non_negative:true ~ctx value
+  | Padding_inline -> normalize_length_box ~non_negative:true ~ctx value
+  | Padding_block -> normalize_length_box ~non_negative:true ~ctx value
   | Margin -> normalize_length_box ~ctx value
   | Margin_inline -> normalize_length_box ~ctx value
   | Margin_block -> normalize_length_box ~ctx value
@@ -4760,9 +4803,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_stroke_color -> pp pp_color
   | Webkit_text_stroke -> pp pp_webkit_text_stroke
   | Webkit_text_stroke_width -> pp pp_border_width
-  | Column_rule_color -> pp pp_color
-  | Column_rule_width -> pp pp_border_width
-  | Column_rule_style -> pp pp_border_style
+  | Column_rule_color -> pp (Pp.list ~sep:Pp.comma pp_color)
+  | Column_rule_width -> pp (Pp.list ~sep:Pp.comma pp_border_width)
+  | Column_rule_style -> pp (Pp.list ~sep:Pp.comma pp_border_style)
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -4872,6 +4915,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Container -> pp pp_container_shorthand
   | White_space -> pp pp_white_space
   | White_space_collapse -> pp pp_white_space_collapse
+  | Font_variant_alternates -> pp pp_font_variant_alternates
+  | Font_variant -> pp pp_font_variant
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
   | Grid_template_areas -> pp pp_grid_template_areas
@@ -5421,8 +5466,8 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_fill_color -> Some Color
   | Webkit_text_stroke_color -> Some Color
   | Webkit_text_stroke_width -> Some Border_width
-  | Column_rule_color -> Some Color
-  | Column_rule_width -> Some Border_width
+  | Column_rule_color -> Some Colors
+  | Column_rule_width -> Some Border_widths
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color

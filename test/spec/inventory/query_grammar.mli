@@ -3,6 +3,9 @@
 type row = { branch : string; input : string; expected : string }
 type invalid_row = { branch : string; input : string }
 
+type mutation = { input : string; recovery : string }
+(** A derived invalid query and the serialization it recovers to. *)
+
 val media_positive : row list
 (** [media_positive] contains valid CSS Media Queries branches. *)
 
@@ -24,5 +27,6 @@ val container_positive : row list
 val container_negative : invalid_row list
 (** [container_negative] contains invalid CSS Container Queries branches. *)
 
-val mutate_invalid : row -> int -> string
-(** [mutate_invalid row salt] derives invalid query syntax from [row]. *)
+val mutate_invalid : row -> int -> mutation
+(** [mutate_invalid row salt] derives invalid query syntax from [row], with the
+    serialization Media Queries 4 sec. 3.2 recovers it to. *)

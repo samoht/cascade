@@ -407,6 +407,7 @@ let list selectors =
   | [] -> invalid_arg "CSS selector list cannot be empty"
   | _ -> List selectors
 
+let unescape_attribute_value = unescape_selector_name
 let is_compound_list = function List _ -> true | _ -> false
 let as_list = function List sels -> Some sels | _ -> None
 let compound selectors = Compound selectors
@@ -457,9 +458,21 @@ let read_attribute_value t =
     | Some _ -> Cursor.err_invalid t "attribute value"
   else (value, quote)
 
+(* Selectors 4 sec. 5.1 spells a class as a [.] "immediately followed by" an
+   ident, and sec. 3.5 a pseudo-class or pseudo-element as its colons followed
+   by the name. Every other reader has the cursor skip whitespace for it, so
+   these three look for it themselves: [. x] names no class, and reading past
+   the space gave the author [.x]. *)
+let expect_adjacent t what =
+  match Cursor.peek_raw t with
+  | Some c when Component.is_whitespace c ->
+      Cursor.err_invalid t (String.concat "" [ "whitespace before the "; what ])
+  | _ -> ()
+
 (** Parse a class selector (.classname) *)
 let read_class t =
   Cursor.expect '.' t;
+  expect_adjacent t "class name";
   let name = Cursor.ident ~keep_case:true t in
   (* No validation needed: Cursor.ident already enforces CSS identifier syntax,
      including parser-valid double-dash identifiers such as .--x. *)
@@ -1793,6 +1806,7 @@ and pseudo_class_calls () = Lazy.force pseudo_class_calls_lazy
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class ?(allow_unknown = false) t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  expect_adjacent t "pseudo-class name";
   let all_idents = pseudo_class_all_idents () in
   let calls = pseudo_class_calls () in
   let read_unknown = read_unknown_pseudo_class ~all_idents in
@@ -1805,6 +1819,7 @@ and read_pseudo_class ?(allow_unknown = false) t =
 and read_pseudo_element t =
   if not (Cursor.try_kind_pair Token.Colon Token.Colon t) then
     Cursor.err_expected t "'::'";
+  expect_adjacent t "pseudo-element name";
   Cursor.enum_calls
     [
       ("part", read_part);
@@ -2014,7 +2029,11 @@ let read_relative t =
   Cursor.ws t;
   if not (Cursor.is_done t) then
     Cursor.err t "unexpected characters after selector";
-  match selectors with [ s ] -> s | _ -> List selectors
+  let result = match selectors with [ s ] -> s | _ -> List selectors in
+  (* A nested style rule's prelude is a selector list like any other, so it is
+     unforgiving too. *)
+  validate_unforgiving_pseudo t result;
+  result
 
 (* CSS Nesting 1 sec. 3: a nested selector is implicitly relative to [&], so a
    leading [& <combinator>] is redundant: [& .bar] -> [.bar], [& > .bar] -> [>
@@ -2027,6 +2046,16 @@ let rec drop_redundant_nesting_prefix (sel : t) : t =
   | List sels -> List (List.map drop_redundant_nesting_prefix sels)
   | other -> other
 
+(* CSS Syntax 3 (ED) sec. 4.3.11 builds an identifier from ident code points -
+   letters, digits, [-], [_] and anything non-ASCII - and escapes. The shortcut
+   below reads the whole string as one name, so anything else in it means the
+   string is not a name: selector punctuation ([:], [>], [,] ...) but equally a
+   [}] or a [;], which name nothing and used to be taken for an element. *)
+let is_ident_code_point c =
+  match c with
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
+  | c -> Char.code c >= 0x80
+
 let is_unescaped_selector_syntax s start =
   let len = String.length s in
   let rec loop i =
@@ -2037,10 +2066,8 @@ let is_unescaped_selector_syntax s start =
           let j = ref i in
           skip_css_escape s j;
           loop !j
-      | ':' | '(' | ')' | '[' | ']' | ',' | '>' | '+' | '~' | '|' | '*' | ' '
-      | '\t' | '\n' | '\r' | '\012' ->
-          true
-      | _ -> loop (i + 1)
+      | c when is_ident_code_point c -> loop (i + 1)
+      | _ -> true
   in
   loop start
 

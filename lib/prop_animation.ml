@@ -777,8 +777,9 @@ let read_timeline_inset_item t : timeline_inset_item =
   Cursor.enum "timeline-inset item"
     [ ("auto", (Auto : timeline_inset_item)) ]
     ~default:(fun t ->
-      (Length
-         (read_length_percentage ~allow_negative:false ~with_keywords:false t)
+      (* Scroll Animations 1 sec. 3.4.3 gives each item [auto] or a plain
+         [<length-percentage>], with no range restriction on it. *)
+      (Length (read_length_percentage ~with_keywords:false t)
         : timeline_inset_item))
     t
 
@@ -954,13 +955,12 @@ let rec read_transition_property_value t : transition_property_value =
   in
   let read_property_ident t =
     let name = Cursor.ident ~keep_case:true t in
-    (* CSS Transitions 1 section 2.1: [transition-property] is a
-       [<custom-ident>], so it excludes keywords reserved for other slots of the
-       [transition] shorthand. [normal] and [allow-discrete] are the
-       [transition-behavior] enum and would silently absorb a duplicate (e.g.
-       [transition: normal normal]) into the property slot. *)
-    if List.mem (String.lowercase_ascii name) [ "normal"; "allow-discrete" ]
-    then
+    (* CSS Transitions 1 sec. 2.1 gives [transition-property] a
+       [<custom-ident>], and CSS Values 4 sec. 3.2 excludes [default] and the
+       CSS-wide keywords from that production and nothing else. What the
+       [transition] shorthand can tell apart in a slot is the shorthand reader's
+       question, not this one's. *)
+    if String.equal (String.lowercase_ascii name) "default" then
       Cursor.err_invalid t
         ("transition-property cannot be reserved keyword: " ^ name)
     else Property name
@@ -1992,6 +1992,12 @@ let read_animation_range_name t : animation_range_name =
 let is_animation_range_name name =
   List.mem (String.lowercase_ascii_preserve name) Keyframe.timeline_range_names
 
+(* Scroll Animations 1 sec. 5.1 spells each item [normal | <length-percentage> |
+   <timeline-range-name> <length-percentage>?], so the intrinsic-sizing keywords
+   a bare length would accept are out. *)
+let read_range_length_percentage t =
+  Values.read_length_percentage ~with_keywords:false t
+
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
   if Cursor.is_done t then (None : length_percentage option)
@@ -2000,7 +2006,7 @@ let read_animation_range_offset t : length_percentage option =
     | Some "normal" -> (None : length_percentage option)
     | Some next when List.mem next Keyframe.timeline_range_names ->
         (None : length_percentage option)
-    | _ -> (Some (Values.read_length_percentage t) : length_percentage option)
+    | _ -> (Some (read_range_length_percentage t) : length_percentage option)
 
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
@@ -2021,7 +2027,7 @@ let rec read_animation_range_item t : animation_range_item =
         let lp = read_animation_range_offset t in
         (Named (name, lp) : animation_range_item)
     | _ ->
-        let lp = Values.read_length_percentage t in
+        let lp = read_range_length_percentage t in
         Offset lp
   in
   Cursor.enum_or_var "animation-range-item" keywords
@@ -2053,7 +2059,7 @@ let rec read_animation_range t : animation_range =
           let lp = read_animation_range_offset t in
           (Named (name, lp) : animation_range_item)
       | _ ->
-          let lp = Values.read_length_percentage t in
+          let lp = read_range_length_percentage t in
           Offset lp
     in
     let first = read_single t in

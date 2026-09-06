@@ -717,6 +717,7 @@ let rec pp_webkit_appearance : webkit_appearance Pp.t =
   | Button -> Pp.string ctx "button"
   | Textfield -> Pp.string ctx "textfield"
   | Menulist -> Pp.string ctx "menulist"
+  | Base_select -> Pp.string ctx "base-select"
   | Listbox -> Pp.string ctx "listbox"
   | Checkbox -> Pp.string ctx "checkbox"
   | Radio -> Pp.string ctx "radio"
@@ -1024,6 +1025,7 @@ let rec read_webkit_appearance t : webkit_appearance =
       ("button", Button);
       ("textfield", Textfield);
       ("menulist", Menulist);
+      ("base-select", Base_select);
       ("listbox", Listbox);
       ("checkbox", Checkbox);
       ("radio", Radio);

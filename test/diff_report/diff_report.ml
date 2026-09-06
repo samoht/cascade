@@ -1770,7 +1770,11 @@ let text_cases =
       after = "@keyframes fade{0%{opacity:0.7}100%{opacity:1}}";
       names = [ "0%" ];
       under = [ "@keyframes fade" ];
-      holds = Some ("0%", "opacity", "0", "0.7");
+      (* The report spells a value the way cascade prints it, which for a
+         fractional number is CSS Values 4 sec. 6.7.2 without the leading zero.
+         No raw token text is kept anywhere in the AST, so the digits the file
+         holds are not cascade's to echo; [.7] and [0.7] are one value. *)
+      holds = Some ("0%", "opacity", "0", ".7");
     };
     {
       case = "keyframe-added";

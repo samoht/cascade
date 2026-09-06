@@ -53,6 +53,11 @@ let test_of_string () =
          property "contain-intrinsic-size" "1px" ));
   check "nested function value" "(color: color-mix(in lab, red, red))"
     (property "color" "color-mix(in lab, red, red)");
+  (* CSS Conditional 3 sec. 2.2 tests a [<declaration>], which CSS Syntax 3 (ED)
+     sec. 5.5.6 lets carry the [!important] flag, so the flag comes off the
+     value before the [<declaration-value>] bar applies to it. *)
+  check "property with the important flag" "(display: grid !important)"
+    (property "display" "grid !important");
   check "double parens around property" "((-webkit-hyphens: none))"
     (property "-webkit-hyphens" "none");
   check "complex browser detection"
@@ -276,8 +281,12 @@ let property_guard () =
       ("rgb(1,2,3)", "<round-trips>");
       ("\"a;b\"", "<round-trips>");
       ("url(foo", "<round-trips>");
+      (* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at EOF as the string it
+         read, so a value the input ended inside one carries a string like any
+         other. Only a newline makes a [<bad-string-token>]. *)
+      ("\"abc", "<round-trips>");
       (* Not one: an unmatched closing bracket, a top-level [;], an unterminated
-         function, block or string, a [<bad-url-token>]. *)
+         function or block, a [<bad-url-token>]. *)
       ("red) or (color:blue", "<refused>");
       ("red)", "<refused>");
       ("red]", "<refused>");
@@ -285,7 +294,6 @@ let property_guard () =
       ("red;--b:blue", "<refused>");
       ("rgb(1,2,3", "<refused>");
       ("{a:b", "<refused>");
-      ("\"abc", "<refused>");
       ("url(foo bar)", "<refused>");
     ];
   (* The same holds for a property whose value cascade does not model, which is

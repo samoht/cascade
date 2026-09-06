@@ -80,9 +80,10 @@ let covers_longhand : type a b.
   | Transition, Transition_delay -> true
   | Transition, Transition_behavior -> true
   (* CSS Animations 2 sec. 4.11 and 4.12: [animation] resets every longhand
-     [animation_keys] names, [animation-timeline] included.
-     [animation-composition] and the [animation-range-*] longhands are not part
-     of it and are absent here for that reason. *)
+     [animation_keys] names, [animation-timeline] included. Scroll-driven
+     Animations 1 appendix A.3 makes the two [animation-range-*] longhands
+     reset-only sub-properties of it, so they are reset as well.
+     [animation-composition] is no part of it and is absent for that reason. *)
   | Animation, Animation_name -> true
   | Animation, Animation_duration -> true
   | Animation, Animation_timing_function -> true
@@ -92,6 +93,9 @@ let covers_longhand : type a b.
   | Animation, Animation_fill_mode -> true
   | Animation, Animation_play_state -> true
   | Animation, Animation_timeline -> true
+  | Animation, Animation_range -> true
+  | Animation, Animation_range_start -> true
+  | Animation, Animation_range_end -> true
   (* CSS Logical 1: physical-axis pairs. *)
   | Margin_inline, Margin_inline_start -> true
   | Margin_inline, Margin_inline_end -> true
@@ -207,6 +211,15 @@ let covers_longhand : type a b.
   | Font, Font_size_adjust -> true
   | Font, Font_kerning -> true
   | Font, Font_optical_sizing -> true
+  | Font, Font_variant_alternates -> true
+  (* CSS Fonts 4 sec. 6.10: [font-variant] resets its seven longhands. *)
+  | Font_variant, Font_variant_ligatures -> true
+  | Font_variant, Font_variant_alternates -> true
+  | Font_variant, Caps -> true
+  | Font_variant, Numeric -> true
+  | Font_variant, East_asian -> true
+  | Font_variant, Font_variant_position -> true
+  | Font_variant, Font_variant_emoji -> true
   (* Motion Path 1 sec. 2.6: [offset] resets the five motion path longhands. *)
   | Offset, Offset_position -> true
   | Offset, Offset_path -> true
@@ -378,6 +391,8 @@ let animation_keys =
     key "animation-fill-mode";
     key "animation-play-state";
     key "animation-timeline";
+    key "animation-range-start";
+    key "animation-range-end";
   ]
 
 let transition_keys =
@@ -570,8 +585,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Moz_animation_play_state ->
       [ key "animation-play-state" ]
   | Animation_timeline -> [ key "animation-timeline" ]
-  (* Scroll-driven Animations 1 sec. 5.3: [animation-range] is its own
-     shorthand, and [animation] does not reset either end. *)
+  (* Scroll-driven Animations 1 appendix A.3: [animation-range] is its own
+     shorthand over the two ends. *)
   | Animation_range ->
       [ key "animation-range-start"; key "animation-range-end" ]
   | Animation_range_start -> [ key "animation-range-start" ]
@@ -732,6 +747,18 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "font-optical-sizing";
         key "font-language-override";
         key "font-palette";
+        key "font-variant-alternates";
+      ]
+  (* CSS Fonts 4 sec. 6.10. *)
+  | Font_variant ->
+      [
+        key "font-variant-ligatures";
+        key "font-variant-alternates";
+        key "font-variant-caps";
+        key "font-variant-numeric";
+        key "font-variant-east-asian";
+        key "font-variant-position";
+        key "font-variant-emoji";
       ]
   (* Motion Path 1 sec. 2.6. *)
   | Offset ->
@@ -749,6 +776,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Line_height -> [ key "line-height" ]
   | Font_family -> [ key "font-family" ]
   | Font_variant_ligatures -> [ key "font-variant-ligatures" ]
+  | Font_variant_alternates -> [ key "font-variant-alternates" ]
   | Caps -> [ key "font-variant-caps" ]
   | Numeric -> [ key "font-variant-numeric" ]
   | Font_variant_position -> [ key "font-variant-position" ]
@@ -2600,8 +2628,7 @@ let duo_container idx i =
     in
     let value : Properties.container_shorthand option =
       match (name : Properties.container_name option) with
-      | Some None -> Some (Shorthand { name = Some "none"; ctype })
-      | Some (Names [ n ]) -> Some (Shorthand { name = Some n; ctype })
+      | Some ((None | Names _) as name) -> Some (Shorthand { name; ctype })
       | _ -> Option.None
     in
     Option.map (Declaration.v ~important Container) value
@@ -2927,6 +2954,18 @@ let take_run_at idx ~part_of i =
   in
   aux i []
 
+(* A slot a declaration after the run writes again is one the shorthand's reset
+   cannot reach: the later write is what the element ends up with, whatever the
+   reset put there. Unlike [*_overwritten_slots] this counts a write back to the
+   slot initial, which answers the reset just as well. *)
+let rec slots_written_after ~slots_of idx ~from =
+  let n = Rule_index.length idx in
+  if from >= n then 0
+  else
+    let rest = slots_written_after ~slots_of idx ~from:(from + 1) in
+    if Rule_index.is_absorbed idx from then rest
+    else slots_of (Rule_index.decl_at idx from) lor rest
+
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
 type line_part = Width | Style | Color
@@ -3032,7 +3071,116 @@ let same_importance = function
       let important = is_important first in
       List.for_all (fun d -> is_important d = important) rest
 
-let render_font_shorthand decls : Properties.font option =
+(* CSS Fonts 4 (ED) sec. 5.3 splits the [font] sub-properties in two. The seven
+   in the Set Explicitly group are the shorthand's own components; the thirteen
+   in the Reset Implicitly group have no slot in it and are reset to their
+   initials. So a run carrying one of the thirteen composes only when it holds
+   that initial, which is what the shorthand writes there anyway.
+
+   The bits below number the twenty in that order. They answer one question,
+   whether the run writes every slot the shorthand resets, and are read nowhere
+   else. *)
+let font_slot_bits d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Font_style; _ } -> 1 lsl 0
+  | Declaration { property = Caps; _ } -> 1 lsl 1
+  | Declaration { property = Font_weight; _ } -> 1 lsl 2
+  | Declaration { property = Font_stretch; _ } -> 1 lsl 3
+  | Declaration { property = Font_size; _ } -> 1 lsl 4
+  | Declaration { property = Line_height; _ } -> 1 lsl 5
+  | Declaration { property = Font_family; _ } -> 1 lsl 6
+  | Declaration { property = Font_feature_settings; _ } -> 1 lsl 7
+  | Declaration { property = Font_kerning; _ } -> 1 lsl 8
+  | Declaration { property = Font_language_override; _ } -> 1 lsl 9
+  | Declaration { property = Font_optical_sizing; _ } -> 1 lsl 10
+  | Declaration { property = Font_size_adjust; _ } -> 1 lsl 11
+  | Declaration { property = Font_variant_alternates; _ } -> 1 lsl 12
+  | Declaration { property = East_asian; _ } -> 1 lsl 13
+  | Declaration { property = Font_variant_emoji; _ } -> 1 lsl 14
+  | Declaration { property = Font_variant_ligatures; _ } -> 1 lsl 15
+  | Declaration { property = Numeric; _ } -> 1 lsl 16
+  | Declaration { property = Font_variant_position; _ } -> 1 lsl 17
+  | Declaration { property = Font_variation_settings; _ } -> 1 lsl 18
+  (* [font-variant] writes seven of the thirteen at once. *)
+  | Declaration { property = Font_variant; _ } ->
+      (1 lsl 1) lor (1 lsl 12) lor (1 lsl 13) lor (1 lsl 14) lor (1 lsl 15)
+      lor (1 lsl 16) lor (1 lsl 17)
+  | Declaration { property = Font; _ } -> (1 lsl 19) - 1
+  | Declaration { property = All; _ } -> (1 lsl 19) - 1
+  | _ -> 0
+
+let all_font_bits = (1 lsl 19) - 1
+
+(* A Reset Implicitly longhand at the initial the shorthand would write there:
+   [normal] for the feature and variation settings, the language override and
+   the five font-variant longhands that take it, [auto] for the kerning and the
+   optical sizing, [none] for the size adjust. *)
+let font_reset_only_at_initial d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Font_feature_settings; value = Normal; _ }
+  | Declaration { property = Font_variation_settings; value = Normal; _ }
+  | Declaration { property = Font_language_override; value = Normal; _ }
+  | Declaration { property = Font_variant_alternates; value = Normal; _ }
+  | Declaration { property = East_asian; value = Normal; _ }
+  | Declaration { property = Font_variant_emoji; value = Normal; _ }
+  | Declaration { property = Font_variant_ligatures; value = Normal; _ }
+  | Declaration { property = Numeric; value = Normal; _ }
+  | Declaration { property = Font_variant_position; value = Normal; _ }
+  | Declaration { property = Font_kerning; value = Auto; _ }
+  | Declaration { property = Font_optical_sizing; value = Auto; _ }
+  | Declaration { property = Font_size_adjust; value = None; _ } ->
+      true
+  | _ -> false
+
+(* sec. 5.3 lets the shorthand write only the CSS 2.1 subset of the caps
+   longhand, so [normal] and [small-caps] are components and the rest is a value
+   the shorthand cannot spell. *)
+let font_caps_component : declaration -> Properties.font_variant_css21 option =
+  function
+  | Declaration { property = Caps; value = Normal; _ } -> Some Normal
+  | Declaration { property = Caps; value = Small_caps; _ } -> Some Small_caps
+  | _ -> None
+
+(* sec. 5.3 gives [font-width] the initial [normal], which normalises to [100%],
+   and an omitted slot names it, so both spellings leave the slot out. The slot
+   itself is a [<font-width-css3>] keyword, so a width no keyword names has no
+   spelling there and [None] here would reset it instead. *)
+let font_stretch_component : declaration -> Properties.font_stretch option =
+  function
+  | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
+      Option.None
+  | Declaration { property = Font_stretch; value; _ } -> Some value
+  | _ -> Option.None
+
+let font_stretch_has_slot : declaration -> bool = function
+  | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
+      true
+  | Declaration { property = Font_stretch; value; _ } ->
+      Option.is_some (Properties.font_width_css3 value)
+  | _ -> true
+
+let font_stretch_slot : declaration -> bool = function
+  | Declaration { property = Font_stretch; _ } -> true
+  | _ -> false
+
+let font_run_member d =
+  (is_font_longhand d
+  || Option.is_some (font_caps_component d)
+  || font_stretch_slot d
+  || font_reset_only_at_initial d)
+  && font_stretch_has_slot d
+
+let font_run_at idx i =
+  let n = Rule_index.length idx in
+  let rec aux j acc =
+    if j >= n || Rule_index.is_absorbed idx j then (List.rev acc, j - i)
+    else
+      let d = Rule_index.decl_at idx j in
+      if font_run_member d then aux (j + 1) (d :: acc) else (List.rev acc, j - i)
+  in
+  aux i []
+
+let render_font_run decls : Properties.font option =
   let pick f = List.find_map f decls in
   match (pick font_size_of, pick font_family_of) with
   | Some size, Some family ->
@@ -3040,49 +3188,41 @@ let render_font_shorthand decls : Properties.font option =
         (Shorthand
            {
              style = pick font_style_of;
-             variant = Option.None;
+             variant = pick font_caps_component;
              weight = pick font_weight_of;
-             stretch = Option.None;
+             stretch = pick font_stretch_component;
              size;
              line_height = pick line_height_of;
              family;
            })
   | _ -> Option.None
 
-let try_compose_font_at idx i =
-  let n = Rule_index.length idx in
-  if i + 4 >= n then None
+let try_compose_font_at ~allow_partial idx i =
+  let raw_decls, len = font_run_at idx i in
+  if len < 2 then None
+  else if not (same_importance raw_decls) then None
   else
-    let positions = [ i; i + 1; i + 2; i + 3; i + 4 ] in
-    if List.exists (Rule_index.is_absorbed idx) positions then None
+    let written =
+      List.fold_left (fun acc d -> acc lor font_slot_bits d) 0 raw_decls
+    in
+    let unanswered =
+      all_font_bits land lnot written
+      land lnot
+             (slots_written_after ~slots_of:font_slot_bits idx ~from:(i + len))
+    in
+    if unanswered <> 0 && not allow_partial then None
     else
-      let raw_decls = List.map (Rule_index.decl_at idx) positions in
-      if
-        (not (List.for_all is_font_longhand raw_decls))
-        || not (same_importance raw_decls)
-      then None
-      else
-        match render_font_shorthand raw_decls with
-        | Some font_value ->
-            Some
-              (Declaration.v
-                 ~important:(is_important (List.hd raw_decls))
-                 Font font_value)
-        | None -> None
+      Option.map
+        (fun font_value ->
+          ( Declaration.v
+              ~important:(is_important (List.hd raw_decls))
+              Font font_value,
+            len ))
+        (render_font_run raw_decls)
 
-let compose_font_via_index idx =
-  let n = Rule_index.length idx in
-  let i = ref 0 in
-  while !i + 4 < n do
-    if Rule_index.is_absorbed idx !i then incr i
-    else
-      match try_compose_font_at idx !i with
-      | None -> incr i
-      | Some shorthand ->
-          let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
-          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 5
-          else incr i
-  done
+let compose_font_via_index ~ctx idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx ~try_compose:(try_compose_font_at ~allow_partial)
 
 (* The property a name spells, when the reader types one.
    [Properties.read_any_property] is the table [pp_property] inverts, so a name
@@ -3302,17 +3442,29 @@ let td_kind_of : declaration -> td_kind option = function
   | Declaration { property = Text_decoration_thickness; _ } -> Some Thickness
   | _ -> None
 
+(* CSS Cascade 5 sec. 7.3 gives a longhand written [initial] the property's
+   initial value, which is what leaving the component out of the shorthand
+   names: [none] for the line (CSS Text Decoration 4 sec. 2.1), [solid] for the
+   style (sec. 2.3) and [currentcolor] for the colour (sec. 2.4). The keyword
+   itself is no shorthand component, so it folds to the value it stands for and
+   the printer drops it with the other initials. *)
 let td_line_of : declaration -> Properties.text_decoration_line list option =
   function
+  | Declaration { property = Text_decoration_line; value = [ Initial ]; _ } ->
+      Some [ (None : Properties.text_decoration_line) ]
   | Declaration { property = Text_decoration_line; value; _ } -> Some value
   | _ -> None
 
 let td_style_of : declaration -> Properties.text_decoration_style option =
   function
+  | Declaration { property = Text_decoration_style; value = Initial; _ } ->
+      Some (Solid : Properties.text_decoration_style)
   | Declaration { property = Text_decoration_style; value; _ } -> Some value
   | _ -> None
 
 let td_color_of : declaration -> Values.color option = function
+  | Declaration { property = Text_decoration_color; value = Initial; _ } ->
+      Some Values.current_color
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
@@ -3540,13 +3692,15 @@ let border_inline_end_part = function
       Some (line_of_color value)
   | _ -> None
 
+(* CSS Gaps 1 sec. 4 gives each longhand a list, and sec. 4.4 writes the
+   shorthand over one line, so only a single-entry list composes. *)
 let column_rule_part = function
-  | Declaration { property = Column_rule_width; value; _ } ->
-      Some (line_of_width value)
-  | Declaration { property = Column_rule_style; value; _ } ->
-      Some (line_of_style value)
-  | Declaration { property = Column_rule_color; value; _ } ->
-      Some (line_of_color value)
+  | Declaration { property = Column_rule_width; value = [ width ]; _ } ->
+      Some (line_of_width width)
+  | Declaration { property = Column_rule_style; value = [ style ]; _ } ->
+      Some (line_of_style style)
+  | Declaration { property = Column_rule_color; value = [ color ]; _ } ->
+      Some (line_of_color color)
   | _ -> None
 
 let try_compose_line_at ~part_of ~property idx i =
@@ -3973,7 +4127,7 @@ let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
 
 let record_border_image_longhand
     ~(source : Properties.background_image option ref)
-    ~(slice : Properties.border_image_slice option ref)
+    ~(slice : Properties.border_image_slice_offsets option ref)
     ~(width : Properties.border_image_width_item list option ref)
     ~(outset : Properties.border_image_outset_item list option ref)
     ~(repeat : Properties.border_image_repeat_keyword list option ref) ~foldable
@@ -3981,8 +4135,9 @@ let record_border_image_longhand
   match d with
   | Declaration { property = Border_image_source; value; _ } ->
       source := Some value
-  | Declaration { property = Border_image_slice; value; _ } ->
-      slice := Some value
+  | Declaration { property = Border_image_slice; value = Slices offsets; _ } ->
+      slice := Some offsets
+  | Declaration { property = Border_image_slice; _ } -> foldable := false
   | Declaration { property = Border_image_width; value = Widths l; _ } ->
       width := Some l
   | Declaration { property = Border_image_width; _ } -> foldable := false
@@ -3998,7 +4153,9 @@ let compose_border_image_run ~allow_partial
     (run : (int * Declaration.declaration) list) :
     (int * Declaration.declaration) option =
   let source : Properties.background_image option ref = ref Option.None in
-  let slice : Properties.border_image_slice option ref = ref Option.None in
+  let slice : Properties.border_image_slice_offsets option ref =
+    ref Option.None
+  in
   let width : Properties.border_image_width_item list option ref =
     ref Option.None
   in
@@ -4735,9 +4892,23 @@ type an_slot =
   | Fill
   | Play
   | Timeline
+  | Range_start
+  | Range_end
 
 let an_slots =
-  [ Name; Duration; Timing; Delay; Iteration; Direction; Fill; Play; Timeline ]
+  [
+    Name;
+    Duration;
+    Timing;
+    Delay;
+    Iteration;
+    Direction;
+    Fill;
+    Play;
+    Timeline;
+    Range_start;
+    Range_end;
+  ]
 
 let an_slot_bit : an_slot -> int = function
   | Name -> 32
@@ -4749,6 +4920,8 @@ let an_slot_bit : an_slot -> int = function
   | Fill -> 2048
   | Play -> 4096
   | Timeline -> 8192
+  | Range_start -> 65536
+  | Range_end -> 131072
 
 let an_bits slots = List.fold_left (fun acc s -> acc lor an_slot_bit s) 0 slots
 let all_an_bits = an_bits an_slots
@@ -4758,18 +4931,28 @@ let all_an_bits = an_bits an_slots
    transition and animation sets. *)
 let td_thickness_bit = 16384
 
-(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family
-   as well, so that family needs one bit of its own beside the others. *)
-let border_image_bit = 32768
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
+   and each longhand of it gets a bit rather than the family sharing one: a rule
+   holding the slice says nothing about a neighbour holding the source, and one
+   bit makes the first cancel the second in [held_outside]. *)
+let bi_source_bit = 1 lsl 18
+let bi_slice_bit = 1 lsl 19
+let bi_width_bit = 1 lsl 20
+let bi_outset_bit = 1 lsl 21
+let bi_repeat_bit = 1 lsl 22
+
+let border_image_bit =
+  bi_source_bit lor bi_slice_bit lor bi_width_bit lor bi_outset_bit
+  lor bi_repeat_bit
 
 let bi_overwritten_slots d =
   match unwrap_theme_guard d with
+  | Declaration { property = Border_image_source; _ } -> bi_source_bit
+  | Declaration { property = Border_image_slice; _ } -> bi_slice_bit
+  | Declaration { property = Border_image_width; _ } -> bi_width_bit
+  | Declaration { property = Border_image_outset; _ } -> bi_outset_bit
+  | Declaration { property = Border_image_repeat; _ } -> bi_repeat_bit
   | Declaration { property = Border_image; _ }
-  | Declaration { property = Border_image_source; _ }
-  | Declaration { property = Border_image_slice; _ }
-  | Declaration { property = Border_image_width; _ }
-  | Declaration { property = Border_image_outset; _ }
-  | Declaration { property = Border_image_repeat; _ }
   | Declaration { property = Border; _ } ->
       border_image_bit
   | Declaration { property = All; value = Initial | Unset; _ } -> 0
@@ -4801,6 +4984,11 @@ let an_overwritten_slots d =
   | Declaration { property = Animation_fill_mode; _ } -> an_slot_bit Fill
   | Declaration { property = Animation_play_state; _ } -> an_slot_bit Play
   | Declaration { property = Animation_timeline; _ } -> an_slot_bit Timeline
+  | Declaration { property = Animation_range_start; _ } ->
+      an_slot_bit Range_start
+  | Declaration { property = Animation_range_end; _ } -> an_slot_bit Range_end
+  | Declaration { property = Animation_range; _ } ->
+      an_slot_bit Range_start lor an_slot_bit Range_end
   | Declaration { property = Animation; _ } -> all_an_bits
   (* CSS Cascade 5 sec. 3.2: [all] writes every longhand, and no animation
      longhand inherits, so [initial] and [unset] both leave the initials. *)
@@ -4863,6 +5051,26 @@ let reset_hazard ~slots_of idx i ~held ~missing ~important =
     || scan (j - 1)
   in
   scan (i - 1)
+
+let tr_written_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Transition_property; _ } -> tr_slot_bit Property
+  | Declaration { property = Transition_duration; _ } -> tr_slot_bit Duration
+  | Declaration { property = Transition_timing_function; _ } ->
+      tr_slot_bit Timing
+  | Declaration { property = Transition_delay; _ } -> tr_slot_bit Delay
+  | Declaration { property = Transition_behavior; _ } -> tr_slot_bit Behavior
+  | Declaration { property = Transition; _ } | Declaration { property = All; _ }
+    ->
+      all_tr_bits
+  | _ -> 0
+
+let an_written_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Animation_range; _ } ->
+      an_slot_bit Range_start lor an_slot_bit Range_end
+  | Declaration { property = All; _ } -> all_an_bits
+  | d -> an_overwritten_slots d
 
 let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
 let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
@@ -5061,7 +5269,460 @@ let compose_columns_via_index idx =
   compose_run_via_index idx ~try_compose:(fun idx i ->
       Option.map (fun d -> (d, 4)) (try_compose_columns_at idx i))
 
-let try_compose_transition_at ~held idx i =
+(* CSS Grid 2 (ED) sec. 7.4: [grid-template] is [none | [<'grid-template-rows'>
+   / <'grid-template-columns'>] | [<line-names>? <string> <track-size>?
+   <line-names>?]+ [/ <explicit-track-list>]?], and it resets all three
+   longhands, so the run naming the same declaration is all three. The areas
+   form writes each row's string beside that row's size, so composing it needs
+   one track per area row. *)
+type gt_kind = Rows | Columns | Areas
+
+let gt_kind_of : declaration -> gt_kind option = function
+  | Declaration { property = Grid_template_rows; _ } -> Some Rows
+  | Declaration { property = Grid_template_columns; _ } -> Some Columns
+  | Declaration { property = Grid_template_areas; _ } -> Some Areas
+  | _ -> None
+
+(* A track list the shorthand can write out: a CSS-wide keyword is the whole
+   declaration value, and the slash and raw-template forms belong to the
+   shorthand itself, not to a longhand it reads. *)
+let rec gt_track_is_plain : Properties.grid_template -> bool = function
+  | Inherit | Initial | Unset | Revert | Revert_layer | Split _ | Template _
+  | Auto_flow_columns _ | Auto_flow_rows _ ->
+      false
+  | Tracks tracks -> List.for_all gt_track_is_plain tracks
+  | _ -> true
+
+let gt_tracks_of : Properties.grid_template -> Properties.grid_template list =
+  function
+  | Tracks tracks -> tracks
+  | track -> [ track ]
+
+let gt_track_text (track : Properties.grid_template) =
+  Declaration.string_of_value ~minify:true
+    (Declaration.v Grid_template_rows track)
+
+(* The rendered rows of an [Areas] value, quotes included. A cell name carries
+   no quote of its own, so the delimiters alternate. *)
+let gt_area_rows text =
+  let rec loop i acc =
+    match String.index_from_opt text i '"' with
+    | Option.None -> List.rev acc
+    | Some start -> (
+        match String.index_from_opt text (start + 1) '"' with
+        | Option.None -> List.rev acc
+        | Some stop ->
+            loop (stop + 1) (String.sub text start (stop - start + 1) :: acc))
+  in
+  loop 0 []
+
+let gt_shorthand_text ~rows ~columns ~areas =
+  let buf = Buffer.create 64 in
+  let add_track track =
+    if Buffer.length buf > 0 then Buffer.add_char buf ' ';
+    Buffer.add_string buf (gt_track_text track)
+  in
+  let ok =
+    match (areas : Properties.grid_template_areas) with
+    | No_areas ->
+        List.iter add_track (gt_tracks_of rows);
+        true
+    | Areas text ->
+        let area_rows = gt_area_rows text in
+        let tracks = gt_tracks_of rows in
+        List.length area_rows = List.length tracks
+        && area_rows <> []
+        &&
+        (List.iter2
+           (fun row track ->
+             if Buffer.length buf > 0 then Buffer.add_char buf ' ';
+             Buffer.add_string buf row;
+             Buffer.add_char buf ' ';
+             Buffer.add_string buf (gt_track_text track))
+           area_rows tracks;
+         true)
+    | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> false
+  in
+  if not ok then Option.None
+  else (
+    Buffer.add_char buf '/';
+    List.iter
+      (fun track ->
+        Buffer.add_string buf (gt_track_text track);
+        Buffer.add_char buf ' ')
+      (gt_tracks_of columns);
+    Some (String.trim (Buffer.contents buf)))
+
+let gt_rows_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_template_rows; value; _ } -> Some value
+  | _ -> None
+
+let gt_columns_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_template_columns; value; _ } -> Some value
+  | _ -> None
+
+let gt_areas_of : declaration -> Properties.grid_template_areas option =
+  function
+  | Declaration { property = Grid_template_areas; value; _ } -> Some value
+  | _ -> None
+
+let grid_template_of_run raw : Properties.grid_template option =
+  let rows = List.find_map gt_rows_of raw in
+  let columns = List.find_map gt_columns_of raw in
+  let areas = List.find_map gt_areas_of raw in
+  match (rows, columns, areas) with
+  | Some rows, Some columns, Some areas
+    when gt_track_is_plain rows && gt_track_is_plain columns -> (
+      match (rows, columns, areas) with
+      | None, None, No_areas -> Some (None : Properties.grid_template)
+      | _ -> (
+          match gt_shorthand_text ~rows ~columns ~areas with
+          | Option.None -> Option.None
+          | Some text -> (
+              let t = Cursor.of_string text in
+              match Properties.read_grid_template t with
+              | value when Cursor.is_done t -> Some value
+              | _ -> Option.None
+              | exception _ -> Option.None)))
+  | _ -> Option.None
+
+let try_compose_grid_template_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = List.init 3 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let kinds = List.filter_map gt_kind_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare kinds) <> 3
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Grid_template)
+          (grid_template_of_run raw)
+
+let compose_grid_template_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 3)) (try_compose_grid_template_at idx i))
+
+(* CSS Grid 2 (ED) sec. 7.8: [grid] is [<'grid-template'> |
+   <'grid-template-rows'> / [auto-flow && dense?] <'grid-auto-columns'>? |
+   [auto-flow && dense?] <'grid-auto-rows'>? / <'grid-template-columns'>], and
+   it resets all six longhands. Only one of the two auto-flow axes can be
+   written, and the other three longhands have to be at the initials the
+   shorthand leaves them. *)
+let gd_auto_flow_of : declaration -> Properties.grid_auto_flow option = function
+  | Declaration { property = Grid_auto_flow; value; _ } -> Some value
+  | _ -> None
+
+let gd_auto_rows_of : declaration -> Properties.grid_template option = function
+  | Declaration { property = Grid_auto_rows; value; _ } -> Some value
+  | _ -> None
+
+let gd_auto_columns_of : declaration -> Properties.grid_template option =
+  function
+  | Declaration { property = Grid_auto_columns; value; _ } -> Some value
+  | _ -> None
+
+type gd_kind =
+  | Template_rows
+  | Template_columns
+  | Template_areas
+  | Flow
+  | Auto_rows
+  | Auto_columns
+
+let gd_kind_of : declaration -> gd_kind option = function
+  | Declaration { property = Grid_template_rows; _ } -> Some Template_rows
+  | Declaration { property = Grid_template_columns; _ } -> Some Template_columns
+  | Declaration { property = Grid_template_areas; _ } -> Some Template_areas
+  | Declaration { property = Grid_auto_flow; _ } -> Some Flow
+  | Declaration { property = Grid_auto_rows; _ } -> Some Auto_rows
+  | Declaration { property = Grid_auto_columns; _ } -> Some Auto_columns
+  | _ -> None
+
+(* [auto] is the initial of both auto-track properties (sec. 7.6), so a slot
+   holding it is one the shorthand can leave out. *)
+let gd_is_auto : Properties.grid_template -> bool = function
+  | Auto -> true
+  | _ -> false
+
+let gd_flow_text (flow : Properties.grid_auto_flow) ~axis =
+  match flow with
+  | Row | Column -> Some "auto-flow"
+  | Row_dense | Column_dense | Dense -> Some "auto-flow dense"
+  | Components _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      ignore axis;
+      Option.None
+
+let gd_flow_axis : Properties.grid_auto_flow -> [ `Row | `Column | `Other ] =
+  function
+  | Row | Row_dense -> `Row
+  | Column | Column_dense -> `Column
+  (* [dense] alone leaves the axis at its initial, which is [row]. *)
+  | Dense -> `Row
+  | Components _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      `Other
+
+let gd_auto_flow_rows_text ~flow ~auto_rows ~columns =
+  match gd_flow_text flow ~axis:`Row with
+  | Option.None -> Option.None
+  | Some flow_text ->
+      let buf = Buffer.create 32 in
+      Buffer.add_string buf flow_text;
+      if not (gd_is_auto auto_rows) then (
+        Buffer.add_char buf ' ';
+        Buffer.add_string buf (gt_track_text auto_rows));
+      Buffer.add_char buf '/';
+      Buffer.add_string buf
+        (String.concat " " (List.map gt_track_text (gt_tracks_of columns)));
+      Some (Buffer.contents buf)
+
+let gd_auto_flow_columns_text ~rows ~flow ~auto_columns =
+  match gd_flow_text flow ~axis:`Column with
+  | Option.None -> Option.None
+  | Some flow_text ->
+      let buf = Buffer.create 32 in
+      Buffer.add_string buf
+        (String.concat " " (List.map gt_track_text (gt_tracks_of rows)));
+      Buffer.add_char buf '/';
+      Buffer.add_string buf flow_text;
+      if not (gd_is_auto auto_columns) then (
+        Buffer.add_char buf ' ';
+        Buffer.add_string buf (gt_track_text auto_columns));
+      Some (Buffer.contents buf)
+
+let gd_read_grid text =
+  let t = Cursor.of_string text in
+  match Properties.read_grid t with
+  | value when Cursor.is_done t -> Some value
+  | _ -> Option.None
+  | exception _ -> Option.None
+
+let gd_is_none : Properties.grid_template -> bool = function
+  | None -> true
+  | _ -> false
+
+let gd_template_form ~(rows : Properties.grid_template)
+    ~(columns : Properties.grid_template)
+    ~(areas : Properties.grid_template_areas) =
+  match (gd_is_none rows, gd_is_none columns, areas) with
+  | true, true, No_areas -> Some (Properties.None : Properties.grid_template)
+  | _ -> (
+      match gt_shorthand_text ~rows ~columns ~areas with
+      | Option.None -> Option.None
+      | Some text -> gd_read_grid text)
+
+let grid_of_run raw : Properties.grid_template option =
+  let rows = List.find_map gt_rows_of raw in
+  let columns = List.find_map gt_columns_of raw in
+  let areas = List.find_map gt_areas_of raw in
+  let flow = List.find_map gd_auto_flow_of raw in
+  let auto_rows = List.find_map gd_auto_rows_of raw in
+  let auto_columns = List.find_map gd_auto_columns_of raw in
+  match (rows, columns, areas, flow, auto_rows, auto_columns) with
+  | ( Some rows,
+      Some columns,
+      Some areas,
+      Some flow,
+      Some auto_rows,
+      Some auto_columns )
+    when gt_track_is_plain rows && gt_track_is_plain columns
+         && gt_track_is_plain auto_rows
+         && gt_track_is_plain auto_columns -> (
+      match (gd_flow_axis flow, areas) with
+      | `Row, _
+        when gd_is_auto auto_rows && gd_is_auto auto_columns
+             && flow = (Row : Properties.grid_auto_flow) ->
+          gd_template_form ~rows ~columns ~areas
+      | `Row, No_areas when gd_is_none rows && gd_is_auto auto_columns ->
+          Option.bind
+            (gd_auto_flow_rows_text ~flow ~auto_rows ~columns)
+            gd_read_grid
+      | `Column, No_areas when gd_is_none columns && gd_is_auto auto_rows ->
+          Option.bind
+            (gd_auto_flow_columns_text ~rows ~flow ~auto_columns)
+            gd_read_grid
+      | (`Row | `Column | `Other), _ -> Option.None)
+  | _ -> Option.None
+
+let try_compose_grid_at idx i =
+  let n = Rule_index.length idx in
+  if i + 5 >= n then None
+  else
+    let positions = List.init 6 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let kinds = List.filter_map gd_kind_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare kinds) <> 6
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Grid)
+          (grid_of_run raw)
+
+let compose_grid_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 6)) (try_compose_grid_at idx i))
+
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, so the
+   run naming the same declaration is all seven. A longhand at [normal] is the
+   slot the shorthand leaves out; a CSS-wide keyword or a [var()] is the whole
+   declaration value and no shorthand component. *)
+(* [`None] is the [font-variant: none] form, which the ligatures longhand alone
+   can ask for and which carries no other component. *)
+let fv_ligatures_of : declaration -> [ `Slot of _ | `None ] option = function
+  | Declaration { property = Font_variant_ligatures; value = Normal; _ } ->
+      Some (`Slot [])
+  | Declaration { property = Font_variant_ligatures; value = None; _ } ->
+      Some `None
+  | Declaration { property = Font_variant_ligatures; value = Ligatures l; _ } ->
+      Some (`Slot l)
+  | _ -> None
+
+let fv_alternates_of : declaration -> _ list option = function
+  | Declaration { property = Font_variant_alternates; value = Normal; _ } ->
+      Some []
+  | Declaration { property = Font_variant_alternates; value = Alternates l; _ }
+    ->
+      Some l
+  | _ -> None
+
+let fv_caps_of : declaration -> Properties.font_variant_caps option option =
+  function
+  | Declaration { property = Caps; value = Normal; _ } -> Some Option.None
+  | Declaration
+      {
+        property = Caps;
+        value =
+          ( Small_caps | All_small_caps | Petite_caps | All_petite_caps
+          | Unicase | Titling_caps ) as caps;
+        _;
+      } ->
+      Some (Some caps)
+  | _ -> None
+
+let fv_numeric_of : declaration -> _ list option = function
+  | Declaration { property = Numeric; value = Normal; _ } -> Some []
+  | Declaration { property = Numeric; value = Tokens tokens; _ } -> Some tokens
+  | Declaration
+      {
+        property = Numeric;
+        value =
+          Composed
+            {
+              ordinal;
+              slashed_zero;
+              numeric_figure;
+              numeric_spacing;
+              numeric_fraction;
+            };
+        _;
+      } ->
+      Some
+        (List.filter_map Fun.id
+           [
+             numeric_figure;
+             numeric_spacing;
+             numeric_fraction;
+             ordinal;
+             slashed_zero;
+           ])
+  | _ -> None
+
+let fv_east_asian_of : declaration -> _ list option = function
+  | Declaration { property = East_asian; value = Normal; _ } -> Some []
+  | Declaration { property = East_asian; value = Features f; _ } -> Some f
+  | _ -> None
+
+let fv_position_of :
+    declaration -> Properties.font_variant_position option option = function
+  | Declaration { property = Font_variant_position; value = Normal; _ } ->
+      Some Option.None
+  | Declaration
+      { property = Font_variant_position; value = (Sub | Super) as p; _ } ->
+      Some (Some p)
+  | _ -> None
+
+let fv_emoji_of : declaration -> Properties.font_variant_emoji option option =
+  function
+  | Declaration { property = Font_variant_emoji; value = Normal; _ } ->
+      Some Option.None
+  | Declaration
+      {
+        property = Font_variant_emoji;
+        value = (Text | Emoji | Unicode) as e;
+        _;
+      } ->
+      Some (Some e)
+  | _ -> None
+
+let font_variant_of_run raw : Properties.font_variant option =
+  let ligatures = List.find_map fv_ligatures_of raw in
+  let alternates = List.find_map fv_alternates_of raw in
+  let caps = List.find_map fv_caps_of raw in
+  let numeric = List.find_map fv_numeric_of raw in
+  let east_asian = List.find_map fv_east_asian_of raw in
+  let position = List.find_map fv_position_of raw in
+  let emoji = List.find_map fv_emoji_of raw in
+  match (ligatures, alternates, caps, numeric, east_asian, position, emoji) with
+  | ( Some ligatures,
+      Some alternates,
+      Some caps,
+      Some numeric,
+      Some east_asian,
+      Some position,
+      Some emoji ) -> (
+      let others_empty =
+        alternates = [] && Option.is_none caps && numeric = []
+        && east_asian = [] && Option.is_none position && Option.is_none emoji
+      in
+      match ligatures with
+      | `None when others_empty -> Some (None : Properties.font_variant)
+      | `None -> Option.None
+      | `Slot ligatures ->
+          if ligatures = [] && others_empty then Some Normal
+          else
+            Some
+              (Shorthand
+                 {
+                   ligatures;
+                   alternates;
+                   caps;
+                   numeric;
+                   east_asian;
+                   position;
+                   emoji;
+                 }))
+  | _ -> Option.None
+
+let try_compose_font_variant_at idx i =
+  let n = Rule_index.length idx in
+  if i + 6 >= n then None
+  else
+    let positions = List.init 7 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      (* Each slot reader answers for one longhand, so a run missing one or
+         naming one twice leaves a slot empty and does not compose. *)
+      if not (same_importance raw) then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Font_variant)
+          (font_variant_of_run raw)
+
+let compose_font_variant_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 7)) (try_compose_font_variant_at idx i))
+
+let try_compose_transition_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
@@ -5076,7 +5737,16 @@ let try_compose_transition_at ~held idx i =
           0 parts
       in
       let missing = all_tr_bits land lnot written in
-      if tr_reset_hazard idx i ~held ~missing ~important then None
+      let unanswered =
+        missing
+        land lnot
+               (slots_written_after ~slots_of:tr_written_slots idx
+                  ~from:(i + len))
+      in
+      if
+        (unanswered <> 0 && not allow_partial)
+        || tr_reset_hazard idx i ~held ~missing ~important
+      then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_tr_shorthand parts
@@ -5087,8 +5757,10 @@ let try_compose_transition_at ~held idx i =
         in
         Some (shorthand, len)
 
-let compose_transition_via_index ~held idx =
-  compose_run_via_index idx ~try_compose:(try_compose_transition_at ~held)
+let compose_transition_via_index ~ctx ~held idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_transition_at ~allow_partial ~held)
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -5223,7 +5895,7 @@ let empty_an_shorthand : Properties.animation_shorthand =
    only safe when nothing else in the cascade holds that slot. *)
 let an_reset_hazard = reset_hazard ~slots_of:an_overwritten_slots
 
-let try_compose_animation_at ~held idx i =
+let try_compose_animation_at ~allow_partial ~held idx i =
   let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
@@ -5237,7 +5909,19 @@ let try_compose_animation_at ~held idx i =
           0 parts
       in
       let missing = all_an_bits land lnot written in
-      if an_reset_hazard idx i ~held ~missing ~important then None
+      (* A slot the shorthand resets that neither the run nor a later
+         declaration writes is one the surrounding CSS may hold, so contracting
+         needs the whole graph in view. *)
+      let unanswered =
+        missing
+        land lnot
+               (slots_written_after ~slots_of:an_written_slots idx
+                  ~from:(i + len))
+      in
+      if
+        (unanswered <> 0 && not allow_partial)
+        || an_reset_hazard idx i ~held ~missing ~important
+      then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_an_shorthand parts
@@ -5248,8 +5932,10 @@ let try_compose_animation_at ~held idx i =
         in
         Some (shorthand, len)
 
-let compose_animation_via_index ~held idx =
-  compose_run_via_index idx ~try_compose:(try_compose_animation_at ~held)
+let compose_animation_via_index ~ctx ~held idx =
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_animation_at ~allow_partial ~held)
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -5861,14 +6547,17 @@ let compose_index_group_a ~ctx kept =
 
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
-let compose_index_group_b ~held kept =
+let compose_index_group_b ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
-  compose_font_via_index idx;
+  compose_font_via_index ~ctx idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
   compose_text_decoration_via_index ~held idx;
   compose_offset_via_index idx;
   compose_columns_via_index idx;
+  compose_font_variant_via_index idx;
+  compose_grid_via_index idx;
+  compose_grid_template_via_index idx;
   compose_border_via_index
     ~bi_hazard:(fun i ~important ->
       bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
@@ -5881,8 +6570,8 @@ let compose_index_group_b ~held kept =
 let compose_index_group_c ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
-  compose_transition_via_index ~held idx;
-  compose_animation_via_index ~held idx;
+  compose_transition_via_index ~ctx ~held idx;
+  compose_animation_via_index ~ctx ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_border_whole_step ~held ~ctx kept =
@@ -5895,7 +6584,7 @@ let compose_border_whole_step ~held ~ctx kept =
 
 let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_index_group_b ~held
+  |> compose_index_group_b ~ctx ~held
   |> reorder_border_image_before_border
   |> compose_border_whole_step ~held ~ctx
   |> drop_bimg_shadowed_by_border
@@ -5905,6 +6594,16 @@ let compose_shorthands ?(held = held_none) ~ctx kept =
   |> compose_index_group_c ~ctx ~held
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
+
+let drained_border_image : Properties.border_image =
+  {
+    source = None;
+    slice = None;
+    width = None;
+    outset = None;
+    repeat = None;
+    mode = None;
+  }
 
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
@@ -5986,6 +6685,36 @@ let implied_longhand covering covered : Declaration.declaration option =
               Option.map border_width s.width
           | Declaration { property = Properties.Border_style; _ } ->
               Option.map border_style s.style
+          (* sec. 3.4 also resets [border-image], so the shorthand says what an
+             all-initial [border-image] says. *)
+          | Declaration { property = Properties.Border_image; _ } ->
+              Some (Declaration.v Border_image drained_border_image)
+          | _ -> None)
+      | _ -> None)
+  | Declaration { property = Properties.Animation; value; _ } -> (
+      (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
+         make the timeline and the two range ends reset-only sub-properties: the
+         shorthand has no slot for a range, so it always writes [normal] there.
+         Single animation only; a comma list assigns per-item values. *)
+      match (value : Properties.animation list) with
+      | [ Properties.Shorthand s ] -> (
+          match unwrap_theme_guard covered with
+          | Declaration { property = Properties.Animation_timeline; _ } ->
+              Some
+                (Declaration.v Animation_timeline
+                   (Option.value s.timeline ~default:Properties.Auto))
+          | Declaration { property = Properties.Animation_range_start; _ } ->
+              Some
+                (Declaration.v Animation_range_start
+                   (Normal : Properties.animation_range_item))
+          | Declaration { property = Properties.Animation_range_end; _ } ->
+              Some
+                (Declaration.v Animation_range_end
+                   (Normal : Properties.animation_range_item))
+          | Declaration { property = Properties.Animation_range; _ } ->
+              Some
+                (Declaration.v Animation_range
+                   (Range (Normal, None) : Properties.animation_range))
           | _ -> None)
       | _ -> None)
   | Declaration { property = Properties.Font; value; _ } -> (
@@ -6054,6 +6783,9 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
+  (* Composition writes shorthands the input did not carry, so the longhands one
+     of them now restates are only visible on a second pass. *)
+  let kept = drop_longhands_after_covering_shorthand kept in
   let result = duplicate_buggy_properties kept in
   (* Each pipeline step keeps untouched declarations, so [preserve_list]
      restores the input list when every declaration is physically unchanged -

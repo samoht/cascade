@@ -281,10 +281,16 @@ type flex_direction =
   | Revert_layer
   | Var of flex_direction var
 
+(** CSS Flexbox 2 sec. 5.2 [flex-wrap]:
+    [nowrap | [ wrap | wrap-reverse ] || balance]. [wrap] is the direction
+    [balance] carries on its own, so [Balance] is both [balance] and the
+    [wrap balance] that means the same thing. *)
 type flex_wrap =
   | Nowrap
   | Wrap
   | Wrap_reverse
+  | Balance
+  | Wrap_reverse_balance
   | Inherit
   | Initial
   | Unset
@@ -311,6 +317,11 @@ type flex_factor =
   | Calc of flex_factor calc
   | Var of flex_factor var
 
+(** CSS Box Alignment 3 sec. 4.2 [align-content]:
+    [normal | <baseline-position> | <content-distribution> |
+     <overflow-position>? <content-position>], where [<content-position>] is
+    [center | start | end | flex-start | flex-end]. The [left] and [right] of
+    {!type-justify_content} belong to the inline axis alone. *)
 type align_content =
   | Normal
   | Baseline
@@ -322,24 +333,18 @@ type align_content =
   | End
   | Flex_start
   | Flex_end
-  | Left
-  | Right
   (* Safe content position values *)
   | Safe_center
   | Safe_start
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
-  | Safe_left
-  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
   | Unsafe_flex_start
   | Unsafe_flex_end
-  | Unsafe_left
-  | Unsafe_right
   (* Content distribution *)
   | Space_between
   | Space_around
@@ -440,6 +445,8 @@ type justify_content =
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
+  | Safe_left
+  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
@@ -614,6 +621,10 @@ type flex_basis =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
+  | Dimension of { value : float; unit : string; repr : string }
+      (** A dimension whose authored spelling the typed constructors above do
+          not carry, e.g. [1e3px] or [10.0px]. {!type-length} holds one the same
+          way. *)
   | Calc of flex_basis calc
   | Var of flex_basis var
 
@@ -1249,6 +1260,32 @@ type font_variant_caps =
   | Revert_layer
   | Var of font_variant_caps var
 
+(* CSS Fonts 4 (ED) sec. 6.6: [font-variant-alternates] is [normal | [
+   stylistic(<font-feature-value-name>) || historical-forms ||
+   styleset(<font-feature-value-name>#) ||
+   character-variant(<font-feature-value-name>#) ||
+   swash(<font-feature-value-name>) || ornaments(<font-feature-value-name>) ||
+   annotation(<font-feature-value-name>) ]]. A feature value name is a
+   [<custom-ident>] naming a block of the [@font-feature-values] rule. *)
+type font_variant_alternates_item =
+  | Stylistic of string
+  | Historical_forms
+  | Styleset of string list
+  | Character_variant of string list
+  | Swash of string
+  | Ornaments of string
+  | Annotation of string
+
+type font_variant_alternates =
+  | Normal
+  | Alternates of font_variant_alternates_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_alternates var
+
 type font_variant_position =
   | Normal
   | Sub
@@ -1700,36 +1737,6 @@ type list_style_position =
   | Revert_layer
   | Var of list_style_position var
 
-type list_style_image =
-  | None
-  | Url of string
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of list_style_image var
-
-(* CSS Lists 3 sec. 3.6: [list-style] is the shorthand for [list-style-type],
-   [list-style-position], and [list-style-image]. All components are optional;
-   omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
-   single bare [none] keyword in the source sets both [type_] and [image] to
-   [None]. *)
-type list_style_shorthand = {
-  type_ : list_style_type option;
-  position : list_style_position option;
-  image : list_style_image option;
-}
-
-type list_style =
-  | Shorthand of list_style_shorthand
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of list_style var
-
 (* Table Types *)
 type table_layout =
   | Auto
@@ -2109,6 +2116,31 @@ type font_variant_numeric =
       numeric_fraction : font_variant_numeric_token option;
     }
   | Var of font_variant_numeric var
+
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] is [normal | none | [ <ligatures>
+   || <alternates> || <caps> || <numeric> || <east-asian> || <position> ||
+   <emoji> ]] over its seven longhands, each written at most once. A slot the
+   value leaves out is reset to that longhand's initial. *)
+type font_variant_shorthand = {
+  ligatures : font_variant_ligature list;
+  alternates : font_variant_alternates_item list;
+  caps : font_variant_caps option;
+  numeric : font_variant_numeric_token list;
+  east_asian : east_asian_feature list;
+  position : font_variant_position option;
+  emoji : font_variant_emoji option;
+}
+
+type font_variant =
+  | Normal
+  | None
+  | Shorthand of font_variant_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant var
 
 type font_feature_value = On | Off | Index of int
 type font_feature_setting = { tag : string; value : font_feature_value option }
@@ -2826,6 +2858,38 @@ and cross_fade_option = {
   percent : percentage option;
 }
 
+(* CSS Lists 3 sec. 3.5: [list-style-image] is a [<image>], which is the
+   [background_image] vocabulary without its comma list, or [none]. *)
+type list_style_image =
+  | None
+  | Image of background_image
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style_image var
+
+(* CSS Lists 3 sec. 3.6: [list-style] is the shorthand for [list-style-type],
+   [list-style-position], and [list-style-image]. All components are optional;
+   omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
+   single bare [none] keyword in the source sets both [type_] and [image] to
+   [None]. *)
+type list_style_shorthand = {
+  type_ : list_style_type option;
+  position : list_style_position option;
+  image : list_style_image option;
+}
+
+type list_style =
+  | Shorthand of list_style_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style var
+
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)
 type background_position = position_value list
@@ -2953,20 +3017,34 @@ type mask =
   | Revert_layer
   | Var of mask var
 
-type border_image_slice_item = Number of float | Pct of float
+(** CSS Backgrounds 3 sec. 5.2 to 5.4 write the numeric halves of the
+    border-image slots as [<number [0,inf]>], which a [calc()] satisfies, so
+    each carries a {!type-number} rather than a float. *)
+type border_image_slice_item = Number of number | Pct of float
 
-type border_image_slice = {
+type border_image_slice_offsets = {
   offsets : border_image_slice_item list;
   fill : bool;
 }
 
+(* CSS Backgrounds 3 sec. 5.2: [border-image-slice] is one to four offsets with
+   an optional [fill]; the longhand also takes the CSS-wide keywords. *)
+type border_image_slice =
+  | Slices of border_image_slice_offsets
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_slice var
+
 type border_image_width_item =
-  | Number of float
+  | Number of number
   | Pct of float
   | Length of length
   | Auto
 
-type border_image_outset_item = Number of float | Length of length
+type border_image_outset_item = Number of number | Length of length
 type border_image_repeat_keyword = Stretch | Repeat | Round | Space
 
 (* CSS Backgrounds 3 sec. 5.5: [border-image-repeat] is one or two keywords
@@ -3009,7 +3087,7 @@ type mask_border_mode = Alpha | Luminance
 
 type border_image = {
   source : background_image option;
-  slice : border_image_slice option;
+  slice : border_image_slice_offsets option;
   width : border_image_width_item list option;
   outset : border_image_outset_item list option;
   repeat : border_image_repeat_keyword list option;
@@ -3271,9 +3349,14 @@ type object_view_box =
   | Var of object_view_box var
 
 (* Content Types *)
+
+(** CSS Generated Content 3 sec. 2 [content]: the replacement and list forms
+    both take an [<image>], which is the {!type-background_image} vocabulary
+    without its comma list. *)
 type content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
+  | Image of background_image
   | None
   | Normal
   | Open_quote
@@ -3358,72 +3441,6 @@ type anchor_name =
   | Revert_layer
   | Var of anchor_name var
 
-type position_anchor =
-  | Auto
-  | Anchor of string
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_anchor var
-
-type position_try_fallback =
-  | Flip_block
-  | Flip_inline
-  | Flip_start
-  | Name of string
-
-(* CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
-   [<dashed-ident> || <try-tactic>], so it holds a group of components rather
-   than a single one. *)
-type position_try_fallbacks =
-  | None
-  | Fallbacks of position_try_fallback list list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try_fallbacks var
-
-type position_try_order =
-  | Normal
-  | Most_width
-  | Most_height
-  | Most_block_size
-  | Most_inline_size
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try_order var
-
-(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
-   || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
-   omitted from the serialisation. *)
-type position_try =
-  | Try of position_try_order * position_try_fallbacks
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try var
-
-type position_visibility_condition = Anchors_visible | No_overflow
-
-type position_visibility =
-  | Always
-  | Conditions of position_visibility_condition list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_visibility var
-
 type position_area_keyword =
   | Top
   | Bottom
@@ -3475,6 +3492,80 @@ type position_area_keyword =
   | Span_self_inline_start
   | Span_self_inline_end
   | Span_all
+
+(** CSS Anchor Positioning 1 sec. 4.1 [position-anchor]:
+    [normal | none | auto | <anchor-name>]. *)
+type position_anchor =
+  | Normal
+  | None
+  | Auto
+  | Anchor of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_anchor var
+
+type position_try_fallback =
+  | Flip_block
+  | Flip_inline
+  | Flip_start
+  | Name of string
+
+(** CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
+    [[<dashed-ident> || <try-tactic>] | <position-area>], so the two branches
+    never mix inside one entry. *)
+type position_try_fallback_entry =
+  | Tactics of position_try_fallback list
+  | Area of position_area_keyword * position_area_keyword option
+
+type position_try_fallbacks =
+  | None
+  | Fallbacks of position_try_fallback_entry list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_fallbacks var
+
+type position_try_order =
+  | Normal
+  | Most_width
+  | Most_height
+  | Most_block_size
+  | Most_inline_size
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_order var
+
+(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
+   || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
+   omitted from the serialisation. *)
+type position_try =
+  | Try of position_try_order * position_try_fallbacks
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try var
+
+type position_visibility_condition = Anchors_visible | No_overflow
+
+type position_visibility =
+  | Always
+  | Conditions of position_visibility_condition list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_visibility var
 
 type position_area =
   | None
@@ -3695,11 +3786,101 @@ type ray = {
   position : position_value option;
 }
 
+(** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
+    [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
+type clip_geometry_box =
+  | Margin_box
+  | Border_box
+  | Padding_box
+  | Content_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+
+(** CSS Shapes 1 sec. 3.1 [<shape-radius>] for [circle()] / [ellipse()]: a
+    [<length-percentage>] or one of the extent keywords. *)
+type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
+
+type clip_path_fill_rule = Nonzero | Evenodd
+
+(* clip-path property for clipping regions *)
+type clip_path =
+  | Clip_path_none
+  | Clip_path_url of string
+  | Clip_path_inset of {
+      top : length_percentage;
+      right : length_percentage option;
+      bottom : length_percentage option;
+      left : length_percentage option;
+      rounded : border_radius option;
+    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
+  | Clip_path_circle of {
+      radius : clip_path_extent option;
+      position : position_value option;
+    }  (** [circle(<shape-radius>? [at <position>]?)] *)
+  | Clip_path_ellipse of {
+      rx : clip_path_extent option;
+      ry : clip_path_extent option;
+      position : position_value option;
+    }  (** [ellipse(<shape-radius>{2}? [at <position>]?)] *)
+  | Clip_path_polygon of {
+      fill_rule : clip_path_fill_rule option;
+      points : (length * length) list;
+      spaced : bool;
+          (** [true] if the source emitted points without explicit commas. *)
+    }
+  | Clip_path_path of string  (** SVG path data *)
+  | Clip_path_shape of string
+  | Clip_path_box of clip_geometry_box
+      (** Bare reference box, e.g. [clip-path: margin-box]. *)
+  | Clip_path_with_box of {
+      shape : clip_path;
+      box : clip_geometry_box;
+      box_first : bool;
+          (** Source order: [true] if the box appeared before the shape
+              ([padding-box circle(...)]), [false] for
+              [circle(...) padding-box]. *)
+    }
+  | Clip_path_xywh of {
+      x : length_percentage;
+      y : length_percentage;
+      width : length_percentage;
+      height : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [xywh(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
+  | Clip_path_rect of {
+      top : length_percentage;
+      right : length_percentage;
+      bottom : length_percentage;
+      left : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of clip_path var
+  | Invalid of invalid_value
+      (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
+          [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
+          The pretty-printer round-trips the captured tokens; the
+          [Optimize.drop_invalid] pass removes the declaration on every
+          serialisation. *)
+
 type offset_path =
   | None
   | Url of string
   | Path of string
   | Ray of ray
+  | Shape of clip_path
+      (** CSS Motion Path 1 sec. 2.1 [<basic-shape> || <coord-box>], which
+          {!type-clip_path} already models for [clip-path]: the same shape
+          functions and the same reference boxes. *)
   | Initial
   | Inherit
   | Unset
@@ -3769,9 +3950,11 @@ type offset =
   | Revert_layer
   | Var of offset var
 
-(* Container shorthand: name / type *)
+(** CSS Conditional 5 sec. 3.3 [container]:
+    [<'container-name'> [ / <'container-type'> ]?]. The name half is required,
+    and only the [None] and [Names] arms of {!type-container_name} reach it. *)
 type container_shorthand =
-  | Shorthand of { name : string option; ctype : container_type option }
+  | Shorthand of { name : container_name; ctype : container_type option }
   | Initial
   | Inherit
   | Unset
@@ -3850,13 +4033,21 @@ type page_break_value =
   | Avoid
   | Left
   | Right
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_value var
 
 type page_break_inside_value =
   | Auto
   | Avoid
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_inside_value var
 
 (* CSS Paged Media 3 sec. 7.1 [size] descriptor: optional page size keyword
@@ -3887,7 +4078,11 @@ type page_size =
   | Named of page_size_name
   | Named_oriented of page_size_name * page_size_orientation
   | Oriented of page_size_orientation
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_size var
 
 (* Multi-column Layout Types *)
@@ -4301,12 +4496,17 @@ type text_combine_upright =
   | Var of text_combine_upright var
 
 (* Webkit & Mozilla Specific Types *)
+
+(** [-webkit-appearance] is the alias Chrome keeps for [appearance], so it takes
+    the [base-select] CSS Basic User Interface 4 sec. 5.1 gives that property
+    along with the compatibility keywords of its own. *)
 type webkit_appearance =
   | None
   | Auto
   | Button
   | Textfield
   | Menulist
+  | Base_select
   | Listbox
   | Checkbox
   | Radio
@@ -4557,92 +4757,6 @@ type clip =
   | Revert
   | Revert_layer
   | Var of clip var
-
-(** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
-    [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
-type clip_geometry_box =
-  | Margin_box
-  | Border_box
-  | Padding_box
-  | Content_box
-  | Fill_box
-  | Stroke_box
-  | View_box
-
-(** CSS Shapes 1 sec. 3.1 [<shape-radius>] for [circle()] / [ellipse()]: a
-    [<length-percentage>] or one of the extent keywords. *)
-type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
-
-type clip_path_fill_rule = Nonzero | Evenodd
-
-(* clip-path property for clipping regions *)
-type clip_path =
-  | Clip_path_none
-  | Clip_path_url of string
-  | Clip_path_inset of {
-      top : length_percentage;
-      right : length_percentage option;
-      bottom : length_percentage option;
-      left : length_percentage option;
-      rounded : border_radius option;
-    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
-  | Clip_path_circle of {
-      radius : clip_path_extent option;
-      position : position_value option;
-    }  (** [circle(<shape-radius>? [at <position>]?)] *)
-  | Clip_path_ellipse of {
-      rx : clip_path_extent option;
-      ry : clip_path_extent option;
-      position : position_value option;
-    }  (** [ellipse(<shape-radius>{2}? [at <position>]?)] *)
-  | Clip_path_polygon of {
-      fill_rule : clip_path_fill_rule option;
-      points : (length * length) list;
-      spaced : bool;
-          (** [true] if the source emitted points without explicit commas. *)
-    }
-  | Clip_path_path of string  (** SVG path data *)
-  | Clip_path_shape of string
-  | Clip_path_box of clip_geometry_box
-      (** Bare reference box, e.g. [clip-path: margin-box]. *)
-  | Clip_path_with_box of {
-      shape : clip_path;
-      box : clip_geometry_box;
-      box_first : bool;
-          (** Source order: [true] if the box appeared before the shape
-              ([padding-box circle(...)]), [false] for
-              [circle(...) padding-box]. *)
-    }
-  | Clip_path_xywh of {
-      x : length_percentage;
-      y : length_percentage;
-      width : length_percentage;
-      height : length_percentage;
-      rounded : border_radius option;
-    }
-      (** [xywh(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
-          2. *)
-  | Clip_path_rect of {
-      top : length_percentage;
-      right : length_percentage;
-      bottom : length_percentage;
-      left : length_percentage;
-      rounded : border_radius option;
-    }
-      (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
-          2. *)
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of clip_path var
-  | Invalid of invalid_value
-      (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
-          [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
-          The pretty-printer round-trips the captured tokens; the
-          [Optimize.drop_invalid] pass removes the declaration on every
-          serialisation. *)
 
 type _ kind =
   | Length : length kind
@@ -5099,9 +5213,11 @@ type 'a property =
   | Column_wrap : column_wrap property
   | Column_count : column_count property
   | Column_rule : border property
-  | Column_rule_width : border_width property
-  | Column_rule_style : border_style property
-  | Column_rule_color : color property
+      (** CSS Gaps 1 sec. 4 gives the three longhands below a comma-separated
+          list, one entry per gap decoration line. *)
+  | Column_rule_width : border_width list property
+  | Column_rule_style : border_style list property
+  | Column_rule_color : color list property
   | Column_span : column_span property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
@@ -5160,6 +5276,8 @@ type 'a property =
   | Caps : font_variant_caps property
   | Numeric : font_variant_numeric property
   | Font_variant_position : font_variant_position property
+  | Font_variant_alternates : font_variant_alternates property
+  | Font_variant : font_variant property
   | East_asian : font_variant_east_asian property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property

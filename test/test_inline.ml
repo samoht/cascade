@@ -362,10 +362,14 @@ let test_inline_import_supports_query_modes () =
     (input |> Css.inline_imports ~query:evergreen loader |> minified)
 
 let test_inline_vars_fallback_edges () =
+  (* [fallback] is no colour, so the second declaration is invalid at
+     computed-value time and neither its refused text nor its absence says so:
+     the reference stays for the browser to answer. *)
   check_inline_case "nested missing vars use deepest fallback"
     ".a{color:var(--undef,var(--also-undef,blue))}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
-    ~optimized:".a{color:#00f}.b{color:fallback}"
-    ".a{color:blue}.b{color:fallback}";
+    ~optimized:
+      ".a{color:#00f}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
+    ".a{color:blue}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}";
   check_inline_case "missing var without fallback stays unresolved"
     ".a{color:var(--undef)}" ".a{color:var(--undef)}";
   check_inline_case "calc fallback resolves and canonicalizes"
@@ -375,25 +379,70 @@ let test_inline_vars_fallback_edges () =
   check_inline_case "resolved var ignores fallback"
     ":root{--gap:10px}.a{padding:var(--gap,20px)}" ".a{padding:10px}"
 
+(* CSS Variables 1 sec. 3 puts the fallback in only where the custom property
+   holds the guaranteed-invalid initial value. A definition the pass cannot
+   prove reaches the consumer is not an absent one: [#o] may well hold [#i], so
+   the reference stays live rather than taking the fallback. *)
+let test_inline_vars_out_of_scope_definition_stays_live () =
+  check_inline_case "a definition on another selector keeps the reference live"
+    "#o{--x:red}#i{color:var(--x,lime)}" "#o{--x:red}#i{color:var(--x,lime)}";
+  check_inline_case "an empty definition on another selector keeps it live"
+    "#o{--x:}#i{color:var(--x,lime)}" "#o{--x:}#i{color:var(--x,lime)}";
+  check_inline_case "a definition that covers the consumer still folds"
+    ":root{--x:red}#i{color:var(--x,lime)}" "#i{color:red}";
+  check_inline_case "a name the sheet never defines takes the fallback"
+    "#i{color:var(--nope,lime)}" "#i{color:lime}";
+  (* A reference the pass leaves live is answered by the browser's own cascade,
+     so every definition of the name it might reach has to reach the output with
+     it. *)
+  check_inline_case "a live reference keeps the definition it may reach"
+    "@media (min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}"
+    "@media(min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}";
+  (* CSS Variables 1 sec. 3 makes a declaration whose substitution the property
+     refuses invalid at computed-value time, which is the property's inherited
+     or initial value and not the declaration written before it. Writing the
+     refused text back hands the slot to that earlier declaration instead, so
+     the reference stays and the browser answers it. *)
+  check_inline_case "a substitution the property refuses keeps the reference"
+    "#i{width:37px;width:var(--nope,notalength)}"
+    "#i{width:37px;width:var(--nope,notalength)}";
+  check_inline_case "an empty binding substituted into a property keeps it"
+    ":root{--x:}#i{content:\"zz\";content:var(--x)}"
+    ":root{--x:}#i{content:\"zz\";content:var(--x)}";
+  (* A name written inside another reference's fallback is referenced like any
+     other, so its definition is live. *)
+  check_inline_case "a name inside a fallback keeps its definition"
+    "#i{--x:;width:var(--nope,var(--x,8px))}"
+    "#i{--x:;width:var(--nope,var(--x,8px))}";
+  (* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+     property its usual meaning, so the binding is what the cascade makes of the
+     keyword and not the keyword's own tokens: [--x: unset] with nothing above
+     to inherit is the guaranteed-invalid initial value, and the reference takes
+     its fallback. *)
+  check_inline_case "a css-wide keyword binding is not folded"
+    ":root{--x:unset}#i{width:var(--x,9px)}"
+    ":root{--x:unset}#i{width:var(--x,9px)}";
+  check_inline_case "an inherit binding is not folded either"
+    ":root{--x:inherit}#i{all:var(--x)}" ":root{--x:inherit}#i{all:var(--x)}"
+
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
     ".a{font-family:var(--font,\"Helvetica Neue\",sans-serif)}"
     ".a{font-family:Helvetica Neue,sans-serif}";
-  check_inline_case
-    "invalid color multi-comma fallback drops under minification"
-    ".a{color:var(--undef,red,blue)}" "";
-  check_inline_case "empty fallback makes invalid color declaration drop"
-    ".a{color:var(--undef,)}" ""
+  check_inline_case "invalid color multi-comma fallback keeps the reference"
+    ".a{color:var(--undef,red,blue)}" ".a{color:var(--undef,red,blue)}";
+  check_inline_case "an empty fallback keeps the reference too"
+    ".a{color:var(--undef,)}" ".a{color:var(--undef,)}"
 
 let test_inline_cycle_fallbacks () =
   check_inline_case "self-cycle uses consumer fallback and strips dead var"
     ":root{--x:var(--x)}.a{color:var(--x,red)}" ".a{color:red}";
   check_inline_case "two-cycle uses consumer fallback"
     ":root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}"
-    ":root{--a:var(--b);--b:var(--a)}.x{color:fallback}";
+    ":root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}";
   check_inline_case "three-cycle uses consumer fallback"
     ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}"
-    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}";
+    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}";
   (* A cyclic custom property is invalid at computed-value time: its own var()
      fallback does not rescue it, so the consumer's fallback wins. *)
   check_inline_case
@@ -761,21 +810,26 @@ let test_inline_layer_flattening () =
     ".x{color:blue}.y{padding:1px}"
 
 (* An at-rule path is a containment test, not an equality: a custom property is
-   visible to a consumer wrapped in every block it sits in and then some, and to
-   nobody outside its own. A [@layer] is transparent to that test, so a path
-   crossing one still has to line the conditional blocks up. Both directions pin
-   the orientation the paths are compared in. *)
+   folded into a consumer wrapped in every block it sits in and then some, and
+   into nobody outside its own. A [@layer] is transparent to that test, so a
+   path crossing one still has to line the conditional blocks up. Both
+   directions pin the orientation the paths are compared in.
+
+   The path decides what may be folded, never what a reference left standing can
+   reach: the browser answers that one from its own cascade under whatever
+   condition holds, so the definition goes to the output with the reference. *)
 let test_inline_at_path_containment () =
   check_inline_case "an outer definition reaches a deeper consumer"
     "@media print{@media (min-width:10px){:root{--x:red}@layer l{@media \
      (min-width:20px){.a{color:var(--x)}}}}}"
     "@media print{@media(min-width:10px){@layer \
      l{@media(min-width:20px){.a{color:red}}}}}";
-  check_inline_case "an inner definition does not reach an outer consumer"
-    "@media print{:root{--x:red}}.a{color:var(--x)}" ".a{color:var(--x)}";
+  check_inline_case "an inner definition is not folded into an outer consumer"
+    "@media print{:root{--x:red}}.a{color:var(--x)}"
+    "@media print{:root{--x:red}}.a{color:var(--x)}";
   check_inline_case "a sibling block at the same depth is not an enclosing one"
     "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
-    "@media screen{.a{color:var(--x)}}"
+    "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
 
 (* Liveness is decided by a fixpoint: a variable is live when a rule that can
    see it reads it, and a variable read by a live one is live too. The chain
@@ -892,10 +946,12 @@ let test_inline_keeps_a_page_break_property_from_css () =
       ( ":root{--pb:avoid}.a{page-break-inside:var(--pb)}",
         ".a{break-inside:avoid}" );
       (":root{--pb:left}.a{page-break-after:var(--pb)}", ".a{break-after:left}");
-      (* A substitution the legacy grammar rejects leaves the declaration in
-         place rather than retyping it as a property that would accept it. *)
+      (* A substitution the legacy grammar rejects is invalid at computed-value
+         time, so the reference stays rather than being retyped as a property
+         that would accept it or written back as text the browser drops on
+         reading. *)
       ( ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}",
-        ".a{page-break-inside:avoid-page}" );
+        ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}" );
     ]
 
 let suite =
@@ -907,6 +963,8 @@ let suite =
         `Quick test_inline_font_face_var_stretch_range;
       Alcotest.test_case "inline vars propagate liveness across scopes" `Quick
         test_inline_vars_liveness_propagates_through_scopes;
+      Alcotest.test_case "inline vars keep an out-of-scope definition live"
+        `Quick test_inline_vars_out_of_scope_definition_stays_live;
       Alcotest.test_case "inline vars contain a definition to its at-rule path"
         `Quick test_inline_at_path_containment;
       Alcotest.test_case "inline vars cost stays linear in at-rule depth" `Quick

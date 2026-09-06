@@ -861,7 +861,10 @@ let vars_of_border_image_width (value : Properties.border_image_width) :
   | Widths values ->
       List.concat_map
         (fun (item : Properties.border_image_width_item) ->
-          match item with Length length -> vars_of_length length | _ -> [])
+          match item with
+          | Length length -> vars_of_length length
+          | Number n -> vars_of_number_value n
+          | _ -> [])
         values
   | _ -> []
 
@@ -872,7 +875,9 @@ let vars_of_border_image_outset (value : Properties.border_image_outset) :
   | Outsets values ->
       List.concat_map
         (fun (item : Properties.border_image_outset_item) ->
-          match item with Length length -> vars_of_length length | _ -> [])
+          match item with
+          | Length length -> vars_of_length length
+          | Number n -> vars_of_number_value n)
         values
   | _ -> []
 
@@ -1214,6 +1219,46 @@ let vars_of_contain_intrinsic_longhand
 let vars_of_margin_trim (value : Properties.margin_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_border_radius (value : Properties.border_radius) =
+  let from_list = List.concat_map vars_of_length_percentage in
+  match value with
+  | Var v -> [ V v ]
+  | Radius { horizontal; vertical } ->
+      from_list horizontal
+      @ Option.value ~default:[] (Option.map from_list vertical)
+  | Inherit | Initial | Unset | Revert | Revert_layer -> []
+
+let vars_of_clip_path_extent (value : Properties.clip_path_extent) =
+  match value with Extent_length l -> vars_of_length l | _ -> []
+
+let rec vars_of_clip_path (value : Properties.clip_path) =
+  match value with
+  | Var v -> [ V v ]
+  | Clip_path_inset { top; right; bottom; left; rounded } ->
+      vars_of_length_percentage top
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage right)
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage bottom)
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage left)
+      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
+  | Clip_path_circle { radius; _ } ->
+      Option.value ~default:[] (Option.map vars_of_clip_path_extent radius)
+  | Clip_path_ellipse { rx; ry; _ } ->
+      Option.value ~default:[] (Option.map vars_of_clip_path_extent rx)
+      @ Option.value ~default:[] (Option.map vars_of_clip_path_extent ry)
+  | Clip_path_polygon { points; _ } ->
+      List.concat_map (fun (a, b) -> vars_of_length a @ vars_of_length b) points
+  | Clip_path_box _ -> []
+  | Clip_path_with_box { shape; _ } -> vars_of_clip_path shape
+  | Clip_path_xywh { x; y; width; height; rounded }
+  | Clip_path_rect
+      { top = x; right = y; bottom = width; left = height; rounded } ->
+      vars_of_length_percentage x
+      @ vars_of_length_percentage y
+      @ vars_of_length_percentage width
+      @ vars_of_length_percentage height
+      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
+  | _ -> []
+
 let vars_of_ray (value : Properties.ray) =
   vars_of_angle value.angle
   @ Option.fold ~none:[] ~some:vars_of_position_value value.position
@@ -1222,6 +1267,7 @@ let vars_of_offset_path (value : Properties.offset_path) =
   match value with
   | Var v -> [ V v ]
   | Ray ray -> vars_of_ray ray
+  | Shape shape -> vars_of_clip_path shape
   | None | Url _ | Path _ | Initial | Inherit | Unset | Revert | Revert_layer ->
       []
 
@@ -1405,6 +1451,13 @@ let vars_of_initial_letter (value : Properties.initial_letter) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_white_space (value : Properties.white_space) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant (value : Properties.font_variant) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_alternates (value : Properties.font_variant_alternates)
+    =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_white_space_collapse (value : Properties.white_space_collapse) =
@@ -1700,48 +1753,8 @@ let vars_of_clip (value : Properties.clip) =
       vars_of_length a @ vars_of_length b @ vars_of_length c @ vars_of_length d
   | _ -> []
 
-let vars_of_border_radius (value : Properties.border_radius) =
-  let from_list = List.concat_map vars_of_length_percentage in
-  match value with
-  | Var v -> [ V v ]
-  | Radius { horizontal; vertical } ->
-      from_list horizontal
-      @ Option.value ~default:[] (Option.map from_list vertical)
-  | Inherit | Initial | Unset | Revert | Revert_layer -> []
-
 let vars_of_perspective_origin (value : Properties.perspective_origin) =
   vars_of_position_value value
-
-let vars_of_clip_path_extent (value : Properties.clip_path_extent) =
-  match value with Extent_length l -> vars_of_length l | _ -> []
-
-let rec vars_of_clip_path (value : Properties.clip_path) =
-  match value with
-  | Var v -> [ V v ]
-  | Clip_path_inset { top; right; bottom; left; rounded } ->
-      vars_of_length_percentage top
-      @ Option.value ~default:[] (Option.map vars_of_length_percentage right)
-      @ Option.value ~default:[] (Option.map vars_of_length_percentage bottom)
-      @ Option.value ~default:[] (Option.map vars_of_length_percentage left)
-      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
-  | Clip_path_circle { radius; _ } ->
-      Option.value ~default:[] (Option.map vars_of_clip_path_extent radius)
-  | Clip_path_ellipse { rx; ry; _ } ->
-      Option.value ~default:[] (Option.map vars_of_clip_path_extent rx)
-      @ Option.value ~default:[] (Option.map vars_of_clip_path_extent ry)
-  | Clip_path_polygon { points; _ } ->
-      List.concat_map (fun (a, b) -> vars_of_length a @ vars_of_length b) points
-  | Clip_path_box _ -> []
-  | Clip_path_with_box { shape; _ } -> vars_of_clip_path shape
-  | Clip_path_xywh { x; y; width; height; rounded }
-  | Clip_path_rect
-      { top = x; right = y; bottom = width; left = height; rounded } ->
-      vars_of_length_percentage x
-      @ vars_of_length_percentage y
-      @ vars_of_length_percentage width
-      @ vars_of_length_percentage height
-      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
-  | _ -> []
 
 let vars_of_object_view_box (value : Properties.object_view_box) =
   match value with
@@ -2259,9 +2272,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Column_wrap, value -> vars_of_column_wrap value
   | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
-  | Column_rule_color, value -> vars_of_color value
-  | Column_rule_width, value -> vars_of_border_width value
-  | Column_rule_style, value -> vars_of_border_style value
+  | Column_rule_color, value -> List.concat_map vars_of_color value
+  | Column_rule_width, value -> List.concat_map vars_of_border_width value
+  | Column_rule_style, value -> List.concat_map vars_of_border_style value
   | Column_span, value -> vars_of_column_span value
   (* Contain *)
   | Contain, value -> vars_of_contain value
@@ -2554,6 +2567,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
   | White_space_collapse, value -> vars_of_white_space_collapse value
+  | Font_variant_alternates, value -> vars_of_font_variant_alternates value
+  | Font_variant, value -> vars_of_font_variant value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
   | Z_index, value -> vars_of_z_index value

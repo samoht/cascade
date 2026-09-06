@@ -196,6 +196,11 @@ val calc_length_unit : length -> (string * float) option
 (** [calc_length_unit l] is [Some (unit, value)] when [l] is a dimension, with
     the unit lower-cased. A keyword, a [var()] or a math function is [None]. *)
 
+val is_length_unit : string -> bool
+(** [is_length_unit unit] is whether [unit] names a CSS length, whatever its
+    case: the absolute units, the font- and viewport-relative ones, and the
+    container-relative ones. *)
+
 val absolute_unit_px_ratio : string -> float option
 (** [absolute_unit_px_ratio unit] is [Some ratio] when [unit] is one of the
     absolute units CSS Values 4 sec. 6.2 puts on the [px] scale, with [ratio]
@@ -258,14 +263,21 @@ val default_calc_ctx : calc_ctx
     context-dependent calc rewrite is a no-op. *)
 
 val normalize_length_percentage :
-  ?strip:bool -> ?ctx:calc_ctx -> length_percentage -> length_percentage
+  ?strip:bool ->
+  ?non_negative:bool ->
+  ?ctx:calc_ctx ->
+  length_percentage ->
+  length_percentage
 (** [normalize_length_percentage lp] folds the numeric parts of a [calc()],
     keeping any [var()]: [calc(var(--x) + 1px + 2px)] becomes
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. [strip]
     (default [true]) also drops a wrapped zero length's unit; pass [strip:false]
-    for CSS function operands. *)
+    for CSS function operands. [non_negative] keeps the call when the fold lands
+    below zero, which a property whose range starts there reads back and a
+    literal of the same value does not (CSS Values 4 sec. 10.3). *)
 
-val normalize_length : ?strip:bool -> ?ctx:calc_ctx -> length -> length
+val normalize_length :
+  ?strip:bool -> ?non_negative:bool -> ?ctx:calc_ctx -> length -> length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
     / mod / rem / hypot / abs fold on {!Calc.px}; calc folds through the
@@ -455,14 +467,20 @@ val normalize_signed_zero : float -> string -> float * string
 val read_length :
   ?allow_negative:bool ->
   ?with_keywords:bool ->
+  ?sizing:bool ->
   ?length_only:bool ->
   Cursor.t ->
   length
 (** [read_length t] parses a CSS length. [length_only] excludes percentages,
     including those nested in math, and sizing-only functions. It defaults to
-    [false] for readers whose grammar permits length-percentage values. *)
+    [false] for readers whose grammar permits length-percentage values. [sizing]
+    adds the intrinsic sizes CSS Sizing 3 sec. 5 defines - [min-content],
+    [fit-content] and the rest - which belong to the sizing properties and not
+    to a [<length>] as such; it defaults to [false], so a reader whose property
+    takes them asks. *)
 
-val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
+val read_non_negative_length :
+  ?with_keywords:bool -> ?length_only:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties, whose CSS Box 4 sec. 4.1 grammar
     excludes negative values. *)
@@ -597,7 +615,11 @@ val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
 val read_length_percentage :
-  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length_percentage
+  ?allow_negative:bool ->
+  ?with_keywords:bool ->
+  ?sizing:bool ->
+  Cursor.t ->
+  length_percentage
 (** [read_length_percentage t] parses a CSS length or percentage. *)
 
 val read_number_percentage : Cursor.t -> number_percentage

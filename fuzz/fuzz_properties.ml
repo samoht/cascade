@@ -1036,7 +1036,7 @@ let negative_branch_vectors =
     "animation-composition:add replace";
     "animation-range-start:entry exit";
     "animation-range-end:10% 20%";
-    "transition:allow-discrete allow-discrete";
+    "transition:allow-discrete allow-discrete allow-discrete";
     "overscroll-behavior-inline:contain none";
     "overscroll-behavior-block:hidden";
     "scroll-snap-align:start center end";

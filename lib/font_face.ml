@@ -230,11 +230,15 @@ let read_function_arg name t =
     Cursor.err_invalid inner ("empty " ^ name ^ "()");
   value
 
+(* CSS Fonts 4 (ED) sec. 4.3.1 writes [<font-src>] as [<url> [format(...)]?
+   [tech(...)]? | local(...)], and puts no emptiness rule on the [<url>]. sec.
+   4.3 leaves an unusable reference to loading, where the user agent "loads the
+   next font in the list", so an empty url is a font that never arrives rather
+   than a descriptor that does not parse. Chrome 151 keeps it. *)
 let read_url t =
   match Cursor.url_opt t with
-  | Some "" -> Cursor.err_invalid t "url() argument"
   | Some url -> `Bare url
-  | None -> (
+  | None ->
       Cursor.call "url" t @@ fun inner ->
       Cursor.ws inner;
       let value =
@@ -243,9 +247,7 @@ let read_url t =
         | None -> `Bare (Cursor.consume_remaining_as_string ~trim:true inner)
       in
       Cursor.expect_eof inner;
-      match value with
-      | `Bare "" | `Quoted ("", _) -> Cursor.err_invalid inner "url() argument"
-      | _ -> value)
+      value
 
 let read_src_modifier t =
   Cursor.ws t;
@@ -297,22 +299,36 @@ let rec read_src_entry t =
     comma between entries ([src: local("") url(test.woff)]). Match cleancss /
     lightningcss / esbuild and accept the whitespace-only form too, treating it
     as if a comma were present. *)
+(* sec. 4.3.1: an entry whose component value does not parse, or whose format or
+   tech the agent does not support, is left out of the list rather than failing
+   the descriptor, and only an empty list at the end is the parse error. The
+   component value is the whole comma-separated item, so an item is kept or
+   dropped as one: [url(f.woff2) garbage] is a single item that does not parse
+   and takes the descriptor with it, while a trailing comma and an unreadable
+   neighbour cost themselves alone. Chrome 151 answers the same way on each. *)
 and read_src t =
-  let sep t =
-    Cursor.ws t;
-    if Cursor.comma_opt t then (
-      Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then
-        Cursor.err_invalid t "trailing comma in font src")
-    else
-      (* No comma - whitespace alone separates entries; succeed silently so
-         [Cursor.list]'s peeker calls back into [read_src_entry]. *)
-      ()
+  let at_end () = Cursor.is_done t || Cursor.peek_semicolon t in
+  let rec skip_item () =
+    if at_end () || Cursor.comma_opt t then ()
+    else (
+      Cursor.skip t;
+      skip_item ())
   in
-  let entries = Cursor.list ~at_least:1 ~sep read_src_entry t in
-  Cursor.ws t;
-  if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
-    Cursor.err t "unexpected tokens after font src";
+  (* [kept] is the items that parsed; [item] the entries of the one being read,
+     which the whitespace form above can make several. *)
+  let rec loop kept item =
+    Cursor.ws t;
+    if at_end () then item @ kept
+    else if Cursor.comma_opt t then loop (item @ kept) []
+    else
+      match read_src_entry t with
+      | entry -> loop kept (entry :: item)
+      | exception Cursor.Parse_error _ ->
+          skip_item ();
+          loop kept []
+  in
+  let entries = List.rev (loop [] []) in
+  if entries = [] then Cursor.err_invalid t "no readable font src";
   entries
 
 let src_of_string s =

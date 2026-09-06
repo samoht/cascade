@@ -67,14 +67,22 @@ let rec pp_page_break_value : page_break_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_page_break_inside_value : page_break_inside_value Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_page_break_inside_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* CSS Fragmentation 3 sec. 3.4 defines the page-break-* aliases by a value
    mapping table: [auto | left | right | avoid] map to themselves and [always]
@@ -89,7 +97,13 @@ let break_of_page_break (value : page_break_value) : break_value option =
   | Avoid -> Some Avoid
   | Left -> Some Left
   | Right -> Some Right
+  (* CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, and the
+     alias and its target take each one alike. *)
+  | Initial -> Some Initial
   | Inherit -> Some Inherit
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
   | Var _ -> None
 
 let break_inside_of_page_break (value : page_break_inside_value) :
@@ -97,7 +111,11 @@ let break_inside_of_page_break (value : page_break_inside_value) :
   match value with
   | Auto -> Some Auto
   | Avoid -> Some Avoid
+  | Initial -> Some Initial
   | Inherit -> Some Inherit
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
   | Var _ -> None
 
 (* CSS Multicol 2 sec. 4.5 leaves an omitted component at its longhand's
@@ -217,7 +235,11 @@ let rec pp_page_size : page_size Pp.t =
       Pp.space ctx ();
       pp_page_size_orientation ctx orientation
   | Oriented orientation -> pp_page_size_orientation ctx orientation
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_page_size ctx v
 
 let rec read_break_value t : break_value =
@@ -274,7 +296,11 @@ let rec read_page_break_value t : page_break_value =
       ("avoid", Avoid);
       ("left", Left);
       ("right", Right);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_page_break_value t))
     t
@@ -284,10 +310,34 @@ let rec read_page_break_inside_value t : page_break_inside_value =
     [
       ("auto", (Auto : page_break_inside_value));
       ("avoid", Avoid);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_page_break_inside_value t))
     t
+
+(* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length [0,inf]>]
+   and CSS Paged Media 3 sec. 6.4 sizes a page in [<length [0,inf]>{1,2}], so
+   neither takes a percentage or a sizing keyword. *)
+let is_plain_length (l : length) =
+  match l with
+  (* A math function, a substitution and [zero] are lengths this reader cannot
+     measure and the grammar holds. *)
+  | Zero | Clamp _ | Min _ | Max _ | Minmax _ | Round _ | Mod _ | Rem_fn _
+  | Hypot _ | Abs _ | Sign _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _
+  | Env _ | Var _ | Calc _ ->
+      true
+  | Pct _ -> false
+  (* The dimension table decides the rest, so a sizing keyword answers
+     [None]. *)
+  | other -> Option.is_some (Values.calc_length_unit other)
+
+let read_plain_length t =
+  let l = read_length ~allow_negative:false ~with_keywords:false t in
+  if is_plain_length l then l else Cursor.err_expected t "length"
 
 let read_columns_count t =
   let n = read_integer "column-count" t in
@@ -301,7 +351,9 @@ let read_columns_component t =
         Cursor.expect_string "auto" t;
         `Auto);
       (fun t -> `Count (read_columns_count t));
-      (fun t -> `Width (read_length t));
+      (* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length
+         [0,inf]>], so a percentage and a negative are no column width. *)
+      (fun t -> `Width (read_plain_length t));
     ]
     t
 
@@ -357,7 +409,11 @@ let rec read_column_width t : column_width =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_column_width t))
-    ~default:(fun t -> (Width (read_length t) : column_width))
+      (* CSS Multicol 2 sec. 4.1: [column-width] is [auto | <length [0,inf]>]
+         and takes no percentage, which Chrome 146 refuses. *)
+    ~default:(fun t ->
+      (Width (read_length ~allow_negative:false ~length_only:true t)
+        : column_width))
     t
 
 (* The height takes a length and no percentage, which Chrome 146 refuses. *)
@@ -465,17 +521,24 @@ let rec read_page_size t : page_size =
     Oriented orientation
   in
   let read_lengths t =
-    let first = read_length t in
+    let first = read_plain_length t in
     Cursor.ws t;
     if Cursor.is_done t then Single first
     else
-      let second = read_length t in
+      let second = read_plain_length t in
       Cursor.ws t;
       Cursor.expect_eof t;
       Pair (first, second)
   in
   Cursor.enum_or_calls "page-size"
-    [ ("auto", Auto); ("inherit", Inherit) ]
+    [
+      ("auto", Auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var_ps) ]
     ~default:(Cursor.one_of [ read_named; read_oriented; read_lengths ])
     t

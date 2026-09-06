@@ -69,6 +69,10 @@
     page instead of duplicating each full signature here. *)
 
 module Selector = Selector
+(** Selector syntax, matching and specificity.
+
+    @see <https://www.w3.org/TR/selectors-4/> Selectors Level 4 *)
+
 module Selector_summary = Selector_summary
 module Aria = Aria
 module Color_space = Color_space
@@ -103,7 +107,8 @@ end
 
     Core building blocks for CSS rules and stylesheet construction.
 
-    See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3}. *)
+    See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3} and
+    {:https://www.w3.org/TR/css-nesting-1/ CSS Nesting Module Level 1}. *)
 
 type declaration = Declaration.declaration
 (** The type for CSS declarations (property-value pairs). *)
@@ -458,13 +463,17 @@ val as_import : statement -> Stylesheet.import_rule option
     an at sign (@) followed by an identifier and include everything up to the
     next semicolon or CSS block.
 
-    See {:https://www.w3.org/TR/css-conditional-3/ CSS Conditional Rules Module
-    Level 3} and {:https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule MDN
+    See {:https://www.w3.org/TR/css-conditional-5/ CSS Conditional Rules Module
+    Level 5} and {:https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule MDN
     At-rules}. *)
 
 (** {2:stylesheet_construction Stylesheet Construction}
 
-    Tools for building complete CSS stylesheets from rules and declarations. *)
+    Tools for building complete CSS stylesheets from rules and declarations.
+
+    See {:https://www.w3.org/TR/css-cascade-5/ CSS Cascading and Inheritance
+    Level 5}, which gives the origins, the [@layer] ordering and the CSS-wide
+    keywords the builders below write. *)
 
 type t = Stylesheet.t
 (** The type for CSS stylesheets. *)
@@ -623,7 +632,12 @@ val starting_style_nested : declaration list -> statement
 
     Core value types and declaration building blocks. *)
 
-(** {2:variables Custom Properties (Variables)} *)
+(** {2:variables Custom Properties (Variables)}
+
+    See {:https://www.w3.org/TR/css-variables-1/ CSS Custom Properties for
+    Cascading Variables Module Level 1} for [var()] and
+    {:https://www.w3.org/TR/css-properties-values-api-1/ CSS Properties and
+    Values API Level 1} for the [@property] registration. *)
 
 type 'a var = 'a Values.var
 (** The type of CSS variable holding values of type ['a]. *)
@@ -672,6 +686,11 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
     from [decls]. If [layer] is provided, only declarations from that layer are
     returned. *)
 
+val all : Properties.css_wide -> declaration
+(** [all v] is the {{:https://www.w3.org/TR/css-cascade-5/#all-shorthand} all}
+    shorthand. It resets every longhand to [v] but the two writing-mode ones CSS
+    Cascading 5 sec. 3.3 excepts. *)
+
 (** {2:core_types Core Types & Calculations}
 
     Fundamental types for CSS values, variables, and calculations that underpin
@@ -679,7 +698,7 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
 
     See {:https://www.w3.org/TR/css-variables-1/ CSS Custom Properties for
     Cascading Variables Module Level 1} and
-    {:https://www.w3.org/TR/css-values-3/ CSS Values and Units Module Level 3}.
+    {:https://www.w3.org/TR/css-values-4/ CSS Values and Units Module Level 4}.
 *)
 
 (** CSS calc operations. *)
@@ -890,7 +909,10 @@ type length = Values.length =
   | Abs of length  (** CSS [abs()] math function *)
   | Sign of length  (** CSS [sign()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
-  | Anchor_size of string  (** CSS [anchor-size()] function *)
+  | Anchor_size of string
+      (** CSS [anchor-size()] function, from
+          {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor
+           Positioning Level 1}. *)
   | Anchor of string option * string * length option
       (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
@@ -1888,7 +1910,9 @@ val margin_block_end : length -> declaration
 
     @see <https://www.w3.org/TR/css-display-3/> CSS Display Module Level 3
     @see <https://www.w3.org/TR/css-position-3/>
-      CSS Positioned Layout Module Level 3 *)
+      CSS Positioned Layout Module Level 3
+    @see <https://www.w3.org/TR/css-break-3/> CSS Fragmentation Module Level 3
+*)
 
 (** CSS display values. *)
 type display = Properties.display =
@@ -2156,7 +2180,11 @@ type page_break_value = Properties.page_break_value =
   | Avoid
   | Left
   | Right
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_value var
       (** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-inside]
           vocabulary. *)
@@ -2164,7 +2192,11 @@ type page_break_value = Properties.page_break_value =
 type page_break_inside_value = Properties.page_break_inside_value =
   | Auto
   | Avoid
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_inside_value var
 
 val page_break_before : page_break_value -> declaration
@@ -2202,7 +2234,11 @@ type page_size = Properties.page_size =
   | Named of page_size_name
   | Named_oriented of page_size_name * page_size_orientation
   | Oriented of page_size_orientation
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_size var
 
 (** CSS columns values for multi-column layout. *)
@@ -2249,6 +2285,71 @@ val column_span : column_span -> declaration
 (** [column_span v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-span}
      column-span} property. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-width}
+     [column-width]}: [auto | <length [0,inf]>]. *)
+type column_width = Properties.column_width =
+  | Auto
+  | Width of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_width var
+
+val column_width : column_width -> declaration
+(** [column_width v] is the [column-width] longhand of {!val-columns}. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-count}
+     [column-count]}: [auto | <integer [1,inf]>]. *)
+type column_count = Properties.column_count =
+  | Auto
+  | Count of int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_count var
+
+val column_count : column_count -> declaration
+(** [column_count v] is the [column-count] longhand of {!val-columns}. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-height}
+     [column-height]}: [auto | <length [0,inf]>]. *)
+type column_height = Properties.column_height =
+  | Auto
+  | Height of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_height var
+
+val column_height : column_height -> declaration
+(** [column_height v] is the [column-height] property. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-wrap}
+     [column-wrap]}: [auto | nowrap | wrap]. *)
+type column_wrap = Properties.column_wrap =
+  | Auto
+  | Nowrap
+  | Wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_wrap var
+
+val column_wrap : column_wrap -> declaration
+(** [column_wrap v] is the [column-wrap] property. *)
 
 val visibility : visibility -> declaration
 (** [visibility v] is the
@@ -2313,6 +2414,8 @@ val overflow_y : overflow -> declaration
 type content = Properties.content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
+  | Image of Properties.background_image
+      (** The [<image>] of {!type-background_image}, aliased below. *)
   | None
   | Normal
   | Open_quote
@@ -2798,8 +2901,10 @@ val list_style_position : list_style_position -> declaration
     related visual styling for element backgrounds.
 
     @see <https://www.w3.org/TR/css-color-4/> CSS Color Module Level 4
+    @see <https://www.w3.org/TR/css-color-5/> CSS Color Module Level 5
     @see <https://www.w3.org/TR/css-backgrounds-3/>
-      CSS Backgrounds and Borders Module Level 3 *)
+      CSS Backgrounds and Borders Module Level 3
+    @see <https://www.w3.org/TR/css-images-4/> CSS Images Module Level 4 *)
 
 (** CSS forced-color-adjust values. *)
 type forced_color_adjust = Properties.forced_color_adjust =
@@ -3405,6 +3510,8 @@ type flex_wrap = Properties.flex_wrap =
   | Nowrap
   | Wrap
   | Wrap_reverse
+  | Balance
+  | Wrap_reverse_balance
   | Inherit
   | Initial
   | Unset
@@ -3489,6 +3596,7 @@ type flex_basis = Properties.flex_basis =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
+  | Dimension of { value : float; unit : string; repr : string }
   | Calc of flex_basis calc
   | Var of flex_basis var
 
@@ -3534,7 +3642,10 @@ type font_size = Properties.font_size =
 
 (** {2:alignment_properties Alignment Properties}
 
-    CSS Box Alignment properties for flexbox and grid layouts. *)
+    CSS Box Alignment properties for flexbox and grid layouts.
+
+    @see <https://www.w3.org/TR/css-align-3/> CSS Box Alignment Module Level 3
+*)
 
 (** CSS align-content values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
@@ -3549,24 +3660,18 @@ type align_content = Properties.align_content =
   | End
   | Flex_start
   | Flex_end
-  | Left
-  | Right
   (* Safe content position values *)
   | Safe_center
   | Safe_start
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
-  | Safe_left
-  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
   | Unsafe_flex_start
   | Unsafe_flex_end
-  | Unsafe_left
-  | Unsafe_right
   | Space_between
   | Space_around
   | Space_evenly
@@ -3631,6 +3736,8 @@ type justify_content = Properties.justify_content =
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
+  | Safe_left
+  | Safe_right
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -5240,6 +5347,575 @@ val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
      text-decoration-skip-ink} property. *)
 
+(** CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip}
+     [text-decoration-skip]}: the shorthand over the four longhands below. *)
+type text_decoration_skip = Properties.text_decoration_skip =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip var
+
+val text_decoration_skip : text_decoration_skip -> declaration
+(** [text_decoration_skip v] is the [text-decoration-skip] shorthand. *)
+
+(** Sec. 2.5.1 [text-decoration-skip-self]: whether the box's own decoration
+    skips it. *)
+type text_decoration_skip_self = Properties.text_decoration_skip_self =
+  | None
+  | Objects
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_self var
+
+val text_decoration_skip_self : text_decoration_skip_self -> declaration
+(** [text_decoration_skip_self v] is the [text-decoration-skip-self] property.
+*)
+
+(** Sec. 2.5.2 [text-decoration-skip-box]: whether an ancestor's decoration
+    skips the box's edges. *)
+type text_decoration_skip_box = Properties.text_decoration_skip_box =
+  | All
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_box var
+
+val text_decoration_skip_box : text_decoration_skip_box -> declaration
+(** [text_decoration_skip_box v] is the [text-decoration-skip-box] property. *)
+
+(** Sec. 2.5.3 [text-decoration-skip-inset]: whether the decoration is inset
+    from the glyph edges. *)
+type text_decoration_skip_inset = Properties.text_decoration_skip_inset =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_inset var
+
+val text_decoration_skip_inset : text_decoration_skip_inset -> declaration
+(** [text_decoration_skip_inset v] is the [text-decoration-skip-inset] property.
+*)
+
+(** Sec. 2.5.4: one span of spaces a decoration skips. *)
+type text_decoration_skip_space = Properties.text_decoration_skip_space =
+  | All
+  | Start
+  | End
+
+(** Sec. 2.5.4 [text-decoration-skip-spaces]. *)
+type text_decoration_skip_spaces = Properties.text_decoration_skip_spaces =
+  | Spaces of text_decoration_skip_space list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_spaces var
+
+val text_decoration_skip_spaces : text_decoration_skip_spaces -> declaration
+(** [text_decoration_skip_spaces v] is the [text-decoration-skip-spaces]
+    property. *)
+
+(** One class of character the emphasis marks skip, for CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-skip}
+     [text-emphasis-skip]}. *)
+type text_emphasis_skip_keyword = Properties.text_emphasis_skip_keyword =
+  | Spaces
+  | Punctuation
+  | Symbols
+  | Narrow
+
+(** Sec. 4.3 [text-emphasis-skip]. *)
+type text_emphasis_skip = Properties.text_emphasis_skip =
+  | Skip of text_emphasis_skip_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis_skip var
+
+val text_emphasis_skip : text_emphasis_skip -> declaration
+(** [text_emphasis_skip v] is the [text-emphasis-skip] property. *)
+
+(** CSS Text 4
+    {{:https://drafts.csswg.org/css-text-4/#propdef-white-space-collapse}
+     [white-space-collapse]}: how white space and line breaks collapse. *)
+type white_space_collapse = Properties.white_space_collapse =
+  | Collapse
+  | Discard
+  | Preserve
+  | Preserve_breaks
+  | Preserve_spaces
+  | Break_spaces
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of white_space_collapse var
+
+val white_space_collapse : white_space_collapse -> declaration
+(** [white_space_collapse v] is the [white-space-collapse] property. *)
+
+val line_height_step : length -> declaration
+(** [line_height_step v] is the [line-height-step] property. *)
+
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-palette}
+     [font-palette]}. *)
+type font_palette = Properties.font_palette =
+  | Normal
+  | Light
+  | Dark
+  | Palette of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_palette var
+
+val font_palette : font_palette -> declaration
+(** [font_palette v] is the [font-palette] property. *)
+
+(** One face the browser may synthesise, for CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
+type font_synthesis_feature = Properties.font_synthesis_feature =
+  | Weight
+  | Style
+  | Small_caps
+  | Position
+
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
+type font_synthesis = Properties.font_synthesis =
+  | None
+  | Features of font_synthesis_feature list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis var
+
+val font_synthesis : font_synthesis -> declaration
+(** [font_synthesis v] is the [font-synthesis] shorthand. *)
+
+val font_size_adjust : font_size_adjust -> declaration
+(** [font_size_adjust v] is the [font-size-adjust] property. *)
+
+val font_variant_emoji : font_variant_emoji -> declaration
+(** [font_variant_emoji v] is the [font-variant-emoji] property. *)
+
+(** One feature of CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
+type font_variant_alternates_item = Properties.font_variant_alternates_item =
+  | Stylistic of string
+  | Historical_forms
+  | Styleset of string list
+  | Character_variant of string list
+  | Swash of string
+  | Ornaments of string
+  | Annotation of string
+
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
+type font_variant_alternates = Properties.font_variant_alternates =
+  | Normal
+  | Alternates of font_variant_alternates_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_alternates var
+
+val font_variant_alternates : font_variant_alternates -> declaration
+(** [font_variant_alternates v] is the [font-variant-alternates] property. *)
+
+type font_variant_shorthand = Properties.font_variant_shorthand = {
+  ligatures : font_variant_ligature list;
+  alternates : font_variant_alternates_item list;
+  caps : font_variant_caps option;
+  numeric : font_variant_numeric_token list;
+  east_asian : east_asian_feature list;
+  position : font_variant_position option;
+  emoji : font_variant_emoji option;
+}
+(** The slots of the CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]} shorthand. *)
+
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]}. *)
+type font_variant = Properties.font_variant =
+  | Normal
+  | None
+  | Shorthand of font_variant_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant var
+
+val font_variant : font_variant -> declaration
+(** [font_variant v] is the [font-variant] shorthand. *)
+
+val text_wrap_style : text_wrap_style -> declaration
+(** [text_wrap_style v] is the [text-wrap-style] property. *)
+
+val text_box_trim : text_box_trim -> declaration
+(** [text_box_trim v] is the [text-box-trim] property. *)
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-text-box} [text-box]}:
+    [normal | <'text-box-trim'> || <'text-box-edge'>]. *)
+type text_box = Properties.text_box =
+  | Normal
+  | Box of text_box_trim option * text_box_edge option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box var
+
+val text_box : text_box -> declaration
+(** [text_box v] is the [text-box] shorthand. *)
+
+val text_spacing_trim : text_spacing_trim -> declaration
+(** [text_spacing_trim v] is the [text-spacing-trim] property. *)
+
+val hyphenate_limit_chars : hyphenate_limit_chars -> declaration
+(** [hyphenate_limit_chars v] is the [hyphenate-limit-chars] property. *)
+
+val initial_letter : initial_letter -> declaration
+(** [initial_letter v] is the [initial-letter] property. *)
+
+(** One alignment point of CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
+type initial_letter_align_keyword = Properties.initial_letter_align_keyword =
+  | Alphabetic
+  | Ideographic
+  | Hanging
+  | Leading
+  | Border_box
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
+type initial_letter_align = Properties.initial_letter_align =
+  | Align of initial_letter_align_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_align var
+
+val initial_letter_align : initial_letter_align -> declaration
+(** [initial_letter_align v] is the [initial-letter-align] property. *)
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-wrap}
+     [initial-letter-wrap]}. *)
+type initial_letter_wrap = Properties.initial_letter_wrap =
+  | None
+  | First
+  | All
+  | Grid
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_wrap var
+
+val initial_letter_wrap : initial_letter_wrap -> declaration
+(** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
+
+(** CSS Shapes 1
+    {{:https://drafts.csswg.org/css-shapes-1/#propdef-shape-image-threshold}
+     [shape-image-threshold]}: the alpha above which a pixel of the shape image
+    is inside the shape. *)
+type shape_image_threshold = Properties.shape_image_threshold =
+  | Number of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of shape_image_threshold var
+
+val shape_image_threshold : shape_image_threshold -> declaration
+(** [shape_image_threshold v] is the [shape-image-threshold] property. *)
+
+val shape_margin : length_percentage -> declaration
+(** [shape_margin v] is the [shape-margin] property. *)
+
+val shape_outside : string -> declaration
+(** [shape_outside v] is the [shape-outside] property, held as the authored text
+    of its shape. *)
+
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#typedef-visual-box} [<visual-box>]}:
+    the box edge an overflow clip margin is measured from. *)
+type overflow_clip_box = Properties.overflow_clip_box =
+  | Content_box
+  | Padding_box
+  | Border_box
+
+(** CSS Overflow 4
+    {{:https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin}
+     [overflow-clip-margin]}: [<visual-box> || <length>]. *)
+type overflow_clip_margin = Properties.overflow_clip_margin =
+  | Clip_margin of overflow_clip_box option * length option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_clip_margin var
+
+val overflow_clip_margin : overflow_clip_margin -> declaration
+(** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
+
+(** CSS Scroll Anchoring 1
+    {{:https://drafts.csswg.org/css-scroll-anchoring-1/#propdef-overflow-anchor}
+     [overflow-anchor]}. *)
+type overflow_anchor = Properties.overflow_anchor =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_anchor var
+
+val overflow_anchor : overflow_anchor -> declaration
+(** [overflow_anchor v] is the [overflow-anchor] property. *)
+
+val overflow_block : overflow -> declaration
+(** [overflow_block v] is the [overflow-block] property. *)
+
+val overflow_inline : overflow -> declaration
+(** [overflow_inline v] is the [overflow-inline] property. *)
+
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-orientation}
+     [image-orientation]}. *)
+type image_orientation = Properties.image_orientation =
+  | None
+  | From_image
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_orientation var
+
+val image_orientation : image_orientation -> declaration
+(** [image_orientation v] is the [image-orientation] property. *)
+
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-rendering}
+     [image-rendering]}. *)
+type image_rendering = Properties.image_rendering =
+  | Auto
+  | Smooth
+  | High_quality
+  | Crisp_edges
+  | Pixelated
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_rendering var
+
+val image_rendering : image_rendering -> declaration
+(** [image_rendering v] is the [image-rendering] property. *)
+
+(** CSS Values 4
+    {{:https://drafts.csswg.org/css-values-4/#resolution} [<resolution>]}. *)
+type resolution = Properties.resolution =
+  | Dpi of float
+  | Dpcm of float
+  | Dppx of float
+  | X of float
+
+(** CSS Images 4
+    {{:https://drafts.csswg.org/css-images-4/#propdef-image-resolution}
+     [image-resolution]}: [[ from-image || <resolution> ] && snap?]. *)
+type image_resolution = Properties.image_resolution =
+  | Resolution of resolution
+  | From_image
+  | From_image_resolution of resolution
+  | Snap of resolution
+  | From_image_snap
+  | From_image_snap_resolution of resolution
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_resolution var
+
+val image_resolution : image_resolution -> declaration
+(** [image_resolution v] is the [image-resolution] property. *)
+
+(** One axis whose margins CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
+type margin_trim_axis = Properties.margin_trim_axis = Block | Inline
+
+(** One edge whose margin CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
+type margin_trim_edge = Properties.margin_trim_edge =
+  | Block_start
+  | Inline_start
+  | Block_end
+  | Inline_end
+
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}.
+*)
+type margin_trim = Properties.margin_trim =
+  | None
+  | Block
+  | Inline
+  | Axes of margin_trim_axis list
+  | Edges of margin_trim_edge list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of margin_trim var
+
+val margin_trim : margin_trim -> declaration
+(** [margin_trim v] is the [margin-trim] property. *)
+
+(** CSS Positioned Layout 4
+    {{:https://drafts.csswg.org/css-position-4/#propdef-overlay} [overlay]}:
+    whether the box is in the top layer. *)
+type overlay = Properties.overlay =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overlay var
+
+val overlay : overlay -> declaration
+(** [overlay v] is the [overlay] property. *)
+
+(** How one animation composes with the value beneath it, for CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
+type animation_composition_item = Properties.animation_composition_item =
+  | Replace
+  | Add
+  | Accumulate
+
+(** CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
+type animation_composition = Properties.animation_composition =
+  | Compositions of animation_composition_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_composition var
+
+val animation_composition : animation_composition -> declaration
+(** [animation_composition v] is the [animation-composition] property. *)
+
+(** One physical edge a [<position>] offsets from, for CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
+type position_axis_edge = Properties.position_axis_edge =
+  | Left
+  | Right
+  | Top
+  | Bottom
+
+(** One axis of CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
+type background_position_axis = Properties.background_position_axis =
+  | Center
+  | Edge of position_axis_edge
+  | Offset of length_percentage
+  | Edge_offset of position_axis_edge * length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of background_position_axis var
+
+val background_position_x : background_position_axis -> declaration
+(** [background_position_x v] is the [background-position-x] property. *)
+
+val background_position_y : background_position_axis -> declaration
+(** [background_position_y v] is the [background-position-y] property. *)
+
+val webkit_mask_position_x : background_position_axis -> declaration
+(** [webkit_mask_position_x v] is the [-webkit-mask-position-x] property. *)
+
+val webkit_mask_position_y : background_position_axis -> declaration
+(** [webkit_mask_position_y v] is the [-webkit-mask-position-y] property. *)
+
+val moz_orient : Properties.moz_orient -> declaration
+(** [moz_orient v] is the [-moz-orient] property. *)
+
+type webkit_text_stroke = Properties.webkit_text_stroke = {
+  width : border_width option;
+  color : color option;
+}
+(** {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-text-stroke}
+     [-webkit-text-stroke]}: a width and a colour, either of which may be
+    absent. No CSS specification defines it. *)
+
+val webkit_text_stroke : webkit_text_stroke -> declaration
+(** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
+
+val page_size : page_size -> declaration
+(** [page_size v] is the [size] descriptor of an [@page] rule. *)
+
+val grid : grid_template -> declaration
+(** [grid v] is the [grid] shorthand. *)
+
 (** {2:borders_outlines Borders & Outlines}
 
     Properties for styling element borders, outlines, and related decorative
@@ -5397,6 +6073,161 @@ val column_rule : border -> declaration
 (** [column_rule v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-rule}
      column-rule} shorthand property. *)
+
+(** CSS Gaps 1 gives each gap decoration longhand a comma-separated list, one
+    entry per rule line, where {!val-column_rule} writes one.
+
+    @see <https://drafts.csswg.org/css-gaps-1/#propdef-column-rule-style>
+      column-rule-style *)
+
+(** CSS Logical 1 gives the flow-relative borders the same shorthand shape the
+    physical ones have.
+
+    @see <https://drafts.csswg.org/css-logical-1/#propdef-border-block-start>
+      border-block-start *)
+
+val border_block_start : border -> declaration
+(** [border_block_start v] is the [border-block-start] shorthand. *)
+
+val border_block_end : border -> declaration
+(** [border_block_end v] is the [border-block-end] shorthand. *)
+
+val border_inline : border -> declaration
+(** [border_inline v] is the [border-inline] shorthand. *)
+
+val border_inline_start : border -> declaration
+(** [border_inline_start v] is the [border-inline-start] shorthand. *)
+
+val border_inline_end : border -> declaration
+(** [border_inline_end v] is the [border-inline-end] shorthand. *)
+
+val column_rule_width : border_width list -> declaration
+(** [column_rule_width v] is the [column-rule-width] longhand, one entry per gap
+    decoration line. *)
+
+val column_rule_style : border_style list -> declaration
+(** [column_rule_style v] is the [column-rule-style] longhand, one entry per gap
+    decoration line. *)
+
+val column_rule_color : color list -> declaration
+(** [column_rule_color v] is the [column-rule-color] longhand, one entry per gap
+    decoration line. *)
+
+(** One offset of CSS Backgrounds 3
+    {{:https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image-slice}
+     [border-image-slice]}, a number in units of the image's own pixels or a
+    percentage of its size. *)
+type border_image_slice_item = Properties.border_image_slice_item =
+  | Number of number
+  | Pct of float
+
+type border_image_slice_offsets = Properties.border_image_slice_offsets = {
+  offsets : border_image_slice_item list;
+  fill : bool;
+}
+(** Sec. 5.2: the one to four offsets and the [fill] keyword. *)
+
+(** Sec. 5.2 [border-image-slice]. *)
+type border_image_slice = Properties.border_image_slice =
+  | Slices of border_image_slice_offsets
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_slice var
+
+val border_image_slice : border_image_slice -> declaration
+(** [border_image_slice v] is the [border-image-slice] property. *)
+
+(** Sec. 5.3: one [border-image-width], which unlike a border width takes a bare
+    number as a multiple of the border width. *)
+type border_image_width_item = Properties.border_image_width_item =
+  | Number of number
+  | Pct of float
+  | Length of length
+  | Auto
+
+(** Sec. 5.3 [border-image-width]. *)
+type border_image_width = Properties.border_image_width =
+  | Widths of border_image_width_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_width var
+
+val border_image_width : border_image_width -> declaration
+(** [border_image_width v] is the [border-image-width] property. *)
+
+(** Sec. 5.4: one [border-image-outset], a number or a length. *)
+type border_image_outset_item = Properties.border_image_outset_item =
+  | Number of number
+  | Length of length
+
+(** Sec. 5.4 [border-image-outset]. *)
+type border_image_outset = Properties.border_image_outset =
+  | Outsets of border_image_outset_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_outset var
+
+val border_image_outset : border_image_outset -> declaration
+(** [border_image_outset v] is the [border-image-outset] property. *)
+
+(** Sec. 5.5: how the middle of an edge is filled. *)
+type border_image_repeat_keyword = Properties.border_image_repeat_keyword =
+  | Stretch
+  | Repeat
+  | Round
+  | Space
+
+(** Sec. 5.5 [border-image-repeat]: the block edge then the inline edge. *)
+type border_image_repeat = Properties.border_image_repeat =
+  | Repeats of border_image_repeat_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_repeat var
+
+val border_image_repeat : border_image_repeat -> declaration
+(** [border_image_repeat v] is the [border-image-repeat] property. *)
+
+val border_image_source : background_image -> declaration
+(** [border_image_source v] is the [border-image-source] property. *)
+
+(** CSS Masking 1
+    {{:https://drafts.csswg.org/css-masking-1/#propdef-mask-border-mode}
+     [mask-border-mode]}: which channel of the source image is the mask. *)
+type mask_border_mode = Properties.mask_border_mode = Alpha | Luminance
+
+type border_image = Properties.border_image = {
+  source : background_image option;
+  slice : border_image_slice_offsets option;
+  width : border_image_width_item list option;
+  outset : border_image_outset_item list option;
+  repeat : border_image_repeat_keyword list option;
+  mode : mask_border_mode option;
+}
+(** CSS Backgrounds 3
+    {{:https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image}
+     [border-image]} and CSS Masking 1
+    {{:https://drafts.csswg.org/css-masking-1/#propdef-mask-border}
+     [mask-border]}, which share every slot but the [mode] only the mask
+    carries. *)
+
+val border_image : border_image -> declaration
+(** [border_image v] is the [border-image] shorthand. *)
+
+val mask_border : border_image -> declaration
+(** [mask_border v] is the [mask-border] shorthand, which takes what
+    [border-image] takes plus the [mode] slot. *)
 
 val border_width : border_width -> declaration
 (** [border_width width] is the
@@ -6690,11 +7521,358 @@ val background_clip : background_box -> declaration
 val webkit_background_clip : background_box -> declaration
 (** [webkit_background_clip v] is the [-webkit-background-clip] property. *)
 
+(** {2:anchor_positioning Anchor Positioning}
+
+    Properties that tie an absolutely positioned box to an anchor element.
+
+    @see <https://www.w3.org/TR/css-anchor-position-1/>
+      CSS Anchor Positioning Level 1 *)
+
+(** Sec. 2.1 [anchor-name]: [none | <dashed-ident>#]. *)
+type anchor_name = Properties.anchor_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of anchor_name var
+
+val anchor_name : anchor_name -> declaration
+(** [anchor_name v] is the [anchor-name] property. *)
+
+(** Sec. 4.1 [position-anchor]: [normal | none | auto | <anchor-name>]. *)
+type position_anchor = Properties.position_anchor =
+  | Normal
+  | None
+  | Auto
+  | Anchor of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_anchor var
+
+val position_anchor : position_anchor -> declaration
+(** [position_anchor v] is the [position-anchor] property. *)
+
+(** Sec. 3.1.2 [<position-area>]: one of the grid keywords naming a region
+    around the anchor. *)
+type position_area_keyword = Properties.position_area_keyword =
+  | Top
+  | Bottom
+  | Left
+  | Right
+  | Center
+  | Span_top
+  | Span_bottom
+  | Span_left
+  | Span_right
+  | X_start
+  | X_end
+  | Y_start
+  | Y_end
+  | Span_x_start
+  | Span_x_end
+  | Span_y_start
+  | Span_y_end
+  | Inline_start
+  | Inline_end
+  | Block_start
+  | Block_end
+  | Span_inline_start
+  | Span_inline_end
+  | Span_block_start
+  | Span_block_end
+  | Start
+  | End
+  | Span_start
+  | Span_end
+  | Self_start
+  | Self_end
+  | Span_self_start
+  | Span_self_end
+  | Self_x_start
+  | Self_x_end
+  | Self_y_start
+  | Self_y_end
+  | Span_self_x_start
+  | Span_self_x_end
+  | Span_self_y_start
+  | Span_self_y_end
+  | Self_block_start
+  | Self_block_end
+  | Self_inline_start
+  | Self_inline_end
+  | Span_self_block_start
+  | Span_self_block_end
+  | Span_self_inline_start
+  | Span_self_inline_end
+  | Span_all
+
+(** Sec. 3.1.2 [position-area]: one or two keywords from a single branch of the
+    grammar. *)
+type position_area = Properties.position_area =
+  | None
+  | Area of position_area_keyword * position_area_keyword option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_area var
+
+val position_area : position_area -> declaration
+(** [position_area v] is the [position-area] property. *)
+
+(** Sec. 6.1 [<try-tactic>] and the [<dashed-ident>] naming a [@position-try]
+    rule. *)
+type position_try_fallback = Properties.position_try_fallback =
+  | Flip_block
+  | Flip_inline
+  | Flip_start
+  | Name of string
+
+(** Sec. 6.1: one comma-separated fallback entry, which is either a tactic group
+    or a [<position-area>], never a mix of the two. *)
+type position_try_fallback_entry = Properties.position_try_fallback_entry =
+  | Tactics of position_try_fallback list
+  | Area of position_area_keyword * position_area_keyword option
+
+(** Sec. 6.1 [position-try-fallbacks]. *)
+type position_try_fallbacks = Properties.position_try_fallbacks =
+  | None
+  | Fallbacks of position_try_fallback_entry list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_fallbacks var
+
+val position_try_fallbacks : position_try_fallbacks -> declaration
+(** [position_try_fallbacks v] is the [position-try-fallbacks] property. *)
+
+(** Sec. 6.2 [position-try-order]: [normal | <try-size>]. *)
+type position_try_order = Properties.position_try_order =
+  | Normal
+  | Most_width
+  | Most_height
+  | Most_block_size
+  | Most_inline_size
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_order var
+
+val position_try_order : position_try_order -> declaration
+(** [position_try_order v] is the [position-try-order] property. *)
+
+(** Sec. 6.3 [position-try]:
+    [<'position-try-order'>? <'position-try-fallbacks'>]. *)
+type position_try = Properties.position_try =
+  | Try of position_try_order * position_try_fallbacks
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try var
+
+val position_try : position_try -> declaration
+(** [position_try v] is the [position-try] shorthand. *)
+
+(** Sec. 7 [<anchor-visibility>]: one condition that hides the box. *)
+type position_visibility_condition = Properties.position_visibility_condition =
+  | Anchors_visible
+  | No_overflow
+
+(** Sec. 7 [position-visibility]. *)
+type position_visibility = Properties.position_visibility =
+  | Always
+  | Conditions of position_visibility_condition list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_visibility var
+
+val position_visibility : position_visibility -> declaration
+(** [position_visibility v] is the [position-visibility] property. *)
+
+(** {2:view_transitions View Transitions}
+
+    Properties that name the elements a view transition animates independently.
+
+    @see <https://www.w3.org/TR/css-view-transitions-1/>
+      CSS View Transitions Module Level 1
+    @see <https://www.w3.org/TR/css-view-transitions-2/>
+      CSS View Transitions Module Level 2, which adds [match-element] *)
+
+(** View Transitions 1
+    {{:https://drafts.csswg.org/css-view-transitions-1/#propdef-view-transition-name}
+     [view-transition-name]}, with the [match-element] of Level 2. *)
+type view_transition_name = Properties.view_transition_name =
+  | None
+  | Match_element
+  | Name of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_name var
+
+val view_transition_name : view_transition_name -> declaration
+(** [view_transition_name v] is the [view-transition-name] property. *)
+
+(** View Transitions 2
+    {{:https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-class}
+     [view-transition-class]}: [none | <custom-ident>+]. *)
+type view_transition_class = Properties.view_transition_class =
+  | None
+  | Classes of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_class var
+
+val view_transition_class : view_transition_class -> declaration
+(** [view_transition_class v] is the [view-transition-class] property. *)
+
+(** {2:motion_path Motion Path}
+
+    Properties that move a box along a path rather than by an offset.
+
+    @see <https://www.w3.org/TR/motion-1/> Motion Path Module Level 1 *)
+
+(** Sec. 3.2 [<ray-size>]: how far the ray reaches. *)
+type ray_size = Properties.ray_size =
+  | Closest_side
+  | Closest_corner
+  | Farthest_side
+  | Farthest_corner
+  | Sides
+
+type ray = Properties.ray = {
+  angle : angle;
+  size : ray_size option;
+  contain : bool;
+  position : position_value option;
+}
+(** Sec. 3.2 [ray()]: an angle, a size, whether the path is contained, and the
+    position it starts from. *)
+
+(** Sec. 2.1 [offset-path]: [none | <offset-path> || <coord-box>], where the
+    shape branch reuses {!type-clip_path}. *)
+type offset_path = Properties.offset_path =
+  | None
+  | Url of string
+  | Path of string
+  | Ray of ray
+  | Shape of clip_path
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_path var
+
+val offset_path : offset_path -> declaration
+(** [offset_path v] is the [offset-path] property. *)
+
+val offset_distance : length_percentage -> declaration
+(** [offset_distance v] is the [offset-distance] property. *)
+
+(** Sec. 2.3 [offset-rotate]: which of [auto] and [reverse] an explicit angle is
+    measured from. *)
+type offset_rotate_mode = Properties.offset_rotate_mode = Auto | Reverse
+
+(** Sec. 2.3 [offset-rotate]: [[ auto | reverse ] || <angle>]. *)
+type offset_rotate = Properties.offset_rotate =
+  | Auto
+  | Reverse
+  | Angle of angle
+  | With_angle of offset_rotate_mode * angle
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_rotate var
+
+val offset_rotate : offset_rotate -> declaration
+(** [offset_rotate v] is the [offset-rotate] property. *)
+
+(** Sec. 2.4 [offset-anchor]: [auto | <position>]. *)
+type offset_anchor = Properties.offset_anchor =
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_anchor var
+
+val offset_anchor : offset_anchor -> declaration
+(** [offset_anchor v] is the [offset-anchor] property. *)
+
+(** Sec. 2.5 [offset-position]: [normal | auto | <position>]. *)
+type offset_position = Properties.offset_position =
+  | Normal
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_position var
+
+val offset_position : offset_position -> declaration
+(** [offset_position v] is the [offset-position] property. *)
+
+(** Sec. 2.6: the leading group of the [offset] shorthand, which is either a
+    position on its own or a path with the slots that follow it. *)
+type offset_target = Properties.offset_target =
+  | Position_only of offset_position
+  | With_path of {
+      position : offset_position option;
+      path : offset_path;
+      distance : length_percentage option;
+      rotate : offset_rotate option;
+    }
+
+(** Sec. 2.6 [offset]:
+    [[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+     <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?]. *)
+type offset = Properties.offset =
+  | Shorthand of { target : offset_target; anchor : offset_anchor option }
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset var
+
+val offset : offset -> declaration
+(** [offset v] is the [offset] shorthand. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based
     responsive design and performance optimization through layout isolation.
 
+    @see <https://www.w3.org/TR/css-conditional-5/>
+      CSS Conditional Rules Module Level 5, which owns [@container]
     @see <https://www.w3.org/TR/css-contain-3/> CSS Containment Module Level 3
     @see <https://www.w3.org/TR/css-contain-2/> CSS Containment Module Level 2
 *)
@@ -6715,7 +7893,64 @@ type container_type = Properties.container_type =
 val container_type : container_type -> declaration
 (** [container_type type_] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-type}
-     container-type} property for container queries. *)
+     container-type} property for container queries.
+
+    The shorthand that sets this and the name together is
+    {!val-Declaration.container}, because {!val-container} at this level is the
+    at-rule builder. *)
+
+(** One axis of CSS Sizing 4
+    {{:https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-size}
+     [contain-intrinsic-size]}, a length that the [auto] prefix lets a
+    remembered size override. *)
+type contain_intrinsic_size_item = Properties.contain_intrinsic_size_item =
+  | Length of length
+  | Auto of length
+
+(** CSS Sizing 4
+    {{:https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-size}
+     [contain-intrinsic-size]}: one axis or both. *)
+type contain_intrinsic_size = Properties.contain_intrinsic_size =
+  | None
+  | Intrinsic of
+      contain_intrinsic_size_item * contain_intrinsic_size_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_size var
+
+val contain_intrinsic_size : contain_intrinsic_size -> declaration
+(** [contain_intrinsic_size v] is the [contain-intrinsic-size] shorthand. *)
+
+(** One axis longhand of {!type-contain_intrinsic_size}.
+
+    @see <https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-width>
+      contain-intrinsic-width *)
+type contain_intrinsic_longhand = Properties.contain_intrinsic_longhand =
+  | None
+  | Size of contain_intrinsic_size_item
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_longhand var
+
+val contain_intrinsic_width : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_width v] is the [contain-intrinsic-width] property. *)
+
+val contain_intrinsic_height : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_height v] is the [contain-intrinsic-height] property. *)
+
+val contain_intrinsic_block_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_block_size v] is the [contain-intrinsic-block-size]
+    property. *)
+
+val contain_intrinsic_inline_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_inline_size v] is the [contain-intrinsic-inline-size]
+    property. *)
 
 type container_name = Properties.container_name =
   | None
@@ -6771,6 +8006,185 @@ val contain : contain -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Extensions>
       MDN: CSS Extensions *)
 
+(** {3:vendor_builders Vendor-prefixed longhands}
+
+    Each writes the prefixed spelling of the unprefixed property beside it and
+    takes the same value type. *)
+
+val moz_user_select : user_select -> declaration
+(** [moz_user_select v] is the [-moz-user-select] property. *)
+
+val ms_user_select : user_select -> declaration
+(** [ms_user_select v] is the [-ms-user-select] property. *)
+
+val webkit_text_fill_color : color -> declaration
+(** [webkit_text_fill_color v] is the [-webkit-text-fill-color] property. *)
+
+val webkit_text_stroke_width : border_width -> declaration
+(** [webkit_text_stroke_width v] is the [-webkit-text-stroke-width] property. *)
+
+val webkit_text_stroke_color : color -> declaration
+(** [webkit_text_stroke_color v] is the [-webkit-text-stroke-color] property. *)
+
+val webkit_transform : transform list -> declaration
+(** [webkit_transform v] is the [-webkit-transform] property. *)
+
+val moz_transform : transform list -> declaration
+(** [moz_transform v] is the [-moz-transform] property. *)
+
+val ms_transform : transform list -> declaration
+(** [ms_transform v] is the [-ms-transform] property. *)
+
+val o_transform : transform list -> declaration
+(** [o_transform v] is the [-o-transform] property. *)
+
+val webkit_transition : transition list -> declaration
+(** [webkit_transition v] is the [-webkit-transition] property. *)
+
+val webkit_transition_delay : duration -> declaration
+(** [webkit_transition_delay v] is the [-webkit-transition-delay] property. *)
+
+val webkit_transition_duration : duration -> declaration
+(** [webkit_transition_duration v] is the [-webkit-transition-duration]
+    property. *)
+
+val webkit_transition_property : transition_property -> declaration
+(** [webkit_transition_property v] is the [-webkit-transition-property]
+    property. *)
+
+val webkit_transition_timing_function : timing_function -> declaration
+(** [webkit_transition_timing_function v] is the
+    [-webkit-transition-timing-function] property. *)
+
+val webkit_animation : animation list -> declaration
+(** [webkit_animation v] is the [-webkit-animation] property. *)
+
+val webkit_animation_delay : duration -> declaration
+(** [webkit_animation_delay v] is the [-webkit-animation-delay] property. *)
+
+val webkit_animation_duration : duration -> declaration
+(** [webkit_animation_duration v] is the [-webkit-animation-duration] property.
+*)
+
+val webkit_animation_direction : animation_direction -> declaration
+(** [webkit_animation_direction v] is the [-webkit-animation-direction]
+    property. *)
+
+val webkit_animation_iteration_count : animation_iteration_count -> declaration
+(** [webkit_animation_iteration_count v] is the
+    [-webkit-animation-iteration-count] property. *)
+
+val webkit_animation_name : animation_name -> declaration
+(** [webkit_animation_name v] is the [-webkit-animation-name] property. *)
+
+val webkit_animation_timing_function : timing_function -> declaration
+(** [webkit_animation_timing_function v] is the
+    [-webkit-animation-timing-function] property. *)
+
+val webkit_animation_fill_mode : animation_fill_mode -> declaration
+(** [webkit_animation_fill_mode v] is the [-webkit-animation-fill-mode]
+    property. *)
+
+val webkit_animation_play_state : animation_play_state -> declaration
+(** [webkit_animation_play_state v] is the [-webkit-animation-play-state]
+    property. *)
+
+val webkit_flex_direction : flex_direction -> declaration
+(** [webkit_flex_direction v] is the [-webkit-flex-direction] property. *)
+
+val webkit_flex_wrap : flex_wrap -> declaration
+(** [webkit_flex_wrap v] is the [-webkit-flex-wrap] property. *)
+
+val webkit_flex_flow : flex_flow -> declaration
+(** [webkit_flex_flow v] is the [-webkit-flex-flow] property. *)
+
+val webkit_justify_content : justify_content -> declaration
+(** [webkit_justify_content v] is the [-webkit-justify-content] property. *)
+
+val webkit_align_items : align_items -> declaration
+(** [webkit_align_items v] is the [-webkit-align-items] property. *)
+
+val webkit_align_content : align_content -> declaration
+(** [webkit_align_content v] is the [-webkit-align-content] property. *)
+
+val webkit_align_self : align_self -> declaration
+(** [webkit_align_self v] is the [-webkit-align-self] property. *)
+
+val webkit_border_radius : border_radius -> declaration
+(** [webkit_border_radius v] is the [-webkit-border-radius] property. *)
+
+val webkit_box_sizing : box_sizing -> declaration
+(** [webkit_box_sizing v] is the [-webkit-box-sizing] property. *)
+
+val moz_box_sizing : box_sizing -> declaration
+(** [moz_box_sizing v] is the [-moz-box-sizing] property. *)
+
+val webkit_box_shadow : shadow -> declaration
+(** [webkit_box_shadow v] is the [-webkit-box-shadow] property. *)
+
+val webkit_background_size : background_size -> declaration
+(** [webkit_background_size v] is the [-webkit-background-size] property. *)
+
+val webkit_filter : filter -> declaration
+(** [webkit_filter v] is the [-webkit-filter] property. *)
+
+val moz_animation : animation list -> declaration
+(** [moz_animation v] is the [-moz-animation] property. *)
+
+val moz_animation_delay : duration -> declaration
+(** [moz_animation_delay v] is the [-moz-animation-delay] property. *)
+
+val moz_animation_duration : duration -> declaration
+(** [moz_animation_duration v] is the [-moz-animation-duration] property. *)
+
+val moz_animation_direction : animation_direction -> declaration
+(** [moz_animation_direction v] is the [-moz-animation-direction] property. *)
+
+val moz_animation_iteration_count : animation_iteration_count -> declaration
+(** [moz_animation_iteration_count v] is the [-moz-animation-iteration-count]
+    property. *)
+
+val moz_animation_name : animation_name -> declaration
+(** [moz_animation_name v] is the [-moz-animation-name] property. *)
+
+val moz_animation_timing_function : timing_function -> declaration
+(** [moz_animation_timing_function v] is the [-moz-animation-timing-function]
+    property. *)
+
+val moz_animation_fill_mode : animation_fill_mode -> declaration
+(** [moz_animation_fill_mode v] is the [-moz-animation-fill-mode] property. *)
+
+val moz_animation_play_state : animation_play_state -> declaration
+(** [moz_animation_play_state v] is the [-moz-animation-play-state] property. *)
+
+val moz_transition : transition list -> declaration
+(** [moz_transition v] is the [-moz-transition] property. *)
+
+val moz_transition_delay : duration -> declaration
+(** [moz_transition_delay v] is the [-moz-transition-delay] property. *)
+
+val moz_transition_duration : duration -> declaration
+(** [moz_transition_duration v] is the [-moz-transition-duration] property. *)
+
+val moz_transition_property : transition_property -> declaration
+(** [moz_transition_property v] is the [-moz-transition-property] property. *)
+
+val moz_transition_timing_function : timing_function -> declaration
+(** [moz_transition_timing_function v] is the [-moz-transition-timing-function]
+    property. *)
+
+val moz_border_radius : border_radius -> declaration
+(** [moz_border_radius v] is the [-moz-border-radius] property. *)
+
+val moz_box_shadow : shadow -> declaration
+(** [moz_box_shadow v] is the [-moz-box-shadow] property. *)
+
+val ms_filter : filter -> declaration
+(** [ms_filter v] is the [-ms-filter] property. *)
+
+val o_transition : transition list -> declaration
+(** [o_transition v] is the [-o-transition] property. *)
+
 (** CSS webkit-box-orient values. *)
 type webkit_box_orient = Properties.webkit_box_orient =
   | Horizontal
@@ -6802,6 +8216,7 @@ type webkit_appearance = Properties.webkit_appearance =
   | Button  (** Button appearance *)
   | Textfield  (** Text field appearance *)
   | Menulist  (** Select/dropdown appearance *)
+  | Base_select  (** The base appearance of a select (Chrome alias) *)
   | Listbox  (** List box appearance *)
   | Checkbox  (** Checkbox appearance *)
   | Radio  (** Radio button appearance *)
@@ -6895,7 +8310,11 @@ val webkit_text_size_adjust : text_size_adjust -> declaration
 
 (** {2:lists_tables Lists & Tables}
 
-    Properties for styling HTML lists and tables. *)
+    Properties for styling HTML lists and tables.
+
+    @see <https://www.w3.org/TR/css-lists-3/>
+      CSS Lists and Counters Module Level 3
+    @see <https://www.w3.org/TR/css-tables-3/> CSS Table Module Level 3 *)
 
 (** CSS [symbols()] counter-system keywords *)
 type symbols_type = Properties.symbols_type =
@@ -6993,7 +8412,7 @@ val list_style_symbols :
 (** CSS list-style-image values *)
 type list_style_image = Properties.list_style_image =
   | None
-  | Url of string
+  | Image of background_image
   | Inherit
   | Initial
   | Unset
@@ -7087,7 +8506,9 @@ val border_spacing_values : length list -> border_spacing
 
 (** {2:svg_properties SVG Properties}
 
-    Properties specific to SVG rendering and styling. *)
+    Properties specific to SVG rendering and styling.
+
+    @see <https://www.w3.org/TR/SVG2/> Scalable Vector Graphics (SVG) 2 *)
 
 (** SVG paint values for fill and stroke properties *)
 type svg_paint = Properties.svg_paint =
@@ -7113,8 +8534,10 @@ val fill : svg_paint -> declaration
 val stroke : svg_paint -> declaration
 (** [stroke paint] is the SVG stroke property. *)
 
-(** SVG 2 sec. 13.5.3 [stroke-width]: [<length-percentage> | <number>], where a
-    bare number is a width in user units rather than a CSS [<length>]. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty}
+     [stroke-width]}: [<length-percentage> | <number>], where a bare number is a
+    width in user units rather than a CSS [<length>]. *)
 type stroke_width = Properties.stroke_width =
   | Number of float  (** A width in user units *)
   | Length of length_percentage
@@ -7128,9 +8551,290 @@ type stroke_width = Properties.stroke_width =
 val stroke_width : stroke_width -> declaration
 (** [stroke_width width] is the SVG stroke-width property. *)
 
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty} [fill-rule]}:
+    which points count as inside a shape when its subpaths overlap. CSS Masking
+    1 {{:https://drafts.csswg.org/css-masking-1/#propdef-clip-rule} [clip-rule]}
+    takes the same values. *)
+type fill_rule = Properties.fill_rule =
+  | Nonzero
+  | Evenodd
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of fill_rule var
+
+val fill_rule : fill_rule -> declaration
+(** [fill_rule v] is the SVG [fill-rule] property. *)
+
+val clip_rule : fill_rule -> declaration
+(** [clip_rule v] is the SVG [clip-rule] property, which takes what [fill-rule]
+    takes. *)
+
+val fill_opacity : opacity -> declaration
+(** [fill_opacity v] is the SVG [fill-opacity] property. *)
+
+val stroke_opacity : opacity -> declaration
+(** [stroke_opacity v] is the SVG [stroke-opacity] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty}
+     [stroke-linecap]}: the shape at the ends of an open subpath. *)
+type stroke_linecap = Properties.stroke_linecap =
+  | Butt
+  | Round
+  | Square
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linecap var
+
+val stroke_linecap : stroke_linecap -> declaration
+(** [stroke_linecap v] is the SVG [stroke-linecap] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty}
+     [stroke-linejoin]}: the shape at a corner between two stroke segments. *)
+type stroke_linejoin = Properties.stroke_linejoin =
+  | Miter
+  | Miter_clip
+  | Round
+  | Bevel
+  | Arcs
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linejoin var
+
+val stroke_linejoin : stroke_linejoin -> declaration
+(** [stroke_linejoin v] is the SVG [stroke-linejoin] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty}
+     [stroke-miterlimit]}: the ratio past which a miter join falls back to a
+    bevel. *)
+type stroke_miterlimit = Properties.stroke_miterlimit =
+  | Number of float
+  | Calc of stroke_miterlimit calc
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_miterlimit var
+
+val stroke_miterlimit : stroke_miterlimit -> declaration
+(** [stroke_miterlimit v] is the SVG [stroke-miterlimit] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty}
+     [stroke-dasharray]} writes each dash as a [<length-percentage>] or a bare
+    number in user units, the way {!type-stroke_width} does. *)
+type dash_length = Properties.dash_length =
+  | Number of float
+  | Length of length_percentage
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty}
+     [stroke-dashoffset]}: where the dash pattern starts. *)
+type stroke_dashoffset = Properties.stroke_dashoffset =
+  | Dash of dash_length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dashoffset var
+
+val stroke_dashoffset : stroke_dashoffset -> declaration
+(** [stroke_dashoffset v] is the SVG [stroke-dashoffset] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty}
+     [stroke-dasharray]}: the dash and gap lengths. *)
+type stroke_dasharray = Properties.stroke_dasharray =
+  | None
+  | Dashes of dash_length list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dasharray var
+
+val stroke_dasharray : stroke_dasharray -> declaration
+(** [stroke_dasharray v] is the SVG [stroke-dasharray] property. *)
+
+(** One of the three painting operations SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#PaintOrderProperty}
+     [paint-order]} orders. *)
+type paint_order_keyword = Properties.paint_order_keyword =
+  | Fill
+  | Stroke
+  | Markers
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#PaintOrderProperty}
+     [paint-order]}: the order fill, stroke and markers paint in. *)
+type paint_order = Properties.paint_order =
+  | Normal
+  | Order of paint_order_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of paint_order var
+
+val paint_order : paint_order -> declaration
+(** [paint_order v] is the SVG [paint-order] property. *)
+
+(** One effect the transform does not scale, for SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]}. *)
+type vector_effect_keyword = Properties.vector_effect_keyword =
+  | Non_scaling_stroke
+  | Non_scaling_size
+  | Non_rotation
+  | Fixed_position
+
+(** The coordinate space an SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]} effect is taken against. *)
+type vector_effect_space = Properties.vector_effect_space = Viewport | Screen
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]}. *)
+type vector_effect = Properties.vector_effect =
+  | None
+  | Effects of vector_effect_keyword list * vector_effect_space option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of vector_effect var
+
+val vector_effect : vector_effect -> declaration
+(** [vector_effect v] is the SVG [vector-effect] property. *)
+
+val stop_color : color -> declaration
+(** [stop_color v] is the SVG [stop-color] property of a gradient stop. *)
+
+val stop_opacity : opacity -> declaration
+(** [stop_opacity v] is the SVG [stop-opacity] property of a gradient stop. *)
+
+val flood_color : color -> declaration
+(** [flood_color v] is the SVG [flood-color] property of [feFlood]. *)
+
+val flood_opacity : opacity -> declaration
+(** [flood_opacity v] is the SVG [flood-opacity] property of [feFlood]. *)
+
+val lighting_color : color -> declaration
+(** [lighting_color v] is the SVG [lighting-color] property of a light filter.
+*)
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-dominant-baseline}
+     [dominant-baseline]}: [auto | <baseline-metric>]. *)
+type dominant_baseline = Properties.dominant_baseline =
+  | Auto
+  | Alphabetic
+  | Ideographic
+  | Mathematical
+  | Central
+  | Middle
+  | Text_top
+  | Text_bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of dominant_baseline var
+
+val dominant_baseline : dominant_baseline -> declaration
+(** [dominant_baseline v] is the [dominant-baseline] property. *)
+
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/text.html#AlignmentBaselineProperty}
+     [alignment-baseline]}: the baseline of the box aligned against its parent's
+    dominant baseline. *)
+type alignment_baseline = Properties.alignment_baseline =
+  | Baseline
+  | Text_bottom
+  | Middle
+  | Central
+  | Text_top
+  | Ideographic
+  | Alphabetic
+  | Hanging
+  | Mathematical
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of alignment_baseline var
+
+val alignment_baseline : alignment_baseline -> declaration
+(** [alignment_baseline v] is the [alignment-baseline] property. *)
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-shift}
+     [baseline-shift]}:
+    [<length-percentage> | sub | super | top | center | bottom]. *)
+type baseline_shift = Properties.baseline_shift =
+  | Shift of length_percentage
+  | Sub
+  | Super
+  | Top
+  | Center
+  | Bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_shift var
+
+val baseline_shift : baseline_shift -> declaration
+(** [baseline_shift v] is the [baseline-shift] property. *)
+
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-source}
+     [baseline-source]}: which line box baseline an inline block aligns on. *)
+type baseline_source = Properties.baseline_source =
+  | Auto
+  | First
+  | Last
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_source var
+
+val baseline_source : baseline_source -> declaration
+(** [baseline_source v] is the [baseline-source] property. *)
+
 (** {2:scroll_touch Scroll & Touch}
 
-    Properties for scroll behavior and touch interaction. *)
+    Properties for scroll behavior and touch interaction.
+
+    @see <https://www.w3.org/TR/css-scroll-snap-1/>
+      CSS Scroll Snap Module Level 1
+    @see <https://www.w3.org/TR/css-overscroll-1/>
+      CSS Overscroll Behavior Module Level 1
+    @see <https://www.w3.org/TR/pointerevents3/>
+      Pointer Events Level 3, which owns [touch-action] *)
 
 (** CSS touch-action values *)
 type touch_action = Properties.touch_action =
@@ -7238,6 +8942,105 @@ type view_timeline_shorthand = Properties.view_timeline_shorthand =
   | Revert
   | Revert_layer
   | Var of view_timeline_shorthand var
+
+(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
+    [view-timeline-name] and Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}. *)
+type timeline_name = Properties.timeline_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_name var
+
+(** One edge of Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset}
+     [view-timeline-inset]}. *)
+type timeline_inset_item = Properties.timeline_inset_item =
+  | Auto
+  | Length of length_percentage
+
+(** Sec. 5.2 [view-timeline-inset]: the start edge then the end edge. *)
+type timeline_inset = Properties.timeline_inset =
+  | Inset of timeline_inset_item * timeline_inset_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_inset var
+
+(** Sec. 6.2 [<timeline-range-name>]: the named part of a view progress
+    timeline. *)
+type animation_range_name = Properties.animation_range_name =
+  | Cover
+  | Contain
+  | Entry
+  | Exit
+  | Entry_crossing
+  | Exit_crossing
+
+(** Sec. 6.2: one end of [animation-range]. *)
+type animation_range_item = Properties.animation_range_item =
+  | Normal
+  | Offset of length_percentage
+  | Named of animation_range_name * length_percentage option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range_item var
+
+(** Sec. 6.2 [animation-range]: the start then the end. *)
+type animation_range = Properties.animation_range =
+  | Range of animation_range_item * animation_range_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range var
+
+val animation_timeline : animation_timeline -> declaration
+(** [animation_timeline v] is the [animation-timeline] property. *)
+
+val animation_range : animation_range -> declaration
+(** [animation_range v] is the [animation-range] shorthand. *)
+
+val animation_range_start : animation_range_item -> declaration
+(** [animation_range_start v] is the [animation-range-start] property. *)
+
+val animation_range_end : animation_range_item -> declaration
+(** [animation_range_end v] is the [animation-range-end] property. *)
+
+val scroll_timeline : timeline_shorthand -> declaration
+(** [scroll_timeline v] is the [scroll-timeline] shorthand. *)
+
+val scroll_timeline_name : timeline_name -> declaration
+(** [scroll_timeline_name v] is the [scroll-timeline-name] property. *)
+
+val scroll_timeline_axis : timeline_axis -> declaration
+(** [scroll_timeline_axis v] is the [scroll-timeline-axis] property. *)
+
+val view_timeline : view_timeline_shorthand -> declaration
+(** [view_timeline v] is the [view-timeline] shorthand. *)
+
+val view_timeline_name : timeline_name -> declaration
+(** [view_timeline_name v] is the [view-timeline-name] property. *)
+
+val view_timeline_axis : timeline_axis -> declaration
+(** [view_timeline_axis v] is the [view-timeline-axis] property. *)
+
+val view_timeline_inset : timeline_inset -> declaration
+(** [view_timeline_inset v] is the [view-timeline-inset] property. *)
+
+val timeline_scope : timeline_name -> declaration
+(** [timeline_scope v] is the [timeline-scope] property. *)
 
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the
@@ -7440,6 +9243,14 @@ val overscroll_behavior_x : overscroll_behavior -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-x}
      overscroll-behavior-x} property. *)
 
+val overscroll_behavior_block : overscroll_behavior -> declaration
+(** [overscroll_behavior_block v] is the [overscroll-behavior-block] property.
+*)
+
+val overscroll_behavior_inline : overscroll_behavior -> declaration
+(** [overscroll_behavior_inline v] is the [overscroll-behavior-inline] property.
+*)
+
 val overscroll_behavior_y : overscroll_behavior -> declaration
 (** [overscroll_behavior_y behavior] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-y}
@@ -7482,6 +9293,9 @@ val appearance : appearance -> declaration
 (** [appearance app] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/appearance} appearance}
     property. *)
+
+val moz_appearance : appearance -> declaration
+(** [moz_appearance v] is the [-moz-appearance] property. *)
 
 type tab_size = Properties.tab_size =
   | Int of int

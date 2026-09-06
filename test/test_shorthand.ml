@@ -19,13 +19,14 @@ let unindexed decls = List.map snd decls
 
 (* [decl_optimizes_to] wraps its input in one rule; these cases turn on what a
    neighbouring rule holds, so they optimize a whole sheet. *)
-let sheet_optimizes_to ~into input =
+let sheet_optimizes_to ?scope ~into input =
   match Css.of_string input with
   | Ok { stylesheet; _ } ->
       Alcotest.(check string)
         (String.concat "" [ input; " minify+optimize" ])
         into
-        (String.trim (Css.to_string ~minify:true (Css.optimize stylesheet)))
+        (String.trim
+           (Css.to_string ~minify:true (Css.optimize ?scope stylesheet)))
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let test_declaration_covers_reset_boundaries () =
@@ -503,13 +504,32 @@ let test_transition_contraction_covers_reset_longhands () =
      and [0s] are initials and drop out. *)
   decl_optimizes_to ~into:"transition:color 1s allow-discrete"
     "transition-behavior:allow-discrete;transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
-  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+  (* A run leaving a slot out contracts into a shorthand that resets it, and
+     under the fragment scope the optimizer assumes by default the surrounding
+     CSS may hold that slot. So the two runs below keep their longhands, and
+     take the shorthand only once the caller says the input is the whole
+     graph. *)
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete"
     "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
-  decl_optimizes_to ~into:"transition:color 1s allow-discrete"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-duration:1s;transition-behavior:allow-discrete";
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s"
     "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
-  (* A run covering only the Transitions 1 longhands still contracts: nothing in
-     the rule writes the behaviour, so resetting it to [normal] is a no-op. *)
-  decl_optimizes_to ~into:"transition:color 1s"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition:color 1s allow-discrete"
+    "transition-property:color;transition-behavior:allow-discrete;transition-duration:1s";
+  (* A run covering only the Transitions 1 longhands leaves the behaviour to the
+     reset, which is the same partial contraction. *)
+  decl_optimizes_to
+    ~into:
+      "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s"
+    "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
+  decl_optimizes_to ~scope:`Stylesheet ~into:"transition:color 1s"
     "transition-property:color;transition-duration:1s;transition-timing-function:ease;transition-delay:0s";
   (* [inherit] is not a shorthand component, so the run cannot carry it and the
      contraction would drop it. *)
@@ -524,20 +544,27 @@ let test_transition_contraction_covers_reset_longhands () =
       "transition-delay:5s;color:red;transition-property:color;transition-duration:1s"
     "transition-delay:5s;color:red;transition-property:color;transition-duration:1s";
   (* An earlier shorthand holds the slots its own run left out. Contracting the
-     later run resets the delay it set. *)
+     later run resets the delay it set, in either scope. *)
   decl_optimizes_to
     ~into:
       "transition:color 1s \
        5s;transition-property:opacity;transition-duration:2s"
     "transition:color 1s ease \
      5s;transition-property:opacity;transition-duration:2s";
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:
+      "transition:color 1s \
+       5s;transition-property:opacity;transition-duration:2s"
+    "transition:color 1s ease \
+     5s;transition-property:opacity;transition-duration:2s";
   (* An earlier shorthand whose unwritten slots are already initials shadows
-     nothing, so the later run contracts. *)
-  decl_optimizes_to ~into:"transition:opacity 2s"
+     nothing, so the later run contracts once the graph is in view. *)
+  decl_optimizes_to ~scope:`Stylesheet ~into:"transition:opacity 2s"
     "transition:color 1s;transition-property:opacity;transition-duration:2s";
   (* An important longhand outranks the composed shorthand whatever the order,
      so it is not a hazard. *)
-  decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
+  decl_optimizes_to ~scope:`Stylesheet
+    ~into:"transition-delay:5s!important;transition:color 1s"
     "transition-delay:5s!important;transition-property:color;transition-duration:1s"
 
 (* The slot a contraction resets belongs to the element, not to the rule: any
@@ -906,7 +933,168 @@ let test_text_decoration_thickness_composes () =
   sheet_optimizes_to
     ~into:
       ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
-    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}";
+  (* CSS Cascade 5 (ED) sec. 7.3 gives a longhand written [initial] the
+     property's initial value, which is the component the shorthand leaves out,
+     so it contracts the same way the written-out initials do. Chrome 146
+     expands [text-decoration: none] to these four. *)
+  sheet_optimizes_to ~into:".x{text-decoration:none}"
+    ".x{text-decoration-line:none;text-decoration-thickness:initial;text-decoration-style:initial;text-decoration-color:initial}";
+  sheet_optimizes_to ~into:".x{text-decoration:overline 2px}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:initial;text-decoration-color:initial}";
+  sheet_optimizes_to ~into:".x{text-decoration:none red 2px}"
+    ".x{text-decoration-line:initial;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red}";
+  (* The other CSS-wide keywords name no value of their own, so a run carrying
+     one stays expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:inherit;text-decoration-color:red}"
+
+(* CSS Fonts 4 (ED) sec. 5.3 splits the [font] sub-properties into the seven the
+   shorthand writes and the thirteen it only resets. A run carrying one of the
+   thirteen at its initial says what the shorthand says, so the whole family
+   written out contracts; a run leaving one of the twenty to the reset asks for
+   the whole graph, the way the animation and transition runs do. Chrome 146
+   expands the two shorthands below to the runs beside them. *)
+let test_font_composes_the_whole_run () =
+  sheet_optimizes_to ~into:".x{font:italic 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-size-adjust:none;font-language-override:normal;font-kerning:auto;font-optical-sizing:auto;font-feature-settings:normal;font-variation-settings:normal;font-variant-position:normal;font-variant-emoji:normal;font-weight:bold;font-stretch:normal;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~into:".x{font:12px sans-serif}"
+    ".x{font-style:normal;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-size-adjust:none;font-language-override:normal;font-kerning:auto;font-optical-sizing:auto;font-feature-settings:normal;font-variation-settings:normal;font-variant-position:normal;font-variant-emoji:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:sans-serif}";
+  (* A run naming only the components leaves the other thirteen to the reset. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-style:italic;font-weight:700;font-size:12px;line-height:1.5;font-family:serif}"
+    ".x{font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* One of the thirteen away from its initial is a value the shorthand cannot
+     carry. It moves past the run, where it overrides the reset and says what it
+     said in front of it. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif;font-kerning:none}"
+    ".x{font-kerning:none;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* sec. 5.3 lets the shorthand write only the CSS 2.1 caps subset, so
+     [small-caps] is a component and [unicase] is one of the thirteen. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic small-caps 700 12px/1.5 serif}"
+    ".x{font-style:italic;font-variant-caps:small-caps;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif;font-variant-caps:unicase}"
+    ".x{font-variant-caps:unicase;font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  (* sec. 5.3 writes the width slot as [<font-width-css3>], the nine keywords
+     and no percentage, so a width the longhand normalised to its percentage
+     takes its keyword back and one no keyword names stays a longhand. Chrome
+     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px
+     serif`. *)
+  sheet_optimizes_to ~scope:`Stylesheet ~into:".x{font:expanded 12px serif}"
+    ".x{font-family:serif;font-size:12px;font-stretch:expanded}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:12px serif;font-stretch:110%}"
+    ".x{font-family:serif;font-size:12px;font-stretch:110%}"
+
+(* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, and a
+   longhand at [normal] is the component the shorthand leaves out. Chrome 146
+   expands each shorthand below to the run beside it. *)
+let test_font_variant_composes () =
+  sheet_optimizes_to ~into:".x{font-variant:small-caps}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:common-ligatures}"
+    ".x{font-variant-ligatures:common-ligatures;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to ~into:".x{font-variant:none}"
+    ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:normal;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  (* [none] is the whole value, so it has no spelling beside another
+     component. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:none;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  (* A CSS-wide keyword is no component, and a run missing one of the seven is
+     not the same declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:inherit;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:inherit;font-variant-alternates:normal;font-variant-position:normal;font-variant-emoji:normal}";
+  sheet_optimizes_to
+    ~into:
+      ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-position:normal;font-variant-emoji:normal}"
+    ".x{font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-east-asian:normal;font-variant-caps:small-caps;font-variant-position:normal;font-variant-emoji:normal}"
+
+(* CSS Grid 2 (ED) sec. 7.8: [grid] writes the three template longhands and the
+   three auto ones, and only one of its two auto-flow axes can be spelled, so
+   the other axis and its track size have to be at the initials the shorthand
+   leaves them. Chrome 146 computes the same six values for each pair below. *)
+let test_grid_composes () =
+  sheet_optimizes_to ~into:".x{grid:none/1fr 1fr}"
+    ".x{grid-template-columns:1fr \
+     1fr;grid-template-rows:none;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:none}"
+    ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:1fr/auto-flow 2em}"
+    ".x{grid-template-columns:none;grid-template-rows:1fr;grid-template-areas:none;grid-auto-flow:column;grid-auto-columns:2em;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:1fr/2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to ~into:".x{grid:auto-flow dense 2em/1fr}"
+    ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row \
+     dense;grid-auto-columns:auto;grid-auto-rows:2em}";
+  (* Where [grid] has no spelling, the three template longhands still contract
+     on their own: the row axis flows and the column tracks are sized, an area
+     sits beside a flowing axis, and the importance is mixed. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:none/1fr;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}"
+    ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}";
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:\"a\" \
+       1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\";grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}";
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template:1fr/2fr;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto!important}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:auto;grid-auto-rows:auto!important}"
+
+(* CSS Grid 2 (ED) sec. 7.4: [grid-template] is [none], a [<rows> / <columns>]
+   pair, or the areas form writing each row's string beside that row's size, and
+   it resets all three longhands. Chrome 146 expands each shorthand below to the
+   run beside it. *)
+let test_grid_template_composes () =
+  sheet_optimizes_to ~into:".x{grid-template:1fr/2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none}";
+  sheet_optimizes_to ~into:".x{grid-template:none}"
+    ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none}";
+  sheet_optimizes_to ~into:".x{grid-template:\"a b\" 1fr/1fr 1fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr \
+     1fr;grid-template-areas:\"a b\"}";
+  sheet_optimizes_to ~into:".x{grid-template:\"a\" 1fr \"b\" 2fr/1fr}"
+    ".x{grid-template-rows:1fr \
+     2fr;grid-template-columns:1fr;grid-template-areas:\"a\" \"b\"}";
+  (* The areas form writes one size per row, so a row count the tracks do not
+     match has no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\"\"b\"}"
+    ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\" \
+     \"b\"}";
+  (* A CSS-wide keyword is the whole declaration value and no shorthand
+     component, and a run missing one of the three is not the same
+     declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:inherit}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:inherit}";
+  sheet_optimizes_to
+    ~into:".x{grid-template-rows:1fr;grid-template-columns:2fr}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none!important}"
+    ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none!important}"
 
 (* CSS Backgrounds 3 (ED) sec. 4.1: an elliptical corner names a horizontal
    radius and a vertical one, and [border-radius] writes the four horizontals,
@@ -1057,36 +1245,73 @@ let test_border_contraction_covers_border_image () =
    name written earlier says [none] and animates nothing. The transition family
    already reasons this way; animation had no coverage arms at all. *)
 let test_animation_contraction_covers_other_rules () =
+  (* [animation] has more longhands than [<single-animation>] can carry, so
+     every run here leaves the shorthand resetting something and each case asks
+     for the whole graph; the control at the end pins the fragment scope. *)
   (* Split across two rules with the same selector: the shortest spelling that
      keeps the name groups the two and carries it into the shorthand. *)
-  sheet_optimizes_to ~into:".a{animation:spin 2s linear}"
+  sheet_optimizes_to ~scope:`Stylesheet ~into:".a{animation:spin 2s linear}"
     ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}";
   (* Same rule: the name is reset by a contraction that does not carry it, so
      the run stays expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{animation-name:spin;color:red;animation-duration:2s}"
     ".a{animation-name:spin;color:red;animation-duration:2s}";
   (* An important name outranks the non-important shorthand whatever the order,
      so the run contracts. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{animation-name:spin!important;color:red;animation:2s linear}"
     ".a{animation-name:spin!important;color:red;animation-duration:2s;animation-timing-function:linear}";
   (* A non-important name is reset by the contraction, so the run stays
      expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
-    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}";
+  (* The control: the first input under the fragment scope. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-duration:2s;animation-timing-function:linear;animation-name:spin}"
+    ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}"
+
+(* Scroll-driven Animations 1 (ED) appendix A.3 makes the two animation-range
+   longhands reset-only sub-properties of [animation], which Chrome 146 agrees
+   with: [animation-range-start: 20%] beside the shorthand computes to [normal].
+   So a range the rule holds blocks the contraction, a range written after the
+   shorthand is the reset spelled out, and one written before it is dead. *)
+let test_animation_resets_the_range () =
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-range-start:20%;animation-name:x;animation-duration:1s;animation-timing-function:linear}"
+    ".a{animation-range-start:20%;animation-name:x;animation-duration:1s;animation-timing-function:linear}";
+  decl_optimizes_to ~into:"animation:x 1s" "animation-range:20%;animation:x 1s";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-range:normal";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-range-start:normal;animation-range-end:normal";
+  decl_optimizes_to ~into:"animation:x 1s"
+    "animation:x 1s;animation-timeline:auto";
+  (* A range or a timeline the shorthand does not write is a real override. *)
+  decl_optimizes_to ~into:"animation:x 1s;animation-range:20%"
+    "animation:x 1s;animation-range:20%";
+  decl_optimizes_to ~into:"animation:x 1s;animation-timeline:view()"
+    "animation:x 1s;animation-timeline:view()";
+  decl_optimizes_to ~into:"animation:x 1s;animation-range:normal!important"
+    "animation:x 1s;animation-range:normal!important"
 
 let test_transition_contraction_covers_other_rules () =
+  (* Every case here contracts a run that leaves a slot to the shorthand's
+     reset, so each one asks for the whole graph. Under the fragment scope the
+     run stays expanded whatever the neighbours say, which the two controls at
+     the end pin. *)
   (* Same rule, both sides of the guard. A non-important holder is reset by the
      contraction, so the run stays expanded; an important one outranks the
      non-important shorthand whatever the order, so the run contracts. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}"
     ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete!important;color:red;transition:color \
        1s}"
@@ -1094,23 +1319,26 @@ let test_transition_contraction_covers_other_rules () =
   (* Split across two rules with the same selector, the element sees exactly the
      cascade above. The behaviour has to survive, and the shortest spelling that
      keeps it groups the two rules and carries it into the shorthand. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete}"
     ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{transition:color 1s;transition-behavior:allow-discrete!important}"
     ".a{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
   (* Both important: the shorthand no longer loses to the holder, so dropping
      the behaviour would change what the element animates. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete!important}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete!important}"
     ".a{transition-behavior:allow-discrete!important}.a{transition-property:color!important;transition-duration:1s!important}";
   (* An unrelated rule between them changes nothing: the holder is still in the
      cascade the second rule lands on. *)
-  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
     ".a{transition-behavior:allow-discrete}.b{color:red}.a{transition-property:color;transition-duration:1s}";
   (* A rule between them that writes the same family keeps the two apart, so
      there is no grouping to carry the behaviour into and the run stays
      expanded. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".a{transition-behavior:allow-discrete}.b{transition:opacity \
        2s}.a{transition-property:color;transition-duration:1s}"
@@ -1118,25 +1346,60 @@ let test_transition_contraction_covers_other_rules () =
      2s}.a{transition-property:color;transition-duration:1s}";
   (* The holder needs no relation to the run's selector: an element carrying
      both classes reads one cascade. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}"
     ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
   (* The other side of the guard, so it stays a hazard test and not a blanket
      refusal: a neighbour holding the slot at its initial resets to the same
      thing, and an important neighbour outranks the shorthand. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".b{transition-behavior:normal}.a{transition:color 1s}"
     ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}";
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:
       ".b{transition-behavior:allow-discrete!important}.a{transition:color 1s}"
     ".b{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
   (* A slot the rule itself rewrites after the run is not at risk from a
      neighbour holding it: the rewrite lands after the reset. *)
-  sheet_optimizes_to
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".a{transition:color 1s;color:red;transition-delay:5s}"
-    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}"
+    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}";
+  (* The controls: the same two inputs under the fragment scope the optimizer
+     assumes by default. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete;transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
+    ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}"
+
+(* CSS Backgrounds 3 (ED) sec. 3.4: [border] resets the whole border-image
+   family, so a neighbour holding one of those longhands is at risk from a
+   contraction that does not carry it. The family shares no single slot: a rule
+   holding the slice says nothing about the neighbour holding the source, and
+   answering for the two together let the source through. Chrome 146 computes
+   the image on both sides of each pair below. *)
+let test_border_image_held_across_rules () =
+  (* The run holds the slice and the repeat itself; the source next door is the
+     one the contraction would reset, so the shorthand goes in front of the
+     whole family and the reset is overridden. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border:4px \
+       solid#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
+    ".x{border-image-source:url(b.png)}.x{border-image-slice:30;border-image-repeat:round;border-width:4px;border-style:solid;border-color:transparent}";
+  (* The same run with nothing of its own to hold. *)
+  sheet_optimizes_to
+    ~into:".x{border:4px solid#0000;border-image-source:url(b.png)}"
+    ".x{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}";
+  (* A neighbour that cannot be reordered into place keeps the run expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:#0000}"
+    ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}"
 
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
@@ -1150,7 +1413,20 @@ let test_drop_redundant_border_longhand () =
   decl_optimizes_to ~into:"border:1px solid red;border-color:#00f"
     "border:1px solid red;border-color:blue";
   decl_optimizes_to ~into:"border:1px solid red;border-color:red green"
-    "border:1px solid red;border-color:red green"
+    "border:1px solid red;border-color:red green";
+  (* CSS Backgrounds 3 (ED) sec. 3.4 resets [border-image] too, so an
+     all-initial one after the shorthand says what the shorthand said. A
+     picture, or a stronger importance, is a real declaration. *)
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border:1px solid red;border-image:none";
+  decl_optimizes_to ~into:"border:1px solid red;border-image:url(a.png)"
+    "border:1px solid red;border-image:url(a.png)";
+  decl_optimizes_to ~into:"border:1px solid red;border-image:none!important"
+    "border:1px solid red;border-image:none!important";
+  (* Composition writes the shorthand the input never carried, and the
+     border-image run it leaves behind is redundant against it. *)
+  decl_optimizes_to ~into:"border:1px solid red"
+    "border-top-width:1px;border-right-width:1px;border-bottom-width:1px;border-left-width:1px;border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:solid;border-top-color:red;border-right-color:red;border-bottom-color:red;border-left-color:red;border-image-source:none;border-image-slice:100%;border-image-width:1;border-image-outset:0;border-image-repeat:stretch"
 
 let test_drop_redundant_font_longhand () =
   (* [font] resets style/weight/stretch/line-height to normal; a later longhand
@@ -1631,6 +1907,8 @@ let suite =
         test_transition_contraction_covers_other_rules;
       Alcotest.test_case "animation contraction covers other rules" `Quick
         test_animation_contraction_covers_other_rules;
+      Alcotest.test_case "animation resets the range" `Quick
+        test_animation_resets_the_range;
       Alcotest.test_case "scroll axis pair composes" `Quick
         test_scroll_axis_pair_composes;
       Alcotest.test_case "border axis pair composes" `Quick
@@ -1658,6 +1936,13 @@ let suite =
         test_font_synthesis_composes;
       Alcotest.test_case "webkit text stroke composes" `Quick
         test_webkit_text_stroke_composes;
+      Alcotest.test_case "font composes the whole run" `Quick
+        test_font_composes_the_whole_run;
+      Alcotest.test_case "font-variant composes" `Quick
+        test_font_variant_composes;
+      Alcotest.test_case "grid composes" `Quick test_grid_composes;
+      Alcotest.test_case "grid-template composes" `Quick
+        test_grid_template_composes;
       Alcotest.test_case "text decoration thickness composes" `Quick
         test_text_decoration_thickness_composes;
       Alcotest.test_case "border radius ellipse composes" `Quick
@@ -1675,6 +1960,8 @@ let suite =
         test_mask_full_run_composes;
       Alcotest.test_case "border contraction covers border-image" `Quick
         test_border_contraction_covers_border_image;
+      Alcotest.test_case "border-image held across rules" `Quick
+        test_border_image_held_across_rules;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick

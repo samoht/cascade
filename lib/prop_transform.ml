@@ -686,6 +686,7 @@ let rec pp_offset_path : offset_path Pp.t =
   | Url url -> Pp.url ctx url
   | Path path -> Pp.call "path" Pp.quoted_string ctx path
   | Ray ray -> Pp.call "ray" pp_ray ctx ray
+  | Shape shape -> Prop_mask.pp_clip_path ctx shape
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -775,13 +776,14 @@ let rec read_offset_rotate t : offset_rotate =
   let read_mode_first t : offset_rotate =
     let mode = read_offset_rotate_mode t in
     Cursor.ws t;
-    match Cursor.option read_angle t with
+    match Cursor.option read_angle_unit_required t with
     | Some angle -> With_angle (mode, angle)
     | None -> (
         match mode with Auto -> (Auto : offset_rotate) | Reverse -> Reverse)
   in
   let read_angle_first t : offset_rotate =
-    let angle = read_angle t in
+    (* Same reading as [rotate]: the angle carries a unit. *)
+    let angle = read_angle_unit_required t in
     Cursor.ws t;
     match Cursor.option read_offset_rotate_mode t with
     | Some mode -> With_angle (mode, angle)
@@ -884,18 +886,21 @@ let rec read_translate_value t : translate_value =
 
      - [translate: var(--t)] is a whole-value [var()] -- produce [Var _]. -
      [translate: var(--x) var(--y)] is per-slot -- produce [XY (_, _)]. *)
+  (* The grammar names lengths, so the intrinsic-sizing keywords a bare length
+     would accept are out. *)
+  let read_slot t = read_length ~with_keywords:false t in
   let read_lengths_from t (x : length) : translate_value =
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some y -> (
         Cursor.ws t;
-        match Cursor.option read_length t with
+        match Cursor.option read_slot t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> X x
   in
   let read_lengths t : translate_value =
-    let x = read_length t in
+    let x = read_slot t in
     read_lengths_from t x
   in
   let read_var_or_components t : translate_value =
@@ -905,7 +910,7 @@ let rec read_translate_value t : translate_value =
     if Cursor.is_done t then whole_var
     else
       let () = Cursor.restore t snap in
-      let x = read_length t in
+      let x = read_slot t in
       read_lengths_from t x
   in
   Cursor.enum_or_calls "translate"
@@ -1029,7 +1034,9 @@ let read_rotate_angle_axis_tail angle t =
    x|y|z] or [<angle> <number>{3}]. Try angle-first after the plain forms;
    consume the angle, then look for a trailing axis. *)
 let read_rotate_angle_then_axis t : rotate_value =
-  let angle = read_angle t in
+  (* CSS Values 4 (ED) sec. 6.2 omits the unit only for a zero length, so the
+     angle here carries one; Chrome 146 refuses [rotate: 0]. *)
+  let angle = read_angle_unit_required t in
   Cursor.ws t;
   if Cursor.is_done t then Angle angle else read_rotate_angle_axis_tail angle t
 
@@ -1136,6 +1143,13 @@ let rec read_scale t : scale =
 module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
+  (* CSS Transforms 1 sec. 4 spells the property [[ left | center | right | top
+     | bottom | <length-percentage> ] | [ [ left | center | right |
+     <length-percentage> ] [ top | center | bottom | <length-percentage> ] ]
+     <length>? | ...], so each slot is a length or one of those keywords and the
+     intrinsic-sizing ones a bare length would accept are out. *)
+  let read_slot t = read_length ~with_keywords:false t
+
   let read_position t : transform_origin =
     let position =
       match read_position_value t with
@@ -1144,7 +1158,7 @@ module Transform_origin = struct
       | position -> position
     in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some z -> (
         match position with
         | XY (x, y) -> XYZ (x, y, z)
@@ -1157,12 +1171,12 @@ module Transform_origin = struct
         | position -> Position position)
 
   let read_xyz (t : Cursor.t) : transform_origin =
-    let x = read_length t in
+    let x = read_slot t in
     Cursor.ws t;
-    match Cursor.option read_length t with
+    match Cursor.option read_slot t with
     | Some y -> (
         Cursor.ws t;
-        match Cursor.option read_length t with
+        match Cursor.option read_slot t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin
@@ -1349,7 +1363,21 @@ let rec read_offset_path t : offset_path =
         ( "var",
           fun t -> (Var (Values.read_var read_offset_path t) : offset_path) );
       ]
-    ~default:read_offset_path_url_token t
+      (* CSS Motion Path 1 sec. 2.1: [<offset-path> || <coord-box>], where
+         [<offset-path>] holds [<basic-shape>]. A shape and a reference box read
+         the way [clip-path] reads them; only that property's [none] and [url()]
+         arms belong to the enum above instead. *)
+    ~default:
+      (Cursor.one_of
+         [
+           read_offset_path_url_token;
+           (fun t ->
+             match Prop_mask.read_clip_path t with
+             | (Clip_path_none : clip_path) | Clip_path_url _ ->
+                 Cursor.err_expected t "offset-path shape"
+             | shape -> (Shape shape : offset_path));
+         ])
+    t
 
 let read_ray t : ray =
   Cursor.call "ray" t @@ fun inner ->
@@ -1432,7 +1460,7 @@ let starts_offset_path t =
   Cursor.lookahead
     (fun t ->
       match Cursor.option read_offset_path t with
-      | Some (None | Url _ | Path _ | Ray _ : offset_path) -> true
+      | Some (None | Url _ | Path _ | Ray _ | Shape _ : offset_path) -> true
       | Some _ | Option.None -> false)
     t
 

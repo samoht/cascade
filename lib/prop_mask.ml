@@ -540,7 +540,11 @@ let pp_mask_layer : mask_layer Pp.t =
   pp_bg_prop maybe_space pp_mask_box ctx layer.origin;
   pp_bg_prop maybe_space pp_mask_box ctx layer.clip;
   pp_bg_prop maybe_space pp_mask_mode ctx layer.mode;
-  pp_bg_prop maybe_space pp_mask_composite ctx layer.composite
+  pp_bg_prop maybe_space pp_mask_composite ctx layer.composite;
+  (* CSS Masking 1 (ED) sec. 8.7 sets an omitted shorthand slot to its initial
+     value, so a layer with no slot filled declares what [mask: none] declares;
+     the empty string is not a value any parser reads back. *)
+  if !first then Pp.string ctx "none"
 
 let rec pp_mask : mask Pp.t =
  fun ctx -> function
@@ -912,7 +916,7 @@ let read_clip_path_ellipse t : clip_path =
       Cursor.expect_eof inner;
       Clip_path_ellipse { rx; ry; position })
 
-let read_polygon_fill_rule inner =
+let read_polygon_fill_rule inner : clip_path_fill_rule option =
   match Cursor.peek_ident inner with
   | Some "nonzero" ->
       Cursor.skip inner;

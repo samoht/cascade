@@ -782,6 +782,23 @@ let spec_fontface_descriptors () =
 let page_case () =
   (* Test page roundtrip *)
   check_stylesheet ~expected:"@page{margin:1in}" "@page { margin: 1in; }";
+  (* CSS Paged Media 3 sec. 4.2 writes the prelude as [<page-selector>#], whose
+     item is a name, one or more pseudo-pages, or both. An item with neither is
+     no selector, so a lone comma and a trailing one both invalidate the rule,
+     which Chrome 151 drops. The prelude may be absent altogether. *)
+  assert_minify_and_optimize "@page , { margin: 1in; }" ~minified:""
+    ~optimized:"";
+  assert_minify_and_optimize "@page foo, { margin: 1in; }" ~minified:""
+    ~optimized:"";
+  check_stylesheet ~expected:"@page foo{margin:1in}"
+    "@page foo { margin: 1in; }";
+  (* CSS Syntax 3 (ED) sec. 5.5.5 discards a [;] among a block's contents, so a
+     stray one costs nothing and the rule after it reads. Chrome 151 reads it as
+     the start of a prelude and loses the block instead. *)
+  check_stylesheet ~expected:"@layer{a{color:red}}"
+    "@layer { ; a { color: red } }";
+  check_stylesheet ~expected:"@media all{a{color:red}}"
+    "@media all { ; a { color: red } }";
   check_stylesheet ~expected:"@page:first{margin:2in}"
     "@page :first { margin: 2in; }";
   check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
@@ -1412,6 +1429,16 @@ let spec_strict_accepts_valid_stylesheets () =
       ( "counter-style cyclic",
         "@counter-style thumbs { system: cyclic; symbols: \"*\" \"x\"; suffix: \
          \" \" }" );
+      (* CSS Counter Styles 3 sec. 3.1.1: without the symbols a cyclic system
+         "does not define a counter style (but is still a valid rule)", and sec.
+         3 keeps a rule whose descriptors a UA does not implement, so a missing
+         descriptor is not a parse error. *)
+      ( "counter-style missing system",
+        "@counter-style thumbs { symbols: \"*\" }" );
+      ( "counter-style cyclic missing symbols",
+        "@counter-style thumbs { system: cyclic }" );
+      ( "counter-style additive missing additive-symbols",
+        "@counter-style thumbs { system: additive }" );
     ]
 
 let spec_strict_rejects_invalid_stylesheets () =
@@ -1560,16 +1587,22 @@ let spec_strict_rejects_invalid_stylesheets () =
          block swap }" );
       ( "font-palette missing font-family",
         "@font-palette-values --brand { override-colors: 0 red }" );
-      ( "counter-style missing system",
-        "@counter-style thumbs { symbols: \"*\" }" );
-      ( "counter-style cyclic missing symbols",
-        "@counter-style thumbs { system: cyclic }" );
       ("page margin invalid declaration", "@page { @top-left { display: 1px } }");
       ("keyframes invalid selector", "@keyframes fade { 50px { opacity: 0 } }");
       ("keyframes forbidden name none", "@keyframes none { to { opacity: 1 } }");
       ( "keyframes forbidden css-wide name",
         "@keyframes initial { to { opacity: 1 } }" );
       (* Conditional query grammars. *)
+      (* CSS Cascade 6 sec. 3.5.2 gives each [@scope] bound a complex selector
+         list, so a bound that does not parse leaves the prelude invalid. It
+         used to become the [:invalid] pseudo-class, scoping the block to
+         whatever form controls were in an invalid state. *)
+      ("scope unparseable start bound", "@scope ) { .a { color: green } }");
+      ("scope unparseable end bound", "@scope (.s) to ) { .a { color: green } }");
+      (* The single-name shortcut in [Selector.of_string] read the whole bound
+         as an element name. CSS Syntax 3 (ED) sec. 4.3.11 builds a name from
+         ident code points, and a [}] is not one, so the bound names nothing. *)
+      ("scope bound that is not a name", "@scope (}) { .a { color: green } }");
       ( "media ungrouped mixed boolean operators",
         "@media (width) and (height) or (color) { .x { color: red } }" );
       ("media dangling not", "@media not { .x { color: red } }");
@@ -1920,10 +1953,22 @@ let spec_lenient_recovery_block_statements () =
     "@supports (color: red) { @supports (display: grid) bogus { a { color: red \
      } } b { color: blue } }"
     "@supports(color:red){b{color:#00f}}" 1;
-  lenient_recover "bad @media prelude in @media ends at its block"
+  (* Media Queries 5 sec. 3.2 replaces a query that does not match the grammar
+     with [not all] rather than dropping the rule, so the rule and its contents
+     survive and match nothing. [@supports] and [@container] above still drop:
+     their own specifications are read separately. *)
+  lenient_recover "bad @media prelude in @media is replaced by not all"
     "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
      color: blue } }"
-    "@media screen{b{color:#00f}}" 1;
+    "@media screen{@media not all{a{color:red}}b{color:#00f}}" 1;
+  (* The replacement is per entry of the comma-separated list, so the queries
+     beside the bad one still say what they said. *)
+  lenient_recover "only the bad query of a list is replaced"
+    "@media ,(min-width: 10px) { a { color: red } }"
+    "@media not all,(width>=10px){a{color:red}}" 1;
+  lenient_recover "a list of empty queries is one not all each"
+    "@media all,,all { a { color: red } }"
+    "@media all,not all,all{a{color:red}}" 1;
   lenient_recover "bad @container prelude in @media ends at its block"
     "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
      color: blue } }"
@@ -2556,7 +2601,11 @@ let spec_s7_block_examples () =
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
   check_stylesheet ~expected:"@keyframes slide{50%{opacity:1}}"
     "@keyframes slide { color: red; 50% { opacity: 1 } }";
-  expect_parse_error "@font-face { .x { color: red } }"
+  (* A qualified rule is not a descriptor, so it is dropped the way any other
+     bad descriptor is and the @font-face is kept. It then carries neither
+     font-family nor src, so nothing is emitted. Chrome 146 keeps an empty
+     CSSFontFaceRule for the same input. *)
+  check_stylesheet ~expected:"" "@font-face { .x { color: red } }"
 
 (* Not a roundtrip test *)
 let spec_s8_rule_shapes () =
@@ -4246,6 +4295,35 @@ let nesting_invalid_rule_recovery () =
   lenient_recover "invalid nested rule between declarations"
     ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
     ".a{color:red;.c{color:#00f}}" 1
+
+(* CSS Syntax 3 (ED) sec. 7.2 keeps an unmatched [)], []] or [}] out of a
+   [<declaration-value>], so a value carrying one is no declaration at all. The
+   rule holds for a value the typed readers hand to the opaque path as much as
+   for one they read: a [var()] postpones the property grammar to computed-value
+   time, not the token grammar. *)
+let opaque_value_is_a_declaration_value () =
+  lenient_recover "unmatched close paren after a var()"
+    ".a { width: var(--x)); color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close bracket before a var()"
+    ".a { width: ]var(--x); color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close bracket after a var()"
+    ".a { width: var(--x)]; color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close paren under an unknown property"
+    ".a { cascade-nope: a)b; color: green }" ".a{color:green}" 1
+
+(* Selectors 4 sec. 3.9 makes a selector list carrying an unknown pseudo-class
+   invalid, and CSS Nesting 1 sec. 2 gives a nested style rule a selector list
+   for its prelude, so the nested rule goes and the ones around it stay. An
+   escaped [;] is an ident code point, so [color:green\;] is a type selector and
+   a pseudo-class named [green;], which is the same case reached through a
+   declaration that failed. *)
+let nested_prelude_is_unforgiving () =
+  lenient_recover "unknown pseudo-class in a nested prelude"
+    ".a { b:future-pseudo { color: red } & .c { color: blue } }"
+    ".a .c{color:#00f}" 1;
+  lenient_recover "escaped semicolon leaves a pseudo-class behind"
+    "a { color: green\\; & { color: red } .c { z-index: 1 } }" "a .c{z-index:1}"
+    1
 
 (* CSS Syntax 3 sec. 4.3.1 consumes a unicode-range token only while "unicode
    ranges allowed" is set, and sec. 4.3.14 says the one caller that sets it is
@@ -6326,9 +6404,18 @@ let v4102_calc_single () =
   Alcotest.(check string)
     "calc(1px) -> 1px" ".x{width:1px}"
     (normalize ".x { width: calc(1px) }");
+  (* CSS Values 4 (ED) sec. 10.3 keeps a [calc()] valid where the property's
+     range is exceeded and clamps at used-value time, so [width: calc(-5px)]
+     computes to [0px] in Chrome 146 and [width: -5px] is dropped there. The
+     call stays on where the range starts at zero and folds where it does
+     not. *)
   Alcotest.(check string)
-    "calc(-5px) -> -5px" ".x{width:-5px}"
+    "calc(-5px) on a non-negative property keeps the call"
+    ".x{width:calc(-5px)}"
     (normalize ".x { width: calc(-5px) }");
+  Alcotest.(check string)
+    "calc(-5px) -> -5px" ".x{margin-left:-5px}"
+    (normalize ".x { margin-left: calc(-5px) }");
   Alcotest.(check string)
     "calc(1) -> 1" ".x{aspect-ratio:1}"
     (normalize ".x { aspect-ratio: calc(1) }")
@@ -8722,15 +8809,19 @@ let theme_defaults_reject_escaping_value () =
       ("a value carrying a second declaration", "red;--evil:lime");
       ("a value with an unmatched [)]", "red)");
       ("an unterminated function", "rgb(1,2,3");
-      ("an unterminated string", "\"abc");
       ("an empty value", "");
     ];
   (* A comment is consumed by tokenization (CSS Syntax 3 sec. 4.3.2), so
-     ["red/*"] is the one-token value ["red"] and does bind. *)
+     ["red/*"] is the one-token value ["red"] and does bind. sec. 4.3.5 ends a
+     string at EOF as the string it read, so that one binds as well. *)
   Alcotest.(check string)
     "an unterminated comment leaves a value that binds"
     ":root{--ok:blue;--brand:red}.a{color:var(--brand);background-color:var(--ok)}"
-    (emit "red/*")
+    (emit "red/*");
+  Alcotest.(check string)
+    "a value the input ended inside a string binds"
+    ":root{--ok:blue;--brand:\"abc\"}.a{color:var(--brand);background-color:var(--ok)}"
+    (emit "\"abc")
 
 (* CSS Syntax 3 sec. 4.3.7: a [\X] escape carries any code point into an ident,
    so [var(--x\3b y)] references the theme name ["x;y"]. The default binds under
@@ -9353,6 +9444,10 @@ let additional_tests =
       `Quick,
       unicode_range_only_in_its_descriptor );
     ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
+    ("nested prelude is unforgiving", `Quick, nested_prelude_is_unforgiving);
+    ( "opaque value is a declaration value",
+      `Quick,
+      opaque_value_is_a_declaration_value );
     ("unterminated string closes", `Quick, unterminated_string_closes);
     ( "spec nesting selector and conditional edges",
       `Quick,

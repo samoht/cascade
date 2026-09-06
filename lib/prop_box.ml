@@ -516,11 +516,15 @@ let rec read_shape_image_threshold t : shape_image_threshold =
   let read_var t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
   in
+  (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
+     [<number> | <percentage>], and computes it "clamped to the range [0,1]":
+     the clamp is at computed-value time, so a value outside it still reads. *)
   let read_number t : shape_image_threshold =
-    let value = Cursor.number t in
-    if value < 0. || value > 1. then
-      Cursor.err_invalid t "shape-image-threshold must be between 0 and 1";
-    Number value
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> Number (n /. 100.)
+    | Some unit -> Cursor.err_invalid t ("shape-image-threshold unit: " ^ unit)
+    | None -> Number n
   in
   Cursor.enum_or_calls "shape-image-threshold"
     [
@@ -604,11 +608,17 @@ let read_overflow_clip_box_item (box : overflow_clip_box option ref) t =
           false)
   | Some _ -> false
 
+(* CSS Overflow 4 sec. 3.2 spells [overflow-clip-margin] as [<visual-box> ||
+   <length>], with no range on the length, so a negative one pulls the clip edge
+   inside the box. *)
 let read_overflow_clip_length_item (length : length option ref) t =
   Cursor.ws t;
   match !length with
   | None ->
-      length := Some (read_length ~allow_negative:false ~with_keywords:false t);
+      length :=
+        Some
+          (read_length ~allow_negative:true ~with_keywords:false
+             ~length_only:true t);
       true
   | Some _ -> false
 
@@ -877,10 +887,14 @@ let rec read_z_index t : z_index =
     t
 
 let read_aspect_ratio_number t =
-  (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
+  (* CSS Sizing 4 sec. 5: an [<aspect-ratio>] component may be a [calc()] that
      resolves to a number. Keep the number AST for normal-output fidelity; the
-     printer folds constant expressions for minified output. *)
-  read_number t
+     printer folds constant expressions for minified output. The production is
+     [<ratio>], whose CSS Values 4 sec. 6.5 numbers carry a [0,inf] range. *)
+  let n = read_number t in
+  match n with
+  | Num v when v < 0. -> Cursor.err_invalid t "aspect-ratio cannot be negative"
+  | _ -> n
 
 let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
@@ -1106,12 +1120,17 @@ let rec read_float_side (t : Cursor.t) : float_side =
     t
 
 let rec read_zoom (t : Cursor.t) : zoom =
+  (* CSS Viewport 1 sec. 3 spells [zoom] as [normal | reset | <number [0,inf]> |
+     <percentage [0,inf]>], so a negative zoom is no zoom. *)
+  let non_negative n =
+    if n < 0. then Cursor.err_invalid t "zoom cannot be negative" else n
+  in
   let read_value t =
     match Cursor.percentage_opt t with
-    | Some p -> (Pct p : zoom)
+    | Some p -> (Pct (non_negative p) : zoom)
     | None -> (
         match Cursor.number_opt t with
-        | Some n -> Num n
+        | Some n -> Num (non_negative n)
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in

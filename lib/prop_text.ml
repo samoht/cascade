@@ -1628,25 +1628,32 @@ let read_text_box_edge_keyword t : text_box_edge_keyword =
     ]
     t
 
+(* CSS Inline 3 sec. 4.4 gives [text-box-edge] [auto | <text-edge>], so [auto]
+   is a value of the property rather than a CSS-wide keyword and reaches the
+   [text-box] shorthand along with the rest. *)
 let read_text_box_edge_value t : text_box_edge =
-  let keywords =
-    Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_text_box_edge_keyword
-      t
-  in
-  match keywords with
-  | [ Text ] | [ Ideographic_ink ] -> Edge (List.hd keywords, None)
-  | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
-  | [ (Text as first); ((Alphabetic | Ideographic) as second) ] ->
-      Edge (first, Some second)
-  | _ -> Cursor.err_invalid t "text-box-edge"
+  match Cursor.peek_ident t with
+  | Some "auto" ->
+      let _ = Cursor.ident t in
+      (Auto : text_box_edge)
+  | _ -> (
+      let keywords =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          read_text_box_edge_keyword t
+      in
+      match keywords with
+      | [ Text ] | [ Ideographic_ink ] -> Edge (List.hd keywords, None)
+      | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
+      | [ (Text as first); ((Alphabetic | Ideographic) as second) ] ->
+          Edge (first, Some second)
+      | _ -> Cursor.err_invalid t "text-box-edge")
 
 let rec read_text_box_edge ?(global = true) t : text_box_edge =
   if not global then read_text_box_edge_value t
   else
     Cursor.enum_or_var "text-box-edge"
       [
-        ("auto", (Auto : text_box_edge));
-        ("inherit", Inherit);
+        ("inherit", (Inherit : text_box_edge));
         ("initial", Initial);
         ("unset", Unset);
         ("revert", Revert);
@@ -2051,7 +2058,8 @@ let rec read_tab_size (t : Cursor.t) : tab_size =
             (fun t -> number_value t (Values.read_integer "tab-size" t));
             (fun t ->
               Length
-                (Values.read_length ~allow_negative:false ~with_keywords:false t));
+                (Values.read_length ~allow_negative:false ~with_keywords:false
+                   ~length_only:true t));
           ]
           t
   in

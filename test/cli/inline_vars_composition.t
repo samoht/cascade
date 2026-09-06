@@ -85,14 +85,18 @@ appropriate component.
   .a{transition:opacity .3s}.b{animation:slide 1s infinite}
 
 A custom property holding a CSS-wide keyword (initial / inherit / unset
-/ revert) inlines literally - the keyword's effect is at computed time.
+/ revert) is not inlined: CSS Variables L1 sec. 2.1 gives the keyword its
+usual meaning, so the binding is what the cascade makes of it against the
+element the sheet is read for, and never the keyword's own tokens.
+Writing [color: inherit] instead inherits the property where the binding
+resolves to the guaranteed-invalid value and the declaration does not.
 
   $ cat > keywords.css <<EOF
   > :root { --c: inherit }
   > .a { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars keywords.css
-  .a{color:inherit}
+  :root{--c:inherit}.a{color:var(--c)}
 
 A custom property holding a comma-separated list inlines as the literal
 sequence, preserving the list separator.

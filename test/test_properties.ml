@@ -754,6 +754,10 @@ let check_border_image_slice =
   check_value_cursor "border_image_slice" read_border_image_slice
     pp_border_image_slice
 
+let check_border_image_slice_offsets =
+  check_value_cursor "border_image_slice_offsets"
+    read_border_image_slice_offsets pp_border_image_slice_offsets
+
 let check_border_image_slice_item =
   check_value_cursor "border_image_slice_item" read_border_image_slice_item
     pp_border_image_slice_item
@@ -850,6 +854,27 @@ let check_font_synthesis_style =
 let check_font_synthesis_weight =
   check_value_cursor "font_synthesis_weight" read_font_synthesis_weight
     pp_font_synthesis_weight
+
+let check_font_variant =
+  check_value_cursor "font_variant" read_font_variant pp_font_variant
+
+let check_font_variant_alternates =
+  check_value_cursor "font_variant_alternates" read_font_variant_alternates
+    pp_font_variant_alternates
+
+let check_white_space_collapse =
+  check_value_cursor "white_space_collapse" read_white_space_collapse
+    pp_white_space_collapse
+
+let check_column_height =
+  check_value_cursor "column_height" read_column_height pp_column_height
+
+let check_column_wrap =
+  check_value_cursor "column_wrap" read_column_wrap pp_column_wrap
+
+let check_webkit_text_stroke =
+  check_value_cursor "webkit_text_stroke" read_webkit_text_stroke
+    pp_webkit_text_stroke
 
 let check_font_variant_caps =
   check_value_cursor "font_variant_caps" read_font_variant_caps
@@ -1034,6 +1059,10 @@ let check_position_area_keyword =
 let check_position_try_fallback =
   check_value_cursor "position_try_fallback" read_position_try_fallback
     pp_position_try_fallback
+
+let check_position_try_fallback_entry =
+  check_value_cursor "position_try_fallback_entry"
+    read_position_try_fallback_entry pp_position_try_fallback_entry
 
 let check_position_try_fallbacks =
   check_value_cursor "position_try_fallbacks" read_position_try_fallbacks
@@ -1318,7 +1347,11 @@ let test_zoom () =
   check_zoom "reset";
   check_zoom "50%";
   check_zoom "1.5";
-  neg_cursor read_zoom "not-a-zoom"
+  neg_cursor read_zoom "not-a-zoom";
+  (* CSS Viewport 1 sec. 3 spells the property [normal | reset | <number
+     [0,inf]> | <percentage [0,inf]>]. *)
+  neg_cursor read_zoom "-1";
+  neg_cursor read_zoom "-10%"
 
 let test_border_style () =
   check_border_style "none";
@@ -1618,6 +1651,14 @@ let test_line_height () =
     ~into:"calc(28/var(--x))" "calc(28 / var(--x))";
   neg_cursor read_line_height "invalid";
   neg_cursor read_line_height "-1.5";
+  (* CSS Inline 3 sec. 5.1 spells the property [normal | <number [0,inf]> |
+     <length-percentage [0,inf]>], so every length unit reads and nothing else
+     does. *)
+  check_line_height "2ch";
+  check_line_height "3cqw";
+  neg_cursor read_line_height "0s";
+  neg_cursor read_line_height "45deg";
+  neg_cursor read_line_height "10zz";
   (* negative line-height *)
   (* multiple values *)
   neg_cursor ~allow_partial:true read_line_height "normal 1.5"
@@ -2346,6 +2387,12 @@ let test_list_style_image () =
   check_list_style_image "none";
   check_list_style_image "inherit";
   check_list_style_image "url(https://example.com/x.png)";
+  (* CSS Lists 3 sec. 3.5 gives the property an [<image>], so every image the
+     vocabulary reads goes here and only the comma list does not. *)
+  check_list_style_image "linear-gradient(red,blue)";
+  check_list_style_image "conic-gradient(in hsl longer hue,red,blue)";
+  check_list_style_image "image-set(url(a.png)1x)";
+  check_list_style_image "cross-fade(url(a.png) 40%,url(b.png))";
   neg_cursor read_list_style_image "invalid-url"
 
 let test_vertical_align () =
@@ -2813,6 +2860,10 @@ let test_background_size () =
   check_background_size "var(--s)";
   check_background_size "calc(50% + 10px)";
   check_background_size "calc(50% + 10px) auto";
+  (* CSS Backgrounds 3 sec. 3.9 fills each of the two slots with a length or
+     [auto], and no sizing function stands in either. *)
+  check_background_size "auto 300px";
+  neg_cursor read_background_size "fit-content(20rem)";
   (* Comma-separated layer list (CSS Backgrounds 3 sec. 2.9). *)
   decl_optimizes ~prop:"background-size" ~into:"cover,contain" "cover,contain";
   decl_optimizes ~prop:"background-size" ~into:"100px 200px,auto"
@@ -3345,6 +3396,22 @@ let offset_slots_roundtrip () =
      text. *)
   offset_roundtrips ".x{offset:var(--a) var(--b)}"
 
+(* Sec. 2.1 gives [offset-path] a [<basic-shape> || <coord-box>] branch beside
+   [ray()], [url()] and [path()], so every shape function [clip-path] takes is a
+   motion path too, alone or with a reference box. The shorthand's leading group
+   holds the same branch. *)
+let offset_path_basic_shapes () =
+  offset_roundtrips ".x{offset-path:circle()}";
+  offset_roundtrips ".x{offset-path:circle(50%)}";
+  offset_roundtrips ".x{offset-path:ellipse(10px 20px at 0 0)}";
+  offset_roundtrips ".x{offset-path:inset(10px)}";
+  offset_roundtrips ".x{offset-path:xywh(0 0 100% 100%)}";
+  offset_roundtrips ".x{offset-path:polygon(0 0,10px 0,0 10px)}";
+  offset_roundtrips ".x{offset-path:content-box}";
+  offset_roundtrips ".x{offset-path:circle(50%) content-box}";
+  offset_roundtrips ".x{offset:content-box}";
+  offset_roundtrips ".x{offset:circle(50%)10px}"
+
 (* The five longhands keep the behaviour secs. 2.1 to 2.5 give them once the
    shorthand that resets them is modelled. *)
 let offset_longhand_guards () =
@@ -3376,6 +3443,9 @@ let test_translate_value () =
   check_translate_value "50% 100%";
   check_translate_value "var(--my-translate)";
   check_translate_value ~expected:"var(--x)var(--y)" "var(--x) var(--y)";
+  (* CSS Transforms 2 sec. 5 names lengths in every slot, so the
+     intrinsic-sizing keywords a bare length would accept are out. *)
+  neg_cursor read_translate_value "auto";
   neg_cursor read_translate_value "invalid-translate"
 
 let test_user_select () =
@@ -3661,6 +3731,7 @@ let test_stroke_dashoffset () =
   check_stroke_dashoffset "4px";
   check_stroke_dashoffset "10%";
   check_stroke_dashoffset "var(--o)";
+  check_stroke_dashoffset "-2px";
   neg_cursor read_stroke_dashoffset "none"
 
 let test_stroke_dasharray () =
@@ -3672,7 +3743,11 @@ let test_stroke_dasharray () =
   (* Comma and whitespace are the same separator here. *)
   check_stroke_dasharray ~expected:"4 2" "4, 2";
   check_stroke_dasharray "var(--d)";
-  neg_cursor read_stroke_dasharray "red"
+  neg_cursor read_stroke_dasharray "red";
+  (* SVG 2 sec. 13.3 gives each dash a non-negative value; only
+     [stroke-dashoffset] takes a signed one. *)
+  neg_cursor read_stroke_dasharray "-1";
+  neg_cursor read_stroke_dasharray "-1px"
 
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
@@ -3696,6 +3771,9 @@ let test_webkit_appearance () =
   check_webkit_appearance "auto";
   check_webkit_appearance "button";
   check_webkit_appearance "textfield";
+  (* The prefixed property is Chrome's alias for [appearance], so it takes the
+     [base-select] of CSS Basic User Interface 4 sec. 5.1. *)
+  check_webkit_appearance "base-select";
   check_webkit_appearance "inherit";
   neg_cursor read_webkit_appearance "invalid-appearance"
 
@@ -3795,6 +3873,9 @@ let test_transform_origin () =
   check_transform_origin "left top 10px";
   check_transform_origin "center top 10px";
   check_transform_origin "inherit";
+  (* CSS Transforms 1 sec. 4 names lengths and edge keywords, so the
+     intrinsic-sizing ones are out. *)
+  neg_cursor read_transform_origin "auto";
   neg_cursor read_transform_origin "invalid-origin"
 
 let test_text_shadow () =
@@ -3963,7 +4044,10 @@ let test_aspect_ratio () =
   check_aspect_ratio "1.5";
   check_aspect_ratio "1";
   check_aspect_ratio "inherit";
-  neg_cursor read_aspect_ratio "invalid-ratio"
+  neg_cursor read_aspect_ratio "invalid-ratio";
+  (* CSS Sizing 4 sec. 5 takes a [<ratio>], whose CSS Values 4 sec. 6.5 numbers
+     carry a [0,inf] range. *)
+  neg_cursor read_aspect_ratio "-1"
 
 let test_flex () =
   check_flex "1";
@@ -4004,6 +4088,13 @@ let test_position_try () =
   check_position_try "inherit";
   check_position_try "--foo";
   check_position_try "most-width --bar";
+  (* Sec. 6.1 lets a fallback entry be a [<position-area>], and sec. 6.3 makes
+     the fallbacks the required half of the shorthand. *)
+  check_position_try "center";
+  check_position_try "most-width none";
+  check_position_try ~expected:"--a,center" "--a, center";
+  neg_cursor ~allow_partial:true read_position_try "normal";
+  neg_cursor ~allow_partial:true read_position_try "most-width";
   neg_cursor ~allow_partial:true read_position_try "123"
 
 let test_border_image_repeat () =
@@ -4018,11 +4109,16 @@ let test_border_image_width () =
   check_border_image_width "10px";
   check_border_image_width "auto";
   check_border_image_width "1 2";
+  (* CSS Backgrounds 3 sec. 5.3 writes the number half as <number [0,inf]>,
+     which a calc() satisfies. *)
+  check_border_image_width "calc(1 + 2)";
+  check_border_image_width "calc(1 + 2) 3";
   check_border_image_width "inherit";
   neg_cursor read_border_image_width "blue"
 
 let test_border_image_outset () =
   check_border_image_outset "1";
+  check_border_image_outset "calc(1 + 2)";
   check_border_image_outset "10px";
   check_border_image_outset "1 2";
   check_border_image_outset "inherit";
@@ -4178,6 +4274,11 @@ let test_grid_template () =
   check_grid_template "1fr 2fr";
   check_grid_template "auto auto";
   check_grid_template "inherit";
+  (* CSS Grid 2 sec. 7.2 spells a [<track-breadth>] as [<length-percentage
+     [0,inf]> | <flex [0,inf]> | min-content | max-content | auto], so a
+     negative length is no breadth, inside [minmax()] either. *)
+  neg_cursor read_grid_template "-2px";
+  neg_cursor read_grid_template "minmax(-1px, 1fr)";
   (* CSS Grid 2 sec. 7.2: a track is any <length-percentage>, so a calc(), a
      var() inside a calc(), or a less common unit is a valid track, carried by
      the [Length] track. *)
@@ -4471,6 +4572,18 @@ let test_page_size () =
   check_page_size "auto";
   check_page_size "8.5in 11in";
   check_page_size ~expected:"A4 landscape" "a4 landscape";
+  (* CSS Paged Media 3 sec. 6.4 sizes a page in [<length [0,inf]>{1,2} | auto |
+     [ <page-size> || [ portrait | landscape ]]], so a percentage, a sizing
+     keyword and a negative are no page size, and CSS Cascade 5 sec. 7.3 gives
+     the descriptor the CSS-wide keywords. *)
+  check_page_size "calc(10px + 1em)";
+  check_page_size "initial";
+  check_page_size "unset";
+  check_page_size "revert-layer";
+  neg_cursor read_page_size "50%";
+  neg_cursor read_page_size "-1px";
+  neg_cursor read_page_size "fit-content(20rem)";
+  neg_cursor ~allow_partial:true read_page_size "10px 20%";
   check_page_size "letter portrait";
   check_page_size "landscape";
   check_page_size "inherit";
@@ -4542,7 +4655,11 @@ let test_columns_value () =
   check_columns_value "auto";
   check_columns_value "2";
   check_columns_value "inherit";
-  neg_cursor read_columns_value "invalid-columns"
+  neg_cursor read_columns_value "invalid-columns";
+  (* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length [0,inf]>],
+     so a percentage and a negative are no column width. *)
+  neg_cursor read_columns_value "-1px";
+  neg_cursor read_columns_value "50%"
 
 (* CSS Values 4 (ED) sec. 10.9: a math function that resolves to <number> is
    valid wherever an <integer> is, so every integer position reads a calc(). The
@@ -4583,7 +4700,11 @@ let test_font_size () =
   check_font_size "medium";
   check_font_size "large";
   check_font_size "inherit";
-  neg_cursor read_font_size "invalid-font-size"
+  neg_cursor read_font_size "invalid-font-size";
+  (* CSS Fonts 4 sec. 2.5 takes an absolute or relative size, a
+     [<length-percentage>] or [math]; CSS Sizing 4 sec. 3.2's [fit-content()] is
+     a [<box-size>] and no length. *)
+  neg_cursor read_font_size "fit-content(20rem)"
 
 let test_mask_box () =
   check_mask_box "border-box";
@@ -4780,6 +4901,11 @@ let spec_generated_animation_font_edges () =
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range "entry";
+  (* Scroll Animations 1 sec. 5.1 names [normal], a length-percentage and a
+     range name, so the intrinsic-sizing keywords a bare length would accept are
+     out. *)
+  neg_cursor read_animation_range "auto";
+  neg_cursor read_animation_range_item "auto";
   (* the <length-percentage> offset takes a held (non-reducible) calc(). *)
   check_animation_range_item "entry calc(50% + 10px)";
   check_animation_range_item "cover 20%";
@@ -4798,6 +4924,14 @@ let spec_generated_animation_font_edges () =
   check_font_synthesis_small_caps "auto";
   check_font_synthesis_style "oblique-only";
   check_font_synthesis_weight "auto";
+  check_font_variant "small-caps";
+  check_font_variant "common-ligatures small-caps tabular-nums";
+  check_font_variant_alternates "swash(fancy)";
+  check_font_variant_alternates "styleset(a,b) historical-forms";
+  check_white_space_collapse "preserve-breaks";
+  check_column_height "10em";
+  check_column_wrap "wrap";
+  check_webkit_text_stroke "1px red";
   check_font_variant_caps "small-caps";
   check_font_variant_east_asian "jis78 ruby";
   check_east_asian_feature "jis04";
@@ -4848,6 +4982,14 @@ let spec_generated_box_layout_edges () =
   check_border_image_outset_item "2px";
   check_border_image_repeat_keyword "round";
   check_border_image_slice "30 fill";
+  (* CSS Cascade 5 sec. 7.3 gives the longhand the CSS-wide keywords; the
+     offsets the shorthand takes are the same value without them. *)
+  check_border_image_slice "initial";
+  check_border_image_slice "inherit";
+  check_border_image_slice "unset";
+  check_border_image_slice "revert";
+  check_border_image_slice "revert-layer";
+  check_border_image_slice_offsets "30 fill";
   check_border_image_slice_item "30%";
   check_border_image_width_item "auto";
   check_border_spacing "1px 2px";
@@ -4889,6 +5031,14 @@ let spec_generated_box_layout_edges () =
   check_overflow_clip_box "content-box";
   check_overflow_clip_margin "content-box 1px";
   check_shape_image_threshold ".5";
+  (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
+     [<number> | <percentage>], and clamps it to [0,1] at computed-value time,
+     so a value outside the range still reads. *)
+  check_shape_image_threshold "-1";
+  check_shape_image_threshold "2";
+  check_value_cursor "shape_image_threshold" read_shape_image_threshold
+    pp_shape_image_threshold ~expected:".5" "50%";
+  neg_cursor read_shape_image_threshold "2px";
   check_tab_size "4";
   check_zoom "50%";
   check_zoom "normal";
@@ -4930,7 +5080,9 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_min_intrinsic_sizing_keyword "zero";
   neg_cursor read_overflow_clip_box "margin-box";
   neg_cursor ~allow_partial:true read_overflow_clip_margin "1px 2px";
-  neg_cursor read_shape_image_threshold "-1";
+  (* CSS Shapes 1 sec. 6.2 clamps the threshold at computed-value time, so a
+     value outside [0,1] reads; a unit is what it has no place for. *)
+  neg_cursor read_shape_image_threshold "2px";
   neg_cursor read_tab_size "-1"
 
 (* ignore-test: grouped generated-surface vectors. *)
@@ -5079,6 +5231,8 @@ let spec_generated_position_interaction_edges () =
   check_position_area "top span-left";
   check_position_area_keyword "span-inline-start";
   check_position_try_fallback "flip-block";
+  check_position_try_fallback_entry "flip-block";
+  check_position_try_fallback_entry "start end";
   check_position_try_fallbacks ~expected:"flip-block,--fallback"
     "flip-block, --fallback";
   check_position_try_order "most-inline-size";
@@ -5131,6 +5285,9 @@ let spec_generated_position_interaction_edges () =
   neg_cursor read_position_area_keyword "middle";
   neg_cursor read_position_try_fallback "flip";
   neg_cursor ~allow_partial:true read_position_try_fallbacks "none flip-block";
+  (* Sec. 6.1 keeps the tactic group and the position area apart, so an entry
+     never mixes one with the other. *)
+  neg_cursor ~allow_partial:true read_position_try_fallbacks "--a center";
   neg_cursor read_position_try_order "most-size";
   neg_cursor ~allow_partial:true read_position_visibility
     "always anchors-visible";
@@ -5215,7 +5372,11 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_text_wrap_mode "pretty";
   neg_cursor read_text_wrap_style "nowrap";
   neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
-  neg_cursor read_timeline_inset_item "-1px";
+  (* Scroll Animations 1 sec. 3.4.3 gives each item [auto] or a plain
+     [<length-percentage>], with no range restriction, so a negative reads. *)
+  check_value_cursor "timeline_inset_item" read_timeline_inset_item
+    pp_timeline_inset_item "-1px";
+  neg_cursor read_timeline_inset_item "1deg";
   neg_cursor ~allow_partial:true read_timeline_name "none --main";
   neg_cursor ~allow_partial:true read_timeline_shorthand_item "--main z";
   neg_cursor ~allow_partial:true read_view_transition_class "none card";
@@ -5550,6 +5711,7 @@ let additional_tests =
     test_case "offset invalid values" `Quick offset_invalid_values;
     test_case "offset slots roundtrip" `Quick offset_slots_roundtrip;
     test_case "offset longhand guards" `Quick offset_longhand_guards;
+    test_case "offset path basic shapes" `Quick offset_path_basic_shapes;
     test_case "offset spellings factor" `Quick offset_spellings_factor;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;

@@ -84,75 +84,10 @@ let rec pp_anchor_name : anchor_name Pp.t =
 let rec pp_position_anchor : position_anchor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_anchor ctx v
+  | Normal -> Pp.string ctx "normal"
+  | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Anchor name -> pp_ident ctx name
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let pp_position_try_fallback : position_try_fallback Pp.t =
- fun ctx -> function
-  | Flip_block -> Pp.string ctx "flip-block"
-  | Flip_inline -> Pp.string ctx "flip-inline"
-  | Flip_start -> Pp.string ctx "flip-start"
-  | Name name -> pp_ident ctx name
-
-let rec pp_position_try_fallbacks : position_try_fallbacks Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_position_try_fallbacks ctx v
-  | None -> Pp.string ctx "none"
-  | Fallbacks fallbacks ->
-      Pp.list ~sep:Pp.comma
-        (Pp.list ~sep:Pp.space pp_position_try_fallback)
-        ctx fallbacks
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_position_try_order : position_try_order Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_position_try_order ctx v
-  | Normal -> Pp.string ctx "normal"
-  | Most_width -> Pp.string ctx "most-width"
-  | Most_height -> Pp.string ctx "most-height"
-  | Most_block_size -> Pp.string ctx "most-block-size"
-  | Most_inline_size -> Pp.string ctx "most-inline-size"
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-
-let rec pp_position_try : position_try Pp.t =
- fun ctx -> function
-  | Try (Normal, fallbacks) -> pp_position_try_fallbacks ctx fallbacks
-  | Try (order, None) -> pp_position_try_order ctx order
-  | Try (order, fallbacks) ->
-      pp_position_try_order ctx order;
-      Pp.space ctx ();
-      pp_position_try_fallbacks ctx fallbacks
-  | Initial -> Pp.string ctx "initial"
-  | Inherit -> Pp.string ctx "inherit"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_position_try ctx v
-
-let pp_position_visibility_condition : position_visibility_condition Pp.t =
- fun ctx -> function
-  | Anchors_visible -> Pp.string ctx "anchors-visible"
-  | No_overflow -> Pp.string ctx "no-overflow"
-
-let rec pp_position_visibility : position_visibility Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_position_visibility ctx v
-  | Always -> Pp.string ctx "always"
-  | Conditions conditions ->
-      Pp.list ~sep:Pp.space pp_position_visibility_condition ctx conditions
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -211,6 +146,81 @@ let pp_position_area_keyword : position_area_keyword Pp.t =
   | Span_self_inline_start -> Pp.string ctx "span-self-inline-start"
   | Span_self_inline_end -> Pp.string ctx "span-self-inline-end"
   | Span_all -> Pp.string ctx "span-all"
+
+let pp_position_try_fallback : position_try_fallback Pp.t =
+ fun ctx -> function
+  | Flip_block -> Pp.string ctx "flip-block"
+  | Flip_inline -> Pp.string ctx "flip-inline"
+  | Flip_start -> Pp.string ctx "flip-start"
+  | Name name -> pp_ident ctx name
+
+let pp_position_try_fallback_entry : position_try_fallback_entry Pp.t =
+ fun ctx -> function
+  | Tactics group -> Pp.list ~sep:Pp.space pp_position_try_fallback ctx group
+  | Area (first, second) ->
+      pp_position_area_keyword ctx first;
+      Option.iter
+        (fun keyword ->
+          Pp.space ctx ();
+          pp_position_area_keyword ctx keyword)
+        second
+
+let rec pp_position_try_fallbacks : position_try_fallbacks Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_position_try_fallbacks ctx v
+  | None -> Pp.string ctx "none"
+  | Fallbacks fallbacks ->
+      Pp.list ~sep:Pp.comma pp_position_try_fallback_entry ctx fallbacks
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_position_try_order : position_try_order Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_position_try_order ctx v
+  | Normal -> Pp.string ctx "normal"
+  | Most_width -> Pp.string ctx "most-width"
+  | Most_height -> Pp.string ctx "most-height"
+  | Most_block_size -> Pp.string ctx "most-block-size"
+  | Most_inline_size -> Pp.string ctx "most-inline-size"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_position_try : position_try Pp.t =
+ fun ctx -> function
+  | Try (Normal, fallbacks) -> pp_position_try_fallbacks ctx fallbacks
+  | Try (order, fallbacks) ->
+      pp_position_try_order ctx order;
+      Pp.space ctx ();
+      pp_position_try_fallbacks ctx fallbacks
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_position_try ctx v
+
+let pp_position_visibility_condition : position_visibility_condition Pp.t =
+ fun ctx -> function
+  | Anchors_visible -> Pp.string ctx "anchors-visible"
+  | No_overflow -> Pp.string ctx "no-overflow"
+
+let rec pp_position_visibility : position_visibility Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_position_visibility ctx v
+  | Always -> Pp.string ctx "always"
+  | Conditions conditions ->
+      Pp.list ~sep:Pp.space pp_position_visibility_condition ctx conditions
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_position_area : position_area Pp.t =
  fun ctx -> function
@@ -304,17 +314,15 @@ let rec pp_container_shorthand : container_shorthand Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Shorthand { name; ctype } -> (
-      match (name, ctype) with
-      | None, None -> () (* Should not happen, but emit nothing *)
-      | Some n, None -> Pp.string ctx n
-      | None, Some t -> pp_container_type ctx t
-      | Some n, Some t ->
-          Pp.string ctx n;
+  | Shorthand { name; ctype } ->
+      pp_container_name ctx name;
+      Option.iter
+        (fun t ->
           Pp.sp ctx ();
           Pp.char ctx '/';
           Pp.sp ctx ();
           pp_container_type ctx t)
+        ctype
 
 let rec pp_content_visibility : content_visibility Pp.t =
  fun ctx -> function
@@ -447,8 +455,22 @@ let rec read_container_type (t : Cursor.t) : container_type =
       (Var (Values.read_var read_container_type t) : container_type))
     t
 
+(* CSS Conditional 5 sec. 3.2 excludes [none], [and], [not] and [or] from a
+   container name, and CSS Values 4 sec. 3.2 excludes [default] and the CSS-wide
+   keywords from every [<custom-ident>]. *)
 let container_name_reserved =
-  [ "none"; "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+  [
+    "none";
+    "and";
+    "not";
+    "or";
+    "default";
+    "initial";
+    "inherit";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
 
 let read_container_custom_ident t =
   let ident = Cursor.ident ~keep_case:true t in
@@ -499,6 +521,8 @@ let rec read_anchor_name (t : Cursor.t) : anchor_name =
 let rec read_position_anchor (t : Cursor.t) : position_anchor =
   let keywords : (string * position_anchor) list =
     [
+      ("normal", Normal);
+      ("none", None);
       ("auto", Auto);
       ("initial", Initial);
       ("inherit", Inherit);
@@ -514,16 +538,20 @@ let rec read_position_anchor (t : Cursor.t) : position_anchor =
      t
     : position_anchor)
 
+(* CSS Sizing 4 sec. 5: [contain-intrinsic-size] takes [<length>], and no
+   percentage, which Chrome 146 refuses. *)
 let read_contain_intrinsic_size_item t : contain_intrinsic_size_item =
+  let size t =
+    Values.read_length ~allow_negative:false ~with_keywords:false
+      ~length_only:true t
+  in
   Cursor.ws t;
   match Cursor.peek_ident t with
   | Some "auto" ->
       let _ = Cursor.ident t in
       Cursor.ws t;
-      (Auto (Values.read_length ~allow_negative:false ~with_keywords:false t)
-        : contain_intrinsic_size_item)
-  | _ ->
-      Length (Values.read_length ~allow_negative:false ~with_keywords:false t)
+      (Auto (size t) : contain_intrinsic_size_item)
+  | _ -> Length (size t)
 
 let rec read_contain_intrinsic_size (t : Cursor.t) : contain_intrinsic_size =
   let keywords : (string * contain_intrinsic_size) list =
@@ -572,51 +600,38 @@ let rec read_contain_intrinsic_longhand (t : Cursor.t) :
      t
     : contain_intrinsic_longhand)
 
+(* Sec. 3.3 gives the shorthand a required [<'container-name'>], so every
+   keyword before the slash is a name: [container: inline-size] names a
+   container, it does not type one. *)
+let read_container_shorthand_name t : container_name =
+  match Cursor.peek_ident t with
+  | Some "none" ->
+      let _ = Cursor.ident t in
+      (None : container_name)
+  | _ ->
+      Names
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 read_container_custom_ident t)
+
 let rec read_container_shorthand (t : Cursor.t) : container_shorthand =
-  (* Syntax: container: [<custom-ident>] [ / <container-type> ]? *)
-  let is_container_type_keyword ident =
-    match String.lowercase_ascii ident with
-    | "normal" | "inline-size" | "size" | "scroll-state" -> true
-    | _ -> false
-  in
-  let validate_name_before_slash ident =
-    if is_container_type_keyword ident then
-      Cursor.err_invalid t
-        ("container shorthand type keyword used as name: " ^ ident);
-    if List.mem (String.lowercase_ascii ident) container_name_reserved then
-      Cursor.err_invalid t ("reserved container-name ident: " ^ ident)
-  in
-  Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii_preserve name = "var" ->
-      (Var (Values.read_var read_container_shorthand t) : container_shorthand)
-  | _ -> (
-      let first = Cursor.ident t in
+  Cursor.enum_or_var "container"
+    [
+      ("initial", (Initial : container_shorthand));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_container_shorthand t) : container_shorthand))
+    ~default:(fun t ->
+      let name = read_container_shorthand_name t in
       Cursor.ws t;
-      match Cursor.peek_delim t with
-      | Some '/' ->
-          (* We have: name / type *)
-          validate_name_before_slash first;
-          Cursor.expect '/' t;
-          Cursor.ws t;
-          let ctype = read_container_type t in
-          Shorthand { name = Some first; ctype = Some ctype }
-      | _ -> (
-          (* Just a name, or just a type? Check if it's a valid
-             container-type *)
-          match first with
-          | "normal" -> Shorthand { name = None; ctype = Some Normal }
-          | "inline-size" -> Shorthand { name = None; ctype = Some Inline_size }
-          | "size" -> Shorthand { name = None; ctype = Some Size }
-          | "scroll-state" ->
-              Shorthand { name = None; ctype = Some Scroll_state }
-          | "initial" -> Initial
-          | "inherit" -> Inherit
-          | "unset" -> Unset
-          | "revert" -> Revert
-          | "revert-layer" -> Revert_layer
-          | _ -> Shorthand { name = Some first; ctype = None }))
+      if Cursor.slash_opt t then (
+        Cursor.ws t;
+        (Shorthand { name; ctype = Some (read_container_type t) }
+          : container_shorthand))
+      else Shorthand { name; ctype = Option.None })
+    t
 
 let rec read_contain t : contain =
   let read_contain_value t : contain =
@@ -719,138 +734,6 @@ let read_position_try_fallback t =
       | "flip-start" -> Flip_start
       | _ -> assert false)
   | _ -> Name (read_dashed_ident t)
-
-(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free and takes each
-   component at most once, so the group reads in any order and is held
-   name-first with the tactics in block, inline, start order. *)
-let read_position_try_fallback_group t =
-  let components =
-    Cursor.list ~sep:Cursor.ws ~at_least:1 read_position_try_fallback t
-  in
-  let pick p = List.filter p components in
-  let name =
-    pick (function (Name _ : position_try_fallback) -> true | _ -> false)
-  in
-  let block = pick (function Flip_block -> true | _ -> false) in
-  let inline = pick (function Flip_inline -> true | _ -> false) in
-  let start = pick (function Flip_start -> true | _ -> false) in
-  if
-    List.length name > 1
-    || List.length block > 1
-    || List.length inline > 1
-    || List.length start > 1
-  then Cursor.err_invalid t "position-try-fallbacks repeats a component";
-  name @ block @ inline @ start
-
-let rec read_position_try_fallbacks t : position_try_fallbacks =
-  let keywords : (string * position_try_fallbacks) list =
-    [
-      ("none", None);
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-  in
-  (Cursor.enum_or_var "position-try-fallbacks" keywords
-     ~var:(fun t ->
-       (Var (Values.read_var read_position_try_fallbacks t)
-         : position_try_fallbacks))
-     ~default:(fun t ->
-       (Fallbacks
-          (Cursor.list ~sep:Cursor.comma ~at_least:1
-             read_position_try_fallback_group t)
-         : position_try_fallbacks))
-     t
-    : position_try_fallbacks)
-
-let rec read_position_try_order t : position_try_order =
-  Cursor.enum_or_var "position-try-order"
-    [
-      ("normal", (Normal : position_try_order));
-      ("most-width", Most_width);
-      ("most-height", Most_height);
-      ("most-block-size", Most_block_size);
-      ("most-inline-size", Most_inline_size);
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t ->
-      (Var (Values.read_var read_position_try_order t) : position_try_order))
-    t
-
-let rec read_position_try t : position_try =
-  Cursor.enum_or_var "position-try"
-    [
-      ("initial", (Initial : position_try));
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_position_try t))
-    ~default:(fun t ->
-      (* [<order> || <fallbacks>]: an optional leading order keyword (which
-         never collides with a fallback dashed-ident or try-tactic), then the
-         fallbacks. An order alone leaves fallbacks at its initial [none]. *)
-      let order : position_try_order =
-        match Cursor.peek_ident t with
-        | Some
-            ( "normal" | "most-width" | "most-height" | "most-block-size"
-            | "most-inline-size" ) ->
-            let o = read_position_try_order t in
-            Cursor.ws t;
-            o
-        | _ -> Normal
-      in
-      let fallbacks =
-        match Cursor.option read_position_try_fallbacks t with
-        | Some f -> f
-        | None -> (None : position_try_fallbacks)
-      in
-      Try (order, fallbacks))
-    t
-
-let rec read_position_visibility t : position_visibility =
-  Cursor.enum_or_var "position-visibility"
-    [
-      ("always", (Always : position_visibility));
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t ->
-      (Var (Values.read_var read_position_visibility t) : position_visibility))
-    ~default:(fun t ->
-      let read_condition t =
-        Cursor.enum "position-visibility condition"
-          [
-            ( "anchors-visible",
-              (Anchors_visible : position_visibility_condition) );
-            ("no-overflow", No_overflow);
-          ]
-          t
-      in
-      let conditions =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_condition t
-      in
-      let duplicate condition =
-        List.length
-          (List.filter
-             (equal_position_visibility_condition condition)
-             conditions)
-        > 1
-      in
-      if List.exists duplicate conditions then
-        Cursor.err_invalid t "position-visibility";
-      (Conditions conditions : position_visibility))
-    t
 
 let position_area_keywords : (string * position_area_keyword) list =
   [
@@ -969,6 +852,157 @@ let compatible_position_area_keywords first second =
      produces. *)
   | (Physical _ | Logical _ | Self_logical _ | Plain | Self_plain), _ -> false
 
+(* One [<position-area>], which [position-area] takes whole and
+   [position-try-fallbacks] takes as one comma-separated entry. *)
+let read_position_area_pair t =
+  match Cursor.list ~at_least:1 ~at_most:2 read_position_area_keyword t with
+  | [ first ] -> (first, Option.None)
+  | [ first; second ] ->
+      if not (compatible_position_area_keywords first second) then
+        Cursor.err_invalid t
+          "position-area keywords must come from one branch of the grammar";
+      (first, Option.Some second)
+  | _ -> Cursor.err_expected t "position-area"
+
+(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free and takes each
+   component at most once, so the group reads in any order and is held
+   name-first with the tactics in block, inline, start order. *)
+let read_position_try_fallback_tactics t =
+  let components =
+    Cursor.list ~sep:Cursor.ws ~at_least:1 read_position_try_fallback t
+  in
+  let pick p = List.filter p components in
+  let name =
+    pick (function (Name _ : position_try_fallback) -> true | _ -> false)
+  in
+  let block = pick (function Flip_block -> true | _ -> false) in
+  let inline = pick (function Flip_inline -> true | _ -> false) in
+  let start = pick (function Flip_start -> true | _ -> false) in
+  if
+    List.length name > 1
+    || List.length block > 1
+    || List.length inline > 1
+    || List.length start > 1
+  then Cursor.err_invalid t "position-try-fallbacks repeats a component";
+  name @ block @ inline @ start
+
+let read_position_try_fallback_entry t : position_try_fallback_entry =
+  Cursor.one_of
+    [
+      (fun t ->
+        (Tactics (read_position_try_fallback_tactics t)
+          : position_try_fallback_entry));
+      (fun t ->
+        let first, second = read_position_area_pair t in
+        (Area (first, second) : position_try_fallback_entry));
+    ]
+    t
+
+let rec read_position_try_fallbacks t : position_try_fallbacks =
+  let keywords : (string * position_try_fallbacks) list =
+    [
+      ("none", None);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  (Cursor.enum_or_var "position-try-fallbacks" keywords
+     ~var:(fun t ->
+       (Var (Values.read_var read_position_try_fallbacks t)
+         : position_try_fallbacks))
+     ~default:(fun t ->
+       (Fallbacks
+          (Cursor.list ~sep:Cursor.comma ~at_least:1
+             read_position_try_fallback_entry t)
+         : position_try_fallbacks))
+     t
+    : position_try_fallbacks)
+
+let rec read_position_try_order t : position_try_order =
+  Cursor.enum_or_var "position-try-order"
+    [
+      ("normal", (Normal : position_try_order));
+      ("most-width", Most_width);
+      ("most-height", Most_height);
+      ("most-block-size", Most_block_size);
+      ("most-inline-size", Most_inline_size);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_position_try_order t) : position_try_order))
+    t
+
+let rec read_position_try t : position_try =
+  Cursor.enum_or_var "position-try"
+    [
+      ("initial", (Initial : position_try));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_position_try t))
+    ~default:(fun t ->
+      (* Sec. 6.3 is [<'position-try-order'>? <'position-try-fallbacks'>]: the
+         order keyword is optional and never collides with a fallback, and the
+         fallbacks are not, so an order on its own is no value. *)
+      let order : position_try_order =
+        match Cursor.peek_ident t with
+        | Some
+            ( "normal" | "most-width" | "most-height" | "most-block-size"
+            | "most-inline-size" ) ->
+            let o = read_position_try_order t in
+            Cursor.ws t;
+            o
+        | _ -> Normal
+      in
+      Try (order, read_position_try_fallbacks t))
+    t
+
+let rec read_position_visibility t : position_visibility =
+  Cursor.enum_or_var "position-visibility"
+    [
+      ("always", (Always : position_visibility));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_position_visibility t) : position_visibility))
+    ~default:(fun t ->
+      let read_condition t =
+        Cursor.enum "position-visibility condition"
+          [
+            ( "anchors-visible",
+              (Anchors_visible : position_visibility_condition) );
+            ("no-overflow", No_overflow);
+          ]
+          t
+      in
+      let conditions =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_condition t
+      in
+      let duplicate condition =
+        List.length
+          (List.filter
+             (equal_position_visibility_condition condition)
+             conditions)
+        > 1
+      in
+      if List.exists duplicate conditions then
+        Cursor.err_invalid t "position-visibility";
+      (Conditions conditions : position_visibility))
+    t
+
 let rec read_position_area t : position_area =
   Cursor.enum_or_var "position-area"
     [
@@ -981,14 +1015,8 @@ let rec read_position_area t : position_area =
     ]
     ~var:(fun t -> (Var (Values.read_var read_position_area t) : position_area))
     ~default:(fun t ->
-      match Cursor.list ~at_least:1 ~at_most:2 read_position_area_keyword t with
-      | [ first ] -> (Area (first, None) : position_area)
-      | [ first; second ] ->
-          if not (compatible_position_area_keywords first second) then
-            Cursor.err_invalid t
-              "position-area keywords must come from one branch of the grammar";
-          (Area (first, Some second) : position_area)
-      | _ -> Cursor.err_expected t "position-area")
+      let first, second = read_position_area_pair t in
+      (Area (first, second) : position_area))
     t
 
 let rec read_scroll_snap_stop (t : Cursor.t) : scroll_snap_stop =
@@ -1070,13 +1098,30 @@ let rec read_overscroll_behavior t : overscroll_behavior =
     t
 
 (* Reader for will-change property *)
+(* CSS Will Change 1 sec. 2.1 excludes [will-change], [none], [all] and [auto]
+   from the [<custom-ident>] a feature names, on top of the [default] and the
+   CSS-wide keywords CSS Values 4 sec. 3.2 excludes from every one. The named
+   [scroll-position] and [contents] stay: they match the alternative before it,
+   not the ident. *)
+let will_change_reserved =
+  [
+    "will-change";
+    "none";
+    "all";
+    "auto";
+    "default";
+    "initial";
+    "inherit";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
+
 let rec read_will_change t : will_change =
   let read_ident t =
     let ident = Cursor.ident ~keep_case:true t in
-    if ident = "auto" then
-      Cursor.err_invalid t "auto cannot be used in a will-change list";
-    if ident = "will-change" then
-      Cursor.err_invalid t "will-change cannot reference itself";
+    if List.mem (String.lowercase_ascii ident) will_change_reserved then
+      Cursor.err_invalid t ("reserved will-change ident: " ^ ident);
     ident
   in
   Cursor.enum_or_var "will-change"

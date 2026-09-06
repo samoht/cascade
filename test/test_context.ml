@@ -2661,6 +2661,44 @@ let runtime_var_not_folded_contract () =
        (Css.eval_declaration Css.Context.empty
           (Css.padding [ Calc (Expr (Var spacing, Mul, Num 1.)) ])))
 
+(* CSS Variables 1 sec. 3 replaces a [var()] with the custom property's value
+   "if the value of the custom property ... is anything but the initial value",
+   and puts the fallback in only where it is not. A binding this resolver cannot
+   make a value of - an empty token stream, one the property's grammar refuses,
+   or a CSS-wide keyword, whose meaning sec. 2.1 leaves to the cascade against
+   an element this resolver has none of - is one of the former, so the
+   declaration is invalid at computed-value time and the fallback is no answer
+   to it. *)
+let unreadable_binding_is_not_an_absent_one () =
+  let ctx binding =
+    Css.Context.v
+      ~custom_properties:
+        [
+          (match Css.Declaration.parse_custom_property "--x" binding with
+          | Some d -> d
+          | None -> Alcotest.failf "cannot bind --x to %S" binding);
+        ]
+      ()
+  in
+  List.iter
+    (fun (binding, expected) ->
+      check_eval_stylesheet
+        (String.concat "" [ "--x: "; binding ])
+        ~ctx:(ctx binding) ~expected ".a{width:var(--x,8px)}")
+    [
+      ("", ".a{width:var(--x,8px)}");
+      ("notalength", ".a{width:var(--x,8px)}");
+      ("unset", ".a{width:var(--x,8px)}");
+      ("inherit", ".a{width:var(--x,8px)}");
+      (* A binding this resolver can read still answers. *)
+      ("2px", ".a{width:2px}");
+    ];
+  (* Sec. 3 makes a custom property that references itself invalid at
+     computed-value time, which is the guaranteed-invalid value, so there the
+     reference's fallback is exactly the answer. *)
+  check_eval_stylesheet "--x: var(--x)" ~ctx:(ctx "var(--x)")
+    ~expected:".a{width:8px}" ".a{width:var(--x,8px)}"
+
 let suite =
   ( "context",
     [
@@ -2746,4 +2784,6 @@ let suite =
         tw_layer_order_contract;
       Alcotest.test_case "cascade rule resolver contract" `Quick
         cascade_rule_resolver_contract;
+      Alcotest.test_case "an unreadable binding is not an absent one" `Quick
+        unreadable_binding_is_not_an_absent_one;
     ] )

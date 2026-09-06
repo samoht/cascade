@@ -147,6 +147,8 @@ let rec pp_flex_wrap : flex_wrap Pp.t =
   | Nowrap -> Pp.string ctx "nowrap"
   | Wrap -> Pp.string ctx "wrap"
   | Wrap_reverse -> Pp.string ctx "wrap-reverse"
+  | Balance -> Pp.string ctx "balance"
+  | Wrap_reverse_balance -> Pp.string ctx "wrap-reverse balance"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -265,6 +267,8 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Rem_fn (a, b) -> pp_length ctx (Rem_fn (a, b))
   | Hypot xs -> pp_length ctx (Hypot xs)
   | Abs a -> pp_length ctx (Abs a)
+  | Dimension { value; unit; repr } ->
+      pp_length ctx (Dimension { value; unit; repr })
   | Var v -> pp_var pp_flex_basis ctx v
   | Calc cv -> pp_calc pp_flex_basis ctx cv
 
@@ -330,12 +334,34 @@ let rec read_order t : order =
     ~default:(fun t -> (Int (Cursor.int t) : order))
     t
 
+(* [[ wrap | wrap-reverse ] || balance] is order-free and takes each side at
+   most once, so the pair reads either way round and [balance] alone stands for
+   [wrap balance]. *)
+let read_flex_wrap_balance_pair t : flex_wrap =
+  let direction = ref Option.None and balance = ref false in
+  let rec loop seen =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "balance" when not !balance ->
+        let _ = Cursor.ident t in
+        balance := true;
+        loop true
+    | Some (("wrap" | "wrap-reverse") as d) when Option.is_none !direction ->
+        let _ = Cursor.ident t in
+        direction := Option.Some d;
+        loop true
+    | _ -> if not seen then Cursor.err_expected t "flex-wrap"
+  in
+  loop false;
+  if not !balance then Cursor.err_expected t "balance";
+  match !direction with
+  | Option.Some "wrap-reverse" -> Wrap_reverse_balance
+  | _ -> Balance
+
 let rec read_flex_wrap t : flex_wrap =
   Cursor.enum_or_var "flex-wrap"
     [
       ("nowrap", (Nowrap : flex_wrap));
-      ("wrap", Wrap);
-      ("wrap-reverse", Wrap_reverse);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -343,6 +369,16 @@ let rec read_flex_wrap t : flex_wrap =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_flex_wrap t))
+    ~default:(fun t ->
+      Cursor.one_of
+        [
+          read_flex_wrap_balance_pair;
+          (fun t ->
+            Cursor.enum "flex-wrap"
+              [ ("wrap", (Wrap : flex_wrap)); ("wrap-reverse", Wrap_reverse) ]
+              t);
+        ]
+        t)
     t
 
 let read_flex_flow_direction t : flex_direction =
@@ -356,11 +392,17 @@ let read_flex_flow_direction t : flex_direction =
     t
 
 let read_flex_flow_wrap t : flex_wrap =
-  Cursor.enum "flex-flow wrap"
+  Cursor.one_of
     [
-      ("nowrap", (Nowrap : flex_wrap));
-      ("wrap", Wrap);
-      ("wrap-reverse", Wrap_reverse);
+      read_flex_wrap_balance_pair;
+      (fun t ->
+        Cursor.enum "flex-flow wrap"
+          [
+            ("nowrap", (Nowrap : flex_wrap));
+            ("wrap", Wrap);
+            ("wrap-reverse", Wrap_reverse);
+          ]
+          t);
     ]
     t
 
@@ -550,6 +592,10 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Rem_fn (a, b) -> Rem_fn (a, b)
   | Hypot xs -> Hypot xs
   | Abs a -> Abs a
+  (* Every other authored spelling reaches [length] as a [Dimension] carrying
+     its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
+     them as a [<length-percentage>]. *)
+  | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
 let rec read_flex_basis t : flex_basis =
@@ -568,14 +614,20 @@ let rec read_flex_basis t : flex_basis =
         ("var", fun t -> Var (read_var read_flex_basis t));
         ("calc", fun t -> Calc (read_calc ~result_type:`Value read_flex_basis t));
       ]
+      (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
+         the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
+      let size t =
+        read_length ~allow_negative:false ~sizing:true t
+        |> flex_basis_of_length t
+      in
       let pos = Cursor.save t in
       match Cursor.option Cursor.number_with_unit t with
       | Some (0.0, None) -> (Zero : flex_basis)
       | Some _ ->
           Cursor.restore t pos;
-          read_length ~allow_negative:false t |> flex_basis_of_length t
-      | None -> read_length ~allow_negative:false t |> flex_basis_of_length t)
+          size t
+      | None -> size t)
     t
 
 module Flex = struct

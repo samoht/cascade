@@ -1,8 +1,10 @@
 type row = { branch : string; input : string; expected : string }
 type invalid_row = { branch : string; input : string }
+type mutation = { input : string; recovery : string }
 
 let row branch input expected = { branch; input; expected }
 let invalid branch input = { branch; input }
+let not_all = "not all"
 
 let media_positive =
   [
@@ -214,6 +216,12 @@ let media_recovery =
     row "invalid min-prefix recovers inside list"
       "(min-orientation: portrait), (width)"
       "(min-orientation: portrait), (width)";
+    row "last branch recovers on its own" "speech, &test" "speech, not all";
+    row "double not recovers on its own" "not not screen, print"
+      "not all, print";
+    row "empty first branch recovers on its own" ", speech" "not all, speech";
+    row "empty last branch recovers on its own" "speech," "speech, not all";
+    row "a list of empty branches is one not all each" "," "not all, not all";
   ]
 
 let container_positive =
@@ -303,10 +311,25 @@ let container_negative =
     invalid "opposing style interval operators" "style(10px < --gap > 20px)";
   ]
 
+(* CSS Media Queries 4 sec. 3.2 replaces the one entry of the list that does not
+   match the grammar, so a mutation at either end of a query list lands on the
+   branch at that end and the rest of the list keeps what it says. An opening
+   paren is the exception: it swallows the commas, leaving a single branch. *)
 let mutate_invalid (row : row) salt =
+  let branches = String.split_on_char ',' row.expected in
+  let branches = List.map String.trim branches in
+  let join = String.concat ", " in
+  let last =
+    match List.rev branches with
+    | [] -> not_all
+    | _ :: rest -> join (List.rev (not_all :: rest))
+  in
+  let first =
+    match branches with [] -> not_all | _ :: rest -> join (not_all :: rest)
+  in
   match salt mod 5 with
-  | 0 -> row.input ^ " and"
-  | 1 -> "(" ^ row.input
-  | 2 -> row.input ^ ")"
-  | 3 -> row.input ^ " or"
-  | _ -> "not not " ^ row.input
+  | 0 -> { input = row.input ^ " and"; recovery = last }
+  | 1 -> { input = "(" ^ row.input; recovery = not_all }
+  | 2 -> { input = row.input ^ ")"; recovery = last }
+  | 3 -> { input = row.input ^ " or"; recovery = last }
+  | _ -> { input = "not not " ^ row.input; recovery = first }

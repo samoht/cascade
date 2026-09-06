@@ -79,11 +79,10 @@ comparison never saw, so that verdict stays unproven.
   Cannot determine whether the CSS files are identical
   [2]
 
-An at-rule condition the grammar refuses loses more: the at-rule goes and
-every rule nested inside it goes with it. Both sides report the failure at
-the same offsets over the same snippet, because the offset marks where the
-condition gave up rather than what the reader threw away. The rules thrown
-away differ, and the verdict follows those.
+A media condition the grammar refuses loses nothing: Media Queries 5 sec. 3.2
+replaces it with `not all`, so both sides keep the block and the comparison
+reaches the rules inside it. The condition is still reported as a warning, on
+both sides, at the offset where it gave up.
 
   $ cat > media-a.css <<EOF
   > .b{color:red}
@@ -94,12 +93,41 @@ away differ, and the verdict follows those.
   > @media ^^^{.x{color:blue}}
   > EOF
   $ cascade diff --diff=canonical media-a.css media-b.css
+  CSS: 40 chars vs 41 chars (2.5% diff)
+  Changes: 1 changed container
+  
   media-a.css and media-b.css parse warning: <string>: bad condition for @media: expected media type or condition at [21-22] (in at-rule)
   .b{color:red}
   @media ^^^{.x{color:red}}
          ^
   
-  Unreadable rules: media-a.css 1, media-b.css 1
+  --- media-a.css
+  +++ media-b.css
+  └─ @media not all (1 modified)
+     └─ .x
+           * color: red -> #00f
+  
+  [1]
+
+An at-rule condition with no such rule behind it does lose the block, and
+every rule nested inside it goes with it. The rules thrown away differ, and
+the verdict follows those.
+
+  $ cat > sup-a.css <<EOF
+  > .b{color:red}
+  > @supports ^^^{.x{color:red}}
+  > EOF
+  $ cat > sup-b.css <<EOF
+  > .b{color:red}
+  > @supports ^^^{.x{color:blue}}
+  > EOF
+  $ cascade diff --diff=canonical sup-a.css sup-b.css
+  sup-a.css and sup-b.css parse warning: <string>: bad condition for @supports: Expected supports feature at [24-25] (in at-rule)
+  .b{color:red}
+  @supports ^^^{.x{color:red}}
+            ^
+  
+  Unreadable rules: sup-a.css 1, sup-b.css 1
   Cannot determine whether the CSS files are identical
   [2]
 

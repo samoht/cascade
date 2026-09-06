@@ -378,13 +378,19 @@ let source_slice t loc =
       then None
       else Some (String.sub source loc.start_pos (loc.end_pos - loc.start_pos))
 
+(* The slice is the author's own bytes, which is what a caller keeping the
+   spelling wants. CSS Syntax 3 (ED) sec. 4.3.5 ends a string at EOF as the
+   string it read, and those bytes stop at the opening quote: printing them back
+   leaves the value swallowing whatever follows, so that one has no slice and
+   the caller writes the value out instead. *)
 let string_repr_with_quote_opt t =
   match peek t with
   | Some
       (Component.Preserved
-         ({ kind = Token.String { value; quote; _ }; loc } : Token.t)) ->
+         ({ kind = Token.String { value; quote; terminated }; loc } : Token.t))
+    ->
       skip t;
-      Some (value, quote, source_slice t loc)
+      Some (value, quote, if terminated then source_slice t loc else None)
   | _ -> None
 
 let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t

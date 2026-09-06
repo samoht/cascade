@@ -76,9 +76,12 @@ val decl_optimizes :
     [into] is the spec-canonical shortest spelling, not a snapshot of current
     output. *)
 
-val decl_optimizes_to : ?held:string -> into:string -> string -> unit
-(** [decl_optimizes_to ?held ~into input] is the full-declaration variant of
-    {!decl_optimizes}: [input], [held] and [into] include the property name. *)
+val decl_optimizes_to :
+  ?held:string -> ?scope:Css.Optimize.scope -> into:string -> string -> unit
+(** [decl_optimizes_to ?held ?scope ~into input] is the full-declaration variant
+    of {!decl_optimizes}: [input], [held] and [into] include the property name.
+    [scope] tells the optimizer how much surrounding CSS the input may be
+    embedded in, and defaults to the fragment the optimizer itself assumes. *)
 
 val decl_lossless : prop:string -> into:string -> string -> unit
 (** [decl_lossless ~prop ~into input] checks the minify+optimize path with

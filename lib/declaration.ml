@@ -70,13 +70,10 @@ let is_custom_property_name = Custom_property_name.is_valid
    declaration it is written into: it closes the enclosing block, or turns the
    rest of the stylesheet into a string. *)
 let rec component_stays_in_declaration = function
+  (* sec. 4.3.5 ends a string at EOF as the string it read and only a newline
+     makes it a [<bad-string-token>], so the first stays in the value. *)
   | Component.Preserved
-      {
-        kind =
-          ( Token.Close _ | Token.Bad_string | Token.Bad_url
-          | Token.String { terminated = false; _ } );
-        _;
-      } ->
+      { kind = Token.Close _ | Token.Bad_string | Token.Bad_url; _ } ->
       false
   | Component.Preserved _ -> true
   | Component.Block { node = { closed; value; _ }; _ } ->
@@ -85,14 +82,24 @@ let rec component_stays_in_declaration = function
       terminated && List.for_all component_stays_in_declaration arguments
 
 (* A top-level [;] ends the declaration, so the tail becomes a second one. It is
-   only a stop at top level: [(a;b)] keeps it inside the block. *)
+   only a stop at top level: [(a;b)] keeps it inside the block. Sec. 7.2 keeps a
+   top-level [!] out of the production for the same reason: sec. 5.5.6 takes the
+   [!important] flag off the end before the value is read, so a [!] still in it
+   belongs to no flag and to no value. *)
 let is_top_level_stop = function
   | Component.Preserved { kind = Token.Semicolon; _ } -> true
   | _ -> false
 
+let is_top_level_bang = function
+  | Component.Preserved { kind = Token.Delim "!"; _ } -> true
+  | _ -> false
+
 let components_stay_in_declaration components =
   List.for_all
-    (fun c -> (not (is_top_level_stop c)) && component_stays_in_declaration c)
+    (fun c ->
+      (not (is_top_level_stop c))
+      && (not (is_top_level_bang c))
+      && component_stays_in_declaration c)
     components
 
 (* CSS Variables 1 sec. 2 gives a custom property the value grammar
@@ -236,10 +243,13 @@ let reject_curly_block_value t =
   if List.exists component_has_curly_block (value_components t) then
     Cursor.err_invalid t "curly block in declaration value"
 
+(* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at a newline as a
+   [<bad-string-token>] and at EOF as the [<string-token>] it read, and sec. 7.2
+   excludes only the first from a [<declaration-value>]. So a value the input
+   ended in the middle of a string carries a string like any other, and Chrome
+   151 keeps the declaration. *)
 let rec component_has_unterminated_string = function
-  | Component.Preserved { kind = Token.String { terminated = false; _ }; _ }
-  | Component.Preserved { kind = Token.Bad_string; _ } ->
-      true
+  | Component.Preserved { kind = Token.Bad_string; _ } -> true
   | Component.Block { node = { value; _ }; _ } ->
       List.exists component_has_unterminated_string value
   | Component.Func { node = { arguments; _ }; _ } ->
@@ -269,6 +279,13 @@ let reject_custom_bad_string t =
     List.exists component_leaves_declaration_value
       (components_before is_top_level_stop t)
   then Cursor.err_invalid t "custom property value is no <declaration-value>"
+
+(* The same bar for a value the typed readers hand to the opaque path: a [var()]
+   postpones the property grammar to computed-value time, not the token
+   grammar. *)
+let reject_opaque_bad_token t =
+  if List.exists component_leaves_declaration_value (value_components t) then
+    Cursor.err_invalid t "declaration value is no <declaration-value>"
 
 let invalid_var_arguments arguments =
   match
@@ -349,16 +366,12 @@ let raw_value_has_invalid_substitution raw_value =
   |> components_have_invalid_substitution
 
 let raw_value_contains_substitution raw_value =
-  (* A top-level substitution leaves the typed reader unable to validate the
-     result, so cascade keeps the value verbatim. One nested inside another
-     function does not extend that leniency to the surrounding tokens; only a
-     top-level one counts. *)
-  let is_top_level = function
-    | Component.Func { node = { name; arguments; _ }; _ } ->
-        is_substitution_call name arguments
-    | _ -> false
-  in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level
+  (* CSS Variables 1 sec. 3: "if a property contains one or more var()
+     functions, and those functions are syntactically valid, the entire
+     property's grammar must be assumed to be valid at parse time". A call
+     written inside another function is one the property contains, so the
+     leniency reaches the tokens around it too. *)
+  Cursor.of_string raw_value |> Cursor.remaining |> components_have_substitution
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
@@ -529,7 +542,7 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Webkit_text_decoration_color -> p value
   | Webkit_text_fill_color -> p value
   | Webkit_text_stroke_color -> p value
-  | Column_rule_color -> p value
+  | Column_rule_color -> List.exists p value
   | Border_inline_color -> logical_color_uses p value
   | Border_block_color -> logical_color_uses p value
   | Box_shadow -> shadow_uses_color p value
@@ -841,6 +854,20 @@ let read_nn_lp_or_global t =
     ]
     ~default:read_non_negative_length_percentage t
 
+(* CSS Motion Path 1 sec. 2.2 gives [offset-distance] a plain
+   [<length-percentage>], with no range restriction on it. *)
+let read_lp_or_global t =
+  Cursor.enum "length-percentage"
+    [
+      ("inherit", (Length Inherit : length_percentage));
+      ("initial", Length Initial);
+      ("unset", Length Unset);
+      ("revert", Length Revert);
+      ("revert-layer", Length Revert_layer);
+    ]
+    ~default:(Values.read_length_percentage ~with_keywords:false)
+    t
+
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
@@ -899,7 +926,9 @@ let read_perspective_value t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    (* CSS Transforms 2 (ED) sec. 3: [perspective] is [none | <length [0,inf]>],
+       so it takes no percentage; Chrome 146 refuses one. *)
+    ~default:(read_non_negative_length ~with_keywords:false ~length_only:true)
     t
 
 (* CSS Text Decoration 4 sec. 2.8: [text-underline-offset] is [auto |
@@ -1129,8 +1158,10 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_text_decoration_color (read_color t))
   | _ -> None
 
+(* CSS Sizing 3 sec. 5: the box sizes are the properties the intrinsic sizes
+   belong to, so this reader asks for them. *)
 let read_box_size ?(maximum = false) t =
-  match read_length_percentage ~allow_negative:false t with
+  match read_length_percentage ~allow_negative:false ~sizing:true t with
   | Length (Normal | From_font | Size) ->
       Cursor.err_invalid t "expected a box size"
   | Length Auto when maximum ->
@@ -1156,7 +1187,7 @@ let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
   | Max_block_size -> Some (v Max_block_size (read_box_size ~maximum:true t))
   | Font_size -> Some (v Font_size (Properties.read_font_size t))
   | Perspective -> Some (v Perspective (read_perspective_value t))
-  | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
+  | Offset_distance -> Some (v Offset_distance (read_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
   | Line_height_step ->
       Some (v Line_height_step (read_nn_length_or_global ~length_only:true t))
@@ -1273,6 +1304,9 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
   | White_space -> Some (v White_space (read_white_space t))
   | White_space_collapse ->
       Some (v White_space_collapse (read_white_space_collapse t))
+  | Font_variant_alternates ->
+      Some (v Font_variant_alternates (read_font_variant_alternates t))
+  | Font_variant -> Some (v Font_variant (read_font_variant t))
   | Text_decoration -> Some (v Text_decoration (read_text_decoration t))
   | Text_decoration_line ->
       Some (v Text_decoration_line (read_text_decoration_lines t))
@@ -1429,6 +1463,28 @@ let read_background_value : type a. a property -> Cursor.t -> declaration option
   | Background_blend_mode -> Some (read_background_blend_mode_value t)
   | _ -> None
 
+(* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
+   [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
+   built from strings. A bare track list is a [grid-template-rows] value and no
+   [grid-template] one, and sec. 7.8 gives [grid] the same forms plus the two
+   [auto-flow] ones. *)
+let names_both_axes : Properties.grid_template -> bool = function
+  | None | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | Split _
+  | Auto_flow_columns _ | Auto_flow_rows _ | Named_tracks _ | Template _ ->
+      true
+  | Px _ | Rem _ | Em _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Zero
+  | Length _ | Fr _ | Flex_math _ | Auto | Min_content | Max_content | Min_max _
+  | Fit_content _ | Repeat _ | Tracks _ | Line_names _ | Subgrid | Masonry ->
+      false
+
+let read_grid_template_shorthand ~name t =
+  let value =
+    if String.equal name "grid" then read_grid t else read_grid_template t
+  in
+  if not (names_both_axes value) then
+    Cursor.err_invalid t (name ^ " names one axis only");
+  value
+
 let read_grid_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
@@ -1443,8 +1499,10 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
   | Grid_auto_flow -> Some (v Grid_auto_flow (read_grid_auto_flow t))
   | Grid_template_areas ->
       Some (v Grid_template_areas (read_grid_template_areas t))
-  | Grid_template -> Some (v Grid_template (read_grid_template t))
-  | Grid -> Some (v Grid (read_grid t))
+  | Grid_template ->
+      Some
+        (v Grid_template (read_grid_template_shorthand ~name:"grid-template" t))
+  | Grid -> Some (v Grid (read_grid_template_shorthand ~name:"grid" t))
   | Grid_area -> Some (v Grid_area (read_grid_area t))
   | Grid_auto_columns -> Some (v Grid_auto_columns (read_grid_auto_tracks t))
   | Grid_auto_rows -> Some (v Grid_auto_rows (read_grid_auto_tracks t))
@@ -1795,9 +1853,20 @@ let read_object_transition_value : type a.
   | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
-  | Column_rule_color -> Some (v Column_rule_color (read_color t))
-  | Column_rule_width -> Some (v Column_rule_width (read_border_width t))
-  | Column_rule_style -> Some (v Column_rule_style (read_border_style t))
+  (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
+     list, one entry per rule line. *)
+  | Column_rule_color ->
+      Some
+        (v Column_rule_color
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_color t))
+  | Column_rule_width ->
+      Some
+        (v Column_rule_width
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border_width t))
+  | Column_rule_style ->
+      Some
+        (v Column_rule_style
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border_style t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 
@@ -2089,24 +2158,37 @@ let is_font_family_var name =
   || starts_with "default-font-family" bare
   || starts_with "default-mono-font-family" bare
 
-(* For custom properties only, !important is recognised solely as the literal
-   10-character suffix [!important]; [! important] (with whitespace between the
-   bang and the ident) is part of the value, not the importance flag. Per
-   test_declaration's spec_custom_tokens: this matches Tailwind/lightningcss's
-   conservative handling for [--*] values, where any whitespace inside the flag
-   means the user wrote arbitrary tokens, not the cascade marker. *)
-let split_custom_important value =
+(* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
+   non-whitespace values of the declaration are a [!] delim and an ident
+   matching [important], so the whitespace [! important] writes between the two
+   is inside the flag. Chrome 151 reads it that way, and what is left is the
+   value. *)
+let is_ws_char = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let trim_end s =
+  let n = ref (String.length s) in
+  while !n > 0 && is_ws_char s.[!n - 1] do
+    decr n
+  done;
+  String.sub s 0 !n
+
+let split_important value =
   let trimmed = String.trim value in
   let len = String.length trimmed in
-  let suffix = "!important" in
-  let suffix_len = String.length suffix in
+  let word = "important" in
+  let word_len = String.length word in
   if
-    len >= suffix_len
-    && String.lowercase_ascii (String.sub trimmed (len - suffix_len) suffix_len)
-       = suffix
+    len > word_len
+    && String.lowercase_ascii (String.sub trimmed (len - word_len) word_len)
+       = word
   then
-    let head = String.sub trimmed 0 (len - suffix_len) in
-    (String.trim head, true)
+    let head = trim_end (String.sub trimmed 0 (len - word_len)) in
+    let head_len = String.length head in
+    if head_len > 0 && Char.equal head.[head_len - 1] '!' then
+      (String.trim (String.sub head 0 (head_len - 1)), true)
+    else (trimmed, false)
   else (trimmed, false)
 
 let read_custom_property_payload name value_str =
@@ -2143,7 +2225,9 @@ let read_custom_value_declaration t name : declaration =
   reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
-  let value_str, is_important = split_custom_important raw_value in
+  let value_str, is_important = split_important raw_value in
+  if not (is_optional_declaration_value value_str) then
+    Cursor.err_invalid t "custom property value is no <declaration-value>";
   (* custom_property may raise Failure for invalid names like "--" *)
   try
     let custom_value =
@@ -2200,7 +2284,88 @@ let components_are_lone_css_wide cvs =
       String.equal n "var" || String.equal n "env" || String.equal n "attr"
   | _ -> false
 
+(* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
+   and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
+   [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
+   plus [position-anchor] and [position-area]. A call written anywhere else is
+   invalid, so the declaration goes. *)
+let inset_properties =
+  [
+    "top";
+    "right";
+    "bottom";
+    "left";
+    "inset";
+    "inset-block";
+    "inset-block-start";
+    "inset-block-end";
+    "inset-inline";
+    "inset-inline-start";
+    "inset-inline-end";
+  ]
+
+let anchor_size_properties =
+  inset_properties
+  @ [
+      "margin";
+      "margin-top";
+      "margin-right";
+      "margin-bottom";
+      "margin-left";
+      "margin-block";
+      "margin-block-start";
+      "margin-block-end";
+      "margin-inline";
+      "margin-inline-start";
+      "margin-inline-end";
+      "width";
+      "height";
+      "min-width";
+      "min-height";
+      "max-width";
+      "max-height";
+      "block-size";
+      "inline-size";
+      "min-block-size";
+      "min-inline-size";
+      "max-block-size";
+      "max-inline-size";
+      "align-self";
+      "justify-self";
+      "place-self";
+      "position-anchor";
+      "position-area";
+    ]
+
+let rec components_call_named names components =
+  List.exists (component_calls_named names) components
+
+and component_calls_named names = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      List.exists (String.equal (String.lowercase_ascii_preserve name)) names
+      || components_call_named names arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_call_named names value
+  | Component.Preserved _ -> false
+
+let validate_anchor_queries t name components =
+  let allowed table = List.exists (String.equal name) table in
+  if
+    components_call_named [ "anchor" ] components
+    && not (allowed inset_properties)
+  then Cursor.err_invalid t ("anchor() is not a value of " ^ name);
+  if
+    components_call_named [ "anchor-size" ] components
+    && not (allowed anchor_size_properties)
+  then Cursor.err_invalid t ("anchor-size() is not a value of " ^ name)
+
 let validate_regular_property_components t name components =
+  (* CSS Syntax 3 (ED) sec. 5.5.6 gives a declaration a value of one or more
+     component values, and only a custom property takes the empty one (CSS
+     Variables 1 sec. 2). *)
+  if List.for_all Component.is_whitespace components then
+    Cursor.err_expected t "a value";
+  validate_anchor_queries t name components;
   (* A substitution function makes the declaration's grammar a computed-value
      question. This includes [all]: the substitution result can be empty and
      leave its neighbouring CSS-wide keyword as the whole value. *)
@@ -2211,13 +2376,15 @@ let validate_regular_property_components t name components =
     && Properties.components_have_css_wide_mix components
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
   if
-    name = "all" && (not has_substitution)
+    String.equal name "all" && (not has_substitution)
     && not (components_are_lone_css_wide components)
   then Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
-(* Color functions cascade types directly; anything else (e.g. a vendor color
-   function or a typed value cascade hasn't grown yet) is treated as a [color]
-   declaration cascade should preserve verbatim. *)
+(* Color functions cascade types directly. A vendor one it does not is kept
+   verbatim: the prefix says the vocabulary is an engine's own, so no
+   specification settles it and no browser but that engine reads it either. An
+   unprefixed name cascade does not know is no colour - CSS Color 5 sec. 3
+   closes the production - and every browser drops the declaration. *)
 let color_fallback_function raw_value =
   let components =
     Cursor.of_string raw_value |> Cursor.remaining
@@ -2226,23 +2393,25 @@ let color_fallback_function raw_value =
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
       let fn = String.lowercase_ascii_preserve name in
-      not
-        (List.mem fn
-           [
-             "rgb";
-             "rgba";
-             "hsl";
-             "hsla";
-             "hwb";
-             "lab";
-             "lch";
-             "oklab";
-             "oklch";
-             "color";
-             "color-mix";
-             "light-dark";
-             "var";
-           ])
+      String.length fn > 0
+      && Char.equal fn.[0] '-'
+      && not
+           (List.mem fn
+              [
+                "rgb";
+                "rgba";
+                "hsl";
+                "hsla";
+                "hwb";
+                "lab";
+                "lch";
+                "oklab";
+                "oklch";
+                "color";
+                "color-mix";
+                "light-dark";
+                "var";
+              ])
   | _ -> false
 
 (* A colour function whose arguments contain a [var()] can't be validated until
@@ -2313,6 +2482,7 @@ let read_unknown_property_declaration t name =
   validate_complete_declaration_value t;
   reject_curly_block_value t;
   reject_unterminated_string_value t;
+  reject_opaque_bad_token t;
   let raw_value = Cursor.consume_to_decl_end ~trim:true t in
   let is_important = read_importance t in
   validate_no_extra_tokens t;
@@ -2592,8 +2762,11 @@ let parse_opaque_declaration property value =
       Some (read_unknown_property_declaration t name)
     with Cursor.Parse_error _ -> None
 
+(* CSS Variables 1 sec. 2 gives a custom property the value grammar
+   [<declaration-value>?], the empty value included, so this takes the pairs
+   [custom_property] takes and answers with an option rather than raising. *)
 let parse_custom_property name value =
-  if is_custom_property_name name && is_declaration_value value then
+  if is_custom_property_name name && is_optional_declaration_value value then
     parse_declaration name value
   else None
 
@@ -2872,6 +3045,182 @@ let border_bottom_right_radius len = v Border_bottom_right_radius [ len ]
 let fill value = v Fill value
 let stroke value = v Stroke value
 let stroke_width value = v Stroke_width value
+let fill_rule value = v Fill_rule value
+let clip_rule value = v Clip_rule value
+let fill_opacity value = v Fill_opacity value
+let stroke_opacity value = v Stroke_opacity value
+let stroke_linecap value = v Stroke_linecap value
+let stroke_linejoin value = v Stroke_linejoin value
+let stroke_miterlimit value = v Stroke_miterlimit value
+let stroke_dashoffset value = v Stroke_dashoffset value
+let stroke_dasharray value = v Stroke_dasharray value
+let paint_order value = v Paint_order value
+let vector_effect value = v Vector_effect value
+let stop_color value = v Stop_color value
+let stop_opacity value = v Stop_opacity value
+let flood_color value = v Flood_color value
+let flood_opacity value = v Flood_opacity value
+let lighting_color value = v Lighting_color value
+let dominant_baseline value = v Dominant_baseline value
+let alignment_baseline value = v Alignment_baseline value
+let baseline_shift value = v Baseline_shift value
+let baseline_source value = v Baseline_source value
+let anchor_name value = v Anchor_name value
+let position_anchor value = v Position_anchor value
+let position_area value = v Position_area value
+let position_try_fallbacks value = v Position_try_fallbacks value
+let position_try_order value = v Position_try_order value
+let position_try value = v Position_try value
+let position_visibility value = v Position_visibility value
+let view_transition_name value = v View_transition_name value
+let view_transition_class value = v View_transition_class value
+let all value = v All value
+let offset_path value = v Offset_path value
+let offset_distance value = v Offset_distance value
+let offset_rotate value = v Offset_rotate value
+let offset_anchor value = v Offset_anchor value
+let offset_position value = v Offset_position value
+let offset value = v Offset value
+let column_width value = v Column_width value
+let column_count value = v Column_count value
+let column_height value = v Column_height value
+let column_wrap value = v Column_wrap value
+let column_rule_width value = v Column_rule_width value
+let column_rule_style value = v Column_rule_style value
+let column_rule_color value = v Column_rule_color value
+let border_image value = v Border_image value
+let border_image_source value = v Border_image_source value
+let border_image_slice value = v Border_image_slice value
+let border_image_width value = v Border_image_width value
+let border_image_outset value = v Border_image_outset value
+let border_image_repeat value = v Border_image_repeat value
+let mask_border value = v Mask_border value
+let contain_intrinsic_size value = v Contain_intrinsic_size value
+let contain_intrinsic_width value = v Contain_intrinsic_width value
+let contain_intrinsic_height value = v Contain_intrinsic_height value
+let contain_intrinsic_block_size value = v Contain_intrinsic_block_size value
+let contain_intrinsic_inline_size value = v Contain_intrinsic_inline_size value
+let animation_timeline value = v Animation_timeline value
+let animation_range value = v Animation_range value
+let animation_range_start value = v Animation_range_start value
+let animation_range_end value = v Animation_range_end value
+let scroll_timeline value = v Scroll_timeline value
+let scroll_timeline_name value = v Scroll_timeline_name value
+let scroll_timeline_axis value = v Scroll_timeline_axis value
+let view_timeline value = v View_timeline value
+let view_timeline_name value = v View_timeline_name value
+let view_timeline_axis value = v View_timeline_axis value
+let view_timeline_inset value = v View_timeline_inset value
+let timeline_scope value = v Timeline_scope value
+let shape_image_threshold value = v Shape_image_threshold value
+let shape_margin value = v Shape_margin value
+let shape_outside value = v Shape_outside value
+let overflow_clip_margin value = v Overflow_clip_margin value
+let overflow_anchor value = v Overflow_anchor value
+let overflow_block value = v Overflow_block value
+let overflow_inline value = v Overflow_inline value
+let overscroll_behavior_block value = v Overscroll_behavior_block value
+let overscroll_behavior_inline value = v Overscroll_behavior_inline value
+let image_orientation value = v Image_orientation value
+let margin_trim value = v Margin_trim value
+let overlay value = v Overlay value
+let animation_composition value = v Animation_composition value
+let background_position_x value = v Background_position_x value
+let background_position_y value = v Background_position_y value
+let webkit_mask_position_x value = v Webkit_mask_position_x value
+let webkit_mask_position_y value = v Webkit_mask_position_y value
+let moz_orient value = v Moz_orient value
+let grid value = v Grid value
+let webkit_text_stroke value = v Webkit_text_stroke value
+let page_size value = v Page_size value
+let white_space_collapse value = v White_space_collapse value
+let line_height_step value = v Line_height_step value
+let font_palette value = v Font_palette value
+let font_synthesis value = v Font_synthesis value
+let font_size_adjust value = v Font_size_adjust value
+let font_variant_emoji value = v Font_variant_emoji value
+let font_variant_alternates value = v Font_variant_alternates value
+let font_variant value = v Font_variant value
+let text_wrap_style value = v Text_wrap_style value
+let text_box_trim value = v Text_box_trim value
+let text_box value = v Text_box value
+let text_spacing_trim value = v Text_spacing_trim value
+let hyphenate_limit_chars value = v Hyphenate_limit_chars value
+let initial_letter value = v Initial_letter value
+let initial_letter_align value = v Initial_letter_align value
+let initial_letter_wrap value = v Initial_letter_wrap value
+let border_block_start value = v Border_block_start value
+let border_block_end value = v Border_block_end value
+let border_inline value = v Border_inline value
+let border_inline_start value = v Border_inline_start value
+let border_inline_end value = v Border_inline_end value
+let moz_user_select value = v Moz_user_select value
+let ms_user_select value = v Ms_user_select value
+let webkit_text_fill_color value = v Webkit_text_fill_color value
+let webkit_text_stroke_width value = v Webkit_text_stroke_width value
+let webkit_text_stroke_color value = v Webkit_text_stroke_color value
+let webkit_transform value = v Webkit_transform value
+let moz_transform value = v Moz_transform value
+let ms_transform value = v Ms_transform value
+let o_transform value = v O_transform value
+let webkit_transition value = v Webkit_transition value
+let webkit_transition_delay value = v Webkit_transition_delay value
+let webkit_transition_duration value = v Webkit_transition_duration value
+let webkit_transition_property value = v Webkit_transition_property value
+
+let webkit_transition_timing_function value =
+  v Webkit_transition_timing_function value
+
+let webkit_animation value = v Webkit_animation value
+let webkit_animation_delay value = v Webkit_animation_delay value
+let webkit_animation_duration value = v Webkit_animation_duration value
+let webkit_animation_direction value = v Webkit_animation_direction value
+
+let webkit_animation_iteration_count value =
+  v Webkit_animation_iteration_count value
+
+let webkit_animation_name value = v Webkit_animation_name value
+
+let webkit_animation_timing_function value =
+  v Webkit_animation_timing_function value
+
+let webkit_animation_fill_mode value = v Webkit_animation_fill_mode value
+let webkit_animation_play_state value = v Webkit_animation_play_state value
+let webkit_flex_direction value = v Webkit_flex_direction value
+let webkit_flex_wrap value = v Webkit_flex_wrap value
+let webkit_flex_flow value = v Webkit_flex_flow value
+let webkit_justify_content value = v Webkit_justify_content value
+let webkit_align_items value = v Webkit_align_items value
+let webkit_align_content value = v Webkit_align_content value
+let webkit_align_self value = v Webkit_align_self value
+let webkit_border_radius value = v Webkit_border_radius value
+let webkit_box_sizing value = v Webkit_box_sizing value
+let moz_box_sizing value = v Moz_box_sizing value
+let webkit_box_shadow value = v Webkit_box_shadow value
+let webkit_background_size value = v Webkit_background_size value
+let webkit_filter value = v Webkit_filter value
+let moz_appearance value = v Moz_appearance value
+let moz_animation value = v Moz_animation value
+let moz_animation_delay value = v Moz_animation_delay value
+let moz_animation_duration value = v Moz_animation_duration value
+let moz_animation_direction value = v Moz_animation_direction value
+let moz_animation_iteration_count value = v Moz_animation_iteration_count value
+let moz_animation_name value = v Moz_animation_name value
+let moz_animation_timing_function value = v Moz_animation_timing_function value
+let moz_animation_fill_mode value = v Moz_animation_fill_mode value
+let moz_animation_play_state value = v Moz_animation_play_state value
+let moz_transition value = v Moz_transition value
+let moz_transition_delay value = v Moz_transition_delay value
+let moz_transition_duration value = v Moz_transition_duration value
+let moz_transition_property value = v Moz_transition_property value
+
+let moz_transition_timing_function value =
+  v Moz_transition_timing_function value
+
+let moz_border_radius value = v Moz_border_radius value
+let moz_box_shadow value = v Moz_box_shadow value
+let ms_filter value = v Ms_filter value
+let o_transition value = v O_transition value
 let outline_style o = v Outline_style o
 let outline_width len = v Outline_width len
 let outline_color c = v Outline_color c
@@ -3172,14 +3521,15 @@ let user_select value = v User_select value
 let webkit_user_select value = v Webkit_user_select value
 let container_type value = v Container_type value
 
-let container_name value =
+let container_name_of_string value : container_name =
   let names = String.split_on_char ' ' value |> List.filter (( <> ) "") in
-  match names with
-  | [ "none" ] -> v Container_name (None : container_name)
-  | _ -> v Container_name (Names names)
+  match names with [ "none" ] -> None | _ -> Names names
+
+let container_name value = v Container_name (container_name_of_string value)
 
 let container ?type_ name =
-  v Container (Shorthand { name = Some name; ctype = type_ })
+  v Container
+    (Shorthand { name = container_name_of_string name; ctype = type_ })
 
 let transform value = v Transform [ value ]
 

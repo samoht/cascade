@@ -201,9 +201,9 @@ let normalize_box_shorthand ~is_substitution f vs =
   if List.exists is_substitution normalized then normalized
   else collapse_box_shorthand normalized
 
-let normalize_length_box ~ctx =
+let normalize_length_box ?(non_negative = false) ~ctx =
   normalize_box_shorthand ~is_substitution:is_length_substitution
-    (Values.normalize_length ~ctx)
+    (Values.normalize_length ~non_negative ~ctx)
 
 let option_map_preserve f opt =
   match opt with

@@ -190,11 +190,19 @@ val pp_position_try_order : position_try_order Pp.t
 val pp_position_try_fallback : position_try_fallback Pp.t
 (** [pp_position_try_fallback] pretty-prints a [position-try-fallback] item. *)
 
+val pp_position_try_fallback_entry : position_try_fallback_entry Pp.t
+(** [pp_position_try_fallback_entry] pretty-prints one comma-separated
+    [position-try-fallbacks] entry. *)
+
 val pp_position_try_fallbacks : position_try_fallbacks Pp.t
 (** [pp_position_try_fallbacks] pretty-prints [position-try-fallbacks]. *)
 
 val read_position_try_fallback : Cursor.t -> position_try_fallback
 (** [read_position_try_fallback t] parses a single [position-try-fallback]. *)
+
+val read_position_try_fallback_entry : Cursor.t -> position_try_fallback_entry
+(** [read_position_try_fallback_entry t] parses one comma-separated
+    [position-try-fallbacks] entry. *)
 
 val read_position_try_fallbacks : Cursor.t -> position_try_fallbacks
 (** [read_position_try_fallbacks t] parses [position-try-fallbacks]. *)
@@ -466,11 +474,20 @@ val pp_border_image_slice_item : border_image_slice_item Pp.t
 val read_border_image_slice_item : Cursor.t -> border_image_slice_item
 (** [read_border_image_slice_item t] parses one [border-image-slice] item. *)
 
+val pp_border_image_slice_offsets : border_image_slice_offsets Pp.t
+(** [pp_border_image_slice_offsets] pretty-prints the offsets a
+    [border-image-slice] carries, the part the [border-image] shorthand takes.
+*)
+
+val read_border_image_slice_offsets : Cursor.t -> border_image_slice_offsets
+(** [read_border_image_slice_offsets t] parses those offsets. *)
+
 val pp_border_image_slice : border_image_slice Pp.t
 (** [pp_border_image_slice] pretty-prints [border-image-slice]. *)
 
 val read_border_image_slice : Cursor.t -> border_image_slice
-(** [read_border_image_slice t] parses [border-image-slice]. *)
+(** [read_border_image_slice t] parses the [border-image-slice] longhand,
+    including the CSS-wide keywords. *)
 
 val read_border_image_repeat : Cursor.t -> border_image_repeat
 (** [read_border_image_repeat t] parses the [border-image-repeat] longhand,
@@ -2395,8 +2412,25 @@ val read_font_variant_ligatures : Cursor.t -> font_variant_ligatures
 (** [read_font_variant_ligatures t] is the [font_variant_ligatures] parsed from
     [t]. *)
 
+val pp_font_variant : font_variant Pp.t
+(** [pp_font_variant] prints the [font-variant] shorthand. *)
+
+val pp_font_variant_alternates : font_variant_alternates Pp.t
+(** [pp_font_variant_alternates] prints [font-variant-alternates]. *)
+
 val pp_font_variant_caps : font_variant_caps Pp.t
 (** [pp_font_variant_caps] is the pretty-printer for [font_variant_caps]. *)
+
+val font_width_css3 : font_stretch -> font_stretch option
+(** [font_width_css3 width] is the [<font-width-css3>] keyword [width] stands
+    for, which is the only spelling the [font] shorthand's width slot takes (CSS
+    Fonts 4 sec. 5.3). [None] when no keyword names it. *)
+
+val read_font_variant : Cursor.t -> font_variant
+(** [read_font_variant t] parses the [font-variant] shorthand. *)
+
+val read_font_variant_alternates : Cursor.t -> font_variant_alternates
+(** [read_font_variant_alternates t] parses [font-variant-alternates]. *)
 
 val read_font_variant_caps : Cursor.t -> font_variant_caps
 (** [read_font_variant_caps t] is the [font_variant_caps] parsed from [t]. *)
@@ -2548,10 +2582,11 @@ val read_stroke_width : Cursor.t -> stroke_width
 val pp_dash_length : dash_length Pp.t
 (** [pp_dash_length] pretty-prints one SVG dash length. *)
 
-val read_dash_length : Cursor.t -> dash_length
-(** [read_dash_length t] is the [dash_length] parsed from [t]. A bare number is
-    in user units; anything carrying a unit or a percent sign is a
-    [<length-percentage>]. *)
+val read_dash_length : ?allow_negative:bool -> Cursor.t -> dash_length
+(** [read_dash_length ?allow_negative t] is the [dash_length] parsed from [t]. A
+    bare number is in user units; anything carrying a unit or a percent sign is
+    a [<length-percentage>]. [allow_negative] defaults to [true], which is what
+    [stroke-dashoffset] takes; a dash of [stroke-dasharray] takes [false]. *)
 
 val pp_stroke_dashoffset : stroke_dashoffset Pp.t
 (** [pp_stroke_dashoffset] pretty-prints a [stroke-dashoffset]. *)

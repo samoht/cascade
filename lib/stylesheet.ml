@@ -2641,8 +2641,11 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
         None
     | _ -> (
         let start = Cursor.save r in
-        let name = Cursor.ident ~keep_case:false r in
         match
+          (* The name is read inside the recovered region: a descriptor with no
+             name at all ([@font-face { : url(a.woff2) }]) fails here, and it is
+             dropped like any other bad one rather than taking the rule. *)
+          let name = Cursor.ident ~keep_case:false r in
           if descriptor_value_has_var r && not (descriptor_resolves_var name)
           then Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
           else read_font_face_desc name r
@@ -2653,9 +2656,9 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
             Some descriptor
         | exception Error.Parse_error e ->
             (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
-               that does not parse - an unknown name (Fontsource's
-               [font-named-instance]) or an invalid value of a known one
-               ([font-display:maybe]) - is dropped and the rest of the
+               that does not parse - one with no name at all, an unknown name
+               (Fontsource's [font-named-instance]) or an invalid value of a
+               known one ([font-display:maybe]) - is dropped and the rest of the
                @font-face is kept, matching browsers. *)
             Cursor.skip_past_semicolon r;
             Cursor.push_warning r
@@ -2815,34 +2818,6 @@ let read_counter_style_descriptors r =
         inner [])
     r
 
-let counter_style_system descriptors =
-  List.find_map
-    (function System system -> Some system | _ -> None)
-    descriptors
-
-let counter_style_has_symbols descriptors =
-  List.exists (function Symbols _ -> true | _ -> false) descriptors
-
-let counter_style_has_additive_symbols descriptors =
-  List.exists (function Additive_symbols _ -> true | _ -> false) descriptors
-
-let counter_style_validate r descriptors =
-  let system =
-    match counter_style_system descriptors with
-    | Some system -> system
-    | None -> Cursor.err_invalid r "@counter-style requires a system descriptor"
-  in
-  match system with
-  | Cyclic | Numeric | Alphabetic | Symbolic | Fixed _ ->
-      if not (counter_style_has_symbols descriptors) then
-        Cursor.err_invalid r
-          "@counter-style system requires a symbols descriptor"
-  | Additive ->
-      if not (counter_style_has_additive_symbols descriptors) then
-        Cursor.err_invalid r
-          "@counter-style additive system requires additive-symbols"
-  | Extends _ -> ()
-
 let read_counter_style (r : Cursor.t) : statement =
   Cursor.with_context r "@counter-style" @@ fun () ->
   Cursor.expect_at_keyword "counter-style" r;
@@ -2856,7 +2831,6 @@ let read_counter_style (r : Cursor.t) : statement =
           (counter_style_descriptor_rank a)
           (counter_style_descriptor_rank b))
   in
-  counter_style_validate r descriptors;
   Counter_style (name, descriptors)
 
 (* CSS Paged Media 3 sec. 4.2: a page selector is an optional page name followed
@@ -2888,21 +2862,22 @@ let rec page_selector_skip_ws s len i =
    [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
    the closed set [first | left | right | blank], so [@page invoice:blank:first]
    is well-formed. *)
+(* CSS Paged Media 3 sec. 4.3 closes [<pseudo-page>] over four names, so each is
+   a keyword and not the page name beside it. *)
+let page_pseudo_of_name r s name =
+  match Common.String.lowercase_ascii_preserve name with
+  | "first" -> First
+  | "left" -> Left
+  | "right" -> Right
+  | "blank" -> Blank
+  | _ -> page_selector_error r s
+
 let parse_page_selectors r selector =
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let pseudo_of_name name =
-    (* CSS Paged Media 3 sec. 4.3 closes [<pseudo-page>] over four names, so
-       each is a keyword and not the page name beside it. *)
-    match Common.String.lowercase_ascii_preserve name with
-    | "first" -> First
-    | "left" -> Left
-    | "right" -> Right
-    | "blank" -> Blank
-    | _ -> page_selector_error r s
-  in
+  let pseudo_of_name = page_pseudo_of_name r s in
   let consume_pseudo_page i : (page_pseudo * int) option =
     if i >= len || s.[i] <> ':' then None
     else
@@ -2918,7 +2893,12 @@ let parse_page_selectors r selector =
   in
   let rec consume_selectors acc i =
     let i = skip_ws i in
-    if i >= len then List.rev acc
+    (* Reaching the end here is the tail of a [,]: the list is
+       [<page-selector>#] and has no empty item, so a trailing comma is no more
+       a selector list than a lone one. *)
+    if i >= len then (
+      if acc <> [] then page_selector_error r s;
+      List.rev acc)
     else
       let after_ident = consume_ident i in
       let name =
@@ -2926,6 +2906,11 @@ let parse_page_selectors r selector =
         else Some (String.sub s i (after_ident - i))
       in
       let pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
+      (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages, or
+         both, so an item with neither is no selector: [@page ,] names two of
+         them and Chrome 151 drops the rule. The prelude may be absent
+         altogether, which the caller answers before reaching here. *)
+      if Option.is_none name && pseudos = [] then page_selector_error r s;
       let sel = { name; pseudos } in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then List.rev (sel :: acc)
@@ -3600,15 +3585,17 @@ let scope_prelude r prelude_components : Selector.t option * Selector.t option =
       Cursor.err_invalid r "@scope start selector cannot be empty";
     if end_cvs <> [] && end_parens && end_ = "" then
       Cursor.err_invalid r "@scope end selector cannot be empty";
-    (* Parse each bound into a selector; an unparseable bound is
-       [Selector.Invalid]. *)
+    (* CSS Cascade 6 sec. 3.5.2 gives each bound a [<complex-selector-list>], so
+       a bound that does not parse leaves the prelude invalid and the rule with
+       it, which is what Chrome 146 does. [Selector.Invalid] stood here as a
+       placeholder, but it is the [:invalid] pseudo-class: emitting it scoped
+       the block to whatever form controls are in an invalid state. *)
     let opt s : Selector.t option =
       if s = "" then None
       else
         match Selector.of_string s with
         | sel -> Some sel
-        | exception (Cursor.Parse_error _ | Invalid_argument _) ->
-            Some Selector.Invalid
+        | exception Invalid_argument m -> Cursor.err_invalid r m
     in
     (opt start, opt end_)
 
@@ -3624,11 +3611,20 @@ let read_supports_condition (r : Cursor.t) : statement =
 
 let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 
+(* Media Queries 5 sec. 3.2: "A media query that does not match the grammar
+   [...] must be replaced by not all during parsing", so a prelude the reader
+   refuses leaves the rule standing and matching nothing rather than taking the
+   rule and its contents with it. The replacement is per entry of the list,
+   which the recovering read does; the strict one runs first for the error to
+   report, since the recovery is {!Error.Recovery.Recovered}, the rule
+   surviving. *)
 let read_nested_media_condition t =
   if Cursor.is_done t then Media.List []
   else
     try Media.read ~recover:false t
-    with Error.Parse_error _ -> Media.of_string "not all"
+    with Error.Parse_error e when Cursor.recover t ->
+      Cursor.push_warning t ~recovery:Error.Recovery.Recovered e;
+      Media.read ~recover:true t
 
 let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
@@ -3929,6 +3925,16 @@ and read_block (r : Cursor.t) : block =
   let rec read_statements acc =
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
+    else if
+      (* CSS Syntax 3 (ED) sec. 5.5.5 discards a [;] among a block's contents,
+         so a stray one costs nothing and the rule after it reads. Chrome 151
+         reads it as the start of a prelude instead and loses the block. *)
+      match Cursor.peek r with
+      | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+          Cursor.skip r;
+          true
+      | _ -> false
+    then read_statements acc
     else
       let loc = Cursor.position r in
       let snap = Cursor.save r in
@@ -3962,10 +3968,10 @@ and read_media (r : Cursor.t) : statement =
   let condition_components = Cursor.drain_until_block r in
   let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  let condition =
-    if Cursor.is_done query then Media.List []
-    else Media.read ~recover:false query
-  in
+  let condition = read_nested_media_condition query in
+  List.iter
+    (fun w -> Cursor.push_warning r ~recovery:Error.Recovery.Recovered w)
+    (Cursor.drain_warnings query);
   Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =

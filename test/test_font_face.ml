@@ -276,13 +276,28 @@ let spec_fontface_src_minify_edges () =
         "var(--font-src,url(fallback.woff2)format(woff2))" );
     ]
 
+(* CSS Fonts 4 (ED) sec. 4.3.1 puts no emptiness rule on the [<url>] and leaves
+   an unusable reference to loading, and its per-item parsing drops an item that
+   does not parse rather than the descriptor. So an empty url and a trailing
+   comma are read, which is what Chrome 151 keeps; an item carrying something
+   [<font-src>] does not name still takes the descriptor with it. *)
+let spec_fontface_src_accepted_edges () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (input |> src_of_string |> string_of_src ~minify:true))
+    [
+      ("url()", "url()");
+      ("url(\"\")", "url()");
+      ("url(\"font.woff2\"),", "url(font.woff2)");
+      ("nonsense,url(\"font.woff2\")", "url(font.woff2)");
+    ]
+
 let spec_fontface_src_invalid_edges () =
   expect_rejected_cases "font-face src" src_of_string string_of_src
     [
       "";
-      "url()";
-      "url(\"\")";
-      "url(\"font.woff2\"),";
       "url(\"font.woff2\") garbage";
       "url(\"font.woff2\") format(\"woff2\") garbage";
       "url(\"font.woff2\") format(\"woff2\") format(\"opentype\")";
@@ -740,6 +755,8 @@ let suite =
         spec_fontface_source_edges;
       test_case "spec font-face metric descriptor edges" `Quick
         spec_fontface_metric_edges;
+      test_case "spec font-face src accepted edges" `Quick
+        spec_fontface_src_accepted_edges;
       test_case "spec font-face src minify edges" `Quick
         spec_fontface_src_minify_edges;
       test_case "spec font-face src invalid edges" `Quick

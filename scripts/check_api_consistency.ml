@@ -39,6 +39,13 @@ let ignored_types =
     "colon_form";
     "vt_class_selector";
     "url_form";
+    "font_variant_shorthand";
+    "font_variant_alternates_item";
+    "position_axis_edge";
+    "background_position_axis";
+    (* Slots of the value that owns them: the [font-variant] record and one of
+       its alternate components, and the axis and edge a [<position>] writes.
+       Each is read through its owner's reader, never on its own. *)
     (* Serialization metadata, not standalone CSS syntax. *)
     "custom_value";
     (* Token-stream custom properties are parsed through declarations and

@@ -8,6 +8,11 @@ open Css_test_helpers
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value_cursor "length" read_length pp_length
 
+(* Not a [check_<type>]: the sizing keywords are lengths, read through the same
+   [length] parser with its own grammar switch on. *)
+let length_with_sizing =
+  check_value_cursor "length" (read_length ~sizing:true) pp_length
+
 (* Always assert both paths. pp serializes the parsed colour ([expected], held);
    optimize+minify canonicalizes it ([optimized]). When [optimized] is omitted
    the colour has no shorter spec-equivalent spelling (already canonical, or a
@@ -107,18 +112,25 @@ let test_length () =
   (* Keywords *)
   check_length "auto";
   check_length "inherit";
-  check_length "max-content";
-  check_length "min-content";
-  check_length "fit-content";
+  (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
+     the reader takes them only where the property does and the default refuses
+     them. *)
+  length_with_sizing "max-content";
+  length_with_sizing "min-content";
+  length_with_sizing "fit-content";
   (* Legacy vendor-prefixed intrinsic sizing keywords (Bootstrap,
      Fontsource). *)
-  check_length "-webkit-max-content";
-  check_length "-webkit-min-content";
-  check_length "-webkit-fit-content";
-  check_length "-moz-max-content";
-  check_length "-moz-min-content";
-  check_length "-moz-fit-content";
-  check_length "from-font";
+  length_with_sizing "-webkit-max-content";
+  length_with_sizing "-webkit-min-content";
+  length_with_sizing "-webkit-fit-content";
+  length_with_sizing "-moz-max-content";
+  length_with_sizing "-moz-min-content";
+  length_with_sizing "-moz-fit-content";
+  length_with_sizing "from-font";
+  List.iter
+    (fun keyword ->
+      neg_cursor (fun t -> ignore (read_length t : Css.Values.length)) keyword)
+    [ "max-content"; "min-content"; "fit-content"; "from-font" ];
 
   (* Edge cases *)
   check_length "0";

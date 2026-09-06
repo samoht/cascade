@@ -120,7 +120,15 @@ let spec_ahead : excuse list =
          sizing property takes; Chrome has only the bare fit-content keyword";
     };
     {
-      properties = [ "background"; "background-image" ];
+      properties =
+        [
+          "background";
+          "background-image";
+          "border-image";
+          "border-image-source";
+          "mask-image";
+          "-webkit-mask-image";
+        ];
       value = "cross-fade(url(a.png) 40%, url(b.png))";
       why =
         "CSS Images 4 sec. 2.6: cross-fade() = cross-fade( <cf-image># ); \
