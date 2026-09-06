@@ -2499,6 +2499,32 @@ let all_shorthand_builder () =
   check "all:initial" (Css.all Initial);
   check "all:revert-layer" (Css.all Revert_layer)
 
+(* Motion Path 1 is modelled down to the shorthand and the facade built none of
+   it. *)
+let motion_path_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "offset-path:none" (Css.offset_path None);
+  check "offset-path:path(\"M 0 0 H 1\")" (Css.offset_path (Path "M 0 0 H 1"));
+  check "offset-distance:50%" (Css.offset_distance (Pct 50.));
+  check "offset-rotate:reverse" (Css.offset_rotate Reverse);
+  check "offset-rotate:auto 30deg"
+    (Css.offset_rotate (With_angle (Auto, Deg 30.)));
+  check "offset-anchor:auto" (Css.offset_anchor Auto);
+  check "offset-position:normal" (Css.offset_position Normal);
+  check "offset:none"
+    (Css.offset
+       (Shorthand
+          {
+            target =
+              With_path
+                { position = None; path = None; distance = None; rotate = None };
+            anchor = None;
+          }))
+
 let suite =
   ( "css",
     [
@@ -2597,6 +2623,8 @@ let suite =
         view_transition_builders;
       Alcotest.test_case "public all shorthand builder" `Quick
         all_shorthand_builder;
+      Alcotest.test_case "public motion path builders" `Quick
+        motion_path_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
