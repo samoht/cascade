@@ -394,6 +394,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- The areas form of `grid-template` is read against its grammar rather than
+  kept as any well-formed token run, so `grid-template: 50% "text" infinite`
+  and `grid-template: "a" repeat(2, 1fr)` are dropped with a warning. CSS Grid
+  2 sec. 7.4 puts the track size after the string and sec. 7.2 leaves
+  `repeat()` out of an explicit track list (#1016)
+
 - `will-change` refuses the idents its own grammar excludes, so
   `will-change: none` and `will-change: opacity, none` are dropped with a
   warning where the browser drops the whole declaration. CSS Will Change 1

@@ -1205,29 +1205,6 @@ let read_grid_template_tracks t =
         validate_track_list t multiple;
         Tracks multiple
 
-let rec read_grid_template t : grid_template =
-  if Cursor.looking_at_func "var" t then
-    (Var (Values.read_var read_grid_template t) : grid_template)
-  else if grid_template_needs_raw_template (Cursor.remaining t) then (
-    let cvs = Cursor.remaining t in
-    if grid_template_top_level_slashes cvs > 1 then
-      Cursor.err_invalid t "grid-template duplicate slash form";
-    if not (grid_template_components_well_formed cvs) then
-      Cursor.err_invalid t "grid-template malformed raw template";
-    if not (grid_template_line_names_valid cvs) then
-      Cursor.err_invalid t "grid-template reserved line name";
-    let raw = Cursor.consume_to_decl_end ~trim:true t in
-    Template
-      (Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))))
-  else
-    let rows = read_grid_template_tracks t in
-    Cursor.ws t;
-    if Cursor.slash_opt t then (
-      Cursor.ws t;
-      let columns = read_grid_template_tracks t in
-      Split (rows, columns))
-    else rows
-
 (* CSS Grid 2 (ED) sec. 7.6: [grid-auto-columns] and [grid-auto-rows] take
    [<track-size>+], the sec. 7.2 [<track-size>] repeated. That grammar has no
    [<line-names>] position, no [<track-repeat>], and none of the [<track-list>]
@@ -1243,6 +1220,100 @@ let rec is_track_size : grid_template -> bool = function
   | Tracks _ | Split _ | Auto_flow_columns _ | Auto_flow_rows _ | Named_tracks _
   | Line_names _ | Template _ | Subgrid | Masonry ->
       false
+
+(* CSS Grid 2 sec. 7.4 spells the areas form of [grid-template] as [[
+   <line-names>? <string> <track-size>? <line-names>? ]+ [ /
+   <explicit-track-list> ]?], and sec. 7.2 leaves [repeat()] out of an
+   [<explicit-track-list>]. The value is kept as authored text, so the token
+   stream is walked against that grammar before it is. *)
+let grid_template_line_names c =
+  match Cursor.peek c with
+  | Some (Component.Block { node = { opening = Token.Square; _ }; _ }) ->
+      let (_ : grid_template) = Grid_template.read_single_track c in
+      ()
+  | _ -> ()
+
+let is_explicit_track_list = function
+  | Tracks tracks ->
+      List.for_all
+        (fun track ->
+          match track with Line_names _ -> true | _ -> is_track_size track)
+        tracks
+  | Line_names _ -> true
+  | single -> is_track_size single
+
+let validate_grid_template_areas_form t raw =
+  let c = Cursor.of_string raw in
+  let at_slash () =
+    match Cursor.peek c with
+    | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
+    | _ -> false
+  in
+  let row_size () =
+    match Cursor.peek c with
+    | None
+    | Some (Component.Preserved { kind = Token.String _; _ })
+    | Some (Component.Block { node = { opening = Token.Square; _ }; _ }) ->
+        ()
+    | Some _ ->
+        if not (at_slash ()) then
+          let size = Grid_template.read_single_track c in
+          if not (is_track_size size) then
+            Cursor.err_invalid t "grid-template row size is not a track size"
+  in
+  let rec rows seen =
+    Cursor.ws c;
+    if Cursor.is_done c then
+      if not seen then Cursor.err_expected t "a grid area string" else ()
+    else if at_slash () then (
+      if not seen then Cursor.err_expected t "a grid area string";
+      Cursor.expect '/' c;
+      Cursor.ws c;
+      let columns = read_grid_template_tracks c in
+      if not (is_explicit_track_list columns) then
+        Cursor.err_invalid t "grid-template columns are not an explicit list";
+      Cursor.ws c;
+      if not (Cursor.is_done c) then
+        Cursor.err_invalid t "grid-template trailing tokens")
+    else (
+      grid_template_line_names c;
+      Cursor.ws c;
+      (match Cursor.peek c with
+      | Some (Component.Preserved { kind = Token.String _; _ }) ->
+          let (_ : string) = Cursor.string c in
+          ()
+      | _ -> Cursor.err_expected t "a grid area string");
+      Cursor.ws c;
+      row_size ();
+      Cursor.ws c;
+      grid_template_line_names c;
+      rows true)
+  in
+  rows false
+
+let rec read_grid_template t : grid_template =
+  if Cursor.looking_at_func "var" t then
+    (Var (Values.read_var read_grid_template t) : grid_template)
+  else if grid_template_needs_raw_template (Cursor.remaining t) then (
+    let cvs = Cursor.remaining t in
+    if grid_template_top_level_slashes cvs > 1 then
+      Cursor.err_invalid t "grid-template duplicate slash form";
+    if not (grid_template_components_well_formed cvs) then
+      Cursor.err_invalid t "grid-template malformed raw template";
+    if not (grid_template_line_names_valid cvs) then
+      Cursor.err_invalid t "grid-template reserved line name";
+    let raw = Cursor.consume_to_decl_end ~trim:true t in
+    validate_grid_template_areas_form t raw;
+    Template
+      (Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))))
+  else
+    let rows = read_grid_template_tracks t in
+    Cursor.ws t;
+    if Cursor.slash_opt t then (
+      Cursor.ws t;
+      let columns = read_grid_template_tracks t in
+      Split (rows, columns))
+    else rows
 
 let read_grid_auto_tracks t : grid_template =
   let value = read_grid_template t in
