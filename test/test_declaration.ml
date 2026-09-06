@@ -1705,6 +1705,8 @@ let component_var_keeps_typed_value () =
     "stroke-dashoffset:calc(1px + var(--o))" "--o";
   check_visible_var "animation-iteration-count math var stays visible"
     "animation-iteration-count:calc(1 + var(--n))" "--n";
+  check_visible_var "hyphenate-limit-chars slot var stays visible"
+    "hyphenate-limit-chars:var(--n) 3" "--n";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 

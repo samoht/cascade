@@ -915,6 +915,10 @@ let check_grid_template_areas =
   check_value_cursor "grid_template_areas" read_grid_template_areas
     pp_grid_template_areas
 
+let check_hyphenate_limit_chars_item =
+  check_value_cursor "hyphenate_limit_chars_item"
+    read_hyphenate_limit_chars_item pp_hyphenate_limit_chars_item
+
 let check_hyphenate_limit_chars =
   check_value_cursor "hyphenate_limit_chars" read_hyphenate_limit_chars
     pp_hyphenate_limit_chars
@@ -5020,7 +5024,16 @@ let spec_generated_box_layout_edges () =
   check_flex_flow "row wrap";
   check_grid_line_pair ~expected:"1/span 2" "1 / span 2";
   check_grid_template_areas ~expected:"\"a a\"\"b c\"" "\"a a\" \"b c\"";
+  check_hyphenate_limit_chars_item "auto";
+  check_hyphenate_limit_chars_item "6";
   check_hyphenate_limit_chars "3 4 5";
+  (* CSS Text 4 sec. 6.3.4 gives every slot [auto | <integer>], and CSS Values 4
+     sec. 10.1 puts a math function where the integer is. *)
+  check_hyphenate_limit_chars "auto";
+  check_hyphenate_limit_chars "auto 3";
+  check_hyphenate_limit_chars "3 auto auto";
+  check_hyphenate_limit_chars "calc(1 + 2)";
+  check_hyphenate_limit_chars "auto calc(1 + 2)";
   check_initial_letter "2 3";
   check_initial_letter_align "border-box alphabetic";
   check_initial_letter_align_keyword "hanging";
@@ -5073,6 +5086,8 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_grid_line_pair "span";
   neg_cursor read_grid_template_areas "\"a .\" \". a\"";
   neg_cursor read_hyphenate_limit_chars "3 4 5 6";
+  neg_cursor read_hyphenate_limit_chars "3.0";
+  neg_cursor read_hyphenate_limit_chars "calc(2px)";
   neg_cursor read_initial_letter ".5";
   neg_cursor read_initial_letter_align "alphabetic alphabetic";
   neg_cursor read_initial_letter_align_keyword "cap-height";
