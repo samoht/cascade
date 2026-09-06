@@ -2525,6 +2525,23 @@ let motion_path_builders () =
             anchor = None;
           }))
 
+(* CSS Multicol 2 models each longhand of [columns] and the gap decoration
+   lines, and the facade wrote only the two shorthands. *)
+let multicol_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "column-width:20em" (Css.column_width (Width (Em 20.)));
+  check "column-count:3" (Css.column_count (Count 3));
+  check "column-height:10em" (Css.column_height (Height (Em 10.)));
+  check "column-wrap:wrap" (Css.column_wrap Wrap);
+  check "column-rule-width:1px,2px" (Css.column_rule_width [ Px 1.; Px 2. ]);
+  check "column-rule-style:dotted,dashed"
+    (Css.column_rule_style [ Dotted; Dashed ]);
+  check "column-rule-color:red" (Css.column_rule_color [ Named Red ])
+
 let suite =
   ( "css",
     [
@@ -2625,6 +2642,7 @@ let suite =
         all_shorthand_builder;
       Alcotest.test_case "public motion path builders" `Quick
         motion_path_builders;
+      Alcotest.test_case "public multicol builders" `Quick multicol_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
