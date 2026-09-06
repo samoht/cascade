@@ -3860,6 +3860,16 @@ let typed_custom_font_family_layer_printing () =
   Alcotest.(check string)
     "layer-independent serialization" theme (render "utilities")
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 gives a declaration a value of one or more
+   component values, and CSS Variables 1 sec. 2 gives the empty one to a custom
+   property alone. *)
+let an_empty_value_is_no_declaration () =
+  check_declaration ~expected:"--x:" "--x:";
+  neg_cursor read_declaration "quotes:";
+  neg_cursor read_declaration "quotes: ";
+  neg_cursor read_declaration "position-try: ";
+  neg_cursor read_declaration "color: "
+
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
    and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
    [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
@@ -6535,6 +6545,8 @@ let declaration_tests =
       grid_shorthand_names_both_axes;
     test_case "an anchor query where the property takes one" `Quick
       anchor_query_where_the_property_takes_one;
+    test_case "an empty value is no declaration" `Quick
+      an_empty_value_is_no_declaration;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
     test_case "parse_declaration keeps the name out of the value" `Quick
