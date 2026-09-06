@@ -1074,7 +1074,10 @@ let matrix =
       };
       {
         property = "hyphenate-limit-chars";
-        positives = [ "auto"; "6"; "6 3"; "6 3 2" ];
+        positives =
+          [
+            "auto"; "6"; "6 3"; "6 3 2"; "auto 3"; "3 auto auto"; "calc(1 + 2)";
+          ];
         negatives = [ "1 2 3 4"; "red" ];
       };
       {

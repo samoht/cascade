@@ -435,7 +435,7 @@ let spec_ahead_here : Chrome_gaps.excuse list =
          <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
          central | mathematical | hanging | text-top" );
       ( [ "animation"; "-webkit-animation" ],
-        [ "--scroller block" ],
+        [ "--x x, --y y" ],
         "CSS Animations 2 sec. 4: <single-animation> ends in [ none | \
          <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident \
          timeline and a keyframes name fill two slots of one [||]. Chrome took \
@@ -462,20 +462,15 @@ let lenient_here : Chrome_gaps.excuse list =
           "column-rule";
           "column-rule-width";
         ],
-        [ "10px," ],
+        [ "10px,"; "red, none" ],
         "CSS Backgrounds 3 sec. 4.5 and CSS Multicol 2 sec. 4.3 build these \
          from [||] of a width, a style and a colour, and no arm of either is a \
-         comma. Chrome reads the trailing one and drops it on serialising" );
+         comma. Chrome stops at the comma and drops the rest on serialising: \
+         [border: red, none] computes a red border-color and serialises back \
+         as [border: red]" );
       ( [ "baseline-shift" ],
         [ "-1"; "1"; "99999999999" ],
         baseline_shift_takes_no_number );
-      ( [ "font-family" ],
-        [ "default red normal red" ],
-        "CSS Fonts 4 sec. 2.1.1: an unquoted family is a <custom-ident>+ and \
-         \"any identifier which could be misinterpreted as a pre-defined \
-         keyword in the font-family value definition, or the CSS-wide \
-         keywords, is not allowed\", with [default] among the names the \
-         section shows quoted. Chrome reads the sequence and quotes it" );
     ]
 
 let hits = Hashtbl.create 64
