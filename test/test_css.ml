@@ -2474,6 +2474,19 @@ let anchor_positioning_builders () =
   check "position-visibility:anchors-visible"
     (Css.position_visibility (Conditions [ Anchors_visible ]))
 
+(* View Transitions is advertised in the README and the facade built neither
+   property, so a caller could parse a transition name but not write one. *)
+let view_transition_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "view-transition-name:card" (Css.view_transition_name (Name "card"));
+  check "view-transition-name:none" (Css.view_transition_name None);
+  check "view-transition-class:hero wide"
+    (Css.view_transition_class (Classes [ "hero"; "wide" ]))
+
 let suite =
   ( "css",
     [
@@ -2568,6 +2581,8 @@ let suite =
         svg_longhand_builders;
       Alcotest.test_case "public anchor positioning builders" `Quick
         anchor_positioning_builders;
+      Alcotest.test_case "public view transition builders" `Quick
+        view_transition_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
