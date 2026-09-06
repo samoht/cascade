@@ -3856,6 +3856,16 @@ let typed_custom_font_family_layer_printing () =
   Alcotest.(check string)
     "layer-independent serialization" theme (render "utilities")
 
+(* CSS Lists 3 sec. 3.5 gives [list-style-image] one [<image>], where
+   [background-image] takes a comma-separated list of them, so the comma is
+   where the two vocabularies part. *)
+let list_style_image_takes_one_image () =
+  check_declaration ~expected:"list-style-image:linear-gradient(red,blue)"
+    "list-style-image: linear-gradient(red, blue)";
+  check_declaration ~expected:"list-style-image:image-set(url(a.png)1x)"
+    "list-style-image: image-set(url(a.png) 1x)";
+  neg_cursor read_declaration "list-style-image: url(a.png), url(b.png)"
+
 (* [parse_custom_property] builds a declaration from a name and value that came
    from outside the parser, so it takes only a pair that writes back as the one
    declaration it claims to be: a [<dashed-ident>] name, written back with the
@@ -6466,6 +6476,8 @@ let declaration_tests =
       typed_custom_font_family_layer_printing;
     test_case "parse_custom_property rejects an escaping pair" `Quick
       parse_custom_property_guard;
+    test_case "list-style-image takes one image" `Quick
+      list_style_image_takes_one_image;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
     test_case "parse_declaration keeps the name out of the value" `Quick

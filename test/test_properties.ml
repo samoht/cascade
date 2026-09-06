@@ -2371,6 +2371,12 @@ let test_list_style_image () =
   check_list_style_image "none";
   check_list_style_image "inherit";
   check_list_style_image "url(https://example.com/x.png)";
+  (* CSS Lists 3 sec. 3.5 gives the property an [<image>], so every image the
+     vocabulary reads goes here and only the comma list does not. *)
+  check_list_style_image "linear-gradient(red,blue)";
+  check_list_style_image "conic-gradient(in hsl longer hue,red,blue)";
+  check_list_style_image "image-set(url(a.png)1x)";
+  check_list_style_image "cross-fade(url(a.png) 40%,url(b.png))";
   neg_cursor read_list_style_image "invalid-url"
 
 let test_vertical_align () =
