@@ -364,6 +364,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `offset-distance` and `view-timeline-inset` read a negative length. CSS
+  Motion Path 1 sec. 2.2 and Scroll Animations 1 sec. 3.4.3 give both a plain
+  `<length-percentage>` with no range on it, and cascade held them to a
+  non-negative one (#999)
+
 - `transition-property` reads every `<custom-ident>` and refuses the one CSS
   Values 4 sec. 3.2 excludes, so `transition-property: normal` names a property
   and `default` no longer does. `transition: allow-discrete allow-discrete`

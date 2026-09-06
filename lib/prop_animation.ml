@@ -777,8 +777,9 @@ let read_timeline_inset_item t : timeline_inset_item =
   Cursor.enum "timeline-inset item"
     [ ("auto", (Auto : timeline_inset_item)) ]
     ~default:(fun t ->
-      (Length
-         (read_length_percentage ~allow_negative:false ~with_keywords:false t)
+      (* Scroll Animations 1 sec. 3.4.3 gives each item [auto] or a plain
+         [<length-percentage>], with no range restriction on it. *)
+      (Length (read_length_percentage ~with_keywords:false t)
         : timeline_inset_item))
     t
 

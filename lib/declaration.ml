@@ -854,6 +854,20 @@ let read_nn_lp_or_global t =
     ]
     ~default:read_non_negative_length_percentage t
 
+(* CSS Motion Path 1 sec. 2.2 gives [offset-distance] a plain
+   [<length-percentage>], with no range restriction on it. *)
+let read_lp_or_global t =
+  Cursor.enum "length-percentage"
+    [
+      ("inherit", (Length Inherit : length_percentage));
+      ("initial", Length Initial);
+      ("unset", Length Unset);
+      ("revert", Length Revert);
+      ("revert-layer", Length Revert_layer);
+    ]
+    ~default:(Values.read_length_percentage ~with_keywords:false)
+    t
+
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
@@ -1173,7 +1187,7 @@ let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
   | Max_block_size -> Some (v Max_block_size (read_box_size ~maximum:true t))
   | Font_size -> Some (v Font_size (Properties.read_font_size t))
   | Perspective -> Some (v Perspective (read_perspective_value t))
-  | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
+  | Offset_distance -> Some (v Offset_distance (read_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
   | Line_height_step ->
       Some (v Line_height_step (read_nn_length_or_global ~length_only:true t))
