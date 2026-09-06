@@ -5442,6 +5442,189 @@ type text_emphasis_skip = Properties.text_emphasis_skip =
 val text_emphasis_skip : text_emphasis_skip -> declaration
 (** [text_emphasis_skip v] is the [text-emphasis-skip] property. *)
 
+(** CSS Text 4 sec. 3 [white-space-collapse]: how white space and line breaks
+    collapse. *)
+type white_space_collapse = Properties.white_space_collapse =
+  | Collapse
+  | Discard
+  | Preserve
+  | Preserve_breaks
+  | Preserve_spaces
+  | Break_spaces
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of white_space_collapse var
+
+val white_space_collapse : white_space_collapse -> declaration
+(** [white_space_collapse v] is the [white-space-collapse] property. *)
+
+val line_height_step : length -> declaration
+(** [line_height_step v] is the [line-height-step] property. *)
+
+(** CSS Fonts 4 sec. 5.4 [font-palette]. *)
+type font_palette = Properties.font_palette =
+  | Normal
+  | Light
+  | Dark
+  | Palette of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_palette var
+
+val font_palette : font_palette -> declaration
+(** [font_palette v] is the [font-palette] property. *)
+
+(** CSS Fonts 4 sec. 5.3: one face the browser may synthesise. *)
+type font_synthesis_feature = Properties.font_synthesis_feature =
+  | Weight
+  | Style
+  | Small_caps
+  | Position
+
+(** CSS Fonts 4 sec. 5.3 [font-synthesis]. *)
+type font_synthesis = Properties.font_synthesis =
+  | None
+  | Features of font_synthesis_feature list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis var
+
+val font_synthesis : font_synthesis -> declaration
+(** [font_synthesis v] is the [font-synthesis] shorthand. *)
+
+val font_size_adjust : font_size_adjust -> declaration
+(** [font_size_adjust v] is the [font-size-adjust] property. *)
+
+val font_variant_emoji : font_variant_emoji -> declaration
+(** [font_variant_emoji v] is the [font-variant-emoji] property. *)
+
+(** CSS Fonts 4 sec. 6.5: one [font-variant-alternates] feature. *)
+type font_variant_alternates_item = Properties.font_variant_alternates_item =
+  | Stylistic of string
+  | Historical_forms
+  | Styleset of string list
+  | Character_variant of string list
+  | Swash of string
+  | Ornaments of string
+  | Annotation of string
+
+(** CSS Fonts 4 sec. 6.5 [font-variant-alternates]. *)
+type font_variant_alternates = Properties.font_variant_alternates =
+  | Normal
+  | Alternates of font_variant_alternates_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_alternates var
+
+val font_variant_alternates : font_variant_alternates -> declaration
+(** [font_variant_alternates v] is the [font-variant-alternates] property. *)
+
+type font_variant_shorthand = Properties.font_variant_shorthand = {
+  ligatures : font_variant_ligature list;
+  alternates : font_variant_alternates_item list;
+  caps : font_variant_caps option;
+  numeric : font_variant_numeric_token list;
+  east_asian : east_asian_feature list;
+  position : font_variant_position option;
+  emoji : font_variant_emoji option;
+}
+(** CSS Fonts 4 sec. 6.10: the slots of the [font-variant] shorthand. *)
+
+(** CSS Fonts 4 sec. 6.10 [font-variant]. *)
+type font_variant = Properties.font_variant =
+  | Normal
+  | None
+  | Shorthand of font_variant_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant var
+
+val font_variant : font_variant -> declaration
+(** [font_variant v] is the [font-variant] shorthand. *)
+
+val text_wrap_style : text_wrap_style -> declaration
+(** [text_wrap_style v] is the [text-wrap-style] property. *)
+
+val text_box_trim : text_box_trim -> declaration
+(** [text_box_trim v] is the [text-box-trim] property. *)
+
+(** CSS Inline 3 sec. 6.1 [text-box]:
+    [normal | <'text-box-trim'> || <'text-box-edge'>]. *)
+type text_box = Properties.text_box =
+  | Normal
+  | Box of text_box_trim option * text_box_edge option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box var
+
+val text_box : text_box -> declaration
+(** [text_box v] is the [text-box] shorthand. *)
+
+val text_spacing_trim : text_spacing_trim -> declaration
+(** [text_spacing_trim v] is the [text-spacing-trim] property. *)
+
+val hyphenate_limit_chars : hyphenate_limit_chars -> declaration
+(** [hyphenate_limit_chars v] is the [hyphenate-limit-chars] property. *)
+
+val initial_letter : initial_letter -> declaration
+(** [initial_letter v] is the [initial-letter] property. *)
+
+(** CSS Inline 3 sec. 8.3: one alignment point of an initial letter. *)
+type initial_letter_align_keyword = Properties.initial_letter_align_keyword =
+  | Alphabetic
+  | Ideographic
+  | Hanging
+  | Leading
+  | Border_box
+
+(** CSS Inline 3 sec. 8.3 [initial-letter-align]. *)
+type initial_letter_align = Properties.initial_letter_align =
+  | Align of initial_letter_align_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_align var
+
+val initial_letter_align : initial_letter_align -> declaration
+(** [initial_letter_align v] is the [initial-letter-align] property. *)
+
+(** CSS Inline 3 sec. 8.4 [initial-letter-wrap]. *)
+type initial_letter_wrap = Properties.initial_letter_wrap =
+  | None
+  | First
+  | All
+  | Grid
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_wrap var
+
+val initial_letter_wrap : initial_letter_wrap -> declaration
+(** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
+
 (** {2:borders_outlines Borders & Outlines}
 
     Properties for styling element borders, outlines, and related decorative

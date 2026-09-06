@@ -1150,6 +1150,54 @@ val view_timeline_inset : timeline_inset -> declaration
 val timeline_scope : timeline_name -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
+val white_space_collapse : white_space_collapse -> declaration
+(** [white_space_collapse v] is the [white-space-collapse] property. *)
+
+val line_height_step : length -> declaration
+(** [line_height_step v] is the [line-height-step] property. *)
+
+val font_palette : font_palette -> declaration
+(** [font_palette v] is the [font-palette] property. *)
+
+val font_synthesis : font_synthesis -> declaration
+(** [font_synthesis v] is the [font-synthesis] property. *)
+
+val font_size_adjust : font_size_adjust -> declaration
+(** [font_size_adjust v] is the [font-size-adjust] property. *)
+
+val font_variant_emoji : font_variant_emoji -> declaration
+(** [font_variant_emoji v] is the [font-variant-emoji] property. *)
+
+val font_variant_alternates : font_variant_alternates -> declaration
+(** [font_variant_alternates v] is the [font-variant-alternates] property. *)
+
+val font_variant : font_variant -> declaration
+(** [font_variant v] is the [font-variant] property. *)
+
+val text_wrap_style : text_wrap_style -> declaration
+(** [text_wrap_style v] is the [text-wrap-style] property. *)
+
+val text_box_trim : text_box_trim -> declaration
+(** [text_box_trim v] is the [text-box-trim] property. *)
+
+val text_box : text_box -> declaration
+(** [text_box v] is the [text-box] property. *)
+
+val text_spacing_trim : text_spacing_trim -> declaration
+(** [text_spacing_trim v] is the [text-spacing-trim] property. *)
+
+val hyphenate_limit_chars : hyphenate_limit_chars -> declaration
+(** [hyphenate_limit_chars v] is the [hyphenate-limit-chars] property. *)
+
+val initial_letter : initial_letter -> declaration
+(** [initial_letter v] is the [initial-letter] property. *)
+
+val initial_letter_align : initial_letter_align -> declaration
+(** [initial_letter_align v] is the [initial-letter-align] property. *)
+
+val initial_letter_wrap : initial_letter_wrap -> declaration
+(** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
+
 val moz_user_select : user_select -> declaration
 (** [moz_user_select v] is the [-moz-user-select] property. *)
 

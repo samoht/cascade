@@ -846,6 +846,14 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the typography longhands the AST models:
+  `white_space_collapse`, `line_height_step`, `font_palette`,
+  `font_synthesis`, `font_size_adjust`, `font_variant_emoji`,
+  `font_variant_alternates`, `font_variant`, `text_wrap_style`,
+  `text_box_trim`, `text_box`, `text_spacing_trim`, `hyphenate_limit_chars`,
+  `initial_letter`, `initial_letter_align` and `initial_letter_wrap`, with
+  their value types (#1039)
+
 - `Css` builds the flow-relative border shorthands `border_block_start`,
   `border_block_end`, `border_inline`, `border_inline_start` and
   `border_inline_end`, which only `border_block` had before (#1038)
