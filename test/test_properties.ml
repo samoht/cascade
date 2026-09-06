@@ -4515,6 +4515,18 @@ let test_page_size () =
   check_page_size "auto";
   check_page_size "8.5in 11in";
   check_page_size ~expected:"A4 landscape" "a4 landscape";
+  (* CSS Paged Media 3 sec. 6.4 sizes a page in [<length [0,inf]>{1,2} | auto |
+     [ <page-size> || [ portrait | landscape ]]], so a percentage, a sizing
+     keyword and a negative are no page size, and CSS Cascade 5 sec. 7.3 gives
+     the descriptor the CSS-wide keywords. *)
+  check_page_size "calc(10px + 1em)";
+  check_page_size "initial";
+  check_page_size "unset";
+  check_page_size "revert-layer";
+  neg_cursor read_page_size "50%";
+  neg_cursor read_page_size "-1px";
+  neg_cursor read_page_size "fit-content(20rem)";
+  neg_cursor ~allow_partial:true read_page_size "10px 20%";
   check_page_size "letter portrait";
   check_page_size "landscape";
   check_page_size "inherit";
