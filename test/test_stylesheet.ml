@@ -782,6 +782,16 @@ let spec_fontface_descriptors () =
 let page_case () =
   (* Test page roundtrip *)
   check_stylesheet ~expected:"@page{margin:1in}" "@page { margin: 1in; }";
+  (* CSS Paged Media 3 sec. 4.2 writes the prelude as [<page-selector>#], whose
+     item is a name, one or more pseudo-pages, or both. An item with neither is
+     no selector, so a lone comma and a trailing one both invalidate the rule,
+     which Chrome 151 drops. The prelude may be absent altogether. *)
+  assert_minify_and_optimize "@page , { margin: 1in; }" ~minified:""
+    ~optimized:"";
+  assert_minify_and_optimize "@page foo, { margin: 1in; }" ~minified:""
+    ~optimized:"";
+  check_stylesheet ~expected:"@page foo{margin:1in}"
+    "@page foo { margin: 1in; }";
   check_stylesheet ~expected:"@page:first{margin:2in}"
     "@page :first { margin: 2in; }";
   check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
