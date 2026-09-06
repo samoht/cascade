@@ -1317,6 +1317,19 @@ let border_line_width () =
     ~optimized:"border:solid red" "border: medium solid red";
   check_declaration ~expected:"border-top:medium dashed blue"
     ~optimized:"border-top:dashed#00f" "border-top: medium dashed blue";
+  (* CSS Values 4 sec. 10.12 checks the [0,inf] range of a <line-width> and of
+     line-height on the value the math function resolves to, not on each
+     operand, so a negative inside calc() reads and a literal one does not. *)
+  check_declaration ~expected:"border-right-width:calc(-1px)"
+    "border-right-width: calc(-1px)";
+  check_declaration ~expected:"outline-width:calc(-1px)"
+    "outline-width: calc(-1px)";
+  check_declaration ~expected:"border-right:calc(-1px) solid red"
+    "border-right: calc(-1px) solid red";
+  check_declaration ~expected:"line-height:calc(-10%)" "line-height: calc(-10%)";
+  neg_cursor read_declaration "border-right-width: -1px";
+  neg_cursor read_declaration "outline-width: -1px";
+  neg_cursor read_declaration "line-height: -10%";
   check_declaration ~expected:"column-rule:medium solid red"
     ~optimized:"column-rule:solid red" "column-rule: medium solid red";
   (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
