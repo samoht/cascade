@@ -4481,7 +4481,7 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
-      "offset-distance: -10%";
+      "offset-distance: -10% -10%";
       "font-size-adjust: from-font 1";
       "font-variant-emoji: smile";
       "initial-letter: 0";

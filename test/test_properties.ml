@@ -5272,7 +5272,11 @@ let spec_generated_text_timeline_edges () =
   neg_cursor read_text_wrap_mode "pretty";
   neg_cursor read_text_wrap_style "nowrap";
   neg_cursor ~allow_partial:true read_timeline_inset "auto auto auto";
-  neg_cursor read_timeline_inset_item "-1px";
+  (* Scroll Animations 1 sec. 3.4.3 gives each item [auto] or a plain
+     [<length-percentage>], with no range restriction, so a negative reads. *)
+  check_value_cursor "timeline_inset_item" read_timeline_inset_item
+    pp_timeline_inset_item "-1px";
+  neg_cursor read_timeline_inset_item "1deg";
   neg_cursor ~allow_partial:true read_timeline_name "none --main";
   neg_cursor ~allow_partial:true read_timeline_shorthand_item "--main z";
   neg_cursor ~allow_partial:true read_view_transition_class "none card";
