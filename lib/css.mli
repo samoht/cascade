@@ -2286,7 +2286,9 @@ val column_span : column_span -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-span}
      column-span} property. *)
 
-(** CSS Multicol 2 sec. 4.1 [column-width]: [auto | <length [0,inf]>]. *)
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-width}
+     [column-width]}: [auto | <length [0,inf]>]. *)
 type column_width = Properties.column_width =
   | Auto
   | Width of length
@@ -2300,7 +2302,9 @@ type column_width = Properties.column_width =
 val column_width : column_width -> declaration
 (** [column_width v] is the [column-width] longhand of {!val-columns}. *)
 
-(** CSS Multicol 2 sec. 4.2 [column-count]: [auto | <integer [1,inf]>]. *)
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-count}
+     [column-count]}: [auto | <integer [1,inf]>]. *)
 type column_count = Properties.column_count =
   | Auto
   | Count of int
@@ -2314,7 +2318,9 @@ type column_count = Properties.column_count =
 val column_count : column_count -> declaration
 (** [column_count v] is the [column-count] longhand of {!val-columns}. *)
 
-(** CSS Multicol 2 sec. 8 [column-height]: [auto | <length [0,inf]>]. *)
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-height}
+     [column-height]}: [auto | <length [0,inf]>]. *)
 type column_height = Properties.column_height =
   | Auto
   | Height of length
@@ -2328,7 +2334,9 @@ type column_height = Properties.column_height =
 val column_height : column_height -> declaration
 (** [column_height v] is the [column-height] property. *)
 
-(** CSS Multicol 2 sec. 8 [column-wrap]: [auto | nowrap | wrap]. *)
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-wrap}
+     [column-wrap]}: [auto | nowrap | wrap]. *)
 type column_wrap = Properties.column_wrap =
   | Auto
   | Nowrap
@@ -5339,8 +5347,9 @@ val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
      text-decoration-skip-ink} property. *)
 
-(** CSS Text Decoration 4 sec. 2.5 [text-decoration-skip]: the shorthand over
-    the four longhands below. *)
+(** CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip}
+     [text-decoration-skip]}: the shorthand over the four longhands below. *)
 type text_decoration_skip = Properties.text_decoration_skip =
   | None
   | Auto
@@ -5421,8 +5430,9 @@ val text_decoration_skip_spaces : text_decoration_skip_spaces -> declaration
 (** [text_decoration_skip_spaces v] is the [text-decoration-skip-spaces]
     property. *)
 
-(** CSS Text Decoration 4 sec. 4.3: one class of character the emphasis marks
-    skip. *)
+(** One class of character the emphasis marks skip, for CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-skip}
+     [text-emphasis-skip]}. *)
 type text_emphasis_skip_keyword = Properties.text_emphasis_skip_keyword =
   | Spaces
   | Punctuation
@@ -5442,8 +5452,9 @@ type text_emphasis_skip = Properties.text_emphasis_skip =
 val text_emphasis_skip : text_emphasis_skip -> declaration
 (** [text_emphasis_skip v] is the [text-emphasis-skip] property. *)
 
-(** CSS Text 4 sec. 3 [white-space-collapse]: how white space and line breaks
-    collapse. *)
+(** CSS Text 4
+    {{:https://drafts.csswg.org/css-text-4/#propdef-white-space-collapse}
+     [white-space-collapse]}: how white space and line breaks collapse. *)
 type white_space_collapse = Properties.white_space_collapse =
   | Collapse
   | Discard
@@ -5464,7 +5475,9 @@ val white_space_collapse : white_space_collapse -> declaration
 val line_height_step : length -> declaration
 (** [line_height_step v] is the [line-height-step] property. *)
 
-(** CSS Fonts 4 sec. 5.4 [font-palette]. *)
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-palette}
+     [font-palette]}. *)
 type font_palette = Properties.font_palette =
   | Normal
   | Light
@@ -5480,14 +5493,18 @@ type font_palette = Properties.font_palette =
 val font_palette : font_palette -> declaration
 (** [font_palette v] is the [font-palette] property. *)
 
-(** CSS Fonts 4 sec. 5.3: one face the browser may synthesise. *)
+(** One face the browser may synthesise, for CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
 type font_synthesis_feature = Properties.font_synthesis_feature =
   | Weight
   | Style
   | Small_caps
   | Position
 
-(** CSS Fonts 4 sec. 5.3 [font-synthesis]. *)
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
 type font_synthesis = Properties.font_synthesis =
   | None
   | Features of font_synthesis_feature list
@@ -5507,7 +5524,9 @@ val font_size_adjust : font_size_adjust -> declaration
 val font_variant_emoji : font_variant_emoji -> declaration
 (** [font_variant_emoji v] is the [font-variant-emoji] property. *)
 
-(** CSS Fonts 4 sec. 6.5: one [font-variant-alternates] feature. *)
+(** One feature of CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
 type font_variant_alternates_item = Properties.font_variant_alternates_item =
   | Stylistic of string
   | Historical_forms
@@ -5517,7 +5536,9 @@ type font_variant_alternates_item = Properties.font_variant_alternates_item =
   | Ornaments of string
   | Annotation of string
 
-(** CSS Fonts 4 sec. 6.5 [font-variant-alternates]. *)
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
 type font_variant_alternates = Properties.font_variant_alternates =
   | Normal
   | Alternates of font_variant_alternates_item list
@@ -5540,9 +5561,13 @@ type font_variant_shorthand = Properties.font_variant_shorthand = {
   position : font_variant_position option;
   emoji : font_variant_emoji option;
 }
-(** CSS Fonts 4 sec. 6.10: the slots of the [font-variant] shorthand. *)
+(** The slots of the CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]} shorthand. *)
 
-(** CSS Fonts 4 sec. 6.10 [font-variant]. *)
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]}. *)
 type font_variant = Properties.font_variant =
   | Normal
   | None
@@ -5563,7 +5588,8 @@ val text_wrap_style : text_wrap_style -> declaration
 val text_box_trim : text_box_trim -> declaration
 (** [text_box_trim v] is the [text-box-trim] property. *)
 
-(** CSS Inline 3 sec. 6.1 [text-box]:
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-text-box} [text-box]}:
     [normal | <'text-box-trim'> || <'text-box-edge'>]. *)
 type text_box = Properties.text_box =
   | Normal
@@ -5587,7 +5613,9 @@ val hyphenate_limit_chars : hyphenate_limit_chars -> declaration
 val initial_letter : initial_letter -> declaration
 (** [initial_letter v] is the [initial-letter] property. *)
 
-(** CSS Inline 3 sec. 8.3: one alignment point of an initial letter. *)
+(** One alignment point of CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
 type initial_letter_align_keyword = Properties.initial_letter_align_keyword =
   | Alphabetic
   | Ideographic
@@ -5595,7 +5623,9 @@ type initial_letter_align_keyword = Properties.initial_letter_align_keyword =
   | Leading
   | Border_box
 
-(** CSS Inline 3 sec. 8.3 [initial-letter-align]. *)
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
 type initial_letter_align = Properties.initial_letter_align =
   | Align of initial_letter_align_keyword list
   | Inherit
@@ -5608,7 +5638,9 @@ type initial_letter_align = Properties.initial_letter_align =
 val initial_letter_align : initial_letter_align -> declaration
 (** [initial_letter_align v] is the [initial-letter-align] property. *)
 
-(** CSS Inline 3 sec. 8.4 [initial-letter-wrap]. *)
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-wrap}
+     [initial-letter-wrap]}. *)
 type initial_letter_wrap = Properties.initial_letter_wrap =
   | None
   | First
@@ -5625,8 +5657,10 @@ type initial_letter_wrap = Properties.initial_letter_wrap =
 val initial_letter_wrap : initial_letter_wrap -> declaration
 (** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
 
-(** CSS Shapes 1 sec. 4 [shape-image-threshold]: the alpha above which a pixel
-    of the shape image is inside the shape. *)
+(** CSS Shapes 1
+    {{:https://drafts.csswg.org/css-shapes-1/#propdef-shape-image-threshold}
+     [shape-image-threshold]}: the alpha above which a pixel of the shape image
+    is inside the shape. *)
 type shape_image_threshold = Properties.shape_image_threshold =
   | Number of float
   | Inherit
@@ -5646,15 +5680,17 @@ val shape_outside : string -> declaration
 (** [shape_outside v] is the [shape-outside] property, held as the authored text
     of its shape. *)
 
-(** CSS Overflow 4 sec. 3.2 [<visual-box>]: the box edge an overflow clip margin
-    is measured from. *)
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#typedef-visual-box} [<visual-box>]}:
+    the box edge an overflow clip margin is measured from. *)
 type overflow_clip_box = Properties.overflow_clip_box =
   | Content_box
   | Padding_box
   | Border_box
 
-(** CSS Overflow 4 sec. 3.2 [overflow-clip-margin]: [<visual-box> || <length>].
-*)
+(** CSS Overflow 4
+    {{:https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin}
+     [overflow-clip-margin]}: [<visual-box> || <length>]. *)
 type overflow_clip_margin = Properties.overflow_clip_margin =
   | Clip_margin of overflow_clip_box option * length option
   | Initial
@@ -5667,7 +5703,9 @@ type overflow_clip_margin = Properties.overflow_clip_margin =
 val overflow_clip_margin : overflow_clip_margin -> declaration
 (** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
 
-(** CSS Scroll Anchoring 1 sec. 3 [overflow-anchor]. *)
+(** CSS Scroll Anchoring 1
+    {{:https://drafts.csswg.org/css-scroll-anchoring-1/#propdef-overflow-anchor}
+     [overflow-anchor]}. *)
 type overflow_anchor = Properties.overflow_anchor =
   | Auto
   | None
@@ -5687,7 +5725,9 @@ val overflow_block : overflow -> declaration
 val overflow_inline : overflow -> declaration
 (** [overflow_inline v] is the [overflow-inline] property. *)
 
-(** CSS Images 4 sec. 5.2 [image-orientation]. *)
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-orientation}
+     [image-orientation]}. *)
 type image_orientation = Properties.image_orientation =
   | None
   | From_image
@@ -5701,7 +5741,9 @@ type image_orientation = Properties.image_orientation =
 val image_orientation : image_orientation -> declaration
 (** [image_orientation v] is the [image-orientation] property. *)
 
-(** CSS Images 3 sec. 5.3 [image-rendering]. *)
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-rendering}
+     [image-rendering]}. *)
 type image_rendering = Properties.image_rendering =
   | Auto
   | Smooth
@@ -5718,15 +5760,17 @@ type image_rendering = Properties.image_rendering =
 val image_rendering : image_rendering -> declaration
 (** [image_rendering v] is the [image-rendering] property. *)
 
-(** CSS Values 4 sec. 7.3 [<resolution>]. *)
+(** CSS Values 4
+    {{:https://drafts.csswg.org/css-values-4/#resolution} [<resolution>]}. *)
 type resolution = Properties.resolution =
   | Dpi of float
   | Dpcm of float
   | Dppx of float
   | X of float
 
-(** CSS Images 4 sec. 5.4 [image-resolution]:
-    [[ from-image || <resolution> ] && snap?]. *)
+(** CSS Images 4
+    {{:https://drafts.csswg.org/css-images-4/#propdef-image-resolution}
+     [image-resolution]}: [[ from-image || <resolution> ] && snap?]. *)
 type image_resolution = Properties.image_resolution =
   | Resolution of resolution
   | From_image
@@ -5744,17 +5788,23 @@ type image_resolution = Properties.image_resolution =
 val image_resolution : image_resolution -> declaration
 (** [image_resolution v] is the [image-resolution] property. *)
 
-(** CSS Box 4 sec. 5 [margin-trim]: one axis whose margins are trimmed. *)
+(** One axis whose margins CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
 type margin_trim_axis = Properties.margin_trim_axis = Block | Inline
 
-(** CSS Box 4 sec. 5: one edge whose margin is trimmed. *)
+(** One edge whose margin CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
 type margin_trim_edge = Properties.margin_trim_edge =
   | Block_start
   | Inline_start
   | Block_end
   | Inline_end
 
-(** CSS Box 4 sec. 5 [margin-trim]. *)
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}.
+*)
 type margin_trim = Properties.margin_trim =
   | None
   | Block
@@ -5771,7 +5821,9 @@ type margin_trim = Properties.margin_trim =
 val margin_trim : margin_trim -> declaration
 (** [margin_trim v] is the [margin-trim] property. *)
 
-(** CSS Position 4 sec. 6.2 [overlay]: whether the box is in the top layer. *)
+(** CSS Positioned Layout 4
+    {{:https://drafts.csswg.org/css-position-4/#propdef-overlay} [overlay]}:
+    whether the box is in the top layer. *)
 type overlay = Properties.overlay =
   | Auto
   | None
@@ -5785,14 +5837,17 @@ type overlay = Properties.overlay =
 val overlay : overlay -> declaration
 (** [overlay v] is the [overlay] property. *)
 
-(** CSS Animations 2 sec. 3.3: how one animation composes with the value beneath
-    it. *)
+(** How one animation composes with the value beneath it, for CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
 type animation_composition_item = Properties.animation_composition_item =
   | Replace
   | Add
   | Accumulate
 
-(** CSS Animations 2 sec. 3.3 [animation-composition]. *)
+(** CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
 type animation_composition = Properties.animation_composition =
   | Compositions of animation_composition_item list
   | Initial
@@ -5805,14 +5860,18 @@ type animation_composition = Properties.animation_composition =
 val animation_composition : animation_composition -> declaration
 (** [animation_composition v] is the [animation-composition] property. *)
 
-(** CSS Values 4 sec. 8.4: one physical edge a [<position>] offsets from. *)
+(** One physical edge a [<position>] offsets from, for CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
 type position_axis_edge = Properties.position_axis_edge =
   | Left
   | Right
   | Top
   | Bottom
 
-(** CSS Backgrounds 4 sec. 3.3: one axis of [background-position]. *)
+(** One axis of CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
 type background_position_axis = Properties.background_position_axis =
   | Center
   | Edge of position_axis_edge
@@ -5844,8 +5903,9 @@ type webkit_text_stroke = Properties.webkit_text_stroke = {
   width : border_width option;
   color : color option;
 }
-(** CSS Text Decoration 4 sec. 6.1 [-webkit-text-stroke]: a width and a colour,
-    either of which may be absent. *)
+(** {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-text-stroke}
+     [-webkit-text-stroke]}: a width and a colour, either of which may be
+    absent. No CSS specification defines it. *)
 
 val webkit_text_stroke : webkit_text_stroke -> declaration
 (** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
@@ -6014,11 +6074,17 @@ val column_rule : border -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-rule}
      column-rule} shorthand property. *)
 
-(** CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated list,
-    one entry per rule line, where {!val-column_rule} writes one. *)
+(** CSS Gaps 1 gives each gap decoration longhand a comma-separated list, one
+    entry per rule line, where {!val-column_rule} writes one.
 
-(** CSS Logical 1 sec. 4.2 gives the flow-relative borders the same shorthand
-    shape the physical ones have. *)
+    @see <https://drafts.csswg.org/css-gaps-1/#propdef-column-rule-style>
+      column-rule-style *)
+
+(** CSS Logical 1 gives the flow-relative borders the same shorthand shape the
+    physical ones have.
+
+    @see <https://drafts.csswg.org/css-logical-1/#propdef-border-block-start>
+      border-block-start *)
 
 val border_block_start : border -> declaration
 (** [border_block_start v] is the [border-block-start] shorthand. *)
@@ -6047,8 +6113,10 @@ val column_rule_color : color list -> declaration
 (** [column_rule_color v] is the [column-rule-color] longhand, one entry per gap
     decoration line. *)
 
-(** CSS Backgrounds 3 sec. 5.2: one [border-image-slice] offset, a number in
-    units of the image's own pixels or a percentage of its size. *)
+(** One offset of CSS Backgrounds 3
+    {{:https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image-slice}
+     [border-image-slice]}, a number in units of the image's own pixels or a
+    percentage of its size. *)
 type border_image_slice_item = Properties.border_image_slice_item =
   | Number of number
   | Pct of float
@@ -6134,8 +6202,9 @@ val border_image_repeat : border_image_repeat -> declaration
 val border_image_source : background_image -> declaration
 (** [border_image_source v] is the [border-image-source] property. *)
 
-(** CSS Masking 1 sec. 8.2 [mask-border-mode]: which channel of the source image
-    is the mask. *)
+(** CSS Masking 1
+    {{:https://drafts.csswg.org/css-masking-1/#propdef-mask-border-mode}
+     [mask-border-mode]}: which channel of the source image is the mask. *)
 type mask_border_mode = Properties.mask_border_mode = Alpha | Luminance
 
 type border_image = Properties.border_image = {
@@ -6146,8 +6215,12 @@ type border_image = Properties.border_image = {
   repeat : border_image_repeat_keyword list option;
   mode : mask_border_mode option;
 }
-(** Sec. 5.6 [border-image] and CSS Masking 1 sec. 8.1 [mask-border], which
-    share every slot but the [mode] only the mask carries. *)
+(** CSS Backgrounds 3
+    {{:https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image}
+     [border-image]} and CSS Masking 1
+    {{:https://drafts.csswg.org/css-masking-1/#propdef-mask-border}
+     [mask-border]}, which share every slot but the [mode] only the mask
+    carries. *)
 
 val border_image : border_image -> declaration
 (** [border_image v] is the [border-image] shorthand. *)
@@ -7641,8 +7714,9 @@ val position_visibility : position_visibility -> declaration
     @see <https://www.w3.org/TR/css-view-transitions-2/>
       CSS View Transitions Module Level 2, which adds [match-element] *)
 
-(** View Transitions 1 sec. 3.1 [view-transition-name], with the [match-element]
-    of Level 2. *)
+(** View Transitions 1
+    {{:https://drafts.csswg.org/css-view-transitions-1/#propdef-view-transition-name}
+     [view-transition-name]}, with the [match-element] of Level 2. *)
 type view_transition_name = Properties.view_transition_name =
   | None
   | Match_element
@@ -7657,8 +7731,9 @@ type view_transition_name = Properties.view_transition_name =
 val view_transition_name : view_transition_name -> declaration
 (** [view_transition_name v] is the [view-transition-name] property. *)
 
-(** View Transitions 2 sec. 3.2 [view-transition-class]:
-    [none | <custom-ident>+]. *)
+(** View Transitions 2
+    {{:https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-class}
+     [view-transition-class]}: [none | <custom-ident>+]. *)
 type view_transition_class = Properties.view_transition_class =
   | None
   | Classes of string list
@@ -7824,13 +7899,17 @@ val container_type : container_type -> declaration
     {!val-Declaration.container}, because {!val-container} at this level is the
     at-rule builder. *)
 
-(** CSS Sizing 4 sec. 5: one axis of [contain-intrinsic-size], a length that the
-    [auto] prefix lets a remembered size override. *)
+(** One axis of CSS Sizing 4
+    {{:https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-size}
+     [contain-intrinsic-size]}, a length that the [auto] prefix lets a
+    remembered size override. *)
 type contain_intrinsic_size_item = Properties.contain_intrinsic_size_item =
   | Length of length
   | Auto of length
 
-(** CSS Sizing 4 sec. 5 [contain-intrinsic-size]: one axis or both. *)
+(** CSS Sizing 4
+    {{:https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-size}
+     [contain-intrinsic-size]}: one axis or both. *)
 type contain_intrinsic_size = Properties.contain_intrinsic_size =
   | None
   | Intrinsic of
@@ -7845,7 +7924,10 @@ type contain_intrinsic_size = Properties.contain_intrinsic_size =
 val contain_intrinsic_size : contain_intrinsic_size -> declaration
 (** [contain_intrinsic_size v] is the [contain-intrinsic-size] shorthand. *)
 
-(** CSS Sizing 4 sec. 5: one axis longhand of {!type-contain_intrinsic_size}. *)
+(** One axis longhand of {!type-contain_intrinsic_size}.
+
+    @see <https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-width>
+      contain-intrinsic-width *)
 type contain_intrinsic_longhand = Properties.contain_intrinsic_longhand =
   | None
   | Size of contain_intrinsic_size_item
@@ -8452,8 +8534,10 @@ val fill : svg_paint -> declaration
 val stroke : svg_paint -> declaration
 (** [stroke paint] is the SVG stroke property. *)
 
-(** SVG 2 sec. 13.5.3 [stroke-width]: [<length-percentage> | <number>], where a
-    bare number is a width in user units rather than a CSS [<length>]. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty}
+     [stroke-width]}: [<length-percentage> | <number>], where a bare number is a
+    width in user units rather than a CSS [<length>]. *)
 type stroke_width = Properties.stroke_width =
   | Number of float  (** A width in user units *)
   | Length of length_percentage
@@ -8467,8 +8551,11 @@ type stroke_width = Properties.stroke_width =
 val stroke_width : stroke_width -> declaration
 (** [stroke_width width] is the SVG stroke-width property. *)
 
-(** SVG 2 sec. 13.4.2 [<fill-rule>]: which points count as inside a shape when
-    its subpaths overlap. Shared by [fill-rule] and [clip-rule]. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty} [fill-rule]}:
+    which points count as inside a shape when its subpaths overlap. CSS Masking
+    1 {{:https://drafts.csswg.org/css-masking-1/#propdef-clip-rule} [clip-rule]}
+    takes the same values. *)
 type fill_rule = Properties.fill_rule =
   | Nonzero
   | Evenodd
@@ -8492,8 +8579,9 @@ val fill_opacity : opacity -> declaration
 val stroke_opacity : opacity -> declaration
 (** [stroke_opacity v] is the SVG [stroke-opacity] property. *)
 
-(** SVG 2 sec. 13.5.4 [stroke-linecap]: the shape at the ends of an open
-    subpath. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty}
+     [stroke-linecap]}: the shape at the ends of an open subpath. *)
 type stroke_linecap = Properties.stroke_linecap =
   | Butt
   | Round
@@ -8508,8 +8596,9 @@ type stroke_linecap = Properties.stroke_linecap =
 val stroke_linecap : stroke_linecap -> declaration
 (** [stroke_linecap v] is the SVG [stroke-linecap] property. *)
 
-(** SVG 2 sec. 13.5.5 [stroke-linejoin]: the shape at a corner between two
-    stroke segments. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty}
+     [stroke-linejoin]}: the shape at a corner between two stroke segments. *)
 type stroke_linejoin = Properties.stroke_linejoin =
   | Miter
   | Miter_clip
@@ -8526,8 +8615,10 @@ type stroke_linejoin = Properties.stroke_linejoin =
 val stroke_linejoin : stroke_linejoin -> declaration
 (** [stroke_linejoin v] is the SVG [stroke-linejoin] property. *)
 
-(** SVG 2 sec. 13.5.5 [stroke-miterlimit]: the ratio past which a miter join
-    falls back to a bevel. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty}
+     [stroke-miterlimit]}: the ratio past which a miter join falls back to a
+    bevel. *)
 type stroke_miterlimit = Properties.stroke_miterlimit =
   | Number of float
   | Calc of stroke_miterlimit calc
@@ -8541,13 +8632,17 @@ type stroke_miterlimit = Properties.stroke_miterlimit =
 val stroke_miterlimit : stroke_miterlimit -> declaration
 (** [stroke_miterlimit v] is the SVG [stroke-miterlimit] property. *)
 
-(** SVG 2 sec. 13.5.6 writes each dash as a [<length-percentage>] or a bare
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty}
+     [stroke-dasharray]} writes each dash as a [<length-percentage>] or a bare
     number in user units, the way {!type-stroke_width} does. *)
 type dash_length = Properties.dash_length =
   | Number of float
   | Length of length_percentage
 
-(** SVG 2 sec. 13.5.6 [stroke-dashoffset]: where the dash pattern starts. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty}
+     [stroke-dashoffset]}: where the dash pattern starts. *)
 type stroke_dashoffset = Properties.stroke_dashoffset =
   | Dash of dash_length
   | Inherit
@@ -8560,7 +8655,9 @@ type stroke_dashoffset = Properties.stroke_dashoffset =
 val stroke_dashoffset : stroke_dashoffset -> declaration
 (** [stroke_dashoffset v] is the SVG [stroke-dashoffset] property. *)
 
-(** SVG 2 sec. 13.5.6 [stroke-dasharray]: the dash and gap lengths. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty}
+     [stroke-dasharray]}: the dash and gap lengths. *)
 type stroke_dasharray = Properties.stroke_dasharray =
   | None
   | Dashes of dash_length list
@@ -8574,14 +8671,17 @@ type stroke_dasharray = Properties.stroke_dasharray =
 val stroke_dasharray : stroke_dasharray -> declaration
 (** [stroke_dasharray v] is the SVG [stroke-dasharray] property. *)
 
-(** SVG 2 sec. 13.7 [paint-order]: one of the three painting operations. *)
+(** One of the three painting operations SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#PaintOrderProperty}
+     [paint-order]} orders. *)
 type paint_order_keyword = Properties.paint_order_keyword =
   | Fill
   | Stroke
   | Markers
 
-(** SVG 2 sec. 13.7 [paint-order]: the order fill, stroke and markers paint in.
-*)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/painting.html#PaintOrderProperty}
+     [paint-order]}: the order fill, stroke and markers paint in. *)
 type paint_order = Properties.paint_order =
   | Normal
   | Order of paint_order_keyword list
@@ -8595,17 +8695,23 @@ type paint_order = Properties.paint_order =
 val paint_order : paint_order -> declaration
 (** [paint_order v] is the SVG [paint-order] property. *)
 
-(** SVG 2 sec. 7.10 [vector-effect]: one effect the transform does not scale. *)
+(** One effect the transform does not scale, for SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]}. *)
 type vector_effect_keyword = Properties.vector_effect_keyword =
   | Non_scaling_stroke
   | Non_scaling_size
   | Non_rotation
   | Fixed_position
 
-(** SVG 2 sec. 7.10: the coordinate space an effect is taken against. *)
+(** The coordinate space an SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]} effect is taken against. *)
 type vector_effect_space = Properties.vector_effect_space = Viewport | Screen
 
-(** SVG 2 sec. 7.10 [vector-effect]. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/coords.html#VectorEffectProperty}
+     [vector-effect]}. *)
 type vector_effect = Properties.vector_effect =
   | None
   | Effects of vector_effect_keyword list * vector_effect_space option
@@ -8635,7 +8741,9 @@ val lighting_color : color -> declaration
 (** [lighting_color v] is the SVG [lighting-color] property of a light filter.
 *)
 
-(** CSS Inline 3 sec. 5.2 [dominant-baseline]: [auto | <baseline-metric>]. *)
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-dominant-baseline}
+     [dominant-baseline]}: [auto | <baseline-metric>]. *)
 type dominant_baseline = Properties.dominant_baseline =
   | Auto
   | Alphabetic
@@ -8655,8 +8763,10 @@ type dominant_baseline = Properties.dominant_baseline =
 val dominant_baseline : dominant_baseline -> declaration
 (** [dominant_baseline v] is the [dominant-baseline] property. *)
 
-(** SVG 2 sec. 10.9.2 [alignment-baseline]: the baseline of the box aligned
-    against its parent's dominant baseline. *)
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/text.html#AlignmentBaselineProperty}
+     [alignment-baseline]}: the baseline of the box aligned against its parent's
+    dominant baseline. *)
 type alignment_baseline = Properties.alignment_baseline =
   | Baseline
   | Text_bottom
@@ -8677,7 +8787,9 @@ type alignment_baseline = Properties.alignment_baseline =
 val alignment_baseline : alignment_baseline -> declaration
 (** [alignment_baseline v] is the [alignment-baseline] property. *)
 
-(** CSS Inline 3 sec. 4.2.3 [baseline-shift]:
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-shift}
+     [baseline-shift]}:
     [<length-percentage> | sub | super | top | center | bottom]. *)
 type baseline_shift = Properties.baseline_shift =
   | Shift of length_percentage
@@ -8696,8 +8808,9 @@ type baseline_shift = Properties.baseline_shift =
 val baseline_shift : baseline_shift -> declaration
 (** [baseline_shift v] is the [baseline-shift] property. *)
 
-(** CSS Inline 3 sec. 5.3 [baseline-source]: which line box baseline an inline
-    block aligns on. *)
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-source}
+     [baseline-source]}: which line box baseline an inline block aligns on. *)
 type baseline_source = Properties.baseline_source =
   | Auto
   | First
@@ -8830,9 +8943,10 @@ type view_timeline_shorthand = Properties.view_timeline_shorthand =
   | Revert_layer
   | Var of view_timeline_shorthand var
 
-(** Scroll-driven Animations 1 sec. 4 [<timeline-name>]:
-    [none | <dashed-ident>#]. Shared by [scroll-timeline-name],
-    [view-timeline-name] and [timeline-scope]. *)
+(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
+    [view-timeline-name] and Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}. *)
 type timeline_name = Properties.timeline_name =
   | None
   | Names of string list
@@ -8843,7 +8957,9 @@ type timeline_name = Properties.timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-(** Scroll-driven Animations 1 sec. 5.2: one edge of [view-timeline-inset]. *)
+(** One edge of Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset}
+     [view-timeline-inset]}. *)
 type timeline_inset_item = Properties.timeline_inset_item =
   | Auto
   | Length of length_percentage
