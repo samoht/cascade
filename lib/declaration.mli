@@ -1150,6 +1150,183 @@ val view_timeline_inset : timeline_inset -> declaration
 val timeline_scope : timeline_name -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
+val moz_user_select : user_select -> declaration
+(** [moz_user_select v] is the [-moz-user-select] property. *)
+
+val ms_user_select : user_select -> declaration
+(** [ms_user_select v] is the [-ms-user-select] property. *)
+
+val webkit_text_fill_color : color -> declaration
+(** [webkit_text_fill_color v] is the [-webkit-text-fill-color] property. *)
+
+val webkit_text_stroke_width : border_width -> declaration
+(** [webkit_text_stroke_width v] is the [-webkit-text-stroke-width] property. *)
+
+val webkit_text_stroke_color : color -> declaration
+(** [webkit_text_stroke_color v] is the [-webkit-text-stroke-color] property. *)
+
+val webkit_transform : transform list -> declaration
+(** [webkit_transform v] is the [-webkit-transform] property. *)
+
+val moz_transform : transform list -> declaration
+(** [moz_transform v] is the [-moz-transform] property. *)
+
+val ms_transform : transform list -> declaration
+(** [ms_transform v] is the [-ms-transform] property. *)
+
+val o_transform : transform list -> declaration
+(** [o_transform v] is the [-o-transform] property. *)
+
+val webkit_transition : transition list -> declaration
+(** [webkit_transition v] is the [-webkit-transition] property. *)
+
+val webkit_transition_delay : duration -> declaration
+(** [webkit_transition_delay v] is the [-webkit-transition-delay] property. *)
+
+val webkit_transition_duration : duration -> declaration
+(** [webkit_transition_duration v] is the [-webkit-transition-duration]
+    property. *)
+
+val webkit_transition_property : transition_property -> declaration
+(** [webkit_transition_property v] is the [-webkit-transition-property]
+    property. *)
+
+val webkit_transition_timing_function : timing_function -> declaration
+(** [webkit_transition_timing_function v] is the
+    [-webkit-transition-timing-function] property. *)
+
+val webkit_animation : animation list -> declaration
+(** [webkit_animation v] is the [-webkit-animation] property. *)
+
+val webkit_animation_delay : duration -> declaration
+(** [webkit_animation_delay v] is the [-webkit-animation-delay] property. *)
+
+val webkit_animation_duration : duration -> declaration
+(** [webkit_animation_duration v] is the [-webkit-animation-duration] property.
+*)
+
+val webkit_animation_direction : animation_direction -> declaration
+(** [webkit_animation_direction v] is the [-webkit-animation-direction]
+    property. *)
+
+val webkit_animation_iteration_count : animation_iteration_count -> declaration
+(** [webkit_animation_iteration_count v] is the
+    [-webkit-animation-iteration-count] property. *)
+
+val webkit_animation_name : animation_name -> declaration
+(** [webkit_animation_name v] is the [-webkit-animation-name] property. *)
+
+val webkit_animation_timing_function : timing_function -> declaration
+(** [webkit_animation_timing_function v] is the
+    [-webkit-animation-timing-function] property. *)
+
+val webkit_animation_fill_mode : animation_fill_mode -> declaration
+(** [webkit_animation_fill_mode v] is the [-webkit-animation-fill-mode]
+    property. *)
+
+val webkit_animation_play_state : animation_play_state -> declaration
+(** [webkit_animation_play_state v] is the [-webkit-animation-play-state]
+    property. *)
+
+val webkit_flex_direction : flex_direction -> declaration
+(** [webkit_flex_direction v] is the [-webkit-flex-direction] property. *)
+
+val webkit_flex_wrap : flex_wrap -> declaration
+(** [webkit_flex_wrap v] is the [-webkit-flex-wrap] property. *)
+
+val webkit_flex_flow : flex_flow -> declaration
+(** [webkit_flex_flow v] is the [-webkit-flex-flow] property. *)
+
+val webkit_justify_content : justify_content -> declaration
+(** [webkit_justify_content v] is the [-webkit-justify-content] property. *)
+
+val webkit_align_items : align_items -> declaration
+(** [webkit_align_items v] is the [-webkit-align-items] property. *)
+
+val webkit_align_content : align_content -> declaration
+(** [webkit_align_content v] is the [-webkit-align-content] property. *)
+
+val webkit_align_self : align_self -> declaration
+(** [webkit_align_self v] is the [-webkit-align-self] property. *)
+
+val webkit_border_radius : border_radius -> declaration
+(** [webkit_border_radius v] is the [-webkit-border-radius] property. *)
+
+val webkit_box_sizing : box_sizing -> declaration
+(** [webkit_box_sizing v] is the [-webkit-box-sizing] property. *)
+
+val moz_box_sizing : box_sizing -> declaration
+(** [moz_box_sizing v] is the [-moz-box-sizing] property. *)
+
+val webkit_box_shadow : shadow -> declaration
+(** [webkit_box_shadow v] is the [-webkit-box-shadow] property. *)
+
+val webkit_background_size : background_size -> declaration
+(** [webkit_background_size v] is the [-webkit-background-size] property. *)
+
+val webkit_filter : filter -> declaration
+(** [webkit_filter v] is the [-webkit-filter] property. *)
+
+val moz_appearance : appearance -> declaration
+(** [moz_appearance v] is the [-moz-appearance] property. *)
+
+val moz_animation : animation list -> declaration
+(** [moz_animation v] is the [-moz-animation] property. *)
+
+val moz_animation_delay : duration -> declaration
+(** [moz_animation_delay v] is the [-moz-animation-delay] property. *)
+
+val moz_animation_duration : duration -> declaration
+(** [moz_animation_duration v] is the [-moz-animation-duration] property. *)
+
+val moz_animation_direction : animation_direction -> declaration
+(** [moz_animation_direction v] is the [-moz-animation-direction] property. *)
+
+val moz_animation_iteration_count : animation_iteration_count -> declaration
+(** [moz_animation_iteration_count v] is the [-moz-animation-iteration-count]
+    property. *)
+
+val moz_animation_name : animation_name -> declaration
+(** [moz_animation_name v] is the [-moz-animation-name] property. *)
+
+val moz_animation_timing_function : timing_function -> declaration
+(** [moz_animation_timing_function v] is the [-moz-animation-timing-function]
+    property. *)
+
+val moz_animation_fill_mode : animation_fill_mode -> declaration
+(** [moz_animation_fill_mode v] is the [-moz-animation-fill-mode] property. *)
+
+val moz_animation_play_state : animation_play_state -> declaration
+(** [moz_animation_play_state v] is the [-moz-animation-play-state] property. *)
+
+val moz_transition : transition list -> declaration
+(** [moz_transition v] is the [-moz-transition] property. *)
+
+val moz_transition_delay : duration -> declaration
+(** [moz_transition_delay v] is the [-moz-transition-delay] property. *)
+
+val moz_transition_duration : duration -> declaration
+(** [moz_transition_duration v] is the [-moz-transition-duration] property. *)
+
+val moz_transition_property : transition_property -> declaration
+(** [moz_transition_property v] is the [-moz-transition-property] property. *)
+
+val moz_transition_timing_function : timing_function -> declaration
+(** [moz_transition_timing_function v] is the [-moz-transition-timing-function]
+    property. *)
+
+val moz_border_radius : border_radius -> declaration
+(** [moz_border_radius v] is the [-moz-border-radius] property. *)
+
+val moz_box_shadow : shadow -> declaration
+(** [moz_box_shadow v] is the [-moz-box-shadow] property. *)
+
+val ms_filter : filter -> declaration
+(** [ms_filter v] is the [-ms-filter] property. *)
+
+val o_transition : transition list -> declaration
+(** [o_transition v] is the [-o-transition] property. *)
+
 val all : css_wide -> declaration
 (** [all v] is the [all] property. It resets every longhand to [v] but the two
     writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)

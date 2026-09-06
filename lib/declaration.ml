@@ -3112,6 +3112,73 @@ let view_timeline_name value = v View_timeline_name value
 let view_timeline_axis value = v View_timeline_axis value
 let view_timeline_inset value = v View_timeline_inset value
 let timeline_scope value = v Timeline_scope value
+let moz_user_select value = v Moz_user_select value
+let ms_user_select value = v Ms_user_select value
+let webkit_text_fill_color value = v Webkit_text_fill_color value
+let webkit_text_stroke_width value = v Webkit_text_stroke_width value
+let webkit_text_stroke_color value = v Webkit_text_stroke_color value
+let webkit_transform value = v Webkit_transform value
+let moz_transform value = v Moz_transform value
+let ms_transform value = v Ms_transform value
+let o_transform value = v O_transform value
+let webkit_transition value = v Webkit_transition value
+let webkit_transition_delay value = v Webkit_transition_delay value
+let webkit_transition_duration value = v Webkit_transition_duration value
+let webkit_transition_property value = v Webkit_transition_property value
+
+let webkit_transition_timing_function value =
+  v Webkit_transition_timing_function value
+
+let webkit_animation value = v Webkit_animation value
+let webkit_animation_delay value = v Webkit_animation_delay value
+let webkit_animation_duration value = v Webkit_animation_duration value
+let webkit_animation_direction value = v Webkit_animation_direction value
+
+let webkit_animation_iteration_count value =
+  v Webkit_animation_iteration_count value
+
+let webkit_animation_name value = v Webkit_animation_name value
+
+let webkit_animation_timing_function value =
+  v Webkit_animation_timing_function value
+
+let webkit_animation_fill_mode value = v Webkit_animation_fill_mode value
+let webkit_animation_play_state value = v Webkit_animation_play_state value
+let webkit_flex_direction value = v Webkit_flex_direction value
+let webkit_flex_wrap value = v Webkit_flex_wrap value
+let webkit_flex_flow value = v Webkit_flex_flow value
+let webkit_justify_content value = v Webkit_justify_content value
+let webkit_align_items value = v Webkit_align_items value
+let webkit_align_content value = v Webkit_align_content value
+let webkit_align_self value = v Webkit_align_self value
+let webkit_border_radius value = v Webkit_border_radius value
+let webkit_box_sizing value = v Webkit_box_sizing value
+let moz_box_sizing value = v Moz_box_sizing value
+let webkit_box_shadow value = v Webkit_box_shadow value
+let webkit_background_size value = v Webkit_background_size value
+let webkit_filter value = v Webkit_filter value
+let moz_appearance value = v Moz_appearance value
+let moz_animation value = v Moz_animation value
+let moz_animation_delay value = v Moz_animation_delay value
+let moz_animation_duration value = v Moz_animation_duration value
+let moz_animation_direction value = v Moz_animation_direction value
+let moz_animation_iteration_count value = v Moz_animation_iteration_count value
+let moz_animation_name value = v Moz_animation_name value
+let moz_animation_timing_function value = v Moz_animation_timing_function value
+let moz_animation_fill_mode value = v Moz_animation_fill_mode value
+let moz_animation_play_state value = v Moz_animation_play_state value
+let moz_transition value = v Moz_transition value
+let moz_transition_delay value = v Moz_transition_delay value
+let moz_transition_duration value = v Moz_transition_duration value
+let moz_transition_property value = v Moz_transition_property value
+
+let moz_transition_timing_function value =
+  v Moz_transition_timing_function value
+
+let moz_border_radius value = v Moz_border_radius value
+let moz_box_shadow value = v Moz_box_shadow value
+let ms_filter value = v Ms_filter value
+let o_transition value = v O_transition value
 let outline_style o = v Outline_style o
 let outline_width len = v Outline_width len
 let outline_color c = v Outline_color c

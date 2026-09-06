@@ -846,6 +846,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the vendor-prefixed longhands its `{2:vendor_specific}` section
+  documents: the `-webkit-`, `-moz-`, `-ms-` and `-o-` transform, transition,
+  animation, flexbox, box-sizing, border-radius, box-shadow, filter,
+  background-size, text-stroke, appearance and user-select spellings, each
+  taking the value type its unprefixed counterpart takes (#1036)
+
 - `Css` builds the scroll-driven animation properties: `animation_timeline`,
   `animation_range`, `animation_range_start`, `animation_range_end`,
   `scroll_timeline`, `scroll_timeline_name`, `scroll_timeline_axis`,
