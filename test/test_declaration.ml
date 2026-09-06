@@ -3712,6 +3712,23 @@ let spec_break3_page_break_var () =
         "page-break-inside: avoid",
         "break-inside:avoid" );
       ("page-break-inside: auto", "page-break-inside: auto", "break-inside:auto");
+      (* CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, and
+         the alias and its target take each one alike. *)
+      ( "page-break-after: initial",
+        "page-break-after: initial",
+        "break-after:initial" );
+      ( "page-break-before: unset",
+        "page-break-before: unset",
+        "break-before:unset" );
+      ( "page-break-after: revert",
+        "page-break-after: revert",
+        "break-after:revert" );
+      ( "page-break-inside: revert-layer",
+        "page-break-inside: revert-layer",
+        "break-inside:revert-layer" );
+      ( "page-break-inside: inherit",
+        "page-break-inside: inherit",
+        "break-inside:inherit" );
     ];
   (* The [var()] declaration is the property it names, not an opaque one that
      happens to spell the same: it answers [same_property] against a keyword
