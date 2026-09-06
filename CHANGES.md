@@ -316,6 +316,11 @@ to lose a whole rule over one bad piece. Both are gone.
   `or` branch and a negated capability test no longer lose their rules (#867,
   #869)
 
+- A `@media` prelude replaces only the query of the list that fails, so
+  `@media ,(min-width: 10px)` still guards its rules on the width. Media Queries
+  4 sec. 3.2 replaces one entry at a time; cascade collapsed the whole list to
+  `not all`, and the rules under it matched nothing (#977)
+
 - A selector no browser can match is dropped rather than written back, in a
   nested rule's prelude as well as at top level, and a pseudo-element that
   carries structure keeps the compounds it allows:

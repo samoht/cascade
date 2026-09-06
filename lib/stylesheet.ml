@@ -3614,15 +3614,17 @@ let read_layer_name (r : Cursor.t) : layer_name = read_layer_name_component r
 (* Media Queries 5 sec. 3.2: "A media query that does not match the grammar
    [...] must be replaced by not all during parsing", so a prelude the reader
    refuses leaves the rule standing and matching nothing rather than taking the
-   rule and its contents with it. The query is still lost, so it is reported:
-   the recovery is {!Error.Recovery.Recovered}, the rule surviving. *)
+   rule and its contents with it. The replacement is per entry of the list,
+   which the recovering read does; the strict one runs first for the error to
+   report, since the recovery is {!Error.Recovery.Recovered}, the rule
+   surviving. *)
 let read_nested_media_condition t =
   if Cursor.is_done t then Media.List []
   else
     try Media.read ~recover:false t
     with Error.Parse_error e when Cursor.recover t ->
       Cursor.push_warning t ~recovery:Error.Recovery.Recovered e;
-      Media.of_string "not all"
+      Media.read ~recover:true t
 
 let read_rule_selector ?(nested = false) r =
   let prelude = Cursor.drain_until_block r in
