@@ -781,6 +781,19 @@ module Var_residual = struct
         default = Option.map (simplify ~authored:false ~visited) var.default;
       }
     in
+    (* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+       property "its usual meaning", so the binding is what the cascade makes of
+       the keyword against the element the sheet is read for, and never the
+       keyword's own tokens. This resolver has no element, so such a binding
+       holds no value it can put in place of the reference. *)
+    let css_wide_binding decl =
+      match
+        String.lowercase_ascii
+          (String.trim (Declaration.string_of_value ~minify:true decl))
+      with
+      | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+      | _ -> false
+    in
     let lookup_parsed name =
       match Hashtbl.find_opt parsed_custom name with
       | Some value -> value
@@ -788,7 +801,8 @@ module Var_residual = struct
           let value =
             Option.bind
               (lookup_custom_property ?layer ?layer_order cascade name)
-              read_custom
+              (fun decl ->
+                if css_wide_binding decl then Option.None else read_custom decl)
           in
           Hashtbl.add parsed_custom name value;
           value
@@ -802,6 +816,17 @@ module Var_residual = struct
       | Values.Empty | Values.Empty2 | Values.None | Values.Syntax_fallback _
       | Values.Var_fallback _ ->
           None
+    in
+    (* CSS Variables 1 sec. 3 replaces a [var()] with the custom property's
+       value "if the value of the custom property ... is anything but the
+       initial value", and puts the fallback in only where it is not. A binding
+       this reader cannot make a value of - an empty token stream, a stream the
+       property's grammar refuses - is one of the former, so the declaration is
+       invalid at computed-value time and the fallback is no answer to it. *)
+    let unreadable name =
+      match lookup_custom_property ?layer ?layer_order cascade name with
+      | None -> false
+      | Some _ -> Option.is_none (lookup_parsed name)
     in
     let resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
@@ -817,6 +842,11 @@ module Var_residual = struct
         match lookup_parsed var.name with
         | Some value ->
             Some (simplify ~authored:false ~visited:(var.name :: visited) value)
+        | None when unreadable var.name ->
+            (* The binding is there and holds no value for this property, so the
+               declaration is invalid at computed-value time and the fallback is
+               no answer to it. *)
+            None
         | None -> (
             (* Typed [default] supplied by [Css.var ~default:...] is the
                authoritative compile-time value of the variable, so it wins over
@@ -827,12 +857,12 @@ module Var_residual = struct
                 Some (simplify ~authored:false ~visited:(var.name :: visited) d)
             | None -> resolve_fallback_value ~simplify ~visited var)
     in
-    f ~resolve_var ~simplify_var_record
+    f ~resolve_var ~simplify_var_record ~unreadable
 
   let simplify (type a) ?layer_order ?layer cascade (ops : a ops) (value : a) :
       a =
     with_resolver ?layer_order ?layer cascade ~read_custom:ops.read_custom
-    @@ fun ~resolve_var ~simplify_var_record ->
+    @@ fun ~resolve_var ~simplify_var_record ~unreadable ->
     let rec on_var_residual ~visited (var : a Values.var) result =
       match var.fallback with
       | Values.Fallback fb -> simplify ~authored:false ~visited fb
@@ -861,6 +891,11 @@ module Var_residual = struct
         | Some result when ops.as_var result <> None ->
             on_var_residual ~visited var result
         | Some result -> result
+        | None when unreadable var.name ->
+            (* The binding is there and holds no value for this property, so the
+               declaration is invalid at computed-value time. Leave the residual
+               rather than answering with the fallback. *)
+            ops.of_var (simplify_var_record ~simplify ~visited var)
         | None -> on_var_unresolved ~visited var
     and simplify ~authored ~visited value =
       match ops.as_var value with
@@ -1109,7 +1144,9 @@ module Calc_residual = struct
       (ops : a ops) (value : a) : a =
     Var_residual.with_resolver ?resolve_fallback ?layer_order ?layer cascade
       ~read_custom:ops.read_custom
-    @@ fun ~resolve_var ~simplify_var_record ->
+    @@ fun ~resolve_var ~simplify_var_record ~unreadable:_ ->
+    (* A calc leaf already leaves the residual where the reference does not
+       resolve, whatever the reason, so it needs no separate answer. *)
     run_simplify ops ~resolve_var ~simplify_var_record value
 end
 

@@ -347,6 +347,13 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A `var()` whose custom property the evaluator cannot read a value from keeps
+  its reference rather than taking its fallback: an empty binding, one the
+  property's grammar refuses, and a CSS-wide keyword, whose meaning CSS
+  Variables 1 sec. 2.1 leaves to the cascade. Sec. 3 puts the fallback in only
+  for a property holding its guaranteed-invalid initial value, so
+  `Css.eval_stylesheet` measured `8px` where the browser lays out `auto` (#991)
+
 - `Css.Declaration.parse_custom_property` takes the empty value, the one CSS
   Variables 1 sec. 2 gives a custom property alongside every
   `<declaration-value>`, so it now accepts the pairs `custom_property` accepts
