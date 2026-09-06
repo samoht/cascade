@@ -428,6 +428,10 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `overflow-clip-margin: -1px` reads where it was dropped with a warning. CSS
+  Overflow 4 sec. 3.2 is `<visual-box> || <length>` with no range on the
+  length, and a negative one pulls the clip edge inside the box (#1026)
+
 - `text-box: auto` reads where it was dropped with a warning. CSS Inline 3
   sec. 4.4 gives `text-box-edge` the value `auto | <text-edge>`, so `auto` is
   one half of the sec. 6.1 shorthand rather than a keyword the longhand keeps

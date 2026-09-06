@@ -608,13 +608,16 @@ let read_overflow_clip_box_item (box : overflow_clip_box option ref) t =
           false)
   | Some _ -> false
 
+(* CSS Overflow 4 sec. 3.2 spells [overflow-clip-margin] as [<visual-box> ||
+   <length>], with no range on the length, so a negative one pulls the clip edge
+   inside the box. *)
 let read_overflow_clip_length_item (length : length option ref) t =
   Cursor.ws t;
   match !length with
   | None ->
       length :=
         Some
-          (read_length ~allow_negative:false ~with_keywords:false
+          (read_length ~allow_negative:true ~with_keywords:false
              ~length_only:true t);
       true
   | Some _ -> false
