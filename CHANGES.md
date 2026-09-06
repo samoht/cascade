@@ -24,6 +24,11 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.flex_wrap` gains `Balance` and `Wrap_reverse_balance`, so
+  `flex-wrap: balance` reads where it was dropped with a warning. CSS Flexbox 2
+  sec. 5.2 spells the property `nowrap | [ wrap | wrap-reverse ] || balance`.
+  Exhaustive visitors must handle the two new leaves (#1018)
+
 - `Cascade.Properties.align_content` drops `Left`, `Right` and their four
   `Safe_`/`Unsafe_` spellings, which CSS Box Alignment 3 sec. 4.2 keeps out of
   `<content-position>`, and `justify_content` gains the `Safe_left` and

@@ -281,10 +281,16 @@ type flex_direction =
   | Revert_layer
   | Var of flex_direction var
 
+(** CSS Flexbox 2 sec. 5.2 [flex-wrap]:
+    [nowrap | [ wrap | wrap-reverse ] || balance]. [wrap] is the direction
+    [balance] carries on its own, so [Balance] is both [balance] and the
+    [wrap balance] that means the same thing. *)
 type flex_wrap =
   | Nowrap
   | Wrap
   | Wrap_reverse
+  | Balance
+  | Wrap_reverse_balance
   | Inherit
   | Initial
   | Unset

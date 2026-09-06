@@ -1,7 +1,0 @@
-a{animation:--scroller block}
-b{animation:block}
-c{animation:--scroller}
-d{animation:--scroller inline}
-e{animation:--scroller x}
-f{animation:--scroller y}
-g{animation:--a --b}

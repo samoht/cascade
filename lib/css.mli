@@ -3417,6 +3417,8 @@ type flex_wrap = Properties.flex_wrap =
   | Nowrap
   | Wrap
   | Wrap_reverse
+  | Balance
+  | Wrap_reverse_balance
   | Inherit
   | Initial
   | Unset

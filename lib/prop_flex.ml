@@ -147,6 +147,8 @@ let rec pp_flex_wrap : flex_wrap Pp.t =
   | Nowrap -> Pp.string ctx "nowrap"
   | Wrap -> Pp.string ctx "wrap"
   | Wrap_reverse -> Pp.string ctx "wrap-reverse"
+  | Balance -> Pp.string ctx "balance"
+  | Wrap_reverse_balance -> Pp.string ctx "wrap-reverse balance"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -330,12 +332,34 @@ let rec read_order t : order =
     ~default:(fun t -> (Int (Cursor.int t) : order))
     t
 
+(* [[ wrap | wrap-reverse ] || balance] is order-free and takes each side at
+   most once, so the pair reads either way round and [balance] alone stands for
+   [wrap balance]. *)
+let read_flex_wrap_balance_pair t : flex_wrap =
+  let direction = ref Option.None and balance = ref false in
+  let rec loop seen =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "balance" when not !balance ->
+        let _ = Cursor.ident t in
+        balance := true;
+        loop true
+    | Some (("wrap" | "wrap-reverse") as d) when Option.is_none !direction ->
+        let _ = Cursor.ident t in
+        direction := Option.Some d;
+        loop true
+    | _ -> if not seen then Cursor.err_expected t "flex-wrap"
+  in
+  loop false;
+  if not !balance then Cursor.err_expected t "balance";
+  match !direction with
+  | Option.Some "wrap-reverse" -> Wrap_reverse_balance
+  | _ -> Balance
+
 let rec read_flex_wrap t : flex_wrap =
   Cursor.enum_or_var "flex-wrap"
     [
       ("nowrap", (Nowrap : flex_wrap));
-      ("wrap", Wrap);
-      ("wrap-reverse", Wrap_reverse);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -343,6 +367,16 @@ let rec read_flex_wrap t : flex_wrap =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_flex_wrap t))
+    ~default:(fun t ->
+      Cursor.one_of
+        [
+          read_flex_wrap_balance_pair;
+          (fun t ->
+            Cursor.enum "flex-wrap"
+              [ ("wrap", (Wrap : flex_wrap)); ("wrap-reverse", Wrap_reverse) ]
+              t);
+        ]
+        t)
     t
 
 let read_flex_flow_direction t : flex_direction =
@@ -356,11 +390,17 @@ let read_flex_flow_direction t : flex_direction =
     t
 
 let read_flex_flow_wrap t : flex_wrap =
-  Cursor.enum "flex-flow wrap"
+  Cursor.one_of
     [
-      ("nowrap", (Nowrap : flex_wrap));
-      ("wrap", Wrap);
-      ("wrap-reverse", Wrap_reverse);
+      read_flex_wrap_balance_pair;
+      (fun t ->
+        Cursor.enum "flex-flow wrap"
+          [
+            ("nowrap", (Nowrap : flex_wrap));
+            ("wrap", Wrap);
+            ("wrap-reverse", Wrap_reverse);
+          ]
+          t);
     ]
     t
 
