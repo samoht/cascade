@@ -33,6 +33,18 @@ let normalize_animation_range : animation_range -> animation_range =
              option_map_preserve normalize_animation_range_item b ))
   | other -> other
 
+(* Sec. 3.4 gives the count a plain [<number>], so a static math function on it
+   folds like any other. *)
+let rec normalize_animation_iteration_count ~ctx :
+    animation_iteration_count -> animation_iteration_count =
+ fun value ->
+  match value with
+  | Count n -> preserve_if_equal value (Count (Values.normalize_number ~ctx n))
+  | Counts counts ->
+      preserve_if_equal value
+        (Counts (map_preserve (normalize_animation_iteration_count ~ctx) counts))
+  | other -> other
+
 let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
  fun value ->
   match value with
@@ -85,7 +97,7 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Counts counts ->
       Pp.list ~sep:Pp.comma pp_animation_iteration_count ctx counts
   | Infinite -> Pp.string ctx "infinite"
-  | Num n -> Pp.float ctx n
+  | Count n -> Values.pp_number ctx n
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -1210,16 +1222,25 @@ let rec read_animation_fill_mode t : animation_fill_mode =
       | values -> Fill_modes values)
     t
 
-let read_animation_count_number t =
-  let n, unit = Cursor.number_with_unit t in
-  match unit with
-  | Some u ->
-      Cursor.err_invalid t
-        ("animation-iteration-count must be unitless, got: " ^ u)
-  | None ->
-      if n < 0. then
-        Cursor.err_invalid t "animation-iteration-count cannot be negative";
-      Num n
+(* Sec. 3.4 gives the count a [<number [0,inf]>]. A [calc()] holds no value to
+   compare, so only a literal is turned away here. Each count is one component
+   of a comma list, and the whole-value number reader refuses anything after the
+   number it read, so the component is handed to it on its own. *)
+let read_animation_count_number t : animation_iteration_count =
+  match Cursor.peek t with
+  | Some (Component.Func _ as component) ->
+      let _ = Cursor.next t in
+      Count (Values.read_number (Cursor.of_components [ component ]))
+  | _ ->
+      let n, unit = Cursor.number_with_unit t in
+      (match unit with
+      | Some u ->
+          Cursor.err_invalid t
+            ("animation-iteration-count must be unitless, got: " ^ u)
+      | None ->
+          if n < 0. then
+            Cursor.err_invalid t "animation-iteration-count cannot be negative");
+      Count (Num n)
 
 let read_animation_count_item t =
   Cursor.enum "animation-iteration-count-item"
@@ -1447,7 +1468,7 @@ module Animation = struct
       (* CSS default: ease *)
       delay = Some (S 0.0);
       (* CSS default: 0s *)
-      iteration_count = Some (Num 1.0);
+      iteration_count = Some (Count (Num 1.0));
       (* CSS default: 1 *)
       direction = Some Normal;
       (* CSS default: normal *)
@@ -1651,7 +1672,7 @@ module Animation = struct
     | Some tf -> not (is_default_timing tf)
 
   let is_iteration : animation_iteration_count option -> bool = function
-    | Some (Num 1.) | None -> false
+    | Some (Count (Num 1.)) | None -> false
     | Some _ -> true
 
   let is_direction : animation_direction option -> bool = function
@@ -1728,8 +1749,8 @@ module Animation = struct
   let iteration ?(quote_name = false) (anim : animation_shorthand) :
       animation_iteration_count option =
     match (anim.iteration_count, effective_ambiguous_kind ~quote_name anim) with
-    | (Some (Num 1.) | None), Some Iteration -> Some (Num 1.)
-    | Some (Num 1.), _ | None, _ -> None
+    | (Some (Count (Num 1.)) | None), Some Iteration -> Some (Count (Num 1.))
+    | Some (Count (Num 1.)), _ | None, _ -> None
     | Some c, _ -> Some c
 
   let direction ?(quote_name = false) (anim : animation_shorthand) :
