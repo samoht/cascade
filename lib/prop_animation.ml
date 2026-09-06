@@ -954,13 +954,12 @@ let rec read_transition_property_value t : transition_property_value =
   in
   let read_property_ident t =
     let name = Cursor.ident ~keep_case:true t in
-    (* CSS Transitions 1 section 2.1: [transition-property] is a
-       [<custom-ident>], so it excludes keywords reserved for other slots of the
-       [transition] shorthand. [normal] and [allow-discrete] are the
-       [transition-behavior] enum and would silently absorb a duplicate (e.g.
-       [transition: normal normal]) into the property slot. *)
-    if List.mem (String.lowercase_ascii name) [ "normal"; "allow-discrete" ]
-    then
+    (* CSS Transitions 1 sec. 2.1 gives [transition-property] a
+       [<custom-ident>], and CSS Values 4 sec. 3.2 excludes [default] and the
+       CSS-wide keywords from that production and nothing else. What the
+       [transition] shorthand can tell apart in a slot is the shorthand reader's
+       question, not this one's. *)
+    if String.equal (String.lowercase_ascii name) "default" then
       Cursor.err_invalid t
         ("transition-property cannot be reserved keyword: " ^ name)
     else Property name

@@ -364,6 +364,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `transition-property` reads every `<custom-ident>` and refuses the one CSS
+  Values 4 sec. 3.2 excludes, so `transition-property: normal` names a property
+  and `default` no longer does. `transition: allow-discrete allow-discrete`
+  fills the behaviour slot and the property slot, as the `||` in CSS
+  Transitions 1 sec. 2.4 allows (#998)
+
 - A `var()`, `env()` or `attr()` written inside another function defers the
   property's grammar the way one written beside it does, so
   `offset-rotate: color-mix(var(--a), var(--b))` and
