@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.list_style_image` carries an `Image of background_image`
+  where it carried a `Url of string`. CSS Lists 3 sec. 3.5 gives the property
+  an `<image>`, so `list-style-image: linear-gradient(red, blue)` reads. A
+  caller building a url writes `Image (Url u)`, or `Css.list_style_image_url`
+  (#995)
+
 - `Cascade.Properties.border_image_slice` is a variant carrying the CSS-wide
   keywords, the way its `border-image-width`, `-outset` and `-repeat` siblings
   already were, and the offsets it used to be are
@@ -357,6 +363,11 @@ to lose a whole rule over one bad piece. Both are gone.
   declaration invalid at computed-value time, which is the property's inherited
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
+
+- `list-style-image` reads every `<image>`, so a gradient, an `image-set()` and
+  a `cross-fade()` mark a list item where only a `url()` did. CSS Lists 3 sec.
+  3.5 gives the property the `<image>` vocabulary, minus the comma list only
+  `background-image` takes (#995)
 
 - `page-break-before`, `page-break-after`, `page-break-inside` and
   `border-image-slice` take every CSS-wide keyword, which CSS Cascade 5 sec.

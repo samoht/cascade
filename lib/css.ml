@@ -280,7 +280,7 @@ let list_style_string value = (String value : list_style_type)
 let list_style_symbols ?kind symbols =
   (Symbols (kind, symbols) : list_style_type)
 
-let list_style_image_url value = (Url value : list_style_image)
+let list_style_image_url value = (Image (Url value) : list_style_image)
 let svg_paint_color value = (Color value : svg_paint)
 let svg_paint_url ?fallback value = (Url (value, fallback) : svg_paint)
 

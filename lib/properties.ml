@@ -142,7 +142,7 @@ let rec pp_list_style_position : list_style_position Pp.t =
 let rec pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Url u -> Pp.url ctx u
+  | Image i -> pp_background_image ctx i
   | Var v -> pp_var pp_list_style_image ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -2456,12 +2456,13 @@ let rec read_list_style_position t : list_style_position =
     ~var:(fun t -> Var (read_var read_list_style_position t))
     t
 
+(* CSS Lists 3 sec. 3.5 gives [list-style-image] an [<image>], so every image
+   the [background-image] vocabulary reads goes here: the comma list is what
+   only that property takes. *)
 let rec read_list_style_image t : list_style_image =
-  let read_url t = (Url (Cursor.url t) : list_style_image) in
   let read_var t : list_style_image = Var (read_var read_list_style_image t) in
   Cursor.one_of
     [
-      read_url;
       (fun t ->
         Cursor.enum_or_calls "list-style-image"
           [
@@ -2474,6 +2475,7 @@ let rec read_list_style_image t : list_style_image =
           ]
           ~calls:[ ("var", read_var) ]
           t);
+      (fun t -> (Image (read_bg_image t) : list_style_image));
     ]
     t
 

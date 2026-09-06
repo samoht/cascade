@@ -7001,7 +7001,7 @@ val list_style_symbols :
 (** CSS list-style-image values *)
 type list_style_image = Properties.list_style_image =
   | None
-  | Url of string
+  | Image of background_image
   | Inherit
   | Initial
   | Unset

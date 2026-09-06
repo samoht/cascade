@@ -1726,36 +1726,6 @@ type list_style_position =
   | Revert_layer
   | Var of list_style_position var
 
-type list_style_image =
-  | None
-  | Url of string
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of list_style_image var
-
-(* CSS Lists 3 sec. 3.6: [list-style] is the shorthand for [list-style-type],
-   [list-style-position], and [list-style-image]. All components are optional;
-   omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
-   single bare [none] keyword in the source sets both [type_] and [image] to
-   [None]. *)
-type list_style_shorthand = {
-  type_ : list_style_type option;
-  position : list_style_position option;
-  image : list_style_image option;
-}
-
-type list_style =
-  | Shorthand of list_style_shorthand
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of list_style var
-
 (* Table Types *)
 type table_layout =
   | Auto
@@ -2876,6 +2846,38 @@ and cross_fade_option = {
   image : background_image;
   percent : percentage option;
 }
+
+(* CSS Lists 3 sec. 3.5: [list-style-image] is a [<image>], which is the
+   [background_image] vocabulary without its comma list, or [none]. *)
+type list_style_image =
+  | None
+  | Image of background_image
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style_image var
+
+(* CSS Lists 3 sec. 3.6: [list-style] is the shorthand for [list-style-type],
+   [list-style-position], and [list-style-image]. All components are optional;
+   omitted ones reset to the longhand initial ([disc] / [outside] / [none]). The
+   single bare [none] keyword in the source sets both [type_] and [image] to
+   [None]. *)
+type list_style_shorthand = {
+  type_ : list_style_type option;
+  position : list_style_position option;
+  image : list_style_image option;
+}
+
+type list_style =
+  | Shorthand of list_style_shorthand
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of list_style var
 
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)
