@@ -352,7 +352,7 @@ to lose a whole rule over one bad piece. Both are gone.
   every definition of a name still referenced reaches the output. CSS Variables
   1 sec. 3 puts the fallback in only for a custom property holding its
   guaranteed-invalid initial value, so `#o { --x: red } #i { color: var(--x,
-  lime) }` took `lime` where the browser paints red (#985, #986)
+  lime) }` took `lime` where the browser paints red (#985, #986, #988)
 
 - A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
   dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a

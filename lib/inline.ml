@@ -1056,7 +1056,14 @@ let refs_of_declaration decl =
         _;
       } ->
       refs_of_components (Properties.components_of_custom_property_value value)
-  | _ -> names_of_vars (Variables.vars_of_declarations [ decl ])
+  | _ ->
+      (* The typed reading names the [var()] the value is built on; a name
+         written inside another reference's fallback reaches the census only
+         through the token stream, and it is referenced like any other. *)
+      names_of_vars (Variables.vars_of_declarations [ decl ])
+      @ refs_of_component_string
+          (Declaration.string_of_value ~minify:false decl)
+      |> List.sort_uniq String.compare
 
 (* Collect, per declaration, its scope and the var names its body references.
    [consumers] are non-custom declarations (direct liveness); [customs] are
