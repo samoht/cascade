@@ -428,18 +428,32 @@ let corpus ~sample =
 
 (* ===== Cascade's side ===== *)
 
-type parsed = { output : string; strict_ok : bool }
+type parsed = { output : string; strict_ok : bool; properties : string list }
+
+(* The property names cascade's own reading writes back, so a fact naming one
+   the reading no longer holds can be told from one it does. *)
+let declared_properties sheet =
+  Css.fold
+    (fun acc st ->
+      match Css.as_rule st with
+      | Some (_, declarations, _) ->
+          List.fold_left
+            (fun acc d -> Css.Declaration.property_name d :: acc)
+            acc declarations
+      | None -> acc)
+    [] sheet
 
 let cascade css =
-  let output =
+  let output, properties =
     match Css.of_string ~strict:false css with
-    | Ok { Css.stylesheet; _ } -> Css.to_string stylesheet
-    | Error _ -> ""
+    | Ok { Css.stylesheet; _ } ->
+        (Css.to_string stylesheet, declared_properties stylesheet)
+    | Error _ -> ("", [])
   in
   let strict_ok =
     match Css.of_string ~strict:true css with Ok _ -> true | Error _ -> false
   in
-  { output; strict_ok }
+  { output; strict_ok; properties }
 
 (* ===== The browser's answers ===== *)
 
@@ -650,14 +664,20 @@ let is_declaration fact = Option.is_some (String.index_opt fact '#')
    declaration out of a rule the browser still built is, because the text is
    still there and the browser refused it - CSS Syntax 3 (ED) sec. 5.5.6 returns
    nothing for a declaration that does not parse, and the browser is where that
-   shows. *)
-let internal_losses ~control ~mutant =
+   shows.
+
+   [still_written] is what holds that premise up. A mutation inside a property
+   name renames the declaration, and one that eats a [;] merges it into its
+   neighbour: the browser loses the fact either way, and there is no refused
+   text to refuse. cascade writes an unknown property name back on purpose, so
+   the loss on its own says nothing. *)
+let internal_losses ~control ~mutant ~still_written =
   let ck = List.map kind_of control and mk = List.map kind_of mutant in
   let rules l = counts (List.filter (fun f -> not (is_declaration f)) l) in
   let cr = rules ck and mr = rules mk in
   List.filter
     (fun f ->
-      is_declaration f
+      is_declaration f && still_written f
       &&
       let p = rule_path f in
       Option.value ~default:0 (Hashtbl.find_opt mr p)
@@ -919,8 +939,26 @@ let () =
               match Hashtbl.find_opt answers control_id with
               | None -> []
               | Some control ->
+                  let props id =
+                    match Hashtbl.find_opt parses id with
+                    | Some p -> p.properties
+                    | None -> []
+                  in
+                  let before = props control_id and after = props j.id in
+                  let times name l =
+                    List.length (List.filter (String.equal name) l)
+                  in
+                  let still_written f =
+                    match String.index_opt f '#' with
+                    | None -> true
+                    | Some i ->
+                        let name =
+                          String.sub f (i + 1) (String.length f - i - 1)
+                        in
+                        times name after >= times name before
+                  in
                   internal_losses ~control:control.input_facts
-                    ~mutant:answer.input_facts)
+                    ~mutant:answer.input_facts ~still_written)
         in
         let reason =
           if not (is_empty lost) then lost
