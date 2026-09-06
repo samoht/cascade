@@ -1319,6 +1319,15 @@ let border_line_width () =
     ~optimized:"border-top:dashed#00f" "border-top: medium dashed blue";
   check_declaration ~expected:"column-rule:medium solid red"
     ~optimized:"column-rule:solid red" "column-rule: medium solid red";
+  (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
+     list, one entry per rule line. *)
+  check_declaration ~expected:"column-rule-style:dotted,dashed"
+    "column-rule-style: dotted, dashed";
+  check_declaration ~expected:"column-rule-width:1px,2px"
+    "column-rule-width: 1px, 2px";
+  check_declaration ~expected:"column-rule-color:red,blue"
+    ~optimized:"column-rule-color:red,#00f" "column-rule-color: red, blue";
+  neg_cursor read_declaration "column-rule-style: dotted dashed";
   check_declaration ~expected:"border-inline-start:medium dotted red"
     ~optimized:"border-inline-start:dotted red"
     "border-inline-start: medium dotted red";
