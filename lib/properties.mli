@@ -2574,10 +2574,11 @@ val read_stroke_width : Cursor.t -> stroke_width
 val pp_dash_length : dash_length Pp.t
 (** [pp_dash_length] pretty-prints one SVG dash length. *)
 
-val read_dash_length : Cursor.t -> dash_length
-(** [read_dash_length t] is the [dash_length] parsed from [t]. A bare number is
-    in user units; anything carrying a unit or a percent sign is a
-    [<length-percentage>]. *)
+val read_dash_length : ?allow_negative:bool -> Cursor.t -> dash_length
+(** [read_dash_length ?allow_negative t] is the [dash_length] parsed from [t]. A
+    bare number is in user units; anything carrying a unit or a percent sign is
+    a [<length-percentage>]. [allow_negative] defaults to [true], which is what
+    [stroke-dashoffset] takes; a dash of [stroke-dasharray] takes [false]. *)
 
 val pp_stroke_dashoffset : stroke_dashoffset Pp.t
 (** [pp_stroke_dashoffset] pretty-prints a [stroke-dashoffset]. *)

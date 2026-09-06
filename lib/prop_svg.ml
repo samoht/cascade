@@ -395,13 +395,18 @@ let rec read_paint_order t : paint_order =
 
 (* A bare number is user units; anything with a unit or a percent sign is a
    <length-percentage>. *)
-let read_dash_length t : dash_length =
+let read_dash_length ?(allow_negative = true) t : dash_length =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-      Number (Cursor.number t)
+      let n = Cursor.number t in
+      if (not allow_negative) && n < 0. then
+        Cursor.err_invalid t "stroke-dasharray cannot be negative";
+      Number n
   (* The grammar is <length-percentage> | <number>, with no keyword branch, so
      the intrinsic-sizing keywords a bare length would accept are out. *)
-  | _ -> Length (Values.read_length_percentage ~with_keywords:false t)
+  | _ ->
+      Length
+        (Values.read_length_percentage ~allow_negative ~with_keywords:false t)
 
 let rec read_stroke_dashoffset t : stroke_dashoffset =
   Cursor.enum_or_calls "stroke-dashoffset"
@@ -447,7 +452,9 @@ let rec read_stroke_dasharray t : stroke_dasharray =
         | _ -> false
       in
       let rec go acc =
-        let acc = read_dash_length t :: acc in
+        (* SVG 2 sec. 13.3 gives each dash a non-negative value; only
+           [stroke-dashoffset] takes a signed one. *)
+        let acc = read_dash_length ~allow_negative:false t :: acc in
         Cursor.ws t;
         if Cursor.peek_comma t then begin
           Cursor.comma t;

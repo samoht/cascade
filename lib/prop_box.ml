@@ -884,10 +884,14 @@ let rec read_z_index t : z_index =
     t
 
 let read_aspect_ratio_number t =
-  (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
+  (* CSS Sizing 4 sec. 5: an [<aspect-ratio>] component may be a [calc()] that
      resolves to a number. Keep the number AST for normal-output fidelity; the
-     printer folds constant expressions for minified output. *)
-  read_number t
+     printer folds constant expressions for minified output. The production is
+     [<ratio>], whose CSS Values 4 sec. 6.5 numbers carry a [0,inf] range. *)
+  let n = read_number t in
+  match n with
+  | Num v when v < 0. -> Cursor.err_invalid t "aspect-ratio cannot be negative"
+  | _ -> n
 
 let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
@@ -1113,12 +1117,17 @@ let rec read_float_side (t : Cursor.t) : float_side =
     t
 
 let rec read_zoom (t : Cursor.t) : zoom =
+  (* CSS Viewport 1 sec. 3 spells [zoom] as [normal | reset | <number [0,inf]> |
+     <percentage [0,inf]>], so a negative zoom is no zoom. *)
+  let non_negative n =
+    if n < 0. then Cursor.err_invalid t "zoom cannot be negative" else n
+  in
   let read_value t =
     match Cursor.percentage_opt t with
-    | Some p -> (Pct p : zoom)
+    | Some p -> (Pct (non_negative p) : zoom)
     | None -> (
         match Cursor.number_opt t with
-        | Some n -> Num n
+        | Some n -> Num (non_negative n)
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in

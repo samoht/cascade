@@ -367,6 +367,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `columns`, `zoom`, `aspect-ratio` and each dash of `stroke-dasharray` refuse
+  a value their grammar's `[0, inf]` range excludes, and `columns` refuses a
+  percentage where CSS Multicol 2 sec. 4.1 gives it a length. `zoom: -1` and
+  `stroke-dasharray: -1` were written back where every browser drops them
+  (#1005)
+
 - The `@page` `size` descriptor sizes a page in lengths, so a percentage, a
   sizing keyword and a negative are dropped with a warning, and it takes every
   CSS-wide keyword. CSS Paged Media 3 sec. 6.4 spells it
