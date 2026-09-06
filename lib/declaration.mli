@@ -1051,6 +1051,30 @@ val offset_position : offset_position -> declaration
 val offset : offset -> declaration
 (** [offset v] is the [offset] shorthand. *)
 
+val column_width : column_width -> declaration
+(** [column_width v] is the [column-width] property. *)
+
+val column_count : column_count -> declaration
+(** [column_count v] is the [column-count] property. *)
+
+val column_height : column_height -> declaration
+(** [column_height v] is the [column-height] property. *)
+
+val column_wrap : column_wrap -> declaration
+(** [column_wrap v] is the [column-wrap] property. *)
+
+val column_rule_width : border_width list -> declaration
+(** [column_rule_width v] is the [column-rule-width] property, one entry per gap
+    decoration line. *)
+
+val column_rule_style : border_style list -> declaration
+(** [column_rule_style v] is the [column-rule-style] property, one entry per gap
+    decoration line. *)
+
+val column_rule_color : color list -> declaration
+(** [column_rule_color v] is the [column-rule-color] property, one entry per gap
+    decoration line. *)
+
 val all : css_wide -> declaration
 (** [all v] is the [all] property. It resets every longhand to [v] but the two
     writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)

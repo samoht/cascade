@@ -846,6 +846,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the multi-column longhands: `column_width`, `column_count`,
+  `column_height`, `column_wrap` and the three `column_rule_*` gap decoration
+  lists, with their value types (#1032)
+
 - `Css` builds the Motion Path 1 properties: `offset_path`,
   `offset_distance`, `offset_rotate`, `offset_anchor`, `offset_position` and
   the `offset` shorthand, with their value types (#1031)

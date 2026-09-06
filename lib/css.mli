@@ -2286,6 +2286,63 @@ val column_span : column_span -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-span}
      column-span} property. *)
 
+(** CSS Multicol 2 sec. 4.1 [column-width]: [auto | <length [0,inf]>]. *)
+type column_width = Properties.column_width =
+  | Auto
+  | Width of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_width var
+
+val column_width : column_width -> declaration
+(** [column_width v] is the [column-width] longhand of {!val-columns}. *)
+
+(** CSS Multicol 2 sec. 4.2 [column-count]: [auto | <integer [1,inf]>]. *)
+type column_count = Properties.column_count =
+  | Auto
+  | Count of int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_count var
+
+val column_count : column_count -> declaration
+(** [column_count v] is the [column-count] longhand of {!val-columns}. *)
+
+(** CSS Multicol 2 sec. 8 [column-height]: [auto | <length [0,inf]>]. *)
+type column_height = Properties.column_height =
+  | Auto
+  | Height of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_height var
+
+val column_height : column_height -> declaration
+(** [column_height v] is the [column-height] property. *)
+
+(** CSS Multicol 2 sec. 8 [column-wrap]: [auto | nowrap | wrap]. *)
+type column_wrap = Properties.column_wrap =
+  | Auto
+  | Nowrap
+  | Wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_wrap var
+
+val column_wrap : column_wrap -> declaration
+(** [column_wrap v] is the [column-wrap] property. *)
+
 val visibility : visibility -> declaration
 (** [visibility v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
@@ -5439,6 +5496,21 @@ val column_rule : border -> declaration
 (** [column_rule v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-rule}
      column-rule} shorthand property. *)
+
+(** CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated list,
+    one entry per rule line, where {!val-column_rule} writes one. *)
+
+val column_rule_width : border_width list -> declaration
+(** [column_rule_width v] is the [column-rule-width] longhand, one entry per gap
+    decoration line. *)
+
+val column_rule_style : border_style list -> declaration
+(** [column_rule_style v] is the [column-rule-style] longhand, one entry per gap
+    decoration line. *)
+
+val column_rule_color : color list -> declaration
+(** [column_rule_color v] is the [column-rule-color] longhand, one entry per gap
+    decoration line. *)
 
 val border_width : border_width -> declaration
 (** [border_width width] is the
