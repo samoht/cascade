@@ -4931,6 +4931,13 @@ let spec_remaining_prop_vectors () =
       "mask-repeat: no-repeat repeat repeat-x";
       "backdrop-filter: blur(1px, 2px)";
       "will-change: auto, transform";
+      (* CSS Will Change 1 sec. 2.1 excludes these from the ident a feature
+         names, and CSS Values 4 sec. 3.2 excludes [default] from every one. *)
+      "will-change: none";
+      "will-change: all";
+      "will-change: default";
+      "will-change: will-change";
+      "will-change: opacity, none";
       "touch-action: pan-x pan-left";
       "resize: block inline both";
       "transition-property: none, opacity";
