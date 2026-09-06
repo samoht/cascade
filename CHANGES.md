@@ -341,6 +341,13 @@ to lose a whole rule over one bad piece. Both are gone.
   refuses a string that is not a selector rather than reading it as an element
   name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
 
+- `--inline-vars` keeps a `var()` live where the definition it names sits on a
+  selector the pass cannot prove reaches the element, since `#o { --x: red }`
+  may well style an ancestor of `#i`. CSS Variables 1 sec. 3 puts the fallback
+  in only for a custom property holding its guaranteed-invalid initial value,
+  and `#i { color: var(--x, lime) }` took `lime` where the browser paints red
+  (#985)
+
 - A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
   dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a
   class name follow its dot immediately and sec. 3.5 a pseudo-class name its

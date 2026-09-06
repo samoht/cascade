@@ -161,6 +161,12 @@ type scope = {
   customs : Declaration.declaration list;
 }
 
+(* The scopes plus the names the sheet defines anywhere. A consumer sees only
+   the scopes that cover it, and a name it cannot see is not a name the sheet is
+   without: the two answers part ways in [substitute_var], where only the second
+   lets the fallback stand in. *)
+type scope_set = { all : scope list; declared : (string, unit) Hashtbl.t }
+
 let custom_name = Variables.custom_declaration_name
 
 (* [Declaration.custom_property] refuses a value it cannot write back as part of
@@ -218,7 +224,19 @@ let collect_scopes ~kept stylesheet =
     | _ -> ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
-  List.rev !acc
+  let all = List.rev !acc in
+  let declared = Hashtbl.create 64 in
+  List.iter
+    (fun s ->
+      List.iter
+        (fun d ->
+          match custom_name d with
+          | Some name ->
+              Hashtbl.replace declared (Custom_property_name.add_prefix name) ()
+          | None -> ())
+        s.customs)
+    all;
+  { all; declared }
 
 (** {1 Pass 2 - substitute var() in every declaration} *)
 
@@ -229,9 +247,10 @@ let collect_scopes ~kept stylesheet =
 type visible = {
   decls : Declaration.declaration list;
   by_name : (string, (int * Declaration.declaration) list) Hashtbl.t;
+  declared : (string, unit) Hashtbl.t;
 }
 
-let visible_of_decls decls =
+let visible_of_decls ~declared decls =
   let by_name = Hashtbl.create 64 in
   List.iteri
     (fun idx decl ->
@@ -247,7 +266,7 @@ let visible_of_decls decls =
   Hashtbl.iter
     (fun name entries -> Hashtbl.replace by_name name (List.rev entries))
     (Hashtbl.copy by_name);
-  { decls; by_name }
+  { decls; by_name; declared }
 
 (* A name reaches its declarations under the spelling it was written with, so
    ask for both: [--x] is stored as written and [x] is the bare form callers
@@ -263,8 +282,8 @@ let named visible name =
           List.merge (fun (a, _) (b, _) -> Int.compare a b) entries more)
   | None -> Option.value ~default:[] (Hashtbl.find_opt visible.by_name dashed)
 
-let visible_customs ~scopes ~at_path ~selector =
-  visible_of_decls
+let visible_customs ~(scopes : scope_set) ~at_path ~selector =
+  visible_of_decls ~declared:scopes.declared
     (List.concat_map
        (fun s ->
          if
@@ -272,7 +291,7 @@ let visible_customs ~scopes ~at_path ~selector =
            && selector_covers ~ancestor:s.selector ~consumer:selector
          then s.customs
          else [])
-       scopes)
+       scopes.all)
 
 (* [kept] names carry the [--] prefix; [Context.runtime_vars] expects the bare
    custom-property name. *)
@@ -439,7 +458,13 @@ and substitute_var ~kept visible ~visited original name fallback =
   else
     match lookup_visible_custom_components visible name with
     | None ->
-        if List.mem (String.concat "" [ "--"; name ]) kept then
+        (* CSS Variables 1 sec. 3 puts the fallback in only where the custom
+           property holds its guaranteed-invalid initial value. A definition
+           this consumer cannot see is not an absent one: the element it styles
+           may sit under the element the definition is written for, so the
+           reference stays live. *)
+        let dashed = Custom_property_name.add_prefix name in
+        if List.mem dashed kept || Hashtbl.mem visible.declared dashed then
           keep_wrapper ~kept visible ~visited original fallback
         else fallback_or_original ()
     | Some value -> resolved_or_fallback value
@@ -514,12 +539,16 @@ let should_use_typed_default ~kept visible vars =
   vars <> []
   && List.for_all
        (fun (Variables.V var) ->
+         let dashed = Custom_property_name.add_prefix var.Values.name in
          Option.is_some var.Values.default
          && Option.is_none
               (lookup_visible_custom_components visible var.Values.name)
          (* A kept var must keep its live [var()] reference, so do not collapse
-            it to its typed default. *)
-         && not (List.mem (String.concat "" [ "--"; var.Values.name ]) kept))
+            it to its typed default, and neither may a name the sheet defines
+            out of this consumer's sight: the fallback stands in only for a
+            custom property that holds its guaranteed-invalid initial value. *)
+         && (not (List.mem dashed kept))
+         && not (Hashtbl.mem visible.declared dashed))
        vars
 
 (* [Context.eval] leaves a kept var's [var()] intact (it is in [runtime_vars])
@@ -533,8 +562,31 @@ let apply_substituted_components ctx decl ~original_components components =
     | None -> None
     | Some decl -> Some (Context.eval ctx decl)
 
+(* A name the sheet defines out of this consumer's sight is live here for the
+   same reason a kept one is: the evaluator resolves a name it does not hold to
+   the reference's fallback, and CSS Variables 1 sec. 3 puts the fallback in
+   only where the custom property holds its guaranteed-invalid initial value.
+   Only the names this declaration references have to be named, so the list
+   stays as short as the declaration is. *)
+let out_of_sight visible vars =
+  List.filter_map
+    (fun (Variables.V var) ->
+      let name = var.Values.name in
+      let dashed = Custom_property_name.add_prefix name in
+      if
+        Hashtbl.mem visible.declared dashed
+        && Option.is_none (lookup_visible_custom_components visible name)
+      then Some dashed
+      else None)
+    vars
+
 let substitute_non_custom ~kept visible ctx decl =
   let vars = Variables.vars_of_declarations [ decl ] in
+  let ctx =
+    match out_of_sight visible vars with
+    | [] -> ctx
+    | live -> context_for ~kept:(kept @ live) visible
+  in
   if should_use_typed_default ~kept visible vars then
     Some (Context.eval ctx decl)
   else
@@ -1338,7 +1390,7 @@ let var_census stylesheet =
           Option.map normalise_var_name (custom_name d))
       |> List.sort_uniq compare
       |> List.iter (fun n -> add n key))
-    (collect_scopes ~kept:[] stylesheet);
+    (collect_scopes ~kept:[] stylesheet).all;
   let counts : (string, int) Hashtbl.t = Hashtbl.create 64 in
   Hashtbl.iter
     (fun name keys -> Hashtbl.replace counts name (List.length keys))
@@ -1616,7 +1668,7 @@ let layer_decided_customs ~keep stylesheet =
   match layer_order stylesheet with
   | None -> fold
   | Some layer_order ->
-      let scopes = collect_scopes ~kept:keep stylesheet in
+      let scopes = (collect_scopes ~kept:keep stylesheet).all in
       let by_name = Hashtbl.create 64 in
       List.iter
         (fun (s : scope) ->
