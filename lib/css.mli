@@ -5339,6 +5339,109 @@ val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
      text-decoration-skip-ink} property. *)
 
+(** CSS Text Decoration 4 sec. 2.5 [text-decoration-skip]: the shorthand over
+    the four longhands below. *)
+type text_decoration_skip = Properties.text_decoration_skip =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip var
+
+val text_decoration_skip : text_decoration_skip -> declaration
+(** [text_decoration_skip v] is the [text-decoration-skip] shorthand. *)
+
+(** Sec. 2.5.1 [text-decoration-skip-self]: whether the box's own decoration
+    skips it. *)
+type text_decoration_skip_self = Properties.text_decoration_skip_self =
+  | None
+  | Objects
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_self var
+
+val text_decoration_skip_self : text_decoration_skip_self -> declaration
+(** [text_decoration_skip_self v] is the [text-decoration-skip-self] property.
+*)
+
+(** Sec. 2.5.2 [text-decoration-skip-box]: whether an ancestor's decoration
+    skips the box's edges. *)
+type text_decoration_skip_box = Properties.text_decoration_skip_box =
+  | All
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_box var
+
+val text_decoration_skip_box : text_decoration_skip_box -> declaration
+(** [text_decoration_skip_box v] is the [text-decoration-skip-box] property. *)
+
+(** Sec. 2.5.3 [text-decoration-skip-inset]: whether the decoration is inset
+    from the glyph edges. *)
+type text_decoration_skip_inset = Properties.text_decoration_skip_inset =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_inset var
+
+val text_decoration_skip_inset : text_decoration_skip_inset -> declaration
+(** [text_decoration_skip_inset v] is the [text-decoration-skip-inset] property.
+*)
+
+(** Sec. 2.5.4: one span of spaces a decoration skips. *)
+type text_decoration_skip_space = Properties.text_decoration_skip_space =
+  | All
+  | Start
+  | End
+
+(** Sec. 2.5.4 [text-decoration-skip-spaces]. *)
+type text_decoration_skip_spaces = Properties.text_decoration_skip_spaces =
+  | Spaces of text_decoration_skip_space list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_spaces var
+
+val text_decoration_skip_spaces : text_decoration_skip_spaces -> declaration
+(** [text_decoration_skip_spaces v] is the [text-decoration-skip-spaces]
+    property. *)
+
+(** CSS Text Decoration 4 sec. 4.3: one class of character the emphasis marks
+    skip. *)
+type text_emphasis_skip_keyword = Properties.text_emphasis_skip_keyword =
+  | Spaces
+  | Punctuation
+  | Symbols
+  | Narrow
+
+(** Sec. 4.3 [text-emphasis-skip]. *)
+type text_emphasis_skip = Properties.text_emphasis_skip =
+  | Skip of text_emphasis_skip_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis_skip var
+
+val text_emphasis_skip : text_emphasis_skip -> declaration
+(** [text_emphasis_skip v] is the [text-emphasis-skip] property. *)
+
 (** {2:borders_outlines Borders & Outlines}
 
     Properties for styling element borders, outlines, and related decorative

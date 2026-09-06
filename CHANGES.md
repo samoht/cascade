@@ -846,6 +846,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the decoration-skip properties `Declaration` already had:
+  `text_decoration_skip` and its four longhands, and `text_emphasis_skip`,
+  with their value types (#1037)
+
 - `Css` builds the vendor-prefixed longhands its `{2:vendor_specific}` section
   documents: the `-webkit-`, `-moz-`, `-ms-` and `-o-` transform, transition,
   animation, flexbox, box-sizing, border-radius, box-shadow, filter,
