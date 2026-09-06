@@ -367,6 +367,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- An `anchor()` or `anchor-size()` reaches only the properties that take one,
+  so `padding-bottom: anchor-size(width)` and `translate: anchor-size(width)`
+  are dropped with a warning. CSS Anchor Positioning 1 sec. 3.2 keeps `anchor()`
+  to the inset properties and sec. 5.1 keeps `anchor-size()` to the ones
+  `@position-try` accepts (#1006)
+
 - `columns`, `zoom`, `aspect-ratio` and each dash of `stroke-dasharray` refuse
   a value their grammar's `[0, inf]` range excludes, and `columns` refuses a
   percentage where CSS Multicol 2 sec. 4.1 gives it a length. `zoom: -1` and

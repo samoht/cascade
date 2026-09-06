@@ -2273,7 +2273,83 @@ let components_are_lone_css_wide cvs =
       String.equal n "var" || String.equal n "env" || String.equal n "attr"
   | _ -> false
 
+(* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
+   and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
+   [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
+   plus [position-anchor] and [position-area]. A call written anywhere else is
+   invalid, so the declaration goes. *)
+let inset_properties =
+  [
+    "top";
+    "right";
+    "bottom";
+    "left";
+    "inset";
+    "inset-block";
+    "inset-block-start";
+    "inset-block-end";
+    "inset-inline";
+    "inset-inline-start";
+    "inset-inline-end";
+  ]
+
+let anchor_size_properties =
+  inset_properties
+  @ [
+      "margin";
+      "margin-top";
+      "margin-right";
+      "margin-bottom";
+      "margin-left";
+      "margin-block";
+      "margin-block-start";
+      "margin-block-end";
+      "margin-inline";
+      "margin-inline-start";
+      "margin-inline-end";
+      "width";
+      "height";
+      "min-width";
+      "min-height";
+      "max-width";
+      "max-height";
+      "block-size";
+      "inline-size";
+      "min-block-size";
+      "min-inline-size";
+      "max-block-size";
+      "max-inline-size";
+      "align-self";
+      "justify-self";
+      "place-self";
+      "position-anchor";
+      "position-area";
+    ]
+
+let rec components_call_named names components =
+  List.exists (component_calls_named names) components
+
+and component_calls_named names = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      List.exists (String.equal (String.lowercase_ascii_preserve name)) names
+      || components_call_named names arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      components_call_named names value
+  | Component.Preserved _ -> false
+
+let validate_anchor_queries t name components =
+  let allowed table = List.exists (String.equal name) table in
+  if
+    components_call_named [ "anchor" ] components
+    && not (allowed inset_properties)
+  then Cursor.err_invalid t ("anchor() is not a value of " ^ name);
+  if
+    components_call_named [ "anchor-size" ] components
+    && not (allowed anchor_size_properties)
+  then Cursor.err_invalid t ("anchor-size() is not a value of " ^ name)
+
 let validate_regular_property_components t name components =
+  validate_anchor_queries t name components;
   (* A substitution function makes the declaration's grammar a computed-value
      question. This includes [all]: the substitution result can be empty and
      leave its neighbouring CSS-wide keyword as the whole value. *)
@@ -2284,7 +2360,7 @@ let validate_regular_property_components t name components =
     && Properties.components_have_css_wide_mix components
   then Cursor.err_invalid t "CSS-wide keyword mixed with other values";
   if
-    name = "all" && (not has_substitution)
+    String.equal name "all" && (not has_substitution)
     && not (components_are_lone_css_wide components)
   then Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
