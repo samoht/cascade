@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.offset_path` gains `Shape of clip_path`, so
+  `offset-path: circle(50%) content-box` reads where a basic shape or a
+  reference box was dropped with a warning. CSS Motion Path 1 sec. 2.1 gives
+  the property `<basic-shape> || <coord-box>`. Exhaustive visitors must handle
+  the new leaf (#1011)
+
 - `Cascade.Properties.page_size` gains `Initial`, `Unset`, `Revert` and
   `Revert_layer`. Exhaustive visitors must handle the four new leaves (#1004)
 

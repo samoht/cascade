@@ -916,7 +916,7 @@ let read_clip_path_ellipse t : clip_path =
       Cursor.expect_eof inner;
       Clip_path_ellipse { rx; ry; position })
 
-let read_polygon_fill_rule inner =
+let read_polygon_fill_rule inner : clip_path_fill_rule option =
   match Cursor.peek_ident inner with
   | Some "nonzero" ->
       Cursor.skip inner;

@@ -686,6 +686,7 @@ let rec pp_offset_path : offset_path Pp.t =
   | Url url -> Pp.url ctx url
   | Path path -> Pp.call "path" Pp.quoted_string ctx path
   | Ray ray -> Pp.call "ray" pp_ray ctx ray
+  | Shape shape -> Prop_mask.pp_clip_path ctx shape
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -1362,7 +1363,21 @@ let rec read_offset_path t : offset_path =
         ( "var",
           fun t -> (Var (Values.read_var read_offset_path t) : offset_path) );
       ]
-    ~default:read_offset_path_url_token t
+      (* CSS Motion Path 1 sec. 2.1: [<offset-path> || <coord-box>], where
+         [<offset-path>] holds [<basic-shape>]. A shape and a reference box read
+         the way [clip-path] reads them; only that property's [none] and [url()]
+         arms belong to the enum above instead. *)
+    ~default:
+      (Cursor.one_of
+         [
+           read_offset_path_url_token;
+           (fun t ->
+             match Prop_mask.read_clip_path t with
+             | (Clip_path_none : clip_path) | Clip_path_url _ ->
+                 Cursor.err_expected t "offset-path shape"
+             | shape -> (Shape shape : offset_path));
+         ])
+    t
 
 let read_ray t : ray =
   Cursor.call "ray" t @@ fun inner ->
@@ -1445,7 +1460,7 @@ let starts_offset_path t =
   Cursor.lookahead
     (fun t ->
       match Cursor.option read_offset_path t with
-      | Some (None | Url _ | Path _ | Ray _ : offset_path) -> true
+      | Some (None | Url _ | Path _ | Ray _ | Shape _ : offset_path) -> true
       | Some _ | Option.None -> false)
     t
 

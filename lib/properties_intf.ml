@@ -3759,11 +3759,101 @@ type ray = {
   position : position_value option;
 }
 
+(** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
+    [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
+type clip_geometry_box =
+  | Margin_box
+  | Border_box
+  | Padding_box
+  | Content_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+
+(** CSS Shapes 1 sec. 3.1 [<shape-radius>] for [circle()] / [ellipse()]: a
+    [<length-percentage>] or one of the extent keywords. *)
+type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
+
+type clip_path_fill_rule = Nonzero | Evenodd
+
+(* clip-path property for clipping regions *)
+type clip_path =
+  | Clip_path_none
+  | Clip_path_url of string
+  | Clip_path_inset of {
+      top : length_percentage;
+      right : length_percentage option;
+      bottom : length_percentage option;
+      left : length_percentage option;
+      rounded : border_radius option;
+    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
+  | Clip_path_circle of {
+      radius : clip_path_extent option;
+      position : position_value option;
+    }  (** [circle(<shape-radius>? [at <position>]?)] *)
+  | Clip_path_ellipse of {
+      rx : clip_path_extent option;
+      ry : clip_path_extent option;
+      position : position_value option;
+    }  (** [ellipse(<shape-radius>{2}? [at <position>]?)] *)
+  | Clip_path_polygon of {
+      fill_rule : clip_path_fill_rule option;
+      points : (length * length) list;
+      spaced : bool;
+          (** [true] if the source emitted points without explicit commas. *)
+    }
+  | Clip_path_path of string  (** SVG path data *)
+  | Clip_path_shape of string
+  | Clip_path_box of clip_geometry_box
+      (** Bare reference box, e.g. [clip-path: margin-box]. *)
+  | Clip_path_with_box of {
+      shape : clip_path;
+      box : clip_geometry_box;
+      box_first : bool;
+          (** Source order: [true] if the box appeared before the shape
+              ([padding-box circle(...)]), [false] for
+              [circle(...) padding-box]. *)
+    }
+  | Clip_path_xywh of {
+      x : length_percentage;
+      y : length_percentage;
+      width : length_percentage;
+      height : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [xywh(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
+  | Clip_path_rect of {
+      top : length_percentage;
+      right : length_percentage;
+      bottom : length_percentage;
+      left : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of clip_path var
+  | Invalid of invalid_value
+      (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
+          [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
+          The pretty-printer round-trips the captured tokens; the
+          [Optimize.drop_invalid] pass removes the declaration on every
+          serialisation. *)
+
 type offset_path =
   | None
   | Url of string
   | Path of string
   | Ray of ray
+  | Shape of clip_path
+      (** CSS Motion Path 1 sec. 2.1 [<basic-shape> || <coord-box>], which
+          {!type-clip_path} already models for [clip-path]: the same shape
+          functions and the same reference boxes. *)
   | Initial
   | Inherit
   | Unset
@@ -4633,92 +4723,6 @@ type clip =
   | Revert
   | Revert_layer
   | Var of clip var
-
-(** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
-    [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
-type clip_geometry_box =
-  | Margin_box
-  | Border_box
-  | Padding_box
-  | Content_box
-  | Fill_box
-  | Stroke_box
-  | View_box
-
-(** CSS Shapes 1 sec. 3.1 [<shape-radius>] for [circle()] / [ellipse()]: a
-    [<length-percentage>] or one of the extent keywords. *)
-type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
-
-type clip_path_fill_rule = Nonzero | Evenodd
-
-(* clip-path property for clipping regions *)
-type clip_path =
-  | Clip_path_none
-  | Clip_path_url of string
-  | Clip_path_inset of {
-      top : length_percentage;
-      right : length_percentage option;
-      bottom : length_percentage option;
-      left : length_percentage option;
-      rounded : border_radius option;
-    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
-  | Clip_path_circle of {
-      radius : clip_path_extent option;
-      position : position_value option;
-    }  (** [circle(<shape-radius>? [at <position>]?)] *)
-  | Clip_path_ellipse of {
-      rx : clip_path_extent option;
-      ry : clip_path_extent option;
-      position : position_value option;
-    }  (** [ellipse(<shape-radius>{2}? [at <position>]?)] *)
-  | Clip_path_polygon of {
-      fill_rule : clip_path_fill_rule option;
-      points : (length * length) list;
-      spaced : bool;
-          (** [true] if the source emitted points without explicit commas. *)
-    }
-  | Clip_path_path of string  (** SVG path data *)
-  | Clip_path_shape of string
-  | Clip_path_box of clip_geometry_box
-      (** Bare reference box, e.g. [clip-path: margin-box]. *)
-  | Clip_path_with_box of {
-      shape : clip_path;
-      box : clip_geometry_box;
-      box_first : bool;
-          (** Source order: [true] if the box appeared before the shape
-              ([padding-box circle(...)]), [false] for
-              [circle(...) padding-box]. *)
-    }
-  | Clip_path_xywh of {
-      x : length_percentage;
-      y : length_percentage;
-      width : length_percentage;
-      height : length_percentage;
-      rounded : border_radius option;
-    }
-      (** [xywh(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
-          2. *)
-  | Clip_path_rect of {
-      top : length_percentage;
-      right : length_percentage;
-      bottom : length_percentage;
-      left : length_percentage;
-      rounded : border_radius option;
-    }
-      (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
-          2. *)
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of clip_path var
-  | Invalid of invalid_value
-      (** Spec-invalid [<basic-shape>] preserved verbatim - e.g.
-          [ellipse(50px 60px at 0 10% 20%)] with a 3-value [<position>] tail.
-          The pretty-printer round-trips the captured tokens; the
-          [Optimize.drop_invalid] pass removes the declaration on every
-          serialisation. *)
 
 type _ kind =
   | Length : length kind
