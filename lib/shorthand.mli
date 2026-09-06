@@ -94,6 +94,16 @@ val drop_redundant_decoration_color_aliases :
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 
+val transitioned_in_rule :
+  Declaration.declaration list -> Declaration.declaration -> bool
+(** [transitioned_in_rule decls d] is [true] when one of [decls] declares a
+    transition reaching the property [d] writes. [transition],
+    [transition-property] and their vendor spellings are read: an entry naming
+    that property or a shorthand covering it reaches it, and so do [all], the
+    [all] shorthand and any value that does not resolve to a property list. Only
+    [decls] are read, so a transition another rule declares for the same element
+    reads as [false]. *)
+
 val merge_box_shorthand_longhands :
   (int * Declaration.declaration) list ->
   (int * Declaration.declaration) list ->
@@ -104,13 +114,31 @@ val merge_overflow_longhands :
   (int * Declaration.declaration) list -> (int * Declaration.declaration) list
 (** Fold [overflow-x]/[overflow-y] into [overflow]. *)
 
+type held
+(** Shorthand slots a set of declarations leaves holding something other than
+    the slot initial. Composing a run that leaves a slot unwritten resets it, so
+    a run only contracts when nothing that reaches the same element holds it.
+    Composition reads one rule, so holders in the rest of a rule run reach it
+    only through this summary. Carries the [transition] slots; a family that
+    contracts a partial run adds its own. *)
+
+val held_none : held
+(** Nothing held. *)
+
+val held_add : held -> Declaration.declaration list -> held
+(** [held_add held decls] extends [held] with the slots [decls] hold. *)
+
 val compose_shorthands :
+  ?held:held ->
   ctx:Ctx.t ->
   (int * Declaration.declaration) list ->
   (int * Declaration.declaration) list
-(** Compose supported longhand runs into shorthand declarations. *)
+(** Compose supported longhand runs into shorthand declarations. [held] is what
+    the rest of the rule run holds; slots the given declarations hold themselves
+    are judged in place and drop out of it. *)
 
 val deduplicate_declarations_with :
+  ?held:held ->
   ctx:Ctx.t ->
   ?merge_box:bool ->
   Declaration.declaration list ->

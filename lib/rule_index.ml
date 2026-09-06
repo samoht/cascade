@@ -45,20 +45,24 @@ let is_absorbed t i =
   match t.slots.(i) with Live | Shorthand _ -> false | Absorbed -> true
 
 let splice t ~at ~absorbed ~new_decls =
-  List.iter
-    (fun i ->
-      match t.slots.(i) with
-      | Live -> t.slots.(i) <- Absorbed
-      | Absorbed | Shorthand _ ->
-          failwith "Rule_index.absorb: position already consumed")
-    absorbed;
-  match t.slots.(at) with
-  | Absorbed ->
-      (* [at] is typically the earliest absorbed position, which was just marked
-         Absorbed above; promote it to carry the synthesized shorthand list. *)
-      t.slots.(at) <- Shorthand new_decls
-  | Live -> t.slots.(at) <- Shorthand new_decls
-  | Shorthand _ -> failwith "Rule_index.absorb: shorthand slot already taken"
+  if List.exists Declaration.value_has_css_wide_mix new_decls then false
+  else (
+    List.iter
+      (fun i ->
+        match t.slots.(i) with
+        | Live -> t.slots.(i) <- Absorbed
+        | Absorbed | Shorthand _ ->
+            failwith "Rule_index.absorb: position already consumed")
+      absorbed;
+    (match t.slots.(at) with
+    | Absorbed ->
+        (* [at] is typically the earliest absorbed position, which was just
+           marked Absorbed above; promote it to carry the synthesized shorthand
+           list. *)
+        t.slots.(at) <- Shorthand new_decls
+    | Live -> t.slots.(at) <- Shorthand new_decls
+    | Shorthand _ -> failwith "Rule_index.absorb: shorthand slot already taken");
+    true)
 
 let absorb t ~at ~absorbed ~shorthand =
   splice t ~at ~absorbed ~new_decls:[ shorthand ]

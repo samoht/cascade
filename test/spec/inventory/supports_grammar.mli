@@ -15,6 +15,9 @@ val rows : row list
 val invalid : string list
 (** [invalid] contains invalid supports-condition grammar branches. *)
 
+val general_enclosed_functions : string list
+(** Functions with unsupported arguments, preserved as general-enclosed. *)
+
 val mutate_invalid : row -> int -> string
 (** [mutate_invalid row salt] returns an invalid condition derived from [row].
 *)

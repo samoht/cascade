@@ -1,10 +1,10 @@
 (** UTF-8 boundary harness.
 
     Feeds Markus Kuhn's UTF-8 stress test through
-    [Cascade.Css.of_string ~strict:false] and asserts the parser does not raise,
-    regardless of ill-formed input. CSS Syntax L3 sec. 3.3 requires malformed
-    UTF-8 to be replaced with U+FFFD rather than rejected. How many U+FFFD one
-    ill-formed run stands for is what the counting tests below pin, since a
+    [Cascade.Css.of_string ~strict:false]. CSS Syntax L3 sec. 3.3 requires
+    malformed UTF-8 to be replaced with U+FFFD rather than rejected, so every
+    line reads, and what it prints reads back to the same text. How many U+FFFD
+    one ill-formed run stands for is what the counting tests below pin, since a
     parse error's column and its caret are measured in those elements.
 
     Traces: [traces/UTF-8-test.txt] from
@@ -28,23 +28,39 @@ let read_file path =
    strings must survive without exception. *)
 let wrap body = Fmt.str "/* %s */ a { content: \"%s\" }" body body
 
-let parses_without_crash bytes =
-  match Cascade.Css.of_string ~strict:false (wrap bytes) with
-  | Ok _ | Error _ -> true
+(* Ill-formed UTF-8 is replaced with U+FFFD rather than rejected, so the read
+   has to succeed, and the replacement has to settle: printing what was read and
+   reading that again reaches the same text, or every pass rewrites the last
+   one's output. *)
+let read_and_settle bytes =
+  let print sheet = Cascade.Css.to_string ~minify:true sheet in
+  let read css =
+    match Cascade.Css.of_string ~strict:false css with
+    | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> Ok (print stylesheet)
+    | Error e -> Error (Cascade.Error.to_string e)
+  in
+  match read (wrap bytes) with
+  | Error e -> Error e
+  | Ok once -> (
+      match read once with
+      | Error e ->
+          Error (String.concat "" [ "what it printed is unreadable: "; e ])
+      | Ok twice ->
+          if String.equal once twice then Ok ()
+          else Error (String.concat "" [ "reading it again prints "; twice ]))
 
-let test_whole_file () =
-  let bytes = read_file trace_path in
-  Alcotest.(check bool) "whole file accepted" true (parses_without_crash bytes)
+let check_settles what bytes =
+  match read_and_settle bytes with
+  | Ok () -> ()
+  | Error e -> Alcotest.failf "%s: %s" what e
+
+let test_whole_file () = check_settles "whole file" (read_file trace_path)
 
 let test_per_line () =
   let bytes = read_file trace_path in
   let lines = String.split_on_char '\n' bytes in
   List.iteri
-    (fun i line ->
-      Alcotest.(check bool)
-        (Fmt.str "line %d accepted" (i + 1))
-        true
-        (parses_without_crash line))
+    (fun i line -> check_settles (Fmt.str "line %d" (i + 1)) line)
     lines
 
 (* The Unicode standard, sec. 3.9 "U+FFFD Substitution of Maximal Subparts",

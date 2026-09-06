@@ -282,7 +282,7 @@ let context_for ?(kept = []) visible =
   Context.v ~custom_properties:(List.rev visible.decls)
     ~runtime_vars:(runtime_var_names kept) ()
 
-let read_custom_components read = function
+let read_custom_components ?(unicode_ranges = false) read = function
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
@@ -290,9 +290,15 @@ let read_custom_components read = function
         _;
       } -> (
       try
+        let components = Properties.components_of_custom_property_value value in
         let cursor =
-          Cursor.of_components
-            (Properties.components_of_custom_property_value value)
+          (* CSS Syntax 3 (ED) sec. 5.5.11: a custom property holds the tokens
+             it was written with, lexed without unicode ranges. A descriptor
+             that asks for them reads the substituted text afresh. *)
+          if unicode_ranges then
+            Cursor.of_string ~unicode_ranges:true
+              (Parser.to_string_minified components)
+          else Cursor.of_components components
         in
         let parsed = read cursor in
         Cursor.ws cursor;
@@ -301,9 +307,9 @@ let read_custom_components read = function
       with Cursor.Parse_error _ -> None)
   | _ -> None
 
-let lookup_visible_custom visible name read =
+let lookup_visible_custom ?unicode_ranges visible name read =
   List.find_map
-    (fun (_, decl) -> read_custom_components read decl)
+    (fun (_, decl) -> read_custom_components ?unicode_ranges read decl)
     (named visible name)
 
 let custom_value_components = function
@@ -594,15 +600,17 @@ let simplify_font_src_descriptor visible entries =
    [leaf] receives the walk so a value nesting its own type carries the same
    [visited] set inwards; without that a reference reachable both directly and
    through the nesting would not terminate. *)
-let simplify_nested_var visible ~read ~(as_var : 'a -> 'a Values.var option)
-    ~(of_var : 'a Values.var -> 'a)
+let simplify_nested_var ?unicode_ranges visible ~read
+    ~(as_var : 'a -> 'a Values.var option) ~(of_var : 'a Values.var -> 'a)
     ~(leaf :
        (visited:string list -> 'a -> 'a) -> visited:string list -> 'a -> 'a)
     (value : 'a) : 'a =
   let rec simplify ~visited (value : 'a) : 'a =
     match as_var value with
     | Some var when not (List.mem var.Values.name visited) -> (
-        match lookup_visible_custom visible var.Values.name read with
+        match
+          lookup_visible_custom ?unicode_ranges visible var.Values.name read
+        with
         | Some found -> simplify ~visited:(var.Values.name :: visited) found
         | None -> (
             (* Nothing defines the name: CSS Variables 1 sec. 3 falls back to
@@ -617,13 +625,14 @@ let simplify_nested_var visible ~read ~(as_var : 'a -> 'a Values.var option)
   simplify ~visited:[] value
 
 (* The common case: the value is flat, so a non-[Var] holds no reference. *)
-let simplify_typed_var visible ~read ~as_var ~of_var value =
-  simplify_nested_var visible ~read ~as_var ~of_var
+let simplify_typed_var ?unicode_ranges visible ~read ~as_var ~of_var value =
+  simplify_nested_var ?unicode_ranges visible ~read ~as_var ~of_var
     ~leaf:(fun _simplify ~visited:_ value -> value)
     value
 
 let simplify_unicode_range_descriptor visible =
-  simplify_typed_var visible ~read:Properties.read_unicode_range
+  simplify_typed_var ~unicode_ranges:true visible
+    ~read:Properties.read_unicode_range
     ~as_var:(function Properties.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Properties.Var v : Properties.unicode_range))
 
@@ -920,6 +929,7 @@ let refs_of_supports_feature : Supports.declaration_feature -> string list =
 let rec refs_of_supports : Supports.t -> string list = function
   | Property feature -> refs_of_supports_feature feature
   | Function _ -> []
+  | General_enclosed text -> refs_of_component_string text
   | Not condition -> refs_of_supports condition
   | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
 

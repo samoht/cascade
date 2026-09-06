@@ -72,6 +72,8 @@ type display =
   | Inline_flex
   | Grid
   | Inline_grid
+  | Grid_lanes
+  | Inline_grid_lanes
   | None
   | Flow_root
   | Table
@@ -1291,11 +1293,18 @@ type text_overflow =
   | Revert_layer
   | Var of text_overflow var
 
+(* CSS Text 4 sec. 5.5: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>]. A single component names the arm it came from;
+   [Mode_style] carries both, and prints mode-first whatever order it was
+   written in. *)
 type text_wrap =
   | Wrap
   | No_wrap
+  | Auto
   | Balance
+  | Stable
   | Pretty
+  | Mode_style of [ `Wrap | `No_wrap ] * [ `Auto | `Balance | `Stable | `Pretty ]
   | Inherit
   | Initial
   | Unset
@@ -1559,6 +1568,22 @@ type white_space =
   | Revert_layer
   | Var of white_space var
 
+(* CSS Text 4 sec. 3.1: [white-space-collapse] says how white space and segment
+   breaks in the source collapse. *)
+type white_space_collapse =
+  | Collapse
+  | Discard
+  | Preserve
+  | Preserve_breaks
+  | Preserve_spaces
+  | Break_spaces
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of white_space_collapse var
+
 type word_break =
   | Normal
   | Break_all
@@ -1655,6 +1680,7 @@ type list_style_type =
   | Trad_chinese_informal
   | Trad_chinese_formal
   | Ethiopic_numeric
+  | Name of string
   | String of string
   | Symbols of symbols_type option * list_style_symbol list
   | Inherit
@@ -1786,6 +1812,23 @@ type logical_border_width =
   | Revert
   | Revert_layer
   | Var of logical_border_width var
+
+(* border-inline-style / border-block-style take one or two <line-style> values,
+   mirroring logical_border_width. *)
+type logical_border_style =
+  | Single of border_style
+  | Pair of border_style * border_style
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_style var
+
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands. It
+   is not in a CSS specification; the shape is what WebKit and Blink accept and
+   what their CSSOM reports back. *)
+type webkit_text_stroke = { width : border_width option; color : color option }
 
 type outline_style =
   | None
@@ -2455,8 +2498,20 @@ type text_shadow =
   | Revert_layer
   | Var of text_shadow var
 
+type filter_function =
+  | Blur_function
+  | Brightness_function
+  | Contrast_function
+  | Grayscale_function
+  | Hue_rotate_function
+  | Invert_function
+  | Opacity_function
+  | Saturate_function
+  | Sepia_function
+
 type filter =
   | None
+  | Omitted of filter_function
   | Blur of length
   | Brightness of number_percentage
   | Contrast of number_percentage
@@ -2618,6 +2673,24 @@ type position_value =
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
   | Var of position_value var
+
+(* CSS Backgrounds 4 sec. 3.3: [background-position-x] and
+   [background-position-y] each take [center | [<edge>? <length-percentage>]].
+   One type serves both, each edge keyword naming exactly one axis, and the
+   per-property reader refuses the other axis's keywords. *)
+type position_axis_edge = Left | Right | Top | Bottom
+
+type background_position_axis =
+  | Center
+  | Edge of position_axis_edge
+  | Offset of length_percentage
+  | Edge_offset of position_axis_edge * length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of background_position_axis var
 
 type radial_gradient_config = {
   shape : radial_shape option;
@@ -3301,9 +3374,12 @@ type position_try_fallback =
   | Flip_start
   | Name of string
 
+(* CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
+   [<dashed-ident> || <try-tactic>], so it holds a group of components rather
+   than a single one. *)
 type position_try_fallbacks =
   | None
-  | Fallbacks of position_try_fallback list
+  | Fallbacks of position_try_fallback list list
   | Initial
   | Inherit
   | Unset
@@ -3856,6 +3932,30 @@ type column_count =
   | Revert
   | Revert_layer
   | Var of column_count var
+
+(* CSS Multicol 2 sec. 4.2: [column-height] is [auto | <length [0,inf]>]; it
+   takes no percentage, which Chrome 146 refuses. Sec. 4.4 gives [column-wrap]
+   the three keywords below. Both start at [auto]. *)
+type column_height =
+  | Auto
+  | Height of length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_height var
+
+type column_wrap =
+  | Auto
+  | Nowrap
+  | Wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_wrap var
 
 type column_span =
   | None
@@ -4622,7 +4722,7 @@ type 'a property =
   | Background_color : color property
   | Color : color property
   | Border_color : color list property
-  | Border_style : border_style property
+  | Border_style : border_style list property
   | Border_top_style : border_style property
   | Border_right_style : border_style property
   | Border_bottom_style : border_style property
@@ -4755,10 +4855,10 @@ type 'a property =
   | Border_image_width : border_image_width property
   | Border_image_outset : border_image_outset property
   | Border_radius : border_radius property
-  | Border_top_left_radius : length property
-  | Border_top_right_radius : length property
-  | Border_bottom_left_radius : length property
-  | Border_bottom_right_radius : length property
+  | Border_top_left_radius : length list property
+  | Border_top_right_radius : length list property
+  | Border_bottom_left_radius : length list property
+  | Border_bottom_right_radius : length list property
   | Border_top_color : color property
   | Border_right_color : color property
   | Border_bottom_color : color property
@@ -4769,12 +4869,12 @@ type 'a property =
   | Border_block_end_color : color property
   | Border_inline_color : logical_border_color property
   | Border_block_color : logical_border_color property
-  | Border_inline_style : border_style property
-  | Border_block_style : border_style property
-  | Border_start_start_radius : length property
-  | Border_start_end_radius : length property
-  | Border_end_start_radius : length property
-  | Border_end_end_radius : length property
+  | Border_inline_style : logical_border_style property
+  | Border_block_style : logical_border_style property
+  | Border_start_start_radius : length list property
+  | Border_start_end_radius : length list property
+  | Border_end_start_radius : length list property
+  | Border_end_end_radius : length list property
   | Opacity : opacity property
   | Fill_opacity : opacity property
   | Stroke_opacity : opacity property
@@ -4821,6 +4921,7 @@ type 'a property =
   | Forced_color_adjust : forced_color_adjust property
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
+  | White_space_collapse : white_space_collapse property
   | Border : border property
   | Border_block : border property
   | Border_block_start : border property
@@ -4841,6 +4942,8 @@ type 'a property =
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
   | Webkit_text_fill_color : color property
+  | Webkit_text_stroke : webkit_text_stroke property
+  | Webkit_text_stroke_width : border_width property
   | Webkit_text_stroke_color : color property
   | Text_indent : text_indent_value property
   | List_style : list_style property
@@ -4992,8 +5095,12 @@ type 'a property =
   | Page_size : page_size property
   | Columns : columns_value property
   | Column_width : column_width property
+  | Column_height : column_height property
+  | Column_wrap : column_wrap property
   | Column_count : column_count property
   | Column_rule : border property
+  | Column_rule_width : border_width property
+  | Column_rule_style : border_style property
   | Column_rule_color : color property
   | Column_span : column_span property
   | Word_spacing : length property
@@ -5023,6 +5130,10 @@ type 'a property =
   | Vertical_align : vertical_align property
   | Font_family : font_family property
   | Background_position : background_position property
+  | Background_position_x : background_position_axis property
+  | Background_position_y : background_position_axis property
+  | Webkit_mask_position_x : background_position_axis property
+  | Webkit_mask_position_y : background_position_axis property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
   | Webkit_font_smoothing : webkit_font_smoothing property
@@ -5219,4 +5330,9 @@ let equal_container_shorthand (a : container_shorthand) b = a = b
 let equal_paint_order_keyword (a : paint_order_keyword) b = a = b
 let equal_paint_order (a : paint_order) b = a = b
 let equal_border_width (a : border_width) b = a = b
+let equal_overscroll_behavior (a : overscroll_behavior) b = a = b
+
+let equal_contain_intrinsic_size_item (a : contain_intrinsic_size_item) b =
+  a = b
+
 let equal_border_style (a : border_style) b = a = b

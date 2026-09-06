@@ -52,26 +52,58 @@ type match_result =
   | Matches  (** The selector matches the node. *)
   | No_match  (** The selector is modelled and does not match the node. *)
   | Unsupported
-      (** The selector is outside what the matcher models, so neither answer is
-          available, for any node. *)
+      (** Neither answer is available. Most forms go unanswered for every node,
+          and [:empty] under {!constructor-Browser} for some: see
+          {!type-reading}. *)
 
-val supported : Selector.t -> bool
-(** [supported sel] is whether the matcher has a model for [sel], that is,
-    whether {!Make.match_selector} answers it with something other than
-    {!constructor-Unsupported}. The answer is a fact about [sel] alone, which is
-    why it needs no node.
+(** Which reading of Selectors the matcher answers by.
+
+    Two forms selectors-4 defines are implemented by no engine: sec. 6.3's [s]
+    attribute flag, which engines refuse along with the rule carrying it, and
+    sec. 13.2's [:empty] over an element holding nothing but document white
+    space, the Level 4 change engines have not taken.
+
+    The two are declined differently, because sec. 6.3 is about the selector and
+    sec. 13.2 about the element. The [s] flag is declined for every node. Sec.
+    13.2's note records that Level 2 and Level 3 matched an element with no
+    children at all, which is what every engine still does, so the readings part
+    over the white-space element alone: an element with no children of any kind
+    is [:empty] to both and one holding an element or other text to neither, and
+    {!constructor-Browser} answers those as {!constructor-Spec} does. *)
+type reading =
+  | Browser
+      (** Decline what the specification and the engines answer differently. An
+          answer there would be a fact about the specification, and {!Apply}
+          inlines a rule out of the stylesheet while {!Prune} deletes it, so
+          either would rewrite a page against the way its own browser renders
+          it. *)
+  | Spec  (** Answer them as selectors-4 defines them. *)
+
+val supported : ?reading:reading -> Selector.t -> bool
+(** [supported ?reading sel] is whether the matcher answers [sel] for every
+    node, that is, whether {!Make.match_selector} is something other than
+    {!constructor-Unsupported} whatever it is given. The answer is a fact about
+    [sel] alone, which is why it needs no node, and it is the conservative half
+    of the question: [false] says some node goes unanswered, not that this one
+    does. A caller deciding per rule, before it has a node, wants exactly that;
+    one holding a node wants {!Make.match_selector}, which under
+    {!constructor-Browser} answers [:empty] for every element but the one the
+    readings part over. [reading] defaults to {!constructor-Browser}.
 
     Modelled: the universal, type, class, id and attribute selectors, each
-    without a namespace, an attribute carrying either case flag ([i], [s]) or
-    none; [:root] and [:scope], which name the same element here (selectors-4
-    sec. 8.4) since no scoping root is ever handed to the matcher; [:empty]; the
-    child-indexed [:first-child], [:last-child], [:only-child], [:nth-child()]
-    and [:nth-last-child()], the last two with or without their [of S] argument;
-    the typed [:first-of-type], [:last-of-type], [:only-of-type],
-    [:nth-of-type()] and [:nth-last-of-type()]; [:has()]; the descendant, child
-    and sibling combinators; and [:is()], [:where()], [:not()] and selector
-    lists over those - a list is only as modelled as its least modelled branch,
-    and so is an [of S] or a [:has()] argument.
+    without a namespace, an attribute carrying the [i] case flag or none;
+    [:root] and [:scope], which name the same element here (selectors-4 sec.
+    8.4) since no scoping root is ever handed to the matcher; the child-indexed
+    [:first-child], [:last-child], [:only-child], [:nth-child()] and
+    [:nth-last-child()], the last two with or without their [of S] argument; the
+    typed [:first-of-type], [:last-of-type], [:only-of-type], [:nth-of-type()]
+    and [:nth-last-of-type()]; [:has()]; the descendant, child and sibling
+    combinators; and [:is()], [:where()], [:not()] and selector lists over those
+    \- a list is only as modelled as its least modelled branch, and so is an
+    [of S] or a [:has()] argument.
+
+    Modelled under {!constructor-Spec} alone: [:empty] and an attribute carrying
+    the [s] case flag, the two forms {!type-reading} is about.
 
     Not modelled, and for two different reasons. Some forms would need a {!NODE}
     to carry more than a tree of named elements: anything with a namespace,
@@ -98,16 +130,17 @@ val layer_order : Stylesheet.t -> string list
     however it was written ([@layer a.b] or [@layer a { @layer b }]). Each ident
     of a path carries the escapes that read it back (css-syntax-3 sec. 2.1), so
     the layer named [a.b] is the path [a\.b] and stays apart from the sublayer
-    [a.b]. Layers come in order of first appearance with each sublayer inside
-    its parent's run (css-cascade-5 sec. 6.4.2), and an [@layer a, b;] statement
-    declares its names there just as a block does. Every anonymous
-    [@layer { ... }] block is a layer of its own, keyed by a path holding a
-    U+0000 that no author can write - a caller that prints these paths has to
-    spell those out itself. The layers counted are those {!Make.resolve} ranks
-    against, so a layer declared inside one of the blocks it does not walk - a
-    conditional group rule ([@media], [@supports], [@container],
-    [@-moz-document], [@when], [@else]), [@starting-style], [@scope], or an
-    origin wrapper - is not part of this order.
+    [a.b]. Sibling layers come in order of first appearance, each sublayer
+    inside its parent's run (css-cascade-5 sec. 6.4.2) and the parent itself at
+    the end of that run, since its own rules sort after every rule in a sublayer
+    (sec. 6.4.3). An [@layer a, b;] statement declares its names there just as a
+    block does. Every anonymous [@layer { ... }] block is a layer of its own,
+    keyed by a path holding a U+0000 that no author can write - a caller that
+    prints these paths has to spell those out itself. The layers counted are
+    those {!Make.resolve} ranks against, so a layer declared inside one of the
+    blocks it does not walk - a conditional group rule ([@media], [@supports],
+    [@container], [@-moz-document], [@when], [@else]), [@starting-style],
+    [@scope], or an origin wrapper - is not part of this order.
 
     This is the [~layer_order] that {!Stylesheet.cascade_layer_precedence_rank}
     expects. *)
@@ -124,30 +157,36 @@ val prepare : Stylesheet.t -> prepared
     the flattening per node. *)
 
 module Make (N : NODE) : sig
-  val match_selector : Selector.t -> N.t -> match_result
-  (** [match_selector sel node] is what the matcher can say about [sel] and
-      [node]. It is [Unsupported] exactly when [sel] is not {!supported}, for
-      every [node]. *)
+  val match_selector : ?reading:reading -> Selector.t -> N.t -> match_result
+  (** [match_selector ?reading sel node] is what the matcher can say about [sel]
+      and [node]. [supported ?reading sel] holding means this never answers
+      {!constructor-Unsupported}, for any [node]; it failing means some node
+      goes unanswered, which under {!constructor-Browser} is the [:empty] one
+      the readings part over and need not be this [node]. [reading] defaults to
+      {!constructor-Browser}. *)
 
-  val matches : Selector.t -> N.t -> bool
-  (** [matches sel node] is whether [sel] is known to match [node], that is,
-      whether {!match_selector} is [Matches]. It folds [Unsupported] in with
-      [No_match], so a caller that has to tell the two apart wants
+  val matches : ?reading:reading -> Selector.t -> N.t -> bool
+  (** [matches ?reading sel node] is whether [sel] is known to match [node],
+      that is, whether {!match_selector} is [Matches]. It folds [Unsupported] in
+      with [No_match], so a caller that has to tell the two apart wants
       {!match_selector}. *)
 
-  val resolve_prepared : prepared -> N.t -> Declaration.declaration list
-  (** [resolve_prepared prepared node] is {!resolve} against an already
+  val resolve_prepared :
+    ?reading:reading -> prepared -> N.t -> Declaration.declaration list
+  (** [resolve_prepared ?reading prepared node] is {!resolve} against an already
       {!prepare}d sheet. Same result, without redoing the sheet-only work per
       node. *)
 
-  val resolve : Stylesheet.t -> N.t -> Declaration.declaration list
-  (** [resolve sheet node] is [resolve_prepared (prepare sheet) node]: the
-      declarations that win for [node] after flattening nesting and applying the
-      cascade: selector matching, [!important] over normal, then cascade layer,
-      specificity and source order. [@layer] blocks and [@layer a, b;]
-      statements order the layers by first appearance, sublayers included; among
-      normal declarations the last layer wins and an unlayered declaration beats
-      them all, and for [!important] declarations that order reverses.
+  val resolve :
+    ?reading:reading -> Stylesheet.t -> N.t -> Declaration.declaration list
+  (** [resolve ?reading sheet node] is [resolve_prepared (prepare sheet) node]:
+      the declarations that win for [node] after flattening nesting and applying
+      the cascade: selector matching, [!important] over normal, then cascade
+      layer, specificity and source order. [@layer] blocks and [@layer a, b;]
+      statements order the layers by first appearance, sublayers included and
+      each parent behind its own sublayers; among normal declarations the last
+      layer wins and an unlayered declaration beats them all, and for
+      [!important] declarations that order reverses.
 
       Style rules and [@layer] are the only blocks walked. A rule inside a
       conditional group rule ([@media], [@supports], [@container],

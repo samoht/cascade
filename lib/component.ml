@@ -72,6 +72,18 @@ let source_loc : t -> Loc.t = function
 
 let rule_loc : rule -> Loc.t = function Qualified r -> r.loc | At r -> r.loc
 
+let rec is_any_value components =
+  List.for_all
+    (function
+      | Preserved { kind = Token.Bad_string | Token.Bad_url | Token.Close _; _ }
+        ->
+          false
+      | Block { node = { value; closed; _ }; _ } -> closed && is_any_value value
+      | Func { node = { arguments; terminated; _ }; _ } ->
+          terminated && is_any_value arguments
+      | Preserved _ -> true)
+    components
+
 let is_whitespace = function
   | Preserved { kind = Token.Whitespace; _ } -> true
   | Preserved _ | Block _ | Func _ -> false

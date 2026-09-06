@@ -40,8 +40,11 @@ let check_font_style =
 let check_font_display =
   check_value_cursor "font-display" read_font_display pp_font_display
 
+(* CSS Syntax 3 sec. 5.5.11 is the one caller that asks the tokenizer for
+   unicode ranges, so these vectors read as that descriptor's value does. *)
 let check_unicode_range =
-  check_value_cursor "unicode-range" read_unicode_range pp_unicode_range
+  check_value_cursor ~unicode_ranges:true "unicode-range" read_unicode_range
+    pp_unicode_range
 
 let check_text_align =
   check_value_cursor "text-align" read_text_align pp_text_align
@@ -372,6 +375,9 @@ let check_text_shadow =
 
 let check_shadow = check_value_cursor "shadow" read_shadow pp_shadow
 let check_filter = check_value_cursor "filter" read_filter pp_filter
+
+let check_filter_function =
+  check_value_cursor "filter function" read_filter_function pp_filter_function
 
 let check_background_attachment =
   check_value_cursor "background-attachment" read_background_attachment
@@ -941,6 +947,10 @@ let check_logical_border_color =
   check_value_cursor "logical_border_color" read_logical_border_color
     pp_logical_border_color
 
+let check_logical_border_style =
+  check_value_cursor "logical_border_style" read_logical_border_style
+    pp_logical_border_style
+
 let check_logical_border_width =
   check_value_cursor "logical_border_width" read_logical_border_width
     pp_logical_border_width
@@ -1221,6 +1231,11 @@ let test_display () =
   check_display "inline-flex";
   check_display "grid";
   check_display "inline-grid";
+  (* CSS Grid 3 (ED, 2 September 2026) sec. 2.2 adds two values to [display]:
+     "New values: grid-lanes | inline-grid-lanes". They establish grid lanes
+     layout at block and inline level. *)
+  check_display "grid-lanes";
+  check_display "inline-grid-lanes";
   check_display "flow-root";
   check_display "table";
   check_display "table-row";
@@ -1258,6 +1273,10 @@ let test_display () =
   (* CSS-wide keyword supported by this reader *)
   check_display "unset";
   neg_cursor read_display "invalid-display";
+  (* sec. 2.2 states the two as whole [display] values and adds neither to
+     [<display-inside>], so neither pairs with a [<display-outside>]. *)
+  neg_cursor ~allow_partial:true read_display "block grid-lanes";
+  neg_cursor ~allow_partial:true read_display "inline inline-grid-lanes";
   (* multiple values *)
   neg_cursor ~allow_partial:true read_display "block inline";
   neg_cursor read_display "flex-";
@@ -1507,12 +1526,17 @@ let test_text_overflow () =
 let test_text_wrap () =
   check_text_wrap "wrap";
   check_text_wrap "nowrap";
+  check_text_wrap "auto";
   check_text_wrap "balance";
+  check_text_wrap "stable";
   check_text_wrap "pretty";
+  check_text_wrap "nowrap balance";
+  check_text_wrap ~expected:"nowrap balance" "balance nowrap";
   check_text_wrap "inherit";
   neg_cursor read_text_wrap "invalid-wrap";
   (* contradictory *)
   neg_cursor ~allow_partial:true read_text_wrap "wrap nowrap";
+  neg_cursor ~allow_partial:true read_text_wrap "balance pretty";
   (* wrong form *)
   neg_cursor read_text_wrap "no-wrap";
   neg_cursor read_text_wrap "balanced"
@@ -2298,8 +2322,9 @@ let test_list_style_type () =
   check_list_style_type "katakana";
   check_list_style_type "ethiopic-numeric";
   check_list_style_type "disclosure-open";
-  (* An unknown bare identifier is still rejected (no @counter-style here). *)
-  neg_cursor read_list_style_type "invalid-style";
+  (* CSS Lists 3 section 3.4 accepts custom counter-style names, but the
+     <custom-ident> grammar reserves [default]. *)
+  neg_cursor read_list_style_type "default";
   (* CSS Lists 3 sec. 6.2: [symbols() = symbols( <symbols-type>? [ <string> |
      <image> ]+ )]. [Cursor.call] did not require the reader to consume its
      whole sub-cursor, so a trailing token the [<symbols-type>? [<string> |
@@ -3785,6 +3810,26 @@ let test_text_shadow () =
   check_text_shadow "0 0 10px";
   neg_cursor read_text_shadow "invalid-shadow"
 
+let test_filter_function () =
+  List.iter
+    (fun name ->
+      check_filter_function ~roundtrip:true name;
+      check_filter_function ~expected:name (String.uppercase_ascii name))
+    [
+      "blur";
+      "brightness";
+      "contrast";
+      "grayscale";
+      "hue-rotate";
+      "invert";
+      "opacity";
+      "saturate";
+      "sepia";
+    ];
+  neg_cursor read_filter_function "drop-shadow";
+  neg_cursor read_filter_function "unknown";
+  neg_cursor read_filter_function "blur()"
+
 let test_filter () =
   check_filter "none";
   check_filter "blur(5px)";
@@ -4835,6 +4880,7 @@ let spec_generated_box_layout_edges () =
   check_line_fit_edge "text alphabetic";
   check_line_fit_edge_keyword "ideographic-ink";
   check_logical_border_color "red blue";
+  check_logical_border_style "solid dashed";
   check_logical_border_width "1px 2px";
   decl_optimizes ~prop:"border-inline-color" ~held:"red blue" ~into:"red #00f"
     "red blue";
@@ -4878,6 +4924,7 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_line_fit_edge "text text";
   neg_cursor read_line_fit_edge_keyword "baseline";
   neg_cursor ~allow_partial:true read_logical_border_color "red blue green";
+  neg_cursor ~allow_partial:true read_logical_border_style "solid dashed dotted";
   neg_cursor ~allow_partial:true read_logical_border_width "1px 2px 3px";
   neg_cursor read_min_intrinsic_sizing "legacy legacy";
   neg_cursor read_min_intrinsic_sizing_keyword "zero";
@@ -5290,6 +5337,7 @@ let tests =
     test_case "background-image" `Quick test_background_image;
     test_case "url escaping" `Quick test_url_escaping;
     test_case "filter" `Quick test_filter;
+    test_case "filter function" `Quick test_filter_function;
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
       spec_property_grammar_edges;

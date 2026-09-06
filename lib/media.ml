@@ -930,18 +930,24 @@ let rec condition_of_components t components : condition =
   | [] -> err t components "empty media condition"
 
 and condition_in_parens t component : condition =
+  let general_enclosed () =
+    if not (Component.is_any_value [ component ]) then
+      err t [ component ] "invalid general-enclosed media condition";
+    Feature (General_enclosed (string_of_components [ component ]))
+  in
   match component with
   | Component.Block
       { node = { opening = Token.Paren; value; closed = true }; _ } -> (
       match parse_feature_components value with
       | Valid_feature feature -> Feature feature
-      | Invalid_feature -> err t value "invalid media feature"
-      | Not_feature -> condition_of_components t value)
+      | Invalid_feature -> general_enclosed ()
+      | Not_feature -> (
+          try condition_of_components t value
+          with Parse_error _ -> general_enclosed ()))
   | Component.Block { node = { opening = Token.Paren; closed = false; _ }; _ }
     ->
       err t [ component ] "unmatched parenthesis in @media condition"
-  | Component.Func { node = { terminated = true; _ }; _ } ->
-      Feature (General_enclosed (string_of_components [ component ]))
+  | Component.Func { node = { terminated = true; _ }; _ } -> general_enclosed ()
   | Component.Func { node = { terminated = false; _ }; _ } ->
       err t [ component ] "unmatched function in @media condition"
   | Component.Block _ | Component.Preserved _ ->

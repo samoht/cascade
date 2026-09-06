@@ -544,6 +544,27 @@ let special_cases () =
     "inset: 1px 1px 1px 1px";
   check_declaration ~expected:"border-color:red red red red"
     ~optimized:"border-color:red" "border-color: red red red red";
+  (* CSS Backgrounds 3 (ED) sec. 3.2 and 3.3 assign [border-width] and
+     [border-style] over the same four sides, and CSS Logical 1 sec. 4.3 and 4.4
+     give each of the three border axes its own one-to-two assignment. *)
+  check_declaration ~expected:"border-width:2px 2px 2px 2px"
+    ~optimized:"border-width:2px" "border-width: 2px 2px 2px 2px";
+  check_declaration ~expected:"border-width:2px 3px 2px 3px"
+    ~optimized:"border-width:2px 3px" "border-width: 2px 3px 2px 3px";
+  check_declaration ~expected:"border-inline-width:2px 2px"
+    ~optimized:"border-inline-width:2px" "border-inline-width: 2px 2px";
+  check_declaration ~expected:"border-block-width:1px 2px"
+    ~optimized:"border-block-width:1px 2px" "border-block-width: 1px 2px";
+  check_declaration ~expected:"border-block-style:solid solid"
+    ~optimized:"border-block-style:solid" "border-block-style: solid solid";
+  check_declaration ~expected:"column-height:auto"
+    ~optimized:"column-height:auto" "column-height: auto";
+  check_declaration ~expected:"column-height:10px"
+    ~optimized:"column-height:10px" "column-height: 10px";
+  check_declaration ~expected:"column-wrap:wrap" ~optimized:"column-wrap:wrap"
+    "column-wrap: wrap";
+  check_declaration ~expected:"border-inline-color:red red"
+    ~optimized:"border-inline-color:red" "border-inline-color: red red";
 
   (* CSS Lists 3 (ED) sec. 3.6: [list-style] is [<'list-style-position'> ||
      <'list-style-image'> || <'list-style-type'>], so a component left out takes
@@ -700,6 +721,10 @@ let display () =
   c ~expected:"display:inline-flex" "display: inline-flex";
   c ~expected:"display:grid" "display: grid";
   c ~expected:"display:inline-grid" "display: inline-grid";
+  (* CSS Grid 3 (ED, 2 September 2026) sec. 2.2: "New values: grid-lanes |
+     inline-grid-lanes". *)
+  c ~expected:"display:grid-lanes" "display: grid-lanes";
+  c ~expected:"display:inline-grid-lanes" "display: inline-grid-lanes";
   c ~expected:"display:table" "display: table";
   c ~expected:"display:table-row" "display: table-row";
   c ~expected:"display:table-cell" "display: table-cell";
@@ -968,7 +993,29 @@ let text_properties () =
   check_declaration ~expected:"white-space:pre-wrap" "white-space: pre-wrap";
   check_declaration ~expected:"white-space:pre-line" "white-space: pre-line";
   check_declaration ~expected:"white-space:break-spaces"
-    "white-space: break-spaces"
+    "white-space: break-spaces";
+
+  (* CSS Text 4 sec. 5.5: [text-wrap] is [<'text-wrap-mode'> ||
+     <'text-wrap-style'>], with sec. 5.1 giving the mode [wrap | nowrap] and
+     sec. 5.4 the style [auto | balance | stable | pretty]. Either component may
+     be omitted and they may appear in either order, but neither may repeat. *)
+  check_declaration ~expected:"text-wrap:wrap" "text-wrap: wrap";
+  check_declaration ~expected:"text-wrap:nowrap" "text-wrap: nowrap";
+  check_declaration ~expected:"text-wrap:auto" "text-wrap: auto";
+  check_declaration ~expected:"text-wrap:balance" "text-wrap: balance";
+  check_declaration ~expected:"text-wrap:pretty" "text-wrap: pretty";
+  check_declaration ~expected:"text-wrap:stable" "text-wrap: stable";
+  check_declaration ~expected:"text-wrap:nowrap balance"
+    "text-wrap: nowrap balance";
+  (* The two components print mode-first whichever order they arrived in, which
+     is how Chrome serialises them too. *)
+  check_declaration ~expected:"text-wrap:nowrap balance"
+    "text-wrap: balance nowrap";
+  check_declaration ~expected:"text-wrap:wrap auto" "text-wrap: wrap auto";
+  neg_cursor read_declaration "text-wrap: wrap nowrap";
+  neg_cursor read_declaration "text-wrap: wrap wrap";
+  neg_cursor read_declaration "text-wrap: balance pretty";
+  neg_cursor read_declaration "text-wrap: wrap balance pretty"
 
 let flexbox_direction () =
   (* Flex direction *)
@@ -1866,6 +1913,23 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:slide-in"
     "animation-name: slide-in";
   check_declaration ~expected:"animation-name:none" "animation-name: none";
+  (* CSS Animations 1 sec. 3: a <keyframes-name> is a <custom-ident> or a
+     <string>, and only the ident arm excludes none, default and the CSS-wide
+     keywords. Unquoting such a name is a different declaration, and in a list
+     it is no declaration at all. *)
+  check_declaration ~expected:"animation-name:\"unset\""
+    "animation-name: \"unset\"";
+  check_declaration ~expected:"animation-name:\"none\""
+    "animation-name: \"none\"";
+  check_declaration ~expected:"animation-name:\"default\""
+    "animation-name: \"default\"";
+  check_declaration ~expected:"animation-name:\"UNSET\""
+    "animation-name: \"UNSET\"";
+  check_declaration ~expected:"animation-name:\"unset\",\"revert\""
+    "animation-name: \"unset\", \"revert\"";
+  check_declaration ~expected:"animation-name:slide" "animation-name: \"slide\"";
+  check_declaration ~expected:"animation-name:a,b"
+    "animation-name: \"a\", \"b\"";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
   check_declaration ~expected:"animation-duration:.5s"
@@ -1874,6 +1938,17 @@ let animations_timing () =
     ~optimized:"transition-duration:1s" "transition-duration: round(1.1s, .5s)";
   check_declaration ~expected:"animation-duration:2.5s"
     "animation-duration: 2.5s";
+  (* CSS Animations 2 sec. 4.1: [ auto | <time [0s,inf]> ]#, with auto the
+     initial value. The time arm keeps its lower bound, and the delays and
+     transition-duration have no auto arm at all. *)
+  check_declaration ~expected:"animation-duration:auto"
+    "animation-duration: auto";
+  check_declaration ~expected:"animation-duration:auto,1s"
+    "animation-duration: auto, 1s";
+  neg_cursor read_declaration "animation-duration: -1s";
+  neg_cursor read_declaration "transition-duration: auto";
+  neg_cursor read_declaration "animation-delay: auto";
+  neg_cursor read_declaration "transition-delay: auto";
 
   check_declaration ~expected:"animation-timing-function:ease"
     "animation-timing-function: ease";
@@ -2028,8 +2103,17 @@ let animations_state () =
 let animation_drained_shorthand () =
   check_declaration ~expected:"animation:none" ~optimized:"animation:none"
     "animation: none none";
-  check_declaration ~expected:"animation:none" ~optimized:"animation:none"
+  (* CSS Animations 2 sec. 4.1 makes auto the initial duration, so an explicit
+     0s is a value of its own: dropping it says auto, which Chrome resolves to a
+     different animation-duration. The delay's initial is still 0s. *)
+  check_declaration ~expected:"animation:0s" ~optimized:"animation:0s"
     "animation: 0s ease 0s 1 normal none running none";
+  check_declaration ~expected:"animation:spin 0s" "animation: spin 0s";
+  check_declaration ~expected:"animation:spin 0s linear"
+    "animation: spin 0s linear";
+  check_declaration ~expected:"animation:spin" "animation: spin";
+  check_declaration ~expected:"animation:spin" "animation: spin auto";
+  check_declaration ~expected:"animation:spin 1s" "animation: spin 1s 0s";
   (* Controls: the drop still runs wherever a slot outlives it. *)
   check_declaration ~expected:"animation:1s" ~optimized:"animation:1s"
     "animation: 1s none";
@@ -2194,6 +2278,24 @@ let grid () =
   neg_cursor read_declaration "grid-template: 1px / [a]";
   neg_cursor read_declaration "grid: auto-flow [a] / 1px";
 
+  (* CSS Grid 2 sec. 7.4 builds the shorthand from [<'grid-template-rows'> /
+     <'grid-template-columns'>], and sec. 7.2 gives each of those a [none] arm,
+     so [none] is a track list like any other on either side of the slash. *)
+  check_declaration ~expected:"grid-template:none/1fr"
+    "grid-template: none / 1fr";
+  check_declaration ~expected:"grid-template:1fr/none"
+    "grid-template: 1fr / none";
+  check_declaration ~expected:"grid-template:none/none"
+    "grid-template: none / none";
+  check_declaration ~expected:"grid-template:none/auto"
+    "grid-template: none / auto";
+  check_declaration ~expected:"grid:none/200px" "grid: none / 200px";
+  check_declaration ~expected:"grid:200px/none" "grid: 200px / none";
+  check_declaration ~expected:"grid:none/auto" "grid: none / auto";
+  (* sec. 7.8: [auto-flow] with no [<grid-auto-rows>] leaves the row track list
+     empty, which is the same declaration as a [none] rows arm. *)
+  check_declaration ~expected:"grid:none/200px" "grid: auto-flow / 200px";
+
   (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
      declaration, so a CSS-wide keyword is a placement value on its own and
      never one slot of one. *)
@@ -2282,6 +2384,134 @@ let misc () =
 let list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
+  (* CSS Backgrounds 3 sec. 6.1: <shadow> is [<color>? && [<length>{2,4}] &&
+     inset?], so the two offsets alone are a whole shadow whatever they hold,
+     and one length is not. *)
+  check_declaration ~expected:"box-shadow:0 0" "box-shadow: 0 0";
+  check_declaration ~expected:"box-shadow:inset 0 0" "box-shadow: inset 0 0";
+  check_declaration ~expected:"text-shadow:0 0" "text-shadow: 0 0";
+  neg_cursor read_declaration "box-shadow: 0";
+  neg_cursor read_declaration "text-shadow: 1px";
+  neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+
+  (* CSS Transitions 1 sec. 3: the shorthand takes a
+     <single-transition-property>, and none is one of them, so it is the whole
+     value only when the item ends there. The optimizer contracts a none
+     property beside a duration and a timing function into this spelling. *)
+  check_declaration ~expected:"transition:none" "transition: none";
+  check_declaration ~expected:"transition:none 1s" "transition: none 1s";
+  check_declaration ~expected:"transition:none 1s steps(2,end)"
+    "transition: none 1s steps(2, end)";
+  check_declaration ~expected:"transition:none,opacity 1s"
+    "transition: none, opacity 1s";
+
+  (* CSS Text Decoration 4 sec. 2.5: the shorthand is a || of its longhands and
+     [none] is a <text-decoration-line>, so it is the whole value only when
+     nothing follows it. The optimizer contracts a none line beside a style and
+     a colour into exactly this spelling. *)
+  check_declaration ~expected:"text-decoration:none" "text-decoration: none";
+  check_declaration ~expected:"text-decoration:none dotted"
+    "text-decoration: none dotted";
+  check_declaration ~expected:"text-decoration:none dotted #12345680"
+    "text-decoration: none dotted #12345680";
+  check_declaration ~expected:"text-decoration:underline dotted red"
+    "text-decoration: underline dotted red";
+
+  (* CSS Align 3 sec. 5.2: [place-items] is [<'align-items'>
+     <'justify-items'>?], so it takes every <self-position> keyword align-items
+     does, and a lone value sets both axes. The optimizer contracts
+     [align-items: flex-start; justify-items: baseline] into this spelling. *)
+  check_declaration ~expected:"place-items:flex-start baseline"
+    "place-items: flex-start baseline";
+  check_declaration ~expected:"place-items:self-start end"
+    "place-items: self-start end";
+  check_declaration ~expected:"place-items:start baseline"
+    "place-items: start baseline";
+
+  (* CSS Color 5 sec. 5.1: [color(from <origin> srgb r g b)] is the origin's own
+     sRGB channels, so it folds to the origin whether that was written as a hex
+     or as a [color()] the same conversion reaches. *)
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from #b3804d srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from color(srgb .7 .5 .3) srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77/.4)"
+    "color: color(from color(srgb .7 .5 .3/40%) srgb r g b)";
+  check_declaration ~expected:"color:rgb(179 128 77)"
+    "color: color(from color(from color(srgb .7 .5 .3) srgb r g b) srgb r g b)";
+
+  (* CSS Color 4 sec. 9.4: an out-of-range Oklab lightness clamps rather than
+     invalidating the colour, and 0% to 100% is the same 0 to 1 a bare number
+     names, so both spellings clamp alike. *)
+  (* pp holds the percentage spelling; each pair asserts that the out-of-range
+     value reads as the in-range one beside it. *)
+  check_declaration ~expected:"color:oklab(100%0 0)" "color: oklab(100% 0 0)";
+  check_declaration ~expected:"color:oklab(100%0 0)" "color: oklab(200% 0 0)";
+  check_declaration ~expected:"color:oklab(0%0 0)" "color: oklab(0% 0 0)";
+  check_declaration ~expected:"color:oklab(0%0 0)" "color: oklab(-200% 0 0)";
+  check_declaration ~expected:"color:oklch(100%0 0)" "color: oklch(100% 0 0)";
+  check_declaration ~expected:"color:oklch(100%0 0)" "color: oklch(200% 0 0)";
+  check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(0% 0 0)";
+  check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(-200% 0 0)";
+
+  (* [center] minifies to the same pair of percentages a written-out position
+     does, and a percentage delimits itself, so neither spelling keeps the space
+     between them. *)
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(blue),to(yellow))"
+    "background: -webkit-gradient(radial, center center, 0, center center, \
+     100, from(blue), to(yellow))";
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(#00f),to(#ff0))"
+    "background: -webkit-gradient(radial, 50% 50%, 0, 50% 50%, 100, \
+     from(#00f), to(#ff0))";
+  (* A [-webkit-gradient] stop position is a number or a percentage, and the
+     minified spelling is the number, so both read back. *)
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(linear,0 0,0 \
+       100%,from(#00f),color-stop(.5,red),to(#ff0))"
+    "background: -webkit-gradient(linear, 0 0, 0 100%, from(#00f), \
+     color-stop(.5, red), to(#ff0))";
+  check_declaration
+    ~expected:
+      "background:-webkit-gradient(linear,0 0,0 \
+       100%,from(#00f),color-stop(.5,red),to(#ff0))"
+    "background: -webkit-gradient(linear, 0 0, 0 100%, from(#00f), \
+     color-stop(50%, red), to(#ff0))";
+
+  (* CSS Transforms 2 sec. 5: minified [rotate] leads with the angle, and a
+     following axis number that starts with a sign needs no separator. The first
+     one does: the angle ends in its unit, so [0deg-1] is the one dimension
+     [0deg-1]. *)
+  check_declaration ~expected:"rotate:0deg -1 0 0" "rotate: -1 0 0 0deg";
+  check_declaration ~expected:"rotate:45deg 1 0-1" "rotate: 1 0 -1 45deg";
+  check_declaration ~expected:"rotate:x 45deg" "rotate: 1 0 0 45deg";
+
+  (* CSS Syntax 3 sec. 4.3.6 ends a url token at EOF as it does at [)]: the
+     missing closer is a parse error and the token still reads. *)
+  check_declaration ~expected:"background-image:url()" "background-image:url(";
+  check_declaration ~expected:"background-image:url(foo)"
+    "background-image:url(foo";
+  check_declaration ~expected:"background-image:url()" "background-image:url()";
+  (* CSS Backgrounds 3 sec. 6.1 and CSS Text Decoration 3 sec. 5 both build a
+     shadow with &&, so the length run is contiguous and neither the colour nor
+     inset may sit inside it. text-shadow takes three lengths, not four, and one
+     colour. *)
+  check_declaration ~expected:"text-shadow:1px 1px red"
+    "text-shadow: red 1px 1px";
+  check_declaration ~expected:"text-shadow:1px 1px 2px"
+    "text-shadow: 1px 1px 2px";
+  neg_cursor read_declaration "text-shadow: 1px red 1px";
+  neg_cursor read_declaration "text-shadow: 1px 1px 1px 1px";
+  neg_cursor read_declaration "text-shadow: 1px 1px red 1px";
+  neg_cursor read_declaration "text-shadow: red 1px 1px blue";
+  check_declaration ~expected:"box-shadow:inset 1px 1px"
+    "box-shadow: 1px 1px inset";
+  neg_cursor read_declaration "box-shadow: 1px inset 1px";
+  neg_cursor read_declaration "box-shadow: 1px red 1px";
   check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
     ~optimized:"box-shadow:0 1px 3px #0000001f"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
@@ -2380,6 +2610,343 @@ let list_properties () =
     "animation: slide 0.5s ease-out";
   check_declaration ~expected:"animation:spin .5s"
     ~optimized:"animation:spin .5s" "animation: spin 500ms"
+
+let animation_infinite_name () =
+  (* CSS Animations 1 section 3.10 assigns a keyword to another property only
+     when that property has not already been set. Section 3 makes keyframe names
+     case-sensitive, even when their spelling is also a keyword. *)
+  let open Css.Properties in
+  let check_slots input expected_name expected_count =
+    let cursor = Cursor.of_string input in
+    let value = read_animation cursor in
+    Alcotest.(check bool) "consumes animation" true (Cursor.is_done cursor);
+    (match value with
+    | Shorthand { name = Some (Ambiguous name | Name name); iteration_count; _ }
+      ->
+        Alcotest.(check string) "animation name" expected_name name;
+        let shown c =
+          Css.Pp.to_string ~minify:true pp_animation_iteration_count c
+        in
+        Alcotest.(check (option string))
+          "iteration count"
+          (Some (shown expected_count))
+          (Option.map shown iteration_count)
+    | _ -> Alcotest.failf "missing animation name in %s" input);
+    value
+  in
+  List.iter
+    (fun (input, name, count) ->
+      let value = check_slots input name count in
+      List.iter
+        (fun minify ->
+          let printed = Css.Pp.to_string ~minify pp_animation value in
+          ignore (check_slots printed name count))
+        [ false; true ])
+    [
+      ("infinite infinite", "infinite", Infinite);
+      ("infinite INFINITE", "INFINITE", Infinite);
+      ("INFINITE infinite", "infinite", Infinite);
+      ("2 infinite", "infinite", Num 2.);
+      ("2 InFiNiTe", "InFiNiTe", Num 2.);
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("animation:" ^ value))
+    [
+      "2 3";
+      "infinite 2";
+      "infinite infinite infinite";
+      "spin infinite infinite";
+    ]
+
+let animation_keyword_names () =
+  (* CSS Animations 1 sections 3 and 3.10: names are case-sensitive and
+     colliding keywords fill the other shorthand slots before the name. *)
+  let open Css.Properties in
+  let read input =
+    let cursor = Cursor.of_string input in
+    match read_animation cursor with
+    | Shorthand value when Cursor.is_done cursor -> value
+    | _ -> Alcotest.failf "expected one animation: %s" input
+  in
+  let check_slots expected name input =
+    let actual = read input in
+    (match actual.name with
+    | Some (Name value | Ambiguous value) ->
+        Alcotest.(check string) input name value
+    | _ -> Alcotest.failf "missing name in %s" input);
+    (* The slots read the same when the value they print does, and the printed
+       form says which slot differs when they do not. *)
+    let without_name v =
+      Css.Pp.to_string ~minify:true pp_animation
+        (Shorthand { v with name = Option.None })
+    in
+    Alcotest.(check string)
+      (input ^ " keeps non-name slots")
+      (without_name expected) (without_name actual)
+  in
+  let check_print expected name value =
+    List.iter
+      (fun minify ->
+        check_slots expected name (Css.Pp.to_string ~minify pp_animation value))
+      [ false; true ]
+  in
+  List.iter
+    (fun (prefix, names) ->
+      let expected = read (prefix ^ " keyframe") in
+      List.iter
+        (fun name ->
+          List.iter
+            (fun name ->
+              let input = prefix ^ " " ^ name in
+              check_slots expected name input;
+              check_print expected name (Shorthand (read input));
+              check_print expected name
+                (animation_shorthand ~name ?duration:expected.duration
+                   ?timing_function:expected.timing_function
+                   ?delay:expected.delay
+                   ?iteration_count:expected.iteration_count
+                   ?direction:expected.direction ?fill_mode:expected.fill_mode
+                   ?play_state:expected.play_state ?timeline:expected.timeline
+                   ()))
+            [ name; String.uppercase_ascii name ])
+        names)
+    [
+      ( "linear",
+        [
+          "ease";
+          "linear";
+          "ease-in";
+          "ease-out";
+          "ease-in-out";
+          "step-start";
+          "step-end";
+        ] );
+      ("reverse", [ "normal"; "reverse"; "alternate"; "alternate-reverse" ]);
+      ("forwards", [ "forwards"; "backwards"; "both" ]);
+      ("paused", [ "running"; "paused" ]);
+      ("2", [ "infinite" ]);
+    ];
+  let expected = read "keyframe" in
+  List.iter
+    (fun name -> check_print expected name (animation_shorthand ~name ()))
+    [ "EASE"; "LINEAR"; "NORMAL"; "BOTH"; "PAUSED"; "INFINITE" ]
+
+let list_style_custom_names () =
+  (* CSS Lists 3 sections 3.4 and 3.6 allow custom counter-style names,
+     including names that collide with an already-filled position slot. The
+     referenced counter style need not be defined in this stylesheet. *)
+  List.iter
+    (fun name -> check_declaration ~roundtrip:true ("list-style-type:" ^ name))
+    [ "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers" ];
+  List.iter
+    (fun (value, expected) ->
+      check_declaration ~roundtrip:true ~expected:("list-style:" ^ expected)
+        ~optimized:("list-style:" ^ expected) ("list-style:" ^ value))
+    [
+      ("FootSteps inside", "FootSteps inside");
+      ("inside outside", "inside outside");
+      ("inside OUTSIDE", "inside OUTSIDE");
+      ("outside inside", "outside inside");
+      ("outside OUTSIDE", "outside OUTSIDE");
+      ("inside inside", "inside inside");
+    ];
+  List.iter
+    (none_cursor read_declaration)
+    [
+      "list-style-type:default";
+      "list-style-type:FootSteps Other";
+      "list-style:inside outside outside";
+      "list-style:inside FootSteps Other";
+    ]
+
+let auto_is_not_a_color () =
+  (* CSS Color 4 section 4.1 excludes auto from <color>. SVG 2 section 13.2 uses
+     <color> both as paint and as a paint-server fallback. *)
+  List.iter
+    (fun property ->
+      List.iter
+        (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+        [
+          "auto";
+          "AUTO";
+          "color-mix(in srgb,auto,red)";
+          "light-dark(auto,red)";
+          "rgb(from auto r g b)";
+        ])
+    [
+      "color";
+      "background-color";
+      "border-color";
+      "text-decoration-color";
+      "fill";
+      "stroke";
+      "stop-color";
+    ];
+  List.iter
+    (fun property ->
+      none_cursor read_declaration (property ^ ":url(#paint) auto");
+      check_declaration ~roundtrip:true (property ^ ":none");
+      check_declaration ~roundtrip:true (property ^ ":context-fill");
+      check_declaration ~roundtrip:true (property ^ ":url(#paint)red"))
+    [ "fill"; "stroke" ];
+  (* CSS UI 4 gives these properties an explicit auto alternative. *)
+  List.iter
+    (fun property ->
+      check_declaration ~roundtrip:true (property ^ ":auto");
+      check_declaration ~roundtrip:true (property ^ ":red");
+      check_declaration ~roundtrip:true (property ^ ":var(--color,auto)"))
+    [ "accent-color"; "caret-color"; "outline-color" ];
+  (* A var() fallback is a token stream; validity waits for substitution. *)
+  check_declaration ~roundtrip:true "color:var(--color,auto)";
+  check_declaration ~roundtrip:true "caret:auto";
+  check_declaration ~roundtrip:true "scrollbar-color:auto"
+
+let outline_offset_length_only () =
+  (* CSS UI 4 section 3.5 takes <length>, with no percentage basis, and
+     explicitly permits negative offsets. Section 2.1 admits CSS-wide values. *)
+  List.iter
+    (fun value -> check_declaration ~roundtrip:true ("outline-offset:" ^ value))
+    [
+      "0";
+      "2px";
+      "-2px";
+      "-1em";
+      "calc(1em - 2px)";
+      "min(-1em,2px)";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+      "var(--offset,10%)";
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("outline-offset:" ^ value))
+    [
+      "10%";
+      "0%";
+      "-10%";
+      "calc(1% + 2px)";
+      "min(1%,2px)";
+      "max(1px,2%)";
+      "clamp(0px,10%,2px)";
+      "auto";
+      "min-content";
+      "fit-content(2px)";
+      "1s";
+      "45deg";
+    ]
+
+let line_height_step_length_only () =
+  (* CSS Rhythmic Sizing 1 section 3 takes <length [0,infinity]> with no
+     percentage basis; section 1.2 also admits CSS-wide keywords. *)
+  List.iter
+    (fun value ->
+      check_declaration ~roundtrip:true ("line-height-step:" ^ value))
+    [
+      "0";
+      "4px";
+      "1em";
+      "calc(1em - 2px)";
+      "min(1em,2px)";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+      "var(--step,10%)";
+    ];
+  List.iter
+    (fun value -> none_cursor read_declaration ("line-height-step:" ^ value))
+    [
+      "10%";
+      "0%";
+      "calc(1% + 2px)";
+      "min(1%,2px)";
+      "max(1px,2%)";
+      "clamp(0px,10%,2px)";
+      "-4px";
+      "auto";
+      "normal";
+      "none";
+      "min-content";
+      "fit-content(2px)";
+      "1s";
+      "45deg";
+    ]
+
+let gap_normal () =
+  (* CSS Box Alignment 3 sections 8.1 and 8.2 admit normal in both gap longhands
+     and either shorthand slot. Its used value depends on layout, so normal
+     cannot be replaced with zero without a layout context. *)
+  List.iter
+    (fun property ->
+      List.iter
+        (fun value ->
+          let css = property ^ ":" ^ value in
+          check_declaration ~roundtrip:true ~optimized:css css)
+        [ "normal"; "10%"; "2px" ];
+      check_declaration ~roundtrip:true (property ^ ":var(--gap,normal)");
+      check_declaration ~roundtrip:true ~expected:(property ^ ":normal")
+        (property ^ ":NORMAL");
+      List.iter
+        (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+        [ "normal normal"; "normal 2px"; "auto"; "-2px" ])
+    [ "row-gap"; "column-gap" ];
+  List.iter
+    (fun value ->
+      let css = "gap:" ^ value in
+      check_declaration ~roundtrip:true ~optimized:css css)
+    [ "normal"; "normal 2px"; "2px normal"; "normal 10%" ];
+  check_declaration ~roundtrip:true ~expected:"gap:normal"
+    ~optimized:"gap:normal" "gap:normal normal";
+  List.iter
+    (fun value -> none_cursor read_declaration ("gap:" ^ value))
+    [ "normal inherit"; "inherit normal"; "normal normal normal" ]
+
+let sizing_keyword_domains () =
+  (* CSS Sizing 3 sections 3.1.1-3.1.3 distinguish auto sizes from none
+     maximums. CSS Logical Properties 1 section 4.1 uses the same grammars for
+     the corresponding flow-relative dimensions. *)
+  List.iter
+    (fun dimension ->
+      List.iter
+        (fun (prefix, valid, invalid) ->
+          let property = prefix ^ dimension in
+          List.iter
+            (fun value ->
+              check_declaration ~roundtrip:true (property ^ ":" ^ value))
+            [
+              valid;
+              "min-content";
+              "max-content";
+              "fit-content(10%)";
+              "0";
+              "2px";
+              "10%";
+              "calc(1em + 2px)";
+              "inherit";
+              "initial";
+              "unset";
+              "revert";
+              "revert-layer";
+              "var(--size," ^ invalid ^ ")";
+            ];
+          List.iter
+            (fun value -> none_cursor read_declaration (property ^ ":" ^ value))
+            [
+              invalid;
+              String.uppercase_ascii invalid;
+              "normal";
+              "from-font";
+              "size";
+            ])
+        [
+          ("", "auto", "none");
+          ("min-", "auto", "none");
+          ("max-", "none", "auto");
+        ])
+    [ "width"; "height"; "inline-size"; "block-size" ]
 
 let custom_properties () =
   (* Basic custom properties *)
@@ -2591,7 +3158,28 @@ let invalid () =
   neg "color: red inherit";
   neg "font-size: unset 12px";
   neg "opacity: revert 0.5";
-  neg "z-index: revert-layer 10"
+  neg "z-index: revert-layer 10";
+
+  (* CSS Backgrounds 3 (ED) sec. 5.4 gives [border-image-outset] a number or a
+     length per side and no keyword, and sec. 5.3 lets [border-image-width] add
+     [auto] and nothing else. The generic length reader takes a keyword list of
+     its own, [stretch] included, which is a repeat keyword here. *)
+  neg "border-image-outset: stretch";
+  neg "border-image-outset: 0 stretch";
+  neg "border-image-outset: auto";
+  neg "border-image-width: stretch";
+  neg "border-image-width: 1 min-content";
+
+  (* CSS Multicol 2 sec. 4.2 gives [column-height] a length and no percentage,
+     which Chrome 146 refuses, and sec. 4.4 gives [column-wrap] three
+     keywords. *)
+  neg "column-height: 50%";
+  neg "column-height: nowrap";
+  neg "column-height: min-content";
+  neg "column-height: none";
+  neg "column-height: normal";
+  neg "column-wrap: sideways";
+  neg "column-wrap: 10px"
 
 let spec_property_grammar_table_expansion () =
   (* Cross-spec property grammar vectors. This grows toward an exhaustive table:
@@ -2780,7 +3368,7 @@ let spec_property_grammar_table_expansion () =
       ("shape-margin", "-1px");
       ("color", "light-dark(black)");
       ("mix-blend-mode", "normal multiply");
-      ("filter", "blur()");
+      ("filter", "blur(1px, 2px)");
       ("font", "bold serif");
       ("font-stretch", "-10%");
       ("font-feature-settings", "\"kern\" maybe");
@@ -3333,11 +3921,24 @@ let spec_custom_tokens () =
     "var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--nested-var:var(--a,var(--b,{color:red;}))"
     "--nested-var: var(--a, var(--b, { color: red; }))";
-  check_declaration ~expected:"--bad-string:\"unterminated"
+  (* CSS Syntax 3 sec. 4.3.5 returns the string token when the input ends before
+     the closing quote, so the value holds a string and prints as one. Keeping
+     the original bytes instead left it swallowing whatever followed. *)
+  check_declaration ~expected:"--bad-string:\"unterminated\""
     "--bad-string: \"unterminated";
   neg_cursor read_declaration "--: value";
   neg_cursor read_declaration "-x: value";
-  neg_cursor read_declaration "--x"
+  neg_cursor read_declaration "--x";
+
+  (* CSS Syntax 3 sec. 7.2: a <declaration-value> is any token sequence that
+     holds no unmatched closer and no bad-url, so a custom property whose value
+     carries one is invalid rather than opaque. *)
+  check_declaration ~expected:"--x:hover{}" "--x: hover { }";
+  check_declaration ~expected:"--x:a b" "--x: a b";
+  neg_cursor read_declaration "--x: hover { ] }";
+  neg_cursor read_declaration "--x: a ] b";
+  neg_cursor read_declaration "--x: a ) b";
+  neg_cursor read_declaration "--x: url(a b)"
 
 (* CSS Fonts 4 sec. 2.1.1 gives a [<font-family-name>] two spellings, a
    [<string>] and a [<custom-ident>+], and they name the same family whether
@@ -3405,6 +4006,90 @@ let color_functions () =
   (* color() with alternate spaces and alpha *)
   check_declaration ~expected:"color:color(display-p3 1 0 0/.5)"
     "color: color(display-p3 1 0 0 / 0.5)"
+
+let filter_omitted_arguments () =
+  (* Filter Effects 1 section 6.1: omitted blur/hue-rotate arguments default to
+     zero; all optional number-percentage arguments default to one. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (fn, default) ->
+          let omitted = String.concat "" [ prop; ":"; fn; "()" ] in
+          let explicit =
+            String.concat "" [ prop; ":"; fn; "("; default; ")" ]
+          in
+          check_declaration ~expected:omitted omitted;
+          check_declaration ~expected:omitted
+            (String.concat "" [ prop; ":"; fn; "( /**/ )" ]);
+          let canonical text =
+            of_string text |> normalize |> string_of_value ~minify:true
+          in
+          Alcotest.(check string)
+            omitted (canonical explicit) (canonical omitted))
+        [
+          ("blur", "0px");
+          ("brightness", "1");
+          ("contrast", "1");
+          ("grayscale", "1");
+          ("hue-rotate", "0deg");
+          ("invert", "1");
+          ("opacity", "1");
+          ("saturate", "1");
+          ("sepia", "1");
+        ])
+    [ "filter"; "backdrop-filter"; "-webkit-backdrop-filter" ]
+
+let filter_blur_grammar () =
+  (* Filter Effects 1 section 6.1: blur takes a non-negative length, never a
+     percentage. CSS Values 4 section 10: math ranges clamp at computed-value
+     time, but a percentage cannot acquire a length type by cancelling out. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun value ->
+          none_cursor read_declaration (prop ^ ":blur(" ^ value ^ ")"))
+        [
+          "0%";
+          "10%";
+          "-1px";
+          "auto";
+          "none";
+          "min-content";
+          "calc(0%)";
+          "calc(1px + 0%)";
+          "calc(10% - 10%)";
+          "min(1px, 2%)";
+          "min(0, 1px)";
+          "clamp(0, 1px, 2px)";
+          "max(0%, 1px)";
+          "clamp(0px, 1%, 2px)";
+          "minmax(1px, 2px)";
+          "fit-content(1px)";
+        ];
+      List.iter
+        (fun value ->
+          let input = prop ^ ":blur(" ^ value ^ ")" in
+          let declarations = check_declarations input 1 in
+          List.iter
+            (fun declaration ->
+              let printed =
+                Css.Declaration.to_string ~minify:true declaration
+              in
+              ignore (check_declarations printed 1))
+            declarations)
+        [
+          "";
+          "0";
+          "1px";
+          "1em";
+          "calc(1px + 2px)";
+          "calc(-1px)";
+          "min(-1px, 2px)";
+          "max(0px, 1em)";
+          "clamp(0px, 1em, 2px)";
+          "var(--radius)";
+        ])
+    [ "filter"; "backdrop-filter"; "-webkit-backdrop-filter" ]
 
 let angle_units () =
   check_declaration ~expected:"transform:rotate(.5turn)"
@@ -3585,7 +4270,9 @@ let spec_platform_property_vectors () =
     "width: attr(data-w px, calc(10px + 0px))";
   check_declaration
     ~expected:"border-image:linear-gradient(red,blue)30 fill/10px/1 stretch"
-    ~optimized:"border-image:linear-gradient(red,blue)30 fill/10px/1 stretch"
+      (* [stretch] is the repeat's initial (CSS Backgrounds 3 sec. 5.5), which
+         is what leaving the component out names. *)
+    ~optimized:"border-image:linear-gradient(red,blue)30 fill/10px/1"
     "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch";
   List.iter
     (fun input -> neg_cursor read_declaration input)
@@ -3628,7 +4315,6 @@ let spec_platform_property_vectors () =
       "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";
-      "grid-template: none / 1fr";
       "transition: allow-discrete allow-discrete";
       "scroll-timeline: block --scroller";
       "view-timeline: inline --reveal";
@@ -3654,6 +4340,16 @@ let spec_values_l45_edges () =
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
+      (* Each channel is one component value, so a space between two of them is
+         a separator the tokens do not need: [20%g] is a percentage and an
+         ident, and [calc(...)10] a function and a number. *)
+      ("color: rgb(from red 20%g b / alpha)", "color:rgb(from red 20%g b/alpha)");
+      ( "color: rgb(from red 20% g b / alpha)",
+        "color:rgb(from red 20%g b/alpha)" );
+      ( "color: rgb(from red r calc(g * 2)10)",
+        "color:rgb(from red r calc(g * 2)10)" );
+      ( "color: rgb(from red r calc(g * 2) 10)",
+        "color:rgb(from red r calc(g * 2)10)" );
       (* pp holds the authored node for the Named blue, the rgb()/alpha, and the
          turn unit. The colour cross-fold and angle conversion are optimize
          transforms. *)
@@ -3820,6 +4516,13 @@ let spec_remaining_prop_vectors () =
       ("resize: block", "resize:block");
       ( "transition-property: opacity, display",
         "transition-property:opacity,display" );
+      (* CSS Transitions 1 sec. 2.1: none | <single-transition-property>#, where
+         <single-transition-property> is [all | <custom-ident>]. The exclusion
+         clause names none, inherit and initial as the values a list of more
+         than one may not hold; all is not among them. *)
+      ("transition-property: all, opacity", "transition-property:all,opacity");
+      ("transition-property: opacity, all", "transition-property:opacity,all");
+      ("transition-property: all, all", "transition-property:all,all");
       ("animation-composition: add", "animation-composition:add");
       ("animation-range-start: entry 10%", "animation-range-start:entry 10%");
       ("animation-range-end: exit 90%", "animation-range-end:exit 90%");
@@ -3846,6 +4549,18 @@ let spec_remaining_prop_vectors () =
       ("position-area: top span-left", "position-area:top span-left");
       ( "position-try-fallbacks: --below, flip-block",
         "position-try-fallbacks:--below,flip-block" );
+      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>],
+         and <try-tactic> is itself [flip-block || flip-inline || flip-start].
+         || is order-free, so each component appears at most once in any order
+         and reads back name-first. *)
+      ( "position-try-fallbacks: flip-block --below",
+        "position-try-fallbacks:--below flip-block" );
+      ( "position-try-fallbacks: --below flip-block",
+        "position-try-fallbacks:--below flip-block" );
+      ( "position-try-fallbacks: flip-inline flip-block",
+        "position-try-fallbacks:flip-block flip-inline" );
+      ( "position-try-fallbacks: --a flip-start, flip-inline",
+        "position-try-fallbacks:--a flip-start,flip-inline" );
       ("scrollbar-color: auto", "scrollbar-color:auto");
       ("overlay: auto", "overlay:auto");
       ( "transition-behavior: allow-discrete",
@@ -3926,11 +4641,13 @@ let spec_remaining_prop_vectors () =
       "mask-border: fill fill";
       "mask-size: contain cover";
       "mask-repeat: no-repeat repeat repeat-x";
-      "backdrop-filter: blur()";
+      "backdrop-filter: blur(1px, 2px)";
       "will-change: auto, transform";
       "touch-action: pan-x pan-left";
       "resize: block inline both";
       "transition-property: none, opacity";
+      "transition-property: opacity, none";
+      "transition-property: inherit, opacity";
       "animation-composition: add replace";
       "animation-range-start: exit entry";
       "view-timeline-inset: auto auto auto";
@@ -3938,6 +4655,8 @@ let spec_remaining_prop_vectors () =
       "position-visibility: anchors-visible always";
       "accent-color: auto red";
       "color-scheme: only only";
+      "color-scheme: only light only";
+      "color-scheme: only dark only";
       "forced-color-adjust: auto none";
       "print-color-adjust: exact economy";
       "isolation: isolate auto";
@@ -3948,8 +4667,9 @@ let spec_remaining_prop_vectors () =
       "anchor-name: target";
       "anchor-name: --a none";
       "position-anchor: --a --b";
+      "position-try-fallbacks: --a --b";
+      "position-try-fallbacks: flip-block flip-block";
       "position-area: top bottom";
-      "position-try-fallbacks: flip-block --below";
       "overlay: auto none";
       "transition-behavior: allow-discrete normal";
       "font-size-adjust: ex-height";
@@ -4440,6 +5160,26 @@ let check_sheet_roundtrip name css =
 
 (* CSS Text Decoration 4 sec. 2.6 joins the line, thickness, style and colour
    components with [||], so no single component is mandatory. *)
+let text_decoration_thickness_range () =
+  (* CSS Text Decoration 4 section 2.4: <length-percentage> has no non-negative
+     grammar range. The minimum device-pixel thickness is a rendering rule. *)
+  List.iter
+    (fun (value, printed) ->
+      check_declaration ~roundtrip:true
+        ~expected:("text-decoration-thickness:" ^ printed)
+        ("text-decoration-thickness:" ^ value))
+    [
+      ("-1px", "-1px");
+      ("-10%", "-10%");
+      ("-.25em", "-.25em");
+      ("calc(-1px)", "-1px");
+      ("calc(-10%)", "-10%");
+      ("calc(2px - 3px)", "calc(2px - 3px)");
+      ("min(-1px,2px)", "min(-1px,2px)");
+    ];
+  check_declaration ~roundtrip:true "text-decoration:underline -1px";
+  none_cursor read_declaration "text-decoration-thickness:-1s"
+
 let text_decoration_optional_line () =
   check_declaration ~roundtrip:true "text-decoration:red";
   check_sheet_roundtrip "text-decoration" "a{text-decoration:red}"
@@ -5356,6 +6096,129 @@ let hex_spellings_have_one_node () =
   distinct_value "#fff vs #fff8" short_lower
     (sole_declaration ".e{color:#FFF8}")
 
+(* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
+   its typed values alone: reading the print back has to land on the node that
+   printed it, not merely on the same text. *)
+let reads_back input =
+  let d = Css.Declaration.of_string input in
+  let printed = Css.Declaration.to_string ~minify:true d in
+  Alcotest.(check bool)
+    (input ^ ": the print reads back as the same node")
+    true
+    (Css.Declaration.equal_declaration d (Css.Declaration.of_string printed))
+
+(* Four families whose grammar takes more component values than the reader took.
+   Each block pins the multi-value forms the grammar allows, the single-value
+   forms that already worked, and the neighbouring grammar that must not widen
+   with them. *)
+let multi_value_grammars () =
+  (* CSS Box 4 (ED) sec. 3.2 gives [margin] the value [<'margin-top'>{1,4}] and
+     sec. 3.1 gives [margin-top] the value [<length-percentage> | auto], so
+     [auto] is a component of the box: it may stand in any of the four slots and
+     beside any length, at any count. It is not a whole-value keyword. *)
+  check_declaration ~roundtrip:true ~expected:"margin:auto 2px"
+    "margin: auto 2px";
+  check_declaration ~roundtrip:true ~expected:"margin:auto auto auto 2px"
+    "margin: auto auto auto 2px";
+  check_declaration ~roundtrip:true ~expected:"margin:2px auto auto"
+    "margin: 2px auto auto";
+  reads_back "margin: auto 2px";
+  reads_back "margin: auto auto auto 2px";
+  (* Working before the widening, so a fix must not move them. *)
+  check_declaration ~expected:"margin:auto" "margin: auto";
+  check_declaration ~expected:"margin:0 auto" "margin: 0 auto";
+  check_declaration ~expected:"margin:10px auto" "margin: 10px auto";
+  check_declaration ~expected:"margin:0 auto 20px" "margin: 0 auto 20px";
+  check_declaration ~expected:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"margin-inline:0 auto" "margin-inline: 0 auto";
+  (* A fifth component is outside {1,4}, and the CSS-wide keywords stay
+     whole-value (CSS Cascade 5 sec. 6). *)
+  neg_cursor read_declaration "margin: 1px 2px 3px 4px 5px";
+  neg_cursor read_declaration "margin: inherit 1px";
+  (* Sec. 4.1 gives [padding] the same {1,4} box over [<length-percentage
+     [0,inf]>], which has no [auto], so widening the margin box must leave this
+     one alone. *)
+  neg_cursor read_declaration "padding: 0 auto";
+  neg_cursor read_declaration "padding: auto";
+
+  (* CSS Backgrounds 3 (ED) sec. 3.2, "Line Patterns: the border-style
+     properties": [border-style] is [<line-style>{1,4}], the box shorthand over
+     the four side styles, exactly as sec. 3.1 gives [border-color] and sec. 3.3
+     gives [border-width] theirs. *)
+  check_declaration ~roundtrip:true ~expected:"border-style:double dashed"
+    "border-style: double dashed";
+  check_declaration ~roundtrip:true ~expected:"border-style:solid none"
+    "border-style: solid none";
+  check_declaration ~roundtrip:true ~expected:"border-style:none none solid"
+    "border-style: none none solid";
+  check_declaration ~roundtrip:true
+    ~expected:"border-style:none dashed none solid"
+    "border-style: none dashed none solid";
+  reads_back "border-style: double dashed";
+  reads_back "border-style: none dashed none solid";
+  check_declaration ~expected:"border-style:solid" "border-style: solid";
+  check_declaration ~expected:"border-style:none" "border-style: none";
+  (* The box fills the sides by position, so a list repeating what those rules
+     already supply is the longer spelling of the same declaration and
+     canonicalises to the shortest, as [border-color]'s does. pp holds the
+     authored node; the fold is a normalize step. *)
+  check_declaration ~expected:"border-style:dashed dashed dashed dashed"
+    ~optimized:"border-style:dashed" "border-style: dashed dashed dashed dashed";
+  check_declaration ~expected:"border-style:dashed none dashed"
+    ~optimized:"border-style:dashed none" "border-style: dashed none dashed";
+  neg_cursor read_declaration "border-style: solid solid solid solid solid";
+  neg_cursor read_declaration "border-style: solid 1px";
+
+  (* CSS Logical 1 (ED) sec. 4.5.2, "Flow-Relative Border Styles": the
+     [border-block-style] and [border-inline-style] shorthands are
+     [<'border-top-style'>{1,2}], the first value the start edge and the second
+     the end edge, as sec. 4.5.1 gives the widths and sec. 4.5.3 the colours. *)
+  check_declaration ~roundtrip:true ~expected:"border-block-style:dashed double"
+    "border-block-style: dashed double";
+  check_declaration ~roundtrip:true
+    ~expected:"border-inline-style:dashed double"
+    "border-inline-style: dashed double";
+  check_declaration ~roundtrip:true ~expected:"border-inline-style:solid none"
+    "border-inline-style: solid none";
+  reads_back "border-block-style: dashed double";
+  reads_back "border-inline-style: dashed double";
+  check_declaration ~expected:"border-block-style:solid"
+    "border-block-style: solid";
+  check_declaration ~expected:"border-inline-style:dashed"
+    "border-inline-style: dashed";
+  (* A third value is outside {1,2}; the sibling widths already stop there. *)
+  neg_cursor read_declaration "border-inline-style: solid dashed dotted";
+  neg_cursor read_declaration "border-block-style: solid dashed dotted";
+
+  (* CSS Backgrounds 3 (ED) sec. 4.1, "Curve Radii: the border-radius
+     properties": each corner longhand is [<length-percentage [0,inf]>{1,2}],
+     "The first value is the horizontal radius, the second the vertical radius."
+     The 11 March 2024 CR draft numbers both sections the same way. *)
+  check_declaration ~roundtrip:true ~expected:"border-top-left-radius:1px 5px"
+    "border-top-left-radius: 1px 5px";
+  check_declaration ~roundtrip:true
+    ~expected:"border-bottom-right-radius:10%20%"
+    "border-bottom-right-radius: 10% 20%";
+  check_declaration ~roundtrip:true
+    ~expected:"border-start-start-radius:1px 5px"
+    "border-start-start-radius: 1px 5px";
+  reads_back "border-top-left-radius: 1px 5px";
+  reads_back "border-bottom-right-radius: 10% 20%";
+  check_declaration ~expected:"border-top-left-radius:1px"
+    "border-top-left-radius: 1px";
+  check_declaration ~expected:"border-top-left-radius:50%"
+    "border-top-left-radius: 50%";
+  (* One value already sets both radii, so a vertical radius equal to the
+     horizontal one says what omitting it says. *)
+  check_declaration ~expected:"border-top-left-radius:1px 1px"
+    ~optimized:"border-top-left-radius:1px" "border-top-left-radius: 1px 1px";
+  (* The shorthand already spelled both axes across the slash, and keeps to
+     it. *)
+  check_declaration ~expected:"border-radius:10%/20%" "border-radius: 10% / 20%";
+  (* [0,inf] bars a negative radius, and a third value is outside {1,2}. *)
+  neg_cursor read_declaration "border-top-left-radius: -1px";
+  neg_cursor read_declaration "border-top-left-radius: 1px 2px 3px"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -5418,6 +6281,7 @@ let declaration_tests =
     test_case "flexbox flex+basis" `Quick flexbox_flex_and_basis;
     test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
+    test_case "multi-value grammars" `Quick multi_value_grammars;
     test_case "outline line-width" `Quick outline_line_width;
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
@@ -5444,6 +6308,8 @@ let declaration_tests =
     test_case "animations (state)" `Quick animations_state;
     test_case "animation drained shorthand" `Quick animation_drained_shorthand;
     test_case "transforms" `Quick transforms;
+    test_case "filter omitted arguments" `Quick filter_omitted_arguments;
+    test_case "filter blur grammar" `Quick filter_blur_grammar;
     test_case "angle units" `Quick angle_units;
     test_case "grid" `Quick grid;
     test_case "list properties" `Quick list_properties;
@@ -5474,6 +6340,16 @@ let declaration_tests =
       scroll_margin_negative_sheet;
     test_case "text-decoration optional line" `Quick
       text_decoration_optional_line;
+    test_case "text decoration thickness range" `Quick
+      text_decoration_thickness_range;
+    test_case "animation infinite name" `Quick animation_infinite_name;
+    test_case "animation keyword names" `Quick animation_keyword_names;
+    test_case "list-style custom names" `Quick list_style_custom_names;
+    test_case "auto is not a color" `Quick auto_is_not_a_color;
+    test_case "outline-offset length only" `Quick outline_offset_length_only;
+    test_case "line-height-step length only" `Quick line_height_step_length_only;
+    test_case "gap normal" `Quick gap_normal;
+    test_case "sizing keyword domains" `Quick sizing_keyword_domains;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;

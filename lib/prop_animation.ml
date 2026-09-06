@@ -92,18 +92,28 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* The names a [<custom-ident>] may not spell, so the string arm is the only one
+   that carries them and the quotes are part of the value. *)
+let keyframes_name_needs_quotes name =
+  match String.lowercase_ascii name with
+  | "none" | "default" | "inherit" | "initial" | "unset" | "revert"
+  | "revert-layer" ->
+      true
+  | _ -> false
+
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Name name -> pp_ident ctx name
   | Ambiguous name -> pp_ident ctx name
   | Quoted name ->
-      (* CSS Animations 1 sec. 3: [<keyframes-name>] excludes [none], the
-         CSS-wide keywords, and [default]. A source [animation-name: "none"]
-         therefore can't refer to a real [@keyframes none] - it's invalid input
-         that browsers tolerate. Minified output drops the quotes so the value
-         collapses to the equivalent (and shorter) keyword form. *)
-      if Pp.minified ctx then Pp.string ctx name else Pp.quoted_string ctx name
+      (* CSS Animations 1 sec. 3: a [<keyframes-name>] is a [<custom-ident>] or
+         a [<string>], and only the ident arm excludes [none], [default] and the
+         CSS-wide keywords. Unquoting one of those names writes a different
+         declaration, and in a list it writes no declaration at all. *)
+      if Pp.minified ctx && not (keyframes_name_needs_quotes name) then
+        Pp.string ctx name
+      else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -333,6 +343,46 @@ let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
   | Some axis ->
       Pp.space ctx ();
       pp_timeline_axis ctx axis
+
+(* CSS Scroll Animations 1 sec. 4.3: [scroll-timeline] is [<name> <axis>?], and
+   an axis left out takes [scroll-timeline-axis]'s initial (sec. 4.2), which is
+   [block]. Writing it out names what leaving it out names, so the shorter
+   spelling wins. *)
+let normalize_timeline_shorthand : timeline_shorthand -> timeline_shorthand =
+ fun value ->
+  let drop_initial_axis (item : timeline_shorthand_item) =
+    match item.axis with
+    | Some (Block : timeline_axis) | Some Initial ->
+        { item with axis = Option.None }
+    | _ -> item
+  in
+  match value with
+  | Timelines items -> Timelines (map_preserve drop_initial_axis items)
+  | other -> other
+
+(* Same reading for [view-timeline] (CSS Scroll Animations 1 sec. 5.2), which
+   carries an inset slot as well; [auto] is its initial (sec. 5.3). *)
+let normalize_view_timeline_shorthand :
+    view_timeline_shorthand -> view_timeline_shorthand =
+ fun value ->
+  let drop_initials (item : view_timeline_shorthand_item) =
+    let axis =
+      match item.axis with
+      | Some (Block : timeline_axis) | Some Initial -> Option.None
+      | axis -> axis
+    in
+    let inset =
+      match item.inset with
+      | Some (Inset (Auto, Option.None) : timeline_inset) | Some Initial ->
+          Option.None
+      | inset -> inset
+    in
+    if axis == item.axis && inset == item.inset then item
+    else { item with axis; inset }
+  in
+  match value with
+  | Timelines items -> Timelines (map_preserve drop_initials items)
+  | other -> other
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
@@ -936,9 +986,12 @@ let read_transition_property t : transition_property =
     if Cursor.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
   in
   let values = loop [] in
+  (* CSS Transitions 1 sec. 2.1: the exclusion clause names none, inherit and
+     initial as what a list of more than one may not hold. [all] is an ordinary
+     <single-transition-property> and combines with the rest. *)
   let singleton_only : transition_property_value -> bool = function
-    | All | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
-    | Property _ | Var _ -> false
+    | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
+    | All | Property _ | Var _ -> false
   in
   if List.length values > 1 && List.exists singleton_only values then
     Cursor.err_invalid t "transition-property singleton value in list";
@@ -1067,26 +1120,40 @@ let read_transition_shorthand t : transition_shorthand =
   }
 
 let rec read_transition t : transition =
-  Cursor.enum "transition"
-    [
-      ("inherit", (Inherit : transition));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-      ("none", None);
-    ]
-    ~default:(fun t : transition ->
-      if Cursor.looking_at_func "var" t then (
-        let snap = Cursor.save t in
-        let value = (Var (read_var read_transition t) : transition) in
-        Cursor.ws t;
-        if Cursor.is_done t then value
-        else (
-          Cursor.restore t snap;
-          Shorthand (read_transition_shorthand t)))
-      else Shorthand (read_transition_shorthand t))
-    t
+  let snap = Cursor.save t in
+  let value =
+    Cursor.enum "transition"
+      [
+        ("inherit", (Inherit : transition));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+        ("none", None);
+      ]
+      ~default:(fun t : transition ->
+        if Cursor.looking_at_func "var" t then (
+          let snap = Cursor.save t in
+          let value = (Var (read_var read_transition t) : transition) in
+          Cursor.ws t;
+          if Cursor.is_done t then value
+          else (
+            Cursor.restore t snap;
+            Shorthand (read_transition_shorthand t)))
+        else Shorthand (read_transition_shorthand t))
+      t
+  in
+  (* CSS Transitions 1 sec. 3: [none] is a [<single-transition-property>], so it
+     is the whole item only when the item ends there. Anything else after it
+     belongs to the same [<single-transition>]. *)
+  match value with
+  | None ->
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_comma t then value
+      else (
+        Cursor.restore t snap;
+        (Shorthand (read_transition_shorthand t) : transition))
+  | _ -> value
 
 let read_transitions t : transition list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_transition t
@@ -1374,8 +1441,8 @@ module Animation = struct
     {
       name = None;
       (* CSS default: none *)
-      duration = Some (S 0.0);
-      (* CSS default: 0s *)
+      duration = Some Auto;
+      (* CSS Animations 2 sec. 4.1: auto, not 0s *)
       timing_function = Some Ease;
       (* CSS default: ease *)
       delay = Some (S 0.0);
@@ -1414,15 +1481,12 @@ module Animation = struct
       state.timing_seen := true;
       { acc with timing_function = Some tf })
 
-  let apply_iteration t state acc ic =
+  let apply_iteration t state acc ic keyword =
     if !(state.iteration_seen) then
-      (* CSS Animations 1 section 4.4: [<single-animation-iteration-count>] is
-         [infinite | <number>]; [infinite] is a reserved keyword that cannot be
-         a [<custom-ident>] animation name. Reject the duplicate rather than
-         coercing it into the name slot. *)
-      Cursor.err t "duplicate animation-iteration-count";
-    state.iteration_seen := true;
-    { acc with iteration_count = Some ic }
+      set_string_name t "animation-iteration-count" state.name_seen acc keyword
+    else (
+      state.iteration_seen := true;
+      { acc with iteration_count = Some ic })
 
   let apply_direction t state acc dir =
     if !(state.direction_seen) then
@@ -1455,17 +1519,25 @@ module Animation = struct
       state.timeline_seen := true;
       { acc with timeline = Some tl })
 
-  let apply_component t state (acc : animation_shorthand) component =
+  let apply_component t state (acc : animation_shorthand) (component, keyword) =
     state.component_seen := true;
-    match component with
-    | Name name -> apply_name t state acc name
-    | Duration d -> apply_duration t state acc d
-    | Timing_function tf -> apply_timing t state acc tf
-    | Iteration_count ic -> apply_iteration t state acc ic
-    | Direction dir -> apply_direction t state acc dir
-    | Fill_mode fm -> apply_fill t state acc fm
-    | Play_state ps -> apply_play t state acc ps
-    | Timeline tl -> apply_timeline t state acc tl
+    let had_name = !(state.name_seen) in
+    let acc =
+      match component with
+      | Name name -> apply_name t state acc name
+      | Duration d -> apply_duration t state acc d
+      | Timing_function tf -> apply_timing t state acc tf
+      | Iteration_count ic -> apply_iteration t state acc ic keyword
+      | Direction dir -> apply_direction t state acc dir
+      | Fill_mode fm -> apply_fill t state acc fm
+      | Play_state ps -> apply_play t state acc ps
+      | Timeline tl -> apply_timeline t state acc tl
+    in
+    match (had_name, keyword, acc.name) with
+    | false, Some name, Some (Ambiguous _) ->
+        (* Property keywords are case-insensitive; keyframe names are not. *)
+        { acc with name = Some (Ambiguous name) }
+    | _ -> acc
 
   let read_component t =
     let read_duration t = Duration (read_duration t) in
@@ -1514,22 +1586,26 @@ module Animation = struct
           ("'" ^ v ^ "' is a reserved keyword for animation properties")
       else Name (Some (Name v))
     in
-    Cursor.one_of
-      [
-        read_duration;
-        read_timing;
-        read_iteration;
-        read_direction;
-        read_fill;
-        read_play;
-        read_timeline;
-        read_var_name;
-        read_string_name;
-        (* Animation name - parse this LAST since it accepts any non-reserved
-           identifier *)
-        read_name;
-      ]
-      t
+    let keyword = Cursor.peek_ident t in
+    let component =
+      Cursor.one_of
+        [
+          read_duration;
+          read_timing;
+          read_iteration;
+          read_direction;
+          read_fill;
+          read_play;
+          read_timeline;
+          read_var_name;
+          read_string_name;
+          (* Animation name - parse this LAST since it accepts any non-reserved
+             identifier *)
+          read_name;
+        ]
+        t
+    in
+    (component, keyword)
 
   let read_shorthand t =
     let state = read_state () in
@@ -1561,6 +1637,13 @@ module Animation = struct
     | Some d when not (is_zero_duration d) -> true
     | _ -> false
 
+  (* CSS Animations 2 sec. 4.1 makes [auto] the initial duration, so an explicit
+     [0s] is a value of its own and has to print. The delay's initial is still
+     [0s], which is what [is_duration] answers for. *)
+  let is_animation_duration : duration option -> bool = function
+    | Option.None | Some Auto -> false
+    | Some _ -> true
+
   let is_default_timing = function Ease -> true | _ -> false
 
   let is_timing : timing_function option -> bool = function
@@ -1588,7 +1671,7 @@ module Animation = struct
     | Some _ -> true
 
   let has_non_defaults (anim : animation_shorthand) =
-    is_duration anim.duration
+    is_animation_duration anim.duration
     || is_timing anim.timing_function
     || is_duration anim.delay
     || is_iteration anim.iteration_count
@@ -1599,7 +1682,7 @@ module Animation = struct
 
   let ambiguous_name_kind (anim : animation_shorthand) =
     match anim.name with
-    | Some (Ambiguous name) ->
+    | Some (Ambiguous name | Name name) ->
         animation_shorthand_kind (String.lowercase_ascii name)
     | _ -> None
 
@@ -1627,13 +1710,7 @@ module Animation = struct
     | Some Timeline -> is_timeline anim.timeline
 
   let duration (anim : animation_shorthand) : duration option =
-    match (anim.duration, anim.delay) with
-    | Some d, Some delay when is_zero_duration d && is_duration (Some delay) ->
-        Some d
-    | _ -> (
-        match anim.duration with
-        | Some d when not (is_zero_duration d) -> Some d
-        | _ -> None)
+    if is_animation_duration anim.duration then anim.duration else Option.None
 
   let timing ?(quote_name = false) (anim : animation_shorthand) :
       timing_function option =
@@ -1748,7 +1825,7 @@ let pp_animation_name_slot ctx state ~quote_ambiguous_name
     Option.iter
       (fun (name : animation_name) ->
         match name with
-        | Ambiguous s when quote_ambiguous_name ->
+        | (Ambiguous s | Name s) when quote_ambiguous_name ->
             pp_animation_space_before state ~starts_with_quote:true
               ~ends_with_quote:true Pp.quoted_string ctx s
         | Quoted s ->
@@ -1771,12 +1848,17 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   let has_any_non_default = Animation.has_non_defaults anim in
   let name_is_default_none = animation_name_is_default_none ctx anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
+  let ambiguous_name_last =
+    Animation.ambiguous_name_kind anim <> None && not quote_ambiguous_name
+  in
   pp_animation_initial_none ctx anim ~name_is_default_none ~has_any_non_default;
   (* Cascade canonical order puts the animation [name] first: it is the only
      ident-shaped component that survives the rest defaulting away, so leading
      with it makes "single-token" outputs ([animation:slide]) read naturally and
      matches the common minifier convention. *)
-  pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
+  (* An unquoted keyword name must follow the slot it could otherwise fill. *)
+  if not ambiguous_name_last then
+    pp_animation_name_slot ctx state ~quote_ambiguous_name anim;
   Pp.option
     (pp_animation_space_before state pp_duration)
     ctx (Animation.duration anim);
@@ -1803,7 +1885,9 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   Pp.option
     (pp_animation_space_before state pp_animation_timeline)
     ctx
-    (Animation.timeline ~quote_name:quote_ambiguous_name anim)
+    (Animation.timeline ~quote_name:quote_ambiguous_name anim);
+  if ambiguous_name_last then
+    pp_animation_name_slot ctx state ~quote_ambiguous_name anim
 
 (* The animation reader fills every slot with its longhand initial, so only the
    easing needs canonicalising here: its keyword and curve spellings are the

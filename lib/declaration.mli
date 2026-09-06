@@ -45,14 +45,16 @@ val important : declaration -> declaration
 val normalize :
   ?lossless:bool ->
   ?exact_srgb:bool ->
+  ?resolve_missing:bool ->
   ?ctx:Values.calc_ctx ->
   declaration ->
   declaration
 (** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
     the optimizer holds a canonical declaration and the pretty-printer stays a
     pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. [exact_srgb] is {!Properties.normalize_property_value}'s flag
-    of the same name, for the canonical diff projection only. *)
+    approximation. [exact_srgb] and [resolve_missing] are
+    {!Properties.normalize_property_value}'s flags of the same names, for the
+    canonical diff projection only. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)
@@ -265,6 +267,13 @@ val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
 (** [value_size ?minify decl] is the byte length of
     [string_of_value ?minify decl], computed without allocating the string. *)
 
+val value_has_css_wide_mix : declaration -> bool
+(** [value_has_css_wide_mix decl] is [true] when [decl]'s value holds a CSS-wide
+    keyword beside other components. CSS Cascade 5 sec. 7.3 makes such a keyword
+    the whole value of a declaration or nothing, so the reader rejects one and a
+    browser drops the declaration. This is that rule read off an emission, for
+    the composer deciding whether a contraction it built can be written out. *)
+
 (* Single-to-list property helpers. These construct typed declarations for
    properties that accept comma-separated lists, while keeping a simple
    single-value API. *)
@@ -381,12 +390,12 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
-val border_inline_style : border_style -> declaration
+val border_inline_style : logical_border_style -> declaration
 (** [border_inline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
      border-inline-style} property. *)
 
-val border_block_style : border_style -> declaration
+val border_block_style : logical_border_style -> declaration
 (** [border_block_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
      border-block-style} property. *)

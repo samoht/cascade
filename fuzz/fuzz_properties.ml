@@ -230,7 +230,7 @@ let invalid_value property buf =
   | "transition-timing-function" ->
       pick [ "steps()"; "cubic-bezier(1,2)" ] buf 2
   | "transition" -> pick [ "1s 2s 3s"; "ease opacity ease" ] buf 2
-  | "animation" -> pick [ "1s 2s 3s"; "infinite infinite" ] buf 2
+  | "animation" -> pick [ "1s 2s 3s"; "infinite infinite infinite" ] buf 2
   | "background-image" -> pick [ "linear-gradient()"; "image-set()" ] buf 2
   | "background" -> pick [ "red blue"; "red red" ] buf 2
   | "content" -> pick [ "attr()"; "open-quote close-quote none" ] buf 2
@@ -340,8 +340,10 @@ let property_grammar_shorthand_vectors =
       [ "opacity 1s ease"; "all .2s linear .1s" ]
       [ "1s 2s 3s"; "ease opacity ease" ];
     vector "animation" Css.Properties.read_animation Css.Properties.pp_animation
-      [ "spin 1s linear infinite"; "none"; "fade .2s ease" ]
-      [ "1s 2s 3s"; "infinite infinite" ];
+      [
+        "spin 1s linear infinite"; "none"; "fade .2s ease"; "infinite infinite";
+      ]
+      [ "1s 2s 3s"; "infinite infinite infinite" ];
     vector "background" Css.Properties.read_background
       Css.Properties.pp_background
       [ "red"; "url(a.png) no-repeat center/cover"; "none" ]
@@ -459,8 +461,16 @@ let property_grammar_ui_vectors =
       [ "clip"; "ellipsis"; "\"...\""; "clip ellipsis" ]
       [ "clip ellipsis clip"; "auto" ];
     vector "text-wrap" Css.Properties.read_text_wrap Css.Properties.pp_text_wrap
-      [ "wrap"; "nowrap"; "balance"; "pretty" ]
-      [ "wrap nowrap"; "auto" ];
+      [
+        "wrap";
+        "nowrap";
+        "auto";
+        "balance";
+        "stable";
+        "pretty";
+        "nowrap balance";
+      ]
+      [ "wrap nowrap"; "balance pretty" ];
     vector "overflow-wrap" Css.Properties.read_overflow_wrap
       Css.Properties.pp_overflow_wrap
       [ "normal"; "break-word"; "anywhere" ]
@@ -702,13 +712,21 @@ let invalid_property_mutation
        token/substitution layer instead. *)
     pick [ "var()"; value ^ " attr()"; value ^ " env()" ] buf 4
   else
+    (* A negative is invalid as a whole value, which does not make it invalid
+       after a positive one: in a && or || grammar it is often exactly the
+       component the positive was missing, as [text-indent: 10% hanging] is. CSS
+       Cascade 5 sec. 7.3 gives a trailing mutation that holds for every
+       property instead, since a CSS-wide keyword is the whole value or
+       nothing. *)
     match byte_at buf 4 mod 6 with
     | 0 -> pick row.negatives buf 5
     | 1 -> "initial " ^ value
     | 2 -> "inherit " ^ value
     | 3 -> "var()"
     | 4 -> value ^ " )"
-    | _ -> value ^ " " ^ pick row.negatives buf 6
+    | _ ->
+        value ^ " "
+        ^ pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 6
 
 let var_token_stream_fallback buf =
   pick
@@ -1014,7 +1032,6 @@ let negative_branch_vectors =
     "grid-template-areas:\"nav/main\"";
     "grid-template-areas:\"nav main\" \"foot\"";
     "grid-template-areas:\"a .\" \". a\"";
-    "grid-template:none/1fr";
     "animation:1s 2s 3s";
     "animation-composition:add replace";
     "animation-range-start:entry exit";
@@ -1030,7 +1047,7 @@ let negative_branch_vectors =
     "view-timeline-inset:auto auto auto";
     "container:card/inline-size/size";
     "position-area:top bottom";
-    "position-try-fallbacks:flip-block --below";
+    "position-try-fallbacks:flip-block flip-block";
     "position-try-order:most-width normal";
     "position-visibility:always anchors-visible";
     "overlay:auto none";

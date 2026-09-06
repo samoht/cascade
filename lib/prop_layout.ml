@@ -104,7 +104,9 @@ let rec pp_position_try_fallbacks : position_try_fallbacks Pp.t =
   | Var v -> pp_var pp_position_try_fallbacks ctx v
   | None -> Pp.string ctx "none"
   | Fallbacks fallbacks ->
-      Pp.list ~sep:Pp.comma pp_position_try_fallback ctx fallbacks
+      Pp.list ~sep:Pp.comma
+        (Pp.list ~sep:Pp.space pp_position_try_fallback)
+        ctx fallbacks
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -718,6 +720,28 @@ let read_position_try_fallback t =
       | _ -> assert false)
   | _ -> Name (read_dashed_ident t)
 
+(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free and takes each
+   component at most once, so the group reads in any order and is held
+   name-first with the tactics in block, inline, start order. *)
+let read_position_try_fallback_group t =
+  let components =
+    Cursor.list ~sep:Cursor.ws ~at_least:1 read_position_try_fallback t
+  in
+  let pick p = List.filter p components in
+  let name =
+    pick (function (Name _ : position_try_fallback) -> true | _ -> false)
+  in
+  let block = pick (function Flip_block -> true | _ -> false) in
+  let inline = pick (function Flip_inline -> true | _ -> false) in
+  let start = pick (function Flip_start -> true | _ -> false) in
+  if
+    List.length name > 1
+    || List.length block > 1
+    || List.length inline > 1
+    || List.length start > 1
+  then Cursor.err_invalid t "position-try-fallbacks repeats a component";
+  name @ block @ inline @ start
+
 let rec read_position_try_fallbacks t : position_try_fallbacks =
   let keywords : (string * position_try_fallbacks) list =
     [
@@ -735,8 +759,8 @@ let rec read_position_try_fallbacks t : position_try_fallbacks =
          : position_try_fallbacks))
      ~default:(fun t ->
        (Fallbacks
-          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback
-             t)
+          (Cursor.list ~sep:Cursor.comma ~at_least:1
+             read_position_try_fallback_group t)
          : position_try_fallbacks))
      t
     : position_try_fallbacks)

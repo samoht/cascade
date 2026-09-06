@@ -105,11 +105,16 @@ let normalize_flex (value : flex) : flex =
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
       if g' == g && s' == s then value else Grow_shrink (g', s')
-  | Full (g, s, b) ->
+  | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
       let b' = normalize_flex_basis b in
-      if g' == g && s' == s && b' == b then value else Full (g', s', b')
+      (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
+         of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
+      match (g', s', b') with
+      | Number 0., Number 0., (Auto : flex_basis) -> None
+      | Number 1., Number 1., Auto -> Auto
+      | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
 let rec pp_order : order Pp.t =
@@ -165,6 +170,27 @@ let rec pp_flex_flow : flex_flow Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+(* CSS Flexbox 1 sec. 5.1: a component left out takes its longhand's initial -
+   [row] for the direction (sec. 5.1) and [nowrap] for the wrap (sec. 5.2) - so
+   writing one out names what leaving it out names, and the shorter spelling
+   wins. Drained of both, the printer says [row], which names the same pair. *)
+let normalize_flex_flow : flex_flow -> flex_flow =
+ fun value ->
+  match value with
+  | Flow (direction, wrap) ->
+      let direction =
+        match direction with
+        | Some (Row : flex_direction) -> Option.None
+        | direction -> direction
+      in
+      let wrap =
+        match wrap with
+        | Some (Nowrap : flex_wrap) -> Option.None
+        | wrap -> wrap
+      in
+      Flow (direction, wrap)
+  | other -> other
 
 let rec pp_flex_factor : flex_factor Pp.t =
  fun ctx -> function

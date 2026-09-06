@@ -168,20 +168,34 @@ let read_text_decoration_shorthand t : text_decoration_shorthand =
 
 let rec read_text_decoration t : text_decoration =
   let read_var t : text_decoration = Var (read_var read_text_decoration t) in
-  Cursor.enum_or_calls "text-decoration"
-    [
-      ("inherit", (Inherit : text_decoration));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-      ("none", None);
-    ]
-    ~calls:[ ("var", read_var) ]
-    ~default:(fun t ->
-      let shorthand = read_text_decoration_shorthand t in
-      (Shorthand shorthand : text_decoration))
-    t
+  let snap = Cursor.save t in
+  let value =
+    Cursor.enum_or_calls "text-decoration"
+      [
+        ("inherit", (Inherit : text_decoration));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+        ("none", None);
+      ]
+      ~calls:[ ("var", read_var) ]
+      ~default:(fun t ->
+        let shorthand = read_text_decoration_shorthand t in
+        (Shorthand shorthand : text_decoration))
+      t
+  in
+  (* CSS Text Decoration 4 sec. 2.5: the shorthand is a [||] of its longhands
+     and [none] is a [<text-decoration-line>], so it is the whole value only
+     when nothing follows it. *)
+  match value with
+  | None ->
+      Cursor.ws t;
+      if Cursor.is_done t then value
+      else (
+        Cursor.restore t snap;
+        (Shorthand (read_text_decoration_shorthand t) : text_decoration))
+  | _ -> value
 
 let rec read_text_decoration_skip t : text_decoration_skip =
   Cursor.enum_or_var "text-decoration-skip"
@@ -788,8 +802,25 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
  fun value ->
   match value with
   | Emphasis (style, color) ->
-      preserve_if_equal value
-        (Emphasis (style, option_map_preserve (normalize_color ~lossless) color))
+      (* CSS Text Decoration 4 (ED) sec. 3.4: a component left out takes its
+         longhand's initial - [none] for the style (sec. 3.1) and [currentColor]
+         for the colour (sec. 3.3) - so writing one out names what leaving it
+         out names. Both cannot go: the value would say nothing. *)
+      let color = option_map_preserve (normalize_color ~lossless) color in
+      let dropped_style =
+        match style with
+        | Some (None : text_emphasis_style) -> Option.None
+        | style -> style
+      in
+      let dropped_color =
+        match color with
+        | Some (Current : color) -> Option.None
+        | color -> color
+      in
+      if Option.is_none dropped_style && Option.is_none dropped_color then
+        preserve_if_equal value
+          (Emphasis (Some (None : text_emphasis_style), Option.None))
+      else preserve_if_equal value (Emphasis (dropped_style, dropped_color))
   | other -> other
 
 (* CSS Text Decoration 4 (ED) sec. 4 reads a text shadow as a [<shadow>] "as for
@@ -1040,8 +1071,19 @@ let rec pp_text_wrap : text_wrap Pp.t =
   | Var v -> pp_var pp_text_wrap ctx v
   | Wrap -> Pp.string ctx "wrap"
   | No_wrap -> Pp.string ctx "nowrap"
+  | Auto -> Pp.string ctx "auto"
   | Balance -> Pp.string ctx "balance"
+  | Stable -> Pp.string ctx "stable"
   | Pretty -> Pp.string ctx "pretty"
+  | Mode_style (mode, style) ->
+      Pp.string ctx (match mode with `Wrap -> "wrap" | `No_wrap -> "nowrap");
+      Pp.space ctx ();
+      Pp.string ctx
+        (match style with
+        | `Auto -> "auto"
+        | `Balance -> "balance"
+        | `Stable -> "stable"
+        | `Pretty -> "pretty")
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1464,12 +1506,16 @@ let rec read_text_overflow t : text_overflow =
     ]
     t
 
+(* CSS Text 4 sec. 5.5: [<'text-wrap-mode'> || <'text-wrap-style'>], so each
+   side appears at most once and either may be omitted. *)
 let rec read_text_wrap t : text_wrap =
-  Cursor.enum_or_var "text-wrap"
+  let single =
     [
       ("wrap", (Wrap : text_wrap));
       ("nowrap", No_wrap);
+      ("auto", Auto);
       ("balance", Balance);
+      ("stable", Stable);
       ("pretty", Pretty);
       ("inherit", Inherit);
       ("initial", Initial);
@@ -1477,8 +1523,46 @@ let rec read_text_wrap t : text_wrap =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (read_var read_text_wrap t))
-    t
+  in
+  let first =
+    Cursor.enum_or_var "text-wrap" single
+      ~var:(fun t -> Var (read_var read_text_wrap t))
+      t
+  in
+  let mode_of : text_wrap -> _ = function
+    | Wrap -> Some `Wrap
+    | No_wrap -> Some `No_wrap
+    | _ -> None
+  in
+  let style_of : text_wrap -> _ = function
+    | Auto -> Some `Auto
+    | Balance -> Some `Balance
+    | Stable -> Some `Stable
+    | Pretty -> Some `Pretty
+    | _ -> None
+  in
+  let second () =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some _ -> Cursor.option (Cursor.enum "text-wrap" single) t
+    | None -> None
+  in
+  match (mode_of first, style_of first) with
+  | Some mode, _ -> (
+      match second () with
+      | Some other -> (
+          match style_of other with
+          | Some style -> Mode_style (mode, style)
+          | None -> Cursor.err_invalid t "text-wrap repeats its wrap mode")
+      | None -> first)
+  | _, Some style -> (
+      match second () with
+      | Some other -> (
+          match mode_of other with
+          | Some mode -> Mode_style (mode, style)
+          | None -> Cursor.err_invalid t "text-wrap repeats its wrap style")
+      | None -> first)
+  | None, None -> first
 
 let rec read_text_wrap_mode t : text_wrap_mode =
   Cursor.enum_or_var "text-wrap-mode"
@@ -1810,6 +1894,78 @@ let rec read_white_space t : white_space =
         ~var:(fun t -> Var (read_var read_white_space t))
         t
 
+(* CSS Text 4 sec. 3.1. *)
+let rec pp_white_space_collapse : white_space_collapse Pp.t =
+ fun ctx -> function
+  | Collapse -> Pp.string ctx "collapse"
+  | Discard -> Pp.string ctx "discard"
+  | Preserve -> Pp.string ctx "preserve"
+  | Preserve_breaks -> Pp.string ctx "preserve-breaks"
+  | Preserve_spaces -> Pp.string ctx "preserve-spaces"
+  | Break_spaces -> Pp.string ctx "break-spaces"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_white_space_collapse ctx v
+
+let rec read_white_space_collapse t : white_space_collapse =
+  Cursor.enum_or_var "white-space-collapse"
+    [
+      ("collapse", (Collapse : white_space_collapse));
+      ("discard", Discard);
+      ("preserve", Preserve);
+      ("preserve-breaks", Preserve_breaks);
+      ("preserve-spaces", Preserve_spaces);
+      ("break-spaces", Break_spaces);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_white_space_collapse t))
+    t
+
+(* [-webkit-text-stroke] is [<line-width> || <color>]: either component may be
+   left out and either order is accepted, so the two are read by type. A
+   component left out takes its longhand's initial - [0] for the width and
+   [currentColor] for the colour - which is what the printer then omits. *)
+let pp_webkit_text_stroke : webkit_text_stroke Pp.t =
+ fun ctx s ->
+  let wrote = ref false in
+  let sep () = if !wrote then Pp.space ctx () else wrote := true in
+  Option.iter
+    (fun w ->
+      sep ();
+      pp_border_width ctx w)
+    s.width;
+  Option.iter
+    (fun c ->
+      sep ();
+      pp_color ctx c)
+    s.color;
+  if not !wrote then Pp.string ctx "currentColor"
+
+let read_webkit_text_stroke t : webkit_text_stroke =
+  let width = ref Option.None and color = ref Option.None in
+  let read_one t =
+    match Cursor.peek_ident t with
+    | Some ("thin" | "medium" | "thick") -> width := Some (read_border_width t)
+    | _ -> (
+        let snap = Cursor.save t in
+        match read_border_width t with
+        | w -> width := Some w
+        | exception Cursor.Parse_error _ ->
+            Cursor.restore t snap;
+            color := Some (Values.read_color t))
+  in
+  read_one t;
+  Cursor.ws t;
+  if not (Cursor.is_done t || Cursor.peek_comma t) then read_one t;
+  { width = !width; color = !color }
+
 let rec read_word_break t : word_break =
   Cursor.enum_or_var "word-break"
     [
@@ -1980,12 +2136,40 @@ let rec read_text_shadow t : text_shadow =
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let components, _ = Cursor.many Text_shadow.read_component t in
-      let lengths, color = Text_shadow.fold_components components in
-      match lengths with
+      (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
+         the colour on either side of the length run but never inside it, and
+         caps the run at three: there is no spread slot to hold a fourth. *)
+      let color : color option ref = ref (Option.None : color option) in
+      let try_color () =
+        match !color with
+        | Option.Some _ -> ()
+        | Option.None -> (
+            match Cursor.option (fun t -> read_color t) t with
+            | Option.Some c ->
+                color := Option.Some c;
+                Cursor.ws t
+            | Option.None -> ())
+      in
+      try_color ();
+      let lengths_rev = ref [] in
+      let rec read_lengths_loop n =
+        if n >= 3 then ()
+        else
+          match Cursor.option (fun t -> read_length t) t with
+          | Option.Some l ->
+              lengths_rev := l :: !lengths_rev;
+              Cursor.ws t;
+              read_lengths_loop (n + 1)
+          | Option.None -> ()
+      in
+      read_lengths_loop 0;
+      try_color ();
+      match List.rev !lengths_rev with
       | h :: v :: rest ->
-          let blur = match rest with b :: _ -> Some b | _ -> None in
-          (Text_shadow { h_offset = h; v_offset = v; blur; color }
+          let blur =
+            match rest with b :: _ -> Option.Some b | _ -> Option.None
+          in
+          (Text_shadow { h_offset = h; v_offset = v; blur; color = !color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
     t

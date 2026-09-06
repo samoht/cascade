@@ -311,7 +311,8 @@ let spec_media_query_vectors () =
       Alcotest.(check string)
         row.branch row.expected
         (to_string (of_string row.input)))
-    Cascade_spec_inventory.Query_grammar.media_positive
+    (Cascade_spec_inventory.Query_grammar.media_positive
+   @ Cascade_spec_inventory.Query_grammar.media_general_enclosed)
 
 (* Media Queries 4 3.1 [<general-enclosed>]: both the [<function-token>] form
    and the [( <any-value> )] form are grammatical. An unrecognised one is
@@ -331,7 +332,32 @@ let general_enclosed_roundtrip () =
   check "(unknown-feature: 1)";
   check "(unknown-boolean)"
 
+(* MQ4 sections 3 and 3.1: a failed feature grammar falls back to
+   general-enclosed; it must not invalidate an enclosing disjunction. *)
+let general_enclosed_feature_fallback () =
+  List.iter
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
+    [
+      "(orientation: sideways) or (min-width: 0px)";
+      "(width >=) or (color)";
+      "(future syntax) or (color)";
+      "((color) and) or (color)";
+      "() or (color)";
+    ]
+
 let general_enclosed_in_context () =
+  List.iter
+    (fun input ->
+      Alcotest.(check string)
+        "bad token cannot be general-enclosed" "not all"
+        (to_string (of_string input)))
+    [
+      "(future ]) or (color)";
+      "future(]) or (color)";
+      "future(url(a b)) or (color)";
+      "future(\"a\nb\") or (color)";
+    ];
   let check src = Alcotest.(check string) src src (to_string (of_string src)) in
   (* negated, listed and combined with a real query *)
   check "not theme(static)";
@@ -476,7 +502,7 @@ let spec_media_unitless_zero_length () =
   (* The allowance is [<length>]-only: a [<resolution>] has no unitless zero,
      and a non-zero number is not a length in any feature. *)
   let check_recovers name input =
-    Alcotest.(check string) name "not all" (to_string (of_string input))
+    Alcotest.(check string) name input (to_string (of_string input))
   in
   check_recovers "resolution has no unitless zero" "(min-resolution: 0)";
   check_recovers "non-zero number is not a length" "(min-width: 1)";
@@ -630,6 +656,8 @@ let suite =
       test_case "spec media query boolean and range vectors" `Quick
         spec_media_query_vectors;
       test_case "general-enclosed roundtrip" `Quick general_enclosed_roundtrip;
+      test_case "general-enclosed feature fallback" `Quick
+        general_enclosed_feature_fallback;
       test_case "general-enclosed in context" `Quick general_enclosed_in_context;
       test_case "general-enclosed is not a media type" `Quick
         general_enclosed_is_not_a_media_type;

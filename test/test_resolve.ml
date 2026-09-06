@@ -51,8 +51,12 @@ let s2 = elt ~id:"s2" "span" []
 let a = elt ~id:"a" "div" [ s1 ]
 let b = elt ~id:"b" "div" [ s2 ]
 let section = elt "section" [ a; b ]
-let yes name s n = Alcotest.(check bool) name true (R.matches (sel s) n)
-let no name s n = Alcotest.(check bool) name false (R.matches (sel s) n)
+
+let yes ?reading name s n =
+  Alcotest.(check bool) name true (R.matches ?reading (sel s) n)
+
+let no ?reading name s n =
+  Alcotest.(check bool) name false (R.matches ?reading (sel s) n)
 
 let test_simple () =
   yes "element" "span" s1;
@@ -88,8 +92,9 @@ let match_result =
       | Resolve.Unsupported -> Fmt.string ppf "Unsupported")
     ( = )
 
-let answers name expected s n =
-  Alcotest.check match_result name expected (R.match_selector (sel s) n)
+let answers ?reading name expected s n =
+  Alcotest.check match_result name expected
+    (R.match_selector ?reading (sel s) n)
 
 (* A selector the matcher has no model for is not a selector that fails to
    match: the caller has to be able to tell the two apart, or it drops a rule it
@@ -120,7 +125,7 @@ let test_supported_needs_no_node () =
   in
   check "class" true ".c";
   check "attribute" true "[data-k=\"X\"]";
-  check "structural" true "p:empty";
+  check "structural" true "p:first-child";
   check "descendant" true "div span";
   check "attribute case flag" true "[data-k=\"X\" i]";
   check "child-indexed" true ":nth-child(2n+1)";
@@ -136,12 +141,109 @@ let test_supported_needs_no_node () =
   check "stateful" false ":hover";
   check "one bad branch spoils the list" false "span,div:hover"
 
+let titled = elt ~attrs:[ ("title", "x") ] "div" []
+
+(* Two forms selectors-4 defines that no engine implements as defined. Sec. 6.3
+   gives the [s] flag "identical to" semantics; every engine refuses the
+   selector instead, and the rule carrying it with it. Sec. 13.2 matches an
+   element whose only content is document white space, and its own note records
+   that Level 2 and Level 3 did not - the change engines have not taken. The
+   answer to either is a fact about the specification and not about how the page
+   renders, and {!Apply} inlines and {!Prune} deletes, so the matcher declines
+   the form rather than rewrite a page against its own browser.
+
+   The [s] flag is refused whatever the node: sec. 6.3 is about the selector,
+   and an engine that refuses it refuses the rule. Sec. 13.2 is about the
+   element, so the node decides that one - {!test_empty_is_node_dependent}. *)
+let test_declines_what_no_engine_implements () =
+  answers "the case-sensitive attribute flag" Resolve.Unsupported "[title=x s]"
+    titled;
+  answers "on a value the flag rules out" Resolve.Unsupported "[title=X s]"
+    titled;
+  answers "the flag under a negation" Resolve.Unsupported ":not([title=x s])"
+    titled;
+  answers "the flag in a relational argument" Resolve.Unsupported
+    ":has([title=x s])" titled;
+  let declines name s =
+    Alcotest.(check bool) name false (Resolve.supported (sel s))
+  in
+  declines "supported settles it without a node" ":empty";
+  declines "and for the case-sensitive flag" "[title=x s]";
+  (* The model is still there: the spec reading answers both. *)
+  answers ~reading:Resolve.Spec "the flag reads the value as written"
+    Resolve.Matches "[title=x s]" titled;
+  answers ~reading:Resolve.Spec "and rules the other case out" Resolve.No_match
+    "[title=X s]" titled;
+  Alcotest.(check bool)
+    "the spec reading models :empty" true
+    (Resolve.supported ~reading:Resolve.Spec (sel ":empty"))
+
+(* Sec. 13.2 represents "an element that has no children except, optionally,
+   document white space characters", and its note records that Level 2 and Level
+   3 did not match the white-space one. So the two readings part over that
+   element and no other: an element with no children at all is [:empty] to both,
+   and one holding an element or text of its own is [:empty] to neither. The
+   decline belongs to the element, not to the selector, and an element the two
+   levels agree on gets the answer they agree on.
+
+   {!Resolve.supported} stays conservative through all of it. It is asked before
+   any node is walked, so it cannot know which element it will be given, and
+   {!Apply} and {!Prune} decide per rule off that answer. *)
+let test_empty_is_node_dependent () =
+  answers "no children at all" Resolve.Matches ":empty" (elt "p" []);
+  answers "an element child" Resolve.No_match ":empty" (elt "p" [ elt "b" [] ]);
+  answers "a text child" Resolve.No_match ":empty" (elt ~text:[ "text" ] "p" []);
+  answers "a no-break space is not document white space" Resolve.No_match
+    ":empty"
+    (elt ~text:[ "\u{00a0}" ] "p" []);
+  (* The one element Level 3 and Level 4 answer differently. *)
+  answers "white space alone" Resolve.Unsupported ":empty"
+    (elt ~text:[ " \t\n" ] "p" []);
+  answers "white space beside text is text to both" Resolve.No_match ":empty"
+    (elt ~text:[ " "; "text" ] "p" []);
+  (* The combining forms carry the node's answer, decline and all. *)
+  answers "in a compound" Resolve.Matches "p:empty" (elt "p" []);
+  answers "under a negation" Resolve.No_match ":not(:empty)" (elt "p" []);
+  answers "as one branch of a list" Resolve.Matches "span,:empty" (elt "p" []);
+  answers "a compound over the declining element" Resolve.Unsupported "p:empty"
+    (elt ~text:[ " " ] "p" []);
+  (* No ancestor of an element holds it and nothing else, so an ancestor is
+     never the element the two levels part over. *)
+  answers "left of a descendant combinator" Resolve.No_match ":empty span" s2;
+  answers "a relational argument the subtree decides" Resolve.Matches
+    ":has(:empty)" a;
+  let declines name s =
+    Alcotest.(check bool) name false (Resolve.supported (sel s))
+  in
+  declines "the rule-level answer stays conservative" ":empty";
+  declines "wherever :empty sits in the selector" "p:empty";
+  declines "including inside a relational argument" ":has(:empty)";
+  declines "and inside an of S" ":nth-child(1 of :empty)"
+
+(* A sibling or a descendant can be the element the two levels part over, and
+   the answer about it has to reach the subject rather than be read as a miss.
+   Folding the decline into "does not match" here would hand a caller a definite
+   answer off an element whose own answer cascade does not have. *)
+let test_empty_declines_through_the_tree () =
+  let ws () = elt ~text:[ " " ] "i" [] in
+  let target = elt "p" [] in
+  let _ = elt "div" [ ws (); target ] in
+  answers "a declining preceding sibling" Resolve.Unsupported ":empty+p" target;
+  let host = elt "div" [ ws () ] in
+  answers "a declining descendant" Resolve.Unsupported ":has(:empty)" host;
+  let indexed = elt "p" [] in
+  let _ = elt "div" [ ws (); indexed ] in
+  answers "a declining sibling in an of S" Resolve.Unsupported
+    ":nth-child(2 of :empty)" indexed
+
 (* selectors-4 sec. 13.2: [:empty] is "an element that has no children except,
    optionally, document white space characters". White space alone leaves an
    element empty, any other text does not, and U+00A0 is not document white
    space (css-text-4 sec. 4.3) - the spec lists [<div>&nbsp;</div>] among the
-   elements [div:empty] does not represent. *)
+   elements [div:empty] does not represent. This is the reading engines have not
+   taken, so it is the one {!Resolve.constructor-Spec} answers. *)
 let test_empty_counts_text_children () =
+  let yes = yes ~reading:Resolve.Spec and no = no ~reading:Resolve.Spec in
   yes "no children at all" ":empty" (elt "p" []);
   yes "spaces, tabs and newlines" ":empty" (elt ~text:[ " \t\n" ] "p" []);
   no "a text child" ":empty" (elt ~text:[ "text" ] "p" []);
@@ -406,9 +508,19 @@ let test_attribute_case_flags () =
   (* sec. 6.3's own example: [frame=hsides i] styles the attribute "whether that
      value is represented as hsides, HSIDES, hSides, etc." *)
   yes "i folds the case" "[frame=hsides i]" framed;
-  no "without a flag the value is read as written" "[frame=hsides]" framed;
-  no "s is identical-to" "[frame=hsides s]" framed;
-  yes "and the written value is identical to itself" "[frame=HSIDES s]" framed;
+  (* HTML sec. 4.16.2 lists [frame] among the attributes an HTML document
+     compares ASCII case-insensitively however the selector is written, and the
+     engines apply it, so the browser reading folds without a flag. *)
+  yes "an HTML-folded name folds without a flag" "[frame=hsides]" framed;
+  no ~reading:Resolve.Spec "the specification alone reads it as written"
+    "[frame=hsides]" framed;
+  (* [data-k] is not on that list, so its value is read as written. *)
+  no "a name off the list is read as written" "[data-k=\"gr\u{00dc}n\"]" framed;
+  (* The name part is converted to ASCII lowercase before it is compared. *)
+  yes "the name folds" "[FRAME=hsides]" framed;
+  no ~reading:Resolve.Spec "s is identical-to" "[frame=hsides s]" framed;
+  yes ~reading:Resolve.Spec "and the written value is identical to itself"
+    "[frame=HSIDES s]" framed;
   (* "ASCII case insensitivity allows green to match GREEN. However, gruen [with
      an umlaut] would not match GRUEN [with an umlaut]." *)
   no "i folds ASCII only" "[data-k=\"gr\u{00fc}n\" i]" framed;
@@ -418,9 +530,9 @@ let test_attribute_case_flags () =
   yes "a substring" "[frame*=sid i]" framed;
   yes "a hyphen list" "[lang|=en i]" framed;
   (* sec. 6.3's second example: [type="a" s] and [type="A" s] are two rules *)
-  yes "s keeps the two apart" "[type=\"a\" s]" type_lower;
-  no "the other way round" "[type=\"a\" s]" type_upper;
-  yes "and back" "[type=\"A\" s]" type_upper;
+  yes ~reading:Resolve.Spec "s keeps the two apart" "[type=\"a\" s]" type_lower;
+  no ~reading:Resolve.Spec "the other way round" "[type=\"a\" s]" type_upper;
+  yes ~reading:Resolve.Spec "and back" "[type=\"A\" s]" type_upper;
   yes "i puts them together" "[type=\"a\" i]" type_lower;
   yes "both ways" "[type=\"a\" i]" type_upper
 
@@ -520,16 +632,67 @@ let resolved_color css =
 
 (* Layer names form a tree (css-cascade-5 sec. 6.4.2): [@layer a.b] creates [a]
    first and nests [b] inside it, and a later [@layer a.d] is ordered inside [a]
-   too, so it stays before a top-level layer declared in between. *)
+   too, so it stays before a top-level layer declared in between. Sec. 6.4.3
+   puts the parent's own rules at the end of that subtree: "Unlayered rules are
+   sorted later than any layered rules within the same parent layer (if any)."
+   So [a] outranks [a.b], however the two were written. *)
 let test_resolve_nested_layers () =
   Alcotest.(check (option string))
-    "a sublayer comes after its parent" (Some "color:red")
+    "a sublayer comes before its parent's own rules" (Some "color:blue")
     (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
   Alcotest.(check (option string))
     "a top-level layer sorts after the whole subtree" (Some "color:green")
     (resolved_color
        "@layer a.b{span{color:red}}@layer c{span{color:green}}@layer \
         a.d{span{color:blue}}")
+
+(* The same sec. 6.4.3 rule over every way of writing the pair. A parent's own
+   rules sit in an implicit sub-layer that closes its subtree, so among normal
+   declarations the parent beats each of its sublayers and among important ones
+   every sublayer beats it. Neither answer depends on which was declared first,
+   nor on whether the sublayer is named, nested as a block, anonymous, or only
+   pre-declared by an [@layer a, b;] statement. *)
+let test_parent_layer_closes_its_subtree () =
+  Alcotest.(check (option string))
+    "the parent wins when it is declared second" (Some "color:blue")
+    (resolved_color "@layer a.b{span{color:red}}@layer a{span{color:blue}}");
+  Alcotest.(check (option string))
+    "and when it is declared first" (Some "color:red")
+    (resolved_color "@layer a{span{color:red}}@layer a.b{span{color:blue}}");
+  Alcotest.(check (option string))
+    "the sublayer wins for important, sublayer declared first"
+    (Some "color:red!important")
+    (resolved_color
+       "@layer a.b{span{color:red!important}}@layer \
+        a{span{color:blue!important}}");
+  Alcotest.(check (option string))
+    "the sublayer wins for important, parent declared first"
+    (Some "color:blue!important")
+    (resolved_color
+       "@layer a{span{color:red!important}}@layer \
+        a.b{span{color:blue!important}}");
+  Alcotest.(check (option string))
+    "a sublayer block nested in its parent orders the same way"
+    (Some "color:blue")
+    (resolved_color "@layer a{@layer b{span{color:red}}span{color:blue}}");
+  Alcotest.(check (option string))
+    "an anonymous block nested in a parent is one of its sublayers"
+    (Some "color:blue")
+    (resolved_color "@layer a{@layer{span{color:red}}span{color:blue}}");
+  Alcotest.(check (option string))
+    "a statement declaring the parent first does not move its own rules"
+    (Some "color:blue")
+    (resolved_color
+       "@layer a;@layer a.b{span{color:red}}@layer a{span{color:blue}}");
+  Alcotest.(check (option string))
+    "a statement declaring the sublayer first does not either"
+    (Some "color:blue")
+    (resolved_color
+       "@layer a.b;@layer a{span{color:blue}}@layer a.b{span{color:red}}");
+  Alcotest.(check (list string))
+    "the parent closes the run its sublayers open" [ "a.b"; "a.d"; "a"; "c" ]
+    (Resolve.layer_order
+       (sheet_of "@layer a.b{span{color:red}}@layer c{}@layer a.d{}"))
 
 (* Each unnamed [@layer { }] block is a layer of its own, so two of them order
    like any other pair: the last wins for normal declarations, the first for
@@ -595,7 +758,7 @@ let test_resolve_skips_conditional_and_scoped_blocks () =
    not part of that order. *)
 let test_layer_order_counts_the_blocks_resolve_walks () =
   Alcotest.(check (list string))
-    "a nested @layer block is counted" [ "a"; "a.b" ]
+    "a nested @layer block is counted" [ "a.b"; "a" ]
     (Resolve.layer_order (sheet_of "@layer a{@layer b{span{color:red}}}"));
   List.iter
     (fun (label, before, after) ->
@@ -656,10 +819,10 @@ let test_resolve_escaped_dot_layers () =
    an ident cannot pass for the separator between two. *)
 let test_layer_order_escaped_dot () =
   Alcotest.(check (list string))
-    "a dot inside an ident is not a path separator" [ "a"; "a.b"; "a\\.b" ]
+    "a dot inside an ident is not a path separator" [ "a.b"; "a"; "a\\.b" ]
     (Resolve.layer_order (sheet_of "@layer a.b;@layer a\\2e b;"));
   Alcotest.(check (list string))
-    "a sublayer of the layer named a.b" [ "a\\.b"; "a\\.b.c" ]
+    "a sublayer of the layer named a.b" [ "a\\.b.c"; "a\\.b" ]
     (Resolve.layer_order (sheet_of "@layer a\\2e b.c;"))
 
 (* {!Apply.Make} reuses the same {!Node} adapter: a static rule projects onto
@@ -762,6 +925,12 @@ let suite =
         test_unsupported_is_not_no_match;
       Alcotest.test_case "supported needs no node" `Quick
         test_supported_needs_no_node;
+      Alcotest.test_case "declines what no engine implements" `Quick
+        test_declines_what_no_engine_implements;
+      Alcotest.test_case "empty is the node's question" `Quick
+        test_empty_is_node_dependent;
+      Alcotest.test_case "empty declines through the tree" `Quick
+        test_empty_declines_through_the_tree;
       Alcotest.test_case "empty counts text children" `Quick
         test_empty_counts_text_children;
       Alcotest.test_case "nth-child indexes from one" `Quick
@@ -795,6 +964,8 @@ let suite =
         test_resolve_cascade;
       Alcotest.test_case "nested layer names order as a tree" `Quick
         test_resolve_nested_layers;
+      Alcotest.test_case "a parent layer closes its own subtree" `Quick
+        test_parent_layer_closes_its_subtree;
       Alcotest.test_case "anonymous layers are distinct" `Quick
         test_resolve_anonymous_layers;
       Alcotest.test_case "resolve skips conditional and scoped blocks" `Quick

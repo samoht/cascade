@@ -72,7 +72,6 @@ module Shadow = struct
         | Some l ->
             lengths_rev := l :: !lengths_rev;
             Cursor.ws t;
-            let _ : bool = try_inset () in
             read_lengths_loop (n + 1)
         | None -> ()
     in
@@ -83,10 +82,6 @@ module Shadow = struct
     let lengths = List.rev !lengths_rev in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
-        if
-          blur = None && spread = None && !color = None && h_offset = Zero
-          && v_offset = Zero
-        then err_invalid_value t "shadow" "blur, spread, or color is required";
         let body = { h_offset; v_offset; blur; spread; color = !color } in
         (if !inset then Inset (Body body) else Shadow body : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
@@ -379,8 +374,13 @@ let normalize_logical_border_color ?(lossless = false) :
   match value with
   | Single c -> preserve_if_equal value (Single (normalize_color ~lossless c))
   | Pair (a, b) ->
-      preserve_if_equal value
-        (Pair (normalize_color ~lossless a, normalize_color ~lossless b))
+      let a = normalize_color ~lossless a and b = normalize_color ~lossless b in
+      if
+        (not (is_color_substitution a))
+        && (not (is_color_substitution b))
+        && Values.equal_color a b
+      then Single a
+      else preserve_if_equal value (Pair (a, b))
   | other -> other
 
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
@@ -904,6 +904,20 @@ let rec pp_logical_border_width : logical_border_width Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_logical_border_width ctx v
 
+let rec pp_logical_border_style : logical_border_style Pp.t =
+ fun ctx -> function
+  | Single s -> pp_border_style ctx s
+  | Pair (start_, end_) ->
+      pp_border_style ctx start_;
+      Pp.space ctx ();
+      pp_border_style ctx end_
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_logical_border_style ctx v
+
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
   | (Lengths lengths : border_spacing) ->
@@ -1008,6 +1022,31 @@ let rec pp_background_size : background_size Pp.t =
 let pp_background_position : background_position Pp.t =
  fun ctx positions -> Pp.list ~sep:Pp.comma pp_position_value ctx positions
 
+(* CSS Backgrounds 4 sec. 3.3: each axis longhand is [center | [<edge>?
+   <length-percentage>]], the edge naming that axis only. *)
+let pp_position_axis_edge : position_axis_edge Pp.t =
+ fun ctx -> function
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+
+let rec pp_background_position_axis : background_position_axis Pp.t =
+ fun ctx -> function
+  | Center -> Pp.string ctx "center"
+  | Edge e -> pp_position_axis_edge ctx e
+  | Offset lp -> pp_length_percentage ctx lp
+  | Edge_offset (e, lp) ->
+      pp_position_axis_edge ctx e;
+      Pp.space ctx ();
+      pp_length_percentage ctx lp
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_background_position_axis ctx v
+
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
       maybe_space ();
@@ -1086,6 +1125,62 @@ let rec pp_border_image_outset ctx : border_image_outset -> unit = function
 let pp_mask_border_mode ctx = function
   | (Alpha : mask_border_mode) -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
+
+(* CSS Backgrounds 3 sec. 6.1: a component the shorthand leaves out takes its
+   longhand's initial - [none] for the source (sec. 5.1), [100%] for the slice
+   (sec. 5.2), [1] for the width (sec. 5.3), [0] for the outset (sec. 5.4) and
+   [stretch] for the repeat (sec. 5.5) - so writing one out names what leaving
+   it out names. Drained of every slot the shorthand declares nothing but
+   initials, which is what [none] declares, so the source stays to say it. *)
+let normalize_border_image : border_image -> border_image =
+ fun value ->
+  let drop is_initial slot =
+    match slot with Some v when is_initial v -> Option.None | slot -> slot
+  in
+  let source =
+    drop
+      (function (None : background_image) | Initial -> true | _ -> false)
+      value.source
+  in
+  let slice_initial =
+    drop
+      (fun (s : border_image_slice) ->
+        (not s.fill) && s.offsets = [ (Pct 100. : border_image_slice_item) ])
+      value.slice
+  in
+  let outset =
+    drop
+      (function
+        | [ (Number 0. : border_image_outset_item) ] | [ Length Zero ] -> true
+        | _ -> false)
+      value.outset
+  in
+  (* The printer writes one [/] per slot, so a dropped width with a kept outset
+     would put the outset in the width's place. The width only goes when the
+     outset does. *)
+  let width =
+    if Option.is_some outset then value.width
+    else
+      drop
+        (function
+          | [ (Number 1. : border_image_width_item) ] -> true | _ -> false)
+        value.width
+  in
+  let repeat =
+    drop (fun r -> r = [ (Stretch : border_image_repeat_keyword) ]) value.repeat
+  in
+  (* The printer writes the slice before the first [/], so a kept width or
+     outset needs it even at its initial. *)
+  let slice =
+    if Option.is_some width || Option.is_some outset then value.slice
+    else slice_initial
+  in
+  let drained =
+    Option.is_none source && Option.is_none slice && Option.is_none width
+    && Option.is_none outset && Option.is_none repeat
+  in
+  let source = if drained then Some (None : background_image) else source in
+  { value with source; slice; width; outset; repeat }
 
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->
@@ -1214,6 +1309,13 @@ let rec read_border_style t : border_style =
     ]
     ~var:(fun t -> Var (read_var read_border_style t))
     t
+
+(* CSS Backgrounds 3 (ED) sec. 3.2: [border-style] is [<line-style>{1,4}], the
+   box over the four side styles, as sec. 3.1 gives [border-color] and sec. 3.3
+   gives [border-width] theirs. A CSS-wide keyword reaches a slot only as the
+   lone value; [validate_regular_property_components] rejects the mixes. *)
+let read_border_style_box t : border_style list =
+  Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_border_style t
 
 (* Helper: ensure border-width values are non-negative per CSS spec *)
 let ensure_non_negative_border_width t value =
@@ -1473,6 +1575,29 @@ let rec read_logical_border_width t : logical_border_width =
     ~var:(fun t -> Var (Values.read_var read_logical_border_width t))
     ~default:read_widths t
 
+(* CSS Logical 1 (ED) sec. 4.5.2: [border-inline-style] and [border-block-style]
+   are [<'border-top-style'>{1,2}], the first value the start edge and the
+   second the end edge. *)
+let rec read_logical_border_style t : logical_border_style =
+  let read_styles t =
+    match
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_border_style t
+    with
+    | [ s ] -> (Single s : logical_border_style)
+    | [ start_; end_ ] -> Pair (start_, end_)
+    | _ -> Cursor.err_expected t "one or two line styles"
+  in
+  Cursor.enum_or_var "logical border style"
+    [
+      ("inherit", (Inherit : logical_border_style));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_logical_border_style t))
+    ~default:read_styles t
+
 let rec read_border_collapse t : border_collapse =
   Cursor.enum_or_var "border-collapse"
     [
@@ -1660,8 +1785,80 @@ let read_background_box_list t : background_box =
   | [ one ] -> one
   | many -> Layers many
 
+(* CSS Backgrounds 4 sec. 3.3 measures a bare offset from the start edge, so
+   [left 10px] and [10px] name the same position and the shorter wins. The zero
+   percentage of the start edge is what [left] / [top] names, and the hundred
+   percent is [right] / [bottom]. *)
+let normalize_background_position_axis :
+    background_position_axis -> background_position_axis =
+ fun value ->
+  let lp = Values.normalize_length_percentage in
+  let start_edge : position_axis_edge -> bool = function
+    | Left | Top -> true
+    | _ -> false
+  in
+  match value with
+  | Offset o -> preserve_if_equal value (Offset (lp o))
+  | Edge_offset (e, o) when start_edge e -> Offset (lp o)
+  | Edge_offset (e, o) -> preserve_if_equal value (Edge_offset (e, lp o))
+  | other -> other
+
 let read_background_position t : background_position =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_background_position_value t
+
+(* The edge keywords belong to one axis each, so the reader takes the pair its
+   property accepts and refuses the other axis's. An edge may carry an offset
+   from it; a bare offset is measured from the start edge. *)
+let read_background_position_axis ~label ~start_edge ~end_edge =
+  let rec read t : background_position_axis =
+    let edges =
+      [
+        (Pp.to_string pp_position_axis_edge start_edge, start_edge);
+        (Pp.to_string pp_position_axis_edge end_edge, end_edge);
+      ]
+    in
+    let after_edge e t : background_position_axis =
+      if Cursor.is_done t || Cursor.peek_comma t then Edge e
+      else
+        let snap = Cursor.save t in
+        match Values.read_length_percentage t with
+        | lp -> Edge_offset (e, lp)
+        | exception Cursor.Parse_error _ ->
+            Cursor.restore t snap;
+            Edge e
+    in
+    Cursor.enum_or_whole_value_var label
+      [
+        ("inherit", (Inherit : background_position_axis));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+      ]
+      ~var:(fun t -> Var (Values.read_var read t))
+      ~default:(fun t : background_position_axis ->
+        match Cursor.peek_ident t with
+        | Some "center" ->
+            ignore (Cursor.ident_opt t);
+            Center
+        | Some name -> (
+            match List.assoc_opt name edges with
+            | Some e ->
+                ignore (Cursor.ident_opt t);
+                after_edge e t
+            | Option.None -> Cursor.err_expected t label)
+        | Option.None -> Offset (Values.read_length_percentage t))
+      t
+  in
+  read
+
+let read_background_position_x t =
+  read_background_position_axis ~label:"background-position-x" ~start_edge:Left
+    ~end_edge:Right t
+
+let read_background_position_y t =
+  read_background_position_axis ~label:"background-position-y" ~start_edge:Top
+    ~end_edge:Bottom t
 
 module Background_shorthand = struct
   let read_image_item t =
@@ -1907,12 +2104,37 @@ let border_width_has_runtime_subst (bw : border_width) : bool =
   | Clamp (lower, value, upper) -> calc lower || calc value || calc upper
   | _ -> false
 
+(* CSS Logical 1 sec. 4.3 and 4.4: an axis shorthand takes [<side>{1,2}], so a
+   repeated side has a shorter spelling naming the same two sides, exactly as
+   [collapse_box_shorthand] picks one for the four-side families. An arbitrary
+   substitution defers the component count to computed-value time, so a pair
+   holding one keeps both. *)
 let normalize_logical_border_width :
     logical_border_width -> logical_border_width =
  fun value ->
   match value with
   | Single w -> Single (normalize_border_width w)
-  | Pair (a, b) -> Pair (normalize_border_width a, normalize_border_width b)
+  | Pair (a, b) ->
+      let a = normalize_border_width a and b = normalize_border_width b in
+      if
+        (not (is_border_width_substitution a))
+        && (not (is_border_width_substitution b))
+        && equal_border_width a b
+      then Single a
+      else Pair (a, b)
+  | other -> other
+
+(* [border-style] takes keywords, so the axis has nothing to canonicalise per
+   value and only the spelling is at stake. *)
+let normalize_logical_border_style :
+    logical_border_style -> logical_border_style =
+ fun value ->
+  match value with
+  | Pair (a, b)
+    when (not (is_border_style_substitution a))
+         && (not (is_border_style_substitution b))
+         && equal_border_style a b ->
+      Single a
   | other -> other
 
 (* CSS Backgrounds 3 (ED) sec. 3.4: a shorthand sets every longhand it covers,
@@ -2033,11 +2255,14 @@ let read_border_image_slice t : border_image_slice =
   | offsets, fill -> { offsets; fill }
 
 let read_border_image_width_item t : border_image_width_item =
-  match Cursor.peek_ident t with
-  | Some "auto" ->
-      ignore (Cursor.ident t : string);
-      Auto
-  | _ -> (
+  let auto t =
+    Cursor.enum "border-image-width"
+      [ ("auto", (Auto : border_image_width_item)) ]
+      t
+  in
+  match Cursor.option auto t with
+  | Some value -> value
+  | None -> (
       match Cursor.percentage_opt t with
       | Some n when n >= 0. -> Pct n
       | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
@@ -2047,15 +2272,22 @@ let read_border_image_width_item t : border_image_width_item =
           | Some _ ->
               Cursor.err_invalid t "border-image value cannot be negative"
           | None ->
-              let len = read_length ~allow_negative:false t in
+              (* Sec. 5.3 gives the width a number, a length-percentage or
+                 [auto], read above. The generic length reader carries keywords
+                 of its own - [stretch] and [contain] among them, which name a
+                 repeat here - so this call takes none. *)
+              let len =
+                read_length ~allow_negative:false ~with_keywords:false t
+              in
               Length len))
 
+(* Sec. 5.4 gives the outset a number or a length per side and no keyword. *)
 let read_border_image_outset_item t : border_image_outset_item =
   match Cursor.number_opt t with
   | Some n when n >= 0. -> Number n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
   | None ->
-      let len = read_length ~allow_negative:false t in
+      let len = read_length ~allow_negative:false ~with_keywords:false t in
       Length len
 
 let read_border_image_box_step ~what read_item t acc =

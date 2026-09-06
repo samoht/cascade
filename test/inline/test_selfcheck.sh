@@ -39,6 +39,26 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/fixtures" "$work/pages"
 cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$dir/freeze_page.js" "$work/"
 
+# Silencing the gate with CASCADE_NO_BROWSER must not read as a pass, and the
+# one value that exits 0 has to say the run checked nothing. Both legs return
+# before run.sh looks for a browser or builds anything, which is what makes
+# them checkable here.
+if CASCADE_NO_BROWSER=1 sh "$work/run.sh" >/dev/null 2>&1; then
+  echo "FAIL: run.sh exits 0 under CASCADE_NO_BROWSER=1"
+  exit 1
+fi
+if ! suppressed=$(CASCADE_NO_BROWSER=unchecked sh "$work/run.sh" 2>&1); then
+  echo "FAIL: run.sh does not exit 0 for the acknowledged value"
+  printf '%s\n' "$suppressed"
+  exit 1
+fi
+case $suppressed in
+  SKIP:*) ;;
+  *)
+    echo "FAIL: run.sh skipped without saying so: $suppressed"
+    exit 1 ;;
+esac
+
 # The stub keys off the page text, not the invocation count, so the original
 # page and each transform of it answer alike: only the marked page moves.
 cat > "$work/browser" <<'STUB'
@@ -56,6 +76,7 @@ if [ "$n" = 0 ]
 then body='[{"_tag":"DIV","color":"rgb(0, 0, 0)"}]'
 else body='[{"_tag":"DIV","color":"rgb(1, 1, 1)"}]'
 fi
+grep -q xtest-stub-blind "$page" 2>/dev/null && body='[]'
 printf '<html><body data-xtest="%s"></body></html>\n' \
   "$(printf '%s' "$body" | base64 | tr -d '\n')"
 STUB
@@ -72,6 +93,9 @@ EOF
 page "$work/fixtures/one.html" stable
 page "$work/pages/stable.html" stable
 page "$work/pages/moving.html" xtest-stub-unstable
+# Renders steadily, and renders nothing: two empty element lists are identical
+# for want of anything to disagree about.
+page "$work/pages/blind.html" xtest-stub-blind
 # Frozen by a freezer that did not strip <script>, so the current one changes
 # it. The stub renders it as steadily as any other page: staleness is the only
 # thing wrong with it.
@@ -79,6 +103,9 @@ page "$work/pages/unfrozen.html" stable
 sed -i.bak 's|</body>|<script>void 0</script></body>|' "$work/pages/unfrozen.html"
 rm -f "$work/pages/unfrozen.html.bak"
 
+# The stub is the browser for the run below, so an ambient suppression switch
+# has nothing to suppress; the two legs above set it themselves.
+unset CASCADE_NO_BROWSER
 STUB_STATE=$work/state
 export STUB_STATE CASCADE CANON_FILTER
 CHROME=$work/browser
@@ -119,6 +146,36 @@ if grep -q 'unfrozen\.html@.* \(minimal\|minify\)$' "$work/out"; then
   fail "a stale page still reported a transform result"
 fi
 
+# Two identical empty element lists are identical, which is what an oracle
+# looks like from outside when it has gone blind. A count from nothing is not
+# a result, so the page is reported rather than passed.
+grep -q '^BLIND real blind\.html@' "$work/out" ||
+  fail "a page that compared no element was not reported as blind"
+if grep -q '^ok   real blind\.html@' "$work/out"; then
+  fail "a page that compared no element still passed"
+fi
+
+# And the run says how much it compared, so a shrinking count is visible
+# without anyone having to count the ok lines.
+grep -q '^compared: [0-9][0-9]* case(s), [0-9][0-9]* element render(s)$' "$work/out" ||
+  fail "the run did not say how many cases it compared"
+
 [ "$status" -ne 0 ] || fail "run.sh exited 0 with a page it could not measure"
 
-echo "PASS: an unstable page and a stale one are reported as unusable"
+# A run with nothing to measure is blind rather than clean, whatever it did
+# not find to disagree about.
+empty=$work/empty
+mkdir -p "$empty/fixtures" "$empty/pages"
+cp "$dir/run.sh" "$dir/xtest.js" "$dir/minify_page.js" "$dir/freeze_page.js" "$empty/"
+if sh "$empty/run.sh" > "$empty/out" 2>&1; then
+  echo "FAIL: run.sh exits 0 with nothing to measure"
+  cat "$empty/out"
+  exit 1
+fi
+grep -q '^BLIND: 0 case' "$empty/out" || {
+  echo "FAIL: a run that measured nothing did not say so"
+  cat "$empty/out"
+  exit 1
+}
+
+echo "PASS: a suppressed, blind, unstable or stale run is not a passing one"

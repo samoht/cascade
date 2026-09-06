@@ -41,13 +41,13 @@ Invalid `@media` query inside `@import`: the media query list of the
 prelude is read the same way as an `@media` rule's.
 
   $ cat > bad-media.css <<EOF
-  > @import url("a.css") (bogus !!!);
+  > @import url("a.css") !!!;
   > .ok { color: red }
   > EOF
   $ cascade --minify bad-media.css 2>&1 | grep -E "warning|color" | head
-  warning: bad-media.css: bad condition for @media: expected media-in-parens at [22-27] (in at-rule)
-  warning: @import url("a.css") (bogus !!!);
-  warning:                       ^^^^^
+  warning: bad-media.css: bad condition for @media: expected media type or condition at [21-22] (in at-rule)
+  warning: @import url("a.css") !!!;
+  warning:                      ^
   warning: .ok { color: red }
   warning: 
   .ok{color:red}

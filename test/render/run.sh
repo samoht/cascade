@@ -11,7 +11,7 @@
 #   sh test/render/run.sh --full     # every corpus file and more seeds
 #
 # It skips cleanly, with status 0, when node or a headless browser is missing,
-# and honours CASCADE_NO_BROWSER, CHROME and NODE.
+# and reads CHROME, NODE and CASCADE_NO_BROWSER.
 set -eu
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)

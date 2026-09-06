@@ -51,7 +51,9 @@ let rec has_mixed_operator = function
   | Css.Supports.And (a, b) | Css.Supports.Or (a, b) ->
       has_mixed_operator a || has_mixed_operator b
   | Css.Supports.Not a -> has_mixed_operator a
-  | Css.Supports.Property _ | Css.Supports.Function _ -> false
+  | Css.Supports.Property _ | Css.Supports.Function _
+  | Css.Supports.General_enclosed _ ->
+      false
 
 let test_mixed_operator_serialization_reparse buf =
   match

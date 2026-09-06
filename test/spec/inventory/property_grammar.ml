@@ -4,6 +4,41 @@ type row = {
   negatives : string list;
 }
 
+(* Filter Effects 1 section 6.1: drop-shadow alone requires arguments. *)
+let omitted_filters =
+  [
+    "blur()";
+    "brightness()";
+    "contrast()";
+    "grayscale()";
+    "hue-rotate()";
+    "invert()";
+    "opacity()";
+    "saturate()";
+    "sepia()";
+  ]
+
+(* Filter Effects 1 section 6.1 and CSS Values 4 section 10: only lengths;
+   calculated negative results clamp instead of becoming invalid literals. *)
+let blur_lengths =
+  [ "blur(calc(-1px))"; "blur(min(-1px, 2px))"; "blur(max(0px, 1em))" ]
+
+let invalid_blur_lengths =
+  [
+    "blur(0%)";
+    "blur(10%)";
+    "blur(-1px)";
+    "blur(auto)";
+    "blur(calc(0%))";
+    "blur(calc(1px + 0%))";
+    "blur(calc(10% - 10%))";
+    "blur(min(1px, 2%))";
+    "blur(min(0, 1px))";
+    "blur(clamp(0px, 1%, 2px))";
+    "blur(minmax(1px, 2px))";
+    "blur(fit-content(1px))";
+  ]
+
 let matrix =
   [
     {
@@ -213,8 +248,9 @@ let matrix =
           "blur(5px) contrast(120%)";
           "drop-shadow(0 0 2px black)";
           "opacity(calc(50% + 25%))";
-        ];
-      negatives = [ "blur()"; "drop-shadow()" ];
+        ]
+        @ omitted_filters @ blur_lengths;
+      negatives = [ "drop-shadow()"; "blur(red)" ] @ invalid_blur_lengths;
     };
     {
       property = "font";
@@ -257,10 +293,28 @@ let matrix =
       negatives = [ "underline none"; "wavy solid" ];
     };
     {
+      (* CSS Text Decoration 4 sec. 2.4: auto | from-font | <length-percentage>
+         | <line-width>. The <length-percentage> arm carries no [0,inf] range,
+         so a negative thickness is grammar; <line-width> is the CSS Borders 4
+         sec. 2.3 keyword set. *)
       property = "text-decoration-thickness";
       positives =
-        [ "auto"; "from-font"; "0"; "1px"; "10%"; "hairline"; "thin"; "thick" ];
-      negatives = [ "red"; "1px 2px"; "-1px"; "none"; "min-content"; "stretch" ];
+        [
+          "auto";
+          "from-font";
+          "0";
+          "1px";
+          "10%";
+          "-1px";
+          "-10%";
+          "calc(-1px)";
+          "calc(-10%)";
+          "calc(2px - 3px)";
+          "hairline";
+          "thin";
+          "thick";
+        ];
+      negatives = [ "red"; "1px 2px"; "none"; "min-content"; "stretch" ];
     };
     {
       property = "white-space";
@@ -314,12 +368,18 @@ let matrix =
       negatives = [ "normal allow-discrete"; "discrete" ];
     };
     {
+      (* CSS Animations 1 sec. 3: <keyframes-name> = <custom-ident> | <string>,
+         and the exclusion covers none and the CSS-wide keywords only, so
+         [infinite] names a keyframe set after an iteration count. *)
       property = "animation";
       positives =
         [
-          "fade 1s linear 2 alternate both running"; "none"; "fade calc(1s * 2)";
+          "fade 1s linear 2 alternate both running";
+          "none";
+          "fade calc(1s * 2)";
+          "infinite infinite";
         ];
-      negatives = [ "1s 2s 3s"; "infinite infinite" ];
+      negatives = [ "1s 2s 3s"; "2 3" ];
     };
     {
       property = "grid-auto-flow";
@@ -347,9 +407,14 @@ let matrix =
       negatives = [ "start center end"; "left right" ];
     };
     {
+      (* CSS Lists 3 sec. 3.6: <'list-style-position'> || <'list-style-image'>
+         || <'list-style-type'>, and CSS Counter Styles 3 sec. 3 makes
+         <counter-style-name> a <custom-ident> excluding none, so [outside]
+         names a counter style after the position keyword. *)
       property = "list-style";
-      positives = [ "square inside"; "none"; "url(marker.png) outside" ];
-      negatives = [ "inside outside"; "square disc" ];
+      positives =
+        [ "square inside"; "none"; "inside outside"; "url(marker.png) outside" ];
+      negatives = [ "square disc"; "inside outside outside" ];
     };
     {
       property = "counter-reset";
@@ -400,16 +465,38 @@ let matrix =
         "-webkit-text-fill-color";
         "-webkit-text-stroke-color";
         "column-rule-color";
-        "outline-color";
-        "fill";
-        "stroke";
-        "accent-color";
-        "caret-color";
         "stop-color";
         "flood-color";
         "lighting-color";
       ]
       [ "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
+      [ "1px"; "red blue" ]
+    (* SVG 2 sec. 13.2: <paint> = none | <color> | <url> [none | <color>]? |
+       context-fill | context-stroke, none of which a <color> property takes. *)
+  @ rows_for [ "fill"; "stroke" ]
+      [
+        "none";
+        "red";
+        "currentColor";
+        "url(#p)";
+        "url(#p) red";
+        "context-fill";
+        "context-stroke";
+      ]
+      [ "1px"; "auto"; "red blue" ]
+    (* CSS UI 4 sec. 5.2.1: auto | <color> [ auto | <color> ]?, with auto the
+       initial value, so a third component is the first invalid one. *)
+  @ rows_for [ "caret-color" ]
+      [ "auto"; "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
+      [ "1px"; "red blue green" ]
+    (* CSS UI 4 sec. 7.1: auto | <color>, with auto the initial value. *)
+  @ rows_for [ "accent-color" ]
+      [ "auto"; "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
+      [ "1px"; "red blue" ]
+    (* CSS UI 4 sec. 3.4: auto | <'border-top-color'>, with auto the initial
+       value. *)
+  @ rows_for [ "outline-color" ]
+      [ "auto"; "red"; "currentColor"; "rgb(0 0 0 / 50%)" ]
       [ "1px"; "red blue" ]
   @ [
       {
@@ -418,15 +505,32 @@ let matrix =
         negatives = [ "1px"; "red blue green black white" ];
       };
     ]
+    (* CSS Backgrounds 3 (ED) sec. 3.2 gives [border-style] the value
+       [<line-style>{1,4}], the box over the four side styles that sec. 3.1
+       gives [border-color]. *)
+  @ rows_for [ "border-style" ]
+      [
+        "none";
+        "solid";
+        "hidden";
+        "solid dashed";
+        "solid dashed dotted";
+        "solid dashed dotted double";
+        "none solid dashed double";
+      ]
+      [ "foo"; "solid dashed dotted double hidden" ]
+    (* CSS Logical 1 (ED) sec. 4.5.2 gives both flow-relative shorthands the
+       value [<'border-top-style'>{1,2}], the start edge then the end edge. *)
+  @ rows_for
+      [ "border-inline-style"; "border-block-style" ]
+      [ "none"; "solid"; "hidden"; "solid dashed" ]
+      [ "foo"; "solid dashed dotted" ]
   @ rows_for
       [
-        "border-style";
         "border-top-style";
         "border-right-style";
         "border-bottom-style";
         "border-left-style";
-        "border-inline-style";
-        "border-block-style";
         "border-inline-start-style";
         "border-inline-end-style";
         "border-block-start-style";
@@ -434,6 +538,7 @@ let matrix =
       ]
       [ "none"; "solid"; "dashed"; "hidden" ]
       [ "solid dashed"; "foo" ]
+    (* CSS Box 4: the padding longhands are one <length-percentage [0,inf]>. *)
   @ rows_for
       [
         "padding-left";
@@ -444,6 +549,14 @@ let matrix =
         "padding-inline-end";
         "padding-block-start";
         "padding-block-end";
+      ]
+      [ "0"; "1px"; "10%"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px"; "-1px" ]
+    (* CSS Backgrounds 3 (ED) sec. 4.1 gives every corner longhand the value
+       [<length-percentage [0,inf]>{1,2}]: the horizontal radius then the
+       vertical one, a single value setting both. *)
+  @ rows_for
+      [
         "border-top-left-radius";
         "border-top-right-radius";
         "border-bottom-left-radius";
@@ -452,19 +565,46 @@ let matrix =
         "border-start-end-radius";
         "border-end-start-radius";
         "border-end-end-radius";
-        "stroke-width";
-        "outline-width";
-        "outline-offset";
-        "letter-spacing";
-        "text-indent";
-        "word-spacing";
-        "line-height-step";
-        "overflow-clip-margin";
-        "offset-distance";
-        "shape-margin";
       ]
-      [ "0"; "1px"; "calc(1rem + 2px)" ]
+      [ "0"; "1px"; "10%"; "1px 2px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px 3px"; "-1px" ]
+    (* SVG 2 sec. 13.5: stroke-width takes a bare <number> as well. *)
+  @ rows_for [ "stroke-width" ]
+      [ "0"; "1px"; "10%"; "2"; "calc(1rem + 2px)" ]
       [ "auto"; "red"; "1px 2px" ]
+    (* CSS UI 4 sec. 3.2: <line-width>, with medium the initial value. *)
+  @ rows_for [ "outline-width" ]
+      [ "thin"; "medium"; "thick"; "0"; "1px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px"; "-1px" ]
+    (* CSS UI 4 sec. 3.3: <length>, which may be negative and takes no
+       percentage. *)
+  @ rows_for [ "outline-offset" ]
+      [ "0"; "1px"; "-1px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px"; "10%" ]
+    (* CSS Text 4 sec. 8.1 and 8.2: normal | <length-percentage>, with normal
+       the initial value. *)
+  @ rows_for
+      [ "letter-spacing"; "word-spacing" ]
+      [ "normal"; "0"; "1px"; "-1px"; "10%"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px" ]
+    (* CSS Text 4 sec. 9.1: [ <length-percentage> ] && hanging? && each-line?,
+       so the length is required and the two keywords are not. *)
+  @ rows_for [ "text-indent" ]
+      [ "0"; "1px"; "10%"; "1em hanging"; "2em each-line"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "hanging" ]
+    (* CSS Overflow 4 sec. 3.2: <visual-box> || <length>. *)
+  @ rows_for [ "overflow-clip-margin" ]
+      [ "0"; "1px"; "content-box"; "padding-box 2px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px" ]
+  @ rows_for
+      [ "offset-distance"; "shape-margin" ]
+      [ "0"; "1px"; "10%"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px" ]
+    (* CSS Inline 3: line-height-step is a <length>, so a percentage is not
+       one. *)
+  @ rows_for [ "line-height-step" ]
+      [ "0"; "1px"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "1px 2px"; "10%" ]
   (* CSS Transforms 2 sec. 3: [perspective] takes [none], its initial value. CSS
      Text Decoration 4 sec. 5: [text-underline-offset] takes [auto] and may be
      negative. *)
@@ -484,10 +624,17 @@ let matrix =
       [ "margin-left"; "margin-right"; "margin-top"; "margin-bottom" ]
       [ "0"; "1px"; "10%"; "auto"; "anchor-size(width)" ]
       [ "red"; "1px 2px" ]
+    (* CSS Logical 1 sec. 4.4: <'padding-top'>{1,2}. *)
   @ rows_for
-      [ "padding-inline"; "padding-block"; "column-gap"; "row-gap" ]
-      [ "0"; "1rem"; "10%" ]
+      [ "padding-inline"; "padding-block" ]
+      [ "0"; "1rem"; "10%"; "1px 2px" ]
       [ "auto"; "1px 2px 3px"; "red" ]
+    (* CSS Gaps 1 sec. 2.1: normal | <length-percentage [0,inf]> | <line-width>,
+       one value, with normal the initial one. *)
+  @ rows_for
+      [ "column-gap"; "row-gap" ]
+      [ "normal"; "0"; "1rem"; "10%"; "calc(1rem + 2px)" ]
+      [ "auto"; "1px 2px"; "red" ]
   @ rows_for
       [ "margin-inline"; "margin-block" ]
       [ "0"; "1px"; "1px 1px"; "1px 2px"; "auto" ]
@@ -544,23 +691,27 @@ let matrix =
       ]
       [ "auto"; "0"; "1px"; "10%" ]
       [ "red"; "1px 2px"; "-1px" ]
+    (* CSS Sizing 3 sec. 3.1.1 and 3.1.2: auto | <box-size>, so none is not one
+       of them. *)
   @ rows_for
       [
         "height";
         "min-width";
         "min-height";
-        "max-width";
-        "max-height";
         "inline-size";
         "min-inline-size";
-        "max-inline-size";
         "block-size";
         "min-block-size";
-        "max-block-size";
         "flex-basis";
       ]
       [ "auto"; "10%"; "min-content"; "fit-content(20rem)"; "calc(1rem + 2px)" ]
-      [ "red"; "fit-content()"; "1px 2px" ]
+      [ "red"; "none"; "fit-content()"; "1px 2px" ]
+    (* CSS Sizing 3 sec. 3.1.3: none | <box-size>, with none the initial value
+       and no auto arm at all. *)
+  @ rows_for
+      [ "max-width"; "max-height"; "max-inline-size"; "max-block-size" ]
+      [ "none"; "10%"; "min-content"; "fit-content(20rem)"; "calc(1rem + 2px)" ]
+      [ "auto"; "red"; "fit-content()"; "1px 2px" ]
   @ rows_for
       [
         "contain-intrinsic-width";
@@ -570,9 +721,13 @@ let matrix =
       ]
       [ "none"; "100px"; "auto 300px" ]
       [ "auto"; "1px 2px"; "red" ]
+    (* CSS Backgrounds 3 sec. 3.3: <line-width>{1,4} for the box, one value for
+       each longhand. *)
+  @ rows_for [ "border-width" ]
+      [ "thin"; "medium"; "thick"; "1px"; "1px 2px"; "thin medium thick 1px" ]
+      [ "auto"; "thin medium thick 1px 2px"; "red" ]
   @ rows_for
       [
-        "border-width";
         "border-top-width";
         "border-right-width";
         "border-bottom-width";
@@ -583,7 +738,7 @@ let matrix =
         "border-block-end-width";
       ]
       [ "thin"; "medium"; "thick"; "1px" ]
-      [ "auto"; "thin medium thick 1px 2px"; "red" ]
+      [ "auto"; "1px 2px"; "red" ]
   @ [
       {
         property = "border-block";
@@ -642,16 +797,27 @@ let matrix =
         "-webkit-filter";
         "-ms-filter";
       ]
-      [ "none"; "blur(5px)"; "contrast(120%) brightness(.8)" ]
-      [ "blur()"; "none blur(1px)" ]
-  @ rows_for
-      [
-        "transition-duration";
-        "transition-delay";
-        "animation-duration";
-        "animation-delay";
-      ]
-      [ "0s"; ".2s"; "120ms" ] [ "1px"; "1s 2s" ]
+      (* Filter Effects 1 sec. 6.1: blur( <length>? ). *)
+      ([ "none"; "blur(5px)"; "contrast(120%) brightness(.8)" ]
+      @ omitted_filters @ blur_lengths)
+      ([ "blur(red)"; "none blur(1px)" ] @ invalid_blur_lengths)
+    (* CSS Transitions 1 sec. 2.2: <time [0s,inf]>#. *)
+  @ rows_for [ "transition-duration" ]
+      [ "0s"; ".2s"; "120ms"; "0s, 1s" ]
+      [ "1px"; "1s 2s"; "-1s" ]
+    (* CSS Transitions 1 sec. 2.4: <time>#, with no lower bound. *)
+  @ rows_for [ "transition-delay" ]
+      [ "0s"; ".2s"; "120ms"; "-1s"; "0s, 1s" ]
+      [ "1px"; "1s 2s" ]
+    (* CSS Animations 2 sec. 4.1: [ auto | <time [0s,inf]> ]#, with auto the
+       initial value. *)
+  @ rows_for [ "animation-duration" ]
+      [ "auto"; "0s"; ".2s"; "120ms"; "1s, 2s" ]
+      [ "1px"; "1s 2s"; "-1s" ]
+    (* CSS Animations 2 sec. 4.8: a <time> list with no lower bound. *)
+  @ rows_for [ "animation-delay" ]
+      [ "0s"; ".2s"; "120ms"; "-1s"; "1s, 2s" ]
+      [ "1px"; "1s 2s" ]
   @ rows_for
       [ "transition-timing-function"; "animation-timing-function" ]
       [ "ease"; "linear"; "steps(4, jump-end)"; "cubic-bezier(.1,.2,.3,.4)" ]
@@ -666,15 +832,21 @@ let matrix =
         "repeat"; "no-repeat"; "repeat-x"; "space round"; "no-repeat no-repeat";
       ]
       [ "repeat no-repeat space"; "foo" ]
+    (* CSS Backgrounds 3 sec. 2.6: <bg-position>#, one position per layer. *)
   @ rows_for
+      [ "background-position"; "mask-position"; "-webkit-mask-position" ]
       [
-        "background-position";
-        "mask-position";
-        "-webkit-mask-position";
-        "object-position";
+        "center";
+        "left 10px top 20px";
+        "10% 20%";
+        "center, left top";
+        "calc(10% + 1px) 20%";
       ]
-      [ "center"; "left 10px top 20px"; "10% 20%"; "calc(10% + 1px) 20%" ]
       [ "left top center"; "foo" ]
+    (* CSS Images 3 sec. 4.6: a single <position>, with no list. *)
+  @ rows_for [ "object-position" ]
+      [ "center"; "left 10px top 20px"; "10% 20%"; "calc(10% + 1px) 20%" ]
+      [ "left top center"; "foo"; "center, center" ]
   @ rows_for
       [ "mask-size"; "-webkit-mask-size" ]
       [ "auto"; "cover"; "contain"; "10px 20%" ]
@@ -813,9 +985,11 @@ let matrix =
         negatives = [ "clip ellipsis clip"; "auto" ];
       };
       {
+        (* CSS Text 4 sec. 5.5: <'text-wrap-mode'> || <'text-wrap-style'>, and
+           sec. 5.4 gives text-wrap-style an auto arm. *)
         property = "text-wrap";
-        positives = [ "wrap"; "nowrap"; "balance"; "pretty" ];
-        negatives = [ "wrap nowrap"; "auto" ];
+        positives = [ "wrap"; "nowrap"; "balance"; "pretty"; "auto" ];
+        negatives = [ "wrap nowrap"; "wrap wrap" ];
       };
       {
         property = "text-wrap-style";
@@ -1021,9 +1195,12 @@ let matrix =
           [ "\"a\" \"a a\""; "\"a .\" \". a\""; "\"nav/main\""; "a b" ];
       };
       {
+        (* CSS Grid 2 sec. 7.4: [ <'grid-template-rows'> / <'grid-template-
+           columns'> ], and sec. 7.2 gives grid-template-rows a none arm. *)
         property = "grid-template";
-        positives = [ "none"; "\"a a\" 1fr / 1fr 1fr"; "subgrid / subgrid" ];
-        negatives = [ "/"; "none / 1fr" ];
+        positives =
+          [ "none"; "none / 1fr"; "\"a a\" 1fr / 1fr 1fr"; "subgrid / subgrid" ];
+        negatives = [ "/"; "1fr / 1fr / 1fr" ];
       };
       {
         property = "grid-area";
@@ -1071,9 +1248,13 @@ let matrix =
         negatives = [ "span"; "1 2" ];
       };
       {
+        (* CSS Backgrounds 3 sec. 6.1: <shadow> = <color>? && [ <length>{2} ...
+           ] && inset?, so two lengths alone are a whole shadow and one is
+           not. *)
         property = "box-shadow";
-        positives = [ "none"; "0 1px 2px rgb(0 0 0 / .2)"; "inset 0 0 1px red" ];
-        negatives = [ "0 0"; "inset inset 0 0 1px" ];
+        positives =
+          [ "none"; "0 0"; "0 1px 2px rgb(0 0 0 / .2)"; "inset 0 0 1px red" ];
+        negatives = [ "0"; "inset inset 0 0 1px" ];
       };
       {
         property = "mix-blend-mode";
@@ -1263,9 +1444,17 @@ let matrix =
         negatives = [ "anchor"; "--a --b" ];
       };
       {
+        (* CSS Anchor Positioning 1 sec. 6.1: none | [ [ <dashed-ident> ||
+           <try-tactic> ] | <position-area> ]#, and || is order-free. *)
         property = "position-try-fallbacks";
-        positives = [ "none"; "--fallback"; "flip-block, --fallback" ];
-        negatives = [ "flip-block --fallback"; "," ];
+        positives =
+          [
+            "none";
+            "--fallback";
+            "flip-block --fallback";
+            "flip-block, --fallback";
+          ];
+        negatives = [ ","; "--a --b" ];
       };
       {
         property = "position-area";
@@ -1435,9 +1624,13 @@ let matrix =
         negatives = [ "none all"; "2" ];
       };
       {
+        (* CSS Syntax 3 sec. 2.2 closes an open function at EOF, so [scroll(] is
+           the valid [scroll()] and cannot be a negative. It is not a positive
+           either: the positive checks append a token after the value, and an
+           unclosed function swallows it. *)
         property = "animation-timeline";
         positives = [ "auto"; "none"; "scroll()"; "--timeline" ];
-        negatives = [ "auto none"; "scroll(" ];
+        negatives = [ "auto none"; "scroll() none" ];
       };
       {
         property = "animation-range";
@@ -1582,9 +1775,12 @@ let matrix =
         negatives = [ "visible hidden"; "none" ];
       };
       {
+        (* CSS Transitions 1 sec. 2.1: none | <single-transition-property>#,
+           where <single-transition-property> = all | <custom-ident>. The
+           exclusion clause names none, inherit and initial, not all. *)
         property = "transition-property";
-        positives = [ "none"; "all"; "opacity, transform" ];
-        negatives = [ "none, opacity"; "all, opacity" ];
+        positives = [ "none"; "all"; "opacity, transform"; "all, opacity" ];
+        negatives = [ "none, opacity"; "opacity, none" ];
       };
       {
         property = "will-change";

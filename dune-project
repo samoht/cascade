@@ -23,8 +23,6 @@
   (alcotest (and (>= 1.7.0) :with-test))
   (alcobar :with-test)
   (astring :with-test)
-  (eio (and (>= 0.14) :with-test))
-  (eio_main (and (>= 0.14) :with-test))
   markup
   (mdx :with-test)
   (re :with-test)

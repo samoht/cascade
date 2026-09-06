@@ -5,6 +5,7 @@ type node = {
   id : string option;
   classes : string list;
   attrs : (string * string) list;
+  text : string list;
   mutable parent : node option;
   children : node list;
 }
@@ -19,13 +20,13 @@ module Node = struct
   let attribute n key = List.assoc_opt key n.attrs
   let parent n = n.parent
   let children n = n.children
-  let text_children _ = []
+  let text_children n = n.text
 end
 
 module A = Apply.Make (Node)
 
-let node ?id ?(classes = []) ?(attrs = []) ?(children = []) name =
-  let n = { name; id; classes; attrs; parent = None; children } in
+let node ?id ?(classes = []) ?(attrs = []) ?(text = []) ?(children = []) name =
+  let n = { name; id; classes; attrs; text; parent = None; children } in
   List.iter (fun c -> c.parent <- Some n) children;
   n
 
@@ -444,16 +445,25 @@ let unrelated_kept_property_still_inlines () =
     (node ~classes:[ "m" ] "ul")
 
 (* selectors-4 sec. 6.3: an [i] flag matches the attribute's value ASCII
-   case-insensitively and an [s] flag matches it "identical to", so the matcher
-   represents both and the rule projects or drops on the value the element
-   actually carries. *)
+   case-insensitively, so the rule projects onto an element carrying the value
+   in another case. *)
 let projects_attribute_rule_with_case_flag () =
   check_split "case-insensitive attribute" ~css:"p[data-k=\"X\" i]{color:red}"
     ~inline:"color:red" ~keep:"" ~kept:0
-    (node ~attrs:[ ("data-k", "x") ] "p");
-  check_split "case-sensitive attribute" ~css:"p[data-k=\"X\" s]{color:red}"
-    ~inline:"" ~keep:"" ~kept:0
     (node ~attrs:[ ("data-k", "x") ] "p")
+
+(* Inlining takes the rule out of the sheet, so the projection has to agree with
+   the browser that reads what is left. Selectors 4 sec. 6.3 gives [s]
+   "identical to" semantics and every engine refuses the selector outright; sec.
+   13.2 matches an element holding only document white space, and its own note
+   records that Level 2 and Level 3 did not - the change engines have not taken.
+   Painting either element writes a style the page did not have. *)
+let keeps_a_rule_no_engine_implements () =
+  check_split "case-sensitive attribute" ~css:"p[data-k=\"X\" s]{color:red}"
+    ~inline:"" ~keep:"p[data-k=X s]{color:red}" ~kept:1
+    (node ~attrs:[ ("data-k", "X") ] "p");
+  check_split "white space alone" ~css:"p:empty{color:red}" ~inline:""
+    ~keep:"p:empty{color:red}" ~kept:1 (node ~text:[ " " ] "p")
 
 (* The control: without the flag the selector is representable, so it projects
    onto the element and leaves nothing behind. *)
@@ -648,6 +658,8 @@ let suite =
         unrelated_kept_property_still_inlines;
       Alcotest.test_case "projects an attribute rule with a case flag" `Quick
         projects_attribute_rule_with_case_flag;
+      Alcotest.test_case "keeps a rule no engine implements" `Quick
+        keeps_a_rule_no_engine_implements;
       Alcotest.test_case "projects an attribute rule to inline style" `Quick
         projects_attribute_rule_to_inline_style;
       Alcotest.test_case "keeps a rule with a namespaced element" `Quick

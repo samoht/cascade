@@ -12,7 +12,8 @@ module SSet = Set.Make (String)
    stylesheet, so a selector {!Resolve.supported} does not cover would leave its
    declarations nowhere at all: matched by nobody here, and gone from the sheet
    the browser reads. Deriving the set from the matcher is what stops the two
-   from parting ways. *)
+   from parting ways, and the default reading is {!Resolve.constructor-Browser},
+   since what is left has to render the way the page it came from does. *)
 let inlinable = Resolve.supported
 
 (* Elements that never carry inline styles ([html] is stylable so :root custom

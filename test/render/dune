@@ -1,17 +1,51 @@
-; Differential render test: a stylesheet and its optimized forms must compute
-; the same style for every element of a real headless browser. The document is
-; derived from the stylesheet's own selectors, so the rules actually match.
+; Browser-backed tests. Each harness drives a headless Chromium and skips, with
+; status 0, when node or a browser is missing, so a machine without one does
+; not fail the suite. CASCADE_NO_BROWSER is a different thing and fails: see
+; Browser.suppressed.
 ;
-; The test skips, with status 0, when node or a headless Chromium is missing,
-; or when CASCADE_NO_BROWSER is set, so it never fails a machine without a
-; browser. Run the wider sweep by hand with test/render/run.sh.
+; render_diff: a stylesheet and its optimized forms must compute the same style
+; for every element of a document derived from the stylesheet's own selectors.
+; Run the wider sweep by hand with test/render/run.sh.
+;
+; shorthand_expand: a shorthand declaration must compare identical, under
+; --diff=canonical, to the longhand declarations the browser expands it into.
+;
+; canonical_agree: a pair --diff=canonical reports identical must compute the
+; same style in the browser for every element of a document derived from it.
+;
+; resolve_diff: the declarations Resolve says win for an element must compute
+; the same style, in the browser, as the stylesheet they came from.
+;
+; selector_match: the element set Resolve says a selector matches must be the
+; set document.querySelectorAll returns for it, over the same document.
+;
+; at_rule_conditions: an at-rule condition must include the block in exactly
+; the environments the browser includes it in, a rewrite of the condition must
+; not move which environments those are, and two conditions cascade merges must
+; be one condition to the browser in every environment.
+;
+; parse_recovery: for malformed CSS, the rules and declarations cascade keeps
+; must be the ones the browser's CSSOM keeps. Both sides are read through the
+; same parser, so a difference is recovery and not spelling.
+;
+; custom_property: a transform that resolves var() must compute, in the
+; browser, what the sheet it rewrote computed. Custom properties are sampled by
+; name, which the other computed-style harnesses here deliberately do not do.
 
-(executable
- (name render_diff)
+(executables
+ (names
+  render_diff
+  shorthand_expand
+  canonical_agree
+  resolve_diff
+  selector_match
+  at_rule_conditions
+  parse_recovery
+  custom_property)
  (libraries cascade cascade_diff fmt unix))
 
-; render_diff.exe reads the driver and the DOM builder at run time, so they
-; have to sit next to it in the build directory.
+; The executables read their driver scripts at run time, so those have to sit
+; next to them in the build directory.
 
 (rule
  (alias default)
@@ -19,12 +53,33 @@
   (glob_files *.js))
  (action (progn)))
 
+; The control that makes CASCADE_NO_BROWSER fail is itself checked, and it is
+; the one rule here dune can cache honestly: both its legs return before the
+; harness looks for a browser, so its answer depends only on the binaries.
+
+(rule
+ (alias runtest)
+ (deps render_diff.exe shorthand_expand.exe canonical_agree.exe)
+ (action
+  (run
+   sh
+   %{dep:test_suppression.sh}
+   %{exe:render_diff.exe}
+   %{exe:shorthand_expand.exe}
+   %{exe:canonical_agree.exe})))
+
+; Every rule below reads CASCADE_NO_BROWSER, so each one declares it: a run
+; the variable silenced digests apart from a run that reached a browser, and
+; is never replayed for it. The installed browser is not digested, so a skip
+; taken for want of one stands until something else in the rule changes.
+
 ; The sweep reads the committed CSS corpora, so the rule has to bring them
 ; into the build directory it runs in.
 
 (rule
  (alias runtest)
  (deps
+  (env_var CASCADE_NO_BROWSER)
   (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
@@ -34,3 +89,83 @@
    CASCADE_RENDER_ARTIFACTS
    %{workspace_root}/tmp/render-diff
    (run %{exe:render_diff.exe}))))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  shorthand_expand.exe)
+ (action
+  (run %{exe:shorthand_expand.exe})))
+
+; The sweep reads the committed corpus, so the rule has to bring it into the
+; build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  (source_tree ../interop/css-minify-tests/traces/tests)
+  (source_tree ../examples)
+  canonical_agree.exe)
+ (action
+  (run %{exe:canonical_agree.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  resolve_diff.exe)
+ (action
+  (setenv
+   CASCADE_RENDER_ARTIFACTS
+   %{workspace_root}/tmp/render-diff
+   (run %{exe:resolve_diff.exe}))))
+
+; The browser drives one launch per environment, so this rule brings the
+; page script into the build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  at_rule_conditions.exe)
+ (action
+  (run %{exe:at_rule_conditions.exe})))
+
+; The browser reads both sides of every input in one launch, so this rule
+; brings the page script into the build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  parse_recovery.exe)
+ (action
+  (run %{exe:parse_recovery.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  selector_match.exe)
+ (action
+  (setenv
+   CASCADE_RENDER_ARTIFACTS
+   %{workspace_root}/tmp/render-diff
+   (run %{exe:selector_match.exe}))))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  custom_property.exe)
+ (action
+  (run %{exe:custom_property.exe})))

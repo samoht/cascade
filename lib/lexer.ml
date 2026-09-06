@@ -12,6 +12,10 @@ type comment = { loc : Loc.t; terminated : bool }
 type t = {
   reader : Reader.t;
   on_comment : (comment -> unit) option;
+  (* CSS Syntax 3 (ED) sec. 4.3.1 takes "unicode ranges allowed", defaulting to
+     false; sec. 4.3.14 names its one caller, the value of a unicode-range
+     descriptor. With it unset, [u+a] is an ident, a delim and an ident. *)
+  mutable unicode_ranges : bool;
   (* Token buffer: most-recently-pushed-back at the head. [next] takes from here
      before falling through to the reader. *)
   mutable buffer : Token.t list;
@@ -23,11 +27,16 @@ type t = {
 
 and save = { trace : Token.t list ref; saved_history : Token.t list }
 
-let of_reader ?on_comment reader =
-  { reader; on_comment; buffer = []; history = []; saves = [] }
+let of_reader ?on_comment ?(unicode_ranges = false) reader =
+  { reader; on_comment; unicode_ranges; buffer = []; history = []; saves = [] }
 
-let of_string ?enforce_spec ?on_comment s =
-  of_reader ?on_comment (Reader.of_string ?enforce_spec s)
+let of_string ?enforce_spec ?on_comment ?unicode_ranges s =
+  of_reader ?on_comment ?unicode_ranges (Reader.of_string ?enforce_spec s)
+
+let with_unicode_ranges t f =
+  let saved = t.unicode_ranges in
+  t.unicode_ranges <- true;
+  Fun.protect ~finally:(fun () -> t.unicode_ranges <- saved) f
 
 let source t = Reader.source t.reader
 
@@ -676,7 +685,8 @@ let consume_name_start_or_delim ~force_url_function r c =
     Reader.skip r;
     Delim (String.make 1 c))
 
-let next_token ?(force_url_function = false) ?on_comment r =
+let next_token ?(force_url_function = false) ?(unicode_ranges = false)
+    ?on_comment r =
   skip_comment_run on_comment r;
   let b = Reader.peek_byte r in
   if b = -1 then Eof
@@ -741,7 +751,7 @@ let next_token ?(force_url_function = false) ?on_comment r =
           Reader.skip r;
           Close Curly
       | c when is_digit c -> consume_numeric_token r
-      | ('U' | 'u') when would_start_unicode_range r ->
+      | ('U' | 'u') when unicode_ranges && would_start_unicode_range r ->
           consume_unicode_range_token r
       | c when is_name_start_ascii c || c >= '\x80' ->
           consume_name_start_or_delim ~force_url_function r c
@@ -752,9 +762,12 @@ let next_token ?(force_url_function = false) ?on_comment r =
 (** {1 Stream API (uniform with other stages)} *)
 
 (* Wrap a tokenizer step with source-location capture. *)
-let tokenize_with_loc ?(force_url_function = false) ?on_comment reader =
+let tokenize_with_loc ?(force_url_function = false) ?(unicode_ranges = false)
+    ?on_comment reader =
   let start_pos = Reader.position reader in
-  let kind = next_token ~force_url_function ?on_comment reader in
+  let kind =
+    next_token ~force_url_function ~unicode_ranges ?on_comment reader
+  in
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
@@ -792,7 +805,7 @@ let next t =
   | [] ->
       let tok =
         tokenize_with_loc ~force_url_function:(force_url_function t)
-          ?on_comment:t.on_comment t.reader
+          ~unicode_ranges:t.unicode_ranges ?on_comment:t.on_comment t.reader
       in
       record_consume t tok;
       tok
@@ -803,7 +816,7 @@ let peek t =
   | [] ->
       let tok =
         tokenize_with_loc ~force_url_function:(force_url_function t)
-          ?on_comment:t.on_comment t.reader
+          ~unicode_ranges:t.unicode_ranges ?on_comment:t.on_comment t.reader
       in
       t.buffer <- [ tok ];
       tok

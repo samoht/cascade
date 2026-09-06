@@ -63,9 +63,9 @@ let lex_to_cv_list parser =
    which is what the lexer indexes against. Using the caller's raw string would
    desync [Loc.offset] from [Loc.snippet] when the input contains BOM, NUL, CR,
    FF, or CRLF. *)
-let of_string ?(meta = Loc.default_meta_level) s =
+let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
   let reader = Reader.of_string s in
-  let parser = Parser.of_reader reader in
+  let parser = Parser.of_reader ?unicode_ranges reader in
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source reader);
@@ -602,10 +602,9 @@ let url_from_func t (fn : Component.func Component.node) =
 
 let url t =
   match peek t with
-  | Some (Component.Preserved { kind = Token.Url ""; loc }) ->
-      if loc.end_pos - loc.start_pos < 5 then err_expected t "url argument";
-      skip t;
-      ""
+  (* CSS Syntax 3 (ED) sec. 4.3.6 ends a url token at EOF as it does at [)], the
+     missing closer a parse error and nothing more, so the shorter span of
+     [url(] is still a url token holding the empty string. *)
   | Some (Component.Preserved { kind = Token.Url s; _ }) ->
       skip t;
       s

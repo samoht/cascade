@@ -86,7 +86,10 @@ val ctx_of_scope :
     apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer]. *)
 
 val compose_shorthands :
-  ctx:ctx -> (int * declaration) list -> (int * declaration) list
+  ?held:Shorthand.held ->
+  ctx:ctx ->
+  (int * declaration) list ->
+  (int * declaration) list
 (** [compose_shorthands ~ctx decls] runs the shorthand-composition pipeline over
     index-tagged declarations: longhands fold into shorthands, resets reorder,
     and shadowed longhands drop. Each declaration it leaves unchanged is

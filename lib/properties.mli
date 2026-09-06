@@ -40,6 +40,7 @@ val pp_property_value : ('a property * 'a) Pp.t
 val normalize_property_value :
   ?lossless:bool ->
   ?exact_srgb:bool ->
+  ?resolve_missing:bool ->
   ?ctx:Values.calc_ctx ->
   'a property ->
   'a ->
@@ -50,9 +51,11 @@ val normalize_property_value :
     whose folds have not yet migrated out of [pp]. [lossless] disables bounded
     colour and numeric approximation while keeping exact canonicalisation.
 
-    [exact_srgb] is {!Values.normalize_color}'s flag of the same name, applied
-    to the properties whose whole value is a colour. It is for the canonical
-    diff projection only. *)
+    [exact_srgb] and [resolve_missing] are {!Values.normalize_color}'s flags of
+    the same names, applied to the properties whose whole value is a colour.
+    Both are for the canonical diff projection only. A colour a value nests - a
+    gradient stop, a shadow colour - normalises without either, so
+    [resolve_missing] never reaches a colour the value interpolates. *)
 
 val normalize_custom_property_value :
   ?lossless:bool ->
@@ -500,6 +503,10 @@ val pp_mask_border_mode : mask_border_mode Pp.t
 val read_mask_border_mode : Cursor.t -> mask_border_mode
 (** [read_mask_border_mode t] parses a [mask-border] mode keyword. *)
 
+val normalize_border_image : border_image -> border_image
+(** [normalize_border_image v] drops each component of [v] that names its own
+    longhand's initial, which is what leaving the component out names. *)
+
 val pp_border_image : border_image Pp.t
 (** [pp_border_image] pretty-prints the [border-image] shorthand. *)
 
@@ -664,6 +671,10 @@ val pp_border_style : border_style Pp.t
 
 val read_border_style : Cursor.t -> border_style
 (** [read_border_style t] is the [border_style] parsed from [t]. *)
+
+val read_border_style_box : Cursor.t -> border_style list
+(** [read_border_style_box t] is the [<line-style>{1,4}] box the [border-style]
+    shorthand takes (CSS Backgrounds 3 (ED) sec. 3.2). *)
 
 val pp_border_width : border_width Pp.t
 (** [pp_border_width] is the pretty-printer for [border_width]. *)
@@ -860,6 +871,18 @@ val pp_flex : flex Pp.t
 
 val read_flex : Cursor.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
+
+val pp_column_height : column_height Pp.t
+(** [pp_column_height] is the pretty-printer for [column_height]. *)
+
+val read_column_height : Cursor.t -> column_height
+(** [read_column_height t] is the [column_height] parsed from [t]. *)
+
+val pp_column_wrap : column_wrap Pp.t
+(** [pp_column_wrap] is the pretty-printer for [column_wrap]. *)
+
+val read_column_wrap : Cursor.t -> column_wrap
+(** [read_column_wrap t] is the [column_wrap] parsed from [t]. *)
 
 val pp_column_width : column_width Pp.t
 (** [pp_column_width] is the pretty-printer for [column_width]. *)
@@ -1170,6 +1193,21 @@ val pp_text_size_adjust : text_size_adjust Pp.t
 
 val pp_white_space : white_space Pp.t
 (** [pp_white_space] is the pretty-printer for [white_space]. *)
+
+val pp_white_space_collapse : white_space_collapse Pp.t
+(** [pp_white_space_collapse] is the pretty-printer for [white_space_collapse].
+*)
+
+val read_white_space_collapse : Cursor.t -> white_space_collapse
+(** [read_white_space_collapse t] is the [white_space_collapse] parsed from [t].
+*)
+
+val pp_webkit_text_stroke : webkit_text_stroke Pp.t
+(** [pp_webkit_text_stroke] is the pretty-printer for [webkit_text_stroke]. *)
+
+val read_webkit_text_stroke : Cursor.t -> webkit_text_stroke
+(** [read_webkit_text_stroke t] is the [-webkit-text-stroke] shorthand parsed
+    from [t]. *)
 
 val read_white_space : Cursor.t -> white_space
 (** [read_white_space t] is the [white_space] parsed from [t]. *)
@@ -1580,6 +1618,15 @@ val pp_rotate_value : rotate_value Pp.t
 val read_rotate_value : Cursor.t -> rotate_value
 (** [read_rotate_value t] is the [rotate_value] parsed from [t]. *)
 
+val pp_filter_function : filter_function Pp.t
+(** [pp_filter_function] prints the name of a filter function with an optional
+    argument, without parentheses. *)
+
+val read_filter_function : Cursor.t -> filter_function
+(** [read_filter_function t] reads the name of a filter function with an
+    optional argument. [drop-shadow] is excluded because its arguments are
+    mandatory. *)
+
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 
@@ -1922,6 +1969,18 @@ val read_position_value : Cursor.t -> position_value
 val pp_background_position : background_position Pp.t
 (** [pp_background_position] is the pretty-printer for [background_position]. *)
 
+val pp_background_position_axis : background_position_axis Pp.t
+(** [pp_background_position_axis] is the pretty-printer for one axis of
+    [background-position]. *)
+
+val read_background_position_x : Cursor.t -> background_position_axis
+(** [read_background_position_x t] is the [background-position-x] value parsed
+    from [t]. *)
+
+val read_background_position_y : Cursor.t -> background_position_axis
+(** [read_background_position_y t] is the [background-position-y] value parsed
+    from [t]. *)
+
 val read_background_position : Cursor.t -> background_position
 (** [read_background_position t] is the [background_position] parsed from [t].
 *)
@@ -2120,6 +2179,10 @@ val read_page_break_inside_value : Cursor.t -> page_break_inside_value
 (** [read_page_break_inside_value t] is the legacy [page-break-inside] value
     parsed from [t]. *)
 
+val normalize_columns_value : columns_value -> columns_value
+(** [normalize_columns_value v] drops an explicit [auto] width beside a count,
+    which is what leaving the component out names. *)
+
 val pp_columns_value : columns_value Pp.t
 (** [pp_columns_value] is the pretty-printer for [columns_value]. *)
 
@@ -2146,6 +2209,14 @@ val pp_logical_border_width : logical_border_width Pp.t
 
 val read_logical_border_width : Cursor.t -> logical_border_width
 (** [read_logical_border_width t] is the [logical_border_width] parsed from [t].
+*)
+
+val pp_logical_border_style : logical_border_style Pp.t
+(** [pp_logical_border_style] is the pretty-printer for [logical_border_style].
+*)
+
+val read_logical_border_style : Cursor.t -> logical_border_style
+(** [read_logical_border_style t] is the [logical_border_style] parsed from [t].
 *)
 
 val pp_column_span : column_span Pp.t

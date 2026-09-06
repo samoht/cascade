@@ -29,23 +29,30 @@ val positions : t -> 'a Properties.property -> int list
     property [p] appears in the rule. *)
 
 val absorb :
-  t -> at:int -> absorbed:int list -> shorthand:Declaration.declaration -> unit
+  t -> at:int -> absorbed:int list -> shorthand:Declaration.declaration -> bool
 (** [absorb t ~at ~absorbed ~shorthand] records that [shorthand] should appear
     at position [at] (typically the earliest absorbed position) and that each
     position in [absorbed] is consumed by the shorthand. Repeated absorptions of
-    the same position are a programming error. *)
+    the same position are a programming error. It is {!splice} with a
+    single-declaration list, and refuses on the same terms. *)
 
 val splice :
   t ->
   at:int ->
   absorbed:int list ->
   new_decls:Declaration.declaration list ->
-  unit
+  bool
 (** [splice t ~at ~absorbed ~new_decls] generalises {!absorb}: emit each
     declaration of [new_decls] in order at position [at] and mark every position
     in [absorbed] as consumed. Suits composers that need to replace a contiguous
     run with multiple declarations (e.g. a non-important shorthand followed by a
-    re-stated important longhand). *)
+    re-stated important longhand).
+
+    [false], with the index left untouched, when a declaration of [new_decls]
+    mixes a CSS-wide keyword with other components: CSS Cascade 5 sec. 7.3 makes
+    that invalid CSS whatever family built it, so the index is the one gate
+    every composer's emission passes through. The caller leaves the run as its
+    longhands. *)
 
 val is_absorbed : t -> int -> bool
 (** [is_absorbed t i] is [true] when position [i] has been absorbed by a

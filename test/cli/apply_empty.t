@@ -1,12 +1,11 @@
 CLI: [cascade apply] and the :empty pseudo-class.
 
-Selectors 4 §13.2 says :empty represents "an element that has no
-children except, optionally, document white space characters", and
-that "only element nodes and content nodes (such as [DOM] text nodes,
-and entity references) whose data has a non-zero length must be
-considered as affecting emptiness". Document white space characters
-are spaces (U+0020), tabs (U+0009) and segment breaks (CSS Text 4
-§4.3), so U+00A0 is not one of them.
+Selectors 4 §13.2 represents with :empty "an element that has no
+children except, optionally, document white space characters", and its
+own note records that Level 2 and Level 3 did not match an element
+holding nothing but white space. No engine has taken that change, so
+an answer here states what the specification says rather than what the
+page does.
 
   $ cat > empty.html <<EOF
   > <html><head><style>p:empty{color:red}</style></head><body>
@@ -18,17 +17,19 @@ are spaces (U+0020), tabs (U+0009) and segment breaks (CSS Text 4
   > </body></html>
   > EOF
 
-An element with a text child is not :empty, so it must not be painted;
-one holding nothing but white space is. The entity reference resolves
-to U+00A0, which is not document white space, so that paragraph is not
-empty either.
+Inlining takes the rule out of the stylesheet, so painting an element
+on the strength of that answer would write a page that renders
+differently from the one it was read from. The rule stays where the
+browser reads it and no paragraph is painted here.
 
   $ cascade apply empty.html
-  <html><head><style></style></head><body>
-  <p style="color:red" id="void"></p>
-  <p style="color:red" id="spaces">  </p>
+  Kept 1 rule(s) with no inline form in a <style> block.
+  <html><head><style></style><style>p:empty{color:red}</style></head><body>
+  <p id="void"></p>
+  <p id="spaces">  </p>
   <p id="text">text</p>
   <p id="child"><span></span></p>
   <p id="nbsp">&nbsp;</p>
   
   </body></html>
+

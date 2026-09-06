@@ -117,6 +117,7 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Trad_chinese_informal -> Pp.string ctx "trad-chinese-informal"
   | Trad_chinese_formal -> Pp.string ctx "trad-chinese-formal"
   | Ethiopic_numeric -> Pp.string ctx "ethiopic-numeric"
+  | Name name -> pp_ident ctx name
   | String s -> Pp.quoted_string ctx s
   | Symbols (kind, symbols) ->
       Pp.call "symbols" pp_list_style_symbols ctx (kind, symbols)
@@ -167,8 +168,24 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
           if !first then first := false else Pp.space ctx ();
           pp ctx v
     in
-    emit pp_list_style_type type_;
-    emit pp_list_style_position position;
+    let ambiguous_type =
+      match type_ with
+      | Some (Name name) ->
+          let lower = String.lowercase_ascii name in
+          lower = "inside" || lower = "outside"
+      | _ -> false
+    in
+    (* A position-shaped counter name must follow an explicit position, even
+       when normalisation has removed the default [outside] slot. *)
+    if ambiguous_type then begin
+      emit pp_list_style_position
+        (Some (Option.value ~default:Outside position));
+      emit pp_list_style_type type_
+    end
+    else begin
+      emit pp_list_style_type type_;
+      emit pp_list_style_position position
+    end;
     emit pp_list_style_image image;
     (* Everything was an initial value and got dropped: the shorthand still
        needs one token. Emit the type initial [disc] (the shortest spelling of
@@ -440,6 +457,7 @@ let pp_property : type a. a property Pp.t =
   | Clear -> Pp.string ctx "clear"
   | Float -> Pp.string ctx "float"
   | White_space -> Pp.string ctx "white-space"
+  | White_space_collapse -> Pp.string ctx "white-space-collapse"
   | Border -> Pp.string ctx "border"
   | Background -> Pp.string ctx "background"
   | Tab_size -> Pp.string ctx "tab-size"
@@ -450,6 +468,8 @@ let pp_property : type a. a property Pp.t =
   | Webkit_tap_highlight_color -> Pp.string ctx "-webkit-tap-highlight-color"
   | Webkit_text_fill_color -> Pp.string ctx "-webkit-text-fill-color"
   | Webkit_text_stroke_color -> Pp.string ctx "-webkit-text-stroke-color"
+  | Webkit_text_stroke -> Pp.string ctx "-webkit-text-stroke"
+  | Webkit_text_stroke_width -> Pp.string ctx "-webkit-text-stroke-width"
   | Webkit_user_select -> Pp.string ctx "-webkit-user-select"
   | Ms_user_select -> Pp.string ctx "-ms-user-select"
   | Moz_user_select -> Pp.string ctx "-moz-user-select"
@@ -566,8 +586,12 @@ let pp_property : type a. a property Pp.t =
   | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
   | Column_width -> Pp.string ctx "column-width"
+  | Column_height -> Pp.string ctx "column-height"
+  | Column_wrap -> Pp.string ctx "column-wrap"
   | Column_count -> Pp.string ctx "column-count"
   | Column_rule -> Pp.string ctx "column-rule"
+  | Column_rule_width -> Pp.string ctx "column-rule-width"
+  | Column_rule_style -> Pp.string ctx "column-rule-style"
   | Column_rule_color -> Pp.string ctx "column-rule-color"
   | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
@@ -603,6 +627,10 @@ let pp_property : type a. a property Pp.t =
   | Vertical_align -> Pp.string ctx "vertical-align"
   | Font_family -> Pp.string ctx "font-family"
   | Background_position -> Pp.string ctx "background-position"
+  | Background_position_x -> Pp.string ctx "background-position-x"
+  | Background_position_y -> Pp.string ctx "background-position-y"
+  | Webkit_mask_position_x -> Pp.string ctx "-webkit-mask-position-x"
+  | Webkit_mask_position_y -> Pp.string ctx "-webkit-mask-position-y"
   | Background_repeat -> Pp.string ctx "background-repeat"
   | Background_size -> Pp.string ctx "background-size"
   | Webkit_font_smoothing -> Pp.string ctx "-webkit-font-smoothing"
@@ -855,6 +883,7 @@ let property_class : type a. a property -> a property_class = function
   | Pointer_events -> Inherited
   | Forced_color_adjust -> Inherited
   | White_space -> Inherited
+  | White_space_collapse -> Inherited
   | Tab_size -> Inherited
   | Webkit_text_size_adjust -> Inherited
   | Font_feature_settings -> Inherited
@@ -862,6 +891,8 @@ let property_class : type a. a property -> a property_class = function
   | Webkit_tap_highlight_color -> Inherited
   | Webkit_text_fill_color -> Inherited
   | Webkit_text_stroke_color -> Inherited
+  | Webkit_text_stroke -> Inherited
+  | Webkit_text_stroke_width -> Inherited
   | List_style -> Inherited
   | Font -> Inherited
   | Scrollbar_color -> Inherited
@@ -1014,13 +1045,15 @@ let property_class : type a. a property -> a property_class = function
   | Transition_property | Transition_behavior | Overlay | Will_change | Contain
   | Isolation | Break_before | Break_after | Break_inside | Page_break_before
   | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
-  | Column_count | Column_rule | Column_rule_color | Column_span
-  | Background_attachment | Border_top | Border_right | Border_bottom
-  | Border_left | Transform_origin | Transform_box | Mask | Mask_border
-  | Content_visibility | Filter | Background_image | Background_origin
-  | Background_clip | Webkit_background_clip | Animation | Aspect_ratio
-  | Overflow_x | Overflow_y | Overflow_block | Overflow_inline | Vertical_align
-  | Background_position | Background_repeat | Background_size
+  | Column_height | Column_wrap | Column_count | Column_rule | Column_rule_color
+  | Column_rule_width | Column_rule_style | Column_span | Background_attachment
+  | Border_top | Border_right | Border_bottom | Border_left | Transform_origin
+  | Transform_box | Mask | Mask_border | Content_visibility | Filter
+  | Background_image | Background_origin | Background_clip
+  | Webkit_background_clip | Animation | Aspect_ratio | Overflow_x | Overflow_y
+  | Overflow_block | Overflow_inline | Vertical_align | Background_position
+  | Background_position_x | Background_position_y | Webkit_mask_position_x
+  | Webkit_mask_position_y | Background_repeat | Background_size
   | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
   | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
   | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
@@ -1287,6 +1320,7 @@ let property_tag : type a. a property -> int = function
   | Forced_color_adjust -> 197
   | Scroll_snap_type -> 198
   | White_space -> 199
+  | White_space_collapse -> 541
   | Border -> 200
   | Border_block -> 201
   | Border_block_start -> 202
@@ -1308,6 +1342,8 @@ let property_tag : type a. a property -> int = function
   | Webkit_text_decoration_color -> 218
   | Webkit_text_fill_color -> 219
   | Webkit_text_stroke_color -> 220
+  | Webkit_text_stroke -> 542
+  | Webkit_text_stroke_width -> 543
   | Text_indent -> 221
   | List_style -> 222
   | Font -> 223
@@ -1458,9 +1494,13 @@ let property_tag : type a. a property -> int = function
   | Page_size -> 368
   | Columns -> 369
   | Column_width -> 370
+  | Column_height -> 544
+  | Column_wrap -> 545
   | Column_count -> 371
   | Column_rule -> 372
   | Column_rule_color -> 373
+  | Column_rule_width -> 539
+  | Column_rule_style -> 540
   | Column_span -> 374
   | Word_spacing -> 375
   | Background_attachment -> 376
@@ -1489,6 +1529,10 @@ let property_tag : type a. a property -> int = function
   | Vertical_align -> 399
   | Font_family -> 400
   | Background_position -> 401
+  | Background_position_x -> 537
+  | Background_position_y -> 538
+  | Webkit_mask_position_x -> 546
+  | Webkit_mask_position_y -> 547
   | Background_repeat -> 402
   | Background_size -> 403
   | Webkit_font_smoothing -> 404
@@ -1850,6 +1894,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Forced_color_adjust, Forced_color_adjust -> Some Equal
   | Scroll_snap_type, Scroll_snap_type -> Some Equal
   | White_space, White_space -> Some Equal
+  | White_space_collapse, White_space_collapse -> Some Equal
   | Border, Border -> Some Equal
   | Border_block, Border_block -> Some Equal
   | Border_block_start, Border_block_start -> Some Equal
@@ -1871,6 +1916,8 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Webkit_text_decoration_color, Webkit_text_decoration_color -> Some Equal
   | Webkit_text_fill_color, Webkit_text_fill_color -> Some Equal
   | Webkit_text_stroke_color, Webkit_text_stroke_color -> Some Equal
+  | Webkit_text_stroke, Webkit_text_stroke -> Some Equal
+  | Webkit_text_stroke_width, Webkit_text_stroke_width -> Some Equal
   | Text_indent, Text_indent -> Some Equal
   | List_style, List_style -> Some Equal
   | Font, Font -> Some Equal
@@ -2027,9 +2074,13 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Page_size, Page_size -> Some Equal
   | Columns, Columns -> Some Equal
   | Column_width, Column_width -> Some Equal
+  | Column_height, Column_height -> Some Equal
+  | Column_wrap, Column_wrap -> Some Equal
   | Column_count, Column_count -> Some Equal
   | Column_rule, Column_rule -> Some Equal
   | Column_rule_color, Column_rule_color -> Some Equal
+  | Column_rule_width, Column_rule_width -> Some Equal
+  | Column_rule_style, Column_rule_style -> Some Equal
   | Column_span, Column_span -> Some Equal
   | Word_spacing, Word_spacing -> Some Equal
   | Background_attachment, Background_attachment -> Some Equal
@@ -2058,6 +2109,10 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Vertical_align, Vertical_align -> Some Equal
   | Font_family, Font_family -> Some Equal
   | Background_position, Background_position -> Some Equal
+  | Background_position_x, Background_position_x -> Some Equal
+  | Background_position_y, Background_position_y -> Some Equal
+  | Webkit_mask_position_x, Webkit_mask_position_x -> Some Equal
+  | Webkit_mask_position_y, Webkit_mask_position_y -> Some Equal
   | Background_repeat, Background_repeat -> Some Equal
   | Background_size, Background_size -> Some Equal
   | Webkit_font_smoothing, Webkit_font_smoothing -> Some Equal
@@ -2371,6 +2426,11 @@ let rec read_list_style_type t : list_style_type =
          [
            (fun t -> Cursor.call "symbols" t read_symbols_body);
            (fun t -> (String (Cursor.string t) : list_style_type));
+           (fun t ->
+             let name = Cursor.ident t in
+             if String.lowercase_ascii name = "default" then
+               Cursor.err_invalid t "reserved counter-style name";
+             (Name name : list_style_type));
          ])
     t
 
@@ -2892,6 +2952,10 @@ let read_any_property t =
   | "background-clip" -> Prop Background_clip
   | "-webkit-background-clip" -> Prop Webkit_background_clip
   | "background-position" -> Prop Background_position
+  | "background-position-x" -> Prop Background_position_x
+  | "background-position-y" -> Prop Background_position_y
+  | "-webkit-mask-position-x" -> Prop Webkit_mask_position_x
+  | "-webkit-mask-position-y" -> Prop Webkit_mask_position_y
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
   | "border-block" -> Prop Border_block
@@ -2928,9 +2992,13 @@ let read_any_property t =
   | "page-break-inside" -> Prop Page_break_inside
   | "columns" -> Prop Columns
   | "column-width" -> Prop Column_width
+  | "column-height" -> Prop Column_height
+  | "column-wrap" -> Prop Column_wrap
   | "column-count" -> Prop Column_count
   | "column-rule" -> Prop Column_rule
   | "column-rule-color" -> Prop Column_rule_color
+  | "column-rule-width" -> Prop Column_rule_width
+  | "column-rule-style" -> Prop Column_rule_style
   | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
@@ -3137,6 +3205,7 @@ let read_any_property t =
   | "transition-timing-function" -> Prop Transition_timing_function
   | "unicode-bidi" -> Prop Unicode_bidi
   | "white-space" -> Prop White_space
+  | "white-space-collapse" -> Prop White_space_collapse
   | "will-change" -> Prop Will_change
   | "word-break" -> Prop Word_break
   | "word-spacing" -> Prop Word_spacing
@@ -3195,6 +3264,8 @@ let read_any_property t =
   | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
   | "-webkit-text-fill-color" -> Prop Webkit_text_fill_color
   | "-webkit-text-stroke-color" -> Prop Webkit_text_stroke_color
+  | "-webkit-text-stroke" -> Prop Webkit_text_stroke
+  | "-webkit-text-stroke-width" -> Prop Webkit_text_stroke_width
   | "-webkit-user-select" -> Prop Webkit_user_select
   | "-ms-user-select" -> Prop Ms_user_select
   | "-moz-user-select" -> Prop Moz_user_select
@@ -3694,15 +3765,16 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       | Border_block_start_color | Border_block_end_color | Outline_color
       | Webkit_tap_highlight_color | Webkit_text_decoration_color
       | Webkit_text_fill_color | Webkit_text_stroke_color | Column_rule_color
-      | Stop_color | Flood_color | Lighting_color | Accent_color | Caret_color
-        ),
+      | Webkit_text_stroke | Stop_color | Flood_color | Lighting_color
+      | Accent_color | Caret_color ),
       value ) ->
       value
   | Border_color, value -> value
   | ( ( Border_style | Border_top_style | Border_right_style
       | Border_bottom_style | Border_left_style | Border_inline_start_style
       | Border_inline_end_style | Border_block_start_style
-      | Border_block_end_style | Border_inline_style | Border_block_style ),
+      | Border_block_end_style | Border_inline_style | Border_block_style
+      | Column_rule_style ),
       value ) ->
       value
   | ( ( Padding | Padding_inline | Padding_block | Margin | Margin_inline
@@ -3796,7 +3868,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Border_width, value -> value
   | ( ( Border_top_width | Border_right_width | Border_bottom_width
       | Border_left_width | Border_inline_start_width | Border_inline_end_width
-      | Border_block_start_width | Border_block_end_width | Outline_width ),
+      | Border_block_start_width | Border_block_end_width | Outline_width
+      | Column_rule_width | Webkit_text_stroke_width ),
       value ) ->
       value
   | (Border_inline_width | Border_block_width), value -> value
@@ -3839,6 +3912,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Forced_color_adjust, value -> value
   | Scroll_snap_type, value -> value
   | White_space, value -> value
+  | White_space_collapse, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
       | Border_inline | Border_inline_start | Border_inline_end | Column_rule
       | Border_top | Border_right | Border_bottom | Border_left ),
@@ -3986,6 +4060,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Page_size, value -> value
   | Columns, value -> value
   | Column_width, value -> value
+  | Column_height, value -> value
+  | Column_wrap, value -> value
   | Column_count, value -> value
   | Column_span, value -> value
   | Background_attachment, value -> value
@@ -4002,6 +4078,8 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Vertical_align, value -> value
   | Font_family, value -> value
   | (Background_position | Webkit_mask_position | Mask_position), value -> value
+  | (Background_position_x | Background_position_y), value -> value
+  | (Webkit_mask_position_x | Webkit_mask_position_y), value -> value
   | (Background_repeat | Webkit_mask_repeat | Mask_repeat), value -> value
   | Webkit_font_smoothing, value -> value
   | Moz_osx_font_smoothing, value -> value
@@ -4213,13 +4291,16 @@ let canonicalize_math_whitespace_components comps =
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->
+    ?resolve_missing:bool ->
     ?ctx:Values.calc_ctx ->
     a property ->
     a ->
     a =
- fun ?(lossless = false) ?(exact_srgb = false) ?(ctx = Values.default_calc_ctx)
-     property value ->
-  let normalize_color = Values.normalize_color ~lossless ~exact_srgb in
+ fun ?(lossless = false) ?(exact_srgb = false) ?(resolve_missing = false)
+     ?(ctx = Values.default_calc_ctx) property value ->
+  let normalize_color =
+    Values.normalize_color ~lossless ~exact_srgb ~resolve_missing
+  in
   (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
@@ -4270,10 +4351,16 @@ let normalize_property_value : type a.
   | Object_position -> normalize_position_value value
   | Perspective_origin -> normalize_position_value value
   | Background_position -> map_preserve normalize_position_value value
+  | Background_position_x -> normalize_background_position_axis value
+  | Background_position_y -> normalize_background_position_axis value
+  | Webkit_mask_position_x -> normalize_background_position_axis value
+  | Webkit_mask_position_y -> normalize_background_position_axis value
   | Mask_position -> map_preserve normalize_position_value value
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Scroll_timeline -> normalize_timeline_shorthand value
+  | View_timeline -> normalize_view_timeline_shorthand value
   | View_timeline_inset -> normalize_timeline_inset value
   | Baseline_shift -> normalize_baseline_shift value
   | Background_color -> normalize_color value
@@ -4281,6 +4368,9 @@ let normalize_property_value : type a.
   | Border_color ->
       normalize_box_shorthand ~is_substitution:is_color_substitution
         normalize_color value
+  | Border_style ->
+      normalize_box_shorthand ~is_substitution:is_border_style_substitution
+        Fun.id value
   | Border_top_color -> normalize_color value
   | Border_right_color -> normalize_color value
   | Border_bottom_color -> normalize_color value
@@ -4295,7 +4385,9 @@ let normalize_property_value : type a.
   | Webkit_text_decoration_color -> normalize_color value
   | Webkit_text_fill_color -> normalize_color value
   | Webkit_text_stroke_color -> normalize_color value
+  | Webkit_text_stroke_width -> normalize_border_width value
   | Column_rule_color -> normalize_color value
+  | Column_rule_width -> normalize_border_width value
   | Webkit_tap_highlight_color -> normalize_color value
   | Text_emphasis_color -> normalize_color value
   | Outline_color -> normalize_color value
@@ -4322,6 +4414,7 @@ let normalize_property_value : type a.
   | Text_decoration -> normalize_text_decoration ~lossless value
   | Webkit_text_decoration -> normalize_text_decoration ~lossless value
   | Text_emphasis -> normalize_text_emphasis ~lossless value
+  | Flex_flow -> normalize_flex_flow value
   | Caret -> normalize_caret ~lossless value
   | Interest_delay -> normalize_interest_delay value
   | Interest_delay_start -> normalize_interest_delay value
@@ -4389,14 +4482,14 @@ let normalize_property_value : type a.
   | Row_gap -> Values.normalize_length ~ctx value
   | Text_underline_offset -> Values.normalize_length ~ctx value
   | Letter_spacing -> Values.normalize_length ~ctx value
-  | Border_top_left_radius -> Values.normalize_length ~ctx value
-  | Border_top_right_radius -> Values.normalize_length ~ctx value
-  | Border_bottom_left_radius -> Values.normalize_length ~ctx value
-  | Border_bottom_right_radius -> Values.normalize_length ~ctx value
-  | Border_start_start_radius -> Values.normalize_length ~ctx value
-  | Border_start_end_radius -> Values.normalize_length ~ctx value
-  | Border_end_start_radius -> Values.normalize_length ~ctx value
-  | Border_end_end_radius -> Values.normalize_length ~ctx value
+  | Border_top_left_radius -> normalize_length_box ~ctx value
+  | Border_top_right_radius -> normalize_length_box ~ctx value
+  | Border_bottom_left_radius -> normalize_length_box ~ctx value
+  | Border_bottom_right_radius -> normalize_length_box ~ctx value
+  | Border_start_start_radius -> normalize_length_box ~ctx value
+  | Border_start_end_radius -> normalize_length_box ~ctx value
+  | Border_end_start_radius -> normalize_length_box ~ctx value
+  | Border_end_end_radius -> normalize_length_box ~ctx value
   | Outline_width -> normalize_border_width value
   | Outline_offset -> Values.normalize_length ~ctx value
   | Line_height_step -> Values.normalize_length ~ctx value
@@ -4462,7 +4555,11 @@ let normalize_property_value : type a.
   | Flood_opacity -> normalize_opacity value
   | Line_height -> normalize_line_height ~lossless value
   | Vertical_align -> normalize_vertical_align value
-  | Border_width -> map_preserve normalize_border_width value
+  | Border_image -> normalize_border_image value
+  | Columns -> normalize_columns_value value
+  | Border_width ->
+      normalize_box_shorthand ~is_substitution:is_border_width_substitution
+        normalize_border_width value
   | Border_top_width -> normalize_border_width value
   | Border_right_width -> normalize_border_width value
   | Border_bottom_width -> normalize_border_width value
@@ -4473,6 +4570,8 @@ let normalize_property_value : type a.
   | Border_block_end_width -> normalize_border_width value
   | Border_inline_width -> normalize_logical_border_width value
   | Border_block_width -> normalize_logical_border_width value
+  | Border_inline_style -> normalize_logical_border_style value
+  | Border_block_style -> normalize_logical_border_style value
   | Transition_duration -> Values.normalize_duration ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
   | Animation_duration -> Values.normalize_duration ~ctx value
@@ -4537,7 +4636,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Background_color -> pp pp_color
   | Color -> pp pp_color
   | Border_color -> pp (Pp.list ~sep:Pp.token_sp pp_color)
-  | Border_style -> pp pp_border_style
+  | Border_style -> pp (pp_box_shorthand pp_border_style)
   | Border_top_style -> pp pp_border_style
   | Border_right_style -> pp pp_border_style
   | Border_bottom_style -> pp pp_border_style
@@ -4632,10 +4731,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_block_end_width -> pp pp_border_width
   | Border_image -> pp pp_border_image
   | Border_radius -> pp pp_border_radius
-  | Border_top_left_radius -> pp pp_length
-  | Border_top_right_radius -> pp pp_length
-  | Border_bottom_left_radius -> pp pp_length
-  | Border_bottom_right_radius -> pp pp_length
+  | Border_top_left_radius -> pp (pp_box_shorthand pp_length)
+  | Border_top_right_radius -> pp (pp_box_shorthand pp_length)
+  | Border_bottom_left_radius -> pp (pp_box_shorthand pp_length)
+  | Border_bottom_right_radius -> pp (pp_box_shorthand pp_length)
   | Border_top_color -> pp pp_color
   | Border_right_color -> pp pp_color
   | Border_bottom_color -> pp pp_color
@@ -4648,18 +4747,22 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_block_color -> pp pp_logical_border_color
   | Border_inline_width -> pp pp_logical_border_width
   | Border_block_width -> pp pp_logical_border_width
-  | Border_inline_style -> pp pp_border_style
-  | Border_block_style -> pp pp_border_style
-  | Border_start_start_radius -> pp pp_length
-  | Border_start_end_radius -> pp pp_length
-  | Border_end_start_radius -> pp pp_length
-  | Border_end_end_radius -> pp pp_length
+  | Border_inline_style -> pp pp_logical_border_style
+  | Border_block_style -> pp pp_logical_border_style
+  | Border_start_start_radius -> pp (pp_box_shorthand pp_length)
+  | Border_start_end_radius -> pp (pp_box_shorthand pp_length)
+  | Border_end_start_radius -> pp (pp_box_shorthand pp_length)
+  | Border_end_end_radius -> pp (pp_box_shorthand pp_length)
   | Text_decoration_color -> pp pp_color
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
   | Webkit_text_fill_color -> pp pp_color
   | Webkit_text_stroke_color -> pp pp_color
+  | Webkit_text_stroke -> pp pp_webkit_text_stroke
+  | Webkit_text_stroke_width -> pp pp_border_width
   | Column_rule_color -> pp pp_color
+  | Column_rule_width -> pp pp_border_width
+  | Column_rule_style -> pp pp_border_style
   | Text_indent -> pp pp_text_indent_value
   | Border_spacing -> pp pp_border_spacing
   | Outline_offset -> pp pp_length
@@ -4687,6 +4790,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Column_width -> pp pp_column_width
+  | Column_height -> pp pp_column_height
+  | Column_wrap -> pp pp_column_wrap
   | Column_count -> pp pp_column_count
   | Column_rule -> pp pp_border
   | Column_span -> pp pp_column_span
@@ -4766,6 +4871,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Container_type -> pp pp_container_type
   | Container -> pp pp_container_shorthand
   | White_space -> pp pp_white_space
+  | White_space_collapse -> pp pp_white_space_collapse
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
   | Grid_template_areas -> pp pp_grid_template_areas
@@ -4826,6 +4932,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_row_end -> pp pp_grid_line
   | Text_underline_offset -> pp pp_length
   | Background_position -> pp pp_background_position
+  | Background_position_x -> pp pp_background_position_axis
+  | Background_position_y -> pp pp_background_position_axis
+  | Webkit_mask_position_x -> pp pp_background_position_axis
+  | Webkit_mask_position_y -> pp pp_background_position_axis
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
@@ -5173,14 +5283,14 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Row_gap -> Some Length
   | Text_underline_offset -> Some Length
   | Letter_spacing -> Some Length
-  | Border_top_left_radius -> Some Length
-  | Border_top_right_radius -> Some Length
-  | Border_bottom_left_radius -> Some Length
-  | Border_bottom_right_radius -> Some Length
-  | Border_start_start_radius -> Some Length
-  | Border_start_end_radius -> Some Length
-  | Border_end_start_radius -> Some Length
-  | Border_end_end_radius -> Some Length
+  | Border_top_left_radius -> Some Lengths
+  | Border_top_right_radius -> Some Lengths
+  | Border_bottom_left_radius -> Some Lengths
+  | Border_bottom_right_radius -> Some Lengths
+  | Border_start_start_radius -> Some Lengths
+  | Border_start_end_radius -> Some Lengths
+  | Border_end_start_radius -> Some Lengths
+  | Border_end_end_radius -> Some Lengths
   | Outline_width -> Some Border_width
   | Border_top_width -> Some Border_width
   | Border_right_width -> Some Border_width
@@ -5310,7 +5420,9 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_text_decoration_color -> Some Color
   | Webkit_text_fill_color -> Some Color
   | Webkit_text_stroke_color -> Some Color
+  | Webkit_text_stroke_width -> Some Border_width
   | Column_rule_color -> Some Color
+  | Column_rule_width -> Some Border_width
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Stop_color -> Some Color

@@ -1,3 +1,0 @@
-(executable
- (name test)
- (libraries cascade cascade.diff alcotest fmt eio eio_main))

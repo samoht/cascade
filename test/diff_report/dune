@@ -1,0 +1,21 @@
+; diff_report: whether a difference `cascade diff` REPORTS is accurate - every
+; entry it emits is true of the two files, a constructed one-site mutation is
+; named and nothing else is, the summary counts what the body shows, and the
+; binary's exit status matches the verdict printed above it. No browser: the
+; oracles are constructed ground truth, the two parsed sheets, and the report's
+; own arithmetic.
+
+(executable
+ (name diff_report)
+ (libraries cascade cascade_diff fmt unix))
+
+; The sweep reads the committed corpora, so the rule has to bring them into the
+; build directory it runs in.
+
+(rule
+ (alias runtest)
+ (deps
+  (source_tree ../examples)
+  (source_tree ../interop/css-minify-tests/traces/tests))
+ (action
+  (run %{exe:diff_report.exe} --bin %{exe:../../bin/main.exe})))

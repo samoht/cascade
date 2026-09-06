@@ -24,7 +24,8 @@ val canonical_declarations :
     shorthand and a longhand) since that is cascade-significant. Physically
     unchanged when already canonical. *)
 
-val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
+val canonicalize :
+  ?lossless:bool -> Stylesheet.statement list -> Stylesheet.statement list
 (** [canonicalize stmts] reorders each maximal run of consecutive reorderable
     style rules into the canonical order described above. At-rules, nested
     rules, and custom-property rules are barriers: they keep their position and
@@ -55,6 +56,18 @@ val canonicalize : Stylesheet.statement list -> Stylesheet.statement list
     that fold applies: a declaration is kept exactly as it came in unless the
     colour moved. Emission cannot make the same rewrite, since [color()] needs a
     browser that parses it.
+
+    A [none] channel of a Lab-family colour standing as a whole colour-longhand
+    value is read as the zero CSS Color 4 sec. 4.4 says a missing component
+    behaves as, so [oklab(0% none none / .5)] folds like [oklab(0% 0 0 / .5)]
+    and meets the hex a minifier writes for it. Sec. 13.3 keeps that off every
+    position the sheet interpolates: a gradient stop, a [color-mix()] operand, a
+    shadow colour and a custom-property token stream keep their [none], the pass
+    does not enter [@keyframes] or [@starting-style], and a colour whose own
+    rule transitions the property it writes keeps its [none]. [lossless] is
+    passed through to the fold so the resolved colour respells no further than
+    the caller's precision mode allows. Emission keeps [none], which is what the
+    value says.
 
     A top-level [@layer] statement loses every name whose removal leaves the
     sheet's layer order alone, and goes away once it has none left. CSS Cascade

@@ -1899,6 +1899,8 @@ type display = Properties.display =
   | Inline_flex
   | Grid
   | Inline_grid
+  | Grid_lanes
+  | Inline_grid_lanes
   | None
   | Flow_root
   | Table
@@ -2465,8 +2467,12 @@ val text_overflow : text_overflow -> declaration
 type text_wrap = Properties.text_wrap =
   | Wrap
   | No_wrap
+  | Auto
   | Balance
+  | Stable
   | Pretty
+  | Mode_style of [ `Wrap | `No_wrap ] * [ `Auto | `Balance | `Stable | `Pretty ]
+      (** both components, printed mode-first *)
   | Inherit
   | Initial
   | Unset
@@ -5313,6 +5319,22 @@ val logical_border_width : border_width -> logical_border_width
 val logical_border_widths : border_width -> border_width -> logical_border_width
 (** [logical_border_widths start end_] is a two-value logical border width. *)
 
+type logical_border_style = Properties.logical_border_style =
+  | Single of border_style
+  | Pair of border_style * border_style
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_style var
+
+val logical_border_style : border_style -> logical_border_style
+(** [logical_border_style s] is a one-value logical border style. *)
+
+val logical_border_styles : border_style -> border_style -> logical_border_style
+(** [logical_border_styles start end_] is a two-value logical border style. *)
+
 (** CSS outline style values. *)
 type outline_style = Properties.outline_style =
   | None
@@ -5507,12 +5529,12 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
-val border_inline_style : border_style -> declaration
+val border_inline_style : logical_border_style -> declaration
 (** [border_inline_style s] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
      border-inline-style} property. *)
 
-val border_block_style : border_style -> declaration
+val border_block_style : logical_border_style -> declaration
 (** [border_block_style s] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
      border-block-style} property. *)
@@ -5829,6 +5851,7 @@ type timing_function = Properties.timing_function =
 type duration = Values.duration =
   | Ms of float  (** milliseconds *)
   | S of float  (** seconds *)
+  | Auto  (** [animation-duration] only *)
   | Durations of duration list  (** comma-separated list of durations *)
   | Round of string * duration * duration
   | Mod of duration * duration
@@ -6158,9 +6181,22 @@ val translate : translate_value -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/translate} translate}
     property. *)
 
+(** Filter functions with an optional argument. *)
+type filter_function = Properties.filter_function =
+  | Blur_function
+  | Brightness_function
+  | Contrast_function
+  | Grayscale_function
+  | Hue_rotate_function
+  | Invert_function
+  | Opacity_function
+  | Saturate_function
+  | Sepia_function
+
 (** CSS filter values *)
 type filter = Properties.filter =
   | None  (** No filter *)
+  | Omitted of filter_function  (** Function with its argument omitted. *)
   | Blur of length  (** blur(px) *)
   | Brightness of number_percentage  (** brightness(%) *)
   | Contrast of number_percentage  (** contrast(%) *)
@@ -6937,6 +6973,7 @@ type list_style_type = Properties.list_style_type =
   | Trad_chinese_informal
   | Trad_chinese_formal
   | Ethiopic_numeric
+  | Name of string  (** A case-sensitive custom counter-style name. *)
   | String of string
   | Symbols of symbols_type option * list_style_symbol list
   | Inherit
@@ -7846,7 +7883,7 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val canonicalize_rule_order : t -> t
+val canonicalize_rule_order : ?lossless:bool -> t -> t
 (** [canonicalize_rule_order t] projects cascade-equivalent stylesheets to one
     deterministic form: selector-list rules expand onto their branches,
     same-selector rules coalesce when no intervening write can observe the move
@@ -7873,11 +7910,19 @@ val canonicalize_rule_order : t -> t
     emission cannot do because a Level 3 parser rejects the shorter forms. A
     [color(srgb ...)] whose channels all land on a whole byte is keyed as the
     [rgb()] spelling of the same colour, which emission cannot do either because
-    [color()] needs a browser that parses it. An identical
-    [-webkit-text-decoration-color] compatibility declaration is dropped when
-    its unprefixed twin is present; a differing or prefixed-only declaration is
-    retained. These are comparison-side normalisations; this function does not
-    change {!val-optimize}'s configured emission policy. *)
+    [color()] needs a browser that parses it. A [none] channel of a Lab-family
+    colour standing as a whole colour-longhand value is keyed as the zero CSS
+    Color 4 sec. 4.4 says a missing component behaves as, so a converted
+    achromatic [oklab()] meets the hex a minifier writes for it; sec. 13.3 keeps
+    that off the positions the sheet interpolates, so a gradient stop, a
+    [color-mix()] operand, a custom-property token stream, [@keyframes],
+    [@starting-style] and a colour whose own rule transitions the property it
+    writes keep their [none], and [lossless] bounds how far the resolved colour
+    respells. An identical [-webkit-text-decoration-color] compatibility
+    declaration is dropped when its unprefixed twin is present; a differing or
+    prefixed-only declaration is retained. These are comparison-side
+    normalisations; this function does not change {!val-optimize}'s configured
+    emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

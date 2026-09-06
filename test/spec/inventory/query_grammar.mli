@@ -10,6 +10,10 @@ val media_negative : invalid_row list
 (** [media_negative] contains invalid CSS Media Queries branches that recover to
     [not all] under Media Queries error handling. *)
 
+val media_general_enclosed : row list
+(** [media_general_enclosed] contains unknown enclosed conditions retained by
+    the forward-compatible grammar in MQ4 section 3. *)
+
 val media_recovery : row list
 (** [media_recovery] contains invalid-in-part media query lists with their
     spec-mandated recovered serialization. *)

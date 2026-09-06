@@ -77,3 +77,15 @@ let read path =
    with End_of_file -> ());
   close_in ic;
   List.rev !pairs
+
+let pp_candidate ppf { tool; css } = Fmt.pf ppf "@ %s -> %S" tool css
+
+let pp_failed ppf { tool; command; reason } =
+  Fmt.pf ppf "@ %s failed (%s): %s" tool command reason
+
+let pp ppf { input; candidates; failures } =
+  Fmt.pf ppf "@[<v 2>%S%a%a@]" input
+    (Fmt.list ~sep:Fmt.nop pp_candidate)
+    candidates
+    (Fmt.list ~sep:Fmt.nop pp_failed)
+    failures

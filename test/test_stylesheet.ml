@@ -622,7 +622,7 @@ let import_case () =
     ~expected:"@import\"wide.css\"supports(width:stretch)(width>=40em);"
     "@import url(wide.css) supports((width: stretch)) (width >= 40em);";
   neg_cursor read_import_rule "@import url(theme.css) screen layer(theme);";
-  neg_cursor read_import_rule
+  check_import_rule ~expected:"@import\"theme.css\"supports(selector())screen;"
     "@import url(theme.css) supports(selector()) screen;";
   neg_cursor read_import_rule "@import url(theme.css) layer(theme,) screen;"
 
@@ -1572,16 +1572,11 @@ let spec_strict_rejects_invalid_stylesheets () =
       (* Conditional query grammars. *)
       ( "media ungrouped mixed boolean operators",
         "@media (width) and (height) or (color) { .x { color: red } }" );
-      ( "media bad range interval",
-        "@media (30em < width > 60em) { .x { color: red } }" );
       ("media dangling not", "@media not { .x { color: red } }");
       ("media dangling and", "@media screen and { .x { color: red } }");
-      ("media missing range value", "@media (width >= ) { .x { color: red } }");
       ("container empty style query", "@container style() { .x { color: red } }");
       ( "container empty scroll-state query",
         "@container scroll-state() { .x { color: red } }" );
-      ( "supports empty selector function",
-        "@supports selector() { .x { color: red } }" );
       ("supports dangling not", "@supports not { .x { color: red } }");
       ( "supports dangling operator",
         "@supports (display: grid) and { .x { color: red } }" );
@@ -3688,9 +3683,11 @@ let environment_query_boundary () =
      style(--theme: dark) { .card { display: grid } } } }";
   check_stylesheet ~expected:"@supports(display:){.x{color:red}}"
     "@supports (display:) { .x { color: red } }";
-  neg_cursor read "@media (width >= ) { .x { color: red } }";
+  check_stylesheet ~expected:"@media(width >= ){.x{color:red}}"
+    "@media (width >= ) { .x { color: red } }";
   neg_cursor read "@container card style() { .x { color: red } }";
-  neg_cursor read "@container card (width >) { .x { color: red } }"
+  check_stylesheet ~expected:"@container card (width >){.x{color:red}}"
+    "@container card (width >) { .x { color: red } }"
 
 let value_resolution_boundary () =
   let open Css.Values in
@@ -3796,6 +3793,11 @@ let spec_current_at_rules () =
      }";
   check_stylesheet ~expected:"@scope(.card)to (.footer){.title{color:red}}"
     "@scope (.card) to (.footer) { .title { color: red } }";
+  (* [@scope] and [to] are both ident-shaped, so with nothing between them they
+     lex as the one at-keyword [@scopeto]. The [)] closing a start selector
+     already delimits them. *)
+  check_stylesheet ~expected:"@scope to (.footer){.title{color:red}}"
+    "@scope to (.footer) { .title { color: red } }";
   check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
     "@scope (.card) { .title { color: red } }";
   (* The scope-end selector list is held in authored order by pp; only optimize
@@ -3844,12 +3846,20 @@ let spec_current_at_rules () =
     "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
   check_stylesheet ~expected:"@page chapter:left{margin:2cm}"
     "@page chapter:left { margin: 2cm }";
-  neg_cursor read "@media (width >) { .x { color: red } }";
-  neg_cursor read "@supports selector() { .x { color: red } }";
+  check_stylesheet ~expected:"@media(width >){.x{color:red}}"
+    "@media (width >) { .x { color: red } }";
+  (* Mediaqueries 5 sec. 3.1 sends a condition no grammar claims to
+     <general-enclosed>, which a parser keeps and never matches. Chrome keeps
+     both of these in cssText for the same reason. *)
+  check_stylesheet ~expected:"@media(width >= ){.x{color:red}}"
+    "@media (width >= ) { .x { color: red } }";
+  check_stylesheet ~expected:"@supports selector(){.x{color:red}}"
+    "@supports selector() { .x { color: red } }";
   neg_cursor read "@scope (.card) .title { color: red }";
   neg_cursor read "@font-palette-values { base-palette: 1; }";
   neg_cursor read "@position-try default { top: 0; }";
-  neg_cursor read "@container () { .x { color: red } }";
+  check_stylesheet ~expected:"@container(){.x{color:red}}"
+    "@container () { .x { color: red } }";
   neg_cursor read "@page : { margin: 1cm }"
 
 let font_palette_values_descriptor_matrix () =
@@ -4048,8 +4058,10 @@ let test_spec_snapshot_tracking_vectors () =
     ~optimized:
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}";
   neg_cursor read "@layer reset,,base;";
-  neg_cursor read "@container card () { .card { color: red } }";
-  neg_cursor read "@supports () { .accent { color: red } }"
+  check_stylesheet ~expected:"@container card (){.card{color:red}}"
+    "@container card () { .card { color: red } }";
+  check_stylesheet ~expected:"@supports(){.accent{color:red}}"
+    "@supports () { .accent { color: red } }"
 
 (* ignore-test *)
 let test_snapshot_membership_matrix () =
@@ -4209,6 +4221,53 @@ let test_nesting_check_stylesheet () =
     ~optimized:".btn{color:red;&:hover{color:#00f}}";
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
+
+(* CSS Syntax 3 sec. 5.5.3 consumes a qualified rule whole, block and all,
+   before deciding it is invalid, so sec. 5.5.5 resumes right after that block.
+   Recovering to the next semicolon, which is what sec. 5.5.6 does for a bad
+   declaration, would take every item written after the bad rule and the parent
+   with them. *)
+(* CSS Syntax 3 sec. 4.3.5 returns the string token when the input ends before
+   the closing quote, so the token is a string and prints as one. Omitting the
+   quote to keep the original bytes leaves the value swallowing the brace that
+   follows, and the sheet grows one per pass. *)
+let unterminated_string_closes () =
+  check_stylesheet ~expected:"foo{--foo:\"foo\"}" "foo{--foo:\"foo";
+  check_stylesheet ~expected:"foo{--foo:\"foo\"}" "foo{--foo:\"foo\"}";
+  check_stylesheet ~expected:"foo{content:\"a\"}" "foo{content:\"a\"}"
+
+let nesting_invalid_rule_recovery () =
+  (* Each expectation is what the same sheet gives with the bad rule deleted:
+     dropping it costs the parent nothing and the items around it nothing. *)
+  lenient_recover "invalid nested rule before a good one"
+    ".a { .b <::::invalid::::> {} & .c { color: red } }" ".a .c{color:red}" 1;
+  lenient_recover "invalid nested rule after a good one"
+    ".a { & .c { color: red } .b <::::invalid::::> {} }" ".a .c{color:red}" 1;
+  lenient_recover "invalid nested rule between declarations"
+    ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
+    ".a{color:red;.c{color:#00f}}" 1
+
+(* CSS Syntax 3 sec. 4.3.1 consumes a unicode-range token only while "unicode
+   ranges allowed" is set, and sec. 4.3.14 says the one caller that sets it is
+   the value of a unicode-range descriptor. Everywhere else [u+a] is an ident, a
+   delim and an ident, which the selector grammar reads as a sibling
+   combination. *)
+let unicode_range_only_in_its_descriptor () =
+  check_stylesheet ~expected:"u+a{color:red}" "u+a { color: red }";
+  check_stylesheet ~expected:"a{color:red}u+a{color:blue}"
+    "a { color: red } u+a { color: blue }";
+  check_stylesheet ~expected:"u+a b{color:red}" "u+a b { color: red }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+0-7F}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+0-7F }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+4??}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+4?? }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:X;src:url(a.woff2);unicode-range:U+26,U+0-7F}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+26, \
+     U+0-7F }"
 
 (* A nested @layer holds nesting content: bare declarations belong to the parent
    selector, exactly as in @media/@supports. Blink and WebKit both read
@@ -9124,8 +9183,6 @@ let container_condition_error_spans () =
   (* [style()] spans offsets 30-36; an empty argument list has no components of
      its own, so the call itself carries the span. *)
   check "empty style()" "style()" ("empty style() container query", 30, 37);
-  (* The parenthesised query spans offsets 30-33. *)
-  check "empty query" "(  )" ("empty container query", 30, 34);
   (* [scroll-state(] ends at offset 42, so [bogus] spans 43-47. *)
   check "bad scroll-state()" "scroll-state(bogus)"
     ("invalid scroll-state() container query", 43, 48);
@@ -9174,17 +9231,13 @@ let media_condition_error_spans () =
   in
   (* A lone [not] prefixes nothing; the query itself spans offsets 26-28. *)
   check "prefix with no type" "not" ("expected media type or condition", 26, 29);
-  (* [bogus] inside the parentheses spans offsets 27-31. *)
-  check "junk in parens" "(bogus !!!)" ("expected media-in-parens", 27, 32);
   (* The [or] that follows an [and] spans offsets 46-47. *)
   check "mixed operators" "(color) and (hover) or (a)"
     ("mixed 'and'/'or' media condition", 46, 48);
-  (* The media query list of an [@import] prelude is read the same way: [bogus]
-     spans offsets 22-26. *)
-  one_condition_warning "import prelude"
-    "@import url(\"a.css\") (bogus !!!);\n.ok { color: red }\n"
-    ~at_rule:"@media"
-    ("expected media-in-parens", 22, 27)
+  check_stylesheet ~expected:"@media(bogus !!!){.a{color:blue}}"
+    "@media (bogus !!!) { .a { color: blue } }";
+  check_import_rule ~expected:"@import\"a.css\"(bogus !!!);"
+    "@import url(\"a.css\") (bogus !!!);"
 
 (* An @font-face descriptor whose value does not parse is faulted against the
    value, not against the enclosing block. The descriptor is dropped and the
@@ -9247,11 +9300,10 @@ let supports_condition_error_spans () =
   (* The [or] that follows an [and] spans offsets 45-46. *)
   check "mixed operators" "(a:b) and (c:d) or (e:f)"
     ("Cannot mix and/or without parentheses in @supports", 45, 47);
-  (* The empty parentheses span offsets 29-30. *)
-  check "empty parentheses" "()" ("Empty parentheses in @supports", 29, 31);
-  (* [font-format(] ends at offset 40, so [bogus] spans 41-45. *)
-  check "unknown font format" "font-format(bogus)"
-    ("invalid font-format() in @supports", 41, 46)
+  check_stylesheet ~expected:"@supports(){.a{color:blue}}"
+    "@supports () { .a { color: blue } }";
+  check_stylesheet ~expected:"@supports font-format(bogus){.a{color:blue}}"
+    "@supports font-format(bogus) { .a { color: blue } }"
 
 let additional_tests =
   [
@@ -9297,6 +9349,11 @@ let additional_tests =
     ("nesting deeply nested", `Quick, test_nesting_deep);
     ("nesting with declarations", `Quick, test_nesting_with_declarations);
     ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
+    ( "unicode range only in its descriptor",
+      `Quick,
+      unicode_range_only_in_its_descriptor );
+    ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
+    ("unterminated string closes", `Quick, unterminated_string_closes);
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );

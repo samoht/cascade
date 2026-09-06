@@ -160,13 +160,45 @@ let rec normalize_clip_path : clip_path -> clip_path =
       if shape == r.shape then value else Clip_path_with_box { r with shape }
   | other -> other
 
+(* CSS Masking 1 sec. 7.9: a component the shorthand leaves out takes its
+   longhand's initial - [none] for the image (sec. 7.1), [0% 0%] for the
+   position (sec. 7.4), [auto] for the size (sec. 7.5), [repeat] for the repeat
+   (sec. 7.3), [border-box] for the origin and the clip (sec. 7.6 and 7.7),
+   [match-source] for the mode (sec. 7.2) and [add] for the composite (sec. 7.8)
+   - so writing one out names what leaving it out names. *)
+let drop_mask_initial : 'a. 'a -> 'a option -> 'a option =
+ fun initial opt ->
+  match opt with Some x when x = initial -> (None : _ option) | _ -> opt
+
+let mask_layer_slots_shared (a : mask_layer) (b : mask_layer) =
+  a.image == b.image && a.position == b.position && a.size == b.size
+  && a.repeat == b.repeat && a.origin == b.origin && a.clip == b.clip
+  && a.mode == b.mode && a.composite == b.composite
+
 let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
   let image =
-    option_map_preserve (normalize_background_image ~lossless) l.image
+    option_map_preserve
+      (normalize_background_image ~lossless)
+      (drop_mask_initial (None : background_image) l.image)
   in
   let position = option_map_preserve normalize_position_value l.position in
-  if image == l.image && position == l.position then l
-  else { l with image; position }
+  let size = drop_mask_initial (Auto : background_size) l.size in
+  (* The size follows the position and a [/], so the position can only go once
+     the size has. *)
+  let position =
+    match position with
+    | Some p when Option.is_none size && p = (XY (Zero, Zero) : position_value)
+      ->
+        (None : position_value option)
+    | _ -> position
+  in
+  let repeat = drop_mask_initial (Repeat : background_repeat) l.repeat in
+  let origin = drop_mask_initial (Border_box : mask_box) l.origin in
+  let clip = drop_mask_initial (Border_box : mask_box) l.clip in
+  let mode = drop_mask_initial (Match_source : mask_mode) l.mode in
+  let composite = drop_mask_initial (Add : mask_composite) l.composite in
+  let l' = { image; position; size; repeat; origin; clip; mode; composite } in
+  if mask_layer_slots_shared l l' then l else l'
 
 let normalize_mask ?(lossless = false) : mask -> mask =
  fun value ->

@@ -116,20 +116,20 @@ let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
       collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
-let factor_rules_incremental ?cache ~settle ~ctx rules =
+let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
   Factor.run ?cache ~settle ~ctx
-    ~finalize:(finalize_rule_without_nested ~ctx)
+    ~finalize:(finalize_rule_without_nested ~held ~ctx)
     rules
 
 (* Keep the cheap rule-local pipeline independent of the stylesheet-wide
    factoring budget. [Rule.finalize] normalizes any shorthand it synthesizes, so
    one linear preparation pass reaches the local fixed point even when a large
    stylesheet limits the global walks. *)
-let normalize_rules_locally ~ctx rules =
+let normalize_rules_locally ~ctx ~held rules =
   list_map_preserve (single_rule_without_nested ~ctx) rules
   |> Rule.drop_shadowed
   |> list_map_preserve
-       (finalize_rule_without_nested ~canonicalize_selector:false ~ctx)
+       (finalize_rule_without_nested ~held ~canonicalize_selector:false ~ctx)
 
 let merge_adjacent_and_mark ~ctx invalidated rules =
   let settled = Rule.merge_adjacent_identical ~ctx rules in
@@ -139,13 +139,13 @@ let merge_adjacent_and_mark ~ctx invalidated rules =
   if settled != rules then invalidated := settled :: !invalidated;
   settled
 
-let factor_rules_until_settled ?factor_cache ~ctx rules =
+let factor_rules_until_settled ?factor_cache ~ctx ~held rules =
   let rec loop remaining rules =
     let invalidated = ref [] in
     let next =
       factor_rules_incremental ?cache:factor_cache
         ~settle:(merge_adjacent_and_mark ~ctx invalidated)
-        ~ctx rules
+        ~ctx ~held rules
     in
     let needs_refactor =
       List.exists (fun rules -> rules == next) !invalidated
@@ -536,9 +536,19 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~supports (rules : rule list) :
       (rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports)
       rules
   in
+  (* A run contracts into a shorthand only when nothing that reaches the same
+     element holds a slot the run leaves out, and one rule cannot show that. The
+     scheduler below reorders and merges, so the summary covers the whole run
+     rather than the prefix before each rule: it stays valid wherever a rule
+     lands. *)
+  let held =
+    List.fold_left
+      (fun held (r : rule) -> Shorthand.held_add held r.declarations)
+      Shorthand.held_none with_optimized_nested
+  in
   (* Apply local rule normalization before the DAG factor scheduler decides
      global selector/declaration grouping. *)
-  let prepared = normalize_rules_locally ~ctx with_optimized_nested in
+  let prepared = normalize_rules_locally ~ctx ~held with_optimized_nested in
   (* Factoring is greedy and global: extracting one shared declaration subset
      can leave behind leftovers that are themselves factorable. The local linear
      optimizations above always run; this incremental gate only decides whether
@@ -550,7 +560,7 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~supports (rules : rule list) :
          but settling its result can merge nodes and expose a new graph. Repeat
          only when that cheap postprocessing changed one of the transfer gate's
          alternatives; most sheets still pay for one global walk. *)
-      factor_rules_until_settled ?factor_cache ~ctx prepared
+      factor_rules_until_settled ?factor_cache ~ctx ~held prepared
     end
     else merge_adjacent_and_mark ~ctx (ref []) prepared
   in
@@ -866,7 +876,8 @@ let add_declaration_prefixes ~targets decls =
 let rec condition_has_webkit kind = function
   | Supports.Property (Supports.Declaration decl) ->
       is_webkit_fallback kind decl
-  | Supports.Property _ | Supports.Function _ -> false
+  | Supports.Property _ | Supports.Function _ | Supports.General_enclosed _ ->
+      false
   | Supports.Not condition -> condition_has_webkit kind condition
   | Supports.And (a, b) | Supports.Or (a, b) ->
       condition_has_webkit kind a || condition_has_webkit kind b
@@ -883,7 +894,9 @@ let add_condition_prefixes ~targets condition =
                   (Supports.Property (Supports.Declaration prefixed), original)
             | None -> original)
         | Some _ | None -> original)
-    | (Supports.Property _ | Supports.Function _) as leaf -> leaf
+    | (Supports.Property _ | Supports.Function _ | Supports.General_enclosed _)
+      as leaf ->
+        leaf
     | Supports.Not condition as original ->
         let condition' = map condition in
         if condition' == condition then original else Supports.Not condition'
@@ -1088,10 +1101,15 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
         important;
         _;
       } -> (
-      let keep = function
-        | (Properties.Name s : Properties.position_try_fallback) ->
-            Hashtbl.mem known s
-        | _ -> true
+      (* An entry names at most one [@position-try] rule; a tactics-only entry
+         names none and always survives. *)
+      let keep group =
+        List.for_all
+          (function
+            | (Properties.Name s : Properties.position_try_fallback) ->
+                Hashtbl.mem known s
+            | _ -> true)
+          group
       in
       match list_filter_preserve keep items with
       | [] -> None

@@ -19,6 +19,9 @@ copy of either JavaScript driver. `REPORT_FORMAT=tsv`, `RAW_OUT` and `FILT_OUT`
 expose the same comparison as reproducible investigation artifacts; the normal
 test output is unchanged.
 
+`dune runtest` runs the comparison over `fixtures/`. Run it by hand to include
+the pages `fetch.sh` downloads:
+
 ```sh
 sh test/inline/run.sh
 ```
@@ -30,11 +33,13 @@ installed release on purpose. There is no fallback to a `cascade` on `PATH`,
 which would report on whichever release is installed while reading as a result
 about the branch.
 
-It looks for a headless Chrome on `PATH`, in `$CHROME`, or under the puppeteer
-cache (highest version, ordered numerically), and skips cleanly if none is
-found (so it is a no-op in CI). `xtest.js` appends an extractor script, runs
-the browser with `--dump-dom`, and diffs the computed styles element by
-element.
+It looks for a headless Chrome in `$CHROME`, on `PATH`, under the puppeteer and
+playwright caches (highest version, ordered numerically), then in the macOS
+application bundle, and skips cleanly if none is found, so it is a no-op in CI.
+`CASCADE_NO_BROWSER` is not that: silencing a gate is not a pass, so it exits
+non-zero for every value but `unchecked`, which exits 0 and says the run checked
+nothing. `xtest.js` appends an extractor script, runs the browser with
+`--dump-dom`, and diffs the computed styles element by element.
 
 ## Reproducibility
 
@@ -104,6 +109,11 @@ because cascade folds a colour only for a property it types, and a real page's
 prefixed colours outnumber all its other differences.
 
 ## Coverage
+
+Each run ends with the number of cases it compared and the element renders they
+came to, and a run measuring fewer cases than the committed fixtures come to
+fails. An oracle that lined up no element reports no difference for the same
+reason a working one does, so the population is part of the result.
 
 `fixtures/` is committed and always runs. `pages/` holds real sites downloaded
 by `fetch.sh`, and they gate the run in the same way: a surviving difference is

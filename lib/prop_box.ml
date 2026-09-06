@@ -49,6 +49,11 @@ let read_display_legacy t : display =
       ("inline-flex", Inline_flex);
       ("grid", Grid);
       ("inline-grid", Inline_grid);
+      (* CSS Grid 3 (ED) sec. 2.2 adds these two to [display] and to neither
+         [<display-inside>] nor [<display-outside>], so they are whole values
+         and pair with nothing. *)
+      ("grid-lanes", Grid_lanes);
+      ("inline-grid-lanes", Inline_grid_lanes);
       ("flow-root", Flow_root);
       ("table", Table);
       ("table-row", Table_row);
@@ -268,6 +273,8 @@ let rec pp_display : display Pp.t =
   | Inline_flex -> Pp.string ctx "inline-flex"
   | Grid -> Pp.string ctx "grid"
   | Inline_grid -> Pp.string ctx "inline-grid"
+  | Grid_lanes -> Pp.string ctx "grid-lanes"
+  | Inline_grid_lanes -> Pp.string ctx "inline-grid-lanes"
   | Flow_root -> Pp.string ctx "flow-root"
   | Table -> Pp.string ctx "table"
   | Table_row -> Pp.string ctx "table-row"

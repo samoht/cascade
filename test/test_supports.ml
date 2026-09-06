@@ -83,6 +83,25 @@ let spec_supports_feature_vectors () =
     let actual = of_string input in
     Alcotest.(check string) name expected (to_string actual)
   in
+  (* CSS Conditional Rules 3 section 6 includes parenthesized general-enclosed
+     alongside declaration and nested-condition features. *)
+  List.iter
+    (fun input -> check "parenthesized general-enclosed" input input)
+    [
+      "not (future syntax)";
+      "()";
+      "(display)";
+      "(: grid)";
+      "(display: grid;)";
+      "((display: grid) and)";
+      "(future syntax) or (display: grid)";
+    ];
+  (* Conditional Rules general-enclosed preserves functions whose arguments do
+     not match a supported feature grammar, including under negation. *)
+  check "unknown font format under not" "not font-format(cascade-nope)"
+    "not font-format(cascade-nope)";
+  check "unknown font tech under not" "not font-tech(cascade-nope)"
+    "not font-tech(cascade-nope)";
   check "selector forgiving relative branch" "selector(:has(+ img))"
     "selector(:has(+ img))";
   check "selector current pseudo" "selector(:popover-open)"
@@ -109,6 +128,10 @@ let spec_supports_feature_vectors () =
     "((display: grid) and (gap: 1rem)) or selector(:has(img))"
 
 let spec_supports_negative_vectors () =
+  List.iter
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
+    Supports_inventory.general_enclosed_functions;
   let expect_error name input =
     try
       ignore (of_string input);
@@ -121,6 +144,23 @@ let spec_supports_negative_vectors () =
     Cascade_spec_inventory.Supports_grammar.invalid
 
 let spec_supports_structural_vectors () =
+  let unknown = of_string "(future syntax)" in
+  Alcotest.(check bool)
+    "unknown enclosed atom differs from a function" false
+    (equal unknown (of_string "future(syntax)"));
+  Alcotest.(check bool)
+    "unknown feature is false in an empty explicit context" true
+    (Css.Context.matches_supports (Css.Context.query ()) (Not unknown));
+  Alcotest.(check bool)
+    "explicit future capability is respected" true
+    (Css.Context.matches_supports
+       (Css.Context.query ~supports:[ unknown ] ())
+       unknown);
+  (match simplify_under ~context:[] unknown with
+  | `Cond retained ->
+      Alcotest.(check bool)
+        "open world retains unknown guard" true (equal unknown retained)
+  | `True | `False -> Alcotest.fail "unknown guard folded without context");
   List.iter
     (fun (row : Supports_inventory.row) ->
       let actual = of_string row.input in

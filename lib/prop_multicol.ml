@@ -100,6 +100,12 @@ let break_inside_of_page_break (value : page_break_inside_value) :
   | Inherit -> Some Inherit
   | Var _ -> None
 
+(* CSS Multicol 2 sec. 4.5 leaves an omitted component at its longhand's
+   initial, and [auto] is the width's (sec. 4.1), so [auto <count>] names what
+   [<count>] names and the shorter spelling wins. *)
+let normalize_columns_value : columns_value -> columns_value =
+ fun value -> match value with Auto_count n -> Count n | other -> other
+
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -125,6 +131,30 @@ let rec pp_column_width : column_width Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Width len -> pp_length ctx len
   | Var v -> pp_var pp_column_width ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+(* CSS Multicol 2 sec. 4.2 and 4.4. *)
+let rec pp_column_height : column_height Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Height len -> pp_length ctx len
+  | Var v -> pp_var pp_column_height ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_column_wrap : column_wrap Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Nowrap -> Pp.string ctx "nowrap"
+  | Wrap -> Pp.string ctx "wrap"
+  | Var v -> pp_var pp_column_wrap ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -328,6 +358,43 @@ let rec read_column_width t : column_width =
     ]
     ~var:(fun t -> Var (Values.read_var read_column_width t))
     ~default:(fun t -> (Width (read_length t) : column_width))
+    t
+
+(* The height takes a length and no percentage, which Chrome 146 refuses. *)
+let rec read_column_height t : column_height =
+  Cursor.enum_or_var "column-height"
+    [
+      ("auto", (Auto : column_height));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_column_height t))
+    ~default:(fun t ->
+      (* The generic length reader carries a keyword list of its own -
+         [min-content], [none] and [normal] among them - and the height takes
+         none of those beside its own [auto]. *)
+      (Height
+         (read_length ~length_only:true ~allow_negative:false
+            ~with_keywords:false t)
+        : column_height))
+    t
+
+let rec read_column_wrap t : column_wrap =
+  Cursor.enum_or_var "column-wrap"
+    [
+      ("auto", (Auto : column_wrap));
+      ("nowrap", Nowrap);
+      ("wrap", Wrap);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_column_wrap t))
     t
 
 let rec read_column_count t : column_count =

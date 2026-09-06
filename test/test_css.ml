@@ -1968,9 +1968,9 @@ let list_style_value_parsers () =
   ok "upper-roman" (Css.parse_list_style_type "upper-roman");
   ok "url()" (Css.parse_list_style_image "url(/carrot.png)");
   ok "none" (Css.parse_list_style_image "none");
-  Alcotest.(check bool)
-    "an unknown counter style is rejected" true
-    (Css.parse_list_style_type "nonsense-style" = None)
+  (* CSS Lists 3 section 3.4 falls back to decimal if a named style is absent;
+     the name is still valid at parse time. *)
+  ok "nonsense-style" (Css.parse_list_style_type "nonsense-style")
 
 (* [font-family] takes a stack, and a token defined as one is what a theme feeds
    back in, so a var() among the entries has to survive the read. *)
@@ -2023,7 +2023,7 @@ let option_value_parser_contracts () =
       ( "list-style-type",
         (fun s -> Option.is_some (Css.parse_list_style_type s)),
         "square",
-        "nonsense-style",
+        "default",
         "square junk" );
       ( "list-style-image",
         (fun s -> Option.is_some (Css.parse_list_style_image s)),

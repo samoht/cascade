@@ -195,7 +195,7 @@ let read_caret_shorthand t : caret =
                  Some (fun t -> `Animation (read_caret_animation_component t))
                else None);
               (if Option.is_none color then
-                 Some (fun t -> `Color (read_color t))
+                 Some (fun t -> `Color (read_auto_color t))
                else None);
               (if Option.is_none shape then
                  Some (fun t -> `Shape (read_caret_shape_component t))
@@ -1159,12 +1159,13 @@ let color_scheme_of_idents t names : color_scheme =
       if has_css_wide then
         Cursor.err_invalid t
           "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
-      let non_only_names =
-        List.filter (fun n -> String.lowercase_ascii n <> "only") names
-      in
+      let is_only n = String.equal (String.lowercase_ascii n) "only" in
+      let non_only_names = List.filter (fun n -> not (is_only n)) names in
       if non_only_names = [] then
         Cursor.err_invalid t
           "color-scheme: [only] must be combined with a color scheme";
+      if List.length (List.filter is_only names) > 1 then
+        Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
       Custom names
 
 let rec read_color_scheme t : color_scheme =
@@ -1242,7 +1243,7 @@ let read_outline_part ~width ~style ~color t =
         Some (Var (read_var Prop_background.read_border_width t) : border_width)
     else if Option.is_none !style then
       style := Some (Var (read_var read_outline_style t) : outline_style)
-    else if Option.is_none !color then color := Some (read_color t)
+    else if Option.is_none !color then color := Some (read_auto_color t)
     else Cursor.err_expected t "outline"
   else if Option.is_none !style && outline_starts_style t then
     style := Some (read_outline_style t)
@@ -1257,7 +1258,7 @@ let read_outline_part ~width ~style ~color t =
     with
     | Some w -> width := Some w
     | Option.None ->
-        if Option.is_none !color then color := Some (read_color t)
+        if Option.is_none !color then color := Some (read_auto_color t)
         else Cursor.err_expected t "outline"
 
 let read_outline_parts ~width ~style ~color t =

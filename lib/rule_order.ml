@@ -713,6 +713,60 @@ let canonical_color_spellings (stmts : statement list) : statement list =
     (Common.List.map_preserve canonical_color_spelling)
     stmts
 
+(* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
+   appropriate unit for that component", for every purpose but the ones that
+   combine two colours. A minifier that reaches an achromatic colour by
+   conversion writes those channels as [none] where Cascade writes the hex the
+   colour folds to, and the projection has to read the two as one colour.
+
+   Sec. 13.3 draws the other edge: interpolation gives a missing component the
+   other colour's analogous component rather than a zero, so at a position that
+   interpolates the value the two spellings name two different results.
+   {!Declaration.normalize} resolves the sentinel only for a colour standing as
+   a whole colour-longhand value, which leaves a gradient stop, a [color-mix()]
+   operand, a shadow colour and a custom-property token stream reading their
+   [none] as written. A declaration the sheet interpolates from elsewhere is
+   held back too: [@keyframes] and [@starting-style] are the two blocks that
+   exist to be one endpoint of that, so the pass does not descend into them, and
+   a colour whose own rule transitions the property it writes keeps its [none].
+   That guard reads one rule. A transition one rule declares for a colour
+   another rule sets still folds, since seeing it would mean deciding that two
+   selectors match one element, which the projection does not do.
+
+   Guarded like [canonical_color_spelling]: the flagged normalisation is kept
+   only where it moves the colour, so no other value fold rides along. *)
+let canonical_missing_components ~lossless decl =
+  let folded = Declaration.normalize ~lossless ~resolve_missing:true decl in
+  if folded == decl then decl
+  else if
+    Declaration.equal_declaration folded (Declaration.normalize ~lossless decl)
+  then decl
+  else folded
+
+let canonical_missing_components_in_rule ~lossless decls =
+  Common.List.map_preserve
+    (fun decl ->
+      let folded = canonical_missing_components ~lossless decl in
+      if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
+        folded
+      else decl)
+    decls
+
+let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
+    statement list =
+  Common.List.map_preserve
+    (fun stmt ->
+      match stmt with
+      | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _ ->
+          stmt
+      | stmt ->
+          stmt
+          |> Stylesheet.map_statement_declarations
+               (canonical_missing_components_in_rule ~lossless)
+          |> Stylesheet.map_statement_children
+               (canonical_missing_component_colors ~lossless))
+    stmts
+
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
@@ -952,14 +1006,15 @@ let rec canonical_query_preludes (stmts : statement list) : statement list =
       Stylesheet.map_statement_children canonical_query_preludes stmt)
     stmts
 
-let canonicalize (stmts : statement list) : statement list =
+let canonicalize ?(lossless = false) (stmts : statement list) : statement list =
   let changed = ref false in
   let normalized =
     fold_layer_pins
       (canonical_query_preludes
          (sort_property_runs
-            (canonical_color_spellings
-               (normalize_custom_values (canonical_vendor_aliases stmts)))))
+            (canonical_missing_component_colors ~lossless
+               (canonical_color_spellings
+                  (normalize_custom_values (canonical_vendor_aliases stmts))))))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized

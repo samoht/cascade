@@ -11,12 +11,31 @@
 # computed style a function of the CSS alone.
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
+# CASCADE_NO_BROWSER silences this gate, and a gate that did not run is not a
+# pass: only the value that says the run checked nothing exits 0. Same contract
+# as test/render/browser.ml, so one variable does not mean two things.
+case ${CASCADE_NO_BROWSER-} in
+  '') ;;
+  unchecked)
+    echo "SKIP: inline (CASCADE_NO_BROWSER=unchecked, so this run checks nothing)"
+    exit 0 ;;
+  *)
+    echo "FAIL: inline is suppressed by CASCADE_NO_BROWSER=$CASCADE_NO_BROWSER;" \
+         "a gate that did not run is not a pass. Set CASCADE_NO_BROWSER=unchecked" \
+         "to exit 0 and say so." >&2
+    exit 1 ;;
+esac
 if [ -z "$CHROME" ]; then
   CHROME=$(command -v chromium 2>/dev/null || command -v google-chrome 2>/dev/null || true)
 fi
 # sort -V, not sort: the cache holds mac_arm-<version> directories, and in
 # lexical order a 99.x outranks a 146.x.
 [ -z "$CHROME" ] && CHROME=$(find "$HOME/.cache/puppeteer" -type f -name chrome-headless-shell 2>/dev/null | sort -V | tail -1)
+# The same places test/render/browser.ml looks, so a machine does not run one
+# browser oracle and skip the other.
+[ -z "$CHROME" ] && CHROME=$(find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" -type f -name headless_shell 2>/dev/null | sort -V | tail -1)
+[ -z "$CHROME" ] && [ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] &&
+  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then
   echo "SKIP: no headless browser or node available"; exit 0
 fi
@@ -76,6 +95,12 @@ if [ -z "$CANON_FILTER" ]; then
   fi
   CANON_FILTER="$root/_build/default/test/inline/canon_filter.exe"
 fi
+# Absolute, because xtest.js runs it from a directory of its own choosing.
+case $CANON_FILTER in
+  /*) ;;
+  */*) CANON_FILTER=$(CDPATH= cd "$(dirname "$CANON_FILTER")" && pwd)/$(basename "$CANON_FILTER") ;;
+  *) CANON_FILTER=$(CDPATH= pwd)/$CANON_FILTER ;;
+esac
 # Prove it filters, rather than that a file exists: a stale or broken binary
 # passes an existence check and silently restores raw comparison. The first two
 # lines each spell one value two ways and must be dropped; the third is a real
@@ -108,10 +133,26 @@ echo "cascade: $CASCADE (${cascade_version:-unknown version})"
 echo "browser: $browser"
 echo "compare: canonical"
 fail=0
+checks=0
+compared=0
 # xtest.js renders two pages, which is the whole cost of the run: keep its
 # report rather than paying for it a second time to print the failure.
+#
+# It also says how many elements it lined up, and a case that lined up none
+# reports IDENTICAL for the same reason an empty page does: there was nothing
+# to disagree about. That is not a result, so it is a failure.
 check() { # label before after
   report=$(node "$dir/xtest.js" "$2" "$3" 2>&1)
+  checks=$((checks + 1))
+  els=$(printf '%s\n' "$report" | sed -n 's/^visual elements: \([0-9][0-9]*\),.*/\1/p')
+  if [ -z "$els" ] || [ "$els" -eq 0 ]; then
+    echo "BLIND $1"
+    echo "     no element was compared, so IDENTICAL says nothing"
+    printf '%s\n' "$report" | head -8 | sed 's/^/     /'
+    fail=1
+    return
+  fi
+  compared=$((compared + els))
   case $report in
     *IDENTICAL*) echo "ok   $1" ;;
     *) echo "FAIL $1"
@@ -181,7 +222,12 @@ transform() { # label out cmd...
   rm -f "$err"
   return "$status"
 }
+fixtures=0
 for f in "$dir"/fixtures/*.html; do
+  [ -e "$f" ] && fixtures=$((fixtures + 1))
+done
+for f in "$dir"/fixtures/*.html; do
+  [ -e "$f" ] || continue
   for mode in "" "--minimal"; do
     tmp=$(mktemp)
     label="$(basename "$f") ${mode:-full}"
@@ -197,6 +243,7 @@ done
 # compare computed styles against the original page.
 for flags in "" "--inline-vars"; do
   for f in "$dir"/fixtures/*.html; do
+    [ -e "$f" ] || continue
     tmp=$(mktemp)
     label="$(basename "$f") minify${flags:+ $flags}"
     # shellcheck disable=SC2086 # an empty $flags must vanish, not pass ""
@@ -235,4 +282,14 @@ for f in "$dir"/pages/*.html; do
   fi
   rm -f "$tmp"
 done
+# Say what was measured, and refuse to call a run clean that measured less
+# than the committed fixtures come to. The fixtures are in the tree, so a
+# short count is the harness failing to reach them, not a smaller corpus:
+# four legs each, and the pages add to that rather than stand in for it.
+echo "compared: $checks case(s), $compared element render(s)"
+expected=$((fixtures * 4))
+if [ "$checks" -eq 0 ] || [ "$checks" -lt "$expected" ]; then
+  echo "BLIND: $checks case(s) measured, $expected from $fixtures fixture(s) expected" >&2
+  fail=1
+fi
 exit $fail

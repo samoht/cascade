@@ -109,19 +109,18 @@ statement is there for the projection to read.
   <html><head><style></style></head><body><p>hi</p>
   </body></html>
 
-Recovery inside that block is a different matter: a descriptor the parser
-cannot read takes the whole at-rule with it, which leaves no statement, so
-this one is a loss and says so.
+An at-rule written among the descriptors is no loss either. CSS Syntax 3
+(ED) §5.5.5 gives it to "consume an at-rule", which ends at its block or at
+its `;`, so it costs itself and the `@font-face` around it still parses.
 
   $ cat > face2.html <<EOF
   > <html><head><style>@font-face{font-family:x;@bogus w;}</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply face2.html > out8.html 2> err8.txt
-  [1]
   $ grep '^Error' err8.txt
-  Error: face2.html:<style>#1: parse dropped every rule; keeping the block verbatim
+  [1]
   $ cat out8.html
-  <html><head><style>@font-face{font-family:x;@bogus w;}</style></head><body><p>hi</p>
+  <html><head><style></style></head><body><p>hi</p>
   </body></html>
 
 An at-rule this library does not know parses to a statement of its own and

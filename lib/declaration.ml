@@ -51,15 +51,15 @@ let rec important = function
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
 let rec normalize ?(lossless = false) ?(exact_srgb = false)
-    ?(ctx = Values.default_calc_ctx) = function
+    ?(resolve_missing = false) ?(ctx = Values.default_calc_ctx) = function
   | Declaration { property; value; important; _ } as decl ->
       let value' =
-        Properties.normalize_property_value ~lossless ~exact_srgb ~ctx property
-          value
+        Properties.normalize_property_value ~lossless ~exact_srgb
+          ~resolve_missing ~ctx property value
       in
       if value' == value then decl else v ~important property value'
   | Theme_guarded g as themed ->
-      let decl = normalize ~lossless ~exact_srgb ~ctx g.decl in
+      let decl = normalize ~lossless ~exact_srgb ~resolve_missing ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
 let is_custom_property_name = Custom_property_name.is_valid
@@ -250,18 +250,25 @@ let reject_unterminated_string_value t =
   if List.exists component_has_unterminated_string (value_components t) then
     Cursor.err_invalid t "unterminated string in declaration value"
 
-let rec component_has_bad_string = function
-  | Component.Preserved { kind = Token.Bad_string; _ } -> true
+(* CSS Syntax 3 (ED) sec. 7.2: a [<declaration-value>] is any token sequence
+   excluding a [<bad-string-token>], a [<bad-url-token>], and an unmatched [)],
+   []] or [}]. A custom property takes [<declaration-value>?] and nothing wider,
+   so a value carrying one of those is invalid rather than opaque. *)
+let rec component_leaves_declaration_value = function
+  | Component.Preserved
+      { kind = Token.Bad_string | Token.Bad_url | Token.Close _; _ } ->
+      true
   | Component.Block { node = { value; _ }; _ } ->
-      List.exists component_has_bad_string value
+      List.exists component_leaves_declaration_value value
   | Component.Func { node = { arguments; _ }; _ } ->
-      List.exists component_has_bad_string arguments
+      List.exists component_leaves_declaration_value arguments
   | Component.Preserved _ -> false
 
 let reject_custom_bad_string t =
   if
-    List.exists component_has_bad_string (components_before is_top_level_stop t)
-  then Cursor.err_invalid t "bad string in custom property value"
+    List.exists component_leaves_declaration_value
+      (components_before is_top_level_stop t)
+  then Cursor.err_invalid t "custom property value is no <declaration-value>"
 
 let invalid_var_arguments arguments =
   match
@@ -566,10 +573,10 @@ let property_value_uses_runtime_subst (type a)
   | Padding_right -> Values.length_has_runtime_subst value
   | Padding_bottom -> Values.length_has_runtime_subst value
   | Padding_left -> Values.length_has_runtime_subst value
-  | Border_top_left_radius -> Values.length_has_runtime_subst value
-  | Border_top_right_radius -> Values.length_has_runtime_subst value
-  | Border_bottom_left_radius -> Values.length_has_runtime_subst value
-  | Border_bottom_right_radius -> Values.length_has_runtime_subst value
+  | Border_top_left_radius -> length_list_has_runtime_subst value
+  | Border_top_right_radius -> length_list_has_runtime_subst value
+  | Border_bottom_left_radius -> length_list_has_runtime_subst value
+  | Border_bottom_right_radius -> length_list_has_runtime_subst value
   | Outline_width -> Properties.border_width_has_runtime_subst value
   | Margin -> length_list_has_runtime_subst value
   | Padding -> length_list_has_runtime_subst value
@@ -687,6 +694,12 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
   | Declaration { property; value; _ } ->
       Pp.size ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> value_size ~minify ~inline decl
+
+(* The writer side of the rule [validate_regular_property_components] enforces
+   on input. The reader's exemptions are for keeping an authored value verbatim,
+   so they do not apply here: nothing licenses building such a value. *)
+let value_has_css_wide_mix decl =
+  Properties.value_has_css_wide_mix (string_of_value ~minify:true decl)
 
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
@@ -828,7 +841,7 @@ let read_nn_lp_or_global t =
     ]
     ~default:read_non_negative_length_percentage t
 
-let read_nn_length_or_global t =
+let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
       ("inherit", (Inherit : length));
@@ -837,8 +850,27 @@ let read_nn_length_or_global t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    ~default:
+      (read_length ~allow_negative:false ~with_keywords:false ~length_only)
     t
+
+(* CSS Backgrounds 3 (ED) sec. 4.1: each [border-*-radius] corner longhand is
+   [<length-percentage [0,inf]>{1,2}], the horizontal radius then the vertical
+   one; a single value sets both. *)
+let read_corner_radius t =
+  Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_nn_length_or_global t
+
+let read_gap_longhand t =
+  Cursor.enum "gap"
+    [ ("normal", (Normal : length)) ]
+    ~default:read_nn_length_or_global t
+
+(* CSS Animations 2 sec. 4.1: [animation-duration] is [ auto | <time [0s,inf]>
+   ]#. The transition durations and both delays keep the time grammar alone. *)
+let read_animation_duration t =
+  Cursor.enum "animation-duration"
+    [ ("auto", (Auto : duration)) ]
+    ~default:read_duration t
 
 (* CSS Text 3 section 7: [letter-spacing] is [normal | <length>], [word-spacing]
    is [normal | <length-percentage>]; both accept negative values. *)
@@ -955,7 +987,7 @@ let rec read_length_or_css_wide t =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_length_or_css_wide t)) ]
-    ~default:(read_length ~with_keywords:false)
+    ~default:(read_length ~with_keywords:false ~length_only:true)
     t
 
 let rec read_text_decoration_thickness t =
@@ -980,10 +1012,10 @@ let rec read_text_decoration_thickness t =
           fun t ->
             Calc
               (read_calc ~result_type:`Value
-                 (read_non_negative_length ~with_keywords:false)
+                 (read_length ~with_keywords:false)
                  t) );
       ]
-    ~default:(read_non_negative_length ~with_keywords:false)
+    ~default:(read_length ~with_keywords:false)
     t
 
 (* Delegate to the proper reader in Properties *)
@@ -1079,15 +1111,15 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
       (* CSS Backgrounds 3 sec. 3.1: [border-color] is a 1-4 value box shorthand
          (top / right / bottom / left). *)
       Some (v Border_color (Cursor.list ~at_least:1 ~at_most:4 read_color t))
-  | Outline_color -> Some (v Outline_color (read_color t))
+  | Outline_color -> Some (v Outline_color (Prop_common.read_auto_color t))
   | Border_top_color -> Some (v Border_top_color (read_color t))
   | Border_right_color -> Some (v Border_right_color (read_color t))
   | Border_bottom_color -> Some (v Border_bottom_color (read_color t))
   | Border_left_color -> Some (v Border_left_color (read_color t))
   | Text_decoration_color -> Some (v Text_decoration_color (read_color t))
   | Text_emphasis_color -> Some (v Text_emphasis_color (read_color t))
-  | Accent_color -> Some (v Accent_color (read_color t))
-  | Caret_color -> Some (v Caret_color (read_color t))
+  | Accent_color -> Some (v Accent_color (Prop_common.read_auto_color t))
+  | Caret_color -> Some (v Caret_color (Prop_common.read_auto_color t))
   | Stop_color -> Some (v Stop_color (read_color t))
   | Flood_color -> Some (v Flood_color (read_color t))
   | Lighting_color -> Some (v Lighting_color (read_color t))
@@ -1097,36 +1129,37 @@ let read_color_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_text_decoration_color (read_color t))
   | _ -> None
 
+let read_box_size ?(maximum = false) t =
+  match read_length_percentage ~allow_negative:false t with
+  | Length (Normal | From_font | Size) ->
+      Cursor.err_invalid t "expected a box size"
+  | Length Auto when maximum ->
+      Cursor.err_invalid t "maximum sizes do not accept auto"
+  | Length None when not maximum ->
+      Cursor.err_invalid t "only maximum sizes accept none"
+  | size -> size
+
 let read_sizing_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
-  | Width -> Some (v Width (read_length_percentage ~allow_negative:false t))
-  | Height -> Some (v Height (read_length_percentage ~allow_negative:false t))
-  | Min_width ->
-      Some (v Min_width (read_length_percentage ~allow_negative:false t))
-  | Min_height ->
-      Some (v Min_height (read_length_percentage ~allow_negative:false t))
-  | Max_width ->
-      Some (v Max_width (read_length_percentage ~allow_negative:false t))
-  | Max_height ->
-      Some (v Max_height (read_length_percentage ~allow_negative:false t))
-  | Inline_size ->
-      Some (v Inline_size (read_length_percentage ~allow_negative:false t))
-  | Min_inline_size ->
-      Some (v Min_inline_size (read_length_percentage ~allow_negative:false t))
-  | Max_inline_size ->
-      Some (v Max_inline_size (read_length_percentage ~allow_negative:false t))
-  | Block_size ->
-      Some (v Block_size (read_length_percentage ~allow_negative:false t))
-  | Min_block_size ->
-      Some (v Min_block_size (read_length_percentage ~allow_negative:false t))
-  | Max_block_size ->
-      Some (v Max_block_size (read_length_percentage ~allow_negative:false t))
+  | Width -> Some (v Width (read_box_size t))
+  | Height -> Some (v Height (read_box_size t))
+  | Min_width -> Some (v Min_width (read_box_size t))
+  | Min_height -> Some (v Min_height (read_box_size t))
+  | Max_width -> Some (v Max_width (read_box_size ~maximum:true t))
+  | Max_height -> Some (v Max_height (read_box_size ~maximum:true t))
+  | Inline_size -> Some (v Inline_size (read_box_size t))
+  | Min_inline_size -> Some (v Min_inline_size (read_box_size t))
+  | Max_inline_size -> Some (v Max_inline_size (read_box_size ~maximum:true t))
+  | Block_size -> Some (v Block_size (read_box_size t))
+  | Min_block_size -> Some (v Min_block_size (read_box_size t))
+  | Max_block_size -> Some (v Max_block_size (read_box_size ~maximum:true t))
   | Font_size -> Some (v Font_size (Properties.read_font_size t))
   | Perspective -> Some (v Perspective (read_perspective_value t))
   | Offset_distance -> Some (v Offset_distance (read_nn_lp_or_global t))
   | Shape_margin -> Some (v Shape_margin (read_nn_lp_or_global t))
-  | Line_height_step -> Some (v Line_height_step (read_nn_length_or_global t))
+  | Line_height_step ->
+      Some (v Line_height_step (read_nn_length_or_global ~length_only:true t))
   | _ -> None
 
 let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
@@ -1135,24 +1168,24 @@ let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
   match prop with
   | Border_radius -> Some (v Border_radius (read_border_radius t))
   | Border_top_left_radius ->
-      Some (v Border_top_left_radius (read_nn_length_or_global t))
+      Some (v Border_top_left_radius (read_corner_radius t))
   | Border_top_right_radius ->
-      Some (v Border_top_right_radius (read_nn_length_or_global t))
+      Some (v Border_top_right_radius (read_corner_radius t))
   | Border_bottom_left_radius ->
-      Some (v Border_bottom_left_radius (read_nn_length_or_global t))
+      Some (v Border_bottom_left_radius (read_corner_radius t))
   | Border_bottom_right_radius ->
-      Some (v Border_bottom_right_radius (read_nn_length_or_global t))
+      Some (v Border_bottom_right_radius (read_corner_radius t))
   | Border_start_start_radius ->
-      Some (v Border_start_start_radius (read_nn_length_or_global t))
+      Some (v Border_start_start_radius (read_corner_radius t))
   | Border_start_end_radius ->
-      Some (v Border_start_end_radius (read_nn_length_or_global t))
+      Some (v Border_start_end_radius (read_corner_radius t))
   | Border_end_start_radius ->
-      Some (v Border_end_start_radius (read_nn_length_or_global t))
+      Some (v Border_end_start_radius (read_corner_radius t))
   | Border_end_end_radius ->
-      Some (v Border_end_end_radius (read_nn_length_or_global t))
+      Some (v Border_end_end_radius (read_corner_radius t))
   | Gap -> Some (v Gap (Properties.read_gap t))
-  | Column_gap -> Some (v Column_gap (read_nn_length_or_global t))
-  | Row_gap -> Some (v Row_gap (read_nn_length_or_global t))
+  | Column_gap -> Some (v Column_gap (read_gap_longhand t))
+  | Row_gap -> Some (v Row_gap (read_gap_longhand t))
   | _ -> None
 
 let read_layout_value : type a. a property -> Cursor.t -> declaration option =
@@ -1181,7 +1214,7 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
   match prop with
   | Padding -> Some (v Padding (read_padding_shorthand t))
   | Margin -> Some (v Margin (read_margin_shorthand t))
-  | Border_style -> Some (v Border_style (read_border_style t))
+  | Border_style -> Some (v Border_style (read_border_style_box t))
   | Border_width -> Some (v Border_width (read_border_width_box t))
   | Border_top_width -> Some (v Border_top_width (read_border_width t))
   | Border_right_width -> Some (v Border_right_width (read_border_width t))
@@ -1212,8 +1245,10 @@ let read_box_edge_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Border_inline_width (read_logical_border_width t))
   | Border_block_width ->
       Some (v Border_block_width (read_logical_border_width t))
-  | Border_inline_style -> Some (v Border_inline_style (read_border_style t))
-  | Border_block_style -> Some (v Border_block_style (read_border_style t))
+  | Border_inline_style ->
+      Some (v Border_inline_style (read_logical_border_style t))
+  | Border_block_style ->
+      Some (v Border_block_style (read_logical_border_style t))
   | Border_inline_start_style ->
       Some (v Border_inline_start_style (read_border_style t))
   | Border_inline_end_style ->
@@ -1236,6 +1271,8 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
   | Text_align -> Some (v Text_align (read_text_align t))
   | Text_transform -> Some (v Text_transform (read_text_transform t))
   | White_space -> Some (v White_space (read_white_space t))
+  | White_space_collapse ->
+      Some (v White_space_collapse (read_white_space_collapse t))
   | Text_decoration -> Some (v Text_decoration (read_text_decoration t))
   | Text_decoration_line ->
       Some (v Text_decoration_line (read_text_decoration_lines t))
@@ -1301,7 +1338,9 @@ let read_vendor_alias_value : type a.
   | Webkit_animation_delay ->
       Some (v Webkit_animation_delay (read_duration_list read_time t))
   | Webkit_animation_duration ->
-      Some (v Webkit_animation_duration (read_duration_list read_duration t))
+      Some
+        (v Webkit_animation_duration
+           (read_duration_list read_animation_duration t))
   | Webkit_animation_direction ->
       Some (v Webkit_animation_direction (read_animation_direction t))
   | Webkit_animation_iteration_count ->
@@ -1332,7 +1371,9 @@ let read_vendor_alias_value : type a.
   | Moz_animation_delay ->
       Some (v Moz_animation_delay (read_duration_list read_time t))
   | Moz_animation_duration ->
-      Some (v Moz_animation_duration (read_duration_list read_duration t))
+      Some
+        (v Moz_animation_duration
+           (read_duration_list read_animation_duration t))
   | Moz_animation_direction ->
       Some (v Moz_animation_direction (read_animation_direction t))
   | Moz_animation_iteration_count ->
@@ -1374,6 +1415,14 @@ let read_background_value : type a. a property -> Cursor.t -> declaration option
       Some (v Webkit_background_clip (read_background_box_list t))
   | Background_position ->
       Some (v Background_position (read_background_position t))
+  | Background_position_x ->
+      Some (v Background_position_x (read_background_position_x t))
+  | Background_position_y ->
+      Some (v Background_position_y (read_background_position_y t))
+  | Webkit_mask_position_x ->
+      Some (v Webkit_mask_position_x (read_background_position_x t))
+  | Webkit_mask_position_y ->
+      Some (v Webkit_mask_position_y (read_background_position_y t))
   | Background_repeat ->
       Some (v Background_repeat (read_background_repeat_list t))
   | Background_size -> Some (v Background_size (read_background_size_list t))
@@ -1742,9 +1791,13 @@ let read_object_transition_value : type a.
   | Page_size -> Some (v Page_size (read_page_size t))
   | Columns -> Some (v Columns (read_columns_value t))
   | Column_width -> Some (v Column_width (read_column_width t))
+  | Column_height -> Some (v Column_height (read_column_height t))
+  | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
   | Column_rule -> Some (v Column_rule (read_border t))
   | Column_rule_color -> Some (v Column_rule_color (read_color t))
+  | Column_rule_width -> Some (v Column_rule_width (read_border_width t))
+  | Column_rule_style -> Some (v Column_rule_style (read_border_style t))
   | Column_span -> Some (v Column_span (read_column_span t))
   | _ -> None
 
@@ -1871,6 +1924,10 @@ let read_interaction_value : type a.
   | Ms_user_select -> Some (v Ms_user_select (read_user_select t))
   | Webkit_text_fill_color -> Some (v Webkit_text_fill_color (read_color t))
   | Webkit_text_stroke_color -> Some (v Webkit_text_stroke_color (read_color t))
+  | Webkit_text_stroke_width ->
+      Some (v Webkit_text_stroke_width (read_border_width t))
+  | Webkit_text_stroke ->
+      Some (v Webkit_text_stroke (read_webkit_text_stroke t))
   | Moz_user_select -> Some (v Moz_user_select (read_user_select t))
   | Pointer_events -> Some (v Pointer_events (read_pointer_events t))
   | Resize -> Some (v Resize (read_resize t))
@@ -1903,7 +1960,7 @@ let read_interaction_value : type a.
       Some (v Text_combine_upright (read_text_combine_upright t))
   | Animation_name -> Some (v Animation_name (read_animation_name t))
   | Animation_duration ->
-      Some (v Animation_duration (read_duration_list read_duration t))
+      Some (v Animation_duration (read_duration_list read_animation_duration t))
   | Animation_timing_function ->
       Some (v Animation_timing_function (read_timing_function_list t))
   | Animation_delay -> Some (v Animation_delay (read_duration_list read_time t))
@@ -2692,7 +2749,7 @@ let background bg = v Background [ bg ]
 let background_color c = v Background_color c
 let color c = v Color c
 let border_color c = v Border_color [ c ]
-let border_style bs = v Border_style bs
+let border_style bs = v Border_style [ bs ]
 let border_top_style bs = v Border_top_style bs
 let border_right_style bs = v Border_right_style bs
 let border_bottom_style bs = v Border_bottom_style bs
@@ -2808,10 +2865,10 @@ let place_items value = v Place_items value
 let place_self value = v Place_self value
 let border_width len = v Border_width [ len ]
 let border_radius len = v Border_radius len
-let border_top_left_radius len = v Border_top_left_radius len
-let border_top_right_radius len = v Border_top_right_radius len
-let border_bottom_left_radius len = v Border_bottom_left_radius len
-let border_bottom_right_radius len = v Border_bottom_right_radius len
+let border_top_left_radius len = v Border_top_left_radius [ len ]
+let border_top_right_radius len = v Border_top_right_radius [ len ]
+let border_bottom_left_radius len = v Border_bottom_left_radius [ len ]
+let border_bottom_right_radius len = v Border_bottom_right_radius [ len ]
 let fill value = v Fill value
 let stroke value = v Stroke value
 let stroke_width value = v Stroke_width value
@@ -3105,10 +3162,10 @@ let border_inline_start_style value = v Border_inline_start_style value
 let border_inline_end_style value = v Border_inline_end_style value
 let border_block_start_style value = v Border_block_start_style value
 let border_block_end_style value = v Border_block_end_style value
-let border_start_start_radius value = v Border_start_start_radius value
-let border_start_end_radius value = v Border_start_end_radius value
-let border_end_start_radius value = v Border_end_start_radius value
-let border_end_end_radius value = v Border_end_end_radius value
+let border_start_start_radius value = v Border_start_start_radius [ value ]
+let border_start_end_radius value = v Border_start_end_radius [ value ]
+let border_end_start_radius value = v Border_end_start_radius [ value ]
+let border_end_end_radius value = v Border_end_end_radius [ value ]
 let webkit_font_smoothing value = v Webkit_font_smoothing value
 let cursor value = v Cursor value
 let user_select value = v User_select value

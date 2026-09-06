@@ -46,6 +46,7 @@ type query = {
   media_features : Media.t list;
       (** Media features the rendering environment claims to expose. Build
           entries with [Media.feature] or [Media.boolean]. *)
+  media_inapplicable : Media.name list;
   supports : Supports.t list;
       (** Capability flags the environment claims to support, normally a
           [Supports.Property]/[Supports.Func] leaf. Compound forms
@@ -148,14 +149,22 @@ let empty_query =
   {
     media_type = None;
     media_features = [];
+    media_inapplicable = [];
     supports = [];
     container_name = None;
     container_features = [];
   }
 
-let query ?media_type ?(media_features = []) ?(supports = []) ?container_name
-    ?(container_features = []) () =
-  { media_type; media_features; supports; container_name; container_features }
+let query ?media_type ?(media_features = []) ?(media_inapplicable = [])
+    ?(supports = []) ?container_name ?(container_features = []) () =
+  {
+    media_type;
+    media_features;
+    media_inapplicable;
+    supports;
+    container_name;
+    container_features;
+  }
 
 let empty_loader = { base_url = None; imports = [] }
 let loader ?base_url ?(imports = []) () = { base_url; imports }
@@ -1388,7 +1397,12 @@ module Media_value = struct
     | Number n -> Some n
     | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
     | Ratio _ -> None
-    | Resolution_value (n, _) -> Some n
+    | Resolution_value (n, unit) -> (
+        match String.lowercase_ascii unit with
+        | "dppx" | "x" -> Some n
+        | "dpi" -> Some (n /. 96.)
+        | "dpcm" -> Some (n *. 2.54 /. 96.)
+        | _ -> None)
     | Ident _ | Function _ -> None
 
   let cmp_op : Media.cmp -> float -> float -> bool = function
@@ -1419,7 +1433,7 @@ end
 module Match_supports = struct
   (* Leaves match against [q.supports] via the typed [Supports.equal]. *)
   let rec eval q : Supports.t -> bool = function
-    | (Property _ | Function _) as leaf ->
+    | (Property _ | Function _ | General_enclosed _) as leaf ->
         List.exists (Supports.equal leaf) q.supports
     | Not c -> not (eval q c)
     | And (a, b) -> eval q a && eval q b
@@ -1438,6 +1452,23 @@ module Match_media = struct
   open Media
 
   type feature_table = Media.t list
+  type truth = True | False | Unknown
+
+  let of_bool = function true -> True | false -> False
+  let of_option = function Some value -> of_bool value | None -> Unknown
+  let negate = function True -> False | False -> True | Unknown -> Unknown
+
+  let conjunction a b =
+    match (a, b) with
+    | False, _ | _, False -> False
+    | True, True -> True
+    | Unknown, _ | _, Unknown -> Unknown
+
+  let disjunction a b =
+    match (a, b) with
+    | True, _ | _, True -> True
+    | False, False -> False
+    | Unknown, _ | _, Unknown -> Unknown
 
   let strip_min_max = function
     | Media.Min name -> Some (`Min, name)
@@ -1447,23 +1478,23 @@ module Match_media = struct
   let lookup_value (table : feature_table) feature_name : Media.value option =
     List.find_map (media_feature_value feature_name) table
 
-  let feature_present (table : feature_table) name =
-    List.exists
-      (fun q ->
-        Option.is_some (media_feature_value (Media.string_of_name name) q))
-      table
+  let boolean_value : Media.value -> bool option = function
+    | Ident (None | No_preference) -> Some false
+    | Ident _ -> Some true
+    | value -> Option.map (fun n -> n <> 0.) (Media_value.to_number value)
 
-  let eval_feature (table : feature_table) : Media.feature -> bool =
+  let eval_feature q : Media.feature -> truth =
     let with_lookup name f =
-      match lookup_value table (Media.string_of_name name) with
-      | None -> false
-      | Some actual -> Option.value ~default:false (f actual)
+      if List.exists (Media.equal_name name) q.media_inapplicable then False
+      else
+        match lookup_value q.media_features (Media.string_of_name name) with
+        | None -> Unknown
+        | Some actual -> of_option (f actual)
     in
     function
-    (* Media Queries 4 3.1: an unrecognised <general-enclosed> is [unknown], and
-       unknown becomes false where a boolean is expected. *)
-    | General_enclosed _ -> false
-    | Boolean name -> feature_present table name
+    (* MQ4 section 3.1: preserve unknown until the whole query is evaluated. *)
+    | General_enclosed _ -> Unknown
+    | Boolean name -> with_lookup name boolean_value
     | Plain (name, value) -> (
         match strip_min_max name with
         | Some (`Min, base) ->
@@ -1491,21 +1522,28 @@ module Match_media = struct
     | Print -> q.media_type = Some "print"
     | Other s -> q.media_type = Some s
 
-  let rec eval_condition q : Media.condition -> bool = function
-    | Feature f -> eval_feature q.media_features f
-    | Not c -> not (eval_condition q c)
-    | And (a, b) -> eval_condition q a && eval_condition q b
-    | Or (a, b) -> eval_condition q a || eval_condition q b
+  let rec eval_condition q : Media.condition -> truth = function
+    | Feature f -> eval_feature q f
+    | Not c -> negate (eval_condition q c)
+    | And (a, b) -> conjunction (eval_condition q a) (eval_condition q b)
+    | Or (a, b) -> disjunction (eval_condition q a) (eval_condition q b)
 
-  let rec eval q : Media.t -> bool = function
+  let rec eval_query q : Media.t -> truth = function
     | Cond c -> eval_condition q c
     | Type { prefix; type_; trailing } -> (
         let body =
-          eval_medium q type_
-          && Option.fold ~none:true ~some:(eval_condition q) trailing
+          conjunction
+            (of_bool (eval_medium q type_))
+            (Option.fold ~none:True ~some:(eval_condition q) trailing)
         in
-        match prefix with Some Media.Not -> not body | _ -> body)
-    | List qs -> List.exists (eval q) qs
+        match prefix with Some Media.Not -> negate body | _ -> body)
+    | List [] -> True
+    | List qs ->
+        List.fold_left
+          (fun acc query -> disjunction acc (eval_query q query))
+          False qs
+
+  let eval q query = eval_query q query = True
 end
 
 (** {2 Container-query evaluation (CSS Conditional 5 sec. 5.4)}
@@ -1584,27 +1622,71 @@ module Match_container = struct
       q.container_features
     || eval_scroll_state_query q query
 
-  let rec eval q ?name : Container.t -> bool =
-    let media_q = { q with media_features = media_features_of q } in
+  let rec feature_available table = function
+    | Media.Min name | Media.Max name -> feature_available table name
+    | name ->
+        Option.is_some
+          (Match_media.lookup_value table (Media.string_of_name name))
+
+  let rec media_available table : Media.condition -> bool = function
+    | Feature (General_enclosed _) -> false
+    | Feature
+        ( Plain (name, _)
+        | Boolean name
+        | Range (name, _, _)
+        | Range_rev (_, _, name)
+        | Interval (_, _, name, _, _) ) ->
+        feature_available table name
+    | Not condition -> media_available table condition
+    | And (a, b) | Or (a, b) ->
+        media_available table a && media_available table b
+
+  (* Conditional Rules 5 section 5.4: all features must select the same eligible
+     container, even when an [or] branch would already be true. *)
+  let rec eligible q table : Container.t -> bool = function
+    | Min_width_rem _ | Min_width_px _ -> feature_available table Media.Width
+    | Feature_query (Media.Cond condition) -> media_available table condition
+    | Feature_query (Media.Type _ | Media.List _) -> false
+    | Named (name, condition) ->
+        name_matches ~name q && eligible q table condition
+    | And (a, b) | Or (a, b) -> eligible q table a && eligible q table b
+    | Not condition -> eligible q table condition
+    | Style _ -> true
+    | Scroll_state _ ->
+        List.exists
+          (function Container.Scroll_state _ -> true | _ -> false)
+          q.container_features
+
+  let rec eval_condition q : Container.t -> Match_media.truth =
+    let media_q =
+      { q with media_features = media_features_of q; media_inapplicable = [] }
+    in
     fun cond ->
-      if not (name_matches ?name q) then false
-      else
-        let min_width l =
-          Media.Cond
-            (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
-        in
-        match cond with
-        | Min_width_rem rem ->
-            Match_media.eval media_q (min_width (Values.Rem rem))
-        | Min_width_px px ->
-            Match_media.eval media_q (min_width (Values.Px (float_of_int px)))
-        | Named (n, inner) -> eval q ~name:n inner
-        | Style { query; _ } -> style_match q ~query
-        | Scroll_state { query; _ } -> eval_scroll_state q ~query
-        | And (a, b) -> eval q a && eval q b
-        | Or (a, b) -> eval q a || eval q b
-        | Not c -> not (eval q c)
-        | Feature_query media -> Match_media.eval media_q media
+      let min_width l =
+        Media.Cond
+          (Media.Feature (Media.Plain (Media.Min Media.Width, Media.Length l)))
+      in
+      match cond with
+      | Min_width_rem rem ->
+          Match_media.eval_query media_q (min_width (Values.Rem rem))
+      | Min_width_px px ->
+          Match_media.eval_query media_q
+            (min_width (Values.Px (float_of_int px)))
+      | Named (_, inner) -> eval_condition q inner
+      | Style { query; _ } -> Match_media.of_bool (style_match q ~query)
+      | Scroll_state { query; _ } ->
+          Match_media.of_bool (eval_scroll_state q ~query)
+      | And (a, b) ->
+          Match_media.conjunction (eval_condition q a) (eval_condition q b)
+      | Or (a, b) ->
+          Match_media.disjunction (eval_condition q a) (eval_condition q b)
+      | Not c -> Match_media.negate (eval_condition q c)
+      | Feature_query media -> Match_media.eval_query media_q media
+
+  let eval q ?name condition =
+    name_matches ?name q
+    && eligible q (media_features_of q) condition
+    && eval_condition q condition = Match_media.True
 end
 
 (** {2 Selector matching (CSS Selectors 4)}

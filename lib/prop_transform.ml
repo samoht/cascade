@@ -959,13 +959,15 @@ let rec pp_rotate_value : rotate_value Pp.t =
   | Axis (0., 0., 1., a) when Pp.minified ctx -> pp_rotate_value ctx (Z a)
   | Axis (x, y, z, a) ->
       (* CSS Transforms 2 sec. 5 [rotate] [<angle> <number>{3}] is shorter under
-         minify when the angle leads (csso convention) and the second / third
-         numbers drop the separator if they start with a sign. *)
+         minify when the angle leads (csso convention) and a following number
+         drops the separator if it starts with a sign. The first number keeps
+         it: the angle ends in its unit, so [0deg-1] is the one dimension
+         [0deg-1] rather than an angle and a number. *)
       let pp_sep ctx (next : float) =
         if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
       in
       pp_required_unit_angle ctx a;
-      pp_sep ctx x;
+      Pp.space ctx ();
       Pp.float ctx x;
       pp_sep ctx y;
       Pp.float ctx y;

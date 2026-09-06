@@ -131,48 +131,69 @@ let media_positive =
       "screen and (width >= 40em), print and (color)";
   ]
 
+(* MQ4 section 3: these are general-enclosed, not malformed queries. *)
+let media_general_enclosed =
+  [
+    row "empty media feature" "()" "()";
+    row "min-width missing value" "(min-width)" "(min-width)";
+    row "missing range value" "(width >=)" "(width >=)";
+    row "empty feature value" "(width:)" "(width:)";
+    row "opposing interval operators" "(30em < width > 60em)"
+      "(30em < width > 60em)";
+    row "double name-first comparison" "(width = 40em = 50em)"
+      "(width = 40em = 50em)";
+    row "incomplete interval" "(400px <= width <=)" "(400px <= width <=)";
+    row "bad aspect ratio" "(aspect-ratio > 16/)" "(aspect-ratio > 16/)";
+    row "bad orientation keyword" "(orientation: diagonal)"
+      "(orientation: diagonal)";
+    row "bad hover keyword" "(hover: sometimes)" "(hover: sometimes)";
+    row "bad any-hover keyword" "(any-hover: fine)" "(any-hover: fine)";
+    row "bad any-pointer keyword" "(any-pointer: hover)" "(any-pointer: hover)";
+    row "bad update keyword" "(update: instant)" "(update: instant)";
+    row "bad overflow-block keyword" "(overflow-block: hidden)"
+      "(overflow-block: hidden)";
+    row "retired overflow-block optional paged"
+      "(overflow-block: optional-paged)" "(overflow-block: optional-paged)";
+    row "bad overflow-inline paged" "(overflow-inline: paged)"
+      "(overflow-inline: paged)";
+    row "bad color-gamut keyword" "(color-gamut: rgb)" "(color-gamut: rgb)";
+    row "bad dynamic-range keyword" "(dynamic-range: ultra)"
+      "(dynamic-range: ultra)";
+    row "bad resolution unit" "(resolution >= 2px)" "(resolution >= 2px)";
+    row "bad scan keyword" "(scan: fast)" "(scan: fast)";
+    row "bad grid keyword" "(grid: yes)" "(grid: yes)";
+    row "bad display-mode keyword" "(display-mode: popup)"
+      "(display-mode: popup)";
+    row "bad environment-blending keyword" "(environment-blending: blend)"
+      "(environment-blending: blend)";
+    row "bad viewport segments value" "(horizontal-viewport-segments: -1)"
+      "(horizontal-viewport-segments: -1)";
+    row "bad color scheme keyword" "(prefers-color-scheme: sepia)"
+      "(prefers-color-scheme: sepia)";
+    row "bad reduced motion keyword" "(prefers-reduced-motion: yes)"
+      "(prefers-reduced-motion: yes)";
+    row "bad reduced transparency keyword" "(prefers-reduced-transparency: yes)"
+      "(prefers-reduced-transparency: yes)";
+    row "bad prefers contrast keyword" "(prefers-contrast: high)"
+      "(prefers-contrast: high)";
+    row "retired prefers contrast forced keyword" "(prefers-contrast: forced)"
+      "(prefers-contrast: forced)";
+    row "bad reduced data keyword" "(prefers-reduced-data: yes)"
+      "(prefers-reduced-data: yes)";
+    row "bad forced colors keyword" "(forced-colors: enabled)"
+      "(forced-colors: enabled)";
+    row "bad nav controls keyword" "(nav-controls: back-button)"
+      "(nav-controls: back-button)";
+    row "bad min prefix on discrete feature" "(min-orientation: portrait)"
+      "(min-orientation: portrait)";
+    row "bad color feature value" "(color: 20example)" "(color: 20example)";
+  ]
+
 let media_negative =
   [
-    invalid "empty media feature" "()";
-    invalid "min-width missing value" "(min-width)";
-    invalid "missing range value" "(width >=)";
-    invalid "empty feature value" "(width:)";
-    invalid "opposing interval operators" "(30em < width > 60em)";
-    invalid "double name-first comparison" "(width = 40em = 50em)";
-    invalid "incomplete interval" "(400px <= width <=)";
-    invalid "bad aspect ratio" "(aspect-ratio > 16/)";
-    invalid "bad orientation keyword" "(orientation: diagonal)";
-    invalid "bad hover keyword" "(hover: sometimes)";
-    invalid "bad any-hover keyword" "(any-hover: fine)";
-    invalid "bad any-pointer keyword" "(any-pointer: hover)";
-    invalid "bad update keyword" "(update: instant)";
-    invalid "bad overflow-block keyword" "(overflow-block: hidden)";
-    invalid "retired overflow-block optional paged"
-      "(overflow-block: optional-paged)";
-    invalid "bad overflow-inline paged" "(overflow-inline: paged)";
-    invalid "bad color-gamut keyword" "(color-gamut: rgb)";
-    invalid "bad dynamic-range keyword" "(dynamic-range: ultra)";
-    invalid "bad resolution unit" "(resolution >= 2px)";
-    invalid "bad scan keyword" "(scan: fast)";
-    invalid "bad grid keyword" "(grid: yes)";
-    invalid "bad display-mode keyword" "(display-mode: popup)";
-    invalid "bad environment-blending keyword" "(environment-blending: blend)";
-    invalid "bad viewport segments value" "(horizontal-viewport-segments: -1)";
-    invalid "bad color scheme keyword" "(prefers-color-scheme: sepia)";
-    invalid "bad reduced motion keyword" "(prefers-reduced-motion: yes)";
-    invalid "bad reduced transparency keyword"
-      "(prefers-reduced-transparency: yes)";
-    invalid "bad prefers contrast keyword" "(prefers-contrast: high)";
-    invalid "retired prefers contrast forced keyword"
-      "(prefers-contrast: forced)";
-    invalid "bad reduced data keyword" "(prefers-reduced-data: yes)";
-    invalid "bad forced colors keyword" "(forced-colors: enabled)";
-    invalid "bad nav controls keyword" "(nav-controls: back-button)";
     invalid "only before feature" "only (color)";
     invalid "missing query after not" "not";
     invalid "reserved or as media type" "or and (color)";
-    invalid "bad min prefix on discrete feature" "(min-orientation: portrait)";
-    invalid "bad color feature value" "(color: 20example)";
     invalid "bad media type condition join" "screen (width)";
     invalid "missing right operand" "(width) and";
     invalid "ungrouped mixed operators" "(width) and (height) or (color)";
@@ -183,18 +204,23 @@ let media_negative =
 let media_recovery =
   [
     row "unknown feature recovers inside list" "(max-weight: 3kg), (color)"
-      "not all, (color)";
+      "(max-weight: 3kg), (color)";
     row "bad bare query recovers inside list" "&test, speech" "not all, speech";
     row "trailing comma branch recovers" "(example, all,), speech"
-      "not all, speech";
+      "(example, all,), speech";
     row "unknown max-weight recovers to next branch"
-      "screen and (max-weight: 3kg) and (color), (color)" "not all, (color)";
+      "screen and (max-weight: 3kg) and (color), (color)"
+      "screen and (max-weight: 3kg) and (color), (color)";
     row "invalid min-prefix recovers inside list"
-      "(min-orientation: portrait), (width)" "not all, (width)";
+      "(min-orientation: portrait), (width)"
+      "(min-orientation: portrait), (width)";
   ]
 
 let container_positive =
   [
+    row "unknown range value" "(width >)" "(width >)";
+    row "unknown interval" "(30em < inline-size > 60em)"
+      "(30em < inline-size > 60em)";
     row "boolean width" "(width)" "(width)";
     row "boolean height" "(height)" "(height)";
     row "boolean inline-size" "(inline-size)" "(inline-size)";
@@ -273,8 +299,6 @@ let container_negative =
     invalid "scroll-state mixed operators"
       "scroll-state((stuck: top) and (snapped: x) or (scrollable: y))";
     invalid "not not query" "not not (width)";
-    invalid "missing range value" "(width >)";
-    invalid "opposing interval operators" "(30em < inline-size > 60em)";
     invalid "equality bound in a style interval" "style(10px = --gap = 20px)";
     invalid "opposing style interval operators" "style(10px < --gap > 20px)";
   ]

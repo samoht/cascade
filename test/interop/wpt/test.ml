@@ -254,8 +254,9 @@ let wpt_vector_manifest () =
    we run {!Css.of_string}; for an inline [style="..."] attribute we wrap the
    declarations in a synthetic [[data] \{ ... \}] rule so we exercise the same
    parse path (parser doesn't have a dedicated inline-declaration entry point
-   yet). Either way the assertion is that the input parses without raising --
-   the finer-grained property assertions live in the per-file ports below. *)
+   yet). Either way this is a parse floor and nothing more: it says the input
+   reads, not that it read correctly. What each file expects of the result is
+   the per-file ports below. *)
 let run_parse case () =
   let input =
     match case.kind with
@@ -283,6 +284,62 @@ let extracted_cases () =
 
     These run in addition to any static cases the same file contributes via
     [extracted_cases]. *)
+
+(* The first style rule of a vendored file, as (name, value) pairs. The value is
+   the one CSSOM reports: the text after the colon, with [!important] off it. *)
+let first_rule_declarations file =
+  let contents = read_file (Filename.concat vectors_dir file) in
+  let pair decl =
+    let s = Cascade.Declaration.to_string ~minify:true decl in
+    match String.index_opt s ':' with
+    | None -> (s, "")
+    | Some i ->
+        let name = String.sub s 0 i in
+        let value = String.sub s (i + 1) (String.length s - i - 1) in
+        let bang = "!important" in
+        let value =
+          if String.ends_with ~suffix:bang value then
+            String.sub value 0 (String.length value - String.length bang)
+          else value
+        in
+        (name, value)
+  in
+  match
+    List.find_map (function Style b -> Some b | _ -> None) (found_in contents)
+  with
+  | None -> Alcotest.failf "%s: no <style> to read" file
+  | Some css -> (
+      match Cascade.Css.of_string ~strict:false css with
+      | Error e -> Alcotest.failf "%s: %s" file (Cascade.Error.to_string e)
+      | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> (
+          match
+            Cascade.Css.rules_of_statements (Cascade.Css.statements stylesheet)
+          with
+          | [] -> Alcotest.failf "%s: no style rule" file
+          | (_, decls) :: _ -> List.map pair decls))
+
+(* declarations-trim-whitespace.html: whitespace either side of a declaration
+   value is not part of it, and neither is [!important]. The file writes nine
+   spellings of one value and expects all nine to read as [bar]; the WPT version
+   reads them back through getComputedStyle, this one off the parsed rule. Both
+   read the same vendored bytes. *)
+let declarations_trim_whitespace =
+  let file = "declarations-trim-whitespace.html" in
+  let canonical = "bar" in
+  let check name () =
+    match
+      List.find_opt
+        (fun (n, _) -> String.equal n name)
+        (first_rule_declarations file)
+    with
+    | None -> Alcotest.failf "%s: %s is not in the rule" file name
+    | Some (_, value) -> Alcotest.(check string) name canonical value
+  in
+  List.init 9 (fun i ->
+      let name = String.concat "" [ "--foo-"; string_of_int (i + 1) ] in
+      Alcotest.test_case
+        (String.concat "" [ file; " "; name; " is "; canonical ])
+        `Quick (check name))
 
 (* non-ascii-codepoints.html: each code point in the CSS Syntax section 4.2
    "non-ASCII ident code point" ranges must be accepted as an ident character.
@@ -726,6 +783,487 @@ let serialize_consecutive_tokens =
         `Quick (pair_is_separable a b))
     pairs
 
+(* The value a serialised sheet gives [property], the way CSSOM's [rule.style]
+   reports it. The rule is printed rather than destructured because [@page] has
+   no accessor for its declarations, while every rule kind prints the same
+   [name: value;] shape. Printed unminified: minified output drops a
+   [@font-face] that names no source, which is a serialisation choice and not
+   what a reader test is asking about. *)
+let serialised_value ~css ~property =
+  match Cascade.Css.of_string ~strict:false css with
+  | Error e -> Error (Cascade.Error.to_string e)
+  | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> (
+      let text = Cascade.Css.to_string stylesheet in
+      let needle = String.concat "" [ property; ":" ] in
+      match index_from ~from:0 text needle with
+      | None -> Ok None
+      | Some i ->
+          let start = i + String.length needle in
+          let rec ends j =
+            if j >= String.length text then j
+            else match text.[j] with ';' | '}' | '\n' -> j | _ -> ends (j + 1)
+          in
+          Ok (Some (String.trim (String.sub text start (ends start - start)))))
+
+(* at-rule-in-declaration-list.html: CSS Syntax 3 (ED, 30 July 2026) sec. 5.5.5
+   "consume a block's contents" meets an [<at-keyword-token>] by flushing the
+   declarations read so far and consuming the at-rule on its own, so an at-rule
+   the surrounding grammar has no place for costs itself and nothing written
+   around it. The file pairs an unknown [@at] with one declaration in a style
+   rule, a [@page] rule and a [@font-face] rule, each in both the block and the
+   semicolon form, and reads the declaration back off [rule.style]; this port
+   reads it off the serialised rule. The six inputs are the vendored bytes. *)
+let at_rule_in_declaration_list =
+  let file = "at-rule-in-declaration-list.html" in
+  let expectations =
+    [
+      ("Allow @-rule with block inside style rule", "color", "green");
+      ("Allow @-rule with semi-colon inside style rule", "color", "green");
+      ("Allow @-rule with block inside page rule", "margin-top", "20px");
+      ("Allow @-rule with semi-colon inside page rule", "margin-top", "20px");
+      ("Allow @-rule with block inside font-face rule", "font-family", "myfont");
+      ( "Allow @-rule with semi-colon inside font-face rule",
+        "font-family",
+        "myfont" );
+    ]
+  in
+  let inputs =
+    read_file (Filename.concat vectors_dir file)
+    |> found_in
+    |> List.filter_map (function Script b -> Some b | _ -> None)
+    |> List.concat_map (extract_template_args ~call_name:"parseRule")
+  in
+  let count () =
+    Alcotest.(check int)
+      "parseRule calls in the vendored file" (List.length expectations)
+      (List.length inputs)
+  in
+  let case (title, property, value) css =
+    let body () =
+      match serialised_value ~css ~property with
+      | Error e -> Alcotest.failf "%s: %s" file e
+      | Ok got -> Alcotest.(check (option string)) property (Some value) got
+    in
+    Alcotest.test_case (String.concat "" [ file; " "; title ]) `Quick body
+  in
+  let cases =
+    (* A re-import that changes the file leaves the count case to say so rather
+       than taking the binary down on a length mismatch. *)
+    if List.length inputs = List.length expectations then
+      List.map2 case expectations inputs
+    else []
+  in
+  Alcotest.test_case
+    (String.concat "" [ file; " parseRule count" ])
+    `Quick count
+  :: cases
+
+(** {2 Reading a vendored file's own stylesheets} *)
+
+(* The [<style>] bodies of a vendored file, in document order. *)
+let style_bodies file =
+  read_file (Filename.concat vectors_dir file)
+  |> found_in
+  |> List.filter_map (function Style b -> Some b | _ -> None)
+
+let sole_style_body file =
+  match style_bodies file with
+  | [ css ] -> css
+  | bodies -> Alcotest.failf "%s: %d <style> bodies" file (List.length bodies)
+
+let parse_sheet ~file css =
+  match Cascade.Css.of_string ~strict:false css with
+  | Error e -> Alcotest.failf "%s: %s" file (Cascade.Error.to_string e)
+  | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> stylesheet
+
+let selector_text selector =
+  Cascade.Css.Selector.to_string ~minify:true selector
+
+(* The selector each top-level rule was written with, in source order: CSSOM's
+   [sheet.cssRules[i].selectorText] over the rules that have one. *)
+let rule_selectors sheet =
+  Cascade.Css.statements sheet
+  |> List.filter_map (fun stmt ->
+      match Cascade.Css.as_rule stmt with
+      | Some (selector, _, _) -> Some (selector_text selector)
+      | None -> None)
+
+(* One rule's own declarations, its nested rules' selectors, and nothing from
+   deeper. A declaration run written after a nested rule is a statement of its
+   own, in the AST as in CSSOM, so both runs are collected. *)
+let rule_parts stmt =
+  match Cascade.Css.as_rule stmt with
+  | None -> None
+  | Some (selector, declarations, nested) ->
+      let run stmt =
+        Option.value ~default:[] (Cascade.Css.as_declarations stmt)
+      in
+      let nested_selector stmt =
+        Option.map (fun (s, _, _) -> selector_text s) (Cascade.Css.as_rule stmt)
+      in
+      Some
+        ( selector_text selector,
+          declarations @ List.concat_map run nested,
+          List.filter_map nested_selector nested )
+
+let case_name file title =
+  Alcotest.test_case (String.concat "" [ file; " "; title ])
+
+(* The declaration [property: value] reads to, minified, or [None] when it is no
+   declaration at all. *)
+let declaration_of ~property ~value =
+  let css = String.concat "" [ ".foo{"; property; ":"; value; "}" ] in
+  match Cascade.Css.of_string ~strict:false css with
+  | Error _ -> None
+  | Ok { Cascade.Css.stylesheet; warnings = _; _ } -> (
+      match
+        Cascade.Css.rules_of_statements (Cascade.Css.statements stylesheet)
+      with
+      | [ (_, [ decl ]) ] ->
+          Some (Cascade.Declaration.to_string ~minify:true decl)
+      | _ -> None)
+
+(* trailing-braces.html: CSS Syntax 3 (ED, 30 July 2026) sec. 5.5.6 allows a
+   top-level [{}] block in a declaration value only as the whole value, so
+   [color:red{}] is no declaration; sec. 5.5.5 rereads it as a qualified rule
+   and sec. 5.5.3 drops that one, [color:red] being no selector. The file writes
+   one good declaration and two such, and expects the rule to survive setting
+   green. *)
+let trailing_braces =
+  let file = "trailing-braces.html" in
+  let sheet () = parse_sheet ~file (sole_style_body file) in
+  let declarations sheet =
+    Cascade.Css.rules_of_statements (Cascade.Css.statements sheet)
+    |> List.concat_map (fun (_, decls) ->
+        List.map (Cascade.Declaration.to_string ~minify:true) decls)
+  in
+  [
+    case_name file "one rule survives" `Quick (fun () ->
+        Alcotest.(check (list string))
+          "selectors" [ "#target1" ]
+          (rule_selectors (sheet ())));
+    case_name file "color is green" `Quick (fun () ->
+        Alcotest.(check (list string))
+          "declarations" [ "color:green" ]
+          (declarations (sheet ())));
+  ]
+
+(* cdc-vs-ident-tokens.html: CSS Syntax 3 (ED) sec. 4.3.1 tests the [-->]
+   spelling before the ident-start one when it meets a [-], so a top-level [-->]
+   is a CDC token the sheet discards and the [--foo] after it starts a qualified
+   rule rather than continuing the token before it. *)
+let cdc_vs_ident_tokens =
+  let file = "cdc-vs-ident-tokens.html" in
+  [
+    case_name file "--foo is the selector" `Quick (fun () ->
+        Alcotest.(check (list string))
+          "selectors" [ "--foo" ]
+          (rule_selectors (parse_sheet ~file (sole_style_body file))));
+  ]
+
+(* ident-three-code-points.html: CSS Syntax 3 (ED) sec. 4.3.9 decides whether
+   three code points would start an ident, which is what separates the [#--3]
+   and [#---4] hashes from [#1] and [#-2]. The WPT version reads the eight
+   elements' computed background; here the same split is read off which of the
+   eight hash selectors the sheet kept. *)
+let ident_three_code_points =
+  let file = "ident-three-code-points.html" in
+  let hashes () =
+    rule_selectors (parse_sheet ~file (sole_style_body file))
+    |> List.filter (fun s -> String.length s > 0 && Char.equal s.[0] '#')
+  in
+  [
+    case_name file "only ident-shaped hashes survive" `Quick (fun () ->
+        Alcotest.(check (list string))
+          "hash selectors"
+          [ "#--3"; "#---4"; "#a"; "#-b"; "#--c"; "#---d" ]
+          (hashes ()));
+  ]
+
+(* decimal-points-in-numbers.html: CSS Syntax 3 (ED) sec. 4.3.13 consumes a
+   decimal point only when a digit follows it, so [1.0] and [.1] are numbers and
+   [1.] is not. The WPT version reads CSSOM's canonical serialisation back;
+   cascade prints the shortest spelling of the same number instead, so each
+   valid input is compared against the spelling the file expects rather than to
+   its text. *)
+let decimal_points_in_numbers =
+  let file = "decimal-points-in-numbers.html" in
+  let same property input canonical () =
+    let want = declaration_of ~property ~value:canonical in
+    (* Two [None]s agree without either spelling having read. *)
+    Alcotest.(check bool)
+      "the canonical spelling reads" true (Option.is_some want);
+    Alcotest.(check (option string))
+      input want
+      (declaration_of ~property ~value:input)
+  in
+  let invalid property input () =
+    Alcotest.(check (option string))
+      input None
+      (declaration_of ~property ~value:input)
+  in
+  [
+    case_name file "1.0 is the number 1" `Quick (same "line-height" "1.0" "1");
+    case_name file ".1 is the number 0.1" `Quick (same "line-height" ".1" "0.1");
+    case_name file "1. is no number" `Quick (invalid "line-height" "1.");
+    case_name file "1.0px is the length 1px" `Quick (same "width" "1.0px" "1px");
+    case_name file ".1px is the length 0.1px" `Quick
+      (same "width" ".1px" "0.1px");
+    case_name file "1.px is no length" `Quick (invalid "width" "1.px");
+  ]
+
+(* inclusive-ranges.html: the ranges CSS Syntax 3 (ED) sec. 4.2 names are
+   inclusive at both ends. Digits are [0-9], so every one of them is an integer;
+   non-printables are [\1-\8], [\b], [\e-\1f] and [\7f], and none of them
+   belongs in an ident. U+0000 is left out: input preprocessing has already
+   turned it into U+FFFD. *)
+let inclusive_ranges =
+  let file = "inclusive-ranges.html" in
+  let digit i () =
+    let value = string_of_int i in
+    Alcotest.(check (option string))
+      value
+      (Some (String.concat "" [ "z-index:"; value ]))
+      (declaration_of ~property:"z-index" ~value)
+  in
+  let non_printable cp () =
+    let css =
+      String.concat "" [ ".foo"; String.make 1 (Char.chr cp); "{color:red}" ]
+    in
+    let kept =
+      match Cascade.Css.of_string ~strict:false css with
+      | Error _ -> []
+      | Ok { Cascade.Css.stylesheet; warnings = _; _ } ->
+          rule_selectors stylesheet
+    in
+    Alcotest.(check (list string)) "no rule" [] kept
+  in
+  let non_printables =
+    List.concat
+      [
+        List.init 8 (fun i -> i + 1);
+        [ 0xb ];
+        List.init (0x1f - 0xe + 1) (fun i -> i + 0xe);
+        [ 0x7f ];
+      ]
+  in
+  let hex_4 cp =
+    let digits = "0123456789ABCDEF" in
+    let b = Buffer.create 4 in
+    List.iter
+      (fun shift -> Buffer.add_char b digits.[(cp lsr shift) land 0xf])
+      [ 12; 8; 4; 0 ];
+    Buffer.contents b
+  in
+  List.init 10 (fun i ->
+      case_name file
+        (String.concat "" [ "digit "; string_of_int i; " is an integer" ])
+        `Quick (digit i))
+  @ List.map
+      (fun cp ->
+        case_name file
+          (String.concat "" [ "U+"; hex_4 cp; " is not an ident code point" ])
+          `Quick (non_printable cp))
+      non_printables
+
+(* input-preprocessing.html: CSS Syntax 3 (ED) sec. 3.3 replaces every U+0000
+   with U+FFFD before tokenization, so a NULL in an ident is the replacement
+   character and nothing else. The file's surrogate half is left out: cascade
+   reads decoded UTF-8, which holds no lone surrogate to preprocess. *)
+let input_preprocessing =
+  let file = "input-preprocessing.html" in
+  let selector_of text =
+    let css = String.concat "" [ text; "{color:red}" ] in
+    match Cascade.Css.of_string ~strict:false css with
+    | Error _ -> []
+    | Ok { Cascade.Css.stylesheet; warnings = _; _ } ->
+        rule_selectors stylesheet
+  in
+  let same_as_replacement spelling () =
+    let nulled = String.concat "\000" spelling in
+    let replaced = String.concat "\239\191\189" spelling in
+    (* The two spellings agreeing says nothing when neither reads, so the one
+       written with the replacement character has to give a selector first. *)
+    let want = selector_of replaced in
+    Alcotest.(check int)
+      "the U+FFFD spelling is a selector" 1 (List.length want);
+    Alcotest.(check (list string))
+      "NULL reads as U+FFFD" want (selector_of nulled)
+  in
+  (* Each entry is the ident split around the NULLs the file writes. *)
+  let spellings =
+    [
+      [ "foo"; "" ];
+      [ "f"; "oo" ];
+      [ ""; "foo" ];
+      [ ""; "" ];
+      [ ""; ""; ""; "" ];
+    ]
+  in
+  List.map
+    (fun spelling ->
+      case_name file
+        (String.concat "" [ "NULL in "; String.concat "_" spelling ])
+        `Quick
+        (same_as_replacement spelling))
+    spellings
+
+(* url-whitespace-consumption.html: CSS Syntax 3 (ED) sec. 4.3.4 makes a [url(]
+   followed by a string an ordinary function token, whose whitespace is not part
+   of the URL. *)
+let url_whitespace_consumption =
+  let file = "url-whitespace-consumption.html" in
+  let property = "background-image" in
+  let spelling value () =
+    let want = declaration_of ~property ~value:"url(\"foo\")" in
+    (* Two [None]s agree without either spelling having read. *)
+    Alcotest.(check bool) "url(\"foo\") reads" true (Option.is_some want);
+    Alcotest.(check (option string))
+      value want
+      (declaration_of ~property ~value)
+  in
+  [
+    case_name file "url( \"foo\")" `Quick (spelling "url( \"foo\")");
+    case_name file "url(\"foo\" )" `Quick (spelling "url(\"foo\" )");
+  ]
+
+(* unclosed-url-at-eof.html: CSS Syntax 3 (ED) sec. 4.3.6 ends a URL token at
+   EOF as it does at [)], the missing closer a parse error and nothing more.
+   Read through {!Cascade.Declaration.read_declaration} rather than a rule, so
+   the URL really does run into the end of the input. *)
+let unclosed_url_at_eof =
+  let file = "unclosed-url-at-eof.html" in
+  let read text =
+    match
+      Cascade.Declaration.read_declaration (Cascade.Cursor.of_string text)
+    with
+    | Some decl -> Some (Cascade.Declaration.to_string ~minify:true decl)
+    | None -> None
+    | exception Cascade.Error.Parse_error _ -> None
+  in
+  let same ~control ~experiment () =
+    let want = read control in
+    (* Two [None]s agree without the closed spelling having read. *)
+    Alcotest.(check bool) "the closed spelling reads" true (Option.is_some want);
+    Alcotest.(check (option string)) experiment want (read experiment)
+  in
+  [
+    case_name file "url(foo closes at EOF" `Quick
+      (same ~control:"background-image:url(foo)"
+         ~experiment:"background-image:url(foo");
+    case_name file "url( closes at EOF" `Quick
+      (same ~control:"background-image:url()"
+         ~experiment:"background-image:url(");
+  ]
+
+(* invalid-nested-rules.html: CSS Syntax 3 (ED) sec. 5.5.3 consumes a qualified
+   rule whole, block and all, before deciding it is invalid, so sec. 5.5.5
+   resumes right after that block. The file nests an unreadable selector and a
+   good one inside [.a] and expects [.a] to survive holding the good one. *)
+let invalid_nested_rules =
+  let file = "invalid-nested-rules.html" in
+  let reference =
+    selector_text (Cascade.Css.Selector.read (Cascade.Cursor.of_string "& .c"))
+  in
+  let parts () =
+    match Cascade.Css.statements (parse_sheet ~file (sole_style_body file)) with
+    | [ stmt ] -> (
+        match rule_parts stmt with
+        | Some parts -> parts
+        | None -> Alcotest.failf "%s: the sole statement is no rule" file)
+    | stmts ->
+        Alcotest.failf "%s: %d top-level statements, expected 1" file
+          (List.length stmts)
+  in
+  [
+    case_name file ".a survives its invalid nested rule" `Quick (fun () ->
+        let selector, _, _ = parts () in
+        Alcotest.(check string) "selector" ".a" selector);
+    case_name file "& .c is the one nested rule" `Quick (fun () ->
+        let _, _, nested = parts () in
+        Alcotest.(check (list string)) "nested selectors" [ reference ] nested);
+  ]
+
+(* unicode-range-selector.html: CSS Syntax 3 (ED) sec. 4.3.1 consumes a
+   [<unicode-range-token>] only while the tokenizer's "unicode ranges allowed"
+   flag is set, which sec. 5.5.11 does for the value of a unicode-range
+   descriptor and nowhere else. Everywhere else [u+a] is an ident, a delim and
+   an ident, which the selector grammar reads as a sibling combination. *)
+let unicode_range_selector =
+  let file = "unicode-range-selector.html" in
+  let reference =
+    selector_text (Cascade.Css.Selector.read (Cascade.Cursor.of_string "u + a"))
+  in
+  [
+    case_name file "u+a is a selector, not a urange" `Quick (fun () ->
+        Alcotest.(check (list string))
+          "selectors" [ "a"; reference ]
+          (rule_selectors (parse_sheet ~file (sole_style_body file))));
+  ]
+
+(* custom-property-rule-ambiguity.html: a [--x:hover { }] reads as a custom
+   property wherever a declaration is allowed and as nothing at all where one is
+   not. CSS Syntax 3 (ED) sec. 5.5.5 tries a declaration first inside a block,
+   so the value swallows the rest of that block. Sec. 5.5.1 has no declarations
+   at the top level, and sec. 5.5.3 drops a qualified rule whose prelude is an
+   ident starting with [--] followed by a colon, block and all. A mismatched
+   [\]] is no [<declaration-value>] (sec. 7.2), so the declaration is invalid,
+   and sec. 5.5.3 sends the nested spelling to "consume the remnants of a bad
+   declaration" (sec. 5.5.6), which skips to the next [;] or to the end of the
+   block rather than re-reading the text as a rule. *)
+let custom_property_rule_ambiguity =
+  let file = "custom-property-rule-ambiguity.html" in
+  let sheets = style_bodies file in
+  let sheet i =
+    match List.nth_opt sheets i with
+    | Some css -> parse_sheet ~file css
+    | None -> Alcotest.failf "%s: no <style> #%d" file (i + 1)
+  in
+  let sole_rule i =
+    match Cascade.Css.statements (sheet i) with
+    | [ stmt ] -> (
+        match rule_parts stmt with
+        | Some parts -> parts
+        | None -> Alcotest.failf "%s: <style> #%d holds no rule" file (i + 1))
+    | stmts ->
+        Alcotest.failf "%s: <style> #%d holds %d statements, expected 1" file
+          (i + 1) (List.length stmts)
+  in
+  let custom_properties declarations =
+    List.filter_map
+      (fun decl ->
+        let name = Cascade.Declaration.property_name decl in
+        if String.starts_with ~prefix:"--" name then Some name else None)
+      declarations
+  in
+  let top_level i () =
+    Alcotest.(check (list string))
+      "selectors" [ ".a"; ".b" ]
+      (rule_selectors (sheet i))
+  in
+  (* The file reads the surviving child as [& .a]; cascade keeps a nested rule
+     under the selector it was written with. *)
+  let child =
+    selector_text (Cascade.Css.Selector.read (Cascade.Cursor.of_string ".a"))
+  in
+  let nested i ~properties () =
+    let selector, declarations, nested = sole_rule i in
+    Alcotest.(check string) "selector" "div" selector;
+    Alcotest.(check (list string))
+      "custom properties" properties
+      (custom_properties declarations);
+    Alcotest.(check (list string)) "nested selectors" [ child ] nested
+  in
+  [
+    case_name file "a top-level custom-property rule is dropped" `Quick
+      (top_level 0);
+    case_name file "a top-level invalid one is dropped too" `Quick (top_level 1);
+    case_name file "a nested one swallows the rest of the block" `Quick
+      (nested 2 ~properties:[ "--x" ]);
+    case_name file "a nested invalid one leaves no declaration" `Quick
+      (nested 3 ~properties:[]);
+  ]
+
 (** {1 Entry point} *)
 
 let suite () =
@@ -734,8 +1272,12 @@ let suite () =
       Alcotest.test_case "imported WPT vector manifest" `Quick
         wpt_vector_manifest;
     ]
-    @ extracted_cases () @ non_ascii_codepoints @ unclosed_constructs
-    @ whitespace_html @ anb_parsing @ anb_serialization
-    @ serialize_consecutive_tokens )
+    @ extracted_cases () @ declarations_trim_whitespace @ non_ascii_codepoints
+    @ unclosed_constructs @ whitespace_html @ anb_parsing @ anb_serialization
+    @ serialize_consecutive_tokens @ at_rule_in_declaration_list
+    @ trailing_braces @ cdc_vs_ident_tokens @ ident_three_code_points
+    @ decimal_points_in_numbers @ inclusive_ranges @ input_preprocessing
+    @ url_whitespace_consumption @ unclosed_url_at_eof @ invalid_nested_rules
+    @ unicode_range_selector @ custom_property_rule_ambiguity )
 
 let () = Alcotest.run "wpt" [ suite () ]

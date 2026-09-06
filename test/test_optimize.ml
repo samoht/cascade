@@ -1397,15 +1397,22 @@ let shorthand_longhand_order_cases =
     ( "overscroll-behavior",
       ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}",
       ".a{overscroll-behavior:auto;overscroll-behavior-x:contain}" );
+    (* CSS Multicol 2 sec. 4.5: the shorthand resets the height and the wrap, so
+       synthesising it over a rule that writes either would drop it. *)
+    ( "columns",
+      ".a{column-height:5em;column-width:10em;column-count:2}",
+      ".a{column-height:5em;column-width:10em;column-count:2}" );
     ( "container",
       ".a{container:a/size;container-type:normal}",
       ".a{container:a/size;container-type:normal}" );
+    (* CSS Scroll Animations 1 sec. 4.2 makes [block] the axis's initial, so the
+       shorthand names it by leaving the component out. *)
     ( "scroll-timeline",
       ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}",
-      ".a{scroll-timeline:--a block;scroll-timeline-axis:inline}" );
+      ".a{scroll-timeline:--a;scroll-timeline-axis:inline}" );
     ( "view-timeline",
       ".a{view-timeline:--a block;view-timeline-axis:inline}",
-      ".a{view-timeline:--a block;view-timeline-axis:inline}" );
+      ".a{view-timeline:--a;view-timeline-axis:inline}" );
     ("caret", ".a{caret:red;caret-shape:bar}", ".a{caret:red;caret-shape:bar}");
     ( "text-box",
       ".a{text-box:trim-both cap alphabetic;text-box-edge:auto}",
@@ -3344,7 +3351,9 @@ let target_evergreen_compatibility_prefixes () =
     (optimized_string ".a{mask:none}");
   Alcotest.(check string)
     "the WebKit mask shorthand omits fields with different legacy grammars"
-    ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance add}"
+    (* [add] is the composite's initial (CSS Masking 1 sec. 7.8), which is what
+       leaving the component out names, so the shorthand drops it. *)
+    ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance}"
     (optimized_string ".a{mask:url(a.svg) luminance add}");
   Alcotest.(check string)
     "mask fields without equivalent WebKit grammars are not prefixed"

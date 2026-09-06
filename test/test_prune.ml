@@ -99,9 +99,12 @@ let root_matches_the_root_element () =
   check_verdicts "verdicts" [ Prune.Used 1 ] r;
   Alcotest.(check string) "sheet" ":root{--brand:red}" (css r)
 
-(* Selectors 4 sec. 13.2 counts element nodes and non-empty text nodes, so the
-   paragraph holding text is not [:empty] and the two divs with neither are. *)
-let empty_reads_text_children_only () =
+(* Selectors 4 sec. 13.2 counts element nodes and non-empty text nodes, and
+   matches an element holding nothing but document white space - the Level 4
+   change no engine has taken. Pruning on that reading would delete a rule the
+   browser still applies, so the matcher declines it and the rule stays without
+   a verdict. *)
+let keeps_empty_for_want_of_a_shipped_model () =
   let tree =
     node "html"
       ~children:
@@ -112,7 +115,8 @@ let empty_reads_text_children_only () =
         ]
   in
   let r = P.analyse ~sheet:(parse "div:empty{color:red}") [ tree ] in
-  check_verdicts "verdicts" [ Prune.Used 1 ] r
+  check_verdicts "verdicts" [ Prune.Unmodelled ] r;
+  Alcotest.(check string) "sheet" "div:empty{color:red}" (css r)
 
 (* A condition is a question about the device, not about the document, so the
    rules inside a group block are judged by their own selectors. *)
@@ -193,8 +197,8 @@ let suite =
         keeps_a_selector_the_matcher_cannot_decide;
       Alcotest.test_case "root matches the root element" `Quick
         root_matches_the_root_element;
-      Alcotest.test_case "empty reads text children only" `Quick
-        empty_reads_text_children_only;
+      Alcotest.test_case "keeps empty for want of a shipped model" `Quick
+        keeps_empty_for_want_of_a_shipped_model;
       Alcotest.test_case "a condition is not a selector" `Quick
         a_condition_is_not_a_selector;
       Alcotest.test_case "drops a group block left with nothing" `Quick

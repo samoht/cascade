@@ -63,6 +63,10 @@ let covers_longhand : type a b.
   | Background, Background_image -> true
   | Background, Background_origin -> true
   | Background, Background_position -> true
+  | Background, Background_position_x -> true
+  | Background, Background_position_y -> true
+  | Background_position, Background_position_x -> true
+  | Background_position, Background_position_y -> true
   | Background, Background_repeat -> true
   | Background, Background_size -> true
   | Flex, Flex_grow -> true
@@ -75,6 +79,19 @@ let covers_longhand : type a b.
   | Transition, Transition_timing_function -> true
   | Transition, Transition_delay -> true
   | Transition, Transition_behavior -> true
+  (* CSS Animations 2 sec. 4.11 and 4.12: [animation] resets every longhand
+     [animation_keys] names, [animation-timeline] included.
+     [animation-composition] and the [animation-range-*] longhands are not part
+     of it and are absent here for that reason. *)
+  | Animation, Animation_name -> true
+  | Animation, Animation_duration -> true
+  | Animation, Animation_timing_function -> true
+  | Animation, Animation_delay -> true
+  | Animation, Animation_iteration_count -> true
+  | Animation, Animation_direction -> true
+  | Animation, Animation_fill_mode -> true
+  | Animation, Animation_play_state -> true
+  | Animation, Animation_timeline -> true
   (* CSS Logical 1: physical-axis pairs. *)
   | Margin_inline, Margin_inline_start -> true
   | Margin_inline, Margin_inline_end -> true
@@ -125,6 +142,22 @@ let covers_longhand : type a b.
   | Border_top, Border_top_width -> true
   | Border_top, Border_top_style -> true
   | Border_top, Border_top_color -> true
+  (* CSS Fonts 4 sec. 2.8.5: [font-synthesis] resets all four synthesis
+     longhands, the position one included. *)
+  | Font_synthesis, Font_synthesis_weight -> true
+  | Font_synthesis, Font_synthesis_style -> true
+  | Font_synthesis, Font_synthesis_small_caps -> true
+  | Font_synthesis, Font_synthesis_position -> true
+  | Webkit_text_stroke, Webkit_text_stroke_width -> true
+  | Webkit_text_stroke, Webkit_text_stroke_color -> true
+  (* CSS Multicol 1 sec. 4.3: [column-rule] is the three rule longhands. *)
+  | Columns, Column_width -> true
+  | Columns, Column_count -> true
+  | Columns, Column_height -> true
+  | Columns, Column_wrap -> true
+  | Column_rule, Column_rule_width -> true
+  | Column_rule, Column_rule_style -> true
+  | Column_rule, Column_rule_color -> true
   | Border_right, Border_right_width -> true
   | Border_right, Border_right_style -> true
   | Border_right, Border_right_color -> true
@@ -454,7 +487,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "background-color";
         key "background-image";
         key "background-origin";
-        key "background-position";
+        key "background-position-x";
+        key "background-position-y";
         key "background-repeat";
         key "background-size";
       ]
@@ -464,7 +498,10 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Background_color -> [ key "background-color" ]
   | Background_image -> [ key "background-image" ]
   | Background_origin -> [ key "background-origin" ]
-  | Background_position -> [ key "background-position" ]
+  | Background_position ->
+      [ key "background-position-x"; key "background-position-y" ]
+  | Background_position_x -> [ key "background-position-x" ]
+  | Background_position_y -> [ key "background-position-y" ]
   | Background_repeat -> [ key "background-repeat" ]
   | Background_size | Webkit_background_size -> [ key "background-size" ]
   | Flex -> [ key "flex-grow"; key "flex-shrink"; key "flex-basis" ]
@@ -665,7 +702,10 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Mask_image | Webkit_mask_image -> [ key "mask-image" ]
   | Mask_repeat | Webkit_mask_repeat -> [ key "mask-repeat" ]
   | Mask_size | Webkit_mask_size -> [ key "mask-size" ]
-  | Mask_position | Webkit_mask_position -> [ key "mask-position" ]
+  | Mask_position | Webkit_mask_position ->
+      [ key "-webkit-mask-position-x"; key "-webkit-mask-position-y" ]
+  | Webkit_mask_position_x -> [ key "-webkit-mask-position-x" ]
+  | Webkit_mask_position_y -> [ key "-webkit-mask-position-y" ]
   | Mask_origin | Webkit_mask_origin -> [ key "mask-origin" ]
   | Mask_clip | Webkit_mask_clip -> [ key "mask-clip" ]
   | Mask_mode -> [ key "mask-mode" ]
@@ -780,9 +820,19 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Overflow_block -> [ key "overflow-block" ]
   | Overflow_inline -> [ key "overflow-inline" ]
   (* CSS Multicol 1 sec. 3.3. *)
-  | Columns -> [ key "column-width"; key "column-count" ]
+  (* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the
+     height, and Chrome 146 has it reset [column-wrap] as well. *)
+  | Columns ->
+      [
+        key "column-width";
+        key "column-count";
+        key "column-height";
+        key "column-wrap";
+      ]
   | Column_width -> [ key "column-width" ]
   | Column_count -> [ key "column-count" ]
+  | Column_height -> [ key "column-height" ]
+  | Column_wrap -> [ key "column-wrap" ]
   (* CSS Multicol 1 sec. 4.4: [column-rule] resets the rule width, style and
      colour. Naming those three is what keeps [column-rule-color] from reading
      as a slot of its own that [column-rule] never touches. *)
@@ -792,6 +842,8 @@ let property_slots : type a. a Properties.property -> overlap_key list =
         key "column-rule-style";
         key "column-rule-color";
       ]
+  | Column_rule_width -> [ key "column-rule-width" ]
+  | Column_rule_style -> [ key "column-rule-style" ]
   | Column_rule_color -> [ key "column-rule-color" ]
   (* CSS Fragmentation 3 sec. 3.4: a [page-break-*] alias writes the slot of the
      [break-*] property it aliases. *)
@@ -872,6 +924,12 @@ let property_slots : type a. a Properties.property -> overlap_key list =
       [ key "overscroll-behavior-x"; key "overscroll-behavior-y" ]
   | Overscroll_behavior_x -> [ key "overscroll-behavior-x" ]
   | Overscroll_behavior_y -> [ key "overscroll-behavior-y" ]
+  (* [-webkit-text-stroke] is [<line-width> || <color>] over its two
+     longhands. *)
+  | Webkit_text_stroke ->
+      [ key "-webkit-text-stroke-width"; key "-webkit-text-stroke-color" ]
+  | Webkit_text_stroke_width -> [ key "-webkit-text-stroke-width" ]
+  | Webkit_text_stroke_color -> [ key "-webkit-text-stroke-color" ]
   (* CSS Contain 3 sec. 4.3. *)
   | Container -> [ key "container-name"; key "container-type" ]
   | Container_name -> [ key "container-name" ]
@@ -904,6 +962,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   (* CSS Text 4 sec. 3 and 5.1: [white-space] and [text-wrap] both reset
      [text-wrap-mode]. *)
   | White_space -> [ key "white-space-collapse"; key "text-wrap-mode" ]
+  | White_space_collapse -> [ key "white-space-collapse" ]
   | Text_wrap -> [ key "text-wrap-mode"; key "text-wrap-style" ]
   | Text_wrap_mode -> [ key "text-wrap-mode" ]
   | Text_wrap_style -> [ key "text-wrap-style" ]
@@ -1474,7 +1533,11 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
               preserve_list vs
                 (collapse_box_lengths [ top; right; bottom; left ])
             in
-            (Declaration.v ~important property value, rest'))
+            let merged = Declaration.v ~important property value in
+            (* Absorbing a side into [margin: inherit] leaves the other three
+               holding the keyword beside a concrete one. *)
+            if Declaration.value_has_css_wide_mix merged then (original, rest)
+            else (merged, rest'))
 
 (* CSS Overflow 3 sec. 3.1: [overflow] is the [overflow-x overflow-y] shorthand.
    When the two longhands appear together with matching importance and neither
@@ -1527,7 +1590,9 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            go ((idx, merged) :: acc) rest')
+            if Declaration.value_has_css_wide_mix merged then
+              go (item :: acc) rest
+            else go ((idx, merged) :: acc) rest')
     | ((idx, Declaration { property = Overflow_y; value = v_y; important; _ })
        as item)
       :: rest -> (
@@ -1537,7 +1602,9 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            go ((idx, merged) :: acc) rest')
+            if Declaration.value_has_css_wide_mix merged then
+              go (item :: acc) rest
+            else go ((idx, merged) :: acc) rest')
     | d :: rest -> go (d :: acc) rest
   in
   preserve_list decls (go [] decls)
@@ -1587,17 +1654,45 @@ let extract_inset_side : declaration -> (box_side * Values.length * bool) option
       Some (Left, v, important)
   | _ -> None
 
+(* [border-radius] gives the horizontal radii before the [/] and the vertical
+   ones after it, so a corner naming both axes has no slot in the box the four
+   corners compose. Only a single-valued corner takes part. *)
 let extract_border_radius_corner :
     declaration -> (box_side * Values.length * bool) option = function
-  | Declaration { property = Border_top_left_radius; value; important; _ } ->
-      Some (Top, value, important)
-  | Declaration { property = Border_top_right_radius; value; important; _ } ->
-      Some (Right, value, important)
-  | Declaration { property = Border_bottom_right_radius; value; important; _ }
+  | Declaration
+      { property = Border_top_left_radius; value = [ v ]; important; _ } ->
+      Some (Top, v, important)
+  | Declaration
+      { property = Border_top_right_radius; value = [ v ]; important; _ } ->
+      Some (Right, v, important)
+  | Declaration
+      { property = Border_bottom_right_radius; value = [ v ]; important; _ } ->
+      Some (Bottom, v, important)
+  | Declaration
+      { property = Border_bottom_left_radius; value = [ v ]; important; _ } ->
+      Some (Left, v, important)
+  | _ -> None
+
+(* An elliptical corner names a horizontal radius and a vertical one. CSS
+   Backgrounds 3 (ED) sec. 4.1 writes the four horizontals, then [/], then the
+   four verticals, so the four corners compose into one box per axis. *)
+let extract_border_radius_ellipse :
+    declaration -> (box_side * (Values.length * Values.length) * bool) option =
+  function
+  | Declaration
+      { property = Border_top_left_radius; value = [ h; v ]; important; _ } ->
+      Some (Top, (h, v), important)
+  | Declaration
+      { property = Border_top_right_radius; value = [ h; v ]; important; _ } ->
+      Some (Right, (h, v), important)
+  | Declaration
+      { property = Border_bottom_right_radius; value = [ h; v ]; important; _ }
     ->
-      Some (Bottom, value, important)
-  | Declaration { property = Border_bottom_left_radius; value; important; _ } ->
-      Some (Left, value, important)
+      Some (Bottom, (h, v), important)
+  | Declaration
+      { property = Border_bottom_left_radius; value = [ h; v ]; important; _ }
+    ->
+      Some (Left, (h, v), important)
   | _ -> None
 
 (* CSS Scroll Snap 1 sec. 4.2 and 5.1: [scroll-padding] sets the four snapport
@@ -1689,6 +1784,15 @@ let build_border_radius_box ~important ~top ~right ~bottom ~left =
     (Declaration.v ~important Border_radius
        (Radius { horizontal; vertical = None }))
 
+let build_border_radius_ellipse ~important ~top ~right ~bottom ~left =
+  let lp v : Values.length_percentage = Length v in
+  let axis f =
+    List.map lp (collapse_box_lengths [ f top; f right; f bottom; f left ])
+  in
+  Some
+    (Declaration.v ~important Border_radius
+       (Radius { horizontal = axis fst; vertical = Some (axis snd) }))
+
 let build_scroll_margin_box ~important ~top ~right ~bottom ~left =
   Some
     (Declaration.v ~important Scroll_margin
@@ -1709,12 +1813,10 @@ let build_border_width_box ~important ~top ~right ~bottom ~left =
     (Declaration.v ~important Border_width
        (collapse_box_by same_border_width [ top; right; bottom; left ]))
 
-(* [border-style] carries a single keyword, so only a box with one distinct
-   style has a shorthand spelling. *)
 let build_border_style_box ~important ~top ~right ~bottom ~left =
-  match collapse_box_by same_border_style [ top; right; bottom; left ] with
-  | [ style ] -> Some (Declaration.v ~important Border_style style)
-  | _ -> None
+  Some
+    (Declaration.v ~important Border_style
+       (collapse_box_by same_border_style [ top; right; bottom; left ]))
 
 let build_border_color_box ~important ~top ~right ~bottom ~left =
   Some
@@ -1843,6 +1945,39 @@ type box_outcome =
 (* Every 4-side family, each paired with the guard its value type needs. The
    same-importance forms come first: a mixed-importance split re-states the
    important sides, so it is the fallback. *)
+(* CSS Grid 2 sec. 8.4: [grid-area] names four lines, in the order row-start,
+   column-start, row-end, column-end. They are four distinct slots of one
+   contiguous run, which is what the box walk tests, so the four [box_side] tags
+   stand for the four lines in that order. A substituted line can stand for a
+   whole [<start> / <end>], so only a resolved one takes part. *)
+let foldable_grid_line : Properties.grid_line -> bool = function
+  | Var _ -> false
+  | _ -> true
+
+let extract_grid_area_side :
+    declaration -> (box_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_row_start; value; important; _ } ->
+      Some (Top, value, important)
+  | Declaration { property = Grid_column_start; value; important; _ } ->
+      Some (Right, value, important)
+  | Declaration { property = Grid_row_end; value; important; _ } ->
+      Some (Bottom, value, important)
+  | Declaration { property = Grid_column_end; value; important; _ } ->
+      Some (Left, value, important)
+  | _ -> None
+
+let build_grid_area ~important ~top ~right ~bottom ~left =
+  Some
+    (Declaration.v ~important Grid_area
+       (Lines
+          {
+            row_start = top;
+            column_start = right;
+            row_end = bottom;
+            column_end = left;
+          }
+         : Properties.grid_area))
+
 let box_composers ~ctx idx =
   let try_same foldable extract build i =
     Option.map
@@ -1864,11 +1999,15 @@ let box_composers ~ctx idx =
     try_same len extract_padding_side build_padding_box;
     try_same len extract_inset_side build_inset_box;
     try_same len extract_border_radius_corner build_border_radius_box;
+    try_same
+      (fun (h, v) -> len h && len v)
+      extract_border_radius_ellipse build_border_radius_ellipse;
     try_same len extract_scroll_margin_side build_scroll_margin_box;
     try_same len extract_scroll_padding_side build_scroll_padding_box;
     try_same width border_width_of build_border_width_box;
     try_same style border_style_of build_border_style_box;
     try_same color border_color_of build_border_color_box;
+    try_same foldable_grid_line extract_grid_area_side build_grid_area;
     try_split strict extract_margin_side build_margin_box;
     try_split strict extract_padding_side build_padding_box;
     try_split strict extract_inset_side build_inset_box;
@@ -1896,15 +2035,19 @@ let compose_box_via_index ~ctx idx =
     else
       match try_one !i with
       | Some (Single shorthand) ->
-          Rule_index.absorb idx ~at:!i
-            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
-            ~shorthand;
-          i := !i + 4
+          if
+            Rule_index.absorb idx ~at:!i
+              ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+              ~shorthand
+          then i := !i + 4
+          else incr i
       | Some (Split decls) ->
-          Rule_index.splice idx ~at:!i
-            ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
-            ~new_decls:decls;
-          i := !i + 4
+          if
+            Rule_index.splice idx ~at:!i
+              ~absorbed:[ !i; !i + 1; !i + 2; !i + 3 ]
+              ~new_decls:decls
+          then i := !i + 4
+          else incr i
       | None -> incr i
   done
 
@@ -1945,12 +2088,15 @@ let try_compose_gap_at idx i =
     | _ -> None
 
 (* Compose [<base>-inline] / [<base>-block] from the matching [-start] / [-end]
-   longhands. Both longhands carry exactly one length value (wrapped in a
-   1-element list for [inset-*] grammar reasons). The result is a [length list]
-   payload: [v] when both sides match, [v_start; v_end] otherwise. *)
+   longhands, and the same walk over the two physical axes of an
+   [overflow]-shaped family, where [Start] is the x value and [End] the y. The
+   longhands carry one value of the family's own type, and [build] turns the
+   ordered pair into the shorthand's payload - a [length list] for the box
+   families, a [Single] / [Pair] for the border ones - or declines a pair the
+   shorthand has no spelling for. *)
 type axis_side = Start | End
 
-let try_compose_axis_pair_at idx ~extract ~build i =
+let try_compose_axis_pair_at idx ~foldable ~extract ~build i =
   let n = Rule_index.length idx in
   if
     i + 1 >= n
@@ -1962,17 +2108,10 @@ let try_compose_axis_pair_at idx ~extract ~build i =
     let d2 = Rule_index.decl_at idx (i + 1) in
     match (extract d1, extract d2) with
     | Some (s1, v1, imp1), Some (s2, v2, imp2)
-      when imp1 = imp2 && s1 <> s2
-           && (not (Values.length_has_runtime_subst v1))
-           && not (Values.length_has_runtime_subst v2) ->
+      when imp1 = imp2 && s1 <> s2 && foldable v1 && foldable v2 ->
         let pair = [ (s1, v1); (s2, v2) ] in
-        let v_start = List.assoc Start pair in
-        let v_end = List.assoc End pair in
-        let value =
-          if Values.equal_length v_start v_end then [ v_start ]
-          else [ v_start; v_end ]
-        in
-        Some (build ~important:imp1 ~value)
+        build ~important:imp1 ~start:(List.assoc Start pair)
+          ~end_:(List.assoc End pair)
     | _ -> None
 
 let extract_margin_inline_side :
@@ -1988,6 +2127,44 @@ let extract_margin_block_side :
   | Declaration { property = Margin_block_start; value; important; _ } ->
       Some (Start, value, important)
   | Declaration { property = Margin_block_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+(* CSS Scroll Snap 1 sec. 6.1 and 6.2: the scroll-margin and scroll-padding
+   logical axes take [<length>{1,2}], the shape the margin and padding axes
+   take, so the same pair composition applies. *)
+let extract_scroll_margin_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_margin_block_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_margin_block_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_margin_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_margin_inline_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_margin_inline_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_padding_block_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_padding_block_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_padding_block_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_scroll_padding_inline_side :
+    declaration -> (axis_side * Values.length * bool) option = function
+  | Declaration { property = Scroll_padding_inline_start; value; important; _ }
+    ->
+      Some (Start, value, important)
+  | Declaration { property = Scroll_padding_inline_end; value; important; _ } ->
       Some (End, value, important)
   | _ -> None
 
@@ -2022,6 +2199,101 @@ let extract_inset_block_side :
       Some (Start, v, important)
   | Declaration { property = Inset_block_end; value = [ v ]; important; _ } ->
       Some (End, v, important)
+  | _ -> None
+
+(* CSS Logical 1 sec. 4.3 and 4.4: [border-block-*] and [border-inline-*] take
+   one or two values of the side longhand's own type, so the two sides compose
+   the way the length axes do. *)
+let extract_border_inline_width_side :
+    declaration -> (axis_side * Properties.border_width * bool) option =
+  function
+  | Declaration { property = Border_inline_start_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_width; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_width_side :
+    declaration -> (axis_side * Properties.border_width * bool) option =
+  function
+  | Declaration { property = Border_block_start_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_width; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_inline_style_side :
+    declaration -> (axis_side * Properties.border_style * bool) option =
+  function
+  | Declaration { property = Border_inline_start_style; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_style; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_style_side :
+    declaration -> (axis_side * Properties.border_style * bool) option =
+  function
+  | Declaration { property = Border_block_start_style; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_style; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_inline_color_side :
+    declaration -> (axis_side * Values.color * bool) option = function
+  | Declaration { property = Border_inline_start_color; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_inline_end_color; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_border_block_color_side :
+    declaration -> (axis_side * Values.color * bool) option = function
+  | Declaration { property = Border_block_start_color; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Border_block_end_color; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+(* CSS Overscroll 1 sec. 2.1 and CSS Sizing 4 sec. 5.1 write the x axis first
+   and the y axis second, the order [overflow] uses, so the physical pair takes
+   the same walk as a logical axis. *)
+let extract_overscroll_side :
+    declaration -> (axis_side * Properties.overscroll_behavior * bool) option =
+  function
+  | Declaration { property = Overscroll_behavior_x; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Overscroll_behavior_y; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_contain_intrinsic_side :
+    declaration ->
+    (axis_side * Properties.contain_intrinsic_longhand * bool) option = function
+  | Declaration { property = Contain_intrinsic_width; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Contain_intrinsic_height; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+(* CSS Grid 2 sec. 8.3: [grid-row] and [grid-column] are [<grid-line> [/
+   <grid-line>]?] over their own start and end longhands. A substituted line can
+   stand for the whole [<start> / <end>], so only a resolved one takes part. *)
+let extract_grid_row_side :
+    declaration -> (axis_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_row_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Grid_row_end; value; important; _ } ->
+      Some (End, value, important)
+  | _ -> None
+
+let extract_grid_column_side :
+    declaration -> (axis_side * Properties.grid_line * bool) option = function
+  | Declaration { property = Grid_column_start; value; important; _ } ->
+      Some (Start, value, important)
+  | Declaration { property = Grid_column_end; value; important; _ } ->
+      Some (End, value, important)
   | _ -> None
 
 (* CSS Align 3 sec. 5.2, 6.3 and 7.3: [place-items] / [place-content] /
@@ -2074,43 +2346,535 @@ let try_compose_place_at idx i =
         Some (Declaration.v ~important:i1 Place_self (a, j))
     | _ -> None
 
-let compose_pair_via_index idx =
-  let axis property extract i =
-    let build ~important ~value = Declaration.v ~important property value in
-    try_compose_axis_pair_at idx ~extract ~build i
+(* Fold an axis pair into the shorthand's own payload: a length list for the box
+   families, a [Single] / [Pair] for the border ones. *)
+let axis_length idx property extract i =
+  let build ~important ~start ~end_ =
+    let value =
+      if Values.equal_length start end_ then [ start ] else [ start; end_ ]
+    in
+    Some (Declaration.v ~important property value)
   in
+  try_compose_axis_pair_at idx ~foldable:foldable_length_strict ~extract ~build
+    i
+
+let axis_border_width ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_width =
+      if same_border_width start end_ then Single start else Pair (start, end_)
+    in
+    Some (Declaration.v ~important property value)
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_width ~ctx)
+    ~extract ~build i
+
+let axis_border_style ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_style =
+      if same_border_style start end_ then Single start else Pair (start, end_)
+    in
+    Some (Declaration.v ~important property value)
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_style ~ctx)
+    ~extract ~build i
+
+let axis_overscroll idx i =
+  let build ~important ~start ~end_ =
+    let value =
+      if Properties.equal_overscroll_behavior start end_ then [ start ]
+      else [ start; end_ ]
+    in
+    Some (Declaration.v ~important Overscroll_behavior value)
+  in
+  let foldable : Properties.overscroll_behavior -> bool = function
+    | Var _ -> false
+    | _ -> true
+  in
+  try_compose_axis_pair_at idx ~foldable ~extract:extract_overscroll_side ~build
+    i
+
+(* [contain-intrinsic-size] says one axis at [none] only by saying it for both,
+   so a [none] beside a sized axis has no shorthand spelling. *)
+let axis_contain_intrinsic idx i =
+  let build ~important ~start ~end_ =
+    let value : Properties.contain_intrinsic_size option =
+      match
+        ( (start : Properties.contain_intrinsic_longhand),
+          (end_ : Properties.contain_intrinsic_longhand) )
+      with
+      | None, None -> Some None
+      | Size a, Size b ->
+          if Properties.equal_contain_intrinsic_size_item a b then
+            Some (Intrinsic (a, Option.None))
+          else Some (Intrinsic (a, Some b))
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Contain_intrinsic_size) value
+  in
+  let foldable : Properties.contain_intrinsic_longhand -> bool = function
+    | Var _ -> false
+    | _ -> true
+  in
+  try_compose_axis_pair_at idx ~foldable ~extract:extract_contain_intrinsic_side
+    ~build i
+
+let axis_grid_line idx property extract i =
+  let build ~important ~start ~end_ =
+    Some
+      (Declaration.v ~important property
+         (Lines (start, end_) : Properties.grid_line_pair))
+  in
+  try_compose_axis_pair_at idx ~foldable:foldable_grid_line ~extract ~build i
+
+let axis_border_color ~ctx idx property extract i =
+  let build ~important ~start ~end_ =
+    let value : Properties.logical_border_color =
+      if Values.equal_color start end_ then Single start else Pair (start, end_)
+    in
+    Some (Declaration.v ~important property value)
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(foldable_border_color ~ctx)
+    ~extract ~build i
+
+(* CSS Flexbox 1 sec. 5.1 and CSS Text Decoration 4 sec. 3.4: [flex-flow] and
+   [text-emphasis] each take two longhands, one per component. A longhand
+   written [initial] fills its slot in the run and contributes no value, the
+   normalisers then dropping any component that names its own initial. A
+   substituted longhand can stand for the whole value and is left alone. *)
+let extract_flex_flow_part :
+    declaration ->
+    (axis_side
+    * (Properties.flex_direction option * Properties.flex_wrap option)
+    * bool)
+    option = function
+  | Declaration { property = Flex_direction; value = Var _; _ }
+  | Declaration { property = Flex_wrap; value = Var _; _ } ->
+      None
+  | Declaration { property = Flex_direction; value; important; _ } ->
+      let d = match value with Initial -> Option.None | v -> Some v in
+      Some (Start, (d, Option.None), important)
+  | Declaration { property = Flex_wrap; value; important; _ } ->
+      let w = match value with Initial -> Option.None | v -> Some v in
+      Some (End, (Option.None, w), important)
+  | _ -> None
+
+let extract_text_emphasis_part :
+    declaration ->
+    (axis_side
+    * (Properties.text_emphasis_style option * Values.color option)
+    * bool)
+    option = function
+  | Declaration { property = Text_emphasis_style; value = Var _; _ }
+  | Declaration { property = Text_emphasis_color; value = Var _; _ } ->
+      None
+  | Declaration { property = Text_emphasis_style; value; important; _ } ->
+      let st = match value with Initial -> Option.None | v -> Some v in
+      Some (Start, (st, Option.None), important)
+  | Declaration { property = Text_emphasis_color; value; important; _ } ->
+      let c = match value with Initial -> Option.None | v -> Some v in
+      Some (End, (Option.None, c), important)
+  | _ -> None
+
+let duo_flex_flow idx i =
+  let build ~important ~start ~end_ =
+    let direction, _ = start and _, wrap = end_ in
+    Some
+      (Declaration.v ~important Flex_flow
+         (Flow (direction, wrap) : Properties.flex_flow))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_flex_flow_part ~build i
+
+let duo_text_emphasis idx i =
+  let build ~important ~start ~end_ =
+    let style, _ = start and _, color = end_ in
+    Some
+      (Declaration.v ~important Text_emphasis
+         (Emphasis (style, color) : Properties.text_emphasis))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_text_emphasis_part ~build i
+
+(* CSS Animations 2 sec. 6.3 and CSS Scroll Animations 1 sec. 4.3:
+   [animation-range] is [<start> <end>?] and [scroll-timeline] is [<name>
+   <axis>?], each written over its own two longhands. *)
+let extract_animation_range_part :
+    declaration ->
+    (axis_side
+    * (Properties.animation_range_item option
+      * Properties.animation_range_item option)
+    * bool)
+    option = function
+  | Declaration { property = Animation_range_start; value = Var _; _ }
+  | Declaration { property = Animation_range_end; value = Var _; _ } ->
+      None
+  | Declaration { property = Animation_range_start; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Animation_range_end; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let extract_scroll_timeline_part :
+    declaration ->
+    (axis_side
+    * (Properties.timeline_name option * Properties.timeline_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Scroll_timeline_name; value = Var _; _ }
+  | Declaration { property = Scroll_timeline_axis; value = Var _; _ } ->
+      None
+  | Declaration { property = Scroll_timeline_name; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Scroll_timeline_axis; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_animation_range idx i =
+  let build ~important ~start ~end_ =
+    let range_start, _ = start and _, range_end = end_ in
+    match range_start with
+    | Option.None -> Option.None
+    | Some range_start ->
+        Some
+          (Declaration.v ~important Animation_range
+             (Range (range_start, range_end) : Properties.animation_range))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_animation_range_part ~build i
+
+(* [scroll-timeline: none] leaves the axis at [block], so a named axis beside an
+   unnamed timeline has no shorthand spelling, and neither has a name list: the
+   shorthand pairs each name with its own axis. *)
+let duo_scroll_timeline idx i =
+  let build ~important ~start ~end_ =
+    let name, _ = start and _, axis = end_ in
+    let axis =
+      match axis with
+      | Some (Block : Properties.timeline_axis) | Some Initial -> Option.None
+      | axis -> axis
+    in
+    let value : Properties.timeline_shorthand option =
+      match (name : Properties.timeline_name option) with
+      | Some None when Option.is_none axis -> Some None
+      | Some (Names [ n ]) -> Some (Timelines [ { name = n; axis } ])
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Scroll_timeline) value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_scroll_timeline_part ~build i
+
+(* CSS Contain 3 sec. 4.3: [container] is [<name> [/ <type>]?] over its two
+   longhands, and [normal] is the type's initial (sec. 4.2), so writing it out
+   names what leaving it out names. The shorthand pairs one name with one type,
+   so a name list has no spelling in it. *)
+let extract_container_part :
+    declaration ->
+    (axis_side
+    * (Properties.container_name option * Properties.container_type option)
+    * bool)
+    option = function
+  | Declaration { property = Container_name; value = Var _; _ }
+  | Declaration { property = Container_type; value = Var _; _ } ->
+      None
+  | Declaration { property = Container_name; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Container_type; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_container idx i =
+  let build ~important ~start ~end_ =
+    let name, _ = start and _, ctype = end_ in
+    let ctype =
+      match ctype with
+      | Some (Normal : Properties.container_type) | Some Initial -> Option.None
+      | ctype -> ctype
+    in
+    let value : Properties.container_shorthand option =
+      match (name : Properties.container_name option) with
+      | Some None -> Some (Shorthand { name = Some "none"; ctype })
+      | Some (Names [ n ]) -> Some (Shorthand { name = Some n; ctype })
+      | _ -> Option.None
+    in
+    Option.map (Declaration.v ~important Container) value
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_container_part ~build i
+
+(* CSS Backgrounds 4 sec. 3.3: [background-position] is [<x> <y>] over the two
+   axis longhands, [Start] here the x axis. The shorthand carries one position
+   per layer, so a single-valued pair is what composes; the four-value edge form
+   needs each axis to name its own edge. *)
+let extract_webkit_mask_position_part :
+    declaration ->
+    (axis_side
+    * (Properties.background_position_axis option
+      * Properties.background_position_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Webkit_mask_position_x; value = Var _; _ }
+  | Declaration { property = Webkit_mask_position_y; value = Var _; _ } ->
+      None
+  | Declaration { property = Webkit_mask_position_x; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Webkit_mask_position_y; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let extract_background_position_part :
+    declaration ->
+    (axis_side
+    * (Properties.background_position_axis option
+      * Properties.background_position_axis option)
+    * bool)
+    option = function
+  | Declaration { property = Background_position_x; value = Var _; _ }
+  | Declaration { property = Background_position_y; value = Var _; _ } ->
+      None
+  | Declaration { property = Background_position_x; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Background_position_y; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let position_of_axes (x : Properties.background_position_axis)
+    (y : Properties.background_position_axis) : Properties.position_value option
+    =
+  let axis_length : Properties.background_position_axis -> Values.length option
+      = function
+    (* CSS Backgrounds 3 sec. 3.6 starts the position at [0% 0%], so [initial]
+       on an axis names the zero offset. *)
+    | Initial -> Some (Pct 0.)
+    | Center -> Some (Pct 50.)
+    | Edge Left | Edge Top -> Some Zero
+    | Edge Right | Edge Bottom -> Some (Pct 100.)
+    | Offset (Length l) -> Some l
+    | Offset (Pct p) -> Some (Pct p)
+    | _ -> Option.None
+  in
+  let edge_name : Properties.position_axis_edge -> string = function
+    | Left -> "left"
+    | Right -> "right"
+    | Top -> "top"
+    | Bottom -> "bottom"
+  in
+  match (axis_length x, axis_length y) with
+  | Some lx, Some ly -> Some (Prop_image.position_of_xy lx ly)
+  | _ -> (
+      match (x, y) with
+      | Edge_offset (ex, ox), Edge_offset (ey, oy) ->
+          Some (Edge_offset_edge_offset (edge_name ex, ox, edge_name ey, oy))
+      | _ -> Option.None)
+
+let duo_position_axes idx property extract i =
+  let build ~important ~start ~end_ =
+    let x, _ = start and _, y = end_ in
+    match (x, y) with
+    | Some x, Some y ->
+        Option.map
+          (fun p -> Declaration.v ~important property [ p ])
+          (position_of_axes x y)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx ~foldable:(fun _ -> true) ~extract ~build i
+
+(* CSS Text 4 sec. 3: [white-space] is a shorthand of [white-space-collapse] and
+   [text-wrap-mode], and sec. 3 table 1 gives the four pairs a single keyword
+   names. A pair outside that table has no one-keyword spelling and stays two
+   declarations. *)
+let extract_white_space_part :
+    declaration ->
+    (axis_side
+    * (Properties.white_space_collapse option
+      * Properties.text_wrap_mode option)
+    * bool)
+    option = function
+  | Declaration { property = White_space_collapse; value = Var _; _ }
+  | Declaration { property = Text_wrap_mode; value = Var _; _ } ->
+      None
+  | Declaration { property = White_space_collapse; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Text_wrap_mode; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let white_space_of_pair (c : Properties.white_space_collapse)
+    (m : Properties.text_wrap_mode) : Properties.white_space option =
+  match (c, m) with
+  | Collapse, Wrap -> Some Normal
+  | Collapse, No_wrap -> Some Nowrap
+  | Preserve, Wrap -> Some Pre_wrap
+  | Preserve, No_wrap -> Some Pre
+  | Preserve_breaks, Wrap -> Some Pre_line
+  | Break_spaces, Wrap -> Some Break_spaces
+  | _ -> Option.None
+
+let duo_white_space idx i =
+  let build ~important ~start ~end_ =
+    let collapse, _ = start and _, mode = end_ in
+    match (collapse, mode) with
+    | Some c, Some m ->
+        Option.map
+          (Declaration.v ~important White_space)
+          (white_space_of_pair c m)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_white_space_part ~build i
+
+(* CSS Text 4 sec. 5.1: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>] over its two longhands, with [wrap] the mode's initial
+   (sec. 5.2) and [auto] the style's (sec. 5.3), so a longhand at its initial
+   names what leaving the component out names. *)
+let extract_text_wrap_part :
+    declaration ->
+    (axis_side
+    * (Properties.text_wrap_mode option * Properties.text_wrap_style option)
+    * bool)
+    option = function
+  | Declaration { property = Text_wrap_mode; value = Var _; _ }
+  | Declaration { property = Text_wrap_style; value = Var _; _ } ->
+      None
+  | Declaration { property = Text_wrap_mode; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Text_wrap_style; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let text_wrap_of_pair (m : Properties.text_wrap_mode)
+    (st : Properties.text_wrap_style) : Properties.text_wrap option =
+  let mode =
+    match m with
+    | Wrap | Initial -> Some `Wrap
+    | No_wrap -> Some `No_wrap
+    | _ -> Option.None
+  in
+  let style =
+    match st with
+    | Auto | Initial -> Some `Auto
+    | Balance -> Some `Balance
+    | Stable -> Some `Stable
+    | Pretty -> Some `Pretty
+    | _ -> Option.None
+  in
+  match (mode, style) with
+  | Some `Wrap, Some `Auto -> Some (Wrap : Properties.text_wrap)
+  | Some `No_wrap, Some `Auto -> Some No_wrap
+  | Some `Wrap, Some `Balance -> Some Balance
+  | Some `Wrap, Some `Stable -> Some Stable
+  | Some `Wrap, Some `Pretty -> Some Pretty
+  | Some m, Some st -> Some (Mode_style (m, st))
+  | _ -> Option.None
+
+let duo_text_wrap idx i =
+  let build ~important ~start ~end_ =
+    let mode, _ = start and _, style = end_ in
+    match (mode, style) with
+    | Some m, Some st ->
+        Option.map (Declaration.v ~important Text_wrap) (text_wrap_of_pair m st)
+    | _ -> Option.None
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_text_wrap_part ~build i
+
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands.
+   Both are typed differently, so either order names the same declaration. *)
+let extract_webkit_stroke_part :
+    declaration ->
+    (axis_side * (Properties.border_width option * Values.color option) * bool)
+    option = function
+  | Declaration { property = Webkit_text_stroke_width; value = Var _; _ }
+  | Declaration { property = Webkit_text_stroke_color; value = Var _; _ } ->
+      None
+  | Declaration { property = Webkit_text_stroke_width; value; important; _ } ->
+      Some (Start, (Some value, Option.None), important)
+  | Declaration { property = Webkit_text_stroke_color; value; important; _ } ->
+      Some (End, (Option.None, Some value), important)
+  | _ -> None
+
+let duo_webkit_text_stroke idx i =
+  let build ~important ~start ~end_ =
+    let width, _ = start and _, color = end_ in
+    Some
+      (Declaration.v ~important Webkit_text_stroke
+         ({ width; color } : Properties.webkit_text_stroke))
+  in
+  try_compose_axis_pair_at idx
+    ~foldable:(fun _ -> true)
+    ~extract:extract_webkit_stroke_part ~build i
+
+(* One entry per logical axis family; each pairs a start longhand with its end
+   longhand under the shorthand that names the axis. *)
+let pair_axes ~ctx idx i =
+  let axis = axis_length idx in
+  let width = axis_border_width ~ctx idx in
+  let style = axis_border_style ~ctx idx in
+  let color = axis_border_color ~ctx idx in
+  [
+    (fun () -> axis Margin_inline extract_margin_inline_side i);
+    (fun () -> axis Margin_block extract_margin_block_side i);
+    (fun () -> axis Padding_inline extract_padding_inline_side i);
+    (fun () -> axis Padding_block extract_padding_block_side i);
+    (fun () -> axis Inset_inline extract_inset_inline_side i);
+    (fun () -> axis Inset_block extract_inset_block_side i);
+    (fun () -> axis Scroll_margin_inline extract_scroll_margin_inline_side i);
+    (fun () -> axis Scroll_margin_block extract_scroll_margin_block_side i);
+    (fun () -> axis Scroll_padding_inline extract_scroll_padding_inline_side i);
+    (fun () -> axis Scroll_padding_block extract_scroll_padding_block_side i);
+    (fun () -> width Border_inline_width extract_border_inline_width_side i);
+    (fun () -> width Border_block_width extract_border_block_width_side i);
+    (fun () -> style Border_inline_style extract_border_inline_style_side i);
+    (fun () -> style Border_block_style extract_border_block_style_side i);
+    (fun () -> color Border_inline_color extract_border_inline_color_side i);
+    (fun () -> color Border_block_color extract_border_block_color_side i);
+    (fun () -> axis_overscroll idx i);
+    (fun () -> axis_contain_intrinsic idx i);
+    (fun () -> axis_grid_line idx Grid_row extract_grid_row_side i);
+    (fun () -> axis_grid_line idx Grid_column extract_grid_column_side i);
+    (fun () -> duo_flex_flow idx i);
+    (fun () -> duo_text_emphasis idx i);
+    (fun () -> duo_animation_range idx i);
+    (fun () -> duo_scroll_timeline idx i);
+    (fun () -> duo_container idx i);
+    (fun () ->
+      duo_position_axes idx Background_position extract_background_position_part
+        i);
+    (fun () ->
+      duo_position_axes idx Webkit_mask_position
+        extract_webkit_mask_position_part i);
+    (fun () -> duo_white_space idx i);
+    (fun () -> duo_text_wrap idx i);
+    (fun () -> duo_webkit_text_stroke idx i);
+  ]
+
+let compose_pair_via_index ~ctx idx =
   let try_any i =
     match try_compose_gap_at idx i with
     | Some _ as r -> r
     | None -> (
-        match axis Margin_inline extract_margin_inline_side i with
+        match List.find_map (fun f -> f ()) (pair_axes ~ctx idx i) with
         | Some _ as r -> r
-        | None -> (
-            match axis Margin_block extract_margin_block_side i with
-            | Some _ as r -> r
-            | None -> (
-                match axis Padding_inline extract_padding_inline_side i with
-                | Some _ as r -> r
-                | None -> (
-                    match axis Padding_block extract_padding_block_side i with
-                    | Some _ as r -> r
-                    | None -> (
-                        match axis Inset_inline extract_inset_inline_side i with
-                        | Some _ as r -> r
-                        | None -> (
-                            match
-                              axis Inset_block extract_inset_block_side i
-                            with
-                            | Some _ as r -> r
-                            | None -> try_compose_place_at idx i))))))
+        | None -> try_compose_place_at idx i)
   in
   let n = Rule_index.length idx in
   let i = ref 0 in
   while !i < n do
     match try_any !i with
     | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand;
-        i := !i + 2
+        if Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1 ] ~shorthand then
+          i := !i + 2
+        else incr i
     | None -> incr i
   done
 
@@ -2123,8 +2887,12 @@ let compose_fixed3_via_index idx ~try_compose =
     match try_compose idx !i with
     | None -> incr i
     | Some shorthand ->
-        Rule_index.absorb idx ~at:!i ~absorbed:[ !i; !i + 1; !i + 2 ] ~shorthand;
-        i := !i + 3
+        if
+          Rule_index.absorb idx ~at:!i
+            ~absorbed:[ !i; !i + 1; !i + 2 ]
+            ~shorthand
+        then i := !i + 3
+        else incr i
   done
 
 (* Same walk for a family whose run length varies: [try_compose] reports the
@@ -2140,8 +2908,8 @@ let compose_run_via_index idx ~try_compose =
       | None -> incr i
       | Some (shorthand, k) ->
           let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + k
+          else incr i
   done
 
 (* Collect the contiguous run of one family's longhands starting at [i], as
@@ -2161,9 +2929,9 @@ let take_run_at idx ~part_of i =
 
 (* Compose [outline-width / -style / -color] into the [outline] shorthand when
    all three longhands appear contiguously with matching importance. *)
-type outline_part = Width | Style | Color
+type line_part = Width | Style | Color
 
-let outline_part_of : declaration -> outline_part option = function
+let outline_part_of : declaration -> line_part option = function
   | Declaration { property = Outline_width; _ } -> Some Width
   | Declaration { property = Outline_style; _ } -> Some Style
   | Declaration { property = Outline_color; _ } -> Some Color
@@ -2312,8 +3080,8 @@ let compose_font_via_index idx =
       | None -> incr i
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2; !i + 3; !i + 4 ] in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 5
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 5
+          else incr i
   done
 
 (* The property a name spells, when the reader types one.
@@ -2525,12 +3293,13 @@ let compose_flex_via_index idx =
    style, color, and optional thickness. The composition extracts the three
    required typed longhands; the pretty-printer drops default-valued style and
    color when emitting the shorthand. *)
-type td_kind = Line | Style | Color
+type td_kind = Line | Style | Color | Thickness
 
 let td_kind_of : declaration -> td_kind option = function
   | Declaration { property = Text_decoration_line; _ } -> Some Line
   | Declaration { property = Text_decoration_style; _ } -> Some Style
   | Declaration { property = Text_decoration_color; _ } -> Some Color
+  | Declaration { property = Text_decoration_thickness; _ } -> Some Thickness
   | _ -> None
 
 let td_line_of : declaration -> Properties.text_decoration_line list option =
@@ -2547,37 +3316,14 @@ let td_color_of : declaration -> Values.color option = function
   | Declaration { property = Text_decoration_color; value; _ } -> Some value
   | _ -> None
 
-let try_compose_text_decoration_at idx i =
-  let n = Rule_index.length idx in
-  if i + 2 >= n then None
-  else if
-    Rule_index.is_absorbed idx i
-    || Rule_index.is_absorbed idx (i + 1)
-    || Rule_index.is_absorbed idx (i + 2)
-  then None
-  else
-    let d1 = Rule_index.decl_at idx i in
-    let d2 = Rule_index.decl_at idx (i + 1) in
-    let d3 = Rule_index.decl_at idx (i + 2) in
-    match (td_kind_of d1, td_kind_of d2, td_kind_of d3) with
-    | Some k1, Some k2, Some k3
-      when is_important d1 = is_important d2
-           && is_important d2 = is_important d3
-           && List.length (List.sort_uniq compare [ k1; k2; k3 ]) = 3 -> (
-        let triple = [ d1; d2; d3 ] in
-        let lines = List.find_map td_line_of triple in
-        let style = List.find_map td_style_of triple in
-        let color = List.find_map td_color_of triple in
-        match (lines, style, color) with
-        | Some lines, Some _, Some _ ->
-            Some
-              (Declaration.v ~important:(is_important d1) Text_decoration
-                 (Shorthand { lines; style; color; thickness = None }))
-        | _ -> None)
-    | _ -> None
-
-let compose_text_decoration_via_index idx =
-  compose_fixed3_via_index idx ~try_compose:try_compose_text_decoration_at
+(* CSS Text Decoration 4 sec. 2.2 makes [auto] the thickness's initial, which is
+   what leaving the component out names, so the shorter spelling wins. *)
+let td_thickness_of : declaration -> Values.length option = function
+  | Declaration { property = Text_decoration_thickness; value = Auto; _ }
+  | Declaration { property = Text_decoration_thickness; value = Initial; _ } ->
+      Option.None
+  | Declaration { property = Text_decoration_thickness; value; _ } -> Some value
+  | _ -> None
 
 (* CSS Backgrounds 3 sec. 3.4: [border] is the shorthand for [border-{top,
    right,bottom,left}-{width,style,color}]. Cascade composes when all 12
@@ -2622,7 +3368,7 @@ let declaration_of_border_parts ~important widths styles colors =
    exempt. *)
 let has_runtime_substitution d = Variables.vars_of_declarations [ d ] <> []
 
-let try_compose_border_at idx i =
+let try_compose_border_at ~bi_hazard idx i =
   let n = Rule_index.length idx in
   if i + 11 >= n then None
   else
@@ -2648,21 +3394,23 @@ let try_compose_border_at idx i =
       if not (same_importance raw_decls) then None
       else if List.exists has_runtime_substitution raw_decls then None
       else
-        match border_parts_of raw_decls with
-        | None -> None
-        | Some (widths, styles, colors) ->
-            Some
-              (declaration_of_border_parts
-                 ~important:(is_important (List.hd raw_decls))
-                 widths styles colors)
+        let important = is_important (List.hd raw_decls) in
+        (* The shorthand resets the whole [border-image] family, so a value one
+           of those longhands holds elsewhere would be dropped. *)
+        if bi_hazard i ~important then None
+        else
+          Option.map
+            (fun (widths, styles, colors) ->
+              declaration_of_border_parts ~important widths styles colors)
+            (border_parts_of raw_decls)
 
-let compose_border_via_index idx =
+let compose_border_via_index ~bi_hazard idx =
   let n = Rule_index.length idx in
   let i = ref 0 in
   while !i + 11 < n do
     if Rule_index.is_absorbed idx !i then incr i
     else
-      match try_compose_border_at idx !i with
+      match try_compose_border_at ~bi_hazard idx !i with
       | None -> incr i
       | Some shorthand ->
           let absorbed =
@@ -2681,9 +3429,334 @@ let compose_border_via_index idx =
               !i + 11;
             ]
           in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 12
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 12
+          else incr i
   done
+
+(* CSS Backgrounds 3 sec. 3.5, CSS Logical 1 sec. 4.5 and CSS Multicol 1 sec.
+   4.3: each of the eight border sides is [<line-width> || <line-style> ||
+   <line-color>] over its own three longhands and resets nothing else, so a
+   contiguous run of the three composes the way [outline] does. Each part
+   carries the slot it fills, so the run may be written in any order. *)
+let no_line : Properties.border_shorthand =
+  { width = None; style = None; color = None }
+
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what the shorthand assigns to a component left out, so the longhand fills its
+   slot in the run and contributes no value to it. *)
+let line_of_width v : line_part * Properties.border_shorthand =
+  match (v : Properties.border_width) with
+  | Initial -> (Width, no_line)
+  | v -> (Width, { no_line with width = Some v })
+
+let line_of_style v : line_part * Properties.border_shorthand =
+  match (v : Properties.border_style) with
+  | Initial -> (Style, no_line)
+  | v -> (Style, { no_line with style = Some v })
+
+let line_of_color v : line_part * Properties.border_shorthand =
+  match (v : Values.color) with
+  | Initial -> (Color, no_line)
+  | v -> (Color, { no_line with color = Some v })
+
+let merge_line (a : Properties.border_shorthand)
+    (b : Properties.border_shorthand) : Properties.border_shorthand =
+  let pick x y = if Option.is_none x then y else x in
+  {
+    width = pick a.width b.width;
+    style = pick a.style b.style;
+    color = pick a.color b.color;
+  }
+
+let border_top_part = function
+  | Declaration { property = Border_top_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_top_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_top_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_right_part = function
+  | Declaration { property = Border_right_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_right_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_right_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_bottom_part = function
+  | Declaration { property = Border_bottom_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_bottom_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_bottom_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_left_part = function
+  | Declaration { property = Border_left_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_left_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_left_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_block_start_part = function
+  | Declaration { property = Border_block_start_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_block_start_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_block_start_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_block_end_part = function
+  | Declaration { property = Border_block_end_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_block_end_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_block_end_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_inline_start_part = function
+  | Declaration { property = Border_inline_start_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_inline_start_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_inline_start_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let border_inline_end_part = function
+  | Declaration { property = Border_inline_end_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Border_inline_end_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Border_inline_end_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let column_rule_part = function
+  | Declaration { property = Column_rule_width; value; _ } ->
+      Some (line_of_width value)
+  | Declaration { property = Column_rule_style; value; _ } ->
+      Some (line_of_style value)
+  | Declaration { property = Column_rule_color; value; _ } ->
+      Some (line_of_color value)
+  | _ -> None
+
+let try_compose_line_at ~part_of ~property idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        match List.map part_of raw with
+        | [ Some (p1, s1); Some (p2, s2); Some (p3, s3) ]
+          when List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
+            Some
+              (Declaration.v
+                 ~important:(is_important (List.hd raw))
+                 property
+                 (Shorthand (merge_line s1 (merge_line s2 s3))
+                   : Properties.border))
+        | _ -> None
+
+(* CSS Logical 1 sec. 4.6: [border-block] and [border-inline] set the width,
+   style and colour of both sides of their axis and reset nothing else, which is
+   what the three axis shorthands set between them. An axis naming two different
+   sides has no slot in the shorthand, so only a single-valued one takes
+   part. *)
+let border_block_axis_part = function
+  | Declaration { property = Border_block_width; value = Single w; _ } ->
+      Some (line_of_width w)
+  | Declaration { property = Border_block_style; value = Single s; _ } ->
+      Some (line_of_style s)
+  | Declaration { property = Border_block_color; value = Single c; _ } ->
+      Some (line_of_color c)
+  | _ -> None
+
+let border_inline_axis_part = function
+  | Declaration { property = Border_inline_width; value = Single w; _ } ->
+      Some (line_of_width w)
+  | Declaration { property = Border_inline_style; value = Single s; _ } ->
+      Some (line_of_style s)
+  | Declaration { property = Border_inline_color; value = Single c; _ } ->
+      Some (line_of_color c)
+  | _ -> None
+
+let line_families =
+  Properties.
+    [
+      (border_top_part, Border_top);
+      (border_right_part, Border_right);
+      (border_bottom_part, Border_bottom);
+      (border_left_part, Border_left);
+      (border_block_start_part, Border_block_start);
+      (border_block_end_part, Border_block_end);
+      (border_inline_start_part, Border_inline_start);
+      (border_inline_end_part, Border_inline_end);
+      (column_rule_part, Column_rule);
+      (border_block_axis_part, Border_block);
+      (border_inline_axis_part, Border_inline);
+    ]
+
+let compose_line_via_index idx =
+  List.iter
+    (fun (part_of, property) ->
+      compose_fixed3_via_index idx
+        ~try_compose:(try_compose_line_at ~part_of ~property))
+    line_families
+
+(* CSS Scroll Animations 1 sec. 5.2: [view-timeline] is [<name> <axis>?
+   <inset>?] over its three longhands, with [block] the axis's initial (sec.
+   5.1) and [auto] the inset's (sec. 5.3), so a modifier written out at its
+   initial names what leaving it out names. The shorthand pairs one name with
+   its own modifiers, so a name list has no spelling in it. *)
+type view_timeline_part =
+  | Name of Properties.timeline_name
+  | Axis of Properties.timeline_axis
+  | Inset of Properties.timeline_inset
+
+let view_timeline_part_of : declaration -> view_timeline_part option = function
+  | Declaration { property = View_timeline_name; value; _ } -> Some (Name value)
+  | Declaration { property = View_timeline_axis; value; _ } -> Some (Axis value)
+  | Declaration { property = View_timeline_inset; value; _ } ->
+      Some (Inset value)
+  | _ -> None
+
+let view_timeline_slot = function Name _ -> 0 | Axis _ -> 1 | Inset _ -> 2
+
+let view_timeline_item parts : Properties.view_timeline_shorthand_item option =
+  let pick f = List.find_map f parts in
+  let name = pick (function Name n -> Some n | _ -> Option.None) in
+  let axis =
+    pick (function
+      | Axis (Block : Properties.timeline_axis) | Axis Initial -> Option.None
+      | Axis a -> Some a
+      | _ -> Option.None)
+  in
+  let inset =
+    pick (function
+      | Inset (Inset (Auto, Option.None) : Properties.timeline_inset)
+      | Inset Initial ->
+          Option.None
+      | Inset i -> Some i
+      | _ -> Option.None)
+  in
+  match (name : Properties.timeline_name option) with
+  | Some (Names [ n ]) -> Some { name = n; axis; inset }
+  | Some None when Option.is_none axis && Option.is_none inset ->
+      Some { name = "none"; axis; inset }
+  | _ -> Option.None
+
+let view_timeline_of_run raw =
+  let parts = List.filter_map view_timeline_part_of raw in
+  let slots = List.sort_uniq compare (List.map view_timeline_slot parts) in
+  if List.length slots <> 3 then None else view_timeline_item parts
+
+let try_compose_view_timeline_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        Option.map
+          (fun item ->
+            Declaration.v
+              ~important:(is_important (List.hd raw))
+              View_timeline
+              (Timelines [ item ] : Properties.view_timeline_shorthand))
+          (view_timeline_of_run raw)
+
+let compose_view_timeline_via_index idx =
+  compose_fixed3_via_index idx ~try_compose:try_compose_view_timeline_at
+
+(* CSS Fonts 4 sec. 2.8.5: [font-synthesis] is [none | [weight || style ||
+   small-caps || position]] over its four longhands, each [auto] or [none]. The
+   shorthand names the ones set to [auto]; naming none of them is [none]. It
+   resets the position longhand too, so a rule that writes one is left alone
+   rather than have the synthesised shorthand clobber it. *)
+type synthesis_part = Weight | Style | Small_caps
+
+let synthesis_part_of : declaration -> (synthesis_part * bool) option = function
+  | Declaration { property = Font_synthesis_weight; value = Auto; _ } ->
+      Some (Weight, true)
+  | Declaration { property = Font_synthesis_weight; value = None; _ } ->
+      Some (Weight, false)
+  | Declaration { property = Font_synthesis_style; value = Auto; _ } ->
+      Some (Style, true)
+  | Declaration { property = Font_synthesis_style; value = None; _ } ->
+      Some (Style, false)
+  | Declaration { property = Font_synthesis_small_caps; value = Auto; _ } ->
+      Some (Small_caps, true)
+  | Declaration { property = Font_synthesis_small_caps; value = None; _ } ->
+      Some (Small_caps, false)
+  | _ -> None
+
+let font_synthesis_of_run parts : Properties.font_synthesis option =
+  let slot = function Weight -> 0 | Style -> 1 | Small_caps -> 2 in
+  let keys = List.sort_uniq compare (List.map (fun (p, _) -> slot p) parts) in
+  if List.length keys <> 3 then Option.None
+  else
+    let feature : synthesis_part -> Properties.font_synthesis_feature = function
+      | Weight -> Weight
+      | Style -> Style
+      | Small_caps -> Small_caps
+    in
+    let on =
+      List.filter_map
+        (fun (p, auto) -> if auto then Some (feature p) else Option.None)
+        (List.sort (fun (a, _) (b, _) -> compare (slot a) (slot b)) parts)
+    in
+    Some (if on = [] then None else Features on)
+
+let try_compose_font_synthesis_at idx i =
+  let n = Rule_index.length idx in
+  if i + 2 >= n then None
+  else
+    let positions = [ i; i + 1; i + 2 ] in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
+      else
+        let parts = List.filter_map synthesis_part_of raw in
+        if List.length parts <> 3 then None
+        else
+          Option.map
+            (Declaration.v
+               ~important:(is_important (List.hd raw))
+               Font_synthesis)
+            (font_synthesis_of_run parts)
+
+let writes_synthesis_position = function
+  | Declaration { property = Font_synthesis_position; _ } -> true
+  | _ -> false
+
+let compose_font_synthesis_via_index idx =
+  let n = Rule_index.length idx in
+  let rec has_position i =
+    i < n
+    && (writes_synthesis_position (Rule_index.decl_at idx i)
+       || has_position (i + 1))
+  in
+  if not (has_position 0) then
+    compose_fixed3_via_index idx ~try_compose:try_compose_font_synthesis_at
 
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
@@ -2691,7 +3764,7 @@ let compose_border_via_index idx =
    shorthand also resets [border-image] to its initial, so only compose when no
    [border-image] declaration is present in the rule - otherwise the synthesised
    [border] would clobber it (the reset/reorder case is handled separately). *)
-let try_compose_border_whole_at ~ctx idx i =
+let try_compose_border_whole_at ~bi_hazard ~ctx idx i =
   let n = Rule_index.length idx in
   if i + 2 >= n then None
   else
@@ -2708,7 +3781,7 @@ let try_compose_border_whole_at ~ctx idx i =
           (function
             | Declaration { property = Border_width; value = [ w ]; _ } ->
                 width := Some w
-            | Declaration { property = Border_style; value = s; _ } ->
+            | Declaration { property = Border_style; value = [ s ]; _ } ->
                 style := Some s
             | Declaration { property = Border_color; value = [ c ]; _ } ->
                 color := Some c
@@ -2718,7 +3791,8 @@ let try_compose_border_whole_at ~ctx idx i =
         | Some width, Some style, Some color
           when foldable_border_width ~ctx width
                && foldable_border_style ~ctx style
-               && foldable_border_color ~ctx color ->
+               && foldable_border_color ~ctx color
+               && not (bi_hazard i ~important:(is_important (List.hd raw))) ->
             Some
               (Declaration.v
                  ~important:(is_important (List.hd raw))
@@ -2788,7 +3862,7 @@ let reorder_border_image_before_border decls =
   in
   go [] decls
 
-let compose_border_whole_via_index ~ctx idx =
+let compose_border_whole_via_index ~bi_hazard ~ctx idx =
   let n = Rule_index.length idx in
   (* [border] resets [border-image] to its initial, so the synthesised shorthand
      is only safe when it ends up before every [border-image] declaration. Walk
@@ -2802,15 +3876,17 @@ let compose_border_whole_via_index ~ctx idx =
       if is_border_image_decl d then ();
       incr i)
     else
-      match try_compose_border_whole_at ~ctx idx !i with
+      let step_over () =
+        let d = Rule_index.decl_at idx !i in
+        if is_border_image_decl d then seen_border_image := true;
+        incr i
+      in
+      match try_compose_border_whole_at ~bi_hazard ~ctx idx !i with
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2 ] in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + 3
-      | None ->
-          let d = Rule_index.decl_at idx !i in
-          if is_border_image_decl d then seen_border_image := true;
-          incr i
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 3
+          else step_over ()
+      | None -> step_over ()
   done
 
 (* CSS Backgrounds 3: the [border] shorthand resets [border-image] to its
@@ -2869,19 +3945,31 @@ let span_border_image_run_at idx i =
   in
   aux i []
 
-let border_image_run_can_compose run ~foldable ~slice ~width ~outset =
+(* The shorthand resets all five longhands, so a run naming every one of them is
+   the same declaration whatever else the sheet holds. A shorter run leaves the
+   rest to the reset, which is only safe with the whole sheet in view. *)
+let border_image_run_can_compose run ~allow_partial ~foldable ~source ~slice
+    ~width ~outset ~repeat =
   let need_slice =
     (Option.is_some width || Option.is_some outset) && Option.is_none slice
   in
+  let complete =
+    Option.is_some source && Option.is_some slice && Option.is_some width
+    && Option.is_some outset && Option.is_some repeat
+  in
   List.length run >= 2
   && same_importance (List.map snd run)
-  && foldable && not need_slice
+  && foldable && (not need_slice)
+  && (allow_partial || complete)
 
+(* The record is built here rather than read, so the slot-initial fold the
+   reader's values get has to be applied to it as well. *)
 let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
   Declaration.v
     ~important:(is_important (snd (List.hd run)))
     Border_image
-    { source; slice; width; outset; repeat; mode = None }
+    (Properties.normalize_border_image
+       { source; slice; width; outset; repeat; mode = None })
 
 let record_border_image_longhand
     ~(source : Properties.background_image option ref)
@@ -2906,7 +3994,8 @@ let record_border_image_longhand
   | Declaration { property = Border_image_repeat; _ } -> foldable := false
   | _ -> ()
 
-let compose_border_image_run (run : (int * Declaration.declaration) list) :
+let compose_border_image_run ~allow_partial
+    (run : (int * Declaration.declaration) list) :
     (int * Declaration.declaration) option =
   let source : Properties.background_image option ref = ref Option.None in
   let slice : Properties.border_image_slice option ref = ref Option.None in
@@ -2928,8 +4017,9 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     run;
   if
     not
-      (border_image_run_can_compose run ~foldable:!foldable ~slice:!slice
-         ~width:!width ~outset:!outset)
+      (border_image_run_can_compose run ~allow_partial ~foldable:!foldable
+         ~source:!source ~slice:!slice ~width:!width ~outset:!outset
+         ~repeat:!repeat)
   then Option.None
   else
     let merged =
@@ -2938,30 +4028,19 @@ let compose_border_image_run (run : (int * Declaration.declaration) list) :
     in
     Some (fst (List.hd run), merged)
 
-let try_compose_border_image_at idx i =
+let try_compose_border_image_at ~allow_partial idx i =
   let d = Rule_index.decl_at idx i in
   if not (is_border_image_longhand_decl d) then None
   else
     let run, len = span_border_image_run_at idx i in
-    match compose_border_image_run run with
+    match compose_border_image_run ~allow_partial run with
     | Some (_, shorthand) -> Some (shorthand, len)
     | None -> None
 
 let compose_border_image_via_index ~ctx idx =
-  if scope ctx <> `Stylesheet then ()
-  else
-    let n = Rule_index.length idx in
-    let i = ref 0 in
-    while !i < n do
-      if Rule_index.is_absorbed idx !i then incr i
-      else
-        match try_compose_border_image_at idx !i with
-        | None -> incr i
-        | Some (shorthand, k) ->
-            let absorbed = List.init k (fun j -> !i + j) in
-            Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-            i := !i + k
-    done
+  let allow_partial = scope ctx = `Stylesheet in
+  compose_run_via_index idx
+    ~try_compose:(try_compose_border_image_at ~allow_partial)
 
 let compose_border_image_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in
@@ -2977,8 +4056,8 @@ let background_image_singleton :
   function
   | [ img ] -> (
       match img with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | List _ ->
-          None
+      | Initial -> Some (None : Properties.background_image)
+      | Inherit | Unset | Revert | Revert_layer | Var _ | List _ -> None
       | _ -> Some img)
   | _ -> None
 
@@ -2988,9 +4067,16 @@ let background_position_singleton :
   | [ pos ] -> Some pos
   | _ -> None
 
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   exactly what the shorthand writes to a slot left out, so a longhand spelled
+   that way fills its slot. [inherit] and [unset] name the parent's value
+   instead and cannot. The initials are CSS Backgrounds 3 sec. 3.1 to 3.10. *)
 let bg_color_part : declaration -> Values.color option = function
   | Declaration { property = Background_color; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Transparent : Values.color)
+      | v -> Some v)
   | _ -> None
 
 let bg_image_part : declaration -> Properties.background_image option = function
@@ -3001,7 +4087,10 @@ let bg_image_part : declaration -> Properties.background_image option = function
 let bg_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Background_repeat; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
   | _ -> None
 
 let bg_position_part : declaration -> Properties.position_value option =
@@ -3013,24 +4102,34 @@ let bg_position_part : declaration -> Properties.position_value option =
 let bg_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Background_size; value; _ } -> (
       match value with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
 
 let bg_attachment_part : declaration -> Properties.background_attachment option
     = function
   | Declaration { property = Background_attachment; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Scroll : Properties.background_attachment)
+      | v -> Some v)
   | _ -> None
 
 let bg_origin_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_origin; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Padding_box : Properties.background_box)
+      | v -> Some v)
   | _ -> None
 
 let bg_clip_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_clip; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.background_box)
+      | v -> Some v)
   | _ -> None
 
 type bg_part =
@@ -3149,50 +4248,102 @@ let compose_background_shorthand ~ctx decls =
    (the reorder / dead-drop cases are handled separately). Closed-world
    ([`Stylesheet]) only, since the shorthand resets the layer fields the run
    leaves unset. *)
+(* The optimizer writes a [-webkit-] twin beside each mask longhand for old
+   Safari, so a run reaching the composer carries both spellings of a slot.
+   They name one cascade slot and carry one value, so either fills it and the
+   run stays contiguous. *)
 let mask_image_part : declaration -> Properties.background_image option =
   function
   | Declaration { property = Mask_image; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (None : Properties.background_image)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_image; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (None : Properties.background_image)
+      | v -> Some v)
   | _ -> None
 
 let mask_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Mask_repeat; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_repeat; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Repeat : Properties.background_repeat)
+      | v -> Some v)
   | _ -> None
 
 let mask_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Mask_size; value; _ } -> (
       match value with
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_size; value; _ } -> (
+      match value with
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
 
+(* The two spellings share a cascade slot, and the CSSOM reports the prefixed
+   one when it expands [mask], so either fills the position slot. *)
 let mask_position_part : declaration -> Properties.position_value option =
   function
   | Declaration { property = Mask_position; value; _ } ->
+      background_position_singleton value
+  | Declaration { property = Webkit_mask_position; value; _ } ->
       background_position_singleton value
   | _ -> None
 
 let mask_origin_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_origin; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_origin; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
   | _ -> None
 
 let mask_clip_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_clip; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
+  | Declaration { property = Webkit_mask_clip; value; _ } -> (
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Border_box : Properties.mask_box)
+      | v -> Some v)
   | _ -> None
 
 let mask_mode_part : declaration -> Properties.mask_mode option = function
   | Declaration { property = Mask_mode; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Match_source : Properties.mask_mode)
+      | v -> Some v)
   | _ -> None
 
 let mask_composite_part : declaration -> Properties.mask_composite option =
   function
   | Declaration { property = Mask_composite; value; _ } -> (
-      match value with Inherit | Initial | Unset -> None | v -> Some v)
+      match value with
+      | Inherit | Unset -> None
+      | Initial -> Some (Add : Properties.mask_composite)
+      | v -> Some v)
   | _ -> None
 
 type mask_part = Properties.mask_layer -> Properties.mask_layer
@@ -3232,19 +4383,36 @@ let empty_mask_layer : Properties.mask_layer =
     composite = None;
   }
 
+(* Same reading as [background]: the layer shorthand resets every slot, so a run
+   naming all eight is the same declaration whatever else the sheet holds. A
+   shorter run leaves the rest to the reset, which only the whole-sheet scope
+   can judge. *)
+let mask_run_is_reset_closed (layer : Properties.mask_layer) =
+  Option.is_some layer.image
+  && Option.is_some layer.position
+  && Option.is_some layer.size
+  && Option.is_some layer.repeat
+  && Option.is_some layer.origin
+  && Option.is_some layer.clip && Option.is_some layer.mode
+  && Option.is_some layer.composite
+
 let try_compose_mask_at ~ctx idx i =
   let parts, len = take_run_at idx ~part_of:mask_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
     if not (same_importance raw_decls) then None
-    else if scope ctx <> `Stylesheet then None
-    else if has_prior_family_longhand mask_part_of idx i then None
     else
       let layer =
         List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts
       in
-      if layer.image = None then None
+      let permit =
+        match scope ctx with
+        | `Stylesheet -> not (has_prior_family_longhand mask_part_of idx i)
+        | `Fragment -> mask_run_is_reset_closed layer
+      in
+      if not permit then None
+      else if layer.image = None then None
       else
         let shorthand =
           Declaration.v
@@ -3317,16 +4485,77 @@ let compose_mask_via_index ~ctx idx =
       if is_mask_border_decl_raw d then ();
       incr i)
     else
+      let step_over () =
+        let d = Rule_index.decl_at idx !i in
+        if is_mask_border_decl_raw d then seen_mask_border := true;
+        incr i
+      in
       match try_compose_mask_at ~ctx idx !i with
       | Some (shorthand, k) ->
           let absorbed = List.init k (fun j -> !i + j) in
-          Rule_index.absorb idx ~at:!i ~absorbed ~shorthand;
-          i := !i + k
-      | None ->
-          let d = Rule_index.decl_at idx !i in
-          if is_mask_border_decl_raw d then seen_mask_border := true;
-          incr i
+          if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + k
+          else step_over ()
+      | None -> step_over ()
   done
+
+(* The property a [transition-property] entry names, against the property a
+   declaration writes. A shorthand there transitions every longhand it covers,
+   so [transition-property: background] reaches [background-color]. A name
+   outside the typed table names no property this can be asked about. *)
+let named_property_covers : type a. string -> a Properties.property -> bool =
+ fun name target ->
+  match property_of_name name with
+  | Some (Prop named) -> (
+      match Properties.eq_property named target with
+      | Some Equal -> true
+      | None -> covers_longhand named target)
+  | None -> false
+
+(* CSS Transitions 1 sec. 2.1: [none] transitions nothing, [all] transitions
+   everything, and [all] is the initial. A CSS-wide keyword resolves to that
+   initial or to a list from outside the sheet, and a [var()] is unread, so both
+   read as [all]. *)
+let transition_entry_covers : type a.
+    Properties.transition_property_value -> a Properties.property -> bool =
+ fun entry target ->
+  match entry with
+  | None -> false
+  | Property name -> named_property_covers name target
+  | All | Initial | Inherit | Unset | Revert | Revert_layer | Var _ -> true
+
+let transition_layer_covers : type a.
+    Properties.transition -> a Properties.property -> bool =
+ fun layer target ->
+  match layer with
+  | None -> false
+  | Shorthand s -> transition_entry_covers s.property target
+  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> true
+
+(* [all] is in because its only values are CSS-wide keywords, and [inherit]
+   there brings the parent's transition down onto this element. *)
+let declaration_transitions : type a.
+    declaration -> a Properties.property -> bool =
+ fun decl target ->
+  let layers = List.exists (fun l -> transition_layer_covers l target) in
+  let entries = List.exists (fun e -> transition_entry_covers e target) in
+  match unwrap_theme_guard decl with
+  | Declaration { property = Transition; value; _ } -> layers value
+  | Declaration { property = Webkit_transition; value; _ } -> layers value
+  | Declaration { property = Moz_transition; value; _ } -> layers value
+  | Declaration { property = O_transition; value; _ } -> layers value
+  | Declaration { property = Transition_property; value; _ } -> entries value
+  | Declaration { property = Webkit_transition_property; value; _ } ->
+      entries value
+  | Declaration { property = Moz_transition_property; value; _ } ->
+      entries value
+  | Declaration { property = All; _ } -> true
+  | _ -> false
+
+let transitioned_in_rule decls decl =
+  match unwrap_theme_guard decl with
+  | Declaration { property; _ } ->
+      List.exists (fun d -> declaration_transitions d property) decls
+  | _ -> false
 
 (* CSS Transitions 2 sec. 2.6: [transition] composes from
    [transition-{property,duration,timing-function,delay,behavior}]. Compose when
@@ -3494,24 +4723,345 @@ let tr_overwritten_slots d =
   | Declaration { property = All; _ } -> all_tr_bits
   | _ -> 0
 
-(* Whether an earlier declaration in the rule holds a slot the run leaves out.
-   The composed shorthand resets every such slot, so composing would drop that
-   value. An important declaration outranks a non-important shorthand whatever
-   the order, so it is only at risk when the run is important too. *)
-let tr_reset_hazard idx i ~missing ~important =
+(* CSS Animations 2 sec. 4.11: the slots [animation] resets. The bits sit above
+   the transition ones so a single [held] set can carry both families. *)
+type an_slot =
+  | Name
+  | Duration
+  | Timing
+  | Delay
+  | Iteration
+  | Direction
+  | Fill
+  | Play
+  | Timeline
+
+let an_slots =
+  [ Name; Duration; Timing; Delay; Iteration; Direction; Fill; Play; Timeline ]
+
+let an_slot_bit : an_slot -> int = function
+  | Name -> 32
+  | Duration -> 64
+  | Timing -> 128
+  | Delay -> 256
+  | Iteration -> 512
+  | Direction -> 1024
+  | Fill -> 2048
+  | Play -> 4096
+  | Timeline -> 8192
+
+let an_bits slots = List.fold_left (fun acc s -> acc lor an_slot_bit s) 0 slots
+let all_an_bits = an_bits an_slots
+
+(* [text-decoration] resets the thickness slot, the one longhand of the family a
+   contraction can leave out, so it needs one bit of its own beside the
+   transition and animation sets. *)
+let td_thickness_bit = 16384
+
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family
+   as well, so that family needs one bit of its own beside the others. *)
+let border_image_bit = 32768
+
+let bi_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Border_image; _ }
+  | Declaration { property = Border_image_source; _ }
+  | Declaration { property = Border_image_slice; _ }
+  | Declaration { property = Border_image_width; _ }
+  | Declaration { property = Border_image_outset; _ }
+  | Declaration { property = Border_image_repeat; _ }
+  | Declaration { property = Border; _ } ->
+      border_image_bit
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> border_image_bit
+  | _ -> 0
+
+let td_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Text_decoration_thickness; _ } -> td_thickness_bit
+  | Declaration { property = Text_decoration; _ } -> td_thickness_bit
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> td_thickness_bit
+  | _ -> 0
+
+(* Which slots a declaration leaves holding something. Cruder than the
+   transition answer, which compares against each slot initial: this one says
+   "set at all". It is only ever consulted for slots MISSING from the run being
+   composed, so the extra caution costs a contraction, never a cascade. *)
+let an_overwritten_slots d =
+  match unwrap_theme_guard d with
+  | Declaration { property = Animation_name; _ } -> an_slot_bit Name
+  | Declaration { property = Animation_duration; _ } -> an_slot_bit Duration
+  | Declaration { property = Animation_timing_function; _ } ->
+      an_slot_bit Timing
+  | Declaration { property = Animation_delay; _ } -> an_slot_bit Delay
+  | Declaration { property = Animation_iteration_count; _ } ->
+      an_slot_bit Iteration
+  | Declaration { property = Animation_direction; _ } -> an_slot_bit Direction
+  | Declaration { property = Animation_fill_mode; _ } -> an_slot_bit Fill
+  | Declaration { property = Animation_play_state; _ } -> an_slot_bit Play
+  | Declaration { property = Animation_timeline; _ } -> an_slot_bit Timeline
+  | Declaration { property = Animation; _ } -> all_an_bits
+  (* CSS Cascade 5 sec. 3.2: [all] writes every longhand, and no animation
+     longhand inherits, so [initial] and [unset] both leave the initials. *)
+  | Declaration { property = All; value = Initial | Unset; _ } -> 0
+  | Declaration { property = All; _ } -> all_an_bits
+  | _ -> 0
+
+(* Slots a set of declarations leaves holding something other than the slot
+   initial, split by importance. Composition reads one rule, so a holder in
+   another rule of the same run reaches the scan below only through this. *)
+type held = { normal_slots : int; important_slots : int }
+
+let held_none = { normal_slots = 0; important_slots = 0 }
+let held_nothing h = Int.equal (h.normal_slots lor h.important_slots) 0
+
+let held_add held decls =
+  List.fold_left
+    (fun held d ->
+      let slots =
+        tr_overwritten_slots d lor an_overwritten_slots d
+        lor td_overwritten_slots d lor bi_overwritten_slots d
+      in
+      if Int.equal slots 0 then held
+      else if is_important d then
+        { held with important_slots = held.important_slots lor slots }
+      else { held with normal_slots = held.normal_slots lor slots })
+    held decls
+
+(* What the neighbours hold. The rule being composed is judged by the scan
+   below, which reads position as well as value, so a slot it holds itself is
+   dropped here rather than answered twice and less precisely. *)
+let held_outside held decls =
+  if held_nothing held then held
+  else
+    let own = held_add held_none decls in
+    {
+      normal_slots = held.normal_slots land lnot own.normal_slots;
+      important_slots = held.important_slots land lnot own.important_slots;
+    }
+
+(* Whether something that reaches the same element holds a slot the run leaves
+   out. The composed shorthand resets every such slot, so composing would drop
+   that value. An important declaration outranks a non-important shorthand
+   whatever the order, so it is only at risk when the run is important too. *)
+let reset_hazard ~slots_of idx i ~held ~missing ~important =
   (not (Int.equal missing 0))
   &&
+  let outside =
+    if important then held.normal_slots lor held.important_slots
+    else held.normal_slots
+  in
+  (not (Int.equal (missing land outside) 0))
+  ||
   let rec scan j =
     j >= 0
     &&
     let d = Rule_index.decl_at idx j in
     (important || not (is_important d))
-    && not (Int.equal (tr_overwritten_slots d land missing) 0)
+    && not (Int.equal (slots_of d land missing) 0)
     || scan (j - 1)
   in
   scan (i - 1)
 
-let try_compose_transition_at idx i =
+let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
+let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
+let bi_reset_hazard = reset_hazard ~slots_of:bi_overwritten_slots
+
+(* [text-decoration] resets the thickness slot, so a run that leaves the
+   thickness out contracts into a declaration saying [auto] where the run said
+   nothing. Composing the three is safe only when nothing else in reach holds
+   that slot, the reading [transition] and [animation] already take. *)
+let text_decoration_of_run raw k : Properties.text_decoration option =
+  let kinds = List.map td_kind_of raw in
+  if
+    not
+      (List.for_all Option.is_some kinds
+      && List.length (List.sort_uniq compare kinds) = k)
+  then Option.None
+  else
+    let lines = List.find_map td_line_of raw in
+    let style = List.find_map td_style_of raw in
+    let color = List.find_map td_color_of raw in
+    let thickness = List.find_map td_thickness_of raw in
+    match (lines, style, color) with
+    | Some lines, Some _, Some _ ->
+        Some (Shorthand { lines; style; color; thickness })
+    | _ -> Option.None
+
+let try_compose_text_decoration_run ~held idx i k =
+  let n = Rule_index.length idx in
+  if i + k > n then None
+  else
+    let positions = List.init k (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if not (same_importance raw) then None
+      else
+        let important = is_important (List.hd raw) in
+        (* [k] is 4 today, so [missing] is empty and the scan answers no; the
+           slot is threaded so a shorter run can be judged rather than
+           assumed. *)
+        let missing = if k = 4 then 0 else td_thickness_bit in
+        if td_reset_hazard idx i ~held ~missing ~important then None
+        else
+          Option.map
+            (fun sh -> (Declaration.v ~important Text_decoration sh, k))
+            (text_decoration_of_run raw k)
+
+let try_compose_text_decoration_at ~held idx i =
+  try_compose_text_decoration_run ~held idx i 4
+
+let compose_text_decoration_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_text_decoration_at ~held)
+
+(* Motion Path 1 sec. 2.6: [offset] is [<position>? [<path> [<distance> ||
+   <rotate>]?]? [/ <anchor>]?] over its five longhands, and it resets every one
+   of them, so the run that names the same declaration is all five. A component
+   at its initial - [normal] for the position (sec. 2.1), [0] for the distance
+   (sec. 2.3), [auto] for the rotate (sec. 2.4) and for the anchor (sec. 2.5) -
+   is what leaving it out names. *)
+type offset_part = Position | Path | Distance | Rotate | Anchor
+
+let offset_part_of : declaration -> offset_part option = function
+  | Declaration { property = Offset_position; _ } -> Some Position
+  | Declaration { property = Offset_path; _ } -> Some Path
+  | Declaration { property = Offset_distance; _ } -> Some Distance
+  | Declaration { property = Offset_rotate; _ } -> Some Rotate
+  | Declaration { property = Offset_anchor; _ } -> Some Anchor
+  | _ -> None
+
+let offset_position_of : declaration -> Properties.offset_position option =
+  function
+  | Declaration { property = Offset_position; value = Normal | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_position; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_path_of : declaration -> Properties.offset_path option = function
+  | Declaration { property = Offset_path; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_distance_of : declaration -> Values.length_percentage option =
+  function
+  | Declaration { property = Offset_distance; value = Length Zero; _ } ->
+      Option.None
+  | Declaration { property = Offset_distance; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_rotate_of : declaration -> Properties.offset_rotate option = function
+  | Declaration { property = Offset_rotate; value = Auto | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_rotate; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_anchor_of : declaration -> Properties.offset_anchor option = function
+  | Declaration { property = Offset_anchor; value = Auto | Initial; _ } ->
+      Option.None
+  | Declaration { property = Offset_anchor; value; _ } -> Some value
+  | _ -> Option.None
+
+let offset_of_run raw : Properties.offset option =
+  let parts = List.filter_map offset_part_of raw in
+  if List.length (List.sort_uniq compare parts) <> 5 then Option.None
+  else
+    let position = List.find_map offset_position_of raw in
+    let distance = List.find_map offset_distance_of raw in
+    let rotate = List.find_map offset_rotate_of raw in
+    let anchor = List.find_map offset_anchor_of raw in
+    match List.find_map offset_path_of raw with
+    | Some path ->
+        Some
+          (Shorthand
+             { target = With_path { position; path; distance; rotate }; anchor })
+    | Option.None -> Option.None
+
+let try_compose_offset_at idx i =
+  let n = Rule_index.length idx in
+  if i + 4 >= n then None
+  else
+    let positions = List.init 5 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      if (not (same_importance raw)) || List.exists has_runtime_substitution raw
+      then None
+      else
+        Option.map
+          (fun v ->
+            (Declaration.v ~important:(is_important (List.hd raw)) Offset v, 5))
+          (offset_of_run raw)
+
+let compose_offset_via_index idx =
+  compose_run_via_index idx ~try_compose:try_compose_offset_at
+
+(* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the height,
+   and Chrome 146 has it reset [column-wrap] too, so the run naming the same
+   declaration is all four. The shorthand has no spelling for a height other
+   than its [auto] initial, so a run carrying one keeps its longhands. *)
+type columns_part = Width | Count | Height | Wrap
+
+let columns_part_of : declaration -> columns_part option = function
+  | Declaration { property = Column_width; _ } -> Some Width
+  | Declaration { property = Column_count; _ } -> Some Count
+  | Declaration { property = Column_height; _ } -> Some Height
+  | Declaration { property = Column_wrap; _ } -> Some Wrap
+  | _ -> None
+
+let columns_initial_tail : declaration -> bool = function
+  | Declaration { property = Column_height; value; _ } -> (
+      match (value : Properties.column_height) with
+      | Auto | Initial -> true
+      | _ -> false)
+  | Declaration { property = Column_wrap; value; _ } -> (
+      match (value : Properties.column_wrap) with
+      | Auto | Initial -> true
+      | _ -> false)
+  | _ -> true
+
+let columns_width_of : declaration -> Properties.column_width option = function
+  | Declaration { property = Column_width; value; _ } -> Some value
+  | _ -> Option.None
+
+let columns_count_of : declaration -> Properties.column_count option = function
+  | Declaration { property = Column_count; value; _ } -> Some value
+  | _ -> Option.None
+
+let columns_of_run raw : Properties.columns_value option =
+  let width = List.find_map columns_width_of raw in
+  let count = List.find_map columns_count_of raw in
+  match (width, count) with
+  | Some Auto, Some Auto -> Some (Auto : Properties.columns_value)
+  | Some Auto, Some (Count n) -> Some (Auto_count n)
+  | Some (Width w), Some Auto -> Some (Width w)
+  | Some (Width w), Some (Count n) -> Some (Both (w, n))
+  | _ -> Option.None
+
+let try_compose_columns_at idx i =
+  let n = Rule_index.length idx in
+  if i + 3 >= n then None
+  else
+    let positions = List.init 4 (fun j -> i + j) in
+    if List.exists (Rule_index.is_absorbed idx) positions then None
+    else
+      let raw = List.map (Rule_index.decl_at idx) positions in
+      let parts = List.filter_map columns_part_of raw in
+      if
+        (not (same_importance raw))
+        || List.length (List.sort_uniq compare parts) <> 4
+        || not (List.for_all columns_initial_tail raw)
+      then None
+      else
+        Option.map
+          (Declaration.v ~important:(is_important (List.hd raw)) Columns)
+          (columns_of_run raw)
+
+let compose_columns_via_index idx =
+  compose_run_via_index idx ~try_compose:(fun idx i ->
+      Option.map (fun d -> (d, 4)) (try_compose_columns_at idx i))
+
+let try_compose_transition_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:transition_part_of i in
   if List.length parts < 2 then None
   else
@@ -3526,7 +5076,7 @@ let try_compose_transition_at idx i =
           0 parts
       in
       let missing = all_tr_bits land lnot written in
-      if tr_reset_hazard idx i ~missing ~important then None
+      if tr_reset_hazard idx i ~held ~missing ~important then None
       else
         let layer =
           List.fold_left (fun acc (_, (_, f)) -> f acc) empty_tr_shorthand parts
@@ -3537,8 +5087,8 @@ let try_compose_transition_at idx i =
         in
         Some (shorthand, len)
 
-let compose_transition_via_index idx =
-  compose_run_via_index idx ~try_compose:try_compose_transition_at
+let compose_transition_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_transition_at ~held)
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -3623,27 +5173,33 @@ let an_play_state_part : declaration -> Properties.animation_play_state option =
   | _ -> None
 
 type an_part = Properties.animation_shorthand -> Properties.animation_shorthand
-type an_updater = declaration -> an_part option
+type an_updater = declaration -> (an_slot * an_part) option
 
 let lift_an_part :
     'a.
+    an_slot ->
     (declaration -> 'a option) ->
     (Properties.animation_shorthand -> 'a -> Properties.animation_shorthand) ->
     an_updater =
- fun extract set d ->
-  match extract d with Some v -> Some (fun s -> set s v) | None -> None
+ fun slot extract set d ->
+  match extract d with Some v -> Some (slot, fun s -> set s v) | None -> None
 
 let an_updaters : an_updater list =
   [
-    lift_an_part an_name_part (fun s v -> { s with name = Some v });
-    lift_an_part an_duration_part (fun s v -> { s with duration = Some v });
-    lift_an_part an_timing_part (fun s v -> { s with timing_function = Some v });
-    lift_an_part an_delay_part (fun s v -> { s with delay = Some v });
-    lift_an_part an_iteration_part (fun s v ->
+    lift_an_part Name an_name_part (fun s v -> { s with name = Some v });
+    lift_an_part Duration an_duration_part (fun s v ->
+        { s with duration = Some v });
+    lift_an_part Timing an_timing_part (fun s v ->
+        { s with timing_function = Some v });
+    lift_an_part Delay an_delay_part (fun s v -> { s with delay = Some v });
+    lift_an_part Iteration an_iteration_part (fun s v ->
         { s with iteration_count = Some v });
-    lift_an_part an_direction_part (fun s v -> { s with direction = Some v });
-    lift_an_part an_fill_mode_part (fun s v -> { s with fill_mode = Some v });
-    lift_an_part an_play_state_part (fun s v -> { s with play_state = Some v });
+    lift_an_part Direction an_direction_part (fun s v ->
+        { s with direction = Some v });
+    lift_an_part Fill an_fill_mode_part (fun s v ->
+        { s with fill_mode = Some v });
+    lift_an_part Play an_play_state_part (fun s v ->
+        { s with play_state = Some v });
   ]
 
 let animation_part_of (d : declaration) =
@@ -3662,26 +5218,38 @@ let empty_an_shorthand : Properties.animation_shorthand =
     timeline = None;
   }
 
-let try_compose_animation_at idx i =
+(* The same reset hazard [tr_reset_hazard] answers for transition: a slot the
+   run does not write is reset to its initial by the shorthand, so composing is
+   only safe when nothing else in the cascade holds that slot. *)
+let an_reset_hazard = reset_hazard ~slots_of:an_overwritten_slots
+
+let try_compose_animation_at ~held idx i =
   let parts, len = take_run_at idx ~part_of:animation_part_of i in
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
     if not (same_importance raw_decls) then None
     else
-      let layer =
-        List.fold_left (fun acc (_, f) -> f acc) empty_an_shorthand parts
+      let important = is_important (List.hd raw_decls) in
+      let written =
+        List.fold_left
+          (fun acc (_, (slot, _)) -> acc lor an_slot_bit slot)
+          0 parts
       in
-      let shorthand =
-        Declaration.v
-          ~important:(is_important (List.hd raw_decls))
-          Animation
-          [ (Shorthand layer : Properties.animation) ]
-      in
-      Some (shorthand, len)
+      let missing = all_an_bits land lnot written in
+      if an_reset_hazard idx i ~held ~missing ~important then None
+      else
+        let layer =
+          List.fold_left (fun acc (_, (_, f)) -> f acc) empty_an_shorthand parts
+        in
+        let shorthand =
+          Declaration.v ~important Animation
+            [ (Shorthand layer : Properties.animation) ]
+        in
+        Some (shorthand, len)
 
-let compose_animation_via_index idx =
-  compose_run_via_index idx ~try_compose:try_compose_animation_at
+let compose_animation_via_index ~held idx =
+  compose_run_via_index idx ~try_compose:(try_compose_animation_at ~held)
 
 let merge_box_shorthand_longhands source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
@@ -4285,43 +5853,56 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
 let compose_index_group_a ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_box_via_index ~ctx idx;
-  compose_pair_via_index idx;
+  compose_pair_via_index ~ctx idx;
   compose_outline_via_index idx;
+  compose_view_timeline_via_index idx;
+  compose_font_synthesis_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
-let compose_index_group_b kept =
+let compose_index_group_b ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_font_via_index idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
-  compose_text_decoration_via_index idx;
-  compose_border_via_index idx;
+  compose_text_decoration_via_index ~held idx;
+  compose_offset_via_index idx;
+  compose_columns_via_index idx;
+  compose_border_via_index
+    ~bi_hazard:(fun i ~important ->
+      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    idx;
+  compose_line_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Third index group runs at the very end: mask + transition + animation share
    one index. *)
-let compose_index_group_c ~ctx kept =
+let compose_index_group_c ~ctx ~held kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
-  compose_transition_via_index idx;
-  compose_animation_via_index idx;
+  compose_transition_via_index ~held idx;
+  compose_animation_via_index ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-let compose_border_whole_step ~ctx kept =
+let compose_border_whole_step ~held ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
-  compose_border_whole_via_index ~ctx idx;
+  compose_border_whole_via_index
+    ~bi_hazard:(fun i ~important ->
+      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
-let compose_shorthands ~ctx kept =
+let compose_shorthands ?(held = held_none) ~ctx kept =
   kept |> compose_index_group_a ~ctx |> reorder_font_resets_before_font
-  |> compose_index_group_b |> reorder_border_image_before_border
-  |> compose_border_whole_step ~ctx
+  |> compose_index_group_b ~held
+  |> reorder_border_image_before_border
+  |> compose_border_whole_step ~held ~ctx
   |> drop_bimg_shadowed_by_border
   |> compose_border_image_shorthand ~ctx
   |> compose_background_shorthand ~ctx
-  |> reorder_mask_border_before_mask |> compose_index_group_c ~ctx
+  |> reorder_mask_border_before_mask
+  |> compose_index_group_c ~ctx ~held
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
@@ -4462,12 +6043,14 @@ let drop_longhands_after_covering_shorthand props =
   let kept = List.filteri (fun i _ -> not dropped.(i)) props in
   preserve_list props kept
 
-let deduplicate_declarations_with ~ctx ?(merge_box = true) props =
+let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
+    props =
+  let held = held_outside held props in
   let props = drop_longhands_after_covering_shorthand props in
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
   let kept =
-    let kept = if merge_box then compose_shorthands ~ctx kept else kept in
+    let kept = if merge_box then compose_shorthands ~held ~ctx kept else kept in
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in

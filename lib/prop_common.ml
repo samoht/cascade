@@ -12,6 +12,11 @@ open Properties_intf
 let err_invalid_value ?loc ?got t prop_name value =
   Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
+let read_auto_color t =
+  Cursor.enum "auto or colour"
+    [ ("auto", (Auto : color)) ]
+    ~default:read_color t
+
 let rec read_css_wide t : css_wide =
   Cursor.enum_or_var "css-wide keyword"
     [
@@ -178,6 +183,14 @@ let is_lp_substitution : length_percentage -> bool = function
 
 let is_color_substitution : color -> bool = function
   | Attribute _ | Var _ -> true
+  | _ -> false
+
+let is_border_style_substitution : border_style -> bool = function
+  | Var _ -> true
+  | _ -> false
+
+let is_border_width_substitution : border_width -> bool = function
+  | Var _ -> true
   | _ -> false
 
 (* Canonicalise a box shorthand: normalise each side with [f], then pick the

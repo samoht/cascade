@@ -737,6 +737,13 @@ let vars_of_position_value (value : Properties.position_value) : any_var list =
       vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
   | _ -> []
 
+let vars_of_background_position_axis
+    (value : Properties.background_position_axis) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Offset lp | Edge_offset (_, lp) -> vars_of_length_percentage lp
+  | _ -> []
+
 let rec vars_of_gradient_direction (value : Properties.gradient_direction) :
     any_var list =
   match value with
@@ -871,6 +878,12 @@ let vars_of_border_image_outset (value : Properties.border_image_outset) :
 
 let vars_of_column_width (value : Properties.column_width) : any_var list =
   match value with Var v -> [ V v ] | Width l -> vars_of_length l | _ -> []
+
+let vars_of_column_height (value : Properties.column_height) : any_var list =
+  match value with Var v -> [ V v ] | Height l -> vars_of_length l | _ -> []
+
+let vars_of_column_wrap (value : Properties.column_wrap) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_column_count (value : Properties.column_count) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -1394,6 +1407,9 @@ let vars_of_initial_letter (value : Properties.initial_letter) =
 let vars_of_white_space (value : Properties.white_space) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_white_space_collapse (value : Properties.white_space_collapse) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_word_break (value : Properties.word_break) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1428,6 +1444,14 @@ let vars_of_logical_border_width (value : Properties.logical_border_width) =
   | Single w -> vars_of_border_width w
   | Pair (start_, end_) ->
       vars_of_border_width start_ @ vars_of_border_width end_
+  | _ -> []
+
+let vars_of_logical_border_style (value : Properties.logical_border_style) =
+  match value with
+  | Var v -> [ V v ]
+  | Single s -> vars_of_border_style s
+  | Pair (start_, end_) ->
+      vars_of_border_style start_ @ vars_of_border_style end_
   | _ -> []
 
 let vars_of_outline (value : Properties.outline) =
@@ -2093,22 +2117,22 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_block_color, value -> vars_of_logical_border_color value
   | Border_inline_width, value -> vars_of_logical_border_width value
   | Border_block_width, value -> vars_of_logical_border_width value
-  | Border_inline_style, value -> vars_of_border_style value
-  | Border_block_style, value -> vars_of_border_style value
-  | Border_start_start_radius, value -> vars_of_length value
-  | Border_start_end_radius, value -> vars_of_length value
-  | Border_end_start_radius, value -> vars_of_length value
-  | Border_end_end_radius, value -> vars_of_length value
+  | Border_inline_style, value -> vars_of_logical_border_style value
+  | Border_block_style, value -> vars_of_logical_border_style value
+  | Border_start_start_radius, value -> vars_of_length_list value
+  | Border_start_end_radius, value -> vars_of_length_list value
+  | Border_end_start_radius, value -> vars_of_length_list value
+  | Border_end_end_radius, value -> vars_of_length_list value
   | Text_decoration_color, value -> vars_of_color value
   | Webkit_text_decoration_color, value -> vars_of_color value
   | Webkit_tap_highlight_color, value -> vars_of_color value
   | Outline_color, value -> vars_of_color value
   (* Border radius *)
   | Border_radius, value -> vars_of_border_radius value
-  | Border_top_left_radius, value -> vars_of_length value
-  | Border_top_right_radius, value -> vars_of_length value
-  | Border_bottom_left_radius, value -> vars_of_length value
-  | Border_bottom_right_radius, value -> vars_of_length value
+  | Border_top_left_radius, value -> vars_of_length_list value
+  | Border_top_right_radius, value -> vars_of_length_list value
+  | Border_bottom_left_radius, value -> vars_of_length_list value
+  | Border_bottom_right_radius, value -> vars_of_length_list value
   | Border_image, value -> vars_of_border_image value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
@@ -2153,7 +2177,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | O_transform, value -> vars_of_transform_list value
   | Translate, value -> vars_of_translate_value value
   (* Border style properties *)
-  | Border_style, value -> vars_of_border_style value
+  | Border_style, value -> List.concat_map vars_of_border_style value
   | Border_top_style, value -> vars_of_border_style value
   | Border_right_style, value -> vars_of_border_style value
   | Border_bottom_style, value -> vars_of_border_style value
@@ -2231,9 +2255,13 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Columns *)
   | Columns, value -> vars_of_columns_value value
   | Column_width, value -> vars_of_column_width value
+  | Column_height, value -> vars_of_column_height value
+  | Column_wrap, value -> vars_of_column_wrap value
   | Column_count, value -> vars_of_column_count value
   | Column_rule, value -> vars_of_border value
   | Column_rule_color, value -> vars_of_color value
+  | Column_rule_width, value -> vars_of_border_width value
+  | Column_rule_style, value -> vars_of_border_style value
   | Column_span, value -> vars_of_column_span value
   (* Contain *)
   | Contain, value -> vars_of_contain value
@@ -2519,8 +2547,13 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Ms_user_select, value -> vars_of_user_select value
   | Webkit_text_fill_color, value -> vars_of_color value
   | Webkit_text_stroke_color, value -> vars_of_color value
+  | Webkit_text_stroke_width, value -> vars_of_border_width value
+  | Webkit_text_stroke, value ->
+      Option.fold ~none:[] ~some:vars_of_border_width value.width
+      @ Option.fold ~none:[] ~some:vars_of_color value.color
   | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
+  | White_space_collapse, value -> vars_of_white_space_collapse value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
   | Z_index, value -> vars_of_z_index value
@@ -2609,6 +2642,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scroll_padding_block_end, value -> vars_of_length value
   (* One position per background / mask layer, as for [object-position]. *)
   | Background_position, value -> List.concat_map vars_of_position_value value
+  | Background_position_x, value -> vars_of_background_position_axis value
+  | Background_position_y, value -> vars_of_background_position_axis value
+  | Webkit_mask_position_x, value -> vars_of_background_position_axis value
+  | Webkit_mask_position_y, value -> vars_of_background_position_axis value
   | Mask_position, value -> List.concat_map vars_of_position_value value
   | Webkit_mask_position, value -> List.concat_map vars_of_position_value value
   (* Remaining typed longhands. *)

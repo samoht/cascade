@@ -1602,7 +1602,11 @@ and pp_scope_statement ctx start end_ content =
   | None -> ());
   (match end_ with
   | Some e ->
-      Pp.string ctx (if Pp.minified ctx then "to (" else " to (");
+      (* [@scope] and [to] are both ident-shaped, so with nothing between them
+         they lex as the one at-keyword [@scopeto]. The [)] closing a start
+         selector already delimits them. *)
+      if (not (Pp.minified ctx)) || Option.is_none start then Pp.char ctx ' ';
+      Pp.string ctx "to (";
       pp_scope_selector ctx e;
       Pp.string ctx ")"
   | None -> ());
@@ -2378,11 +2382,22 @@ let read_font_stretch_descriptor r =
         Font_stretch_range (first, second))
     r
 
+(* CSS Syntax 3 (ED) sec. 4.3.14: this descriptor's value is the one place in
+   the language the tokenizer is asked for unicode ranges, so re-lex it with the
+   flag the rest of the sheet is read without. *)
 let read_unicode_range_descriptor r =
   read_descriptor_value
     (fun cur ->
-      Cursor.list ~at_least:1 ~sep:Cursor.comma Properties.read_unicode_range
-        cur)
+      let raw = Cursor.consume_to_decl_end ~trim:true cur in
+      let inner = Cursor.of_string ~unicode_ranges:true raw in
+      let values =
+        Cursor.list ~at_least:1 ~sep:Cursor.comma Properties.read_unicode_range
+          inner
+      in
+      Cursor.ws inner;
+      if not (Cursor.is_done inner) then
+        Cursor.err_invalid cur "unicode-range trailing tokens";
+      values)
     (fun vs -> Unicode_range vs)
     r
 
@@ -2598,6 +2613,21 @@ let descriptor_resolves_var name =
            descriptor)
   | exception Error.Parse_error _ -> false
 
+(* CSS Syntax 3 (ED) sec. 5.5.5 gives an [<at-keyword-token>] to "consume an
+   at-rule" rather than to the declaration reader, and keeps the declarations
+   written on either side of it. No @font-face descriptor is an at-rule, so the
+   rule read here is dropped - and it alone, because sec. 5.5.2 ends an at-rule
+   at its block or at its [;], never at the descriptor after it. A cursor that
+   does not recover raises instead, as the other descriptor bodies do. *)
+let skip_font_face_at_rule r name loc =
+  let error = Error.unknown_at_rule loc name in
+  if not (Cursor.recover r) then Error.fail error;
+  let start = Cursor.save r in
+  skip_past_rule r;
+  Cursor.push_warning r
+    ~recovery:(Cursor.dropped_since r start Error.Recovery.Rule)
+    error
+
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;
   if Cursor.is_done r then None
@@ -2605,28 +2635,34 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
     Cursor.skip r;
     None)
   else
-    let start = Cursor.save r in
-    let name = Cursor.ident ~keep_case:false r in
-    match
-      if descriptor_value_has_var r && not (descriptor_resolves_var name) then
-        Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
-      else read_font_face_desc name r
-    with
-    | descriptor ->
-        Cursor.ws r;
-        if Cursor.peek_semicolon r then Cursor.skip r;
-        Some descriptor
-    | exception Error.Parse_error e ->
-        (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
-           that does not parse - an unknown name (Fontsource's
-           [font-named-instance]) or an invalid value of a known one
-           ([font-display:maybe]) - is dropped and the rest of the @font-face is
-           kept, matching browsers. *)
-        Cursor.skip_past_semicolon r;
-        Cursor.push_warning r
-          ~recovery:(Cursor.dropped_since r start Error.Recovery.Declaration)
-          e;
+    match Cursor.peek r with
+    | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) ->
+        skip_font_face_at_rule r name loc;
         None
+    | _ -> (
+        let start = Cursor.save r in
+        let name = Cursor.ident ~keep_case:false r in
+        match
+          if descriptor_value_has_var r && not (descriptor_resolves_var name)
+          then Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
+          else read_font_face_desc name r
+        with
+        | descriptor ->
+            Cursor.ws r;
+            if Cursor.peek_semicolon r then Cursor.skip r;
+            Some descriptor
+        | exception Error.Parse_error e ->
+            (* CSS Fonts 4 sec. 4.1 / CSS Syntax 3 (ED) sec. 5.5.5: a descriptor
+               that does not parse - an unknown name (Fontsource's
+               [font-named-instance]) or an invalid value of a known one
+               ([font-display:maybe]) - is dropped and the rest of the
+               @font-face is kept, matching browsers. *)
+            Cursor.skip_past_semicolon r;
+            Cursor.push_warning r
+              ~recovery:
+                (Cursor.dropped_since r start Error.Recovery.Declaration)
+              e;
+            None)
 
 let read_font_face_block inner =
   let rec read_descriptors acc =
@@ -3712,6 +3748,11 @@ let read_property_rule (r : Cursor.t) : statement =
 (* Does the item ahead hold a curly block before its terminating [;]? Then it is
    a nested rule, not a declaration, however much its prelude looks like one.
    Leaves the cursor where it found it. *)
+(* CSS Syntax 3 (ED) sec. 5.5.3 consumes a qualified rule whole, block and all,
+   before deciding it is invalid, so sec. 5.5.5 resumes right after that block.
+   Recovering a rule to the next semicolon, which is what sec. 5.5.6 does for a
+   bad declaration, would take the items written after it. The caller rewinds
+   first so the item is skipped from its start. *)
 let item_opens_block inner =
   let start = Cursor.save inner in
   let rec scan () =
@@ -3726,6 +3767,32 @@ let item_opens_block inner =
   let found = scan () in
   Cursor.restore inner start;
   found
+
+(* CSS Syntax 3 (ED) sec. 5.5.3 drops a qualified rule whose prelude is an ident
+   starting with [--] followed by a colon, block and all: that item is a
+   declaration however much it looks like a rule, so sec. 5.5.6 recovery takes
+   it, not sec. 5.5.5's. *)
+let item_is_custom_property inner =
+  let start = Cursor.save inner in
+  let answer =
+    match Cursor.peek inner with
+    | Some (Component.Preserved { kind = Token.Ident name; _ })
+      when Custom_property_name.has_prefix name ->
+        Cursor.skip inner;
+        Cursor.ws inner;
+        Cursor.peek_colon inner
+    | _ -> false
+  in
+  Cursor.restore inner start;
+  answer
+
+let skip_invalid_nesting_item r =
+  if item_opens_block r && not (item_is_custom_property r) then (
+    skip_past_rule r;
+    Error.Recovery.Rule)
+  else (
+    Cursor.skip_past_semicolon r;
+    Error.Recovery.Declaration)
 
 (* Discard an at-rule that is invalid in a style rule and resume at the next
    item, the recovery CSS Syntax 3 (ED) sec. 5.5.5 describes. The warning is
@@ -4011,9 +4078,10 @@ and read_nesting_block (r : Cursor.t) : block =
     match read_nesting_item ~prev:acc r with
     | item -> add_item acc item
     | exception Error.Parse_error e ->
-        Cursor.skip_past_semicolon r;
+        Cursor.restore r start;
+        let construct = skip_invalid_nesting_item r in
         Cursor.push_warning r
-          ~recovery:(Cursor.dropped_since r start Error.Recovery.Declaration)
+          ~recovery:(Cursor.dropped_since r start construct)
           e;
         read_items acc
   and add_item acc = function
@@ -4047,10 +4115,10 @@ and read_nesting_declaration_or_statement r =
   (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
-     as one. *)
+     as one, and a [--x:] prelude is a declaration whatever follows it. *)
   | exception Error.Parse_error _
     when Cursor.restore r start;
-         item_opens_block r ->
+         item_opens_block r && not (item_is_custom_property r) ->
       `Stmt (read_statement r)
 
 (* Helper: Read nested at-rule with declarations content *)
@@ -4166,10 +4234,10 @@ and read_rule_decl_or_nested selector inner decls nested =
   (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so
      [h2:where(...) { ... }] reads as a declaration up to the [{]. Rewind and
      take it as a rule; a genuine bad declaration has no block and still reports
-     as one. *)
+     as one, and a [--x:] prelude is a declaration whatever follows it. *)
   | exception Error.Parse_error _
     when Cursor.restore inner start;
-         item_opens_block inner ->
+         item_opens_block inner && not (item_is_custom_property inner) ->
       read_nested_rule_or_done selector inner decls nested
 
 and read_nested_rule_or_done selector inner decls nested =
@@ -4198,9 +4266,10 @@ and read_recovering_rule_item selector inner loop decls nested =
   | `Done result -> result
   | `Continue (decls, nested) -> loop decls nested
   | exception Error.Parse_error e ->
-      Cursor.skip_past_semicolon inner;
+      Cursor.restore inner start;
+      let construct = skip_invalid_nesting_item inner in
       Cursor.push_warning inner
-        ~recovery:(Cursor.dropped_since inner start Error.Recovery.Declaration)
+        ~recovery:(Cursor.dropped_since inner start construct)
         e;
       loop decls nested
 

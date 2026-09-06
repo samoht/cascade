@@ -17,6 +17,17 @@ let decl_strings decls =
 let indexed decls = List.mapi (fun i d -> (i, d)) decls
 let unindexed decls = List.map snd decls
 
+(* [decl_optimizes_to] wraps its input in one rule; these cases turn on what a
+   neighbouring rule holds, so they optimize a whole sheet. *)
+let sheet_optimizes_to ~into input =
+  match Css.of_string input with
+  | Ok { stylesheet; _ } ->
+      Alcotest.(check string)
+        (String.concat "" [ input; " minify+optimize" ])
+        into
+        (String.trim (Css.to_string ~minify:true (Css.optimize stylesheet)))
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
 let test_declaration_covers_reset_boundaries () =
   Alcotest.(check bool)
     "all covers ordinary property" true
@@ -40,11 +51,11 @@ let test_unknown_property_overlap () =
   Alcotest.(check bool)
     "an unknown longhand overlaps the shorthand that resets it" true
     (Shorthand.declarations_overlap (decl "background:red")
-       (decl "background-position-x:10px"));
+       (decl "background-repeat-x:repeat"));
   Alcotest.(check bool)
     "the relation is symmetric" true
     (Shorthand.declarations_overlap
-       (decl "background-position-x:10px")
+       (decl "background-repeat-x:repeat")
        (decl "background:red"));
   (* [grid-row-gap] is the legacy alias of [row-gap], which [gap] resets. *)
   Alcotest.(check bool)
@@ -529,6 +540,604 @@ let test_transition_contraction_covers_reset_longhands () =
   decl_optimizes_to ~into:"transition-delay:5s!important;transition:color 1s"
     "transition-delay:5s!important;transition-property:color;transition-duration:1s"
 
+(* The slot a contraction resets belongs to the element, not to the rule: any
+   declaration that can reach the same element and holds that slot is at risk,
+   whichever rule it sits in. Composition reads one rule, so it cannot see the
+   holders next door. *)
+(* CSS Scroll Snap 1 sec. 6.1 and 6.2 give the scroll-margin and scroll-padding
+   logical axes the same [<length>{1,2}] shape the margin and padding axes have,
+   so the pair composes the same way. Without it the canonical comparator cannot
+   equate the shorthand with its own longhands. *)
+let test_scroll_axis_pair_composes () =
+  sheet_optimizes_to ~into:".x{scroll-margin-block:1px 2px}"
+    ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px}";
+  sheet_optimizes_to ~into:".x{scroll-margin-inline:1px}"
+    ".x{scroll-margin-inline-start:1px;scroll-margin-inline-end:1px}";
+  sheet_optimizes_to ~into:".x{scroll-padding-block:1px 2px}"
+    ".x{scroll-padding-block-start:1px;scroll-padding-block-end:2px}";
+  sheet_optimizes_to ~into:".x{scroll-padding-inline:3em}"
+    ".x{scroll-padding-inline-start:3em;scroll-padding-inline-end:3em}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
+    ".x{scroll-margin-block-start:1px;scroll-margin-block-end:2px!important}"
+
+(* CSS Logical 1 sec. 4.3 and 4.4: [border-block-*] and [border-inline-*] take
+   one or two values of the side longhand's own type, so the start and end
+   longhands compose into the axis shorthand the way the length axes do. Without
+   it the canonical comparator cannot equate the shorthand with its
+   longhands. *)
+let test_border_axis_pair_composes () =
+  sheet_optimizes_to ~into:".x{border-inline-width:2px 1px}"
+    ".x{border-inline-start-width:2px;border-inline-end-width:1px}";
+  sheet_optimizes_to ~into:".x{border-block-width:2px}"
+    ".x{border-block-start-width:2px;border-block-end-width:2px}";
+  sheet_optimizes_to ~into:".x{border-inline-style:solid dashed}"
+    ".x{border-inline-start-style:solid;border-inline-end-style:dashed}";
+  sheet_optimizes_to ~into:".x{border-block-style:double}"
+    ".x{border-block-start-style:double;border-block-end-style:double}";
+  sheet_optimizes_to ~into:".x{border-inline-color:red currentColor}"
+    ".x{border-inline-start-color:red;border-inline-end-color:currentcolor}";
+  sheet_optimizes_to ~into:".x{border-block-color:#0f0}"
+    ".x{border-block-start-color:#0f0;border-block-end-color:#0f0}";
+  (* A CSS-wide keyword is the whole value or nothing, so a mixed pair stays two
+     declarations. *)
+  sheet_optimizes_to
+    ~into:".x{border-inline-start-width:inherit;border-inline-end-width:thin}"
+    ".x{border-inline-start-width:inherit;border-inline-end-width:thin}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-block-start-color:red;border-block-end-color:#00f!important}"
+    ".x{border-block-start-color:red;border-block-end-color:blue!important}"
+
+(* CSS Backgrounds 3 sec. 3.5 and CSS Logical 1 sec. 4.5: each border side is
+   [<line-width> || <line-style> || <line-color>] over its own three longhands
+   and resets nothing else, so a contiguous run of the three contracts the way
+   [outline] already does. *)
+let test_line_shorthand_composes () =
+  sheet_optimizes_to ~into:".x{border-top:1px solid red}"
+    ".x{border-top-width:1px;border-top-style:solid;border-top-color:red}";
+  (* The three are independent, so any order names the same declaration. *)
+  sheet_optimizes_to ~into:".x{border-left:1px solid red}"
+    ".x{border-left-color:red;border-left-style:solid;border-left-width:1px}";
+  sheet_optimizes_to ~into:".x{border-block-start:1px solid red}"
+    ".x{border-block-start-width:1px;border-block-start-style:solid;border-block-start-color:red}";
+  sheet_optimizes_to ~into:".x{border-inline-end:2px dotted#0f0}"
+    ".x{border-inline-end-width:2px;border-inline-end-style:dotted;border-inline-end-color:#0f0}";
+  (* The shorthand tells width from style from colour by type, so a substituted
+     token sequence could land in another slot. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-right-width:var(--w);border-right-style:solid;border-right-color:red}"
+    ".x{border-right-width:var(--w);border-right-style:solid;border-right-color:red}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
+    ".x{border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:red!important}"
+
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what the shorthand assigns to a slot left out, so a longhand written that way
+   names the same declaration as an omitted component. *)
+let test_line_shorthand_initial_slot () =
+  sheet_optimizes_to ~into:".x{border-block-start:thin dashed}"
+    ".x{border-block-start-width:thin;border-block-start-style:dashed;border-block-start-color:initial}";
+  sheet_optimizes_to ~into:".x{border-top:dashed red}"
+    ".x{border-top-width:initial;border-top-style:dashed;border-top-color:red}";
+  (* Every slot at its initial is what [none] names. *)
+  sheet_optimizes_to ~into:".x{border-left:none}"
+    ".x{border-left-width:initial;border-left-style:initial;border-left-color:initial}"
+
+(* CSS Logical 1 sec. 4.6: [border-block] and [border-inline] set the width,
+   style and colour of both sides of their axis, which is what the three axis
+   shorthands set between them, so a single-valued run of the three contracts
+   the way [border-width] / [border-style] / [border-color] contract into
+   [border]. *)
+let test_logical_border_whole_composes () =
+  sheet_optimizes_to ~into:".x{border-block:1px solid red}"
+    ".x{border-block-width:1px;border-block-style:solid;border-block-color:red}";
+  sheet_optimizes_to ~into:".x{border-inline:1px solid red}"
+    ".x{border-inline-start-width:1px;border-inline-end-width:1px;border-inline-start-style:solid;border-inline-end-style:solid;border-inline-start-color:red;border-inline-end-color:red}";
+  (* An axis naming two different sides has no slot in the shorthand. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-block-width:1px \
+       2px;border-block-style:solid;border-block-color:red}"
+    ".x{border-block-width:1px \
+     2px;border-block-style:solid;border-block-color:red}"
+
+(* CSS Overscroll 1 sec. 2.1 and CSS Sizing 4 sec. 5.1 assign their two
+   longhands the way [overflow] does: the first value is the x axis, the second
+   the y axis, and one value names both. *)
+let test_xy_pair_composes () =
+  sheet_optimizes_to ~into:".x{overscroll-behavior:contain}"
+    ".x{overscroll-behavior-x:contain;overscroll-behavior-y:contain}";
+  sheet_optimizes_to ~into:".x{overscroll-behavior:auto none}"
+    ".x{overscroll-behavior-x:auto;overscroll-behavior-y:none}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:100px}"
+    ".x{contain-intrinsic-width:100px;contain-intrinsic-height:100px}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:100px 200px}"
+    ".x{contain-intrinsic-width:100px;contain-intrinsic-height:200px}";
+  sheet_optimizes_to ~into:".x{contain-intrinsic-size:auto 300px}"
+    ".x{contain-intrinsic-width:auto 300px;contain-intrinsic-height:auto 300px}";
+  (* [contain-intrinsic-size] has no spelling for one axis at [none] beside a
+     sized other, so that pair stays two declarations. *)
+  sheet_optimizes_to
+    ~into:".x{contain-intrinsic-width:none;contain-intrinsic-height:100px}"
+    ".x{contain-intrinsic-width:none;contain-intrinsic-height:100px}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
+    ".x{overscroll-behavior-x:auto;overscroll-behavior-y:none!important}"
+
+(* CSS Grid 2 sec. 8.3 and 8.4: [grid-row] and [grid-column] are [<grid-line> [/
+   <grid-line>]?] over their start and end longhands, and [grid-area] is the
+   same over all four. The printer then picks the shortest spelling of the lines
+   the shorthand names. *)
+let test_grid_placement_composes () =
+  sheet_optimizes_to ~into:".x{grid-row:1/3}"
+    ".x{grid-row-start:1;grid-row-end:3}";
+  sheet_optimizes_to ~into:".x{grid-column:1/3}"
+    ".x{grid-column-start:1;grid-column-end:3}";
+  sheet_optimizes_to ~into:".x{grid-row:span 2}"
+    ".x{grid-row-start:span 2;grid-row-end:auto}";
+  sheet_optimizes_to ~into:".x{grid-area:1/2/3/4}"
+    ".x{grid-row-start:1;grid-column-start:2;grid-row-end:3;grid-column-end:4}";
+  sheet_optimizes_to ~into:".x{grid-area:a}"
+    ".x{grid-row-start:a;grid-column-start:a;grid-row-end:a;grid-column-end:a}";
+  (* A substituted line can be a whole [<start> / <end>], so it stays put. *)
+  sheet_optimizes_to ~into:".x{grid-row-start:var(--l);grid-row-end:3}"
+    ".x{grid-row-start:var(--l);grid-row-end:3}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to ~into:".x{grid-row-start:1;grid-row-end:3!important}"
+    ".x{grid-row-start:1;grid-row-end:3!important}"
+
+(* CSS Flexbox 1 sec. 5.1 and CSS Text Decoration 4 sec. 3.4: [flex-flow] and
+   [text-emphasis] each take two longhands, one per component. A longhand at its
+   initial names what leaving the component out names, so it drops - unless both
+   do and the value would then say nothing. *)
+let test_duo_keyword_composes () =
+  (* [row] is the direction's initial, so the composed value names it by leaving
+     the component out. *)
+  sheet_optimizes_to ~into:".x{flex-flow:wrap}"
+    ".x{flex-direction:row;flex-wrap:wrap}";
+  sheet_optimizes_to ~into:".x{flex-flow:column}"
+    ".x{flex-direction:column;flex-wrap:nowrap}";
+  sheet_optimizes_to ~into:".x{flex-flow:wrap-reverse}"
+    ".x{flex-direction:row;flex-wrap:wrap-reverse}";
+  sheet_optimizes_to ~into:".x{flex-flow:row}"
+    ".x{flex-direction:row;flex-wrap:nowrap}";
+  sheet_optimizes_to ~into:".x{text-emphasis:filled red}"
+    ".x{text-emphasis-style:filled;text-emphasis-color:red}";
+  sheet_optimizes_to ~into:".x{text-emphasis:none}"
+    ".x{text-emphasis-style:none;text-emphasis-color:initial}";
+  (* A substituted component can be the whole value, so it stays put. *)
+  sheet_optimizes_to ~into:".x{flex-direction:var(--d);flex-wrap:wrap}"
+    ".x{flex-direction:var(--d);flex-wrap:wrap}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to ~into:".x{flex-direction:row;flex-wrap:wrap!important}"
+    ".x{flex-direction:row;flex-wrap:wrap!important}"
+
+(* CSS Animations 2 sec. 6.3 and CSS Scroll Animations 1 sec. 4.3:
+   [animation-range] is [<start> <end>?] and [scroll-timeline] is [<name>
+   <axis>?], each over its own two longhands. *)
+let test_timeline_range_composes () =
+  sheet_optimizes_to ~into:".x{animation-range:normal}"
+    ".x{animation-range-start:normal;animation-range-end:normal}";
+  sheet_optimizes_to ~into:".x{animation-range:entry 10%exit 90%}"
+    ".x{animation-range-start:entry 10%;animation-range-end:exit 90%}";
+  (* [block] is the axis's initial, so the composed value names it by leaving
+     the component out. *)
+  sheet_optimizes_to ~into:".x{scroll-timeline:--t}"
+    ".x{scroll-timeline-name:--t;scroll-timeline-axis:block}";
+  sheet_optimizes_to ~into:".x{scroll-timeline:none}"
+    ".x{scroll-timeline-name:none;scroll-timeline-axis:block}";
+  (* [scroll-timeline: none] sets the axis to [block], so a named axis beside an
+     unnamed timeline has no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:".x{scroll-timeline-name:none;scroll-timeline-axis:inline}"
+    ".x{scroll-timeline-name:none;scroll-timeline-axis:inline}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{animation-range-start:normal;animation-range-end:normal!important}"
+    ".x{animation-range-start:normal;animation-range-end:normal!important}"
+
+(* CSS Contain 3 sec. 4.3 and CSS Scroll Animations 1 sec. 5.2: [container] is
+   [<name> [/ <type>]?] and [view-timeline] is [<name> <axis>? <inset>?], each
+   over its own name longhand and its modifiers. A modifier at its initial names
+   what leaving it out names. *)
+let test_named_shorthand_composes () =
+  sheet_optimizes_to ~into:".x{container:card/inline-size}"
+    ".x{container-name:card;container-type:inline-size}";
+  sheet_optimizes_to ~into:".x{container:none}"
+    ".x{container-name:none;container-type:normal}";
+  sheet_optimizes_to ~into:".x{container:card}"
+    ".x{container-name:card;container-type:normal}";
+  sheet_optimizes_to ~into:".x{view-timeline:--v}"
+    ".x{view-timeline-name:--v;view-timeline-axis:block;view-timeline-inset:auto}";
+  sheet_optimizes_to ~into:".x{view-timeline:--v inline}"
+    ".x{view-timeline-name:--v;view-timeline-axis:inline;view-timeline-inset:auto}";
+  sheet_optimizes_to ~into:".x{view-timeline:none}"
+    ".x{view-timeline-name:none;view-timeline-axis:block;view-timeline-inset:auto}";
+  (* An unnamed timeline carries no modifier, so a non-initial one beside it has
+     no shorthand spelling. *)
+  sheet_optimizes_to
+    ~into:".x{view-timeline-name:none;view-timeline-axis:inline}"
+    ".x{view-timeline-name:none;view-timeline-axis:inline}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{container-name:card;container-type:inline-size!important}"
+    ".x{container-name:card;container-type:inline-size!important}"
+
+(* CSS Backgrounds 4 sec. 3.3: [background-position] is [<x> <y>] over the two
+   axis longhands, the first value the x axis. A bare offset is measured from
+   the start edge, so [left 10px] and [10px] name the same position. *)
+let test_background_position_composes () =
+  sheet_optimizes_to ~into:".x{background-position:50%10px}"
+    ".x{background-position-x:50%;background-position-y:10px}";
+  (* Sec. 2.6 reads a lone value as the x axis and centres the y, so the
+     one-value spelling names the same position and is shorter. *)
+  sheet_optimizes_to ~into:".x{background-position:10px}"
+    ".x{background-position-x:10px;background-position-y:center}";
+  sheet_optimizes_to ~into:".x{background-position:0}"
+    ".x{background-position-x:left;background-position-y:center}";
+  sheet_optimizes_to ~into:".x{background-position:right 5%bottom 2px}"
+    ".x{background-position-x:right 5%;background-position-y:bottom 2px}";
+  (* A substituted axis can be the whole value, so it stays put. *)
+  sheet_optimizes_to
+    ~into:".x{background-position-x:var(--x);background-position-y:10px}"
+    ".x{background-position-x:var(--x);background-position-y:10px}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{background-position-x:10px;background-position-y:20px!important}"
+    ".x{background-position-x:10px;background-position-y:20px!important}"
+
+(* CSS Multicol 1 sec. 4.3: [column-rule] is [<line-width> || <line-style> ||
+   <line-color>] over its own three longhands, the shape the border sides take,
+   and sec. 4.1 to 4.2 give the same initials. *)
+let test_column_rule_composes () =
+  sheet_optimizes_to ~into:".x{column-rule:1px solid red}"
+    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red}";
+  sheet_optimizes_to ~into:".x{column-rule:none}"
+    ".x{column-rule-width:medium;column-rule-style:none;column-rule-color:currentcolor}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
+    ".x{column-rule-width:1px;column-rule-style:solid;column-rule-color:red!important}"
+
+(* CSS Text 4 sec. 3: [white-space] is a shorthand of [white-space-collapse] and
+   [text-wrap-mode], and one keyword names each of the four pairs its table
+   lists. *)
+let test_white_space_composes () =
+  sheet_optimizes_to ~into:".x{white-space:pre-wrap}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:wrap}";
+  sheet_optimizes_to ~into:".x{white-space:normal}"
+    ".x{white-space-collapse:collapse;text-wrap-mode:wrap}";
+  sheet_optimizes_to ~into:".x{white-space:pre}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:nowrap}";
+  sheet_optimizes_to ~into:".x{white-space:nowrap}"
+    ".x{white-space-collapse:collapse;text-wrap-mode:nowrap}";
+  sheet_optimizes_to ~into:".x{white-space:pre-line}"
+    ".x{white-space-collapse:preserve-breaks;text-wrap-mode:wrap}";
+  (* A pair outside that table has no one-keyword spelling. *)
+  sheet_optimizes_to
+    ~into:".x{white-space-collapse:preserve-spaces;text-wrap-mode:wrap}"
+    ".x{white-space-collapse:preserve-spaces;text-wrap-mode:wrap}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
+    ".x{white-space-collapse:preserve;text-wrap-mode:wrap!important}"
+
+(* CSS Text 4 sec. 5.1: [text-wrap] is [<'text-wrap-mode'> ||
+   <'text-wrap-style'>] over its two longhands, and a longhand at its initial
+   names what leaving the component out names. *)
+let test_text_wrap_composes () =
+  sheet_optimizes_to ~into:".x{text-wrap:balance}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:balance}";
+  sheet_optimizes_to ~into:".x{text-wrap:wrap}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:auto}";
+  sheet_optimizes_to ~into:".x{text-wrap:nowrap}"
+    ".x{text-wrap-mode:nowrap;text-wrap-style:auto}";
+  sheet_optimizes_to ~into:".x{text-wrap:pretty}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:pretty}";
+  (* Neither component at its initial needs both written out. *)
+  sheet_optimizes_to ~into:".x{text-wrap:nowrap balance}"
+    ".x{text-wrap-mode:nowrap;text-wrap-style:balance}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
+    ".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"
+
+(* CSS Fonts 4 sec. 2.8.5: [font-synthesis] names the synthesis longhands set to
+   [auto]; naming none of them is [none]. It resets the position longhand too,
+   so a rule that writes one keeps its longhands. *)
+let test_font_synthesis_composes () =
+  sheet_optimizes_to ~into:".x{font-synthesis:none}"
+    ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none}";
+  sheet_optimizes_to ~into:".x{font-synthesis:weight style}"
+    ".x{font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}";
+  sheet_optimizes_to ~into:".x{font-synthesis:weight style small-caps}"
+    ".x{font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:auto}";
+  (* The shorthand resets the position longhand, so a rule writing one is left
+     alone. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-synthesis-position:none;font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}"
+    ".x{font-synthesis-position:none;font-synthesis-weight:auto;font-synthesis-style:auto;font-synthesis-small-caps:none}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
+    ".x{font-synthesis-weight:none;font-synthesis-style:none;font-synthesis-small-caps:none!important}"
+
+(* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands,
+   the shape the border sides take, so the pair contracts the same way. *)
+let test_webkit_text_stroke_composes () =
+  sheet_optimizes_to ~into:".x{-webkit-text-stroke:1px red}"
+    ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red}";
+  sheet_optimizes_to ~into:".x{-webkit-text-stroke:0 currentColor}"
+    ".x{-webkit-text-stroke-width:0;-webkit-text-stroke-color:currentcolor}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
+    ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red!important}"
+
+(* CSS Text Decoration 4 sec. 2.5: [text-decoration] is [<line> || <style> ||
+   <color> || <thickness>], and sec. 2.2 makes [auto] the thickness's initial,
+   so a run that also writes the thickness contracts and an [auto] one leaves
+   the component out. *)
+let test_text_decoration_thickness_composes () =
+  sheet_optimizes_to ~into:".x{text-decoration:underline dotted red}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:auto;text-decoration-style:dotted;text-decoration-color:red}";
+  sheet_optimizes_to ~into:".x{text-decoration:overline 2px}"
+    ".x{text-decoration-line:overline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:currentcolor}";
+  (* The shorthand resets the thickness, so a run leaving it out is not the same
+     declaration and stays expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:red}"
+    ".x{text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:red}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+    ".x{text-decoration-line:underline;text-decoration-thickness:2px;text-decoration-style:solid;text-decoration-color:red!important}"
+
+(* CSS Backgrounds 3 (ED) sec. 4.1: an elliptical corner names a horizontal
+   radius and a vertical one, and [border-radius] writes the four horizontals,
+   then [/], then the four verticals. *)
+let test_border_radius_ellipse_composes () =
+  sheet_optimizes_to ~into:".x{border-radius:1px 2px 3px 4px/5px}"
+    ".x{border-top-left-radius:1px 5px;border-top-right-radius:2px \
+     5px;border-bottom-right-radius:3px 5px;border-bottom-left-radius:4px 5px}";
+  sheet_optimizes_to ~into:".x{border-radius:10%/20%}"
+    ".x{border-top-left-radius:10% 20%;border-top-right-radius:10% \
+     20%;border-bottom-right-radius:10% 20%;border-bottom-left-radius:10% 20%}";
+  sheet_optimizes_to ~into:".x{border-radius:1px 2px/3px 4px}"
+    ".x{border-top-left-radius:1px 3px;border-top-right-radius:2px \
+     4px;border-bottom-right-radius:1px 3px;border-bottom-left-radius:2px 4px}";
+  (* Mixing a round corner with an elliptical one has no box spelling. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-top-left-radius:1px \
+       5px;border-top-right-radius:2px;border-bottom-right-radius:3px \
+       5px;border-bottom-left-radius:4px 5px}"
+    ".x{border-top-left-radius:1px \
+     5px;border-top-right-radius:2px;border-bottom-right-radius:3px \
+     5px;border-bottom-left-radius:4px 5px}"
+
+(* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names of [0
+   0 auto] and [1 1 auto], so a run composing to either takes the shorter
+   spelling. *)
+let test_flex_keyword_forms () =
+  sheet_optimizes_to ~into:".x{flex:none}"
+    ".x{flex-grow:0;flex-shrink:0;flex-basis:auto}";
+  sheet_optimizes_to ~into:".x{flex:auto}"
+    ".x{flex-grow:1;flex-shrink:1;flex-basis:auto}";
+  (* [initial] is [0 1 auto], which has no one-word name of its own. *)
+  sheet_optimizes_to ~into:".x{flex:0 auto}"
+    ".x{flex-grow:0;flex-shrink:1;flex-basis:auto}"
+
+(* CSS Backgrounds 3 sec. 6.1: [border-image] resets all five of its longhands,
+   so a run naming every one of them is the same declaration whatever else the
+   sheet holds. A shorter run leaves the rest to the reset, which only the
+   whole-sheet scope can judge. *)
+let test_border_image_full_run_composes () =
+  (* Every component but the source and slice is at its initial, so the
+     shorthand names them by leaving them out. *)
+  sheet_optimizes_to ~into:".x{border-image:url(a.png)30}"
+    ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0;border-image-repeat:stretch}";
+  sheet_optimizes_to ~into:".x{border-image:none}"
+    ".x{border-image-source:none;border-image-slice:100%;border-image-width:1;border-image-outset:0;border-image-repeat:stretch}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
+    ".x{border-image-source:url(a.png);border-image-slice:30;border-image-width:1;border-image-outset:0}"
+
+(* Motion Path 1 sec. 2.6: [offset] resets all five of its longhands, so the run
+   naming the same declaration is all five, and a component at its initial is
+   what leaving it out names. *)
+let test_offset_composes () =
+  sheet_optimizes_to ~into:".x{offset:path(\"M 0 0 L 10 10\")10px}"
+    ".x{offset-position:normal;offset-path:path(\"M 0 0 L 10 \
+     10\");offset-distance:10px;offset-rotate:auto;offset-anchor:auto}";
+  sheet_optimizes_to ~into:".x{offset:none}"
+    ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto;offset-anchor:auto}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
+    ".x{offset-position:normal;offset-path:none;offset-distance:0;offset-rotate:auto}"
+
+(* CSS Multicol 2 sec. 4.5: [columns] sets the width, the count and the height,
+   and Chrome 146 has it reset [column-wrap] too, so the run naming the same
+   declaration is all four and the shorthand only stands for a height at its
+   [auto] initial. *)
+let test_columns_composes () =
+  sheet_optimizes_to ~into:".x{columns:10em 2}"
+    ".x{column-width:10em;column-count:2;column-height:auto;column-wrap:auto}";
+  sheet_optimizes_to ~into:".x{columns:auto}"
+    ".x{column-width:auto;column-count:auto;column-height:auto;column-wrap:auto}";
+  (* [auto] is the width's initial, so the count alone names the same pair. *)
+  sheet_optimizes_to ~into:".x{columns:3}"
+    ".x{column-width:auto;column-count:3;column-height:auto;column-wrap:auto}";
+  (* The shorthand has no spelling for a height of its own, so that run keeps
+     its longhands. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
+    ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
+
+(* CSS Cascade 5 sec. 7.3: [initial] is the property's initial value, which is
+   what [background] writes to a slot left out, so a run whose untouched slots
+   are spelled that way is reset-closed and contracts. *)
+let test_background_initial_slots () =
+  sheet_optimizes_to ~into:".x{background:url(a.png)50%/cover no-repeat}"
+    ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:initial;background-origin:initial;background-clip:initial;background-color:initial}";
+  (* Every slot at its initial is what [background: none] names, which the
+     printer spells with the position it keeps. *)
+  sheet_optimizes_to ~into:".x{background:0 0}"
+    ".x{background-image:none;background-position-x:initial;background-position-y:initial;background-size:initial;background-repeat:initial;background-attachment:initial;background-origin:initial;background-clip:initial;background-color:initial}";
+  (* [inherit] names the parent's value, not the initial, so it cannot fill a
+     slot the shorthand resets. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
+    ".x{background-image:url(a.png);background-position:50%;background-size:cover;background-repeat:no-repeat;background-attachment:inherit;background-origin:initial;background-clip:initial;background-color:initial}"
+
+(* The CSSOM reports [-webkit-mask-position-x] and [-webkit-mask-position-y]
+   when it expands [mask], and the two share a cascade slot with
+   [mask-position], so the pair contracts into it. *)
+let test_webkit_mask_position_axes () =
+  sheet_optimizes_to ~into:".x{-webkit-mask-position:50%10px}"
+    ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px}";
+  sheet_optimizes_to ~into:".x{-webkit-mask-position:0 0}"
+    ".x{-webkit-mask-position-x:initial;-webkit-mask-position-y:initial}";
+  (* Mixed importance is not one declaration. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
+    ".x{-webkit-mask-position-x:50%;-webkit-mask-position-y:10px!important}"
+
+(* CSS Masking 1 sec. 7.9: [mask] resets all eight layer longhands, so a run
+   naming every one of them is the same declaration whatever else the sheet
+   holds, and a component at its initial is what leaving it out names. *)
+let test_mask_full_run_composes () =
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask:url(a.png)50%/cover no-repeat;mask:url(a.png)50%/cover \
+       no-repeat}"
+    ".x{mask-image:url(a.png);mask-position:50%;mask-size:cover;mask-repeat:no-repeat;mask-origin:border-box;mask-clip:border-box;mask-composite:add;mask-mode:match-source}";
+  (* A run missing a longhand would have the shorthand reset it. *)
+  sheet_optimizes_to
+    ~into:
+      ".x{-webkit-mask-image:url(a.png);mask-image:url(a.png);-webkit-mask-size:cover;mask-size:cover}"
+    ".x{mask-image:url(a.png);mask-size:cover}"
+
+(* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
+   so contracting a width/style/colour run over a rule that holds one of those
+   longhands would drop it. *)
+let test_border_contraction_covers_border_image () =
+  sheet_optimizes_to
+    ~into:
+      ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}"
+    ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}";
+  (* Nothing holds the family, so the run contracts. *)
+  sheet_optimizes_to ~into:".x{color:red;border:4px solid red}"
+    ".x{color:red;border-width:4px;border-style:solid;border-color:red}"
+
+(* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
+   [animation-name] included, so contracting a run that has no name beside a
+   name written earlier says [none] and animates nothing. The transition family
+   already reasons this way; animation had no coverage arms at all. *)
+let test_animation_contraction_covers_other_rules () =
+  (* Split across two rules with the same selector: the shortest spelling that
+     keeps the name groups the two and carries it into the shorthand. *)
+  sheet_optimizes_to ~into:".a{animation:spin 2s linear}"
+    ".a{animation-name:spin}.a{animation-duration:2s;animation-timing-function:linear}";
+  (* Same rule: the name is reset by a contraction that does not carry it, so
+     the run stays expanded. *)
+  sheet_optimizes_to
+    ~into:".a{animation-name:spin;color:red;animation-duration:2s}"
+    ".a{animation-name:spin;color:red;animation-duration:2s}";
+  (* An important name outranks the non-important shorthand whatever the order,
+     so the run contracts. *)
+  sheet_optimizes_to
+    ~into:".a{animation-name:spin!important;color:red;animation:2s linear}"
+    ".a{animation-name:spin!important;color:red;animation-duration:2s;animation-timing-function:linear}";
+  (* A non-important name is reset by the contraction, so the run stays
+     expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+    ".a{animation-name:spin;color:red;animation-duration:2s;animation-timing-function:linear}"
+
+let test_transition_contraction_covers_other_rules () =
+  (* Same rule, both sides of the guard. A non-important holder is reset by the
+     contraction, so the run stays expanded; an important one outranks the
+     non-important shorthand whatever the order, so the run contracts. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete;color:red;transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete!important;color:red;transition:color \
+       1s}"
+    ".a{transition-behavior:allow-discrete!important;color:red;transition-property:color;transition-duration:1s}";
+  (* Split across two rules with the same selector, the element sees exactly the
+     cascade above. The behaviour has to survive, and the shortest spelling that
+     keeps it groups the two rules and carries it into the shorthand. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}"
+    ".a{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:".a{transition:color 1s;transition-behavior:allow-discrete!important}"
+    ".a{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
+  (* Both important: the shorthand no longer loses to the holder, so dropping
+     the behaviour would change what the element animates. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete!important}"
+    ".a{transition-behavior:allow-discrete!important}.a{transition-property:color!important;transition-duration:1s!important}";
+  (* An unrelated rule between them changes nothing: the holder is still in the
+     cascade the second rule lands on. *)
+  sheet_optimizes_to ~into:".a{transition:color 1s allow-discrete}.b{color:red}"
+    ".a{transition-behavior:allow-discrete}.b{color:red}.a{transition-property:color;transition-duration:1s}";
+  (* A rule between them that writes the same family keeps the two apart, so
+     there is no grouping to carry the behaviour into and the run stays
+     expanded. *)
+  sheet_optimizes_to
+    ~into:
+      ".a{transition-behavior:allow-discrete}.b{transition:opacity \
+       2s}.a{transition-property:color;transition-duration:1s}"
+    ".a{transition-behavior:allow-discrete}.b{transition:opacity \
+     2s}.a{transition-property:color;transition-duration:1s}";
+  (* The holder needs no relation to the run's selector: an element carrying
+     both classes reads one cascade. *)
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}"
+    ".b{transition-behavior:allow-discrete}.a{transition-property:color;transition-duration:1s}";
+  (* The other side of the guard, so it stays a hazard test and not a blanket
+     refusal: a neighbour holding the slot at its initial resets to the same
+     thing, and an important neighbour outranks the shorthand. *)
+  sheet_optimizes_to
+    ~into:".b{transition-behavior:normal}.a{transition:color 1s}"
+    ".b{transition-behavior:normal}.a{transition-property:color;transition-duration:1s}";
+  sheet_optimizes_to
+    ~into:
+      ".b{transition-behavior:allow-discrete!important}.a{transition:color 1s}"
+    ".b{transition-behavior:allow-discrete!important}.a{transition-property:color;transition-duration:1s}";
+  (* A slot the rule itself rewrites after the run is not at risk from a
+     neighbour holding it: the rewrite lands after the reset. *)
+  sheet_optimizes_to
+    ~into:".a{transition:color 1s;color:red;transition-delay:5s}"
+    ".a{transition-property:color;transition-duration:1s;color:red;transition-delay:5s}"
+
 let test_drop_redundant_border_longhand () =
   (* [border] sets width/style/color; a later longhand equal to an explicit slot
      is dropped. A differing value or a per-side list is kept. *)
@@ -792,6 +1401,203 @@ let test_box_family_non_equivalence_still_reports () =
     ".a{scroll-margin:1px}"
     ".a{scroll-margin-top:1px;scroll-margin-right:1px;scroll-margin-bottom:1px}"
 
+(* CSS Cascade 5 sec. 7.3: a CSS-wide keyword is the entire value of a
+   declaration or nothing at all. Pasting one into a composed shorthand makes a
+   declaration the reader rejects and a browser drops, so a run holding one has
+   to stay as its longhands. *)
+let unfoldable_css_wide = [ "inherit"; "unset"; "revert"; "revert-layer" ]
+
+(* The emission is checked twice: for the expected text, and for reading back. A
+   declaration the reader rejects is one the browser drops, so an emission that
+   fails to re-read is a rendering change, not a shorter spelling. *)
+let minifies_to name ~into css =
+  let out =
+    match Css.of_string css with
+    | Error e -> Alcotest.failf "%s: parse failed: %s" name (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        String.trim (Css.to_string ~minify:true (Css.optimize stylesheet))
+  in
+  Alcotest.(check string) name into out;
+  match Css.of_string ~strict:true out with
+  | Ok _ -> ()
+  | Error e ->
+      Alcotest.failf "%s: emission is not readable CSS: %s" name
+        (Error.to_string e)
+
+(* Every family whose composer takes a longhand value as a shorthand component,
+   as the run that composes into it with the last value left open. *)
+let css_wide_component_runs =
+  [
+    ( "padding",
+      "padding-top:1px;padding-right:2px;padding-bottom:3px;padding-left:" );
+    ("margin", "margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:");
+    ("inset", "top:1px;right:2px;bottom:3px;left:");
+    ( "border-color",
+      "border-top-color:red;border-right-color:#0f0;border-bottom-color:#00f;border-left-color:"
+    );
+    ( "border-width",
+      "border-top-width:1px;border-right-width:2px;border-bottom-width:3px;border-left-width:"
+    );
+    ( "border-radius",
+      "border-top-left-radius:1px;border-top-right-radius:2px;border-bottom-right-radius:3px;border-bottom-left-radius:"
+    );
+    ( "scroll-margin",
+      "scroll-margin-top:1px;scroll-margin-right:2px;scroll-margin-bottom:3px;scroll-margin-left:"
+    );
+    ( "scroll-padding",
+      "scroll-padding-top:1px;scroll-padding-right:2px;scroll-padding-bottom:3px;scroll-padding-left:"
+    );
+    ("gap", "row-gap:1px;column-gap:");
+    ("margin-inline", "margin-inline-start:1px;margin-inline-end:");
+    ("margin-block", "margin-block-start:1px;margin-block-end:");
+    ("padding-inline", "padding-inline-start:1px;padding-inline-end:");
+    ("padding-block", "padding-block-start:1px;padding-block-end:");
+    ("inset-inline", "inset-inline-start:1px;inset-inline-end:");
+    ("inset-block", "inset-block-start:1px;inset-block-end:");
+    ("place-content", "align-content:center;justify-content:");
+    ("place-items", "align-items:center;justify-items:");
+    ("place-self", "align-self:center;justify-self:");
+    ("overflow", "overflow-x:hidden;overflow-y:");
+    ("outline", "outline-width:1px;outline-style:solid;outline-color:");
+    ( "list-style",
+      "list-style-type:square;list-style-position:inside;list-style-image:" );
+    ("flex", "flex-grow:1;flex-shrink:1;flex-basis:");
+    ( "text-decoration",
+      "text-decoration-line:underline;text-decoration-style:solid;text-decoration-color:"
+    );
+    ("border", "border-width:1px;border-style:solid;border-color:");
+  ]
+
+let test_css_wide_keyword_is_not_a_shorthand_component () =
+  List.iter
+    (fun (family, run) ->
+      List.iter
+        (fun keyword ->
+          let css = String.concat "" [ ".a{"; run; keyword; "}" ] in
+          minifies_to (String.concat " " [ family; keyword ]) ~into:css css)
+        unfoldable_css_wide)
+    css_wide_component_runs
+
+(* The keyword reaches the composer from another rule just as well: rules with a
+   matching selector merge before the declarations are composed. *)
+let test_css_wide_keyword_from_another_rule () =
+  List.iter
+    (fun keyword ->
+      minifies_to
+        (String.concat " " [ "margin absorbs a later side"; keyword ])
+        ~into:(String.concat "" [ ".a{margin:"; keyword; ";margin-top:1px}" ])
+        (String.concat "" [ ".a{margin:"; keyword; "}.a{margin-top:1px}" ]);
+      minifies_to
+        (String.concat " " [ "padding absorbs a later side"; keyword ])
+        ~into:(String.concat "" [ ".a{padding:"; keyword; ";padding-top:1px}" ])
+        (String.concat "" [ ".a{padding:"; keyword; "}.a{padding-top:1px}" ]);
+      minifies_to
+        (String.concat " " [ "overflow across two rules"; keyword ])
+        ~into:
+          (String.concat ""
+             [ ".a{overflow-x:hidden;overflow-y:"; keyword; "}" ])
+        (String.concat ""
+           [ ".a{overflow-x:hidden}.a{overflow-y:"; keyword; "}" ]);
+      (* Four sides are four disjoint cascade slots, so the merged rule is free
+         to order them however it likes; what it may not do is contract them. *)
+      minifies_to
+        (String.concat " " [ "four box sides across four rules"; keyword ])
+        ~into:
+          (String.concat ""
+             [
+               ".a{margin-bottom:3px;margin-left:";
+               keyword;
+               ";margin-right:2px;margin-top:1px}";
+             ])
+        (String.concat ""
+           [
+             ".a{margin-top:1px}.a{margin-right:2px}.a{margin-bottom:3px}.a{margin-left:";
+             keyword;
+             "}";
+           ]))
+    unfoldable_css_wide
+
+let test_css_wide_keyword_with_importance () =
+  (* Four important sides: the same-importance box composer. *)
+  minifies_to "every side important"
+    ~into:
+      ".a{margin-top:1px!important;margin-right:2px!important;margin-bottom:3px!important;margin-left:inherit!important}"
+    ".a{margin-top:1px!important;margin-right:2px!important;margin-bottom:3px!important;margin-left:inherit!important}";
+  (* One important side: the mixed-importance split, which emits a shorthand and
+     re-states the important longhand after it. *)
+  minifies_to "an important side beside the keyword"
+    ~into:
+      ".a{margin-top:1px!important;margin-right:2px;margin-bottom:3px;margin-left:inherit}"
+    ".a{margin-top:1px!important;margin-right:2px;margin-bottom:3px;margin-left:inherit}";
+  minifies_to "the keyword is the important side"
+    ~into:
+      ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:inherit!important}"
+    ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:inherit!important}";
+  minifies_to "an important pair"
+    ~into:".a{row-gap:1px!important;column-gap:unset!important}"
+    ".a{row-gap:1px!important;column-gap:unset!important}";
+  minifies_to "an important run"
+    ~into:
+      ".a{outline-width:1px!important;outline-style:solid!important;outline-color:revert!important}"
+    ".a{outline-width:1px!important;outline-style:solid!important;outline-color:revert!important}";
+  minifies_to "an important shorthand absorbing an important side"
+    ~into:".a{margin:inherit!important;margin-top:1px!important}"
+    ".a{margin:inherit!important}.a{margin-top:1px!important}"
+
+(* A run whose sides are all the same CSS-wide keyword collapses to a lone
+   keyword, which is a whole declaration value and so stays legal. *)
+let test_uniform_css_wide_sides_still_contract () =
+  List.iter
+    (fun keyword ->
+      minifies_to
+        (String.concat " " [ "four identical box sides"; keyword ])
+        ~into:(String.concat "" [ ".a{margin:"; keyword; "}" ])
+        (String.concat ""
+           [
+             ".a{margin-top:";
+             keyword;
+             ";margin-right:";
+             keyword;
+             ";margin-bottom:";
+             keyword;
+             ";margin-left:";
+             keyword;
+             "}";
+           ]);
+      minifies_to
+        (String.concat " " [ "two identical gap axes"; keyword ])
+        ~into:(String.concat "" [ ".a{gap:"; keyword; "}" ])
+        (String.concat ""
+           [ ".a{row-gap:"; keyword; ";column-gap:"; keyword; "}" ]))
+    unfoldable_css_wide
+
+(* [initial] names a value with a concrete spelling, so the box families fold it
+   to that spelling before composition and the run still contracts. *)
+let test_initial_still_folds_in_box_families () =
+  minifies_to "a lone initial side" ~into:".a{margin-left:0}"
+    ".a{margin-left:initial}";
+  minifies_to "initial as the fourth margin side"
+    ~into:".a{margin:1px 2px 3px 0}"
+    ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:initial}";
+  minifies_to "initial as the fourth padding side"
+    ~into:".a{padding:1px 2px 3px 0}"
+    ".a{padding-top:1px;padding-right:2px;padding-bottom:3px;padding-left:initial}";
+  minifies_to "four initial sides" ~into:".a{margin:0}"
+    ".a{margin-top:initial;margin-right:initial;margin-bottom:initial;margin-left:initial}";
+  minifies_to "an initial shorthand absorbing a later side"
+    ~into:".a{margin:1px 0 0}" ".a{margin:initial}.a{margin-top:1px}";
+  (* [scroll-margin] and [scroll-padding] keep [initial] as a keyword, so there
+     it is a whole declaration value like the other four and the run stays
+     expanded. Folding it to [0] would let the run contract again. *)
+  minifies_to "initial in a scroll-margin run"
+    ~into:
+      ".a{scroll-margin-top:initial;scroll-margin-right:1px;scroll-margin-bottom:2px;scroll-margin-left:3px}"
+    ".a{scroll-margin-top:initial;scroll-margin-right:1px;scroll-margin-bottom:2px;scroll-margin-left:3px}";
+  minifies_to "initial in a scroll-padding run"
+    ~into:
+      ".a{scroll-padding-top:initial;scroll-padding-right:1px;scroll-padding-bottom:2px;scroll-padding-left:3px}"
+    ".a{scroll-padding-top:initial;scroll-padding-right:1px;scroll-padding-bottom:2px;scroll-padding-left:3px}"
+
 let suite =
   ( "shorthand",
     [
@@ -821,6 +1627,54 @@ let suite =
         test_drop_redundant_transition_longhand;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
+      Alcotest.test_case "transition contraction covers other rules" `Quick
+        test_transition_contraction_covers_other_rules;
+      Alcotest.test_case "animation contraction covers other rules" `Quick
+        test_animation_contraction_covers_other_rules;
+      Alcotest.test_case "scroll axis pair composes" `Quick
+        test_scroll_axis_pair_composes;
+      Alcotest.test_case "border axis pair composes" `Quick
+        test_border_axis_pair_composes;
+      Alcotest.test_case "line shorthand composes" `Quick
+        test_line_shorthand_composes;
+      Alcotest.test_case "line shorthand initial slot" `Quick
+        test_line_shorthand_initial_slot;
+      Alcotest.test_case "logical border whole composes" `Quick
+        test_logical_border_whole_composes;
+      Alcotest.test_case "xy pair composes" `Quick test_xy_pair_composes;
+      Alcotest.test_case "grid placement composes" `Quick
+        test_grid_placement_composes;
+      Alcotest.test_case "duo keyword composes" `Quick test_duo_keyword_composes;
+      Alcotest.test_case "timeline and range compose" `Quick
+        test_timeline_range_composes;
+      Alcotest.test_case "named shorthand composes" `Quick
+        test_named_shorthand_composes;
+      Alcotest.test_case "background position composes" `Quick
+        test_background_position_composes;
+      Alcotest.test_case "column rule composes" `Quick test_column_rule_composes;
+      Alcotest.test_case "white space composes" `Quick test_white_space_composes;
+      Alcotest.test_case "text wrap composes" `Quick test_text_wrap_composes;
+      Alcotest.test_case "font synthesis composes" `Quick
+        test_font_synthesis_composes;
+      Alcotest.test_case "webkit text stroke composes" `Quick
+        test_webkit_text_stroke_composes;
+      Alcotest.test_case "text decoration thickness composes" `Quick
+        test_text_decoration_thickness_composes;
+      Alcotest.test_case "border radius ellipse composes" `Quick
+        test_border_radius_ellipse_composes;
+      Alcotest.test_case "flex keyword forms" `Quick test_flex_keyword_forms;
+      Alcotest.test_case "border image full run composes" `Quick
+        test_border_image_full_run_composes;
+      Alcotest.test_case "offset composes" `Quick test_offset_composes;
+      Alcotest.test_case "columns composes" `Quick test_columns_composes;
+      Alcotest.test_case "background initial slots" `Quick
+        test_background_initial_slots;
+      Alcotest.test_case "webkit mask position axes" `Quick
+        test_webkit_mask_position_axes;
+      Alcotest.test_case "mask full run composes" `Quick
+        test_mask_full_run_composes;
+      Alcotest.test_case "border contraction covers border-image" `Quick
+        test_border_contraction_covers_border_image;
       Alcotest.test_case "drop redundant border longhand" `Quick
         test_drop_redundant_border_longhand;
       Alcotest.test_case "drop redundant font longhand" `Quick
@@ -841,4 +1695,14 @@ let suite =
         test_box_family_shorthand_equivalence;
       Alcotest.test_case "box family non-equivalence still reports" `Quick
         test_box_family_non_equivalence_still_reports;
+      Alcotest.test_case "css-wide keyword is not a shorthand component" `Quick
+        test_css_wide_keyword_is_not_a_shorthand_component;
+      Alcotest.test_case "css-wide keyword from another rule" `Quick
+        test_css_wide_keyword_from_another_rule;
+      Alcotest.test_case "css-wide keyword with importance" `Quick
+        test_css_wide_keyword_with_importance;
+      Alcotest.test_case "uniform css-wide sides still contract" `Quick
+        test_uniform_css_wide_sides_still_contract;
+      Alcotest.test_case "initial still folds in box families" `Quick
+        test_initial_still_folds_in_box_families;
     ] )

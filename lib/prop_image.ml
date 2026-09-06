@@ -371,7 +371,9 @@ let pp_webkit_gradient_point ctx = function
   | Webkit_gradient.Left_bottom ->
       Pp.string ctx (if Pp.minified ctx then "0 100%" else "left bottom")
   | Webkit_gradient.Center ->
-      Pp.string ctx (if Pp.minified ctx then "50% 50%" else "center center")
+      (* A percentage delimits itself, so the pair needs no space between them
+         and the written-out position prints the same way. *)
+      Pp.string ctx (if Pp.minified ctx then "50%50%" else "center center")
   | Webkit_gradient.Position position -> pp_position_value ctx position
 
 let pp_webkit_gradient_position ctx (pct : percentage) =
@@ -1835,7 +1837,13 @@ let read_webkit_gradient_stop t =
     when String.lowercase_ascii_preserve name = "color-stop" ->
       Cursor.call "color-stop" t (fun inner ->
           Cursor.ws inner;
-          let position = read_percentage inner in
+          (* The legacy stop position is a number or a percentage, and the
+             minified spelling is the number, so both read back. *)
+          let position : percentage =
+            match Cursor.number_opt inner with
+            | Some n -> Num n
+            | None -> read_percentage inner
+          in
           Cursor.ws inner;
           Cursor.comma inner;
           Cursor.ws inner;

@@ -189,11 +189,14 @@ that matters in practice, and it survives on [<html>].
   }
 
 
-# Only text nodes decide :empty
+# :empty is kept for want of a shipped model
 
 
-Selectors 4 sec. 13.2 counts element nodes and non-empty text nodes; a
-comment is neither, so [#b] is empty and [#c] is not.
+Selectors 4 sec. 13.2 matches an element holding nothing but document
+white space, and its own note records that Level 2 and Level 3 did
+not. No engine has taken that change, so a verdict here would rest on
+what the specification says rather than on what the browser applies,
+and removing a rule on it would delete one the page still uses.
 
   $ cat > empty-page.html <<EOF
   > <html><head></head><body>
@@ -208,10 +211,10 @@ comment is neither, so [#b] is empty and [#c] is not.
   $ cascade prune --dry-run empty-page.html empty.css
   documents: 1, elements: 6
   
-  used, fewest matched elements first:
-       2  p:empty
+  no verdict, kept: the matcher has no model for the selector.
+    p:empty
   
-  rules: 1 total, 0 removed, 1 kept as used, 0 kept without a verdict
+  rules: 1 total, 0 removed, 0 kept as used, 1 kept without a verdict
   
   Unused means unused in these documents: a class a script adds at runtime is not in them.
 

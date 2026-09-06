@@ -4857,6 +4857,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Auto -> Pp.string ctx "auto"
   | Durations durations ->
       Pp.list ~sep:Pp.comma (pp_duration_with ~shorten_ms) ctx durations
   | Round (strategy, value, step) ->
@@ -5059,7 +5060,7 @@ let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
 let normalize_signed_zero n repr =
   if n = 0.0 then (0.0, Pp.string_of_float 0.0) else (n, repr)
 
-let read_length_unit ?(allow_negative = true) t =
+let read_length_unit ?(allow_negative = true) ?(length_only = false) t =
   let n, repr, unit_raw = Cursor.number_repr_with_unit t in
   let n, repr = normalize_signed_zero n repr in
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
@@ -5076,7 +5077,8 @@ let read_length_unit ?(allow_negative = true) t =
   (* CSS Values 4 sec. 5.5: a [<percentage>] is its own type, so [0%] is [Pct
      0.] and keeps [%]; folding it to the length zero would change its type (and
      is unsound for definiteness-sensitive properties like [height]). *)
-  | "%" -> (Pct n : length)
+  | "%" when not length_only -> (Pct n : length)
+  | "%" -> Cursor.err_invalid t "percentage where a length is required"
   | "" when n = 0.0 -> Zero
   | "" -> Cursor.err t "length values must have units (except for zero)"
   | unit -> (
@@ -5757,16 +5759,16 @@ let read_attr_type_hint inner : attr_type option =
     Option.Some (Cursor.call "type" inner read_attr_length_type)
   else read_plain_attr_type_hint inner
 
-let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
-    =
+let rec read_length ?(allow_negative = true) ?(with_keywords = true)
+    ?(length_only = false) t : length =
   Cursor.ws t;
   let parsers =
     [
-      read_var_length ~allow_negative ~with_keywords;
-      read_calc_length ~with_keywords;
-      read_env_length ~allow_negative ~with_keywords;
-      read_function_length ~allow_negative ~with_keywords;
-      read_length_unit ~allow_negative;
+      read_var_length ~allow_negative ~length_only ~with_keywords;
+      read_calc_length ~length_only ~with_keywords;
+      read_env_length ~allow_negative ~length_only ~with_keywords;
+      read_function_length ~allow_negative ~length_only ~with_keywords;
+      read_length_unit ~allow_negative ~length_only;
     ]
   in
   let parsers =
@@ -5774,57 +5776,73 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
   in
   Cursor.one_of parsers t
 
-and read_var_length ~allow_negative ~with_keywords t : length =
+and read_var_length ~allow_negative ~length_only ~with_keywords t : length =
   if Cursor.looking_at t "var(" then
-    Var (read_var (read_length ~allow_negative ~with_keywords) t)
+    Var (read_var (read_length ~allow_negative ~length_only ~with_keywords) t)
   else Cursor.err t "expected var"
 
-and read_calc_length ~with_keywords t : length =
+and read_calc_length ~length_only ~with_keywords t : length =
   if Cursor.looking_at_calc t then
     (* Same exception as [read_length_percentage]: inside [calc()] the
        non-negative constraint applies to the resolved value. *)
-    Calc (read_calc ~result_type:`Value (read_length ~with_keywords) t)
+    Calc
+      (read_calc ~result_type:`Value
+         (read_length ~length_only ~with_keywords)
+         t)
   else Cursor.err t "expected calc"
 
-and read_env_length ~allow_negative ~with_keywords t : length =
+and read_env_length ~allow_negative ~length_only ~with_keywords t : length =
   if Cursor.looking_at t "env(" then
-    Env (read_env (read_length ~allow_negative ~with_keywords) t)
+    Env (read_env (read_length ~allow_negative ~length_only ~with_keywords) t)
   else Cursor.err t "expected env"
 
-and read_function_length ~allow_negative ~with_keywords t : length =
+and read_function_length ~allow_negative ~length_only ~with_keywords t : length
+    =
   match
     Cursor.any_function_call
-      (read_length_function_body ~allow_negative ~with_keywords t)
+      (read_length_function_body ~allow_negative ~length_only ~with_keywords t)
       t
   with
   | Some length -> length
   | None -> Cursor.err_expected t "function call"
 
-and read_length_function_body ~allow_negative ~with_keywords t name inner =
+and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
+    inner =
   let name = String.lowercase_ascii name in
+  if
+    length_only
+    && List.mem name
+         [
+           "minmax"; "fit-content"; "calc-size"; "anchor"; "anchor-size"; "sign";
+         ]
+  then Cursor.err_invalid t "expected a length-valued math function";
+  let allow_negative = allow_negative || (length_only && name <> "attr") in
   match
-    List.assoc_opt name (length_function_readers ~allow_negative ~with_keywords)
+    List.assoc_opt name
+      (length_function_readers ~allow_negative ~length_only ~with_keywords)
   with
   | Some read -> read inner
   | None -> Cursor.err t ("unknown function " ^ name)
 
-and length_function_readers ~allow_negative ~with_keywords =
+and length_function_readers ~allow_negative ~length_only ~with_keywords =
   [
-    ("clamp", read_clamp_length);
-    ("minmax", read_minmax_length);
-    ("min", read_min_length);
-    ("max", read_max_length);
-    ("fit-content", read_fit_content_length ~allow_negative ~with_keywords);
-    ("round", read_round_length ~allow_negative ~with_keywords);
-    ("mod", read_mod_length ~allow_negative ~with_keywords);
-    ("rem", read_rem_length ~allow_negative ~with_keywords);
-    ("hypot", read_hypot_length ~allow_negative ~with_keywords);
-    ("abs", read_abs_length ~allow_negative ~with_keywords);
-    ("sign", read_sign_length ~allow_negative ~with_keywords);
-    ("calc-size", read_calc_size_length ~allow_negative ~with_keywords);
+    ("clamp", read_clamp_length ~length_only);
+    ("minmax", read_minmax_length ~length_only);
+    ("min", read_min_length ~length_only);
+    ("max", read_max_length ~length_only);
+    ( "fit-content",
+      read_fit_content_length ~allow_negative ~length_only ~with_keywords );
+    ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
+    ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
+    ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
+    ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
+    ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
+    ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
+    ( "calc-size",
+      read_calc_size_length ~allow_negative ~length_only ~with_keywords );
     ("anchor-size", read_anchor_size_length);
-    ("anchor", read_anchor_length ~allow_negative ~with_keywords);
-    ("attr", read_attr_length ~allow_negative ~with_keywords);
+    ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
+    ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
   ]
 
 (* CSS Values 4 sec. 10.2: arguments to [clamp()], [min()], [max()], [minmax()]
@@ -5832,134 +5850,140 @@ and length_function_readers ~allow_negative ~with_keywords =
    without a surrounding [calc()]. Parse each argument with [read_calc_expr] and
    collapse a singleton [Val] back to the plain length so the AST stays compact
    for the common case. *)
-and read_implicit_calc_length inner =
-  match read_calc_expr (fun t -> read_length t) inner with
-  | Val l -> l
-  | expr -> Calc expr
+and read_implicit_calc_length ~length_only inner =
+  let expr =
+    read_calc_expr
+      (read_length ~length_only ~with_keywords:(not length_only))
+      inner
+  in
+  if length_only then validate_calc_type inner `Value expr;
+  match expr with Val l -> l | expr -> Calc expr
 
-and read_clamp_length inner =
+and read_clamp_length ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_implicit_calc_length inner in
-  Cursor.ws inner;
-  Cursor.comma inner;
-  Cursor.ws inner;
-  let value = read_implicit_calc_length inner in
+  let min = read_implicit_calc_length ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_implicit_calc_length inner in
+  let value = read_implicit_calc_length ~length_only inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  Cursor.ws inner;
+  let max = read_implicit_calc_length ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Clamp (min, value, max)
 
-and read_minmax_length inner =
+and read_minmax_length ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_implicit_calc_length inner in
+  let min = read_implicit_calc_length ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_implicit_calc_length inner in
+  let max = read_implicit_calc_length ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Minmax (min, max)
 
-and read_min_length inner =
+and read_min_length ?(length_only = false) inner =
   let xs =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_implicit_calc_length t)
+        read_implicit_calc_length ~length_only t)
       inner
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Min xs
 
-and read_max_length inner =
+and read_max_length ?(length_only = false) inner =
   let xs =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_implicit_calc_length t)
+        read_implicit_calc_length ~length_only t)
       inner
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Max xs
 
-and read_fit_content_length ~allow_negative ~with_keywords inner =
+and read_fit_content_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
-  let arg = read_length ~allow_negative ~with_keywords inner in
+  let arg = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Fit_content_arg arg
 
-and read_round_length ~allow_negative ~with_keywords inner =
+and read_round_length ~allow_negative ~length_only ~with_keywords inner =
   let strategy = read_round_strategy inner in
-  let value = read_length ~allow_negative ~with_keywords inner in
+  let value = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let step = read_length ~allow_negative ~with_keywords inner in
+  let step = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Round (strategy, value, step)
 
-and read_binary_length ~allow_negative ~with_keywords make inner =
-  let a = read_length ~allow_negative ~with_keywords inner in
+and read_binary_length ~allow_negative ~length_only ~with_keywords make inner =
+  let a = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let b = read_length ~allow_negative ~with_keywords inner in
+  let b = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   make a b
 
-and read_mod_length ~allow_negative ~with_keywords inner =
-  read_binary_length ~allow_negative ~with_keywords
+and read_mod_length ~allow_negative ~length_only ~with_keywords inner =
+  read_binary_length ~allow_negative ~length_only ~with_keywords
     (fun (a : length) (b : length) -> (Mod (a, b) : length))
     inner
 
-and read_rem_length ~allow_negative ~with_keywords inner =
-  read_binary_length ~allow_negative ~with_keywords
+and read_rem_length ~allow_negative ~length_only ~with_keywords inner =
+  read_binary_length ~allow_negative ~length_only ~with_keywords
     (fun (a : length) (b : length) -> (Rem_fn (a, b) : length))
     inner
 
-and read_hypot_length ~allow_negative ~with_keywords inner =
+and read_hypot_length ~allow_negative ~length_only ~with_keywords inner =
   let values =
     Cursor.list ~sep:Cursor.comma
-      (read_length ~allow_negative ~with_keywords)
+      (read_length ~allow_negative ~length_only ~with_keywords)
       inner
   in
   Cursor.expect_eof inner;
   Hypot values
 
-and read_unary_length ~allow_negative ~with_keywords make inner =
-  let value = read_length ~allow_negative ~with_keywords inner in
+and read_unary_length ~allow_negative ~length_only ~with_keywords make inner =
+  let value = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   make value
 
-and read_abs_length ~allow_negative ~with_keywords inner =
-  read_unary_length ~allow_negative ~with_keywords
+and read_abs_length ~allow_negative ~length_only ~with_keywords inner =
+  read_unary_length ~allow_negative ~length_only ~with_keywords
     (fun (value : length) -> (Abs value : length))
     inner
 
-and read_sign_length ~allow_negative ~with_keywords inner =
-  read_unary_length ~allow_negative ~with_keywords
+and read_sign_length ~allow_negative ~length_only ~with_keywords inner =
+  read_unary_length ~allow_negative ~length_only ~with_keywords
     (fun (value : length) -> (Sign value : length))
     inner
 
-and read_calc_size_length ~allow_negative ~with_keywords inner =
-  let basis = read_length ~allow_negative ~with_keywords inner in
+and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
+  let basis = read_length ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.comma inner;
   let calc =
-    read_calc_expr (read_length ~allow_negative ~with_keywords) inner
+    read_calc_expr
+      (read_length ~allow_negative ~length_only ~with_keywords)
+      inner
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
 
-and read_anchor_length ~allow_negative ~with_keywords inner =
+and read_anchor_length ~allow_negative ~length_only ~with_keywords inner =
   let first = Cursor.ident inner in
   Cursor.ws inner;
   let name, side = read_anchor_name_side inner first in
@@ -5967,30 +5991,33 @@ and read_anchor_length ~allow_negative ~with_keywords inner =
   let fallback =
     if Cursor.comma_opt inner then (
       Cursor.ws inner;
-      Some (read_length ~allow_negative ~with_keywords inner))
+      Some (read_length ~allow_negative ~length_only ~with_keywords inner))
     else None
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Anchor (name, side, fallback)
 
-and read_attr_length ~allow_negative ~with_keywords inner =
+and read_attr_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
   let name = Cursor.ident ~keep_case:true inner in
   let type_ = read_attr_type_hint inner in
   Cursor.ws inner;
   let fallback =
-    read_attr_length_fallback ~allow_negative ~with_keywords inner
+    read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Attr { name; type_; fallback }
 
-and read_attr_length_fallback ~allow_negative ~with_keywords inner =
+and read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
+    =
   if Cursor.comma_opt inner then (
     Cursor.ws inner;
     if Cursor.is_done inner then Empty_fallback
-    else Attr_fallback (read_length ~allow_negative ~with_keywords inner))
+    else
+      Attr_fallback
+        (read_length ~allow_negative ~length_only ~with_keywords inner))
   else No_fallback
 
 (** Read a non-negative length value (for padding properties) *)
@@ -6451,10 +6478,11 @@ let read_ok_lightness t : percentage option =
     Option.None)
   else
     let n, unit = Cursor.number_with_unit t in
-    (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps (to [0, 1] for
-       a bare number) rather than invalidating the colour, matching lab/lch. *)
+    (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
+       invalidating the colour, matching lab/lch. 0% to 100% names the same 0 to
+       1 a bare number does, so both spellings clamp alike. *)
     match unit with
-    | Some "%" -> Some (Pct n : percentage)
+    | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
     | None -> Some (Num (max 0. (min 1. n)) : percentage)
     | Some u -> Cursor.err_invalid t ("oklch() L unit: " ^ u)
 
@@ -6659,6 +6687,11 @@ let normalize_relative_color_tail tail =
   loop 0 false;
   Buffer.contents buf
 
+(* CSS Color 5 sec. 4.1 gives each channel one component value, so the channels
+   are the components before the alpha slash that are not whitespace. Splitting
+   on whitespace instead would miscount the spellings that need no separator:
+   [20%g] is a percentage and an ident, [calc(...)10] a function and a
+   number. *)
 let relative_color_channel_count cvs =
   let is_ws = function
     | Component.Preserved { Token.kind = Whitespace; _ } -> true
@@ -6668,14 +6701,13 @@ let relative_color_channel_count cvs =
     | Component.Preserved { Token.kind = Delim "/"; _ } -> true
     | _ -> false
   in
-  let rec loop count in_channel = function
-    | [] -> if in_channel then count + 1 else count
-    | cv :: _ when is_alpha_sep cv -> if in_channel then count + 1 else count
-    | cv :: rest when is_ws cv ->
-        loop (if in_channel then count + 1 else count) false rest
-    | _ :: rest -> loop count true rest
+  let rec loop count = function
+    | [] -> count
+    | cv :: _ when is_alpha_sep cv -> count
+    | cv :: rest when is_ws cv -> loop count rest
+    | _ :: rest -> loop (count + 1) rest
   in
-  loop 0 false cvs
+  loop 0 cvs
 
 let relative_color_has_empty_alpha cvs =
   let is_ws = function
@@ -6693,6 +6725,24 @@ let relative_color_has_empty_alpha cvs =
     | _ :: rest -> loop rest
   in
   loop cvs
+
+(* The origin may be a [color()] node, which the byte converter has no arm for.
+   The linear route covers every space whose matrices are wired up, so a
+   relative colour folds whether its origin was written as a hex or as the
+   [color()] the same conversion reaches. *)
+let relative_origin_srgb_bytes origin : (int * int * int * int) option =
+  match static_color_to_srgb_bytes origin with
+  | Some _ as found -> found
+  | Option.None -> (
+      match static_color_to_linear_srgb origin with
+      | Some (linear, alpha_f) -> (
+          match Color_space.srgb_bytes_of_linear linear with
+          | Some (r, g, b) ->
+              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
+              Some
+                (r, g, b, Float.to_int (Float.round (clamp01 alpha_f *. 255.0)))
+          | Option.None -> Option.None)
+      | Option.None -> Option.None)
 
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
@@ -6712,7 +6762,7 @@ let try_fold_color_function_static origin t : color option =
     Cursor.ws t;
     if not (Cursor.is_done t) then Option.None
     else
-      match static_color_to_srgb_bytes origin with
+      match relative_origin_srgb_bytes origin with
       | Some (r, g, b, origin_a_byte) ->
           let final_alpha : alpha =
             match alpha with
@@ -6965,6 +7015,7 @@ and read_color t : color =
         Cursor.skip t;
         (* CSS color keywords are case-insensitive. *)
         match read_color_keyword_of_string (String.lowercase_ascii ident) with
+        | Some Auto -> Cursor.err_invalid ~loc t "auto is not a colour"
         | Some color -> color
         | None -> Cursor.err ~loc t ("unknown color: " ^ ident))
     | _ -> Cursor.err t "color"
@@ -7645,12 +7696,40 @@ let round_lab_family_axes ~lossless (c : color) : color =
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
   | other -> other
 
+(* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
+   appropriate unit for that component", and the spec names rendering the colour
+   and converting it to another space among the purposes that holds for. The
+   sRGB family already resolves its own [none] channels that way on the path
+   through [static_color_to_srgb_bytes]; the Lab family reaches no fold at all
+   while a channel is missing, so a converted achromatic OKLab and the hex it
+   stands for never meet. This is that half, written as its own step so the
+   folds below read one shape of colour.
+
+   Sec. 13.3 is why it is not unconditional: interpolation gives a missing
+   component the other colour's analogous component instead of a zero, so the
+   two spellings are two different ramps there. *)
+let zero_missing_components (c : color) : color =
+  let lightness (l : percentage option) : percentage option =
+    match l with Option.None -> Some (Pct 0.) | l -> l
+  in
+  let axis (a : float option) =
+    match a with Option.None -> Some 0. | a -> a
+  in
+  let hue (h : hue) : hue = match h with Hue_none -> Unitless 0. | h -> h in
+  match c with
+  | Lab r -> Lab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
+  | Oklab r -> Oklab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
+  | Lch r -> Lch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
+  | Oklch r -> Oklch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
+  | other -> other
+
 (* AST-level color canonicalisation: the value-changing colour folds live here,
    producing a canonical [color] so [pp_color] stays a pure serialiser. The sRGB
    fold runs on the authored coefficients first; [round_lab_family_axes] then
    rounds only what survives in its own colour space. *)
-let rec normalize_color ?(lossless = false) ?(exact_srgb = false) (c : color) :
-    color =
+let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
+    ?(resolve_missing = false) (c : color) : color =
+  let c = if resolve_missing then zero_missing_components c else c in
   let normalize_color ?(lossless = lossless) =
     normalize_color ~lossless ~exact_srgb
   in
@@ -7850,9 +7929,11 @@ let read_padding_shorthand t : length list =
         t)
     t
 
-(** Read margin shorthand property (1-4 values) Source:
-    https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
-    1-4 space-separated values *)
+(** Read margin shorthand property (1-4 values). CSS Box 4 (ED) sec. 3.2 gives
+    [margin] the value [<'margin-top'>{1,4}] and sec. 3.1 gives [margin-top] the
+    value [<length-percentage> | auto], so [auto] is a component of the box and
+    stands in any slot beside any length. Only the CSS-wide keywords of CSS
+    Cascade 5 sec. 6 own the whole value. *)
 let read_margin_shorthand t : length list =
   let rec read_margin_component t : length =
     if Cursor.looking_at_func "var" t then
@@ -7863,12 +7944,9 @@ let read_margin_shorthand t : length list =
         ~default:(read_length ~with_keywords:false)
         t
   in
-  (* CSS margin accepts 1-4 space-separated values *)
-  (* CSS-wide keywords must be the only value when present *)
   Cursor.enum "margin"
     [
-      ("auto", [ Auto ]);
-      ("inherit", [ Inherit ]);
+      ("inherit", [ (Inherit : length) ]);
       ("initial", [ Initial ]);
       ("unset", [ Unset ]);
       ("revert", [ Revert ]);

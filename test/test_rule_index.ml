@@ -14,6 +14,14 @@ let _solid_outline_color =
 
 let stub_shorthand = red
 
+(* A shorthand the index has to refuse: CSS Cascade 5 sec. 7.3 gives a CSS-wide
+   keyword no meaning beside another component. *)
+let mixed_shorthand =
+  Declaration.v Properties.Margin ([ Px 1.0; Inherit ] : Values.length list)
+
+let commits name t ~at ~absorbed ~shorthand =
+  Alcotest.(check bool) name true (Rule_index.absorb t ~at ~absorbed ~shorthand)
+
 let test_empty_index () =
   let t = Rule_index.build [] in
   Alcotest.(check int) "empty index has length 0" 0 (Rule_index.length t);
@@ -38,7 +46,7 @@ let test_absorb_marks_positions () =
   Alcotest.(check bool)
     "position 0 not absorbed initially" false
     (Rule_index.is_absorbed t 0);
-  Rule_index.absorb t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:stub_shorthand;
+  commits "absorb commits" t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:stub_shorthand;
   Alcotest.(check bool)
     "position 0 carries the shorthand (not 'absorbed')" false
     (Rule_index.is_absorbed t 0);
@@ -50,7 +58,7 @@ let test_to_list_emits_shorthand_in_place () =
   let t =
     Rule_index.build [ red; solid_outline_width; solid_outline_style; blue ]
   in
-  Rule_index.absorb t ~at:1 ~absorbed:[ 1; 2 ] ~shorthand:stub_shorthand;
+  commits "absorb commits" t ~at:1 ~absorbed:[ 1; 2 ] ~shorthand:stub_shorthand;
   let out = Rule_index.to_list t in
   Alcotest.(check int) "length unchanged minus absorbed" 3 (List.length out);
   match out with
@@ -64,14 +72,28 @@ let test_to_list_emits_shorthand_in_place () =
 
 let test_absorb_double_consume_raises () =
   let t = Rule_index.build [ red; blue ] in
-  Rule_index.absorb t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:stub_shorthand;
+  commits "absorb commits" t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:stub_shorthand;
   let raised =
     try
-      Rule_index.absorb t ~at:1 ~absorbed:[ 1 ] ~shorthand:stub_shorthand;
+      let (_ : bool) =
+        Rule_index.absorb t ~at:1 ~absorbed:[ 1 ] ~shorthand:stub_shorthand
+      in
       false
     with Failure _ -> true
   in
   Alcotest.(check bool) "re-absorbing a slot fails" true raised
+
+let test_absorb_refuses_css_wide_mix () =
+  let t = Rule_index.build [ red; blue ] in
+  Alcotest.(check bool)
+    "a shorthand mixing a css-wide keyword is refused" false
+    (Rule_index.absorb t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:mixed_shorthand);
+  Alcotest.(check bool)
+    "the refused positions stay live" false
+    (Rule_index.is_absorbed t 1);
+  Alcotest.(check int)
+    "the rule keeps both longhands" 2
+    (List.length (Rule_index.to_list t))
 
 let suite =
   ( "rule_index",
@@ -85,4 +107,6 @@ let suite =
         test_to_list_emits_shorthand_in_place;
       Alcotest.test_case "double-absorb raises" `Quick
         test_absorb_double_consume_raises;
+      Alcotest.test_case "absorb refuses a css-wide mix" `Quick
+        test_absorb_refuses_css_wide_mix;
     ] )
