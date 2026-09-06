@@ -1074,6 +1074,12 @@ let flexbox_flex_and_basis () =
   (* Flex basis *)
   check_declaration ~expected:"flex-basis:auto" "flex-basis: auto";
   check_declaration ~expected:"flex-basis:0px" "flex-basis: 0px";
+  (* CSS Flexbox 1 sec. 7.2 takes a <'width'>, which is every length the
+     document can write, and cascade keeps the authored spelling of the ones no
+     typed constructor carries. *)
+  check_declaration ~expected:"flex-basis:1000px" "flex-basis: 1e3px";
+  check_declaration ~expected:"flex-basis:10px" "flex-basis: 10.0px";
+  check_declaration ~expected:"flex:3.40282e38px" "flex: 1e999px";
   decl_optimizes ~prop:"flex-basis" ~into:"0" "0px";
   check_declaration ~expected:"flex-basis:0%" "flex-basis: 0%";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
