@@ -201,15 +201,21 @@ let test_media_feature_family buf =
 
 let test_media_feature_recovery buf =
   let valid = pick Cascade_spec_inventory.Query_grammar.media_positive buf 3 in
-  let input =
+  let input, expected =
     if byte_at buf 4 mod 2 = 0 then
-      (pick Cascade_spec_inventory.Query_grammar.media_negative buf 5).input
+      ( (pick Cascade_spec_inventory.Query_grammar.media_negative buf 5).input,
+        "not all" )
     else
-      Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 6)
+      let m =
+        Cascade_spec_inventory.Query_grammar.mutate_invalid valid
+          (byte_at buf 6)
+      in
+      (m.input, m.recovery)
   in
   let actual = Css.Media.to_string (Css.Media.of_string input) in
-  if actual <> "not all" then
-    failf "invalid media feature family did not recover: %S -> %S" input actual
+  if actual <> expected then
+    failf "invalid media feature family did not recover: %S -> %S, expected %S"
+      input actual expected
 
 (* ===== Soundness of the equivalence [Media.equal] decides ===== *)
 

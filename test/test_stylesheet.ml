@@ -1961,6 +1961,14 @@ let spec_lenient_recovery_block_statements () =
     "@media screen { @media (min-width: 1px) and { a { color: red } } b { \
      color: blue } }"
     "@media screen{@media not all{a{color:red}}b{color:#00f}}" 1;
+  (* The replacement is per entry of the comma-separated list, so the queries
+     beside the bad one still say what they said. *)
+  lenient_recover "only the bad query of a list is replaced"
+    "@media ,(min-width: 10px) { a { color: red } }"
+    "@media not all,(width>=10px){a{color:red}}" 1;
+  lenient_recover "a list of empty queries is one not all each"
+    "@media all,,all { a { color: red } }"
+    "@media all,not all,all{a{color:red}}" 1;
   lenient_recover "bad @container prelude in @media ends at its block"
     "@media screen { @container (min-width: 1px) !! { a { color: red } } b { \
      color: blue } }"
