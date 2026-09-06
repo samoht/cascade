@@ -1070,11 +1070,21 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
 let pp_border_image_slice_item ctx (value : border_image_slice_item) =
   match value with Number n -> Pp.float ctx n | Pct n -> Pp.pct ctx n
 
-let pp_border_image_slice ctx { offsets; fill } =
+let pp_border_image_slice_offsets ctx { offsets; fill } =
   Pp.list ~sep:Pp.space pp_border_image_slice_item ctx offsets;
   if fill then (
     Pp.space ctx ();
     Pp.string ctx "fill")
+
+let rec pp_border_image_slice ctx (value : border_image_slice) =
+  match value with
+  | Slices offsets -> pp_border_image_slice_offsets ctx offsets
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_border_image_slice ctx v
 
 let pp_border_image_width_item ctx (value : border_image_width_item) =
   match value with
@@ -1144,7 +1154,7 @@ let normalize_border_image : border_image -> border_image =
   in
   let slice_initial =
     drop
-      (fun (s : border_image_slice) ->
+      (fun (s : border_image_slice_offsets) ->
         (not s.fill)
         &&
         match s.offsets with
@@ -1201,7 +1211,7 @@ let pp_border_image : border_image Pp.t =
     else Pp.space ctx ()
   in
   pp_bg_prop maybe_space pp_background_image ctx source;
-  pp_bg_prop maybe_space pp_border_image_slice ctx slice;
+  pp_bg_prop maybe_space pp_border_image_slice_offsets ctx slice;
   (match width with
   | None -> ()
   | Some width ->
@@ -2248,7 +2258,7 @@ let read_border_image_slice_step t values has_fill =
         `Continue (values, true)
     | _ -> read_border_image_slice_value t values has_fill
 
-let read_border_image_slice t : border_image_slice =
+let read_border_image_slice_offsets t : border_image_slice_offsets =
   let rec loop values has_fill =
     match read_border_image_slice_step t values has_fill with
     | `Stop -> (values, has_fill)
@@ -2259,6 +2269,24 @@ let read_border_image_slice t : border_image_slice =
   | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
   | [], false -> Cursor.err_expected t "border-image slice"
   | offsets, fill -> { offsets; fill }
+
+(* CSS Cascade 5 sec. 7.3 gives the longhand the CSS-wide keywords; the
+   shorthand takes offsets alone. *)
+let rec read_border_image_slice t : border_image_slice =
+  match Cursor.peek_ident t with
+  | Some ("initial" | "inherit" | "unset" | "revert" | "revert-layer" | "var")
+    ->
+      Cursor.enum_or_var "border-image-slice"
+        [
+          ("initial", (Initial : border_image_slice));
+          ("inherit", Inherit);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
+        ]
+        ~var:(fun t -> Var (Values.read_var read_border_image_slice t))
+        t
+  | Some _ | None -> Slices (read_border_image_slice_offsets t)
 
 let read_border_image_width_item t : border_image_width_item =
   let auto t =
@@ -2397,7 +2425,7 @@ let read_border_image_shorthand ~mask_mode t : border_image =
      below. *)
   let mode_early = read_mode t in
   Cursor.ws t;
-  let slice = Cursor.option read_border_image_slice t in
+  let slice = Cursor.option read_border_image_slice_offsets t in
   let width, outset =
     Cursor.ws t;
     if Cursor.slash_opt t then (

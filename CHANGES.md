@@ -24,6 +24,17 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.border_image_slice` is a variant carrying the CSS-wide
+  keywords, the way its `border-image-width`, `-outset` and `-repeat` siblings
+  already were, and the offsets it used to be are
+  `border_image_slice_offsets`, which is what the `border_image` shorthand
+  record holds. A caller building the record writes `Slices { offsets; fill }`
+  (#994)
+
+- `Cascade.Properties.page_break_value` and `page_break_inside_value` gain
+  `Initial`, `Unset`, `Revert` and `Revert_layer`. Exhaustive visitors must
+  handle the four new leaves (#993)
+
 - `Css.filter` gains `Omitted of filter_function` to retain empty calls.
   Exhaustive visitors must handle this leaf; normalization equates it with
   its specified default (#870).
@@ -347,9 +358,10 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
-- `page-break-before`, `page-break-after` and `page-break-inside` take every
-  CSS-wide keyword, which CSS Cascade 5 sec. 7.3 gives to every property, and
-  each one reaches the `break-*` alias unmoved. Only `inherit` was read (#993)
+- `page-break-before`, `page-break-after`, `page-break-inside` and
+  `border-image-slice` take every CSS-wide keyword, which CSS Cascade 5 sec.
+  7.3 gives to every property. The `page-break-*` aliases read only `inherit`
+  and `border-image-slice` read none of them (#993, #994)
 
 - A `var()` whose custom property the evaluator cannot read a value from keeps
   its reference rather than taking its fallback: an empty binding, one the

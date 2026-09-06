@@ -3006,10 +3006,21 @@ type mask =
 
 type border_image_slice_item = Number of float | Pct of float
 
-type border_image_slice = {
+type border_image_slice_offsets = {
   offsets : border_image_slice_item list;
   fill : bool;
 }
+
+(* CSS Backgrounds 3 sec. 5.2: [border-image-slice] is one to four offsets with
+   an optional [fill]; the longhand also takes the CSS-wide keywords. *)
+type border_image_slice =
+  | Slices of border_image_slice_offsets
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_slice var
 
 type border_image_width_item =
   | Number of float
@@ -3060,7 +3071,7 @@ type mask_border_mode = Alpha | Luminance
 
 type border_image = {
   source : background_image option;
-  slice : border_image_slice option;
+  slice : border_image_slice_offsets option;
   width : border_image_width_item list option;
   outset : border_image_outset_item list option;
   repeat : border_image_repeat_keyword list option;

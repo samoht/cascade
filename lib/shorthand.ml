@@ -4126,7 +4126,7 @@ let border_image_shorthand run ~source ~slice ~width ~outset ~repeat =
 
 let record_border_image_longhand
     ~(source : Properties.background_image option ref)
-    ~(slice : Properties.border_image_slice option ref)
+    ~(slice : Properties.border_image_slice_offsets option ref)
     ~(width : Properties.border_image_width_item list option ref)
     ~(outset : Properties.border_image_outset_item list option ref)
     ~(repeat : Properties.border_image_repeat_keyword list option ref) ~foldable
@@ -4134,8 +4134,9 @@ let record_border_image_longhand
   match d with
   | Declaration { property = Border_image_source; value; _ } ->
       source := Some value
-  | Declaration { property = Border_image_slice; value; _ } ->
-      slice := Some value
+  | Declaration { property = Border_image_slice; value = Slices offsets; _ } ->
+      slice := Some offsets
+  | Declaration { property = Border_image_slice; _ } -> foldable := false
   | Declaration { property = Border_image_width; value = Widths l; _ } ->
       width := Some l
   | Declaration { property = Border_image_width; _ } -> foldable := false
@@ -4151,7 +4152,9 @@ let compose_border_image_run ~allow_partial
     (run : (int * Declaration.declaration) list) :
     (int * Declaration.declaration) option =
   let source : Properties.background_image option ref = ref Option.None in
-  let slice : Properties.border_image_slice option ref = ref Option.None in
+  let slice : Properties.border_image_slice_offsets option ref =
+    ref Option.None
+  in
   let width : Properties.border_image_width_item list option ref =
     ref Option.None
   in

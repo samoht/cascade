@@ -466,11 +466,20 @@ val pp_border_image_slice_item : border_image_slice_item Pp.t
 val read_border_image_slice_item : Cursor.t -> border_image_slice_item
 (** [read_border_image_slice_item t] parses one [border-image-slice] item. *)
 
+val pp_border_image_slice_offsets : border_image_slice_offsets Pp.t
+(** [pp_border_image_slice_offsets] pretty-prints the offsets a
+    [border-image-slice] carries, the part the [border-image] shorthand takes.
+*)
+
+val read_border_image_slice_offsets : Cursor.t -> border_image_slice_offsets
+(** [read_border_image_slice_offsets t] parses those offsets. *)
+
 val pp_border_image_slice : border_image_slice Pp.t
 (** [pp_border_image_slice] pretty-prints [border-image-slice]. *)
 
 val read_border_image_slice : Cursor.t -> border_image_slice
-(** [read_border_image_slice t] parses [border-image-slice]. *)
+(** [read_border_image_slice t] parses the [border-image-slice] longhand,
+    including the CSS-wide keywords. *)
 
 val read_border_image_repeat : Cursor.t -> border_image_repeat
 (** [read_border_image_repeat t] parses the [border-image-repeat] longhand,
