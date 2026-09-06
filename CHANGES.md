@@ -341,6 +341,11 @@ to lose a whole rule over one bad piece. Both are gone.
   refuses a string that is not a selector rather than reading it as an element
   name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
 
+- A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
+  dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a
+  class name follow its dot immediately and sec. 3.5 a pseudo-class name its
+  colon, so cascade was matching elements the author never named (#982)
+
 - Keyword, at-rule and function names match without regard to case, so
   `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)` and `:dir(LTR)` read
   (#602, #603, #604, #620, #622, #767)

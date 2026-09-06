@@ -458,9 +458,21 @@ let read_attribute_value t =
     | Some _ -> Cursor.err_invalid t "attribute value"
   else (value, quote)
 
+(* Selectors 4 sec. 5.1 spells a class as a [.] "immediately followed by" an
+   ident, and sec. 3.5 a pseudo-class or pseudo-element as its colons followed
+   by the name. Every other reader has the cursor skip whitespace for it, so
+   these three look for it themselves: [. x] names no class, and reading past
+   the space gave the author [.x]. *)
+let expect_adjacent t what =
+  match Cursor.peek_raw t with
+  | Some c when Component.is_whitespace c ->
+      Cursor.err_invalid t (String.concat "" [ "whitespace before the "; what ])
+  | _ -> ()
+
 (** Parse a class selector (.classname) *)
 let read_class t =
   Cursor.expect '.' t;
+  expect_adjacent t "class name";
   let name = Cursor.ident ~keep_case:true t in
   (* No validation needed: Cursor.ident already enforces CSS identifier syntax,
      including parser-valid double-dash identifiers such as .--x. *)
@@ -1794,6 +1806,7 @@ and pseudo_class_calls () = Lazy.force pseudo_class_calls_lazy
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class ?(allow_unknown = false) t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  expect_adjacent t "pseudo-class name";
   let all_idents = pseudo_class_all_idents () in
   let calls = pseudo_class_calls () in
   let read_unknown = read_unknown_pseudo_class ~all_idents in
@@ -1806,6 +1819,7 @@ and read_pseudo_class ?(allow_unknown = false) t =
 and read_pseudo_element t =
   if not (Cursor.try_kind_pair Token.Colon Token.Colon t) then
     Cursor.err_expected t "'::'";
+  expect_adjacent t "pseudo-element name";
   Cursor.enum_calls
     [
       ("part", read_part);
