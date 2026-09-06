@@ -2862,21 +2862,22 @@ let rec page_selector_skip_ws s len i =
    [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
    the closed set [first | left | right | blank], so [@page invoice:blank:first]
    is well-formed. *)
+(* CSS Paged Media 3 sec. 4.3 closes [<pseudo-page>] over four names, so each is
+   a keyword and not the page name beside it. *)
+let page_pseudo_of_name r s name =
+  match Common.String.lowercase_ascii_preserve name with
+  | "first" -> First
+  | "left" -> Left
+  | "right" -> Right
+  | "blank" -> Blank
+  | _ -> page_selector_error r s
+
 let parse_page_selectors r selector =
   let s = String.trim selector in
   let len = String.length s in
   let consume_ident = page_selector_consume_ident s len in
   let skip_ws = page_selector_skip_ws s len in
-  let pseudo_of_name name =
-    (* CSS Paged Media 3 sec. 4.3 closes [<pseudo-page>] over four names, so
-       each is a keyword and not the page name beside it. *)
-    match Common.String.lowercase_ascii_preserve name with
-    | "first" -> First
-    | "left" -> Left
-    | "right" -> Right
-    | "blank" -> Blank
-    | _ -> page_selector_error r s
-  in
+  let pseudo_of_name = page_pseudo_of_name r s in
   let consume_pseudo_page i : (page_pseudo * int) option =
     if i >= len || s.[i] <> ':' then None
     else
@@ -2892,7 +2893,12 @@ let parse_page_selectors r selector =
   in
   let rec consume_selectors acc i =
     let i = skip_ws i in
-    if i >= len then List.rev acc
+    (* Reaching the end here is the tail of a [,]: the list is
+       [<page-selector>#] and has no empty item, so a trailing comma is no more
+       a selector list than a lone one. *)
+    if i >= len then (
+      if acc <> [] then page_selector_error r s;
+      List.rev acc)
     else
       let after_ident = consume_ident i in
       let name =
@@ -2900,6 +2906,11 @@ let parse_page_selectors r selector =
         else Some (String.sub s i (after_ident - i))
       in
       let pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
+      (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages, or
+         both, so an item with neither is no selector: [@page ,] names two of
+         them and Chrome 151 drops the rule. The prelude may be absent
+         altogether, which the caller answers before reaching here. *)
+      if Option.is_none name && pseudos = [] then page_selector_error r s;
       let sel = { name; pseudos } in
       let after_pseudo = skip_ws after_pseudo in
       if after_pseudo >= len then List.rev (sel :: acc)

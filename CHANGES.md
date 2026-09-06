@@ -284,6 +284,11 @@ to lose a whole rule over one bad piece. Both are gone.
 - `border-image` compares a slice against its initial without a polymorphic
   equality, which walked another module's representation (#935)
 
+- An `@page` prelude with an empty selector in it invalidates the rule. CSS
+  Paged Media 3 sec. 4.2 gives each item of the list a name, pseudo-pages or
+  both, so `@page ,` and `@page foo,` name one that is neither and Chrome drops
+  the rule; cascade read them as an unnamed page (#973)
+
 - A value the input ended in the middle of a string keeps its declaration. CSS
   Syntax 3 sec. 4.3.5 ends a string at EOF as the string it read and only a
   newline makes a `<bad-string-token>`, which sec. 7.2 excludes; cascade treated
