@@ -5512,6 +5512,115 @@ val column_rule_color : color list -> declaration
 (** [column_rule_color v] is the [column-rule-color] longhand, one entry per gap
     decoration line. *)
 
+(** CSS Backgrounds 3 sec. 5.2: one [border-image-slice] offset, a number in
+    units of the image's own pixels or a percentage of its size. *)
+type border_image_slice_item = Properties.border_image_slice_item =
+  | Number of number
+  | Pct of float
+
+type border_image_slice_offsets = Properties.border_image_slice_offsets = {
+  offsets : border_image_slice_item list;
+  fill : bool;
+}
+(** Sec. 5.2: the one to four offsets and the [fill] keyword. *)
+
+(** Sec. 5.2 [border-image-slice]. *)
+type border_image_slice = Properties.border_image_slice =
+  | Slices of border_image_slice_offsets
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_slice var
+
+val border_image_slice : border_image_slice -> declaration
+(** [border_image_slice v] is the [border-image-slice] property. *)
+
+(** Sec. 5.3: one [border-image-width], which unlike a border width takes a bare
+    number as a multiple of the border width. *)
+type border_image_width_item = Properties.border_image_width_item =
+  | Number of number
+  | Pct of float
+  | Length of length
+  | Auto
+
+(** Sec. 5.3 [border-image-width]. *)
+type border_image_width = Properties.border_image_width =
+  | Widths of border_image_width_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_width var
+
+val border_image_width : border_image_width -> declaration
+(** [border_image_width v] is the [border-image-width] property. *)
+
+(** Sec. 5.4: one [border-image-outset], a number or a length. *)
+type border_image_outset_item = Properties.border_image_outset_item =
+  | Number of number
+  | Length of length
+
+(** Sec. 5.4 [border-image-outset]. *)
+type border_image_outset = Properties.border_image_outset =
+  | Outsets of border_image_outset_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_outset var
+
+val border_image_outset : border_image_outset -> declaration
+(** [border_image_outset v] is the [border-image-outset] property. *)
+
+(** Sec. 5.5: how the middle of an edge is filled. *)
+type border_image_repeat_keyword = Properties.border_image_repeat_keyword =
+  | Stretch
+  | Repeat
+  | Round
+  | Space
+
+(** Sec. 5.5 [border-image-repeat]: the block edge then the inline edge. *)
+type border_image_repeat = Properties.border_image_repeat =
+  | Repeats of border_image_repeat_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_image_repeat var
+
+val border_image_repeat : border_image_repeat -> declaration
+(** [border_image_repeat v] is the [border-image-repeat] property. *)
+
+val border_image_source : background_image -> declaration
+(** [border_image_source v] is the [border-image-source] property. *)
+
+(** CSS Masking 1 sec. 8.2 [mask-border-mode]: which channel of the source image
+    is the mask. *)
+type mask_border_mode = Properties.mask_border_mode = Alpha | Luminance
+
+type border_image = Properties.border_image = {
+  source : background_image option;
+  slice : border_image_slice_offsets option;
+  width : border_image_width_item list option;
+  outset : border_image_outset_item list option;
+  repeat : border_image_repeat_keyword list option;
+  mode : mask_border_mode option;
+}
+(** Sec. 5.6 [border-image] and CSS Masking 1 sec. 8.1 [mask-border], which
+    share every slot but the [mode] only the mask carries. *)
+
+val border_image : border_image -> declaration
+(** [border_image v] is the [border-image] shorthand. *)
+
+val mask_border : border_image -> declaration
+(** [mask_border v] is the [mask-border] shorthand, which takes what
+    [border-image] takes plus the [mode] slot. *)
+
 val border_width : border_width -> declaration
 (** [border_width width] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-width}

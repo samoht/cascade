@@ -1075,6 +1075,28 @@ val column_rule_color : color list -> declaration
 (** [column_rule_color v] is the [column-rule-color] property, one entry per gap
     decoration line. *)
 
+val border_image : border_image -> declaration
+(** [border_image v] is the [border-image] shorthand. *)
+
+val border_image_source : background_image -> declaration
+(** [border_image_source v] is the [border-image-source] property. *)
+
+val border_image_slice : border_image_slice -> declaration
+(** [border_image_slice v] is the [border-image-slice] property. *)
+
+val border_image_width : border_image_width -> declaration
+(** [border_image_width v] is the [border-image-width] property. *)
+
+val border_image_outset : border_image_outset -> declaration
+(** [border_image_outset v] is the [border-image-outset] property. *)
+
+val border_image_repeat : border_image_repeat -> declaration
+(** [border_image_repeat v] is the [border-image-repeat] property. *)
+
+val mask_border : border_image -> declaration
+(** [mask_border v] is the [mask-border] shorthand, which takes what
+    [border-image] takes plus the mode slot. *)
+
 val all : css_wide -> declaration
 (** [all v] is the [all] property. It resets every longhand to [v] but the two
     writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)

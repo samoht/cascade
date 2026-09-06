@@ -846,6 +846,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the border-image family: `border_image`,
+  `border_image_source`, `border_image_slice`, `border_image_width`,
+  `border_image_outset`, `border_image_repeat` and `mask_border`, with their
+  value types (#1033)
+
 - `Css` builds the multi-column longhands: `column_width`, `column_count`,
   `column_height`, `column_wrap` and the three `column_rule_*` gap decoration
   lists, with their value types (#1032)
