@@ -362,10 +362,14 @@ let test_inline_import_supports_query_modes () =
     (input |> Css.inline_imports ~query:evergreen loader |> minified)
 
 let test_inline_vars_fallback_edges () =
+  (* [fallback] is no colour, so the second declaration is invalid at
+     computed-value time and neither its refused text nor its absence says so:
+     the reference stays for the browser to answer. *)
   check_inline_case "nested missing vars use deepest fallback"
     ".a{color:var(--undef,var(--also-undef,blue))}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
-    ~optimized:".a{color:#00f}.b{color:fallback}"
-    ".a{color:blue}.b{color:fallback}";
+    ~optimized:
+      ".a{color:#00f}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}"
+    ".a{color:blue}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}";
   check_inline_case "missing var without fallback stays unresolved"
     ".a{color:var(--undef)}" ".a{color:var(--undef)}";
   check_inline_case "calc fallback resolves and canonicalizes"
@@ -393,27 +397,37 @@ let test_inline_vars_out_of_scope_definition_stays_live () =
      it. *)
   check_inline_case "a live reference keeps the definition it may reach"
     "@media (min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}"
-    "@media(min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}"
+    "@media(min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}";
+  (* CSS Variables 1 sec. 3 makes a declaration whose substitution the property
+     refuses invalid at computed-value time, which is the property's inherited
+     or initial value and not the declaration written before it. Writing the
+     refused text back hands the slot to that earlier declaration instead, so
+     the reference stays and the browser answers it. *)
+  check_inline_case "a substitution the property refuses keeps the reference"
+    "#i{width:37px;width:var(--nope,notalength)}"
+    "#i{width:37px;width:var(--nope,notalength)}";
+  check_inline_case "an empty binding substituted into a property keeps it"
+    ":root{--x:}#i{content:\"zz\";content:var(--x)}"
+    ":root{--x:}#i{content:\"zz\";content:var(--x)}"
 
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
     ".a{font-family:var(--font,\"Helvetica Neue\",sans-serif)}"
     ".a{font-family:Helvetica Neue,sans-serif}";
-  check_inline_case
-    "invalid color multi-comma fallback drops under minification"
-    ".a{color:var(--undef,red,blue)}" "";
-  check_inline_case "empty fallback makes invalid color declaration drop"
-    ".a{color:var(--undef,)}" ""
+  check_inline_case "invalid color multi-comma fallback keeps the reference"
+    ".a{color:var(--undef,red,blue)}" ".a{color:var(--undef,red,blue)}";
+  check_inline_case "an empty fallback keeps the reference too"
+    ".a{color:var(--undef,)}" ".a{color:var(--undef,)}"
 
 let test_inline_cycle_fallbacks () =
   check_inline_case "self-cycle uses consumer fallback and strips dead var"
     ":root{--x:var(--x)}.a{color:var(--x,red)}" ".a{color:red}";
   check_inline_case "two-cycle uses consumer fallback"
     ":root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}"
-    ":root{--a:var(--b);--b:var(--a)}.x{color:fallback}";
+    ":root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}";
   check_inline_case "three-cycle uses consumer fallback"
     ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}"
-    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}";
+    ":root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}";
   (* A cyclic custom property is invalid at computed-value time: its own var()
      fallback does not rescue it, so the consumer's fallback wins. *)
   check_inline_case
@@ -917,10 +931,12 @@ let test_inline_keeps_a_page_break_property_from_css () =
       ( ":root{--pb:avoid}.a{page-break-inside:var(--pb)}",
         ".a{break-inside:avoid}" );
       (":root{--pb:left}.a{page-break-after:var(--pb)}", ".a{break-after:left}");
-      (* A substitution the legacy grammar rejects leaves the declaration in
-         place rather than retyping it as a property that would accept it. *)
+      (* A substitution the legacy grammar rejects is invalid at computed-value
+         time, so the reference stays rather than being retyped as a property
+         that would accept it or written back as text the browser drops on
+         reading. *)
       ( ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}",
-        ".a{page-break-inside:avoid-page}" );
+        ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}" );
     ]
 
 let suite =

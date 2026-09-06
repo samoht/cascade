@@ -12,14 +12,17 @@ as a directly-written value.
   $ cascade --minify --inline-vars basic.css
   .a,.b{color:red}.c{color:#0000}
 
-Nested var() in fallback chains through to the deepest defined value.
+Nested var() in fallback chains through to the deepest defined value. A
+deepest value the property refuses leaves the declaration invalid at
+computed-value time, which is neither the refused text nor the
+declaration's absence, so the reference stays for the browser to answer.
 
   $ cat > nested.css <<EOF
   > .a { color: var(--undef, var(--also-undef, blue)) }
   > .b { color: var(--undef, var(--also-undef, var(--third, fallback))) }
   > EOF
   $ cascade --minify --inline-vars nested.css
-  .a{color:#00f}.b{color:fallback}
+  .a{color:#00f}.b{color:var(--undef,var(--also-undef,var(--third,fallback)))}
 
 A var() with no fallback that cannot resolve preserves the var()
 verbatim - the spec says the declaration is invalid at computed time;
@@ -42,25 +45,26 @@ A fallback containing a calc() reduces after the var() wrapper drops.
 
 A multi-comma fallback list (font-family fallback chain) is preserved -
 commas inside the fallback are part of the fallback's token stream per
-Custom Properties L1 §2. If that token stream is invalid for the
-destination property, the declaration is invalid and drops under
-minification.
+Custom Properties L1 §2. A token stream the destination property refuses
+leaves the declaration invalid at computed-value time, so the reference
+stays.
 
   $ cat > list.css <<EOF
   > .a { font-family: var(--font, "Helvetica Neue", sans-serif) }
   > .b { color: var(--undef, red, blue) }
   > EOF
   $ cascade --minify --inline-vars list.css
-  .a{font-family:Helvetica Neue,sans-serif}
+  .a{font-family:Helvetica Neue,sans-serif}.b{color:var(--undef,red,blue)}
 
-An empty fallback collapses to an empty value when the wrapper drops;
-for a property that does not accept an empty value, minification drops
-the invalid declaration.
+An empty fallback substitutes to an empty value; for a property that
+does not accept one the declaration is invalid at computed-value time,
+so the reference stays.
 
   $ cat > empty.css <<EOF
   > .a { color: var(--undef,) }
   > EOF
   $ cascade --minify --inline-vars empty.css 2>&1 | grep -v "warning" || true
+  .a{color:var(--undef,)}
 
 A non-trivial fallback is NOT eagerly inlined when the var() name
 resolves elsewhere - only an unresolvable reference emits the fallback.

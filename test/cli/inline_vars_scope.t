@@ -114,14 +114,16 @@ the now-unreferenced custom property is dead-stripped.
   .a{color:red}
 
 A two-cycle [--a -> --b -> --a] is detected and both definitions stay
-verbatim with consumers falling back.
+verbatim. The consumer's fallback is no colour, so its declaration is
+invalid at computed-value time and the reference stays for the browser
+to answer.
 
   $ cat > two-cycle.css <<EOF
   > :root { --a: var(--b); --b: var(--a) }
   > .x { color: var(--a, fallback) }
   > EOF
   $ cascade --minify --inline-vars two-cycle.css 2>&1 | grep -v "warning"
-  :root{--a:var(--b);--b:var(--a)}.x{color:fallback}
+  :root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}
 
 A three-step indirect cycle [--a -> --b -> --c -> --a] is detected the
 same way.
@@ -135,7 +137,7 @@ same way.
   > .x { color: var(--a, fallback) }
   > EOF
   $ cascade --minify --inline-vars three-cycle.css 2>&1 | grep -v "warning"
-  :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:fallback}
+  :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}
 
 A var() inside a string token is NOT substituted - per CSS Custom
 Properties L1 §2 substitution does not look inside [<string>] tokens.
