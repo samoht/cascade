@@ -24,6 +24,13 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.container_shorthand` holds a `container_name` where it
+  held a `string option`, so `container: markers stroke fill` reads and
+  `container: inline-size` names a container instead of typing one. CSS
+  Conditional 5 sec. 3.3 makes the name half required and sec. 3.2 spells it
+  `none | <custom-ident>+`, which also excludes `and`, `not` and `or` from a
+  container name (#1013)
+
 - `Cascade.Properties.position_try_fallbacks` holds
   `position_try_fallback_entry list`, whose `Area` entry carries the
   `<position-area>` CSS Anchor Positioning 1 sec. 6.1 allows beside the

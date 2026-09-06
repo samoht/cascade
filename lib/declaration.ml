@@ -3334,14 +3334,15 @@ let user_select value = v User_select value
 let webkit_user_select value = v Webkit_user_select value
 let container_type value = v Container_type value
 
-let container_name value =
+let container_name_of_string value : container_name =
   let names = String.split_on_char ' ' value |> List.filter (( <> ) "") in
-  match names with
-  | [ "none" ] -> v Container_name (None : container_name)
-  | _ -> v Container_name (Names names)
+  match names with [ "none" ] -> None | _ -> Names names
+
+let container_name value = v Container_name (container_name_of_string value)
 
 let container ?type_ name =
-  v Container (Shorthand { name = Some name; ctype = type_ })
+  v Container
+    (Shorthand { name = container_name_of_string name; ctype = type_ })
 
 let transform value = v Transform [ value ]
 

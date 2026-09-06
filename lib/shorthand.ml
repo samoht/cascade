@@ -2628,8 +2628,7 @@ let duo_container idx i =
     in
     let value : Properties.container_shorthand option =
       match (name : Properties.container_name option) with
-      | Some None -> Some (Shorthand { name = Some "none"; ctype })
-      | Some (Names [ n ]) -> Some (Shorthand { name = Some n; ctype })
+      | Some ((None | Names _) as name) -> Some (Shorthand { name; ctype })
       | _ -> Option.None
     in
     Option.map (Declaration.v ~important Container) value

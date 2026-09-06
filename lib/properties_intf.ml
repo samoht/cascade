@@ -3931,9 +3931,11 @@ type offset =
   | Revert_layer
   | Var of offset var
 
-(* Container shorthand: name / type *)
+(** CSS Conditional 5 sec. 3.3 [container]:
+    [<'container-name'> [ / <'container-type'> ]?]. The name half is required,
+    and only the [None] and [Names] arms of {!type-container_name} reach it. *)
 type container_shorthand =
-  | Shorthand of { name : string option; ctype : container_type option }
+  | Shorthand of { name : container_name; ctype : container_type option }
   | Initial
   | Inherit
   | Unset

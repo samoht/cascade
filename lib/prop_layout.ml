@@ -314,17 +314,15 @@ let rec pp_container_shorthand : container_shorthand Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Shorthand { name; ctype } -> (
-      match (name, ctype) with
-      | None, None -> () (* Should not happen, but emit nothing *)
-      | Some n, None -> Pp.string ctx n
-      | None, Some t -> pp_container_type ctx t
-      | Some n, Some t ->
-          Pp.string ctx n;
+  | Shorthand { name; ctype } ->
+      pp_container_name ctx name;
+      Option.iter
+        (fun t ->
           Pp.sp ctx ();
           Pp.char ctx '/';
           Pp.sp ctx ();
           pp_container_type ctx t)
+        ctype
 
 let rec pp_content_visibility : content_visibility Pp.t =
  fun ctx -> function
@@ -457,8 +455,22 @@ let rec read_container_type (t : Cursor.t) : container_type =
       (Var (Values.read_var read_container_type t) : container_type))
     t
 
+(* CSS Conditional 5 sec. 3.2 excludes [none], [and], [not] and [or] from a
+   container name, and CSS Values 4 sec. 3.2 excludes [default] and the CSS-wide
+   keywords from every [<custom-ident>]. *)
 let container_name_reserved =
-  [ "none"; "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+  [
+    "none";
+    "and";
+    "not";
+    "or";
+    "default";
+    "initial";
+    "inherit";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
 
 let read_container_custom_ident t =
   let ident = Cursor.ident ~keep_case:true t in
@@ -588,51 +600,38 @@ let rec read_contain_intrinsic_longhand (t : Cursor.t) :
      t
     : contain_intrinsic_longhand)
 
+(* Sec. 3.3 gives the shorthand a required [<'container-name'>], so every
+   keyword before the slash is a name: [container: inline-size] names a
+   container, it does not type one. *)
+let read_container_shorthand_name t : container_name =
+  match Cursor.peek_ident t with
+  | Some "none" ->
+      let _ = Cursor.ident t in
+      (None : container_name)
+  | _ ->
+      Names
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 read_container_custom_ident t)
+
 let rec read_container_shorthand (t : Cursor.t) : container_shorthand =
-  (* Syntax: container: [<custom-ident>] [ / <container-type> ]? *)
-  let is_container_type_keyword ident =
-    match String.lowercase_ascii ident with
-    | "normal" | "inline-size" | "size" | "scroll-state" -> true
-    | _ -> false
-  in
-  let validate_name_before_slash ident =
-    if is_container_type_keyword ident then
-      Cursor.err_invalid t
-        ("container shorthand type keyword used as name: " ^ ident);
-    if List.mem (String.lowercase_ascii ident) container_name_reserved then
-      Cursor.err_invalid t ("reserved container-name ident: " ^ ident)
-  in
-  Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii_preserve name = "var" ->
-      (Var (Values.read_var read_container_shorthand t) : container_shorthand)
-  | _ -> (
-      let first = Cursor.ident t in
+  Cursor.enum_or_var "container"
+    [
+      ("initial", (Initial : container_shorthand));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_container_shorthand t) : container_shorthand))
+    ~default:(fun t ->
+      let name = read_container_shorthand_name t in
       Cursor.ws t;
-      match Cursor.peek_delim t with
-      | Some '/' ->
-          (* We have: name / type *)
-          validate_name_before_slash first;
-          Cursor.expect '/' t;
-          Cursor.ws t;
-          let ctype = read_container_type t in
-          Shorthand { name = Some first; ctype = Some ctype }
-      | _ -> (
-          (* Just a name, or just a type? Check if it's a valid
-             container-type *)
-          match first with
-          | "normal" -> Shorthand { name = None; ctype = Some Normal }
-          | "inline-size" -> Shorthand { name = None; ctype = Some Inline_size }
-          | "size" -> Shorthand { name = None; ctype = Some Size }
-          | "scroll-state" ->
-              Shorthand { name = None; ctype = Some Scroll_state }
-          | "initial" -> Initial
-          | "inherit" -> Inherit
-          | "unset" -> Unset
-          | "revert" -> Revert
-          | "revert-layer" -> Revert_layer
-          | _ -> Shorthand { name = Some first; ctype = None }))
+      if Cursor.slash_opt t then (
+        Cursor.ws t;
+        (Shorthand { name; ctype = Some (read_container_type t) }
+          : container_shorthand))
+      else Shorthand { name; ctype = Option.None })
+    t
 
 let rec read_contain t : contain =
   let read_contain_value t : contain =
