@@ -4925,6 +4925,14 @@ let spec_generated_animation_font_edges () =
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range "entry";
+  (* Scroll-driven Animations 1 secs. 3.1 to 3.3 put a [#] on both ends and on
+     the shorthand, one entry per animation. *)
+  check_animation_range "normal,normal";
+  check_animation_range "cover,contain";
+  check_animation_range ~expected:"entry 10%exit 90%,cover"
+    "entry 10% exit 90%, cover";
+  check_animation_range_item ~expected:"10%,normal" "10%, normal";
+  check_animation_range_item ~expected:"cover,contain" "cover, contain";
   (* Scroll Animations 1 sec. 5.1 names [normal], a length-percentage and a
      range name, so the intrinsic-sizing keywords a bare length would accept are
      out. *)
