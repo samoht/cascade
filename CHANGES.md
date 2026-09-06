@@ -36,6 +36,13 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- `Cascade.Properties.hyphenate_limit_chars` gives each slot a
+  `hyphenate_limit_chars_item`, `Auto` or a `Chars` count, where it carried a
+  bare `int` and a whole-value `Auto`, so `hyphenate-limit-chars: auto 3` and
+  `hyphenate-limit-chars: calc(1 + 2)` read where they were dropped with a
+  warning. CSS Text 4 sec. 6.3.4 spells the property
+  `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
+
 - The `Number` of `Cascade.Properties.dash_length` carries a `number` where it
   carried a `float`, and `animation_iteration_count` replaces its `Num of float`
   with `Count of number`, so `stroke-dasharray: calc(1 + 2)` and

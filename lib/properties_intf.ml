@@ -1475,11 +1475,22 @@ type text_spacing_trim =
   | Revert_layer
   | Var of text_spacing_trim var
 
+(** CSS Text 4 sec. 6.3.4: one slot of [hyphenate-limit-chars], a minimum
+    character count or [auto] for the count the UA picks. CSS Values 4 sec. 10.1
+    puts a math function where the count is. *)
+type hyphenate_limit_chars_item = Auto | Chars of number
+
+(** CSS Text 4 sec. 6.3.4 [hyphenate-limit-chars]: the minimum characters in a
+    hyphenated word, then before the hyphen, then after it. A missing third slot
+    repeats the second and a missing second is [auto], so [One Auto] is the
+    initial value. *)
 type hyphenate_limit_chars =
-  | Auto
-  | One of int
-  | Two of int * int
-  | Three of int * int * int
+  | One of hyphenate_limit_chars_item
+  | Two of hyphenate_limit_chars_item * hyphenate_limit_chars_item
+  | Three of
+      hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
   | Inherit
   | Initial
   | Unset

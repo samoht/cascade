@@ -2764,11 +2764,17 @@ type text_spacing_trim = Properties.text_spacing_trim =
   | Revert_layer
   | Var of text_spacing_trim var
 
-type hyphenate_limit_chars = Properties.hyphenate_limit_chars =
+type hyphenate_limit_chars_item = Properties.hyphenate_limit_chars_item =
   | Auto
-  | One of int
-  | Two of int * int
-  | Three of int * int * int
+  | Chars of number
+
+type hyphenate_limit_chars = Properties.hyphenate_limit_chars =
+  | One of hyphenate_limit_chars_item
+  | Two of hyphenate_limit_chars_item * hyphenate_limit_chars_item
+  | Three of
+      hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
   | Inherit
   | Initial
   | Unset
