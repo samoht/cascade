@@ -408,7 +408,12 @@ let test_inline_vars_out_of_scope_definition_stays_live () =
     "#i{width:37px;width:var(--nope,notalength)}";
   check_inline_case "an empty binding substituted into a property keeps it"
     ":root{--x:}#i{content:\"zz\";content:var(--x)}"
-    ":root{--x:}#i{content:\"zz\";content:var(--x)}"
+    ":root{--x:}#i{content:\"zz\";content:var(--x)}";
+  (* A name written inside another reference's fallback is referenced like any
+     other, so its definition is live. *)
+  check_inline_case "a name inside a fallback keeps its definition"
+    "#i{--x:;width:var(--nope,var(--x,8px))}"
+    "#i{--x:;width:var(--nope,var(--x,8px))}"
 
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
