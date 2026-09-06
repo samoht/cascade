@@ -605,6 +605,34 @@ let shape_of =
   rewrite_identities (fun kind id ->
       if List.exists (String.equal kind) prelude_kinds then "" else id)
 
+(* The at-rules whose prelude is a condition, which CSS Conditional 3 sec. 6
+   serialises "without any logical simplifications" while allowing the token
+   stream ones: "reducing whitespace to a single space or omitting it in cases
+   where it is known to be optional". So a space next to a bracket or after a
+   [:] is a spelling and not a condition. It is no token boundary either: [(]
+   and [)] are tokens of their own, and a [:] inside a condition is followed by
+   a value or by a pseudo-class name, never by something a space keeps apart.
+   The driver has already reduced every run to one space. *)
+let condition_kinds = [ "CSSMediaRule"; "CSSSupportsRule"; "CSSContainerRule" ]
+
+let squeeze id =
+  let n = String.length id in
+  let buf = Buffer.create n in
+  String.iteri
+    (fun i c ->
+      let after_open =
+        i > 0 && (Char.equal id.[i - 1] '(' || Char.equal id.[i - 1] ':')
+      in
+      let before_close = i + 1 < n && Char.equal id.[i + 1] ')' in
+      if not (Char.equal c ' ' && (after_open || before_close)) then
+        Buffer.add_char buf c)
+    id;
+  Buffer.contents buf
+
+let condition_of =
+  rewrite_identities (fun kind id ->
+      if List.exists (String.equal kind) condition_kinds then squeeze id else id)
+
 let kind_of = rewrite_identities (fun _ _ -> "")
 
 let counts facts =
@@ -642,10 +670,9 @@ let verdict answer =
   let over = excess sa sb and under = excess sb sa in
   if not (is_empty over && is_empty under) then { over; under; rewritten = [] }
   else
-    let full =
-      excess answer.input_facts answer.output_facts
-      @ excess answer.output_facts answer.input_facts
-    in
+    let ca = List.map condition_of answer.input_facts
+    and cb = List.map condition_of answer.output_facts in
+    let full = excess ca cb @ excess cb ca in
     { over = []; under = []; rewritten = List.sort_uniq String.compare full }
 
 (* The rule a declaration fact belongs to. A fact carries at most one unescaped
