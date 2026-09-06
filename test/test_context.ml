@@ -2692,7 +2692,12 @@ let unreadable_binding_is_not_an_absent_one () =
       ("inherit", ".a{width:var(--x,8px)}");
       (* A binding this resolver can read still answers. *)
       ("2px", ".a{width:2px}");
-    ]
+    ];
+  (* Sec. 3 makes a custom property that references itself invalid at
+     computed-value time, which is the guaranteed-invalid value, so there the
+     reference's fallback is exactly the answer. *)
+  check_eval_stylesheet "--x: var(--x)" ~ctx:(ctx "var(--x)")
+    ~expected:".a{width:8px}" ".a{width:var(--x,8px)}"
 
 let suite =
   ( "context",
