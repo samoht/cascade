@@ -1808,7 +1808,7 @@ let read_motion_value : type a. a property -> Cursor.t -> declaration option =
   | View_timeline_axis -> Some (v View_timeline_axis (read_timeline_axis t))
   | View_timeline_inset -> Some (v View_timeline_inset (read_timeline_inset t))
   | View_timeline -> Some (v View_timeline (read_view_timeline_shorthand t))
-  | Timeline_scope -> Some (v Timeline_scope (read_timeline_name t))
+  | Timeline_scope -> Some (v Timeline_scope (read_timeline_scope t))
   | Perspective_origin ->
       Some (v Perspective_origin (read_perspective_origin t))
   | Transform_style -> Some (v Transform_style (read_transform_style t))

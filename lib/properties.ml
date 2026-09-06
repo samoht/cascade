@@ -5085,7 +5085,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | View_timeline_axis -> pp pp_timeline_axis
   | View_timeline_inset -> pp pp_timeline_inset
   | View_timeline -> pp pp_view_timeline_shorthand
-  | Timeline_scope -> pp pp_timeline_name
+  | Timeline_scope -> pp pp_timeline_scope
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value

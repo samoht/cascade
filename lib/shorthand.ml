@@ -2589,7 +2589,6 @@ let duo_scroll_timeline idx i =
     in
     let value : Properties.timeline_shorthand option =
       match (name : Properties.timeline_name option) with
-      | Some None when Option.is_none axis -> Some None
       | Some (Names [ n ]) -> Some (Timelines [ { name = n; axis } ])
       | _ -> Option.None
     in
@@ -3809,8 +3808,6 @@ let view_timeline_item parts : Properties.view_timeline_shorthand_item option =
   in
   match (name : Properties.timeline_name option) with
   | Some (Names [ n ]) -> Some { name = n; axis; inset }
-  | Some None when Option.is_none axis && Option.is_none inset ->
-      Some { name = "none"; axis; inset }
   | _ -> Option.None
 
 let view_timeline_of_run raw =

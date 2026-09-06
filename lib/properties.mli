@@ -172,11 +172,24 @@ val pp_timeline_axis : timeline_axis Pp.t
 val read_timeline_axis : Cursor.t -> timeline_axis
 (** [read_timeline_axis t] parses a timeline axis. *)
 
+val pp_timeline_ident : timeline_ident Pp.t
+(** [pp_timeline_ident] pretty-prints one timeline name. *)
+
+val read_timeline_ident : Cursor.t -> timeline_ident
+(** [read_timeline_ident t] parses one timeline name. *)
+
 val pp_timeline_name : timeline_name Pp.t
 (** [pp_timeline_name] pretty-prints a timeline name list. *)
 
 val read_timeline_name : Cursor.t -> timeline_name
-(** [read_timeline_name t] parses [view-timeline-name] and [timeline-scope]. *)
+(** [read_timeline_name t] parses [scroll-timeline-name] and
+    [view-timeline-name]. *)
+
+val pp_timeline_scope : timeline_scope Pp.t
+(** [pp_timeline_scope] pretty-prints a [timeline-scope]. *)
+
+val read_timeline_scope : Cursor.t -> timeline_scope
+(** [read_timeline_scope t] parses [timeline-scope]. *)
 
 val pp_timeline_inset : timeline_inset Pp.t
 (** [pp_timeline_inset] pretty-prints [view-timeline-inset]. *)

@@ -340,9 +340,14 @@ let rec pp_timeline_axis : timeline_axis Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let rec pp_timeline_name : timeline_name Pp.t =
+let pp_timeline_ident : timeline_ident Pp.t =
  fun ctx -> function
-  | Var v -> pp_var pp_timeline_name ctx v
+  | None -> Pp.string ctx "none"
+  | Name name -> pp_ident ctx name
+
+let rec pp_timeline_scope : timeline_scope Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_timeline_scope ctx v
   | None -> Pp.string ctx "none"
   | Names names -> Pp.list ~sep:Pp.comma pp_ident ctx names
   | Initial -> Pp.string ctx "initial"
@@ -351,9 +356,19 @@ let rec pp_timeline_name : timeline_name Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec pp_timeline_name : timeline_name Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_timeline_name ctx v
+  | Names names -> Pp.list ~sep:Pp.comma pp_timeline_ident ctx names
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
  fun ctx { name; axis } ->
-  pp_ident ctx name;
+  pp_timeline_ident ctx name;
   match axis with
   | None -> ()
   | Some axis ->
@@ -402,7 +417,6 @@ let normalize_view_timeline_shorthand :
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
-  | None -> Pp.string ctx "none"
   | Timelines items ->
       Pp.list ~sep:Pp.comma pp_timeline_shorthand_item ctx items
   | Initial -> Pp.string ctx "initial"
@@ -436,7 +450,7 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
 
 let pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t =
  fun ctx { name; axis; inset } ->
-  pp_ident ctx name;
+  pp_timeline_ident ctx name;
   Option.iter
     (fun axis ->
       Pp.space ctx ();
@@ -450,7 +464,6 @@ let pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t =
 
 let rec pp_view_timeline_shorthand : view_timeline_shorthand Pp.t =
  fun ctx -> function
-  | None -> Pp.string ctx "none"
   | Timelines items ->
       Pp.list ~sep:Pp.comma pp_view_timeline_shorthand_item ctx items
   | Initial -> Pp.string ctx "initial"
@@ -759,11 +772,18 @@ let rec read_timeline_axis t : timeline_axis =
       | axes -> Axes axes)
     t
 
+(* Secs. 4.1 and 5.1 spell the name [[ none | <dashed-ident> ]#], so [none]
+   names one timeline among others rather than the whole value. *)
+let read_timeline_ident t : timeline_ident =
+  Cursor.enum "timeline-name"
+    [ ("none", (None : timeline_ident)) ]
+    ~default:(fun t -> (Name (read_dashed_ident t) : timeline_ident))
+    t
+
 let rec read_timeline_name t : timeline_name =
   Cursor.enum_or_var "timeline-name"
     [
-      ("none", (None : timeline_name));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_name));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -771,15 +791,32 @@ let rec read_timeline_name t : timeline_name =
     ]
     ~var:(fun t -> (Var (Values.read_var read_timeline_name t) : timeline_name))
     ~default:(fun t ->
-      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
+      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_ident t)
         : timeline_name))
+    t
+
+(* Sec. 6 keeps [none] out of the list here: [timeline-scope] is [none |
+   <dashed-ident>#], so the keyword stands for the whole value. *)
+let rec read_timeline_scope t : timeline_scope =
+  Cursor.enum_or_var "timeline-scope"
+    [
+      ("none", (None : timeline_scope));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_timeline_scope t) : timeline_scope))
+    ~default:(fun t ->
+      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
+        : timeline_scope))
     t
 
 let read_timeline_shorthand_item t : timeline_shorthand_item =
   Cursor.ws t;
-  let name = Cursor.ident ~keep_case:true t in
-  if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t "timeline name";
+  let name = read_timeline_ident t in
   Cursor.ws t;
   let axis = Cursor.option read_timeline_axis_keyword t in
   { name; axis }
@@ -787,8 +824,7 @@ let read_timeline_shorthand_item t : timeline_shorthand_item =
 let rec read_timeline_shorthand t : timeline_shorthand =
   Cursor.enum_or_var "timeline"
     [
-      ("none", (None : timeline_shorthand));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_shorthand));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -844,9 +880,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
      [<'view-timeline-axis'> || <'view-timeline-inset'>]?, so try each missing
      slot until neither consumes input. *)
   Cursor.ws t;
-  let name = Cursor.ident ~keep_case:true t in
-  if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t "timeline name";
+  let name = read_timeline_ident t in
   let axis = ref Option.None in
   let inset = ref Option.None in
   let try_axis () =
@@ -877,8 +911,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
 let rec read_view_timeline_shorthand t : view_timeline_shorthand =
   Cursor.enum_or_var "view-timeline"
     [
-      ("none", (None : view_timeline_shorthand));
-      ("initial", Initial);
+      ("initial", (Initial : view_timeline_shorthand));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);

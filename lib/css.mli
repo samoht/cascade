@@ -8919,13 +8919,41 @@ type timeline_axis = Properties.timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
+(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
+    [view-timeline-name] and Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}. *)
+type timeline_ident = Properties.timeline_ident = None | Name of string
+
+type timeline_name = Properties.timeline_name =
+  | Names of timeline_ident list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_name var
+
+(** Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}: [none | <dashed-ident>#], where [none] stands for the
+    whole value. *)
+type timeline_scope = Properties.timeline_scope =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_scope var
+
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =
-  | None
   | Timelines of timeline_shorthand_item list
   | Initial
   | Inherit
@@ -8935,13 +8963,12 @@ type timeline_shorthand = Properties.timeline_shorthand =
   | Var of timeline_shorthand var
 
 type view_timeline_shorthand_item = Properties.view_timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
   inset : Properties.timeline_inset option;
 }
 
 type view_timeline_shorthand = Properties.view_timeline_shorthand =
-  | None
   | Timelines of view_timeline_shorthand_item list
   | Initial
   | Inherit
@@ -8949,20 +8976,6 @@ type view_timeline_shorthand = Properties.view_timeline_shorthand =
   | Revert
   | Revert_layer
   | Var of view_timeline_shorthand var
-
-(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
-    [view-timeline-name] and Scroll-driven Animations 1
-    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
-     [timeline-scope]}. *)
-type timeline_name = Properties.timeline_name =
-  | None
-  | Names of string list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of timeline_name var
 
 (** One edge of Scroll-driven Animations 1
     {{:https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset}
@@ -9047,7 +9060,7 @@ val view_timeline_axis : timeline_axis -> declaration
 val view_timeline_inset : timeline_inset -> declaration
 (** [view_timeline_inset v] is the [view-timeline-inset] property. *)
 
-val timeline_scope : timeline_name -> declaration
+val timeline_scope : timeline_scope -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
 val touch_action : touch_action -> declaration
