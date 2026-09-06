@@ -3771,6 +3771,9 @@ let test_webkit_appearance () =
   check_webkit_appearance "auto";
   check_webkit_appearance "button";
   check_webkit_appearance "textfield";
+  (* The prefixed property is Chrome's alias for [appearance], so it takes the
+     [base-select] of CSS Basic User Interface 4 sec. 5.1. *)
+  check_webkit_appearance "base-select";
   check_webkit_appearance "inherit";
   neg_cursor read_webkit_appearance "invalid-appearance"
 
