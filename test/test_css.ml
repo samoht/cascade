@@ -2712,6 +2712,37 @@ let typography_longhand_builders () =
     (Css.initial_letter_align (Align [ Hanging ]));
   check "initial-letter-wrap:first" (Css.initial_letter_wrap First)
 
+(* The last of the modelled properties the facade could not write: shapes,
+   overflow, images, margins, the top layer and the two position axes. *)
+let remaining_longhand_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "shape-image-threshold:.5" (Css.shape_image_threshold (Number 0.5));
+  check "shape-margin:1px" (Css.shape_margin (Length (Px 1.)));
+  check "shape-outside:circle(50%)" (Css.shape_outside "circle(50%)");
+  check "overflow-clip-margin:content-box 2px"
+    (Css.overflow_clip_margin (Clip_margin (Some Content_box, Some (Px 2.))));
+  check "overflow-anchor:none" (Css.overflow_anchor None);
+  check "overflow-block:clip" (Css.overflow_block Clip);
+  check "overflow-inline:auto" (Css.overflow_inline Auto);
+  check "overscroll-behavior-block:contain"
+    (Css.overscroll_behavior_block Contain);
+  check "overscroll-behavior-inline:none" (Css.overscroll_behavior_inline None);
+  check "image-orientation:from-image" (Css.image_orientation From_image);
+  check "image-rendering:pixelated" (Css.image_rendering Pixelated);
+  check "image-resolution:from-image" (Css.image_resolution From_image);
+  check "margin-trim:block" (Css.margin_trim Block);
+  check "overlay:auto" (Css.overlay Auto);
+  check "animation-composition:add"
+    (Css.animation_composition (Compositions [ Add ]));
+  check "background-position-x:center" (Css.background_position_x Center);
+  check "background-position-y:bottom 10px"
+    (Css.background_position_y (Edge_offset (Bottom, Length (Px 10.))));
+  check "grid:none" (Css.grid None)
+
 let suite =
   ( "css",
     [
@@ -2827,6 +2858,8 @@ let suite =
         logical_border_builders;
       Alcotest.test_case "public typography longhand builders" `Quick
         typography_longhand_builders;
+      Alcotest.test_case "public remaining longhand builders" `Quick
+        remaining_longhand_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
