@@ -1027,6 +1027,12 @@ val position_try : position_try -> declaration
 val position_visibility : position_visibility -> declaration
 (** [position_visibility v] is the [position-visibility] property. *)
 
+val view_transition_name : view_transition_name -> declaration
+(** [view_transition_name v] is the [view-transition-name] property. *)
+
+val view_transition_class : view_transition_class -> declaration
+(** [view_transition_class v] is the [view-transition-class] property. *)
+
 val outline_style : outline_style -> declaration
 (** [outline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}

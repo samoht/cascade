@@ -6911,6 +6911,46 @@ type position_visibility = Properties.position_visibility =
 val position_visibility : position_visibility -> declaration
 (** [position_visibility v] is the [position-visibility] property. *)
 
+(** {2:view_transitions View Transitions}
+
+    Properties that name the elements a view transition animates independently.
+
+    @see <https://www.w3.org/TR/css-view-transitions-1/>
+      CSS View Transitions Module Level 1
+    @see <https://www.w3.org/TR/css-view-transitions-2/>
+      CSS View Transitions Module Level 2, which adds [match-element] *)
+
+(** View Transitions 1 sec. 3.1 [view-transition-name], with the [match-element]
+    of Level 2. *)
+type view_transition_name = Properties.view_transition_name =
+  | None
+  | Match_element
+  | Name of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_name var
+
+val view_transition_name : view_transition_name -> declaration
+(** [view_transition_name v] is the [view-transition-name] property. *)
+
+(** View Transitions 2 sec. 3.2 [view-transition-class]:
+    [none | <custom-ident>+]. *)
+type view_transition_class = Properties.view_transition_class =
+  | None
+  | Classes of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_class var
+
+val view_transition_class : view_transition_class -> declaration
+(** [view_transition_class v] is the [view-transition-class] property. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based
