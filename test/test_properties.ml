@@ -754,6 +754,10 @@ let check_border_image_slice =
   check_value_cursor "border_image_slice" read_border_image_slice
     pp_border_image_slice
 
+let check_border_image_slice_offsets =
+  check_value_cursor "border_image_slice_offsets"
+    read_border_image_slice_offsets pp_border_image_slice_offsets
+
 let check_border_image_slice_item =
   check_value_cursor "border_image_slice_item" read_border_image_slice_item
     pp_border_image_slice_item
@@ -4877,6 +4881,14 @@ let spec_generated_box_layout_edges () =
   check_border_image_outset_item "2px";
   check_border_image_repeat_keyword "round";
   check_border_image_slice "30 fill";
+  (* CSS Cascade 5 sec. 7.3 gives the longhand the CSS-wide keywords; the
+     offsets the shorthand takes are the same value without them. *)
+  check_border_image_slice "initial";
+  check_border_image_slice "inherit";
+  check_border_image_slice "unset";
+  check_border_image_slice "revert";
+  check_border_image_slice "revert-layer";
+  check_border_image_slice_offsets "30 fill";
   check_border_image_slice_item "30%";
   check_border_image_width_item "auto";
   check_border_spacing "1px 2px";
