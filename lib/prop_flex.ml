@@ -632,7 +632,12 @@ let rec read_flex_basis t : flex_basis =
 
 module Flex = struct
   (* Helper functions for flex parsing *)
-  let read_basis_only t = Basis (read_flex_basis t)
+  (* [flex: auto] is [1 1 auto], which the flex value spells [Auto] rather than
+     as a basis of its own. *)
+  let read_basis_only t =
+    match (read_flex_basis t : flex_basis) with
+    | Auto -> (Auto : flex)
+    | basis -> Basis basis
 
   let read_factor t : flex_factor =
     (* A flex factor is a [<number>]: a [var()], a [calc()] (held unfolded; the
@@ -666,6 +671,21 @@ module Flex = struct
     | None, None -> Grow grow
     | Some s, None -> Grow_shrink (grow, s)
     | _, Some b -> Full (grow, Option.value shrink ~default:(Number 1.0), b)
+
+  (* Sec. 7.1.1 joins the factor group and the basis with a [||], so the basis
+     may lead. An omitted shrink is 1. *)
+  let read_basis_grow_shrink t =
+    let basis = read_flex_basis t in
+    Cursor.ws t;
+    let grow = read_factor t in
+    let shrink =
+      Cursor.option
+        (fun t ->
+          Cursor.ws t;
+          read_factor t)
+        t
+    in
+    Full (grow, Option.value shrink ~default:(Number 1.0), basis)
 end
 
 let rec read_flex t : flex =
@@ -676,9 +696,9 @@ let rec read_flex t : flex =
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
-      ("auto", Auto);
+      (* [none] is the whole value on its own; [auto] and [content] are also the
+         basis half of the [||], so they are left to the basis reader. *)
       ("none", (None : flex));
-      ("content", Basis Content);
     ]
     ~var:(fun t ->
       (* A lone var() is the whole value; a var() followed by more components is
@@ -689,7 +709,18 @@ let rec read_flex t : flex =
       if Cursor.is_done t || Cursor.peek_comma t then (Var v : flex)
       else (
         Cursor.restore t snap;
-        Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ] t))
+        Cursor.one_of
+          [
+            Flex.read_grow_shrink_basis;
+            Flex.read_basis_grow_shrink;
+            Flex.read_basis_only;
+          ]
+          t))
     ~default:
-      (Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
+      (Cursor.one_of
+         [
+           Flex.read_grow_shrink_basis;
+           Flex.read_basis_grow_shrink;
+           Flex.read_basis_only;
+         ])
     t
