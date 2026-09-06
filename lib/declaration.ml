@@ -70,13 +70,10 @@ let is_custom_property_name = Custom_property_name.is_valid
    declaration it is written into: it closes the enclosing block, or turns the
    rest of the stylesheet into a string. *)
 let rec component_stays_in_declaration = function
+  (* sec. 4.3.5 ends a string at EOF as the string it read and only a newline
+     makes it a [<bad-string-token>], so the first stays in the value. *)
   | Component.Preserved
-      {
-        kind =
-          ( Token.Close _ | Token.Bad_string | Token.Bad_url
-          | Token.String { terminated = false; _ } );
-        _;
-      } ->
+      { kind = Token.Close _ | Token.Bad_string | Token.Bad_url; _ } ->
       false
   | Component.Preserved _ -> true
   | Component.Block { node = { closed; value; _ }; _ } ->
@@ -236,10 +233,13 @@ let reject_curly_block_value t =
   if List.exists component_has_curly_block (value_components t) then
     Cursor.err_invalid t "curly block in declaration value"
 
+(* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at a newline as a
+   [<bad-string-token>] and at EOF as the [<string-token>] it read, and sec. 7.2
+   excludes only the first from a [<declaration-value>]. So a value the input
+   ended in the middle of a string carries a string like any other, and Chrome
+   151 keeps the declaration. *)
 let rec component_has_unterminated_string = function
-  | Component.Preserved { kind = Token.String { terminated = false; _ }; _ }
-  | Component.Preserved { kind = Token.Bad_string; _ } ->
-      true
+  | Component.Preserved { kind = Token.Bad_string; _ } -> true
   | Component.Block { node = { value; _ }; _ } ->
       List.exists component_has_unterminated_string value
   | Component.Func { node = { arguments; _ }; _ } ->
