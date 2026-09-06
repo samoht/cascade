@@ -3342,9 +3342,14 @@ type object_view_box =
   | Var of object_view_box var
 
 (* Content Types *)
+
+(** CSS Generated Content 3 sec. 2 [content]: the replacement and list forms
+    both take an [<image>], which is the {!type-background_image} vocabulary
+    without its comma list. *)
 type content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
+  | Image of background_image
   | None
   | Normal
   | Open_quote

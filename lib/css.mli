@@ -2325,6 +2325,8 @@ val overflow_y : overflow -> declaration
 type content = Properties.content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
+  | Image of Properties.background_image
+      (** The [<image>] of {!type-background_image}, aliased below. *)
   | None
   | Normal
   | Open_quote

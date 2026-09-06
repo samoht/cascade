@@ -2270,6 +2270,7 @@ let rec pp_content : content Pp.t =
             Pp.char ctx quote;
             Pp.string ctx value;
             Pp.char ctx quote)
+  | Image image -> pp_background_image ctx image
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
@@ -2652,7 +2653,10 @@ and read_content_single t =
         ("string", read_content_string_ref);
         ("counters", read_content_counters);
       ]
-    ~default:read_content_string t
+    ~default:
+      (Cursor.one_of
+         [ read_content_string; (fun t -> (Image (read_bg_image t) : content)) ])
+    t
 
 and read_content t : content =
   let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_content_single t in
@@ -3669,8 +3673,9 @@ let string_of_kind_value : type a. a kind -> a -> string =
       | Normal -> "normal"
       | Open_quote -> "open-quote"
       | Close_quote -> "close-quote"
-      | Attr _ | Counter _ | Counters _ | String_ref _ | Content_list _
-      | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+      | Image _ | Attr _ | Counter _ | Counters _ | String_ref _
+      | Content_list _ | Inherit | Initial | Unset | Revert | Revert_layer
+      | Var _ ->
           "initial")
   | Font_weight -> Pp.to_string pp_font_weight value
   | Shadow -> "0 0 #0000"

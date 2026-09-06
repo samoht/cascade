@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.content` gains `Image of background_image`, so
+  `content: url(a.png)` and `content: linear-gradient(red, blue)` read where
+  they were dropped with a warning. CSS Generated Content 3 sec. 2 puts an
+  `<image>` in both the replacement and the list form. Exhaustive visitors must
+  handle the new leaf (#1020)
+
 - `Cascade.Properties.webkit_appearance` gains `Base_select`, so
   `-webkit-appearance: base-select` reads the way `appearance: base-select`
   already did. Exhaustive visitors must handle the new leaf (#1019)
