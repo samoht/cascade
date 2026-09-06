@@ -255,6 +255,7 @@ let pp_animation_range_name : animation_range_name Pp.t =
 let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
+  | Items items -> Pp.list ~sep:Pp.comma pp_animation_range_item ctx items
   | Offset lp -> pp_length_percentage ~always:true ctx lp
   | Named (name, None) -> pp_animation_range_name ctx name
   | Named (name, Some lp) ->
@@ -282,6 +283,7 @@ let animation_range_needs_space ctx =
 let rec pp_animation_range : animation_range Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_range ctx v
+  | Ranges ranges -> Pp.list ~sep:Pp.comma pp_animation_range ctx ranges
   | Range (first, None) -> pp_animation_range_item ctx first
   | Range (first, Some Normal) -> pp_animation_range_item ctx first
   | Range
@@ -2080,7 +2082,8 @@ let read_range_length_percentage t =
 
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
-  if Cursor.is_done t then (None : length_percentage option)
+  if Cursor.is_done t || Cursor.peek_comma t then
+    (None : length_percentage option)
   else
     match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
     | Some "normal" -> (None : length_percentage option)
@@ -2088,32 +2091,41 @@ let read_animation_range_offset t : length_percentage option =
         (None : length_percentage option)
     | _ -> (Some (read_range_length_percentage t) : length_percentage option)
 
+(* Secs. 3.1 and 3.2 spell each end [[ normal | <length-percentage> |
+   <timeline-range-name> <length-percentage>? ]#], one entry per animation, so
+   [normal] names one end among others rather than the whole value. *)
+let read_animation_range_one t : animation_range_item =
+  Cursor.ws t;
+  match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+  | Some "normal" ->
+      let _ = Cursor.ident t in
+      (Normal : animation_range_item)
+  | Some name when is_animation_range_name name ->
+      let name : animation_range_name = read_animation_range_name t in
+      let lp = read_animation_range_offset t in
+      Named (name, lp)
+  | _ -> Offset (read_range_length_percentage t)
+
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
     [
-      ("normal", (Normal : animation_range_item));
-      ("initial", Initial);
+      ("initial", (Initial : animation_range_item));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
   in
-  let read_item t =
-    Cursor.ws t;
-    match Cursor.peek_ident t with
-    | Some name when is_animation_range_name name ->
-        let name : animation_range_name = read_animation_range_name t in
-        let lp = read_animation_range_offset t in
-        (Named (name, lp) : animation_range_item)
-    | _ ->
-        let lp = read_range_length_percentage t in
-        Offset lp
-  in
   Cursor.enum_or_var "animation-range-item" keywords
     ~var:(fun t ->
       (Var (Values.read_var read_animation_range_item t) : animation_range_item))
-    ~default:read_item t
+    ~default:(fun t ->
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_animation_range_one t
+      with
+      | [ item ] -> item
+      | items -> Items items)
+    t
 
 let rec read_animation_range t : animation_range =
   let keywords : (string * animation_range) list =
@@ -2125,32 +2137,22 @@ let rec read_animation_range t : animation_range =
       ("revert-layer", Revert_layer);
     ]
   in
+  (* Sec. 3.3 spells the shorthand [[ <start> <end>? ]#], so a comma ends one
+     entry the way the end of the value does. *)
   let read_range t =
-    let read_single t =
-      Cursor.ws t;
-      match
-        Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t)
-      with
-      | Some "normal" ->
-          let _ = Cursor.ident t in
-          (Normal : animation_range_item)
-      | Some name when List.mem name Keyframe.timeline_range_names ->
-          let name : animation_range_name = read_animation_range_name t in
-          let lp = read_animation_range_offset t in
-          (Named (name, lp) : animation_range_item)
-      | _ ->
-          let lp = read_range_length_percentage t in
-          Offset lp
-    in
-    let first = read_single t in
+    let first = read_animation_range_one t in
     Cursor.ws t;
-    if Cursor.is_done t then Range (first, None)
+    if Cursor.is_done t || Cursor.peek_comma t then Range (first, None)
     else
-      let second = read_single t in
+      let second = read_animation_range_one t in
       Range (first, Some second)
   in
   (Cursor.enum_or_var "animation-range" keywords
      ~var:(fun t ->
        (Var (Values.read_var read_animation_range t) : animation_range))
-     ~default:read_range t
+     ~default:(fun t ->
+       match Cursor.list ~sep:Cursor.comma ~at_least:1 read_range t with
+       | [ range ] -> range
+       | ranges -> Ranges ranges)
+     t
     : animation_range)
