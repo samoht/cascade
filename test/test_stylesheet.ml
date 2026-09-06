@@ -4296,6 +4296,21 @@ let nesting_invalid_rule_recovery () =
     ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
     ".a{color:red;.c{color:#00f}}" 1
 
+(* CSS Syntax 3 (ED) sec. 7.2 keeps an unmatched [)], []] or [}] out of a
+   [<declaration-value>], so a value carrying one is no declaration at all. The
+   rule holds for a value the typed readers hand to the opaque path as much as
+   for one they read: a [var()] postpones the property grammar to computed-value
+   time, not the token grammar. *)
+let opaque_value_is_a_declaration_value () =
+  lenient_recover "unmatched close paren after a var()"
+    ".a { width: var(--x)); color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close bracket before a var()"
+    ".a { width: ]var(--x); color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close bracket after a var()"
+    ".a { width: var(--x)]; color: green }" ".a{color:green}" 1;
+  lenient_recover "unmatched close paren under an unknown property"
+    ".a { cascade-nope: a)b; color: green }" ".a{color:green}" 1
+
 (* Selectors 4 sec. 3.9 makes a selector list carrying an unknown pseudo-class
    invalid, and CSS Nesting 1 sec. 2 gives a nested style rule a selector list
    for its prelude, so the nested rule goes and the ones around it stay. An
@@ -9430,6 +9445,9 @@ let additional_tests =
       unicode_range_only_in_its_descriptor );
     ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
     ("nested prelude is unforgiving", `Quick, nested_prelude_is_unforgiving);
+    ( "opaque value is a declaration value",
+      `Quick,
+      opaque_value_is_a_declaration_value );
     ("unterminated string closes", `Quick, unterminated_string_closes);
     ( "spec nesting selector and conditional edges",
       `Quick,
