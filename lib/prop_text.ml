@@ -861,9 +861,13 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            {
              h_offset = Values.normalize_length s.h_offset;
              v_offset = Values.normalize_length s.v_offset;
+             (* The blur has a floor, so unwrapping a math function there could
+                turn a value browsers take into one they drop. *)
              blur =
                drop_default ~is_default:is_zero_length
-                 (option_map_preserve Values.normalize_length s.blur);
+                 (option_map_preserve
+                    (Values.normalize_length ~non_negative:true)
+                    s.blur);
              color = option_map_preserve (normalize_color ~lossless) s.color;
            })
   | other -> other
@@ -2184,6 +2188,32 @@ module Text_shadow = struct
     (lengths, color)
 end
 
+(* The run is offsets then blur, and CSS Backgrounds 3 sec. 6.2 gives the
+   [<shadow>] this one shares its slots a plain length in each, with a floor on
+   the blur alone. A math function holds no value to compare, so only a literal
+   is turned away there. The run caps at three: there is no spread slot to hold
+   a fourth. *)
+let read_shadow_lengths t =
+  let lengths_rev = ref [] in
+  let rec loop n =
+    if n >= 3 then ()
+    else
+      let allow_negative = n <> 2 in
+      match
+        Cursor.option
+          (fun t ->
+            read_length ~allow_negative ~with_keywords:false ~length_only:true t)
+          t
+      with
+      | Option.Some l ->
+          lengths_rev := l :: !lengths_rev;
+          Cursor.ws t;
+          loop (n + 1)
+      | Option.None -> ()
+  in
+  loop 0;
+  List.rev !lengths_rev
+
 let rec read_text_shadow t : text_shadow =
   let read_var t : text_shadow = Var (read_var read_text_shadow t) in
   Cursor.enum_or_calls "text-shadow"
@@ -2198,8 +2228,7 @@ let rec read_text_shadow t : text_shadow =
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
-         the colour on either side of the length run but never inside it, and
-         caps the run at three: there is no spread slot to hold a fourth. *)
+         the colour on either side of the length run but never inside it. *)
       let color : color option ref = ref (Option.None : color option) in
       let try_color () =
         match !color with
@@ -2212,20 +2241,9 @@ let rec read_text_shadow t : text_shadow =
             | Option.None -> ())
       in
       try_color ();
-      let lengths_rev = ref [] in
-      let rec read_lengths_loop n =
-        if n >= 3 then ()
-        else
-          match Cursor.option (fun t -> read_length t) t with
-          | Option.Some l ->
-              lengths_rev := l :: !lengths_rev;
-              Cursor.ws t;
-              read_lengths_loop (n + 1)
-          | Option.None -> ()
-      in
-      read_lengths_loop 0;
+      let lengths = read_shadow_lengths t in
       try_color ();
-      match List.rev !lengths_rev with
+      match lengths with
       | h :: v :: rest ->
           let blur =
             match rest with b :: _ -> Option.Some b | _ -> Option.None
