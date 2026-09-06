@@ -2602,6 +2602,35 @@ let contain_intrinsic_size_builders () =
   check "contain-intrinsic-inline-size:10px"
     (Css.contain_intrinsic_inline_size (Size (Length (Px 10.))))
 
+(* Scroll-driven Animations 1 is modelled down to both shorthands, and the
+   facade wrote none of the twelve properties. *)
+let scroll_driven_animation_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "animation-timeline:--reveal" (Css.animation_timeline (Name "--reveal"));
+  check "animation-timeline:scroll(root)"
+    (Css.animation_timeline (Scroll "root"));
+  check "animation-range:entry"
+    (Css.animation_range (Range (Named (Entry, None), None)));
+  check "animation-range-start:normal" (Css.animation_range_start Normal);
+  check "animation-range-end:cover 100%"
+    (Css.animation_range_end (Named (Cover, Some (Pct 100.))));
+  check "scroll-timeline:--a block"
+    (Css.scroll_timeline (Timelines [ { name = "--a"; axis = Some Block } ]));
+  check "scroll-timeline-name:--a" (Css.scroll_timeline_name (Names [ "--a" ]));
+  check "scroll-timeline-axis:inline" (Css.scroll_timeline_axis Inline);
+  check "view-timeline:--a"
+    (Css.view_timeline
+       (Timelines [ { name = "--a"; axis = None; inset = None } ]));
+  check "view-timeline-name:--a" (Css.view_timeline_name (Names [ "--a" ]));
+  check "view-timeline-axis:y" (Css.view_timeline_axis Y);
+  check "view-timeline-inset:auto"
+    (Css.view_timeline_inset (Inset (Auto, None)));
+  check "timeline-scope:--a" (Css.timeline_scope (Names [ "--a" ]))
+
 let suite =
   ( "css",
     [
@@ -2707,6 +2736,8 @@ let suite =
         border_image_builders;
       Alcotest.test_case "public contain intrinsic size builders" `Quick
         contain_intrinsic_size_builders;
+      Alcotest.test_case "public scroll driven animation builders" `Quick
+        scroll_driven_animation_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
