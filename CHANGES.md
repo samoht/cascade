@@ -364,6 +364,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A colour property keeps an unknown function only where its name is vendor
+  prefixed. CSS Color 5 sec. 3 closes the `<color>` production, so
+  `border-top-color: calc(2px - 3px)` and `color: brightness()` are dropped
+  with a warning where cascade wrote them back and every browser drops them
+  (#1000)
+
 - `offset-distance` and `view-timeline-inset` read a negative length. CSS
   Motion Path 1 sec. 2.2 and Scroll Animations 1 sec. 3.4.3 give both a plain
   `<length-percentage>` with no range on it, and cascade held them to a

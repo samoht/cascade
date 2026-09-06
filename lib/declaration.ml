@@ -2264,9 +2264,11 @@ let validate_regular_property_components t name components =
     && not (components_are_lone_css_wide components)
   then Cursor.err_invalid t "all accepts only CSS-wide keywords"
 
-(* Color functions cascade types directly; anything else (e.g. a vendor color
-   function or a typed value cascade hasn't grown yet) is treated as a [color]
-   declaration cascade should preserve verbatim. *)
+(* Color functions cascade types directly. A vendor one it does not is kept
+   verbatim: the prefix says the vocabulary is an engine's own, so no
+   specification settles it and no browser but that engine reads it either. An
+   unprefixed name cascade does not know is no colour - CSS Color 5 sec. 3
+   closes the production - and every browser drops the declaration. *)
 let color_fallback_function raw_value =
   let components =
     Cursor.of_string raw_value |> Cursor.remaining
@@ -2275,23 +2277,25 @@ let color_fallback_function raw_value =
   match components with
   | [ Component.Func { node = { name; _ }; _ } ] ->
       let fn = String.lowercase_ascii_preserve name in
-      not
-        (List.mem fn
-           [
-             "rgb";
-             "rgba";
-             "hsl";
-             "hsla";
-             "hwb";
-             "lab";
-             "lch";
-             "oklab";
-             "oklch";
-             "color";
-             "color-mix";
-             "light-dark";
-             "var";
-           ])
+      String.length fn > 0
+      && Char.equal fn.[0] '-'
+      && not
+           (List.mem fn
+              [
+                "rgb";
+                "rgba";
+                "hsl";
+                "hsla";
+                "hwb";
+                "lab";
+                "lch";
+                "oklab";
+                "oklch";
+                "color";
+                "color-mix";
+                "light-dark";
+                "var";
+              ])
   | _ -> false
 
 (* A colour function whose arguments contain a [var()] can't be validated until
