@@ -24,6 +24,10 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.webkit_appearance` gains `Base_select`, so
+  `-webkit-appearance: base-select` reads the way `appearance: base-select`
+  already did. Exhaustive visitors must handle the new leaf (#1019)
+
 - `Cascade.Properties.flex_wrap` gains `Balance` and `Wrap_reverse_balance`, so
   `flex-wrap: balance` reads where it was dropped with a warning. CSS Flexbox 2
   sec. 5.2 spells the property `nowrap | [ wrap | wrap-reverse ] || balance`.

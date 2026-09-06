@@ -4484,12 +4484,17 @@ type text_combine_upright =
   | Var of text_combine_upright var
 
 (* Webkit & Mozilla Specific Types *)
+
+(** [-webkit-appearance] is the alias Chrome keeps for [appearance], so it takes
+    the [base-select] CSS Basic User Interface 4 sec. 5.1 gives that property
+    along with the compatibility keywords of its own. *)
 type webkit_appearance =
   | None
   | Auto
   | Button
   | Textfield
   | Menulist
+  | Base_select
   | Listbox
   | Checkbox
   | Radio

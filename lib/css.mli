@@ -6812,6 +6812,7 @@ type webkit_appearance = Properties.webkit_appearance =
   | Button  (** Button appearance *)
   | Textfield  (** Text field appearance *)
   | Menulist  (** Select/dropdown appearance *)
+  | Base_select  (** The base appearance of a select (Chrome alias) *)
   | Listbox  (** List box appearance *)
   | Checkbox  (** Checkbox appearance *)
   | Radio  (** Radio button appearance *)
