@@ -4874,6 +4874,11 @@ let spec_remaining_prop_vectors () =
       ("initial-letter: 2 3", "initial-letter:2 3");
       ("line-height-step: 4px", "line-height-step:4px");
       ("text-box: trim-both cap alphabetic", "text-box:trim-both cap alphabetic");
+      (* CSS Inline 3 sec. 4.4 gives [text-box-edge] [auto | <text-edge>], so
+         [auto] is one half of the sec. 6.1 shorthand, not a keyword the
+         longhand keeps to itself. *)
+      ("text-box: auto", "text-box:auto");
+      ("text-box: trim-both auto", "text-box:trim-both auto");
       ("field-sizing: content", "field-sizing:content");
       ("margin-trim: block inline", "margin-trim:block inline");
       ("offset-distance: 10%", "offset-distance:10%");
