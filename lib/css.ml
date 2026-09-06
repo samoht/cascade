@@ -803,10 +803,14 @@ let collect_theme_defaults ~theme ~theme_defaults ~keep_set stylesheet =
    makes exactly one custom-property declaration. A name or value that would
    escape it - a [}] closing the block, a top-level [;] starting a second
    declaration, an unterminated string - is not a binding this library can
-   write, so the name stays unresolved and its [var()] reference stays live. *)
+   write, so the name stays unresolved and its [var()] reference stays live. An
+   empty answer is a value a custom property may hold, but here it is the caller
+   saying the name has no default, so it binds nothing either. *)
 let theme_default_declaration (name, value) =
-  let name = Custom_property_name.add_prefix name in
-  Declaration.parse_custom_property name value
+  if String.trim value = "" then Option.None
+  else
+    let name = Custom_property_name.add_prefix name in
+    Declaration.parse_custom_property name value
 
 (* [lookup] restricted to the answers that bind: anything else reads as [None],
    the "no default for this name" answer the rest of the resolver

@@ -2632,8 +2632,11 @@ let parse_opaque_declaration property value =
       Some (read_unknown_property_declaration t name)
     with Cursor.Parse_error _ -> None
 
+(* CSS Variables 1 sec. 2 gives a custom property the value grammar
+   [<declaration-value>?], the empty value included, so this takes the pairs
+   [custom_property] takes and answers with an option rather than raising. *)
 let parse_custom_property name value =
-  if is_custom_property_name name && is_declaration_value value then
+  if is_custom_property_name name && is_optional_declaration_value value then
     parse_declaration name value
   else None
 

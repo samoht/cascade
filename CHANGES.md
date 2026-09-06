@@ -347,6 +347,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `Css.Declaration.parse_custom_property` takes the empty value, the one CSS
+  Variables 1 sec. 2 gives a custom property alongside every
+  `<declaration-value>`, so it now accepts the pairs `custom_property` accepts
+  (#990)
+
 - `--inline-vars` keeps a `var()` live where the definition it names sits on a
   selector or in an `@media` the pass cannot prove reaches the element, or
   holds a CSS-wide keyword, and every definition of a name still referenced

@@ -113,14 +113,15 @@ val parse_opaque_declaration : string -> string -> declaration option
 val parse_custom_property : string -> string -> declaration option
 (** [parse_custom_property name value] is {!parse_declaration} restricted to a
     custom property that a rule can hold. It is [None] unless [name] is a
-    [<dashed-ident>] and [value] is one [<declaration-value>] (CSS Syntax 3 (ED)
-    sec. 7.2): no [<bad-string-token>], no [<bad-url-token>], no unmatched
-    closing bracket, no unterminated function or block, and no top-level [;].
+    [<dashed-ident>] and [value] is the [<declaration-value>?] CSS Variables 1
+    sec. 2 gives a custom property: no [<bad-string-token>], no
+    [<bad-url-token>], no unmatched closing bracket, no unterminated function or
+    block, and no top-level [;] or [!] (CSS Syntax 3 (ED) sec. 7.2). The empty
+    value is one of its values.
 
     Use it for a name or value that comes from outside the parser, where the
     string may close the block it is placed in or start a second declaration.
-    {!custom_property} takes the same pairs and raises on the rest, and also
-    takes the empty value CSS Variables 1 sec. 2 allows. *)
+    {!custom_property} takes the same pairs and raises on the rest. *)
 
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
