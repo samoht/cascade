@@ -311,6 +311,11 @@ type flex_factor =
   | Calc of flex_factor calc
   | Var of flex_factor var
 
+(** CSS Box Alignment 3 sec. 4.2 [align-content]:
+    [normal | <baseline-position> | <content-distribution> |
+     <overflow-position>? <content-position>], where [<content-position>] is
+    [center | start | end | flex-start | flex-end]. The [left] and [right] of
+    {!type-justify_content} belong to the inline axis alone. *)
 type align_content =
   | Normal
   | Baseline
@@ -322,24 +327,18 @@ type align_content =
   | End
   | Flex_start
   | Flex_end
-  | Left
-  | Right
   (* Safe content position values *)
   | Safe_center
   | Safe_start
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
-  | Safe_left
-  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
   | Unsafe_flex_start
   | Unsafe_flex_end
-  | Unsafe_left
-  | Unsafe_right
   (* Content distribution *)
   | Space_between
   | Space_around
@@ -440,6 +439,8 @@ type justify_content =
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
+  | Safe_left
+  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start

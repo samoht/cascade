@@ -3561,24 +3561,18 @@ type align_content = Properties.align_content =
   | End
   | Flex_start
   | Flex_end
-  | Left
-  | Right
   (* Safe content position values *)
   | Safe_center
   | Safe_start
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
-  | Safe_left
-  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
   | Unsafe_flex_start
   | Unsafe_flex_end
-  | Unsafe_left
-  | Unsafe_right
   | Space_between
   | Space_around
   | Space_evenly
@@ -3643,6 +3637,8 @@ type justify_content = Properties.justify_content =
   | Safe_end
   | Safe_flex_start
   | Safe_flex_end
+  | Safe_left
+  | Safe_right
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end

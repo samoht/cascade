@@ -478,14 +478,8 @@ let rec pp_place_items : place_items Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let read_place_align_content t =
-  match read_align_content t with
-  | Left | Right | Safe_left | Safe_right | Unsafe_left | Unsafe_right ->
-      Cursor.err_invalid t "place-content align value cannot be left or right"
-  | value -> value
-
 let read_place_content_pair t =
-  let a, j = Cursor.pair read_place_align_content read_justify_content t in
+  let a, j = Cursor.pair read_align_content read_justify_content t in
   (Align_justify (a, j) : place_content)
 
 let read_place_content_safe t =
@@ -515,7 +509,7 @@ let read_place_content_unsafe t =
 (* CSS Align 3 sec. 7.2: the second value usually copies the first, except a
    baseline position makes justify-content default to start. *)
 let read_place_content_baseline t =
-  match read_place_align_content t with
+  match read_align_content t with
   | (Baseline | First_baseline | Last_baseline) as align ->
       (Align_justify (align, Start) : place_content)
   | _ -> Cursor.err_invalid t "place-content baseline"

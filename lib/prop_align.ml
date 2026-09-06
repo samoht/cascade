@@ -114,8 +114,6 @@ module Align_content = struct
         ("end", Safe_end);
         ("flex-start", Safe_flex_start);
         ("flex-end", Safe_flex_end);
-        ("left", Safe_left);
-        ("right", Safe_right);
       ]
       t
 
@@ -129,8 +127,6 @@ module Align_content = struct
         ("end", Unsafe_end);
         ("flex-start", Unsafe_flex_start);
         ("flex-end", Unsafe_flex_end);
-        ("left", Unsafe_left);
-        ("right", Unsafe_right);
       ]
       t
 end
@@ -144,8 +140,6 @@ let rec read_align_content t : align_content =
       ("end", End);
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
-      ("left", Left);
-      ("right", Right);
       ("space-between", Space_between);
       ("space-around", Space_around);
       ("space-evenly", Space_evenly);
@@ -177,8 +171,8 @@ module Justify_content = struct
         ("end", Safe_end);
         ("flex-start", Safe_flex_start);
         ("flex-end", Safe_flex_end);
-        ("left", Left);
-        ("right", Right);
+        ("left", Safe_left);
+        ("right", Safe_right);
       ]
       t
 
@@ -549,6 +543,8 @@ let rec pp_justify_content : justify_content Pp.t =
   | Safe_end -> Pp.string ctx "safe end"
   | Safe_flex_start -> Pp.string ctx "safe flex-start"
   | Safe_flex_end -> Pp.string ctx "safe flex-end"
+  | Safe_left -> Pp.string ctx "safe left"
+  | Safe_right -> Pp.string ctx "safe right"
   | Unsafe_center -> Pp.string ctx "unsafe center"
   | Unsafe_start -> Pp.string ctx "unsafe start"
   | Unsafe_end -> Pp.string ctx "unsafe end"
@@ -692,22 +688,16 @@ let rec pp_align_content : align_content Pp.t =
   | End -> Pp.string ctx "end"
   | Flex_start -> Pp.string ctx "flex-start"
   | Flex_end -> Pp.string ctx "flex-end"
-  | Left -> Pp.string ctx "left"
-  | Right -> Pp.string ctx "right"
   | Safe_center -> Pp.string ctx "safe center"
   | Safe_start -> Pp.string ctx "safe start"
   | Safe_end -> Pp.string ctx "safe end"
   | Safe_flex_start -> Pp.string ctx "safe flex-start"
   | Safe_flex_end -> Pp.string ctx "safe flex-end"
-  | Safe_left -> Pp.string ctx "safe left"
-  | Safe_right -> Pp.string ctx "safe right"
   | Unsafe_center -> Pp.string ctx "unsafe center"
   | Unsafe_start -> Pp.string ctx "unsafe start"
   | Unsafe_end -> Pp.string ctx "unsafe end"
   | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
   | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
-  | Unsafe_left -> Pp.string ctx "unsafe left"
-  | Unsafe_right -> Pp.string ctx "unsafe right"
   | Space_between -> Pp.string ctx "space-between"
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"

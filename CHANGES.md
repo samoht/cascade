@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.align_content` drops `Left`, `Right` and their four
+  `Safe_`/`Unsafe_` spellings, which CSS Box Alignment 3 sec. 4.2 keeps out of
+  `<content-position>`, and `justify_content` gains the `Safe_left` and
+  `Safe_right` it was missing, so `justify-content: safe left` keeps its
+  overflow keyword instead of computing to `left` (#1014)
+
 - `Cascade.Properties.container_shorthand` holds a `container_name` where it
   held a `string option`, so `container: markers stroke fill` reads and
   `container: inline-size` names a container instead of typing one. CSS
