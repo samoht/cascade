@@ -295,6 +295,11 @@ to lose a whole rule over one bad piece. Both are gone.
   the two alike and dropped the rule, and printed the value back without its
   closing quote so the rest of the sheet was swallowed (#972)
 
+- A value carrying an unmatched `)`, `]` or `}` is dropped with a warning even
+  where a `var()` sends it down the opaque path. CSS Syntax 3 sec. 7.2 keeps
+  those out of a `<declaration-value>`, so `width: var(--x))` is no declaration
+  at all; cascade wrote it back where every browser drops it (#978)
+
 - The `@font-face` `src` descriptor reads an empty `url()` and drops only the
   item it cannot read. CSS Fonts 4 sec. 4.3.1 leaves an unusable reference to
   loading and keeps the descriptor while any item parses, so a trailing comma

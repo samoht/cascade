@@ -270,6 +270,13 @@ let reject_custom_bad_string t =
       (components_before is_top_level_stop t)
   then Cursor.err_invalid t "custom property value is no <declaration-value>"
 
+(* The same bar for a value the typed readers hand to the opaque path: a [var()]
+   postpones the property grammar to computed-value time, not the token
+   grammar. *)
+let reject_opaque_bad_token t =
+  if List.exists component_leaves_declaration_value (value_components t) then
+    Cursor.err_invalid t "declaration value is no <declaration-value>"
+
 let invalid_var_arguments arguments =
   match
     List.filter
@@ -2320,6 +2327,7 @@ let read_unknown_property_declaration t name =
   validate_complete_declaration_value t;
   reject_curly_block_value t;
   reject_unterminated_string_value t;
+  reject_opaque_bad_token t;
   let raw_value = Cursor.consume_to_decl_end ~trim:true t in
   let is_important = read_importance t in
   validate_no_extra_tokens t;
