@@ -846,6 +846,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds `contain_intrinsic_size` and its four axis longhands, with
+  their value types, and `Css.container_type` documents that the `container`
+  shorthand is `Declaration.container`, the name `container` at the top level
+  being the at-rule builder (#1034)
+
 - `Css` builds the border-image family: `border_image`,
   `border_image_source`, `border_image_slice`, `border_image_width`,
   `border_image_outset`, `border_image_repeat` and `mask_border`, with their

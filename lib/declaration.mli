@@ -1093,6 +1093,23 @@ val border_image_outset : border_image_outset -> declaration
 val border_image_repeat : border_image_repeat -> declaration
 (** [border_image_repeat v] is the [border-image-repeat] property. *)
 
+val contain_intrinsic_size : contain_intrinsic_size -> declaration
+(** [contain_intrinsic_size v] is the [contain-intrinsic-size] shorthand. *)
+
+val contain_intrinsic_width : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_width v] is the [contain-intrinsic-width] property. *)
+
+val contain_intrinsic_height : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_height v] is the [contain-intrinsic-height] property. *)
+
+val contain_intrinsic_block_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_block_size v] is the [contain-intrinsic-block-size]
+    property. *)
+
+val contain_intrinsic_inline_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_inline_size v] is the [contain-intrinsic-inline-size]
+    property. *)
+
 val mask_border : border_image -> declaration
 (** [mask_border v] is the [mask-border] shorthand, which takes what
     [border-image] takes plus the mode slot. *)

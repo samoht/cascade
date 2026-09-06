@@ -7283,7 +7283,57 @@ type container_type = Properties.container_type =
 val container_type : container_type -> declaration
 (** [container_type type_] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-type}
-     container-type} property for container queries. *)
+     container-type} property for container queries.
+
+    The shorthand that sets this and the name together is
+    {!val-Declaration.container}, because {!val-container} at this level is the
+    at-rule builder. *)
+
+(** CSS Sizing 4 sec. 5: one axis of [contain-intrinsic-size], a length that the
+    [auto] prefix lets a remembered size override. *)
+type contain_intrinsic_size_item = Properties.contain_intrinsic_size_item =
+  | Length of length
+  | Auto of length
+
+(** CSS Sizing 4 sec. 5 [contain-intrinsic-size]: one axis or both. *)
+type contain_intrinsic_size = Properties.contain_intrinsic_size =
+  | None
+  | Intrinsic of
+      contain_intrinsic_size_item * contain_intrinsic_size_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_size var
+
+val contain_intrinsic_size : contain_intrinsic_size -> declaration
+(** [contain_intrinsic_size v] is the [contain-intrinsic-size] shorthand. *)
+
+(** CSS Sizing 4 sec. 5: one axis longhand of {!type-contain_intrinsic_size}. *)
+type contain_intrinsic_longhand = Properties.contain_intrinsic_longhand =
+  | None
+  | Size of contain_intrinsic_size_item
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_longhand var
+
+val contain_intrinsic_width : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_width v] is the [contain-intrinsic-width] property. *)
+
+val contain_intrinsic_height : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_height v] is the [contain-intrinsic-height] property. *)
+
+val contain_intrinsic_block_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_block_size v] is the [contain-intrinsic-block-size]
+    property. *)
+
+val contain_intrinsic_inline_size : contain_intrinsic_longhand -> declaration
+(** [contain_intrinsic_inline_size v] is the [contain-intrinsic-inline-size]
+    property. *)
 
 type container_name = Properties.container_name =
   | None
