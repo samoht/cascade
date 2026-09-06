@@ -210,8 +210,10 @@ type shape_image_threshold =
   | Revert_layer
   | Var of shape_image_threshold var
 
+(** CSS Text 4 sec. 4.4 [tab-size]: [<number [0,inf]> | <length [0,inf]>], the
+    tab stop measured in advance widths or in a length. *)
 type tab_size =
-  | Int of int
+  | Number of number
   | Length of length
   | Initial
   | Inherit

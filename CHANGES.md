@@ -36,6 +36,13 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- The `Int` of `Cascade.Properties.tab_size` becomes `Number of number`, so
+  `tab-size: 10.5` reads where it was dropped with a warning and
+  `tab-size: calc(1 + 2)` keeps the authored call until it is minified. CSS
+  Text 4 sec. 4.4 measures the tab stop in advance widths, a `<number [0,inf]>`
+  rather than an integer. A caller building a literal writes `Number (Num 4.)`
+  (#1054)
+
 - `column-rule` carries a list where it carried a single value, so
   `column-rule: 1px solid red, 2px dashed blue` reads. CSS Gaps 1 sec. 4.4
   spells the shorthand `<gap-rule>#`, the same list its longhands took in

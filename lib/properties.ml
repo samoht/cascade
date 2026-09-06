@@ -4390,6 +4390,7 @@ let normalize_property_value : type a.
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Tab_size -> normalize_tab_size ~ctx value
   | Hyphenate_limit_chars -> normalize_hyphenate_limit_chars ~ctx value
   | Animation_iteration_count -> normalize_animation_iteration_count ~ctx value
   | Webkit_animation_iteration_count ->

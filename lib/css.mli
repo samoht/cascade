@@ -9321,7 +9321,7 @@ val moz_appearance : appearance -> declaration
 (** [moz_appearance v] is the [-moz-appearance] property. *)
 
 type tab_size = Properties.tab_size =
-  | Int of int
+  | Number of number
   | Length of length
   | Initial
   | Inherit

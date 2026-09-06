@@ -1023,7 +1023,7 @@ let vars_of_overflow_clip_margin (value : Properties.overflow_clip_margin) :
 
 let vars_of_tab_size (value : Properties.tab_size) : any_var list =
   match value with
-  | Int _ -> []
+  | Number n -> vars_of_number_value n
   | Length len -> vars_of_length len
   | Var v -> [ V v ]
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
