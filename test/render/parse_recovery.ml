@@ -13,12 +13,14 @@
    a difference of spelling. A fact is one rule, or one declaration inside one
    rule, named by its path from the sheet root.
 
-   One deviation is the browser's, not cascade's, and the harness reports it as
-   the disagreement it is rather than hiding it: Chrome stops consuming a
-   conditional group rule's or an [\@layer] block's contents at a
-   [<semicolon-token>] between two rules, where CSS Syntax 3 (ED) sec. 5.5.5
-   discards that token and carries on. [\@scope] and a style rule's own block
-   follow the spec in the same browser.
+   One deviation is the browser's, not cascade's, and the harness names it
+   rather than failing on it: Chrome stops consuming a conditional group rule's
+   or an [\@layer] block's contents at a [<semicolon-token>] between two rules,
+   where CSS Syntax 3 (ED) sec. 5.5.5 discards that token and carries on.
+   [\@scope], a style rule's own block and a conditional group nested in one
+   follow the spec in the same browser. A run that stops meeting the deviation
+   says so, since which build answers decides whether the excuse still excuses
+   anything.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -221,6 +223,11 @@ let curated =
     ( "container_unknown_feature",
       "@container (min-width: 0px) { .a { color: green } }",
       "@container (cascade-nope: 1) { .a { color: green } }" );
+    (* The browser's own deviation, kept in the corpus on purpose so the run
+       always answers whether it is still there. *)
+    ( "semicolon_among_group_contents",
+      "@media all { .a { color: green } }",
+      "@media all { ; .a { color: green } }" );
     ( "nested_invalid_sibling",
       ".a { color: green; & .b { color: red } & .c { color: blue } }",
       ".a { color: green; .b <::::invalid::::> { color: red } & .c { color: \
@@ -675,6 +682,74 @@ let verdict answer =
     let full = excess ca cb @ excess cb ca in
     { over = []; under = []; rewritten = List.sort_uniq String.compare full }
 
+(* The one deviation that is the browser's. CSS Syntax 3 (ED) sec. 5.5.5
+   discards a [<semicolon-token>] among a block's contents and carries on, and
+   Chrome 151 stops consuming there instead, losing the rest of the block. It
+   does that only where the block holds rules: a conditional group rule or an
+   [@layer] block written at the top of a sheet. The same [;] inside [@scope],
+   inside [@font-face], inside a style rule, or inside a conditional group
+   nested in one - where the contents are declarations - is discarded the way
+   the section says.
+
+   Reading the shape off the input rather than off a listed repro is what keeps
+   it honest. The day Chrome fixes this the corpus stops producing a finding of
+   the shape and the run says the excuse is stale; a finding of any other shape
+   is fatal whatever the input holds. *)
+let rule_block_at_rules =
+  [ "@media"; "@supports"; "@container"; "@layer"; "@starting-style" ]
+
+let semicolon_in_a_rule_block css =
+  let n = String.length css in
+  let is_ws c =
+    Char.equal c ' ' || Char.equal c '\t' || Char.equal c '\n'
+    || Char.equal c '\r' || Char.equal c '\012'
+  in
+  let is_name c =
+    match c with
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+    | _ -> false
+  in
+  (* Whether the prelude in [start, stop) opens one of the at-rules above. *)
+  let holds_rules start stop =
+    let rec skip i = if i < stop && is_ws css.[i] then skip (i + 1) else i in
+    let i = skip start in
+    if i >= stop || not (Char.equal css.[i] '@') then false
+    else
+      let rec name j =
+        if j < stop && is_name css.[j] then name (j + 1) else j
+      in
+      let j = name (i + 1) in
+      let word = String.lowercase_ascii (String.sub css i (j - i)) in
+      List.exists (String.equal word) rule_block_at_rules
+  in
+  let close_string i =
+    let quote = css.[i] in
+    let rec go j =
+      if j >= n then j
+      else if Char.equal css.[j] '\\' then go (j + 2)
+      else if Char.equal css.[j] quote then j + 1
+      else go (j + 1)
+    in
+    go (i + 1)
+  in
+  let rec scan i mark stack =
+    if i >= n then false
+    else
+      match css.[i] with
+      | '"' | '\'' -> scan (close_string i) mark stack
+      | '{' -> scan (i + 1) (i + 1) (holds_rules mark i :: stack)
+      | '}' ->
+          let stack = match stack with _ :: rest -> rest | [] -> [] in
+          scan (i + 1) (i + 1) stack
+      | ';' ->
+          (* Only where every block around it holds rules: one style rule in the
+             chain makes the contents declarations, and the [;] ends one. *)
+          if (not (is_empty stack)) && List.for_all Fun.id stack then true
+          else scan (i + 1) (i + 1) stack
+      | _ -> scan (i + 1) mark stack
+  in
+  scan 0 0 []
+
 (* The rule a declaration fact belongs to. A fact carries at most one unescaped
    `#`, and it introduces the property. *)
 let rule_path fact =
@@ -943,13 +1018,23 @@ let () =
         !facts_seen + List.length (Hashtbl.find answers j.id).input_facts)
     jobs;
 
-  let findings = ref [] and strict_gaps = ref [] in
+  let findings = ref [] and strict_gaps = ref [] and excused = ref [] in
   let over_n = ref 0 and under_n = ref 0 and rewritten_n = ref 0 in
+  (* The browser's own deviation, kept apart from cascade's: it is reported in
+     full and it does not fail the run, and a run that stops finding it says the
+     excuse has gone stale. *)
+  let browser_deviation v css =
+    is_empty v.over && is_empty v.rewritten
+    && (not (is_empty v.under))
+    && semicolon_in_a_rule_block css
+  in
   List.iter
     (fun j ->
       let answer = Hashtbl.find answers j.id in
       let v = verdict answer in
-      if not (agreed v) then begin
+      if browser_deviation v j.css then
+        excused := { job = j; seen = v; small = j.css; alike = 1 } :: !excused
+      else if not (agreed v) then begin
         if not (is_empty v.over) then incr over_n;
         if not (is_empty v.under) then incr under_n;
         if not (is_empty v.rewritten) then incr rewritten_n;
@@ -958,7 +1043,8 @@ let () =
       (* Strict has to reject whatever the browser itself threw away: a
          declaration the browser refused out of a rule it still built, or
          anything the lenient parse already disagrees with the browser about. *)
-      if (Hashtbl.find parses j.id).strict_ok then
+      if (Hashtbl.find parses j.id).strict_ok && not (browser_deviation v j.css)
+      then
         let lost =
           match j.control with
           | None -> []
@@ -994,7 +1080,9 @@ let () =
         in
         if not (is_empty reason) then strict_gaps := (j, reason) :: !strict_gaps)
     jobs;
-  let findings = List.rev !findings and strict_gaps = List.rev !strict_gaps in
+  let findings = List.rev !findings
+  and strict_gaps = List.rev !strict_gaps
+  and excused = List.rev !excused in
 
   Fmt.pr "%s: %d input(s), %d browser fact(s), seed %d, %.1fs@." harness
     (List.length jobs) !facts_seen !corpus_seed elapsed;
@@ -1010,32 +1098,53 @@ let () =
            " input(s); the oracle read nothing";
          ]);
 
-  if is_empty findings && is_empty strict_gaps then begin
-    Fmt.pr "%s: cascade kept exactly what the browser kept@." harness;
-    exit 0
-  end;
-
   (* One representative per symptom, reduced. *)
-  let by_signature = Hashtbl.create 64 in
-  List.iter
-    (fun f ->
-      let s = signature f.seen in
-      match Hashtbl.find_opt by_signature s with
-      | None -> Hashtbl.replace by_signature s f
-      | Some best ->
-          let keep =
-            if String.length f.job.css < String.length best.job.css then f
-            else best
-          in
-          Hashtbl.replace by_signature s { keep with alike = best.alike + 1 })
-    findings;
-  let reps =
+  let representatives group =
+    let by_signature = Hashtbl.create 64 in
+    List.iter
+      (fun f ->
+        let s = signature f.seen in
+        match Hashtbl.find_opt by_signature s with
+        | None -> Hashtbl.replace by_signature s f
+        | Some best ->
+            let keep =
+              if String.length f.job.css < String.length best.job.css then f
+              else best
+            in
+            Hashtbl.replace by_signature s { keep with alike = best.alike + 1 })
+      group;
     Hashtbl.fold (fun _ f acc -> f :: acc) by_signature []
     |> List.sort (fun a b ->
         match Int.compare b.alike a.alike with
         | 0 -> String.compare a.job.id b.job.id
         | c -> c)
   in
+  if is_empty excused then
+    Fmt.pr
+      "@.%s: LOST browser excuse: no input reaches a conditional group \
+       or        @layer block whose contents open with a semicolon; drop the \
+       excuse@."
+      harness
+  else begin
+    Fmt.pr
+      "@.=== BROWSER (the browser stops at a semicolon sec. 5.5.5 \
+       discards)        (%d) ===@."
+      (List.length excused);
+    List.iter
+      (fun f ->
+        Fmt.pr "@.%s [%s], %d input(s) in the corpus@." f.job.id f.job.family
+          f.alike;
+        Fmt.pr "  input:     %s@." (one_line f.job.css);
+        show_facts "cascade kept, browser dropped:" f.seen.under)
+      (representatives excused)
+  end;
+
+  if is_empty findings && is_empty strict_gaps then begin
+    Fmt.pr "%s: cascade kept exactly what the browser kept@." harness;
+    exit 0
+  end;
+
+  let reps = representatives findings in
   let reduced, rounds = minimise ~node ~chrome ~script ~work ~rounds:30 reps in
 
   Fmt.pr
