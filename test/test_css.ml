@@ -2672,6 +2672,20 @@ let decoration_skip_builders () =
   check "text-emphasis-skip:spaces punctuation"
     (Css.text_emphasis_skip (Skip [ Spaces; Punctuation ]))
 
+(* CSS Logical 1 sec. 4.2 gives the flow-relative borders the same shorthand
+   shape the physical ones have, and only [border-block] reached the facade. *)
+let logical_border_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "border-block-start:none" (Css.border_block_start None);
+  check "border-block-end:none" (Css.border_block_end None);
+  check "border-inline:none" (Css.border_inline None);
+  check "border-inline-start:none" (Css.border_inline_start None);
+  check "border-inline-end:none" (Css.border_inline_end None)
+
 let suite =
   ( "css",
     [
@@ -2783,6 +2797,8 @@ let suite =
         vendor_prefixed_builders;
       Alcotest.test_case "public decoration skip builders" `Quick
         decoration_skip_builders;
+      Alcotest.test_case "public logical border builders" `Quick
+        logical_border_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
