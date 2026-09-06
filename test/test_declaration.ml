@@ -1070,14 +1070,18 @@ let flexbox_flex_and_basis () =
   check_declaration ~expected:"flex-basis:calc(var(--spacing)*4)"
     "flex-basis: calc(var(--spacing) * 4)";
   (* Math functions over <length-percentage> are valid flex-basis values and
-     round-trip; sign() yields a <number> and is rejected. *)
+     round-trip; sign() yields a <number> and is rejected, unless a var() in it
+     defers the whole grammar to computed-value time (CSS Variables 1 sec.
+     3). *)
   check_declaration ~expected:"flex-basis:min(10px,100%)"
     "flex-basis: min(10px, 100%)";
   check_declaration ~expected:"flex-basis:clamp(1px,var(--spacing),100%)"
     "flex-basis: clamp(1px, var(--spacing), 100%)";
   check_declaration ~expected:"flex-basis:abs(var(--x))"
     "flex-basis: abs(var(--x))";
-  neg_cursor read_declaration "flex-basis: sign(var(--x))";
+  check_declaration ~expected:"flex-basis:sign(var(--x))"
+    "flex-basis: sign(var(--x))";
+  neg_cursor read_declaration "flex-basis: sign(1px)";
   (* order: a calc carrying a var stays a typed calc and round-trips; an
      all-numeric order calc folds to an integer. *)
   check_declaration ~expected:"order:2" "order: 2";
