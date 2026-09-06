@@ -364,6 +364,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `shape-image-threshold` reads a percentage and a number outside the `[0, 1]`
+  range. CSS Shapes 1 sec. 6.2 takes an `<opacity-value>` and clamps it at
+  computed-value time, so `shape-image-threshold: 50%` and `1.5` are values the
+  reader dropped where every browser keeps them (#996)
+
 - `list-style-image` reads every `<image>`, so a gradient, an `image-set()` and
   a `cross-fade()` mark a list item where only a `url()` did. CSS Lists 3 sec.
   3.5 gives the property the `<image>` vocabulary, minus the comma list only

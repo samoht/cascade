@@ -516,11 +516,15 @@ let rec read_shape_image_threshold t : shape_image_threshold =
   let read_var t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
   in
+  (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
+     [<number> | <percentage>], and computes it "clamped to the range [0,1]":
+     the clamp is at computed-value time, so a value outside it still reads. *)
   let read_number t : shape_image_threshold =
-    let value = Cursor.number t in
-    if value < 0. || value > 1. then
-      Cursor.err_invalid t "shape-image-threshold must be between 0 and 1";
-    Number value
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> Number (n /. 100.)
+    | Some unit -> Cursor.err_invalid t ("shape-image-threshold unit: " ^ unit)
+    | None -> Number n
   in
   Cursor.enum_or_calls "shape-image-threshold"
     [
