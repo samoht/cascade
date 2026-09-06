@@ -846,6 +846,14 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the SVG presentation longhands the AST already carried:
+  `fill_rule`, `clip_rule`, `fill_opacity`, `stroke_opacity`,
+  `stroke_linecap`, `stroke_linejoin`, `stroke_miterlimit`,
+  `stroke_dashoffset`, `stroke_dasharray`, `paint_order`, `vector_effect`,
+  `stop_color`, `stop_opacity`, `flood_color`, `flood_opacity`,
+  `lighting_color`, `dominant_baseline`, `alignment_baseline`,
+  `baseline_shift` and `baseline_source`, with their value types (#1027)
+
 - `Css.Resolve` answers the selectors engines answer: `:nth-child(... of S)`,
   the typed `:nth-of-type()` family, `:has()`, the `i` and `s` attribute case
   flags, and `:empty` for the elements Selectors 4 and the engines agree on

@@ -945,6 +945,67 @@ val stroke_width : stroke_width -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-width}
      stroke-width} property. *)
 
+val fill_rule : fill_rule -> declaration
+(** [fill_rule v] is the [fill-rule] property. *)
+
+val clip_rule : fill_rule -> declaration
+(** [clip_rule v] is the [clip-rule] property, which takes what [fill-rule]
+    takes. *)
+
+val fill_opacity : opacity -> declaration
+(** [fill_opacity v] is the [fill-opacity] property. *)
+
+val stroke_opacity : opacity -> declaration
+(** [stroke_opacity v] is the [stroke-opacity] property. *)
+
+val stroke_linecap : stroke_linecap -> declaration
+(** [stroke_linecap v] is the [stroke-linecap] property. *)
+
+val stroke_linejoin : stroke_linejoin -> declaration
+(** [stroke_linejoin v] is the [stroke-linejoin] property. *)
+
+val stroke_miterlimit : stroke_miterlimit -> declaration
+(** [stroke_miterlimit v] is the [stroke-miterlimit] property. *)
+
+val stroke_dashoffset : stroke_dashoffset -> declaration
+(** [stroke_dashoffset v] is the [stroke-dashoffset] property. *)
+
+val stroke_dasharray : stroke_dasharray -> declaration
+(** [stroke_dasharray v] is the [stroke-dasharray] property. *)
+
+val paint_order : paint_order -> declaration
+(** [paint_order v] is the [paint-order] property. *)
+
+val vector_effect : vector_effect -> declaration
+(** [vector_effect v] is the [vector-effect] property. *)
+
+val stop_color : color -> declaration
+(** [stop_color v] is the [stop-color] property of a gradient stop. *)
+
+val stop_opacity : opacity -> declaration
+(** [stop_opacity v] is the [stop-opacity] property of a gradient stop. *)
+
+val flood_color : color -> declaration
+(** [flood_color v] is the [flood-color] property of [feFlood]. *)
+
+val flood_opacity : opacity -> declaration
+(** [flood_opacity v] is the [flood-opacity] property of [feFlood]. *)
+
+val lighting_color : color -> declaration
+(** [lighting_color v] is the [lighting-color] property of a light filter. *)
+
+val dominant_baseline : dominant_baseline -> declaration
+(** [dominant_baseline v] is the [dominant-baseline] property. *)
+
+val alignment_baseline : alignment_baseline -> declaration
+(** [alignment_baseline v] is the [alignment-baseline] property. *)
+
+val baseline_shift : baseline_shift -> declaration
+(** [baseline_shift v] is the [baseline-shift] property. *)
+
+val baseline_source : baseline_source -> declaration
+(** [baseline_source v] is the [baseline-source] property. *)
+
 val outline_style : outline_style -> declaration
 (** [outline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}

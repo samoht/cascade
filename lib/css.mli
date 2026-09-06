@@ -7174,6 +7174,251 @@ type stroke_width = Properties.stroke_width =
 val stroke_width : stroke_width -> declaration
 (** [stroke_width width] is the SVG stroke-width property. *)
 
+(** SVG 2 sec. 13.4.2 [<fill-rule>]: which points count as inside a shape when
+    its subpaths overlap. Shared by [fill-rule] and [clip-rule]. *)
+type fill_rule = Properties.fill_rule =
+  | Nonzero
+  | Evenodd
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of fill_rule var
+
+val fill_rule : fill_rule -> declaration
+(** [fill_rule v] is the SVG [fill-rule] property. *)
+
+val clip_rule : fill_rule -> declaration
+(** [clip_rule v] is the SVG [clip-rule] property, which takes what [fill-rule]
+    takes. *)
+
+val fill_opacity : opacity -> declaration
+(** [fill_opacity v] is the SVG [fill-opacity] property. *)
+
+val stroke_opacity : opacity -> declaration
+(** [stroke_opacity v] is the SVG [stroke-opacity] property. *)
+
+(** SVG 2 sec. 13.5.4 [stroke-linecap]: the shape at the ends of an open
+    subpath. *)
+type stroke_linecap = Properties.stroke_linecap =
+  | Butt
+  | Round
+  | Square
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linecap var
+
+val stroke_linecap : stroke_linecap -> declaration
+(** [stroke_linecap v] is the SVG [stroke-linecap] property. *)
+
+(** SVG 2 sec. 13.5.5 [stroke-linejoin]: the shape at a corner between two
+    stroke segments. *)
+type stroke_linejoin = Properties.stroke_linejoin =
+  | Miter
+  | Miter_clip
+  | Round
+  | Bevel
+  | Arcs
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_linejoin var
+
+val stroke_linejoin : stroke_linejoin -> declaration
+(** [stroke_linejoin v] is the SVG [stroke-linejoin] property. *)
+
+(** SVG 2 sec. 13.5.5 [stroke-miterlimit]: the ratio past which a miter join
+    falls back to a bevel. *)
+type stroke_miterlimit = Properties.stroke_miterlimit =
+  | Number of float
+  | Calc of stroke_miterlimit calc
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_miterlimit var
+
+val stroke_miterlimit : stroke_miterlimit -> declaration
+(** [stroke_miterlimit v] is the SVG [stroke-miterlimit] property. *)
+
+(** SVG 2 sec. 13.5.6 writes each dash as a [<length-percentage>] or a bare
+    number in user units, the way {!type-stroke_width} does. *)
+type dash_length = Properties.dash_length =
+  | Number of float
+  | Length of length_percentage
+
+(** SVG 2 sec. 13.5.6 [stroke-dashoffset]: where the dash pattern starts. *)
+type stroke_dashoffset = Properties.stroke_dashoffset =
+  | Dash of dash_length
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dashoffset var
+
+val stroke_dashoffset : stroke_dashoffset -> declaration
+(** [stroke_dashoffset v] is the SVG [stroke-dashoffset] property. *)
+
+(** SVG 2 sec. 13.5.6 [stroke-dasharray]: the dash and gap lengths. *)
+type stroke_dasharray = Properties.stroke_dasharray =
+  | None
+  | Dashes of dash_length list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of stroke_dasharray var
+
+val stroke_dasharray : stroke_dasharray -> declaration
+(** [stroke_dasharray v] is the SVG [stroke-dasharray] property. *)
+
+(** SVG 2 sec. 13.7 [paint-order]: one of the three painting operations. *)
+type paint_order_keyword = Properties.paint_order_keyword =
+  | Fill
+  | Stroke
+  | Markers
+
+(** SVG 2 sec. 13.7 [paint-order]: the order fill, stroke and markers paint in.
+*)
+type paint_order = Properties.paint_order =
+  | Normal
+  | Order of paint_order_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of paint_order var
+
+val paint_order : paint_order -> declaration
+(** [paint_order v] is the SVG [paint-order] property. *)
+
+(** SVG 2 sec. 7.10 [vector-effect]: one effect the transform does not scale. *)
+type vector_effect_keyword = Properties.vector_effect_keyword =
+  | Non_scaling_stroke
+  | Non_scaling_size
+  | Non_rotation
+  | Fixed_position
+
+(** SVG 2 sec. 7.10: the coordinate space an effect is taken against. *)
+type vector_effect_space = Properties.vector_effect_space = Viewport | Screen
+
+(** SVG 2 sec. 7.10 [vector-effect]. *)
+type vector_effect = Properties.vector_effect =
+  | None
+  | Effects of vector_effect_keyword list * vector_effect_space option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of vector_effect var
+
+val vector_effect : vector_effect -> declaration
+(** [vector_effect v] is the SVG [vector-effect] property. *)
+
+val stop_color : color -> declaration
+(** [stop_color v] is the SVG [stop-color] property of a gradient stop. *)
+
+val stop_opacity : opacity -> declaration
+(** [stop_opacity v] is the SVG [stop-opacity] property of a gradient stop. *)
+
+val flood_color : color -> declaration
+(** [flood_color v] is the SVG [flood-color] property of [feFlood]. *)
+
+val flood_opacity : opacity -> declaration
+(** [flood_opacity v] is the SVG [flood-opacity] property of [feFlood]. *)
+
+val lighting_color : color -> declaration
+(** [lighting_color v] is the SVG [lighting-color] property of a light filter.
+*)
+
+(** CSS Inline 3 sec. 5.2 [dominant-baseline]: [auto | <baseline-metric>]. *)
+type dominant_baseline = Properties.dominant_baseline =
+  | Auto
+  | Alphabetic
+  | Ideographic
+  | Mathematical
+  | Central
+  | Middle
+  | Text_top
+  | Text_bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of dominant_baseline var
+
+val dominant_baseline : dominant_baseline -> declaration
+(** [dominant_baseline v] is the [dominant-baseline] property. *)
+
+(** SVG 2 sec. 10.9.2 [alignment-baseline]: the baseline of the box aligned
+    against its parent's dominant baseline. *)
+type alignment_baseline = Properties.alignment_baseline =
+  | Baseline
+  | Text_bottom
+  | Middle
+  | Central
+  | Text_top
+  | Ideographic
+  | Alphabetic
+  | Hanging
+  | Mathematical
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of alignment_baseline var
+
+val alignment_baseline : alignment_baseline -> declaration
+(** [alignment_baseline v] is the [alignment-baseline] property. *)
+
+(** CSS Inline 3 sec. 4.2.3 [baseline-shift]:
+    [<length-percentage> | sub | super | top | center | bottom]. *)
+type baseline_shift = Properties.baseline_shift =
+  | Shift of length_percentage
+  | Sub
+  | Super
+  | Top
+  | Center
+  | Bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_shift var
+
+val baseline_shift : baseline_shift -> declaration
+(** [baseline_shift v] is the [baseline-shift] property. *)
+
+(** CSS Inline 3 sec. 5.3 [baseline-source]: which line box baseline an inline
+    block aligns on. *)
+type baseline_source = Properties.baseline_source =
+  | Auto
+  | First
+  | Last
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_source var
+
+val baseline_source : baseline_source -> declaration
+(** [baseline_source v] is the [baseline-source] property. *)
+
 (** {2:scroll_touch Scroll & Touch}
 
     Properties for scroll behavior and touch interaction.
