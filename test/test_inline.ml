@@ -387,7 +387,13 @@ let test_inline_vars_out_of_scope_definition_stays_live () =
   check_inline_case "a definition that covers the consumer still folds"
     ":root{--x:red}#i{color:var(--x,lime)}" "#i{color:red}";
   check_inline_case "a name the sheet never defines takes the fallback"
-    "#i{color:var(--nope,lime)}" "#i{color:lime}"
+    "#i{color:var(--nope,lime)}" "#i{color:lime}";
+  (* A reference the pass leaves live is answered by the browser's own cascade,
+     so every definition of the name it might reach has to reach the output with
+     it. *)
+  check_inline_case "a live reference keeps the definition it may reach"
+    "@media (min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}"
+    "@media(min-width:1px){:root{--x:red}}#i{color:var(--x,lime)}"
 
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
@@ -775,21 +781,26 @@ let test_inline_layer_flattening () =
     ".x{color:blue}.y{padding:1px}"
 
 (* An at-rule path is a containment test, not an equality: a custom property is
-   visible to a consumer wrapped in every block it sits in and then some, and to
-   nobody outside its own. A [@layer] is transparent to that test, so a path
-   crossing one still has to line the conditional blocks up. Both directions pin
-   the orientation the paths are compared in. *)
+   folded into a consumer wrapped in every block it sits in and then some, and
+   into nobody outside its own. A [@layer] is transparent to that test, so a
+   path crossing one still has to line the conditional blocks up. Both
+   directions pin the orientation the paths are compared in.
+
+   The path decides what may be folded, never what a reference left standing can
+   reach: the browser answers that one from its own cascade under whatever
+   condition holds, so the definition goes to the output with the reference. *)
 let test_inline_at_path_containment () =
   check_inline_case "an outer definition reaches a deeper consumer"
     "@media print{@media (min-width:10px){:root{--x:red}@layer l{@media \
      (min-width:20px){.a{color:var(--x)}}}}}"
     "@media print{@media(min-width:10px){@layer \
      l{@media(min-width:20px){.a{color:red}}}}}";
-  check_inline_case "an inner definition does not reach an outer consumer"
-    "@media print{:root{--x:red}}.a{color:var(--x)}" ".a{color:var(--x)}";
+  check_inline_case "an inner definition is not folded into an outer consumer"
+    "@media print{:root{--x:red}}.a{color:var(--x)}"
+    "@media print{:root{--x:red}}.a{color:var(--x)}";
   check_inline_case "a sibling block at the same depth is not an enclosing one"
     "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
-    "@media screen{.a{color:var(--x)}}"
+    "@media print{:root{--x:red}}@media screen{.a{color:var(--x)}}"
 
 (* Liveness is decided by a fixpoint: a variable is live when a rule that can
    see it reads it, and a variable read by a live one is live too. The chain
