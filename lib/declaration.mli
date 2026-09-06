@@ -1006,6 +1006,27 @@ val baseline_shift : baseline_shift -> declaration
 val baseline_source : baseline_source -> declaration
 (** [baseline_source v] is the [baseline-source] property. *)
 
+val anchor_name : anchor_name -> declaration
+(** [anchor_name v] is the [anchor-name] property. *)
+
+val position_anchor : position_anchor -> declaration
+(** [position_anchor v] is the [position-anchor] property. *)
+
+val position_area : position_area -> declaration
+(** [position_area v] is the [position-area] property. *)
+
+val position_try_fallbacks : position_try_fallbacks -> declaration
+(** [position_try_fallbacks v] is the [position-try-fallbacks] property. *)
+
+val position_try_order : position_try_order -> declaration
+(** [position_try_order v] is the [position-try-order] property. *)
+
+val position_try : position_try -> declaration
+(** [position_try v] is the [position-try] shorthand. *)
+
+val position_visibility : position_visibility -> declaration
+(** [position_visibility v] is the [position-visibility] property. *)
+
 val outline_style : outline_style -> declaration
 (** [outline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}

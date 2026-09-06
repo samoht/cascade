@@ -6727,6 +6727,190 @@ val background_clip : background_box -> declaration
 val webkit_background_clip : background_box -> declaration
 (** [webkit_background_clip v] is the [-webkit-background-clip] property. *)
 
+(** {2:anchor_positioning Anchor Positioning}
+
+    Properties that tie an absolutely positioned box to an anchor element.
+
+    @see <https://www.w3.org/TR/css-anchor-position-1/>
+      CSS Anchor Positioning Level 1 *)
+
+(** Sec. 2.1 [anchor-name]: [none | <dashed-ident>#]. *)
+type anchor_name = Properties.anchor_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of anchor_name var
+
+val anchor_name : anchor_name -> declaration
+(** [anchor_name v] is the [anchor-name] property. *)
+
+(** Sec. 4.1 [position-anchor]: [normal | none | auto | <anchor-name>]. *)
+type position_anchor = Properties.position_anchor =
+  | Normal
+  | None
+  | Auto
+  | Anchor of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_anchor var
+
+val position_anchor : position_anchor -> declaration
+(** [position_anchor v] is the [position-anchor] property. *)
+
+(** Sec. 3.1.2 [<position-area>]: one of the grid keywords naming a region
+    around the anchor. *)
+type position_area_keyword = Properties.position_area_keyword =
+  | Top
+  | Bottom
+  | Left
+  | Right
+  | Center
+  | Span_top
+  | Span_bottom
+  | Span_left
+  | Span_right
+  | X_start
+  | X_end
+  | Y_start
+  | Y_end
+  | Span_x_start
+  | Span_x_end
+  | Span_y_start
+  | Span_y_end
+  | Inline_start
+  | Inline_end
+  | Block_start
+  | Block_end
+  | Span_inline_start
+  | Span_inline_end
+  | Span_block_start
+  | Span_block_end
+  | Start
+  | End
+  | Span_start
+  | Span_end
+  | Self_start
+  | Self_end
+  | Span_self_start
+  | Span_self_end
+  | Self_x_start
+  | Self_x_end
+  | Self_y_start
+  | Self_y_end
+  | Span_self_x_start
+  | Span_self_x_end
+  | Span_self_y_start
+  | Span_self_y_end
+  | Self_block_start
+  | Self_block_end
+  | Self_inline_start
+  | Self_inline_end
+  | Span_self_block_start
+  | Span_self_block_end
+  | Span_self_inline_start
+  | Span_self_inline_end
+  | Span_all
+
+(** Sec. 3.1.2 [position-area]: one or two keywords from a single branch of the
+    grammar. *)
+type position_area = Properties.position_area =
+  | None
+  | Area of position_area_keyword * position_area_keyword option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_area var
+
+val position_area : position_area -> declaration
+(** [position_area v] is the [position-area] property. *)
+
+(** Sec. 6.1 [<try-tactic>] and the [<dashed-ident>] naming a [@position-try]
+    rule. *)
+type position_try_fallback = Properties.position_try_fallback =
+  | Flip_block
+  | Flip_inline
+  | Flip_start
+  | Name of string
+
+(** Sec. 6.1: one comma-separated fallback entry, which is either a tactic group
+    or a [<position-area>], never a mix of the two. *)
+type position_try_fallback_entry = Properties.position_try_fallback_entry =
+  | Tactics of position_try_fallback list
+  | Area of position_area_keyword * position_area_keyword option
+
+(** Sec. 6.1 [position-try-fallbacks]. *)
+type position_try_fallbacks = Properties.position_try_fallbacks =
+  | None
+  | Fallbacks of position_try_fallback_entry list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_fallbacks var
+
+val position_try_fallbacks : position_try_fallbacks -> declaration
+(** [position_try_fallbacks v] is the [position-try-fallbacks] property. *)
+
+(** Sec. 6.2 [position-try-order]: [normal | <try-size>]. *)
+type position_try_order = Properties.position_try_order =
+  | Normal
+  | Most_width
+  | Most_height
+  | Most_block_size
+  | Most_inline_size
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_order var
+
+val position_try_order : position_try_order -> declaration
+(** [position_try_order v] is the [position-try-order] property. *)
+
+(** Sec. 6.3 [position-try]:
+    [<'position-try-order'>? <'position-try-fallbacks'>]. *)
+type position_try = Properties.position_try =
+  | Try of position_try_order * position_try_fallbacks
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try var
+
+val position_try : position_try -> declaration
+(** [position_try v] is the [position-try] shorthand. *)
+
+(** Sec. 7 [<anchor-visibility>]: one condition that hides the box. *)
+type position_visibility_condition = Properties.position_visibility_condition =
+  | Anchors_visible
+  | No_overflow
+
+(** Sec. 7 [position-visibility]. *)
+type position_visibility = Properties.position_visibility =
+  | Always
+  | Conditions of position_visibility_condition list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_visibility var
+
+val position_visibility : position_visibility -> declaration
+(** [position_visibility v] is the [position-visibility] property. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based

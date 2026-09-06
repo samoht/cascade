@@ -846,6 +846,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the CSS Anchor Positioning 1 properties: `anchor_name`,
+  `position_anchor`, `position_area`, `position_try_fallbacks`,
+  `position_try_order`, `position_try` and `position_visibility`, with their
+  value types (#1028)
+
 - `Css` builds the SVG presentation longhands the AST already carried:
   `fill_rule`, `clip_rule`, `fill_opacity`, `stroke_opacity`,
   `stroke_linecap`, `stroke_linejoin`, `stroke_miterlimit`,
