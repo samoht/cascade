@@ -344,11 +344,11 @@ to lose a whole rule over one bad piece. Both are gone.
 - A property whose grammar names a `<length>` takes neither a percentage nor an
   intrinsic-sizing keyword, and a `<time>` or `<angle>` needs its unit. Cascade
   read them wherever it read a length, so `border-width: 50%`, `perspective:
-  50%`, `top: min-content`, `margin-top: none`, `transition-duration: 0` and
-  `rotate: 0` all parsed, the last two turning a declaration browsers drop into
-  one that works. `Css.Values.read_length` gains `?sizing` and
-  `read_non_negative_length` gains `?length_only` (#871, #879, #880, #951,
-  #952, #953, #954)
+  50%`, `top: min-content`, `margin-top: none`, `transition-duration: 0`,
+  `rotate: 0` and `columns: calc(50% + 25%)` all parsed, the last three turning
+  a declaration browsers drop into one that works.
+  `Css.Values.read_length` gains `?sizing` and `read_non_negative_length` gains
+  `?length_only` (#871, #879, #880, #951, #952, #953, #954, #1056)
 
 - Each grid property takes its own grammar. Values a browser drops are dropped
   (`grid-template-columns: [a]`, `[span] 1px`, `grid-column-start: 0`, `span
