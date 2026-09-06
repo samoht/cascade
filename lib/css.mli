@@ -6075,7 +6075,7 @@ val border :
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border} border}
     shorthand property. *)
 
-val column_rule : border -> declaration
+val column_rule : border list -> declaration
 (** [column_rule v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-rule}
      column-rule} shorthand property. *)

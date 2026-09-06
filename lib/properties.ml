@@ -3933,10 +3933,11 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Font_variant_alternates, value -> value
   | Font_variant, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
-      | Border_inline | Border_inline_start | Border_inline_end | Column_rule
-      | Border_top | Border_right | Border_bottom | Border_left ),
+      | Border_inline | Border_inline_start | Border_inline_end | Border_top
+      | Border_right | Border_bottom | Border_left ),
       value ) ->
       value
+  | Column_rule, value -> value
   | Background, value -> value
   | Tab_size, value -> value
   | Zoom, value -> value
@@ -4443,7 +4444,7 @@ let normalize_property_value : type a.
   | Border_right -> normalize_border ~lossless value
   | Border_bottom -> normalize_border ~lossless value
   | Border_left -> normalize_border ~lossless value
-  | Column_rule -> normalize_border ~lossless value
+  | Column_rule -> List.map (normalize_border ~lossless) value
   | Outline -> normalize_outline ~lossless value
   | Box_shadow -> normalize_shadow ~lossless value
   | Text_shadow -> map_preserve (normalize_text_shadow ~lossless) value
@@ -4842,7 +4843,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Column_height -> pp pp_column_height
   | Column_wrap -> pp pp_column_wrap
   | Column_count -> pp pp_column_count
-  | Column_rule -> pp pp_border
+  | Column_rule -> pp (Pp.list ~sep:Pp.comma pp_border)
   | Column_span -> pp pp_column_span
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
