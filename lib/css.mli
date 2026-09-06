@@ -6956,6 +6956,125 @@ type view_transition_class = Properties.view_transition_class =
 val view_transition_class : view_transition_class -> declaration
 (** [view_transition_class v] is the [view-transition-class] property. *)
 
+(** {2:motion_path Motion Path}
+
+    Properties that move a box along a path rather than by an offset.
+
+    @see <https://www.w3.org/TR/motion-1/> Motion Path Module Level 1 *)
+
+(** Sec. 3.2 [<ray-size>]: how far the ray reaches. *)
+type ray_size = Properties.ray_size =
+  | Closest_side
+  | Closest_corner
+  | Farthest_side
+  | Farthest_corner
+  | Sides
+
+type ray = Properties.ray = {
+  angle : angle;
+  size : ray_size option;
+  contain : bool;
+  position : position_value option;
+}
+(** Sec. 3.2 [ray()]: an angle, a size, whether the path is contained, and the
+    position it starts from. *)
+
+(** Sec. 2.1 [offset-path]: [none | <offset-path> || <coord-box>], where the
+    shape branch reuses {!type-clip_path}. *)
+type offset_path = Properties.offset_path =
+  | None
+  | Url of string
+  | Path of string
+  | Ray of ray
+  | Shape of clip_path
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_path var
+
+val offset_path : offset_path -> declaration
+(** [offset_path v] is the [offset-path] property. *)
+
+val offset_distance : length_percentage -> declaration
+(** [offset_distance v] is the [offset-distance] property. *)
+
+(** Sec. 2.3 [offset-rotate]: which of [auto] and [reverse] an explicit angle is
+    measured from. *)
+type offset_rotate_mode = Properties.offset_rotate_mode = Auto | Reverse
+
+(** Sec. 2.3 [offset-rotate]: [[ auto | reverse ] || <angle>]. *)
+type offset_rotate = Properties.offset_rotate =
+  | Auto
+  | Reverse
+  | Angle of angle
+  | With_angle of offset_rotate_mode * angle
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_rotate var
+
+val offset_rotate : offset_rotate -> declaration
+(** [offset_rotate v] is the [offset-rotate] property. *)
+
+(** Sec. 2.4 [offset-anchor]: [auto | <position>]. *)
+type offset_anchor = Properties.offset_anchor =
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_anchor var
+
+val offset_anchor : offset_anchor -> declaration
+(** [offset_anchor v] is the [offset-anchor] property. *)
+
+(** Sec. 2.5 [offset-position]: [normal | auto | <position>]. *)
+type offset_position = Properties.offset_position =
+  | Normal
+  | Auto
+  | Position of position_value
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_position var
+
+val offset_position : offset_position -> declaration
+(** [offset_position v] is the [offset-position] property. *)
+
+(** Sec. 2.6: the leading group of the [offset] shorthand, which is either a
+    position on its own or a path with the slots that follow it. *)
+type offset_target = Properties.offset_target =
+  | Position_only of offset_position
+  | With_path of {
+      position : offset_position option;
+      path : offset_path;
+      distance : length_percentage option;
+      rotate : offset_rotate option;
+    }
+
+(** Sec. 2.6 [offset]:
+    [[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+     <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?]. *)
+type offset = Properties.offset =
+  | Shorthand of { target : offset_target; anchor : offset_anchor option }
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset var
+
+val offset : offset -> declaration
+(** [offset v] is the [offset] shorthand. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based

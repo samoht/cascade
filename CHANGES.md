@@ -846,6 +846,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the Motion Path 1 properties: `offset_path`,
+  `offset_distance`, `offset_rotate`, `offset_anchor`, `offset_position` and
+  the `offset` shorthand, with their value types (#1031)
+
 - `Css.all` writes the `all` shorthand (#1030)
 
 - `Css` builds `view_transition_name` and `view_transition_class`, with their

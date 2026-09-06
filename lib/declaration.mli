@@ -1033,6 +1033,24 @@ val view_transition_name : view_transition_name -> declaration
 val view_transition_class : view_transition_class -> declaration
 (** [view_transition_class v] is the [view-transition-class] property. *)
 
+val offset_path : offset_path -> declaration
+(** [offset_path v] is the [offset-path] property. *)
+
+val offset_distance : length_percentage -> declaration
+(** [offset_distance v] is the [offset-distance] property. *)
+
+val offset_rotate : offset_rotate -> declaration
+(** [offset_rotate v] is the [offset-rotate] property. *)
+
+val offset_anchor : offset_anchor -> declaration
+(** [offset_anchor v] is the [offset-anchor] property. *)
+
+val offset_position : offset_position -> declaration
+(** [offset_position v] is the [offset-position] property. *)
+
+val offset : offset -> declaration
+(** [offset v] is the [offset] shorthand. *)
+
 val all : css_wide -> declaration
 (** [all v] is the [all] property. It resets every longhand to [v] but the two
     writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)
