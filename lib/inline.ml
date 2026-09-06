@@ -513,11 +513,6 @@ let declaration_with_components decl components : Declaration.declaration option
         | { kind = Token.String _; _ } -> true
         | _ -> false)
     in
-    let has_comma =
-      components_contain (function
-        | { kind = Token.Comma; _ } -> true
-        | _ -> false)
-    in
     (* [font-family] reaches here typed or, when its value never parsed as one,
        as the unknown property of that name; both are the same property. *)
     let is_font_family =
@@ -531,9 +526,13 @@ let declaration_with_components decl components : Declaration.declaration option
     match Declaration.with_value decl value with
     | decl -> Some decl
     | exception Cursor.Parse_error _ ->
-        if is_font_family && has_string components then opaque ()
-        else if has_comma components then None
-        else opaque ()
+        (* [font-family] takes a list of names this reader does not model as
+           one, so the substituted text is written back as it stands. Anywhere
+           else a refused substitution is CSS Variables 1 sec. 3's invalid at
+           computed-value time, which is the property's inherited or initial
+           value: writing the refused text back hands the slot to the
+           declaration before it instead, and dropping it does the same. *)
+        if is_font_family && has_string components then opaque () else None
 
 let should_use_typed_default ~kept visible vars =
   vars <> []
@@ -559,7 +558,12 @@ let apply_substituted_components ctx decl ~original_components components =
     Some (Context.eval ctx decl)
   else
     match declaration_with_components decl components with
-    | None -> None
+    | None ->
+        (* The substitution is no value for this property, so the declaration is
+           invalid at computed-value time and neither the refused text nor the
+           declaration's absence says that. The reference stays, and the browser
+           answers it. *)
+        Some decl
     | Some decl -> Some (Context.eval ctx decl)
 
 (* A name the sheet defines out of this consumer's sight is live here for the

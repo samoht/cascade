@@ -341,6 +341,12 @@ to lose a whole rule over one bad piece. Both are gone.
   refuses a string that is not a selector rather than reading it as an element
   name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
 
+- A substituted value the property refuses leaves its `var()` in place rather
+  than being written back or dropped. CSS Variables 1 sec. 3 makes such a
+  declaration invalid at computed-value time, which is the property's inherited
+  or initial value, so `width: 37px; width: var(--nope, notalength)` measured
+  37px where the browser lays out `auto` (#987)
+
 - `--inline-vars` keeps a `var()` live where the definition it names sits on a
   selector or in an `@media` the pass cannot prove reaches the element, and
   every definition of a name still referenced reaches the output. CSS Variables
