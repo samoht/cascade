@@ -316,12 +316,13 @@ to lose a whole rule over one bad piece. Both are gone.
   `or` branch and a negated capability test no longer lose their rules (#867,
   #869)
 
-- A selector no browser can match is dropped rather than written back, and a
-  pseudo-element that carries structure keeps the compounds it allows:
+- A selector no browser can match is dropped rather than written back, in a
+  nested rule's prelude as well as at top level, and a pseudo-element that
+  carries structure keeps the compounds it allows:
   `::file-selector-button:hover` and a chained `::part(label)::before` survive
   where a combinator after a pseudo-element does not. `Css.Selector.of_string`
   refuses a string that is not a selector rather than reading it as an element
-  name (#418, #426, #430, #441, #552, #553, #556, #559, #950)
+  name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
 
 - Keyword, at-rule and function names match without regard to case, so
   `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)` and `:dir(LTR)` read

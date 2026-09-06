@@ -2015,7 +2015,11 @@ let read_relative t =
   Cursor.ws t;
   if not (Cursor.is_done t) then
     Cursor.err t "unexpected characters after selector";
-  match selectors with [ s ] -> s | _ -> List selectors
+  let result = match selectors with [ s ] -> s | _ -> List selectors in
+  (* A nested style rule's prelude is a selector list like any other, so it is
+     unforgiving too. *)
+  validate_unforgiving_pseudo t result;
+  result
 
 (* CSS Nesting 1 sec. 3: a nested selector is implicitly relative to [&], so a
    leading [& <combinator>] is redundant: [& .bar] -> [.bar], [& > .bar] -> [>
