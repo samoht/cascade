@@ -3959,7 +3959,11 @@ type page_size =
   | Named of page_size_name
   | Named_oriented of page_size_name * page_size_orientation
   | Oriented of page_size_orientation
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_size var
 
 (* Multi-column Layout Types *)

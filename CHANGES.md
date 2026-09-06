@@ -24,6 +24,9 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.page_size` gains `Initial`, `Unset`, `Revert` and
+  `Revert_layer`. Exhaustive visitors must handle the four new leaves (#1004)
+
 - `Cascade.Properties.list_style_image` carries an `Image of background_image`
   where it carried a `Url of string`. CSS Lists 3 sec. 3.5 gives the property
   an `<image>`, so `list-style-image: linear-gradient(red, blue)` reads. A
@@ -363,6 +366,12 @@ to lose a whole rule over one bad piece. Both are gone.
   declaration invalid at computed-value time, which is the property's inherited
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
+
+- The `@page` `size` descriptor sizes a page in lengths, so a percentage, a
+  sizing keyword and a negative are dropped with a warning, and it takes every
+  CSS-wide keyword. CSS Paged Media 3 sec. 6.4 spells it
+  `<length [0,inf]>{1,2} | auto | [ <page-size> || [ portrait | landscape ]]`
+  (#1004)
 
 - `line-height` takes a length unit and no other, so `line-height: 1s`,
   `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
