@@ -3860,6 +3860,19 @@ let typed_custom_font_family_layer_printing () =
   Alcotest.(check string)
     "layer-independent serialization" theme (render "utilities")
 
+(* CSS Color 5 sec. 3 closes the [<color>] production, so a function name it
+   does not hold is no colour and every browser drops the declaration. A vendor
+   name is the exception the reader keeps: the prefix says the vocabulary is an
+   engine's own, which no specification settles either way. *)
+let color_takes_only_a_colour_function () =
+  check_declaration ~expected:"color:-webkit-magic(1)" "color: -webkit-magic(1)";
+  check_declaration ~expected:"color:color-mix(var(--a),var(--b))"
+    "color: color-mix(var(--a), var(--b))";
+  neg_cursor read_declaration "border-top-color: calc(2px - 3px)";
+  neg_cursor read_declaration "border-left-color: brightness()";
+  neg_cursor read_declaration "text-decoration-color: counters(section, \".\")";
+  neg_cursor read_declaration "border-block-start-color: minmax(0, 1fr)"
+
 (* CSS Lists 3 sec. 3.5 gives [list-style-image] one [<image>], where
    [background-image] takes a comma-separated list of them, so the comma is
    where the two vocabularies part. *)
@@ -6482,6 +6495,8 @@ let declaration_tests =
       parse_custom_property_guard;
     test_case "list-style-image takes one image" `Quick
       list_style_image_takes_one_image;
+    test_case "a colour takes only a colour function" `Quick
+      color_takes_only_a_colour_function;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
     test_case "parse_declaration keeps the name out of the value" `Quick
