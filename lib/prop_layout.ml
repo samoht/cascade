@@ -1098,13 +1098,30 @@ let rec read_overscroll_behavior t : overscroll_behavior =
     t
 
 (* Reader for will-change property *)
+(* CSS Will Change 1 sec. 2.1 excludes [will-change], [none], [all] and [auto]
+   from the [<custom-ident>] a feature names, on top of the [default] and the
+   CSS-wide keywords CSS Values 4 sec. 3.2 excludes from every one. The named
+   [scroll-position] and [contents] stay: they match the alternative before it,
+   not the ident. *)
+let will_change_reserved =
+  [
+    "will-change";
+    "none";
+    "all";
+    "auto";
+    "default";
+    "initial";
+    "inherit";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
+
 let rec read_will_change t : will_change =
   let read_ident t =
     let ident = Cursor.ident ~keep_case:true t in
-    if ident = "auto" then
-      Cursor.err_invalid t "auto cannot be used in a will-change list";
-    if ident = "will-change" then
-      Cursor.err_invalid t "will-change cannot reference itself";
+    if List.mem (String.lowercase_ascii ident) will_change_reserved then
+      Cursor.err_invalid t ("reserved will-change ident: " ^ ident);
     ident
   in
   Cursor.enum_or_var "will-change"

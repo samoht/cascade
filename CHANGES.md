@@ -394,6 +394,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `will-change` refuses the idents its own grammar excludes, so
+  `will-change: none` and `will-change: opacity, none` are dropped with a
+  warning where the browser drops the whole declaration. CSS Will Change 1
+  sec. 2.1 keeps `will-change`, `none`, `all` and `auto` out of the ident a
+  feature names (#1015)
+
 - A `fit-content()`, `calc-size()` or `minmax()` reaches only a property whose
   grammar names it, so `font-size: fit-content(20rem)` and
   `scroll-padding-bottom: fit-content(20rem)` are dropped with a warning. CSS
