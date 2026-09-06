@@ -1226,8 +1226,14 @@ let check_timeline_inset_item =
   check_value_cursor "timeline_inset_item" read_timeline_inset_item
     pp_timeline_inset_item
 
+let check_timeline_ident =
+  check_value_cursor "timeline_ident" read_timeline_ident pp_timeline_ident
+
 let check_timeline_name =
   check_value_cursor "name" read_timeline_name pp_timeline_name
+
+let check_timeline_scope =
+  check_value_cursor "timeline_scope" read_timeline_scope pp_timeline_scope
 
 let check_timeline_shorthand_item =
   check_value_cursor "timeline_shorthand_item" read_timeline_shorthand_item
@@ -5372,8 +5378,20 @@ let spec_generated_text_timeline_edges () =
      too. *)
   check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
+  check_timeline_ident "none";
+  check_timeline_ident "--main";
+  (* Scroll-driven Animations 1 secs. 4.1 and 5.1 spell the name [[ none |
+     <dashed-ident> ]#], so [none] names one timeline among others. *)
+  check_timeline_name "none,none";
+  check_timeline_name ~expected:"--main,none" "--main, none";
+  (* Sec. 6 keeps [timeline-scope] at [none | <dashed-ident>#], where the
+     keyword stands for the whole value. *)
+  check_timeline_scope "none";
+  check_timeline_scope ~expected:"--main,--alt" "--main, --alt";
+  neg_cursor ~allow_partial:true read_timeline_scope "none,--main";
   check_timeline_shorthand_item "--main block";
   check_timeline_shorthand_item "--main";
+  check_timeline_shorthand_item "none";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
   neg_cursor ~allow_partial:true read_text_box "trim-start trim-end";

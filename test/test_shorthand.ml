@@ -761,10 +761,11 @@ let test_timeline_range_composes () =
     ".x{scroll-timeline-name:--t;scroll-timeline-axis:block}";
   sheet_optimizes_to ~into:".x{scroll-timeline:none}"
     ".x{scroll-timeline-name:none;scroll-timeline-axis:block}";
-  (* [scroll-timeline: none] sets the axis to [block], so a named axis beside an
-     unnamed timeline has no shorthand spelling. *)
-  sheet_optimizes_to
-    ~into:".x{scroll-timeline-name:none;scroll-timeline-axis:inline}"
+  (* Sec. 4.3 spells the shorthand [<name> <axis>?], and the name half is [none
+     | <dashed-ident>], so [none] pairs with an axis of its own. Chrome 153
+     computes [scroll-timeline: none inline] to the same two longhands and
+     serialises them back into it. *)
+  sheet_optimizes_to ~into:".x{scroll-timeline:none inline}"
     ".x{scroll-timeline-name:none;scroll-timeline-axis:inline}";
   (* Mixed importance is not one declaration. *)
   sheet_optimizes_to
