@@ -424,6 +424,22 @@ let spec_ahead_here : Chrome_gaps.excuse list =
         [ "\"text\"" ],
         "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
          <fade()> ]{1,2}, and every one of these is a <string>" );
+      ( [ "text-box-edge" ],
+        [ "ideographic-ink" ],
+        "CSS Inline 3 sec. 4.4: <text-edge> = [ text | ideographic | \
+         ideographic-ink ] | [ text | ideographic | ideographic-ink | cap | ex \
+         ] [ text | ideographic | ideographic-ink | alphabetic ]" );
+      ( [ "dominant-baseline" ],
+        [ "text-bottom" ],
+        "CSS Inline 3 sec. 5.2: auto | <baseline-metric>, and sec. 5.1 gives \
+         <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
+         central | mathematical | hanging | text-top" );
+      ( [ "animation"; "-webkit-animation" ],
+        [ "--scroller block" ],
+        "CSS Animations 2 sec. 4: <single-animation> ends in [ none | \
+         <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident \
+         timeline and a keyframes name fill two slots of one [||]. Chrome took \
+         the timeline back out of the shorthand" );
     ]
 
 (* The same, for a value Chrome reads that no specification grants: an entry
