@@ -190,11 +190,19 @@ val pp_position_try_order : position_try_order Pp.t
 val pp_position_try_fallback : position_try_fallback Pp.t
 (** [pp_position_try_fallback] pretty-prints a [position-try-fallback] item. *)
 
+val pp_position_try_fallback_entry : position_try_fallback_entry Pp.t
+(** [pp_position_try_fallback_entry] pretty-prints one comma-separated
+    [position-try-fallbacks] entry. *)
+
 val pp_position_try_fallbacks : position_try_fallbacks Pp.t
 (** [pp_position_try_fallbacks] pretty-prints [position-try-fallbacks]. *)
 
 val read_position_try_fallback : Cursor.t -> position_try_fallback
 (** [read_position_try_fallback t] parses a single [position-try-fallback]. *)
+
+val read_position_try_fallback_entry : Cursor.t -> position_try_fallback_entry
+(** [read_position_try_fallback_entry t] parses one comma-separated
+    [position-try-fallbacks] entry. *)
 
 val read_position_try_fallbacks : Cursor.t -> position_try_fallbacks
 (** [read_position_try_fallbacks t] parses [position-try-fallbacks]. *)

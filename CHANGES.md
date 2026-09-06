@@ -24,6 +24,14 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.position_try_fallbacks` holds
+  `position_try_fallback_entry list`, whose `Area` entry carries the
+  `<position-area>` CSS Anchor Positioning 1 sec. 6.1 allows beside the
+  try-tactic group, so `position-try-fallbacks: start end` reads. A caller
+  building a tactic group writes `Tactics group`. `position_anchor` gains
+  `Normal` and `None` from sec. 4.1, and `position-try` requires its fallbacks,
+  so `position-try: most-width` is dropped with a warning (#1012)
+
 - `Cascade.Properties.offset_path` gains `Shape of clip_path`, so
   `offset-path: circle(50%) content-box` reads where a basic shape or a
   reference box was dropped with a warning. CSS Motion Path 1 sec. 2.1 gives

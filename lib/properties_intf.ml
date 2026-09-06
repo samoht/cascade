@@ -3422,72 +3422,6 @@ type anchor_name =
   | Revert_layer
   | Var of anchor_name var
 
-type position_anchor =
-  | Auto
-  | Anchor of string
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_anchor var
-
-type position_try_fallback =
-  | Flip_block
-  | Flip_inline
-  | Flip_start
-  | Name of string
-
-(* CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
-   [<dashed-ident> || <try-tactic>], so it holds a group of components rather
-   than a single one. *)
-type position_try_fallbacks =
-  | None
-  | Fallbacks of position_try_fallback list list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try_fallbacks var
-
-type position_try_order =
-  | Normal
-  | Most_width
-  | Most_height
-  | Most_block_size
-  | Most_inline_size
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try_order var
-
-(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
-   || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
-   omitted from the serialisation. *)
-type position_try =
-  | Try of position_try_order * position_try_fallbacks
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_try var
-
-type position_visibility_condition = Anchors_visible | No_overflow
-
-type position_visibility =
-  | Always
-  | Conditions of position_visibility_condition list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of position_visibility var
-
 type position_area_keyword =
   | Top
   | Bottom
@@ -3539,6 +3473,80 @@ type position_area_keyword =
   | Span_self_inline_start
   | Span_self_inline_end
   | Span_all
+
+(** CSS Anchor Positioning 1 sec. 4.1 [position-anchor]:
+    [normal | none | auto | <anchor-name>]. *)
+type position_anchor =
+  | Normal
+  | None
+  | Auto
+  | Anchor of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_anchor var
+
+type position_try_fallback =
+  | Flip_block
+  | Flip_inline
+  | Flip_start
+  | Name of string
+
+(** CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
+    [[<dashed-ident> || <try-tactic>] | <position-area>], so the two branches
+    never mix inside one entry. *)
+type position_try_fallback_entry =
+  | Tactics of position_try_fallback list
+  | Area of position_area_keyword * position_area_keyword option
+
+type position_try_fallbacks =
+  | None
+  | Fallbacks of position_try_fallback_entry list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_fallbacks var
+
+type position_try_order =
+  | Normal
+  | Most_width
+  | Most_height
+  | Most_block_size
+  | Most_inline_size
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_order var
+
+(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
+   || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
+   omitted from the serialisation. *)
+type position_try =
+  | Try of position_try_order * position_try_fallbacks
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try var
+
+type position_visibility_condition = Anchors_visible | No_overflow
+
+type position_visibility =
+  | Always
+  | Conditions of position_visibility_condition list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_visibility var
 
 type position_area =
   | None
