@@ -1343,7 +1343,11 @@ let test_zoom () =
   check_zoom "reset";
   check_zoom "50%";
   check_zoom "1.5";
-  neg_cursor read_zoom "not-a-zoom"
+  neg_cursor read_zoom "not-a-zoom";
+  (* CSS Viewport 1 sec. 3 spells the property [normal | reset | <number
+     [0,inf]> | <percentage [0,inf]>]. *)
+  neg_cursor read_zoom "-1";
+  neg_cursor read_zoom "-10%"
 
 let test_border_style () =
   check_border_style "none";
@@ -3700,6 +3704,7 @@ let test_stroke_dashoffset () =
   check_stroke_dashoffset "4px";
   check_stroke_dashoffset "10%";
   check_stroke_dashoffset "var(--o)";
+  check_stroke_dashoffset "-2px";
   neg_cursor read_stroke_dashoffset "none"
 
 let test_stroke_dasharray () =
@@ -3711,7 +3716,11 @@ let test_stroke_dasharray () =
   (* Comma and whitespace are the same separator here. *)
   check_stroke_dasharray ~expected:"4 2" "4, 2";
   check_stroke_dasharray "var(--d)";
-  neg_cursor read_stroke_dasharray "red"
+  neg_cursor read_stroke_dasharray "red";
+  (* SVG 2 sec. 13.3 gives each dash a non-negative value; only
+     [stroke-dashoffset] takes a signed one. *)
+  neg_cursor read_stroke_dasharray "-1";
+  neg_cursor read_stroke_dasharray "-1px"
 
 let test_unicode_bidi () =
   check_unicode_bidi "normal";
@@ -4002,7 +4011,10 @@ let test_aspect_ratio () =
   check_aspect_ratio "1.5";
   check_aspect_ratio "1";
   check_aspect_ratio "inherit";
-  neg_cursor read_aspect_ratio "invalid-ratio"
+  neg_cursor read_aspect_ratio "invalid-ratio";
+  (* CSS Sizing 4 sec. 5 takes a [<ratio>], whose CSS Values 4 sec. 6.5 numbers
+     carry a [0,inf] range. *)
+  neg_cursor read_aspect_ratio "-1"
 
 let test_flex () =
   check_flex "1";
@@ -4598,7 +4610,11 @@ let test_columns_value () =
   check_columns_value "auto";
   check_columns_value "2";
   check_columns_value "inherit";
-  neg_cursor read_columns_value "invalid-columns"
+  neg_cursor read_columns_value "invalid-columns";
+  (* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length [0,inf]>],
+     so a percentage and a negative are no column width. *)
+  neg_cursor read_columns_value "-1px";
+  neg_cursor read_columns_value "50%"
 
 (* CSS Values 4 (ED) sec. 10.9: a math function that resolves to <number> is
    valid wherever an <integer> is, so every integer position reads a calc(). The
