@@ -3860,6 +3860,23 @@ let typed_custom_font_family_layer_printing () =
   Alcotest.(check string)
     "layer-independent serialization" theme (render "utilities")
 
+(* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
+   [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
+   built from strings, and sec. 7.8 gives [grid] those forms plus the two
+   [auto-flow] ones. A bare track list names one axis, which is a
+   [grid-template-rows] value and no shorthand one. *)
+let grid_shorthand_names_both_axes () =
+  check_declaration ~expected:"grid-template:10px/20px"
+    "grid-template: 10px / 20px";
+  check_declaration ~expected:"grid-template:none" "grid-template: none";
+  check_declaration ~expected:"grid-template:\"a\" 10px"
+    "grid-template: \"a\" 10px";
+  check_declaration ~expected:"grid:none/1fr" "grid: auto-flow / 1fr";
+  neg_cursor read_declaration "grid-template: 10px";
+  neg_cursor read_declaration "grid-template: auto";
+  neg_cursor read_declaration "grid: 10px";
+  neg_cursor read_declaration "grid: subgrid"
+
 (* CSS Color 5 sec. 3 closes the [<color>] production, so a function name it
    does not hold is no colour and every browser drops the declaration. A vendor
    name is the exception the reader keeps: the prefix says the vocabulary is an
@@ -6497,6 +6514,8 @@ let declaration_tests =
       list_style_image_takes_one_image;
     test_case "a colour takes only a colour function" `Quick
       color_takes_only_a_colour_function;
+    test_case "a grid shorthand names both axes" `Quick
+      grid_shorthand_names_both_axes;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
     test_case "parse_declaration keeps the name out of the value" `Quick
