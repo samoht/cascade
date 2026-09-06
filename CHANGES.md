@@ -348,11 +348,13 @@ to lose a whole rule over one bad piece. Both are gone.
   37px where the browser lays out `auto` (#987)
 
 - `--inline-vars` keeps a `var()` live where the definition it names sits on a
-  selector or in an `@media` the pass cannot prove reaches the element, and
-  every definition of a name still referenced reaches the output. CSS Variables
-  1 sec. 3 puts the fallback in only for a custom property holding its
-  guaranteed-invalid initial value, so `#o { --x: red } #i { color: var(--x,
-  lime) }` took `lime` where the browser paints red (#985, #986, #988)
+  selector or in an `@media` the pass cannot prove reaches the element, or
+  holds a CSS-wide keyword, and every definition of a name still referenced
+  reaches the output. CSS Variables 1 sec. 3 puts the fallback in only for a
+  custom property holding its guaranteed-invalid initial value, so `#o { --x:
+  red } #i { color: var(--x, lime) }` took `lime` where the browser paints red,
+  and `:root { --x: inherit } #i { all: var(--x) }` inherited every property
+  where the browser resets them (#985, #986, #988, #989)
 
 - A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
   dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a

@@ -331,6 +331,20 @@ let lookup_visible_custom ?unicode_ranges visible name read =
     (fun (_, decl) -> read_custom_components ?unicode_ranges read decl)
     (named visible name)
 
+(* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+   property "its usual meaning", so the binding is what the cascade makes of the
+   keyword and not the keyword's own tokens: with nothing above to inherit from,
+   [--x: unset] is the guaranteed-invalid initial value and a reference takes
+   its fallback. What it is depends on the element the sheet is read against, so
+   the binding is one this pass does not fold. *)
+let is_css_wide_keyword_value components =
+  match List.filter (fun c -> not (Component.is_whitespace c)) components with
+  | [ Component.Preserved { kind = Token.Ident name; _ } ] -> (
+      match String.lowercase_ascii name with
+      | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+      | _ -> false)
+  | _ -> false
+
 let custom_value_components = function
   | Declaration.Declaration
       {
@@ -354,6 +368,9 @@ let consider_custom_candidate idx best decl value =
   let candidate = (important, idx, value) in
   if better_custom_candidate ~important ~idx best then Some candidate else best
 
+(* The candidate that wins the cascade is the one that answers, so a keyword
+   winning over a token stream stops the fold rather than handing the fold the
+   runner-up. *)
 let lookup_visible_custom_components visible name =
   List.fold_left
     (fun best (idx, decl) ->
@@ -361,7 +378,9 @@ let lookup_visible_custom_components visible name =
       | None -> best
       | Some value -> consider_custom_candidate idx best decl value)
     None (named visible name)
-  |> Option.map (fun (_, _, value) -> value)
+  |> fun best ->
+  Option.bind best (fun (_, _, value) ->
+      if is_css_wide_keyword_value value then None else Some value)
 
 let trim_components components =
   let is_ws = function
@@ -572,30 +591,47 @@ let apply_substituted_components ctx decl ~original_components components =
    only where the custom property holds its guaranteed-invalid initial value.
    Only the names this declaration references have to be named, so the list
    stays as short as the declaration is. *)
-let out_of_sight visible vars =
-  List.filter_map
-    (fun (Variables.V var) ->
-      let name = var.Values.name in
+let rec var_names_in acc components =
+  List.fold_left
+    (fun acc (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          let acc = var_names_in acc arguments in
+          if String.equal (String.lowercase_ascii name) "var" then
+            match
+              List.filter (fun c -> not (Component.is_whitespace c)) arguments
+            with
+            | Component.Preserved { kind = Token.Ident n; _ } :: _ -> n :: acc
+            | _ -> acc
+          else acc
+      | Component.Block { node = { value; _ }; _ } -> var_names_in acc value
+      | Component.Preserved _ -> acc)
+    acc components
+
+let out_of_sight visible components =
+  var_names_in [] components
+  |> List.filter_map (fun name ->
       let dashed = Custom_property_name.add_prefix name in
+      let bare = Custom_property_name.strip_prefix name in
       if
         Hashtbl.mem visible.declared dashed
-        && Option.is_none (lookup_visible_custom_components visible name)
+        && Option.is_none (lookup_visible_custom_components visible bare)
       then Some dashed
       else None)
-    vars
+  |> List.sort_uniq String.compare
 
 let substitute_non_custom ~kept visible ctx decl =
   let vars = Variables.vars_of_declarations [ decl ] in
+  let value = Declaration.string_of_value ~minify:false decl in
+  let original_components = Cursor.remaining (Cursor.of_string value) in
   let ctx =
-    match out_of_sight visible vars with
+    match out_of_sight visible original_components with
     | [] -> ctx
     | live -> context_for ~kept:(kept @ live) visible
   in
   if should_use_typed_default ~kept visible vars then
     Some (Context.eval ctx decl)
   else
-    let value = Declaration.string_of_value ~minify:false decl in
-    let original_components = Cursor.remaining (Cursor.of_string value) in
     match
       substitute_components ~kept visible ~visited:[] original_components
     with
