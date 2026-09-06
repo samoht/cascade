@@ -366,16 +366,12 @@ let raw_value_has_invalid_substitution raw_value =
   |> components_have_invalid_substitution
 
 let raw_value_contains_substitution raw_value =
-  (* A top-level substitution leaves the typed reader unable to validate the
-     result, so cascade keeps the value verbatim. One nested inside another
-     function does not extend that leniency to the surrounding tokens; only a
-     top-level one counts. *)
-  let is_top_level = function
-    | Component.Func { node = { name; arguments; _ }; _ } ->
-        is_substitution_call name arguments
-    | _ -> false
-  in
-  Cursor.of_string raw_value |> Cursor.remaining |> List.exists is_top_level
+  (* CSS Variables 1 sec. 3: "if a property contains one or more var()
+     functions, and those functions are syntactically valid, the entire
+     property's grammar must be assumed to be valid at parse time". A call
+     written inside another function is one the property contains, so the
+     leniency reaches the tokens around it too. *)
+  Cursor.of_string raw_value |> Cursor.remaining |> components_have_substitution
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =

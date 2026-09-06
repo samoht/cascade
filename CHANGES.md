@@ -364,6 +364,13 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A `var()`, `env()` or `attr()` written inside another function defers the
+  property's grammar the way one written beside it does, so
+  `offset-rotate: color-mix(var(--a), var(--b))` and
+  `flex-basis: sign(var(--x))` are kept. CSS Variables 1 sec. 3 assumes the
+  grammar valid at parse time for a property that *contains* such a call, and
+  cascade counted only a top-level one (#997)
+
 - `shape-image-threshold` reads a percentage and a number outside the `[0, 1]`
   range. CSS Shapes 1 sec. 6.2 takes an `<opacity-value>` and clamps it at
   computed-value time, so `shape-image-threshold: 50%` and `1.5` are values the
