@@ -8116,6 +8116,102 @@ type view_timeline_shorthand = Properties.view_timeline_shorthand =
   | Revert_layer
   | Var of view_timeline_shorthand var
 
+(** Scroll-driven Animations 1 sec. 4 [<timeline-name>]:
+    [none | <dashed-ident>#]. Shared by [scroll-timeline-name],
+    [view-timeline-name] and [timeline-scope]. *)
+type timeline_name = Properties.timeline_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_name var
+
+(** Scroll-driven Animations 1 sec. 5.2: one edge of [view-timeline-inset]. *)
+type timeline_inset_item = Properties.timeline_inset_item =
+  | Auto
+  | Length of length_percentage
+
+(** Sec. 5.2 [view-timeline-inset]: the start edge then the end edge. *)
+type timeline_inset = Properties.timeline_inset =
+  | Inset of timeline_inset_item * timeline_inset_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_inset var
+
+(** Sec. 6.2 [<timeline-range-name>]: the named part of a view progress
+    timeline. *)
+type animation_range_name = Properties.animation_range_name =
+  | Cover
+  | Contain
+  | Entry
+  | Exit
+  | Entry_crossing
+  | Exit_crossing
+
+(** Sec. 6.2: one end of [animation-range]. *)
+type animation_range_item = Properties.animation_range_item =
+  | Normal
+  | Offset of length_percentage
+  | Named of animation_range_name * length_percentage option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range_item var
+
+(** Sec. 6.2 [animation-range]: the start then the end. *)
+type animation_range = Properties.animation_range =
+  | Range of animation_range_item * animation_range_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range var
+
+val animation_timeline : animation_timeline -> declaration
+(** [animation_timeline v] is the [animation-timeline] property. *)
+
+val animation_range : animation_range -> declaration
+(** [animation_range v] is the [animation-range] shorthand. *)
+
+val animation_range_start : animation_range_item -> declaration
+(** [animation_range_start v] is the [animation-range-start] property. *)
+
+val animation_range_end : animation_range_item -> declaration
+(** [animation_range_end v] is the [animation-range-end] property. *)
+
+val scroll_timeline : timeline_shorthand -> declaration
+(** [scroll_timeline v] is the [scroll-timeline] shorthand. *)
+
+val scroll_timeline_name : timeline_name -> declaration
+(** [scroll_timeline_name v] is the [scroll-timeline-name] property. *)
+
+val scroll_timeline_axis : timeline_axis -> declaration
+(** [scroll_timeline_axis v] is the [scroll-timeline-axis] property. *)
+
+val view_timeline : view_timeline_shorthand -> declaration
+(** [view_timeline v] is the [view-timeline] shorthand. *)
+
+val view_timeline_name : timeline_name -> declaration
+(** [view_timeline_name v] is the [view-timeline-name] property. *)
+
+val view_timeline_axis : timeline_axis -> declaration
+(** [view_timeline_axis v] is the [view-timeline-axis] property. *)
+
+val view_timeline_inset : timeline_inset -> declaration
+(** [view_timeline_inset v] is the [view-timeline-inset] property. *)
+
+val timeline_scope : timeline_name -> declaration
+(** [timeline_scope v] is the [timeline-scope] property. *)
+
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action}

@@ -1114,6 +1114,42 @@ val mask_border : border_image -> declaration
 (** [mask_border v] is the [mask-border] shorthand, which takes what
     [border-image] takes plus the mode slot. *)
 
+val animation_timeline : animation_timeline -> declaration
+(** [animation_timeline v] is the [animation-timeline] property. *)
+
+val animation_range : animation_range -> declaration
+(** [animation_range v] is the [animation-range] shorthand. *)
+
+val animation_range_start : animation_range_item -> declaration
+(** [animation_range_start v] is the [animation-range-start] property. *)
+
+val animation_range_end : animation_range_item -> declaration
+(** [animation_range_end v] is the [animation-range-end] property. *)
+
+val scroll_timeline : timeline_shorthand -> declaration
+(** [scroll_timeline v] is the [scroll-timeline] shorthand. *)
+
+val scroll_timeline_name : timeline_name -> declaration
+(** [scroll_timeline_name v] is the [scroll-timeline-name] property. *)
+
+val scroll_timeline_axis : timeline_axis -> declaration
+(** [scroll_timeline_axis v] is the [scroll-timeline-axis] property. *)
+
+val view_timeline : view_timeline_shorthand -> declaration
+(** [view_timeline v] is the [view-timeline] shorthand. *)
+
+val view_timeline_name : timeline_name -> declaration
+(** [view_timeline_name v] is the [view-timeline-name] property. *)
+
+val view_timeline_axis : timeline_axis -> declaration
+(** [view_timeline_axis v] is the [view-timeline-axis] property. *)
+
+val view_timeline_inset : timeline_inset -> declaration
+(** [view_timeline_inset v] is the [view-timeline-inset] property. *)
+
+val timeline_scope : timeline_name -> declaration
+(** [timeline_scope v] is the [timeline-scope] property. *)
+
 val all : css_wide -> declaration
 (** [all v] is the [all] property. It resets every longhand to [v] but the two
     writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)

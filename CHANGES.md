@@ -846,6 +846,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the scroll-driven animation properties: `animation_timeline`,
+  `animation_range`, `animation_range_start`, `animation_range_end`,
+  `scroll_timeline`, `scroll_timeline_name`, `scroll_timeline_axis`,
+  `view_timeline`, `view_timeline_name`, `view_timeline_axis`,
+  `view_timeline_inset` and `timeline_scope`, with their value types (#1035)
+
 - `Css` builds `contain_intrinsic_size` and its four axis longhands, with
   their value types, and `Css.container_type` documents that the `container`
   shorthand is `Declaration.container`, the name `container` at the top level
