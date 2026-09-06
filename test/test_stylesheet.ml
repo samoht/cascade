@@ -4288,6 +4288,20 @@ let nesting_invalid_rule_recovery () =
     ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
     ".a{color:red;.c{color:#00f}}" 1
 
+(* Selectors 4 sec. 3.9 makes a selector list carrying an unknown pseudo-class
+   invalid, and CSS Nesting 1 sec. 2 gives a nested style rule a selector list
+   for its prelude, so the nested rule goes and the ones around it stay. An
+   escaped [;] is an ident code point, so [color:green\;] is a type selector and
+   a pseudo-class named [green;], which is the same case reached through a
+   declaration that failed. *)
+let nested_prelude_is_unforgiving () =
+  lenient_recover "unknown pseudo-class in a nested prelude"
+    ".a { b:future-pseudo { color: red } & .c { color: blue } }"
+    ".a .c{color:#00f}" 1;
+  lenient_recover "escaped semicolon leaves a pseudo-class behind"
+    "a { color: green\\; & { color: red } .c { z-index: 1 } }" "a .c{z-index:1}"
+    1
+
 (* CSS Syntax 3 sec. 4.3.1 consumes a unicode-range token only while "unicode
    ranges allowed" is set, and sec. 4.3.14 says the one caller that sets it is
    the value of a unicode-range descriptor. Everywhere else [u+a] is an ident, a
@@ -9407,6 +9421,7 @@ let additional_tests =
       `Quick,
       unicode_range_only_in_its_descriptor );
     ("nesting invalid rule recovery", `Quick, nesting_invalid_rule_recovery);
+    ("nested prelude is unforgiving", `Quick, nested_prelude_is_unforgiving);
     ("unterminated string closes", `Quick, unterminated_string_closes);
     ( "spec nesting selector and conditional edges",
       `Quick,
