@@ -977,7 +977,7 @@ let read_padding_logical_shorthand t =
 (* CSS Scroll Snap 1 sec. 5.1: the [scroll-margin] longhands are [<length>] - an
    unrestricted range, so an outset may be negative just as a margin may. Only
    [scroll-padding] (sec. 4.2) says "Negative values are invalid". "Percentages:
-   n/a" still rules a percentage out. *)
+   n/a" rules a percentage out, nested in math as much as written on its own. *)
 let read_scroll_margin_length t =
   Cursor.enum "scroll-margin length"
     [
@@ -987,10 +987,7 @@ let read_scroll_margin_length t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(fun t ->
-      match read_length ~with_keywords:false t with
-      | Pct _ -> Cursor.err_invalid t "scroll-margin percentage"
-      | length -> length)
+    ~default:(fun t -> read_length ~with_keywords:false ~length_only:true t)
     t
 
 let read_scroll_padding_length t =

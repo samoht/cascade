@@ -544,6 +544,16 @@ let special_cases () =
     ~optimized:"scroll-padding-inline:6px" "scroll-padding-inline: 6px 6px";
   check_declaration ~expected:"scroll-padding-block:7px 7px"
     ~optimized:"scroll-padding-block:7px" "scroll-padding-block: 7px 7px";
+  (* Sec. 5.1 writes [scroll-margin] as [<length>{1,4}] with "Percentages: n/a",
+     and a percentage nested in math is still a percentage. Sec. 4.2 gives
+     [scroll-padding] a [<length-percentage>], so only the margin turns one
+     away. Chrome 153 agrees on all four. *)
+  neg_cursor read_declaration "scroll-margin-top: 10%";
+  neg_cursor read_declaration "scroll-margin-top: calc(50% + 25%)";
+  neg_cursor read_declaration "scroll-margin-inline: calc(10% + 1px) 20px";
+  check_declaration ~expected:"scroll-margin-top:calc(1px + 2em)"
+    "scroll-margin-top: calc(1px + 2em)";
+  check_declaration ~expected:"scroll-padding-top:10%" "scroll-padding-top: 10%";
   (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
      Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
      one-to-four side assignment. *)
