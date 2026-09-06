@@ -2561,6 +2561,29 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+  (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?]: a
+     plain length in every slot, and a floor on the blur alone. Chrome 153
+     agrees on each of these. *)
+  neg_cursor read_declaration "box-shadow: 10% 20%";
+  neg_cursor read_declaration "box-shadow: 20px 10%";
+  neg_cursor read_declaration "box-shadow: auto 10%";
+  neg_cursor read_declaration "text-shadow: 10px 20%";
+  neg_cursor read_declaration "text-shadow: auto 10px";
+  neg_cursor read_declaration "box-shadow: 10px 20px -5px";
+  neg_cursor read_declaration "text-shadow: 10px 20px -5px";
+  check_declaration ~expected:"box-shadow:10px 20px 5px -3px"
+    "box-shadow: 10px 20px 5px -3px";
+  (* A math function holds no value to compare, so the blur takes one and keeps
+     it: unwrapping [calc(-5px)] would emit the literal the reader refuses. *)
+  check_declaration ~expected:"box-shadow:10px 20px calc(-5px)"
+    ~optimized:"box-shadow:10px 20px calc(-5px)"
+    "box-shadow: 10px 20px calc(-5px)";
+  check_declaration ~expected:"text-shadow:10px 20px calc(-5px)"
+    ~optimized:"text-shadow:10px 20px calc(-5px)"
+    "text-shadow: 10px 20px calc(-5px)";
+  check_declaration ~expected:"box-shadow:10px 20px calc(2px + 3px)"
+    ~optimized:"box-shadow:10px 20px 5px"
+    "box-shadow: 10px 20px calc(2px + 3px)";
 
   (* CSS Transitions 1 sec. 3: the shorthand takes a
      <single-transition-property>, and none is one of them, so it is the whole
