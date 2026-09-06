@@ -53,6 +53,11 @@ let test_of_string () =
          property "contain-intrinsic-size" "1px" ));
   check "nested function value" "(color: color-mix(in lab, red, red))"
     (property "color" "color-mix(in lab, red, red)");
+  (* CSS Conditional 3 sec. 2.2 tests a [<declaration>], which CSS Syntax 3 (ED)
+     sec. 5.5.6 lets carry the [!important] flag, so the flag comes off the
+     value before the [<declaration-value>] bar applies to it. *)
+  check "property with the important flag" "(display: grid !important)"
+    (property "display" "grid !important");
   check "double parens around property" "((-webkit-hyphens: none))"
     (property "-webkit-hyphens" "none");
   check "complex browser detection"

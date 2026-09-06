@@ -4046,7 +4046,10 @@ let spec_custom_tokens () =
     "--tokens: [a, b] (c) { d: e; }";
   check_declaration ~expected:"--empty:" "--empty:";
   check_declaration ~expected:"--commented:a b" "--commented: a /*x*/ b";
-  check_declaration ~expected:"--important-token:1 ! important"
+  (* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
+     non-whitespace values are a [!] delim and an ident matching [important], so
+     the whitespace between the two is inside the flag and not in the value. *)
+  check_declaration ~expected:"--important-token:1!important"
     "--important-token: 1 ! important";
   check_declaration ~expected:"--real-important:1!important"
     "--real-important: 1 !important";
@@ -4074,7 +4077,13 @@ let spec_custom_tokens () =
   neg_cursor read_declaration "--x: hover { ] }";
   neg_cursor read_declaration "--x: a ] b";
   neg_cursor read_declaration "--x: a ) b";
-  neg_cursor read_declaration "--x: url(a b)"
+  neg_cursor read_declaration "--x: url(a b)";
+  (* Sec. 7.2 keeps a top-level [!] out of the production too, so what is left
+     once the flag is off has to hold none. *)
+  neg_cursor read_declaration "--x: a!b";
+  neg_cursor read_declaration "--x: 1px!";
+  neg_cursor read_declaration "--x:! 1px";
+  check_declaration ~expected:"--x:(a!b)" "--x: (a!b)"
 
 (* CSS Fonts 4 sec. 2.1.1 gives a [<font-family-name>] two spellings, a
    [<string>] and a [<custom-ident>+], and they name the same family whether
@@ -4922,8 +4931,10 @@ let css_wide_custom_property_vectors () =
   check_declaration ~expected:"--list:[a,b,c]" "--list: [a, b, c]";
   check_declaration ~expected:"--empty-fallback:var(--missing,)"
     "--empty-fallback: var(--missing,)";
-  check_declaration ~expected:"--not-important:1 ! important"
-    "--not-important: 1 ! important";
+  (* CSS Syntax 3 (ED) sec. 5.5.6 reads the last two non-whitespace values, so
+     the whitespace between [!] and [important] is inside the flag. *)
+  check_declaration ~expected:"--spaced-important:1!important"
+    "--spaced-important: 1 ! important";
   check_declaration ~expected:"--is-important:1!important"
     "--is-important: 1 !important";
   none_cursor read_declaration "--: invalid"
