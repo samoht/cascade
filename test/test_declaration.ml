@@ -4419,6 +4419,11 @@ let spec_platform_property_vectors () =
          <name>] alone; pins the canonical form for the typed shorthand emitter
          ([container : ?type_:_ -> container_name -> declaration]). *)
       ("container: card", "container:card");
+      (* CSS Conditional 5 sec. 3.3 makes every keyword before the slash part of
+         the required [<'container-name'>], which sec. 3.2 spells [none |
+         <custom-ident>+]. *)
+      ("container: card inline-size", "container:card inline-size");
+      ("container: inline-size", "container:inline-size");
       ("overscroll-behavior: contain", "overscroll-behavior:contain");
       ("overscroll-behavior-inline: none", "overscroll-behavior-inline:none");
       ("overscroll-behavior-block: contain", "overscroll-behavior-block:contain");
@@ -4936,7 +4941,7 @@ let spec_remaining_prop_vectors () =
       "mix-blend-mode: multiply plus-lighter";
       "shape-image-threshold: 1.5 2";
       "container-name: none card";
-      "container: card inline-size";
+      "container-name: and";
       "anchor-name: target";
       "anchor-name: --a none";
       "position-anchor: --a --b";
