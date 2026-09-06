@@ -4609,8 +4609,13 @@ let test_timeline_axis () =
   check_timeline_axis "inline";
   check_timeline_axis "x";
   check_timeline_axis "y";
+  (* Scroll-driven Animations 1 secs. 4.2 and 5.2 spell the axis [[ block |
+     inline | x | y ]#], one entry per timeline. *)
+  check_timeline_axis "block,inline";
+  check_timeline_axis "x,y,block";
   neg_cursor read_timeline_axis "z";
-  neg_cursor read_timeline_axis "auto"
+  neg_cursor read_timeline_axis "auto";
+  neg_cursor ~allow_partial:true read_timeline_axis "block inline"
 
 let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
@@ -5359,6 +5364,9 @@ let spec_generated_text_timeline_edges () =
   check_text_wrap_mode "nowrap";
   check_text_wrap_style "stable";
   check_timeline_inset "auto 100%";
+  (* Sec. 5.3 spells the inset [[ [ auto | <length-percentage> ]{1,2} ]#]. *)
+  check_timeline_inset "auto,1rem";
+  check_timeline_inset "auto 1rem,2px";
   check_timeline_inset_item "100%";
   (* timeline-inset takes [ auto | <length-percentage> ], so a held calc()
      too. *)
