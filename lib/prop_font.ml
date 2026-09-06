@@ -24,7 +24,12 @@ let read_line_height_length t : line_height =
     | Some "em" -> if Pp.string_of_float n = repr then Em n else authored ()
     | Some "%" -> if Pp.string_of_float n = repr then Pct n else authored ()
     | None -> if Pp.string_of_float n = repr then Num n else authored ()
-    | Some _ -> authored ()
+    (* CSS Inline 3 sec. 5.1 spells the property [normal | <number [0,inf]> |
+       <length-percentage [0,inf]>], so a length unit the cases above do not
+       carry still reads and a time, an angle or a name no unit table holds does
+       not. *)
+    | Some u when Values.is_length_unit u -> authored ()
+    | Some u -> Cursor.err_invalid t ("line-height unit: " ^ u)
 
 let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
   function

@@ -196,6 +196,11 @@ val calc_length_unit : length -> (string * float) option
 (** [calc_length_unit l] is [Some (unit, value)] when [l] is a dimension, with
     the unit lower-cased. A keyword, a [var()] or a math function is [None]. *)
 
+val is_length_unit : string -> bool
+(** [is_length_unit unit] is whether [unit] names a CSS length, whatever its
+    case: the absolute units, the font- and viewport-relative ones, and the
+    container-relative ones. *)
+
 val absolute_unit_px_ratio : string -> float option
 (** [absolute_unit_px_ratio unit] is [Some ratio] when [unit] is one of the
     absolute units CSS Values 4 sec. 6.2 puts on the [px] scale, with [ratio]

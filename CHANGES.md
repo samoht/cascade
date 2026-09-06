@@ -364,6 +364,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `line-height` takes a length unit and no other, so `line-height: 1s`,
+  `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
+  the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and
+  cascade carried any dimension through (#1003)
+
 - `grid-template` and `grid` name both axes or nothing, so `grid-template: 10px`
   is dropped with a warning where a `grid-template-rows` value stood in for a
   shorthand one. CSS Grid 2 sec. 7.4 spells the shorthand as `none`, a

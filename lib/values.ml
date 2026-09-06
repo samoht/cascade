@@ -1809,6 +1809,9 @@ let unit_of_string = function
   | "cqmax" -> Some Cqmax
   | _ -> None
 
+let is_length_unit unit =
+  Option.is_some (unit_of_string (String.lowercase_ascii unit))
+
 let unit_of_length = function
   | Zero -> Some (Px, 0.)
   | Px n -> Some (Px, n)
