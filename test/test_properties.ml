@@ -851,6 +851,27 @@ let check_font_synthesis_weight =
   check_value_cursor "font_synthesis_weight" read_font_synthesis_weight
     pp_font_synthesis_weight
 
+let check_font_variant =
+  check_value_cursor "font_variant" read_font_variant pp_font_variant
+
+let check_font_variant_alternates =
+  check_value_cursor "font_variant_alternates" read_font_variant_alternates
+    pp_font_variant_alternates
+
+let check_white_space_collapse =
+  check_value_cursor "white_space_collapse" read_white_space_collapse
+    pp_white_space_collapse
+
+let check_column_height =
+  check_value_cursor "column_height" read_column_height pp_column_height
+
+let check_column_wrap =
+  check_value_cursor "column_wrap" read_column_wrap pp_column_wrap
+
+let check_webkit_text_stroke =
+  check_value_cursor "webkit_text_stroke" read_webkit_text_stroke
+    pp_webkit_text_stroke
+
 let check_font_variant_caps =
   check_value_cursor "font_variant_caps" read_font_variant_caps
     pp_font_variant_caps
@@ -4798,6 +4819,14 @@ let spec_generated_animation_font_edges () =
   check_font_synthesis_small_caps "auto";
   check_font_synthesis_style "oblique-only";
   check_font_synthesis_weight "auto";
+  check_font_variant "small-caps";
+  check_font_variant "common-ligatures small-caps tabular-nums";
+  check_font_variant_alternates "swash(fancy)";
+  check_font_variant_alternates "styleset(a,b) historical-forms";
+  check_white_space_collapse "preserve-breaks";
+  check_column_height "10em";
+  check_column_wrap "wrap";
+  check_webkit_text_stroke "1px red";
   check_font_variant_caps "small-caps";
   check_font_variant_east_asian "jis78 ruby";
   check_east_asian_feature "jis04";

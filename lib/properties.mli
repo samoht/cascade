@@ -2395,6 +2395,12 @@ val read_font_variant_ligatures : Cursor.t -> font_variant_ligatures
 (** [read_font_variant_ligatures t] is the [font_variant_ligatures] parsed from
     [t]. *)
 
+val pp_font_variant : font_variant Pp.t
+(** [pp_font_variant] prints the [font-variant] shorthand. *)
+
+val pp_font_variant_alternates : font_variant_alternates Pp.t
+(** [pp_font_variant_alternates] prints [font-variant-alternates]. *)
+
 val pp_font_variant_caps : font_variant_caps Pp.t
 (** [pp_font_variant_caps] is the pretty-printer for [font_variant_caps]. *)
 
