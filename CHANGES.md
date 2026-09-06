@@ -846,6 +846,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the flow-relative border shorthands `border_block_start`,
+  `border_block_end`, `border_inline`, `border_inline_start` and
+  `border_inline_end`, which only `border_block` had before (#1038)
+
 - `Css` builds the decoration-skip properties `Declaration` already had:
   `text_decoration_skip` and its four longhands, and `text_emphasis_skip`,
   with their value types (#1037)

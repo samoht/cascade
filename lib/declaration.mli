@@ -2262,6 +2262,23 @@ val column_rule : border -> declaration
 val border_block : border -> declaration
 (** [border_block v] is the CSS [border-block] shorthand property. *)
 
+val border_block_start : border -> declaration
+(** [border_block_start v] is the CSS [border-block-start] shorthand property.
+*)
+
+val border_block_end : border -> declaration
+(** [border_block_end v] is the CSS [border-block-end] shorthand property. *)
+
+val border_inline : border -> declaration
+(** [border_inline v] is the CSS [border-inline] shorthand property. *)
+
+val border_inline_start : border -> declaration
+(** [border_inline_start v] is the CSS [border-inline-start] shorthand property.
+*)
+
+val border_inline_end : border -> declaration
+(** [border_inline_end v] is the CSS [border-inline-end] shorthand property. *)
+
 val column_span : column_span -> declaration
 (** [column_span v] is the CSS [column-span] property. *)
 

@@ -5603,6 +5603,24 @@ val column_rule : border -> declaration
 (** CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated list,
     one entry per rule line, where {!val-column_rule} writes one. *)
 
+(** CSS Logical 1 sec. 4.2 gives the flow-relative borders the same shorthand
+    shape the physical ones have. *)
+
+val border_block_start : border -> declaration
+(** [border_block_start v] is the [border-block-start] shorthand. *)
+
+val border_block_end : border -> declaration
+(** [border_block_end v] is the [border-block-end] shorthand. *)
+
+val border_inline : border -> declaration
+(** [border_inline v] is the [border-inline] shorthand. *)
+
+val border_inline_start : border -> declaration
+(** [border_inline_start v] is the [border-inline-start] shorthand. *)
+
+val border_inline_end : border -> declaration
+(** [border_inline_end v] is the [border-inline-end] shorthand. *)
+
 val column_rule_width : border_width list -> declaration
 (** [column_rule_width v] is the [column-rule-width] longhand, one entry per gap
     decoration line. *)
