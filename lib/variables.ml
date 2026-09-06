@@ -1445,7 +1445,15 @@ let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_hyphenate_limit_chars (value : Properties.hyphenate_limit_chars) =
-  match value with Var v -> [ V v ] | _ -> []
+  let slot (item : Properties.hyphenate_limit_chars_item) =
+    match item with Auto -> [] | Chars n -> vars_of_number_value n
+  in
+  match value with
+  | Var v -> [ V v ]
+  | One a -> slot a
+  | Two (a, b) -> slot a @ slot b
+  | Three (a, b, c) -> slot a @ slot b @ slot c
+  | _ -> []
 
 let vars_of_initial_letter (value : Properties.initial_letter) =
   match value with Var v -> [ V v ] | _ -> []

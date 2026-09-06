@@ -1196,6 +1196,14 @@ val pp_text_spacing_trim : text_spacing_trim Pp.t
 val read_text_spacing_trim : Cursor.t -> text_spacing_trim
 (** [read_text_spacing_trim t] is the [text_spacing_trim] parsed from [t]. *)
 
+val pp_hyphenate_limit_chars_item : hyphenate_limit_chars_item Pp.t
+(** [pp_hyphenate_limit_chars_item] pretty-prints one [hyphenate-limit-chars]
+    slot. *)
+
+val read_hyphenate_limit_chars_item : Cursor.t -> hyphenate_limit_chars_item
+(** [read_hyphenate_limit_chars_item t] parses one [hyphenate-limit-chars] slot.
+*)
+
 val pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t
 (** [pp_hyphenate_limit_chars] pretty-prints a [hyphenate_limit_chars]. *)
 

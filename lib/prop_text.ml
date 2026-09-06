@@ -772,6 +772,31 @@ let normalize_text_indent : text_indent_value -> text_indent_value =
    the shorter spelling. Written on its own the initial is the whole value, and
    dropping it drains the shorthand: what is left declares the four initials and
    nothing else, which is what [none] declares. *)
+let normalize_hyphenate_limit_chars_item ~ctx :
+    hyphenate_limit_chars_item -> hyphenate_limit_chars_item =
+ fun item ->
+  match item with
+  | Auto -> item
+  | Chars n ->
+      let n' = Values.normalize_number ~ctx n in
+      if n' == n then item else Chars n'
+
+let normalize_hyphenate_limit_chars ~ctx :
+    hyphenate_limit_chars -> hyphenate_limit_chars =
+ fun value ->
+  let item = normalize_hyphenate_limit_chars_item ~ctx in
+  match value with
+  | One a ->
+      let a' = item a in
+      if a' == a then value else One a'
+  | Two (a, b) ->
+      let a' = item a and b' = item b in
+      if a' == a && b' == b then value else Two (a', b')
+  | Three (a, b, c) ->
+      let a' = item a and b' = item b and c' = item c in
+      if a' == a && b' == b && c' == c then value else Three (a', b', c')
+  | other -> other
+
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
@@ -1210,21 +1235,25 @@ let rec pp_text_spacing_trim : text_spacing_trim Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_hyphenate_limit_chars_item : hyphenate_limit_chars_item Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Chars n -> Values.pp_number ctx n
+
 let rec pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_hyphenate_limit_chars ctx v
-  | Auto -> Pp.string ctx "auto"
-  | One a -> Pp.int ctx a
+  | One a -> pp_hyphenate_limit_chars_item ctx a
   | Two (a, b) ->
-      Pp.int ctx a;
+      pp_hyphenate_limit_chars_item ctx a;
       Pp.space ctx ();
-      Pp.int ctx b
+      pp_hyphenate_limit_chars_item ctx b
   | Three (a, b, c) ->
-      Pp.int ctx a;
+      pp_hyphenate_limit_chars_item ctx a;
       Pp.space ctx ();
-      Pp.int ctx b;
+      pp_hyphenate_limit_chars_item ctx b;
       Pp.space ctx ();
-      Pp.int ctx c
+      pp_hyphenate_limit_chars_item ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1845,34 +1874,49 @@ let rec read_text_spacing_trim t : text_spacing_trim =
     ~var:(fun t -> Var (read_var read_text_spacing_trim t))
     t
 
+(* Sec. 6.3.4 writes each slot [auto | <integer [0,inf]>]; Chrome 152 refuses
+   the zero the range grants, so the literal floor stays at one. A math function
+   holds no value to compare, and the whole-value number reader refuses anything
+   after the number it read, so the component is handed to it on its own. *)
+let read_hyphenate_limit_chars_item t : hyphenate_limit_chars_item =
+  Cursor.enum "hyphenate-limit-chars"
+    [ ("auto", (Auto : hyphenate_limit_chars_item)) ]
+    ~default:(fun t ->
+      match Cursor.peek t with
+      | Some (Component.Func _ as component) ->
+          let _ = Cursor.next t in
+          Chars (Values.read_number (Cursor.of_components [ component ]))
+      | _ ->
+          let n = Cursor.int t in
+          if n < 1 then
+            Cursor.err_invalid t "hyphenate-limit-chars must be >= 1";
+          Chars (Num (float_of_int n)))
+    t
+
 let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
-  let read_counts t =
-    let counts =
-      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3 Cursor.int t
+  let read_slots t =
+    let slots =
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3
+        read_hyphenate_limit_chars_item t
     in
-    let check_count n =
-      if n < 1 then Cursor.err_invalid t "hyphenate-limit-chars must be >= 1"
-    in
-    List.iter check_count counts;
     Cursor.ws t;
     Cursor.expect_eof t;
-    match counts with
+    match slots with
     | [ a ] -> (One a : hyphenate_limit_chars)
     | [ a; b ] -> Two (a, b)
     | [ a; b; c ] -> Three (a, b, c)
-    | _ -> Cursor.err_invalid t "expected one to three integers"
+    | _ -> Cursor.err_invalid t "expected one to three slots"
   in
   Cursor.enum_or_calls "hyphenate-limit-chars"
     [
-      ("auto", (Auto : hyphenate_limit_chars));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : hyphenate_limit_chars));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_hyphenate_limit_chars t)) ]
-    ~default:read_counts t
+    ~default:read_slots t
 
 let rec read_white_space t : white_space =
   Cursor.ws t;
