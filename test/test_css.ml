@@ -2631,6 +2631,29 @@ let scroll_driven_animation_builders () =
     (Css.view_timeline_inset (Inset (Auto, None)));
   check "timeline-scope:--a" (Css.timeline_scope (Names [ "--a" ]))
 
+(* The vendor-specific section documented sixty-odd prefixed longhands and
+   exposed no builder for any of them. *)
+let vendor_prefixed_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "-webkit-transform:none" (Css.webkit_transform [ None ]);
+  check "-moz-transform:none" (Css.moz_transform [ None ]);
+  check "-ms-transform:none" (Css.ms_transform [ None ]);
+  check "-o-transform:none" (Css.o_transform [ None ]);
+  check "-webkit-animation-duration:1s" (Css.webkit_animation_duration (S 1.));
+  check "-moz-animation-name:spin" (Css.moz_animation_name (Name "spin"));
+  check "-webkit-flex-wrap:wrap" (Css.webkit_flex_wrap Wrap);
+  check "-webkit-align-items:center" (Css.webkit_align_items Center);
+  check "-webkit-box-sizing:border-box" (Css.webkit_box_sizing Border_box);
+  check "-moz-box-sizing:border-box" (Css.moz_box_sizing Border_box);
+  check "-webkit-text-fill-color:red" (Css.webkit_text_fill_color (Named Red));
+  check "-moz-appearance:none" (Css.moz_appearance None);
+  check "-moz-user-select:none" (Css.moz_user_select None);
+  check "-ms-user-select:none" (Css.ms_user_select None)
+
 let suite =
   ( "css",
     [
@@ -2738,6 +2761,8 @@ let suite =
         contain_intrinsic_size_builders;
       Alcotest.test_case "public scroll driven animation builders" `Quick
         scroll_driven_animation_builders;
+      Alcotest.test_case "public vendor prefixed builders" `Quick
+        vendor_prefixed_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
