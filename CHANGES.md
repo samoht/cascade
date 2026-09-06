@@ -367,6 +367,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- An empty value is no declaration for any property but a custom one, so
+  `quotes:` and `position-try:` are dropped with a warning where the first was
+  written back and the second read as `none`. CSS Syntax 3 sec. 5.5.6 gives a
+  declaration one or more component values (#1009)
+
 - `translate`, `transform-origin` and the `animation-range-*` family refuse an
   intrinsic-sizing keyword, so `translate: auto` is dropped with a warning. Each
   grammar names a length in every slot, and the length carrier brought the

@@ -2349,6 +2349,11 @@ let validate_anchor_queries t name components =
   then Cursor.err_invalid t ("anchor-size() is not a value of " ^ name)
 
 let validate_regular_property_components t name components =
+  (* CSS Syntax 3 (ED) sec. 5.5.6 gives a declaration a value of one or more
+     component values, and only a custom property takes the empty one (CSS
+     Variables 1 sec. 2). *)
+  if List.for_all Component.is_whitespace components then
+    Cursor.err_expected t "a value";
   validate_anchor_queries t name components;
   (* A substitution function makes the declaration's grammar a computed-value
      question. This includes [all]: the substitution result can be empty and
