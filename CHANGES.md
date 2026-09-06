@@ -36,6 +36,11 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- `column-rule` carries a list where it carried a single value, so
+  `column-rule: 1px solid red, 2px dashed blue` reads. CSS Gaps 1 sec. 4.4
+  spells the shorthand `<gap-rule>#`, the same list its longhands took in
+  #1024. A caller writing one line passes a one-element list (#1053)
+
 - `Cascade.Properties.animation_range_item` gains `Items` and `animation_range`
   gains `Ranges`, so `animation-range: normal, normal` and
   `animation-range-start: 10%, normal` read where they were dropped with a

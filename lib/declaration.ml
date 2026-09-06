@@ -553,7 +553,7 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Border_bottom -> border_uses_color p value
   | Border_left -> border_uses_color p value
   | Border_block -> border_uses_color p value
-  | Column_rule -> border_uses_color p value
+  | Column_rule -> List.exists (border_uses_color p) value
   | Outline -> outline_uses_color p value
   | Background_image -> List.exists (background_image_uses_color p) value
   | Webkit_mask_image -> background_image_uses_color p value
@@ -1852,7 +1852,12 @@ let read_object_transition_value : type a.
   | Column_height -> Some (v Column_height (read_column_height t))
   | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
-  | Column_rule -> Some (v Column_rule (read_border t))
+  (* CSS Gaps 1 sec. 4.4 spells [column-rule] as a [<gap-rule>#], one entry per
+     rule line, the same list its longhands carry. *)
+  | Column_rule ->
+      Some
+        (v Column_rule
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border t))
   (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
      list, one entry per rule line. *)
   | Column_rule_color ->

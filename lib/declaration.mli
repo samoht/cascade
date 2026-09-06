@@ -2369,7 +2369,7 @@ val page_break_inside : page_break_inside_value -> declaration
 val columns : columns_value -> declaration
 (** [columns v] is the CSS [columns] property for multi-column layout. *)
 
-val column_rule : border -> declaration
+val column_rule : border list -> declaration
 (** [column_rule v] is the CSS [column-rule] shorthand property. *)
 
 val border_block : border -> declaration

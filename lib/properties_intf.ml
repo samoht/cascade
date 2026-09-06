@@ -5246,7 +5246,7 @@ type 'a property =
   | Column_height : column_height property
   | Column_wrap : column_wrap property
   | Column_count : column_count property
-  | Column_rule : border property
+  | Column_rule : border list property
       (** CSS Gaps 1 sec. 4 gives the three longhands below a comma-separated
           list, one entry per gap decoration line. *)
   | Column_rule_width : border_width list property
