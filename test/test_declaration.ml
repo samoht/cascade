@@ -3860,6 +3860,23 @@ let typed_custom_font_family_layer_printing () =
   Alcotest.(check string)
     "layer-independent serialization" theme (render "utilities")
 
+(* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
+   and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
+   [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
+   plus [position-anchor] and [position-area]. *)
+let anchor_query_where_the_property_takes_one () =
+  check_declaration ~expected:"left:anchor(right)" "left: anchor(right)";
+  check_declaration ~expected:"width:anchor-size(width)"
+    "width: anchor-size(width)";
+  check_declaration ~expected:"margin-left:anchor-size(width)"
+    "margin-left: anchor-size(width)";
+  check_declaration ~expected:"width:calc(anchor-size(width) + 2px)"
+    "width: calc(anchor-size(width) + 2px)";
+  neg_cursor read_declaration "width: anchor(right)";
+  neg_cursor read_declaration "padding-bottom: anchor-size(width)";
+  neg_cursor read_declaration "translate: anchor-size(width)";
+  neg_cursor read_declaration "scroll-margin: anchor-size(width)"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -6516,6 +6533,8 @@ let declaration_tests =
       color_takes_only_a_colour_function;
     test_case "a grid shorthand names both axes" `Quick
       grid_shorthand_names_both_axes;
+    test_case "an anchor query where the property takes one" `Quick
+      anchor_query_where_the_property_takes_one;
     test_case "custom_property refuses an escaping pair" `Quick
       custom_property_guard;
     test_case "parse_declaration keeps the name out of the value" `Quick
