@@ -6841,6 +6841,20 @@ let relative_origin_srgb_bytes origin : (int * int * int * int) option =
           | Option.None -> Option.None)
       | Option.None -> Option.None)
 
+(* The call names no alpha of its own, so the origin's carries through. *)
+let folded_srgb_color origin (alpha : alpha) : color option =
+  match relative_origin_srgb_bytes origin with
+  | None -> Option.None
+  | Some (r, g, b, origin_a_byte) ->
+      let a : alpha =
+        match alpha with
+        | None when origin_a_byte = 255 -> None
+        | None -> Num (Float.of_int origin_a_byte /. 255.)
+        | a -> a
+      in
+      Option.Some
+        (Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a })
+
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
   let read_keyword kw =
@@ -6855,25 +6869,14 @@ let try_fold_color_function_static origin t : color option =
   else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
     Option.None
   else
-    let alpha = read_optional_alpha t in
-    Cursor.ws t;
-    if not (Cursor.is_done t) then Option.None
-    else
-      match relative_origin_srgb_bytes origin with
-      | Some (r, g, b, origin_a_byte) ->
-          let final_alpha : alpha =
-            match alpha with
-            | None when origin_a_byte = 255 -> None
-            | None -> Num (Float.of_int origin_a_byte /. 255.)
-            | a -> a
-          in
-          Option.Some
-            (Rgba
-               {
-                 rgb = Channels { r = Int r; g = Int g; b = Int b };
-                 a = final_alpha;
-               })
-      | None -> Option.None
+    (* The fold is best effort, so an alpha it cannot read is not an error: sec.
+       4.1 puts the origin's [alpha] keyword, and math over it, in that slot,
+       and the caller keeps the call as written when this answers [None]. *)
+    match Cursor.option read_optional_alpha t with
+    | Option.None -> Option.None
+    | Option.Some alpha ->
+        Cursor.ws t;
+        if Cursor.is_done t then folded_srgb_color origin alpha else Option.None
 
 let try_fold_relative_color_static name origin t : color option =
   match name with
