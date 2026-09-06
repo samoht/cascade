@@ -3901,13 +3901,21 @@ type page_break_value =
   | Avoid
   | Left
   | Right
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_value var
 
 type page_break_inside_value =
   | Auto
   | Avoid
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_inside_value var
 
 (* CSS Paged Media 3 sec. 7.1 [size] descriptor: optional page size keyword

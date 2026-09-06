@@ -67,14 +67,22 @@ let rec pp_page_break_value : page_break_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_page_break_inside_value : page_break_inside_value Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_page_break_inside_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* CSS Fragmentation 3 sec. 3.4 defines the page-break-* aliases by a value
    mapping table: [auto | left | right | avoid] map to themselves and [always]
@@ -89,7 +97,13 @@ let break_of_page_break (value : page_break_value) : break_value option =
   | Avoid -> Some Avoid
   | Left -> Some Left
   | Right -> Some Right
+  (* CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, and the
+     alias and its target take each one alike. *)
+  | Initial -> Some Initial
   | Inherit -> Some Inherit
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
   | Var _ -> None
 
 let break_inside_of_page_break (value : page_break_inside_value) :
@@ -97,7 +111,11 @@ let break_inside_of_page_break (value : page_break_inside_value) :
   match value with
   | Auto -> Some Auto
   | Avoid -> Some Avoid
+  | Initial -> Some Initial
   | Inherit -> Some Inherit
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
   | Var _ -> None
 
 (* CSS Multicol 2 sec. 4.5 leaves an omitted component at its longhand's
@@ -274,7 +292,11 @@ let rec read_page_break_value t : page_break_value =
       ("avoid", Avoid);
       ("left", Left);
       ("right", Right);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_page_break_value t))
     t
@@ -284,7 +306,11 @@ let rec read_page_break_inside_value t : page_break_inside_value =
     [
       ("auto", (Auto : page_break_inside_value));
       ("avoid", Avoid);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_page_break_inside_value t))
     t

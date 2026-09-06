@@ -2156,7 +2156,11 @@ type page_break_value = Properties.page_break_value =
   | Avoid
   | Left
   | Right
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_value var
       (** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-inside]
           vocabulary. *)
@@ -2164,7 +2168,11 @@ type page_break_value = Properties.page_break_value =
 type page_break_inside_value = Properties.page_break_inside_value =
   | Auto
   | Avoid
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of page_break_inside_value var
 
 val page_break_before : page_break_value -> declaration

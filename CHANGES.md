@@ -347,6 +347,10 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `page-break-before`, `page-break-after` and `page-break-inside` take every
+  CSS-wide keyword, which CSS Cascade 5 sec. 7.3 gives to every property, and
+  each one reaches the `break-*` alias unmoved. Only `inherit` was read (#993)
+
 - A `var()` whose custom property the evaluator cannot read a value from keeps
   its reference rather than taking its fallback: an empty binding, one the
   property's grammar refuses, and a CSS-wide keyword, whose meaning CSS
