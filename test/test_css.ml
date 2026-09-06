@@ -2686,6 +2686,32 @@ let logical_border_builders () =
   check "border-inline-start:none" (Css.border_inline_start None);
   check "border-inline-end:none" (Css.border_inline_end None)
 
+(* Sixteen typography longhands the AST models and the facade could not
+   write. *)
+let typography_longhand_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "white-space-collapse:preserve" (Css.white_space_collapse Preserve);
+  check "line-height-step:4px" (Css.line_height_step (Px 4.));
+  check "font-palette:dark" (Css.font_palette Dark);
+  check "font-synthesis:weight style"
+    (Css.font_synthesis (Features [ Weight; Style ]));
+  check "font-size-adjust:from-font" (Css.font_size_adjust From_font);
+  check "font-variant-emoji:emoji" (Css.font_variant_emoji Emoji);
+  check "font-variant-alternates:historical-forms"
+    (Css.font_variant_alternates (Alternates [ Historical_forms ]));
+  check "font-variant:none" (Css.font_variant None);
+  check "text-wrap-style:balance" (Css.text_wrap_style Balance);
+  check "text-box-trim:trim-both" (Css.text_box_trim Trim_both);
+  check "text-box:auto" (Css.text_box (Box (None, Some Auto)));
+  check "text-spacing-trim:trim-start" (Css.text_spacing_trim Trim_start);
+  check "initial-letter-align:hanging"
+    (Css.initial_letter_align (Align [ Hanging ]));
+  check "initial-letter-wrap:first" (Css.initial_letter_wrap First)
+
 let suite =
   ( "css",
     [
@@ -2799,6 +2825,8 @@ let suite =
         decoration_skip_builders;
       Alcotest.test_case "public logical border builders" `Quick
         logical_border_builders;
+      Alcotest.test_case "public typography longhand builders" `Quick
+        typography_longhand_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
