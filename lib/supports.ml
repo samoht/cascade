@@ -172,7 +172,8 @@ let declaration_feature prop value =
    no check. Rendering through the component stream closes a [<url-token>] the
    caller left open, the way the reader's own path already does. *)
 let property prop value =
-  if not (String.equal value "" || Declaration.is_declaration_value value) then
+  let bare, _ = Declaration.split_important value in
+  if not (String.equal value "" || Declaration.is_declaration_value bare) then
     failwith
       (String.concat ""
          [

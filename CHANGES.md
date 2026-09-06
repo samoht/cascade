@@ -295,6 +295,13 @@ to lose a whole rule over one bad piece. Both are gone.
   the two alike and dropped the rule, and printed the value back without its
   closing quote so the rest of the sheet was swallowed (#972)
 
+- A custom property whose value holds a `!` outside its `!important` flag is
+  dropped with a warning, and `--x: 1 ! important` is important with the value
+  `1`. CSS Syntax 3 sec. 5.5.6 reads the flag off the last two non-whitespace
+  values and sec. 7.2 keeps what is left free of a top-level `!`; cascade read
+  the spaced flag as part of the value and kept `--x: a!b`, which browsers drop
+  (#979)
+
 - A value carrying an unmatched `)`, `]` or `}` is dropped with a warning even
   where a `var()` sends it down the opaque path. CSS Syntax 3 sec. 7.2 keeps
   those out of a `<declaration-value>`, so `width: var(--x))` is no declaration

@@ -61,10 +61,17 @@ val to_string : ?minify:bool -> t -> string
 
 val is_declaration_value : string -> bool
 (** [is_declaration_value s] is whether [s] is a [<declaration-value>]: one or
-    more component values with no unmatched closing bracket, no top-level [;],
-    no [<bad-string-token>] or [<bad-url-token>] and no unterminated function,
-    block or string (CSS Syntax 3 (ED) sec. 7.2). Text outside it stops being
-    part of the declaration it is written into. *)
+    more component values with no unmatched closing bracket, no top-level [;] or
+    [!], no [<bad-string-token>] or [<bad-url-token>] and no unterminated
+    function, block or string (CSS Syntax 3 (ED) sec. 7.2). Text outside it
+    stops being part of the declaration it is written into. Pass the value with
+    its [!important] flag already off, as {!split_important} takes it. *)
+
+val split_important : string -> string * bool
+(** [split_important s] is [s] without its [!important] flag, and whether it
+    carried one. CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last
+    two non-whitespace values are a [!] delim and the ident naming the flag, so
+    [1 ! important] carries one and [1 !importantly] does not. *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from

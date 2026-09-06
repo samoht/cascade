@@ -82,14 +82,24 @@ let rec component_stays_in_declaration = function
       terminated && List.for_all component_stays_in_declaration arguments
 
 (* A top-level [;] ends the declaration, so the tail becomes a second one. It is
-   only a stop at top level: [(a;b)] keeps it inside the block. *)
+   only a stop at top level: [(a;b)] keeps it inside the block. Sec. 7.2 keeps a
+   top-level [!] out of the production for the same reason: sec. 5.5.6 takes the
+   [!important] flag off the end before the value is read, so a [!] still in it
+   belongs to no flag and to no value. *)
 let is_top_level_stop = function
   | Component.Preserved { kind = Token.Semicolon; _ } -> true
   | _ -> false
 
+let is_top_level_bang = function
+  | Component.Preserved { kind = Token.Delim "!"; _ } -> true
+  | _ -> false
+
 let components_stay_in_declaration components =
   List.for_all
-    (fun c -> (not (is_top_level_stop c)) && component_stays_in_declaration c)
+    (fun c ->
+      (not (is_top_level_stop c))
+      && (not (is_top_level_bang c))
+      && component_stays_in_declaration c)
     components
 
 (* CSS Variables 1 sec. 2 gives a custom property the value grammar
@@ -2103,24 +2113,37 @@ let is_font_family_var name =
   || starts_with "default-font-family" bare
   || starts_with "default-mono-font-family" bare
 
-(* For custom properties only, !important is recognised solely as the literal
-   10-character suffix [!important]; [! important] (with whitespace between the
-   bang and the ident) is part of the value, not the importance flag. Per
-   test_declaration's spec_custom_tokens: this matches Tailwind/lightningcss's
-   conservative handling for [--*] values, where any whitespace inside the flag
-   means the user wrote arbitrary tokens, not the cascade marker. *)
-let split_custom_important value =
+(* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
+   non-whitespace values of the declaration are a [!] delim and an ident
+   matching [important], so the whitespace [! important] writes between the two
+   is inside the flag. Chrome 151 reads it that way, and what is left is the
+   value. *)
+let is_ws_char = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let trim_end s =
+  let n = ref (String.length s) in
+  while !n > 0 && is_ws_char s.[!n - 1] do
+    decr n
+  done;
+  String.sub s 0 !n
+
+let split_important value =
   let trimmed = String.trim value in
   let len = String.length trimmed in
-  let suffix = "!important" in
-  let suffix_len = String.length suffix in
+  let word = "important" in
+  let word_len = String.length word in
   if
-    len >= suffix_len
-    && String.lowercase_ascii (String.sub trimmed (len - suffix_len) suffix_len)
-       = suffix
+    len > word_len
+    && String.lowercase_ascii (String.sub trimmed (len - word_len) word_len)
+       = word
   then
-    let head = String.sub trimmed 0 (len - suffix_len) in
-    (String.trim head, true)
+    let head = trim_end (String.sub trimmed 0 (len - word_len)) in
+    let head_len = String.length head in
+    if head_len > 0 && Char.equal head.[head_len - 1] '!' then
+      (String.trim (String.sub head 0 (head_len - 1)), true)
+    else (trimmed, false)
   else (trimmed, false)
 
 let read_custom_property_payload name value_str =
@@ -2157,7 +2180,9 @@ let read_custom_value_declaration t name : declaration =
   reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
-  let value_str, is_important = split_custom_important raw_value in
+  let value_str, is_important = split_important raw_value in
+  if not (is_optional_declaration_value value_str) then
+    Cursor.err_invalid t "custom property value is no <declaration-value>";
   (* custom_property may raise Failure for invalid names like "--" *)
   try
     let custom_value =
