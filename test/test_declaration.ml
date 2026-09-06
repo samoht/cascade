@@ -3908,6 +3908,17 @@ let grid_shorthand_names_both_axes () =
   check_declaration ~expected:"grid-template:none" "grid-template: none";
   check_declaration ~expected:"grid-template:\"a\" 10px"
     "grid-template: \"a\" 10px";
+  (* CSS Grid 2 sec. 7.4 spells the areas form as [ <line-names>? <string>
+     <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?, and sec. 7.2
+     leaves repeat() out of an explicit track list. *)
+  check_declaration ~expected:"grid-template:[x]\"a\" 1fr[y]"
+    "grid-template: [x] \"a\" 1fr [y]";
+  neg_cursor read_declaration "grid-template: #next \"sidebar\"";
+  neg_cursor read_declaration "grid-template: 45deg, \"-\"";
+  neg_cursor read_declaration "grid-template: 50% \"text\" infinite";
+  neg_cursor read_declaration "grid-template: \"a\" repeat(2, 1fr)";
+  neg_cursor read_declaration "grid-template: \"a\" auto / repeat(2, 1fr)";
+  neg_cursor read_declaration "grid-template: \"a\" / \"b\"";
   check_declaration ~expected:"grid:none/1fr" "grid: auto-flow / 1fr";
   neg_cursor read_declaration "grid-template: 10px";
   neg_cursor read_declaration "grid-template: auto";
