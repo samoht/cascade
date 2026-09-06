@@ -2654,6 +2654,24 @@ let vendor_prefixed_builders () =
   check "-moz-user-select:none" (Css.moz_user_select None);
   check "-ms-user-select:none" (Css.ms_user_select None)
 
+(* The five decoration-skip properties and text-emphasis-skip were built by
+   Declaration and unreachable through the facade. *)
+let decoration_skip_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "text-decoration-skip:none" (Css.text_decoration_skip None);
+  check "text-decoration-skip-self:objects"
+    (Css.text_decoration_skip_self Objects);
+  check "text-decoration-skip-box:all" (Css.text_decoration_skip_box All);
+  check "text-decoration-skip-inset:auto" (Css.text_decoration_skip_inset Auto);
+  check "text-decoration-skip-spaces:start end"
+    (Css.text_decoration_skip_spaces (Spaces [ Start; End ]));
+  check "text-emphasis-skip:spaces punctuation"
+    (Css.text_emphasis_skip (Skip [ Spaces; Punctuation ]))
+
 let suite =
   ( "css",
     [
@@ -2763,6 +2781,8 @@ let suite =
         scroll_driven_animation_builders;
       Alcotest.test_case "public vendor prefixed builders" `Quick
         vendor_prefixed_builders;
+      Alcotest.test_case "public decoration skip builders" `Quick
+        decoration_skip_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
