@@ -9008,6 +9008,7 @@ type animation_range_name = Properties.animation_range_name =
 (** Sec. 6.2: one end of [animation-range]. *)
 type animation_range_item = Properties.animation_range_item =
   | Normal
+  | Items of animation_range_item list
   | Offset of length_percentage
   | Named of animation_range_name * length_percentage option
   | Initial
@@ -9020,6 +9021,7 @@ type animation_range_item = Properties.animation_range_item =
 (** Sec. 6.2 [animation-range]: the start then the end. *)
 type animation_range = Properties.animation_range =
   | Range of animation_range_item * animation_range_item option
+  | Ranges of animation_range list
   | Initial
   | Inherit
   | Unset

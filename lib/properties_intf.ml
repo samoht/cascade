@@ -3664,6 +3664,7 @@ type animation_range_name =
 
 type animation_range_item =
   | Normal
+  | Items of animation_range_item list
   | Offset of length_percentage
   | Named of animation_range_name * length_percentage option
   | Initial
@@ -3675,6 +3676,7 @@ type animation_range_item =
 
 type animation_range =
   | Range of animation_range_item * animation_range_item option
+  | Ranges of animation_range list
   | Initial
   | Inherit
   | Unset

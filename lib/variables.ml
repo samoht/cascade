@@ -1166,17 +1166,19 @@ let vars_of_font_synthesis (value : Properties.font_synthesis) =
 let vars_of_animation_timeline (value : Properties.animation_timeline) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_animation_range_item (value : Properties.animation_range_item) =
+let rec vars_of_animation_range_item (value : Properties.animation_range_item) =
   match value with
   | Var v -> [ V v ]
   | Normal -> []
+  | Items items -> List.concat_map vars_of_animation_range_item items
   | Offset lp | Named (_, Some lp) -> vars_of_length_percentage lp
   | Named (_, None) -> []
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
-let vars_of_animation_range (value : Properties.animation_range) =
+let rec vars_of_animation_range (value : Properties.animation_range) =
   match value with
   | Var v -> [ V v ]
+  | Ranges ranges -> List.concat_map vars_of_animation_range ranges
   | Range (first, second) ->
       vars_of_animation_range_item first
       @ Option.fold ~none:[] ~some:vars_of_animation_range_item second

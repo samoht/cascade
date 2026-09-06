@@ -36,6 +36,13 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- `Cascade.Properties.animation_range_item` gains `Items` and `animation_range`
+  gains `Ranges`, so `animation-range: normal, normal` and
+  `animation-range-start: 10%, normal` read where they were dropped with a
+  warning. Scroll-driven Animations 1 secs. 3.1 to 3.3 put a `#` on both ends
+  and on the shorthand. Exhaustive visitors must handle the two new leaves
+  (#1052)
+
 - `Cascade.Properties.timeline_name` carries `timeline_ident` entries and the
   two timeline shorthands drop their `None` arm, so
   `scroll-timeline-name: none, none` and `scroll-timeline: none, --a x` read
