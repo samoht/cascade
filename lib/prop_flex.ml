@@ -267,6 +267,8 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Rem_fn (a, b) -> pp_length ctx (Rem_fn (a, b))
   | Hypot xs -> pp_length ctx (Hypot xs)
   | Abs a -> pp_length ctx (Abs a)
+  | Dimension { value; unit; repr } ->
+      pp_length ctx (Dimension { value; unit; repr })
   | Var v -> pp_var pp_flex_basis ctx v
   | Calc cv -> pp_calc pp_flex_basis ctx cv
 
@@ -590,6 +592,10 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Rem_fn (a, b) -> Rem_fn (a, b)
   | Hypot xs -> Hypot xs
   | Abs a -> Abs a
+  (* Every other authored spelling reaches [length] as a [Dimension] carrying
+     its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
+     them as a [<length-percentage>]. *)
+  | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
 let rec read_flex_basis t : flex_basis =

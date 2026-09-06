@@ -24,6 +24,12 @@ entry points both moved.
 
 ### Breaking
 
+- `Cascade.Properties.flex_basis` gains `Dimension`, the arm
+  `Cascade.Values.length` uses for a length whose authored spelling no typed
+  constructor carries, so `flex-basis: 1e3px`, `flex-basis: 10.0px` and
+  `flex: 1e999px` read where they were dropped with a warning. Exhaustive
+  visitors must handle the new leaf (#1023)
+
 - The `Number` of `Cascade.Properties.border_image_width_item`,
   `border_image_outset_item` and `border_image_slice_item` carries a `number`
   where it carried a `float`, so `border-image-width: calc(1 + 2)` reads. CSS

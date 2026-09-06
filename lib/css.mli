@@ -3505,6 +3505,7 @@ type flex_basis = Properties.flex_basis =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
+  | Dimension of { value : float; unit : string; repr : string }
   | Calc of flex_basis calc
   | Var of flex_basis var
 

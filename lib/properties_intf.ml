@@ -621,6 +621,10 @@ type flex_basis =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
+  | Dimension of { value : float; unit : string; repr : string }
+      (** A dimension whose authored spelling the typed constructors above do
+          not carry, e.g. [1e3px] or [10.0px]. {!type-length} holds one the same
+          way. *)
   | Calc of flex_basis calc
   | Var of flex_basis var
 
