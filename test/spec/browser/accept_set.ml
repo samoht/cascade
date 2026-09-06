@@ -408,6 +408,42 @@ let spec_ahead_here : Chrome_gaps.excuse list =
          <fade()> ]{1,2}, and every one of these is a <string>" );
     ]
 
+(* The same, for a value Chrome reads that no specification grants: an entry
+   here restates a {!Chrome_gaps.lenient} fact for a value the generator wrote
+   and the manifest did not. *)
+let baseline_shift_takes_no_number =
+  "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | center | \
+   bottom, and no arm is a bare <number>. Chrome reads one as the unitless \
+   length SVG presentation attributes take"
+
+let lenient_here : Chrome_gaps.excuse list =
+  List.concat_map
+    (fun (properties, values, why) ->
+      List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
+    [
+      ( [
+          "border";
+          "border-block";
+          "border-inline";
+          "column-rule";
+          "column-rule-width";
+        ],
+        [ "10px," ],
+        "CSS Backgrounds 3 sec. 4.5 and CSS Multicol 2 sec. 4.3 build these \
+         from [||] of a width, a style and a colour, and no arm of either is a \
+         comma. Chrome reads the trailing one and drops it on serialising" );
+      ( [ "baseline-shift" ],
+        [ "-1"; "1"; "99999999999" ],
+        baseline_shift_takes_no_number );
+      ( [ "font-family" ],
+        [ "default red normal red" ],
+        "CSS Fonts 4 sec. 2.1.1: an unquoted family is a <custom-ident>+ and \
+         \"any identifier which could be misinterpreted as a pre-defined \
+         keyword in the font-family value definition, or the CSS-wide \
+         keywords, is not allowed\", with [default] among the names the \
+         section shows quoted. Chrome reads the sequence and quotes it" );
+    ]
+
 let hits = Hashtbl.create 64
 
 (* The excuse is the whole reason a difference is not a defect, so it is a
@@ -425,8 +461,8 @@ let judge ~property ~value ~cascade verdict =
       in
       (* Only this run's own entries are tracked: the shared ones answer to the
          manifest run, which has its own tally. *)
-      let excuse_here () =
-        match Chrome_gaps.find spec_ahead_here ~property ~value with
+      let excuse_here table =
+        match Chrome_gaps.find table ~property ~value with
         | None -> None
         | Some e ->
             Hashtbl.replace hits (String.concat "\000" [ property; value ]) ();
@@ -436,13 +472,16 @@ let judge ~property ~value ~cascade verdict =
       | true, true | false, false -> Agree
       (* Chrome takes it. Either the reader is short of the grammar, or Chrome
          is past it and an entry says which specification says so. *)
-      | false, true -> Rejects_valid (excuse Chrome_gaps.lenient)
+      | false, true -> (
+          match excuse Chrome_gaps.lenient with
+          | Some why -> Rejects_valid (Some why)
+          | None -> Rejects_valid (excuse_here lenient_here))
       (* The reader takes it. Either it is loose, or the grammar is real and
          Chrome has not caught up. *)
       | true, false -> (
           match excuse Chrome_gaps.spec_ahead with
           | Some why -> Accepts_invalid (Some why)
-          | None -> Accepts_invalid (excuse_here ())))
+          | None -> Accepts_invalid (excuse_here spec_ahead_here)))
 
 (* ===== The classifier, checked against itself ===== *)
 
@@ -701,13 +740,13 @@ let check_unused () =
         fail
           (String.concat ""
              [
-               "a spec-ahead entry of this run excuses nothing any more: ";
+               "an entry of this run excuses nothing any more: ";
                e.value;
                " (";
                String.concat ", " e.properties;
                ")";
              ]))
-    spec_ahead_here
+    (spec_ahead_here @ lenient_here)
 
 let check_calibration outcomes =
   List.iter
