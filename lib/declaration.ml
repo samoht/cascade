@@ -1463,6 +1463,28 @@ let read_background_value : type a. a property -> Cursor.t -> declaration option
   | Background_blend_mode -> Some (read_background_blend_mode_value t)
   | _ -> None
 
+(* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
+   [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
+   built from strings. A bare track list is a [grid-template-rows] value and no
+   [grid-template] one, and sec. 7.8 gives [grid] the same forms plus the two
+   [auto-flow] ones. *)
+let names_both_axes : Properties.grid_template -> bool = function
+  | None | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | Split _
+  | Auto_flow_columns _ | Auto_flow_rows _ | Named_tracks _ | Template _ ->
+      true
+  | Px _ | Rem _ | Em _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Zero
+  | Length _ | Fr _ | Flex_math _ | Auto | Min_content | Max_content | Min_max _
+  | Fit_content _ | Repeat _ | Tracks _ | Line_names _ | Subgrid | Masonry ->
+      false
+
+let read_grid_template_shorthand ~name t =
+  let value =
+    if String.equal name "grid" then read_grid t else read_grid_template t
+  in
+  if not (names_both_axes value) then
+    Cursor.err_invalid t (name ^ " names one axis only");
+  value
+
 let read_grid_value : type a. a property -> Cursor.t -> declaration option =
  fun prop t ->
   match prop with
@@ -1477,8 +1499,10 @@ let read_grid_value : type a. a property -> Cursor.t -> declaration option =
   | Grid_auto_flow -> Some (v Grid_auto_flow (read_grid_auto_flow t))
   | Grid_template_areas ->
       Some (v Grid_template_areas (read_grid_template_areas t))
-  | Grid_template -> Some (v Grid_template (read_grid_template t))
-  | Grid -> Some (v Grid (read_grid t))
+  | Grid_template ->
+      Some
+        (v Grid_template (read_grid_template_shorthand ~name:"grid-template" t))
+  | Grid -> Some (v Grid (read_grid_template_shorthand ~name:"grid" t))
   | Grid_area -> Some (v Grid_area (read_grid_area t))
   | Grid_auto_columns -> Some (v Grid_auto_columns (read_grid_auto_tracks t))
   | Grid_auto_rows -> Some (v Grid_auto_rows (read_grid_auto_tracks t))

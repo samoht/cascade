@@ -364,6 +364,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `grid-template` and `grid` name both axes or nothing, so `grid-template: 10px`
+  is dropped with a warning where a `grid-template-rows` value stood in for a
+  shorthand one. CSS Grid 2 sec. 7.4 spells the shorthand as `none`, a
+  `rows / columns` pair, or a track list built from strings (#1002)
+
 - A negative length is no grid track, so `grid-template-rows: -2px` and a
   `minmax()` holding one are dropped with a warning. CSS Grid 2 sec. 7.2 spells
   a `<track-breadth>` with a `[0,inf]` range on its length (#1001)
