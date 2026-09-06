@@ -3923,6 +3923,16 @@ and read_block (r : Cursor.t) : block =
   let rec read_statements acc =
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
+    else if
+      (* CSS Syntax 3 (ED) sec. 5.5.5 discards a [;] among a block's contents,
+         so a stray one costs nothing and the rule after it reads. Chrome 151
+         reads it as the start of a prelude instead and loses the block. *)
+      match Cursor.peek r with
+      | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+          Cursor.skip r;
+          true
+      | _ -> false
+    then read_statements acc
     else
       let loc = Cursor.position r in
       let snap = Cursor.save r in

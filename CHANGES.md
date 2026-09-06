@@ -307,7 +307,7 @@ to lose a whole rule over one bad piece. Both are gone.
   an unrecognised at-rule reaches the output with its block intact.
   `Optimize.drop_unknown_at_rules` drops such a rule on request (#374, #380,
   #384, #388, #392, #399, #402, #403, #404, #405, #419, #420, #469, #483,
-  #727, #895, #897, #946, #947, #948, #949)
+  #727, #895, #897, #946, #947, #948, #949, #974)
 
 - An at-rule written among `@font-face` descriptors costs itself alone, as CSS
   Syntax 3 §5.5.5 requires, instead of taking the whole rule with it
