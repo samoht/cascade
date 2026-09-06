@@ -4696,7 +4696,15 @@ let test_columns_value () =
   (* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length [0,inf]>],
      so a percentage and a negative are no column width. *)
   neg_cursor read_columns_value "-1px";
-  neg_cursor read_columns_value "50%"
+  neg_cursor read_columns_value "50%";
+  (* A percentage nested in math is still a percentage, so the width slot takes
+     no math whose own type is one. Chrome 153 refuses each of these three and
+     takes the two below. *)
+  neg_cursor read_columns_value "calc(50% + 25%)";
+  neg_cursor read_columns_value "calc(50% - 25%)";
+  neg_cursor read_columns_value "clamp(1px,50%,2px)";
+  check_columns_value "calc(1px + 2em)";
+  check_columns_value "min(1px,2px)"
 
 (* CSS Values 4 (ED) sec. 10.9: a math function that resolves to <number> is
    valid wherever an <integer> is, so every integer position reads a calc(). The
