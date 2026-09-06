@@ -48,12 +48,16 @@ type element = {
   tag : string;
   attrs : (string * string) list;
   text : string list;
+  comments : string list;
+      (** A comment is a child node and not a text child, so an element holding
+          only comments is still [:empty]. NODE has no comment case, which is
+          the claim this side of the harness puts to the browser. *)
   mutable up : element option;
   kids : element list;
 }
 
-let elt ?(attrs = []) ?(text = []) tag kids =
-  let e = { tag; attrs; text; up = None; kids } in
+let elt ?(attrs = []) ?(text = []) ?(comments = []) tag kids =
+  let e = { tag; attrs; text; comments; up = None; kids } in
   List.iter (fun k -> k.up <- Some e) kids;
   e
 
@@ -160,7 +164,8 @@ let rec json_of_element e =
     :: (field "a"
           (List.map (fun (n, v) -> Json.Arr [ Json.Str n; Json.Str v ]) e.attrs)
        @ field "k" (List.map json_of_element e.kids)
-       @ field "x" (List.map (fun t -> Json.Str t) e.text)))
+       @ field "x" (List.map (fun t -> Json.Str t) e.text)
+       @ field "c" (List.map (fun t -> Json.Str t) e.comments)))
 
 (* ===== The documents =====
 
@@ -326,6 +331,22 @@ let doc_empty =
       elt "div" [ elt "span" [] ];
       elt "div" ~text:[ " " ] [ elt "span" [] ];
       elt "span" ~attrs:[ ("class", "a") ] [];
+    ]
+
+(* Selectors 4 sec. 13.2 counts element nodes and non-empty text as children and
+   a comment as neither, so an element holding only comments is [:empty]. This
+   document carries no white-space-only element on purpose: that is the one
+   shape cascade declines, and a declined element takes the whole pair out of
+   the match-set comparison with it. *)
+let doc_comment =
+  document "comment"
+    [
+      elt "div" ~comments:[ " c " ] [];
+      elt "div" ~comments:[ " c "; " d " ] [];
+      elt "div" ~comments:[ " c " ] ~text:[ "x" ] [];
+      elt "div" ~comments:[ " c " ] [ elt "span" [] ];
+      elt "div" [];
+      elt "div" ~text:[ "x" ] [];
     ]
 
 (* Generated documents keep the run from only ever asking about the shapes the
@@ -1050,6 +1071,7 @@ let () =
       doc_deep;
       doc_has;
       doc_empty;
+      doc_comment;
     ]
     @ List.init !generated (fun i -> generated_document rng (i + 1))
   in
