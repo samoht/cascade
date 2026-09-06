@@ -65,10 +65,21 @@ module Shadow = struct
     let _ : bool = try_color () in
     let _ : bool = try_inset () in
     let lengths_rev = ref [] in
+    (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?], so
+       every slot is a plain length - no percentage, nested in math or not, and
+       no keyword - and the blur is the one slot with a floor. A math function
+       holds no value to compare, so only a literal is turned away there. *)
     let rec read_lengths_loop n =
       if n >= 4 then ()
       else
-        match Cursor.option (fun t -> read_length t) t with
+        let allow_negative = n <> 2 in
+        match
+          Cursor.option
+            (fun t ->
+              read_length ~allow_negative ~with_keywords:false ~length_only:true
+                t)
+            t
+        with
         | Some l ->
             lengths_rev := l :: !lengths_rev;
             Cursor.ws t;
@@ -386,7 +397,11 @@ let normalize_logical_border_color ?(lossless = false) :
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
  fun value ->
   let normalize_body (s : shadow_body) : shadow_body =
-    let blur = option_map_preserve Values.normalize_length s.blur in
+    (* The blur is the one slot with a floor, so unwrapping a math function
+       there could turn a value browsers take into one they drop. *)
+    let blur =
+      option_map_preserve (Values.normalize_length ~non_negative:true) s.blur
+    in
     let spread = option_map_preserve Values.normalize_length s.spread in
     let color = option_map_preserve (normalize_color ~lossless) s.color in
     (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
