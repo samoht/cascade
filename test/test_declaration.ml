@@ -1340,6 +1340,11 @@ let border_line_width () =
     "column-rule-width: 1px, 2px";
   check_declaration ~expected:"column-rule-color:red,blue"
     ~optimized:"column-rule-color:red,#00f" "column-rule-color: red, blue";
+  (* Sec. 4.4 writes the shorthand [<gap-rule>#] over the same list. *)
+  check_declaration ~expected:"column-rule:0,0" "column-rule: 0, 0";
+  check_declaration ~expected:"column-rule:1px solid red,2px dashed blue"
+    ~optimized:"column-rule:1px solid red,2px dashed#00f"
+    "column-rule: 1px solid red, 2px dashed blue";
   neg_cursor read_declaration "column-rule-style: dotted dashed";
   check_declaration ~expected:"border-inline-start:medium dotted red"
     ~optimized:"border-inline-start:dotted red"
