@@ -846,6 +846,8 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css.all` writes the `all` shorthand (#1030)
+
 - `Css` builds `view_transition_name` and `view_transition_class`, with their
   value types (#1029)
 

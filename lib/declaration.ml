@@ -3074,6 +3074,7 @@ let position_try value = v Position_try value
 let position_visibility value = v Position_visibility value
 let view_transition_name value = v View_transition_name value
 let view_transition_class value = v View_transition_class value
+let all value = v All value
 let outline_style o = v Outline_style o
 let outline_width len = v Outline_width len
 let outline_color c = v Outline_color c

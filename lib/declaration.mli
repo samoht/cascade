@@ -1033,6 +1033,10 @@ val view_transition_name : view_transition_name -> declaration
 val view_transition_class : view_transition_class -> declaration
 (** [view_transition_class v] is the [view-transition-class] property. *)
 
+val all : css_wide -> declaration
+(** [all v] is the [all] property. It resets every longhand to [v] but the two
+    writing-mode ones CSS Cascading 5 sec. 3.3 excepts. *)
+
 val outline_style : outline_style -> declaration
 (** [outline_style v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}

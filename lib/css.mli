@@ -686,6 +686,11 @@ val custom_declarations : ?layer:string -> declaration list -> declaration list
     from [decls]. If [layer] is provided, only declarations from that layer are
     returned. *)
 
+val all : Properties.css_wide -> declaration
+(** [all v] is the {{:https://www.w3.org/TR/css-cascade-5/#all-shorthand} all}
+    shorthand. It resets every longhand to [v] but the two writing-mode ones CSS
+    Cascading 5 sec. 3.3 excepts. *)
+
 (** {2:core_types Core Types & Calculations}
 
     Fundamental types for CSS values, variables, and calculations that underpin
