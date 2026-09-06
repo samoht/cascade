@@ -830,15 +830,7 @@ let controls =
    real and it is not cascade's, so it is named here with the text that settles
    it, and an entry that stops excusing anything is reported the way a stale
    control is: a browser that fixes its bug takes its excuse with it. *)
-let browser_disagrees =
-  [
-    ( ":nth-child(0)",
-      "Selectors 4 sec. 9.3 reads An+B as the index i = A*n + B for a \
-       non-negative n over a 1-indexed sibling list, so 0n+0 names index 0, \
-       which no element has. Chrome 151 matches every element instead, and \
-       matches none for :nth-last-child(0) and for :nth-child(0 of *), so the \
-       fast path without an S is the one that reads the expression wrong" );
-  ]
+let browser_disagrees = []
 
 (* ===== What each side answers ===== *)
 
