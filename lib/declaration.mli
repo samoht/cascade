@@ -1147,7 +1147,7 @@ val view_timeline_axis : timeline_axis -> declaration
 val view_timeline_inset : timeline_inset -> declaration
 (** [view_timeline_inset v] is the [view-timeline-inset] property. *)
 
-val timeline_scope : timeline_name -> declaration
+val timeline_scope : timeline_scope -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
 val shape_image_threshold : shape_image_threshold -> declaration

@@ -36,6 +36,13 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- `Cascade.Properties.timeline_name` carries `timeline_ident` entries and the
+  two timeline shorthands drop their `None` arm, so
+  `scroll-timeline-name: none, none` and `scroll-timeline: none, --a x` read
+  where they were dropped with a warning. Scroll-driven Animations 1 secs. 4.1
+  and 5.1 put `none` inside the list; `timeline-scope`, which keeps it for the
+  whole value (sec. 6), moves to its own `timeline_scope` (#1051)
+
 - `Cascade.Properties.timeline_axis` gains `Axes` and `timeline_inset` gains
   `Insets`, so `scroll-timeline-axis: block, inline` and
   `view-timeline-inset: auto, 1rem` read where they were dropped with a

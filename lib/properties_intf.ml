@@ -4246,9 +4246,12 @@ type timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
+(** Scroll-driven Animations 1 secs. 4.1 and 5.1: one timeline name, [none] or a
+    [<dashed-ident>]. *)
+type timeline_ident = None | Name of string
+
 type timeline_name =
-  | None
-  | Names of string list
+  | Names of timeline_ident list
   | Initial
   | Inherit
   | Unset
@@ -4256,10 +4259,25 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = { name : string; axis : timeline_axis option }
+(** Scroll-driven Animations 1 sec. 6 [timeline-scope]: [none] or a list of the
+    names an element makes visible to its descendants. [none] stands for the
+    whole value here, unlike the name of one timeline. *)
+type timeline_scope =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_scope var
+
+type timeline_shorthand_item = {
+  name : timeline_ident;
+  axis : timeline_axis option;
+}
 
 type timeline_shorthand =
-  | None
   | Timelines of timeline_shorthand_item list
   | Initial
   | Inherit
@@ -4281,13 +4299,12 @@ type timeline_inset =
   | Var of timeline_inset var
 
 type view_timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
   inset : timeline_inset option;
 }
 
 type view_timeline_shorthand =
-  | None
   | Timelines of view_timeline_shorthand_item list
   | Initial
   | Inherit
@@ -5199,7 +5216,7 @@ type 'a property =
   | View_timeline_axis : timeline_axis property
   | View_timeline_inset : timeline_inset property
   | View_timeline : view_timeline_shorthand property
-  | Timeline_scope : timeline_name property
+  | Timeline_scope : timeline_scope property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property

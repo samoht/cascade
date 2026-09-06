@@ -1833,6 +1833,9 @@ let vars_of_user_select (value : Properties.user_select) =
 let vars_of_timeline_axis (value : Properties.timeline_axis) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_timeline_scope (value : Properties.timeline_scope) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_timeline_name (value : Properties.timeline_name) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -2563,7 +2566,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | View_timeline_axis, value -> vars_of_timeline_axis value
   | View_timeline_inset, value -> vars_of_timeline_inset value
   | View_timeline, value -> vars_of_view_timeline_shorthand value
-  | Timeline_scope, value -> vars_of_timeline_name value
+  | Timeline_scope, value -> vars_of_timeline_scope value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value
   | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value
