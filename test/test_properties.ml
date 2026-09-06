@@ -1643,6 +1643,14 @@ let test_line_height () =
     ~into:"calc(28/var(--x))" "calc(28 / var(--x))";
   neg_cursor read_line_height "invalid";
   neg_cursor read_line_height "-1.5";
+  (* CSS Inline 3 sec. 5.1 spells the property [normal | <number [0,inf]> |
+     <length-percentage [0,inf]>], so every length unit reads and nothing else
+     does. *)
+  check_line_height "2ch";
+  check_line_height "3cqw";
+  neg_cursor read_line_height "0s";
+  neg_cursor read_line_height "45deg";
+  neg_cursor read_line_height "10zz";
   (* negative line-height *)
   (* multiple values *)
   neg_cursor ~allow_partial:true read_line_height "normal 1.5"
