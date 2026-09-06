@@ -8911,6 +8911,7 @@ type timeline_axis = Properties.timeline_axis =
   | Inline
   | X
   | Y
+  | Axes of timeline_axis list
   | Initial
   | Inherit
   | Unset
@@ -8973,6 +8974,7 @@ type timeline_inset_item = Properties.timeline_inset_item =
 (** Sec. 5.2 [view-timeline-inset]: the start edge then the end edge. *)
 type timeline_inset = Properties.timeline_inset =
   | Inset of timeline_inset_item * timeline_inset_item option
+  | Insets of timeline_inset list
   | Initial
   | Inherit
   | Unset

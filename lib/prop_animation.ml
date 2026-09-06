@@ -52,7 +52,7 @@ let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
       preserve_if_equal value (Length (Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_timeline_inset : timeline_inset -> timeline_inset =
+let rec normalize_timeline_inset : timeline_inset -> timeline_inset =
  fun value ->
   match value with
   | Inset (a, b) ->
@@ -60,6 +60,9 @@ let normalize_timeline_inset : timeline_inset -> timeline_inset =
         (Inset
            ( normalize_timeline_inset_item a,
              option_map_preserve normalize_timeline_inset_item b ))
+  | Insets insets ->
+      let insets' = map_preserve normalize_timeline_inset insets in
+      if insets' == insets then value else Insets insets'
   | other -> other
 
 let rec pp_animation_direction : animation_direction Pp.t =
@@ -330,6 +333,7 @@ let rec pp_timeline_axis : timeline_axis Pp.t =
   | Inline -> Pp.string ctx "inline"
   | X -> Pp.string ctx "x"
   | Y -> Pp.string ctx "y"
+  | Axes axes -> Pp.list ~sep:Pp.comma pp_timeline_axis ctx axes
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -423,6 +427,7 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
           Pp.space ctx ();
           pp_timeline_inset_item ctx item)
         second
+  | Insets insets -> Pp.list ~sep:Pp.comma pp_timeline_inset ctx insets
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -726,20 +731,32 @@ let rec read_view_transition_class t : view_transition_class =
      t
     : view_transition_class)
 
+(* Secs. 4.2 and 5.2 spell the axis [[ block | inline | x | y ]#], one entry per
+   timeline. A CSS-wide keyword and a [var()] stand for the whole value, so they
+   are not list entries and a shorthand slot takes neither. *)
+let read_timeline_axis_keyword t : timeline_axis =
+  Cursor.enum "timeline-axis"
+    [
+      ("block", (Block : timeline_axis)); ("inline", Inline); ("x", X); ("y", Y);
+    ]
+    t
+
 let rec read_timeline_axis t : timeline_axis =
   Cursor.enum_or_var "timeline-axis"
     [
-      ("block", (Block : timeline_axis));
-      ("inline", (Inline : timeline_axis));
-      ("x", (X : timeline_axis));
-      ("y", (Y : timeline_axis));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_axis));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_timeline_axis t))
+    ~default:(fun t ->
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_axis_keyword t
+      with
+      | [ axis ] -> axis
+      | axes -> Axes axes)
     t
 
 let rec read_timeline_name t : timeline_name =
@@ -764,7 +781,7 @@ let read_timeline_shorthand_item t : timeline_shorthand_item =
   if not (Custom_property_name.is_valid name) then
     Cursor.err_invalid t "timeline name";
   Cursor.ws t;
-  let axis = Cursor.option read_timeline_axis t in
+  let axis = Cursor.option read_timeline_axis_keyword t in
   { name; axis }
 
 let rec read_timeline_shorthand t : timeline_shorthand =
@@ -795,6 +812,14 @@ let read_timeline_inset_item t : timeline_inset_item =
         : timeline_inset_item))
     t
 
+(* Sec. 5.3 spells the inset [[ [ auto | <length-percentage> ]{1,2} ]#]: one or
+   two items per timeline, and one entry per timeline. *)
+let read_timeline_inset_pair t : timeline_inset =
+  match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
+  | [ first ] -> (Inset (first, None) : timeline_inset)
+  | [ first; second ] -> Inset (first, Some second)
+  | _ -> Cursor.err_expected t "timeline-inset"
+
 let rec read_timeline_inset t : timeline_inset =
   Cursor.enum_or_var "timeline-inset"
     [
@@ -807,10 +832,11 @@ let rec read_timeline_inset t : timeline_inset =
     ~var:(fun t ->
       (Var (Values.read_var read_timeline_inset t) : timeline_inset))
     ~default:(fun t ->
-      match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
-      | [ first ] -> (Inset (first, None) : timeline_inset)
-      | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
-      | _ -> Cursor.err_expected t "timeline-inset")
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_inset_pair t
+      with
+      | [ inset ] -> inset
+      | insets -> Insets insets)
     t
 
 let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
@@ -826,7 +852,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
   let try_axis () =
     if !axis <> Option.None then false
     else
-      match Cursor.option read_timeline_axis t with
+      match Cursor.option read_timeline_axis_keyword t with
       | Some value ->
           axis := Some value;
           true
@@ -835,7 +861,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
   let try_inset () =
     if !inset <> Option.None then false
     else
-      match Cursor.option read_timeline_inset t with
+      match Cursor.option read_timeline_inset_pair t with
       | Some value ->
           inset := Some value;
           true
