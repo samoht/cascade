@@ -680,7 +680,19 @@ let invalid () =
   check ~expected:"[attr=\"value]\"]" "[attr=\"value]";
   neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
   neg_parse ".class,,.other" "double comma in list";
-  neg_parse "div > > span" "double combinator"
+  neg_parse "div > > span" "double combinator";
+  (* Selectors 4 sec. 5.1 spells a class as a [.] "immediately followed by" an
+     ident, and sec. 3.5 a pseudo-class as a [:] followed by its name, so a
+     space between the two names nothing. Reading past it turned [. x a] into
+     [.x a] and [: hover] into [:hover], selectors the author never wrote. *)
+  neg_parse ". x" "space between the dot and the class name";
+  neg_parse "a . b" "space between the dot and the class name after a type";
+  neg_parse ": hover" "space between the colon and the pseudo-class name";
+  neg_parse ":: before" "space between the colons and the pseudo-element name";
+  check_minified_equiv ".x";
+  check_minified_equiv "a .b";
+  check_minified_equiv ":hover";
+  check_minified_equiv "::before"
 
 (* Test broken selectors with Parse_error exceptions. The exact error rendering
    moved when we switched to the component-stream parser; tests now only assert
