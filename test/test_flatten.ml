@@ -147,6 +147,25 @@ let test_nesting_wraps_complex_parent () =
   check ".a .b{&:hover{color:red}}" ".a .b:hover{color:red}";
   check ".a .b{& .c{color:red}}" ".a .b .c{color:red}"
 
+(* Selectors 4 sec. 4.1 puts the type or universal selector first in a compound,
+   so a parent that starts with one cannot be spliced in after another simple
+   selector: [.x&] under [a] would read back as a single class named [xa]. CSS
+   Nesting 1 sec. 4 keeps the [:is()] wrapper for that case. *)
+let test_nesting_wraps_type_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check "a{.x&{color:red}}" ".x:is(a){color:red}";
+  check "a.c{.x&{color:red}}" ".x:is(a.c){color:red}";
+  check "*{.x&{color:red}}" ".x:is(*){color:red}";
+  (* [&] at the head of every compound leaves the type selector where it may
+     stand, so the parent goes in bare *)
+  check "a{&.x{color:red}}" "a.x{color:red}";
+  check "a{&:hover{color:red}}" "a:hover{color:red}";
+  check "a{.x &{color:red}}" ".x a{color:red}";
+  (* a parent with no type selector to lead needs no wrapper either way *)
+  check ".c{.x&{color:red}}" ".x.c{color:red}"
+
 (* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch. Combining the parent with the list as a whole put the combinator
    on the first branch only, and every later branch escaped as a top-level
@@ -230,6 +249,8 @@ let suite =
         test_bad_declaration_still_a_declaration;
       Alcotest.test_case "nesting wraps a complex parent" `Quick
         test_nesting_wraps_complex_parent;
+      Alcotest.test_case "nesting wraps a type parent" `Quick
+        test_nesting_wraps_type_parent;
       Alcotest.test_case "nested selector list keeps the parent" `Quick
         test_nested_selector_list_keeps_parent;
       Alcotest.test_case "list parent keeps its branches" `Quick
