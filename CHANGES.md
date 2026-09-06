@@ -846,6 +846,14 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css` builds the last of the modelled properties it could not write: the
+  shape, overflow, image, margin-trim, overlay, animation-composition and
+  background-position-axis families, plus the `grid` shorthand,
+  `webkit_text_stroke` and the `@page` `size` descriptor, with their value
+  types. Every property the AST models now has a builder except
+  `Unknown_property` and the `@font-face` `src` descriptor, neither of which is
+  a plain property (#1040)
+
 - `Css` builds the typography longhands the AST models:
   `white_space_collapse`, `line_height_step`, `font_palette`,
   `font_synthesis`, `font_size_adjust`, `font_variant_emoji`,

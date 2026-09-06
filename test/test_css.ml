@@ -2741,7 +2741,10 @@ let remaining_longhand_builders () =
   check "background-position-x:center" (Css.background_position_x Center);
   check "background-position-y:bottom 10px"
     (Css.background_position_y (Edge_offset (Bottom, Length (Px 10.))));
-  check "grid:none" (Css.grid None)
+  check "grid:none" (Css.grid None);
+  check "-webkit-text-stroke:1px red"
+    (Css.webkit_text_stroke { width = Some (Px 1.); color = Some (Named Red) });
+  check "size:A4" (Css.page_size (Named A4))
 
 let suite =
   ( "css",

@@ -5625,6 +5625,237 @@ type initial_letter_wrap = Properties.initial_letter_wrap =
 val initial_letter_wrap : initial_letter_wrap -> declaration
 (** [initial_letter_wrap v] is the [initial-letter-wrap] property. *)
 
+(** CSS Shapes 1 sec. 4 [shape-image-threshold]: the alpha above which a pixel
+    of the shape image is inside the shape. *)
+type shape_image_threshold = Properties.shape_image_threshold =
+  | Number of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of shape_image_threshold var
+
+val shape_image_threshold : shape_image_threshold -> declaration
+(** [shape_image_threshold v] is the [shape-image-threshold] property. *)
+
+val shape_margin : length_percentage -> declaration
+(** [shape_margin v] is the [shape-margin] property. *)
+
+val shape_outside : string -> declaration
+(** [shape_outside v] is the [shape-outside] property, held as the authored text
+    of its shape. *)
+
+(** CSS Overflow 4 sec. 3.2 [<visual-box>]: the box edge an overflow clip margin
+    is measured from. *)
+type overflow_clip_box = Properties.overflow_clip_box =
+  | Content_box
+  | Padding_box
+  | Border_box
+
+(** CSS Overflow 4 sec. 3.2 [overflow-clip-margin]: [<visual-box> || <length>].
+*)
+type overflow_clip_margin = Properties.overflow_clip_margin =
+  | Clip_margin of overflow_clip_box option * length option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_clip_margin var
+
+val overflow_clip_margin : overflow_clip_margin -> declaration
+(** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
+
+(** CSS Scroll Anchoring 1 sec. 3 [overflow-anchor]. *)
+type overflow_anchor = Properties.overflow_anchor =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_anchor var
+
+val overflow_anchor : overflow_anchor -> declaration
+(** [overflow_anchor v] is the [overflow-anchor] property. *)
+
+val overflow_block : overflow -> declaration
+(** [overflow_block v] is the [overflow-block] property. *)
+
+val overflow_inline : overflow -> declaration
+(** [overflow_inline v] is the [overflow-inline] property. *)
+
+(** CSS Images 4 sec. 5.2 [image-orientation]. *)
+type image_orientation = Properties.image_orientation =
+  | None
+  | From_image
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_orientation var
+
+val image_orientation : image_orientation -> declaration
+(** [image_orientation v] is the [image-orientation] property. *)
+
+(** CSS Images 3 sec. 5.3 [image-rendering]. *)
+type image_rendering = Properties.image_rendering =
+  | Auto
+  | Smooth
+  | High_quality
+  | Crisp_edges
+  | Pixelated
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_rendering var
+
+val image_rendering : image_rendering -> declaration
+(** [image_rendering v] is the [image-rendering] property. *)
+
+(** CSS Values 4 sec. 7.3 [<resolution>]. *)
+type resolution = Properties.resolution =
+  | Dpi of float
+  | Dpcm of float
+  | Dppx of float
+  | X of float
+
+(** CSS Images 4 sec. 5.4 [image-resolution]:
+    [[ from-image || <resolution> ] && snap?]. *)
+type image_resolution = Properties.image_resolution =
+  | Resolution of resolution
+  | From_image
+  | From_image_resolution of resolution
+  | Snap of resolution
+  | From_image_snap
+  | From_image_snap_resolution of resolution
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_resolution var
+
+val image_resolution : image_resolution -> declaration
+(** [image_resolution v] is the [image-resolution] property. *)
+
+(** CSS Box 4 sec. 5 [margin-trim]: one axis whose margins are trimmed. *)
+type margin_trim_axis = Properties.margin_trim_axis = Block | Inline
+
+(** CSS Box 4 sec. 5: one edge whose margin is trimmed. *)
+type margin_trim_edge = Properties.margin_trim_edge =
+  | Block_start
+  | Inline_start
+  | Block_end
+  | Inline_end
+
+(** CSS Box 4 sec. 5 [margin-trim]. *)
+type margin_trim = Properties.margin_trim =
+  | None
+  | Block
+  | Inline
+  | Axes of margin_trim_axis list
+  | Edges of margin_trim_edge list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of margin_trim var
+
+val margin_trim : margin_trim -> declaration
+(** [margin_trim v] is the [margin-trim] property. *)
+
+(** CSS Position 4 sec. 6.2 [overlay]: whether the box is in the top layer. *)
+type overlay = Properties.overlay =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overlay var
+
+val overlay : overlay -> declaration
+(** [overlay v] is the [overlay] property. *)
+
+(** CSS Animations 2 sec. 3.3: how one animation composes with the value beneath
+    it. *)
+type animation_composition_item = Properties.animation_composition_item =
+  | Replace
+  | Add
+  | Accumulate
+
+(** CSS Animations 2 sec. 3.3 [animation-composition]. *)
+type animation_composition = Properties.animation_composition =
+  | Compositions of animation_composition_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_composition var
+
+val animation_composition : animation_composition -> declaration
+(** [animation_composition v] is the [animation-composition] property. *)
+
+(** CSS Values 4 sec. 8.4: one physical edge a [<position>] offsets from. *)
+type position_axis_edge = Properties.position_axis_edge =
+  | Left
+  | Right
+  | Top
+  | Bottom
+
+(** CSS Backgrounds 4 sec. 3.3: one axis of [background-position]. *)
+type background_position_axis = Properties.background_position_axis =
+  | Center
+  | Edge of position_axis_edge
+  | Offset of length_percentage
+  | Edge_offset of position_axis_edge * length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of background_position_axis var
+
+val background_position_x : background_position_axis -> declaration
+(** [background_position_x v] is the [background-position-x] property. *)
+
+val background_position_y : background_position_axis -> declaration
+(** [background_position_y v] is the [background-position-y] property. *)
+
+val webkit_mask_position_x : background_position_axis -> declaration
+(** [webkit_mask_position_x v] is the [-webkit-mask-position-x] property. *)
+
+val webkit_mask_position_y : background_position_axis -> declaration
+(** [webkit_mask_position_y v] is the [-webkit-mask-position-y] property. *)
+
+val moz_orient : Properties.moz_orient -> declaration
+(** [moz_orient v] is the [-moz-orient] property. *)
+
+type webkit_text_stroke = Properties.webkit_text_stroke = {
+  width : border_width option;
+  color : color option;
+}
+(** CSS Text Decoration 4 sec. 6.1 [-webkit-text-stroke]: a width and a colour,
+    either of which may be absent. *)
+
+val webkit_text_stroke : webkit_text_stroke -> declaration
+(** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
+
+val page_size : page_size -> declaration
+(** [page_size v] is the [size] descriptor of an [@page] rule. *)
+
+val grid : grid_template -> declaration
+(** [grid v] is the [grid] shorthand. *)
+
 (** {2:borders_outlines Borders & Outlines}
 
     Properties for styling element borders, outlines, and related decorative
@@ -8895,6 +9126,14 @@ val overscroll_behavior_x : overscroll_behavior -> declaration
 (** [overscroll_behavior_x behavior] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-x}
      overscroll-behavior-x} property. *)
+
+val overscroll_behavior_block : overscroll_behavior -> declaration
+(** [overscroll_behavior_block v] is the [overscroll-behavior-block] property.
+*)
+
+val overscroll_behavior_inline : overscroll_behavior -> declaration
+(** [overscroll_behavior_inline v] is the [overscroll-behavior-inline] property.
+*)
 
 val overscroll_behavior_y : overscroll_behavior -> declaration
 (** [overscroll_behavior_y behavior] is the

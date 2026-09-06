@@ -1150,6 +1150,71 @@ val view_timeline_inset : timeline_inset -> declaration
 val timeline_scope : timeline_name -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
+val shape_image_threshold : shape_image_threshold -> declaration
+(** [shape_image_threshold v] is the [shape-image-threshold] property. *)
+
+val shape_margin : length_percentage -> declaration
+(** [shape_margin v] is the [shape-margin] property. *)
+
+val shape_outside : string -> declaration
+(** [shape_outside v] is the [shape-outside] property. *)
+
+val overflow_clip_margin : overflow_clip_margin -> declaration
+(** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
+
+val overflow_anchor : overflow_anchor -> declaration
+(** [overflow_anchor v] is the [overflow-anchor] property. *)
+
+val overflow_block : overflow -> declaration
+(** [overflow_block v] is the [overflow-block] property. *)
+
+val overflow_inline : overflow -> declaration
+(** [overflow_inline v] is the [overflow-inline] property. *)
+
+val overscroll_behavior_block : overscroll_behavior -> declaration
+(** [overscroll_behavior_block v] is the [overscroll-behavior-block] property.
+*)
+
+val overscroll_behavior_inline : overscroll_behavior -> declaration
+(** [overscroll_behavior_inline v] is the [overscroll-behavior-inline] property.
+*)
+
+val image_orientation : image_orientation -> declaration
+(** [image_orientation v] is the [image-orientation] property. *)
+
+val margin_trim : margin_trim -> declaration
+(** [margin_trim v] is the [margin-trim] property. *)
+
+val overlay : overlay -> declaration
+(** [overlay v] is the [overlay] property. *)
+
+val animation_composition : animation_composition -> declaration
+(** [animation_composition v] is the [animation-composition] property. *)
+
+val background_position_x : background_position_axis -> declaration
+(** [background_position_x v] is the [background-position-x] property. *)
+
+val background_position_y : background_position_axis -> declaration
+(** [background_position_y v] is the [background-position-y] property. *)
+
+val webkit_mask_position_x : background_position_axis -> declaration
+(** [webkit_mask_position_x v] is the [webkit-mask-position-x] property. *)
+
+val webkit_mask_position_y : background_position_axis -> declaration
+(** [webkit_mask_position_y v] is the [webkit-mask-position-y] property. *)
+
+val moz_orient : moz_orient -> declaration
+(** [moz_orient v] is the [moz-orient] property. *)
+
+val grid : grid_template -> declaration
+(** [grid v] is the [grid] property. *)
+
+val webkit_text_stroke : webkit_text_stroke -> declaration
+(** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
+
+val page_size : page_size -> declaration
+(** [page_size v] is the [size] descriptor of an [\@page] rule. *)
+
 val white_space_collapse : white_space_collapse -> declaration
 (** [white_space_collapse v] is the [white-space-collapse] property. *)
 
