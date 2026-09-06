@@ -428,6 +428,12 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A math function carries a negative where the property's range is
+  `[0,inf]`, so `border-right-width: calc(-1px)`, `outline-width: calc(-1px)`
+  and `line-height: calc(-10%)` read, and minified output keeps the call rather
+  than unwrapping it to a bare value the browser drops. CSS Values 4 sec. 10.12
+  checks the range on the value the function resolves to (#1047)
+
 - `overflow-clip-margin: -1px` reads where it was dropped with a warning. CSS
   Overflow 4 sec. 3.2 is `<visual-box> || <length>` with no range on the
   length, and a negative one pulls the clip edge inside the box (#1026)

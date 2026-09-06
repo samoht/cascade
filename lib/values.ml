@@ -1371,7 +1371,7 @@ let pp_calc_with : type a.
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
+let pp_calc ?unwrap pp_value ctx calc = pp_calc_with ?unwrap pp_value ctx calc
 
 (* Small helpers *)
 

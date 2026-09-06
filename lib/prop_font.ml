@@ -12,10 +12,11 @@ open Values
 open Properties_intf
 open Prop_common
 
-let read_line_height_length t : line_height =
+let read_line_height_length ?(allow_negative = false) t : line_height =
   let n, repr, unit = Cursor.number_repr_with_unit t in
   let n, repr = normalize_signed_zero n repr in
-  if n < 0. then Cursor.err_invalid t "line-height cannot be negative"
+  if n < 0. && not allow_negative then
+    Cursor.err_invalid t "line-height cannot be negative"
   else
     let authored () : line_height = Number { value = n; unit; repr } in
     match unit with
@@ -1291,6 +1292,14 @@ let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Values 4 sec. 10.12 keeps a math function valid past the [0,inf] range
+   CSS Inline 3 sec. 5.1 gives line-height, and clamps at used-value time, so
+   [calc(-10%)] computes and a bare [-10%] is dropped. The call stays on a
+   negative for that reason. *)
+let negative_line_height : line_height -> bool = function
+  | Num f | Px f | Rem f | Em f | Pct f | Number { value = f; _ } -> f < 0.
+  | _ -> false
+
 let rec pp_line_height : line_height Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
@@ -1314,7 +1323,10 @@ let rec pp_line_height : line_height Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
-  | Calc c -> pp_calc pp_line_height ctx c
+  | Calc c ->
+      pp_calc
+        ~unwrap:(fun v -> not (negative_line_height v))
+        pp_line_height ctx c
 
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
@@ -1409,11 +1421,34 @@ let rec pp_font : font Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font ctx v
 
+(* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
+   the [0,inf] range of sec. 5.1 is checked on the value it resolves to, not on
+   each operand, so [calc(-10%)] reads where a literal [-10%] does not. *)
+let rec read_line_height_in_math t : line_height =
+  let read_var t : line_height = Var (read_var read_line_height_in_math t) in
+  let read_calc t : line_height =
+    Calc
+      (read_calc ~result_type:`Number_or_value read_line_height_in_math t
+      |> numeric_line_height_calc_leaves)
+  in
+  Cursor.enum_or_calls "line-height"
+    [
+      ("normal", Normal);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~default:(read_line_height_length ~allow_negative:true)
+    t
+
 let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
   let read_calc t : line_height =
     Calc
-      (read_calc ~result_type:`Number_or_value read_line_height t
+      (read_calc ~result_type:`Number_or_value read_line_height_in_math t
       |> numeric_line_height_calc_leaves)
   in
   Cursor.enum_or_calls "line-height"
@@ -2337,8 +2372,8 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
       | Option.Some f -> Num f
       | Option.None -> (
           match Values.eval_calc c with
-          | Values.Num f -> Num f
-          | Values.Val v -> v
+          | Values.Num f when f >= 0. -> Num f
+          | Values.Val v when not (negative_line_height v) -> v
           | folded -> Calc folded))
   | _ -> lh
 

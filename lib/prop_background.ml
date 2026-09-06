@@ -765,6 +765,37 @@ let normalize_border_width_clamp lower value upper : border_width =
           normalize_border_width_calc_arg value,
           normalize_border_width_calc_arg upper )
 
+(* CSS Values 4 sec. 10.12 keeps a math function valid where its range is
+   exceeded and clamps at used-value time, so [calc(-1px)] is a border width
+   Chrome computes as [0] and [-1px] one it drops. Unwrapping the call would
+   turn the first into the second, which is why {!pp_length} guards its own
+   unwrap the same way. *)
+let negative_border_width : border_width -> bool = function
+  | Px f
+  | Cm f
+  | Mm f
+  | Q f
+  | In f
+  | Pt f
+  | Pc f
+  | Rem f
+  | Em f
+  | Ex f
+  | Cap f
+  | Ic f
+  | Ric f
+  | Rlh f
+  | Ch f
+  | Lh f
+  | Vh f
+  | Vw f
+  | Vmin f
+  | Vmax f
+  | Pct f
+  | Dimension { value = f; _ } ->
+      f < 0.
+  | _ -> false
+
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
   | Thin -> Pp.string ctx "thin"
@@ -802,7 +833,10 @@ let rec pp_border_width : border_width Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
-  | Calc cv -> pp_calc pp_border_width ctx cv
+  | Calc cv ->
+      pp_calc
+        ~unwrap:(fun v -> not (negative_border_width v))
+        pp_border_width ctx cv
   | Min args -> pp_border_width_minmax "min" ctx args
   | Max args -> pp_border_width_minmax "max" ctx args
   | Clamp (lower, value, upper) -> pp_border_width_clamp ctx lower value upper
@@ -1342,8 +1376,11 @@ let ensure_non_negative_border_width t value =
    one. The units [border_width] names get their own arm; the rest keep their
    value and spelling in [Dimension], the way [length] itself does, so a unit
    [length] learns needs no second table here. *)
-let length_to_border_width t (length : length) : border_width =
-  let non_neg = ensure_non_negative_border_width t in
+let length_to_border_width ?(allow_negative = false) t (length : length) :
+    border_width =
+  let non_neg v =
+    if allow_negative then v else ensure_non_negative_border_width t v
+  in
   let typed_dimension ?repr value unit : border_width =
     let value = non_neg value in
     match String.lowercase_ascii unit with
@@ -1385,16 +1422,26 @@ let length_to_border_width t (length : length) : border_width =
 (* CSS Backgrounds 3 (ED) sec. 3.3: [<line-width>] is [<length [0,inf]> | thin |
    medium | thick] and takes no percentage, which Chrome 146 refuses.
    [length_only] refuses one nested in math as well. *)
-let read_length_as_border_width t =
-  let length = read_length ~with_keywords:false ~length_only:true t in
-  length_to_border_width t length
-
-let rec read_border_width t : border_width =
-  let read_var t : border_width = Var (read_var read_border_width t) in
-  let read_calc t : border_width =
-    Calc (read_calc ~result_type:`Value read_border_width t)
+let read_length_as_border_width ?(allow_negative = false) t =
+  let length =
+    read_length ~allow_negative ~with_keywords:false ~length_only:true t
   in
-  let read_math_arg t = read_calc_expr read_border_width t in
+  length_to_border_width ~allow_negative t length
+
+(* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
+   the [0,inf] range of [<line-width>] is checked on the value it resolves to,
+   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not. *)
+let rec read_border_width_in_math t : border_width =
+  read_border_width_with ~allow_negative:true t
+
+and read_border_width_with ~allow_negative t : border_width =
+  let read_var t : border_width =
+    Var (read_var (read_border_width_with ~allow_negative) t)
+  in
+  let read_calc t : border_width =
+    Calc (read_calc ~result_type:`Value read_border_width_in_math t)
+  in
+  let read_math_arg t = read_calc_expr read_border_width_in_math t in
   let read_min t : border_width =
     Min
       (Cursor.call "min" t
@@ -1432,7 +1479,11 @@ let rec read_border_width t : border_width =
         ("max", read_max);
         ("clamp", read_clamp);
       ]
-    ~default:read_length_as_border_width t
+    ~default:(read_length_as_border_width ~allow_negative)
+    t
+
+let read_border_width t : border_width =
+  read_border_width_with ~allow_negative:false t
 
 module Border = struct
   type component =
@@ -2105,7 +2156,10 @@ let normalize_border_width (bw : border_width) : border_width =
   match bw with
   | Calc c -> (
       match normalize_border_width_calc c with
-      | Val v -> v
+      (* The call stays around a negative for the reason {!pp_border_width}
+         keeps it: sec. 10.12 clamps [calc(-1px)] at used-value time and drops a
+         bare [-1px]. *)
+      | Val v when not (negative_border_width v) -> v
       | folded -> Calc folded)
   | Min args -> normalize_border_width_minmax `Min args
   | Max args -> normalize_border_width_minmax `Max args
