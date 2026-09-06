@@ -1039,7 +1039,16 @@ let flexbox_direction () =
 let flexbox_wrap () =
   check_declaration ~expected:"flex-wrap:nowrap" "flex-wrap: nowrap";
   check_declaration ~expected:"flex-wrap:wrap" "flex-wrap: wrap";
-  check_declaration ~expected:"flex-wrap:wrap-reverse" "flex-wrap: wrap-reverse"
+  check_declaration ~expected:"flex-wrap:wrap-reverse" "flex-wrap: wrap-reverse";
+  (* CSS Flexbox 2 sec. 5.2: nowrap | [ wrap | wrap-reverse ] || balance, so the
+     pair reads either way round and [balance] alone carries [wrap]. *)
+  check_declaration ~expected:"flex-wrap:balance" "flex-wrap: balance";
+  check_declaration ~expected:"flex-wrap:balance" "flex-wrap: wrap balance";
+  check_declaration ~expected:"flex-wrap:wrap-reverse balance"
+    "flex-wrap: balance wrap-reverse";
+  check_declaration ~expected:"flex-flow:row balance" "flex-flow: row balance";
+  neg_cursor read_declaration "flex-wrap: nowrap balance";
+  neg_cursor read_declaration "flex-wrap: balance balance"
 
 let flexbox_flex_and_basis () =
   (* Flex shorthand *)
