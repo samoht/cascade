@@ -346,8 +346,13 @@ val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-val pp_calc : 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
+val pp_calc : ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
+(** [pp_calc ?unwrap pp] pretty-prints [calc] expressions using [pp] for leaf
+    values. Minified output drops the call around a single leaf; [unwrap] says
+    which leaves that is safe for, and defaults to all of them. A leaf outside
+    the property's range is not one: CSS Values 4 sec. 10.12 keeps the call
+    valid there and clamps at used-value time, where the bare value is dropped
+    instead. *)
 
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)

@@ -9953,8 +9953,10 @@ val pp_gradient_direction : gradient_direction Pp.t
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
 
-val pp_calc : 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc pp_value] is the pretty printer for calc expressions. *)
+val pp_calc : ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
+(** [pp_calc ?unwrap pp_value] is the pretty printer for calc expressions.
+    Minified output drops the call around a single leaf, and [unwrap] says which
+    leaves that is safe for. *)
 
 val pp_font_style : font_style Pp.t
 (** [pp_font_style] is the pretty printer for font-style values. *)
