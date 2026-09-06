@@ -2418,6 +2418,38 @@ let spec_at_rule_name_case_insensitive () =
   rejects "@media with a malformed prelude" "@media (bad{a{color:red}}";
   rejects "@MEDIA with a malformed prelude" "@MEDIA (bad{a{color:red}}"
 
+(* SVG 2 and CSS Inline 3 give these longhands a value type each, and the facade
+   carried [fill], [stroke] and [stroke-width] alone. *)
+let svg_longhand_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "fill-rule:evenodd" (Css.fill_rule Evenodd);
+  check "clip-rule:nonzero" (Css.clip_rule Nonzero);
+  check "fill-opacity:.5" (Css.fill_opacity (Opacity_number 0.5));
+  check "stroke-opacity:1" (Css.stroke_opacity (Opacity_number 1.));
+  check "stroke-linecap:round" (Css.stroke_linecap Round);
+  check "stroke-linejoin:bevel" (Css.stroke_linejoin Bevel);
+  check "stroke-miterlimit:4" (Css.stroke_miterlimit (Number 4.));
+  check "stroke-dashoffset:2px"
+    (Css.stroke_dashoffset (Dash (Length (Length (Px 2.)))));
+  check "stroke-dasharray:4 2"
+    (Css.stroke_dasharray (Dashes [ Number 4.; Number 2. ]));
+  check "paint-order:stroke fill" (Css.paint_order (Order [ Stroke; Fill ]));
+  check "vector-effect:non-scaling-stroke"
+    (Css.vector_effect (Effects ([ Non_scaling_stroke ], None)));
+  check "stop-color:red" (Css.stop_color (Named Red));
+  check "stop-opacity:0" (Css.stop_opacity (Opacity_number 0.));
+  check "flood-color:red" (Css.flood_color (Named Red));
+  check "flood-opacity:1" (Css.flood_opacity (Opacity_number 1.));
+  check "lighting-color:red" (Css.lighting_color (Named Red));
+  check "dominant-baseline:middle" (Css.dominant_baseline Middle);
+  check "alignment-baseline:hanging" (Css.alignment_baseline Hanging);
+  check "baseline-shift:super" (Css.baseline_shift Super);
+  check "baseline-source:last" (Css.baseline_source Last)
+
 let suite =
   ( "css",
     [
@@ -2508,6 +2540,8 @@ let suite =
         spec_keyword_case_insensitive;
       Alcotest.test_case "spec section 4.2 author ident case is sensitive"
         `Quick spec_author_ident_case_sensitive;
+      Alcotest.test_case "public svg longhand builders" `Quick
+        svg_longhand_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
