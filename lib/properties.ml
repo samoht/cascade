@@ -4389,6 +4389,11 @@ let normalize_property_value : type a.
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Animation_iteration_count -> normalize_animation_iteration_count ~ctx value
+  | Webkit_animation_iteration_count ->
+      normalize_animation_iteration_count ~ctx value
+  | Moz_animation_iteration_count ->
+      normalize_animation_iteration_count ~ctx value
   | Scroll_timeline -> normalize_timeline_shorthand value
   | View_timeline -> normalize_view_timeline_shorthand value
   | View_timeline_inset -> normalize_timeline_inset value

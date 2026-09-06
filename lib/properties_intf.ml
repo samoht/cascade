@@ -2384,7 +2384,7 @@ type animation_fill_mode =
   | Var of animation_fill_mode var
 
 type animation_iteration_count =
-  | Num of float
+  | Count of number
   | Infinite
   | Counts of animation_iteration_count list
   | Initial
@@ -4378,8 +4378,10 @@ type stroke_miterlimit =
   | Var of stroke_miterlimit var
 
 (** SVG 2 sec. 13.5.6: one dash length. A bare [<number>] is in user units,
-    which is why this is not plain [length_percentage]. *)
-type dash_length = Number of float | Length of length_percentage
+    which is why this is not plain [length_percentage]. CSS Values 4 sec. 10.1
+    puts a math function wherever a number is, so that half is a {!type-number}.
+*)
+type dash_length = Number of number | Length of length_percentage
 
 (** SVG 2 sec. 13.5.6 [stroke-dashoffset]. *)
 type stroke_dashoffset =

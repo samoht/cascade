@@ -36,6 +36,12 @@ entry points both moved.
   `flex: 1e999px` read where they were dropped with a warning. Exhaustive
   visitors must handle the new leaf (#1023)
 
+- The `Number` of `Cascade.Properties.dash_length` carries a `number` where it
+  carried a `float`, and `animation_iteration_count` replaces its `Num of float`
+  with `Count of number`, so `stroke-dasharray: calc(1 + 2)` and
+  `animation-iteration-count: calc(.5)` read. A caller building a literal writes
+  `Number (Num 4.)` and `Count (Num 1.)` (#1048)
+
 - The `Number` of `Cascade.Properties.border_image_width_item`,
   `border_image_outset_item` and `border_image_slice_item` carries a `number`
   where it carried a `float`, so `border-image-width: calc(1 + 2)` reads. CSS
@@ -783,6 +789,9 @@ to lose a whole rule over one bad piece. Both are gone.
   reference used to be dropped at parse time, and `Css.custom_props` missed a
   name declared inside `@scope`, `@starting-style`, `@-moz-document`, `@when`
   or `@else` (#322, #341, #342, #375, #423, #555, #571, #573, #575, #577)
+
+- `Css.vars_of_declarations` reports the `var()` inside a `stroke-dasharray` or
+  `stroke-dashoffset` dash, where it returned nothing (#1048)
 
 - Substitution preserves what the declaration was. A custom property keeps its
   cascade layer and caller metadata, a `page-break-*` declaration survives as

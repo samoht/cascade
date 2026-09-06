@@ -2780,6 +2780,9 @@ let test_animation_iteration_count () =
   check_animation_iteration_count "1";
   check_animation_iteration_count "infinite";
   check_animation_iteration_count "2.5";
+  (* CSS Values 4 sec. 10.1: a math function stands where a [<number>] does. *)
+  check_animation_iteration_count "calc(1 + 2)";
+  check_animation_iteration_count "1,calc(2*2)";
   neg_cursor read_animation_iteration_count "invalid-count"
 
 let test_animation_play_state () =
@@ -3732,6 +3735,10 @@ let test_stroke_dashoffset () =
   check_stroke_dashoffset "10%";
   check_stroke_dashoffset "var(--o)";
   check_stroke_dashoffset "-2px";
+  (* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and both
+     halves of the dash grammar are a type. *)
+  check_stroke_dashoffset "calc(1 + 2)";
+  check_stroke_dashoffset "calc(1px + 2px)";
   neg_cursor read_stroke_dashoffset "none"
 
 let test_stroke_dasharray () =
@@ -3743,6 +3750,8 @@ let test_stroke_dasharray () =
   (* Comma and whitespace are the same separator here. *)
   check_stroke_dasharray ~expected:"4 2" "4, 2";
   check_stroke_dasharray "var(--d)";
+  check_stroke_dasharray "calc(1 + 2) 4";
+  check_stroke_dasharray "calc(1px + 2px) 4%";
   neg_cursor read_stroke_dasharray "red";
   (* SVG 2 sec. 13.3 gives each dash a non-negative value; only
      [stroke-dashoffset] takes a signed one. *)

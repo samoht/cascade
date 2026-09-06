@@ -1569,6 +1569,7 @@ let rec vars_of_animation_iteration_count
   match value with
   | Var v -> [ V v ]
   | Counts counts -> List.concat_map vars_of_animation_iteration_count counts
+  | Count n -> vars_of_number_value n
   | _ -> []
 
 let vars_of_transition_behavior (value : Properties.transition_behavior) =
@@ -1881,11 +1882,22 @@ let vars_of_stroke_width (value : Properties.stroke_width) =
   | Length lp -> vars_of_length_percentage lp
   | _ -> []
 
+let vars_of_dash_length (value : Properties.dash_length) =
+  match value with
+  | Number n -> vars_of_number_value n
+  | Length lp -> vars_of_length_percentage lp
+
 let vars_of_stroke_dashoffset (value : Properties.stroke_dashoffset) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Dash d -> vars_of_dash_length d
+  | _ -> []
 
 let vars_of_stroke_dasharray (value : Properties.stroke_dasharray) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Dashes ds -> List.concat_map vars_of_dash_length ds
+  | _ -> []
 
 let vars_of_paint_order (value : Properties.paint_order) =
   match value with Var v -> [ V v ] | _ -> []

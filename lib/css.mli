@@ -6833,7 +6833,7 @@ type animation_play_state = Properties.animation_play_state =
 
 (** CSS animation iteration count values *)
 type animation_iteration_count = Properties.animation_iteration_count =
-  | Num of float
+  | Count of number
   | Infinite
   | Counts of animation_iteration_count list
   | Initial
@@ -8637,7 +8637,7 @@ val stroke_miterlimit : stroke_miterlimit -> declaration
      [stroke-dasharray]} writes each dash as a [<length-percentage>] or a bare
     number in user units, the way {!type-stroke_width} does. *)
 type dash_length = Properties.dash_length =
-  | Number of float
+  | Number of number
   | Length of length_percentage
 
 (** SVG 2
