@@ -4209,6 +4209,11 @@ let test_grid_template () =
   check_grid_template "1fr 2fr";
   check_grid_template "auto auto";
   check_grid_template "inherit";
+  (* CSS Grid 2 sec. 7.2 spells a [<track-breadth>] as [<length-percentage
+     [0,inf]> | <flex [0,inf]> | min-content | max-content | auto], so a
+     negative length is no breadth, inside [minmax()] either. *)
+  neg_cursor read_grid_template "-2px";
+  neg_cursor read_grid_template "minmax(-1px, 1fr)";
   (* CSS Grid 2 sec. 7.2: a track is any <length-percentage>, so a calc(), a
      var() inside a calc(), or a less common unit is a valid track, carried by
      the [Length] track. *)
