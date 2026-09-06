@@ -2436,7 +2436,7 @@ let svg_longhand_builders () =
   check "stroke-dashoffset:2px"
     (Css.stroke_dashoffset (Dash (Length (Length (Px 2.)))));
   check "stroke-dasharray:4 2"
-    (Css.stroke_dasharray (Dashes [ Number 4.; Number 2. ]));
+    (Css.stroke_dasharray (Dashes [ Number (Num 4.); Number (Num 2.) ]));
   check "paint-order:stroke fill" (Css.paint_order (Order [ Stroke; Fill ]));
   check "vector-effect:non-scaling-stroke"
     (Css.vector_effect (Effects ([ Non_scaling_stroke ], None)));

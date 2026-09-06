@@ -1699,6 +1699,12 @@ let component_var_keeps_typed_value () =
     "border-image-outset: 1PX var(--outset)" "1px var(--outset)";
   check_visible_var "border-image-outset component var stays visible"
     "border-image-outset:var(--outset) 1px" "--outset";
+  check_visible_var "stroke-dasharray math var stays visible"
+    "stroke-dasharray:calc(1 + var(--d)) 2" "--d";
+  check_visible_var "stroke-dashoffset length var stays visible"
+    "stroke-dashoffset:calc(1px + var(--o))" "--o";
+  check_visible_var "animation-iteration-count math var stays visible"
+    "animation-iteration-count:calc(1 + var(--n))" "--n";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
@@ -2791,8 +2797,8 @@ let animation_infinite_name () =
       ("infinite infinite", "infinite", Infinite);
       ("infinite INFINITE", "INFINITE", Infinite);
       ("INFINITE infinite", "infinite", Infinite);
-      ("2 infinite", "infinite", Num 2.);
-      ("2 InFiNiTe", "InFiNiTe", Num 2.);
+      ("2 infinite", "infinite", Count (Num 2.));
+      ("2 InFiNiTe", "InFiNiTe", Count (Num 2.));
     ];
   List.iter
     (fun value -> none_cursor read_declaration ("animation:" ^ value))
