@@ -3862,6 +3862,9 @@ let parse_custom_property_guard () =
       ("{a:b;}", "--x:{a:b;}");
       ("red/*", "--x:red");
       (" ", "--x: ");
+      (* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at EOF as the string it
+         read, so this is one declaration value and writes back closed. *)
+      ("\"abc", "--x:\"abc\"");
       (* Not one declaration value: each of these closes the enclosing block,
          starts a second declaration, or runs to end of input. *)
       ("red}", "<rejected>");
@@ -3872,7 +3875,6 @@ let parse_custom_property_guard () =
       ("red]", "<rejected>");
       ("rgb(1,2,3", "<rejected>");
       ("{a:b", "<rejected>");
-      ("\"abc", "<rejected>");
       ("", "<rejected>");
     ];
   List.iter
@@ -3945,15 +3947,17 @@ let custom_property_guard () =
       (* CSS Syntax 3 sec. 4.3.6 returns the [<url-token>] at end of input, so
          [url(foo] is the same token [url(foo)] is. *)
       ("url(foo", "<round-trips>");
+      (* sec. 4.3.5 ends a string at EOF as the string it read, so this one is a
+         declaration value and writes back closed. *)
+      ("\"abc", "<round-trips>");
       (* Not a [<declaration-value>]: a second declaration, a closed rule, an
-         unterminated function, block or string, an unmatched bracket. *)
+         unterminated function or block, an unmatched bracket. *)
       ("red;--b:blue", "<refused>");
       ("red} .evil{color:lime", "<refused>");
       ("red}", "<refused>");
       ("rgb(1,2,3", "<refused>");
       ("url(foo bar)", "<refused>");
       ("{a:b", "<refused>");
-      ("\"abc", "<refused>");
       ("red)", "<refused>");
       ("red]", "<refused>");
     ];

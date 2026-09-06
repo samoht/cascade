@@ -8755,15 +8755,19 @@ let theme_defaults_reject_escaping_value () =
       ("a value carrying a second declaration", "red;--evil:lime");
       ("a value with an unmatched [)]", "red)");
       ("an unterminated function", "rgb(1,2,3");
-      ("an unterminated string", "\"abc");
       ("an empty value", "");
     ];
   (* A comment is consumed by tokenization (CSS Syntax 3 sec. 4.3.2), so
-     ["red/*"] is the one-token value ["red"] and does bind. *)
+     ["red/*"] is the one-token value ["red"] and does bind. sec. 4.3.5 ends a
+     string at EOF as the string it read, so that one binds as well. *)
   Alcotest.(check string)
     "an unterminated comment leaves a value that binds"
     ":root{--ok:blue;--brand:red}.a{color:var(--brand);background-color:var(--ok)}"
-    (emit "red/*")
+    (emit "red/*");
+  Alcotest.(check string)
+    "a value the input ended inside a string binds"
+    ":root{--ok:blue;--brand:\"abc\"}.a{color:var(--brand);background-color:var(--ok)}"
+    (emit "\"abc")
 
 (* CSS Syntax 3 sec. 4.3.7: a [\X] escape carries any code point into an ident,
    so [var(--x\3b y)] references the theme name ["x;y"]. The default binds under
