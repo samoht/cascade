@@ -256,7 +256,14 @@ let quoted_strings () =
   (* Strings with special characters *)
   check_declaration ~expected:"content:\"a;b\"" "content: \"a;b\";";
   check_declaration ~expected:"content:\"a:b\"" "content: \"a:b\";";
-  check_declaration ~expected:"content:\"a{b}\"" "content: \"a{b}\";"
+  check_declaration ~expected:"content:\"a{b}\"" "content: \"a{b}\";";
+  (* CSS Generated Content 3 sec. 2 puts an <image> in both the replacement and
+     the list form of the property. *)
+  check_declaration ~expected:"content:url(a.png)" "content: url(a.png)";
+  check_declaration ~expected:"content:linear-gradient(red,blue)"
+    "content: linear-gradient(red, blue)";
+  check_declaration ~expected:"content:\"x\" url(a.png)"
+    "content: \"x\" url(a.png)"
 
 let custom_properties_basic () =
   check_declaration ~expected:"--color:red" "--color: red;";
