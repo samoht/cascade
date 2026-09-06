@@ -1107,7 +1107,17 @@ let flexbox_alignment () =
   check_declaration ~expected:"justify-content:space-around"
     "justify-content: space-around";
   check_declaration ~expected:"justify-content:space-evenly"
-    "justify-content: space-evenly"
+    "justify-content: space-evenly";
+  (* CSS Box Alignment 3 sec. 4.2 keeps [left] and [right] out of
+     [<content-position>], so only the inline axis takes them, and sec. 4.4
+     pairs an overflow keyword with either. *)
+  check_declaration ~expected:"justify-content:safe left"
+    "justify-content: safe left";
+  check_declaration ~expected:"justify-content:safe right"
+    "justify-content: safe right";
+  neg_cursor read_declaration "align-content: right";
+  neg_cursor read_declaration "align-content: unsafe right";
+  neg_cursor read_declaration "place-content: unsafe right"
 
 let borders () =
   (* Border style *)
