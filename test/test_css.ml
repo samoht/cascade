@@ -2542,6 +2542,45 @@ let multicol_builders () =
     (Css.column_rule_style [ Dotted; Dashed ]);
   check "column-rule-color:red" (Css.column_rule_color [ Named Red ])
 
+(* The border-image longhands and the two shorthands built on them were
+   reachable only by parsing. *)
+let border_image_builders () =
+  let check expected declaration =
+    Alcotest.(check string)
+      expected expected
+      (Css.Declaration.to_string ~minify:true declaration)
+  in
+  check "border-image-source:url(edge.png)"
+    (Css.border_image_source (Url "edge.png"));
+  check "border-image-slice:30% fill"
+    (Css.border_image_slice (Slices { offsets = [ Pct 30. ]; fill = true }));
+  check "border-image-width:1 2"
+    (Css.border_image_width (Widths [ Number (Num 1.); Number (Num 2.) ]));
+  check "border-image-outset:2px"
+    (Css.border_image_outset (Outsets [ Length (Px 2.) ]));
+  check "border-image-repeat:round space"
+    (Css.border_image_repeat (Repeats [ Round; Space ]));
+  check "border-image:url(edge.png)30%"
+    (Css.border_image
+       {
+         source = Some (Url "edge.png");
+         slice = Some { offsets = [ Pct 30. ]; fill = false };
+         width = None;
+         outset = None;
+         repeat = None;
+         mode = None;
+       });
+  check "mask-border:url(edge.png)luminance"
+    (Css.mask_border
+       {
+         source = Some (Url "edge.png");
+         slice = None;
+         width = None;
+         outset = None;
+         repeat = None;
+         mode = Some Luminance;
+       })
+
 let suite =
   ( "css",
     [
@@ -2643,6 +2682,8 @@ let suite =
       Alcotest.test_case "public motion path builders" `Quick
         motion_path_builders;
       Alcotest.test_case "public multicol builders" `Quick multicol_builders;
+      Alcotest.test_case "public border image builders" `Quick
+        border_image_builders;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
     ] )
