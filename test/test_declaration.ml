@@ -4704,6 +4704,14 @@ let spec_values_l45_edges () =
         "color:rgb(from red r calc(g * 2)10)" );
       ( "color: rgb(from red r calc(g * 2) 10)",
         "color:rgb(from red r calc(g * 2)10)" );
+      (* CSS Color 5 sec. 4.1 puts the origin's [alpha] keyword, and math over
+         it, wherever the function takes an [<alpha-value>], [color()] included.
+         The sRGB self-substitution folds only a numeric alpha, so the keyword
+         forms keep the call. *)
+      ( "color: color(from red srgb r g b / alpha)",
+        "color:color(from red srgb r g b/alpha)" );
+      ( "color: color(from red srgb r g b / calc(alpha * 2))",
+        "color:color(from red srgb r g b/calc(alpha * 2))" );
       (* pp holds the authored node for the Named blue, the rgb()/alpha, and the
          turn unit. The colour cross-fold and angle conversion are optimize
          transforms. *)
