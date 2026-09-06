@@ -1717,26 +1717,36 @@ let read_background_repeat_list t : background_repeat =
   | [ one ] -> one
   | many -> Layers many
 
+(* CSS Backgrounds 3 sec. 3.9 spells [<bg-size>] as [[ <length-percentage
+   [0,inf]> | auto ]{1,2} | cover | contain], so [auto] fills one slot of the
+   pair as readily as the whole value, and no sizing function stands in either
+   slot. *)
 let rec read_background_size t : background_size =
+  let read_slot t : length =
+    Cursor.one_of
+      [
+        (fun t ->
+          Cursor.expect_string "auto" t;
+          (Auto : length));
+        read_length ~allow_negative:false ~with_keywords:false;
+      ]
+      t
+  in
   let read_pair t : background_size =
-    let a, b =
-      Cursor.pair
-        (read_length ~allow_negative:false)
-        (read_length ~allow_negative:false)
-        t
-    in
+    let a, b = Cursor.pair read_slot read_slot t in
     Size (a, b)
   in
   let read_single t : background_size =
-    Length (read_length ~allow_negative:false t)
+    match read_slot t with
+    | (Auto : length) -> (Auto : background_size)
+    | len -> Length len
   in
   let read_var_call t : background_size =
     (Var (read_var read_background_size t) : background_size)
   in
   Cursor.enum_or_var "background-size"
     [
-      ("auto", (Auto : background_size));
-      ("cover", Cover);
+      ("cover", (Cover : background_size));
       ("contain", Contain);
       ("inherit", Inherit);
       ("initial", Initial);

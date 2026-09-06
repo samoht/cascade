@@ -402,6 +402,24 @@ let spec_ahead_here : Chrome_gaps.excuse list =
     (fun (properties, values, why) ->
       List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
     [
+      ( [
+          "width";
+          "height";
+          "min-width";
+          "min-height";
+          "max-width";
+          "max-height";
+          "inline-size";
+          "min-inline-size";
+          "max-inline-size";
+          "block-size";
+          "min-block-size";
+          "max-block-size";
+          "flex-basis";
+        ],
+        [ "contain" ],
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it" );
       ( [ "text-overflow" ],
         [ "\"text\"" ],
         "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \

@@ -5909,25 +5909,35 @@ and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
   | None -> Cursor.err t ("unknown function " ^ name)
 
 and length_function_readers ~allow_negative ~length_only ~with_keywords =
-  [
-    ("clamp", read_clamp_length ~length_only);
-    ("minmax", read_minmax_length ~length_only);
-    ("min", read_min_length ~length_only);
-    ("max", read_max_length ~length_only);
-    ( "fit-content",
-      read_fit_content_length ~allow_negative ~length_only ~with_keywords );
-    ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
-    ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
-    ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
-    ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
-    ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
-    ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
-    ( "calc-size",
-      read_calc_size_length ~allow_negative ~length_only ~with_keywords );
-    ("anchor-size", read_anchor_size_length);
-    ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
-    ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
-  ]
+  (* CSS Sizing 4 sec. 3.2 puts [fit-content()] and [calc-size()] in
+     [<box-size>] and CSS Grid 2 sec. 7.2.1 puts [minmax()] in [<track-size>],
+     so a caller reading a plain [<length>] takes none of the three. The math
+     functions and the substitutions stay: those resolve to a length wherever
+     one may stand. *)
+  let sizing_functions =
+    [
+      ("minmax", read_minmax_length ~length_only);
+      ( "fit-content",
+        read_fit_content_length ~allow_negative ~length_only ~with_keywords );
+      ( "calc-size",
+        read_calc_size_length ~allow_negative ~length_only ~with_keywords );
+    ]
+  in
+  (if with_keywords then sizing_functions else [])
+  @ [
+      ("clamp", read_clamp_length ~length_only);
+      ("min", read_min_length ~length_only);
+      ("max", read_max_length ~length_only);
+      ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
+      ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
+      ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
+      ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
+      ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
+      ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
+      ("anchor-size", read_anchor_size_length);
+      ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
+      ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
+    ]
 
 (* CSS Values 4 sec. 10.2: arguments to [clamp()], [min()], [max()], [minmax()]
    are implicit math expressions, so [clamp(.5rem, 2vw + .5rem, 2rem)] is valid

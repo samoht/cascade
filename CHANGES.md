@@ -367,6 +367,14 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- A `fit-content()`, `calc-size()` or `minmax()` reaches only a property whose
+  grammar names it, so `font-size: fit-content(20rem)` and
+  `scroll-padding-bottom: fit-content(20rem)` are dropped with a warning. CSS
+  Sizing 4 sec. 3.2 puts the first two in `<box-size>` and CSS Grid 2 sec.
+  7.2.1 puts the third in `<track-size>`, and cascade read all three as plain
+  lengths. `mask-size: auto 300px` reads, where the keyword was a whole value
+  only (#1010)
+
 - An empty value is no declaration for any property but a custom one, so
   `quotes:` and `position-try:` are dropped with a warning where the first was
   written back and the second read as `none`. CSS Syntax 3 sec. 5.5.6 gives a
