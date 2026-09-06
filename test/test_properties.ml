@@ -3392,6 +3392,22 @@ let offset_slots_roundtrip () =
      text. *)
   offset_roundtrips ".x{offset:var(--a) var(--b)}"
 
+(* Sec. 2.1 gives [offset-path] a [<basic-shape> || <coord-box>] branch beside
+   [ray()], [url()] and [path()], so every shape function [clip-path] takes is a
+   motion path too, alone or with a reference box. The shorthand's leading group
+   holds the same branch. *)
+let offset_path_basic_shapes () =
+  offset_roundtrips ".x{offset-path:circle()}";
+  offset_roundtrips ".x{offset-path:circle(50%)}";
+  offset_roundtrips ".x{offset-path:ellipse(10px 20px at 0 0)}";
+  offset_roundtrips ".x{offset-path:inset(10px)}";
+  offset_roundtrips ".x{offset-path:xywh(0 0 100% 100%)}";
+  offset_roundtrips ".x{offset-path:polygon(0 0,10px 0,0 10px)}";
+  offset_roundtrips ".x{offset-path:content-box}";
+  offset_roundtrips ".x{offset-path:circle(50%) content-box}";
+  offset_roundtrips ".x{offset:content-box}";
+  offset_roundtrips ".x{offset:circle(50%)10px}"
+
 (* The five longhands keep the behaviour secs. 2.1 to 2.5 give them once the
    shorthand that resets them is modelled. *)
 let offset_longhand_guards () =
@@ -5671,6 +5687,7 @@ let additional_tests =
     test_case "offset invalid values" `Quick offset_invalid_values;
     test_case "offset slots roundtrip" `Quick offset_slots_roundtrip;
     test_case "offset longhand guards" `Quick offset_longhand_guards;
+    test_case "offset path basic shapes" `Quick offset_path_basic_shapes;
     test_case "offset spellings factor" `Quick offset_spellings_factor;
     test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
