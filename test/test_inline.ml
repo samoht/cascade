@@ -413,7 +413,17 @@ let test_inline_vars_out_of_scope_definition_stays_live () =
      other, so its definition is live. *)
   check_inline_case "a name inside a fallback keeps its definition"
     "#i{--x:;width:var(--nope,var(--x,8px))}"
-    "#i{--x:;width:var(--nope,var(--x,8px))}"
+    "#i{--x:;width:var(--nope,var(--x,8px))}";
+  (* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+     property its usual meaning, so the binding is what the cascade makes of the
+     keyword and not the keyword's own tokens: [--x: unset] with nothing above
+     to inherit is the guaranteed-invalid initial value, and the reference takes
+     its fallback. *)
+  check_inline_case "a css-wide keyword binding is not folded"
+    ":root{--x:unset}#i{width:var(--x,9px)}"
+    ":root{--x:unset}#i{width:var(--x,9px)}";
+  check_inline_case "an inherit binding is not folded either"
+    ":root{--x:inherit}#i{all:var(--x)}" ":root{--x:inherit}#i{all:var(--x)}"
 
 let test_inline_fallback_lists () =
   check_inline_case "font-family multi-comma fallback substitutes as token list"
