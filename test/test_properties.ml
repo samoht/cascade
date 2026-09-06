@@ -2856,6 +2856,10 @@ let test_background_size () =
   check_background_size "var(--s)";
   check_background_size "calc(50% + 10px)";
   check_background_size "calc(50% + 10px) auto";
+  (* CSS Backgrounds 3 sec. 3.9 fills each of the two slots with a length or
+     [auto], and no sizing function stands in either. *)
+  check_background_size "auto 300px";
+  neg_cursor read_background_size "fit-content(20rem)";
   (* Comma-separated layer list (CSS Backgrounds 3 sec. 2.9). *)
   decl_optimizes ~prop:"background-size" ~into:"cover,contain" "cover,contain";
   decl_optimizes ~prop:"background-size" ~into:"100px 200px,auto"
@@ -4661,7 +4665,11 @@ let test_font_size () =
   check_font_size "medium";
   check_font_size "large";
   check_font_size "inherit";
-  neg_cursor read_font_size "invalid-font-size"
+  neg_cursor read_font_size "invalid-font-size";
+  (* CSS Fonts 4 sec. 2.5 takes an absolute or relative size, a
+     [<length-percentage>] or [math]; CSS Sizing 4 sec. 3.2's [fit-content()] is
+     a [<box-size>] and no length. *)
+  neg_cursor read_font_size "fit-content(20rem)"
 
 let test_mask_box () =
   check_mask_box "border-box";
