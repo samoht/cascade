@@ -416,6 +416,11 @@ to lose a whole rule over one bad piece. Both are gone.
   or initial value, so `width: 37px; width: var(--nope, notalength)` measured
   37px where the browser lays out `auto` (#987)
 
+- `text-box: auto` reads where it was dropped with a warning. CSS Inline 3
+  sec. 4.4 gives `text-box-edge` the value `auto | <text-edge>`, so `auto` is
+  one half of the sec. 6.1 shorthand rather than a keyword the longhand keeps
+  to itself (#1022)
+
 - The areas form of `grid-template` is read against its grammar rather than
   kept as any well-formed token run, so `grid-template: 50% "text" infinite`
   and `grid-template: "a" repeat(2, 1fr)` are dropped with a warning. CSS Grid
