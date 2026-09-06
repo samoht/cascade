@@ -3419,6 +3419,9 @@ let test_translate_value () =
   check_translate_value "50% 100%";
   check_translate_value "var(--my-translate)";
   check_translate_value ~expected:"var(--x)var(--y)" "var(--x) var(--y)";
+  (* CSS Transforms 2 sec. 5 names lengths in every slot, so the
+     intrinsic-sizing keywords a bare length would accept are out. *)
+  neg_cursor read_translate_value "auto";
   neg_cursor read_translate_value "invalid-translate"
 
 let test_user_select () =
@@ -3843,6 +3846,9 @@ let test_transform_origin () =
   check_transform_origin "left top 10px";
   check_transform_origin "center top 10px";
   check_transform_origin "inherit";
+  (* CSS Transforms 1 sec. 4 names lengths and edge keywords, so the
+     intrinsic-sizing ones are out. *)
+  neg_cursor read_transform_origin "auto";
   neg_cursor read_transform_origin "invalid-origin"
 
 let test_text_shadow () =
@@ -4852,6 +4858,11 @@ let spec_generated_animation_font_edges () =
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range "entry";
+  (* Scroll Animations 1 sec. 5.1 names [normal], a length-percentage and a
+     range name, so the intrinsic-sizing keywords a bare length would accept are
+     out. *)
+  neg_cursor read_animation_range "auto";
+  neg_cursor read_animation_range_item "auto";
   (* the <length-percentage> offset takes a held (non-reducible) calc(). *)
   check_animation_range_item "entry calc(50% + 10px)";
   check_animation_range_item "cover 20%";
