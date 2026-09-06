@@ -4084,6 +4084,19 @@ let test_flex () =
      constant calc to 3 is an optimize+minify transform, asserted there. *)
   check_flex "var(--f)";
   check_flex "calc(1 + 2) 1 0";
+  (* CSS Flexbox 1 sec. 7.1.1 joins the factor group and the basis with a [||],
+     so the basis may lead; an omitted shrink is 1. Chrome 153 computes each of
+     these to the same three longhands as the factor-first spelling. *)
+  check_flex ~expected:"1 50%" "50% 1";
+  check_flex ~expected:"1 2 50%" "50% 1 2";
+  check_flex ~expected:"2 10px" "10px 2";
+  check_flex ~expected:"1 auto" "auto 1";
+  check_flex ~expected:"1 content" "content 1";
+  (* The basis sits on one side of the [||] or the other, never between the two
+     factors, and [none] is the whole value on its own. *)
+  neg_cursor ~allow_partial:true read_flex "1 50% 2";
+  neg_cursor ~allow_partial:true read_flex "50% 1 2 3";
+  neg_cursor ~allow_partial:true read_flex "none 1";
   neg_cursor read_flex "invalid-flex"
 
 let test_font_variant_css21 () =
