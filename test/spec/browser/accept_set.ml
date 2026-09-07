@@ -420,10 +420,6 @@ let spec_ahead_here : Chrome_gaps.excuse list =
         [ "contain" ],
         "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
          property takes; Chrome has not implemented it" );
-      ( [ "text-overflow" ],
-        [ "\"text\"" ],
-        "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
-         <fade()> ]{1,2}, and every one of these is a <string>" );
       ( [ "text-box-edge" ],
         [ "ideographic-ink" ],
         "CSS Inline 3 sec. 4.4: <text-edge> = [ text | ideographic | \
@@ -507,7 +503,15 @@ let judge ~property ~value ~cascade verdict =
       | true, false -> (
           match excuse Chrome_gaps.spec_ahead with
           | Some why -> Accepts_invalid (Some why)
-          | None -> Accepts_invalid (excuse_here spec_ahead_here)))
+          | None -> (
+              match
+                Chrome_gaps.shape_covering Chrome_gaps.spec_ahead_shapes
+                  ~property ~value
+              with
+              | Some s ->
+                  Hashtbl.replace shape_hits s.shape_name ();
+                  Accepts_invalid (Some s.shape_why)
+              | None -> Accepts_invalid (excuse_here spec_ahead_here))))
 
 (* ===== The classifier, checked against itself ===== *)
 
@@ -788,7 +792,7 @@ let check_unused () =
                String.concat ", " s.shape_properties;
                ")";
              ]))
-    Chrome_gaps.lenient_shapes
+    (Chrome_gaps.lenient_shapes @ Chrome_gaps.spec_ahead_shapes)
 
 let check_calibration outcomes =
   List.iter

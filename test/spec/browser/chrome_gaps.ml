@@ -410,6 +410,48 @@ let is_bare_number s =
 
 let has_comma s = String.contains s ','
 
+(* Splits on whitespace outside a quoted string, so a <string> arm carrying a
+   space stays one part. *)
+let value_parts s =
+  let parts = ref [] and buf = Buffer.create 16 and quote = ref None in
+  let flush () =
+    if Buffer.length buf > 0 then (
+      parts := Buffer.contents buf :: !parts;
+      Buffer.clear buf)
+  in
+  String.iter
+    (fun c ->
+      match (!quote, c) with
+      | Some q, _ when Char.equal c q ->
+          quote := None;
+          Buffer.add_char buf c
+      | Some _, _ -> Buffer.add_char buf c
+      | None, ('"' | '\'') ->
+          quote := Some c;
+          Buffer.add_char buf c
+      | None, (' ' | '\t' | '\n' | '\r' | '\012') -> flush ()
+      | None, _ -> Buffer.add_char buf c)
+    s;
+  flush ();
+  List.rev !parts
+
+let is_quoted p =
+  String.length p >= 2
+  && (Char.equal p.[0] '"' || Char.equal p.[0] '\'')
+  && Char.equal p.[String.length p - 1] p.[0]
+
+(* Every value CSS Overflow 4 sec. 4.1 grants but the one-value [clip |
+   ellipsis] half Chrome implements. *)
+let unimplemented_text_overflow s =
+  let arm p =
+    List.exists (String.equal p) [ "clip"; "ellipsis"; "fade" ]
+    || is_quoted p
+    || String.starts_with ~prefix:"fade(" p
+  in
+  match value_parts s with
+  | [] | [ "clip" ] | [ "ellipsis" ] -> false
+  | parts -> List.length parts <= 2 && List.for_all arm parts
+
 let lenient_shapes =
   [
     {
@@ -450,6 +492,19 @@ let lenient_shapes =
         "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
          center | bottom, and no arm is a bare <number>. Chrome reads one as \
          the unitless length SVG presentation attributes take";
+    };
+  ]
+
+let spec_ahead_shapes =
+  [
+    {
+      shape_properties = [ "text-overflow" ];
+      shape_name = "a text-overflow Chrome does not implement";
+      matches = unimplemented_text_overflow;
+      shape_why =
+        "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
+         <fade()> ]{1,2}, and Chrome implements the one-value [ clip | \
+         ellipsis ] half of it";
     };
   ]
 

@@ -41,6 +41,9 @@ type shape = {
 val lenient_shapes : shape list
 (** [lenient_shapes] is {!lenient} keyed by a predicate. *)
 
+val spec_ahead_shapes : shape list
+(** [spec_ahead_shapes] is {!spec_ahead} keyed by a predicate. *)
+
 val shape_covering :
   shape list -> property:string -> value:string -> shape option
 (** [shape_covering table ~property ~value] is the entry of [table] whose
