@@ -4591,6 +4591,8 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("font-language-override: \"ENG\"", "font-language-override:\"ENG\"");
+      ("font-language-override: \"A\"", "font-language-override:\"A\"");
       ("offset-path: path('M 0 0 L 1 1')", "offset-path:path(\"M 0 0 L 1 1\")");
       ("offset-distance: 50%", "offset-distance:50%");
       ("font-size-adjust: from-font", "font-size-adjust:from-font");
@@ -4691,6 +4693,9 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "font-language-override: \"default\"";
+      "font-language-override: \"ENGLISH\"";
+      "font-language-override: \"\"";
       "grid: \"<\" \">\"";
       "grid: \"\"";
       "grid: \"a\" \"b c\"";
