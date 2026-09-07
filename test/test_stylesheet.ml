@@ -687,12 +687,12 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:local(Brand),url(brand.woff2)format(woff2)tech(variations);font-weight:400 \
-       700;font-style:normal italic;font-stretch:75% \
+       700;font-style:oblique 0deg 10deg;font-stretch:75% \
        125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
      url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
-     700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
-     optional; unicode-range: U+0025-00FF; }";
+     700; font-style: oblique 0deg 10deg; font-stretch: 75% 125%; \
+     font-display: optional; unicode-range: U+0025-00FF; }";
   check_stylesheet
     ~expected:
       "@font-face{font-family:MetricAdjusted;src:url(metric.woff2);size-adjust:92%;ascent-override:90%;descent-override:25%;line-gap-override:normal}"
@@ -787,6 +787,40 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-style: normal \
      auto; }";
+  (* sec. 4.4 spells the font-style descriptor [auto | normal | italic | left |
+     right | oblique [<angle>{1,2}]?], so the only range it grants is a pair of
+     oblique angles. Two keywords are two values of a grammar that takes one,
+     and Chrome 153 drops them. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-style:oblique \
+       0deg 10deg}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+     oblique 0deg 10deg; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: normal \
+     italic; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: italic \
+     oblique; }";
+  (* sec. 4.4 writes the weight descriptor [auto | <font-weight-absolute>{1,2}]
+     over [<font-weight-absolute> = normal | bold | <number [1,1000]>], so the
+     relative keywords the property takes are not values here: there is no
+     inherited weight for them to be relative to. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:400 700}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     normal bold; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     lighter; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     bolder; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
+     lighter; }";
   (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
      in either costs the whole rule the way any other missing one does. *)
   check_stylesheet ~expected:""
