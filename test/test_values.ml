@@ -1717,7 +1717,6 @@ let spec_math_function_edges () =
     "hypot(3px, 4px)";
   check_length ~expected:"abs(-10px)" "abs(-10px)";
   decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
-  check_length ~expected:"sign(10px)" "sign(10px)";
   (* CSS Color 4 (ED) sec. 5.1 gives rgb() and rgba() the same grammar and its
      Changes section calls them aliases of each other, and sec. 16.2.2 uses the
      rgb() form wherever the alpha is implicit. A var() standing for the whole
@@ -1777,6 +1776,138 @@ let spec_math_function_edges () =
   neg_cursor read_number "pow(2)";
   neg_cursor read_number "sqrt()";
   neg_cursor read_number "sin()"
+
+(* CSS Values 4 (ED) sec. 10.12 checks a property's range on the value a math
+   function resolves to rather than on each operand, the exception [calc()]
+   already had: a negative operand under a non-negative property is fine. *)
+let spec_math_operand_range () =
+  (* <length> and <length-percentage>, all at properties whose range is
+     [0,inf]. *)
+  decl_optimizes ~prop:"width" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"padding-top" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"font-size" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"border-top-left-radius" ~held:"abs(-1px)" ~into:"1px"
+    "abs(-1px)";
+  decl_optimizes ~prop:"width" ~held:"mod(-5px,2px)" ~into:"1px"
+    "mod(-5px, 2px)";
+  (* Sec. 10.6 gives [abs(A)] the type of its argument and [sign(A)] a <number>
+     whatever the argument is, so [abs()] stands at a <length> and [sign()]
+     never does. *)
+  neg_cursor read_length "sign(10px)";
+  neg_cursor read_length "sign(-1px)";
+  neg_cursor read_length_percentage "sign(-1px)"
+
+(* Sec. 10.1: a math function "can be used wherever a <number>, <dimension>, or
+   <percentage> is allowed", so a bare call reads wherever the same call wrapped
+   in [calc()] does; [calc()] is one math function among several, not the gate
+   to the others. *)
+let spec_bare_math_functions () =
+  (* The [sign()] sec. 10.6 keeps out of a <length> is exactly what an
+     <opacity-value> takes. *)
+  decl_optimizes ~prop:"opacity" ~into:"-1" "sign(-1px)";
+  decl_optimizes ~prop:"opacity" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"opacity" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"opacity" ~into:"5" "hypot(3,4)";
+  (* A bare call and a [calc()]-wrapped one agree on acceptance and on the value
+     they fold to. *)
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
+  decl_optimizes ~prop:"zoom" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"flex-grow" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"font-weight" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"2" "sqrt(4)";
+  (* Sec. 10.9: a math function resolving to <number> stands wherever an
+     <integer> is accepted. *)
+  decl_optimizes ~prop:"z-index" ~into:"1" "abs(-1)";
+  decl_optimizes ~prop:"order" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"grid-row-start" ~into:"1" "abs(-1)";
+  (* CSS Backgrounds 3 sec. 3.3 spells <line-width> without a percentage, which
+     is a narrower slot than <length> but still one a math function stands
+     in. *)
+  decl_optimizes ~prop:"border-top-width" ~into:"5px" "hypot(3px,4px)";
+  decl_optimizes ~prop:"outline-width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"column-rule-width" ~into:"1px" "abs(-1px)"
+
+(* Sec. 10.5 [hypot()] and sec. 10.6 [abs()] return "the same type as the
+   input", and sec. 10.2 gives the comparison and stepped-value functions their
+   arguments' type too: what the call answers, not the name it is spelled with,
+   decides the slots it stands in. Both directions are pinned per function, a
+   <number> argument at a <number> slot and a <length> one. *)
+let spec_math_result_type () =
+  let module P = Css.Properties in
+  (* <number> in, <number> out: the call is the number it resolves to. *)
+  decl_optimizes ~prop:"opacity" ~into:".2" "min(.2,.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "max(.2,.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "clamp(.1,.5,.9)";
+  decl_optimizes ~prop:"opacity" ~into:"2" "round(1.5,1)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "mod(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "rem(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"5" "hypot(3,4)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-.5)";
+  (* <length> in, <length> out: the same call is no longer a <number>, so the
+     <number> slot refuses it rather than shedding the unit. *)
+  neg_cursor P.read_opacity "min(1px,2px)";
+  neg_cursor P.read_opacity "max(1px,2px)";
+  neg_cursor P.read_opacity "clamp(1px,2px,3px)";
+  neg_cursor P.read_opacity "round(1.5px,1px)";
+  neg_cursor P.read_opacity "mod(5px,2px)";
+  neg_cursor P.read_opacity "rem(5px,2px)";
+  neg_cursor P.read_opacity "hypot(3px,4px)";
+  neg_cursor P.read_opacity "abs(-1px)";
+  (* The same pair at the <integer> slots of sec. 10.9. *)
+  decl_optimizes ~prop:"z-index" ~into:"1" "min(1,2)";
+  decl_optimizes ~prop:"order" ~into:"5" "hypot(3,4)";
+  decl_optimizes ~prop:"grid-row-end" ~into:"1" "abs(-1)";
+  neg_cursor P.read_z_index "abs(-1px)";
+  neg_cursor P.read_order "abs(-1px)";
+  neg_cursor P.read_order "hypot(3px,4px)";
+  neg_cursor P.read_grid_line "abs(-1px)";
+  neg_cursor P.read_column_count "abs(-1px)";
+  neg_cursor P.read_zoom "abs(-1px)";
+  neg_cursor P.read_shape_image_threshold "abs(-1px)";
+  neg_cursor P.read_flex_factor "abs(-1px)";
+  neg_cursor P.read_font_weight "abs(-1px)";
+  (* Sec. 10.6 gives [sign(A)] a <number> "whatever the input calculation's
+     type", the mirror of [abs()]: it narrows to a number where [abs()]
+     preserves, so a <length> argument reads at the <number> slot and the call
+     itself never stands at a <length> one. *)
+  decl_optimizes ~prop:"opacity" ~into:"-1" "sign(-1px)";
+  neg_cursor read_length "sign(-1px)";
+  (* An <opacity-value> is <number> | <percentage>, so a call answering a
+     <percentage> is one of the two types the slot takes and resolves against
+     the number the way the literal does. *)
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-50%)";
+  decl_optimizes ~prop:"shape-image-threshold" ~into:".5" "abs(-50%)";
+  (* CSS Backgrounds 3 sec. 6.2 spells <border-image-slice> over [<number> |
+     <percentage>] with no length among them, so the slot answers the same way
+     an <opacity-value> does, longhand and shorthand alike. *)
+  decl_optimizes ~prop:"border-image-slice" ~into:"abs(-1)" "abs(-1)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"30%" "30%";
+  decl_optimizes ~prop:"border-image-slice" ~into:"calc(abs(-30%))" "abs(-30%)";
+  neg_cursor P.read_border_image_slice "abs(-1px)";
+  neg_cursor P.read_border_image_slice "hypot(3px,4px)";
+  neg_cursor P.read_border_image_slice "calc(abs(-1px))";
+  neg_cursor P.read_border_image "abs(-1px)";
+  (* Sec. 6.3 and 6.4 give <border-image-width> and <border-image-outset> a
+     length, so the call the slice slot refuses stands at both. *)
+  decl_optimizes ~prop:"border-image-width" ~into:"abs(-1px)" "abs(-1px)";
+  decl_optimizes ~prop:"border-image-outset" ~into:"abs(-1px)" "abs(-1px)";
+  (* A <length> slot takes what it refuses at a <number> one. *)
+  decl_optimizes ~prop:"width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"width" ~into:"5px" "hypot(3px,4px)";
+  (* [line-height] is <number> | <length-percentage>, so the length the call
+     answers is one of its types and the call stands, where the same call at an
+     <opacity-value> does not. *)
+  decl_optimizes ~prop:"line-height" ~into:"calc(abs(-1px))" "abs(-1px)";
+  decl_optimizes ~prop:"line-height" ~into:"2" "abs(-2)";
+  (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
+     the wrapped spelling answers the same type and lands the same way. *)
+  neg_cursor P.read_z_index "calc(abs(-1px))";
+  neg_cursor P.read_opacity "calc(abs(-1px))";
+  neg_cursor P.read_opacity "calc(hypot(3px,4px))";
+  decl_optimizes ~prop:"z-index" ~into:"1" "calc(abs(-1))";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
+  decl_optimizes ~prop:"width" ~into:"1px" "calc(abs(-1px))"
 
 let test_attr_syntax () =
   check_attr_syntax "<length>";
@@ -1958,6 +2089,9 @@ let value_tests =
     test_case "spec color invalid mutation matrix" `Quick
       spec_color_invalid_mutation_matrix;
     test_case "spec math function edges" `Quick spec_math_function_edges;
+    test_case "spec math operand range" `Quick spec_math_operand_range;
+    test_case "spec bare math functions" `Quick spec_bare_math_functions;
+    test_case "spec math result type" `Quick spec_math_result_type;
   ]
 
 let suite = ("values", value_tests)

@@ -4863,7 +4863,7 @@ let spec_platform_property_vectors () =
       ("width: clamp(10px, 5vw, 100px)", "width:clamp(10px,5vw,100px)");
       ( "width: calc-size(auto, size + 1rem)",
         "width:calc-size(auto,size + 1rem)" );
-      ("opacity: abs(-0.5)", "opacity:abs(-.5)");
+      ("opacity: abs(-0.5)", "opacity:.5");
       ("opacity: sign(var(--delta))", "opacity:sign(var(--delta))");
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
          url(a.png) type(\"image/png\") 1x)",
