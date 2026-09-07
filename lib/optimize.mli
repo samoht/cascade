@@ -29,7 +29,7 @@ type objective = [ `Raw | `Transfer ]
 
 type browser_version = int * int
 
-type targets = {
+type targets = Support.targets = {
   chrome : browser_version;
   firefox : browser_version;
   safari : browser_version;

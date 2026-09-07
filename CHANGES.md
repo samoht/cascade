@@ -76,6 +76,14 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- Compatibility-prefix generation asks the web-features dataset which targets
+  read a property unprefixed, where it carried browser versions written into
+  the source. A `backdrop-filter` targeting Safari 17.0 to 17.6 keeps its
+  `-webkit-` twin, which the old boundary dropped: unprefixed `backdrop-filter`
+  shipped in Safari 18. This release adds `Cascade.Support`, and
+  `Cascade.Optimize.targets` is now an alias of `Cascade.Support.targets`
+  (#1090)
+
 - `border-image` and `mask-border` fill their slots in any order, so
   `border-image: 50% none` and `round none 30` read where they were dropped
   with a warning. CSS Backgrounds 3 sec. 6.1 combines the source, the slice

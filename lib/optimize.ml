@@ -15,20 +15,14 @@ type scope = Ctx.scope
 type objective = [ `Raw | `Transfer ]
 type browser_version = int * int
 
-type targets = {
+type targets = Support.targets = {
   chrome : browser_version;
   firefox : browser_version;
   safari : browser_version;
   ios_safari : browser_version;
 }
 
-let evergreen_targets =
-  {
-    chrome = (111, 0);
-    firefox = (128, 0);
-    safari = (16, 4);
-    ios_safari = (16, 4);
-  }
+let evergreen_targets = Support.evergreen
 
 (* Optimisation context threaded from the entry points to the shorthand
    composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
@@ -775,40 +769,35 @@ let fallback_spec_by_name select_name name =
 
 let fallback_spec_by_standard_name = fallback_spec_by_name fst
 
-let version_compare (major_a, minor_a) (major_b, minor_b) =
-  match Int.compare major_a major_b with
-  | 0 -> Int.compare minor_a minor_b
-  | order -> order
-
-let version_at_most version maximum = version_compare version maximum <= 0
-let version_before version minimum = version_compare version minimum < 0
-
 (* The target contract is deliberately owned here rather than by the printer:
    adding a fallback changes the AST and must therefore be explicit to API
-   callers. Safari/iOS still require [-webkit-user-select] at the declared
-   baseline, while unprefixed [backdrop-filter] arrived after 17.6, unprefixed
-   [hyphens] arrived in 17, and Chrome needs the compatible [-webkit-mask]
-   shorthand and longhands through 119. [mask-mode] and [mask-composite] are
-   excluded because their prefixed forms have different grammars. Safari/iOS
-   answer [text-decoration-color] under both spellings through 26.1, so it pairs
-   this boundary with [Unresolved_value]: a settled colour is served by the
-   standard longhand on every declared target. *)
+   callers. Which of these the targets read unprefixed is a fact about browsers,
+   so {!Support} answers it from the generated web-features table and a browser
+   that catches up moves the answer at the next regeneration. [mask-mode] and
+   [mask-composite] are excluded because their prefixed forms have different
+   grammars. *)
 let required_fallback kind targets =
+  let lacks key = Support.unimplemented_by targets key in
   match kind with
-  | User_select_fallback -> true
-  | Backdrop_filter_fallback ->
-      version_at_most targets.safari (17, 6)
-      || version_at_most targets.ios_safari (17, 6)
-  | Hyphens_fallback ->
-      version_before targets.safari (17, 0)
-      || version_before targets.ios_safari (17, 0)
+  | User_select_fallback -> lacks "css.properties.user-select"
+  | Backdrop_filter_fallback -> lacks "css.properties.backdrop-filter"
+  | Hyphens_fallback -> lacks "css.properties.hyphens"
   | Text_decoration_color_fallback ->
-      version_at_most targets.safari (26, 1)
-      || version_at_most targets.ios_safari (26, 1)
-  | Mask_fallback | Mask_image_fallback | Mask_position_fallback
-  | Mask_size_fallback | Mask_repeat_fallback | Mask_clip_fallback
-  | Mask_origin_fallback ->
-      version_at_most targets.chrome (119, 0)
+      (* Not a support gap: Safari/iOS answer the standard property under both
+         spellings through 26.1, which no dataset records, so this stays a
+         measured boundary. It pairs with [Unresolved_value], since a settled
+         colour is served by the standard longhand on every declared target. *)
+      let at_most (major, minor) (target_major, target_minor) =
+        target_major < major || (target_major = major && target_minor <= minor)
+      in
+      at_most (26, 1) targets.safari || at_most (26, 1) targets.ios_safari
+  | Mask_fallback -> lacks "css.properties.mask"
+  | Mask_image_fallback -> lacks "css.properties.mask-image"
+  | Mask_position_fallback -> lacks "css.properties.mask-position"
+  | Mask_size_fallback -> lacks "css.properties.mask-size"
+  | Mask_repeat_fallback -> lacks "css.properties.mask-repeat"
+  | Mask_clip_fallback -> lacks "css.properties.mask-clip"
+  | Mask_origin_fallback -> lacks "css.properties.mask-origin"
 
 let webkit_compatible_mask : Properties.mask -> Properties.mask =
   let strip_layer (layer : Properties.mask_layer) =
