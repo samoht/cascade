@@ -854,6 +854,11 @@ to lose a whole rule over one bad piece. Both are gone.
   U+FFFD where the escape was. The condition is the question the rendering
   browser is asked, not a value to respell (#1066)
 
+- An `@supports` condition keeps the escapes the author wrote, so
+  `@supports (color: gre\en)` no longer respells them. CSS Conditional Rules 3
+  sec. 6.1 answers a declaration feature by running that exact declaration
+  through the rendering browser's parser, so the text is the question (#1067)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor

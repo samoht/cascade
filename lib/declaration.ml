@@ -2857,17 +2857,17 @@ let rec pp : declaration Pp.t =
    itself is the compatibility question. *)
 let rec pp_opaque : declaration Pp.t =
  fun ctx decl ->
-  (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
-     a custom property's value, so its runs are written back as read. An unknown
-     property has no such rule and takes the Syntax 3 sec. 9.1 serialization. *)
-  let pp_components ?(verbatim = false) property components important =
+  (* Every caller of this is an [@supports] condition, and CSS Conditional Rules
+     3 sec. 6.1 answers a declaration feature by running that exact declaration
+     through the rendering browser's parser. The text is the question, so it is
+     written back as read rather than respelled. *)
+  let pp_components property components important =
     pp_property ctx property;
     Pp.char ctx ':';
     Pp.space_if_pretty ctx ();
     Pp.string ctx
       (if Pp.minified ctx then Parser.to_string_minified components
-       else if verbatim then Parser.to_string_verbatim components
-       else Parser.string_of_components components);
+       else Parser.to_string_verbatim components);
     if important then
       Pp.string ctx (if ctx.minify then "!important" else " !important")
   in
@@ -2882,7 +2882,7 @@ let rec pp_opaque : declaration Pp.t =
         important;
         _;
       } ->
-      pp_components ~verbatim:true property components important
+      pp_components property components important
   | Declaration _ -> pp ctx decl
   | Theme_guarded { decl; _ } -> pp_opaque ctx decl
 

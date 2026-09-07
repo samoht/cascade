@@ -522,8 +522,11 @@ let rec skip_past_semicolon t =
 let ends_declaration_value cv =
   match component_head_shape cv with `Semicolon | `Bang -> true | _ -> false
 
+(* An unknown property's value is a stream cascade keeps rather than one it
+   respells, the same as a custom property's, so it writes back the text it was
+   read from; see {!string_of_components_verbatim}. *)
 let consume_to_decl_end ?(trim = false) t =
-  string_of_components ~trim (drain_until_raw ends_declaration_value t)
+  string_of_components_verbatim ~trim (drain_until_raw ends_declaration_value t)
 
 let drain_to_decl_end t = drain_until_raw ends_declaration_value t
 
