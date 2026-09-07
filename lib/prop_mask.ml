@@ -428,9 +428,17 @@ let rec pp_webkit_mask_composite : webkit_mask_composite Pp.t =
   | Composites composites ->
       Pp.list ~sep:Pp.comma pp_webkit_mask_composite ctx composites
   | Source_over -> Pp.string ctx "source-over"
-  | Xor -> Pp.string ctx "xor"
   | Source_in -> Pp.string ctx "source-in"
   | Source_out -> Pp.string ctx "source-out"
+  | Source_atop -> Pp.string ctx "source-atop"
+  | Destination_over -> Pp.string ctx "destination-over"
+  | Destination_in -> Pp.string ctx "destination-in"
+  | Destination_out -> Pp.string ctx "destination-out"
+  | Destination_atop -> Pp.string ctx "destination-atop"
+  | Xor -> Pp.string ctx "xor"
+  | Plus_lighter -> Pp.string ctx "plus-lighter"
+  | Clear -> Pp.string ctx "clear"
+  | Copy -> Pp.string ctx "copy"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -564,9 +572,17 @@ let rec read_webkit_mask_composite t : webkit_mask_composite =
     Cursor.enum "webkit-mask-composite-item"
       [
         ("source-over", (Source_over : webkit_mask_composite));
-        ("xor", Xor);
         ("source-in", Source_in);
         ("source-out", Source_out);
+        ("source-atop", Source_atop);
+        ("destination-over", Destination_over);
+        ("destination-in", Destination_in);
+        ("destination-out", Destination_out);
+        ("destination-atop", Destination_atop);
+        ("xor", Xor);
+        ("plus-lighter", Plus_lighter);
+        ("clear", Clear);
+        ("copy", Copy);
       ]
       t
   in

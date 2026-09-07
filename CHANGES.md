@@ -429,11 +429,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `@-moz-document`'s URL matchers, a `border-image` repeat keyword standing
   alone, a `text-decoration` component with no line, `white-space: collapse`, a
   time-valued `round()` in a delay, a `flex` shorthand whose basis leads, a
-  relative `color()` whose alpha is the origin's own, and a value whose grammar
+  relative `color()` whose alpha is the origin's own, the full
+  `-webkit-mask-composite` operator set, and a value whose grammar
   ends in an optional component (#334, #335, #427, #456,
   #461, #551, #572, #579, #594, #633, #641, #644, #646, #665, #666, #667, #682,
   #739, #805, #827, #870, #874, #877, #881, #884, #885, #886, #887, #889, #909,
-  #1055, #1060)
+  #1055, #1060, #1085)
 
 - `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
   side styles, `border-block-style` and `border-inline-style` take the start and

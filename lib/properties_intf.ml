@@ -2933,9 +2933,17 @@ type background =
 (** Webkit-prefixed mask-composite values *)
 type webkit_mask_composite =
   | Source_over
-  | Xor
   | Source_in
   | Source_out
+  | Source_atop
+  | Destination_over
+  | Destination_in
+  | Destination_out
+  | Destination_atop
+  | Xor
+  | Plus_lighter
+  | Clear
+  | Copy
   | Composites of webkit_mask_composite list
   | Inherit
   | Initial
