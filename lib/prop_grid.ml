@@ -53,6 +53,13 @@ let rec pp_grid_line : grid_line Pp.t =
       Pp.int ctx n;
       Pp.char ctx ' ';
       pp_ident ctx name
+  | Calc_name (c, name) ->
+      (* [unwrap_num:false] as the bare [Calc] arm below: sec. 10.12 rounds a
+         call in an [<integer>] slot, so the wrapper is what makes a fraction a
+         line index. *)
+      pp_calc ~unwrap_num:false pp_grid_line ctx c;
+      Pp.char ctx ' ';
+      pp_ident ctx name
   | Span n ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
@@ -775,16 +782,36 @@ let read_grid_line_name_value t : grid_line =
   | _ -> (
       let name = read_grid_line_name t in
       Cursor.ws t;
-      let n : int option =
-        if grid_line_at_end t then None
-        else Cursor.option (fun t -> check_grid_line_index t (Cursor.int t)) t
-      in
-      match n with Some n -> Num_name (n, name) | None -> Name name)
+      if grid_line_at_end t then Name name
+      else
+        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
+           is allowed, so the index of a named line may be one. *)
+        let index t =
+          if Cursor.looking_at_calc t then
+            match read_integer_calc "grid-line" t with
+            | `Int n -> Num_name (check_grid_line_index t n, name)
+            | `Calc expr -> Calc_name (expr, name)
+          else Num_name (check_grid_line_index t (Cursor.int t), name)
+        in
+        match Cursor.option index t with Some line -> line | None -> Name name)
 
 let read_grid_line_calc t : grid_line =
-  match read_integer_calc "grid-line" t with
-  | `Int n -> Num (check_grid_line_index t n)
-  | `Calc expr -> Calc expr
+  let line =
+    match read_integer_calc "grid-line" t with
+    | `Int n -> `Int (check_grid_line_index t n)
+    | `Calc expr -> `Calc expr
+  in
+  Cursor.ws t;
+  (* sec. 8.3's [&&] puts the name on either side of the index, so a call in
+     that slot takes a trailing name like a literal does. *)
+  let name : string option =
+    if grid_line_at_end t then None else Cursor.option read_grid_line_name t
+  in
+  match (line, name) with
+  | `Int n, None -> Num n
+  | `Int n, Some name -> Num_name (n, name)
+  | `Calc expr, None -> Calc expr
+  | `Calc expr, Some name -> Calc_name (expr, name)
 
 let rec read_grid_line t : grid_line =
   Cursor.enum_or_calls "grid-line"

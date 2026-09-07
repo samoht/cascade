@@ -2247,6 +2247,26 @@ let animations_timing () =
   neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
   neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
   neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
+  (* CSS Grid 2 sec. 8.3 spells a <grid-line> index and its name with [&&], so
+     the name sits on either side of the index, and sec. 10 puts a math function
+     wherever an <integer> goes. Chrome 153 keeps all four and serialises them
+     index-first. *)
+  check_declaration ~expected:"grid-row-start:2 center"
+    ~optimized:"grid-row-start:2 center" "grid-row-start: center calc(2)";
+  check_declaration ~expected:"grid-row-start:2 center"
+    ~optimized:"grid-row-start:2 center" "grid-row-start: calc(2) center";
+  check_declaration ~expected:"grid-row-start:calc(.5) center"
+    ~optimized:"grid-row-start:calc(.5) center"
+    "grid-row-start: center calc(.5)";
+  check_declaration ~expected:"grid-area:2 center"
+    ~optimized:"grid-area:2 center" "grid-area: center calc(2)";
+  (* sec. 8.3 writes the index [<integer [-inf,-1]> | <integer [1,inf]>], and
+     zero is in neither range whichever way it is spelled. Chrome refuses both
+     of these too. *)
+  neg_cursor read_declaration "grid-row-start: calc(0)";
+  neg_cursor read_declaration "grid-row-start: center calc(0)";
+  neg_cursor read_declaration "grid-row-start: center 0";
+
   (* sec. 10 allows a math function wherever an <integer> is allowed, and sec.
      10.12 rounds the call and clamps it, so a fractional or out-of-range call
      keeps its wrapper where the bare literal is refused. Chrome 153 agrees on

@@ -874,6 +874,9 @@ type grid_line =
   | Span_name of string
   | Span_num_name of int * string
   | Calc of grid_line calc
+  | Calc_name of grid_line calc * string
+      (** CSS Values 4 sec. 10 allows a math function wherever an [<integer>] is
+          allowed, so the index of a named line may be one. *)
   | Var of grid_line var
 
 type grid_line_pair =

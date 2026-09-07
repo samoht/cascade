@@ -30,6 +30,13 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Properties.grid_line` gains `Calc_name`, so
+  `grid-row-start: center calc(2)` and `grid-row-start: calc(2) center` read
+  where both were dropped. CSS Grid 2 sec. 8.3 joins the index and the name
+  with `&&`, so the name sits on either side, and CSS Values 4 sec. 10 puts a
+  math function wherever an `<integer>` goes. Exhaustive visitors must handle
+  the new arm (#1126)
+
 - `Cascade.Properties.webkit_line_clamp` gains `Calc`, so
   `-webkit-line-clamp: calc(2)` reads where it was dropped. CSS Values 4 sec.
   10 allows a math function wherever an `<integer>` is allowed, and sec. 10.12
