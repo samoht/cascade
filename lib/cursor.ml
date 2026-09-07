@@ -387,8 +387,8 @@ let string_repr_with_quote_opt t =
   match peek t with
   | Some
       (Component.Preserved
-         ({ kind = Token.String { value; quote; terminated }; loc } : Token.t))
-    ->
+         ({ kind = Token.String { value; quote; terminated }; loc; _ } :
+           Token.t)) ->
       skip t;
       Some (value, quote, if terminated then source_slice t loc else None)
   | _ -> None

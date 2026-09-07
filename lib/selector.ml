@@ -435,7 +435,7 @@ let format_attribute_number n (unit : string option) =
 
 let read_attribute_value_unquoted t =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; loc }) ->
+  | Some (Component.Preserved { kind = Token.Ident s; loc; _ }) ->
       read_attribute_value_ident t s loc
   | Some (Component.Preserved { kind = Token.Number_tok _; _ })
   | Some (Component.Preserved { kind = Token.Dimension _; _ })

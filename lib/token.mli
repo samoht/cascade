@@ -75,8 +75,13 @@ type kind =
   | Close of bracket  (** Closing bracket of a balanced group. *)
   | Eof
 
-type t = { kind : kind; loc : Loc.t }
-(** A located token: the section 4.2 payload plus the source range it covers. *)
+type t = { kind : kind; loc : Loc.t; repr : string option }
+(** A located token: the section 4.2 payload, the source range it covers, and
+    the source text when that text is not what serializing the payload gives
+    back. [repr] is [Some] only for a token written with an escape, which is the
+    one spelling section 9.1's serialization does not preserve: [colo\r] and
+    [color] are the same {!constructor-Ident}, and a stream that must round-trip
+    byte for byte needs to tell them apart. *)
 
 val equal_hash_flag : hash_flag -> hash_flag -> bool
 (** [equal_hash_flag a b] tests hash token flags for equality. *)
@@ -103,7 +108,12 @@ val compare_kind : kind -> kind -> int
 *)
 
 val v : kind:kind -> loc:Loc.t -> t
-(** [v ~kind ~loc] is a token with the given payload and location. *)
+(** [v ~kind ~loc] is a token with the given payload and location, spelled the
+    way serializing the payload spells it. *)
+
+val of_source : repr:string option -> kind:kind -> loc:Loc.t -> t
+(** [of_source ~repr ~kind ~loc] is {!val-v} carrying the source text the token
+    was read from; see {!type-t} for when that differs. *)
 
 val synthetic : kind -> t
 (** [synthetic k] is a token with payload [k] and {!Loc.dummy} - for test

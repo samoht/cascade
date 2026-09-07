@@ -842,6 +842,13 @@ to lose a whole rule over one bad piece. Both are gone.
   `Cascade.Parser.to_string_verbatim` is the serializer that writes it back
   (#1064)
 
+- A custom property's value keeps the escapes the author wrote, so
+  `--v: gre\en` no longer comes back as `gre\E n`. CSS Syntax 3 sec. 9.1
+  serializes an ident by escaping only what must be, which is right for a
+  reserialized token stream and wrong for a value sec. 4.1 says must not be
+  normalized. `Cascade.Token.t` gains `repr`, the source text of a token whose
+  spelling that serialization does not give back (#1065)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor

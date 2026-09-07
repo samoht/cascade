@@ -748,7 +748,7 @@ let unquote_font_family_strings components =
     List.concat_map
       (fun c ->
         match c with
-        | Component.Preserved { kind = Token.String { value; _ }; loc }
+        | Component.Preserved { kind = Token.String { value; _ }; loc; _ }
           when can_unquote_font_family_name value ->
             changed := true;
             interleave loc (words_of value)

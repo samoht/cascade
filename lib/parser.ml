@@ -762,6 +762,7 @@ and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
    the single ident [ab]. *)
 let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
   | Preserved { kind = Token.Whitespace run; _ } -> Buffer.add_string buf run
+  | Preserved { repr = Some repr; _ } -> Buffer.add_string buf repr
   | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);

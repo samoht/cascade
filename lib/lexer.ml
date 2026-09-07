@@ -774,7 +774,16 @@ let tokenize_with_loc ?(force_url_function = false) ?(unicode_ranges = false)
     next_token ~force_url_function ~unicode_ranges ?on_comment reader
   in
   let end_pos = Reader.position reader in
-  Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
+  (* Section 9.1 serializes an ident by escaping only what must be, so a token
+     the author wrote with any other escape does not come back byte for byte.
+     Keep the source text for exactly those; a backslash is what marks one. *)
+  let repr =
+    let text =
+      String.sub (Reader.source reader) start_pos (end_pos - start_pos)
+    in
+    if String.contains text '\\' then Some text else None
+  in
+  Token.of_source ~repr ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
 (* [history] need only retain tokens since the last active [save]. With no saves
    the head is all [force_url_function]/[reconsume] read, so keep a one-element

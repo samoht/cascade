@@ -3394,7 +3394,7 @@ let tail_closer text last n =
     match last with
     | Some { Token.kind = Token.String { quote; terminated = false; _ }; _ } ->
         [ String.make 1 quote ]
-    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc }
+    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc; _ }
       when loc.Loc.end_pos = String.length text ->
         [ ")" ]
     | _ -> [ "*/" ]
