@@ -682,6 +682,13 @@ let verdict answer =
     let full = excess ca cb @ excess cb ca in
     { over = []; under = []; rewritten = List.sort_uniq String.compare full }
 
+(* MEASURED 2026-09-07: web-features records no [css.syntax.*] compat key at
+   all, so the verdict machinery {!Chrome_gaps.verdict_of} answers with cannot
+   reach a recovery deviation, and never will while BCD models none. The
+   permanent answer for this harness is the third verdict, "not modelled, needs
+   measuring", which is why the deviation below carries the measurement and the
+   spec text rather than a key: there is nothing to look it up in. *)
+
 (* The one deviation that is the browser's. CSS Syntax 3 (ED) sec. 5.5.5
    discards a [<semicolon-token>] among a block's contents and carries on, and
    Chrome 151 stops consuming there instead, losing the rest of the block. It
