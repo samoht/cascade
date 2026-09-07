@@ -2539,52 +2539,80 @@ let read_mask_border_mode t =
    background-image takes a comma-separated list of them. *)
 let read_border_image_source t : background_image = read_bg_image t
 
-let read_border_image_shorthand ~mask_mode t : border_image =
-  let read_mode t =
-    if mask_mode then Cursor.option read_mask_border_mode t
-    else (None : mask_border_mode option)
-  in
-  let source = Cursor.option read_border_image_source t in
+(* The slice carries its slash-separated width and outset, so the three read as
+   one member of the [||] rather than three that could be reordered apart. *)
+let read_border_image_slice_group t =
+  let slice = read_border_image_slice_offsets t in
   Cursor.ws t;
-  (* sec. 8.7 puts [mask-border-mode] in [||] combination with the other slots,
-     so the keyword may appear after [<source>] (before the slice) or after
-     [<repeat>]. Try the early slot first; combine with the trailing slot
-     below. *)
-  let mode_early = read_mode t in
-  Cursor.ws t;
-  let slice = Cursor.option read_border_image_slice_offsets t in
-  let width, outset =
+  if Cursor.slash_opt t then (
+    let width =
+      Some
+        (read_border_image_box_values ~what:"width" read_border_image_width_item
+           t)
+    in
     Cursor.ws t;
-    if Cursor.slash_opt t then (
-      let width =
+    if Cursor.slash_opt t then
+      ( slice,
+        width,
         Some
-          (read_border_image_box_values ~what:"width"
-             read_border_image_width_item t)
-      in
-      Cursor.ws t;
-      if Cursor.slash_opt t then
-        ( width,
-          Some
-            (read_border_image_box_values ~what:"outset"
-               read_border_image_outset_item t) )
-      else (width, None))
-    else (None, None)
+          (read_border_image_box_values ~what:"outset"
+             read_border_image_outset_item t) )
+    else (slice, width, None))
+  else (slice, None, None)
+
+let read_border_image_shorthand ~mask_mode t : border_image =
+  let source : background_image option ref = ref Option.None
+  and slice : border_image_slice_offsets option ref = ref Option.None
+  and width : border_image_width_item list option ref = ref Option.None
+  and outset : border_image_outset_item list option ref = ref Option.None
+  and repeat : border_image_repeat_keyword list option ref = ref Option.None
+  and mode : mask_border_mode option ref = ref Option.None in
+  let fill : 'a. filled:bool -> (Cursor.t -> 'a) -> ('a -> unit) -> bool =
+   fun ~filled read set ->
+    (not filled)
+    &&
+    match Cursor.option read t with
+    | Some value ->
+        set value;
+        true
+    | None -> false
   in
-  Cursor.ws t;
-  let repeat = Cursor.option read_border_image_repeat_keywords t in
-  Cursor.ws t;
-  let mode_late : mask_border_mode option =
-    if Option.is_some mode_early then (None : mask_border_mode option)
-    else read_mode t
+  (* Sec. 6.1 combines the source, the slice group and the repeat with [||], and
+     CSS Masking 1 (ED) sec. 8.7 adds [mask-border-mode] to the same group, so
+     each fills its slot wherever the author wrote it. *)
+  let rec loop () =
+    Cursor.ws t;
+    let filled =
+      fill ~filled:(Option.is_some !source) read_border_image_source (fun v ->
+          source := Option.Some v)
+      || fill ~filled:(Option.is_some !slice) read_border_image_slice_group
+           (fun (s, w, o) ->
+             slice := Option.Some s;
+             width := w;
+             outset := o)
+      || fill ~filled:(Option.is_some !repeat) read_border_image_repeat_keywords
+           (fun v -> repeat := Option.Some v)
+      || mask_mode
+         && fill ~filled:(Option.is_some !mode) read_mask_border_mode (fun v ->
+             mode := Option.Some v)
+    in
+    if filled then loop ()
   in
-  let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice, repeat, mode) with
-  | None, None, None, None ->
+  loop ();
+  (match (!source, !slice, !repeat, !mode) with
+  | Option.None, Option.None, Option.None, Option.None ->
       Cursor.err_expected t
         (if mask_mode then "mask-border source, slice, repeat, or mode"
          else "border-image source, slice, or repeat")
   | _ -> ());
-  { source; slice; width; outset; repeat; mode }
+  {
+    source = !source;
+    slice = !slice;
+    width = !width;
+    outset = !outset;
+    repeat = !repeat;
+    mode = !mode;
+  }
 
 let read_border_image t : border_image =
   read_border_image_shorthand ~mask_mode:false t

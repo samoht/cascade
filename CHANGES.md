@@ -76,6 +76,12 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `border-image` and `mask-border` fill their slots in any order, so
+  `border-image: 50% none` and `round none 30` read where they were dropped
+  with a warning. CSS Backgrounds 3 sec. 6.1 combines the source, the slice
+  with its slash-separated width and outset, and the repeat with `||`, and the
+  reader took them in one fixed order (#1089)
+
 - `Cascade.Properties.ruby_overhang` gains `Spaces`, so
   `ruby-overhang: spaces` reads where it was dropped with a warning. CSS Ruby 1
   sec. 5.1 spells the property `auto | spaces`, and cascade read only `auto`
