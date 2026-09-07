@@ -666,6 +666,15 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
 
+val validate_calc_type :
+  Cursor.t -> [ `Number | `Number_or_value | `Value ] -> 'a calc -> unit
+(** [validate_calc_type t result_type calc] raises unless [calc] infers to
+    [result_type], the check CSS Values 4 sec. 10.9 makes on a calculation's
+    type. {!val-read_calc} runs it for a whole [calc()]; a caller reading the
+    arguments of [min()], [max()] or [clamp()] with {!val-read_calc_expr} runs
+    it per argument, which is what sec. 10.2 asks for when it requires them to
+    "have a consistent type or else the function is invalid". *)
+
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
     numbers to a float. Returns [None] if the expression contains variables or

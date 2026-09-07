@@ -1463,6 +1463,15 @@ let read_length_as_border_width ?(allow_negative = false) t =
 let rec read_border_width_in_math t : border_width =
   read_border_width_with ~keywords:false ~allow_negative:true t
 
+(* CSS Values 4 sec. 10.2 requires the arguments of [min()], [max()] and
+   [clamp()] to "have a consistent type or else the function is invalid", and
+   sec. 10.9 gives a unitless zero inside a math function the [<number>] type.
+   Without the check [min(0,1px)] folded to [0] rather than dropping. *)
+and read_math_arg t =
+  let expr = read_calc_expr read_border_width_in_math t in
+  validate_calc_type t `Value expr;
+  expr
+
 and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_var t : border_width =
     Var (read_var (read_border_width_with ~keywords ~allow_negative) t)
@@ -1470,7 +1479,6 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_calc t : border_width =
     Calc (read_calc ~result_type:`Value read_border_width_in_math t)
   in
-  let read_math_arg t = read_calc_expr read_border_width_in_math t in
   let read_min t : border_width =
     Min
       (Cursor.call "min" t

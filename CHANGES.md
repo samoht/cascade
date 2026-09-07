@@ -37,7 +37,10 @@ entry points both moved.
   with a warning where they used to read. `calc(inherit)` was written back as a
   live `inherit`, which changed what the element computed. Sec. 10.2 also
   requires the arguments of `min()`, `max()` and `clamp()` to share a
-  consistent type, so `width: min(0, 1px)` is dropped as well (#1139)
+  consistent type, so `width: min(0, 1px)` is dropped as well. The same holds
+  at `font-size`, `line-height`, `flex-basis`, the opacity family and the
+  `<line-width>` slots, where `border-width: min(0, 1px)` used to fold to `0`
+  (#1139, #1144)
 - The gap decoration, scroll-driven animation and interest properties carry a
   comma-separated list where they carried a single value, one entry per rule
   line or per timeline, so `column-rule: 1px solid red, 2px dashed blue` and
