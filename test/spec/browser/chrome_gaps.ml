@@ -87,6 +87,21 @@ let unimplemented =
    that decides it. Every entry has to be used: an entry that excuses nothing is
    reported, so a browser that catches up, or a row that drops the value, takes
    its excuse with it. *)
+(* The reason an entry gives is the library's, where the library has one: a
+   browser gap is a fact about CSS in the world, and {!Cascade.Support.measured}
+   is where this project records the ones web-features does not model. An entry
+   naming a key it does not carry is a mistake this catches at run time rather
+   than letting prose drift from the fact. *)
+let library_says key =
+  match
+    List.find_opt
+      (fun (m : Cascade.Support.measurement) -> String.equal m.key key)
+      Cascade.Support.measured
+  with
+  | Some m -> String.concat "" [ m.why; " (measured on "; m.measured; ")" ]
+  | None ->
+      failwith (String.concat "" [ "no measurement in the library for "; key ])
+
 type excuse = {
   properties : string list;
   key : string option;
@@ -202,17 +217,11 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "background-blend-mode" ];
-      (* web-features records css.properties.mix-blend-mode.plus-lighter, which
-         Chrome ships, and nothing for the background property, so the lookup
-         cannot answer this one and the verdict is the honest third. *)
-      key = None;
+      (* The fact is {!Cascade.Support.measured}, so the entry names the key and
+         carries no prose of its own. *)
+      key = Some "css.properties.background-blend-mode.plus-lighter";
       value = "plus-lighter";
-      why =
-        "Compositing 2 sec. 3.4.3 spells background-blend-mode \
-         <'mix-blend-mode'>#, and sec. 3.4.1 gives mix-blend-mode <blend-mode> \
-         | plus-lighter, so the value is granted on both. Measured on Chrome \
-         153: it takes plus-lighter on mix-blend-mode and refuses it on \
-         background-blend-mode";
+      why = library_says "css.properties.background-blend-mode.plus-lighter";
     };
     {
       properties = [ "text-overflow" ];

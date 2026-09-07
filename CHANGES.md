@@ -76,6 +76,11 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Support.measured` records what this project measured for
+  productions web-features gives no compat key, so `Cascade.Support.implemented`
+  answers for them too. A browser gap is a fact about CSS rather than a test
+  fixture, and it belongs where the library can act on it (#1110)
+
 - A colour reaches the final background layer alone, so `background: red,
   url(x.png)` is dropped with a warning where every browser drops it and
   `background: url(x.png), red` reads. CSS Backgrounds 3 sec. 2.10 spells the
