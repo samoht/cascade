@@ -2247,6 +2247,16 @@ let animations_timing () =
   neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
   neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
   neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
+  (* CSS Values 4 (ED) sec. 10: "Math functions can be used ... wherever
+     <length>, <frequency>, <angle>, <time>, <percentage>, <number>, or
+     <integer> values are allowed", and CSS Fonts 4 sec. 2.2 spells font-weight
+     over <number [1,1000]>. Chrome 153 keeps these. *)
+  check_declaration ~expected:"font-weight:calc(400)"
+    ~optimized:"font-weight:400" "font-weight: calc(400)";
+  check_declaration ~expected:"font-weight:calc(100 + 300)"
+    ~optimized:"font-weight:400" "font-weight: calc(100 + 300)";
+  check_declaration ~expected:"font-weight:calc(var(--w))"
+    ~optimized:"font-weight:calc(var(--w))" "font-weight: calc(var(--w))";
   (* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
      <single-transition> to transition-duration and the second to
      transition-delay, and only the duration is [0s,inf]: a negative delay
