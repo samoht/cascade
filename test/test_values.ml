@@ -249,6 +249,37 @@ let test_length () =
   neg_cursor read_length "calc((1px 2px))";
   neg_cursor read_length "min((1px 2px))";
 
+  (* CSS Values 4 sec. 10.8: [<calc-value>] is a number, a dimension, a
+     percentage, a [<calc-keyword>] or a parenthesised [<calc-sum>], and sec.
+     10.7 limits [<calc-keyword>] to [e], [pi], [infinity], [-infinity] and
+     [NaN]. A CSS-wide keyword (sec. 4.1.1 gives it the whole declaration value
+     alone) and a sizing keyword or function are none of those, so a math
+     operand takes none of them. *)
+  neg_cursor read_length "calc(auto)";
+  neg_cursor read_length "calc(inherit)";
+  neg_cursor read_length "calc(initial)";
+  neg_cursor read_length "calc(unset)";
+  neg_cursor read_length "calc(revert)";
+  neg_cursor read_length "calc(revert-layer)";
+  neg_cursor read_length "calc(calc(auto))";
+  neg_cursor read_length "calc(1px + initial)";
+  neg_cursor read_length "calc(fit-content(20rem))";
+  neg_cursor read_length "min(unset,1px)";
+  neg_cursor read_length "min(1px,auto)";
+  neg_cursor read_length "clamp(1px,inherit,3px)";
+  neg_cursor read_length "abs(auto)";
+  neg_cursor read_length "round(auto,1px)";
+  neg_cursor read_length "hypot(auto)";
+  neg_cursor read_length "mod(auto,1px)";
+  neg_cursor read_length "rem(auto,1px)";
+
+  (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
+     "must have a consistent type or else the function is invalid", and sec.
+     10.9 makes a unitless zero a [<number>], not a length. *)
+  neg_cursor read_length "min(0,1px)";
+  neg_cursor read_length "max(0,1px)";
+  neg_cursor read_length "clamp(0px,0,100px)";
+
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
   neg_cursor read_length "10";

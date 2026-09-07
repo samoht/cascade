@@ -3515,6 +3515,35 @@ let invalid () =
   neg "-webkit-text-stroke-width: 20%";
   neg "border-width: calc(50%)";
 
+  (* CSS Values 4 sec. 10.8 gives [<calc-value>] a number, a dimension, a
+     percentage, a [<calc-keyword>] or a parenthesised [<calc-sum>], and sec.
+     10.9 makes the calculation's type failure for anything else. A CSS-wide
+     keyword, a sizing keyword or a sizing function is none of those, so a math
+     operand takes none of them. Chrome 153 drops each of these declarations;
+     unwrapping one to its bare keyword would make a live [width: inherit] out
+     of a value the browser ignores. *)
+  neg "width: calc(inherit)";
+  neg "height: calc(auto)";
+  neg "width: calc(initial)";
+  neg "width: calc(unset)";
+  neg "width: calc(revert)";
+  neg "width: calc(1px + initial)";
+  neg "width: calc(calc(auto))";
+  neg "width: calc(fit-content(20rem))";
+  neg "width: min(unset,1px)";
+  neg "width: min(1px,auto)";
+  neg "border-width: calc(medium)";
+  neg "border-width: calc(thin)";
+  neg "border-width: calc(thick)";
+  neg "outline-width: calc(thin)";
+  neg "outline-width: min(thin,1px)";
+
+  (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
+     "must have a consistent type or else the function is invalid", and sec.
+     10.9 gives a unitless zero inside a math function the [<number>] type. *)
+  neg "width: min(0,1px)";
+  neg "width: clamp(0px,0,100px)";
+
   (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
      a property reading a plain length does not take them. Chrome 146 refuses
      each of these. *)
