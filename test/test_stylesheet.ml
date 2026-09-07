@@ -487,6 +487,63 @@ let test_property_missing_descriptors () =
   check_stylesheet ~expected:"@property --x{syntax:\"*\";inherits:false}"
     "@property --x { syntax: \"*\"; inherits: false }"
 
+(* An [initial-value] carrying var(), attr() or env() has nothing to substitute
+   from at registration time, so Chrome 153 drops the
+   whole rule at every syntax, the universal one included. The values below the
+   substitution cases are the other side of the same filter: they stay readable,
+   including the ones cascade knowingly keeps that Chrome drops for
+   computational independence ([3em] at a non-universal syntax). *)
+(* Not a roundtrip test *)
+let test_property_initial_value_substitution () =
+  let expect_error what syntax value =
+    expect_property_error what
+      (String.concat ""
+         [
+           "@property --x { syntax: \"";
+           syntax;
+           "\"; inherits: false; initial-value: ";
+           value;
+           " }";
+         ])
+  in
+  let substitutions =
+    [
+      "var(--y)";
+      "var(--y, 1px)";
+      "attr(data-x)";
+      "attr(data-x type(<length>))";
+      "env(safe-area-inset-top)";
+      "env(--x, 1px)";
+      "calc(var(--y) + 1px)";
+    ]
+  in
+  List.iter
+    (fun value ->
+      expect_error "substitution at <length>" "<length>" value;
+      expect_error "substitution at universal" "*" value)
+    substitutions;
+  (* A substitution function nested in the fallback of another one still counts,
+     and a [var(] written inside a string is data rather than a reference. *)
+  expect_error "nested substitution" "*" "var(--y, env(safe-area-inset-top))";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"*\";inherits:false;initial-value:\"var(--y)\"}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: \
+     \"var(--y)\" }";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"<length>\";inherits:false;initial-value:5px}"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 5px \
+     }";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"<length>\";inherits:false;initial-value:3em}"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 3em \
+     }";
+  check_stylesheet
+    ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:red}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: red }"
+
 (* Not a roundtrip test *)
 let test_property_invalid_inherits () =
   expect_property_error "invalid inherits value"
@@ -2468,6 +2525,9 @@ let stylesheet_tests =
     (* Additional property tests *)
     ("property permutations", `Quick, test_property_permutations);
     ("property missing descriptors", `Quick, test_property_missing_descriptors);
+    ( "property initial-value substitution",
+      `Quick,
+      test_property_initial_value_substitution );
     ("property invalid inherits", `Quick, test_property_invalid_inherits);
     ("property unknown descriptor", `Quick, test_property_unknown_descriptor);
     ( "property duplicate descriptors",
