@@ -576,6 +576,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `<length [0,inf]>{1,2} | auto | [ <page-size> || [ portrait | landscape ]]`
   (#1004)
 
+- `font-language-override` takes an OpenType language system tag and no other
+  string, so `font-language-override: "default"` and `"ENGLISH"` are dropped
+  with a warning. CSS Fonts 4 sec. 6.13 gives the property a four-character
+  tag, padded at the end when it is shorter, and cascade read any string
+  (#1077)
+
 - `line-height` takes a length unit and no other, so `line-height: 1s`,
   `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
   the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and

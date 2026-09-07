@@ -198,6 +198,24 @@ let rec pp_font_language_override : font_language_override Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_language_override ctx v
 
+(* An OpenType tag is four printable ASCII characters. CSS Fonts 4 sec. 6.13
+   pads a shorter font-language-override tag with spaces before matching it, so
+   there the tag may be one to four. *)
+let read_opentype_tag ?(padded = false) t =
+  let tag = Cursor.string t in
+  let printable_ascii c =
+    let code = Char.code c in
+    code >= 0x20 && code <= 0x7E
+  in
+  let length = String.length tag in
+  let fits = if padded then length >= 1 && length <= 4 else length = 4 in
+  if (not fits) || not (String.for_all printable_ascii tag) then
+    Cursor.err t
+      (if padded then
+         "OpenType tag must contain one to four printable ASCII characters"
+       else "OpenType tag must contain exactly four printable ASCII characters");
+  tag
+
 let rec read_font_language_override t : font_language_override =
   Cursor.enum_or_calls "font-language-override"
     [
@@ -209,7 +227,8 @@ let rec read_font_language_override t : font_language_override =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_font_language_override t)) ]
-    ~default:(fun t -> (String (Cursor.string t) : font_language_override))
+    ~default:(fun t ->
+      (String (read_opentype_tag ~padded:true t) : font_language_override))
     t
 
 let rec pp_font_synthesis_style : font_synthesis_style Pp.t =
@@ -2233,17 +2252,6 @@ let rec pp_font_variant : font_variant Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_variant ctx v
-
-let read_opentype_tag t =
-  let tag = Cursor.string t in
-  let printable_ascii c =
-    let code = Char.code c in
-    code >= 0x20 && code <= 0x7E
-  in
-  if String.length tag <> 4 || not (String.for_all printable_ascii tag) then
-    Cursor.err t
-      "OpenType tag must contain exactly four printable ASCII characters";
-  tag
 
 let read_font_feature_value t : font_feature_value =
   match Cursor.option Cursor.int t with
