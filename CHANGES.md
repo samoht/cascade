@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- A `var()` whose custom property resolves through another one keeps its
+  reference rather than taking its fallback, so `--n: 5px; --x: var(--n);
+  color: var(--x, lime)` computes the inherited colour as every browser does
+  instead of `lime`. CSS Variables 1 sec. 3 puts the fallback in only where the
+  custom property is the guaranteed-invalid value, and a binding the property's
+  grammar refuses is not that: sec. 2.2 makes the declaration `unset` (#1100)
+
 - A margin or inset property refuses a sizing function, so `margin-right:
   fit-content(20rem)`, `bottom: fit-content(20rem)` and `top: calc-size(auto,
   size)` are dropped with a warning where every browser drops the declaration.

@@ -863,8 +863,22 @@ module Var_residual = struct
       a =
     with_resolver ?layer_order ?layer cascade ~read_custom:ops.read_custom
     @@ fun ~resolve_var ~simplify_var_record ~unreadable ->
+    (* The reference resolved to a value that is itself a [var()]. Whether the
+       fallback answers for that depends on why: CSS Variables 1 sec. 3 puts the
+       fallback in only where the custom property IS the guaranteed-invalid
+       value, so a chain ending in an UNBOUND name takes it, and one ending in a
+       binding whose value this property's grammar refuses does not. The second
+       is invalid at computed-value time, which sec. 2.2 makes [unset], and the
+       fallback is no answer to it. *)
+    let residual_holds_a_value result =
+      match ops.as_var result with
+      | Some (inner : a Values.var) -> unreadable inner.name
+      | None -> false
+    in
     let rec on_var_residual ~visited (var : a Values.var) result =
       match var.fallback with
+      | Values.Fallback _ when residual_holds_a_value result ->
+          ops.of_var (simplify_var_record ~simplify ~visited var)
       | Values.Fallback fb -> simplify ~authored:false ~visited fb
       | Values.Syntax_fallback _ | Values.Var_fallback _ ->
           ops.of_var (simplify_var_record ~simplify ~visited var)
