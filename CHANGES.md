@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `gap: -10%` and `text-decoration: fit-content(20rem)` are dropped with a
+  warning where every browser drops the declaration. CSS Box Alignment 3 sec.
+  8.1 gives every gap a `[0,inf]` range, which the shorthand checked against a
+  list of unit constructors that omitted the percentage, and CSS Text
+  Decoration 4 sec. 2.3 spells the thickness slot `auto | from-font |
+  <length-percentage>`. Both longhands already refused these (#1101)
+
 - A `var()` whose custom property resolves through another one keeps its
   reference rather than taking its fallback, so `--n: 5px; --x: var(--n);
   color: var(--x, lime)` computes the inherited colour as every browser does

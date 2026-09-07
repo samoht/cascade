@@ -101,7 +101,16 @@ module Text_decoration = struct
         (fun t -> Line (read_text_decoration_line t));
         (fun t -> Style (read_text_decoration_style t));
         (fun t -> Color (read_color t));
-        (fun t -> Thickness (read_length t));
+        (* CSS Text Decoration 4 sec. 3 fills this slot with a
+           [<'text-decoration-thickness'>], which sec. 2.3 spells [auto |
+           from-font | <length-percentage>], so no sizing function belongs here.
+           The longhand already reads it that way. *)
+        (fun t ->
+          Thickness
+            (Cursor.enum "text-decoration-thickness"
+               [ ("auto", (Auto : length)); ("from-font", From_font) ]
+               ~default:(read_length ~with_keywords:false)
+               t));
       ]
       t
 
