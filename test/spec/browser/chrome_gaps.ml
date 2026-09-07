@@ -174,15 +174,6 @@ let spec_ahead : excuse list =
          zero is a <length>; Chrome takes only a dimension";
     };
     {
-      properties = [ "overflow-clip-margin" ];
-      key = Some "css.properties.overflow-clip-margin.border-box";
-      value = "calc(1rem + 2px)";
-      why =
-        "CSS Values 4 sec. 10.1 admits a math function wherever a <length> is \
-         accepted, which CSS Overflow 4 sec. 3.2 is; Chrome takes only a \
-         dimension";
-    };
-    {
       properties = [ "text-align" ];
       key = Some "css.properties.text-align.match-parent";
       value = "match-parent";
@@ -197,16 +188,6 @@ let spec_ahead : excuse list =
       why =
         "CSS Text 4 sec. 2.1: none | [ capitalize | uppercase | lowercase ] || \
          full-width || full-size-kana | math-auto";
-    };
-    {
-      properties = [ "animation"; "-webkit-animation" ];
-      key = Some "css.properties.animation.animation-timeline_included";
-      value = "--x x";
-      why =
-        "CSS Animations 2 sec. 4.12: <single-animation> ends in [ none | \
-         <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident \
-         timeline and a keyframes name fill two slots of one [||]. Chrome took \
-         the timeline back out of the shorthand";
     };
     {
       properties = [ "background-blend-mode" ];
@@ -644,8 +625,58 @@ let lenient_shapes =
     };
   ]
 
+let words s = String.split_on_char ' ' (String.trim s)
+
+(* CSS Animations 2 sec. 4.12 ends <single-animation> in [ none |
+   <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident timeline
+   and a keyframes name fill two slots of one [||]. Measured on Chrome 153: it
+   takes the timeline alone ([animation: --t], [animation: 1s --t]) and refuses
+   it beside a name ([spin --t], [flip-block --fallback]), so it took the
+   timeline back out of the shorthand rather than never having it. *)
+let animation_name_beside_timeline s =
+  let ws = List.filter (fun w -> w <> "") (words s) in
+  let dashed w = String.length w > 2 && String.sub w 0 2 = "--" in
+  let timing w =
+    (not (dashed w))
+    && (String.contains w 's' || String.contains w '%'
+       || String.exists (fun c -> c >= '0' && c <= '9') w)
+  in
+  List.exists dashed ws
+  && List.exists (fun w -> (not (dashed w)) && not (timing w)) ws
+
+(* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and CSS
+   Overflow 4 sec. 3.2 gives overflow-clip-margin a <length>. Measured on Chrome
+   153: it takes a literal length and refuses every math function there,
+   [calc(1px)] and [min(1px,2px)] included, so this is not about the negative
+   the value happens to carry. *)
+let math_function s =
+  List.exists
+    (fun fn ->
+      String.length s >= String.length fn
+      && String.sub s 0 (String.length fn) = fn)
+    [ "calc("; "min("; "max("; "clamp(" ]
+
 let spec_ahead_shapes =
   [
+    {
+      shape_properties = [ "animation"; "-webkit-animation" ];
+      shape_name = "a keyframes name beside a dashed-ident timeline";
+      matches = animation_name_beside_timeline;
+      shape_why =
+        "CSS Animations 2 sec. 4.12 ends <single-animation> in [ none | \
+         <keyframes-name> ] || <single-animation-timeline>, so the two fill \
+         two slots of one [||]. Chrome takes the timeline alone and refuses it \
+         beside a name";
+    };
+    {
+      shape_properties = [ "overflow-clip-margin" ];
+      shape_name = "a math function in an overflow clip margin";
+      matches = math_function;
+      shape_why =
+        "CSS Values 4 sec. 10.1 puts a math function wherever its type is, and \
+         CSS Overflow 4 sec. 3.2 gives the property a <length>. Chrome takes a \
+         literal length and refuses every math function there";
+    };
     {
       shape_properties = [ "text-overflow" ];
       shape_name = "a text-overflow Chrome does not implement";
