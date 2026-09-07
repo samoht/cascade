@@ -427,8 +427,6 @@ let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
   | Calc c -> pp_calc pp_opacity ctx c
-  | Abs v -> Pp.call "abs" pp_opacity ctx v
-  | Sign v -> Pp.call "sign" pp_opacity ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -465,7 +463,7 @@ let rec read_opacity_dim_only t : opacity =
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
   let read_numeric_math t : opacity =
-    Opacity_number (Values.read_numeric_expression t)
+    Opacity_number (Values.read_number_percentage_expression t)
   in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
@@ -486,25 +484,13 @@ let rec read_opacity t : opacity =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value
-                 read_opacity_dim_only t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-        ( "abs",
-          fun t ->
-            Cursor.call "abs" t (fun inner ->
-                (Abs (read_opacity inner) : opacity)) );
-        ( "sign",
-          fun t ->
-            Cursor.call "sign" t (fun inner ->
-                (Sign (read_opacity inner) : opacity)) );
-      ]
+      (("var", read_var)
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_opacity_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_number_or_percentage t
 
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
@@ -543,7 +529,7 @@ let rec read_shape_image_threshold t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
   in
   let read_numeric_math t : shape_image_threshold =
-    Number (Values.read_numeric_expression t)
+    Number (Values.read_number_percentage_expression t)
   in
   (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
      [<number> | <percentage>], and computes it "clamped to the range [0,1]":
@@ -564,17 +550,13 @@ let rec read_shape_image_threshold t : shape_image_threshold =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value
-                 read_threshold_dim_only t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-      ]
+      (("var", read_var)
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_threshold_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_number t
 
 let rec pp_overflow : overflow Pp.t =
@@ -922,7 +904,9 @@ let rec read_z_index t : z_index =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
+    ~calls:
+      (("calc", read_calc_z) :: ("var", read_var_z)
+      :: Values.math_function_calls read_calc_z)
     ~default:(fun t -> (Index (Cursor.int t) : z_index))
     t
 
@@ -1187,7 +1171,9 @@ let rec read_zoom (t : Cursor.t) : zoom =
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in
-  let read_numeric_math t : zoom = Num (Values.read_numeric_expression t) in
+  let read_numeric_math t : zoom =
+    Num (Values.read_number_percentage_expression t)
+  in
   Cursor.enum_or_calls "zoom"
     [
       ("normal", (Normal : zoom));
@@ -1199,17 +1185,13 @@ let rec read_zoom (t : Cursor.t) : zoom =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_zoom t));
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value read_zoom_dim_only
-                 t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-      ]
+      (("var", fun t -> Var (Values.read_var read_zoom t))
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_zoom_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_value t
 
 let read_object_view_box_inset t =

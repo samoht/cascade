@@ -209,7 +209,6 @@ type length =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
-  | Sign of length
   | Calc_size of length * length calc
   | Anchor_size of string
   | Anchor of string option * string * length option

@@ -328,8 +328,8 @@ let is_plain_length (l : length) =
      grammar holds. A math function reaches here only once [length_only] has had
      it, so its own type is settled. *)
   | Zero | Clamp _ | Min _ | Max _ | Minmax _ | Round _ | Mod _ | Rem_fn _
-  | Hypot _ | Abs _ | Sign _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _
-  | Env _ | Var _ | Calc _ ->
+  | Hypot _ | Abs _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _ | Env _
+  | Var _ | Calc _ ->
       true
   | Pct _ -> false
   (* The dimension table decides the rest, so a sizing keyword answers

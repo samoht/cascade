@@ -195,8 +195,6 @@ type z_index =
 type opacity =
   | Opacity_number of float
   | Calc of opacity calc
-  | Abs of opacity  (** [abs(<opacity>)] *)
-  | Sign of opacity  (** [sign(<opacity>)] *)
   | Inherit
   | Initial
   | Unset

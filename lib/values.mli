@@ -641,7 +641,7 @@ val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
 val read_calc :
-  ?result_type:[ `Number | `Number_or_value | `Value ] ->
+  ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
   (Cursor.t -> 'a) ->
   Cursor.t ->
   'a calc
@@ -649,7 +649,30 @@ val read_calc :
     promotable value and checks that its statically knowable result type matches
     the property's numeric grammar. Expressions containing [var()] remain
     deferred until substitution. Omitting [result_type] retains the generic AST
-    reader behaviour. *)
+    reader behaviour.
+
+    [`Number_or_percentage] is the [<number> | <percentage>] slot of an
+    [<opacity-value>]: it parts with [`Number_or_value] on a math function
+    answering its arguments' type, which stands there only as a percentage. *)
+
+val looking_at_math_function : Cursor.t -> bool
+(** [looking_at_math_function t] is [true] on a call to a math function other
+    than [calc()]. CSS Values 4 sec. 10.1 makes such a call usable "wherever a
+    [<number>], [<dimension>], or [<percentage>] is allowed", so a reader that
+    guards its math path on [Cursor.looking_at_calc] guards it on this too. *)
+
+val math_function_calls : (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [math_function_calls read] pairs every math-function name other than
+    [calc()] with [read], for the [~calls] of a {!Cursor.enum_or_calls} whose
+    [calc()] entry already reads one. For a [<number>] slot: it includes the
+    functions of CSS Values 4 sec. 10.4 to 10.6 that answer a [<number>]
+    whatever their arguments were. *)
+
+val typed_math_function_calls :
+  (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [typed_math_function_calls read] is {!math_function_calls} restricted to the
+    functions that answer the type of their arguments, for a slot that takes a
+    [<length>] or another dimension rather than a [<number>]. *)
 
 val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
 (** [read_integer_calc name t] parses the math function at an [<integer>]
@@ -667,7 +690,10 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
     [calc(...)] form without the surrounding [calc(] and [)]. *)
 
 val validate_calc_type :
-  Cursor.t -> [ `Number | `Number_or_value | `Value ] -> 'a calc -> unit
+  Cursor.t ->
+  [ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  'a calc ->
+  unit
 (** [validate_calc_type t result_type calc] raises unless [calc] infers to
     [result_type], the check CSS Values 4 sec. 10.9 makes on a calculation's
     type. {!val-read_calc} runs it for a whole [calc()]; a caller reading the
@@ -689,6 +715,13 @@ val read_numeric_expression : Cursor.t -> float
 (** [read_numeric_expression t] parses and evaluates a numeric math expression,
     including top-level math functions such as [min()], [max()], and [clamp()].
 *)
+
+val read_number_percentage_expression : Cursor.t -> float
+(** [read_number_percentage_expression t] is {!read_numeric_expression} at a
+    [<number> | <percentage>] slot, where a percentage resolves against the
+    number it denotes. CSS Values 4 sec. 10.5 [hypot()] and sec. 10.6 [abs()]
+    answer the type of their arguments, so a call carrying any other unit is
+    rejected here rather than shedding it. *)
 
 val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
 (** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc

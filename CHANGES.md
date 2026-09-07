@@ -24,13 +24,16 @@ entry points both moved.
 
 ### Breaking
 
-- A math function reads wherever the grammar names a number, an integer or a
-  percentage, so `font-weight: calc(400)`, `zoom: calc(.5)`,
-  `border-image-slice: calc(10%)` and `grid-row-start: calc(2) center` read
-  where they were dropped. `Cascade.Properties.font_weight`,
+- A math function reads wherever the grammar allows its type, with no `calc()`
+  wrapper needed, so `font-weight: calc(400)`, `zoom: calc(.5)`,
+  `grid-row-start: calc(2) center`, `width: abs(-1px)`, `opacity: pow(2, 3)`
+  and `border-top-width: hypot(3px, 4px)` read where they were dropped. CSS
+  Values 4 sec. 10.6 gives `abs()` the type of its input and `sign()` a
+  `<number>` whatever goes in, so `width: sign(-1px)` is dropped where
+  `opacity: sign(-1px)` reads. `Cascade.Properties.font_weight`,
   `webkit_line_clamp`, `zoom`, `border_image_slice_item` and
   `shape_image_threshold` gain `Calc`, and `grid_line` gains `Calc_name`
-  (#1072, #1086, #1124, #1125, #1126)
+  (#1072, #1086, #1124, #1125, #1126, #1145)
 - A math function takes only the operands CSS Values 4 sec. 10.8 grants, so
   `width: calc(inherit)`, `height: calc(auto)`, `border-width: calc(medium)`,
   `width: calc(fit-content(20rem))` and `width: min(unset, 1px)` are dropped

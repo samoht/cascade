@@ -907,7 +907,6 @@ type length = Values.length =
   | Rem_fn of length * length  (** CSS [rem()] math function *)
   | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
-  | Sign of length  (** CSS [sign()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
   | Anchor_size of string
       (** CSS [anchor-size()] function, from
@@ -2005,8 +2004,6 @@ type z_index = Properties.z_index =
 type opacity = Properties.opacity =
   | Opacity_number of float
   | Calc of opacity calc
-  | Abs of opacity  (** [abs(<opacity>)] *)
-  | Sign of opacity  (** [sign(<opacity>)] *)
   | Inherit
   | Initial
   | Unset

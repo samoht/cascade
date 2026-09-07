@@ -1511,13 +1511,9 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
        ]
      else [])
     ~calls:
-      [
-        ("var", read_var);
-        ("calc", read_calc);
-        ("min", read_min);
-        ("max", read_max);
-        ("clamp", read_clamp);
-      ]
+      (("var", read_var) :: ("calc", read_calc) :: ("min", read_min)
+     :: ("max", read_max) :: ("clamp", read_clamp)
+      :: Values.typed_math_function_calls read_calc)
     ~default:(read_length_as_border_width ~allow_negative)
     t
 
@@ -2373,14 +2369,16 @@ let read_border_image_slice_item t : border_image_slice_item =
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
   | None ->
       (* The number side reads its own math; a percentage one reaches the second
-         arm only because [read_border_image_number] refuses it. *)
+         arm only because [read_border_image_number] refuses it. Sec. 6.2 spells
+         the slot [<number> | <percentage>] with no length in it, so a call
+         answering its arguments' type stands here only as a percentage. *)
       Cursor.one_of
         [
           (fun t ->
             (Number (read_border_image_number t) : border_image_slice_item));
           (fun t ->
             Calc
-              (Values.read_calc ~result_type:`Number_or_value
+              (Values.read_calc ~result_type:`Number_or_percentage
                  read_slice_percentage_leaf t));
         ]
         t

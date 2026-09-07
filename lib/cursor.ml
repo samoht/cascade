@@ -763,6 +763,13 @@ let looking_at_func name t =
       String.lowercase_ascii_preserve n = name
   | _ -> false
 
+let peek_function_name t =
+  drop_ws t;
+  match t.cvs with
+  | Component.Func { node = { name; _ }; _ } :: _ ->
+      Some (String.lowercase_ascii_preserve name)
+  | _ -> None
+
 let looking_at_calc t =
   looking_at_func "calc" t || looking_at_func "-webkit-calc" t
 

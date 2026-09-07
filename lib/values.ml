@@ -1393,28 +1393,34 @@ let pp_unit ?always:_ ctx f suffix =
     Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
     Pp.string ctx suffix)
 
-(** Try to evaluate a calc expression containing only numbers to a float.
-    Returns None if the expression contains variables or non-numeric values. *)
-let rec eval_numeric_calc : type a. a calc -> float option = function
-  | Num f -> Some f
-  | Math_const c -> Some (math_const_value c)
-  | Math_fn fn -> eval_math_fn fn
+(** What a calc expression over static operands reduces to, keeping the unit CSS
+    Values 4 sec. 10.5 [hypot()] and sec. 10.6 [abs()] carry over from their
+    arguments. Returns [None] on a variable or a typed leaf. *)
+let rec numeric_calc_result : type a. a calc -> math_result option = function
+  | Num f -> Some (Scalar f)
+  | Math_const c -> Some (Scalar (math_const_value c))
+  | Math_fn fn -> math_fn_result fn
   | Sibling_index -> None
   | Sibling_count -> None
   | Val _ -> None (* Can't evaluate typed values *)
   | Var _ -> None (* Can't evaluate variables *)
-  | Nested inner -> eval_numeric_calc inner
-  | Parens inner -> eval_numeric_calc inner
+  | Nested inner -> numeric_calc_result inner
+  | Parens inner -> numeric_calc_result inner
   | Expr (left, op, right) -> (
-      match (eval_numeric_calc left, eval_numeric_calc right) with
-      | Some l, Some r -> (
-          match op with
-          | Add -> Some (l +. r)
-          | Sub -> Some (l -. r)
-          | Mul -> Some (l *. r)
-          | Div when r <> 0.0 -> Some (l /. r)
-          | Div -> None)
+      match (numeric_calc_result left, numeric_calc_result right) with
+      | Some l, Some r -> combine_math_result op l r
       | _ -> None)
+
+(** Try to evaluate a calc expression containing only numbers to a float.
+    Returns None if the expression contains variables or non-numeric values. *)
+let eval_numeric_calc : type a. a calc -> float option =
+ fun calc ->
+  (* A result carrying a unit is not a [<number>]: sec. 10.6 gives [abs(-1px)]
+     the type of its argument, so folding it to a bare coefficient here would
+     hand a length to a slot that asked for a number. *)
+  match numeric_calc_result calc with
+  | Some (Scalar v) -> Some v
+  | Some (United _) | None -> None
 
 (** Map [f] over every [Val] leaf, preserving the calc structure. Useful when
     the caller wants to simplify a typed calc by applying a per-type rewrite
@@ -2326,11 +2332,6 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Rem_fn (a, b) -> pp_rem_length ~always ctx a b
   | Hypot values -> pp_hypot_length ~always ctx values
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
-  | Sign v ->
-      (* CSS Values 4 10.7: [sign(<length>)] returns a [<number>], not a
-         [<length>], so we cannot reduce to a single dimension without breaking
-         the length round-trip. Keep [sign()] verbatim. *)
-      Pp.call "sign" (pp_length ~always) ctx v
   | Calc_size (basis, calc) ->
       Pp.call "calc-size"
         (fun ctx (basis, calc) ->
@@ -3788,7 +3789,6 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
           cv |> eval_length_calc ~ctx |> linear_length_calc
           |> eval_length_calc ~ctx
         with
-        | Val v when non_negative && negative_length v -> l
         | Val v -> v
         | folded -> Calc folded)
     | Clamp (mn, v, mx) -> (
@@ -3839,7 +3839,6 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
                         (List.fold_left (fun acc f -> acc +. (f *. f)) 0. vs)))
             | _ -> Hypot xs))
     | Abs v -> ( match nf v with Px x -> Px (Float.abs x) | v -> Abs v)
-    | Sign v -> Sign (nf v)
     | Fit_content_arg arg -> Fit_content_arg (nf arg)
     | Calc_size (basis, calc) -> (
         let basis = nf basis in
@@ -3849,6 +3848,15 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
         with
         | folded -> Calc_size (basis, folded))
     | _ -> l
+  in
+  (* CSS Values 4 sec. 10.12 clamps a math function whose value falls outside
+     the property's range at computed-value time and keeps the declaration, so
+     folding one to a literal the reader then refuses would drop it: keep the
+     call. A literal that was already negative is the reader's business, not
+     this fold's. *)
+  let result =
+    if non_negative && negative_length result && not (negative_length l) then l
+    else result
   in
   if strip then strip_zero_length result else result
 
@@ -5680,30 +5688,49 @@ type inferred_calc_type =
     (* Exponent 0 is a number, 1 is the contextual numeric value, and
        multiplication/division add/subtract exponents. This retains valid
        cancellation such as [1 / (1 / 50px)]. *)
+  | Result_unit of string
+    (* A math function answering the type of its arguments (CSS Values 4 sec.
+       10.5 [hypot()], sec. 10.6 [abs()]). Which slots take it turns on the
+       unit, so it is not the contextual [Dimension 1]. *)
   | Deferred
   | Invalid
 
-let rec infer_calc_type : type a. a calc -> inferred_calc_type = function
+(* Inside an operand tree a call that answers its arguments' type is the
+   contextual dimension: the leaf reader beside it has already vouched for the
+   unit. Only a whole calculation keeps the unit for the slot to judge. *)
+let rec infer_calc_operand : type a. a calc -> inferred_calc_type =
+ fun calc ->
+  match infer_calc_type calc with
+  | Result_unit _ -> Dimension 1
+  | inferred -> inferred
+
+and infer_calc_type : type a. a calc -> inferred_calc_type = function
   | Num _ | Math_const _ | Sibling_index | Sibling_count -> Dimension 0
   | Val _ -> Dimension 1
-  (* A var() is substituted before a math function is type-checked. The generic
-     math-function AST does not retain enough result-type information to prove
-     its type here either, so both stay deferred rather than being guessed. *)
-  | Var _ | Math_fn _ -> Deferred
+  (* A var() is substituted before a math function is type-checked, so it stays
+     deferred rather than being guessed. *)
+  | Var _ -> Deferred
+  | Math_fn fn -> (
+      match math_fn_result fn with
+      | Some (United (_, unit)) -> Result_unit unit
+      | Some (Scalar _) | None -> Deferred)
   | Nested inner | Parens inner -> infer_calc_type inner
   | Expr (left, (Add | Sub), right) -> (
-      match (infer_calc_type left, infer_calc_type right) with
+      match (infer_calc_operand left, infer_calc_operand right) with
       | Invalid, _ | _, Invalid -> Invalid
+      | Result_unit _, _ | _, Result_unit _ -> Invalid
       | Deferred, _ | _, Deferred -> Deferred
       | Dimension l, Dimension r -> if l = r then Dimension l else Invalid)
   | Expr (left, Mul, right) -> (
-      match (infer_calc_type left, infer_calc_type right) with
+      match (infer_calc_operand left, infer_calc_operand right) with
       | Invalid, _ | _, Invalid -> Invalid
+      | Result_unit _, _ | _, Result_unit _ -> Invalid
       | Deferred, _ | _, Deferred -> Deferred
       | Dimension l, Dimension r -> Dimension (l + r))
   | Expr (left, Div, right) -> (
-      match (infer_calc_type left, infer_calc_type right) with
+      match (infer_calc_operand left, infer_calc_operand right) with
       | Invalid, _ | _, Invalid -> Invalid
+      | Result_unit _, _ | _, Result_unit _ -> Invalid
       | Deferred, _ | _, Deferred -> Deferred
       | Dimension l, Dimension r -> Dimension (l - r))
 
@@ -5712,14 +5739,65 @@ let validate_calc_type t result_type calc =
   let accepted =
     match (result_type, inferred) with
     | _, Deferred -> true
+    (* A call answering its arguments' type stands where that type stands: at a
+       [<number>] slot it does not, and at an [<opacity-value>] only the
+       [<percentage>] the slot resolves against its number does. *)
+    | `Number, Result_unit _ -> false
+    | `Number_or_percentage, Result_unit unit -> String.equal unit "%"
+    | (`Value | `Number_or_value), Result_unit _ -> true
     | `Number, Dimension 0 | `Value, Dimension 1 -> true
-    | `Number_or_value, (Dimension 0 | Dimension 1) -> true
-    | (`Number | `Value | `Number_or_value), (Invalid | Dimension _) -> false
+    | (`Number_or_value | `Number_or_percentage), (Dimension 0 | Dimension 1) ->
+        true
+    | ( (`Number | `Value | `Number_or_value | `Number_or_percentage),
+        (Invalid | Dimension _) ) ->
+        false
   in
   if not accepted then Cursor.err_invalid t "incompatible calc types"
 
+(* CSS Values 4 sec. 10.2 comparison and stepped-value functions, sec. 10.5
+   [hypot()] and sec. 10.6 [abs()]: each answers the type of its arguments, so a
+   [<length>] slot takes them as readily as a [<number>] one. *)
+let typed_math_function_names =
+  [ "min"; "max"; "clamp"; "round"; "mod"; "rem"; "hypot"; "abs" ]
+
+(* Sec. 10.5 exponential functions, sec. 10.4 trigonometric ones and sec. 10.6
+   [sign()]: all answer a [<number>] whatever went in, so only a [<number>] slot
+   takes them. Together with the list above these are the names
+   [read_calc_numeric_function] dispatches; [calc()] is not among them, having
+   its own entry. *)
+let number_math_function_names =
+  [
+    "sign";
+    "sqrt";
+    "exp";
+    "log";
+    "pow";
+    "sin";
+    "cos";
+    "tan";
+    "asin";
+    "acos";
+    "atan";
+    "atan2";
+  ]
+
+let looking_at_math_function t =
+  match Cursor.peek_function_name t with
+  | Some name ->
+      List.mem name typed_math_function_names
+      || List.mem name number_math_function_names
+  | None -> false
+
+let math_function_calls read =
+  List.map
+    (fun n -> (n, read))
+    (typed_math_function_names @ number_math_function_names)
+
+let typed_math_function_calls read =
+  List.map (fun n -> (n, read)) typed_math_function_names
+
 let read_calc : type a.
-    ?result_type:[ `Number | `Number_or_value | `Value ] ->
+    ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
     (Cursor.t -> a) ->
     Cursor.t ->
     a calc =
@@ -5741,6 +5819,18 @@ let read_calc : type a.
   if Cursor.looking_at_func "calc" t then read "calc"
   else if Cursor.looking_at_func "-webkit-calc" t then read "-webkit-calc"
   else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+  else if looking_at_math_function t then (
+    (* CSS Values 4 sec. 10.1: a math function is usable "wherever a <number>,
+       <dimension>, or <percentage> is allowed", so [calc()] is one of them
+       rather than the gate to the rest. A bare call is already a whole
+       calculation and stands as the expression itself, with no wrapper node for
+       a printer to put back, and takes the slot's type check the way the
+       wrapped spelling does. *)
+    let result = read_calc_numeric_function t in
+    Option.iter
+      (fun result_type -> validate_calc_type t result_type result)
+      result_type;
+    result)
   else Cursor.err t "calc() or var()"
 
 (* CSS Values 4 (ED) sec. 10.9: a math function resolving to [<number>] stands
@@ -5765,7 +5855,7 @@ let read_integer_calc : type a.
   | Some _ | None -> `Calc expr
 
 let read_integer name t =
-  if Cursor.looking_at_calc t then
+  if Cursor.looking_at_calc t || looking_at_math_function t then
     match
       (read_integer_calc name t : [ `Int of int | `Calc of number calc ])
     with
@@ -5776,6 +5866,17 @@ let read_integer name t =
   else Cursor.int t
 
 let read_numeric_expression t = read_num_expr t
+
+(* An [<opacity-value>] slot takes [<number> | <percentage>], and CSS Values 4
+   sec. 10.5 and 10.6 give [hypot()] and [abs()] the type of their arguments:
+   the call stands here on the two types the slot takes from a literal, and the
+   percentage resolves against the number the way [50%] does. *)
+let read_number_percentage_expression t =
+  let calc = read_calc_expr (fun t -> Cursor.err t "expected number") t in
+  match numeric_calc_result calc with
+  | Some (Scalar v) -> v
+  | Some (United (v, unit)) when String.equal unit "%" -> v /. 100.
+  | Some (United _) | None -> Cursor.err_invalid t "non-numeric math function"
 
 (* The typed [clamp / minmax / min / max] length readers are part of the
    [read_length] mutual-recursion group (see below); the function-call
@@ -5878,11 +5979,18 @@ and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
   if
     length_only
     && List.mem name
-         [
-           "minmax"; "fit-content"; "calc-size"; "anchor"; "anchor-size"; "sign";
-         ]
+         [ "minmax"; "fit-content"; "calc-size"; "anchor"; "anchor-size" ]
   then Cursor.err_invalid t "expected a length-valued math function";
-  let allow_negative = allow_negative || (length_only && name <> "attr") in
+  (* CSS Values 4 sec. 10.12 checks a property's range on the value a math
+     function resolves to, not on each operand, the same exception
+     [read_calc_length] makes for [calc()]: [width: abs(-1px)] reads where a
+     literal [-1px] does not. The substitutions and the sizing functions are not
+     math functions and keep the property's range. *)
+  let allow_negative =
+    allow_negative
+    || List.mem name typed_math_function_names
+    || (length_only && name <> "attr")
+  in
   match
     List.assoc_opt name
       (length_function_readers ~allow_negative ~length_only ~with_keywords)
@@ -5915,7 +6023,6 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
       ("rem", read_rem_length ~allow_negative ~length_only);
       ("hypot", read_hypot_length ~allow_negative ~length_only);
       ("abs", read_abs_length ~allow_negative ~length_only);
-      ("sign", read_sign_length ~allow_negative ~length_only);
       ("anchor-size", read_anchor_size_length);
       ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
       ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
@@ -6044,11 +6151,6 @@ and read_unary_length ~allow_negative ~length_only make inner =
 and read_abs_length ~allow_negative ~length_only inner =
   read_unary_length ~allow_negative ~length_only
     (fun (value : length) -> (Abs value : length))
-    inner
-
-and read_sign_length ~allow_negative ~length_only inner =
-  read_unary_length ~allow_negative ~length_only
-    (fun (value : length) -> (Sign value : length))
     inner
 
 (* CSS Values 5 (ED) sec. 12: [calc-size()] takes a sizing basis and then a
@@ -7435,6 +7537,21 @@ and read_number_function t =
                     Cursor.expect_eof inner;
                     Float.max min_value (Float.min value max_value))))
       | "round" -> Some (read_round_number t)
+      (* CSS Values 4 sec. 10.6: [sign(A)] answers a [<number>] whatever A's own
+         type was, so [Sign] holds only the [<number>] case and an argument of
+         another type reads as the untyped math node the calc grammar carries.
+         [sign(-1px)] is a number the way [calc(sign(-1px))] is. *)
+      | "sign" ->
+          Some
+            (Cursor.one_of
+               [
+                 (fun t ->
+                   read_unary_number_function "sign"
+                     (fun value -> (Sign value : number))
+                     t);
+                 (fun t -> (Calc (read_calc_numeric_function t) : number));
+               ]
+               t)
       | _ -> read_math_number_function t name)
   | _ -> None
 

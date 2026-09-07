@@ -46,6 +46,15 @@ let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
 
 let rec read_font_weight t : font_weight =
   let read_var t : font_weight = Var (read_var read_font_weight t) in
+  (* A bare call carries no [calc()] wrapper for a printer to put back, so one
+     that folds to a weight the literal grammar takes is that weight. CSS Values
+     4 sec. 10.12 keeps a call whose value leaves [1,1000] instead of
+     invalidating it, and only the call round-trips. *)
+  let read_math t : font_weight =
+    match read_calc ~result_type:`Number read_font_weight t with
+    | Num n when n >= 1. && n <= 1000. -> Weight n
+    | expr -> Calc expr
+  in
   Cursor.ws t;
   Cursor.enum_or_calls "font-weight"
     [
@@ -59,15 +68,13 @@ let rec read_font_weight t : font_weight =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
+    (* CSS Values 4 sec. 10.1 allows a math function wherever a [<number>] is
+       allowed, [calc()] being one of them rather than the gate to the rest. One
+       that folds to a constant becomes that weight and is range-checked with
+       it; one that does not stays a calc. *)
     ~calls:
-      [
-        ("var", read_var);
-        (* CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
-           allowed. One that folds to a constant becomes that weight and is
-           range-checked with it; one that does not stays a calc. *)
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Number read_font_weight t) );
-      ]
+      (("var", read_var) :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       let weight = Cursor.number t in
       if weight >= 1. && weight <= 1000. then (Weight weight : font_weight)
@@ -1476,6 +1483,15 @@ let rec pp_font : font Pp.t =
    10.8 gives an operand no keyword, so [normal] and the CSS-wide keywords are
    left out and [calc(normal)] fails the way the browser drops it; the unitless
    [<number>] of sec. 5.1 is a [<calc-value>] and [calc(1.5)] still reads. *)
+(* A bare call carries no [calc()] wrapper for a printer to put back, so one
+   that folds to a factor the literal grammar takes is that factor. CSS Values 4
+   sec. 10.12 keeps a call whose value leaves the [0,inf] range of sec. 5.1
+   instead of invalidating it, and only the call round-trips. *)
+let read_bare_math read t : line_height =
+  match (read t : line_height) with
+  | Calc (Num n) when n >= 0. -> Num n
+  | value -> value
+
 let rec read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
@@ -1484,7 +1500,9 @@ let rec read_line_height_in_math t : line_height =
       |> numeric_line_height_calc_leaves)
   in
   Cursor.enum_or_calls "line-height" []
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:
+      (("var", read_var) :: ("calc", read_calc)
+      :: Values.math_function_calls (read_bare_math read_calc))
     ~default:(read_line_height_length ~allow_negative:true)
     t
 
@@ -1504,7 +1522,9 @@ let rec read_line_height t : line_height =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:
+      (("var", read_var) :: ("calc", read_calc)
+      :: Values.math_function_calls (read_bare_math read_calc))
     ~default:read_line_height_length t
 
 let rec read_font_palette (t : Cursor.t) : font_palette =

@@ -784,10 +784,11 @@ let read_grid_line_name_value t : grid_line =
       Cursor.ws t;
       if grid_line_at_end t then Name name
       else
-        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
-           is allowed, so the index of a named line may be one. *)
+        (* CSS Values 4 sec. 10.1 allows a math function wherever an [<integer>]
+           is allowed, so the index of a named line may be one, and [calc()] is
+           one such function rather than the gate to the rest. *)
         let index t =
-          if Cursor.looking_at_calc t then
+          if Cursor.looking_at_calc t || Values.looking_at_math_function t then
             match read_integer_calc "grid-line" t with
             | `Int n -> Num_name (check_grid_line_index t n, name)
             | `Calc expr -> Calc_name (expr, name)
@@ -817,10 +818,9 @@ let rec read_grid_line t : grid_line =
   Cursor.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
     ~calls:
-      [
-        ("calc", read_grid_line_calc);
-        ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line));
-      ]
+      (("calc", read_grid_line_calc)
+      :: ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line))
+      :: Values.math_function_calls read_grid_line_calc)
     ~default:(fun t ->
       (* The span form is tried first: it is the only alternative that reads a
          trailing [span], and the other two match its group on their own and

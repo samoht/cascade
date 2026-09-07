@@ -476,6 +476,11 @@ val looking_at_calc : t -> bool
 (** [looking_at_calc t] is [true] if the next component is [calc()] or the
     legacy [-webkit-calc()] spelling. *)
 
+val peek_function_name : t -> string option
+(** [peek_function_name t] is the name of the function call the cursor is on,
+    lowercased (CSS Values 4 sec. 4.1), without consuming it. Use it where the
+    caller decides on a set of names rather than on one. *)
+
 (** {1 Expectations} *)
 
 val expect : char -> t -> unit

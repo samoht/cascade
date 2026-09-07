@@ -330,7 +330,9 @@ let rec read_order t : order =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
+    ~calls:
+      (("calc", read_calc_order) :: ("var", read_var)
+      :: Values.math_function_calls read_calc_order)
     ~default:(fun t -> (Int (Cursor.int t) : order))
     t
 
@@ -479,6 +481,15 @@ let rec read_flex_factor t : flex_factor =
   let read_number t =
     (Number (read_non_negative_flex_number t) : flex_factor)
   in
+  (* A bare call carries no [calc()] wrapper for a printer to put back, so one
+     that folds to a factor the literal grammar takes is that factor. CSS Values
+     4 sec. 10.12 keeps a call whose value leaves the [0,inf] range instead of
+     invalidating it, and only the call round-trips. *)
+  let read_math t : flex_factor =
+    match read_calc ~result_type:`Number read_flex_factor t with
+    | Num n when n >= 0. -> Number n
+    | expr -> Calc expr
+  in
   Cursor.enum_or_calls "flex factor"
     [
       ("inherit", (Inherit : flex_factor));
@@ -488,11 +499,9 @@ let rec read_flex_factor t : flex_factor =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_flex_factor t));
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Number read_flex_factor t) );
-      ]
+      (("var", fun t -> Var (Values.read_var read_flex_factor t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_number t
 
 let flex_basis_of_length t (length : length) : flex_basis =
@@ -653,12 +662,12 @@ module Flex = struct
     | basis -> Basis basis
 
   let read_factor t : flex_factor =
-    (* A flex factor is a [<number>]: a [var()], a [calc()] (held unfolded; the
-       optimize+minify pass folds a constant calc to a literal), or a literal
+    (* A flex factor is a [<number>]: a [var()], a math function (held unfolded;
+       the optimize+minify pass folds a constant one to a literal), or a literal
        number. *)
     if Cursor.looking_at_func "var" t then Var (read_var read_flex_factor t)
-    else if Cursor.looking_at_func "calc" t then
-      Calc (read_calc ~result_type:`Number read_flex_factor t)
+    else if Cursor.looking_at_func "calc" t || Values.looking_at_math_function t
+    then Calc (read_calc ~result_type:`Number read_flex_factor t)
     else Number (read_non_negative_flex_number t)
 
   let read_grow_shrink_basis t =

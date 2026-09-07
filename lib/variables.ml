@@ -423,7 +423,7 @@ let rec vars_of_length (value : Values.length) : any_var list =
   | Round (_, value, step) -> vars_of_length value @ vars_of_length step
   | Mod (a, b) | Rem_fn (a, b) -> vars_of_length a @ vars_of_length b
   | Hypot values -> List.concat_map vars_of_length values
-  | Abs value | Sign value -> vars_of_length value
+  | Abs value -> vars_of_length value
   | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
   | Anchor (_, _, Some fallback) -> vars_of_length fallback
   | _ -> []
@@ -1023,11 +1023,10 @@ let vars_of_vertical_align (value : Properties.vertical_align) : any_var list =
 let vars_of_will_change (value : Properties.will_change) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
-let rec vars_of_opacity (value : Properties.opacity) : any_var list =
+let vars_of_opacity (value : Properties.opacity) : any_var list =
   match value with
   | Opacity_number _ -> []
   | Calc calc -> vars_of_calc calc
-  | Abs v | Sign v -> vars_of_opacity v
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
