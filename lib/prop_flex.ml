@@ -598,27 +598,38 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
-let rec read_flex_basis t : flex_basis =
+(* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
+   intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so
+   [keywords] is off here and [calc(auto)] fails the way the browser drops
+   it. *)
+let rec read_flex_basis_in_math t : flex_basis =
+  read_flex_basis_with ~keywords:false t
+
+and read_flex_basis_with ?(keywords = true) t : flex_basis =
   Cursor.enum_or_calls "flex-basis"
-    [
-      ("auto", (Auto : flex_basis));
-      ("content", Content);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("auto", (Auto : flex_basis));
+         ("content", Content);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
       [
-        ("var", fun t -> Var (read_var read_flex_basis t));
-        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_flex_basis t));
+        ("var", fun t -> Var (read_var (read_flex_basis_with ~keywords) t));
+        ( "calc",
+          fun t ->
+            Calc (read_calc ~result_type:`Value read_flex_basis_in_math t) );
       ]
       (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
          the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
       let size t =
-        read_length ~allow_negative:false ~sizing:true t
+        read_length ~allow_negative:false ~sizing:true ~with_keywords:keywords t
         |> flex_basis_of_length t
       in
       let pos = Cursor.save t in
@@ -629,6 +640,8 @@ let rec read_flex_basis t : flex_basis =
           size t
       | None -> size t)
     t
+
+let read_flex_basis t : flex_basis = read_flex_basis_with t
 
 module Flex = struct
   (* Helper functions for flex parsing *)

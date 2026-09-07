@@ -104,10 +104,18 @@ let rec read_font_style t : font_style =
           Oblique_range (first, second))
     t
 
-let rec read_font_size t : font_size =
-  let read_var t : font_size = Var (read_var read_font_size t) in
+(* CSS Values 4 sec. 10.8 gives an operand no keyword: the absolute and relative
+   sizes and the CSS-wide keywords are not [<calc-value>]s, so [keywords] is off
+   here and [calc(medium)] fails the way the browser drops it. *)
+let rec read_font_size_in_math t : font_size =
+  read_font_size_with ~keywords:false t
+
+and read_font_size_with ?(keywords = true) t : font_size =
+  let read_var t : font_size =
+    Var (read_var (read_font_size_with ~keywords) t)
+  in
   let read_calc t : font_size =
-    Calc (read_calc ~result_type:`Value read_font_size t)
+    Calc (read_calc ~result_type:`Value read_font_size_in_math t)
   in
   let read_length t : font_size =
     let len = read_non_negative_length ~with_keywords:false t in
@@ -119,29 +127,33 @@ let rec read_font_size t : font_size =
     Pct n
   in
   Cursor.enum_or_calls "font-size"
-    [
-      ("xx-small", (Xx_small : font_size));
-      ("x-small", X_small);
-      ("small", Small);
-      ("medium", Medium);
-      ("large", Large);
-      ("x-large", X_large);
-      ("xx-large", Xx_large);
-      ("xxx-large", Xxx_large);
-      ("larger", Larger);
-      ("smaller", Smaller);
-      ("math", Math);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("xx-small", (Xx_small : font_size));
+         ("x-small", X_small);
+         ("small", Small);
+         ("medium", Medium);
+         ("large", Large);
+         ("x-large", X_large);
+         ("xx-large", Xx_large);
+         ("xxx-large", Xxx_large);
+         ("larger", Larger);
+         ("smaller", Smaller);
+         ("math", Math);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:(fun t ->
       (* Try percentage first, then length *)
       Cursor.one_of [ read_pct; read_length ] t)
     t
+
+let read_font_size t : font_size = read_font_size_with t
 
 let rec pp_font_optical_sizing : font_optical_sizing Pp.t =
  fun ctx -> function
@@ -1460,7 +1472,10 @@ let rec pp_font : font Pp.t =
 
 (* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
    the [0,inf] range of sec. 5.1 is checked on the value it resolves to, not on
-   each operand, so [calc(-10%)] reads where a literal [-10%] does not. *)
+   each operand, so [calc(-10%)] reads where a literal [-10%] does not. Sec.
+   10.8 gives an operand no keyword, so [normal] and the CSS-wide keywords are
+   left out and [calc(normal)] fails the way the browser drops it; the unitless
+   [<number>] of sec. 5.1 is a [<calc-value>] and [calc(1.5)] still reads. *)
 let rec read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
@@ -1468,15 +1483,7 @@ let rec read_line_height_in_math t : line_height =
       (read_calc ~result_type:`Number_or_value read_line_height_in_math t
       |> numeric_line_height_calc_leaves)
   in
-  Cursor.enum_or_calls "line-height"
-    [
-      ("normal", Normal);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+  Cursor.enum_or_calls "line-height" []
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:(read_line_height_length ~allow_negative:true)
     t

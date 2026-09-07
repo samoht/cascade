@@ -450,14 +450,11 @@ let rec read_opacity_dim_only t : opacity =
          [read_calc] falls through to its own [Num] path. *)
       (fun t -> (Opacity_number (Cursor.pct t /. 100.) : opacity));
       (fun t ->
+        (* CSS Values 4 sec. 10.8 gives an operand no keyword, so the CSS-wide
+           keywords are left out and [calc(inherit)] fails the way the browser
+           drops it rather than unwrapping to a live [inherit]. *)
         Cursor.enum_or_calls "opacity"
-          [
-            ("inherit", (Inherit : opacity));
-            ("initial", Initial);
-            ("unset", Unset);
-            ("revert", Revert);
-            ("revert-layer", Revert_layer);
-          ]
+          ([] : (string * opacity) list)
           ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
           ~default:(fun t ->
             Cursor.err_expected t "opacity (var/calc inside calc)")
@@ -530,14 +527,9 @@ let rec read_threshold_dim_only t : shape_image_threshold =
     [
       (fun t -> (Number (Cursor.pct t /. 100.) : shape_image_threshold));
       (fun t ->
+        (* Sec. 10.8 again: no keyword is a [<calc-value>]. *)
         Cursor.enum_or_calls "shape-image-threshold"
-          [
-            ("inherit", (Inherit : shape_image_threshold));
-            ("initial", Initial);
-            ("unset", Unset);
-            ("revert", Revert);
-            ("revert-layer", Revert_layer);
-          ]
+          ([] : (string * shape_image_threshold) list)
           ~calls:
             [
               ("var", fun t -> Var (Values.read_var read_threshold_dim_only t));
