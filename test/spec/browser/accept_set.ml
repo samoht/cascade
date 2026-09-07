@@ -450,19 +450,13 @@ let lenient_here : Chrome_gaps.excuse list =
     (fun (properties, values, why) ->
       List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
     [
-      ( [
-          "border";
-          "border-block";
-          "border-inline";
-          "column-rule";
-          "column-rule-width";
-        ],
-        [ "10px,"; "red, none" ],
-        "CSS Backgrounds 3 sec. 4.5 and CSS Multicol 2 sec. 4.3 build these \
-         from [||] of a width, a style and a colour, and no arm of either is a \
-         comma. Chrome stops at the comma and drops the rest on serialising: \
-         [border: red, none] computes a red border-color and serialises back \
-         as [border: red]" );
+      ( [ "column-rule"; "column-rule-width" ],
+        [ "10px," ],
+        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
+         rule line, so a comma between two entries is theirs to read. The list \
+         has no empty entry, and Chrome reads a trailing comma and drops it on \
+         serialising. The border shorthands, which have no list at all, answer \
+         for a comma through a shape entry" );
     ]
 
 let hits = Hashtbl.create 64

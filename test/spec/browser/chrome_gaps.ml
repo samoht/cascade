@@ -408,8 +408,40 @@ let is_bare_number s =
     s;
   !ok && !digits
 
+let has_comma s = String.contains s ','
+
 let lenient_shapes =
   [
+    {
+      (* Measured on Chrome 153: [border: 1px, dashed, red] sets the same twelve
+         longhands [border: 1px dashed red] does, so both sides of each comma
+         are read and the comma is the separator between them. It is not a list:
+         [border: red, red] and [border: dashed, solid] fill one slot twice and
+         are refused, as they are without the comma. A leading comma ([border: ,
+         red]) and a doubled one ([border: red,,dashed]) are refused. *)
+      shape_properties =
+        [
+          "border";
+          "border-block";
+          "border-inline";
+          "border-block-start";
+          "border-block-end";
+          "border-inline-start";
+          "border-inline-end";
+          "border-top";
+          "border-right";
+          "border-bottom";
+          "border-left";
+        ];
+      shape_name = "a comma in a border shorthand";
+      matches = has_comma;
+      shape_why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+    };
     {
       shape_properties = [ "baseline-shift" ];
       shape_name = "a bare <number>";
