@@ -206,6 +206,13 @@ to lose a whole rule over one bad piece. Both are gone.
   `Cascade.Properties.read_border_image_source`
   (#640, #982, #1000, #1001, #1002, #1003, #1004, #1005, #1006, #1007, #1009,
   #1010, #1015, #1077, #1078)
+- A `<custom-ident>` refuses the names CSS Values 4 sec. 4.2 reserves, in every
+  ASCII case permutation, so `animation-name: default`, `counter-reset: DEFAULT`,
+  `view-transition-name: default` and a `default` counter-style symbol are
+  dropped with a warning. The string spelling is untouched, so
+  `animation-name: "default"` still reads. Six productions each carried their
+  own exclusion list, five of which had forgotten `default`; they now share
+  `Cascade.Cursor.custom_ident` (#1143)
 - A property whose grammar names a `<length>` takes neither a percentage nor an
   intrinsic-sizing keyword, and a `<time>` or `<angle>` needs its unit. Cascade
   read them wherever it read a length, so `border-width: 50%`, `top:

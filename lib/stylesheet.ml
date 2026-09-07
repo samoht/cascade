@@ -2742,7 +2742,7 @@ let read_counter_symbol r =
       | Some (Component.Preserved { kind = Token.Url _; _ }) ->
           Pp.to_string ~minify:true Properties.pp_background_image
             (Properties.read_background_image r)
-      | Some _ | None -> Cursor.ident ~keep_case:true r)
+      | Some _ | None -> Cursor.custom_ident "counter style symbol" r)
 
 let read_counter_symbols_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -2766,17 +2766,12 @@ let read_counter_symbol_descriptor constructor r =
       constructor symbol)
     r
 
-(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>,
-   which CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and [default]
-   from, and sec. 3.7 excludes [none] as well. *)
+(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>
+   excluding [none], on top of what CSS Values 4 sec. 4.2 excludes from every
+   one of them. Blink 151 refuses [revert-rule] here too, though it takes it as
+   a [list-style-type] name. *)
 let read_counter_style_name c =
-  let name = Cursor.ident ~keep_case:true c in
-  let lower = String.lowercase_ascii name in
-  if
-    Properties.is_css_wide_keyword lower
-    || List.exists (String.equal lower) [ "default"; "none" ]
-  then Cursor.err_invalid c ("reserved counter style name: " ^ name)
-  else name
+  Cursor.custom_ident ~reserved:[ "none"; "revert-rule" ] "counter style name" c
 
 (* Validates the value against the descriptor's grammar and keeps the text: the
    AST carries the authored spelling, and what this adds is the refusal of a
@@ -2942,7 +2937,9 @@ let read_counter_style (r : Cursor.t) : statement =
   Cursor.with_context r "@counter-style" @@ fun () ->
   Cursor.expect_at_keyword "counter-style" r;
   Cursor.ws r;
-  let name = Cursor.ident ~keep_case:true r in
+  (* Sec. 2: the prelude is the same <counter-style-name> the fallback and
+     speak-as descriptors take. *)
+  let name = read_counter_style_name r in
   Cursor.ws r;
   let descriptors =
     read_counter_style_descriptors r

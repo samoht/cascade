@@ -715,10 +715,8 @@ let rec read_view_transition_name (t : Cursor.t) : view_transition_name =
     ]
   in
   let read_name t =
-    let name = Cursor.ident ~keep_case:true t in
-    if String.lowercase_ascii name = "auto" then
-      Cursor.err_invalid t "invalid view-transition-name: auto";
-    (Name name : view_transition_name)
+    (Name (Cursor.custom_ident ~reserved:[ "auto" ] "view-transition-name" t)
+      : view_transition_name)
   in
   (Cursor.enum_or_var "view-transition-name" keywords
      ~var:(fun t ->
@@ -727,14 +725,8 @@ let rec read_view_transition_name (t : Cursor.t) : view_transition_name =
      ~default:read_name t
     : view_transition_name)
 
-let view_transition_class_reserved =
-  [ "none"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-
 let read_view_transition_class_ident t =
-  let ident = Cursor.ident ~keep_case:true t in
-  if List.mem (String.lowercase_ascii ident) view_transition_class_reserved then
-    Cursor.err_invalid t ("reserved view-transition-class ident: " ^ ident)
-  else ident
+  Cursor.custom_ident ~reserved:[ "none" ] "view-transition-class ident" t
 
 let rec read_view_transition_class t : view_transition_class =
   let keywords : (string * view_transition_class) list =
@@ -1400,7 +1392,7 @@ let rec read_animation_name t : animation_name =
       ~default:(fun t ->
         match Cursor.string_opt t with
         | Some s -> (animation_quoted_or_name s : animation_name)
-        | None -> Name (Cursor.ident t))
+        | None -> Name (Cursor.custom_ident "keyframes name" t))
       t
   in
   Cursor.enum_or_var "animation-name"
@@ -1680,7 +1672,7 @@ module Animation = struct
       | None -> Cursor.err t "expected animation-name string"
     in
     let read_name t =
-      let v = Cursor.ident t in
+      let v = Cursor.custom_ident "keyframes name" t in
       if Option.is_some (animation_shorthand_kind (String.lowercase_ascii v))
       then
         (* This identifier is for another property, not animation-name *)

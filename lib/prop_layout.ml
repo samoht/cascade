@@ -461,27 +461,12 @@ let rec read_container_type (t : Cursor.t) : container_type =
     t
 
 (* CSS Conditional 5 sec. 3.2 excludes [none], [and], [not] and [or] from a
-   container name, and CSS Values 4 sec. 3.2 excludes [default] and the CSS-wide
-   keywords from every [<custom-ident>]. *)
-let container_name_reserved =
-  [
-    "none";
-    "and";
-    "not";
-    "or";
-    "default";
-    "initial";
-    "inherit";
-    "unset";
-    "revert";
-    "revert-layer";
-  ]
-
+   container name, on top of what CSS Values 4 sec. 4.2 excludes from every
+   [<custom-ident>]. *)
 let read_container_custom_ident t =
-  let ident = Cursor.ident ~keep_case:true t in
-  if List.mem (String.lowercase_ascii ident) container_name_reserved then
-    Cursor.err_invalid t ("reserved container-name ident: " ^ ident)
-  else ident
+  Cursor.custom_ident
+    ~reserved:[ "none"; "and"; "not"; "or" ]
+    "container-name ident" t
 
 let rec read_container_name (t : Cursor.t) : container_name =
   let keywords : (string * container_name) list =

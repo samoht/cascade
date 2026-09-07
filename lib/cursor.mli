@@ -250,6 +250,14 @@ val ident : ?keep_case:bool -> t -> string
     4 sec. 4.2). [~keep_case:false] lowercases it, which is what a keyword is
     (sec. 4.1). *)
 
+val custom_ident : ?reserved:string list -> string -> t -> string
+(** [custom_ident label t] consumes a [<custom-ident>] in the author's spelling
+    and raises on one sec. 4.2 excludes: a CSS-wide keyword or the reserved
+    [default]. [reserved] names what the production excludes on top of those,
+    such as [none] for a [<counter-style-name>]. Every exclusion is matched in
+    all ASCII case permutations, and [label] names the production in the error.
+*)
+
 val number : ?allow_negative:bool -> t -> float
 (** [number t] consumes the next numeric token. *)
 

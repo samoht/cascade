@@ -2436,10 +2436,8 @@ let rec read_list_style_type t : list_style_type =
            (fun t -> Cursor.call "symbols" t read_symbols_body);
            (fun t -> (String (Cursor.string t) : list_style_type));
            (fun t ->
-             let name = Cursor.ident t in
-             if String.lowercase_ascii name = "default" then
-               Cursor.err_invalid t "reserved counter-style name";
-             (Name name : list_style_type));
+             (Name (Cursor.custom_ident "counter style name" t)
+               : list_style_type));
          ])
     t
 
@@ -2671,14 +2669,10 @@ and read_content t : content =
       then Cursor.err_invalid t "none/normal cannot be combined in content";
       Content_list items
 
-let counter_name_reserved =
-  [ "none"; "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
-
+(* CSS Lists 3 sec. 2.1 spells a counter name [<custom-ident>] and excludes
+   [none] from it. *)
 let read_counter_name t =
-  let name = Cursor.ident t in
-  if List.mem name counter_name_reserved then
-    Cursor.err_invalid t ("reserved counter name: " ^ name);
-  name
+  Cursor.custom_ident ~reserved:[ "none" ] "counter name" t
 
 let read_counter_item t =
   let name = read_counter_name t in

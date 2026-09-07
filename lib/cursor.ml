@@ -569,6 +569,21 @@ let ident ?(keep_case = true) t =
   | Some s -> if keep_case then s else String.lowercase_ascii_preserve s
   | None -> err_expected t "identifier"
 
+(* CSS Values 4 sec. 4.2 again: no <custom-ident> is a CSS-wide keyword, and
+   [default] is reserved from every one of them too. The exclusions hold in all
+   ASCII case permutations, which is why the author's spelling is matched
+   folded. *)
+let custom_ident_reserved =
+  [ "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+
+let custom_ident ?(reserved = []) label t =
+  let loc = position t in
+  let name = ident ~keep_case:true t in
+  let folded = String.lowercase_ascii_preserve name in
+  if List.mem folded custom_ident_reserved || List.mem folded reserved then
+    err_invalid ~loc t (String.concat "" [ "reserved "; label; ": "; name ])
+  else name
+
 let number ?(allow_negative = true) t =
   match number_opt t with
   | Some n ->
