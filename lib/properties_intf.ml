@@ -1567,8 +1567,11 @@ type ruby_align =
   | Revert_layer
   | Var of ruby_align var
 
+(* CSS Ruby 1 sec. 5.1: [auto | spaces]. [None] is the older spelling Chrome and
+   Firefox still read, and serialise as [spaces]. *)
 type ruby_overhang =
   | Auto
+  | Spaces
   | None
   | Inherit
   | Initial

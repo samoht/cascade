@@ -2729,6 +2729,7 @@ type ruby_align = Properties.ruby_align =
 
 type ruby_overhang = Properties.ruby_overhang =
   | Auto
+  | Spaces
   | None
   | Inherit
   | Initial

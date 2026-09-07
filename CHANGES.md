@@ -76,6 +76,12 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.ruby_overhang` gains `Spaces`, so
+  `ruby-overhang: spaces` reads where it was dropped with a warning. CSS Ruby 1
+  sec. 5.1 spells the property `auto | spaces`, and cascade read only `auto`
+  and the `none` browsers keep as a legacy alias. Exhaustive visitors must
+  handle the new leaf (#1088)
+
 - `-webkit-mask-origin` and `-webkit-mask-clip` carry
   `Cascade.Properties.webkit_mask_box`, WebKit's own box vocabulary, where they
   carried the `mask_box` of their unprefixed namesakes. They are not aliases:

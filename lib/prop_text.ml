@@ -1343,6 +1343,7 @@ let rec pp_ruby_align : ruby_align Pp.t =
 let rec pp_ruby_overhang : ruby_overhang Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
+  | Spaces -> Pp.string ctx "spaces"
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1808,6 +1809,7 @@ let rec read_ruby_overhang t : ruby_overhang =
   Cursor.enum_or_var "ruby-overhang"
     [
       ("auto", (Auto : ruby_overhang));
+      ("spaces", Spaces);
       ("none", None);
       ("inherit", Inherit);
       ("initial", Initial);
