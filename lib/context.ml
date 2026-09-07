@@ -872,7 +872,20 @@ module Var_residual = struct
        fallback is no answer to it. *)
     let residual_holds_a_value result =
       match ops.as_var result with
-      | Some (inner : a Values.var) -> unreadable inner.name
+      | Some (inner : a Values.var) -> (
+          (* Bound, and holding a value this property's grammar refuses. *)
+          unreadable inner.name
+          ||
+          match inner.fallback with
+          (* [Syntax_fallback] is a fallback the reader kept but could not type
+             in this property's position, so the chain resolves to a value the
+             property refuses. A typed [Fallback] is the opposite: it resolves
+             to a value the property takes, and the resolver hands that back
+             rather than a residual. *)
+          | Values.Syntax_fallback _ -> true
+          | Values.Fallback _ | Values.Empty | Values.Empty2 | Values.None
+          | Values.Var_fallback _ ->
+              false)
       | None -> false
     in
     let rec on_var_residual ~visited (var : a Values.var) result =
