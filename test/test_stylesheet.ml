@@ -2292,6 +2292,15 @@ let spec_lenient_recovery_keyframes_at_rule () =
        "from { color: red } @zzz [a] { to { color: pink } } 50% { background: \
         lime }")
     recovered 1;
+  (* Sec. 5.5.5 consumes an AT-RULE when a block's contents meet an at-keyword,
+     so it ends at its own block rather than at the next [;]: a keyframe's
+     declarations after one survive. Chrome 153 keeps both frames here. *)
+  lenient_recover "an at-rule inside a keyframe block costs only itself"
+    "@keyframes k { from { y: 0 } to { @e {} opacity: 1 } }"
+    "@keyframes k{0%{y:0}to{opacity:1}}" 1;
+  lenient_recover "an at-rule inside a descriptor block costs only itself"
+    "@font-face { font-family: X; @e {} src: url(a.woff2) }"
+    "@font-face{font-family:X;src:url(a.woff2)}" 1;
   lenient_recover "two at-rules in @keyframes are dropped one at a time"
     (body
        "from { color: red } @media print { a: b } @supports (display: grid) { \
