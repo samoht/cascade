@@ -495,6 +495,25 @@ let special_cases () =
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"background-position:var(--x) 20%"
     "background-position: var(--x) 20%;";
+  (* CSS Values 4 (ED) sec. 8.3 spells one alternative of <position> as "[ left
+     | center | right | <length-percentage> ] [ top | center | bottom |
+     <length-percentage> ]", so an offset in the first slot pairs with an edge
+     keyword in the second. Chrome 153 keeps every one of these and refuses the
+     reverse order, which no alternative grants. *)
+  check_declaration ~expected:"background-position:50% bottom"
+    "background-position: 50% bottom";
+  check_declaration ~expected:"background-position:50% top"
+    "background-position: 50% top";
+  check_declaration ~expected:"background-position:10px bottom"
+    "background-position: 10px bottom";
+  check_declaration ~expected:"object-position:50% bottom"
+    "object-position: 50% bottom";
+  check_declaration ~expected:"transform-origin:50% bottom"
+    "transform-origin: 50% bottom";
+  check_declaration ~expected:"background:url(a.png)50% bottom"
+    "background: url(a.png) 50% bottom";
+  neg_cursor read_declaration "background-position: bottom 50%";
+  neg_cursor read_declaration "object-position: bottom 50%";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
     "mask-position: 0 0, 10px 10px;";
 
