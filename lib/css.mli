@@ -5669,6 +5669,7 @@ val initial_letter_wrap : initial_letter_wrap -> declaration
     is inside the shape. *)
 type shape_image_threshold = Properties.shape_image_threshold =
   | Number of float
+  | Calc of shape_image_threshold calc
   | Inherit
   | Initial
   | Unset

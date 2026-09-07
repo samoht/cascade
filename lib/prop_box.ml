@@ -505,6 +505,7 @@ let rec read_opacity t : opacity =
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
   | Number n -> Pp.float ctx n
+  | Calc c -> pp_calc pp_shape_image_threshold ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -512,9 +513,37 @@ let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_shape_image_threshold ctx v
 
+(* A [<percentage>] operand of a [shape-image-threshold] math function is the
+   number it denotes (50% = .5), and a raw [<number>] is left to [read_calc]'s
+   own [Num] path, the way [opacity] reads the same [<opacity-value>]. *)
+let rec read_threshold_dim_only t : shape_image_threshold =
+  Cursor.ws t;
+  Cursor.one_of
+    [
+      (fun t -> (Number (Cursor.pct t /. 100.) : shape_image_threshold));
+      (fun t ->
+        Cursor.enum_or_calls "shape-image-threshold"
+          [
+            ("inherit", (Inherit : shape_image_threshold));
+            ("initial", Initial);
+            ("unset", Unset);
+            ("revert", Revert);
+            ("revert-layer", Revert_layer);
+          ]
+          ~calls:
+            [
+              ("var", fun t -> Var (Values.read_var read_threshold_dim_only t));
+            ]
+          t);
+    ]
+    t
+
 let rec read_shape_image_threshold t : shape_image_threshold =
   let read_var t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
+  in
+  let read_numeric_math t : shape_image_threshold =
+    Number (Values.read_numeric_expression t)
   in
   (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
      [<number> | <percentage>], and computes it "clamped to the range [0,1]":
@@ -534,7 +563,18 @@ let rec read_shape_image_threshold t : shape_image_threshold =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:
+      [
+        ("var", read_var);
+        ( "calc",
+          fun t ->
+            Calc
+              (Values.read_calc ~result_type:`Number_or_value
+                 read_threshold_dim_only t) );
+        ("min", read_numeric_math);
+        ("max", read_numeric_math);
+        ("clamp", read_numeric_math);
+      ]
     ~default:read_number t
 
 let rec pp_overflow : overflow Pp.t =
@@ -1210,6 +1250,29 @@ let rec flatten_opacity_pct (c : opacity Values.calc) : opacity Values.calc =
   | Values.Expr (l, op, r) ->
       Values.Expr (flatten_opacity_pct l, op, flatten_opacity_pct r)
   | _ -> c
+
+(* The same fold [opacity] gets, for the same [<opacity-value>]: a percentage
+   leaf is the number it denotes, so a constant expression over percentages
+   reduces to one number rather than staying a call over two. *)
+let rec flatten_threshold_pct (c : shape_image_threshold Values.calc) :
+    shape_image_threshold Values.calc =
+  match c with
+  | Values.Val (Number f) -> Values.Num f
+  | Values.Nested inner -> Values.Nested (flatten_threshold_pct inner)
+  | Values.Parens inner -> Values.Parens (flatten_threshold_pct inner)
+  | Values.Expr (l, op, r) ->
+      Values.Expr (flatten_threshold_pct l, op, flatten_threshold_pct r)
+  | _ -> c
+
+let normalize_shape_image_threshold (v : shape_image_threshold) :
+    shape_image_threshold =
+  match v with
+  | Calc c -> (
+      match Values.eval_calc (flatten_threshold_pct c) with
+      | Values.Num f -> Number f
+      | Values.Val value -> value
+      | folded -> Calc folded)
+  | _ -> v
 
 let normalize_opacity (o : opacity) : opacity =
   match o with

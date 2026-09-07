@@ -1011,6 +1011,7 @@ let vars_of_shape_image_threshold (value : Properties.shape_image_threshold) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Calc c -> vars_of_calc c
   | Number _ | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_overflow_clip_margin (value : Properties.overflow_clip_margin) :

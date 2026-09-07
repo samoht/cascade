@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.shape_image_threshold` gains `Calc`, so
+  `shape-image-threshold: calc(50% + 25%)` and `min(.2,.8)` read where they
+  were dropped with a warning. CSS Shapes 1 sec. 6.2 takes an
+  `<opacity-value>`, and CSS Values 4 sec. 10.1 puts a math function wherever
+  its type is, which `opacity` already read that way. Exhaustive visitors must
+  handle the new leaf (#1072)
+
 - `Cascade.Properties.contain_intrinsic_size_item` gains `None` and
   `Auto_none`, so `contain-intrinsic-width: auto none` and
   `contain-intrinsic-size: none 2ch` read. CSS Sizing 4 sec. 6 spells a slot

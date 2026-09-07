@@ -203,6 +203,7 @@ type opacity =
 
 type shape_image_threshold =
   | Number of float
+  | Calc of shape_image_threshold calc
   | Inherit
   | Initial
   | Unset
