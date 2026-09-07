@@ -7408,9 +7408,12 @@ type caret = Properties.caret =
 val caret : caret -> declaration
 (** [caret caret] is the CSS [caret] property. *)
 
-type interest_delay = Properties.interest_delay =
+type interest_delay_item = Properties.interest_delay_item =
   | Normal
-  | Durations of duration list
+  | Time of duration
+
+type interest_delay = Properties.interest_delay =
+  | Delays of interest_delay_item list
   | Inherit
   | Initial
   | Unset

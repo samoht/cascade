@@ -958,6 +958,10 @@ let check_interactivity =
 let check_interest_delay =
   check_value_cursor "interest_delay" read_interest_delay pp_interest_delay
 
+let check_interest_delay_item =
+  check_value_cursor "interest_delay_item" read_interest_delay_item
+    pp_interest_delay_item
+
 let check_interpolate_size =
   check_value_cursor "interpolate_size" read_interpolate_size
     pp_interpolate_size
@@ -5190,6 +5194,9 @@ let spec_generated_position_interaction_edges () =
   check_container_name "main sidebar";
   check_interactivity "inert";
   check_interest_delay "100ms 200ms";
+  check_interest_delay "normal 120ms";
+  check_interest_delay_item "normal";
+  check_interest_delay_item "120ms";
   check_margin_trim "block-start inline-end";
   check_margin_trim_axis "inline";
   check_margin_trim_edge "block-end";

@@ -76,6 +76,14 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.interest_delay` carries `Delays of interest_delay_item
+  list` where it carried `Normal` and `Durations of duration list`, so
+  `interest-delay: normal 120ms` and `120ms normal` read. CSS UI 4 sec. 6.4
+  spells the shorthand `<'interest-delay-start'>{1,2}` and each longhand
+  `normal | <time>`, so `normal` fills one slot rather than standing for the
+  whole value. A caller writing a single keyword passes `Delays [ Normal ]`
+  (#1083)
+
 - `Cascade.Properties.animation_timeline` gains `Timelines`, so
   `animation-timeline: none, auto` and `scroll(), view()` read. CSS Animations
   2 sec. 5 spells the property `<single-animation-timeline>#`, one entry per

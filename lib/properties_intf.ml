@@ -3206,9 +3206,13 @@ type caret =
   | Revert_layer
   | Var of caret var
 
+(** One slot of an interest delay: CSS UI 4 sec. 6.4 gives
+    [interest-delay-start] and [interest-delay-end] the value [normal | <time>].
+*)
+type interest_delay_item = Normal | Time of duration
+
 type interest_delay =
-  | Normal
-  | Durations of duration list
+  | Delays of interest_delay_item list
   | Inherit
   | Initial
   | Unset

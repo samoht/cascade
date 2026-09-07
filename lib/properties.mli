@@ -1939,6 +1939,13 @@ val pp_interest_delay : interest_delay Pp.t
 val read_interest_delay : ?longhand:bool -> Cursor.t -> interest_delay
 (** [read_interest_delay t] is the [interest_delay] parsed from [t]. *)
 
+val pp_interest_delay_item : interest_delay_item Pp.t
+(** [pp_interest_delay_item] is the pretty-printer for [interest_delay_item]. *)
+
+val read_interest_delay_item : Cursor.t -> interest_delay_item
+(** [read_interest_delay_item t] is the one slot of an [interest_delay] parsed
+    from [t]. *)
+
 val pp_nav_scope : nav_scope Pp.t
 (** [pp_nav_scope] is the pretty-printer for [nav_scope]. *)
 

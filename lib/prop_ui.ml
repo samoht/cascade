@@ -229,11 +229,14 @@ let read_non_negative_duration t =
   | S f when f < 0. -> Cursor.err_invalid t "negative duration"
   | duration -> duration
 
+let read_interest_delay_item t : interest_delay_item =
+  if Cursor.try_ident "normal" t then Normal
+  else Time (read_non_negative_duration t)
+
 let rec read_interest_delay ?(longhand = false) t : interest_delay =
   Cursor.enum_or_var "interest-delay"
     [
-      ("normal", (Normal : interest_delay));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : interest_delay));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
@@ -242,20 +245,27 @@ let rec read_interest_delay ?(longhand = false) t : interest_delay =
     ~var:(fun t -> Var (Values.read_var (read_interest_delay ~longhand) t))
     ~default:(fun t ->
       let at_most = if longhand then 1 else 2 in
-      Durations
+      Delays
         (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most
-           read_non_negative_duration t))
+           read_interest_delay_item t))
     t
+
+let normalize_interest_delay_item : interest_delay_item -> interest_delay_item =
+ fun item ->
+  match item with
+  | Normal -> item
+  | Time duration ->
+      let duration' =
+        Values.normalize_duration ~canonicalize_ms:false duration
+      in
+      if duration' == duration then item else Time duration'
 
 let rec normalize_interest_delay : interest_delay -> interest_delay =
  fun value ->
   match value with
-  | Durations durations ->
+  | Delays delays ->
       preserve_if_equal value
-        (Durations
-           (map_preserve
-              (Values.normalize_duration ~canonicalize_ms:false)
-              durations))
+        (Delays (map_preserve normalize_interest_delay_item delays))
   | Var v ->
       let v' = map_var_preserve normalize_interest_delay v in
       if v' == v then value else Var v'
@@ -571,11 +581,14 @@ let rec pp_caret : caret Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_caret ctx v
 
-let rec pp_interest_delay : interest_delay Pp.t =
+let pp_interest_delay_item : interest_delay_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Durations durations ->
-      Pp.list ~sep:Pp.space pp_duration_preserve_ms ctx durations
+  | Time duration -> pp_duration_preserve_ms ctx duration
+
+let rec pp_interest_delay : interest_delay Pp.t =
+ fun ctx -> function
+  | Delays delays -> Pp.list ~sep:Pp.space pp_interest_delay_item ctx delays
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
