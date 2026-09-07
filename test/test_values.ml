@@ -1695,6 +1695,23 @@ let spec_math_function_edges () =
   decl_optimizes ~prop:"color" ~held:"rgb(var(--x))" ~into:"rgb(var(--x))"
     "rgba(var(--x))";
 
+  (* CSS Values 4 (ED) sec. 10.3: "round(<rounding-strategy>?, A, B)", and the
+     strategy defaults to [nearest], so that one alone is the spelling the
+     shorter form already carries and the other three have to be printed. Every
+     round() the suite prints elsewhere folds to a literal first, so the printer
+     only ever sees [nearest]: these keep a var() in the value so the call
+     survives to the output. *)
+  check_length "round(up,var(--x),1px)";
+  check_length "round(down,var(--x),1px)";
+  check_length "round(to-zero,var(--x),1px)";
+  check_length ~expected:"round(var(--x),1px)" "round(nearest,var(--x),1px)";
+  (* Each numeric type prints round() itself, so each needs its own case: the
+     length, duration and angle printers all default the strategy away. *)
+  check_duration "round(up,var(--x),1s)";
+  check_duration ~expected:"round(var(--x),1s)" "round(nearest,var(--x),1s)";
+  check_angle "round(to-zero,var(--x),1deg)";
+  check_angle ~expected:"round(var(--x),1deg)" "round(nearest,var(--x),1deg)";
+
   (* The printer serialises a dimension to six significant digits, so a fold
      whose result needs more of them would print as a value the input did not
      carry: [1px / 512] is [.001953125px] exactly, and the literal
