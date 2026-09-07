@@ -1687,6 +1687,17 @@ let spec_math_function_edges () =
   check_length ~expected:"abs(-10px)" "abs(-10px)";
   decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
   check_length ~expected:"sign(10px)" "sign(10px)";
+  (* CSS Values 4 (ED) sec. 10.6: "The sign(A) function ... returns -1 if A's
+     numeric value is negative, +1 if A's numeric value is positive, 0+ if A's
+     numeric value is 0+, and 0- if A's numeric value is 0-." Zero is its own
+     answer rather than the negative one, and margin takes the result either
+     way, so the fold is visible where a non-negative property would hide it. *)
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(0)*1px)" ~into:"0"
+    "calc(sign(0) * 1px)";
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(5)*1px)" ~into:"1px"
+    "calc(sign(5) * 1px)";
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(-5)*1px)" ~into:"-1px"
+    "calc(sign(-5) * 1px)";
   check_number ~expected:"round(up,1.2,1)" "round(up, 1.2, 1)";
   check_number ~expected:"mod(10,3)" "mod(10, 3)";
   check_number ~expected:"hypot(3,4)" "hypot(3, 4)";
