@@ -4749,6 +4749,14 @@ let spec_platform_property_vectors () =
          refused one. CSS Logical 1 sec. 4.2 spells the flow-relative pair from
          the same production. *)
       "margin-right: fit-content(20rem)";
+      (* CSS Position 3 sec. 3.1 gives every inset longhand the same [auto |
+         <length-percentage>], and sec. 3.2 builds the shorthand from it, so no
+         sizing function reaches those either. *)
+      "bottom: fit-content(20rem)";
+      "top: calc-size(auto, size)";
+      "inset: fit-content(20rem)";
+      "inset-inline-start: fit-content(20rem)";
+      "inset-block: fit-content(20rem)";
       "margin-left: fit-content(20rem)";
       "margin-block-end: fit-content(20rem)";
       "margin-inline: fit-content(20rem)";
