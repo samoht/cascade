@@ -1290,6 +1290,33 @@ let test_lossless_declaration_order () =
     ".a{border-top:1px solid red;border-color:#00f}"
     (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
 
+(* CSS Color 4 sec. 5 writes the alpha of the hex forms as a byte, so a hex
+   spelling exists only where the alpha IS one. [--lossless] therefore folds an
+   alpha that lands on a whole byte and leaves the rest functional: .6 is 153
+   and folds, .5 is 127.5 and does not. Rounding it would emit a different
+   colour under the mode whose whole promise is that it does not. *)
+let test_lossless_alpha_folds_only_on_a_whole_byte () =
+  let opt css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (opt input))
+    [
+      (* Whole bytes: 153, 51, 204, 255. *)
+      (".a{color:rgb(0 0 0/.6)}", ".a{color:#0009}");
+      (".a{color:rgb(0 0 0/.2)}", ".a{color:#0003}");
+      (".a{color:rgb(0 0 0/.8)}", ".a{color:#000c}");
+      (".a{color:rgb(0 0 0/1)}", ".a{color:#000}");
+      (* 127.5 is not a byte, so the functional spelling stays. *)
+      (".a{color:rgb(0 0 0/.5)}", ".a{color:rgb(0 0 0/.5)}");
+      (".a{color:rgb(0 0 0/.3)}", ".a{color:rgb(0 0 0/.3)}");
+    ]
+
 let test_lossless_keeps_unknown_property_order () =
   let opt css =
     match Css.of_string ~strict:false css with
@@ -1735,6 +1762,9 @@ let optimize_tests =
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
     ("color property folds", `Quick, test_color_property_folds);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
+    ( "lossless alpha folds only on a whole byte",
+      `Quick,
+      test_lossless_alpha_folds_only_on_a_whole_byte );
     ( "lossless keeps unknown property order",
       `Quick,
       test_lossless_keeps_unknown_property_order );
