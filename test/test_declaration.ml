@@ -4691,6 +4691,13 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "grid: \"<\" \">\"";
+      "grid: \"\"";
+      "grid: \"a\" \"b c\"";
+      "grid: \"a b\" \"b a\"";
+      "grid-template: \"nav/main\"";
+      "grid-template: \"a\" \"a a\"";
+      "grid-template: \"a .\" \". a\"";
       "offset-distance: -10% -10%";
       "font-size-adjust: from-font 1";
       "font-variant-emoji: smile";
