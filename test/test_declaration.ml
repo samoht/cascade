@@ -1364,6 +1364,15 @@ let border_line_width () =
     "column-rule-width: 1px, 2px";
   check_declaration ~expected:"column-rule-color:red,blue"
     ~optimized:"column-rule-color:red,#00f" "column-rule-color: red, blue";
+  (* CSS Animations 2 sec. 5 spells [animation-timeline] as
+     [<single-animation-timeline>#], one entry per animation. Chrome 153 takes
+     each of these. *)
+  check_declaration ~expected:"animation-timeline:none,auto"
+    "animation-timeline: none, auto";
+  check_declaration ~expected:"animation-timeline:--a,none"
+    "animation-timeline: --a, none";
+  check_declaration ~expected:"animation-timeline:scroll(),view()"
+    "animation-timeline: scroll(), view()";
   (* Sec. 4.4 writes the shorthand [<gap-rule>#] over the same list. *)
   check_declaration ~expected:"column-rule:0,0" "column-rule: 0, 0";
   check_declaration ~expected:"column-rule:1px solid red,2px dashed blue"
