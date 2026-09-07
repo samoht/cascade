@@ -2775,6 +2775,7 @@ let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
   let name = Cursor.ident ~keep_case:false r in
   let descriptor =
     match name with
+    (* COUNTER_STYLE_DESCRIPTOR_START - Used by test/spec/browser *)
     | "system" -> read_counter_style_system_descriptor r
     | "symbols" -> read_counter_symbols_descriptor r
     | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
@@ -2786,6 +2787,7 @@ let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
     | "additive-symbols" ->
         read_counter_string_descriptor (fun s -> Additive_symbols s) r
     | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
+    (* COUNTER_STYLE_DESCRIPTOR_END - Used by test/spec/browser *)
     | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
   in
   Cursor.ws r;
@@ -3703,6 +3705,7 @@ let read_property_descriptor (r : Cursor.t) state =
   Cursor.ws r;
   let state =
     match key with
+    (* PROPERTY_DESCRIPTOR_START - Used by test/spec/browser *)
     | "syntax" -> { state with syntax = Some (Variables.read_syntax r) }
     | "inherits" -> { state with inherits = Some (Cursor.bool r) }
     | "initial-value" ->
@@ -3710,6 +3713,7 @@ let read_property_descriptor (r : Cursor.t) state =
           state with
           initial_value = Some (Cursor.consume_until_semicolon ~trim:true r);
         }
+    (* PROPERTY_DESCRIPTOR_END - Used by test/spec/browser *)
     | _ -> Cursor.err_invalid r "unknown property descriptor"
   in
   Cursor.ws r;

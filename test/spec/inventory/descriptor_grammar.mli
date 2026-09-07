@@ -1,4 +1,4 @@
-(** Spec-derived vectors for the [@font-face] descriptors.
+(** Spec-derived vectors for the at-rule descriptors.
 
     A descriptor is not a property, so {!Property_grammar} cannot carry these:
     [src] and [unicode-range] have no property of the same name, and the ones
@@ -11,6 +11,7 @@
     is no [font-style] alone and a good one after [oblique]. *)
 
 type row = {
+  at_rule : string;  (** the at-rule the descriptor belongs to, without [@] *)
   descriptor : string;  (** the descriptor name, as written in the rule *)
   positives : string list;
   negatives : string list;
@@ -30,5 +31,7 @@ val rows : row list
 val descriptors : string list
 (** [descriptors] is the descriptor names {!rows} covers. *)
 
-val row_for : string -> row option
-(** [row_for descriptor] is the row named [descriptor]. *)
+val row_for : at_rule:string -> string -> row option
+(** [row_for ~at_rule descriptor] is the row for that descriptor of that
+    at-rule. The name alone is not enough: [font-family] is a descriptor of
+    [\@font-face] and of [\@font-palette-values], with different grammars. *)

@@ -61,7 +61,92 @@ let values_for = Cascade_spec_inventory.Value_gen.values_for
 
 (* ===== The population ===== *)
 
-let modelled = List.sort_uniq String.compare Font_face_descriptors.all
+(* One at-rule the harness sweeps: the descriptors cascade models for it, read
+   out of the library's own dispatch, and how a rule carrying one is written.
+   @page is absent because its body is ordinary declarations, so the accept-set
+   differential already answers for all but its three page-only descriptors. *)
+type at_rule = {
+  name : string;
+  modelled : string list;
+  sheet : descriptor:string -> value:string -> string;
+}
+
+(* CSS Fonts 4 sec. 4.2 and 4.3 make font-family and src required: a @font-face
+   missing either is invalid as a whole, so every sheet carries both and the
+   descriptor under test takes over its own slot. *)
+let font_face_sheet ~descriptor ~value =
+  let family, src, extra =
+    match descriptor with
+    | "font-family" -> (value, "url(brand.woff2)", None)
+    | "src" -> ("Brand", value, None)
+    | _ -> ("Brand", "url(brand.woff2)", Some (descriptor, value))
+  in
+  String.concat ""
+    ([ "@font-face{font-family:"; family; ";src:"; src ]
+    @ (match extra with None -> [] | Some (name, v) -> [ ";"; name; ":"; v ])
+    @ [ "}" ])
+
+(* CSS Counter Styles 3 sec. 2 makes system and symbols the pair a style needs
+   to resolve, and sec. 3.1's default system is symbolic. *)
+let _counter_style_sheet ~descriptor ~value =
+  let base =
+    match descriptor with
+    | "system" | "symbols" -> ""
+    | _ -> "system:cyclic;symbols:\"a\";"
+  in
+  let rest =
+    match descriptor with
+    | "system" -> String.concat "" [ "system:"; value; ";symbols:\"a\"" ]
+    | "symbols" -> String.concat "" [ "system:cyclic;symbols:"; value ]
+    | _ -> String.concat "" [ descriptor; ":"; value ]
+  in
+  String.concat "" [ "@counter-style cascade-probe{"; base; rest; "}" ]
+
+(* CSS Properties and Values API 1 sec. 2 makes syntax and inherits required,
+   and an initial-value required for every syntax but the universal one, which
+   has to PARSE as that syntax: a rule pairing [<length>] with [red] is invalid
+   for the pairing rather than for either descriptor. The universal syntax takes
+   anything, so it is what a rule testing something else carries. *)
+let initial_value_for = function
+  | "\"<color>\"" -> Some "red"
+  | "\"<length>\"" -> Some "0px"
+  | "\"<length>#\"" | "\"<length># \"" -> Some "0px"
+  | "\"*\"" -> None
+  | _ -> None
+
+let property_sheet ~descriptor ~value =
+  let syntax, inherits, initial =
+    match descriptor with
+    | "syntax" -> (value, "true", initial_value_for value)
+    | "inherits" -> ("\"*\"", value, None)
+    | _ -> ("\"*\"", "true", Some value)
+  in
+  String.concat ""
+    ([ "@property --cascade-probe{syntax:"; syntax; ";inherits:"; inherits ]
+    @ (match initial with None -> [] | Some v -> [ ";initial-value:"; v ])
+    @ [ "}" ])
+
+(* @counter-style is not swept yet, and the reason is a defect rather than an
+   omission: six of its descriptors are read as an opaque string, so [range:
+   bogus] and [pad: "0"] reach the output. Enabling it here reports 218 values
+   on the first run, which is a reader to fix rather than a harness to land red,
+   and the rows in Descriptor_grammar are written and waiting. *)
+let at_rules =
+  [
+    {
+      name = "font-face";
+      modelled = List.sort_uniq String.compare Font_face_descriptors.all;
+      sheet = font_face_sheet;
+    };
+    {
+      name = "property";
+      modelled = List.sort_uniq String.compare Property_descriptors.all;
+      sheet = property_sheet;
+    };
+  ]
+
+let modelled =
+  List.concat_map (fun r -> List.map (fun d -> (r.name, d)) r.modelled) at_rules
 
 (* A rename in the library, or a generator that stopped generating, would
    otherwise turn this run into a green one that asks nothing. *)
@@ -69,28 +154,11 @@ let minimum_descriptors = 10
 let minimum_values = 200
 let minimum_arbitrated = 100
 
-(* CSS Fonts 4 sec. 4.2 and 4.3 make font-family and src required: a @font-face
-   missing either is invalid as a whole, so every sheet carries both and the
-   descriptor under test takes over its own slot. *)
-let base_family = "Brand"
-let base_src = "url(brand.woff2)"
-
-let sheet ~descriptor ~value =
-  let family, src, extra =
-    match descriptor with
-    | "font-family" -> (value, base_src, None)
-    | "src" -> (base_family, value, None)
-    | _ -> (base_family, base_src, Some (descriptor, value))
-  in
-  String.concat ""
-    ([ "@font-face{font-family:"; family; ";src:"; src ]
-    @ (match extra with None -> [] | Some (name, v) -> [ ";"; name; ":"; v ])
-    @ [ "}" ])
-
 type kind = Positive | Negative | Generated
 
 type job = {
   id : string;
+  at_rule : string;
   descriptor : string;
   value : string;
   kind : kind;
@@ -116,37 +184,48 @@ let jobs ~seed ~only =
     incr n;
     string_of_int !n
   in
-  let job descriptor kind value =
-    { id = fresh (); descriptor; value; kind; sheet = sheet ~descriptor ~value }
-  in
   List.concat_map
-    (fun descriptor ->
-      if (not (String.equal only "")) && not (String.equal only descriptor) then
-        []
-      else
-        let manifest =
-          match Grammar.row_for descriptor with
-          | None -> []
-          | Some row ->
-              List.map (job descriptor Positive) row.positives
-              @ List.map (job descriptor Negative) row.negatives
-        in
-        (* The generator draws from the manifest too, so a value the row already
-           decides would otherwise arrive twice and be judged by both rules at
-           once. *)
-        let decided value =
-          match Grammar.row_for descriptor with
-          | None -> false
-          | Some row ->
-              List.exists (String.equal value) row.positives
-              || List.exists (String.equal value) row.negatives
-        in
-        manifest
-        @ List.map (job descriptor Generated)
-            (List.filter
-               (fun v -> drawable v && not (decided v))
-               (values_for ~seed descriptor)))
-    modelled
+    (fun rule ->
+      let job descriptor kind value =
+        {
+          id = fresh ();
+          at_rule = rule.name;
+          descriptor;
+          value;
+          kind;
+          sheet = rule.sheet ~descriptor ~value;
+        }
+      in
+      List.concat_map
+        (fun descriptor ->
+          if (not (String.equal only "")) && not (String.equal only descriptor)
+          then []
+          else
+            let row = Grammar.row_for ~at_rule:rule.name descriptor in
+            let manifest =
+              match row with
+              | None -> []
+              | Some (row : Grammar.row) ->
+                  List.map (job descriptor Positive) row.positives
+                  @ List.map (job descriptor Negative) row.negatives
+            in
+            (* The generator draws from the manifest too, so a value the row
+               already decides would otherwise arrive twice and be judged by
+               both rules at once. *)
+            let decided value =
+              match row with
+              | None -> false
+              | Some (row : Grammar.row) ->
+                  List.exists (String.equal value) row.positives
+                  || List.exists (String.equal value) row.negatives
+            in
+            manifest
+            @ List.map (job descriptor Generated)
+                (List.filter
+                   (fun v -> drawable v && not (decided v))
+                   (values_for ~seed descriptor)))
+        rule.modelled)
+    at_rules
 
 (* ===== The reader ===== *)
 
@@ -271,7 +350,8 @@ let fail line =
   incr failures;
   Fmt.pr "FAIL %s@." line
 
-let describe job = String.concat "" [ job.descriptor; ": "; job.value ]
+let describe job =
+  String.concat "" [ "@"; job.at_rule; " "; job.descriptor; ": "; job.value ]
 
 (* ===== Skipping ===== *)
 
@@ -328,32 +408,32 @@ let arg name default =
   in
   loop (Array.to_list Sys.argv)
 
-let support_key descriptor =
-  String.concat "" [ "css.at-rules.font-face."; descriptor ]
+let support_key ~at_rule descriptor =
+  String.concat "" [ "css.at-rules."; at_rule; "."; descriptor ]
 
 (* A descriptor this browser takes no positive of cannot arbitrate a single
    value of it. Whether that is the browser being behind is a fact about
    browsers, so it is looked up rather than asserted here. *)
-let report_unshipped ~version descriptor =
-  let key = support_key descriptor in
+let report_unshipped ~version ~at_rule descriptor =
+  let key = support_key ~at_rule descriptor in
+  let named = String.concat "" [ "@"; at_rule; " "; descriptor ] in
   match Support.engine_implements Support.Chrome version key with
   | Some true ->
       fail
         (String.concat ""
            [
-             descriptor;
+             named;
              ": the browser took none of the manifest's positives, and ";
              key;
              " says this build shipped it";
            ])
   | Some false ->
-      Fmt.pr "  behind: %s (%s says this build has not shipped it)@." descriptor
-        key
+      Fmt.pr "  behind: %s (%s says this build has not shipped it)@." named key
   | None ->
       fail
         (String.concat ""
            [
-             descriptor;
+             named;
              ": the browser took none of the manifest's positives and ";
              key;
              " is not in the support dataset, so nothing says whether the \
@@ -438,7 +518,9 @@ let () =
   (* A descriptor no current specification defines has no grammar to judge a
      generated value against, so the browser's answer about one says nothing: it
      is the leftovers of a removed section either way. *)
-  let ungoverned descriptor = Option.is_none (Grammar.row_for descriptor) in
+  let ungoverned job =
+    Option.is_none (Grammar.row_for ~at_rule:job.at_rule job.descriptor)
+  in
   let pending = ref [] in
   List.iter
     (fun job ->
@@ -461,7 +543,8 @@ let () =
                  ]))
           else begin
             (match job.kind with
-            | Positive when parsed -> bump positives_taken job.descriptor
+            | Positive when parsed ->
+                bump positives_taken (job.at_rule, job.descriptor)
             | Positive | Negative | Generated -> ());
             let reads = cascade_accepts job in
             match (job.kind, reads, parsed) with
@@ -500,16 +583,20 @@ let () =
             | Generated, true, false
               when Option.is_some
                      (Chrome_gaps.explains_rejection
-                        ~prefix:"css.at-rules.font-face" ~chrome:version
-                        ~property:job.descriptor ~value:job.value ()) ->
+                        ~prefix:
+                          (String.concat "" [ "css.at-rules."; job.at_rule ])
+                        ~chrome:version ~property:job.descriptor
+                        ~value:job.value ()) ->
                 incr behind
             | Generated, false, true
               when Option.is_some
                      (Chrome_gaps.explains_acceptance
-                        ~prefix:"css.at-rules.font-face" ~chrome:version
-                        ~property:job.descriptor ~value:job.value ()) ->
+                        ~prefix:
+                          (String.concat "" [ "css.at-rules."; job.at_rule ])
+                        ~chrome:version ~property:job.descriptor
+                        ~value:job.value ()) ->
                 incr lenient
-            | Generated, _, _ when ungoverned job.descriptor -> ()
+            | Generated, _, _ when ungoverned job -> ()
             | Generated, _, _ -> pending := (job, reads) :: !pending
           end)
     jobs;
@@ -517,44 +604,44 @@ let () =
      under it, so it is reported once and its values are not reported again. *)
   let unshipped = Hashtbl.create 8 in
   List.iter
-    (fun descriptor ->
-      match Grammar.row_for descriptor with
+    (fun (at_rule, descriptor) ->
+      let key = support_key ~at_rule descriptor in
+      let named = String.concat "" [ "@"; at_rule; " "; descriptor ] in
+      match Grammar.row_for ~at_rule descriptor with
       | None -> (
           (* A descriptor with no current grammar is not an oversight when the
              support dataset carries it: web-features records what browsers
              ship, and a removed-but-shipped descriptor is exactly that. One
              that neither a section nor the dataset knows is cascade's
              invention. *)
-          match
-            Support.implemented Support.evergreen (support_key descriptor)
-          with
+          match Support.implemented Support.evergreen key with
           | Some _ ->
               Fmt.pr
                 "  no row: %s (no current section grants it, and %s records it \
                  as shipped)@."
-                descriptor (support_key descriptor)
+                named key
           | None ->
               fail
                 (String.concat ""
                    [
-                     descriptor;
+                     named;
                      ": cascade models this descriptor, no Descriptor_grammar \
                       row grants it, and ";
-                     support_key descriptor;
+                     key;
                      " is not in the support dataset either";
                    ]))
       | Some _ ->
           if
             Option.value ~default:0
-              (Hashtbl.find_opt positives_taken descriptor)
+              (Hashtbl.find_opt positives_taken (at_rule, descriptor))
             = 0
           then (
-            Hashtbl.replace unshipped descriptor ();
-            report_unshipped ~version descriptor))
-    (List.filter selected modelled);
+            Hashtbl.replace unshipped (at_rule, descriptor) ();
+            report_unshipped ~version ~at_rule descriptor))
+    (List.filter (fun (_, d) -> selected d) modelled);
   List.iter
     (fun (job, reads) ->
-      if not (Hashtbl.mem unshipped job.descriptor) then
+      if not (Hashtbl.mem unshipped (job.at_rule, job.descriptor)) then
         fail
           (String.concat ""
              [
@@ -569,10 +656,11 @@ let () =
     (List.rev !pending);
   let major, minor = version in
   Fmt.pr
-    "descriptor_set: %d value(s) over %d descriptor(s), Chrome %d.%d, %.1fs@."
+    "descriptor_set: %d value(s) over %d descriptor(s) of %d at-rule(s), \
+     Chrome %d.%d, %.1fs@."
     (List.length jobs)
-    (List.length (List.filter selected modelled))
-    major minor elapsed;
+    (List.length (List.filter (fun (_, d) -> selected d) modelled))
+    (List.length at_rules) major minor elapsed;
   Fmt.pr
     "  arbitrated: %d, browser behind: %d, browser lenient: %d, splits: %d, \
      failures: %d@."

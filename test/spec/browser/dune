@@ -67,6 +67,41 @@
     FONT_FACE_DESCRIPTOR_END
     10))))
 
+; The same dispatch-table reading for the other two at-rules whose descriptor
+; set is fixed. @page is not among them: its body is ordinary declarations, so
+; the accept-set differential already answers for all but its three page-only
+; descriptors.
+
+(rule
+ (target counter_style_descriptors.ml)
+ (deps
+  (:stylesheet ../../../lib/stylesheet.ml)
+  gen_reader_properties.exe)
+ (action
+  (with-stdout-to
+   counter_style_descriptors.ml
+   (run
+    ./gen_reader_properties.exe
+    %{stylesheet}
+    COUNTER_STYLE_DESCRIPTOR_START
+    COUNTER_STYLE_DESCRIPTOR_END
+    9))))
+
+(rule
+ (target property_descriptors.ml)
+ (deps
+  (:stylesheet ../../../lib/stylesheet.ml)
+  gen_reader_properties.exe)
+ (action
+  (with-stdout-to
+   property_descriptors.ml
+   (run
+    ./gen_reader_properties.exe
+    %{stylesheet}
+    PROPERTY_DESCRIPTOR_START
+    PROPERTY_DESCRIPTOR_END
+    3))))
+
 (executables
  (names property_vectors accept_set descriptor_set)
  (modules
@@ -76,6 +111,8 @@
   chrome_gaps
   reader_properties
   font_face_descriptors
+  counter_style_descriptors
+  property_descriptors
   browser
   json)
  (libraries cascade cascade_spec_inventory fmt unix))
