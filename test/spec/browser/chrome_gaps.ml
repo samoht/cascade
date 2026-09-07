@@ -473,6 +473,26 @@ let chrome_ships key =
   Cascade.Support.engine_implements Cascade.Support.Chrome (max_int, 0) key
   = Some true
 
+type verdict = Browser_behind | Cascade_wrong | Needs_measurement
+
+(* The key is what makes this answerable: #1091 gave an excuse the BCD compat
+   key web-features records the production under, and {!Cascade.Support} answers
+   from the generated table. Prose cannot be classified, so an entry without a
+   key is [Needs_measurement] however convincing its [why] reads. *)
+let verdict_of targets (e : excuse) =
+  match e.key with
+  | None -> Needs_measurement
+  | Some key -> (
+      match Cascade.Support.implemented targets key with
+      | None -> Needs_measurement
+      | Some true -> Cascade_wrong
+      | Some false -> Browser_behind)
+
+let verdict_name = function
+  | Browser_behind -> "cascade right, the browser has not shipped it"
+  | Cascade_wrong -> "cascade wrong, every target ships it"
+  | Needs_measurement -> "not modelled, needs measuring"
+
 let overtaken table =
   List.filter
     (fun (e : excuse) -> Option.fold ~none:false ~some:chrome_ships e.key)

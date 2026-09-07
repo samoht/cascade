@@ -762,6 +762,52 @@ let () =
     !agreed_accept !agreed_reject !excused
     (List.length !rejects_valid)
     (List.length !accepts_invalid);
+  (* Every excuse in play, grouped by which side the dataset says is wrong. The
+     three verdicts are what this harness computes and used to discard, so a
+     browser-bug candidate was only ever noticed by a human reading the output:
+     [cascade right, the browser has not shipped it] is a candidate to report
+     upstream, [cascade wrong] is a defect an entry is hiding, and [needs
+     measuring] is the honest answer for a production web-features does not
+     model. *)
+  let tally = Hashtbl.create 4 in
+  List.iter
+    (fun (e : Chrome_gaps.excuse) ->
+      let v = Chrome_gaps.verdict_of Cascade.Support.evergreen e in
+      Hashtbl.replace tally v
+        (1 + Option.value ~default:0 (Hashtbl.find_opt tally v)))
+    (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
+   @ lenient_here);
+  Fmt.pr "  excuses by verdict:@.";
+  List.iter
+    (fun v ->
+      match Hashtbl.find_opt tally v with
+      | None | Some 0 -> ()
+      | Some n -> Fmt.pr "    %3d  %s@." n (Chrome_gaps.verdict_name v))
+    [
+      Chrome_gaps.Cascade_wrong;
+      Chrome_gaps.Browser_behind;
+      Chrome_gaps.Needs_measurement;
+    ];
+  (* An excuse the dataset says every target ships is not an excuse: the
+     browser's answer is the specification's there, so the entry is covering a
+     defect rather than citing a fact. *)
+  List.iter
+    (fun (e : Chrome_gaps.excuse) ->
+      match Chrome_gaps.verdict_of Cascade.Support.evergreen e with
+      | Chrome_gaps.Cascade_wrong ->
+          fail
+            (String.concat ""
+               [
+                 "every target ships what this entry excuses: ";
+                 e.value;
+                 " (";
+                 String.concat ", " e.properties;
+                 ")";
+               ])
+      | Chrome_gaps.Browser_behind | Chrome_gaps.Needs_measurement -> ())
+    (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
+   @ lenient_here);
+
   (* A run over an empty or shrunken population is a green run that asks
      nothing, which is worse than a red one. *)
   if List.length properties < minimum_properties then
