@@ -1315,6 +1315,13 @@ let test_lossless_alpha_folds_only_on_a_whole_byte () =
       (* 127.5 is not a byte, so the functional spelling stays. *)
       (".a{color:rgb(0 0 0/.5)}", ".a{color:rgb(0 0 0/.5)}");
       (".a{color:rgb(0 0 0/.3)}", ".a{color:rgb(0 0 0/.3)}");
+      (* A percentage alpha is the same question asked of a second arm, and 100%
+         of 255 is a byte where 33% of it is 84.15. The percentage itself prints
+         as the shorter <number> CSS Color 4 sec. 4.1 makes equal to it. *)
+      (".a{color:rgb(0 0 0/100%)}", ".a{color:#000}");
+      (".a{color:rgb(0 0 0/20%)}", ".a{color:#0003}");
+      (".a{color:rgb(0 0 0/33%)}", ".a{color:rgb(0 0 0/.33)}");
+      (".a{color:rgb(0 0 0/1%)}", ".a{color:rgb(0 0 0/.01)}");
     ]
 
 let test_lossless_keeps_unknown_property_order () =
