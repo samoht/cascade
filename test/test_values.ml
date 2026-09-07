@@ -1687,6 +1687,26 @@ let spec_math_function_edges () =
   check_length ~expected:"abs(-10px)" "abs(-10px)";
   decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
   check_length ~expected:"sign(10px)" "sign(10px)";
+  (* CSS Color 4 (ED) sec. 5.1 gives rgb() and rgba() the same grammar and its
+     Changes section calls them aliases of each other, and sec. 16.2.2 uses the
+     rgb() form wherever the alpha is implicit. A var() standing for the whole
+     component list carries no alpha of its own, so the two spellings are one
+     value and rgb() is the shorter. *)
+  decl_optimizes ~prop:"color" ~held:"rgb(var(--x))" ~into:"rgb(var(--x))"
+    "rgba(var(--x))";
+
+  (* The printer serialises a dimension to six significant digits, so a fold
+     whose result needs more of them would print as a value the input did not
+     carry: [1px / 512] is [.001953125px] exactly, and the literal
+     [0.001953125px] prints [.00195313px]. CSS Values 4 (ED) sec. 10.13 asks a
+     math function to serialise its own arguments, so keeping the call is what
+     keeps the value, and the fold's precision budget has to be the printer's
+     rather than a number of its own. *)
+  decl_optimizes ~prop:"width" ~held:"calc(1px/512)" ~into:"calc(1px/512)"
+    "calc(1px / 512)";
+  decl_optimizes ~prop:"width" ~held:"calc(1px/64)" ~into:".015625px"
+    "calc(1px / 64)";
+
   (* CSS Values 4 (ED) sec. 10.6: "The sign(A) function ... returns -1 if A's
      numeric value is negative, +1 if A's numeric value is positive, 0+ if A's
      numeric value is 0+, and 0- if A's numeric value is 0-." Zero is its own
