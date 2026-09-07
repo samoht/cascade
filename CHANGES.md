@@ -24,476 +24,153 @@ entry points both moved.
 
 ### Breaking
 
-- `column-rule-width`, `column-rule-style` and `column-rule-color` carry a list
-  where they carried a single value, so `column-rule-style: dotted, dashed`
-  reads. CSS Gaps 1 sec. 4 gives each gap decoration longhand a
-  comma-separated list, one entry per rule line. A caller writing one line
-  passes a one-element list (#1024)
-
-- `Cascade.Properties.grid_line` gains `Calc_name`, so
-  `grid-row-start: center calc(2)` and `grid-row-start: calc(2) center` read
-  where both were dropped. CSS Grid 2 sec. 8.3 joins the index and the name
-  with `&&`, so the name sits on either side, and CSS Values 4 sec. 10 puts a
-  math function wherever an `<integer>` goes. Exhaustive visitors must handle
-  the new arm (#1126)
-
-- `Cascade.Properties.webkit_line_clamp` gains `Calc`, so
-  `-webkit-line-clamp: calc(2)` reads where it was dropped. CSS Values 4 sec.
-  10 allows a math function wherever an `<integer>` is allowed, and sec. 10.12
-  rounds and clamps its result, so `calc(.5)` keeps its wrapper where the bare
-  `.5` is still refused. Exhaustive visitors must handle the new arm (#1125)
-
-- `Cascade.Properties.font_weight` gains `Calc`, so `font-weight: calc(400)`
-  reads where it was dropped. CSS Values 4 sec. 10 allows a math function
-  wherever a `<number>` is allowed, and sec. 10.12 clamps its result rather
-  than dropping the declaration, so `calc(0)` keeps its wrapper where the bare
-  `0` is still refused. Exhaustive visitors must handle the new arm (#1124)
-
-- `Cascade.Stylesheet.font_face_descriptor` loses `Font_tech`, and
-  `Cascade.Stylesheet.font_tech_descriptor` and `read_font_tech_descriptor` go
-  with it, so `@font-face { font-tech: variations }` is dropped where it was
-  read. CSS Fonts 4 sec. 4 lists the descriptors and no `font-tech` is among
-  them: `<font-tech>` is the keyword sec. 11.1 defines for `tech()` inside
-  `src` and for `font-tech()` in `@supports`, both of which still read (#1118)
-
-- `Cascade.Stylesheet.font_face_descriptor` loses `Font_style_range`, so
-  `@font-face { font-style: normal italic }` is dropped where it was read. CSS
-  Fonts 4 sec. 4.4 grants one style range only, a pair of `oblique` angles,
-  which `Cascade.Properties.font_style` carries in a single value. The same
-  section makes the weight descriptor absolute, so `font-weight: lighter` is
-  dropped too (#1117)
-
-- `Cascade.Stylesheet.font_face_descriptor` gains `Font_style_auto`,
-  `Font_weight_auto` and `Font_stretch_auto`, so `@font-face { font-style: auto }`
-  and its two siblings read where they were dropped. CSS Fonts 4 sec. 4.4 gives
-  all three descriptors `auto` as their initial value. Exhaustive visitors must
-  handle the three new arms (#1116)
-
-- `Cascade.Properties.flex_basis` gains `Dimension`, the arm
-  `Cascade.Values.length` uses for a length whose authored spelling no typed
-  constructor carries, so `flex-basis: 1e3px`, `flex-basis: 10.0px` and
-  `flex: 1e999px` read where they were dropped with a warning. Exhaustive
-  visitors must handle the new leaf (#1023)
-
-- The `Int` of `Cascade.Properties.tab_size` becomes `Number of number`, so
-  `tab-size: 10.5` reads where it was dropped with a warning and
-  `tab-size: calc(1 + 2)` keeps the authored call until it is minified. CSS
-  Text 4 sec. 4.4 measures the tab stop in advance widths, a `<number [0,inf]>`
-  rather than an integer. A caller building a literal writes `Number (Num 4.)`
-  (#1054)
-
-- `column-rule` carries a list where it carried a single value, so
-  `column-rule: 1px solid red, 2px dashed blue` reads. CSS Gaps 1 sec. 4.4
-  spells the shorthand `<gap-rule>#`, the same list its longhands took in
-  #1024. A caller writing one line passes a one-element list (#1053)
-
-- `Cascade.Properties.animation_range_item` gains `Items` and `animation_range`
-  gains `Ranges`, so `animation-range: normal, normal` and
-  `animation-range-start: 10%, normal` read where they were dropped with a
-  warning. Scroll-driven Animations 1 secs. 3.1 to 3.3 put a `#` on both ends
-  and on the shorthand. Exhaustive visitors must handle the two new leaves
-  (#1052)
-
-- `Cascade.Properties.timeline_name` carries `timeline_ident` entries and the
-  two timeline shorthands drop their `None` arm, so
-  `scroll-timeline-name: none, none` and `scroll-timeline: none, --a x` read
-  where they were dropped with a warning. Scroll-driven Animations 1 secs. 4.1
-  and 5.1 put `none` inside the list; `timeline-scope`, which keeps it for the
-  whole value (sec. 6), moves to its own `timeline_scope` (#1051)
-
-- `Cascade.Properties.timeline_axis` gains `Axes` and `timeline_inset` gains
-  `Insets`, so `scroll-timeline-axis: block, inline` and
-  `view-timeline-inset: auto, 1rem` read where they were dropped with a
-  warning. Scroll-driven Animations 1 secs. 4.2, 5.2 and 5.3 put a `#` on all
-  three, one entry per timeline. Exhaustive visitors must handle the two new
-  leaves (#1050)
-
-- `Cascade.Properties.hyphenate_limit_chars` gives each slot a
-  `hyphenate_limit_chars_item`, `Auto` or a `Chars` count, where it carried a
-  bare `int` and a whole-value `Auto`, so `hyphenate-limit-chars: auto 3` and
-  `hyphenate-limit-chars: calc(1 + 2)` read where they were dropped with a
-  warning. CSS Text 4 sec. 6.3.4 spells the property
-  `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
-
-- `Cascade.Support.measured` records what this project measured for
-  productions web-features gives no compat key, so `Cascade.Support.implemented`
-  answers for them too, and `Cascade.Support.self_measured` says which answers
-  came from there rather than from the generated table. A browser gap is a fact
-  about CSS rather than a test fixture, and it belongs where the library can act
-  on it (#1110, #1111)
-
-- A colour reaches the final background layer alone, so `background: red,
-  url(x.png)` is dropped with a warning where every browser drops it and
-  `background: url(x.png), red` reads. CSS Backgrounds 3 sec. 2.10 spells the
-  shorthand `<bg-layer>#? , <final-bg-layer>` and sec. 2.1 paints the colour
-  once below every layer rather than per layer (#1108)
-
-- `-webkit-text-stroke: 100px 200px` is dropped with a warning where the second
-  width used to replace the first, which changed the stroke a browser drew
-  nothing for into one it drew. The property is a `||` of one width and one
-  colour, and CSS Values 4 sec. 2.2 takes each option of a `||` at most once
-  (#1108)
-
-- `gap: -10%` and `text-decoration: fit-content(20rem)` are dropped with a
-  warning where every browser drops the declaration. CSS Box Alignment 3 sec.
-  8.1 gives every gap a `[0,inf]` range, which the shorthand checked against a
-  list of unit constructors that omitted the percentage, and CSS Text
-  Decoration 4 sec. 2.3 spells the thickness slot `auto | from-font |
-  <length-percentage>`. Both longhands already refused these (#1101)
-
+- A math function reads wherever the grammar names a number, an integer or a
+  percentage, so `font-weight: calc(400)`, `zoom: calc(.5)`,
+  `border-image-slice: calc(10%)` and `grid-row-start: calc(2) center` read
+  where they were dropped. `Cascade.Properties.font_weight`,
+  `webkit_line_clamp`, `zoom`, `border_image_slice_item` and
+  `shape_image_threshold` gain `Calc`, and `grid_line` gains `Calc_name`
+  (#1072, #1086, #1124, #1125, #1126)
+- The gap decoration, scroll-driven animation and interest properties carry a
+  comma-separated list where they carried a single value, one entry per rule
+  line or per timeline, so `column-rule: 1px solid red, 2px dashed blue` and
+  `scroll-timeline-axis: block, inline` read. A caller writing one entry passes
+  a one-element list. `Cascade.Properties.animation_range_item`,
+  `animation_range`, `animation_timeline`, `timeline_axis`, `timeline_inset`
+  and `interest_delay` gain list arms, `timeline_name` carries
+  `timeline_ident` entries, and the two timeline shorthands drop their `None`
+  arm for the `none` that CSS puts inside the list; `timeline-scope`, which
+  keeps it for the whole value, moves to its own `timeline_scope`
+  (#1024, #1050, #1051, #1052, #1053, #1074, #1083)
+- `Cascade.Stylesheet.font_face_descriptor` follows CSS Fonts 4 sec. 4:
+  `font-style: auto`, `font-weight: auto` and `font-stretch: auto` read
+  through three new `_auto` arms, while `font-style: normal italic`,
+  `font-weight: lighter` and the whole `font-tech` descriptor are dropped
+  where they were read. `font_style_range`, `font_tech_descriptor` and
+  `read_font_tech_descriptor` are gone; `tech()` inside `src` and
+  `font-tech()` in `@supports` still read (#1116, #1117, #1118)
+- The numeric and length leaves carry the full authored grammar, so
+  `tab-size: 10.5`, `flex-basis: 1e3px`, `border-width: 3dvh` and
+  `vertical-align: 1cap` read where they were dropped with a warning. `Int`
+  becomes `Number of number` on `tab_size`, `float` becomes `number` on
+  `dash_length`, `animation_iteration_count`, `font_weight.Weight` and the
+  three `border_image_*` items, `flex_basis` and `border_width` gain
+  `Dimension` for a spelling no typed constructor carries, `vertical_align`
+  carries one `Length of length_percentage`, and
+  `position_value.Axis_edge_offset` carries a `length_percentage`. A caller
+  building a literal writes `Number (Num 4.)`
+  (#612, #673, #685, #1021, #1023, #1048, #1054, #1070)
+- `Cascade.Properties.page_size`, `page_break_value`, `page_break_inside_value`
+  and `border_image_slice` carry the CSS-wide keywords, the way their siblings
+  already did. Exhaustive visitors must handle the new leaves
+  (#993, #994, #1004)
+- Properties read the rest of their grammar, so `ruby-overhang: spaces`,
+  `content: url(a.png)`, `flex-wrap: balance`, `list-style-image:
+  linear-gradient(red, blue)`, `offset-path: circle(50%) content-box`,
+  `hyphenate-limit-chars: auto 3`, `contain-intrinsic-width: auto none`,
+  `container: markers stroke fill`, `-webkit-appearance: base-select` and
+  `text-box: normal` read where they were dropped with a warning. The value
+  types gain the arms that carry them, `position_try_fallbacks` holds typed
+  fallback entries, `ray_size` names the five sizes `ray()` accepts directly,
+  `place_items` gains the two modifier-first baselines, the `view-timeline`
+  and `text-box` types carry their optional slots, and `-webkit-mask-origin`
+  and `-webkit-mask-clip` carry WebKit's own box vocabulary rather than the
+  `mask_box` of their unprefixed namesakes. Exhaustive visitors must handle
+  the new leaves (#549, #668, #669, #670, #671, #725, #995, #1011, #1012,
+  #1013, #1018, #1019, #1020, #1049, #1071, #1087, #1088)
+- Constructors that printed CSS no grammar grants are gone:
+  `flex_basis.From_font`, and `Left`, `Right` and their four `Safe_`/`Unsafe_`
+  spellings on `align_content` (#658, #1014)
+- `Css.filter` gains `Omitted of filter_function`, `Css.Supports.t` gains
+  `General_enclosed`, `Css.kind` gains `Radial_shape`, `Radial_size` and
+  `Position_value`, and `Css.Stylesheet.moz_document_condition` gains
+  `Url_exact`, `Domain`, `Media_document` and `Regexp`, so a match on any of
+  them is no longer exhaustive. They retain what the reader used to discard
+  (#461, #508, #869, #870)
+- `Css.color` keeps the origin of a relative colour as a colour rather than in
+  the opaque tail: `Relative_rgb` carries `color * string` and
+  `Relative_color_mix` a pair of them (#313)
+- Values every browser drops are dropped with a warning, where they used to
+  read: a colour anywhere but the final background layer, a second
+  `-webkit-text-stroke` width, `gap: -10%`, `text-decoration:
+  fit-content(20rem)`, and a sizing function on a margin or inset property.
+  This release adds `Cascade.Values.read_margin_length`
+  (#1096, #1097, #1101, #1108)
 - A `var()` whose custom property resolves through another one keeps its
   reference rather than taking its fallback, so `--n: 5px; --x: var(--n);
   color: var(--x, lime)` computes the inherited colour as every browser does
-  instead of `lime`, and so does `--x: var(--nope, 7px)`. CSS Variables 1 sec.
-  3 puts the fallback in only where the custom property is the
-  guaranteed-invalid value, and a binding the property's grammar refuses is not
-  that: sec. 2.2 makes the declaration `unset` (#1100, #1102)
-
-- A margin or inset property refuses a sizing function, so `margin-right:
-  fit-content(20rem)`, `bottom: fit-content(20rem)` and `top: calc-size(auto,
-  size)` are dropped with a warning where every browser drops the declaration.
-  CSS Box 4 sec. 3.1 and CSS Position 3 sec. 3.1 give both families
-  `<length-percentage> | auto`, and the `margin` shorthand already read its
-  components that way. This release adds `Cascade.Values.read_margin_length`
-  (#1096, #1097)
-
-- Two spellings of one `@supports` condition are one block to the diff, so a
-  sheet writing `(color: color-mix(in lab, red, red))` and one writing it
-  without the spaces compare inside the block rather than across two. CSS
-  Conditional 3 sec. 7.4 calls that the same condition. `Cascade.Supports.pp`
-  and `to_string` gain `?verbatim`, which tells a serialiser from an identity
-  (#1095)
-
-- An `@supports` condition keeps the property name the author spelled, so
-  `@supports (colo\r: green)` reads back as written instead of as
-  `(color: green)`. CSS Conditional 3 sec. 7.4 returns "the condition that was
-  specified", and the token stream simplifications it allows are permitted
-  rather than required, so minified output still takes the shortest spelling.
-  `Cascade.Supports.Declaration` carries the name beside the declaration,
-  because a typed property is a constructor and cannot hold the escape (#1092)
-
-- Compatibility-prefix generation asks the web-features dataset which targets
-  read a property unprefixed, where it carried browser versions written into
-  the source. A `backdrop-filter` targeting Safari 17.0 to 17.6 keeps its
-  `-webkit-` twin, which the old boundary dropped: unprefixed `backdrop-filter`
-  shipped in Safari 18. This release adds `Cascade.Support`, and
-  `Cascade.Optimize.targets` is now an alias of `Cascade.Support.targets`
-  (#1090)
-
+  instead of `lime`. CSS Variables 1 sec. 3 puts the fallback in only where
+  the custom property is the guaranteed-invalid value (#1100, #1102)
 - `border-image` and `mask-border` fill their slots in any order, so
-  `border-image: 50% none` and `round none 30` read where they were dropped
-  with a warning. CSS Backgrounds 3 sec. 6.1 combines the source, the slice
-  with its slash-separated width and outset, and the repeat with `||`, and the
-  reader took them in one fixed order (#1089)
-
-- `Cascade.Properties.ruby_overhang` gains `Spaces`, so
-  `ruby-overhang: spaces` reads where it was dropped with a warning. CSS Ruby 1
-  sec. 5.1 spells the property `auto | spaces`, and cascade read only `auto`
-  and the `none` browsers keep as a legacy alias. Exhaustive visitors must
-  handle the new leaf (#1088)
-
-- `-webkit-mask-origin` and `-webkit-mask-clip` carry
-  `Cascade.Properties.webkit_mask_box`, WebKit's own box vocabulary, where they
-  carried the `mask_box` of their unprefixed namesakes. They are not aliases:
-  they take `content`, `padding` and `border` beside the `-box` spellings, the
-  clip takes `text`, and neither takes an SVG box or `no-clip`. So
-  `-webkit-mask-origin: content` reads where it was dropped, `mask-origin:
-  no-clip` is dropped as CSS Masking 1 sec. 6.4 asks, and a `mask-clip` value
-  the prefixed property cannot spell no longer generates a `-webkit-mask-clip`
-  declaration every browser drops (#1087)
-
-- `Cascade.Properties.zoom` and `border_image_slice_item` gain `Calc`, so
-  `zoom: calc(.5)`, `zoom: calc(50%)` and `border-image-slice: calc(10%)` read
-  where they were dropped with a warning, and minified output keeps the call
-  around a negative one rather than unwrapping it to a literal the browser
-  drops. CSS Values 4 sec. 10.1 puts a math function wherever its type is and
-  sec. 10.13 checks the range on the resolved value. Exhaustive visitors must
-  handle the two new leaves (#1086)
-
-- `Cascade.Properties.interest_delay` carries `Delays of interest_delay_item
-  list` where it carried `Normal` and `Durations of duration list`, so
-  `interest-delay: normal 120ms` and `120ms normal` read. CSS UI 4 sec. 6.4
-  spells the shorthand `<'interest-delay-start'>{1,2}` and each longhand
-  `normal | <time>`, so `normal` fills one slot rather than standing for the
-  whole value. A caller writing a single keyword passes `Delays [ Normal ]`
-  (#1083)
-
-- `Cascade.Properties.animation_timeline` gains `Timelines`, so
-  `animation-timeline: none, auto` and `scroll(), view()` read. CSS Animations
-  2 sec. 5 spells the property `<single-animation-timeline>#`, one entry per
-  animation. Exhaustive visitors must handle the new leaf (#1074)
-
-- `Cascade.Properties.shape_image_threshold` gains `Calc`, so
-  `shape-image-threshold: calc(50% + 25%)` and `min(.2,.8)` read where they
-  were dropped with a warning. CSS Shapes 1 sec. 6.2 takes an
-  `<opacity-value>`, and CSS Values 4 sec. 10.1 puts a math function wherever
-  its type is, which `opacity` already read that way. Exhaustive visitors must
-  handle the new leaf (#1072)
-
-- `Cascade.Properties.contain_intrinsic_size_item` gains `None` and
-  `Auto_none`, so `contain-intrinsic-width: auto none` and
-  `contain-intrinsic-size: none 2ch` read. CSS Sizing 4 sec. 6 spells a slot
-  `auto? [ none | <length [0,inf]> ]`, so `none` sits in a slot rather than
-  standing for the whole value. Exhaustive visitors must handle the two new
-  leaves (#1071)
-
-- `Cascade.Properties.vertical_align` carries a `Length of length_percentage`
-  where it carried `Zero`, `Px`, `Rem`, `Em`, `Pct` and `Calc`, so
-  `vertical-align: 2ch`, `2vh`, `2cap` and `max(1rem,2vw)` read. CSS Inline 3
-  sec. 4.2 gives the property a `<length-percentage>`, which every length unit
-  is; the reader carried a list of four. A caller building a literal writes
-  `Length (Px 10.)` (#1070)
-
-- The `Number` of `Cascade.Properties.dash_length` carries a `number` where it
-  carried a `float`, and `animation_iteration_count` replaces its `Num of float`
-  with `Count of number`, so `stroke-dasharray: calc(1 + 2)` and
-  `animation-iteration-count: calc(.5)` read. A caller building a literal writes
-  `Number (Num 4.)` and `Count (Num 1.)` (#1048)
-
-- The `Number` of `Cascade.Properties.border_image_width_item`,
-  `border_image_outset_item` and `border_image_slice_item` carries a `number`
-  where it carried a `float`, so `border-image-width: calc(1 + 2)` reads. CSS
-  Backgrounds 3 secs. 5.2 to 5.4 write those halves as `<number [0,inf]>`, and
-  a `calc()` is one. A caller building a literal writes `Number (Num 1.)`
-  (#1021)
-
-- `Cascade.Properties.content` gains `Image of background_image`, so
-  `content: url(a.png)` and `content: linear-gradient(red, blue)` read where
-  they were dropped with a warning. CSS Generated Content 3 sec. 2 puts an
-  `<image>` in both the replacement and the list form. Exhaustive visitors must
-  handle the new leaf (#1020)
-
-- `Cascade.Properties.webkit_appearance` gains `Base_select`, so
-  `-webkit-appearance: base-select` reads the way `appearance: base-select`
-  already did. Exhaustive visitors must handle the new leaf (#1019)
-
-- `Cascade.Properties.flex_wrap` gains `Balance` and `Wrap_reverse_balance`, so
-  `flex-wrap: balance` reads where it was dropped with a warning. CSS Flexbox 2
-  sec. 5.2 spells the property `nowrap | [ wrap | wrap-reverse ] || balance`.
-  Exhaustive visitors must handle the two new leaves (#1018)
-
-- `Cascade.Properties.align_content` drops `Left`, `Right` and their four
-  `Safe_`/`Unsafe_` spellings, which CSS Box Alignment 3 sec. 4.2 keeps out of
-  `<content-position>`, and `justify_content` gains the `Safe_left` and
-  `Safe_right` it was missing, so `justify-content: safe left` keeps its
-  overflow keyword instead of computing to `left` (#1014)
-
-- `Cascade.Properties.container_shorthand` holds a `container_name` where it
-  held a `string option`, so `container: markers stroke fill` reads and
-  `container: inline-size` names a container instead of typing one. CSS
-  Conditional 5 sec. 3.3 makes the name half required and sec. 3.2 spells it
-  `none | <custom-ident>+`, which also excludes `and`, `not` and `or` from a
-  container name (#1013)
-
-- `Cascade.Properties.position_try_fallbacks` holds
-  `position_try_fallback_entry list`, whose `Area` entry carries the
-  `<position-area>` CSS Anchor Positioning 1 sec. 6.1 allows beside the
-  try-tactic group, so `position-try-fallbacks: start end` reads. A caller
-  building a tactic group writes `Tactics group`. `position_anchor` gains
-  `Normal` and `None` from sec. 4.1, and `position-try` requires its fallbacks,
-  so `position-try: most-width` is dropped with a warning (#1012)
-
-- `Cascade.Properties.offset_path` gains `Shape of clip_path`, so
-  `offset-path: circle(50%) content-box` reads where a basic shape or a
-  reference box was dropped with a warning. CSS Motion Path 1 sec. 2.1 gives
-  the property `<basic-shape> || <coord-box>`. Exhaustive visitors must handle
-  the new leaf (#1011)
-
-- `Cascade.Properties.page_size` gains `Initial`, `Unset`, `Revert` and
-  `Revert_layer`. Exhaustive visitors must handle the four new leaves (#1004)
-
-- `Cascade.Properties.list_style_image` carries an `Image of background_image`
-  where it carried a `Url of string`. CSS Lists 3 sec. 3.5 gives the property
-  an `<image>`, so `list-style-image: linear-gradient(red, blue)` reads. A
-  caller building a url writes `Image (Url u)`, or `Css.list_style_image_url`
-  (#995)
-
-- `Cascade.Properties.border_image_slice` is a variant carrying the CSS-wide
-  keywords, the way its `border-image-width`, `-outset` and `-repeat` siblings
-  already were, and the offsets it used to be are
-  `border_image_slice_offsets`, which is what the `border_image` shorthand
-  record holds. A caller building the record writes `Slices { offsets; fill }`
-  (#994)
-
-- `Cascade.Properties.page_break_value` and `page_break_inside_value` gain
-  `Initial`, `Unset`, `Revert` and `Revert_layer`. Exhaustive visitors must
-  handle the four new leaves (#993)
-
-- `Css.filter` gains `Omitted of filter_function` to retain empty calls.
-  Exhaustive visitors must handle this leaf; normalization equates it with
-  its specified default (#870).
-
-- `Css.Supports.t` gains `General_enclosed` for opaque parenthesized feature
-  tests. Exhaustive visitors must preserve this new leaf (#869).
-
-- `Css.Context.query` gains `media_inapplicable`, distinguishing a recognized
-  feature that matches no value from an unknown feature. Direct record
-  constructors need the new field; `Context.query ()` defaults it to `[]`
-  (#868).
-
-- `cascade diff` exits 2, not 0, when it finds no difference and had to drop a
-  declaration or a rule it could not read: what it dropped reached neither side
-  of the comparison, so identity is not a verdict it can give. Two sides that
-  dropped the same source text still exit 0: the comparison did see the same
-  thing twice there. A gate that reads any non-zero status as "differs" needs
-  updating (#832, #833, #834, #835, #836)
-- `Cascade.Error.t` gains `recovery`, which says whether the reader dropped the
-  construct the error is about or kept it in the output. Exhaustive record
-  patterns must bind it or add `_`; `Cascade.Error.v` fills it in (#834)
-- `Cascade.Parser.to_string_custom` is gone. Call
-  `Cascade.Parser.string_of_components`, which renders a custom-property token
-  stream identically (#806)
-- `cascade` requires `cmdliner >= 2.0.0`, the release that lets either side of
-  `cascade diff` name standard input as `-` (#796)
-- `Css.parse` adds `source : Css.Source.t option`; exhaustive record patterns
-  must bind it or add `_`. `Css.of_string ~preserve_source:true` fills it with
-  exact authored comments, syntax, trivia ownership and coordinates (#747)
-- Implementation modules are no longer usable through accidental `Cascade.*`
-  aliases: `Baseline`, `Block`, `Common`, `Factor`, `Flatten`, `Inline`,
-  `Merge`, `Rule`, `Rule_index`, `Rule_order`, `Shorthand`, `Size`, `Summary`,
-  `Rule_graph`, `Rule_scheduler`, `Pool`, `Order_maintenance`, `Preflight`,
-  `Ctx`, `Cover`, `Edge`, `Loop`, `Rule_candidate`, `Rule_rewrite`,
-  `Factor_safe`, `Gzip_size` and `Index` are private, as are the six shared
-  `*_intf` modules. The supported `Css` aliases and parser roots remain public;
-  `Aria`, `Color_space` and `Nest` gain coherent `Css` aliases (#539)
-- Redundant public aliases are gone. Use `Declaration.pp` and
-  `Declaration.to_string` instead of `pp_declaration` and
-  `string_of_declaration`; `Stylesheet.empty`, `Stylesheet.read` and
-  `Stylesheet.to_string` instead of `empty_stylesheet`, `read_stylesheet` and
-  the old string-valued `Stylesheet.pp`; `Keyframe.to_string` instead of
-  `string_of_selector`; `Pp.float` instead of `Pp.float_compact`; and
-  `Css.inline_style_of_declarations`, which keeps the `optimize` option,
-  instead of `Stylesheet.inline_style_of_declarations`. `Stylesheet.pp`,
-  `Css.pp` and `Container.pp` are composable `Pp.t` printers rather than
-  string-returning aliases (#544)
-- Also gone: the one-off `Css.Transform`, `Css.Transform_origin`,
-  `Css.Perspective_origin` and `Css.Animation` string parser modules, replaced
-  by the matching `Properties.read_*` parser over a `Cursor`; the
-  Tailwind-specific `inset_ring_shadow`, replaced by `shadow ~inset:true`; and
-  the duplicate `Box_shadow` constructor of the typed `kind` GADT, replaced by
-  `Shadow`. `Css.Gradient_direction.of_string` and the `Box_shadow` property
-  constructor are unchanged (#544)
-- `Cascade.Reader` is the character cursor `Lexer` drives and no longer reads
-  CSS: its combinators, value readers and delimiter helpers are gone.
-  `Cascade.Cursor` carries the same names over a component-value stream, so
-  read CSS from a `Cursor.of_string` or `Cursor.of_reader` instead (#509, #514)
-- `Cascade.Cursor.pair` and `triple` rewind the cursor when the separator or a
-  later parser fails. Code that caught `Parse_error` from either and read on
-  from the advanced position now re-reads what the first parser consumed (#509)
-- Public declaration helpers whose CSS values require a non-empty list raise
-  `Invalid_argument` for `[]`, and `Cursor.list` requires at least one item
-  unless a grammar opts out with `~at_least:0`. Empty CSS grammar lists and
-  non-positive explicit `repeat()` counts are rejected (#691)
-- `Declaration.declaration` is a private variant. Its constructors remain
-  available for pattern matching, but construct values with `Declaration.v` or
-  `Declaration.theme_guarded`: the public records exposed their cached hash, so
-  a caller could make the optimizer treat equal declarations as unequal (#527)
-- `Css.Stylesheet.edit_statements` callbacks return `Css.Stylesheet.Keep`,
-  `Replace` or `Drop` through the new `Css.Stylesheet.edit` type, where they
-  leaked the otherwise-internal `Common.List.edit` type (#539)
-- `Css.Container.of_components` and `Css.Media.of_components` are gone: call
-  `Container.read` / `Media.read` with a cursor over the prelude's components
-  (`Cursor.sub`). `Container.of_string`, `Media.of_string_strict`,
-  `Supports.of_string` and the three `Font_face.*_of_string` raise
-  `Cursor.Parse_error` where they raised `Failure`, so replace a `Failure`
-  handler around any of them (#496, #497, #499, #501)
-- `Declaration.of_string` raises `Cursor.Parse_error` for every input it
-  refuses, anchored on the text that failed, where empty, blank and
-  selector-shaped input raised `Failure` (#535)
-- `Css.Selector.of_string ""` raises `Error.Parse_error`, like every other
-  malformed selector, where it raised `Invalid_argument` (#528)
-- `Css.Supports.property` raises `Failure` on a value that is not a
-  `<declaration-value>`, where it wrote the text unchecked:
-  `property "color" "red) or (color:blue"` emitted a condition a browser
-  answers true for, so the rules the caller meant to guard applied (#459)
-- `Css.Declaration.custom_property` raises `Failure` on a name and value that
-  do not write back as the one declaration they name:
-  `custom_property "--a" "red;--b:blue"` wrote a second declaration. For
-  strings from outside the parser use `parse_custom_property`, the same check
-  as an option (#421, #428)
-- `Css.statement_declarations` is gone. Call the exhaustive
-  `Css.Stylesheet.statement_declarations`, which reaches every declaration a
-  statement holds (#348)
-- `Css.vars_of_rules` is `Css.vars_of_stylesheet`, and now reports a `var()`
-  inside a nested rule, an animation frame or a page margin box as well as in a
-  top-level rule (#382)
+  `border-image: 50% none` and `round none 30` read where the reader took them
+  in one fixed order (#1089)
+- Browser support comes from the web-features dataset rather than from
+  versions written into the source, so a `backdrop-filter` targeting Safari
+  17.0 to 17.6 keeps its `-webkit-` twin, which the old boundary dropped. This
+  release adds `Cascade.Support`, whose `measured` records what this project
+  measured for productions the dataset gives no compat key and whose
+  `self_measured` says which answers came from there;
+  `Cascade.Optimize.targets` is an alias of `Cascade.Support.targets`
+  (#1090, #1110, #1111)
+- An `@supports` condition keeps what the author wrote: the property name with
+  its escapes, and the value unrewritten through the property's typed grammar,
+  which changed what the condition tested. `--minify` keeps the guard rather
+  than deciding it, and `Css.Supports.simplify_baseline` is gone. Two
+  spellings of one condition are still one block to the diff;
+  `Cascade.Supports.pp` and `to_string` gain `?verbatim`, which tells a
+  serialiser from an identity, and `Cascade.Supports.Declaration` carries the
+  name beside the declaration (#584, #587, #1092, #1095)
+- Implementation modules are no longer reachable through accidental
+  `Cascade.*` aliases, and the redundant public ones are gone. Use
+  `Declaration.pp` and `Declaration.to_string` rather than `pp_declaration`
+  and `string_of_declaration`, `Cascade.Parser.string_of_components` rather
+  than `Parser.to_string_custom`, `Container.read` / `Media.read` over a
+  cursor rather than `of_components`, the exhaustive
+  `Css.Stylesheet.statement_declarations` rather than
+  `Css.statement_declarations`, and `Css.vars_of_stylesheet` rather than
+  `Css.vars_of_rules`. `Cascade.Reader` is the character cursor `Lexer`
+  drives and no longer reads CSS, the one-off `Css.Transform`,
+  `Transform_origin`, `Perspective_origin` and `Animation` string parsers are
+  replaced by the main readers, `Css.Selector_summary.clear_memo` is gone (it
+  did nothing), and `Cascade.Component.pp` says that it prints a debug dump
+  (#348, #382, #496, #497, #499, #501, #504, #509, #514, #539, #544, #548,
+  #806)
 - `Css.Stylesheet.layer_name` is the identifiers a `<layer-name>` is made of
-  rather than the text between them, so `Css.layers`, `layer_block`,
-  `layer_decl`, `layer`, `layer_of`, `as_layer`, `layer_block_name`,
-  `layer_statement_name_list`, `import_layer_name` and the `?layer` argument of
-  `custom_props` carry a `string list`. `read_layer_name` and
-  `string_of_layer_name` convert between the two (#442)
+  rather than the text between them, and `Css.Stylesheet.edit_statements`
+  callbacks return `Keep`, `Replace` or `Drop` through the new
+  `Css.Stylesheet.edit` type (#442, #539)
+- `Declaration.declaration` is a private variant: its constructors still
+  match, but build values with `Declaration.v` (#527)
+- The public constructors raise where they used to accept: `Invalid_argument`
+  for `[]` on a helper whose CSS value requires a non-empty list,
+  `Cursor.Parse_error` from `Declaration.of_string` for every input it
+  refuses, `Error.Parse_error` from `Css.Selector.of_string ""`, and `Failure`
+  from `Css.Supports.property` and `Css.Declaration.custom_property` on text
+  that does not write back as the one declaration it names. `Cursor.pair` and
+  `triple` rewind the cursor when the separator or a later parser fails, so
+  code that caught `Parse_error` and read on sees a different position
+  (#421, #428, #459, #509, #528, #535, #691)
+- Records gained fields, so expressions must set them and patterns must bind
+  them or use `; _`: `recovery` on `Cascade.Error.t`, which says whether the
+  reader dropped the construct or kept it; `source` on `Css.parse`, filled by
+  `Css.of_string ~preserve_source:true`; `line` and `col` on
+  `Cascade.Reader.parse_error`, whose `filename` now holds a source name
+  rather than a packed `"<CSS input>:L:C"`; `in_style_rule` on `Css.Pp.ctx`;
+  `media_inapplicable` on `Css.Context.query`, which tells a recognised
+  feature matching no value from an unknown one; and `added_properties` and
+  `removed_properties` on `Tree_diff.Content_changed`
+  (#374, #491, #723, #747, #834, #868)
 - `Css.Media.equal` reads normalised query structure where it read serialised
-  text, so it is no longer `Css.Media.compare a b = 0`: `(min-width: 10px)` and
-  `(width >= 10px)` are now equal, and two queries that print alike but parse
-  apart are not. `Css.Media.normalize` exposes the normal form (#516)
-- `Css.Media.kind` classifies a negated width bound by the range it actually
-  matches, so `not (min-width: 640px)` sorts with the upper bounds and two
-  `not`s cancel. `sort_key`, `group_order` and `compare` follow, so a caller
-  sorting media queries gets a different order (#328)
-- `Css.color` keeps the origin of a relative colour as a colour rather than in
-  the opaque tail: `Relative_rgb` carries `color * string` and `Relative_color`
-  carries `string * color * string`, so an expression or a pattern naming
-  either takes the extra field (#313)
-- `Css.kind` gains `Radial_shape`, `Radial_size` and `Position_value`, so a
-  match on it is no longer exhaustive. They let `Css.Variables.var` bind a
-  radial gradient's shape, size or centre `<position>` as a typed custom
-  property rather than an opaque token stream (#508)
-- `Css.Stylesheet.moz_document_condition` gains `Url_exact`, `Domain`,
-  `Media_document` and `Regexp`, so a match on it is no longer exhaustive
-  (#461)
-- `Css.border_width` gains `Dimension`, so a match on it is no longer
-  exhaustive. The reader accepted only a fixed list of units, so
-  `border-width: 3dvh` was dropped as invalid while `margin: 3dvh` was read
-  (#612)
-- `Css.Pp.ctx` gains `in_style_rule`; record expressions must set it and record
-  patterns must bind it or use `; _` (#374)
-- `Cascade.Reader.parse_error` gains `line` and `col`, and `filename` holds a
-  source name where it packed `"<CSS input>:L:C"`: read the location from the
-  two new fields, and `with_filename` keeps it instead of overwriting (#491)
-- `Tree_diff.Content_changed` carries property/value pairs in
-  `added_properties` and `removed_properties`, so callers can report the value
-  and priority of a declaration that exists on only one side (#723)
-- `font_weight.Weight` carries a number rather than an integer, and font
-  feature and variation settings carry structured tag/value lists rather than
-  pre-rendered strings, preserving fractional weights and variation values and
-  feature indexes above one (#685)
-- `place_items` gains `First_baseline` and `Last_baseline`, preserving the two
-  modifier-first baseline positions accepted by `place-items` (#725)
-- `position_value.Axis_edge_offset` carries a `length_percentage`, matching the
-  percentage-capable `<bg-position>` offset it represents (#673)
-- `text_box.Normal` represents the `normal` shorthand branch, which now parses
-  and round-trips instead of being dropped (#671)
-- `text_box.Box` carries an optional trim value, so edge-only values such as
-  `cap alphabetic` parse and preserve the omitted slot (#670)
-- `Properties.View_timeline` carries a `view_timeline_shorthand`, whose items
-  include the optional inset slot, so `view-timeline:--v 10% 20%` parses and
-  round-trips (#669)
-- `timeline_shorthand_item.axis` is optional, so an omitted axis parses as
-  `None` and round-trips without being rewritten as `block` (#668)
-- `flex_basis.From_font` is gone. `from-font` is not part of the `<width>`
-  grammar accepted by `flex-basis`; the constructor printed CSS that the
-  `flex-basis` reader correctly rejects (#658)
-- `Css.Properties.ray_size` names the five sizes `ray()` accepts directly, so
-  write `Closest_side` for `Radial Closest_side`. The dropped `Radial` wrapper
-  also admitted lengths and radii that `pp_ray_size` raised on (#549)
-- `Css.Selector_summary.clear_memo` is gone. It did nothing, so a caller that
-  called it can drop the call and see no change (#548)
-- `Cascade.Component.pp` prints a debug dump with source locations, which is
-  what it always printed, and now says so. For source text, call
-  `Cascade.Parser.string_of_components` (#504)
-- `--minify` keeps an author's `@supports` guard, and
-  `Css.Supports.simplify_baseline` is gone. `@supports (height: stretch)` was
-  treated as a test for the `height` property alone, so the guarded fallback
-  was dropped and every browser without that value was left with nothing (#584)
-- An `@supports` condition keeps the value the author wrote. Cascade used to
-  rewrite it through the property's typed grammar, which changed what the
-  condition tested. `Css.Values.normalize_color` loses its unused
-  `in_feature_query` argument, and `Css.Declaration.parse_opaque_declaration`
-  reads a declaration without its typed grammar (#587)
-- `cascade diff --depth` is gone: a report is bounded by whole differences
-  now, not by tree levels. Pass `--limit=none` where `--depth=max` was, and
-  `--limit=N` where a level was pinned (#792)
+  text, so it is no longer `Css.Media.compare a b = 0`, and `Css.Media.kind`
+  classifies a negated width bound by the range it actually matches, so
+  `not (min-width: 640px)` sorts with the upper bounds (#328, #516)
+- `cascade diff` exits 2, not 0, when it finds no difference but had to drop a
+  declaration or a rule it could not read: what it dropped reached neither
+  side of the comparison. `--depth` is gone, since a report is bounded by
+  whole differences rather than by tree levels; pass `--limit=none` where
+  `--depth=max` was. `cascade` requires `cmdliner >= 2.0.0`, the release that
+  lets either side name standard input as `-`
+  (#792, #796, #832, #833, #834, #835, #836)
 
 ### Parsing
 
@@ -508,340 +185,122 @@ to lose a whole rule over one bad piece. Both are gone.
   as the corner radius of a basic shape, and an unrelated keyword on a box size
   (#417, #617, #627, #629, #631, #673, #680, #688, #699, #701, #878, #882,
   #890, #891)
-
+- A property refuses what its own grammar refuses, so a value every browser
+  drops is dropped with a warning rather than written back: `zoom: -1`,
+  `line-height: 45deg`, `will-change: none`, `font-size: fit-content(20rem)`,
+  `padding-bottom: anchor-size(width)`, `translate: auto`,
+  `border-top-color: calc(2px - 3px)`, `border-image: none, none`,
+  `font-language-override: "default"`, `grid-template-rows: -2px`,
+  `grid-template: 10px`, `quotes:`, `border:` and a `@page size` given a
+  percentage. Ranges, units, sizing functions and the closed `<color>`
+  production are each checked, where the reader carried any dimension or any
+  well-formed token run through, and an empty value is a declaration only for a
+  custom property. This release adds
+  `Cascade.Properties.read_border_image_source`
+  (#640, #982, #1000, #1001, #1002, #1003, #1004, #1005, #1006, #1007, #1009,
+  #1010, #1015, #1077, #1078)
 - A property whose grammar names a `<length>` takes neither a percentage nor an
   intrinsic-sizing keyword, and a `<time>` or `<angle>` needs its unit. Cascade
-  read them wherever it read a length, so `border-width: 50%`, `perspective:
-  50%`, `top: min-content`, `margin-top: none`, `transition-duration: 0`,
-  `rotate: 0`, `columns: calc(50% + 25%)`, `scroll-margin-top: calc(50% + 25%)`,
-  `box-shadow: 20px 10%` and a negative shadow blur all parsed, most of them
-  turning a declaration browsers drop into one that works.
-  `Css.Values.read_length` gains `?sizing` and `read_non_negative_length` gains
-  `?length_only` (#871, #879, #880, #951, #952, #953, #954, #1056, #1058,
-  #1059)
-
-- A relative colour's channel expressions are type-checked. CSS Color 5 sec.
-  4.1 substitutes a channel keyword as a `<number>`, so
-  `rgb(from red calc(r + 10%) g b)` and `lch(from red l c calc(h + 90deg))` add
-  a number to a percentage and to an angle; both used to read and every browser
-  drops them. The multiplying forms, `hwb(from red h calc(w * 1%) b)` among
-  them, still read (#1061)
-
+  read them wherever it read a length, so `border-width: 50%`, `top:
+  min-content`, `transition-duration: 0`, `rotate: 0` and `box-shadow: 20px
+  10%` all parsed, most of them turning a declaration browsers drop into one
+  that works. `Css.Values.read_length` gains `?sizing` and
+  `read_non_negative_length` gains `?length_only` (#871, #879, #880, #951,
+  #952, #953, #954, #1056, #1058, #1059)
+- Values browsers accept are read rather than dropped: `animation-duration:
+  auto`, `grid: none / 200px`, `place-items: flex-start baseline`, the full
+  `text-wrap` grammar, `row-gap: normal`, a custom counter-style name,
+  `transition-property: all, opacity`, an empty `blur()`, a `style()` range
+  query, `display: flow-root list-item`, `outline: thin solid red`, the
+  `svg||td` column combinator, `:dir(auto)`, `@-moz-document`'s URL matchers,
+  `white-space: collapse`, `text-box: auto`, `background-position: 50% bottom`,
+  every `<image>` at `list-style-image`, a CSS-wide keyword at the
+  `page-break-*` aliases and at `border-image-slice`, `margin` mixing `auto`
+  with lengths in any slot, the four side styles at `border-style`, both radii
+  at every `border-*-radius` corner, `display: grid-lanes`, and a value whose
+  grammar ends in an optional component (#334, #335, #427, #456, #461, #551,
+  #572, #579, #594, #633, #641, #644, #646, #665, #666, #667, #682, #739,
+  #805, #827, #870, #874, #877, #881, #884, #885, #886, #887, #889, #909,
+  #993, #994, #995, #998, #1022, #1055, #1060, #1085, #1122)
+- A value is checked against the range its specification gives rather than one
+  the reader assumed, so `overflow-clip-margin: -1px`, `offset-distance: -10px`,
+  `shape-image-threshold: 50%`, `scroll-margin-block: 0 0`,
+  `transition: opacity 1s -1s`, `border-right-width: calc(-1px)` and
+  `z-index: calc(.5)` read where they were dropped with a warning. A math
+  function keeps its call in minified output rather than being unwrapped to a
+  bare value the browser drops, since CSS Values 4 sec. 10.12 checks the range
+  and rounds on what the function resolves to
+  (#996, #999, #1026, #1047, #1080, #1082, #1123)
 - Each grid property takes its own grammar. Values a browser drops are dropped
-  (`grid-template-columns: [a]`, `[span] 1px`, `grid-column-start: 0`, `span
-  -1`), `grid-auto-rows` refuses the area forms `grid-template` owns, `subgrid`
-  takes its line-name list, and a track size accepts math resolving to `<flex>`
-  (#708, #711, #712, #714, #717, #718, #724, #749)
-
-- `font-variant` and `font-variant-alternates` have typed values, and
-  `@font-face` and `@font-palette-values` read their own `font-family`
-  grammars. Carried as opaque text the first two accepted anything, so
-  `small-caps unicase`, `jis78 jis83` and `swash(inherit)` parsed where Chrome
-  refuses them (#695, #963, #964)
-
-- The `font` shorthand reads and writes all nine `<font-width-css3>` keywords.
-  It read two of them, and printed the width its longhand had normalised to a
-  percentage, which the slot has no room for and cascade's own reader refused,
-  so `font: ultra-condensed 12px serif` was dropped and `font-stretch:
-  expanded` contracted to a `font` no browser reads (#965)
-
+  (`grid-template-columns: [a]`, `[span] 1px`, `grid-column-start: 0`,
+  `span -1`, `grid-template: 50% "text" infinite`, `grid: "a b" "b a"`),
+  `grid-auto-rows` refuses the area forms `grid-template` owns, `subgrid` takes
+  its line-name list, a track size accepts math resolving to `<flex>`, and the
+  areas form is read against its grammar rather than kept as any well-formed
+  token run (#708, #711, #712, #714, #717, #718, #724, #749, #1016, #1076)
+- The font grammars are the ones the specifications spell. `font-variant` and
+  `font-variant-alternates` are typed rather than opaque text, `@font-face` and
+  `@font-palette-values` read their own `font-family` grammars, the `font`
+  shorthand reads and writes all nine `<font-width-css3>` keywords where it
+  read two and printed a percentage the slot has no room for, a CSS-wide
+  keyword in a descriptor is dropped, and the `src` descriptor reads an empty
+  `url()` and drops only the item it cannot read, so a trailing comma no longer
+  costs the whole font (#695, #963, #964, #965, #972, #1115)
+- Six `@counter-style` descriptors are read against their grammars, so
+  `range: bogus`, `pad: 3`, `negative: 1` and `fallback: "decimal"` are dropped
+  where each was kept as an opaque string, and a counter symbol may be an image
+  (#1130)
 - An `@property` syntax rejects a component with two multipliers, a multiplied
   `<transform-list>` and a `*` combined with anything, so the registration
   drops rather than typing values by a grammar it cannot honour. Two syntaxes
   that used to hang the parser are read (#398, #707, #710, #713)
-
-- Values browsers accept are read rather than dropped: `animation-duration:
-  auto`, `grid: none / 200px`, `place-items: flex-start baseline`, the full
-  `text-wrap` grammar, `row-gap: normal`, a negative
-  `text-decoration-thickness`, a custom counter-style name,
-  `transition-property: all, opacity`, a zero-offset `box-shadow`, an empty
-  `blur()`, a `style()` range query, a `calc()` resolving to a number, a sole
-  baseline in `place-content`, `display: flow-root list-item`, `outline: thin
-  solid red`, a bare `stroke-width` number, the `svg||td` column combinator,
-  `border-inline`, a descending `@font-face` range, a valid
-  `@font-palette-values` rule, `:dir(auto)`, `@media (min-width: 0)`,
-  `@-moz-document`'s URL matchers, a `border-image` repeat keyword standing
-  alone, a `text-decoration` component with no line, `white-space: collapse`, a
-  time-valued `round()` in a delay, a `flex` shorthand whose basis leads, a
-  relative `color()` whose alpha is the origin's own, the full
-  `-webkit-mask-composite` operator set, and a value whose grammar
-  ends in an optional component (#334, #335, #427, #456,
-  #461, #551, #572, #579, #594, #633, #641, #644, #646, #665, #666, #667, #682,
-  #739, #805, #827, #870, #874, #877, #881, #884, #885, #886, #887, #889, #909,
-  #1055, #1060, #1085)
-
-- `margin` mixes `auto` with lengths in any slot, `border-style` takes the four
-  side styles, `border-block-style` and `border-inline-style` take the start and
-  end edges, and every `border-*-radius` corner takes a horizontal and a
-  vertical radius
-
-- `display` accepts `grid-lanes` and `inline-grid-lanes`, the two values CSS
-  Grid 3 sec. 2.2 establishes grid lanes layout with
-
-- An empty value is no longer a declaration: `border:`, its per-side and logical
-  variants, `column-rule:` and `outline:` are dropped with a warning, where
-  `border:` read as `border: none` (#640)
-
-- `offset`, `offset-anchor`, `offset-position`, `position-area`,
-  `position-try-fallbacks` and `white-space` are typed against their own
-  grammars, and a literal reads as the node the library exports, so a
-  constructed declaration and a parsed one compare and hash equally (#478,
-  #485, #495, #651, #652, #653, #654, #657, #674, #683, #888)
-
-- `border-image` compares a slice against its initial without a polymorphic
-  equality, which walked another module's representation (#935)
-
-- An `@page` prelude with an empty selector in it invalidates the rule. CSS
-  Paged Media 3 sec. 4.2 gives each item of the list a name, pseudo-pages or
-  both, so `@page ,` and `@page foo,` name one that is neither and Chrome drops
-  the rule; cascade read them as an unnamed page (#973)
-
-- A value the input ended in the middle of a string keeps its declaration. CSS
-  Syntax 3 sec. 4.3.5 ends a string at EOF as the string it read and only a
-  newline makes a `<bad-string-token>`, which sec. 7.2 excludes; cascade treated
-  the two alike and dropped the rule, and printed the value back without its
-  closing quote so the rest of the sheet was swallowed (#972)
-
-- A custom property whose value holds a `!` outside its `!important` flag is
-  dropped with a warning, and `--x: 1 ! important` is important with the value
-  `1`. CSS Syntax 3 sec. 5.5.6 reads the flag off the last two non-whitespace
-  values and sec. 7.2 keeps what is left free of a top-level `!`; cascade read
-  the spaced flag as part of the value and kept `--x: a!b`, which browsers drop
-  (#979)
-
-- A value carrying an unmatched `)`, `]` or `}` is dropped with a warning even
-  where a `var()` sends it down the opaque path. CSS Syntax 3 sec. 7.2 keeps
-  those out of a `<declaration-value>`, so `width: var(--x))` is no declaration
-  at all; cascade wrote it back where every browser drops it (#978)
-
-- The `@font-face` `src` descriptor reads an empty `url()` and drops only the
-  item it cannot read. CSS Fonts 4 sec. 4.3.1 leaves an unusable reference to
-  loading and keeps the descriptor while any item parses, so a trailing comma
-  and an unreadable neighbour no longer cost the whole font (#972)
-
 - A bad piece is dropped on its own and the rule around it survives. A nested
-  rule, a descriptor, a stray `;`, a margin at-rule, an `@counter-style` with no
-  descriptor, an `@media` condition, an `@font-face` descriptor name, an
-  `@scope` bound and leftover tokens after a value are each dropped alone, and
-  an unrecognised at-rule reaches the output with its block intact.
+  rule, a descriptor, a stray `;`, a margin at-rule, an `@counter-style` with
+  no descriptor, an `@media` condition, an `@font-face` descriptor name, an
+  `@scope` bound, an at-rule among `@font-face` descriptors and leftover tokens
+  after a value are each dropped alone, an unrecognised at-rule reaches the
+  output with its block intact, an unknown `@supports` or media condition keeps
+  its guard, and a `@media` prelude replaces only the query of the list that
+  fails, so `@media ,(min-width: 10px)` still guards its rules on the width.
   `Optimize.drop_unknown_at_rules` drops such a rule on request (#374, #380,
   #384, #388, #392, #399, #402, #403, #404, #405, #419, #420, #469, #483,
-  #727, #895, #897, #946, #947, #948, #949, #974)
-
-- An at-rule written among `@font-face` descriptors costs itself alone, as CSS
-  Syntax 3 §5.5.5 requires, instead of taking the whole rule with it
-
-- An unknown `@supports` or media condition keeps its guard, so an applicable
-  `or` branch and a negated capability test no longer lose their rules (#867,
-  #869)
-
-- A `@media` prelude replaces only the query of the list that fails, so
-  `@media ,(min-width: 10px)` still guards its rules on the width. Media Queries
-  4 sec. 3.2 replaces one entry at a time; cascade collapsed the whole list to
-  `not all`, and the rules under it matched nothing (#977)
-
+  #727, #867, #869, #895, #897, #946, #947, #948, #949, #974, #977)
 - A selector no browser can match is dropped rather than written back, in a
   nested rule's prelude as well as at top level, and a pseudo-element that
   carries structure keeps the compounds it allows:
   `::file-selector-button:hover` and a chained `::part(label)::before` survive
-  where a combinator after a pseudo-element does not. `Css.Selector.of_string`
-  refuses a string that is not a selector rather than reading it as an element
-  name (#418, #426, #430, #441, #552, #553, #556, #559, #950, #976)
-
-- A substituted value the property refuses leaves its `var()` in place rather
-  than being written back or dropped. CSS Variables 1 sec. 3 makes such a
-  declaration invalid at computed-value time, which is the property's inherited
-  or initial value, so `width: 37px; width: var(--nope, notalength)` measured
-  37px where the browser lays out `auto` (#987)
-
-- A math function carries a negative where the property's range is
-  `[0,inf]`, so `border-right-width: calc(-1px)`, `outline-width: calc(-1px)`
-  and `line-height: calc(-10%)` read, and minified output keeps the call rather
-  than unwrapping it to a bare value the browser drops. CSS Values 4 sec. 10.12
-  checks the range on the value the function resolves to (#1047)
-
-- `overflow-clip-margin: -1px` reads where it was dropped with a warning. CSS
-  Overflow 4 sec. 3.2 is `<visual-box> || <length>` with no range on the
-  length, and a negative one pulls the clip edge inside the box (#1026)
-
-- `text-box: auto` reads where it was dropped with a warning. CSS Inline 3
-  sec. 4.4 gives `text-box-edge` the value `auto | <text-edge>`, so `auto` is
-  one half of the sec. 6.1 shorthand rather than a keyword the longhand keeps
-  to itself (#1022)
-
-- The areas form of `grid-template` and `grid` is read against its grammar
-  rather than kept as any well-formed token run, so `grid-template: 50% "text"
-  infinite`, `grid-template: "a" repeat(2, 1fr)`, `grid: "<" ">"`,
-  `grid: "a" "b c"` and `grid: "a b" "b a"` are dropped with a warning. CSS Grid
-  2 sec. 7.4 puts the track size after the string, sec. 7.2 leaves `repeat()`
-  out of an explicit track list, and sec. 7.3 tokenizes each row string into
-  cells that line up in a rectangle (#1016, #1076)
-
-- `will-change` refuses the idents its own grammar excludes, so
-  `will-change: none` and `will-change: opacity, none` are dropped with a
-  warning where the browser drops the whole declaration. CSS Will Change 1
-  sec. 2.1 keeps `will-change`, `none`, `all` and `auto` out of the ident a
-  feature names (#1015)
-
-- A `fit-content()`, `calc-size()` or `minmax()` reaches only a property whose
-  grammar names it, so `font-size: fit-content(20rem)` and
-  `scroll-padding-bottom: fit-content(20rem)` are dropped with a warning. CSS
-  Sizing 4 sec. 3.2 puts the first two in `<box-size>` and CSS Grid 2 sec.
-  7.2.1 puts the third in `<track-size>`, and cascade read all three as plain
-  lengths. `mask-size: auto 300px` reads, where the keyword was a whole value
-  only (#1010)
-
-- An empty value is no declaration for any property but a custom one, so
-  `quotes:` and `position-try:` are dropped with a warning where the first was
-  written back and the second read as `none`. CSS Syntax 3 sec. 5.5.6 gives a
-  declaration one or more component values (#1009)
-
-- `translate`, `transform-origin` and the `animation-range-*` family refuse an
-  intrinsic-sizing keyword, so `translate: auto` is dropped with a warning. Each
-  grammar names a length in every slot, and the length carrier brought the
-  keywords with it (#1007)
-
-- An `anchor()` or `anchor-size()` reaches only the properties that take one,
-  so `padding-bottom: anchor-size(width)` and `translate: anchor-size(width)`
-  are dropped with a warning. CSS Anchor Positioning 1 sec. 3.2 keeps `anchor()`
-  to the inset properties and sec. 5.1 keeps `anchor-size()` to the ones
-  `@position-try` accepts (#1006)
-
-- `columns`, `zoom`, `aspect-ratio` and each dash of `stroke-dasharray` refuse
-  a value their grammar's `[0, inf]` range excludes, and `columns` refuses a
-  percentage where CSS Multicol 2 sec. 4.1 gives it a length. `zoom: -1` and
-  `stroke-dasharray: -1` were written back where every browser drops them
-  (#1005)
-
-- The `@page` `size` descriptor sizes a page in lengths, so a percentage, a
-  sizing keyword and a negative are dropped with a warning, and it takes every
-  CSS-wide keyword. CSS Paged Media 3 sec. 6.4 spells it
-  `<length [0,inf]>{1,2} | auto | [ <page-size> || [ portrait | landscape ]]`
-  (#1004)
-
-- `font-language-override` takes an OpenType language system tag and no other
-  string, so `font-language-override: "default"` and `"ENGLISH"` are dropped
-  with a warning. CSS Fonts 4 sec. 6.13 gives the property a four-character
-  tag, padded at the end when it is shorter, and cascade read any string
-  (#1077)
-
-- `border-image`, `border-image-source` and `mask-border` take one image, so
-  `border-image: none, none` is dropped with a warning. CSS Backgrounds 3
-  sec. 5.1 and CSS Masking 1 sec. 8.2 give the source slot a single `<image>`,
-  and it borrowed the comma-separated reader `background-image` uses. This
-  release adds `Cascade.Properties.read_border_image_source` (#1078)
-
-- A math function at an `<integer>` is read and kept, so `z-index: calc(.5)`,
-  `order: calc(1.4)` and `grid-row-end: calc(.5)` are declarations where they
-  were dropped with a warning, and minified output keeps the call rather than
-  unwrapping it to a fraction the browser drops. CSS Values 4 sec. 10.12 rounds
-  the result to the nearest integer instead of refusing it. A grid line index
-  is checked against its range wherever it sits, so `grid-row-end: calc(0)` and
-  `grid-column-start: balance 0` are dropped as `0` already was
-  (#1080)
-
-- `scroll-margin-block: 0 0` and `scroll-margin-inline: 0 0` are declarations
-  where a pair of zeroes alone was dropped with a warning. CSS Scroll Snap 1
-  sec. 6.1 spells the logical shorthands `<length>{1,2}` with no rule about
-  what the two lengths may be (#1082)
-
-- `line-height` takes a length unit and no other, so `line-height: 1s`,
-  `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
-  the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and
-  cascade carried any dimension through (#1003)
-
-- `grid-template` and `grid` name both axes or nothing, so `grid-template: 10px`
-  is dropped with a warning where a `grid-template-rows` value stood in for a
-  shorthand one. CSS Grid 2 sec. 7.4 spells the shorthand as `none`, a
-  `rows / columns` pair, or a track list built from strings (#1002)
-
-- A negative length is no grid track, so `grid-template-rows: -2px` and a
-  `minmax()` holding one are dropped with a warning. CSS Grid 2 sec. 7.2 spells
-  a `<track-breadth>` with a `[0,inf]` range on its length (#1001)
-
-- A colour property keeps an unknown function only where its name is vendor
-  prefixed. CSS Color 5 sec. 3 closes the `<color>` production, so
-  `border-top-color: calc(2px - 3px)` and `color: brightness()` are dropped
-  with a warning where cascade wrote them back and every browser drops them
-  (#1000)
-
-- `offset-distance` and `view-timeline-inset` read a negative length. CSS
-  Motion Path 1 sec. 2.2 and Scroll Animations 1 sec. 3.4.3 give both a plain
-  `<length-percentage>` with no range on it, and cascade held them to a
-  non-negative one (#999)
-
-- `transition-property` reads every `<custom-ident>` and refuses the one CSS
-  Values 4 sec. 3.2 excludes, so `transition-property: normal` names a property
-  and `default` no longer does. `transition: allow-discrete allow-discrete`
-  fills the behaviour slot and the property slot, as the `||` in CSS
-  Transitions 1 sec. 2.4 allows (#998)
-
-- A `var()`, `env()` or `attr()` written inside another function defers the
-  property's grammar the way one written beside it does, so
-  `offset-rotate: color-mix(var(--a), var(--b))` and
-  `flex-basis: sign(var(--x))` are kept. CSS Variables 1 sec. 3 assumes the
-  grammar valid at parse time for a property that *contains* such a call, and
-  cascade counted only a top-level one (#997)
-
-- `shape-image-threshold` reads a percentage and a number outside the `[0, 1]`
-  range. CSS Shapes 1 sec. 6.2 takes an `<opacity-value>` and clamps it at
-  computed-value time, so `shape-image-threshold: 50%` and `1.5` are values the
-  reader dropped where every browser keeps them (#996)
-
-- `list-style-image` reads every `<image>`, so a gradient, an `image-set()` and
-  a `cross-fade()` mark a list item where only a `url()` did. CSS Lists 3 sec.
-  3.5 gives the property the `<image>` vocabulary, minus the comma list only
-  `background-image` takes (#995)
-
-- `page-break-before`, `page-break-after`, `page-break-inside` and
-  `border-image-slice` take every CSS-wide keyword, which CSS Cascade 5 sec.
-  7.3 gives to every property. The `page-break-*` aliases read only `inherit`
-  and `border-image-slice` read none of them (#993, #994)
-
-- A `var()` whose custom property the evaluator cannot read a value from keeps
-  its reference rather than taking its fallback: an empty binding, one the
-  property's grammar refuses, and a CSS-wide keyword, whose meaning CSS
-  Variables 1 sec. 2.1 leaves to the cascade. Sec. 3 puts the fallback in only
-  for a property holding its guaranteed-invalid initial value, so
-  `Css.eval_stylesheet` measured `8px` where the browser lays out `auto`. A
-  binding that references itself is that initial value, and there the fallback
-  answers in a length as it already did elsewhere (#991, #992)
-
-- `Css.Declaration.parse_custom_property` takes the empty value, the one CSS
-  Variables 1 sec. 2 gives a custom property alongside every
-  `<declaration-value>`, so it now accepts the pairs `custom_property` accepts
-  (#990)
-
-- `--inline-vars` keeps a `var()` live where the definition it names sits on a
-  selector or in an `@media` the pass cannot prove reaches the element, or
-  holds a CSS-wide keyword, and every definition of a name still referenced
-  reaches the output. CSS Variables 1 sec. 3 puts the fallback in only for a
-  custom property holding its guaranteed-invalid initial value, so `#o { --x:
-  red } #i { color: var(--x, lime) }` took `lime` where the browser paints red,
-  and `:root { --x: inherit } #i { all: var(--x) }` inherited every property
-  where the browser resets them (#985, #986, #988, #989)
-
-- A `.` or a `:` names nothing across a space, so `. x a` and `: hover` are
-  dropped rather than read as `.x a` and `:hover`. Selectors 4 sec. 5.1 has a
-  class name follow its dot immediately and sec. 3.5 a pseudo-class name its
-  colon, so cascade was matching elements the author never named (#982)
-
-- Keyword, at-rule and function names match without regard to case, so
-  `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)` and `:dir(LTR)` read
-  (#602, #603, #604, #620, #622, #767)
-
-- An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
-  read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
-  of `a` (#437, #442)
-
+  where a combinator after a pseudo-element does not. A `.` or a `:` names
+  nothing across a space, so `. x a` and `: hover` are dropped rather than read
+  as `.x a` and `:hover`, which matched elements the author never named.
+  `Css.Selector.of_string` refuses a string that is not a selector rather than
+  reading it as an element name (#418, #426, #430, #441, #552, #553, #556,
+  #559, #950, #976, #982)
 - A `var()`, `env()` or `attr()` call keeps the type of the component it stands
-  for and defers CSS-wide keyword validation to substitution, so one written as
-  a slot of `border-radius`, `gap`, `place-*`, `grid-auto-flow`,
-  `transform-origin`, `border-spacing`, a border-image dimension or a
-  `page-break-*` property is read as that slot. A value the typed reader
-  refuses is preserved opaquely when the property is unknown or the value is a
-  runtime substitution (#511, #518, #726, #729, #734, #735, #787, #813)
-
+  for and defers CSS-wide keyword validation to substitution, whether it is
+  written as a slot of the value or inside another function, so
+  `offset-rotate: color-mix(var(--a), var(--b))` is kept where only a top-level
+  call was. A value the typed reader refuses is preserved opaquely when the
+  property is unknown or the value is a runtime substitution, and a value
+  carrying an unmatched `)`, `]` or `}` is dropped with a warning even where a
+  `var()` sends it down the opaque path (#511, #518, #726, #729, #734, #735,
+  #787, #813, #978, #997)
+- A `var()` the evaluator cannot read a value from keeps its reference rather
+  than taking its fallback: an empty binding, one the property's grammar
+  refuses, one resolving through another custom property, and a CSS-wide
+  keyword. CSS Variables 1 sec. 3 puts the fallback in only for a property
+  holding its guaranteed-invalid initial value, so
+  `width: 37px; width: var(--nope, notalength)` measured 37px where the browser
+  lays out `auto`. `--inline-vars` keeps such a `var()` live where the
+  definition it names sits on a selector or in an `@media` the pass cannot
+  prove reaches the element, and every definition of a name still referenced
+  reaches the output. `Css.Declaration.parse_custom_property` takes the empty
+  value, so it accepts the pairs `custom_property` accepts
+  (#985, #986, #987, #988, #989, #990, #991, #992)
+- Keyword, at-rule and function names match without regard to case, so
+  `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)` and `:dir(LTR)` read,
+  and an escaped name reads as the name it spells: `@supports (--x\3b y: red)`
+  is read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer
+  `b` of `a` (#437, #442, #602, #603, #604, #620, #622, #767)
 - Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
   with a negative axis, a relative colour's channels, a `-webkit-gradient`
   `color-stop()` and `center` point, `text-decoration: none solid`,
@@ -851,11 +310,27 @@ to lose a whole rule over one bad piece. Both are gone.
   at end of input and a repeating gradient built from a `var()` each survive
   the round trip (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901,
   #902, #903, #910, #911, #912, #913)
-
-- An out-of-range `oklab()` or `oklch()` lightness written as a percentage
-  clamps as the bare number already did, and `color(from <origin> srgb r g b)`
-  folds to the origin when that origin is itself a `color()` (#904, #905)
-
+- A colour is read as the closed production CSS Color 5 sec. 3 defines. A
+  relative colour's channel expressions are type-checked, so
+  `rgb(from red calc(r + 10%) g b)` is dropped as every browser drops it while
+  the multiplying forms still read; an out-of-range `oklab()` or `oklch()`
+  lightness written as a percentage clamps as the bare number already did; and
+  `color(from <origin> srgb r g b)` folds to the origin when that origin is
+  itself a `color()` (#904, #905, #1061)
+- `offset`, `offset-anchor`, `offset-position`, `position-area`,
+  `position-try-fallbacks` and `white-space` are typed against their own
+  grammars, and a literal reads as the node the library exports, so a
+  constructed declaration and a parsed one compare and hash equally. A
+  `border-image` slice compares against its initial without a polymorphic
+  equality, which walked another module's representation (#478, #485, #495,
+  #651, #652, #653, #654, #657, #674, #683, #888, #935)
+- An input that ends mid-value keeps its declaration, and an `@page` prelude
+  naming neither a page nor a pseudo-page invalidates the rule. CSS Syntax 3
+  sec. 4.3.5 ends a string at EOF as the string it read, and cascade dropped
+  the rule and printed the value back without its closing quote, so the rest of
+  the sheet was swallowed. A custom property holding a `!` outside its
+  `!important` flag is dropped with a warning, and `--x: 1 ! important` is
+  important with the value `1` (#972, #973, #979)
 - Everything the parser repaired or dropped is reported, so strict mode rejects
   it and the caret points at the value the author wrote rather than past the
   last byte. `@media screen {` used to swallow the rest of the file and still
@@ -863,54 +338,27 @@ to lose a whole rule over one bad piece. Both are gone.
   fractional or out-of-range number instead of truncating (#466, #472, #473,
   #477, #484, #496, #497, #499, #501, #538, #789, #793, #801)
 
-- The second `<time>` of a `transition` entry takes a negative, so
-  `transition: opacity 1s -1s` reads where it was dropped. CSS Transitions 1
-  sec. 2.5 assigns it to `transition-delay`, which starts the transition
-  partway through; only the duration is `[0s,inf]` (#1123)
-
-- A `<position>` pairing an offset with an edge keyword reads where it was
-  dropped, so `background-position: 50% bottom` and the same shape on
-  `object-position`, `mask-position`, `transform-origin` and the `background`
-  shorthand are no longer lost. CSS Values 4 sec. 8.3 grants
-  `[ left | center | right | <length-percentage> ] [ top | center | bottom |
-  <length-percentage> ]` (#1122)
-
-- Six `@counter-style` descriptors are read against their grammars, so
-  `range: bogus`, `pad: 3`, `negative: 1` and `fallback: "decimal"` are dropped
-  where each was kept as an opaque string. A counter symbol may also be an
-  image now, per CSS Counter Styles 3 sec. 3.2 (#1130)
-
-- A CSS-wide keyword in an `@font-face` descriptor is dropped, so
-  `font-weight: inherit` inside the rule no longer reaches output a browser
-  discards. CSS Fonts 4 sec. 4.6 omits them from the descriptor grammars
-  (#1115)
-
 ### Printing
 
 - `text-decoration`, `mask-border`, `animation` and `mask` no longer minify to
   an empty value. `text-decoration:solid` printed `text-decoration:`, which no
   parser reads back, once dropping the initial style left no slot, and a `mask`
   layer holding only initials printed the same way (#682, #955)
-
 - An identifier is printed with the escapes needed to read it back as the same
   name, where `@layer a\3b b` printed two statements naming a layer the input
   never had and `--x\3b y` split into two declarations (#435, #436, #526, #598)
-
 - A compound operand of `not`, `and` or `or` in a `@media` condition keeps its
   parentheses, and unwrapping a `@supports` nested in a style rule keeps the
   `;` before the sibling that follows. Both printed CSS browsers and cascade's
-  own reader reject, losing the block or running two declarations together as
-  `color:#00fcolor:green` (#319, #370)
-
+  own reader reject, losing the block or running two declarations together
+  (#319, #370)
 - A `calc()` printed without `--minify` keeps the parentheses the author wrote,
   redundant ones included, while `--minify` removes those and keeps a
   precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
-
 - A NaN-valued number prints as `calc(NaN)` and a NaN-valued dimension as
   `calc(NaN * 1unit)`, where `calc(sqrt(-1) * 1px)` printed `NaNpx`, which
   browsers drop (#425)
-
-- `Css.to_string` renders the sheet once. It used to render it twice, the first
+- `Css.to_string` renders the sheet once, where it rendered it twice, the first
   pass only to measure the output and size the buffer exactly (#479)
 
 ### Minification
@@ -924,57 +372,44 @@ to lose a whole rule over one bad piece. Both are gone.
   `grid-row`, `grid-column`, `grid-area`, `grid-template`, `grid`,
   `overscroll-behavior`, `contain-intrinsic-size`, `animation-range`,
   `scroll-timeline`, `view-timeline`, `container`, `background-position`,
-  `white-space`, `text-wrap` and `font` (#915, #916, #918, #919, #920, #921,
+  `white-space`, `text-wrap` and `font`. A component written at its own
+  initial, or written `initial`, reads as the slot the shorthand leaves out, so
+  `flex-flow: row wrap` minifies to `flex-flow: wrap` and `flex: 0 0 auto` to
+  `flex: none`; a repeated side folds to the shortest spelling naming the same
+  sides; and a longhand that only restates what the shorthand in front of it
+  wrote is dropped, so the whole border family written out minifies to
+  `border: 1px solid red` alone (#915, #916, #917, #918, #919, #920, #921,
   #922, #923, #924, #925, #926, #927, #928, #929, #930, #931, #932, #933,
-  #935, #937, #939, #940, #942, #959, #960, #961, #965)
-
-- A component written at its own initial, or written `initial`, reads as the
-  slot the shorthand leaves out, so `flex-flow: row wrap` minifies to
-  `flex-flow: wrap` and `flex: 0 0 auto` to `flex: none`. A repeated side folds
-  to the shortest spelling naming the same sides (#917, #923, #924, #925,
-  #934, #959)
-
-- Contraction never resets a longhand the run did not write. A run that leaves
-  one of the shorthand's own longhands unwritten now needs `--scope=stylesheet`,
-  which is what the flag promises: under the default fragment scope an earlier
-  `transition-timing-function` from another file is not cascade's to reset. A
-  slot the same rule writes back after the run is answered and still contracts
-  (#843, #845, #914, #943, #957, #958)
-
-- `--minify` drops a longhand that only restates what the shorthand in front of
-  it already wrote, so the whole border family written out minifies to
-  `border: 1px solid red` alone (#956)
-
-- `--minify` no longer loses a `border-image` a neighbouring rule set when the
-  border longhands contract. The family shared one slot in the hazard model, so
-  a rule holding the slice answered for a neighbour holding the source and the
-  picture went missing from the output (#968)
-
-- `--minify` no longer contracts a run of longhands one of which is `inherit`,
-  `unset`, `revert` or `revert-layer`. A CSS-wide keyword is a whole
-  declaration value, so pasting one into a shorthand made a declaration every
-  browser drops: `padding-left: inherit` beside its three siblings became
-  `padding: 0 2em 10% inherit` and the element lost all four paddings
-
+  #934, #935, #937, #939, #940, #942, #956, #959, #960, #961, #965)
+- Contraction never writes a declaration the input did not mean. It resets no
+  longhand the run did not write, so a run leaving one of the shorthand's own
+  longhands unwritten needs `--scope=stylesheet`: under the default fragment
+  scope an earlier `transition-timing-function` from another file is not
+  cascade's to reset. It no longer contracts a run holding `inherit`, `unset`,
+  `revert` or `revert-layer`, since a CSS-wide keyword is a whole declaration
+  value and pasting one into a shorthand made `padding-left: inherit` beside
+  its three siblings into `padding: 0 2em 10% inherit`, which every browser
+  drops and which lost the element all four paddings. And it no longer loses a
+  `border-image` a neighbouring rule set: the family shared one slot in the
+  hazard model, so a rule holding the slice answered for a neighbour holding
+  the source and the picture went missing (#843, #845, #914, #943, #957, #958,
+  #968)
 - `Css.Properties` gains the typed properties the contractions need:
   `background-position-x` / `-y` and their `-webkit-mask` twins,
   `column-rule-width` / `-style`, `white-space-collapse`, `column-height` and
-  `column-wrap`. `border-image-outset` and `border-image-width` reject a keyword
-  their grammar does not carry (#926, #927, #928, #936, #938, #941)
-
-- A `calc()` whose result falls below zero keeps its call on a property whose
-  range starts there. CSS Values 4 sec. 10.3 keeps such a call valid and clamps
-  at used-value time, so `width: calc(-10px)` computes to `0px` where
-  `width: -10px` is dropped, and folding the call away turned a working
-  declaration into one browsers throw out. `width: calc(10px * sign(-1vw))` was
-  the case that read back as nothing at all. A property that takes a negative
-  folds as before (#967)
-
+  `column-wrap`. `border-image-outset` and `border-image-width` reject a
+  keyword their grammar does not carry (#926, #927, #928, #936, #938, #941)
 - A value keeps every digit and every unit the author wrote unless the shorter
-  spelling means the same number. `.4285714em` came out short, `calc(hypot(1px,
-  1px))` came out as `1.41421356`, and a computed dimension past a million units
-  lost its own digits (#350, #354, #362, #367, #676, #731)
-
+  spelling means the same number. `.4285714em` came out short,
+  `calc(hypot(1px, 1px))` came out as `1.41421356`, and a computed dimension
+  past a million units lost its own digits. A `calc()` whose result falls below
+  zero keeps its call on a property whose range starts there, since CSS Values
+  4 sec. 10.3 clamps at used-value time: `width: calc(-10px)` computes to `0px`
+  where `width: -10px` is dropped, and folding the call away turned a working
+  declaration into one browsers throw out. A sum leads with a positive term
+  where it has one, so `calc(-10px + 100vw)` minifies to `calc(100vw - 10px)`
+  rather than growing a sign into `calc(3px + -2em)` (#350, #354, #362, #367,
+  #676, #731, #967, #1113)
 - `--minify` folds a value's spelling before two rules are compared, so a hex
   colour, a NaN, an unreduced `min()`, a same-unit `calc()`, a shorthand
   component at its longhand's initial, a repeated `font-family` entry, a
@@ -982,8 +417,7 @@ to lose a whole rule over one bad piece. Both are gone.
   custom property, an unitless `line-height: calc()`, logical minimum sizes,
   duration units, stepped functions, hue-angle units and `steps(1)` all reach
   one form (#471, #482, #597, #618, #624, #626, #635, #636, #637, #639, #640,
-  #641, #647, #650, #672, #675, #681, #678, #755, #756)
-
+  #641, #647, #650, #672, #675, #678, #681, #755, #756)
 - `--minify` keeps a value whose shorter spelling would mean something else:
   `display: block ruby`, `transition: opacity 0s 2s`, a lone `background`
   position, both disagreeing `<box>` values of a layer, `position-area: top
@@ -992,57 +426,47 @@ to lose a whole rule over one bad piece. Both are gone.
   written through a shorthand, a `font-family` name the author spelled out, and
   the `page-break-*` twin of a `break-*` property (#387, #390, #401, #457,
   #470, #547, #633, #634, #637, #640, #641, #736, #766, #782, #803)
-
 - `--minify` drops the space at a `%` or `)` boundary in the box shorthands and
   in `inset()`, and prints a custom property as the author's own token stream,
   keeping the space a typed position or colour needs after a closing
   parenthesis and treating `[]` and `{}` as ordinary tokens (#614, #619, #623,
   #697, #700, #703, #709, #719, #720, #722)
-
 - A selector rewrite that changes what an element matches is gone.
   `.c:not(:enabled)`, an author's `:not(:dir(ltr))` under `--enforce-spec`, a
   single-argument `:is()` and a double `:not()` all keep their form, while a
   whole-rule `:is(a, b)` whose arguments share one specificity splits into the
   list `a, b` before rules are compared (#377, #431, #593, #596, #655)
-
 - Rules merge on what they mean rather than on how they are spelled: `@media`
   and `@container` blocks merge by query structure, adjacent `@starting-style`
   and `@container` runs merge, a nested `@supports` condition simplifies
   against the ones enclosing it, and `@media not all and (X)` minifies to the
   Level 4 `@media not (X)` (#323, #465, #516, #519, #585, #592, #809)
-
 - A declaration keeps its place whenever moving it would change what an element
   computes, whether the neighbour writes the same longhand under another
   property name, sits behind a nested rule, or reaches the same element from
   another rule (#352, #364, #376, #383, #386, #414, #415, #447, #452, #453,
   #454, #742)
-
 - `--minify` reaches inside every at-rule that has a body. `@-moz-document`,
   `@starting-style`, `@when` and `@else` are optimised and flattened, an empty
   one is dropped, a `@layer` whose own rules nest declarations is kept, and an
   unrecognised at-rule's opaque body is written back as the token stream it was
   read from (#341, #343, #344, #349, #372, #374, #389, #396, #560)
-
 - Nesting emits only selectors a browser can match: a rule nested under a
   pseudo-element parent is dropped wherever it sits, a selector-list or
   type-selector parent keeps its `:is()` wrapper so `a { .x& { } }` flattens to
   `.x:is(a)` and not the class `.xa`, and `--flatten-nesting` leaves the result
   flat (#759, #800, #818, #822, #823, #975)
-
 - Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
   need, with matching `@supports` tests, and drops a vendor prefix only when its
   unprefixed twin is Baseline widely available. A feature query on a prefixed
   property keeps its guard (#325, #378, #447, #751, #758, #797)
-
 - `Css.Resolve` matches an attribute selector the way an HTML document does:
   the name folds to ASCII lowercase, the values of the HTML attributes that
   ignore case fold with it, whitespace splits on every ASCII space, and an
   unquoted value's escapes are decoded (#944, #945)
-
 - Computed-value evaluation resolves a direct `inherit`, `initial`, `unset`,
   `revert` or `revert-layer` for every typed property, and whether a property
   inherits is decided in one place from the typed property (#763, #764)
-
 - `--minify` and `cascade diff` are faster on a large stylesheet, for
   byte-identical output. The slowest corpus stylesheet drops sharply, a long run
   of rules sharing one selector no longer allocates quadratically, a 4,000
@@ -1051,81 +475,51 @@ to lose a whole rule over one bad piece. Both are gone.
   need a second (#413, #422, #424, #468, #480, #486, #487, #493, #502, #505,
   #507, #517, #519, #523, #542, #543, #566, #664, #746, #750)
 
-- A `calc()` sum leads with a positive term where it has one, so
-  `calc(-10px + 100vw)` minifies to `calc(100vw - 10px)`, and a negative term
-  joins with a minus rather than growing a sign into `calc(3px + -2em)` (#1113)
-
 ### Custom properties
 
-- A custom property's value keeps the whitespace runs the author wrote, where
-  `--x: a  b` used to come back as `a b`. CSS Custom Properties 1 sec. 4.1
-  forbids normalizing it and Chrome returns the run; the ends are still trimmed,
-  and `--minify` still makes its own separator decisions.
+- A custom property's value, a container or media query, and an `@supports`
+  condition all keep the text the author wrote. Whitespace runs survive, where
+  `--x: a  b` came back as `a b`; escapes survive, where `--v: gre\en` came
+  back as `gre\E n` and `@container (min-width: 1\0px)` reached the output with
+  a raw U+FFFD. A condition is the question the rendering browser is asked
+  rather than a value to respell, and CSS Custom Properties 1 sec. 4.1 forbids
+  normalizing a custom property; the ends are still trimmed, and `--minify`
+  still makes its own separator decisions. `Cascade.Token.t` gains `repr`, the
+  source text of a token whose spelling reserialization does not give back,
   `Cascade.Token.Whitespace` carries its run, and
-  `Cascade.Parser.to_string_verbatim` is the serializer that writes it back
-  (#1064)
-
-- A custom property's value keeps the escapes the author wrote, so
-  `--v: gre\en` no longer comes back as `gre\E n`. CSS Syntax 3 sec. 9.1
-  serializes an ident by escaping only what must be, which is right for a
-  reserialized token stream and wrong for a value sec. 4.1 says must not be
-  normalized. `Cascade.Token.t` gains `repr`, the source text of a token whose
-  spelling that serialization does not give back (#1065)
-
-- A container or media query keeps the escapes the author wrote, so
-  `@container (min-width: 1\0px)` no longer reaches the output with a raw
-  U+FFFD where the escape was. The condition is the question the rendering
-  browser is asked, not a value to respell (#1066)
-
-- An `@supports` condition keeps the escapes the author wrote, so
-  `@supports (color: gre\en)` no longer respells them. CSS Conditional Rules 3
-  sec. 6.1 answers a declaration feature by running that exact declaration
-  through the rendering browser's parser, so the text is the question (#1067)
-
-- `@scope { color: green }` reads, where the whole at-rule used to be dropped
-  with a warning. CSS Cascade 6 sec. 3.5.2 gives `@scope` a `<block-contents>`
-  body, so a declaration written straight into it applies to the scoping root;
-  cascade read the body as rules only (#1068)
-
-- An at-rule inside a keyframe or descriptor block costs only itself, where it
-  used to take the rest of the block: `@keyframes k { to { @e {} opacity: 1 } }`
-  keeps the opacity. CSS Syntax 3 sec. 5.5.5 consumes an at-rule there, so it
-  ends at its own block rather than at the next `;` (#1069)
-
+  `Cascade.Parser.to_string_verbatim` writes them back
+  (#1064, #1065, #1066, #1067)
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor
   reference used to be dropped at parse time, and `Css.custom_props` missed a
   name declared inside `@scope`, `@starting-style`, `@-moz-document`, `@when`
-  or `@else` (#322, #341, #342, #375, #423, #555, #571, #573, #575, #577)
-
-- `Css.vars_of_declarations` reports the `var()` inside a `stroke-dasharray` or
-  `stroke-dashoffset` dash, where it returned nothing (#1048)
-
-- Substitution preserves what the declaration was. A custom property keeps its
-  cascade layer and caller metadata, a `page-break-*` declaration survives as
-  itself, a reference marked resolved at runtime stays marked, and an
-  overridden variable is reported through `~warn` (#315, #506, #520)
-
+  or `@else`. `Css.vars_of_declarations` reports the `var()` inside a
+  `stroke-dasharray` or `stroke-dashoffset` dash, where it returned nothing
+  (#322, #341, #342, #375, #423, #555, #571, #573, #575, #577, #1048)
 - `Css.inline_vars` resolves a property defined across cascade layers against
   the sheet's layer order, unwraps an `@layer` only where layer order and
   document order already pick the same winner, and keeps the `@property`
   registration of a custom property it leaves live (#357, #371, #373, #416)
-
+- Substitution preserves what the declaration was. A custom property keeps its
+  cascade layer and caller metadata, a `page-break-*` declaration survives as
+  itself, a reference marked resolved at runtime stays marked, and an
+  overridden variable is reported through `~warn` (#315, #506, #520)
+- `@scope { color: green }` reads, where the whole at-rule used to be dropped
+  with a warning, and an at-rule inside a keyframe or descriptor block costs
+  only itself rather than the rest of the block, so
+  `@keyframes k { to { @e {} opacity: 1 } }` keeps the opacity (#1068, #1069)
 - `--minify` keeps the quotes on a `<string>` written to a custom property whose
   `@property` syntax accepts only an ident, and the space between the
   repetitions of a `<type>+` initial value (#626, #704)
-
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and a `@supports` condition carry, builds each
   `theme_defaults` binding with `parse_custom_property` rather than reparsing
   assembled text, and binds a name that needs escaping instead of refusing it
   (#317, #324, #327, #421, #439)
-
 - `Css.inline_vars` stays linear in at-rule nesting depth and no longer costs a
   square in the variable count: a 12,800-variable sheet is no longer quadratic
   (#481, #568, #569)
-
 - `Css.Variables.read_reference_body` reads a `var()` argument list into a typed
   variable handle, and `typed_custom_property` writes a declaration from a value
   already typed by its `@property` registration (#626, #630, #642)
@@ -1135,132 +529,47 @@ to lose a whole rule over one bad piece. Both are gone.
 - A browser-backed sweep checks the guarantee itself: every pair
   `--diff=canonical` reports identical is rendered in headless Chrome and every
   computed-style difference is a conflation
-
 - Canonical diff equates the rewrites that cannot change what a browser
   computes: a shorthand against its four side longhands, `:is(a, b)` against the
   list `a, b` when the arguments share one specificity, equal `@supports` blocks
   hoisted apart, `calc(28/14)` against `2`, and a redundant `@layer` order pin
   (#475, #655, #753, #756, #775, #776, #777, #842)
-
 - A colour compares as a colour wherever it is written: a `none` channel as the
   zero CSS Color 4 sec. 4.4 makes it behave as, a relative colour's origin as a
   typed colour, a shadow in an unregistered custom property, and a one-word
   family name quoted or unquoted when the stream proves it is a family (#312,
   #313, #314, #440, #696, #705, #847)
-
 - Canonical diff reports only reorderings that are really present in the two
   inputs, so a changed declaration no longer makes a neighbour read as moved, a
   cascade-neutral reordering stays unreported when the sheets also differ
   elsewhere, and writing one selector as a nested branch or as its own rule is
   not a move (#779, #780, #781, #819, #825, #826, #831)
-
 - The canonical projection normalises the rules inside every at-rule that has a
   block, flattens authored nesting before comparing so a nested stylesheet and
   its flat equivalent read as identical, keeps structurally distinct
   `@container` conditions in separate cascade slots, and keeps content that is
   dead only under an assumption about browser support (#393, #529, #576, #760)
-
 - `--diff=tree` compares a value on its minified spelling and prints it the way
   its own file spells it, prints the body of an added or removed rule as
   declarations, and pairs repeated occurrences of one selector by their
   declaration properties (#702, #706, #752)
-
 - `cascade diff` no longer aborts when a reordered selector has the same rule
   index on both sides (#582)
 
 ### Library
 
-- `Css` builds the last of the modelled properties it could not write: the
-  shape, overflow, image, margin-trim, overlay, animation-composition and
-  background-position-axis families, plus the `grid` shorthand,
-  `webkit_text_stroke` and the `@page` `size` descriptor, with their value
-  types. Every property the AST models now has a builder except
-  `Unknown_property` and the `@font-face` `src` descriptor, neither of which is
-  a plain property (#1040)
-
-- `Css` builds the typography longhands the AST models:
-  `white_space_collapse`, `line_height_step`, `font_palette`,
-  `font_synthesis`, `font_size_adjust`, `font_variant_emoji`,
-  `font_variant_alternates`, `font_variant`, `text_wrap_style`,
-  `text_box_trim`, `text_box`, `text_spacing_trim`, `hyphenate_limit_chars`,
-  `initial_letter`, `initial_letter_align` and `initial_letter_wrap`, with
-  their value types (#1039)
-
-- `Css` builds the flow-relative border shorthands `border_block_start`,
-  `border_block_end`, `border_inline`, `border_inline_start` and
-  `border_inline_end`, which only `border_block` had before (#1038)
-
-- `Css` builds the decoration-skip properties `Declaration` already had:
-  `text_decoration_skip` and its four longhands, and `text_emphasis_skip`,
-  with their value types (#1037)
-
-- `Css` builds the vendor-prefixed longhands its `{2:vendor_specific}` section
-  documents: the `-webkit-`, `-moz-`, `-ms-` and `-o-` transform, transition,
-  animation, flexbox, box-sizing, border-radius, box-shadow, filter,
-  background-size, text-stroke, appearance and user-select spellings, each
-  taking the value type its unprefixed counterpart takes (#1036)
-
-- `Css` builds the scroll-driven animation properties: `animation_timeline`,
-  `animation_range`, `animation_range_start`, `animation_range_end`,
-  `scroll_timeline`, `scroll_timeline_name`, `scroll_timeline_axis`,
-  `view_timeline`, `view_timeline_name`, `view_timeline_axis`,
-  `view_timeline_inset` and `timeline_scope`, with their value types (#1035)
-
-- `Css` builds `contain_intrinsic_size` and its four axis longhands, with
-  their value types, and `Css.container_type` documents that the `container`
-  shorthand is `Declaration.container`, the name `container` at the top level
-  being the at-rule builder (#1034)
-
-- `Css` builds the border-image family: `border_image`,
-  `border_image_source`, `border_image_slice`, `border_image_width`,
-  `border_image_outset`, `border_image_repeat` and `mask_border`, with their
-  value types (#1033)
-
-- `Css` builds the multi-column longhands: `column_width`, `column_count`,
-  `column_height`, `column_wrap` and the three `column_rule_*` gap decoration
-  lists, with their value types (#1032)
-
-- `Css` builds the Motion Path 1 properties: `offset_path`,
-  `offset_distance`, `offset_rotate`, `offset_anchor`, `offset_position` and
-  the `offset` shorthand, with their value types (#1031)
-
-- `Css.all` writes the `all` shorthand (#1030)
-
-- `Css` builds `view_transition_name` and `view_transition_class`, with their
-  value types (#1029)
-
-- `Css` builds the CSS Anchor Positioning 1 properties: `anchor_name`,
-  `position_anchor`, `position_area`, `position_try_fallbacks`,
-  `position_try_order`, `position_try` and `position_visibility`, with their
-  value types (#1028)
-
-- `Css` builds the SVG presentation longhands the AST already carried:
-  `fill_rule`, `clip_rule`, `fill_opacity`, `stroke_opacity`,
-  `stroke_linecap`, `stroke_linejoin`, `stroke_miterlimit`,
-  `stroke_dashoffset`, `stroke_dasharray`, `paint_order`, `vector_effect`,
-  `stop_color`, `stop_opacity`, `flood_color`, `flood_opacity`,
-  `lighting_color`, `dominant_baseline`, `alignment_baseline`,
-  `baseline_shift` and `baseline_source`, with their value types (#1027)
-
-- `Css.Resolve` answers the selectors engines answer: `:nth-child(... of S)`,
-  the typed `:nth-of-type()` family, `:has()`, the `i` and `s` attribute case
-  flags, and `:empty` for the elements Selectors 4 and the engines agree on
-  (#607, #873)
-
-- `Css.Resolve` ranks a cascade layer's own rules after every one of its
-  sublayers, as css-cascade-5 sec. 6.4.3 requires, so `@layer a` outranks
-  `@layer a.b` however the two were declared
-
-- `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
-  work out of `resolve`, so a caller walking a document pays it once.
-  `Resolve.Make.resolve` and `layer_order` document every block they leave out
-  (#394, #567)
-
-- `Css.Context.matches_media` respects zero-valued boolean features and
-  resolution units and preserves unknown through negation, and
-  `matches_container` requires the supplied container to support every queried
-  feature (#868)
-
+- `Css` builds every property the AST models, bar `Unknown_property` and the
+  `@font-face` `src` descriptor, neither of which is a plain property. This
+  release adds the SVG presentation longhands, the CSS Anchor Positioning 1 and
+  Motion Path 1 families, the scroll-driven animation properties, the
+  border-image and multi-column families, `contain_intrinsic_size` and its axis
+  longhands, the flow-relative border shorthands, the decoration-skip and
+  typography longhands, the `-webkit-`, `-moz-`, `-ms-` and `-o-` spellings its
+  `{2:vendor_specific}` section documents, `view_transition_name` and
+  `view_transition_class`, `Css.all`, and the shape, overflow, image,
+  margin-trim, overlay, animation-composition and background-position-axis
+  families, each with its value types (#1027, #1028, #1029, #1030, #1031,
+  #1032, #1033, #1034, #1035, #1036, #1037, #1038, #1039, #1040)
 - `Css.Stylesheet` reaches every statement and declaration a sheet holds:
   `fold_statements`, `iter_statements`, `edit_statements`,
   `fold_declarations`, `statement_declarations`, `statement_children`,
@@ -1269,13 +578,25 @@ to lose a whole rule over one bad piece. Both are gone.
   `Css.layer_block` and `Css.flatten_nesting` reach a rule inside `@scope`,
   `@starting-style`, `@-moz-document`, `@when` or `@else` (#317, #337, #355,
   #356, #363, #368, #381, #382, #384, #389)
-
+- `Css.Resolve` answers the selectors engines answer: `:nth-child(... of S)`,
+  the typed `:nth-of-type()` family, `:has()`, the `i` and `s` attribute case
+  flags, and `:empty` for the elements Selectors 4 and the engines agree on. It
+  ranks a cascade layer's own rules after every one of its sublayers, as
+  css-cascade-5 sec. 6.4.3 requires, so `@layer a` outranks `@layer a.b`
+  however the two were declared (#607, #873)
+- `Resolve.prepare` and `Resolve.Make.resolve_prepared` split the sheet-only
+  work out of `resolve`, so a caller walking a document pays it once.
+  `Resolve.Make.resolve` and `layer_order` document every block they leave out
+  (#394, #567)
+- `Css.Context.matches_media` respects zero-valued boolean features and
+  resolution units and preserves unknown through negation, and
+  `matches_container` requires the supplied container to support every queried
+  feature (#868)
 - `Css.equal_statement` and `Css.hash_statement` compare and key a statement
   without rendering it to CSS text, `Css.Values.hash_color` keys a colour,
   `with_alpha` sets one, and `Css.Properties.compare_property` and
   `Declaration.compare_prop_key` are a total order on a property identity
   (#513, #595)
-
 - New building blocks: `Css.unknown_at_rule` for an at-rule cascade has no
   grammar for, `Css.Declaration.value_of` to read a value at a property
   witness, `Css.Properties.read_grid_template_tracks`,
@@ -1283,12 +604,10 @@ to lose a whole rule over one bad piece. Both are gone.
   `Css.Values.gamut_map_color`, `Properties.read_filter_function` and
   `pp_filter_function`, and the statement-merging passes as callable functions
   (#591, #592, #600, #616, #626, #717, #872)
-
 - `Cascade_diff.Tree_diff.has_container_added_of_type` and
   `has_container_removed_of_type` look inside a container reported as a whole,
   and `Cascade.Error.to_string` prints back a snippet that is valid UTF-8
   (#395, #472)
-
 - `cascade` drops its `uutf` dependency for the stdlib UTF-8 decoder, and the
   library no longer links `unix`: `mtime` reads the monotonic clock `--profile`
   wanted and ships a js_of_ocaml implementation (#609, #788)
@@ -1299,49 +618,39 @@ to lose a whole rule over one bad piece. Both are gone.
   documents cannot use, `--dry-run` reporting instead of writing. It and
   `cascade apply` leave alone the two selector forms Selectors 4 defines and no
   engine implements (#605, #863)
-
 - `cascade fmt --import-root DIR` bounds `--inline-imports` filesystem reads to
   the canonical root and its descendants (#744)
-
 - `cascade diff` reads either side from standard input when the argument is `-`,
   writes the comparison as one JSON document with `--json`, and bounds a report
   by whole differences with `--limit` (#792, #796, #799)
-
 - A `cascade diff` report counts one difference for each thing that really
   differs, prints rule differences in the order the expected side names them,
   states a selector's move once, names a rule's nested block after the rule it
   belongs to, shows the contents of a block added or removed wholesale, and
   reports a rule that changed places next to whatever else the two sheets
-  differ on (#345, #385, #389, #474, #580, #581, #783, #784, #794, #798, #814,
-  #815)
-
-- `cascade diff` shows the declarations a `@keyframes` frame gained, lost or
+  differ on. It shows the declarations a `@keyframes` frame gained, lost or
   changed, and counts a rule as changed only when its own declarations changed,
   so a rule holding an edited nested rule is no longer summarised as a
-  difference the report cannot show (#906, #907)
-
+  difference the report cannot show (#345, #385, #389, #474, #580, #581, #783,
+  #784, #794, #798, #814, #815, #906, #907)
 - A `cascade diff` character-level hunk escapes a byte with no glyph, a parse
   warning both inputs raise prints once under a label naming both files, and
   the tool scales near-linearly on a sheet where every rule changed (#785,
   #786, #790, #791, #795)
-
 - `cascade apply` reads a `style` attribute in source order, empties the
   `<style>` blocks it projects rather than removing them, keeps the comments a
   page holds, and keeps a declaration whose longhand a kept rule writes under
   another property name. `--minimal` drops an inherited declaration only when it
   truly restates what the element would inherit (#326, #329, #332, #339, #340,
   #346)
-
 - Exit statuses say what happened: `cascade fmt` exits 1 when parse recovery
   left no statement at all, and `cascade apply` exits 0 when a `<style>` block
   parses to at least one statement (#489, #494)
-
 - CLI help lists each option and exit status once, says what `--enforce-spec`
   gates, and classifies representative selectors for `cascade prune`.
   `--enforce-spec` can drop a rule with a raw non-ASCII selector without
   `--minify`, and `--profile` without `--minify` no longer prints an empty
   factoring report (#611, #625, #628, #740)
-
 
 ## 1.1.0
 
