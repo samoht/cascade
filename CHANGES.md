@@ -76,6 +76,14 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.zoom` and `border_image_slice_item` gain `Calc`, so
+  `zoom: calc(.5)`, `zoom: calc(50%)` and `border-image-slice: calc(10%)` read
+  where they were dropped with a warning, and minified output keeps the call
+  around a negative one rather than unwrapping it to a literal the browser
+  drops. CSS Values 4 sec. 10.1 puts a math function wherever its type is and
+  sec. 10.13 checks the range on the resolved value. Exhaustive visitors must
+  handle the two new leaves (#1086)
+
 - `Cascade.Properties.interest_delay` carries `Delays of interest_delay_item
   list` where it carried `Normal` and `Durations of duration list`, so
   `interest-delay: normal 120ms` and `120ms normal` read. CSS UI 4 sec. 6.4

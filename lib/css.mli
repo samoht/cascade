@@ -6135,6 +6135,7 @@ val column_rule_color : color list -> declaration
 type border_image_slice_item = Properties.border_image_slice_item =
   | Number of number
   | Pct of float
+  | Calc of border_image_slice_item calc
 
 type border_image_slice_offsets = Properties.border_image_slice_offsets = {
   offsets : border_image_slice_item list;
@@ -9395,6 +9396,7 @@ type zoom = Properties.zoom =
   | Reset
   | Num of float
   | Pct of float
+  | Calc of zoom calc
   | Initial
   | Inherit
   | Unset

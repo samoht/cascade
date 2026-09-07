@@ -1116,8 +1116,19 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
       pp_background_size ctx size
   | None -> ()
 
-let pp_border_image_slice_item ctx (value : border_image_slice_item) =
-  match value with Number n -> Values.pp_number ctx n | Pct n -> Pp.pct ctx n
+let rec pp_border_image_slice_item ctx (value : border_image_slice_item) =
+  match value with
+  | Number n -> Values.pp_number ctx n
+  | Pct n -> Pp.pct ctx n
+  | Calc c ->
+      (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
+         exceeded, so [calc(-10%)] computes and a bare [-10%] is dropped. *)
+      Values.pp_calc ~unwrap_num:false
+        ~unwrap:(fun v ->
+          match (v : border_image_slice_item) with
+          | Pct f -> f >= 0.
+          | _ -> true)
+        pp_border_image_slice_item ctx c
 
 let pp_border_image_slice_offsets ctx { offsets; fill } =
   Pp.list ~sep:Pp.space pp_border_image_slice_item ctx offsets;
@@ -2326,11 +2337,27 @@ let read_border_image_number t =
   | _ -> ());
   value
 
+let read_slice_percentage_leaf t : border_image_slice_item =
+  Cursor.ws t;
+  Pct (Cursor.pct t)
+
 let read_border_image_slice_item t : border_image_slice_item =
   match Cursor.percentage_opt t with
   | Some n when n >= 0. -> Pct n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-  | None -> Number (read_border_image_number t)
+  | None ->
+      (* The number side reads its own math; a percentage one reaches the second
+         arm only because [read_border_image_number] refuses it. *)
+      Cursor.one_of
+        [
+          (fun t ->
+            (Number (read_border_image_number t) : border_image_slice_item));
+          (fun t ->
+            Calc
+              (Values.read_calc ~result_type:`Number_or_value
+                 read_slice_percentage_leaf t));
+        ]
+        t
 
 let read_border_image_slice_value t values has_fill =
   match Cursor.option read_border_image_slice_item t with

@@ -1032,6 +1032,7 @@ let vars_of_tab_size (value : Properties.tab_size) : any_var list =
 let vars_of_zoom (value : Properties.zoom) : any_var list =
   match value with
   | Var v -> [ V v ]
+  | Calc c -> vars_of_calc c
   | Normal | Reset | Num _ | Pct _ | Initial | Inherit | Unset | Revert
   | Revert_layer ->
       []

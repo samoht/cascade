@@ -4592,8 +4592,8 @@ let spec_platform_property_vectors () =
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
       ("zoom: calc(.5)", "zoom:calc(.5)");
-      ("zoom: calc(50%)", "zoom:calc(50%)");
-      ("border-image-slice: calc(10%)", "border-image-slice:calc(10%)");
+      ("zoom: calc(50%)", "zoom:50%");
+      ("border-image-slice: calc(10%)", "border-image-slice:10%");
       ("border-image-slice: calc(-10%)", "border-image-slice:calc(-10%)");
       ("interest-delay: normal 120ms", "interest-delay:normal 120ms");
       ("interest-delay: 120ms normal", "interest-delay:120ms normal");

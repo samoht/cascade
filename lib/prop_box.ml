@@ -406,6 +406,14 @@ let rec pp_zoom : zoom Pp.t =
   | Reset -> Pp.string ctx "reset"
   | Num n -> Pp.float ctx n
   | Pct p -> Pp.pct ctx p
+  | Calc c ->
+      (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
+         exceeded and clamps at used-value time, so [zoom: calc(-50%)] computes
+         and a bare [-50%] is dropped. *)
+      pp_calc ~unwrap_num:false
+        ~unwrap:(fun v ->
+          match (v : zoom) with Num f | Pct f -> f >= 0. | _ -> true)
+        pp_zoom ctx c
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -1159,9 +1167,22 @@ let rec read_float_side (t : Cursor.t) : float_side =
     ~var:(fun t -> Var (Values.read_var read_float_side t))
     t
 
+(* A [<percentage>] operand of a [zoom] math function; a raw [<number>] is left
+   to [read_calc]'s own [Num] path, as [shape-image-threshold] leaves it. *)
+let rec read_zoom_dim_only t : zoom =
+  Cursor.ws t;
+  Cursor.one_of
+    [
+      (fun t -> (Pct (Cursor.pct t) : zoom));
+      (fun t -> (Var (Values.read_var read_zoom_dim_only t) : zoom));
+    ]
+    t
+
 let rec read_zoom (t : Cursor.t) : zoom =
   (* CSS Viewport 1 sec. 3 spells [zoom] as [normal | reset | <number [0,inf]> |
-     <percentage [0,inf]>], so a negative zoom is no zoom. *)
+     <percentage [0,inf]>], so a negative zoom is no zoom. CSS Values 4 sec.
+     10.13 checks that range on the resolved value, so a math function carrying
+     a negative reads and clamps where the literal is dropped. *)
   let non_negative n =
     if n < 0. then Cursor.err_invalid t "zoom cannot be negative" else n
   in
@@ -1174,7 +1195,8 @@ let rec read_zoom (t : Cursor.t) : zoom =
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in
-  Cursor.enum_or_var "zoom"
+  let read_numeric_math t : zoom = Num (Values.read_numeric_expression t) in
+  Cursor.enum_or_calls "zoom"
     [
       ("normal", (Normal : zoom));
       ("reset", Reset);
@@ -1184,7 +1206,18 @@ let rec read_zoom (t : Cursor.t) : zoom =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_zoom t))
+    ~calls:
+      [
+        ("var", fun t -> Var (Values.read_var read_zoom t));
+        ( "calc",
+          fun t ->
+            Calc
+              (Values.read_calc ~result_type:`Number_or_value read_zoom_dim_only
+                 t) );
+        ("min", read_numeric_math);
+        ("max", read_numeric_math);
+        ("clamp", read_numeric_math);
+      ]
     ~default:read_value t
 
 let read_object_view_box_inset t =
