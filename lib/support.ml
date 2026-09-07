@@ -69,6 +69,352 @@ let measured =
          Chrome reads it alone and refuses every list holding one";
       measured = "Chrome 153";
     };
+    {
+      key = "css.properties.text-decoration-thickness.hairline";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Text Decoration 4 sec. 2.4 takes <line-width>, and CSS Borders 4 \
+         sec. 2.3 defines <line-width> = <length [0,inf]> | hairline | thin | \
+         medium | thick";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-decoration-thickness.thin";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Borders 4 sec. 2.3: thin is a <line-width>";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-decoration-thickness.thick";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Borders 4 sec. 2.3: thick is a <line-width>";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-transform.full_width";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Text 4 sec. 2.1: none | [ capitalize | uppercase | lowercase ] || \
+         full-width || full-size-kana | math-auto";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-combine-upright.digits";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Writing Modes 4 sec. 9.1: none | all | [ digits <integer [2,4]>? \
+         ]; Chrome has only none and all";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-combine-upright.digits_2";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-combine-upright.digits_4";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.alignment-baseline.text_bottom";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and \
+         <baseline-metric> begins text-bottom | alphabetic | ideographic; \
+         Chrome implements the SVG 1.1 keyword set";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.baseline-shift.top";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
+         center | bottom";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.baseline-shift.center";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Inline 3 sec. 4.2.3 lists center";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.baseline-shift.bottom";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Inline 3 sec. 4.2.3 lists bottom";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.grid-template-rows.masonry";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "the CSS Grid 3 Working Draft of 2024 added masonry to \
+         grid-template-rows, and Firefox ships it; the current draft has \
+         replaced it with display: grid-lanes, so this row is the one entry \
+         here that wants a decision rather than a browser";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.outline-color.auto";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS UI 4 sec. 3.4: auto | <'border-top-color'>, and auto is the \
+         initial value; Chrome computes that initial value without accepting \
+         the keyword";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.user-select.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS UI 4 sec. 6.1: auto | text | none | contain | all; \
+         -webkit-user-select is the browser's legacy name for the same \
+         property";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.font-synthesis-style.oblique_only";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Fonts 4 sec. 2.8.2: auto | none | oblique-only";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.ruby-position.inter_character";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Ruby 1 sec. 4.1 lists inter-character";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.stroke-linejoin.miter_clip";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "SVG Strokes sec. 2.6: miter | miter-clip | round | bevel | arcs; \
+         Chrome has miter, round and bevel";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.stroke-linejoin.arcs";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "SVG Strokes sec. 2.6 lists arcs";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.vector-effect.non_scaling_size";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
+         non-rotation | fixed-position ]+ [ viewport | screen ]?; Chrome has \
+         only non-scaling-stroke";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.vector-effect.non_rotation";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "SVG 2 sec. 8.13 lists non-rotation";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.vector-effect.fixed_position";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "SVG 2 sec. 8.13 lists fixed-position";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.vector-effect.non_scaling_stroke_screen";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.vector-effect.non_scaling_stroke_fixed_position";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.resize.auto";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
+         inline. Chrome accepts auto, no specification defines it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-orientation.sideways_right";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
+         sideways-right is a compatibility alias browsers may keep, not \
+         grammar";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.alignment-baseline.auto";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
+         auto. Chrome accepts it from the SVG 1.1 grammar";
+      measured = "Chrome 153";
+    };
   ]
 
 let measured_table =
@@ -93,6 +439,10 @@ let at_least (major, minor) (target_major, target_minor) =
    does not implement the key at all, which no target version satisfies. *)
 let engine_has shipped target =
   match shipped with None -> false | Some shipped -> at_least shipped target
+
+let self_measured key =
+  (not (Hashtbl.mem (Lazy.force table) key))
+  && Hashtbl.mem (Lazy.force measured_table) key
 
 (* The generated table answers first; [measured] is the supplement for keys
    web-features gives none, so a fact leaves here of its own accord when the

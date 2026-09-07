@@ -832,6 +832,23 @@ let () =
       Chrome_gaps.Browser_behind;
       Chrome_gaps.Needs_measurement;
     ];
+  (* Which of those answers came from the generated dataset and which from this
+     project's own measurement. A self-measured fact can drift from the browser
+     and a generated one cannot, so the split is worth seeing. *)
+  let ours =
+    List.length
+      (List.filter
+         (fun (e : Chrome_gaps.excuse) ->
+           match e.key with
+           | Some k -> Cascade.Support.self_measured k
+           | None -> false)
+         (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
+        @ lenient_here))
+  in
+  if ours > 0 then
+    Fmt.pr
+      "    (%d of those answered by our own measurement, not the dataset)@."
+      ours;
   (* An excuse the dataset says every target ships is not an excuse: the
      browser's answer is the specification's there, so the entry is covering a
      defect rather than citing a fact. *)

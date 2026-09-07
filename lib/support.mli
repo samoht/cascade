@@ -60,6 +60,12 @@ type measurement = {
     excusing its own failures; one that asks {!implemented} is reading what the
     library knows. *)
 
+val self_measured : string -> bool
+(** [self_measured key] is whether [key] is answered by {!measured} rather than
+    by the generated table. A caller reporting on a gap should say which,
+    because a fact this project measured can drift from the browser and a
+    generated one cannot. *)
+
 val measured : measurement list
 (** [measured] is what this project measured for productions web-features gives
     no key. Every entry names the specification that grants the grammar and the

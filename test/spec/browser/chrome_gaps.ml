@@ -161,24 +161,21 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-decoration-thickness" ];
-      key = None;
+      key = Some "css.properties.text-decoration-thickness.hairline";
       value = "hairline";
-      why =
-        "CSS Text Decoration 4 sec. 2.4 takes <line-width>, and CSS Borders 4 \
-         sec. 2.3 defines <line-width> = <length [0,inf]> | hairline | thin | \
-         medium | thick";
+      why = library_says "css.properties.text-decoration-thickness.hairline";
     };
     {
       properties = [ "text-decoration-thickness" ];
-      key = None;
+      key = Some "css.properties.text-decoration-thickness.thin";
       value = "thin";
-      why = "CSS Borders 4 sec. 2.3: thin is a <line-width>";
+      why = library_says "css.properties.text-decoration-thickness.thin";
     };
     {
       properties = [ "text-decoration-thickness" ];
-      key = None;
+      key = Some "css.properties.text-decoration-thickness.thick";
       value = "thick";
-      why = "CSS Borders 4 sec. 2.3: thick is a <line-width>";
+      why = library_says "css.properties.text-decoration-thickness.thick";
     };
     {
       properties = [ "overflow-clip-margin" ];
@@ -209,11 +206,9 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-transform" ];
-      key = None;
+      key = Some "css.properties.text-transform.full_width";
       value = "full-width";
-      why =
-        "CSS Text 4 sec. 2.1: none | [ capitalize | uppercase | lowercase ] || \
-         full-width || full-size-kana | math-auto";
+      why = library_says "css.properties.text-transform.full_width";
     };
     {
       properties = [ "background-blend-mode" ];
@@ -239,80 +234,63 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-combine-upright" ];
-      key = None;
+      key = Some "css.properties.text-combine-upright.digits";
       value = "digits";
-      why =
-        "CSS Writing Modes 4 sec. 9.1: none | all | [ digits <integer [2,4]>? \
-         ]; Chrome has only none and all";
+      why = library_says "css.properties.text-combine-upright.digits";
     };
     {
       properties = [ "text-combine-upright" ];
-      key = None;
+      key = Some "css.properties.text-combine-upright.digits_2";
       value = "digits 2";
-      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
+      why = library_says "css.properties.text-combine-upright.digits_2";
     };
     {
       properties = [ "text-combine-upright" ];
-      key = None;
+      key = Some "css.properties.text-combine-upright.digits_4";
       value = "digits 4";
-      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
+      why = library_says "css.properties.text-combine-upright.digits_4";
     };
     {
       properties = [ "alignment-baseline" ];
-      key = None;
+      key = Some "css.properties.alignment-baseline.text_bottom";
       value = "text-bottom";
-      why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and \
-         <baseline-metric> begins text-bottom | alphabetic | ideographic; \
-         Chrome implements the SVG 1.1 keyword set";
+      why = library_says "css.properties.alignment-baseline.text_bottom";
     };
     {
       properties = [ "baseline-shift" ];
-      key = None;
+      key = Some "css.properties.baseline-shift.top";
       value = "top";
-      why =
-        "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
-         center | bottom";
+      why = library_says "css.properties.baseline-shift.top";
     };
     {
       properties = [ "baseline-shift" ];
-      key = None;
+      key = Some "css.properties.baseline-shift.center";
       value = "center";
-      why = "CSS Inline 3 sec. 4.2.3 lists center";
+      why = library_says "css.properties.baseline-shift.center";
     };
     {
       properties = [ "baseline-shift" ];
-      key = None;
+      key = Some "css.properties.baseline-shift.bottom";
       value = "bottom";
-      why = "CSS Inline 3 sec. 4.2.3 lists bottom";
+      why = library_says "css.properties.baseline-shift.bottom";
     };
     {
       properties = [ "grid-template-rows" ];
-      key = None;
+      key = Some "css.properties.grid-template-rows.masonry";
       value = "masonry";
-      why =
-        "the CSS Grid 3 Working Draft of 2024 added masonry to \
-         grid-template-rows, and Firefox ships it; the current draft has \
-         replaced it with display: grid-lanes, so this row is the one entry \
-         here that wants a decision rather than a browser";
+      why = library_says "css.properties.grid-template-rows.masonry";
     };
     {
       properties = [ "outline-color" ];
-      key = None;
+      key = Some "css.properties.outline-color.auto";
       value = "auto";
-      why =
-        "CSS UI 4 sec. 3.4: auto | <'border-top-color'>, and auto is the \
-         initial value; Chrome computes that initial value without accepting \
-         the keyword";
+      why = library_says "css.properties.outline-color.auto";
     };
     {
       properties = [ "user-select"; "-webkit-user-select" ];
-      key = None;
+      key = Some "css.properties.user-select.contain";
       value = "contain";
-      why =
-        "CSS UI 4 sec. 6.1: auto | text | none | contain | all; \
-         -webkit-user-select is the browser's legacy name for the same \
-         property";
+      why = library_says "css.properties.user-select.contain";
     };
     {
       properties = [ "font-synthesis" ];
@@ -324,9 +302,9 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "font-synthesis-style" ];
-      key = None;
+      key = Some "css.properties.font-synthesis-style.oblique_only";
       value = "oblique-only";
-      why = "CSS Fonts 4 sec. 2.8.2: auto | none | oblique-only";
+      why = library_says "css.properties.font-synthesis-style.oblique_only";
     };
     {
       properties = [ "ruby-position" ];
@@ -344,9 +322,9 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "ruby-position" ];
-      key = None;
+      key = Some "css.properties.ruby-position.inter_character";
       value = "inter-character";
-      why = "CSS Ruby 1 sec. 4.1 lists inter-character";
+      why = library_says "css.properties.ruby-position.inter_character";
     };
     {
       properties = [ "image-rendering" ];
@@ -358,50 +336,49 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "stroke-linejoin" ];
-      key = None;
+      key = Some "css.properties.stroke-linejoin.miter_clip";
       value = "miter-clip";
-      why =
-        "SVG Strokes sec. 2.6: miter | miter-clip | round | bevel | arcs; \
-         Chrome has miter, round and bevel";
+      why = library_says "css.properties.stroke-linejoin.miter_clip";
     };
     {
       properties = [ "stroke-linejoin" ];
-      key = None;
+      key = Some "css.properties.stroke-linejoin.arcs";
       value = "arcs";
-      why = "SVG Strokes sec. 2.6 lists arcs";
+      why = library_says "css.properties.stroke-linejoin.arcs";
     };
     {
       properties = [ "vector-effect" ];
-      key = None;
+      key = Some "css.properties.vector-effect.non_scaling_size";
       value = "non-scaling-size";
-      why =
-        "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
-         non-rotation | fixed-position ]+ [ viewport | screen ]?; Chrome has \
-         only non-scaling-stroke";
+      why = library_says "css.properties.vector-effect.non_scaling_size";
     };
     {
       properties = [ "vector-effect" ];
-      key = None;
+      key = Some "css.properties.vector-effect.non_rotation";
       value = "non-rotation";
-      why = "SVG 2 sec. 8.13 lists non-rotation";
+      why = library_says "css.properties.vector-effect.non_rotation";
     };
     {
       properties = [ "vector-effect" ];
-      key = None;
+      key = Some "css.properties.vector-effect.fixed_position";
       value = "fixed-position";
-      why = "SVG 2 sec. 8.13 lists fixed-position";
+      why = library_says "css.properties.vector-effect.fixed_position";
     };
     {
       properties = [ "vector-effect" ];
-      key = None;
+      key = Some "css.properties.vector-effect.non_scaling_stroke_screen";
       value = "non-scaling-stroke screen";
-      why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
+      why =
+        library_says "css.properties.vector-effect.non_scaling_stroke_screen";
     };
     {
       properties = [ "vector-effect" ];
-      key = None;
+      key =
+        Some "css.properties.vector-effect.non_scaling_stroke_fixed_position";
       value = "non-scaling-stroke fixed-position";
-      why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
+      why =
+        library_says
+          "css.properties.vector-effect.non_scaling_stroke_fixed_position";
     };
   ]
 
@@ -453,28 +430,21 @@ let lenient : excuse list =
   [
     {
       properties = [ "resize" ];
-      key = None;
+      key = Some "css.properties.resize.auto";
       value = "auto";
-      why =
-        "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
-         inline. Chrome accepts auto, no specification defines it";
+      why = library_says "css.properties.resize.auto";
     };
     {
       properties = [ "text-orientation" ];
-      key = None;
+      key = Some "css.properties.text-orientation.sideways_right";
       value = "sideways-right";
-      why =
-        "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
-         sideways-right is a compatibility alias browsers may keep, not \
-         grammar";
+      why = library_says "css.properties.text-orientation.sideways_right";
     };
     {
       properties = [ "alignment-baseline" ];
-      key = None;
+      key = Some "css.properties.alignment-baseline.auto";
       value = "auto";
-      why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
-         auto. Chrome accepts it from the SVG 1.1 grammar";
+      why = library_says "css.properties.alignment-baseline.auto";
     };
   ]
 

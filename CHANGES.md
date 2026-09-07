@@ -78,8 +78,10 @@ entry points both moved.
 
 - `Cascade.Support.measured` records what this project measured for
   productions web-features gives no compat key, so `Cascade.Support.implemented`
-  answers for them too. A browser gap is a fact about CSS rather than a test
-  fixture, and it belongs where the library can act on it (#1110)
+  answers for them too, and `Cascade.Support.self_measured` says which answers
+  came from there rather than from the generated table. A browser gap is a fact
+  about CSS rather than a test fixture, and it belongs where the library can act
+  on it (#1110, #1111)
 
 - A colour reaches the final background layer alone, so `background: red,
   url(x.png)` is dropped with a warning where every browser drops it and
