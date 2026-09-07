@@ -990,6 +990,10 @@ to lose a whole rule over one bad piece. Both are gone.
   need a second (#413, #422, #424, #468, #480, #486, #487, #493, #502, #505,
   #507, #517, #519, #523, #542, #543, #566, #664, #746, #750)
 
+- A `calc()` sum leads with a positive term where it has one, so
+  `calc(-10px + 100vw)` minifies to `calc(100vw - 10px)`, and a negative term
+  joins with a minus rather than growing a sign into `calc(3px + -2em)` (#1113)
+
 ### Custom properties
 
 - A custom property's value keeps the whitespace runs the author wrote, where

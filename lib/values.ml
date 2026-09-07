@@ -1754,20 +1754,6 @@ type length_unit =
 
 let length_unit_is_pct = function Pct -> true | _ -> false
 
-let length_unit_is_viewport = function
-  | Vw | Vh | Vmin | Vmax | Vi | Vb | Dvh | Dvw | Dvmin | Dvmax | Lvh | Lvw
-  | Lvmin | Lvmax | Svh | Svw | Svmin | Svmax ->
-      true
-  | _ -> false
-
-let length_unit_is_font_relative = function
-  | Rem | Em | Ex | Cap | Ic | Ric | Rlh | Ch | Lh -> true
-  | _ -> false
-
-let length_unit_negative_rank = function
-  | unit when length_unit_is_font_relative unit -> 0
-  | _ -> 1
-
 let unit_of_string = function
   | "px" -> Some Px
   | "cm" -> Some Cm
@@ -1920,31 +1906,26 @@ type linear_term = {
   count : int;
 }
 
+(* CSS Values 4 sec. 10.13 sorts a sum's children before serialising them, so
+   the order carries no meaning and the shortest spelling wins. A positive term
+   leads: [b - a] against [-a + b] spends one byte fewer. Ties keep the authored
+   order. *)
 let linear_term_priority ~first_pos term =
   match (term.value > 0., length_unit_is_pct term.unit) with
   | true, true -> 0
   | true, false when term.first_pos = first_pos && term.count = 1 -> 1
-  | false, false when not (length_unit_is_viewport term.unit) -> 2
-  | true, false when term.count = 1 -> 3
-  | true, false -> 4
-  | false, false -> 5
-  | false, true -> 6
-
-let compare_negative_linear_term a b =
-  let c =
-    compare
-      (length_unit_negative_rank a.unit)
-      (length_unit_negative_rank b.unit)
-  in
-  if c <> 0 then c else compare a.first_pos b.first_pos
+  | true, false when term.count = 1 -> 2
+  | true, false -> 3
+  | false, false -> 4
+  | false, true -> 5
 
 let compare_linear_term ~first_pos a b =
-  let a_priority = linear_term_priority ~first_pos a in
-  let b_priority = linear_term_priority ~first_pos b in
-  let c = compare a_priority b_priority in
-  if c <> 0 then c
-  else if a_priority = 2 then compare_negative_linear_term a b
-  else compare a.first_pos b.first_pos
+  let c =
+    compare
+      (linear_term_priority ~first_pos a)
+      (linear_term_priority ~first_pos b)
+  in
+  if c <> 0 then c else compare a.first_pos b.first_pos
 
 let ordered_linear_terms terms =
   let table = Hashtbl.create 8 in
@@ -1967,13 +1948,7 @@ let ordered_linear_terms terms =
   in
   List.sort (compare_linear_term ~first_pos) terms
 
-let linear_calc_op first_unit first_value unit n =
-  if
-    n < 0. && first_value > 0. && first_unit = Px
-    && length_unit_is_font_relative unit
-  then (Add, n)
-  else if n < 0. then (Sub, -.n)
-  else (Add, n)
+let linear_calc_op n = if n < 0. then (Sub, -.n) else (Add, n)
 
 let linear_terms_with unit_of_value calc =
   let scale factor terms =
@@ -2014,11 +1989,9 @@ let linear_length_calc calc =
       match terms with
       | [] -> Val Zero
       | { unit; value = n; _ } :: rest ->
-          let first_unit = unit in
-          let first_value = n in
           List.fold_left
             (fun acc { unit; value = n; _ } ->
-              let op, n = linear_calc_op first_unit first_value unit n in
+              let op, n = linear_calc_op n in
               Expr (acc, op, Val (length_of_calc_unit unit n)))
             (Val (length_of_calc_unit unit n))
             rest)
@@ -2132,11 +2105,9 @@ let linear_lp_calc calc =
       match terms with
       | [] -> Val (Length Zero)
       | { unit; value = n; _ } :: rest ->
-          let first_unit = unit in
-          let first_value = n in
           List.fold_left
             (fun acc { unit; value = n; _ } ->
-              let op, n = linear_calc_op first_unit first_value unit n in
+              let op, n = linear_calc_op n in
               Expr (acc, op, Val (lp_of_unit unit n)))
             (Val (lp_of_unit unit n))
             rest)
