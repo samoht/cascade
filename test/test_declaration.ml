@@ -4749,6 +4749,14 @@ let spec_platform_property_vectors () =
          refused one. CSS Logical 1 sec. 4.2 spells the flow-relative pair from
          the same production. *)
       "margin-right: fit-content(20rem)";
+      (* The prefixed stroke is a [||] of one width and one colour, so a second
+         width fills no slot; cascade kept the last and dropped the first, which
+         is a miscompile rather than a loose read. *)
+      "-webkit-text-stroke: 100px 200px";
+      (* CSS Backgrounds 3 sec. 2.1 gives the colour to the FINAL layer alone,
+         so a colour in an earlier one is no background. *)
+      "background: red, currentcolor";
+      "background: red, url(a.png)";
       (* CSS Box Alignment 3 sec. 8.1 gives every gap a [0,inf] range, and the
          row-gap and column-gap longhands already refused a negative one. CSS
          Text Decoration 4 sec. 3 builds the shorthand from its own longhands,
