@@ -912,7 +912,7 @@ let add_declaration_prefixes ~targets decls =
   loop false [] decls
 
 let rec condition_has_webkit kind = function
-  | Supports.Property (Supports.Declaration decl) ->
+  | Supports.Property (Supports.Declaration (_, decl)) ->
       is_webkit_fallback kind decl
   | Supports.Property _ | Supports.Function _ | Supports.General_enclosed _ ->
       false
@@ -923,13 +923,19 @@ let rec condition_has_webkit kind = function
 let add_condition_prefixes ~targets condition =
   let author_owns kind = condition_has_webkit kind condition in
   let rec map = function
-    | Supports.Property (Supports.Declaration decl) as original -> (
+    | Supports.Property (Supports.Declaration (_, decl)) as original -> (
         match fallback_kind decl with
         | Some kind when not (author_owns kind) -> (
             match webkit_fallback_of_declaration targets decl with
             | Some prefixed ->
+                (* Cascade writes this one, so it carries no authored
+                   spelling. *)
+                let name =
+                  Supports.property_name (Declaration.property_name prefixed)
+                in
                 Supports.Or
-                  (Supports.Property (Supports.Declaration prefixed), original)
+                  ( Supports.Property (Supports.Declaration (name, prefixed)),
+                    original )
             | None -> original)
         | Some _ | None -> original)
     | (Supports.Property _ | Supports.Function _ | Supports.General_enclosed _)

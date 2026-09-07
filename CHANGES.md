@@ -76,6 +76,14 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- An `@supports` condition keeps the property name the author spelled, so
+  `@supports (colo\r: green)` reads back as written instead of as
+  `(color: green)`. CSS Conditional 3 sec. 7.4 returns "the condition that was
+  specified", and the token stream simplifications it allows are permitted
+  rather than required, so minified output still takes the shortest spelling.
+  `Cascade.Supports.Declaration` carries the name beside the declaration,
+  because a typed property is a constructor and cannot hold the escape (#1092)
+
 - Compatibility-prefix generation asks the web-features dataset which targets
   read a property unprefixed, where it carried browser versions written into
   the source. A `backdrop-filter` targeting Safari 17.0 to 17.6 keeps its

@@ -7249,24 +7249,38 @@ let s4370_supports_property_name_escapes () =
         "@supports(--x\\;y:red)and (color:red){.a{color:red}}" );
       ( "@supports not (--x\\3b y:red){.a{color:red}}",
         "@supports not (--x\\;y:red){.a{color:red}}" );
-      (* A typed property spelled with an escape keeps that spelling too. The
-         browser answers the feature by running the authored declaration through
-         its own parser and echoes those bytes back in [conditionText], so
-         respelling [colo\\r] as [color] makes a different question of the same
-         condition. *)
+      (* Sec. 7.4 allows a token stream simplification and forbids a logical
+         one. An escape decodes to the same [<ident-token>] in every conformant
+         implementation, so minified output may take the shortest spelling of a
+         name however the author wrote it, and the name of a typed property
+         answers to that as a custom property's does. What the author wrote
+         survives unminified; see the pretty check below. *)
       ( "@supports (colo\\r:green){.a{color:red}}",
-        "@supports(colo\\r:green){.a{color:red}}" );
-      ( "@supports (colo\\r:){.a{color:red}}",
-        "@supports(colo\\r:){.a{color:red}}" );
-      ( "@supports (colo\\r:gre\\65 n){.a{color:red}}",
-        "@supports(colo\\r:gre\\65 n){.a{color:red}}" );
+        "@supports(color:green){.a{color:red}}" );
+      ("@supports (colo\\r:){.a{color:red}}", "@supports(color:){.a{color:red}}");
       ( "@supports (unknown\\-prop:x){.a{color:red}}",
-        "@supports(unknown\\-prop:x){.a{color:red}}" );
+        "@supports(unknown-prop:x){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
         "@supports(--xy:red){.a{color:red}}" );
       ( "@supports (color:red){.a{color:red}}",
         "@supports(color:red){.a{color:red}}" );
+    ]
+
+(* Sec. 7.4 has [conditionText] return "the condition that was specified", and
+   the token stream simplifications it allows are permitted rather than
+   required, so unminified output writes back the bytes the author wrote.
+   Measured on Chrome 153: conditionText echoes those same bytes, normalising
+   neither [colo\r] to [color] nor [--x\3b y] to [--x\;y]. *)
+let s4370_supports_property_name_pretty_verbatim () =
+  List.iter
+    (fun (css, fragment) -> pretty_preserves css [ fragment ])
+    [
+      ("@supports (colo\\r:green){.a{color:red}}", "colo\\r");
+      ("@supports (colo\\r:){.a{color:red}}", "colo\\r");
+      ("@supports (--x\\3b y:red){.a{color:red}}", "--x\\3b y");
+      ("@supports (unknown\\-prop:x){.a{color:red}}", "unknown\\-prop");
+      ("@supports not (colo\\r:green){.a{color:red}}", "colo\\r");
     ]
 
 let fidelity_string_escape_preserved () =
@@ -9702,6 +9716,9 @@ let additional_tests =
     ( "spec conditional 3 2.2 supports property name escapes",
       `Quick,
       s4370_supports_property_name_escapes );
+    ( "spec conditional 3 7.4 supports property name pretty verbatim",
+      `Quick,
+      s4370_supports_property_name_pretty_verbatim );
     ("spec cascade 5 6.4.1 layer name parts", `Quick, s641_layer_name_parts);
     ( "fidelity string escape preserved",
       `Quick,

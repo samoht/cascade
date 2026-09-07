@@ -2882,6 +2882,35 @@ let rec pp : declaration Pp.t =
 (* A declaration feature query hands the authored declaration to another parser.
    Minify its separators, but keep opaque numeric token spellings: the spelling
    itself is the compatibility question. *)
+(* The value half of {!pp_opaque}, for a caller writing the property name
+   itself: an [\@supports] feature keeps the name the author spelled, which the
+   typed property behind it cannot reproduce. *)
+let rec pp_opaque_value : declaration Pp.t =
+ fun ctx decl ->
+  let pp_components components important =
+    Pp.string ctx
+      (if Pp.minified ctx then Parser.to_string_minified components
+       else Parser.to_string_verbatim components);
+    if important then
+      Pp.string ctx (if ctx.minify then "!important" else " !important")
+  in
+  match decl with
+  | Declaration { property = Unknown_property _; value; important; _ } ->
+      pp_components value important
+  | Declaration
+      {
+        property = Custom_property _;
+        value = Custom_value { value = Tokens components; _ };
+        important;
+        _;
+      } ->
+      pp_components components important
+  | Declaration { property; value; important; _ } ->
+      pp_property_value ctx (property, value);
+      if important then
+        Pp.string ctx (if ctx.minify then "!important" else " !important")
+  | Theme_guarded { decl; _ } -> pp_opaque_value ctx decl
+
 let rec pp_opaque : declaration Pp.t =
  fun ctx decl ->
   (* Every caller of this is an [@supports] condition, and CSS Conditional Rules
