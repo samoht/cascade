@@ -81,7 +81,13 @@ let test_current_work_vectors () =
     "font-tech(color-COLRv1)";
   check "supports complex selector and property"
     "selector(:has(img)) and (container-type: inline-size)"
-    "selector(:has(img)) and (container-type: inline-size)"
+    "selector(:has(img)) and (container-type: inline-size)";
+  (* CSS Conditional Rules 3 sec. 6.1 answers a declaration feature by running
+     that exact declaration through the rendering browser's parser, so the text
+     is the question and its escapes survive. Chrome 153 keeps the escape in
+     [conditionText]. *)
+  check "an escape in a declaration feature" "(color: gre\\en)"
+    "(color: gre\\en)"
 
 let spec_supports_feature_vectors () =
   let check name input expected =
