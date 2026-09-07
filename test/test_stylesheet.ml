@@ -725,6 +725,52 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
   check_stylesheet ~expected:"" "@font-face { font-display: swap; }";
+  (* CSS Fonts 4 (ED) sec. 4.4 writes the font property descriptors' grammars
+     out in full, and sec. 4.6 gives the settings descriptors the corresponding
+     property's values "except that the CSS-wide keywords are omitted". No
+     descriptor grammar takes one, so the declaration goes and the rest of the
+     rule stays. The descriptors below delegate to the property readers, which
+     take them legitimately in property position. *)
+  List.iter
+    (fun keyword ->
+      List.iter
+        (fun descriptor ->
+          check_stylesheet
+            ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+            (String.concat ""
+               [
+                 "@font-face { font-family: Brand; src: url(font.woff2); ";
+                 descriptor;
+                 ": ";
+                 keyword;
+                 "; }";
+               ]))
+        [
+          "font-style";
+          "font-weight";
+          "font-stretch";
+          "font-feature-settings";
+          "font-variation-settings";
+          "font-variant";
+          "font-display";
+          "font-tech";
+          "size-adjust";
+          "ascent-override";
+          "descent-override";
+          "line-gap-override";
+          "unicode-range";
+        ])
+    [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ];
+  (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
+     in either costs the whole rule the way any other missing one does. *)
+  check_stylesheet ~expected:""
+    "@font-face { font-family: inherit; src: url(font.woff2); }";
+  check_stylesheet ~expected:"" "@font-face { font-family: Brand; src: unset; }";
+  (* A family name that merely starts with one is a name, not a keyword: sec.
+     2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:inherited Sans;src:url(font.woff2)}"
+    "@font-face { font-family: inherited Sans; src: url(font.woff2); }";
   (* An unknown descriptor (e.g. Fontsource's non-standard font-named-instance)
      is dropped; the rest of the @font-face is kept, like browsers. *)
   check_stylesheet
