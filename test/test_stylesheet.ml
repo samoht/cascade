@@ -7249,6 +7249,19 @@ let s4370_supports_property_name_escapes () =
         "@supports(--x\\;y:red)and (color:red){.a{color:red}}" );
       ( "@supports not (--x\\3b y:red){.a{color:red}}",
         "@supports not (--x\\;y:red){.a{color:red}}" );
+      (* A typed property spelled with an escape keeps that spelling too. The
+         browser answers the feature by running the authored declaration through
+         its own parser and echoes those bytes back in [conditionText], so
+         respelling [colo\\r] as [color] makes a different question of the same
+         condition. *)
+      ( "@supports (colo\\r:green){.a{color:red}}",
+        "@supports(colo\\r:green){.a{color:red}}" );
+      ( "@supports (colo\\r:){.a{color:red}}",
+        "@supports(colo\\r:){.a{color:red}}" );
+      ( "@supports (colo\\r:gre\\65 n){.a{color:red}}",
+        "@supports(colo\\r:gre\\65 n){.a{color:red}}" );
+      ( "@supports (unknown\\-prop:x){.a{color:red}}",
+        "@supports(unknown\\-prop:x){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
         "@supports(--xy:red){.a{color:red}}" );
