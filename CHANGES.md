@@ -76,6 +76,16 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `-webkit-mask-origin` and `-webkit-mask-clip` carry
+  `Cascade.Properties.webkit_mask_box`, WebKit's own box vocabulary, where they
+  carried the `mask_box` of their unprefixed namesakes. They are not aliases:
+  they take `content`, `padding` and `border` beside the `-box` spellings, the
+  clip takes `text`, and neither takes an SVG box or `no-clip`. So
+  `-webkit-mask-origin: content` reads where it was dropped, `mask-origin:
+  no-clip` is dropped as CSS Masking 1 sec. 6.4 asks, and a `mask-clip` value
+  the prefixed property cannot spell no longer generates a `-webkit-mask-clip`
+  declaration every browser drops (#1087)
+
 - `Cascade.Properties.zoom` and `border_image_slice_item` gain `Calc`, so
   `zoom: calc(.5)`, `zoom: calc(50%)` and `border-image-slice: calc(10%)` read
   where they were dropped with a warning, and minified output keeps the call

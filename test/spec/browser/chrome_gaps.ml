@@ -309,13 +309,6 @@ let spec_ahead : excuse list =
          crisp-edges";
     };
     {
-      properties = [ "-webkit-mask-clip" ];
-      value = "no-clip";
-      why =
-        "CSS Masking 1 sec. 7.5: [ <coord-box> | no-clip ]#; Chrome takes \
-         no-clip on mask-clip but not on its own -webkit- alias of it";
-    };
-    {
       properties = [ "stroke-linejoin" ];
       value = "miter-clip";
       why =

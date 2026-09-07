@@ -3018,6 +3018,26 @@ type mask_box =
   | Revert_layer
   | Var of mask_box var
 
+(** The box vocabulary of [-webkit-mask-origin] and [-webkit-mask-clip], which
+    is WebKit's older set rather than the [<coord-box>] CSS Masking 1 sec. 6.4
+    and 6.5 give the unprefixed pair: the three CSS box names in both their bare
+    and [-box] spellings, none of the SVG boxes, and [text] on the clip. *)
+type webkit_mask_box =
+  | Border
+  | Border_box
+  | Content
+  | Content_box
+  | Padding
+  | Padding_box
+  | Text  (** Only valid for -webkit-mask-clip *)
+  | Layers of webkit_mask_box list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_mask_box var
+
 type mask_layer = {
   image : background_image option;
   position : position_value option;
@@ -5350,8 +5370,8 @@ type 'a property =
   | Webkit_mask_size : background_size property
   | Webkit_mask_position : background_position property
   | Webkit_mask_repeat : background_repeat property
-  | Webkit_mask_clip : mask_box property
-  | Webkit_mask_origin : mask_box property
+  | Webkit_mask_clip : webkit_mask_box property
+  | Webkit_mask_origin : webkit_mask_box property
   | Mask_image : background_image property
   | Mask_composite : mask_composite property
   | Mask_mode : mask_mode property

@@ -1794,6 +1794,9 @@ let vars_of_object_view_box (value : Properties.object_view_box) =
 let vars_of_mask_box (value : Properties.mask_box) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_webkit_mask_box (value : Properties.webkit_mask_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let rec vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite)
     =
   match value with
@@ -2583,9 +2586,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_box_orient, value -> vars_of_webkit_box_orient value
   | Webkit_font_smoothing, value -> vars_of_webkit_font_smoothing value
   | Webkit_line_clamp, value -> vars_of_webkit_line_clamp value
-  | Webkit_mask_clip, value -> vars_of_mask_box value
+  | Webkit_mask_clip, value -> vars_of_webkit_mask_box value
   | Webkit_mask_composite, value -> vars_of_webkit_mask_composite value
-  | Webkit_mask_origin, value -> vars_of_mask_box value
+  | Webkit_mask_origin, value -> vars_of_webkit_mask_box value
   | Webkit_mask_repeat, value -> vars_of_background_repeat value
   | Webkit_mask_source_type, value -> vars_of_mask_source_type value
   | Webkit_text_size_adjust, value -> vars_of_text_size_adjust value

@@ -496,6 +496,23 @@ let rec pp_mask_type : mask_type Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec pp_webkit_mask_box : webkit_mask_box Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_webkit_mask_box ctx v
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_webkit_mask_box ctx layers
+  | Border -> Pp.string ctx "border"
+  | Border_box -> Pp.string ctx "border-box"
+  | Content -> Pp.string ctx "content"
+  | Content_box -> Pp.string ctx "content-box"
+  | Padding -> Pp.string ctx "padding"
+  | Padding_box -> Pp.string ctx "padding-box"
+  | Text -> Pp.string ctx "text"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let rec pp_mask_box : mask_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_mask_box ctx v
@@ -681,28 +698,57 @@ let rec read_mask_type t : mask_type =
     ~var:(fun t -> Var (Values.read_var read_mask_type t))
     t
 
-(* Parser for mask_box values (mask-clip and mask-origin) *)
-let rec read_mask_box t : mask_box =
+(* CSS Masking 1 sec. 6.4 gives mask-origin a <coord-box> and sec. 6.5 gives
+   mask-clip a <coord-box> or no-clip, so the extra keyword belongs to the clip
+   alone. *)
+let rec read_mask_box ?(clip = false) t : mask_box =
   Cursor.enum_or_var "mask-box"
-    [
-      ("border-box", (Border_box : mask_box));
-      ("content-box", Content_box);
-      ("fill-box", Fill_box);
-      ("padding-box", Padding_box);
-      ("stroke-box", Stroke_box);
-      ("view-box", View_box);
-      ("no-clip", No_clip);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_mask_box t))
+    ([
+       ("border-box", (Border_box : mask_box));
+       ("content-box", Content_box);
+       ("fill-box", Fill_box);
+       ("padding-box", Padding_box);
+       ("stroke-box", Stroke_box);
+       ("view-box", View_box);
+       ("inherit", Inherit);
+       ("initial", Initial);
+       ("unset", Unset);
+       ("revert", Revert);
+       ("revert-layer", Revert_layer);
+     ]
+    @ if clip then [ ("no-clip", (No_clip : mask_box)) ] else [])
+    ~var:(fun t -> Var (Values.read_var (read_mask_box ~clip) t))
     t
 
-let read_mask_box_list t : mask_box =
-  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_box t with
+let read_mask_box_list ?clip t : mask_box =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 (read_mask_box ?clip) t with
+  | [ one ] -> one
+  | many -> Layers many
+
+(* The prefixed pair takes WebKit's older set; [text] belongs to the clip. *)
+let rec read_webkit_mask_box ?(clip = false) t : webkit_mask_box =
+  Cursor.enum_or_var "-webkit-mask-box"
+    ([
+       ("border", (Border : webkit_mask_box));
+       ("border-box", Border_box);
+       ("content", Content);
+       ("content-box", Content_box);
+       ("padding", Padding);
+       ("padding-box", Padding_box);
+       ("inherit", Inherit);
+       ("initial", Initial);
+       ("unset", Unset);
+       ("revert", Revert);
+       ("revert-layer", Revert_layer);
+     ]
+    @ if clip then [ ("text", (Text : webkit_mask_box)) ] else [])
+    ~var:(fun t -> Var (Values.read_var (read_webkit_mask_box ~clip) t))
+    t
+
+let read_webkit_mask_box_list ?clip t : webkit_mask_box =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 (read_webkit_mask_box ?clip) t
+  with
   | [ one ] -> one
   | many -> Layers many
 

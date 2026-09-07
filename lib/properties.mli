@@ -1858,11 +1858,23 @@ val read_mask_type : Cursor.t -> mask_type
 val pp_mask_type : mask_type Pp.t
 (** [pp_mask_type] pretty-prints a mask-type value. *)
 
-val read_mask_box : Cursor.t -> mask_box
+val read_mask_box : ?clip:bool -> Cursor.t -> mask_box
 (** [read_mask_box t] parses a single-layer mask-clip or mask-origin value (used
     by the shorthand). *)
 
-val read_mask_box_list : Cursor.t -> mask_box
+val pp_webkit_mask_box : webkit_mask_box Pp.t
+(** [pp_webkit_mask_box] pretty-prints a [-webkit-mask-clip] /
+    [-webkit-mask-origin] box. *)
+
+val read_webkit_mask_box : ?clip:bool -> Cursor.t -> webkit_mask_box
+(** [read_webkit_mask_box ?clip t] parses one prefixed mask box. [clip] admits
+    the [text] keyword, which only [-webkit-mask-clip] takes. *)
+
+val read_webkit_mask_box_list : ?clip:bool -> Cursor.t -> webkit_mask_box
+(** [read_webkit_mask_box_list ?clip t] parses the standalone
+    [-webkit-mask-clip] / [-webkit-mask-origin] value, one box per layer. *)
+
+val read_mask_box_list : ?clip:bool -> Cursor.t -> mask_box
 (** [read_mask_box_list t] parses the standalone mask-clip / mask-origin
     longhand: a comma-separated layer list. *)
 

@@ -674,6 +674,9 @@ let check_field_sizing =
 let check_font_size = check_value_cursor "font_size" read_font_size pp_font_size
 let check_mask_box = check_value_cursor "mask_box" read_mask_box pp_mask_box
 
+let check_webkit_mask_box =
+  check_value_cursor "webkit_mask_box" read_webkit_mask_box pp_webkit_mask_box
+
 let check_mask_composite =
   check_value_cursor "mask_composite" read_mask_composite pp_mask_composite
 
@@ -4774,11 +4777,23 @@ let test_mask_box () =
   check_mask_box "padding-box";
   check_mask_box "fill-box";
   check_mask_box "inherit";
+  (* Measured on Chrome 153: -webkit-mask-clip is WebKit's own property, not an
+     alias of mask-clip, and takes neither fill-box nor no-clip. One layer it
+     cannot spell costs the whole fallback. *)
+  decl_optimizes_to ~into:"mask-clip:border-box,fill-box,no-clip"
+    "mask-clip:border-box,fill-box,no-clip";
   decl_optimizes_to
     ~into:
-      "-webkit-mask-clip:border-box,fill-box,no-clip;mask-clip:border-box,fill-box,no-clip"
-    "mask-clip:border-box,fill-box,no-clip";
+      "-webkit-mask-clip:border-box,content-box;mask-clip:border-box,content-box"
+    "mask-clip:border-box,content-box";
   neg_cursor read_mask_box "invalid-mask-box"
+
+let test_webkit_mask_box () =
+  check_webkit_mask_box "content";
+  check_webkit_mask_box "padding";
+  check_webkit_mask_box "border";
+  check_webkit_mask_box "border-box";
+  neg_cursor read_webkit_mask_box "fill-box"
 
 let test_mask_composite () =
   check_mask_composite "add";
@@ -5912,6 +5927,7 @@ let additional_tests =
     test_case "field_sizing" `Quick test_field_sizing;
     test_case "font_size" `Quick test_font_size;
     test_case "mask_box" `Quick test_mask_box;
+    test_case "webkit_mask_box" `Quick test_webkit_mask_box;
     test_case "mask_composite" `Quick test_mask_composite;
     test_case "mask_mode" `Quick test_mask_mode;
     test_case "mask_type" `Quick test_mask_type;

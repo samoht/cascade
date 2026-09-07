@@ -3267,6 +3267,22 @@ type background_box = Properties.background_box =
   | Var of background_box var
 
 (* Mask-related types *)
+type webkit_mask_box = Properties.webkit_mask_box =
+  | Border
+  | Border_box
+  | Content
+  | Content_box
+  | Padding
+  | Padding_box
+  | Text
+  | Layers of webkit_mask_box list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_mask_box var
+
 type webkit_mask_composite = Properties.webkit_mask_composite =
   | Source_over
   | Source_in
@@ -7238,13 +7254,13 @@ val webkit_mask_repeat : background_repeat -> declaration
 val mask_repeat : background_repeat -> declaration
 (** [mask_repeat v] is the [mask-repeat] property. *)
 
-val webkit_mask_clip : mask_box -> declaration
+val webkit_mask_clip : webkit_mask_box -> declaration
 (** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
 (** [mask_clip v] is the [mask-clip] property. *)
 
-val webkit_mask_origin : mask_box -> declaration
+val webkit_mask_origin : webkit_mask_box -> declaration
 (** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration

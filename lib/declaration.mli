@@ -1961,13 +1961,13 @@ val webkit_mask_repeat : background_repeat -> declaration
 val mask_repeat : background_repeat -> declaration
 (** [mask_repeat v] is the [mask-repeat] property. *)
 
-val webkit_mask_clip : mask_box -> declaration
+val webkit_mask_clip : webkit_mask_box -> declaration
 (** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
 (** [mask_clip v] is the [mask-clip] property. *)
 
-val webkit_mask_origin : mask_box -> declaration
+val webkit_mask_origin : webkit_mask_box -> declaration
 (** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration

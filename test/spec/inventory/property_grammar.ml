@@ -1986,15 +1986,43 @@ let matrix =
       };
       {
         property = "-webkit-mask-clip";
-        positives = [ "border-box"; "padding-box"; "content-box"; "no-clip" ];
+        positives =
+          [
+            "border";
+            "border-box";
+            "content";
+            "content-box";
+            "padding";
+            "padding-box";
+            "text";
+          ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "no-clip";
+            "fill-box";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "-webkit-mask-origin";
-        positives = [ "border-box"; "padding-box"; "content-box" ];
+        positives =
+          [
+            "border";
+            "border-box";
+            "content";
+            "content-box";
+            "padding";
+            "padding-box";
+          ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "text";
+            "no-clip";
+            "fill-box";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-composite";
@@ -2005,13 +2033,23 @@ let matrix =
         property = "mask-clip";
         positives = [ "border-box"; "padding-box"; "content-box"; "no-clip" ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "text";
+            "content";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-origin";
         positives = [ "border-box"; "padding-box"; "content-box" ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "no-clip";
+            "content";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-type";

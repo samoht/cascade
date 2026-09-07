@@ -5004,8 +5004,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_mask_size -> pp pp_background_size
   | Webkit_mask_position -> pp pp_background_position
   | Webkit_mask_repeat -> pp pp_background_repeat
-  | Webkit_mask_clip -> pp pp_mask_box
-  | Webkit_mask_origin -> pp pp_mask_box
+  | Webkit_mask_clip -> pp pp_webkit_mask_box
+  | Webkit_mask_origin -> pp pp_webkit_mask_box
   | Border_image_source -> pp pp_background_image
   | Border_image_slice -> pp pp_border_image_slice
   | Border_image_repeat -> pp pp_border_image_repeat

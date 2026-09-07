@@ -2066,8 +2066,10 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_mask_position (read_background_position t))
   | Webkit_mask_repeat ->
       Some (v Webkit_mask_repeat (read_background_repeat_list t))
-  | Webkit_mask_clip -> Some (v Webkit_mask_clip (read_mask_box_list t))
-  | Webkit_mask_origin -> Some (v Webkit_mask_origin (read_mask_box_list t))
+  | Webkit_mask_clip ->
+      Some (v Webkit_mask_clip (read_webkit_mask_box_list ~clip:true t))
+  | Webkit_mask_origin ->
+      Some (v Webkit_mask_origin (read_webkit_mask_box_list t))
   | Border_image_source ->
       Some (v Border_image_source (read_border_image_source t))
   | Border_image_slice ->
@@ -2085,7 +2087,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Mask_size -> Some (v Mask_size (read_background_size_list t))
   | Mask_position -> Some (v Mask_position (read_background_position t))
   | Mask_repeat -> Some (v Mask_repeat (read_background_repeat_list t))
-  | Mask_clip -> Some (v Mask_clip (read_mask_box_list t))
+  | Mask_clip -> Some (v Mask_clip (read_mask_box_list ~clip:true t))
   | Mask_origin -> Some (v Mask_origin (read_mask_box_list t))
   | Mask_type -> Some (v Mask_type (read_mask_type t))
   | All -> Some (v All (Properties.read_css_wide t))

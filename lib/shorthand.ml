@@ -4462,6 +4462,18 @@ let mask_position_part : declaration -> Properties.position_value option =
       background_position_singleton value
   | _ -> None
 
+(* The prefixed pair's own vocabulary meets the unprefixed [<coord-box>] on the
+   three CSS box names alone, so a bare legacy name or [text] keeps its longhand
+   rather than contracting into a slot that cannot spell it. *)
+let mask_box_of_webkit :
+    Properties.webkit_mask_box -> Properties.mask_box option = function
+  | Border_box -> Some Border_box
+  | Content_box -> Some Content_box
+  | Padding_box -> Some Padding_box
+  | Border | Content | Padding | Text | Layers _ | Inherit | Initial | Unset
+  | Revert | Revert_layer | Var _ ->
+      None
+
 let mask_origin_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_origin; value; _ } -> (
       match value with
@@ -4472,7 +4484,7 @@ let mask_origin_part : declaration -> Properties.mask_box option = function
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
-      | v -> Some v)
+      | v -> mask_box_of_webkit v)
   | _ -> None
 
 let mask_clip_part : declaration -> Properties.mask_box option = function
@@ -4485,7 +4497,7 @@ let mask_clip_part : declaration -> Properties.mask_box option = function
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
-      | v -> Some v)
+      | v -> mask_box_of_webkit v)
   | _ -> None
 
 let mask_mode_part : declaration -> Properties.mask_mode option = function

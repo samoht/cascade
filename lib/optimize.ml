@@ -673,7 +673,8 @@ type webkit_fallback_spec =
   | Typed_fallback : {
       kind : webkit_fallback;
       property : 'a Properties.property;
-      webkit_property : 'a Properties.property;
+      webkit_property : 'b Properties.property;
+      convert : 'a -> 'b option;
       name : string;
       webkit_name : string;
       condition : fallback_condition;
@@ -684,7 +685,45 @@ type webkit_fallback_spec =
 let typed_fallback ?(condition = Any_value) kind property webkit_property name
     webkit_name =
   Typed_fallback
-    { kind; property; webkit_property; name; webkit_name; condition }
+    {
+      kind;
+      property;
+      webkit_property;
+      convert = Option.some;
+      name;
+      webkit_name;
+      condition;
+    }
+
+(* The same, where the prefixed property does not take the standard one's
+   vocabulary and a value outside the overlap gets no fallback. *)
+let converted_fallback ?(condition = Any_value) ~convert kind property
+    webkit_property name webkit_name =
+  Typed_fallback
+    { kind; property; webkit_property; convert; name; webkit_name; condition }
+
+(* The prefixed mask box properties take WebKit's older vocabulary, which meets
+   the [<coord-box>] of CSS Masking 1 sec. 6.4 and 6.5 on the three CSS box
+   names alone. A value with no prefixed spelling gets no fallback rather than
+   one the browser drops. *)
+let rec prefixed_mask_box :
+    Properties.mask_box -> Properties.webkit_mask_box option = function
+  | Border_box -> Some Border_box
+  | Content_box -> Some Content_box
+  | Padding_box -> Some Padding_box
+  | Inherit -> Some Inherit
+  | Initial -> Some Initial
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
+  | Layers layers ->
+      (* One layer outside the overlap costs the whole fallback: the prefixed
+         property reads the list or none of it. *)
+      let mapped = List.filter_map prefixed_mask_box layers in
+      if List.length mapped = List.length layers then
+        Some (Layers mapped : Properties.webkit_mask_box)
+      else None
+  | Fill_box | Stroke_box | View_box | No_clip | Var _ -> None
 
 let webkit_fallback_specs =
   [
@@ -706,10 +745,10 @@ let webkit_fallback_specs =
       "-webkit-mask-size";
     typed_fallback Mask_repeat_fallback Mask_repeat Webkit_mask_repeat
       "mask-repeat" "-webkit-mask-repeat";
-    typed_fallback Mask_clip_fallback Mask_clip Webkit_mask_clip "mask-clip"
-      "-webkit-mask-clip";
-    typed_fallback Mask_origin_fallback Mask_origin Webkit_mask_origin
-      "mask-origin" "-webkit-mask-origin";
+    converted_fallback ~convert:prefixed_mask_box Mask_clip_fallback Mask_clip
+      Webkit_mask_clip "mask-clip" "-webkit-mask-clip";
+    converted_fallback ~convert:prefixed_mask_box Mask_origin_fallback
+      Mask_origin Webkit_mask_origin "mask-origin" "-webkit-mask-origin";
   ]
 
 let fallback_spec_kind = function
@@ -811,10 +850,13 @@ let webkit_fallback_of_declaration targets decl : Declaration.declaration option
   in
   let fallback_from_spec spec =
     match (spec, decl) with
-    | ( Typed_fallback { kind; property; webkit_property; _ },
+    | ( Typed_fallback { kind; property; webkit_property; convert; _ },
         Declaration { property = actual; value; important; _ } ) -> (
         match Properties.eq_property actual property with
-        | Some Equal -> fallback kind webkit_property value important
+        | Some Equal -> (
+            match convert value with
+            | Some value -> fallback kind webkit_property value important
+            | None -> None)
         | None -> None)
     | ( Mask_fallback_spec { webkit_name; _ },
         Declaration { property = Mask; value; important; _ } ) ->
