@@ -290,7 +290,7 @@ let term =
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ closed_world_arg $ objective_arg $ inline_imports_arg
     $ import_root_arg $ inline_vars_arg $ keep_vars_arg $ profile_arg
-    $ Cli_log.term)
+    $ Observe.setup "cascade")
 
 let man =
   [

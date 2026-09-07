@@ -606,13 +606,10 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
            documented, distinct from cmdliner's reserved error codes. *)
         Stdlib.exit 1
 
-let compare_files file1 file2 style_renderer mode limit json opts () =
-  Fmt_tty.setup_std_outputs
-    ?style_renderer:(resolve_style_renderer style_renderer)
-    ();
+let compare_files file1 file2 mode limit json opts () =
   (* The report is built in a plain buffer, so the diff printers cannot see the
-     tty; resolve the colour decision Fmt_tty just made (tty detection, --color,
-     CASCADE_COLOR, NO_COLOR) and pass it down. *)
+     tty; resolve the colour decision Observe.setup already made (tty detection,
+     --color, --no-color, NO_COLOR) and pass it down. *)
   let color =
     match Fmt.style_renderer Fmt.stdout with
     | `Ansi_tty -> true
@@ -720,23 +717,24 @@ let prune_unused_custom_props_arg =
 
 let term =
   let open Term in
-  let style_renderer_with_env =
-    Fmt_cli.style_renderer
-      ~env:
-        (Cmd.Env.info "CASCADE_COLOR"
-           ~doc:
-             "Set to $(b,auto), $(b,always), or $(b,never) to control colour \
-              output, like $(b,--color) (overridden by $(b,NO_COLOR)).")
-      ()
-  in
   let canonical_opts =
     const (fun lossless prune_unused_custom_props ->
         { lossless; prune_unused_custom_props })
     $ lossless_arg $ prune_unused_custom_props_arg
   in
+  (* [diff] has a --json of its own, which writes the comparison document to
+     stdout. Observe's --json turns log records into JSON on the same stream,
+     and cmdliner refuses two flags of one name, so the logging half is
+     withdrawn here and kept on the commands where nothing collides. *)
+  (* Observe.setup owns the colour and logging flags, so the command declares
+     neither: it defines --color and --no-color itself and calls
+     Fmt_tty.setup_std_outputs, and cmdliner refuses two flags of one name.
+     [json_reporter:None] withdraws its --json, which [diff] already uses for
+     the comparison document. *)
   term_result
-    (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ limit_arg $ json_arg $ canonical_opts $ Cli_log.term)
+    (const compare_files $ file1_arg $ file2_arg $ mode_arg $ limit_arg
+   $ json_arg $ canonical_opts
+    $ Observe.setup ~json_reporter:None "cascade")
 
 let man =
   [
