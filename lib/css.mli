@@ -4105,6 +4105,9 @@ type grid_template = Properties.grid_template =
   | Template of string
   | Subgrid
   | Masonry
+      (** CSS Grid 3 (ED) removed this value, and it stays because Firefox ships
+          it behind a pref: refusing it would drop a declaration a shipping
+          browser renders. *)
   | Var of grid_template var
 
 (** CSS grid-template-areas values *)

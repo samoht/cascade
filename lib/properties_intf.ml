@@ -841,6 +841,15 @@ type grid_template =
   | Template of string
   | Subgrid
   | Masonry
+      (** CSS Grid 3 (ED) REMOVED this value, replacing the masonry track
+          vocabulary with a single [flow-tolerance] property, and web-features
+          records no compat key for it, so no target set can arbitrate it
+          either. It stays because Firefox ships it behind a pref: refusing it
+          would drop a declaration a shipping browser renders, which is the
+          destructive direction. The four [masonry-*] and [item-flow] properties
+          of the same draft are not modelled here at all, and survive on the
+          generic unknown-property path that keeps any property cascade does not
+          know. *)
   | Var of grid_template var
 
 type grid_template_areas =

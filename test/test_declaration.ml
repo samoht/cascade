@@ -4591,6 +4591,15 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      (* CSS Grid 3 (ED) removed the masonry track vocabulary, and Firefox ships
+         this value behind a pref, so cascade keeps reading it rather than
+         dropping author CSS a browser renders. The other properties of that
+         draft are not modelled, and ride the unknown-property path any unknown
+         name rides. *)
+      ("grid-template-rows: masonry", "grid-template-rows:masonry");
+      ("grid-template-columns: masonry", "grid-template-columns:masonry");
+      ("masonry-direction: row", "masonry-direction:row");
+      ("item-flow: row", "item-flow:row");
       (* Sec. 6.1 lists the slots source, slice, width, outset then repeat, so
          the canonical serialisation reorders what the author interleaved. *)
       ("border-image: 50% none", "border-image:none 50%");
