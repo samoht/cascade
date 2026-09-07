@@ -1242,6 +1242,125 @@ let is_explicit_track_list = function
   | Line_names _ -> true
   | single -> is_track_size single
 
+let is_grid_area_ws = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let grid_area_row_cells row =
+  let len = String.length row in
+  let rec skip_ws i =
+    if i < len && is_grid_area_ws row.[i] then skip_ws (i + 1) else i
+  in
+  let rec take_cell start i =
+    if i < len && not (is_grid_area_ws row.[i]) then take_cell start (i + 1)
+    else (String.sub row start (i - start), i)
+  in
+  let rec loop acc i =
+    let start = skip_ws i in
+    if start >= len then List.rev acc
+    else
+      let cell, next = take_cell start start in
+      loop (cell :: acc) next
+  in
+  loop [] 0
+
+let grid_area_null_cell cell =
+  let len = String.length cell in
+  len > 0
+  &&
+  let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
+  loop 0
+
+(* CSS Grid Layout 2 section 7.3: each row string is a sequence of [.] (null
+   cell) tokens or [<custom-ident>] cell names. A [<custom-ident>] starts with a
+   letter, [_], or [-]-followed-by-letter, and continues with letters / digits /
+   [_] / [-]. *)
+let grid_area_ident_cell cell =
+  let len = String.length cell in
+  let is_start c =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+  in
+  let is_continue c = is_start c || (c >= '0' && c <= '9') in
+  len > 0
+  && is_start cell.[0]
+  &&
+  let rec loop i = i = len || (is_continue cell.[i] && loop (i + 1)) in
+  loop 1
+
+let validate_grid_area_cell t cell =
+  if not (grid_area_null_cell cell || grid_area_ident_cell cell) then
+    Cursor.err_invalid t ("invalid grid-template-areas cell: " ^ cell)
+
+let validate_grid_area_width t (expected : int option) cells =
+  match expected with
+  | None -> Some (List.length cells)
+  | Some width when List.length cells = width -> expected
+  | Some _ -> Cursor.err_invalid t "grid-template-areas rows differ in width"
+
+let grid_area_positions rows =
+  rows
+  |> List.mapi (fun row cells ->
+      cells
+      |> List.mapi (fun col cell -> (cell, row, col))
+      |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
+  |> List.flatten
+
+let grid_area_names positions =
+  positions
+  |> List.fold_left
+       (fun names (cell, _, _) ->
+         if List.mem cell names then names else cell :: names)
+       []
+
+let validate_grid_area_rectangles t rows =
+  let positions = grid_area_positions rows in
+  let cell_at row col = List.nth (List.nth rows row) col in
+  let validate_name name =
+    let coords =
+      positions
+      |> List.filter_map (fun (cell, row, col) ->
+          if cell = name then Some (row, col) else None)
+    in
+    let rows = List.map fst coords in
+    let cols = List.map snd coords in
+    let min_row = List.fold_left min max_int rows in
+    let max_row = List.fold_left max min_int rows in
+    let min_col = List.fold_left min max_int cols in
+    let max_col = List.fold_left max min_int cols in
+    for row = min_row to max_row do
+      for col = min_col to max_col do
+        if cell_at row col <> name then
+          Cursor.err_invalid t
+            "grid-template-areas named area is not rectangular"
+      done
+    done
+  in
+  List.iter validate_name (grid_area_names positions)
+
+(* CSS Grid Layout 2 sec. 7.3 reads the row strings of an area template as a
+   grid: every cell is a name or a run of periods, the rows are all the same
+   width, and each name covers a rectangle. *)
+let validate_grid_area_rows t rows =
+  List.iter
+    (fun cells ->
+      if cells = [] then Cursor.err_invalid t "empty grid-template-areas row";
+      List.iter (validate_grid_area_cell t) cells)
+    rows;
+  let (_ : int option) =
+    List.fold_left (validate_grid_area_width t) None rows
+  in
+  validate_grid_area_rectangles t rows
+
+let validate_grid_template_columns t c =
+  Cursor.expect '/' c;
+  Cursor.ws c;
+  let columns = read_grid_template_tracks c in
+  if not (is_explicit_track_list columns) then
+    Cursor.err_invalid t "grid-template columns are not an explicit list";
+  Cursor.ws c;
+  if not (Cursor.is_done c) then
+    Cursor.err_invalid t "grid-template trailing tokens"
+
 let validate_grid_template_areas_form t raw =
   let c = Cursor.of_string raw in
   let at_slash () =
@@ -1261,35 +1380,31 @@ let validate_grid_template_areas_form t raw =
           if not (is_track_size size) then
             Cursor.err_invalid t "grid-template row size is not a track size"
   in
-  let rec rows seen =
+  let rec rows acc =
     Cursor.ws c;
     if Cursor.is_done c then
-      if not seen then Cursor.err_expected t "a grid area string" else ()
+      if acc = [] then Cursor.err_expected t "a grid area string"
+      else validate_grid_area_rows t (List.rev acc)
     else if at_slash () then (
-      if not seen then Cursor.err_expected t "a grid area string";
-      Cursor.expect '/' c;
-      Cursor.ws c;
-      let columns = read_grid_template_tracks c in
-      if not (is_explicit_track_list columns) then
-        Cursor.err_invalid t "grid-template columns are not an explicit list";
-      Cursor.ws c;
-      if not (Cursor.is_done c) then
-        Cursor.err_invalid t "grid-template trailing tokens")
+      if acc = [] then Cursor.err_expected t "a grid area string";
+      validate_grid_template_columns t c;
+      validate_grid_area_rows t (List.rev acc))
     else (
       grid_template_line_names c;
       Cursor.ws c;
-      (match Cursor.peek c with
-      | Some (Component.Preserved { kind = Token.String _; _ }) ->
-          let (_ : string) = Cursor.string c in
-          ()
-      | _ -> Cursor.err_expected t "a grid area string");
+      let row =
+        match Cursor.peek c with
+        | Some (Component.Preserved { kind = Token.String _; _ }) ->
+            Cursor.string c
+        | _ -> Cursor.err_expected t "a grid area string"
+      in
       Cursor.ws c;
       row_size ();
       Cursor.ws c;
       grid_template_line_names c;
-      rows true)
+      rows (grid_area_row_cells row :: acc))
   in
-  rows false
+  rows []
 
 let rec read_grid_template t : grid_template =
   if Cursor.looking_at_func "var" t then
@@ -1396,123 +1511,24 @@ let rec read_grid t : grid_template =
   else if grid_starts_auto_flow t then read_grid_auto_flow_rows t
   else read_grid_template_or_split t
 
-let is_grid_area_ws = function
-  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
-  | _ -> false
-
-let grid_area_row_cells row =
-  let len = String.length row in
-  let rec skip_ws i =
-    if i < len && is_grid_area_ws row.[i] then skip_ws (i + 1) else i
-  in
-  let rec take_cell start i =
-    if i < len && not (is_grid_area_ws row.[i]) then take_cell start (i + 1)
-    else (String.sub row start (i - start), i)
-  in
-  let rec loop acc i =
-    let start = skip_ws i in
-    if start >= len then List.rev acc
-    else
-      let cell, next = take_cell start start in
-      loop (cell :: acc) next
-  in
-  loop [] 0
-
-let grid_area_null_cell cell =
-  let len = String.length cell in
-  len > 0
-  &&
-  let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
-  loop 0
-
-(* CSS Grid Layout 2 section 7.3: each row string is a sequence of [.] (null
-   cell) tokens or [<custom-ident>] cell names. A [<custom-ident>] starts with a
-   letter, [_], or [-]-followed-by-letter, and continues with letters / digits /
-   [_] / [-]. *)
-let grid_area_ident_cell cell =
-  let len = String.length cell in
-  let is_start c =
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-  in
-  let is_continue c = is_start c || (c >= '0' && c <= '9') in
-  len > 0
-  && is_start cell.[0]
-  &&
-  let rec loop i = i = len || (is_continue cell.[i] && loop (i + 1)) in
-  loop 1
-
-let validate_grid_area_cell t cell =
-  if not (grid_area_null_cell cell || grid_area_ident_cell cell) then
-    Cursor.err_invalid t ("invalid grid-template-areas cell: " ^ cell)
-
-let validate_grid_area_width t (expected : int option) cells =
-  match expected with
-  | None -> Some (List.length cells)
-  | Some width when List.length cells = width -> expected
-  | Some _ -> Cursor.err_invalid t "grid-template-areas rows differ in width"
-
-let grid_area_positions rows =
-  rows
-  |> List.mapi (fun row cells ->
-      cells
-      |> List.mapi (fun col cell -> (cell, row, col))
-      |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
-  |> List.flatten
-
-let grid_area_names positions =
-  positions
-  |> List.fold_left
-       (fun names (cell, _, _) ->
-         if List.mem cell names then names else cell :: names)
-       []
-
-let validate_grid_area_rectangles t rows =
-  let positions = grid_area_positions rows in
-  let cell_at row col = List.nth (List.nth rows row) col in
-  let validate_name name =
-    let coords =
-      positions
-      |> List.filter_map (fun (cell, row, col) ->
-          if cell = name then Some (row, col) else None)
-    in
-    let rows = List.map fst coords in
-    let cols = List.map snd coords in
-    let min_row = List.fold_left min max_int rows in
-    let max_row = List.fold_left max min_int rows in
-    let min_col = List.fold_left min max_int cols in
-    let max_col = List.fold_left max min_int cols in
-    for row = min_row to max_row do
-      for col = min_col to max_col do
-        if cell_at row col <> name then
-          Cursor.err_invalid t
-            "grid-template-areas named area is not rectangular"
-      done
-    done
-  in
-  List.iter validate_name (grid_area_names positions)
-
-let read_grid_template_areas_row t width rows rendered =
+let read_grid_template_areas_row t rows rendered =
   Cursor.ws t;
   match Cursor.string_opt t with
   | None -> `Stop
   | Some s ->
-      let cells = grid_area_row_cells s in
-      if cells = [] then Cursor.err_invalid t "empty grid-template-areas row";
-      List.iter (validate_grid_area_cell t) cells;
-      let width = validate_grid_area_width t width cells in
-      `Continue (width, cells :: rows, ("\"" ^ s ^ "\"") :: rendered)
+      `Continue (grid_area_row_cells s :: rows, ("\"" ^ s ^ "\"") :: rendered)
 
 let read_grid_template_areas_rows t =
-  let rec loop width rows rendered =
-    match read_grid_template_areas_row t width rows rendered with
+  let rec loop rows rendered =
+    match read_grid_template_areas_row t rows rendered with
     | `Stop ->
         let rows = List.rev rows in
         if rows = [] then Cursor.err_expected t "grid-template-areas row";
-        validate_grid_area_rectangles t rows;
+        validate_grid_area_rows t rows;
         (Areas (String.concat " " (List.rev rendered)) : grid_template_areas)
-    | `Continue (width, rows, rendered) -> loop width rows rendered
+    | `Continue (rows, rendered) -> loop rows rendered
   in
-  loop (None : int option) [] []
+  loop [] []
 
 let rec read_grid_template_areas t : grid_template_areas =
   Cursor.enum_or_var "grid-template-areas"

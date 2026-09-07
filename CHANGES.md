@@ -526,11 +526,13 @@ to lose a whole rule over one bad piece. Both are gone.
   one half of the sec. 6.1 shorthand rather than a keyword the longhand keeps
   to itself (#1022)
 
-- The areas form of `grid-template` is read against its grammar rather than
-  kept as any well-formed token run, so `grid-template: 50% "text" infinite`
-  and `grid-template: "a" repeat(2, 1fr)` are dropped with a warning. CSS Grid
-  2 sec. 7.4 puts the track size after the string and sec. 7.2 leaves
-  `repeat()` out of an explicit track list (#1016)
+- The areas form of `grid-template` and `grid` is read against its grammar
+  rather than kept as any well-formed token run, so `grid-template: 50% "text"
+  infinite`, `grid-template: "a" repeat(2, 1fr)`, `grid: "<" ">"`,
+  `grid: "a" "b c"` and `grid: "a b" "b a"` are dropped with a warning. CSS Grid
+  2 sec. 7.4 puts the track size after the string, sec. 7.2 leaves `repeat()`
+  out of an explicit track list, and sec. 7.3 tokenizes each row string into
+  cells that line up in a rectangle (#1016, #1076)
 
 - `will-change` refuses the idents its own grammar excludes, so
   `will-change: none` and `will-change: opacity, none` are dropped with a
