@@ -2557,6 +2557,7 @@ let rec read_font_variant_descriptor r : font_variant_descriptor =
 
 let read_font_face_desc name r =
   match name with
+  (* FONT_FACE_DESCRIPTOR_START - Used by test/spec/browser *)
   | "font-family" -> read_font_family_descriptor r
   | "src" -> read_descriptor_value Font_face.read_src (fun v -> Src v) r
   | "font-style" -> read_font_style_descriptor r
@@ -2595,6 +2596,7 @@ let read_font_face_desc name r =
       read_descriptor_value Font_face.read_metric_override
         (fun v -> Line_gap_override v)
         r
+  (* FONT_FACE_DESCRIPTOR_END - Used by test/spec/browser *)
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
 let rec components_upto_semicolon = function

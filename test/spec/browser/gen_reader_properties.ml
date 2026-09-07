@@ -58,12 +58,12 @@ let arm_names line =
       pattern;
     List.rev !names
 
-let names_of lines =
+let names_of ~start ~stop lines =
   let rec loop inside acc = function
     | [] -> List.rev acc
     | line :: rest ->
-        if contains line "PROPERTY_MATCHING_START" then loop true acc rest
-        else if contains line "PROPERTY_MATCHING_END" then List.rev acc
+        if contains line start then loop true acc rest
+        else if contains line stop then List.rev acc
         else if inside then
           loop true (List.rev_append (arm_names line) acc) rest
         else loop false acc rest
@@ -71,12 +71,13 @@ let names_of lines =
   loop false [] lines
 
 (* A rename in the library would otherwise empty the population without failing
-   anything. *)
-let minimum = 400
-
+   anything, so the caller says how many names it expects at least. *)
 let () =
   let source = Sys.argv.(1) in
-  let names = names_of (read_lines source) in
+  let start = Sys.argv.(2) in
+  let stop = Sys.argv.(3) in
+  let minimum = int_of_string Sys.argv.(4) in
+  let names = names_of ~start ~stop (read_lines source) in
   if List.length names < minimum then (
     prerr_endline
       (String.concat ""
@@ -85,16 +86,22 @@ let () =
            source;
            " yielded ";
            string_of_int (List.length names);
-           " property names, fewer than the ";
+           " names, fewer than the ";
            string_of_int minimum;
-           " expected; the PROPERTY_MATCHING markers moved";
+           " expected; the ";
+           start;
+           " markers moved";
          ]);
     exit 1);
   let buf = Buffer.create 16384 in
   Buffer.add_string buf
-    "(* Generated from lib/properties.ml by gen_reader_properties.ml. *)\n\n\
-     let all =\n\
-    \  [\n";
+    (String.concat ""
+       [
+         "(* Generated from ";
+         source;
+         " by gen_reader_properties.ml. *)\n\n";
+         "let all =\n  [\n";
+       ]);
   List.iter
     (fun name ->
       Buffer.add_string buf "    \"";

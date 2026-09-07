@@ -10,6 +10,11 @@
 ; the reader drops and the browser takes, CSS the reader keeps and the browser
 ; discards - are reported apart.
 ;
+; descriptor_set: the same question about @font-face descriptors, which no
+; accept-set oracle could reach because a descriptor is not a property:
+; CSS.supports and el.style both answer about properties only. The probe there
+; is insertRule plus a read-back off CSSFontFaceRule.style.
+;
 ; The chrome and node probing is the one in test/render, shared rather than
 ; rewritten.
 
@@ -36,15 +41,41 @@
  (action
   (with-stdout-to
    reader_properties.ml
-   (run ./gen_reader_properties.exe %{properties}))))
+   (run
+    ./gen_reader_properties.exe
+    %{properties}
+    PROPERTY_MATCHING_START
+    PROPERTY_MATCHING_END
+    400))))
+
+; The @font-face descriptor population, from the same dispatch-table reading:
+; read_font_face_desc in lib/stylesheet.ml is the only place that says which
+; descriptors cascade models.
+
+(rule
+ (target font_face_descriptors.ml)
+ (deps
+  (:stylesheet ../../../lib/stylesheet.ml)
+  gen_reader_properties.exe)
+ (action
+  (with-stdout-to
+   font_face_descriptors.ml
+   (run
+    ./gen_reader_properties.exe
+    %{stylesheet}
+    FONT_FACE_DESCRIPTOR_START
+    FONT_FACE_DESCRIPTOR_END
+    10))))
 
 (executables
- (names property_vectors accept_set)
+ (names property_vectors accept_set descriptor_set)
  (modules
   property_vectors
   accept_set
+  descriptor_set
   chrome_gaps
   reader_properties
+  font_face_descriptors
   browser
   json)
  (libraries cascade cascade_spec_inventory fmt unix))
@@ -78,3 +109,12 @@
   accept_set.exe)
  (action
   (run %{exe:accept_set.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  (glob_files *.js)
+  descriptor_set.exe)
+ (action
+  (run %{exe:descriptor_set.exe})))
