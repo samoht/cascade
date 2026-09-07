@@ -226,6 +226,8 @@ let canonical_view_timeline_args args =
 let rec pp_animation_timeline : animation_timeline Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_timeline ctx v
+  | Timelines timelines ->
+      Pp.list ~sep:Pp.comma pp_animation_timeline ctx timelines
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Name name -> pp_ident ctx name
@@ -655,7 +657,18 @@ let rec pp_transition : transition Pp.t =
   | Var v -> pp_var pp_transition ctx v
   | Shorthand s -> pp_transition_shorthand ctx s
 
+(* CSS Animations 2 sec. 5 spells the property [<single-animation-timeline>#],
+   one entry per animation. A [var()] and the CSS-wide keywords stand for the
+   whole value, which is why they are read inside the entry rather than beside
+   the list: an entry that is one of them is the only entry. *)
 let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_animation_timeline_one t
+  with
+  | [ timeline ] -> timeline
+  | timelines -> Timelines timelines
+
+and read_animation_timeline_one (t : Cursor.t) : animation_timeline =
   Cursor.ws t;
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })

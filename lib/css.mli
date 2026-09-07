@@ -6882,6 +6882,7 @@ and animation_timeline = Properties.animation_timeline =
   | Name of string
   | Scroll of string
   | View of string
+  | Timelines of animation_timeline list
   | Initial
   | Inherit
   | Unset

@@ -76,6 +76,11 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.animation_timeline` gains `Timelines`, so
+  `animation-timeline: none, auto` and `scroll(), view()` read. CSS Animations
+  2 sec. 5 spells the property `<single-animation-timeline>#`, one entry per
+  animation. Exhaustive visitors must handle the new leaf (#1074)
+
 - `Cascade.Properties.shape_image_threshold` gains `Calc`, so
   `shape-image-threshold: calc(50% + 25%)` and `min(.2,.8)` read where they
   were dropped with a warning. CSS Shapes 1 sec. 6.2 takes an

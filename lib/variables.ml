@@ -1164,8 +1164,11 @@ let vars_of_font_palette (value : Properties.font_palette) =
 let vars_of_font_synthesis (value : Properties.font_synthesis) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_animation_timeline (value : Properties.animation_timeline) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_animation_timeline (value : Properties.animation_timeline) =
+  match value with
+  | Var v -> [ V v ]
+  | Timelines timelines -> List.concat_map vars_of_animation_timeline timelines
+  | _ -> []
 
 let rec vars_of_animation_range_item (value : Properties.animation_range_item) =
   match value with
