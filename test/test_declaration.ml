@@ -6813,10 +6813,40 @@ let multi_value_grammars () =
   neg_cursor read_declaration "border-top-left-radius: -1px";
   neg_cursor read_declaration "border-top-left-radius: 1px 2px 3px"
 
+(* ignore-test: a calc() sum spans every length property, not one. *)
+let test_calc_sum_shortest_spelling () =
+  (* CSS Values 4 (ED) sec. 10.13 Serialization sorts a sum's children before
+     serialising them, so the order the author wrote carries no meaning and
+     every order is the same value. Minify takes the shortest of them: a
+     leading negative term spends a byte on its own sign and another on the [+]
+     that joins the next, where a leading positive term spends neither. *)
+  (* [held] is the input itself: pp serialises what it was given, and picking
+     between two spellings of one value is the optimizer's job. *)
+  let shortest ~into input =
+    decl_optimizes ~prop:"width" ~held:input ~into input
+  in
+  shortest ~into:"calc(100vw - 10px)" "calc(-10px + 100vw)";
+  shortest ~into:"calc(100vw - 10px)" "calc(100vw - 10px)";
+  shortest ~into:"calc(50vmin - 2em)" "calc(-2em + 50vmin)";
+  shortest ~into:"calc(3px - 2em)" "calc(-2em + 3px)";
+  (* The join reads the same whichever unit leads: a negative term is [- 2em],
+     never [+ -2em]. *)
+  shortest ~into:"calc(3px - 2em)" "calc(3px - 2em)";
+  shortest ~into:"calc(3em - 2px)" "calc(3em - 2px)";
+  (* With no positive term to lead, the authored order stands: every spelling is
+     the same length. *)
+  shortest ~into:"calc(-1px - 2em)" "calc(-1px - 2em)";
+  shortest ~into:"calc(-2em - 1px)" "calc(-2em - 1px)";
+  (* A percentage leads what it is mixed with, and still only when positive. *)
+  shortest ~into:"calc(10% - 5vw)" "calc(-5vw + 10%)";
+  shortest ~into:"calc(5vw - 10%)" "calc(-10% + 5vw)"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "calc sum shortest spelling" `Quick
+      test_calc_sum_shortest_spelling;
     test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
     test_case "caret auto has one node" `Quick caret_auto_has_one_node;
     test_case "radial gradient var has one node" `Quick
