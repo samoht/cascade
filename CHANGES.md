@@ -352,6 +352,13 @@ to lose a whole rule over one bad piece. Both are gone.
   `?length_only` (#871, #879, #880, #951, #952, #953, #954, #1056, #1058,
   #1059)
 
+- A relative colour's channel expressions are type-checked. CSS Color 5 sec.
+  4.1 substitutes a channel keyword as a `<number>`, so
+  `rgb(from red calc(r + 10%) g b)` and `lch(from red l c calc(h + 90deg))` add
+  a number to a percentage and to an angle; both used to read and every browser
+  drops them. The multiplying forms, `hwb(from red h calc(w * 1%) b)` among
+  them, still read (#1061)
+
 - Each grid property takes its own grammar. Values a browser drops are dropped
   (`grid-template-columns: [a]`, `[span] 1px`, `grid-column-start: 0`, `span
   -1`), `grid-auto-rows` refuses the area forms `grid-template` owns, `subgrid`
