@@ -765,7 +765,7 @@ let serialize_consecutive_tokens =
     let non_ws cvs =
       List.filter
         (function
-          | Cascade.Component.Preserved { kind = Cascade.Token.Whitespace; _ }
+          | Cascade.Component.Preserved { kind = Cascade.Token.Whitespace _; _ }
             ->
               false
           | _ -> true)

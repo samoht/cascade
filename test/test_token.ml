@@ -26,7 +26,7 @@ let simple () =
   check "colon" Token.Colon "<:>";
   check "semicolon" Token.Semicolon "<;>";
   check "comma" Token.Comma "<,>";
-  check "whitespace" Token.Whitespace "<ws>";
+  check "whitespace" (Token.Whitespace " ") "<ws>";
   check "cdo" Token.Cdo "<CDO>";
   check "cdc" Token.Cdc "<CDC>";
   check "eof" Token.Eof "<eof>"

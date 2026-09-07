@@ -271,7 +271,15 @@ let custom_properties_basic () =
   check_declaration ~expected:"--complex:var(--other,10px)"
     "--complex: var(--other, 10px);";
   check_declaration ~expected:"--important:value!important"
-    "--important: value !important;"
+    "--important: value !important;";
+  (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
+     a custom property's value, and Chrome 153 returns [a b] for the first of
+     these and [a] for the second, so a run survives and the ends are trimmed.
+     The boundary space between two components that would otherwise merge is not
+     whitespace normalization: without it [a/**/b] becomes the ident [ab]. *)
+  check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
+  check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
+  check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b"
 
 let vendor_prefixes () =
   check_declaration ~expected:"-webkit-transform:rotate(45deg)"
