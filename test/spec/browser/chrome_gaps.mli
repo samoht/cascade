@@ -11,9 +11,21 @@ val unimplemented_property : string -> bool
 (** [unimplemented_property name] is [true] when [name] is in {!unimplemented}.
 *)
 
-type excuse = { properties : string list; value : string; why : string }
+type excuse = {
+  properties : string list;
+  key : string option;
+  value : string;
+  why : string;
+}
 (** One property-value pair the browser and the specifications disagree about,
-    with the spec text that decides it. *)
+    with the spec text that decides it.
+
+    [key] is the BCD compat key web-features records the production under, when
+    it records one. That is what makes the entry checkable: {!Support} says
+    whether Chrome has since shipped it, so the entry goes stale when the
+    browser catches up rather than when a seeded generator stops drawing the
+    literal. [None] is a production web-features does not model, which no lookup
+    can answer and which stays a measurement. *)
 
 val spec_ahead : excuse list
 (** [spec_ahead] is grammar a specification defines and Chrome rejects, so a
@@ -25,6 +37,13 @@ val lenient : excuse list
 
 val find : excuse list -> property:string -> value:string -> excuse option
 (** [find table ~property ~value] is the entry of [table] covering that pair. *)
+
+val overtaken : excuse list -> excuse list
+(** [overtaken table] is the entries whose {!excuse.key} names a production
+    Chrome has since shipped, so the disagreement they excuse is gone and the
+    entry has to go with it. An entry with no key is never overtaken: nothing
+    can answer for it, which is the cost of a production web-features does not
+    model. *)
 
 type shape = {
   shape_properties : string list;

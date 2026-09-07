@@ -400,7 +400,9 @@ type outcome =
 let spec_ahead_here : Chrome_gaps.excuse list =
   List.concat_map
     (fun (properties, values, why) ->
-      List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
+      List.map
+        (fun value -> { Chrome_gaps.properties; key = None; value; why })
+        values)
     [
       ( [
           "width";
@@ -438,7 +440,9 @@ let spec_ahead_here : Chrome_gaps.excuse list =
 let lenient_here : Chrome_gaps.excuse list =
   List.concat_map
     (fun (properties, values, why) ->
-      List.map (fun value -> { Chrome_gaps.properties; value; why }) values)
+      List.map
+        (fun value -> { Chrome_gaps.properties; key = None; value; why })
+        values)
     [
       ( [ "column-rule"; "column-rule-width" ],
         [ "10px," ],
@@ -751,7 +755,28 @@ let check_unimplemented implemented =
    sample, and a value it did not draw is not a value the browser caught up
    with. The shared Chrome_gaps lists are not checked here either; they answer
    to the manifest run, whose population decides which of them apply. *)
+(* A keyed entry answers to the dataset rather than to this run's sample: when
+   Chrome ships the production, the entry is stale however the seeded stream
+   happens to draw. That is the check a literal cannot have, and it fires
+   whether or not the value was drawn. *)
+let check_overtaken () =
+  List.iter
+    (fun (e : Chrome_gaps.excuse) ->
+      fail
+        (String.concat ""
+           [
+             "Chrome now ships what this entry excuses: ";
+             e.value;
+             " (";
+             String.concat ", " e.properties;
+             ")";
+           ]))
+    (Chrome_gaps.overtaken
+       (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
+      @ lenient_here))
+
 let check_unused () =
+  check_overtaken ();
   List.iter
     (fun (e : Chrome_gaps.excuse) ->
       let used =

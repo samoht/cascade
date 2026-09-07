@@ -87,7 +87,12 @@ let unimplemented =
    that decides it. Every entry has to be used: an entry that excuses nothing is
    reported, so a browser that catches up, or a row that drops the value, takes
    its excuse with it. *)
-type excuse = { properties : string list; value : string; why : string }
+type excuse = {
+  properties : string list;
+  key : string option;
+  value : string;
+  why : string;
+}
 
 let sizing =
   [
@@ -114,6 +119,7 @@ let spec_ahead : excuse list =
   [
     {
       properties = sizing;
+      key = None;
       value = "fit-content(20rem)";
       why =
         "CSS Sizing 4 sec. 3.2 adds fit-content() to <box-size>, which every \
@@ -132,6 +138,7 @@ let spec_ahead : excuse list =
           "list-style-image";
           "content";
         ];
+      key = None;
       value = "cross-fade(url(a.png) 40%, url(b.png))";
       why =
         "CSS Images 4 sec. 2.6: cross-fade() = cross-fade( <cf-image># ); \
@@ -139,6 +146,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-decoration-thickness" ];
+      key = None;
       value = "hairline";
       why =
         "CSS Text Decoration 4 sec. 2.4 takes <line-width>, and CSS Borders 4 \
@@ -147,16 +155,19 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-decoration-thickness" ];
+      key = None;
       value = "thin";
       why = "CSS Borders 4 sec. 2.3: thin is a <line-width>";
     };
     {
       properties = [ "text-decoration-thickness" ];
+      key = None;
       value = "thick";
       why = "CSS Borders 4 sec. 2.3: thick is a <line-width>";
     };
     {
       properties = [ "overflow-clip-margin" ];
+      key = Some "css.properties.overflow-clip-margin.border-box";
       value = "0";
       why =
         "CSS Overflow 4 sec. 3.2: <visual-box> || <length>, and a unitless \
@@ -164,6 +175,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "overflow-clip-margin" ];
+      key = Some "css.properties.overflow-clip-margin.border-box";
       value = "calc(1rem + 2px)";
       why =
         "CSS Values 4 sec. 10.1 admits a math function wherever a <length> is \
@@ -172,6 +184,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-align" ];
+      key = Some "css.properties.text-align.match-parent";
       value = "match-parent";
       why =
         "CSS Text 4 sec. 7.1 lists match-parent; Chrome ships only \
@@ -179,6 +192,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-transform" ];
+      key = None;
       value = "full-width";
       why =
         "CSS Text 4 sec. 2.1: none | [ capitalize | uppercase | lowercase ] || \
@@ -186,6 +200,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "animation"; "-webkit-animation" ];
+      key = Some "css.properties.animation.animation-timeline_included";
       value = "--x x";
       why =
         "CSS Animations 2 sec. 4.12: <single-animation> ends in [ none | \
@@ -195,6 +210,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-overflow" ];
+      key = Some "css.properties.text-overflow.string";
       value = "\"...\"";
       why =
         "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
@@ -202,11 +218,13 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-overflow" ];
+      key = Some "css.properties.text-overflow.two_value_syntax";
       value = "clip ellipsis";
       why = "CSS Overflow 4 sec. 4.1: the production repeats {1,2}";
     };
     {
       properties = [ "text-combine-upright" ];
+      key = None;
       value = "digits";
       why =
         "CSS Writing Modes 4 sec. 9.1: none | all | [ digits <integer [2,4]>? \
@@ -214,16 +232,19 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "text-combine-upright" ];
+      key = None;
       value = "digits 2";
       why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
     };
     {
       properties = [ "text-combine-upright" ];
+      key = None;
       value = "digits 4";
       why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
     };
     {
       properties = [ "alignment-baseline" ];
+      key = None;
       value = "text-bottom";
       why =
         "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and \
@@ -232,6 +253,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "baseline-shift" ];
+      key = None;
       value = "top";
       why =
         "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
@@ -239,16 +261,19 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "baseline-shift" ];
+      key = None;
       value = "center";
       why = "CSS Inline 3 sec. 4.2.3 lists center";
     };
     {
       properties = [ "baseline-shift" ];
+      key = None;
       value = "bottom";
       why = "CSS Inline 3 sec. 4.2.3 lists bottom";
     };
     {
       properties = [ "grid-template-rows" ];
+      key = None;
       value = "masonry";
       why =
         "the CSS Grid 3 Working Draft of 2024 added masonry to \
@@ -258,6 +283,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "outline-color" ];
+      key = None;
       value = "auto";
       why =
         "CSS UI 4 sec. 3.4: auto | <'border-top-color'>, and auto is the \
@@ -266,6 +292,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "user-select"; "-webkit-user-select" ];
+      key = None;
       value = "contain";
       why =
         "CSS UI 4 sec. 6.1: auto | text | none | contain | all; \
@@ -274,6 +301,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "font-synthesis" ];
+      key = Some "css.properties.font-synthesis.position";
       value = "style small-caps position";
       why =
         "CSS Fonts 4 sec. 2.8.5: none | [ weight || style || small-caps || \
@@ -281,11 +309,13 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "font-synthesis-style" ];
+      key = None;
       value = "oblique-only";
       why = "CSS Fonts 4 sec. 2.8.2: auto | none | oblique-only";
     };
     {
       properties = [ "ruby-position" ];
+      key = Some "css.properties.ruby-position.alternate";
       value = "alternate";
       why =
         "CSS Ruby 1 sec. 4.1: [ alternate || [ over | under ] ] | \
@@ -293,16 +323,19 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "ruby-position" ];
+      key = Some "css.properties.ruby-position.alternate";
       value = "alternate over";
       why = "CSS Ruby 1 sec. 4.1: alternate combines with over under ||";
     };
     {
       properties = [ "ruby-position" ];
+      key = None;
       value = "inter-character";
       why = "CSS Ruby 1 sec. 4.1 lists inter-character";
     };
     {
       properties = [ "image-rendering" ];
+      key = Some "css.properties.image-rendering.smooth";
       value = "smooth";
       why =
         "CSS Images 3 sec. 5.2: auto | smooth | high-quality | pixelated | \
@@ -310,6 +343,7 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "stroke-linejoin" ];
+      key = None;
       value = "miter-clip";
       why =
         "SVG Strokes sec. 2.6: miter | miter-clip | round | bevel | arcs; \
@@ -317,11 +351,13 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "stroke-linejoin" ];
+      key = None;
       value = "arcs";
       why = "SVG Strokes sec. 2.6 lists arcs";
     };
     {
       properties = [ "vector-effect" ];
+      key = None;
       value = "non-scaling-size";
       why =
         "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
@@ -330,21 +366,25 @@ let spec_ahead : excuse list =
     };
     {
       properties = [ "vector-effect" ];
+      key = None;
       value = "non-rotation";
       why = "SVG 2 sec. 8.13 lists non-rotation";
     };
     {
       properties = [ "vector-effect" ];
+      key = None;
       value = "fixed-position";
       why = "SVG 2 sec. 8.13 lists fixed-position";
     };
     {
       properties = [ "vector-effect" ];
+      key = None;
       value = "non-scaling-stroke screen";
       why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
     };
     {
       properties = [ "vector-effect" ];
+      key = None;
       value = "non-scaling-stroke fixed-position";
       why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
     };
@@ -356,6 +396,7 @@ let lenient : excuse list =
   [
     {
       properties = [ "resize" ];
+      key = None;
       value = "auto";
       why =
         "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
@@ -363,6 +404,7 @@ let lenient : excuse list =
     };
     {
       properties = [ "text-orientation" ];
+      key = None;
       value = "sideways-right";
       why =
         "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
@@ -371,6 +413,7 @@ let lenient : excuse list =
     };
     {
       properties = [ "alignment-baseline" ];
+      key = None;
       value = "auto";
       why =
         "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
@@ -381,6 +424,18 @@ let lenient : excuse list =
 let unimplemented_property name = List.exists (String.equal name) unimplemented
 
 (* The entry covering [property]: [value], when one exists. *)
+(* An entry asserts that Chrome implements the production not at all, so the
+   question the dataset answers is whether Chrome has shipped it yet, and no
+   version of the running browser is needed to ask it. *)
+let chrome_ships key =
+  Cascade.Support.engine_implements Cascade.Support.Chrome (max_int, 0) key
+  = Some true
+
+let overtaken table =
+  List.filter
+    (fun (e : excuse) -> Option.fold ~none:false ~some:chrome_ships e.key)
+    table
+
 let find table ~property ~value =
   let covers (e : excuse) =
     String.equal e.value value

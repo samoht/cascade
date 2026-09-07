@@ -36,6 +36,15 @@ val implemented : targets -> string -> bool option
     is every vendor-prefixed property and every arm BCD gives no key. A caller
     that needs an answer for one of those has to measure it. *)
 
+(** One rendering engine of a {!targets}. *)
+type engine = Chrome | Firefox | Safari | Ios_safari
+
+val engine_implements : engine -> version -> string -> bool option
+(** [engine_implements engine version key] is whether [engine] at [version]
+    implements [key], and [None] when the dataset does not model [key]. Asking
+    about one engine is what a harness comparing cascade against a single
+    browser needs; {!implemented} answers for a whole target set. *)
+
 val unimplemented_by : targets -> string -> bool
 (** [unimplemented_by targets key] is [true] only when the dataset says some
     engine in [targets] lacks [key]. An unknown key is [false], so this reads as

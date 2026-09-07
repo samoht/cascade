@@ -24,6 +24,7 @@ let ( // ) = Filename.concat
 
 type excuse = Chrome_gaps.excuse = {
   properties : string list;
+  key : string option;
   value : string;
   why : string;
 }

@@ -42,6 +42,21 @@ let implemented targets key =
         && engine_has support.safari targets.safari
         && engine_has support.safari_ios targets.ios_safari)
 
+type engine = Chrome | Firefox | Safari | Ios_safari
+
+let engine_implements engine version key =
+  match Hashtbl.find_opt (Lazy.force table) key with
+  | None -> None
+  | Some (support : Baseline.support) ->
+      let shipped =
+        match engine with
+        | Chrome -> support.chrome
+        | Firefox -> support.firefox
+        | Safari -> support.safari
+        | Ios_safari -> support.safari_ios
+      in
+      Some (engine_has shipped version)
+
 let unimplemented_by targets key =
   match implemented targets key with
   | Some false -> true

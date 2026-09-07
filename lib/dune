@@ -8,7 +8,6 @@
  ; and optimizer implementation details behind the supported modules.
  (private_modules
   baseline
-  support
   block
   common
   custom_property_name
