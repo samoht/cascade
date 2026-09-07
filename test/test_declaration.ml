@@ -5587,9 +5587,12 @@ let spec_property_grammar_manifest () =
   in
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
-  Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 455
-    (List.length unique_properties);
+  (* No count here. How much of the reader this manifest covers is derived from
+     the reader's own name table by scripts/check_properties.ml, which reports
+     it every run; a literal here says only that the file did not shrink, and
+     counting rows is what let one row stand in for three grammars. *)
+  if unique_properties = [] then
+    Alcotest.fail "property grammar manifest is empty";
   let failures =
     List.filter_map
       (fun (row : property_grammar_row) ->

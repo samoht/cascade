@@ -1,7 +1,7 @@
 (executables
  (names check_properties check_api_consistency check_unknown_properties)
  (modules check_properties check_api_consistency check_unknown_properties)
- (libraries re unix cascade fmt))
+ (libraries re unix cascade cascade_spec_inventory fmt))
 
 (rule
  (alias runtest)
