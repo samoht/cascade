@@ -2203,7 +2203,7 @@ let read_custom_property_payload name value_str =
   else read_custom_property_value (Cursor.of_string value_str)
 
 let whitespace_only_custom_property_value =
-  Tokens [ Component.Preserved (Token.synthetic Token.Whitespace) ]
+  Tokens [ Component.Preserved (Token.synthetic (Token.Whitespace " ")) ]
 
 (* Keep a single space when the raw declaration value was whitespace-only - that
    one space is the spec-required token sequence (CSS Custom Properties for
@@ -2274,7 +2274,7 @@ let components_are_lone_css_wide cvs =
   let non_ws =
     List.filter
       (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
         | _ -> true)
       cvs
   in
@@ -2857,12 +2857,16 @@ let rec pp : declaration Pp.t =
    itself is the compatibility question. *)
 let rec pp_opaque : declaration Pp.t =
  fun ctx decl ->
-  let pp_components property components important =
+  (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
+     a custom property's value, so its runs are written back as read. An unknown
+     property has no such rule and takes the Syntax 3 sec. 9.1 serialization. *)
+  let pp_components ?(verbatim = false) property components important =
     pp_property ctx property;
     Pp.char ctx ':';
     Pp.space_if_pretty ctx ();
     Pp.string ctx
       (if Pp.minified ctx then Parser.to_string_minified components
+       else if verbatim then Parser.to_string_verbatim components
        else Parser.string_of_components components);
     if important then
       Pp.string ctx (if ctx.minify then "!important" else " !important")
@@ -2878,7 +2882,7 @@ let rec pp_opaque : declaration Pp.t =
         important;
         _;
       } ->
-      pp_components property components important
+      pp_components ~verbatim:true property components important
   | Declaration _ -> pp ctx decl
   | Theme_guarded { decl; _ } -> pp_opaque ctx decl
 

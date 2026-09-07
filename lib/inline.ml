@@ -384,7 +384,7 @@ let lookup_visible_custom_components visible name =
 
 let trim_components components =
   let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
     | _ -> false
   in
   let rec drop = function hd :: tl when is_ws hd -> drop tl | xs -> xs in
@@ -923,7 +923,7 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
 
 let strip_component_ws =
   List.filter (function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> false
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
     | _ -> true)
 
 let rec split_var_fallback acc = function

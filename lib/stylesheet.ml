@@ -3840,7 +3840,7 @@ let read_else ~body (r : Cursor.t) : statement =
     match
       List.filter
         (function
-          | Component.Preserved { kind = Token.Whitespace; _ } -> false
+          | Component.Preserved { kind = Token.Whitespace _; _ } -> false
           | _ -> true)
         prelude
     with

@@ -938,7 +938,7 @@ let read_polygon_point inner =
 
 let polygon_has_ws_after_comma inner =
   match Cursor.peek_raw inner with
-  | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
+  | Some (Component.Preserved { kind = Token.Whitespace _; _ }) -> true
   | _ -> false
 
 let read_polygon_points inner =

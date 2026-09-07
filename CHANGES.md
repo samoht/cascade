@@ -834,6 +834,14 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Custom properties
 
+- A custom property's value keeps the whitespace runs the author wrote, where
+  `--x: a  b` used to come back as `a b`. CSS Custom Properties 1 sec. 4.1
+  forbids normalizing it and Chrome returns the run; the ends are still trimmed,
+  and `--minify` still makes its own separator decisions.
+  `Cascade.Token.Whitespace` carries its run, and
+  `Cascade.Parser.to_string_verbatim` is the serializer that writes it back
+  (#1064)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor

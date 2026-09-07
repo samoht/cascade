@@ -85,7 +85,7 @@ let rec is_any_value components =
     components
 
 let is_whitespace = function
-  | Preserved { kind = Token.Whitespace; _ } -> true
+  | Preserved { kind = Token.Whitespace _; _ } -> true
   | Preserved _ | Block _ | Func _ -> false
 
 (* A real [var()] function anywhere in the components, recursing into function

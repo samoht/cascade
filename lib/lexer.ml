@@ -608,16 +608,20 @@ let rec skip_comment_run on_comment r =
     skip_comment_run on_comment r)
 
 (* Consume a run of whitespace code points and any interleaved comments,
-   returning [true] when at least one whitespace code point was seen. *)
-let rec consume_whitespace_run on_comment r =
+   collecting the whitespace into [buf]. CSS Custom Properties 1 (ED) sec. 4.1
+   forbids normalizing the whitespace of a custom property's token stream, so
+   the run's own text is what the token carries; a comment inside it is not
+   whitespace and does not join it. *)
+let rec consume_whitespace_run ?buf on_comment r =
   match Reader.peek r with
   | Some c when is_ws c ->
+      Option.iter (fun b -> Buffer.add_char b c) buf;
       Reader.skip r;
-      consume_whitespace_run on_comment r
+      consume_whitespace_run ?buf on_comment r
   | _ ->
       if Reader.looking_at r "/*" then (
         consume_comment on_comment r;
-        consume_whitespace_run on_comment r)
+        consume_whitespace_run ?buf on_comment r)
 
 let hash_flag_now r = if would_start_ident_sequence r then Id else Unrestricted
 
@@ -693,8 +697,9 @@ let next_token ?(force_url_function = false) ?(unicode_ranges = false)
   else
     let c = Char.unsafe_chr b in
     if is_ws c then (
-      consume_whitespace_run on_comment r;
-      Whitespace)
+      let buf = Buffer.create 8 in
+      consume_whitespace_run ~buf on_comment r;
+      Whitespace (Buffer.contents buf))
     else
       match c with
       | '"' ->

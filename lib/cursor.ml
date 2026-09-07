@@ -89,7 +89,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
   }
 
 let is_ws_cv : Component.t -> bool = function
-  | Preserved { kind = Token.Whitespace; _ } -> true
+  | Preserved { kind = Token.Whitespace _; _ } -> true
   | _ -> false
 
 let rec drop_ws t =
@@ -495,8 +495,13 @@ let is_semicolon_cv = function
   | Component.Preserved { kind = Token.Semicolon; _ } -> true
   | _ -> false
 
+(* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of a
+   custom property's value, and this is what captures it, so the run each
+   whitespace token carries is written back rather than the single space Syntax
+   3 sec. 9.1 gives a reserialized stream. *)
 let consume_until_semicolon ?(trim = false) t =
-  string_of_components ~trim (drain_until_raw is_semicolon_cv t)
+  let s = Parser.to_string_verbatim (drain_until_raw is_semicolon_cv t) in
+  if trim then String.trim s else s
 
 let rec skip_past_semicolon t =
   match next_raw t with

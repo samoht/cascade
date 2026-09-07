@@ -3599,11 +3599,14 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Number_percentage -> pp pp_number_percentage
   | Opacity -> pp pp_opacity
   | Value ->
+      (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the
+         whitespace of the stream a [var()] substitutes, so the runs come back
+         as they were read. *)
       let rendered =
         if Pp.minified ctx then
           Parser.to_string_custom_minified
             ~fold_ident:Values.fold_custom_value_ident value
-        else Parser.string_of_components value
+        else Parser.to_string_verbatim value
       in
       Pp.string ctx rendered
   | Shadow -> pp pp_shadow
@@ -4187,7 +4190,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
 let strip_math_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_pm =
           match acc with
           | [] -> false
@@ -4214,7 +4217,7 @@ let is_mul_or_div_delim = function
 let strip_mul_div_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_md =
           match acc with [] -> false | p :: _ -> is_mul_or_div_delim p
         in
@@ -4252,7 +4255,7 @@ let strip_after_close_paren ~in_math comps =
   in
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_hard =
           match acc with [] -> false | p :: _ -> closes_hard p
         in

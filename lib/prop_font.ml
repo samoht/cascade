@@ -741,7 +741,7 @@ let unquote_font_family_strings components =
     | [ w ] -> [ Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc) ]
     | w :: rest ->
         Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc)
-        :: Component.Preserved (Token.v ~kind:Token.Whitespace ~loc)
+        :: Component.Preserved (Token.v ~kind:(Token.Whitespace " ") ~loc)
         :: interleave loc rest
   in
   let result =
@@ -1758,7 +1758,7 @@ let components_have_generic_family components =
 
 let long_generic_family_start r =
   let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
     | _ -> false
   in
   let is_comma = function

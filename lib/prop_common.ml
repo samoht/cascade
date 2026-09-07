@@ -65,7 +65,7 @@ let components_have_css_wide_mix components =
   let non_ws =
     List.filter
       (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
         | _ -> true)
       components
   in

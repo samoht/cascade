@@ -25,7 +25,7 @@ type kind =
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
-  | Whitespace
+  | Whitespace of string
   | Unicode_range of {
       start_value : int;
       end_value : int;
@@ -103,7 +103,7 @@ let pp_kind : kind Pp.t =
       Pp.string ctx number.repr;
       Pp.string ctx unit_;
       Pp.char ctx '>'
-  | Whitespace -> Pp.string ctx "<ws>"
+  | Whitespace _ -> Pp.string ctx "<ws>"
   | Unicode_range { start_value; end_value; _ } ->
       Pp.string ctx "<unicode-range U+";
       Pp.hex ctx start_value;

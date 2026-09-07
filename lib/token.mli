@@ -51,7 +51,11 @@ type kind =
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
-  | Whitespace  (** Any run of whitespace characters. *)
+  | Whitespace of string
+      (** A run of whitespace characters, carrying its own text. CSS Custom
+          Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of a
+          custom property's token stream, so the run is kept rather than
+          collapsed to one space. *)
   | Unicode_range of {
       start_value : int;
       end_value : int;

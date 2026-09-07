@@ -527,12 +527,14 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
+(* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
+   the streams this prints, so the runs come back as they were read. *)
 let pp_component_values ctx values =
   let value =
     if Pp.minified ctx then
       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
         values
-    else Parser.string_of_components values
+    else Parser.to_string_verbatim values
   in
   Pp.string ctx value
 
@@ -6791,7 +6793,7 @@ let normalize_relative_color_tail tail =
    number. *)
 let relative_color_channel_count cvs =
   let is_ws = function
-    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | Component.Preserved { Token.kind = Whitespace _; _ } -> true
     | _ -> false
   in
   let is_alpha_sep = function
@@ -6808,7 +6810,7 @@ let relative_color_channel_count cvs =
 
 let relative_color_has_empty_alpha cvs =
   let is_ws = function
-    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | Component.Preserved { Token.kind = Whitespace _; _ } -> true
     | _ -> false
   in
   let rec only_ws = function

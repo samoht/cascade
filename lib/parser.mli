@@ -44,6 +44,12 @@ val string_of_components : Component.t list -> string
     stream, the opaque custom-property values of CSS Custom Properties 1
     included. *)
 
+val to_string_verbatim : Component.t list -> string
+(** [to_string_verbatim cvs] is {!string_of_components} except that a
+    [<whitespace-token>] writes back the run it was read from. CSS Custom
+    Properties 1 (ED) section 4.1 forbids normalizing the whitespace of a custom
+    property's value, which is the one stream that needs this. *)
+
 val to_string_minified : Component.t list -> string
 (** Like {!string_of_components} but drops whitespace that sits between two
     components where at least one side is not word-like (ident / number / etc.).

@@ -671,7 +671,7 @@ let spec_serialization_roundtrip_boundaries () =
   let non_ws cvs =
     List.filter
       (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
         | _ -> true)
       cvs
   in
@@ -718,7 +718,7 @@ let spec_serialization_bad_string_roundtrip () =
   (match components with
   | [
    Component.Preserved { kind = Token.Bad_string; _ };
-   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Whitespace _; _ };
    Component.Preserved { kind = Token.Ident "x"; _ };
   ] ->
       ()
@@ -727,7 +727,7 @@ let spec_serialization_bad_string_roundtrip () =
   match list serialized with
   | [
    Component.Preserved { kind = Token.Bad_string; _ };
-   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Whitespace _; _ };
    Component.Preserved { kind = Token.Ident "x"; _ };
   ] ->
       ()
@@ -808,9 +808,9 @@ let spec_wpt_parser_branch_matrix () =
   (match list "a url(foo\"bar) next" with
   | [
    Component.Preserved { kind = Token.Ident "a"; _ };
-   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Whitespace _; _ };
    Component.Preserved { kind = Token.Bad_url; _ };
-   Component.Preserved { kind = Token.Whitespace; _ };
+   Component.Preserved { kind = Token.Whitespace _; _ };
    Component.Preserved { kind = Token.Ident "next"; _ };
   ] ->
       ()
