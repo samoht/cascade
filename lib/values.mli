@@ -493,6 +493,13 @@ val read_non_negative_length :
     non-negative. Used for padding properties, whose CSS Box 4 sec. 4.1 grammar
     excludes negative values. *)
 
+val read_margin_length : ?global:bool -> Cursor.t -> length
+(** [read_margin_length ?global t] parses one margin component: CSS Box 4 sec.
+    3.1 gives a margin longhand [<length-percentage> | auto], so this takes
+    [auto] and a length and no sizing function. [global] (default [false]) also
+    takes the CSS-wide keywords, which a longhand may be but a shorthand
+    component may not. *)
+
 val read_padding_shorthand : Cursor.t -> length list
 (** [read_padding_shorthand reader] parses a padding shorthand property
     accepting 1-4 space-separated non-negative length values (CSS Box 4 sec.

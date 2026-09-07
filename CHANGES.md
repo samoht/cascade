@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- A margin longhand refuses a sizing function, so `margin-right:
+  fit-content(20rem)` and `margin-top: calc-size(auto, size)` are dropped with a
+  warning where every browser drops the declaration. CSS Box 4 sec. 3.1 gives
+  each longhand `<length-percentage> | auto`, and the `margin` shorthand already
+  read its components that way. This release adds
+  `Cascade.Values.read_margin_length` (#1096)
+
 - Two spellings of one `@supports` condition are one block to the diff, so a
   sheet writing `(color: color-mix(in lab, red, red))` and one writing it
   without the spaces compare inside the block rather than across two. CSS

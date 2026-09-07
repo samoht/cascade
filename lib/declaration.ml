@@ -868,6 +868,11 @@ let read_lp_or_global t =
     ~default:(Values.read_length_percentage ~with_keywords:false)
     t
 
+(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
+   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
+   longhand takes as its whole value where a shorthand component cannot. *)
+let read_margin_length_or_global t = Values.read_margin_length ~global:true t
+
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
@@ -1559,22 +1564,32 @@ let read_spacing_value : type a. a property -> Cursor.t -> declaration option =
   | Padding_block_start ->
       Some (v Padding_block_start (read_nn_length_or_global t))
   | Padding_block_end -> Some (v Padding_block_end (read_nn_length_or_global t))
-  | Margin_left -> Some (v Margin_left (read_length t))
-  | Margin_right -> Some (v Margin_right (read_length t))
-  | Margin_top -> Some (v Margin_top (read_length t))
-  | Margin_bottom -> Some (v Margin_bottom (read_length t))
+  (* CSS Box 4 sec. 3.1 gives every margin longhand [<length-percentage> |
+     auto], and CSS Logical 1 sec. 4.2 builds the flow-relative pair from that
+     same production, so a sizing function reaches none of them. The shorthand
+     already read its components this way. *)
+  | Margin_left -> Some (v Margin_left (read_margin_length_or_global t))
+  | Margin_right -> Some (v Margin_right (read_margin_length_or_global t))
+  | Margin_top -> Some (v Margin_top (read_margin_length_or_global t))
+  | Margin_bottom -> Some (v Margin_bottom (read_margin_length_or_global t))
   | Margin_inline ->
       Some
         (v Margin_inline
-           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t))
-  | Margin_inline_start -> Some (v Margin_inline_start (read_length t))
-  | Margin_inline_end -> Some (v Margin_inline_end (read_length t))
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_margin_length_or_global t))
+  | Margin_inline_start ->
+      Some (v Margin_inline_start (read_margin_length_or_global t))
+  | Margin_inline_end ->
+      Some (v Margin_inline_end (read_margin_length_or_global t))
   | Margin_block ->
       Some
         (v Margin_block
-           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t))
-  | Margin_block_start -> Some (v Margin_block_start (read_length t))
-  | Margin_block_end -> Some (v Margin_block_end (read_length t))
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_margin_length_or_global t))
+  | Margin_block_start ->
+      Some (v Margin_block_start (read_margin_length_or_global t))
+  | Margin_block_end ->
+      Some (v Margin_block_end (read_margin_length_or_global t))
   | _ -> None
 
 let read_list_align_value : type a. a property -> Cursor.t -> declaration option

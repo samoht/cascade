@@ -8118,21 +8118,37 @@ let read_padding_shorthand t : length list =
         t)
     t
 
+(* CSS Box 4 sec. 3.1 gives a margin [<length-percentage> | auto], so no sizing
+   function reaches it. [global] adds the CSS-wide keywords of CSS Cascade 5
+   sec. 7.3, which a longhand takes as its whole value and a shorthand component
+   cannot; a [var()] fallback stands for a whole value, so it takes them too. *)
+
 (** Read margin shorthand property (1-4 values). CSS Box 4 (ED) sec. 3.2 gives
     [margin] the value [<'margin-top'>{1,4}] and sec. 3.1 gives [margin-top] the
     value [<length-percentage> | auto], so [auto] is a component of the box and
     stands in any slot beside any length. Only the CSS-wide keywords of CSS
     Cascade 5 sec. 6 own the whole value. *)
+let rec read_margin_length ?(global = false) t : length =
+  if Cursor.looking_at_func "var" t then
+    Var (read_var (read_margin_length ~global:true) t)
+  else
+    Cursor.enum "margin component"
+      (("auto", (Auto : length))
+      ::
+      (if global then
+         [
+           ("inherit", (Inherit : length));
+           ("initial", Initial);
+           ("unset", Unset);
+           ("revert", Revert);
+           ("revert-layer", Revert_layer);
+         ]
+       else []))
+      ~default:(read_length ~with_keywords:false)
+      t
+
 let read_margin_shorthand t : length list =
-  let rec read_margin_component t : length =
-    if Cursor.looking_at_func "var" t then
-      Var (read_var read_margin_component t)
-    else
-      Cursor.enum "margin component"
-        [ ("auto", (Auto : length)) ]
-        ~default:(read_length ~with_keywords:false)
-        t
-  in
+  let read_margin_component = read_margin_length in
   Cursor.enum "margin"
     [
       ("inherit", [ (Inherit : length) ]);
