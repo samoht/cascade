@@ -1201,7 +1201,9 @@ let vars_of_image_resolution (value : Properties.image_resolution) =
 
 let vars_of_intrinsic_size_item (value : Properties.contain_intrinsic_size_item)
     =
-  match value with Length len | Auto len -> vars_of_length len
+  match value with
+  | Length len | Auto len -> vars_of_length len
+  | None | Auto_none -> []
 
 let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
   match value with

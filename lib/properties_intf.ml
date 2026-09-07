@@ -3745,7 +3745,13 @@ type image_resolution =
   | Revert_layer
   | Var of image_resolution var
 
-type contain_intrinsic_size_item = Length of length | Auto of length
+(** CSS Sizing 4 sec. 6 spells one slot [auto? [ none | <length [0,inf]> ]], so
+    the keyword takes the [auto] prefix as a length does. *)
+type contain_intrinsic_size_item =
+  | None
+  | Length of length
+  | Auto_none
+  | Auto of length
 
 type contain_intrinsic_size =
   | None

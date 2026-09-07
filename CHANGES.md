@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.contain_intrinsic_size_item` gains `None` and
+  `Auto_none`, so `contain-intrinsic-width: auto none` and
+  `contain-intrinsic-size: none 2ch` read. CSS Sizing 4 sec. 6 spells a slot
+  `auto? [ none | <length [0,inf]> ]`, so `none` sits in a slot rather than
+  standing for the whole value. Exhaustive visitors must handle the two new
+  leaves (#1071)
+
 - `Cascade.Properties.vertical_align` carries a `Length of length_percentage`
   where it carried `Zero`, `Px`, `Rem`, `Em`, `Pct` and `Calc`, so
   `vertical-align: 2ch`, `2vh`, `2cap` and `max(1rem,2vw)` read. CSS Inline 3

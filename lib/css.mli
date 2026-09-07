@@ -7910,7 +7910,9 @@ val container_type : container_type -> declaration
      [contain-intrinsic-size]}, a length that the [auto] prefix lets a
     remembered size override. *)
 type contain_intrinsic_size_item = Properties.contain_intrinsic_size_item =
+  | None
   | Length of length
+  | Auto_none
   | Auto of length
 
 (** CSS Sizing 4
