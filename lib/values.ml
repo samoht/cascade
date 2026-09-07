@@ -3532,6 +3532,9 @@ let color_mix_percentages (percent1 : percentage option)
   | Some _, Some _ -> (
       match (f1, f2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None)
 
+(* [value] is the six or eight hex digits [hex_string_of_bytes] builds, never
+   the shortened form: a four-digit input would be its own output. *)
+
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
 let shorten_hex value =
@@ -3577,10 +3580,6 @@ let shorten_hex value =
     && (value.[6] = 'f' || value.[6] = 'F')
     && (value.[7] = 'f' || value.[7] = 'F')
   then String.sub value 0 6
-  else if
-    (* #RGBA -> #RGB when A=f (fully opaque) *)
-    len = 4 && (value.[3] = 'f' || value.[3] = 'F')
-  then String.sub value 0 3
   else value
 
 (* Shortest hex spelling (no [#]) of decoded sRGB byte components: the opaque
@@ -6726,11 +6725,6 @@ let read_full_hue_interpolation t : hue_interpolation =
   Cursor.ws t;
   hue
 
-let trim_trailing_space buf =
-  let blen = Buffer.length buf in
-  if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
-    Buffer.truncate buf (blen - 1)
-
 let add_pending_space buf last_was_space =
   if last_was_space && Buffer.length buf > 0 then Buffer.add_char buf ' '
 
@@ -6746,8 +6740,10 @@ let normalize_relative_color_tail tail =
     else
       match tail.[i] with
       | ' ' | '\n' | '\t' | '\r' | '\012' -> loop (i + 1) true
+      (* A pending space is dropped rather than trimmed: [add_pending_space]
+         writes one only just before a non-space character, so the buffer never
+         ends in one. *)
       | '/' ->
-          trim_trailing_space buf;
           Buffer.add_char buf '/';
           loop (skip_spaces (i + 1)) false
       | c ->
