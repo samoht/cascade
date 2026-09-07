@@ -2260,10 +2260,32 @@ let read_moz_document_condition r : moz_document_condition =
 
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)
+(* CSS Fonts 4 (ED) sec. 4.4 writes each font property descriptor's grammar out
+   in full, and sec. 4.6 gives the settings descriptors the corresponding
+   property's values "except that the CSS-wide keywords are omitted". No
+   descriptor grammar takes one. The shared property readers a descriptor
+   delegates to do take them, so the refusal belongs at this boundary, next to
+   the var() one. *)
+let refuse_css_wide_descriptor r =
+  let save = Cursor.save r in
+  (match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.Ident name; _ })
+    when Properties.is_css_wide_keyword name ->
+      Cursor.skip r;
+      Cursor.ws r;
+      let alone = Cursor.is_done r || Cursor.peek_semicolon r in
+      Cursor.restore r save;
+      if alone then
+        Cursor.err_invalid r
+          ("CSS-wide keyword in @font-face descriptor: " ^ name)
+  | _ -> ());
+  Cursor.restore r save
+
 let read_descriptor_value read_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
+  refuse_css_wide_descriptor r;
   constructor (read_fn r)
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3

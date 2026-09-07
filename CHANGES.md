@@ -824,6 +824,11 @@ to lose a whole rule over one bad piece. Both are gone.
   fractional or out-of-range number instead of truncating (#466, #472, #473,
   #477, #484, #496, #497, #499, #501, #538, #789, #793, #801)
 
+- A CSS-wide keyword in an `@font-face` descriptor is dropped, so
+  `font-weight: inherit` inside the rule no longer reaches output a browser
+  discards. CSS Fonts 4 sec. 4.6 omits them from the descriptor grammars
+  (#1115)
+
 ### Printing
 
 - `text-decoration`, `mask-border`, `animation` and `mask` no longer minify to
