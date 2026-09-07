@@ -2010,18 +2010,26 @@ let pp_webkit_text_stroke : webkit_text_stroke Pp.t =
     s.color;
   if not !wrote then Pp.string ctx "currentColor"
 
+(* The property is a [||] of one width and one colour, and CSS Values 4 sec. 2.2
+   takes each option of a [||] at most once, so a second width fills no slot
+   rather than replacing the first. *)
 let read_webkit_text_stroke t : webkit_text_stroke =
   let width = ref Option.None and color = ref Option.None in
+  let fill slot value =
+    if Option.is_some !slot then
+      Cursor.err_invalid t "-webkit-text-stroke names a component twice";
+    slot := Some value
+  in
   let read_one t =
     match Cursor.peek_ident t with
-    | Some ("thin" | "medium" | "thick") -> width := Some (read_border_width t)
+    | Some ("thin" | "medium" | "thick") -> fill width (read_border_width t)
     | _ -> (
         let snap = Cursor.save t in
         match read_border_width t with
-        | w -> width := Some w
+        | w -> fill width w
         | exception Cursor.Parse_error _ ->
             Cursor.restore t snap;
-            color := Some (Values.read_color t))
+            fill color (Values.read_color t))
   in
   read_one t;
   Cursor.ws t;

@@ -76,6 +76,18 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- A colour reaches the final background layer alone, so `background: red,
+  url(x.png)` is dropped with a warning where every browser drops it and
+  `background: url(x.png), red` reads. CSS Backgrounds 3 sec. 2.10 spells the
+  shorthand `<bg-layer>#? , <final-bg-layer>` and sec. 2.1 paints the colour
+  once below every layer rather than per layer (#1108)
+
+- `-webkit-text-stroke: 100px 200px` is dropped with a warning where the second
+  width used to replace the first, which changed the stroke a browser drew
+  nothing for into one it drew. The property is a `||` of one width and one
+  colour, and CSS Values 4 sec. 2.2 takes each option of a `||` at most once
+  (#1108)
+
 - `gap: -10%` and `text-decoration: fit-content(20rem)` are dropped with a
   warning where every browser drops the declaration. CSS Box Alignment 3 sec.
   8.1 gives every gap a `[0,inf]` range, which the shorthand checked against a

@@ -1921,7 +1921,11 @@ let matrix =
       };
       {
         property = "background-blend-mode";
-        positives = [ "normal"; "multiply"; "screen, overlay" ];
+        (* Compositing 2 sec. 3.4.3 spells this <'mix-blend-mode'>#, and sec.
+           3.4.1 gives mix-blend-mode plus-lighter, so the value is granted here
+           too; Chrome takes it on mix-blend-mode alone. Pinned so the excuse
+           for that answers to the fixed population. *)
+        positives = [ "normal"; "multiply"; "screen, overlay"; "plus-lighter" ];
         negatives = [ "normal multiply"; "foo" ];
       };
       {

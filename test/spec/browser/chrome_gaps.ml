@@ -209,6 +209,20 @@ let spec_ahead : excuse list =
          the timeline back out of the shorthand";
     };
     {
+      properties = [ "background-blend-mode" ];
+      (* web-features records css.properties.mix-blend-mode.plus-lighter, which
+         Chrome ships, and nothing for the background property, so the lookup
+         cannot answer this one and the verdict is the honest third. *)
+      key = None;
+      value = "plus-lighter";
+      why =
+        "Compositing 2 sec. 3.4.3 spells background-blend-mode \
+         <'mix-blend-mode'>#, and sec. 3.4.1 gives mix-blend-mode <blend-mode> \
+         | plus-lighter, so the value is granted on both. Measured on Chrome \
+         153: it takes plus-lighter on mix-blend-mode and refuses it on \
+         background-blend-mode";
+    };
+    {
       properties = [ "text-overflow" ];
       key = Some "css.properties.text-overflow.string";
       value = "\"...\"";

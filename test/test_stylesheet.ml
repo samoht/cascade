@@ -7004,17 +7004,29 @@ let bg321_multi_layer_kept () =
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
+  (* Sec. 2.10 spells the shorthand [<bg-layer>#? , <final-bg-layer>], and only
+     the final layer carries a [<background-color>]: sec. 2.1 paints the colour
+     once below every layer rather than per layer. So the colour goes LAST, and
+     a colour in an earlier layer is no background at all. Chrome 153 agrees: it
+     drops [background: red, url(x.png)] and keeps the reverse. *)
   Alcotest.(check bool)
     "multi-layer background preserves both layers" true
-    (let out = normalize ".x { background: red, url(x.png) }" in
+    (let out = normalize ".x { background: url(x.png), red }" in
      Astring.String.is_infix ~affix:"red" out
-     && Astring.String.is_infix ~affix:"url(x.png)" out)
+     && Astring.String.is_infix ~affix:"url(x.png)" out);
+  Alcotest.(check bool)
+    "a colour in an earlier layer is dropped" true
+    (match Css.of_string ~strict:true ".x { background: red, url(x.png) }" with
+    | Ok _ -> false
+    | Error _ -> true)
 
 let fidelity_background_preserved () =
   pretty_preserves ".x { background: red 0% 0% }" [ "0% 0%" ];
   pretty_preserves ".x { background: red 50% 50% / cover no-repeat }"
     [ "50% 50%"; "cover"; "no-repeat" ];
-  pretty_preserves ".x { background: red, url(x.png) }" [ "red"; "url(x.png)" ]
+  (* The colour belongs to the final layer (sec. 2.10), so the round trip is
+     asked of the spelling that has one. *)
+  pretty_preserves ".x { background: url(x.png), red }" [ "red"; "url(x.png)" ]
 
 (* {2 Strings and escapes (CSS Syntax L3 sec. 4.3.7)} *)
 

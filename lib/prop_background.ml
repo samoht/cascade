@@ -2113,8 +2113,21 @@ let rec read_background t : background =
     ~default:(read_background_default read_background)
     t
 
+(* CSS Backgrounds 3 sec. 2.1 gives the [background] shorthand a [<bg-layer># ,
+   <final-bg-layer>]: only the LAST layer carries a [<background-color>],
+   because the colour paints once behind every layer rather than per layer. A
+   colour in an earlier one fills no slot. *)
 let read_backgrounds t : background list =
-  Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
+  let layers = Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t in
+  let count = List.length layers in
+  List.iteri
+    (fun i (layer : background) ->
+      match layer with
+      | Shorthand { color = Some _; _ } when i < count - 1 ->
+          Cursor.err_invalid t "only the final background layer takes a colour"
+      | _ -> ())
+    layers;
+  layers
 
 (* CSS Backgrounds 3 sec. 5.1: [border-radius = <length-percentage [0,inf]>{1,4}
    [ / <length-percentage [0,inf]>{1,4} ]?]. Reads 1-4 horizontal radii then,
