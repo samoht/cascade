@@ -875,6 +875,11 @@ to lose a whole rule over one bad piece. Both are gone.
   `[ left | center | right | <length-percentage> ] [ top | center | bottom |
   <length-percentage> ]` (#1122)
 
+- Six `@counter-style` descriptors are read against their grammars, so
+  `range: bogus`, `pad: 3`, `negative: 1` and `fallback: "decimal"` are dropped
+  where each was kept as an opaque string. A counter symbol may also be an
+  image now, per CSS Counter Styles 3 sec. 3.2 (#1130)
+
 - A CSS-wide keyword in an `@font-face` descriptor is dropped, so
   `font-weight: inherit` inside the rule no longer reaches output a browser
   discards. CSS Fonts 4 sec. 4.6 omits them from the descriptor grammars

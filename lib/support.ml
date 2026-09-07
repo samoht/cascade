@@ -576,6 +576,108 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.at-rules.counter-style.symbols.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.counter-style.negative.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.counter-style.prefix.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.counter-style.suffix.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.counter-style.additive-symbols.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.counter-style.pad.image";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Counter Styles 3 (ED) sec. 3.2 gives <symbol> the arms <string> | \
+         \\\n\
+        \         <image> | <custom-ident>, so a counter symbol may be an \
+         image. Chrome \\\n\
+        \         implements the string and ident arms and refuses every image";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.font-family.default";
       support =
         {

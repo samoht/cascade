@@ -185,7 +185,11 @@ let keys_for ?(prefix = "css.properties") ~property ~value () =
     match call_name value with
     | None -> []
     | Some name ->
-        prop (String.concat "" [ underscored name; "_function" ])
+        (* An arm a grammar spells as a value TYPE is named after the type, not
+           the function that wrote it: [url(a.png)] and [linear-gradient(...)]
+           are both the <image> arm. *)
+        prop "image"
+        @ prop (String.concat "" [ underscored name; "_function" ])
         @ [
             String.concat "" [ "css.types."; name ];
             String.concat "" [ "css.types.image."; name ];

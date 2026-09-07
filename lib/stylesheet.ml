@@ -2730,10 +2730,19 @@ let read_counter_style_system_descriptor r =
       System system)
     r
 
+(* CSS Counter Styles 3 (ED) sec. 3.2: <symbol> = <string> | <image> |
+   <custom-ident>. The image arm is read for its grammar and kept as the text it
+   was written with, as the string and ident arms are. *)
 let read_counter_symbol r =
   match Cursor.string_opt r with
   | Some symbol -> symbol
-  | None -> Cursor.ident ~keep_case:true r
+  | None -> (
+      match Cursor.peek r with
+      | Some (Component.Func _)
+      | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+          Pp.to_string ~minify:true Properties.pp_background_image
+            (Properties.read_background_image r)
+      | Some _ | None -> Cursor.ident ~keep_case:true r)
 
 let read_counter_symbols_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -2757,13 +2766,83 @@ let read_counter_symbol_descriptor constructor r =
       constructor symbol)
     r
 
-let read_counter_string_descriptor constructor r =
+(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>,
+   which CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and [default]
+   from, and sec. 3.7 excludes [none] as well. *)
+let read_counter_style_name c =
+  let name = Cursor.ident ~keep_case:true c in
+  let lower = String.lowercase_ascii name in
+  if
+    Properties.is_css_wide_keyword lower
+    || List.exists (String.equal lower) [ "default"; "none" ]
+  then Cursor.err_invalid c ("reserved counter style name: " ^ name)
+  else name
+
+(* Validates the value against the descriptor's grammar and keeps the text: the
+   AST carries the authored spelling, and what this adds is the refusal of a
+   value no section grants. Each reader names the section that decides it. *)
+let read_counter_validated_descriptor ~what ~check constructor r =
   read_descriptor_value
     (fun r ->
       let value = Declaration.read_property_value r in
       validate_nonempty_descriptor r "counter-style" value;
+      let c = Cursor.of_string value in
+      check c;
+      Cursor.ws c;
+      if not (Cursor.is_done c) then
+        Cursor.err_invalid r
+          (String.concat "" [ "trailing tokens in @counter-style "; what ]);
       value)
     constructor r
+
+(* sec. 3.5: [[<integer> | infinite]{2}]# | auto. *)
+let check_counter_range c =
+  let bound c =
+    match Cursor.peek_ident c with
+    | Some "infinite" -> ignore (Cursor.ident c)
+    | Some _ | None -> ignore (Cursor.int c)
+  in
+  let pair c =
+    bound c;
+    Cursor.ws c;
+    bound c
+  in
+  match Cursor.peek_ident c with
+  | Some "auto" -> ignore (Cursor.ident c)
+  | Some _ | None -> ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma pair c)
+
+(* sec. 3.6: <integer [0,inf]> && <symbol>, so the two come in either order. *)
+let check_counter_pad c =
+  let non_negative c =
+    let n = Cursor.int c in
+    if n < 0 then Cursor.err_invalid c "@counter-style pad takes no negative"
+  in
+  match Cursor.option non_negative c with
+  | Some () ->
+      Cursor.ws c;
+      ignore (read_counter_symbol c)
+  | None ->
+      ignore (read_counter_symbol c);
+      Cursor.ws c;
+      non_negative c
+
+(* sec. 3.4: <symbol> <symbol>?. *)
+let check_counter_negative c =
+  ignore (read_counter_symbol c);
+  Cursor.ws c;
+  if not (Cursor.is_done c) then ignore (read_counter_symbol c)
+
+(* sec. 3.3: [<integer [0,inf]> && <symbol>]#. *)
+let check_counter_additive_symbols c =
+  ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma check_counter_pad c)
+
+(* sec. 3.8: auto | bullets | numbers | words | spell-out |
+   <counter-style-name>. *)
+let check_counter_speak_as c =
+  match Cursor.peek_ident c with
+  | Some ("auto" | "bullets" | "numbers" | "words" | "spell-out") ->
+      ignore (Cursor.ident c)
+  | Some _ | None -> ignore (read_counter_style_name c)
 
 (* CSS Counter Styles 3 sec. 3: "unknown descriptors are invalid and ignored".
    One descriptor of the body, the caller looping over the rest, so a descriptor
@@ -2780,13 +2859,35 @@ let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
     | "symbols" -> read_counter_symbols_descriptor r
     | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
     | "prefix" -> read_counter_symbol_descriptor (fun s -> Prefix s) r
-    | "fallback" -> read_counter_string_descriptor (fun s -> Fallback s) r
-    | "range" -> read_counter_string_descriptor (fun s -> Range s) r
-    | "pad" -> read_counter_string_descriptor (fun s -> Pad s) r
-    | "negative" -> read_counter_string_descriptor (fun s -> Negative s) r
+    | "fallback" ->
+        read_counter_validated_descriptor ~what:"fallback"
+          ~check:(fun c -> ignore (read_counter_style_name c))
+          (fun s -> Fallback s)
+          r
+    | "range" ->
+        read_counter_validated_descriptor ~what:"range"
+          ~check:check_counter_range
+          (fun s -> Range s)
+          r
+    | "pad" ->
+        read_counter_validated_descriptor ~what:"pad" ~check:check_counter_pad
+          (fun s -> Pad s)
+          r
+    | "negative" ->
+        read_counter_validated_descriptor ~what:"negative"
+          ~check:check_counter_negative
+          (fun s -> Negative s)
+          r
     | "additive-symbols" ->
-        read_counter_string_descriptor (fun s -> Additive_symbols s) r
-    | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
+        read_counter_validated_descriptor ~what:"additive-symbols"
+          ~check:check_counter_additive_symbols
+          (fun s -> Additive_symbols s)
+          r
+    | "speak-as" ->
+        read_counter_validated_descriptor ~what:"speak-as"
+          ~check:check_counter_speak_as
+          (fun s -> Speak_as s)
+          r
     (* COUNTER_STYLE_DESCRIPTOR_END - Used by test/spec/browser *)
     | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
   in

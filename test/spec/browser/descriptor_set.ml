@@ -88,7 +88,7 @@ let font_face_sheet ~descriptor ~value =
 
 (* CSS Counter Styles 3 sec. 2 makes system and symbols the pair a style needs
    to resolve, and sec. 3.1's default system is symbolic. *)
-let _counter_style_sheet ~descriptor ~value =
+let counter_style_sheet ~descriptor ~value =
   let base =
     match descriptor with
     | "system" | "symbols" -> ""
@@ -137,6 +137,11 @@ let at_rules =
       name = "font-face";
       modelled = List.sort_uniq String.compare Font_face_descriptors.all;
       sheet = font_face_sheet;
+    };
+    {
+      name = "counter-style";
+      modelled = List.sort_uniq String.compare Counter_style_descriptors.all;
+      sheet = counter_style_sheet;
     };
     {
       name = "property";

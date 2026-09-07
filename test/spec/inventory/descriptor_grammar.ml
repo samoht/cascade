@@ -143,7 +143,10 @@ let rows =
       "sec. 3.8 auto | bullets | numbers | words | spell-out | \
        <counter-style-name>"
       [ "auto"; "bullets"; "numbers"; "words"; "spell-out"; "decimal" ]
-      [ "bogus"; "1" ];
+      (* An undefined name is still a <counter-style-name>: sec. 3.7 makes it a
+         <custom-ident>, and whether a style by that name exists is resolved
+         when the counter is rendered rather than when the rule is read. *)
+      [ "1"; "\"decimal\""; "none" ];
     (* CSS Properties and Values API 1 (ED). *)
     row "property" "syntax" "sec. 3.1 <string>"
       [ "\"<color>\""; "\"*\""; "\"<length>\""; "\"<length># \"" ]
