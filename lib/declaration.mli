@@ -28,11 +28,13 @@ val pp_property : 'a Properties.property Pp.t
 val pp : t Pp.t
 (** [pp] is the pretty-printer for declarations. *)
 
-val pp_opaque_value : t Pp.t
-(** [pp_opaque_value] is the value half of {!pp_opaque}, for a caller writing
-    the property name itself. An [\@supports] feature does, because it keeps the
-    name the author spelled and the typed property behind it cannot reproduce
-    that. *)
+val pp_opaque_value : ?verbatim:bool -> t Pp.t
+(** [pp_opaque_value ?verbatim] is the value half of {!pp_opaque}, for a caller
+    writing the property name itself. An [\@supports] feature does, because it
+    keeps the name the author spelled and the typed property behind it cannot
+    reproduce that. [verbatim] (default [true]) writes the value as the author
+    spelled it; [false] takes the canonical spelling in either mode, for a
+    caller building an identity rather than output. *)
 
 val pp_opaque : t Pp.t
 (** [pp_opaque] minifies separators but preserves authored numeric token

@@ -2885,12 +2885,13 @@ let rec pp : declaration Pp.t =
 (* The value half of {!pp_opaque}, for a caller writing the property name
    itself: an [\@supports] feature keeps the name the author spelled, which the
    typed property behind it cannot reproduce. *)
-let rec pp_opaque_value : declaration Pp.t =
+let rec pp_opaque_value ?(verbatim = true) : declaration Pp.t =
  fun ctx decl ->
   let pp_components components important =
     Pp.string ctx
-      (if Pp.minified ctx then Parser.to_string_minified components
-       else Parser.to_string_verbatim components);
+      (if verbatim && not (Pp.minified ctx) then
+         Parser.to_string_verbatim components
+       else Parser.to_string_minified components);
     if important then
       Pp.string ctx (if ctx.minify then "!important" else " !important")
   in
@@ -2909,7 +2910,7 @@ let rec pp_opaque_value : declaration Pp.t =
       pp_property_value ctx (property, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
-  | Theme_guarded { decl; _ } -> pp_opaque_value ctx decl
+  | Theme_guarded { decl; _ } -> pp_opaque_value ~verbatim ctx decl
 
 let rec pp_opaque : declaration Pp.t =
  fun ctx decl ->

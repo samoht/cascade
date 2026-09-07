@@ -2879,7 +2879,13 @@ let extract_media_as_string stmt =
 
 let extract_supports_as_string stmt =
   match Css.as_supports stmt with
-  | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
+  | Some (cond, rules) ->
+      (* Two spellings of one condition are one block: CSS Conditional 3 (ED)
+         sec. 7.4 calls a token stream simplification the same condition, so a
+         sheet writing [(color:color-mix(in lab, red, red))] and one writing it
+         without the spaces must compare inside the block rather than across
+         two. *)
+      Some (Css.Supports.to_string ~verbatim:false cond, rules)
   | None -> None
 
 (* The name [layer_diff] keys a layer on: the CSS text of the name, so a [.] one

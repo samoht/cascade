@@ -7260,6 +7260,12 @@ let s4370_supports_property_name_escapes () =
       ("@supports (colo\\r:){.a{color:red}}", "@supports(color:){.a{color:red}}");
       ( "@supports (unknown\\-prop:x){.a{color:red}}",
         "@supports(unknown-prop:x){.a{color:red}}" );
+      (* Both halves take their canonical spelling under minify, and each is
+         independent of the other. *)
+      ( "@supports (colo\\r:gre\\en){.a{color:red}}",
+        "@supports(color:gre\\E n){.a{color:red}}" );
+      ( "@supports (color:gre\\en){.a{color:red}}",
+        "@supports(color:gre\\E n){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
         "@supports(--xy:red){.a{color:red}}" );
@@ -7281,6 +7287,9 @@ let s4370_supports_property_name_pretty_verbatim () =
       ("@supports (--x\\3b y:red){.a{color:red}}", "--x\\3b y");
       ("@supports (unknown\\-prop:x){.a{color:red}}", "unknown\\-prop");
       ("@supports not (colo\\r:green){.a{color:red}}", "colo\\r");
+      (* The value half keeps the author's spelling on the same terms. *)
+      ("@supports (color:gre\\en){.a{color:red}}", "gre\\en");
+      ("@supports (colo\\r:gre\\en){.a{color:red}}", "gre\\en");
     ]
 
 let fidelity_string_escape_preserved () =

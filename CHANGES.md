@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- Two spellings of one `@supports` condition are one block to the diff, so a
+  sheet writing `(color: color-mix(in lab, red, red))` and one writing it
+  without the spaces compare inside the block rather than across two. CSS
+  Conditional 3 sec. 7.4 calls that the same condition. `Cascade.Supports.pp`
+  and `to_string` gain `?verbatim`, which tells a serialiser from an identity
+  (#1095)
+
 - An `@supports` condition keeps the property name the author spelled, so
   `@supports (colo\r: green)` reads back as written instead of as
   `(color: green)`. CSS Conditional 3 sec. 7.4 returns "the condition that was

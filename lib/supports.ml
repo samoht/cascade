@@ -251,7 +251,7 @@ let pp_declaration_feature ?(verbatim = true) ctx = function
       Pp.string ctx (escaped_property_name ~verbatim ctx name);
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
-      Declaration.pp_opaque_value ctx decl
+      Declaration.pp_opaque_value ~verbatim ctx decl
   | Empty name ->
       Pp.string ctx (escaped_property_name ~verbatim ctx name);
       Pp.char ctx ':'
@@ -347,7 +347,9 @@ and pp_or ~verbatim ctx a b =
    result as an identity for a condition rather than as output, and two
    spellings of one condition must key together there. *)
 let pp ?(verbatim = true) ctx t = pp_aux ~verbatim ~in_and:false ctx t
-let to_string ?(minify = false) t = Pp.to_string ~minify (pp ~verbatim:false) t
+
+let to_string ?(minify = false) ?(verbatim = true) t =
+  Pp.to_string ~minify (pp ~verbatim) t
 
 (* ===== Component parser ===== *)
 

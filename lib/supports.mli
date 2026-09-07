@@ -87,10 +87,12 @@ val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports
     function feature. *)
 
-val to_string : ?minify:bool -> t -> string
-(** [to_string ?minify cond] renders the condition as a CSS [\@supports] string,
-    for use as its identity: it does not keep an authored spelling, so two
-    spellings of one condition render alike. See {!pp}. *)
+val to_string : ?minify:bool -> ?verbatim:bool -> t -> string
+(** [to_string ?minify ?verbatim cond] renders the condition as a CSS
+    [\@supports] string. [verbatim] (default [true]) keeps the spelling the
+    author used, as {!pp} does. Pass [false] for an identity: two spellings of
+    one condition then render alike, which is what a comparator keying a block
+    by its condition needs. *)
 
 val pp : ?verbatim:bool -> Pp.ctx -> t -> unit
 (** [pp ?verbatim ctx cond] serialises a condition. [verbatim] (default [true])
