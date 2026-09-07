@@ -394,6 +394,28 @@ let () =
     skipped elapsed;
   Fmt.pr "  confirmed: %d, excused: %d, failures: %d@." !confirmed !excused
     !failures;
+  (* The same grouping accept_set reports: which side of each excused divergence
+     the generated support table blames. An entry the dataset says every target
+     ships is covering a defect rather than citing a fact, and accept_set fails
+     on one, so this reports the split without repeating that check. *)
+  let tally = Hashtbl.create 4 in
+  List.iter
+    (fun (e : Chrome_gaps.excuse) ->
+      let v = Chrome_gaps.verdict_of Cascade.Support.evergreen e in
+      Hashtbl.replace tally v
+        (1 + Option.value ~default:0 (Hashtbl.find_opt tally v)))
+    (spec_ahead @ lenient);
+  Fmt.pr "  excuses by verdict:@.";
+  List.iter
+    (fun v ->
+      match Hashtbl.find_opt tally v with
+      | None | Some 0 -> ()
+      | Some n -> Fmt.pr "    %3d  %s@." n (Chrome_gaps.verdict_name v))
+    [
+      Chrome_gaps.Cascade_wrong;
+      Chrome_gaps.Browser_behind;
+      Chrome_gaps.Needs_measurement;
+    ];
   (* A run that confirms nothing is not a clean run, it is a blind one. *)
   if !confirmed = 0 then fail "not one vector was confirmed against the browser";
   if !failures > 0 then exit 1
