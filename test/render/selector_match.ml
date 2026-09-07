@@ -101,6 +101,9 @@ end
 
 module R = Resolve.Make (Node)
 
+(* The pass that deletes rules, over the same element model the matcher uses. *)
+module P = Cascade.Prune.Make (Node)
+
 type doc = { did : string; body : element list; root : element }
 
 let document did body =
@@ -1173,6 +1176,63 @@ let () =
   let adapter_report = Buffer.contents buf in
   Buffer.clear buf;
 
+  (* --- What prune would delete, against what the browser matches ---
+
+     [Cascade.Prune] removes a rule every element answered no to, and nothing
+     else measures it, though it is the one pass that DELETES. The matcher it
+     rests on is what the rest of this run checks; what is unchecked is the
+     removal around it, so this asks the narrow question the browser settles: a
+     rule prune dropped that the browser matches is CSS a page needed and no
+     longer has.
+
+     The other direction is counted rather than reported, and is not a defect.
+     Prune keeps a rule whose selector [Resolve.supported] declines, and keeps
+     one the documents happen not to exercise, so a rule it kept that matched
+     nothing is the pass being conservative, which is the safe side of a
+     deletion. *)
+  let prune_deleted_a_match = ref [] and prune_kept_an_unmatched = ref 0 in
+  List.iter
+    (fun (d, _els) ->
+      List.iter
+        (fun p ->
+          if not (is_control p) then
+            match
+              ( read_selector p.read,
+                Hashtbl.find_opt r.answers (key d.did p.sid) )
+            with
+            | Ok _, Some (Matched hits) -> (
+                let css = String.concat "" [ p.read; "{color:red}" ] in
+                match Cascade.Css.of_string css with
+                | Error _ | (exception _) -> ()
+                | Ok { stylesheet; _ } -> (
+                    match P.analyse ~sheet:stylesheet [ d.root ] with
+                    | exception _ -> ()
+                    | analysis ->
+                        let kept =
+                          Cascade.Css.statements analysis.sheet <> []
+                        in
+                        if hits <> [] && not kept then
+                          prune_deleted_a_match :=
+                            {
+                              probe = p;
+                              doc_id = d.did;
+                              detail =
+                                [
+                                  String.concat ""
+                                    [
+                                      "    the browser matched ";
+                                      string_of_int (List.length hits);
+                                      " element(s), prune removed the rule";
+                                    ];
+                                ];
+                            }
+                            :: !prune_deleted_a_match
+                        else if hits = [] && kept then
+                          incr prune_kept_an_unmatched))
+            | _ -> ())
+        probes)
+    trees;
+
   (* --- Classify every pair --- *)
   let wrong = ref [] and rejected = ref [] and undecided = ref [] in
   let browser_excused = ref [] in
@@ -1413,6 +1473,15 @@ let () =
     !conservative;
   section "BROWSER (the browser answers against its own specification)"
     !browser_excused;
+  section "PRUNE DELETED A RULE THE BROWSER MATCHES" !prune_deleted_a_match;
+  line "";
+  line
+    (String.concat ""
+       [
+         "prune: kept ";
+         string_of_int !prune_kept_an_unmatched;
+         " rule(s) the browser matched nothing for, which is the safe side";
+       ]);
   line "";
   line "calibration:";
   List.iter
