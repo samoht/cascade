@@ -582,6 +582,12 @@ to lose a whole rule over one bad piece. Both are gone.
   tag, padded at the end when it is shorter, and cascade read any string
   (#1077)
 
+- `border-image`, `border-image-source` and `mask-border` take one image, so
+  `border-image: none, none` is dropped with a warning. CSS Backgrounds 3
+  sec. 5.1 and CSS Masking 1 sec. 8.2 give the source slot a single `<image>`,
+  and it borrowed the comma-separated reader `background-image` uses. This
+  release adds `Cascade.Properties.read_border_image_source` (#1078)
+
 - `line-height` takes a length unit and no other, so `line-height: 1s`,
   `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
   the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and

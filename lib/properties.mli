@@ -1802,6 +1802,10 @@ val read_background_images : Cursor.t -> background_image list
 (** [read_background_images t] parses a comma-separated list of
     [background_image]s. *)
 
+val read_border_image_source : Cursor.t -> background_image
+(** [read_border_image_source t] is the single image a border-image or
+    mask-border source takes, where {!read_background_image} takes a list. *)
+
 val minify_background_image : background_image -> background_image
 (** [minify_background_image img] converts named colors in gradient stops to
     their shortest hex form, matching Lightning CSS behavior. *)

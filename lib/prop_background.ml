@@ -2507,12 +2507,17 @@ let read_mask_border_mode t =
    the two grammars apart, so [mask_mode] is what says which one the reader is
    holding. CSS Values 4 (ED) sec. 2.2 has [||] ask for one or more of its
    options, so a value that fills no slot matches neither grammar. *)
+(* CSS Backgrounds 3 sec. 5.1 gives border-image-source a single [<image>],
+   and CSS Masking 1 (ED) sec. 8.2 gives mask-border-source the same, where
+   background-image takes a comma-separated list of them. *)
+let read_border_image_source t : background_image = read_bg_image t
+
 let read_border_image_shorthand ~mask_mode t : border_image =
   let read_mode t =
     if mask_mode then Cursor.option read_mask_border_mode t
     else (None : mask_border_mode option)
   in
-  let source = Cursor.option read_background_image t in
+  let source = Cursor.option read_border_image_source t in
   Cursor.ws t;
   (* sec. 8.7 puts [mask-border-mode] in [||] combination with the other slots,
      so the keyword may appear after [<source>] (before the slice) or after

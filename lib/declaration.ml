@@ -2073,7 +2073,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Webkit_mask_clip -> Some (v Webkit_mask_clip (read_mask_box_list t))
   | Webkit_mask_origin -> Some (v Webkit_mask_origin (read_mask_box_list t))
   | Border_image_source ->
-      Some (v Border_image_source (read_background_image t))
+      Some (v Border_image_source (read_border_image_source t))
   | Border_image_slice ->
       Some (v Border_image_slice (read_border_image_slice t))
   | Border_image_repeat ->
