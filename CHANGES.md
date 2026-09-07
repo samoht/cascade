@@ -30,6 +30,13 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Stylesheet.font_face_descriptor` loses `Font_tech`, and
+  `Cascade.Stylesheet.font_tech_descriptor` and `read_font_tech_descriptor` go
+  with it, so `@font-face { font-tech: variations }` is dropped where it was
+  read. CSS Fonts 4 sec. 4 lists the descriptors and no `font-tech` is among
+  them: `<font-tech>` is the keyword sec. 11.1 defines for `tech()` inside
+  `src` and for `font-tech()` in `@supports`, both of which still read (#1118)
+
 - `Cascade.Stylesheet.font_face_descriptor` loses `Font_style_range`, so
   `@font-face { font-style: normal italic }` is dropped where it was read. CSS
   Fonts 4 sec. 4.4 grants one style range only, a pair of `oblique` angles,

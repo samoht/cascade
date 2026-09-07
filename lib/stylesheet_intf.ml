@@ -282,13 +282,6 @@ and font_variant_descriptor =
   | Values of font_variant_descriptor_value list
   | Var of font_variant_descriptor Values.var
 
-(** CSS Fonts 4 sec. 11.1 [<font-tech>], shared with [font-tech()] in
-    [\@supports]. No descriptor grammar takes a [var()] (sec. 4.1), so [Var]
-    parks a reference until the inline pass substitutes it. *)
-and font_tech_descriptor =
-  | Tech of Supports.font_tech
-  | Var of font_tech_descriptor Values.var
-
 and font_variant_descriptor_value =
   | Ligature of Properties.font_variant_ligature
   | Caps of Properties.font_variant_caps
@@ -330,7 +323,6 @@ and font_face_descriptor =
       (** OpenType feature settings *)
   | Font_variation_settings of Properties.font_variation_settings
       (** Variable font settings *)
-  | Font_tech of font_tech_descriptor  (** [font-tech] descriptor *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
   | Descent_override of Font_face.metric_override
@@ -370,7 +362,7 @@ let equal (a : stylesheet) b = a = b
     so both sides have to answer for it. *)
 let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
     ~font_weight ~font_stretch ~font_display ~font_variant
-    ~font_feature_settings ~font_variation_settings ~metric_override ~font_tech
+    ~font_feature_settings ~font_variation_settings ~metric_override
     ~size_adjust = function
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
@@ -391,7 +383,6 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Ascent_override value -> Some (Ascent_override (metric_override value))
   | Descent_override value -> Some (Descent_override (metric_override value))
   | Line_gap_override value -> Some (Line_gap_override (metric_override value))
-  | Font_tech value -> Some (Font_tech (font_tech value))
   | Size_adjust value -> Some (Size_adjust (size_adjust value))
   (* A keyword holds no var() to resolve. *)
   | Font_style_auto | Font_weight_auto | Font_stretch_auto -> None

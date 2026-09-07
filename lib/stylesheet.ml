@@ -1279,10 +1279,6 @@ let pp_font_variant_descriptor_value ctx = function
   | Numeric value -> Properties.pp_font_variant_numeric_token ctx value
   | East_asian value -> Properties.pp_east_asian_feature ctx value
 
-let rec pp_font_tech_descriptor ctx : font_tech_descriptor -> unit = function
-  | Tech tech -> Pp.string ctx (Supports.string_of_font_tech tech)
-  | Var var -> Values.pp_var pp_font_tech_descriptor ctx var
-
 let rec pp_font_variant_descriptor ctx = function
   | Normal -> Pp.string ctx "normal"
   | None -> Pp.string ctx "none"
@@ -1342,7 +1338,6 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_variation_settings value ->
       pp_descriptor "font-variation-settings"
         Properties.pp_font_variation_settings value
-  | Font_tech value -> pp_descriptor "font-tech" pp_font_tech_descriptor value
   | Size_adjust value ->
       pp_descriptor "size-adjust" Font_face.pp_size_adjust value
   | Ascent_override value ->
@@ -2532,19 +2527,6 @@ let read_font_variant_descriptor_value r =
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 
-(* CSS Fonts 4 sec. 11.1 spells [<font-tech>] as a keyword, so an unknown ident
-   is a parse error rather than text to carry through. *)
-let rec read_font_tech_descriptor r : font_tech_descriptor =
-  match Cursor.peek r with
-  | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii name = "var" ->
-      Var (Values.read_var read_font_tech_descriptor r)
-  | Some _ | Option.None -> (
-      let ident = Cursor.ident r in
-      match Supports.font_tech_of_string (String.lowercase_ascii ident) with
-      | Some tech -> Tech tech
-      | Option.None -> Cursor.err_invalid r ("font-tech descriptor: " ^ ident))
-
 let read_font_variant_keywords r : font_variant_descriptor =
   let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
   let snap = Cursor.save r in
@@ -2597,8 +2579,6 @@ let read_font_face_desc name r =
       read_descriptor_value Properties.read_font_variation_settings
         (fun v -> Font_variation_settings v)
         r
-  | "font-tech" ->
-      read_descriptor_value read_font_tech_descriptor (fun v -> Font_tech v) r
   | "size-adjust" ->
       read_descriptor_value Font_face.read_size_adjust
         (fun v -> Size_adjust v)
@@ -2645,8 +2625,7 @@ let descriptor_resolves_var name =
            ~font_family:Fun.id ~font_style:Fun.id ~font_weight:Fun.id
            ~font_stretch:Fun.id ~font_display:Fun.id ~font_variant:Fun.id
            ~font_feature_settings:Fun.id ~font_variation_settings:Fun.id
-           ~metric_override:Fun.id ~font_tech:Fun.id ~size_adjust:Fun.id
-           descriptor)
+           ~metric_override:Fun.id ~size_adjust:Fun.id descriptor)
   | exception Error.Parse_error _ -> false
 
 (* CSS Syntax 3 (ED) sec. 5.5.5 gives an [<at-keyword-token>] to "consume an
