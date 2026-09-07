@@ -844,6 +844,11 @@ to lose a whole rule over one bad piece. Both are gone.
   fractional or out-of-range number instead of truncating (#466, #472, #473,
   #477, #484, #496, #497, #499, #501, #538, #789, #793, #801)
 
+- The second `<time>` of a `transition` entry takes a negative, so
+  `transition: opacity 1s -1s` reads where it was dropped. CSS Transitions 1
+  sec. 2.5 assigns it to `transition-delay`, which starts the transition
+  partway through; only the duration is `[0s,inf]` (#1123)
+
 - A `<position>` pairing an offset with an edge keyword reads where it was
   dropped, so `background-position: 50% bottom` and the same shape on
   `object-position`, `mask-position`, `transform-origin` and the `background`

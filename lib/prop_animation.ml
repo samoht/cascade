@@ -1158,11 +1158,18 @@ let read_transition_behavior_part parts t =
     read_transition_part t read_transition_behavior (fun v ->
         parts.behavior <- Option.Some v)
 
+(* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
+   <single-transition> to transition-duration and the second to
+   transition-delay. Only the duration is [0s,inf]: sec. 2.4 lets a delay be
+   negative, starting the transition partway through, so the second slot reads
+   the wider grammar. *)
 let read_transition_time_part parts t =
-  if List.length parts.times >= 2 then false
-  else
-    read_transition_part t read_duration (fun v ->
-        parts.times <- v :: parts.times)
+  match parts.times with
+  | [] -> read_transition_part t read_duration (fun v -> parts.times <- [ v ])
+  | [ _ ] ->
+      read_transition_part t read_time (fun v ->
+          parts.times <- v :: parts.times)
+  | _ :: _ :: _ -> false
 
 let transition_duration_delay parts =
   match List.rev parts.times with

@@ -2247,6 +2247,18 @@ let animations_timing () =
   neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
   neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
   neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
+  (* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
+     <single-transition> to transition-duration and the second to
+     transition-delay, and only the duration is [0s,inf]: a negative delay
+     starts the transition partway through. Chrome 153 keeps all three. *)
+  check_declaration ~expected:"transition:all 1s -1s" "transition: 1s -1s";
+  check_declaration ~expected:"transition:opacity 1s -1s"
+    "transition: opacity 1s -1s";
+  check_declaration ~expected:"transition:opacity 1s ease-in -1s"
+    "transition: opacity 1s ease-in -1s";
+  (* The duration slot keeps its range, so a lone negative has nowhere to go. *)
+  neg_cursor read_declaration "transition: -1s";
+  neg_cursor read_declaration "transition: -1s 1s";
   check_declaration ~expected:"transition-duration:var(--d,.5s)"
     ~optimized:"transition-duration:var(--d,.5s)"
     "transition-duration:var(--d,500ms)";
