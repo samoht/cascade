@@ -4591,6 +4591,8 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("scroll-margin-block: 0 0", "scroll-margin-block:0 0");
+      ("scroll-margin-inline: 0 0", "scroll-margin-inline:0 0");
       ("grid-row-end: calc(.5)", "grid-row-end:calc(.5)");
       ("grid-column-start: calc(1.4)", "grid-column-start:calc(1.4)");
       ("z-index: calc(.5)", "z-index:calc(.5)");
