@@ -2119,16 +2119,17 @@ let skip_invalid_item r =
    only itself and the items around it are kept. CSS Syntax 3 (ED) sec. 5.5.5
    keeps what a block's contents already yielded when one item fails to parse,
    and CSS Paged Media 3 sec. 4.1 says as much of a page or a margin context in
-   so many words: "valid declarations within the block are applied". Strict mode
-   ([not (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly
-   what the lenient parse warns about. [skip] discards the item that failed, and
-   which one it is depends on the body: {!skip_invalid_item} for a body of
-   declarations, {!skip_past_rule} for a body of rules, where an item that opens
-   a block ends at that block rather than at a [;] it does not have. [construct]
-   names the same two bodies: the dropped item is a declaration in the first and
-   a rule in the second. The warning is pushed after the skip, which is what
-   fixes how far the loss reaches: the item is dropped from [start] to wherever
-   [skip] leaves the cursor. *)
+   so many words: "valid declarations within the block are applied". Every
+   statement of a sheet is read from a recovering cursor ({!cursor_of_rule}
+   passes [~recover:true]), and [Css.of_string ~strict:true] filters the
+   warnings that parse pushed rather than selecting another one. [skip] discards
+   the item that failed, and which one it is depends on the body:
+   {!skip_invalid_item} for a body of declarations, {!skip_past_rule} for a body
+   of rules, where an item that opens a block ends at that block rather than at
+   a [;] it does not have. [construct] names the same two bodies: the dropped
+   item is a declaration in the first and a rule in the second. The warning is
+   pushed after the skip, which is what fixes how far the loss reaches: the item
+   is dropped from [start] to wherever [skip] leaves the cursor. *)
 let read_items_with_recovery ~skip ~construct step r init =
   let rec loop state =
     if Cursor.recover r then recovering state else continue (step r state)
@@ -3942,7 +3943,8 @@ and read_block (r : Cursor.t) : block =
       (* CSS Syntax 3 (ED) sec. 5.5.1: a rule that fails to parse (e.g. an
          invalid selector) is dropped, and parsing resumes at the next rule -
          one bad rule must not take the rest of the [@layer] / [@media] block
-         with it. Strict mode ([not (Cursor.recover r)]) still raises. *)
+         with it. The guard leaves the exception to a caller reading from a
+         non-recovering cursor; no statement parse builds one. *)
       | exception Error.Parse_error e when Cursor.recover r ->
           Cursor.restore r snap;
           Cursor.push_warning r ~recovery:Error.Recovery.(dropped Rule) e;
@@ -4077,8 +4079,8 @@ and read_nesting_block (r : Cursor.t) : block =
      counting as one component value of the value being skipped. A nested
      at-rule's body is <block-contents> like a style rule's, so it recovers the
      same way and one bad declaration takes neither the group rule holding it
-     nor the rest of the sheet. Strict mode ([not (Cursor.recover r)]) still
-     raises. *)
+     nor the rest of the sheet. The guard leaves the failure to a caller reading
+     from a non-recovering cursor; no statement parse builds one. *)
   and read_recovering_item acc =
     let start = Cursor.save r in
     match read_nesting_item ~prev:acc r with
