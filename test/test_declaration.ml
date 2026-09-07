@@ -4591,6 +4591,10 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("interest-delay: normal 120ms", "interest-delay:normal 120ms");
+      ("interest-delay: 120ms normal", "interest-delay:120ms normal");
+      ("interest-delay: 1s 2s", "interest-delay:1s 2s");
+      ("interest-delay: normal", "interest-delay:normal");
       ("scroll-margin-block: 0 0", "scroll-margin-block:0 0");
       ("scroll-margin-inline: 0 0", "scroll-margin-inline:0 0");
       ("grid-row-end: calc(.5)", "grid-row-end:calc(.5)");
@@ -4699,6 +4703,8 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "interest-delay: normal normal normal";
+      "interest-delay-start: normal 1s";
       "grid-row-end: calc(0)";
       "grid-column-start: balance 0";
       "grid-row-end: balance 0";
