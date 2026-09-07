@@ -4591,6 +4591,10 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("grid-row-end: calc(.5)", "grid-row-end:calc(.5)");
+      ("grid-column-start: calc(1.4)", "grid-column-start:calc(1.4)");
+      ("z-index: calc(.5)", "z-index:calc(.5)");
+      ("order: calc(1.4)", "order:calc(1.4)");
       ("font-language-override: \"ENG\"", "font-language-override:\"ENG\"");
       ("font-language-override: \"A\"", "font-language-override:\"A\"");
       ("offset-path: path('M 0 0 L 1 1')", "offset-path:path(\"M 0 0 L 1 1\")");
@@ -4693,6 +4697,9 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "grid-row-end: calc(0)";
+      "grid-column-start: balance 0";
+      "grid-row-end: balance 0";
       "border-image: none, none";
       "border-image: url(a.png), none";
       "border-image-source: none, none";
