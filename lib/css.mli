@@ -8474,12 +8474,7 @@ type vertical_align = Properties.vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Zero
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Calc of vertical_align calc
+  | Length of length_percentage
   | Inherit
   | Initial
   | Unset

@@ -1761,6 +1761,10 @@ type table_layout =
   | Revert_layer
   | Var of table_layout var
 
+(** CSS Inline 3 sec. 4.2 [vertical-align]: the keywords, or a
+    [<length-percentage>] raising the box by that much. Every length unit is one
+    of them, which is why this is not a list of the four the property is usually
+    written with. *)
 type vertical_align =
   | Baseline
   | Top
@@ -1770,12 +1774,7 @@ type vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Zero
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Calc of vertical_align calc
+  | Length of length_percentage
   | Inherit
   | Initial
   | Unset

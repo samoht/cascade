@@ -76,6 +76,13 @@ entry points both moved.
   warning. CSS Text 4 sec. 6.3.4 spells the property
   `[ auto | <integer> ]{1,3}`, so `auto` alone is `One Auto` (#1049)
 
+- `Cascade.Properties.vertical_align` carries a `Length of length_percentage`
+  where it carried `Zero`, `Px`, `Rem`, `Em`, `Pct` and `Calc`, so
+  `vertical-align: 2ch`, `2vh`, `2cap` and `max(1rem,2vw)` read. CSS Inline 3
+  sec. 4.2 gives the property a `<length-percentage>`, which every length unit
+  is; the reader carried a list of four. A caller building a literal writes
+  `Length (Px 10.)` (#1070)
+
 - The `Number` of `Cascade.Properties.dash_length` carries a `number` where it
   carried a `float`, and `animation_iteration_count` replaces its `Num of float`
   with `Count of number`, so `stroke-dasharray: calc(1 + 2)` and

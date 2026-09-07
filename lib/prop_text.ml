@@ -13,18 +13,11 @@ open Properties_intf
 open Prop_common
 open Prop_background
 
+(* CSS Inline 3 sec. 4.2 gives the property a [<length-percentage>], so every
+   length unit is valid here and the intrinsic-sizing keywords a bare length
+   reader would take are not. *)
 let read_vertical_align_length t : vertical_align =
-  let n, unit = Cursor.number_with_unit t in
-  match unit with
-  | Some "px" -> Px n
-  | Some "rem" -> Rem n
-  | Some "em" -> Em n
-  | Some "%" -> Pct n
-  (* A unitless [0] is the valid zero <length> (CSS Values 4 sec. 6); any other
-     unitless number is not a length and is rejected. *)
-  | None when n = 0. -> Zero
-  | None -> Cursor.err_invalid t "vertical-align requires a unit"
-  | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
+  Length (read_length_percentage ~with_keywords:false t)
 
 let rec read_text_align t : text_align =
   Cursor.enum_or_var "text-align"
@@ -1442,12 +1435,7 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Text_bottom -> Pp.string ctx "text-bottom"
   | Sub -> Pp.string ctx "sub"
   | Super -> Pp.string ctx "super"
-  | Zero -> Pp.string ctx "0"
-  | Px f -> Pp.unit ctx f "px"
-  | Rem f -> Pp.unit ctx f "rem"
-  | Em f -> Pp.unit ctx f "em"
-  | Pct p -> Pp.pct ctx p
-  | Calc c -> pp_calc pp_vertical_align ctx c
+  | Length lp -> pp_length_percentage ~always:true ctx lp
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2148,9 +2136,6 @@ let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
 
 let rec read_vertical_align t : vertical_align =
   let read_var t : vertical_align = Var (read_var read_vertical_align t) in
-  let read_calc t : vertical_align =
-    Calc (read_calc ~result_type:`Value read_vertical_align t)
-  in
   Cursor.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
@@ -2167,7 +2152,7 @@ let rec read_vertical_align t : vertical_align =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:[ ("var", read_var) ]
     ~default:read_vertical_align_length t
 
 module Text_shadow = struct
@@ -2262,8 +2247,9 @@ let text_decoration_shorthand ?lines ?style ?color ?thickness () :
 
 let normalize_vertical_align (va : vertical_align) : vertical_align =
   match va with
-  | Calc c -> (
-      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+  | Length lp ->
+      let lp' = Values.normalize_length_percentage lp in
+      if lp' == lp then va else Length lp'
   | _ -> va
 
 let read_initial_letter_align_keyword t : initial_letter_align_keyword =
