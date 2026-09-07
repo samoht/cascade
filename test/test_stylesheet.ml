@@ -1411,6 +1411,14 @@ let spec_strict_accepts_valid_stylesheets () =
       ("empty page margin box", "@page { @top-center { } }");
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
+      (* CSS Cascade 6 sec. 3.5.2 gives [@scope] a [<block-contents>] body, so a
+         declaration written straight into it applies to the scoping root.
+         Chrome 153 reports one as a [CSSNestedDeclarations] inside the
+         [CSSScopeRule]; cascade used to read the body as rules only and drop
+         the whole at-rule. *)
+      ("scope with a bare declaration", "@scope (.s) { color: green }");
+      ( "scope mixing a declaration and a rule",
+        "@scope (.s) { color: green; .a { color: red } }" );
       ( "font-face wildcard unicode range",
         "@font-face { font-family: Icons; src: url(icons.woff2); \
          unicode-range: U+4?? }" );
