@@ -1170,18 +1170,26 @@ module Transform_origin = struct
         | Single x -> X x
         | position -> Position position)
 
+  (* All-length slots only, so it has to leave an edge keyword to
+     [read_position] rather than stopping short and handing the caller a
+     trailing token: [50% bottom] is a position, not one slot and a leftover. *)
   let read_xyz (t : Cursor.t) : transform_origin =
     let x = read_slot t in
     Cursor.ws t;
-    match Cursor.option read_slot t with
-    | Some y -> (
-        Cursor.ws t;
-        match Cursor.option read_slot t with
-        | Some z -> XYZ (x, y, z)
-        | None -> XY (x, y))
-    (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin
-       and defaults Y to [center] ([50%]); it is not duplicated into Y. *)
-    | None -> X x
+    let origin =
+      match Cursor.option read_slot t with
+      | Some y -> (
+          Cursor.ws t;
+          match Cursor.option read_slot t with
+          | Some z -> XYZ (x, y, z)
+          | None -> XY (x, y))
+      (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin
+         and defaults Y to [center] ([50%]); it is not duplicated into Y. *)
+      | None -> X x
+    in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    origin
 
   let read_keyword t : keyword =
     Cursor.enum "transform-origin-keyword"

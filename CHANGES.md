@@ -844,6 +844,13 @@ to lose a whole rule over one bad piece. Both are gone.
   fractional or out-of-range number instead of truncating (#466, #472, #473,
   #477, #484, #496, #497, #499, #501, #538, #789, #793, #801)
 
+- A `<position>` pairing an offset with an edge keyword reads where it was
+  dropped, so `background-position: 50% bottom` and the same shape on
+  `object-position`, `mask-position`, `transform-origin` and the `background`
+  shorthand are no longer lost. CSS Values 4 sec. 8.3 grants
+  `[ left | center | right | <length-percentage> ] [ top | center | bottom |
+  <length-percentage> ]` (#1122)
+
 - A CSS-wide keyword in an `@font-face` descriptor is dropped, so
   `font-weight: inherit` inside the rule no longer reaches output a browser
   discards. CSS Fonts 4 sec. 4.6 omits them from the descriptor grammars
