@@ -31,6 +31,13 @@ entry points both moved.
   `webkit_line_clamp`, `zoom`, `border_image_slice_item` and
   `shape_image_threshold` gain `Calc`, and `grid_line` gains `Calc_name`
   (#1072, #1086, #1124, #1125, #1126)
+- A math function takes only the operands CSS Values 4 sec. 10.8 grants, so
+  `width: calc(inherit)`, `height: calc(auto)`, `border-width: calc(medium)`,
+  `width: calc(fit-content(20rem))` and `width: min(unset, 1px)` are dropped
+  with a warning where they used to read. `calc(inherit)` was written back as a
+  live `inherit`, which changed what the element computed. Sec. 10.2 also
+  requires the arguments of `min()`, `max()` and `clamp()` to share a
+  consistent type, so `width: min(0, 1px)` is dropped as well (#1139)
 - The gap decoration, scroll-driven animation and interest properties carry a
   comma-separated list where they carried a single value, one entry per rule
   line or per timeline, so `column-rule: 1px solid red, 2px dashed blue` and

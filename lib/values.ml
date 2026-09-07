@@ -5822,7 +5822,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true)
   let parsers =
     [
       read_var_length ~allow_negative ~length_only ~with_keywords;
-      read_calc_length ~length_only ~with_keywords;
+      read_calc_length ~length_only;
       read_env_length ~allow_negative ~length_only ~with_keywords;
       read_function_length ~allow_negative ~length_only ~with_keywords;
       read_length_unit ~allow_negative ~length_only;
@@ -5838,13 +5838,22 @@ and read_var_length ~allow_negative ~length_only ~with_keywords t : length =
     Var (read_var (read_length ~allow_negative ~length_only ~with_keywords) t)
   else Cursor.err t "expected var"
 
-and read_calc_length ~length_only ~with_keywords t : length =
+(* CSS Values 4 sec. 10.8: a [<calc-value>] is a number, a dimension, a
+   percentage, a [<calc-keyword>] ([e], [pi], [infinity], [-infinity], [NaN]) or
+   a parenthesised [<calc-sum>]. A CSS-wide keyword, [auto], an intrinsic size
+   and the sizing functions are none of those, and sec. 10.9 makes the
+   calculation's type failure for anything else, so a math operand reads a
+   length with the keyword grammar off. *)
+and read_math_operand_length ~allow_negative ~length_only t : length =
+  read_length ~allow_negative ~length_only ~with_keywords:false t
+
+and read_calc_length ~length_only t : length =
   if Cursor.looking_at_calc t then
     (* Same exception as [read_length_percentage]: inside [calc()] the
        non-negative constraint applies to the resolved value. *)
     Calc
       (read_calc ~result_type:`Value
-         (read_length ~length_only ~with_keywords)
+         (read_math_operand_length ~allow_negative:true ~length_only)
          t)
   else Cursor.err t "expected calc"
 
@@ -5901,12 +5910,12 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
       ("clamp", read_clamp_length ~length_only);
       ("min", read_min_length ~length_only);
       ("max", read_max_length ~length_only);
-      ("round", read_round_length ~allow_negative ~length_only ~with_keywords);
-      ("mod", read_mod_length ~allow_negative ~length_only ~with_keywords);
-      ("rem", read_rem_length ~allow_negative ~length_only ~with_keywords);
-      ("hypot", read_hypot_length ~allow_negative ~length_only ~with_keywords);
-      ("abs", read_abs_length ~allow_negative ~length_only ~with_keywords);
-      ("sign", read_sign_length ~allow_negative ~length_only ~with_keywords);
+      ("round", read_round_length ~allow_negative ~length_only);
+      ("mod", read_mod_length ~allow_negative ~length_only);
+      ("rem", read_rem_length ~allow_negative ~length_only);
+      ("hypot", read_hypot_length ~allow_negative ~length_only);
+      ("abs", read_abs_length ~allow_negative ~length_only);
+      ("sign", read_sign_length ~allow_negative ~length_only);
       ("anchor-size", read_anchor_size_length);
       ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
       ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
@@ -5916,14 +5925,17 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
    are implicit math expressions, so [clamp(.5rem, 2vw + .5rem, 2rem)] is valid
    without a surrounding [calc()]. Parse each argument with [read_calc_expr] and
    collapse a singleton [Val] back to the plain length so the AST stays compact
-   for the common case. *)
+   for the common case. The same section requires the arguments to "have a
+   consistent type or else the function is invalid", so every one of them is
+   checked against the length the surrounding property reads: [min(0, 1px)]
+   mixes a [<number>] with a [<length>] and browsers drop it. *)
 and read_implicit_calc_length ~length_only inner =
   let expr =
     read_calc_expr
-      (read_length ~length_only ~with_keywords:(not length_only))
+      (read_math_operand_length ~allow_negative:true ~length_only)
       inner
   in
-  if length_only then validate_calc_type inner `Value expr;
+  validate_calc_type inner `Value expr;
   match expr with Val l -> l | expr -> Calc expr
 
 and read_clamp_length ?(length_only = false) inner =
@@ -5983,57 +5995,59 @@ and read_fit_content_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.expect_eof inner;
   Fit_content_arg arg
 
-and read_round_length ~allow_negative ~length_only ~with_keywords inner =
+and read_round_length ~allow_negative ~length_only inner =
   let strategy = read_round_strategy inner in
-  let value = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let read = read_math_operand_length ~allow_negative ~length_only in
+  let value = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let step = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let step = read inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Round (strategy, value, step)
 
-and read_binary_length ~allow_negative ~length_only ~with_keywords make inner =
-  let a = read_length ~allow_negative ~length_only ~with_keywords inner in
+and read_binary_length ~allow_negative ~length_only make inner =
+  let read = read_math_operand_length ~allow_negative ~length_only in
+  let a = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let b = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let b = read inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   make a b
 
-and read_mod_length ~allow_negative ~length_only ~with_keywords inner =
-  read_binary_length ~allow_negative ~length_only ~with_keywords
+and read_mod_length ~allow_negative ~length_only inner =
+  read_binary_length ~allow_negative ~length_only
     (fun (a : length) (b : length) -> (Mod (a, b) : length))
     inner
 
-and read_rem_length ~allow_negative ~length_only ~with_keywords inner =
-  read_binary_length ~allow_negative ~length_only ~with_keywords
+and read_rem_length ~allow_negative ~length_only inner =
+  read_binary_length ~allow_negative ~length_only
     (fun (a : length) (b : length) -> (Rem_fn (a, b) : length))
     inner
 
-and read_hypot_length ~allow_negative ~length_only ~with_keywords inner =
+and read_hypot_length ~allow_negative ~length_only inner =
   let values =
     Cursor.list ~sep:Cursor.comma
-      (read_length ~allow_negative ~length_only ~with_keywords)
+      (read_math_operand_length ~allow_negative ~length_only)
       inner
   in
   Cursor.expect_eof inner;
   Hypot values
 
-and read_unary_length ~allow_negative ~length_only ~with_keywords make inner =
-  let value = read_length ~allow_negative ~length_only ~with_keywords inner in
+and read_unary_length ~allow_negative ~length_only make inner =
+  let value = read_math_operand_length ~allow_negative ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   make value
 
-and read_abs_length ~allow_negative ~length_only ~with_keywords inner =
-  read_unary_length ~allow_negative ~length_only ~with_keywords
+and read_abs_length ~allow_negative ~length_only inner =
+  read_unary_length ~allow_negative ~length_only
     (fun (value : length) -> (Abs value : length))
     inner
 
-and read_sign_length ~allow_negative ~length_only ~with_keywords inner =
-  read_unary_length ~allow_negative ~length_only ~with_keywords
+and read_sign_length ~allow_negative ~length_only inner =
+  read_unary_length ~allow_negative ~length_only
     (fun (value : length) -> (Sign value : length))
     inner
 
@@ -7497,7 +7511,7 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
     [
       read_length_percentage_var ~allow_negative ~with_keywords;
       read_length_percentage_env ~allow_negative ~with_keywords;
-      read_length_percentage_calc ~with_keywords;
+      read_length_percentage_calc;
       read_invalid_length_percentage_function;
       read_length_percentage_pct ~allow_negative;
       read_length_percentage_length ~allow_negative ~with_keywords ~sizing;
@@ -7516,14 +7530,17 @@ and read_length_percentage_env ~allow_negative ~with_keywords t :
     Env (read_env (read_length_percentage ~allow_negative ~with_keywords) t)
   else Cursor.err t "expected env"
 
-and read_length_percentage_calc ~with_keywords t : length_percentage =
+and read_length_percentage_calc t : length_percentage =
   if Cursor.looking_at_calc t then
     (* CSS Values 4 10 (calc): inside [calc()] negative operands are always
        allowed even when the surrounding property is non-negative; the
        non-negative constraint applies to the resolved value, not to inner
-       operands. *)
+       operands. Sec. 10.8 gives an operand no keyword, so the leaf reads with
+       the keyword grammar off. *)
     Calc
-      (read_calc ~result_type:`Value (read_length_percentage ~with_keywords) t)
+      (read_calc ~result_type:`Value
+         (read_length_percentage ~with_keywords:false)
+         t)
   else Cursor.err t "expected calc"
 
 (** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw

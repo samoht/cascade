@@ -1456,13 +1456,16 @@ let read_length_as_border_width ?(allow_negative = false) t =
 
 (* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
    the [0,inf] range of [<line-width>] is checked on the value it resolves to,
-   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not. *)
+   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not.
+   Sec. 10.8 gives an operand no keyword either: [thin], [medium], [thick] and
+   the CSS-wide keywords are not [<calc-value>]s, so [keywords] is off here and
+   [calc(medium)] fails the way the browser drops it. *)
 let rec read_border_width_in_math t : border_width =
-  read_border_width_with ~allow_negative:true t
+  read_border_width_with ~keywords:false ~allow_negative:true t
 
-and read_border_width_with ~allow_negative t : border_width =
+and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_var t : border_width =
-    Var (read_var (read_border_width_with ~allow_negative) t)
+    Var (read_var (read_border_width_with ~keywords ~allow_negative) t)
   in
   let read_calc t : border_width =
     Calc (read_calc ~result_type:`Value read_border_width_in_math t)
@@ -1487,16 +1490,18 @@ and read_border_width_with ~allow_negative t : border_width =
     | _ -> Cursor.err_invalid t "invalid clamp"
   in
   Cursor.enum_or_calls "border-width"
-    [
-      ("thin", (Thin : border_width));
-      ("medium", Medium);
-      ("thick", Thick);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("thin", (Thin : border_width));
+         ("medium", Medium);
+         ("thick", Thick);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
       [
         ("var", read_var);
