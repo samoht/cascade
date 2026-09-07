@@ -4749,6 +4749,13 @@ let spec_platform_property_vectors () =
          refused one. CSS Logical 1 sec. 4.2 spells the flow-relative pair from
          the same production. *)
       "margin-right: fit-content(20rem)";
+      (* CSS Box Alignment 3 sec. 8.1 gives every gap a [0,inf] range, and the
+         row-gap and column-gap longhands already refused a negative one. CSS
+         Text Decoration 4 sec. 3 builds the shorthand from its own longhands,
+         so a sizing function reaches neither. *)
+      "gap: -10%";
+      "gap: 1px -10%";
+      "text-decoration: fit-content(20rem)";
       (* CSS Position 3 sec. 3.1 gives every inset longhand the same [auto |
          <length-percentage>], and sec. 3.2 builds the shorthand from it, so no
          sizing function reaches those either. *)
