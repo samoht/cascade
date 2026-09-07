@@ -1323,6 +1323,9 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
           Pp.space ctx ();
           Properties.pp_font_weight ctx max_weight)
         (min_weight, max_weight)
+  | Font_style_auto -> pp_descriptor "font-style" Pp.string "auto"
+  | Font_weight_auto -> pp_descriptor "font-weight" Pp.string "auto"
+  | Font_stretch_auto -> pp_descriptor "font-stretch" Pp.string "auto"
   | Font_stretch stretch ->
       pp_descriptor "font-stretch" Properties.pp_font_stretch stretch
   | Font_stretch_range (min_stretch, max_stretch) ->
@@ -2348,32 +2351,44 @@ let read_descriptor_block normalize inner =
    endpoint is well defined, the user agent swapping the two endpoints for font
    matching. The swap is on the computed value, so the descriptor keeps the
    order it was written in. *)
+(* CSS Fonts 4 (ED) sec. 4.4 opens font-style, font-weight and font-width with
+   [auto] and gives it as their initial value, outside the [{1,2}] the rest of
+   the grammar allows: it is the whole value or it is not there. The properties
+   of the same name have no [auto], so the shared readers cannot answer for
+   it. *)
+let descriptor_is_auto value =
+  String.equal (String.lowercase_ascii (String.trim value)) "auto"
+
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_weight c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_weight first
+      if descriptor_is_auto value then Font_weight_auto
       else
-        let second = Properties.read_font_weight c in
+        let c = Cursor.of_string value in
+        let first = Properties.read_font_weight c in
         Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_weight_range (first, second))
+        if Cursor.is_done c then Font_weight first
+        else
+          let second = Properties.read_font_weight c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_weight_range (first, second))
     r
 
 let read_font_style_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_style c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_style first
+      if descriptor_is_auto value then Font_style_auto
       else
-        let second = Properties.read_font_style c in
+        let c = Cursor.of_string value in
+        let first = Properties.read_font_style c in
         Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_style_range (first, second))
+        if Cursor.is_done c then Font_style first
+        else
+          let second = Properties.read_font_style c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_style_range (first, second))
     r
 
 let validate_nonempty_descriptor r name value =
@@ -2394,15 +2409,17 @@ let read_font_family_descriptor r =
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_stretch c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_stretch first
+      if descriptor_is_auto value then Font_stretch_auto
       else
-        let second = Properties.read_font_stretch c in
+        let c = Cursor.of_string value in
+        let first = Properties.read_font_stretch c in
         Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_stretch_range (first, second))
+        if Cursor.is_done c then Font_stretch first
+        else
+          let second = Properties.read_font_stretch c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_stretch_range (first, second))
     r
 
 (* CSS Syntax 3 (ED) sec. 4.3.14: this descriptor's value is the one place in

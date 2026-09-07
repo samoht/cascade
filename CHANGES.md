@@ -30,6 +30,12 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Stylesheet.font_face_descriptor` gains `Font_style_auto`,
+  `Font_weight_auto` and `Font_stretch_auto`, so `@font-face { font-style: auto }`
+  and its two siblings read where they were dropped. CSS Fonts 4 sec. 4.4 gives
+  all three descriptors `auto` as their initial value. Exhaustive visitors must
+  handle the three new arms (#1116)
+
 - `Cascade.Properties.flex_basis` gains `Dimension`, the arm
   `Cascade.Values.length` uses for a length whose authored spelling no typed
   constructor carries, so `flex-basis: 1e3px`, `flex-basis: 10.0px` and
