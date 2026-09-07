@@ -864,6 +864,11 @@ to lose a whole rule over one bad piece. Both are gone.
   body, so a declaration written straight into it applies to the scoping root;
   cascade read the body as rules only (#1068)
 
+- An at-rule inside a keyframe or descriptor block costs only itself, where it
+  used to take the rest of the block: `@keyframes k { to { @e {} opacity: 1 } }`
+  keeps the opacity. CSS Syntax 3 sec. 5.5.5 consumes an at-rule there, so it
+  ends at its own block rather than at the next `;` (#1069)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor

@@ -695,8 +695,19 @@ let verdict answer =
    it honest. The day Chrome fixes this the corpus stops producing a finding of
    the shape and the run says the excuse is stale; a finding of any other shape
    is fatal whatever the input holds. *)
+(* [@keyframes] belongs here for the same reason as the conditional groups: its
+   contents are rules (keyframe rules), so section 5.5.5's "discard and
+   continue" applies to a [;] among them. Chrome 153 keeps only the frames after
+   the [;], dropping [from] in [@keyframes k{;from{opacity:0}to{opacity:1}}]. *)
 let rule_block_at_rules =
-  [ "@media"; "@supports"; "@container"; "@layer"; "@starting-style" ]
+  [
+    "@media";
+    "@supports";
+    "@container";
+    "@layer";
+    "@starting-style";
+    "@keyframes";
+  ]
 
 let semicolon_in_a_rule_block css =
   let n = String.length css in

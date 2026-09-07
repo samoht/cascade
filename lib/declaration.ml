@@ -2693,10 +2693,39 @@ let recover_declaration_step t acc e ~from =
     e;
   acc
 
+(* CSS Syntax 3 (ED) sec. 5.5.5 consumes an AT-RULE when a block's contents meet
+   an at-keyword, so it ends at its own block or [;], not at the next [;] the
+   way an invalid declaration does. A keyframe or descriptor block has no
+   grammar for one, so it is dropped - but only it: [@keyframes
+   k{to{@e{}opacity:1}}] keeps the opacity, which is what the browser keeps
+   too. *)
+let skip_at_rule t =
+  Cursor.skip t;
+  let rec go () =
+    match Cursor.peek_head_shape t with
+    | `Eof -> ()
+    | `Curly_block | `Semicolon -> Cursor.skip t
+    | _ ->
+        Cursor.skip t;
+        go ()
+  in
+  go ()
+
 let rec read_declarations_loop t acc =
   Cursor.ws t;
   match Cursor.peek t with
   | None -> List.rev acc
+  | Some _ when Option.is_some (Cursor.peek_at_keyword t) ->
+      let from = Cursor.save t in
+      let error =
+        try Cursor.err t "at-rule in a declaration block"
+        with Cursor.Parse_error e -> e
+      in
+      skip_at_rule t;
+      Cursor.push_warning t
+        ~recovery:(Cursor.dropped_since t from Error.Recovery.Rule)
+        error;
+      read_declarations_loop t acc
   | _ -> (
       match read_declaration_step t acc with
       | Done decls -> decls
