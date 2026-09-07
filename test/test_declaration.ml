@@ -4591,6 +4591,10 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("border-image: 50% none", "border-image:50%");
+      ("border-image: 1 none", "border-image:1");
+      ("border-image: round none 30", "border-image:30 round");
+      ("border-image: 30 / 2 url(a.png)", "border-image:url(a.png)30/2");
       ("ruby-overhang: spaces", "ruby-overhang:spaces");
       ("-webkit-mask-origin: content", "-webkit-mask-origin:content");
       ("-webkit-mask-origin: padding", "-webkit-mask-origin:padding");
